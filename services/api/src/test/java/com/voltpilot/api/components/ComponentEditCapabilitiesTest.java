@@ -195,7 +195,7 @@ class ComponentEditCapabilitiesTest {
 
     private static ComponentTemplateDto template() {
         return new ComponentTemplateDto(TEMPLATE_REF, "builtin", 1, "deye", "Deye",
-                "sun-30k", "SUN-30K", "inverter", null, "hybrid_3p", "Hybrid 3-phasig",
+                "sun-30k", "SUN-30K", null, "inverter", null, "hybrid_3p", "Hybrid 3-phasig",
                 "solarman_v5", "Solarman V5", null, null, null, BigDecimal.valueOf(30), 0,
                 "builtin", null, null, null, null);
     }

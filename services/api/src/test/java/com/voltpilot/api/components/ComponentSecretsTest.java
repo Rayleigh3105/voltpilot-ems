@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ComponentSecretsTest {
 
     private static ComponentTemplateDto template() {
-        return new ComponentTemplateDto("t", "builtin", 1, "b", "B", "m", "M",
+        return new ComponentTemplateDto("t", "builtin", 1, "b", "B", "m", "M", null,
                 "inverter", null, "f", "F", "modbus", "Modbus",
                 "[{\"key\":\"ip\",\"label\":\"IP\"},{\"key\":\"password\","
                         + "\"label\":\"Kennwort\",\"type\":\"password\",\"secret\":true}]",

@@ -232,6 +232,34 @@ class BuiltinComponentTemplatesTest {
         assertThat(builtin.schemaVersion()).isEqualTo("1.0");
     }
 
+    /**
+     * Die TYPENSCHILD-VARIANTEN reisen mit (Bauplan P8), und zwar als reine
+     * Namen: die Variante bekommt KEINE eigene Vorlage. Ein zweiter Eintrag
+     * „…-BM3" wäre ein Modell OHNE Steuerungs-Freigabe, weil
+     * {@code inverter_control_certification} auf brand+model geschlüsselt ist
+     * (V20260814000000).
+     */
+    @Test
+    void theNameplateVariantsTravelAsNamesNotAsTemplates() {
+        BuiltinTemplate hv = find("builtin:deye:sun-30k-sg01hp3");
+        assertThat(hv.modelAliasesJson())
+                .isEqualTo("[\"SUN-30K-SG01HP3-EU-BM3\",\"SUN-30K-SG01HP3-EU-BM4\"]");
+        assertThat(hv.model()).isEqualTo("sun-30k-sg01hp3");
+        assertThat(hv.family()).isEqualTo("hybrid_3p");
+
+        // Keine Variante hat einen eigenen Schlüssel bekommen.
+        Set<String> refs = builtin.all().stream().map(BuiltinTemplate::templateRef)
+                .collect(Collectors.toSet());
+        assertThat(refs).doesNotContain("builtin:deye:sun-30k-sg01hp3-eu-bm3",
+                "builtin:deye:sun-30k-sg01hp3-eu-bm4");
+
+        // ⚠ Die Ehrlichkeitsregel der Nachbarfelder gilt hier auch: ein Modell
+        // ohne Varianten trägt null, nie "[]" - "hat nur seinen einen Namen"
+        // ist etwas anderes als "nachgesehen, es gibt keine".
+        assertThat(find("builtin:deye:sun-12k-sg04lp3").modelAliasesJson()).isNull();
+        assertThat(builtin.all()).noneMatch(t -> "[]".equals(t.modelAliasesJson()));
+    }
+
     private BuiltinTemplate find(String ref) {
         return builtin.all().stream().filter(t -> ref.equals(t.templateRef())).findFirst()
                 .orElseThrow(() -> new AssertionError("Vorlage " + ref + " fehlt"));

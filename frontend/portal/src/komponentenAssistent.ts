@@ -47,6 +47,21 @@ export type ComponentTemplate = {
   model: string;
   modelLabel: string;
   /**
+   * Weitere TYPENSCHILD-Namen DESSELBEN Modells (Bauplan P8). Deye liefert die
+   * HV-Hybrid-Reihe als „…-EU-BM3" / „…-EU-BM4" aus, im Katalog heißt sie
+   * „SUN-30K-SG01HP3-EU" - wer abtippt, was auf dem Gerät steht, fand bis hier
+   * nichts.
+   *
+   * ⚠ Ein Alias ist NUR ein Name: keine eigene Kennung, keine eigene Vorlage,
+   * kein Verhalten. Er wird mitdurchsucht und darf angezeigt werden; gewählt
+   * wird immer das Modell selbst (sonst verlöre es seine Steuerungs-Freigabe,
+   * die auf Marke+Modell geschlüsselt ist).
+   *
+   * `null`/absent = dieses Modell hat nur seinen einen Namen. Ein älterer
+   * Backend-Stand liefert das Feld gar nicht.
+   */
+  modelAliases?: string[] | null;
+  /**
    * Die Gerätetyp-Dimension des Katalogs (`inverter` | `wallbox` | `switch` |
    * `meter` | `charge_point` | `custom`). Sie trägt die Typ-Karten des neuen
    * Anlege-Wegs; `null`/absent heißt „die Vorlage sagt es nicht", nie ein
@@ -884,13 +899,35 @@ export function modellZusatz(t: ComponentTemplate): string {
   if (familie !== '') teile.push(familie);
   const comm = (t.communicationLabel ?? '').trim();
   if (comm !== '') teile.push(comm);
+  // Die Typenschild-Varianten stehen ZULETZT und benannt: wer „BM3" getippt hat,
+  // soll sehen, WARUM dieser Eintrag passt - und dass er trotzdem sein Modell
+  // wählt. Fehlen sie, steht dort nichts (nie ein erfundenes „keine Varianten").
+  const varianten = modellAliase(t);
+  if (varianten.length > 0) teile.push(`Typenschild auch ${varianten.join(' / ')}`);
   return teile.join(' · ');
+}
+
+/**
+ * Die Typenschild-Varianten einer Vorlage, sauber entrümpelt.
+ *
+ * Ein älterer Backend-Stand liefert das Feld gar nicht, ein neuerer `null` -
+ * beides heißt „dieses Modell hat nur seinen einen Namen", nie „es hat keine".
+ */
+export function modellAliase(t: ComponentTemplate): string[] {
+  if (!Array.isArray(t.modelAliases)) return [];
+  return t.modelAliases
+    .filter((a): a is string => typeof a === 'string')
+    .map((a) => a.trim())
+    .filter((a) => a !== '');
 }
 
 /** Was durchsucht wird - alles, was auf einem Typenschild stehen kann. */
 function heuhaufen(t: ComponentTemplate): string {
   return normalisiereSucheIntern([
     t.brandLabel, t.brand, t.modelLabel, t.model,
+    // Die Typenschild-Varianten gehören hierher und nirgendwo sonst: der Kunde
+    // tippt, was auf seinem Gerät steht.
+    ...modellAliase(t),
     t.familyLabel ?? '', t.family ?? '', t.communicationLabel ?? '',
   ].join(' '));
 }
@@ -903,7 +940,10 @@ function heuhaufen(t: ComponentTemplate): string {
  * Fundstelle mitten im Namen.
  */
 function rang(t: ComponentTemplate, begriffe: string[]): number {
-  const modell = normalisiereSucheIntern(`${t.modelLabel} ${t.model}`);
+  // Ein Typenschild-Alias zählt als MODELL-Name, nicht als Beiwerk - sonst
+  // stünde „SUN-30K-SG01HP3-EU-BM3" hinter jedem Marken-Treffer.
+  const modell = normalisiereSucheIntern(
+    [t.modelLabel, t.model, ...modellAliase(t)].join(' '));
   const marke = normalisiereSucheIntern(`${t.brandLabel} ${t.brand}`);
   if (begriffe.some((b) => modell.startsWith(b))) return 0;
   if (begriffe.some((b) => modell.includes(b))) return 1;

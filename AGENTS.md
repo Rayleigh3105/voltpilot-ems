@@ -308,6 +308,7 @@ Bereiche: `docs/agents/README.md`.
 - **Der OCPP-ANBINDE-ASSISTENT: die Adresse zum Kopieren, die Kennung aus dem Portal** — Bis hierher waren „eine Säule anbinden" … · `der-ocpp-anbinde-assistent-die-adresse-z.md`
 - **Eine Ladepunkt-Kennung ZURÜCKNEHMEN: der GRABSTEIN, nicht das Löschen** — kennungen zu löschen") · `eine-ladepunkt-kennung-zuruecknehmen-der.md`
 - **Der Verbindungstest bietet HEBEL an (Geräteseiten Stufe 3, NACHTRAG 2)** — „Konkrete Hebel direkt im Dialog anbieten … · `der-verbindungstest-bietet-hebel-an-gera.md`
+- **Typenschild-Varianten (`Model.Aliases`, Bauplan P8)** — der Kunde findet sein Gerät unter dem Namen, der draufsteht (Deye `…-EU-BM3`/`-BM4`); ein Alias ist NUR ein Name, nie eine zweite Kennung (die Steuerungs-Freigabe hängt an brand+model) · `typenschild-varianten-model-aliases-p8.md`
 - **KACO: EINE Marke, ZWEI Plattformen - und die brand-neutrale SunSpec-Kennung** — Die KACO-Palette in Deye-Dichte (70 … · `kaco-eine-marke-zwei-plattformen-und-die.md`
 - **Versionierter Messpunktkatalog (`catalog/measurement-points`)** — Eine Wahrheit für Portal, Cloud und Edge · `versionierter-messpunktkatalog-catalog-m.md`
 - **Zusätzliche Messwerte: Auswahl- und Auditfundament (Slice 5)** — Die Cloud speichert Soll, nicht … · `zusaetzliche-messwerte-auswahl-und-audit.md`

@@ -134,6 +134,11 @@ type Template struct {
 	BrandLabel string `json:"brand_label"`
 	Model      string `json:"model"`
 	ModelLabel string `json:"model_label"`
+	// ModelAliases sind die weiteren TYPENSCHILD-Namen desselben Produkts
+	// (inverter.Model.Aliases). Sie tragen KEINE eigene Kennung und keine eigene
+	// Vorlage - sie existieren, damit die Modell-Suche das findet, was auf dem
+	// Geraet steht. Leer/abwesend = das Modell hat nur seinen einen Namen.
+	ModelAliases []string `json:"model_aliases,omitempty"`
 	// DeviceType ist die Geraetetyp-Dimension des Katalogs (siehe
 	// inverter.DeviceType*): was fuer ein Geraet die Vorlage beschreibt. Sie
 	// traegt die Typ-Karten des Anlege-Wegs; frueher steckte diese Aussage im
@@ -259,6 +264,7 @@ func BuiltinTemplates() []Template {
 				BrandLabel:         b.Label,
 				Model:              m.ID,
 				ModelLabel:         m.Label,
+				ModelAliases:       m.Aliases,
 				DeviceType:         b.DeviceTypeOf(m),
 				SupersededBy:       superseded,
 				Family:             family,

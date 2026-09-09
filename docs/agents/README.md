@@ -7,7 +7,7 @@ geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.
 **Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die
 Projekt-Chronik; einzelne Dateien sind gross.
 
-## `root/` — aus `AGENTS.md` (171 Einträge)
+## `root/` — aus `AGENTS.md` (172 Einträge)
 
 - [Admin API & the Portal-Admin / Portal-User split (services/api + frontend)](root/admin-api-the-portal-admin-portal-user-s.md)
 - [ALIAS-KONTINUITÄT: ein Kundenname überlebt jeden Reparatur- und Anlege-Weg](root/alias-kontinuitaet-ein-kundenname-ueberl.md)
@@ -161,6 +161,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Steuerung Stufen 8+9: die UMZÜGE und die Datenbereinigung](root/steuerung-stufen-8-9-die-umzuege-und-die.md)
 - [Steuerungs-Zertifizierung: das PLATTFORM-Register (einmal pro Modell, nie wieder pro Kunde)](root/steuerungs-zertifizierung-das-plattform.md)
 - [Trust-Set-Bereitstellung beim Einrichten: das Portal ist der Auslieferpunkt](root/trust-set-bereitstellung-beim-einrichten.md)
+- [Typenschild-Varianten (`Model.Aliases` / `modelAliases`) — Bauplan P8](root/typenschild-varianten-model-aliases-p8.md)
 - [Überschuss-Einlagerung im Fahrplan-Modus: der Ladeboden unter der Ökonomie](root/ueberschuss-einlagerung-im-fahrplan-modu.md)
 - [v1 -> v2 site migration mechanism (MIG)](root/v1-v2-site-migration-mechanism-mig.md)
 - [v2 entity model - generalization (E1b)](root/v2-entity-model-generalization-e1b.md)

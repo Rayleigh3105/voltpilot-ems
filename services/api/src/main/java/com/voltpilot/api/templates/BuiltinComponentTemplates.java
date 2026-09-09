@@ -67,7 +67,8 @@ public class BuiltinComponentTemplates {
      * werden nirgends interpretiert, nur durchgereicht.
      */
     public record BuiltinTemplate(String templateRef, int version, String brand, String brandLabel,
-            String model, String modelLabel, String deviceType, String supersededBy,
+            String model, String modelLabel, String modelAliasesJson, String deviceType,
+            String supersededBy,
             String family, String familyLabel,
             String communication, String communicationLabel, String transportSchemaJson,
             String channelsJson, String writesJson, BigDecimal ratedKw, int controlTier,
@@ -107,6 +108,10 @@ public class BuiltinComponentTemplates {
                     t.path("brand_label").asText(),
                     t.path("model").asText(),
                     t.path("model_label").asText(),
+                    // Typenschild-Varianten desselben Modells: absent = „dieses
+                    // Modell hat nur seinen einen Namen". Rohes JSON, wie die
+                    // Nachbarfelder - hier wird nichts interpretiert.
+                    jsonOrNull(t, "model_aliases"),
                     // Beide NULL-freundlich: „die Vorlage sagt dazu nichts" ist eine
                     // eigene Aussage, nie ein leerer Wert (siehe V20260835000000).
                     text(t, "device_type"),

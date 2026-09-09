@@ -276,6 +276,30 @@ type Model struct {
 	// nutzt es kein eingebautes Modell.
 	DeviceType string `json:"device_type,omitempty"`
 
+	// Aliases sind weitere TYPENSCHILD-Namen DESSELBEN Produkts - die
+	// Varianten-Bezeichnungen, unter denen der Kunde sein Geraet wiederfindet
+	// (z. B. „SUN-30K-SG01HP3-EU-BM3" fuer das Modell „SUN-30K-SG01HP3-EU").
+	//
+	// ⚠ EIN ALIAS IST NUR EIN NAME, NIE EINE ZWEITE KENNUNG. Er erzeugt kein
+	// eigenes Modell: `ID`, `Family`, `RatedKw` und der Vorlagen-Schluessel
+	// bleiben die des Modells. Genau darum ist er die richtige Form fuer eine
+	// Typenschild-Variante und ein zweiter Katalog-Eintrag die falsche:
+	//
+	//   - Die Steuerungs-Zertifizierung ist auf brand+MODELL geschluesselt
+	//     (`inverter_control_certification`, V20260814000000: „ein
+	//     Familien-Schluessel wuerde von einem geprueften Geraet auf ungepruefte
+	//     Geschwister schliessen"). Ein zweiter Eintrag „…-BM3" waere ein
+	//     UNZERTIFIZIERTES Modell - der Kunde, der sein Typenschild waehlt,
+	//     verloere die Freigabe, die sein Geraet laengst hat.
+	//   - Eine Bestandsanlage haelt ihre gespeicherte Modell-Kennung. Ein Alias
+	//     dazuzuschreiben entwertet sie nicht (Alias-Kontinuitaet), ein zweiter
+	//     Eintrag daneben luede dazu ein, sie „richtigzustellen".
+	//
+	// Verwendung: die Modell-SUCHE des Portals durchsucht sie mit (der Kunde
+	// tippt, was auf dem Geraet steht), und die Oberflaeche darf sie als
+	// Varianten nennen. Nichts leitet daraus ein Verhalten ab.
+	Aliases []string `json:"aliases,omitempty"`
+
 	// Transports sind die Verbindungswege, ueber die DIESES Modell gelesen werden
 	// kann - der ERSTE ist der Vorgabeweg. Leer = der einzige Weg der Marke.
 	//
@@ -517,6 +541,15 @@ func deyeModels() []Model {
 	m := func(id, label, family string, ratedKw float64, note string) Model {
 		return Model{ID: id, Label: label, Family: family, RatedKw: ratedKw, Note: note}
 	}
+	// mv ist dasselbe Modell MIT seinen Typenschild-Varianten (Model.Aliases):
+	// derselbe Eintrag, dieselbe Kennung, dieselbe Registerkarte - nur weitere
+	// Namen, unter denen der Kunde es findet. Siehe Model.Aliases, warum eine
+	// Variante NIE ein zweiter Katalog-Eintrag wird.
+	mv := func(id, label, family string, ratedKw float64, note string, aliases ...string) Model {
+		out := m(id, label, family, ratedKw, note)
+		out.Aliases = aliases
+		return out
+	}
 	return []Model{
 		// --- 3-phase hybrid, LOW-VOLTAGE battery (SG04LP3, 2 MPPT) --------------
 		m("sun-5k-sg04lp3", "SUN-5K-SG04LP3-EU", FamHybrid3p, 5, "5 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
@@ -525,11 +558,22 @@ func deyeModels() []Model {
 		m("sun-10k-sg04lp3", "SUN-10K-SG04LP3-EU", FamHybrid3p, 10, "10 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
 		m("sun-12k-sg04lp3", "SUN-12K-SG04LP3-EU", FamHybrid3p, 12, "12 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
 		// --- 3-phase hybrid, HIGH-VOLTAGE battery (SG01HP3, 3-4 MPPT) -----------
-		m("sun-29.9k-sg01hp3", "SUN-29.9K-SG01HP3-EU", FamHybrid3p, 29.9, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-30k-sg01hp3", "SUN-30K-SG01HP3-EU", FamHybrid3p, 30, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, 35, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, 40, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, 50, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		// ⚠ Deye liefert diese Reihe unter den Typenschild-Varianten „-BM3" und
+		// „-BM4" aus (deye-decode.js: „SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4");
+		// die Registerkarte ist dieselbe (hybrid_3p, ha-solarman deye_p3.yaml),
+		// nur die MPPT-Zahl unterscheidet sich, und die summiert der Decoder
+		// ohnehin. Deshalb sind es ALIASE des einen Modells, kein zweiter
+		// Eintrag - siehe Model.Aliases.
+		mv("sun-29.9k-sg01hp3", "SUN-29.9K-SG01HP3-EU", FamHybrid3p, 29.9, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)",
+			"SUN-29.9K-SG01HP3-EU-BM3", "SUN-29.9K-SG01HP3-EU-BM4"),
+		mv("sun-30k-sg01hp3", "SUN-30K-SG01HP3-EU", FamHybrid3p, 30, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)",
+			"SUN-30K-SG01HP3-EU-BM3", "SUN-30K-SG01HP3-EU-BM4"),
+		mv("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, 35, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)",
+			"SUN-35K-SG01HP3-EU-BM3", "SUN-35K-SG01HP3-EU-BM4"),
+		mv("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, 40, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)",
+			"SUN-40K-SG01HP3-EU-BM3", "SUN-40K-SG01HP3-EU-BM4"),
+		mv("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, 50, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)",
+			"SUN-50K-SG01HP3-EU-BM3", "SUN-50K-SG01HP3-EU-BM4"),
 		// --- 3-phase hybrid, HIGH-VOLTAGE battery, new generation (SG02HP3-EU-AM3, 3 MPPT) ---
 		m("sun-25k-sg02hp3", "SUN-25K-SG02HP3-EU-AM3", FamHybrid3p, 25, "25 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation"),
 		m("sun-29.9k-sg02hp3", "SUN-29.9K-SG02HP3-EU-AM3", FamHybrid3p, 29.9, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation"),

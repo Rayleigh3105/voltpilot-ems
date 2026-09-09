@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   hervorheben,
   MAX_TREFFER,
+  modellAliase,
   modellSuche,
   modellZusatz,
   normalisiereSuche,
@@ -151,5 +152,46 @@ describe('die Hervorhebung trifft das ORIGINAL, nicht die normalisierte Fassung'
     expect(normalisiereSuche('Größe-Ä')).toBe('grossea');
     expect(normalisiereSuche('SUN-30K / EU')).toBe('sun30keu');
     expect(suchBegriffe('  A  B  ')).toEqual(['a', 'b']);
+  });
+});
+
+describe('die TYPENSCHILD-VARIANTEN (Bauplan P8)', () => {
+  const BM3 = 'SUN-30K-SG01HP3-EU-BM3';
+  const BM4 = 'SUN-30K-SG01HP3-EU-BM4';
+  const MIT_VARIANTEN = tpl({ modelAliases: [BM3, BM4] });
+
+  it('findet das Modell über den Namen, der auf dem Gerät steht', () => {
+    const { treffer } = modellSuche([MIT_VARIANTEN, ...KATALOG.slice(1)], 'BM3');
+    expect(treffer).toHaveLength(1);
+    // ⚠ Gewählt wird das MODELL, nie die Variante: der Vorlagen-Schlüssel und
+    // die Modell-Kennung sind unverändert die des Katalog-Eintrags (an ihnen
+    // hängt die Steuerungs-Freigabe).
+    expect(treffer[0].template.model).toBe('sun-30k-sg01hp3-eu');
+    expect(treffer[0].template.templateRef).toBe('builtin:deye:sun-30k-sg01hp3-eu');
+    expect(treffer[0].modell.map((x) => x.text).join('')).toBe('SUN-30K-SG01HP3-EU');
+  });
+
+  it('findet auch das vollständige Typenschild', () => {
+    const { treffer } = modellSuche([MIT_VARIANTEN, ...KATALOG.slice(1)], BM3);
+    expect(treffer.map((x) => x.template.model)).toEqual(['sun-30k-sg01hp3-eu']);
+  });
+
+  it('nennt die Varianten im Zusatz, damit der Treffer sich erklärt', () => {
+    expect(modellZusatz(MIT_VARIANTEN)).toContain(`Typenschild auch ${BM3} / ${BM4}`);
+  });
+
+  it('⚠ behauptet ohne Varianten NICHTS - absent, null und leer sind dasselbe', () => {
+    expect(modellAliase(tpl())).toEqual([]);
+    expect(modellAliase(tpl({ modelAliases: null }))).toEqual([]);
+    expect(modellAliase(tpl({ modelAliases: [] }))).toEqual([]);
+    expect(modellZusatz(tpl())).not.toContain('Typenschild');
+    // Ein älterer Backend-Stand liefert das Feld gar nicht: die Suche bleibt,
+    // was sie war.
+    expect(modellSuche(KATALOG, 'BM3').treffer).toHaveLength(0);
+  });
+
+  it('räumt Leerraum und Nicht-Zeichenketten weg, statt sie anzuzeigen', () => {
+    const t = tpl({ modelAliases: ['  ' + BM3 + ' ', '', 7 as unknown as string] });
+    expect(modellAliase(t)).toEqual([BM3]);
   });
 });
