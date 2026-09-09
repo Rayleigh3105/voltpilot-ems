@@ -3940,11 +3940,25 @@ export const api = {
    * nicht lauschen kann, antwortet `not_supported`; das ist eine Aussage über
    * die Box, nie über die Zuordnung.
    */
-  previewBattery: (siteId: string, body: Record<string, unknown>) =>
-    request<ProbeAntwort>(`/api/v1/sites/${siteId}/components/battery/preview`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  previewBattery: (
+    siteId: string,
+    body: Record<string, unknown>,
+    /**
+     * Beim BEARBEITEN die Komponente: nur dann kann der Server ein
+     * gespeichertes Geheimnis wieder einsetzen, damit die Vorschau exakt das
+     * tut, was das Speichern täte. Ohne sie müsste der Kunde seinen
+     * BMS-Schlüssel für jede Vorschau neu eintippen.
+     */
+    entityId?: string | null,
+  ) =>
+    request<ProbeAntwort>(
+      `/api/v1/sites/${siteId}/components/battery/preview`
+      + (entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''),
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
   /** Eine selbst angebundene Batterie anlegen (P5 Ebene 1 + P5b Ebene 2). */
   createBattery: (siteId: string, body: Record<string, unknown>) =>
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/battery`, {

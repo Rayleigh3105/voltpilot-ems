@@ -1,15 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ANMELDE_ARTEN,
   ANSCHLUSSARTEN,
   BOOL_AGGREGATE,
+  HTTP_VORLAGEN,
   MAX_ZUORDNUNGEN,
   SOC_METHODEN,
   ZIEL_KANAELE,
+  anmeldungFehler,
   ausConnection,
   ausVorlage,
   brokerFehler,
   chemieWort,
+  endpunktFehler,
+  httpVorlage,
+  istHttpWertePfad,
+  istKopfzeilenName,
   istTopicFilter,
+  istUrlPfad,
   istWertePfad,
   bindungFehler,
   bindungWort,
@@ -18,6 +26,8 @@ import {
   kurveFehler,
   ladestandVon,
   neuerBroker,
+  neuerEndpunkt,
+  neueAnmeldung,
   neueBindung,
   neueSoc,
   neueZuordnung,
@@ -25,12 +35,15 @@ import {
   socFehler,
   speicherRumpf,
   speicherZiele,
+  vorlageAnwenden,
   vorlageWarnung,
   vorschauErgebnis,
   vorschauRumpf,
   zuordnungFehler,
   zuordnungenFehler,
+  type AnmeldungForm,
   type BindungForm,
+  type EndpunktForm,
   type SocCurveTemplate,
   type ZuordnungZeile,
 } from './batterieAnschluss';
@@ -68,16 +81,239 @@ const VORLAGE: SocCurveTemplate = {
 
 describe('Anschlussart (Schritt 1)', () => {
   /**
-   * HTTP und Modbus stehen SICHTBAR da, obwohl nur MQTT gebaut ist: sonst
-   * ließe die Liste den Kunden raten, ob VoltPilot seinen Fall grundsätzlich
-   * nicht kann oder nur noch nicht.
+   * Seit P5-HTTP sind ZWEI Arten begehbar. Modbus steht weiterhin SICHTBAR und
+   * gesperrt da: sonst ließe die Liste den Kunden raten, ob VoltPilot seinen
+   * Fall grundsätzlich nicht kann oder nur woanders.
    */
-  it('bietet MQTT an und nennt an den gesperrten Arten den Grund', () => {
-    const mqtt = ANSCHLUSSARTEN.find((a) => a.id === 'mqtt');
-    expect(mqtt?.verfuegbar).toBe(true);
+  it('bietet MQTT und HTTP an und nennt an den gesperrten Arten den Grund', () => {
+    expect(ANSCHLUSSARTEN.find((a) => a.id === 'mqtt')?.verfuegbar).toBe(true);
+    expect(ANSCHLUSSARTEN.find((a) => a.id === 'http')?.verfuegbar).toBe(true);
     for (const art of ANSCHLUSSARTEN.filter((a) => !a.verfuegbar)) {
       expect(art.bald, `„${art.label}" ohne Erklärung`).toBeTruthy();
     }
+  });
+});
+
+// -- Der HTTP-Anschluss (P5-HTTP) ---------------------------------------------
+
+function endpunkt(over: Partial<EndpunktForm> = {}): EndpunktForm {
+  return { ...neuerEndpunkt(), host: '192.168.40.21', path: '/ha', ...over };
+}
+
+function anmeldung(over: Partial<AnmeldungForm> = {}): AnmeldungForm {
+  return { ...neueAnmeldung(), art: 'header', header: 'ApiKey', secret: 'geheim', ...over };
+}
+
+function httpZeile(over: Partial<ZuordnungZeile> = {}): ZuordnungZeile {
+  return { ...neueZuordnung('soc_pct'), path: 'soc', ...over };
+}
+
+describe('HTTP-Anschluss: Endpunkt und Anmeldung', () => {
+  it('lässt nur Ziele im eigenen Netz zu - wie überall', () => {
+    expect(endpunktFehler(endpunkt())).toEqual([]);
+    expect(endpunktFehler(endpunkt({ host: '8.8.8.8' })).join(' ')).toContain('eigenen Netzwerk');
+    expect(endpunktFehler(endpunkt({ host: '' })).join(' ')).toContain('Adresse');
+  });
+
+  /** Ein Pfad ist ein Pfad, keine zweite Adresse. */
+  it('prüft den URL-Pfad', () => {
+    expect(istUrlPfad('/ha')).toBe(true);
+    expect(istUrlPfad('/api/status?filter=soc')).toBe(true);
+    expect(istUrlPfad('ha')).toBe(false);
+    expect(istUrlPfad('//evil.example/x')).toBe(false);
+    expect(istUrlPfad('/ha x')).toBe(false);
+    expect(istUrlPfad('')).toBe(false);
+    expect(endpunktFehler(endpunkt({ path: 'ha' })).join(' ')).toContain('nicht gültig');
+  });
+
+  it('hält die Schranken für Zeitgrenze und Abruf-Abstand', () => {
+    expect(endpunktFehler(endpunkt({ timeoutMs: '60000' })).join(' ')).toContain('Zeitgrenze');
+    expect(endpunktFehler(endpunkt({ publishIntervalS: '1' })).join(' '))
+      .toContain('Abruf-Abstand');
+  });
+
+  it('kennt die vier Anmelde-Arten und prüft ihre Form', () => {
+    expect(ANMELDE_ARTEN.map((a) => a.id)).toEqual(['none', 'header', 'bearer', 'basic']);
+    expect(anmeldungFehler(neueAnmeldung())).toEqual([]);
+    expect(anmeldungFehler(anmeldung())).toEqual([]);
+    expect(anmeldungFehler(anmeldung({ header: '' })).join(' ')).toContain('Kopfzeile');
+    // Ein Kopfzeilen-Name ist ein Token: ein Leerzeichen schmuggelte eine zweite ein.
+    expect(istKopfzeilenName('ApiKey')).toBe(true);
+    expect(istKopfzeilenName('Api Key')).toBe(false);
+    expect(anmeldungFehler(anmeldung({ header: 'Api Key' })).join(' ')).toContain('nicht gültig');
+    expect(anmeldungFehler({ ...anmeldung(), art: 'basic', username: '' }).join(' '))
+      .toContain('Benutzernamen');
+  });
+
+  /**
+   * ⚠ Der Geheimnis-Weg: beim ANLEGEN ist ein leerer Schlüssel ein Mangel
+   * (die Box läse nichts), beim BEARBEITEN heißt er „unverändert" - der Server
+   * setzt den gespeicherten Wert wieder ein.
+   */
+  it('verlangt den Schlüssel nur, solange keiner gespeichert ist', () => {
+    expect(anmeldungFehler(anmeldung({ secret: '' })).join(' ')).toContain('fehlt der Schlüssel');
+    expect(anmeldungFehler(anmeldung({ secret: '' }), true)).toEqual([]);
+  });
+});
+
+describe('HTTP-Anschluss: Zuordnung und Rumpf', () => {
+  /**
+   * Der Platzhalter ist das Gegenstück zum Topic-Filter - erst dadurch bekommt
+   * „Kleinster Wert" an einem HTTP-Anschluss überhaupt eine Bedeutung.
+   */
+  it('kennt den Wertepfad mit Platzhalter und verlangt ihn', () => {
+    expect(istHttpWertePfad('soc')).toBe(true);
+    expect(istHttpWertePfad('bms.soc')).toBe(true);
+    expect(istHttpWertePfad('cells.*.v')).toBe(true);
+    expect(istHttpWertePfad('banks.*.cells.*.v')).toBe(true);
+    expect(istHttpWertePfad('')).toBe(false);
+    expect(istHttpWertePfad('__proto__')).toBe(false);
+    expect(istHttpWertePfad('a.constructor')).toBe(false);
+    // Leer ist beim MQTT-Weg erlaubt („die Nachricht IST der Wert"), hier nie.
+    expect(istWertePfad('')).toBe(true);
+    expect(zuordnungFehler(httpZeile({ path: '' }), 'http').join(' '))
+      .toContain('wo der Wert in der Antwort steht');
+    expect(zuordnungFehler(httpZeile(), 'http')).toEqual([]);
+  });
+
+  /** Ein Topic verlangt der HTTP-Weg NICHT - und eine Haltbarkeit auch nicht. */
+  it('verlangt weder Topic noch Haltbarkeit', () => {
+    expect(zuordnungFehler(httpZeile({ topic: '', staleS: '' }), 'http')).toEqual([]);
+    // Am MQTT-Weg fehlt dieselbe Zeile beides.
+    expect(zuordnungFehler(httpZeile({ topic: '', staleS: '' })).length).toBeGreaterThan(0);
+  });
+
+  it('schickt den Endpunkt statt des Brokers - und nie beides', () => {
+    const body = speicherRumpf('DIYBMS', neuerBroker(), [httpZeile()], neueSoc(), neueBindung(),
+      'http', endpunkt(), anmeldung());
+    expect(body.transport).toBe('http_local');
+    expect(body.broker).toBeUndefined();
+    expect(body.endpoint).toEqual({
+      host: '192.168.40.21', port: 80, path: '/ha', tls: false, timeoutMs: 5000,
+    });
+    expect(body.auth).toEqual({ mode: 'header', header: 'ApiKey', secret: 'geheim' });
+    const mappings = body.mappings as Record<string, unknown>[];
+    expect(mappings[0].path).toBe('soc');
+    expect(mappings[0].topic).toBeUndefined();
+    expect(mappings[0].staleS).toBeUndefined();
+  });
+
+  /**
+   * ⚠ Ein leeres Feld heißt „unverändert" - ein mitgeschicktes leeres
+   * Geheimnis hieße „lösch es", und die Batterie läse danach nichts mehr.
+   */
+  it('lässt ein leeres Geheimnis ganz weg', () => {
+    const body = speicherRumpf('DIYBMS', neuerBroker(), [httpZeile()], neueSoc(), neueBindung(),
+      'http', endpunkt(), anmeldung({ secret: '' }));
+    expect(body.auth).toEqual({ mode: 'header', header: 'ApiKey' });
+  });
+
+  it('der MQTT-Weg bleibt unverändert', () => {
+    const body = speicherRumpf('Pack', { ...neuerBroker(), host: '192.168.40.20' },
+      [zelle()], neueSoc());
+    expect(body.transport).toBe('mqtt_local');
+    expect(body.endpoint).toBeUndefined();
+    expect(body.auth).toBeUndefined();
+    const mappings = body.mappings as Record<string, unknown>[];
+    expect(mappings[0].topic).toBe('diybms/bank/+/cell/+');
+    expect(mappings[0].staleS).toBe(300);
+  });
+
+  it('die Vorschau schickt dieselbe Anbindung, ohne Ladestand und Bindung', () => {
+    const body = vorschauRumpf(neuerBroker(), [httpZeile()], 'http', endpunkt(), anmeldung());
+    expect(body.transport).toBe('http_local');
+    expect(body.endpoint).toBeTruthy();
+    expect(body.label).toBeUndefined();
+    expect(body.binding).toBeUndefined();
+    expect(body.socDerivation).toBeUndefined();
+  });
+
+  it('führt die Web-Auskunft samt Anmeldung in der Zusammenfassung', () => {
+    const rows = pruefen('DIYBMS', neuerBroker(), [httpZeile()], neueSoc(), neueBindung(), [],
+      'http', endpunkt(), anmeldung());
+    expect(rows.find((r) => r.label === 'Web-Auskunft')?.wert)
+      .toBe('http://192.168.40.21:80/ha');
+    expect(rows.find((r) => r.label === 'Anmeldung')?.wert).toContain('ApiKey');
+    expect(rows.find((r) => r.label === 'Abruf-Abstand')?.wert).toContain('15');
+  });
+});
+
+describe('HTTP-Vorlage „DIYBMS v4 - /ha"', () => {
+  it('füllt Pfad, Anmelde-Art und die ganze Zuordnung', () => {
+    const v = httpVorlage('diybms-v4-ha')!;
+    expect(v.path).toBe('/ha');
+    expect(v.header).toBe('ApiKey');
+    const next = vorlageAnwenden(v, neuerEndpunkt(), neueAnmeldung(), []);
+    expect(next.endpunkt.path).toBe('/ha');
+    expect(next.anmeldung.art).toBe('header');
+    expect(next.anmeldung.header).toBe('ApiKey');
+    expect(next.zeilen.map((z) => z.channel)).toEqual([
+      'soc_pct', 'voltage_v', 'current_a', 'power_kw', 'cell_min_mv', 'cell_max_mv',
+      'charge_allowed', 'discharge_allowed',
+    ]);
+    // Die Leistung kommt in Watt - die Vorlage rechnet sie nach kW.
+    expect(next.zeilen.find((z) => z.channel === 'power_kw')?.scale).toBe('0,001');
+    // Und jede Zeile ist vollständig: die Vorlage ist keine halbe Anleitung.
+    for (const z of next.zeilen) expect(zuordnungFehler(z, 'http')).toEqual([]);
+  });
+
+  /** Eine Vorlage nimmt niemandem eine schon getippte Zuordnung weg. */
+  it('überschreibt eine bestehende Zuordnung NICHT', () => {
+    const v = httpVorlage('diybms-v4-ha')!;
+    const eigene = [httpZeile({ channel: 'cell_min_mv', path: 'cells.*.v' })];
+    const next = vorlageAnwenden(v, endpunkt({ path: '/eigen' }),
+      anmeldung({ header: 'X-Key' }), eigene);
+    expect(next.zeilen).toEqual(eigene);
+    expect(next.endpunkt.path).toBe('/eigen');
+    expect(next.anmeldung.header).toBe('X-Key');
+  });
+
+  it('kennt keine erfundene Vorlage', () => {
+    expect(httpVorlage('gibtesnicht')).toBeNull();
+    expect(HTTP_VORLAGEN.length).toBeGreaterThan(0);
+  });
+});
+
+describe('HTTP-Anschluss: das Gespeicherte zurück ins Formular', () => {
+  const gespeichertHttp = {
+    schema_version: '1.0',
+    transport: 'http_local',
+    endpoint: { host: '192.168.40.21', port: 80, path: '/ha', tls: false },
+    auth: { mode: 'header', header: 'ApiKey' },
+    auth_secret: '••••••••',
+    timeout_ms: 5000,
+    publish_interval_s: 20,
+    mappings: [
+      { channel: 'soc_pct', unit: '%', path: 'soc', aggregate: 'last', value_type: 'number',
+        scale: 1, offset: 0 },
+    ],
+  };
+
+  it('liest den Endpunkt, die Anmelde-Art - und NIE das Geheimnis', () => {
+    const form = ausConnection(gespeichertHttp)!;
+    expect(form.art).toBe('http');
+    expect(form.endpunkt.host).toBe('192.168.40.21');
+    expect(form.endpunkt.path).toBe('/ha');
+    expect(form.endpunkt.timeoutMs).toBe('5000');
+    expect(form.endpunkt.publishIntervalS).toBe('20');
+    expect(form.anmeldung.art).toBe('header');
+    expect(form.anmeldung.header).toBe('ApiKey');
+    // ⚠ Das Feld bleibt LEER - der Server gibt nur die Maske zurück, und ein
+    // leeres Feld heißt beim Bearbeiten „unverändert".
+    expect(form.anmeldung.secret).toBe('');
+    expect(form.geheimnisBesteht).toBe(true);
+    expect(form.zeilen[0].path).toBe('soc');
+  });
+
+  it('erkennt eine Anbindung ohne gespeichertes Geheimnis', () => {
+    const ohne = { ...gespeichertHttp, auth: { mode: 'none' }, auth_secret: undefined };
+    const form = ausConnection(ohne)!;
+    expect(form.anmeldung.art).toBe('none');
+    expect(form.geheimnisBesteht).toBe(false);
+  });
+
+  it('bleibt bei einer unbekannten Anschlussart still', () => {
+    expect(ausConnection({ transport: 'carrier_pigeon' })).toBeNull();
   });
 });
 

@@ -3,8 +3,11 @@ package com.voltpilot.api.components;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Auth;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Endpoint;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocDerivation;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocParams;
 import java.nio.charset.StandardCharsets;
@@ -45,11 +48,18 @@ import org.springframework.stereotype.Component;
  * nichts, worauf man einen Ladestand baut. Ohne Ableitung entsteht der Knoten
  * gar nicht - eine Batterie ohne Ladestand ist ein legitimer Zustand.
  *
- * <p><b>Die Herkunft {@code mqtt-device} ist load-bearing:</b> sie ist es, die
- * flowc den generated-only Baustein {@code vp.mqtt.read} überhaupt erlaubt.
- * Ein Kundendokument mit diesem Baustein wird abgelehnt - die api ist sein
- * einziger Autor, solange es die Zuordnungs-Fläche mit Live-Vorschau (P5d)
- * noch nicht gibt.
+ * <p><b>Die Herkunft ist load-bearing:</b> sie ist es, die flowc den
+ * generated-only Baustein überhaupt erlaubt - {@code mqtt-device} den
+ * {@code vp.mqtt.read}, {@code http-device} den {@code vp.http.read}. Ein
+ * Kundendokument mit einem der beiden wird abgelehnt; die api ist ihr einziger
+ * Autor, und die Zuordnungs-Fläche ist der Batterie-Assistent, nicht der
+ * Flow-Editor.
+ *
+ * <p><b>Seit P5-HTTP baut derselbe Compiler BEIDE Ebene-1-Lesetypen</b>, und
+ * zwar bewusst als EIN Compiler: der Takt, die Kante und der SoC-Ableiter
+ * dahinter sind Wort für Wort dieselben - nur der Lese-Knoten wechselt. Zwei
+ * Compiler hätten zwei Wahrheiten über die Kante ergeben, an der der Ladestand
+ * hängt.
  */
 @Component
 public class UserDefinedBatteryFlowCompiler {
@@ -58,12 +68,28 @@ public class UserDefinedBatteryFlowCompiler {
     private static final String READ_NODE = "vp.mqtt.read";
     private static final String READ_NODE_VERSION = "1.0.0";
 
+    /** Derselbe Baustein für den ZWEITEN Ebene-1-Lesetyp (P5-HTTP). */
+    private static final String HTTP_READ_NODE = "vp.http.read";
+    private static final String HTTP_READ_NODE_VERSION = "1.0.0";
+
     /** Der Katalog-Baustein, der aus diesen Rohwerten den Ladestand ableitet. */
     private static final String SOC_NODE = "vp.soc.derive";
     private static final String SOC_NODE_VERSION = "1.0.0";
 
     /** Die Herkunfts-Art dieses generierten Flows (flow-graph.schema.json). */
     public static final String ORIGIN_KIND = "mqtt-device";
+
+    /**
+     * Die Herkunfts-Art des HTTP-Lesetyps - eine EIGENE, obwohl es dieselbe
+     * Batterie und derselbe Assistent ist.
+     *
+     * <p>Der Grund ist keine Ordnungsliebe: ein Ebene-1-Lesetyp, der unter der
+     * Herkunft seines Geschwisters gälte, würde ein gefälschtes
+     * {@code mqtt-device}-Dokument eine HTTP-Abfrage aufsperren lassen. Der
+     * Ableiter {@code vp.soc.derive} gehört dagegen BEIDEN - er rechnet auf den
+     * Standard-Kanälen und kennt den Transport gar nicht.
+     */
+    public static final String ORIGIN_KIND_HTTP = "http-device";
 
     private final ObjectMapper mapper;
 
@@ -83,7 +109,7 @@ public class UserDefinedBatteryFlowCompiler {
     }
 
     /**
-     * Baut das Flow-Dokument.
+     * Baut das Flow-Dokument des MQTT-Lesetyps.
      *
      * @param entityId die Batterie, deren Messkanäle die Ziele sind
      * @param version die Definitions-Fassung; sie IST die Flow-Version
@@ -91,6 +117,44 @@ public class UserDefinedBatteryFlowCompiler {
     public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
             Broker broker, List<NormalizedMapping> mappings, int publishIntervalS,
             SocDerivation soc) {
+        return compile(siteId, tenantId, entityId, version, label,
+                UserDefinedBatteryDefinition.TRANSPORT_MQTT, broker, null, null, mappings,
+                publishIntervalS, soc);
+    }
+
+    /**
+     * Baut das Flow-Dokument einer geprüften Definition - für BEIDE Lesetypen.
+     *
+     * <p>Der bequeme Weg: die {@link Result} weiß selbst, welcher Transport
+     * gilt, und beide Hälften bleiben dadurch garantiert konsistent.
+     */
+    public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
+            Result def) {
+        return compile(siteId, tenantId, entityId, version, label, def.transport(), def.broker(),
+                def.endpoint(), def.authOrNone(), def.mappings(), def.publishIntervalS(),
+                def.socDerivation());
+    }
+
+    /**
+     * Baut das Flow-Dokument, Transport für Transport.
+     *
+     * <p><b>Was sich unterscheidet, ist genau EIN Knoten.</b> Der Takt, die
+     * Kante zum SoC-Ableiter und der Ableiter selbst sind identisch - der
+     * Ladestand (P5b) und die Speiser-Bindung (P6) kennen den Transport gar
+     * nicht, und genau deshalb gibt es hier keinen Sonderpfad, sondern einen
+     * zweiten Lese-Knoten.
+     *
+     * <p>⚠ Beim HTTP-Lesetyp reist die ART der Anmeldung mit, der WERT nie:
+     * dieses Dokument ist über {@code GET
+     * /sites/{siteId}/flows/{flowId}/versions/{v}} für jeden Portal-Benutzer des
+     * Mandanten lesbar. Das Geheimnis erreicht die Box über den Registry-Push
+     * ({@code driver.connection.auth_secret}).
+     */
+    public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
+            String transport, Broker broker, Endpoint endpoint, Auth auth,
+            List<NormalizedMapping> mappings, int publishIntervalS, SocDerivation soc) {
+        boolean http = UserDefinedBatteryDefinition.TRANSPORT_HTTP.equals(transport);
+        String readId = http ? "http" : "mqtt";
         ObjectNode doc = mapper.createObjectNode();
         doc.put("schema_version", "1.0");
         doc.put("flow_id", generatedFlowId(entityId).toString());
@@ -101,24 +165,46 @@ public class UserDefinedBatteryFlowCompiler {
         doc.put("tenant_id", tenantId.toString());
 
         ObjectNode origin = doc.putObject("origin");
-        origin.put("kind", ORIGIN_KIND);
+        origin.put("kind", http ? ORIGIN_KIND_HTTP : ORIGIN_KIND);
         origin.put("point_id", entityId.toString());
         origin.put("definition_version", version);
 
         ObjectNode node = doc.putArray("nodes").addObject();
-        node.put("id", "mqtt");
-        node.put("type", READ_NODE);
-        node.put("type_version", READ_NODE_VERSION);
+        node.put("id", readId);
+        node.put("type", http ? HTTP_READ_NODE : READ_NODE);
+        node.put("type_version", http ? HTTP_READ_NODE_VERSION : READ_NODE_VERSION);
         node.put("label", label == null || label.isBlank() ? "Batterie" : label.trim());
         ObjectNode p = node.putObject("parameters");
-        p.put("host", broker.host().trim());
-        p.put("port", broker.effectivePort());
-        p.put("entity_id", entityId.toString());
+        if (http) {
+            p.put("host", endpoint.host().trim());
+            p.put("port", endpoint.effectivePort());
+            p.put("path", endpoint.effectivePath());
+            p.put("tls", endpoint.secure());
+            p.put("timeout_ms", endpoint.effectiveTimeoutMs());
+            p.put("entity_id", entityId.toString());
+            ObjectNode a = p.putObject("auth");
+            Auth used = auth == null ? UserDefinedBatteryDefinition.NO_AUTH : auth;
+            a.put("mode", used.effectiveMode());
+            if (UserDefinedBatteryDefinition.AUTH_HEADER.equals(used.effectiveMode())) {
+                a.put("header", used.header());
+            }
+            if (UserDefinedBatteryDefinition.AUTH_BASIC.equals(used.effectiveMode())) {
+                // Der Benutzername ist KEIN Geheimnis - das Kennwort reist
+                // ausdrücklich nicht hier, sondern im Registry-Push.
+                a.put("username", used.username());
+            }
+        } else {
+            p.put("host", broker.host().trim());
+            p.put("port", broker.effectivePort());
+            p.put("entity_id", entityId.toString());
+        }
         ArrayNode list = p.putArray("mappings");
         for (NormalizedMapping m : mappings) {
             ObjectNode n = list.addObject();
             n.put("channel", m.channel());
-            n.put("topic", m.topic());
+            if (!http) {
+                n.put("topic", m.topic());
+            }
             n.put("path", m.path());
             n.put("aggregate", m.aggregate());
             n.put("value_type", m.valueType());
@@ -130,7 +216,12 @@ public class UserDefinedBatteryFlowCompiler {
             if (m.sentinel() != null) {
                 n.put("sentinel", m.sentinel());
             }
-            n.put("stale_s", m.staleS());
+            // Eine Haltbarkeit gibt es nur beim MQTT-Lesetyp: eine HTTP-Antwort
+            // ist EIN Zeitpunkt, und ein stale_s wäre dort die stille Erlaubnis,
+            // einen alten Messwert mit frischem Zeitstempel zu senden.
+            if (!http) {
+                n.put("stale_s", m.staleS());
+            }
             if (!m.trueValues().isEmpty()) {
                 ArrayNode t = n.putArray("true_values");
                 m.trueValues().forEach(t::add);
@@ -145,8 +236,8 @@ public class UserDefinedBatteryFlowCompiler {
         if (soc != null) {
             appendSocNode(doc, entityId, soc);
             ObjectNode edge = edges.addObject();
-            edge.put("id", "mqtt-soc");
-            edge.putObject("from").put("node", "mqtt").put("port", "value");
+            edge.put("id", readId + "-soc");
+            edge.putObject("from").put("node", readId).put("port", "value");
             edge.putObject("to").put("node", "soc").put("port", "channels");
         }
 

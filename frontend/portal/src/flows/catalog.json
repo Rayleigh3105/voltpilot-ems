@@ -1095,13 +1095,95 @@
       ]
     },
     {
+      "type": "vp.http.read",
+      "type_version": "1.0.0",
+      "label": "HTTP/JSON lesen (generiert)",
+      "description": "GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5 Ebene 1, Anschlussart HTTP/JSON, Konzept vp-deye-diybms-luecke-l5 \u00a73.2b). Der ZWEITE Ebene-1-Lesetyp neben vp.mqtt.read und sein exaktes Geschwister: der Knoten fragt im Takt des Ausl\u00f6sers EINE JSON-Auskunft im Kundennetz ab (GET http://<host>:<port><pfad>) und bildet ihre Felder \u00fcber eine NUTZER-DEFINIERTE Zuordnung auf DIESELBEN Standard-Batteriekanaele des Entitaetstyps user-defined-battery ab. Ein Wertepfad ist punkt-getrennt und darf den Platzhalter * tragen (cells.*.v) - mit den Aggregaten min/max werden daraus genau cell_min_mv und cell_max_mv, das HTTP-Gegenstueck zum Topic-Filter emon/diybms/+/+. Veroeffentlicht wird EINE Telemetrie-Nachricht mit allen Kanaelen, die die Antwort wirklich hergibt; ein Kanal ohne Wert FEHLT, statt als 0 zu erscheinen, und ein Fehlschlag veroeffentlicht gar nichts. Es laeuft immer nur EINE Abfrage je Host. Das Geheimnis der Anmeldung steht NICHT in diesem Dokument: hier reisen nur die Anmelde-Art und der Name der Kopfzeile, der Wert kommt \u00fcber den Registry-Push in der Entitaets-Konfiguration an - ein Flow-Dokument ist \u00fcber die Portal-API lesbar, ein Kennwort darin waere ein Kennwort im Browser. Im Editor nie anzubieten; Bearbeiten oeffnet den Batterie-Assistenten der Komponente.",
+      "group": "daten",
+      "generated": true,
+      "generated_origin": "http-device",
+      "generated_origin_label": "dem generierten Batterie-Flow",
+      "customer_visible": false,
+      "runtimes": [
+        "edge"
+      ],
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Kan\u00e4le"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "host",
+          "kind": "host",
+          "label": "Adresse (IP/Host)",
+          "required": true
+        },
+        {
+          "name": "port",
+          "kind": "number",
+          "label": "Port",
+          "required": false,
+          "min": 1,
+          "max": 65535,
+          "default": 80
+        },
+        {
+          "name": "path",
+          "kind": "text",
+          "label": "Pfad",
+          "required": true,
+          "help": "Der URL-Pfad der JSON-Auskunft, ausgeschrieben - zum Beispiel /ha beim DIYBMS v4. Die Box haengt nichts an."
+        },
+        {
+          "name": "tls",
+          "kind": "boolean",
+          "label": "HTTPS",
+          "required": false,
+          "default": false
+        },
+        {
+          "name": "timeout_ms",
+          "kind": "number",
+          "label": "Zeitgrenze (ms)",
+          "required": false,
+          "min": 500,
+          "max": 30000,
+          "default": 5000
+        },
+        {
+          "name": "entity_id",
+          "kind": "entity",
+          "label": "Batterie",
+          "required": true
+        },
+        {
+          "name": "auth",
+          "kind": "json",
+          "label": "Anmeldung",
+          "required": false,
+          "help": "mode (none|header|bearer|basic), bei header zusaetzlich der Name der Kopfzeile (z. B. ApiKey), bei basic der Benutzername. Das Geheimnis gehoert NICHT hierher - es reist in der Entitaets-Konfiguration."
+        },
+        {
+          "name": "mappings",
+          "kind": "json",
+          "label": "Feld-Zuordnung",
+          "required": true,
+          "help": "Je Standard-Kanal eine Zeile: path (Wertepfad im JSON, punkt-getrennt, * als Platzhalter fuer jede Ebene), aggregate (last|min|max|sum|avg|count ueber alle getroffenen Werte), value_type (number|bool), scale, offset und sentinel (Rohwert, der \"nicht gemessen\" bedeutet). Ein stale_s gibt es hier nicht - eine HTTP-Antwort ist EIN Zeitpunkt."
+        }
+      ]
+    },
+    {
       "type": "vp.soc.derive",
       "type_version": "1.0.0",
       "label": "Ladestand ableiten (generiert)",
       "description": "GENERIERT aus dem Anschluss einer selbst angebundenen Batterie (P5b Ebene 2, Konzept vp-deye-diybms-luecke-l5 §3.2b). Der Knoten nimmt die Standard-Batteriekanaele, die eine Ebene-1-Quelle gerade geliefert hat, und leitet daraus den Ladestand ab: direct uebernimmt einen gemessenen soc_pct; ocv_curve interpoliert zwei OCV->SoC-Kennlinien (Laden/Entladen) linear, klemmt auf 0..100 und nimmt aus der hoechsten und der niedrigsten Zelle das KONSERVATIVE Minimum; coulomb zaehlt SoC(t) = SoC(t-1) + P*dt/E_nutz*100 ab einem Anker, mit optionaler Rekalibrierung an den Spannungs-Endpunkten. Veroeffentlicht wird EINE Telemetrie-Nachricht mit soc_pct UND soc_source_code (1 = gemessen, 2 = berechnet:kennlinie, 3 = berechnet:ladungszaehlung) - so behaelt die Historie die damalige Quelle. Ohne Eingang entsteht KEIN Ladestand: fehlt die Zellspannung bzw. der Anker, wird nichts veroeffentlicht, und nach der Haltefrist ist auch der eingefrorene Wert abwesend. Der Knoten haengt an einer KANTE aus dem Lese-Knoten, nie am Takt - sonst rechnete er auf dem Stand des vorigen Taktes. Im Editor nie anzubieten; Bearbeiten oeffnet den Batterie-Assistenten der Komponente.",
       "group": "daten",
       "generated": true,
-      "generated_origin": "mqtt-device",
+      "generated_origin": ["mqtt-device", "http-device"],
       "generated_origin_label": "dem generierten Batterie-Flow",
       "customer_visible": false,
       "runtimes": [

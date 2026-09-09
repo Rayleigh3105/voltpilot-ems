@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Auth;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Endpoint;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Mapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.SocDerivation;
@@ -267,6 +269,131 @@ class UserDefinedBatteryFlowCompilerTest {
                 .isEqualTo(names(fixture.path("edges").get(0)));
         assertThat(fixture.path("origin").path("kind").asText())
                 .isEqualTo(UserDefinedBatteryFlowCompiler.ORIGIN_KIND);
+    }
+
+    // -- Der ZWEITE Lesetyp: HTTP/JSON (P5-HTTP) -----------------------------
+
+    private static final UUID HTTP_ENTITY =
+            UUID.fromString("9d5e1f34-2a6b-4c78-8e90-fedcba987654");
+
+    /** Der Vorlagen-Fall „DIYBMS v4 - /ha". */
+    private static Result diybmsHttp() {
+        List<Mapping> mappings = new ArrayList<>();
+        mappings.add(new Mapping("soc_pct", null, "soc", "last", "number", 1.0, 0.0, null, null,
+                null, null));
+        mappings.add(new Mapping("cell_min_mv", null, "lowcellv", "last", "number", 1.0, 0.0,
+                null, null, null, null));
+        mappings.add(new Mapping("temp_max_c", null, "modules.*.exttemp", "max", "number", 1.0,
+                0.0, -40.0, null, null, null));
+        Result def = UserDefinedBatteryDefinition.validate(
+                UserDefinedBatteryDefinition.TRANSPORT_HTTP, null,
+                new Endpoint("192.168.40.21", 80, "/ha", false, 5000),
+                new Auth(UserDefinedBatteryDefinition.AUTH_HEADER, "ApiKey", null, "geheim-123"),
+                mappings, 15, null, allowed(), null);
+        assertThat(def.errors()).isEmpty();
+        return def;
+    }
+
+    /**
+     * ⚠ DIE Kernregel dieses Lesetyps: das Flow-Dokument ist über
+     * {@code GET /sites/{siteId}/flows/{flowId}/versions/{v}} für jeden
+     * Portal-Benutzer des Mandanten lesbar. Ein Kennwort darin wäre ein
+     * Kennwort im Browser - es reist deshalb NUR im Registry-Push.
+     */
+    @Test
+    void dasFlowDokumentTraegtDieAnmeldeArtAberNIEDasGeheimnis() {
+        ObjectNode doc = compiler.compile(SITE, TENANT, HTTP_ENTITY, 1, "DIYBMS v4",
+                diybmsHttp());
+        JsonNode auth = doc.path("nodes").get(0).path("parameters").path("auth");
+        assertThat(auth.path("mode").asText()).isEqualTo("header");
+        assertThat(auth.path("header").asText()).isEqualTo("ApiKey");
+        assertThat(auth.has("secret")).isFalse();
+        assertThat(doc.toString()).doesNotContain("geheim-123");
+        assertThat(doc.toString()).doesNotContain(UserDefinedBatteryDefinition.SECRET_FIELD);
+    }
+
+    @Test
+    void derHttpLesetypBautSeinenEigenenKnotenUndSeineEigeneHerkunft() {
+        ObjectNode doc = compiler.compile(SITE, TENANT, HTTP_ENTITY, 1, "DIYBMS v4",
+                diybmsHttp());
+        assertThat(doc.path("origin").path("kind").asText())
+                .isEqualTo(UserDefinedBatteryFlowCompiler.ORIGIN_KIND_HTTP);
+        JsonNode node = doc.path("nodes").get(0);
+        assertThat(node.path("id").asText()).isEqualTo("http");
+        assertThat(node.path("type").asText()).isEqualTo("vp.http.read");
+        JsonNode p = node.path("parameters");
+        assertThat(p.path("host").asText()).isEqualTo("192.168.40.21");
+        assertThat(p.path("port").asInt()).isEqualTo(80);
+        assertThat(p.path("path").asText()).isEqualTo("/ha");
+        assertThat(p.path("tls").asBoolean()).isFalse();
+        assertThat(p.path("timeout_ms").asInt()).isEqualTo(5000);
+        // Weder Topic noch Haltbarkeit - dieser Lesetyp hat beides nicht.
+        JsonNode mapping = p.path("mappings").get(0);
+        assertThat(mapping.has("topic")).isFalse();
+        assertThat(mapping.has("stale_s")).isFalse();
+        assertThat(mapping.path("path").asText()).isEqualTo("soc");
+        // EIN Batterie, EIN Flow: die Flow-Id hängt an der Komponente, nicht am
+        // Transport - ein Wechsel der Anschlussart ersetzt den Flow, statt
+        // einen zweiten daneben zu stellen.
+        assertThat(doc.path("flow_id").asText())
+                .isEqualTo(UserDefinedBatteryFlowCompiler.generatedFlowId(HTTP_ENTITY).toString());
+    }
+
+    /** Byte-Gleichheit: sonst rollte jeder Speichervorgang grundlos neu aus. */
+    @Test
+    void derHttpLesetypIstDeterministisch() {
+        assertThat(compiler.compile(SITE, TENANT, HTTP_ENTITY, 1, "DIYBMS v4", diybmsHttp())
+                .toString())
+                .isEqualTo(compiler.compile(SITE, TENANT, HTTP_ENTITY, 1, "DIYBMS v4",
+                        diybmsHttp()).toString());
+    }
+
+    /**
+     * Der VERTRAG des HTTP-Lesetyps: dieselbe Prüfung wie oben, gegen sein
+     * eigenes Beispiel - und der Beweis, dass der SoC-Ableiter dahinter
+     * unverändert derselbe Baustein ist.
+     */
+    @Test
+    void dasGebauteHttpDokumentHatDieFormSeinesVertragsBeispiels() throws Exception {
+        JsonNode fixture = MAPPER.readTree(Files.readString(Path.of("..", "..", "docs",
+                "contracts", "v2", "examples", "flow-graph.valid.http-battery.json")));
+        List<Mapping> mappings = new ArrayList<>();
+        mappings.add(new Mapping("soc_pct", null, "soc", "last", "number", 1.0, 0.0, null, null,
+                null, null));
+        Result def = UserDefinedBatteryDefinition.validate(
+                UserDefinedBatteryDefinition.TRANSPORT_HTTP, null,
+                new Endpoint("192.168.40.21", 80, "/ha", false, 5000),
+                new Auth(UserDefinedBatteryDefinition.AUTH_HEADER, "ApiKey", null, "geheim"),
+                mappings, 15,
+                new SocDerivation(UserDefinedBatteryDefinition.SOC_DIRECT, true,
+                        UserDefinedBatteryDefinition.SOC_INPUT_DEFAULTS,
+                        new SocParams(null, null, null, true, 0.1, null, null, null, null, null,
+                                null),
+                        null, 900),
+                allowed(), null);
+        assertThat(def.errors()).isEmpty();
+        ObjectNode built = compiler.compile(SITE, TENANT, HTTP_ENTITY, 1, "DIYBMS v4", def);
+
+        assertThat(names(fixture)).containsSubsequence(names(built).toArray(new String[0]));
+        assertThat(names(built.path("origin"))).isEqualTo(names(fixture.path("origin")));
+        assertThat(names(built.path("nodes").get(0)))
+                .isEqualTo(names(fixture.path("nodes").get(0)));
+        assertThat(names(built.path("nodes").get(0).path("parameters")))
+                .isEqualTo(names(fixture.path("nodes").get(0).path("parameters")));
+        assertThat(names(built.path("nodes").get(0).path("parameters").path("auth")))
+                .isEqualTo(names(fixture.path("nodes").get(0).path("parameters").path("auth")));
+        assertThat(names(built.path("nodes").get(0).path("parameters").path("mappings").get(0)))
+                .isEqualTo(names(fixture.path("nodes").get(0).path("parameters")
+                        .path("mappings").get(0)));
+        // Der SoC-Ableiter dahinter ist WORT FÜR WORT derselbe Baustein.
+        assertThat(names(built.path("nodes").get(1)))
+                .isEqualTo(names(fixture.path("nodes").get(1)));
+        assertThat(names(built.path("edges").get(0)))
+                .isEqualTo(names(fixture.path("edges").get(0)));
+        assertThat(built.path("edges").get(0).path("from").path("node").asText())
+                .isEqualTo("http");
+        assertThat(fixture.path("origin").path("kind").asText())
+                .isEqualTo(UserDefinedBatteryFlowCompiler.ORIGIN_KIND_HTTP);
     }
 
     private static List<String> names(JsonNode node) {

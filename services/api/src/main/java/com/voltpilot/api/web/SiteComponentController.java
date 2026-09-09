@@ -38,6 +38,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -182,14 +183,17 @@ public class SiteComponentController {
         return selfBuild.delete(siteId, entityId, subject(jwt));
     }
 
-    // ---- Die eigene BATTERIE (P5 Ebene 1, MQTT) ---------------------------
+    // ---- Die eigene BATTERIE (P5 Ebene 1: MQTT oder HTTP/JSON) ------------
 
     /**
      * Eine selbst angebundene Batterie anlegen (Konzept
-     * {@code vp-deye-diybms-luecke-l5} §3.2b): ein lokaler MQTT-Broker plus die
-     * Feld-Zuordnung auf die Standard-Batteriekanäle. Sie entsteht über
-     * DENSELBEN Weg wie ein Selbstbau-Modbus-Gerät - Entität, Fassung,
-     * generierter Flow über {@code v2/flows} - nur mit einem anderen Transport.
+     * {@code vp-deye-diybms-luecke-l5} §3.2b): eine Quelle im Kundennetz plus
+     * die Feld-Zuordnung auf die Standard-Batteriekanäle. Seit P5-HTTP kennt
+     * dieselbe Route ZWEI Anschlussarten - {@code mqtt_local} (ein lokaler
+     * Broker, Topic-Filter) und {@code http_local} (eine JSON-Auskunft,
+     * Wertepfade) -, und alles dahinter ist identisch: Entität, Fassung,
+     * generierter Flow über {@code v2/flows}, Ladestand (P5b), Bindung (P6).
+     * {@code transport} entscheidet; fehlt es, gilt der MQTT-Weg.
      *
      * <p>Anders als der Modbus-Baukasten fordert dieser Weg (noch) KEINEN
      * Verbindungstest: eine MQTT-Vorschau braucht ein Lauschfenster statt einer
@@ -222,8 +226,9 @@ public class SiteComponentController {
     @PostMapping("/components/battery/preview")
     public ProbeResult previewBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
+            @RequestParam(name = "entityId", required = false) UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
-        Map<String, Object> connection = batteries.previewConnection(siteId, request);
+        Map<String, Object> connection = batteries.previewConnection(siteId, request, entityId);
         return probes.testConnection(siteId, null, "batterie",
                 UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
                 subject(jwt));

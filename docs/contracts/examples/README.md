@@ -127,6 +127,17 @@ would make a fixture invalid for the wrong reason):
   window and stands there with `count: 0` and NO `raw`/`value` - never a
   fabricated 0 - while a box that cannot listen yet omits `samples` entirely,
   which means "this box cannot do it", never "nothing arrived".
+  `mqtt-probe.valid.test-connection-battery-http.json` is the SAME preview over
+  the SECOND level-1 read type (P5-HTTP): the connection carries the
+  `http_local` definition instead - one endpoint, the auth MODE plus its header
+  name, and per row a value PATH (with `*` as the wildcard, `modules.*.exttemp`)
+  rather than a topic filter. Two differences are load-bearing and visible in the
+  fixture: there is no `listen_s` (the box fetches ONCE, it does not listen) and
+  no `stale_s` on a row (an HTTP answer is ONE point in time). ⚠ The
+  `auth_secret` IS part of this block - the probe is a request the box executes
+  right now, and without the credential it would not even ask - but it is the
+  one place besides the registry push where it travels: never in the flow
+  document, which the portal API hands to every user of the tenant.
 
 ## `mqtt-charging-config` (Lastmanagement Stufe 3)
 

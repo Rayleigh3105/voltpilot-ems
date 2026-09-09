@@ -19,15 +19,21 @@ die Fläche.**
 
 ## Die vier Fragen
 
-1. **Wie ist die Batterie erreichbar?** MQTT ist gebaut; HTTP und Modbus stehen
-   SICHTBAR und gesperrt daneben, jeweils mit dem Grund. Ohne sie ließe die Liste
-   den Kunden raten, ob VoltPilot seinen Fall grundsätzlich nicht kann oder nur
-   noch nicht — und Modbus ist keine Ankündigung, sondern ein Wegweiser auf die
-   Eigenbau-Tür, die es längst gibt.
+1. **Wie ist die Batterie erreichbar?** Seit P5-HTTP sind ZWEI Arten begehbar —
+   MQTT und die Web-Auskunft (HTTP/JSON). Modbus steht weiterhin SICHTBAR und
+   gesperrt daneben, mit dem Grund: das ist keine Ankündigung, sondern ein
+   Wegweiser auf die Eigenbau-Tür, die es längst gibt. Der HTTP-Weg zeigt statt
+   des Brokers Adresse, Pfad, Abruf-Abstand und die Anmeldung (keine /
+   Kopfzeilen-Schlüssel / Bearer / Basic) — plus die Vorlage „DIYBMS v4 – /ha",
+   die Pfad, Anmelde-Art und die ganze Zuordnung auf einmal füllt (und eine schon
+   getippte Zuordnung nie überschreibt).
 2. **Was kommt wo an?** Topic → Wertepfad → Standard-Kanal, samt Aggregat
    (`min`/`max` über viele Zell-Topics ist der DIYBMS-Fall), Umrechnung,
-   Haltbarkeit und Sentinel. Mit **„Werte ansehen"** je Zeile Roh- UND
-   umgerechneter Wert.
+   Haltbarkeit und Sentinel. Am HTTP-Weg entfallen Topic und Haltbarkeit, und
+   der Wertepfad ist dort PFLICHT und trägt `*` als Platzhalter (`cells.*.v`) —
+   die Begründung steht in
+   `docs/agents/root/der-http-json-lesetyp-p5-http-ebene-1.md`. Mit
+   **„Werte ansehen"** je Zeile Roh- UND umgerechneter Wert.
 3. **Wie entsteht der Ladestand?** `direct` / `ocv_curve` / `coulomb`, mit
    Vorlagenwahl, Kurven-Editor (Stützpunkte Spannung → SoC) und den Parametern
    je Methode.
@@ -35,6 +41,13 @@ die Fläche.**
 
 ## Die Regeln, die hier und nur hier leben
 
+- **⚠ Der SCHLÜSSEL einer Web-Auskunft verlässt den Server nie.** Das Formular
+  bekommt nur die Maske, kennt also bloß, DASS einer gespeichert ist
+  (`ausConnection().geheimnisBesteht`); ein leeres Feld heißt beim Bearbeiten
+  „unverändert", und `speicherRumpf`/`vorschauRumpf` lassen `secret` dann ganz
+  weg. Beim ANLEGEN ist er dagegen Pflicht — ohne ihn fragt die Box gar nicht
+  erst ab. Die Vorschau reicht `?entityId=` mit, damit der Server denselben
+  gespeicherten Schlüssel einsetzt, den das Speichern benutzen würde.
 - **Jede Prüfung ist ein ZWILLING einer Server-Regel** (`UserDefinedBatteryDefinition`),
   nie eine zweite Wahrheit — sie existiert, damit der Kunde seinen Tippfehler SIEHT
   statt ihn abzuschicken. Der Server prüft unverändert selbst.

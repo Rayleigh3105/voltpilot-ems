@@ -450,6 +450,60 @@ func TestAnMqttBatteryIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
 	}
 }
 
+// --- Dieselbe Batterie ueber HTTP/JSON (P5 Ebene 1 "HTTP/JSON") -----------
+
+// Der ZWEITE Lesetyp desselben Anschlusses: communication http_local, und die
+// gespeicherte Definition traegt hier zusaetzlich das GEHEIMNIS des Endpunkts
+// (auth_secret). Es reist ueber DIESEN Weg zur Box - nie im Flow-Dokument, das
+// ueber die Portal-API lesbar waere - und wird vom vp-http-read-Knoten aus der
+// per-Entitaet retained Konfiguration gelesen.
+const httpBatteryDriver = `{"communication":"http_local",
+  "connection":{"schema_version":"1.0","transport":"http_local",
+    "endpoint":{"host":"192.168.40.21","port":80,"path":"/ha","tls":false},
+    "auth":{"mode":"header","header":"ApiKey"},"auth_secret":"geheim-123",
+    "publish_interval_s":15,"timeout_ms":5000,
+    "mappings":[{"channel":"soc_pct","unit":"%","path":"soc",
+      "aggregate":"last","value_type":"number","scale":1,"offset":0}]}}`
+
+// Dieselbe Gefahr, ein Transport weiter: ohne den erweiterten Skip verloere
+// die Anlage mit ihrer ersten HTTP-Batterie die Anwendung ihres
+// Wechselrichters und aller Quellen (Derive ist alles-oder-nichts).
+func TestAnHTTPBatteryIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
+	reg := portal(
+		ent("6a1e3d0f-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
+		ent("bbbb0000-0000-0000-0000-0000000000ff", "user-defined-battery", httpBatteryDriver),
+	)
+	plan, err := Derive(reg, cat(), nil, now)
+	if err != nil {
+		t.Fatalf("eine selbst angebundene Batterie darf den Push nicht scheitern lassen: %v", err)
+	}
+	if plan.Inverter == nil {
+		t.Fatal("der Wechselrichter fehlt - genau das waere der Schaden")
+	}
+	if len(plan.Sources) != 1 {
+		t.Fatalf("Quellen = %d, will 1 (der Erzeuger; die HTTP-Batterie gehoert NICHT dazu)",
+			len(plan.Sources))
+	}
+	for _, s := range plan.Sources {
+		if strings.Contains(s.Communication, "http_local") {
+			t.Fatalf("eine HTTP-Batterie ist in sources.json gelandet: %+v", s)
+		}
+	}
+}
+
+func TestParseDriverSkipsAnHTTPBatteryBeforeTheBrandCheck(t *testing.T) {
+	e := entities.Entity{ID: "batt", Type: "user-defined-battery",
+		Driver: json.RawMessage(httpBatteryDriver)}
+	d, ok, err := ParseDriver(e)
+	if err != nil {
+		t.Fatalf("kein Fehler erwartet, bekam %v", err)
+	}
+	if ok {
+		t.Fatalf("die Batterie darf kein Treiber-Ziel sein, bekam %+v", d)
+	}
+}
+
 // ParseDriver ueberspringt sie ausdruecklich - und zwar VOR der Marken-Pruefung.
 // Ihr Leseplan reist als generierter Flow ueber v2/flows, nicht ueber diesen
 // Weg.

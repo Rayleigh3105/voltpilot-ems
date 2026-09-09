@@ -34,12 +34,12 @@ export type Anschlussart = {
 /**
  * Die Anschlussarten der Ebene 1.
  *
- * ⚠ HTTP und Modbus stehen SICHTBAR da, obwohl nur MQTT gebaut ist. Das ist
- * kein Schmuck: „ich habe ein BMS mit Web-Oberfläche" ist die zweithäufigste
- * Ausgangslage, und eine Liste, die nur MQTT kennt, lässt den Kunden raten, ob
- * VoltPilot seinen Fall grundsätzlich nicht kann oder nur noch nicht. Der Satz
- * an der gesperrten Karte sagt genau das - und Modbus ist keine Ankündigung,
- * sondern ein WEGWEISER: dafür gibt es die Selbstbau-Tür längst.
+ * ⚠ Seit P5-HTTP sind ZWEI davon begehbar - „ich habe ein BMS mit
+ * Web-Oberfläche" war die zweithäufigste Ausgangslage und ist es jetzt nicht
+ * mehr. Modbus bleibt SICHTBAR und gesperrt, und das ist keine Ankündigung,
+ * sondern ein WEGWEISER: dafür gibt es die Selbstbau-Tür längst. Eine Liste,
+ * die einen Fall gar nicht nennt, ließe den Kunden raten, ob VoltPilot ihn
+ * grundsätzlich nicht kann oder nur woanders.
  */
 export const ANSCHLUSSARTEN: Anschlussart[] = [
   {
@@ -53,9 +53,10 @@ export const ANSCHLUSSARTEN: Anschlussart[] = [
   {
     id: 'http',
     label: 'Web-Schnittstelle des BMS (HTTP/JSON)',
-    hint: 'VoltPilot ruft die JSON-Auskunft Ihres BMS regelmäßig ab.',
-    verfuegbar: false,
-    bald: 'Kommt als Nächstes. Bis dahin: viele BMS können ihre Werte zusätzlich per MQTT senden.',
+    hint:
+      'Ihr BMS hat eine Web-Auskunft im Heimnetz (beim DIYBMS v4 zum Beispiel /ha). VoltPilot '
+      + 'ruft sie im Takt ab und ordnet die Felder zu.',
+    verfuegbar: true,
   },
   {
     id: 'modbus',
@@ -338,22 +339,41 @@ export function istWertePfad(path: string): boolean {
     .every((seg) => PFAD_SEGMENT.test(seg) && !VERBOTENE_SEGMENTE.includes(seg));
 }
 
-/** Was an EINER Zuordnung fehlt - leer heißt: diese Zeile ist vollständig. */
-export function zuordnungFehler(z: ZuordnungZeile): string[] {
+/**
+ * Was an EINER Zuordnung fehlt - leer heißt: diese Zeile ist vollständig.
+ *
+ * ⚠ Der Transport entscheidet, WAS eine Zeile überhaupt braucht: MQTT einen
+ * Topic-Filter samt Haltbarkeit, HTTP einen WERTEPFAD (der dort Pflicht ist -
+ * eine HTTP-Antwort ist ein Dokument, kein nackter Wert) und keine
+ * Haltbarkeit, denn eine Antwort ist EIN Zeitpunkt.
+ */
+export function zuordnungFehler(z: ZuordnungZeile, art: AnschlussartId = 'mqtt'): string[] {
   const out: string[] = [];
+  const http = art === 'http';
   if (z.channel.trim() === '') {
     out.push('Bitte wählen Sie, welchen Messwert dieses Feld liefert.');
   } else if (!zielKanal(z.channel)) {
     out.push('Diesen Messwert kennen wir nicht.');
   }
-  if (z.topic.trim() === '') out.push('Bitte tragen Sie das Topic ein, auf dem der Wert kommt.');
-  else if (!istTopicFilter(z.topic.trim())) {
-    out.push(
-      'Dieses Topic ist kein gültiger Filter. „+" steht für genau eine Ebene, „#" nur ganz am Ende.',
-    );
-  }
-  if (!istWertePfad(z.path.trim())) {
-    out.push('Der Wertepfad darf nur Punkte, Buchstaben, Ziffern, „_" und „-" enthalten.');
+  if (http) {
+    if (z.path.trim() === '') {
+      out.push(
+        'Bitte tragen Sie ein, wo der Wert in der Antwort steht - zum Beispiel soc oder '
+        + 'bms.soc; „*“ steht für jede Ebene.',
+      );
+    } else if (!istHttpWertePfad(z.path.trim())) {
+      out.push('Dieser Wertepfad ist nicht gültig. Beispiele: soc, bms.soc, cells.*.v.');
+    }
+  } else {
+    if (z.topic.trim() === '') out.push('Bitte tragen Sie das Topic ein, auf dem der Wert kommt.');
+    else if (!istTopicFilter(z.topic.trim())) {
+      out.push(
+        'Dieses Topic ist kein gültiger Filter. „+" steht für genau eine Ebene, „#" nur ganz am Ende.',
+      );
+    }
+    if (!istWertePfad(z.path.trim())) {
+      out.push('Der Wertepfad darf nur Punkte, Buchstaben, Ziffern, „_" und „-" enthalten.');
+    }
   }
   if (!AGGREGATE.some((a) => a.value === z.aggregate)) {
     out.push('Diese Zusammenfassung kennen wir nicht.');
@@ -374,9 +394,11 @@ export function zuordnungFehler(z: ZuordnungZeile): string[] {
       out.push('Der Wert für „nicht gemessen" muss eine Zahl sein.');
     }
   }
-  const stale = zahl(z.staleS);
-  if (stale === null || !Number.isInteger(stale) || stale < MIN_STALE_S || stale > MAX_STALE_S) {
-    out.push(`Die Haltbarkeit muss zwischen ${MIN_STALE_S} und ${MAX_STALE_S} Sekunden liegen.`);
+  if (!http) {
+    const stale = zahl(z.staleS);
+    if (stale === null || !Number.isInteger(stale) || stale < MIN_STALE_S || stale > MAX_STALE_S) {
+      out.push(`Die Haltbarkeit muss zwischen ${MIN_STALE_S} und ${MAX_STALE_S} Sekunden liegen.`);
+    }
   }
   return out;
 }
@@ -424,6 +446,289 @@ export function brokerFehler(b: BrokerForm): string[] {
     );
   }
   return out;
+}
+
+// -- Der HTTP-Anschluss (Schritt 1, zweite Anschlussart) ----------------------
+
+export const DEFAULT_HTTP_PORT = 80;
+export const DEFAULT_HTTPS_PORT = 443;
+export const DEFAULT_TIMEOUT_MS = 5000;
+export const MIN_TIMEOUT_MS = 500;
+export const MAX_TIMEOUT_MS = 30000;
+
+export type AnmeldeArt = 'none' | 'header' | 'bearer' | 'basic';
+
+export type AnmeldeArtOption = {
+  id: AnmeldeArt;
+  label: string;
+  hint: string;
+};
+
+/**
+ * Die Anmelde-Arten - der Zwilling von `UserDefinedBatteryDefinition.AUTH_MODES`.
+ *
+ * ⚠ Die Reihenfolge ist die HÄUFIGKEIT im Heimnetz: die meisten BMS verlangen
+ * gar nichts, und wer eine Anmeldung hat, hat fast immer einen Kopfzeilen-
+ * Schlüssel (beim DIYBMS heißt er `ApiKey`).
+ */
+export const ANMELDE_ARTEN: AnmeldeArtOption[] = [
+  {
+    id: 'none',
+    label: 'Keine',
+    hint: 'Die Auskunft ist im Heimnetz frei abrufbar - der häufigste Fall.',
+  },
+  {
+    id: 'header',
+    label: 'Schlüssel in einer Kopfzeile',
+    hint: 'Ihr BMS erwartet den Schlüssel in einer eigenen Kopfzeile - beim DIYBMS „ApiKey“.',
+  },
+  {
+    id: 'bearer',
+    label: 'Bearer-Token',
+    hint: 'Der Schlüssel reist als „Authorization: Bearer …“.',
+  },
+  {
+    id: 'basic',
+    label: 'Benutzername und Kennwort',
+    hint: 'Das klassische HTTP-Basic.',
+  },
+];
+
+/** Die feste Maske, hinter der ein gespeichertes Geheimnis steht (Server-Zwilling). */
+export const GEHEIMNIS_MASKE = '••••••••';
+
+export type EndpunktForm = {
+  host: string;
+  port: string;
+  path: string;
+  tls: boolean;
+  timeoutMs: string;
+  publishIntervalS: string;
+};
+
+export function neuerEndpunkt(): EndpunktForm {
+  return {
+    host: '',
+    port: String(DEFAULT_HTTP_PORT),
+    path: '',
+    tls: false,
+    timeoutMs: String(DEFAULT_TIMEOUT_MS),
+    publishIntervalS: String(DEFAULT_INTERVAL_S),
+  };
+}
+
+export type AnmeldungForm = {
+  art: AnmeldeArt;
+  header: string;
+  username: string;
+  /**
+   * Das Geheimnis. Leer heißt beim BEARBEITEN „unverändert" - der Server setzt
+   * dann den gespeicherten Wert wieder ein. Er kommt nie in den Browser
+   * zurück; das Formular zeigt an seiner Stelle {@link GEHEIMNIS_MASKE}.
+   */
+  secret: string;
+};
+
+export function neueAnmeldung(): AnmeldungForm {
+  return { art: 'none', header: '', username: '', secret: '' };
+}
+
+/**
+ * Ein URL-Pfad ist ein Pfad, keine zweite Adresse - der Zwilling von
+ * `UserDefinedBatteryDefinition.isValidUrlPath`.
+ *
+ * Ein Pfad, der mit `//` beginnt, wäre eine protokoll-relative URL: ein
+ * anderes Ziel als das geprüfte, und damit ein Weg an der Heimnetz-Regel
+ * vorbei.
+ */
+export function istUrlPfad(path: string): boolean {
+  if (path === '' || path.length > 200) return false;
+  if (!path.startsWith('/') || path.startsWith('//')) return false;
+  const VERBOTEN = ['<', '>', '"', "'", '`', '\\'];
+  return ![...path].some((c) => /\s/.test(c) || c < ' ' || VERBOTEN.includes(c));
+}
+
+const HTTP_PFAD_SEGMENT = /^(\*|[A-Za-z0-9_][A-Za-z0-9_-]{0,63})$/;
+
+/**
+ * Ein WERTEPFAD des HTTP-Lesetyps: punkt-getrennt, mit `*` als GANZEM Segment -
+ * der Zwilling von `UserDefinedBatteryDefinition.isValidHttpValuePath`.
+ *
+ * ⚠ Er darf - anders als beim MQTT-Lesetyp - nicht leer sein. Bei MQTT heißt
+ * ein leerer Pfad „die Nachricht IST der Wert"; eine HTTP-Antwort ist dagegen
+ * ein Dokument, und ein leerer Pfad wäre die Aufforderung, es als Zahl zu
+ * lesen.
+ *
+ * Der Platzhalter ist das Gegenstück zum Topic-Filter: `cells.*.v` trifft jede
+ * Zelle einer Liste, so wie `emon/diybms/+/+` jedes Zell-Topic trifft - und
+ * erst dadurch bekommt „Kleinster Wert" hier überhaupt eine Bedeutung.
+ */
+export function istHttpWertePfad(path: string): boolean {
+  if (path === '' || path.length > 200) return false;
+  return path
+    .split('.')
+    .every((seg) => HTTP_PFAD_SEGMENT.test(seg) && !VERBOTENE_SEGMENTE.includes(seg));
+}
+
+/** Ein Kopfzeilen-Name ist ein RFC-7230-Token - alles andere schmuggelte eine zweite ein. */
+export function istKopfzeilenName(name: string): boolean {
+  return /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(name);
+}
+
+/** Was am ENDPUNKT fehlt (Schritt 1 der HTTP-Anschlussart). */
+export function endpunktFehler(e: EndpunktForm): string[] {
+  const out: string[] = [];
+  if (e.host.trim() === '') {
+    out.push('Bitte tragen Sie die Adresse ein, unter der die Web-Auskunft erreichbar ist.');
+  } else if (!isPrivateHost(e.host)) {
+    out.push(HOST_NOT_PRIVATE);
+  }
+  const port = zahl(e.port);
+  if (port === null || !Number.isInteger(port) || port < 1 || port > 65535) {
+    out.push('Der Port muss zwischen 1 und 65535 liegen.');
+  }
+  if (e.path.trim() === '') {
+    out.push('Bitte tragen Sie den Pfad der JSON-Auskunft ein, zum Beispiel /ha.');
+  } else if (!istUrlPfad(e.path.trim())) {
+    out.push(
+      'Dieser Pfad ist nicht gültig. Er beginnt mit „/“ und enthält keine Leerzeichen - '
+      + 'zum Beispiel /ha oder /api/status?filter=soc.',
+    );
+  }
+  const timeout = zahl(e.timeoutMs);
+  if (
+    timeout === null
+    || !Number.isInteger(timeout)
+    || timeout < MIN_TIMEOUT_MS
+    || timeout > MAX_TIMEOUT_MS
+  ) {
+    out.push(
+      `Die Zeitgrenze muss zwischen ${MIN_TIMEOUT_MS} und ${MAX_TIMEOUT_MS} Millisekunden liegen.`,
+    );
+  }
+  const iv = zahl(e.publishIntervalS);
+  if (iv === null || !Number.isInteger(iv) || iv < MIN_INTERVAL_S || iv > MAX_INTERVAL_S) {
+    out.push(
+      `Der Abruf-Abstand muss zwischen ${MIN_INTERVAL_S} und ${MAX_INTERVAL_S} Sekunden liegen.`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Was an der ANMELDUNG fehlt.
+ *
+ * @param bestehtSchon ob ein Geheimnis bereits gespeichert ist (Bearbeiten).
+ *     Dann ist ein leeres Feld „unverändert" und kein Mangel - der Server setzt
+ *     den gespeicherten Wert wieder ein, und ein Zwang, ihn neu zu tippen, wäre
+ *     nur eine Einladung, ihn falsch zu tippen.
+ */
+export function anmeldungFehler(a: AnmeldungForm, bestehtSchon = false): string[] {
+  if (a.art === 'none') return [];
+  const out: string[] = [];
+  if (a.art === 'header' && a.header.trim() === '') {
+    out.push('Bitte tragen Sie den Namen der Kopfzeile ein - beim DIYBMS zum Beispiel „ApiKey“.');
+  } else if (a.art === 'header' && !istKopfzeilenName(a.header.trim())) {
+    out.push('Dieser Name ist für eine Kopfzeile nicht gültig.');
+  }
+  if (a.art === 'basic' && a.username.trim() === '') {
+    out.push('Bitte tragen Sie den Benutzernamen ein, mit dem sich VoltPilot anmelden soll.');
+  }
+  if (a.secret.trim() === '' && !bestehtSchon) {
+    out.push(
+      'Für diese Art der Anmeldung fehlt der Schlüssel bzw. das Kennwort - ohne ihn würde '
+      + 'VoltPilot von dieser Batterie nichts lesen.',
+    );
+  }
+  return out;
+}
+
+/** Eine fertige HTTP-Vorlage: Endpunkt, Anmeldung und Feld-Zuordnung in einem. */
+export type HttpVorlage = {
+  id: string;
+  label: string;
+  hint: string;
+  path: string;
+  authArt: AnmeldeArt;
+  header?: string;
+  mappings: {
+    channel: string;
+    path: string;
+    scale?: number;
+    aggregate?: string;
+    valueType?: 'number' | 'bool';
+    sentinel?: number;
+  }[];
+};
+
+/**
+ * Die Vorlage, an der dieses Paket gebaut wurde: DIYBMS v4 beantwortet
+ * `GET /ha` mit dem Kopfzeilen-Schlüssel `ApiKey` und einem FLACHEN Dokument.
+ *
+ * ⚠ Sie ist ein VORSCHLAG, kein Vertrag: eine andere Firmware kann andere
+ * Feldnamen haben - deshalb steht die Live-Vorschau daneben, und deshalb nimmt
+ * die Vorlage niemandem eine schon getippte Zuordnung weg.
+ */
+export const HTTP_VORLAGEN: HttpVorlage[] = [
+  {
+    id: 'diybms-v4-ha',
+    label: 'DIYBMS v4 – /ha',
+    hint:
+      'Die Home-Assistant-Auskunft des DIYBMS-Controllers: ein flaches JSON mit Ladestand, '
+      + 'Pack-Spannung, Strom, Leistung und den beiden Zellspannungs-Grenzen.',
+    path: '/ha',
+    authArt: 'header',
+    header: 'ApiKey',
+    mappings: [
+      { channel: 'soc_pct', path: 'soc' },
+      { channel: 'voltage_v', path: 'v' },
+      { channel: 'current_a', path: 'c' },
+      { channel: 'power_kw', path: 'pwr', scale: 0.001 },
+      { channel: 'cell_min_mv', path: 'lowcellv' },
+      { channel: 'cell_max_mv', path: 'highcellv' },
+      { channel: 'charge_allowed', path: 'chargeallowed', valueType: 'bool' },
+      { channel: 'discharge_allowed', path: 'dischargeallowed', valueType: 'bool' },
+    ],
+  },
+];
+
+export function httpVorlage(id: string): HttpVorlage | null {
+  return HTTP_VORLAGEN.find((v) => v.id === id) ?? null;
+}
+
+/**
+ * Eine Vorlage ANWENDEN: Endpunkt, Anmelde-Art und die Zuordnungs-Zeilen.
+ *
+ * ⚠ Sie ersetzt eine bereits eingetippte Zuordnung NICHT: wer schon Zeilen
+ * gebaut hat, hat einen Grund dafür, und eine Vorlage, die ihm die wegnimmt,
+ * wäre ein Datenverlust mit freundlicher Absicht.
+ */
+export function vorlageAnwenden(
+  v: HttpVorlage,
+  endpunkt: EndpunktForm,
+  anmeldung: AnmeldungForm,
+  zeilen: ZuordnungZeile[],
+): { endpunkt: EndpunktForm; anmeldung: AnmeldungForm; zeilen: ZuordnungZeile[] } {
+  const getippt = zeilen.filter((z) => z.channel.trim() !== '' && z.path.trim() !== '');
+  return {
+    endpunkt: { ...endpunkt, path: endpunkt.path.trim() === '' ? v.path : endpunkt.path },
+    anmeldung: {
+      ...anmeldung,
+      art: anmeldung.art === 'none' ? v.authArt : anmeldung.art,
+      header: anmeldung.header.trim() === '' ? (v.header ?? '') : anmeldung.header,
+    },
+    zeilen:
+      getippt.length > 0
+        ? zeilen
+        : v.mappings.map((m) => ({
+          ...neueZuordnung(m.channel),
+          path: m.path,
+          scale: feldZahl(m.scale ?? 1),
+          aggregate: m.aggregate ?? (m.valueType === 'bool' ? 'min' : 'last'),
+          valueType: m.valueType ?? 'number',
+          sentinel: m.sentinel === undefined ? '' : feldZahl(m.sentinel),
+        })),
+  };
 }
 
 // -- Der Ladestand (Ebene 2) --------------------------------------------------
@@ -716,16 +1021,21 @@ export function socFehler(soc: SocForm, zeilen: ZuordnungZeile[]): string[] {
 
 // -- Was an den Server geht ---------------------------------------------------
 
-function mappingRumpf(z: ZuordnungZeile): Record<string, unknown> {
+function mappingRumpf(z: ZuordnungZeile, art: AnschlussartId = 'mqtt'): Record<string, unknown> {
   const bool = z.valueType === 'bool';
   const body: Record<string, unknown> = {
     channel: z.channel.trim(),
-    topic: z.topic.trim(),
     path: z.path.trim(),
     aggregate: z.aggregate,
     valueType: z.valueType,
-    staleS: zahl(z.staleS) ?? DEFAULT_STALE_S,
   };
+  // Topic und Haltbarkeit gehören dem MQTT-Lesetyp. Sie an einem
+  // HTTP-Anschluss mitzuschicken hieße, ein Feld zu füllen, das dort nichts
+  // bedeutet - und der Server lehnte es zu Recht ab.
+  if (art !== 'http') {
+    body.topic = z.topic.trim();
+    body.staleS = zahl(z.staleS) ?? DEFAULT_STALE_S;
+  }
   if (!bool) {
     body.scale = zahl(z.scale) ?? 1;
     body.offset = zahl(z.offset) ?? 0;
@@ -825,20 +1135,48 @@ function socRumpf(soc: SocForm, zeilen: ZuordnungZeile[]): Record<string, unknow
   return body;
 }
 
-/** Der Rumpf von `POST/PUT /components/battery`. */
+/**
+ * Der Rumpf von `POST/PUT /components/battery` - für BEIDE Anschlussarten.
+ *
+ * ⚠ Es reist immer nur EINE Hälfte: der Broker ODER der Endpunkt. Beide
+ * gleichzeitig wären eine Anbindung mit zwei Adressen, und welche die Box
+ * benutzte, hinge daran, welche der Server zuerst liest.
+ *
+ * ⚠ Das GEHEIMNIS reist nur, wenn wirklich eines eingetippt wurde: ein leeres
+ * Feld heißt „unverändert", und der Server setzt dann den gespeicherten Wert
+ * wieder ein.
+ */
 export function speicherRumpf(
   name: string,
   broker: BrokerForm,
   zeilen: ZuordnungZeile[],
   soc: SocForm,
   bindung: BindungForm = neueBindung(),
+  art: AnschlussartId = 'mqtt',
+  endpunkt: EndpunktForm = neuerEndpunkt(),
+  anmeldung: AnmeldungForm = neueAnmeldung(),
 ): Record<string, unknown> {
+  const http = art === 'http';
   const body: Record<string, unknown> = {
     label: name.trim(),
-    broker: { host: broker.host.trim(), port: zahl(broker.port) ?? DEFAULT_PORT },
-    mappings: zeilen.map(mappingRumpf),
-    publishIntervalS: zahl(broker.publishIntervalS) ?? DEFAULT_INTERVAL_S,
+    transport: http ? 'http_local' : 'mqtt_local',
+    mappings: zeilen.map((z) => mappingRumpf(z, art)),
+    publishIntervalS: http
+      ? (zahl(endpunkt.publishIntervalS) ?? DEFAULT_INTERVAL_S)
+      : (zahl(broker.publishIntervalS) ?? DEFAULT_INTERVAL_S),
   };
+  if (http) {
+    body.endpoint = {
+      host: endpunkt.host.trim(),
+      port: zahl(endpunkt.port) ?? (endpunkt.tls ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT),
+      path: endpunkt.path.trim(),
+      tls: endpunkt.tls,
+      timeoutMs: zahl(endpunkt.timeoutMs) ?? DEFAULT_TIMEOUT_MS,
+    };
+    body.auth = anmeldungRumpf(anmeldung);
+  } else {
+    body.broker = { host: broker.host.trim(), port: zahl(broker.port) ?? DEFAULT_PORT };
+  }
   const derivation = socRumpf(soc, zeilen);
   if (derivation) body.socDerivation = derivation;
   // Die Bindung reist IMMER mit - auch als „unbound". Sie ist eine ANTWORT des
@@ -858,12 +1196,33 @@ export function speicherRumpf(
 export function vorschauRumpf(
   broker: BrokerForm,
   zeilen: ZuordnungZeile[],
+  art: AnschlussartId = 'mqtt',
+  endpunkt: EndpunktForm = neuerEndpunkt(),
+  anmeldung: AnmeldungForm = neueAnmeldung(),
 ): Record<string, unknown> {
-  return {
-    broker: { host: broker.host.trim(), port: zahl(broker.port) ?? DEFAULT_PORT },
-    mappings: zeilen.map(mappingRumpf),
-    publishIntervalS: zahl(broker.publishIntervalS) ?? DEFAULT_INTERVAL_S,
-  };
+  const body = speicherRumpf('', broker, zeilen, neueSoc(), neueBindung(), art, endpunkt,
+    anmeldung);
+  // Die Vorschau fragt, was ANKOMMT - nicht, was daraus gerechnet oder wem es
+  // zugeordnet wird. Label, Ladestand und Bindung gehören zum Speichern.
+  delete body.label;
+  delete body.socDerivation;
+  delete body.binding;
+  return body;
+}
+
+/**
+ * Die Anmeldung als Anfrage-Block.
+ *
+ * ⚠ `secret` fehlt, wenn nichts eingetippt wurde. Das ist die halbe Regel des
+ * Geheimnis-Wegs: ein leeres Feld heißt „unverändert", und ein mitgeschicktes
+ * leeres Geheimnis hieße „lösch es".
+ */
+function anmeldungRumpf(a: AnmeldungForm): Record<string, unknown> {
+  const body: Record<string, unknown> = { mode: a.art };
+  if (a.art === 'header') body.header = a.header.trim();
+  if (a.art === 'basic') body.username = a.username.trim();
+  if (a.art !== 'none' && a.secret.trim() !== '') body.secret = a.secret;
+  return body;
 }
 
 // -- Die SPEISER-BINDUNG (P6) -------------------------------------------------
@@ -1045,17 +1404,66 @@ function num(v: unknown): string {
  */
 export function ausConnection(
   connection: Record<string, unknown> | null | undefined,
-): { broker: BrokerForm; zeilen: ZuordnungZeile[]; soc: SocForm; bindung: BindungForm } | null {
-  if (!connection || connection.transport !== 'mqtt_local') return null;
+): {
+  art: AnschlussartId;
+  broker: BrokerForm;
+  endpunkt: EndpunktForm;
+  anmeldung: AnmeldungForm;
+  /** Ob der Server ein Geheimnis GESPEICHERT hat - er gibt nur die Maske zurück. */
+  geheimnisBesteht: boolean;
+  zeilen: ZuordnungZeile[];
+  soc: SocForm;
+  bindung: BindungForm;
+} | null {
+  if (!connection) return null;
+  const art: AnschlussartId | null =
+    connection.transport === 'mqtt_local'
+      ? 'mqtt'
+      : connection.transport === 'http_local'
+        ? 'http'
+        : null;
+  if (!art) return null;
+  const intervall =
+    typeof connection.publish_interval_s === 'number'
+      ? String(connection.publish_interval_s)
+      : String(DEFAULT_INTERVAL_S);
   const b = (connection.broker ?? {}) as Roh;
   const broker: BrokerForm = {
     host: str(b.host),
     port: typeof b.port === 'number' ? String(b.port) : String(DEFAULT_PORT),
-    publishIntervalS:
-      typeof connection.publish_interval_s === 'number'
-        ? String(connection.publish_interval_s)
-        : String(DEFAULT_INTERVAL_S),
+    publishIntervalS: intervall,
   };
+
+  // Die HTTP-Hälfte. ⚠ Das Geheimnis kommt NIE zurück - der Server maskiert es
+  // (`auth_secret` wird zu ••••••••). Das Formular merkt sich nur, DASS eines
+  // besteht, und ein leeres Feld heißt dann „unverändert".
+  const ep = (connection.endpoint ?? {}) as Roh;
+  const auth = (connection.auth ?? {}) as Roh;
+  const artWort = str(auth.mode);
+  const endpunkt: EndpunktForm = {
+    host: str(ep.host),
+    port:
+      typeof ep.port === 'number'
+        ? String(ep.port)
+        : String(ep.tls === true ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT),
+    path: str(ep.path),
+    tls: ep.tls === true,
+    timeoutMs:
+      typeof connection.timeout_ms === 'number'
+        ? String(connection.timeout_ms)
+        : String(DEFAULT_TIMEOUT_MS),
+    publishIntervalS: intervall,
+  };
+  const anmeldung: AnmeldungForm = {
+    art:
+      artWort === 'header' || artWort === 'bearer' || artWort === 'basic' ? artWort : 'none',
+    header: str(auth.header),
+    username: str(auth.username),
+    secret: '',
+  };
+  const geheimnisBesteht = typeof connection.auth_secret === 'string'
+    && connection.auth_secret !== '';
+
   const raw = Array.isArray(connection.mappings) ? (connection.mappings as Roh[]) : [];
   const zeilen: ZuordnungZeile[] = raw.map((m) => ({
     ...neueZuordnung(),
@@ -1111,7 +1519,7 @@ export function ausConnection(
     }
     bindung.inverterEntityId = str(b2.inverter_entity_id);
   }
-  return { broker, zeilen, soc, bindung };
+  return { art, broker, endpunkt, anmeldung, geheimnisBesteht, zeilen, soc, bindung };
 }
 
 function punkteAus(v: unknown): KurvenPunkt[] {
@@ -1178,6 +1586,26 @@ const VORSCHAU_FEHLER: Record<string, string> = {
 };
 
 /**
+ * Dieselben Klassen, für die Web-Auskunft ausgesprochen.
+ *
+ * ⚠ Es sind DIESELBEN Wörter des Probe-Kanals - nur der Satz ändert sich, denn
+ * „im Lauschfenster kam nichts an" wäre über einen einmaligen Abruf schlicht
+ * falsch. Eine zweite Fehlerklasse gibt es NICHT: die Box benennt ihren
+ * Fehlschlag, und das Portal übersetzt ihn.
+ */
+const VORSCHAU_FEHLER_HTTP: Record<string, string> = {
+  unreachable: 'Ihre Box erreicht diese Adresse nicht. Bitte Adresse, Port und Pfad prüfen.',
+  no_answer: 'Die Web-Auskunft hat nicht rechtzeitig geantwortet.',
+  invalid_response:
+    'Die Antwort war nicht auswertbar - sie war kein JSON, oder die Anmeldung wurde '
+    + 'abgelehnt. Bitte Pfad und Schlüssel prüfen.',
+  not_supported:
+    'Ihre Box kann diese Auskunft noch nicht abrufen - dafür braucht sie das neuere '
+    + 'Edge-Release. Die Zuordnung lässt sich trotzdem speichern; die Werte erscheinen dann '
+    + 'auf der Geräteseite.',
+};
+
+/**
  * Der Satz zu einer Probe-Antwort.
  *
  * ⚠ `not_supported` ist eine Aussage über die BOX, nie über die Zuordnung -
@@ -1185,7 +1613,12 @@ const VORSCHAU_FEHLER: Record<string, string> = {
  * Pflicht (es gibt hier keinen Verbindungstest-Zwang). Ein Ausbleiben der
  * Antwort ist nie ein bewiesener Fehlschlag.
  */
-export function vorschauFehlerText(code?: string | null, serverText?: string | null): string {
+export function vorschauFehlerText(
+  code?: string | null,
+  serverText?: string | null,
+  art: AnschlussartId = 'mqtt',
+): string {
+  if (code && art === 'http' && VORSCHAU_FEHLER_HTTP[code]) return VORSCHAU_FEHLER_HTTP[code];
   if (code && VORSCHAU_FEHLER[code]) return VORSCHAU_FEHLER[code];
   const t = (serverText ?? '').trim();
   return t !== '' ? t : 'Die Vorschau ist fehlgeschlagen.';
@@ -1207,21 +1640,22 @@ function zahlText(n: number): string {
 export function vorschauErgebnis(
   antwort: VorschauAntwort | null | undefined,
   zeilen: ZuordnungZeile[],
+  art: AnschlussartId = 'mqtt',
 ): VorschauErgebnis {
   const zugeordnet = zeilen.filter((z) => z.channel.trim() !== '');
   if (!antwort) {
-    return { zustand: 'fehlgeschlagen', text: vorschauFehlerText(), zeilen: [] };
+    return { zustand: 'fehlgeschlagen', text: vorschauFehlerText(null, null, art), zeilen: [] };
   }
   if (antwort.errorCode) {
     return {
       zustand: antwort.errorCode === 'not_supported' ? 'nicht_moeglich' : 'fehlgeschlagen',
-      text: vorschauFehlerText(antwort.errorCode, antwort.message),
+      text: vorschauFehlerText(antwort.errorCode, antwort.message, art),
       zeilen: [],
     };
   }
   const line = antwort.results?.[0];
   if (!line) {
-    return { zustand: 'fehlgeschlagen', text: vorschauFehlerText(), zeilen: [] };
+    return { zustand: 'fehlgeschlagen', text: vorschauFehlerText(null, null, art), zeilen: [] };
   }
   const samples = line.samples ?? null;
   if (samples == null) {
@@ -1230,7 +1664,7 @@ export function vorschauErgebnis(
     // wäre unbelegt.
     return {
       zustand: 'nicht_moeglich',
-      text: vorschauFehlerText(line.errorCode ?? 'not_supported', line.message),
+      text: vorschauFehlerText(line.errorCode ?? 'not_supported', line.message, art),
       zeilen: [],
     };
   }
@@ -1269,7 +1703,7 @@ export function vorschauErgebnis(
   if (getroffen === 0) {
     return {
       zustand: 'leer',
-      text: vorschauFehlerText(line.errorCode ?? 'no_answer', line.message),
+      text: vorschauFehlerText(line.errorCode ?? 'no_answer', line.message, art),
       zeilen: tabelle,
     };
   }
@@ -1295,17 +1729,39 @@ export function pruefen(
   soc: SocForm,
   bindung: BindungForm = neueBindung(),
   ziele: SpeicherZiel[] = [],
+  art: AnschlussartId = 'mqtt',
+  endpunkt: EndpunktForm = neuerEndpunkt(),
+  anmeldung: AnmeldungForm = neueAnmeldung(),
 ): PruefZeile[] {
+  const http = art === 'http';
   const zugeordnet = zeilen.filter((z) => z.channel.trim() !== '');
   const methode = SOC_METHODEN.find((m) => m.id === soc.methode);
   const ladestand =
     soc.methode === 'direct' && !zugeordnet.some((z) => z.channel.trim() === 'soc_pct')
       ? 'keiner - diese Batterie meldet vorerst keinen Ladestand'
       : (methode?.label ?? soc.methode);
+  const anmeldeWort =
+    ANMELDE_ARTEN.find((a) => a.id === anmeldung.art)?.label ?? anmeldung.art;
   return [
     { label: 'Name', wert: name.trim() === '' ? 'Batterie' : name.trim() },
-    { label: 'Broker', wert: `${broker.host.trim()}:${broker.port.trim()}` },
-    { label: 'Sende-Abstand', wert: `alle ${broker.publishIntervalS.trim()} s` },
+    http
+      ? {
+        label: 'Web-Auskunft',
+        wert: `${endpunkt.tls ? 'https' : 'http'}://${endpunkt.host.trim()}`
+          + `:${endpunkt.port.trim()}${endpunkt.path.trim()}`,
+      }
+      : { label: 'Broker', wert: `${broker.host.trim()}:${broker.port.trim()}` },
+    ...(http
+      ? [{
+        label: 'Anmeldung',
+        wert: anmeldung.art === 'header'
+          ? `${anmeldeWort} (${anmeldung.header.trim()})`
+          : anmeldeWort,
+      }]
+      : []),
+    http
+      ? { label: 'Abruf-Abstand', wert: `alle ${endpunkt.publishIntervalS.trim()} s` }
+      : { label: 'Sende-Abstand', wert: `alle ${broker.publishIntervalS.trim()} s` },
     {
       label: 'Zugeordnete Messwerte',
       wert:

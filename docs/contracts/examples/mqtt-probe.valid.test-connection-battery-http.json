@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "3ac71fe0912b4d68",
+  "requested_at": "2026-09-09T18:12:00Z",
+  "requested_by": "a1b2c3d4-0000-0000-0000-000000000009",
+  "ops": [
+    {
+      "op": "test_connection",
+      "id": "batterie",
+      "brand": "user-defined-battery",
+      "connection": {
+        "schema_version": "1.0",
+        "transport": "http_local",
+        "endpoint": {
+          "host": "192.168.0.45",
+          "port": 80,
+          "path": "/ha",
+          "tls": false
+        },
+        "auth": {
+          "mode": "header",
+          "header": "ApiKey"
+        },
+        "auth_secret": "der-schluessel-des-kunden",
+        "timeout_ms": 5000,
+        "publish_interval_s": 15,
+        "mappings": [
+          {
+            "channel": "soc_pct",
+            "unit": "%",
+            "path": "soc",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1.0,
+            "offset": 0.0
+          },
+          {
+            "channel": "temp_max_c",
+            "unit": "°C",
+            "path": "modules.*.exttemp",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1.0,
+            "offset": 0.0,
+            "sentinel": -40.0
+          },
+          {
+            "channel": "charge_allowed",
+            "unit": "",
+            "path": "chargeallowed",
+            "aggregate": "min",
+            "value_type": "bool",
+            "scale": 1.0,
+            "offset": 0.0,
+            "true_values": ["true", "on"],
+            "false_values": ["false", "off"]
+          }
+        ]
+      }
+    }
+  ]
+}

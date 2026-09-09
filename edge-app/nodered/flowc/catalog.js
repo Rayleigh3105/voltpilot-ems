@@ -904,10 +904,79 @@ const TYPES = {
     },
   },
 
+  // vp.http.read (P5 Ebene 1 „HTTP/JSON", Konzept vp-deye-diybms-luecke-l5
+  // §3.2b): the GENERATED-ONLY HTTP read of a self-connected battery - the exact
+  // SIBLING of vp.mqtt.read, only over a request/response transport. The api's
+  // UserDefinedBatteryFlowCompiler is its single author; `generatedOrigin`
+  // makes compile.js refuse it in any document that is not the device's own
+  // origin-stamped flow, and it is its OWN origin kind (`http-device`) on
+  // purpose: a level-1 read type that were valid under a sibling's origin would
+  // let a forged mqtt-device document unlock an HTTP fetch.
+  //
+  // ONE node per device: one endpoint, one GET per tick, every mapping served
+  // from the SAME answer (the "never a second path to one device" discipline).
+  // It compiles to the DATA-ONLY vp-http-read palette node (0.12.0) - no
+  // generated code, the whitelisted-codegen stance is untouched.
+  //
+  // ⚠ The auth SECRET is deliberately absent from the compiled node: only the
+  // MODE (and, for a header key, its name / for basic, the user name) travel
+  // here. The value reaches the box in the entity registry push
+  // (driver.connection.auth_secret), because a flow document is readable
+  // through the portal API - a credential in it would be a credential in the
+  // browser.
+  'vp.http.read': {
+    version: '1.0.0',
+    label: 'HTTP/JSON lesen (generiert)',
+    runtimes: ['edge'],
+    minPalette: '0.12.0',
+    generatedOrigin: 'http-device',
+    triggerable: true,
+    ports: { in: { trigger: { type: 'event' } }, out: { value: { type: 'number' } } },
+    validate(p) {
+      return validateHttpRead(p);
+    },
+    // Every mapped channel must be DECLARED by the entity - the same rule
+    // vp.mqtt.read and vp.modbus.read follow, so a mapping onto a channel the
+    // battery does not measure is refused before it can record nowhere.
+    requires(p) {
+      if (!p || !p.entity_id || !Array.isArray(p.mappings)) return [];
+      const caps = [];
+      for (const m of p.mappings) {
+        if (m && typeof m.channel === 'string' && CHANNEL_RE.test(m.channel)) {
+          caps.push('measure:' + m.channel);
+        }
+      }
+      return caps.length ? [{ entity_id: p.entity_id, capabilities: caps }] : [];
+    },
+    // A read node never claims: it drives no actuation.
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      const tls = p.tls === true;
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-http-read',
+        z: ctx.tabId,
+        name: node.label || 'HTTP lesen',
+        core: ctx.coreId,
+        host: p.host,
+        port: Number.isInteger(p.port) ? p.port : (tls ? 443 : 80),
+        path: typeof p.path === 'string' && p.path !== '' ? p.path : '/',
+        tls: tls,
+        timeout_ms: Number.isInteger(p.timeout_ms) ? p.timeout_ms : HTTP_DEFAULT_TIMEOUT_MS,
+        entity: p.entity_id,
+        auth: normalizeHttpAuth(p.auth),
+        mappings: normalizeHttpMappings(p.mappings),
+      }];
+    },
+  },
+
   // vp.soc.derive (P5b Ebene 2, Konzept vp-deye-diybms-luecke-l5 §3.2b): the
   // GENERATED-ONLY SoC DERIVATION of a self-connected battery. It takes the
-  // standard battery channels a level-1 source just delivered (today
-  // vp.mqtt.read, tomorrow an HTTP read type) and turns them into ONE state of
+  // standard battery channels a level-1 source just delivered (vp.mqtt.read or
+  // vp.http.read - it does not care which) and turns them into ONE state of
   // charge - taken over directly, computed from the OCV curve, or counted from
   // charge - published as ordinary telemetry together with its ORIGIN
   // (soc_source_code), so cloud, optimizer and portal read it like any other
@@ -919,15 +988,19 @@ const TYPES = {
   // would compute on the PREVIOUS tick's values, and the order of two
   // simultaneously fired nodes is nothing to build a state of charge on.
   //
-  // Same origin kind as vp.mqtt.read: the api's UserDefinedBatteryFlowCompiler
-  // is the single author of both, and neither is a free editor block while the
-  // mapping/curve UI (P5d) is still to come.
+  // Same author as the level-1 read types (the api's
+  // UserDefinedBatteryFlowCompiler), and none of them is a free editor block:
+  // the mapping/curve surface is the battery assistant, not the flow editor.
   'vp.soc.derive': {
     version: '1.0.0',
     label: 'Ladestand ableiten (generiert)',
     runtimes: ['edge'],
     minPalette: '0.11.0',
-    generatedOrigin: 'mqtt-device',
+    // BOTH level-1 origins, and that is the whole point of the level-2 split:
+    // the derivation works on the STANDARD battery channels and does not care
+    // whether MQTT or HTTP delivered them. (`generatedOrigin` therefore accepts
+    // a list - see compile.js.)
+    generatedOrigin: ['mqtt-device', 'http-device'],
     triggerable: false,
     ports: {
       in: { channels: { type: 'number', required: true } },
@@ -1134,6 +1207,171 @@ function normalizeMqttMappings(list) {
       scale: num(m.scale) ? m.scale : 1,
       offset: num(m.offset) ? m.offset : 0,
       stale_s: Number.isInteger(m.stale_s) ? m.stale_s : MQTT_DEFAULT_STALE_S,
+    };
+    if (num(m.sentinel)) out.sentinel = m.sentinel;
+    if (Array.isArray(m.true_values)) out.true_values = m.true_values.slice();
+    if (Array.isArray(m.false_values)) out.false_values = m.false_values.slice();
+    return out;
+  });
+}
+
+// --- vp.http.read validation (P5 Ebene 1 „HTTP/JSON"). Der ZWILLING der
+// Cloud-Regel (services/api .../components/UserDefinedBatteryDefinition) und
+// der Laufzeit (vp-palette/lib/http-mapping.js): dieselben Vokabulare,
+// dieselben Schranken. Wer eines aendert, aendert alle drei - sonst nimmt der
+// Compiler an, was die Box verwirft, oder umgekehrt.
+//
+// Die Aggregate, Werttypen und Wahrheitswert-Regeln sind WOERTLICH die von
+// vp.mqtt.read (MQTT_AGGREGATES & Co. daneben) - eine zweite Liste haette
+// `min` je Transport eine andere Bedeutung geben koennen.
+const HTTP_AUTH_MODES = ['none', 'header', 'bearer', 'basic'];
+const HTTP_DEFAULT_TIMEOUT_MS = 5000;
+const HTTP_MIN_TIMEOUT_MS = 500;
+const HTTP_MAX_TIMEOUT_MS = 30000;
+const HTTP_MAX_PATH = 200;
+const HTTP_MAX_VALUE_PATH = 200;
+// Ein Wertepfad ist punkt-getrennt und darf `*` als GANZES Segment tragen
+// („jedes Element / jeder Schluessel hier") - das HTTP-Gegenstueck zum
+// Topic-Platzhalter `+`. Leer ist er NIE: eine HTTP-Antwort ist ein Dokument,
+// kein nackter Wert.
+const HTTP_VALUE_PATH_RE =
+  /^(\*|[A-Za-z0-9_][A-Za-z0-9_-]{0,63})(\.(\*|[A-Za-z0-9_][A-Za-z0-9_-]{0,63}))*$/;
+
+// Der URL-PFAD, den die Box abfragt. Er reist ausgeschrieben (inklusive einer
+// etwaigen Abfrage-Zeichenkette) - die Box haengt nichts an. Verboten ist alles,
+// was aus einem Pfad eine zweite Adresse machen koennte.
+function validHttpPath(v) {
+  if (typeof v !== 'string' || v.length < 1 || v.length > HTTP_MAX_PATH) return false;
+  if (v.charAt(0) !== '/') return false;
+  if (/\s/.test(v)) return false;
+  if (v.indexOf('//') === 0) return false; // //host waere eine fremde Adresse
+  return !/[\\<>"'`]/.test(v);
+}
+
+function validHttpValuePath(v) {
+  if (typeof v !== 'string' || v === '' || v.length > HTTP_MAX_VALUE_PATH) return false;
+  if (!HTTP_VALUE_PATH_RE.test(v)) return false;
+  return v.split('.').every((seg) => MQTT_FORBIDDEN_SEGMENTS.indexOf(seg) < 0);
+}
+
+function validateHttpRead(p) {
+  const errs = [];
+  if (!p || typeof p !== 'object') return ['Parameter fehlen'];
+  if (!ID_RE.test(p.entity_id || '')) errs.push('entity_id fehlt oder ist ungueltig');
+  if (!validHost(p.host)) errs.push('Adresse fehlt oder ist keine gueltige IP/Hostname');
+  if (p.port !== undefined && !(Number.isInteger(p.port) && p.port >= 1 && p.port <= 65535)) {
+    errs.push('port muss 1..65535 sein');
+  }
+  if (!validHttpPath(p.path)) errs.push('path fehlt oder ist kein gueltiger URL-Pfad');
+  if (p.tls !== undefined && typeof p.tls !== 'boolean') errs.push('tls muss ja/nein sein');
+  if (p.timeout_ms !== undefined && !(Number.isInteger(p.timeout_ms)
+      && p.timeout_ms >= HTTP_MIN_TIMEOUT_MS && p.timeout_ms <= HTTP_MAX_TIMEOUT_MS)) {
+    errs.push('timeout_ms muss ' + HTTP_MIN_TIMEOUT_MS + '..' + HTTP_MAX_TIMEOUT_MS + ' sein');
+  }
+  errs.push(...validateHttpAuth(p.auth));
+
+  const list = p.mappings;
+  if (!Array.isArray(list) || list.length === 0) {
+    errs.push('mappings fehlt - ohne Feld-Zuordnung entsteht kein Messwert');
+    return errs;
+  }
+  if (list.length > MQTT_MAX_MAPPINGS) {
+    errs.push('hoechstens ' + MQTT_MAX_MAPPINGS + ' Zuordnungen je Geraet');
+  }
+  const seen = {};
+  list.forEach((m, i) => {
+    const where = 'Zuordnung ' + (i + 1) + ': ';
+    if (!m || typeof m !== 'object') {
+      errs.push(where + 'ist leer');
+      return;
+    }
+    if (!CHANNEL_RE.test(m.channel || '')) {
+      errs.push(where + 'channel fehlt oder ist ungueltig');
+    } else if (Object.prototype.hasOwnProperty.call(seen, m.channel)) {
+      errs.push(where + 'der Kanal "' + m.channel + '" ist schon zugeordnet');
+    } else {
+      seen[m.channel] = true;
+    }
+    if (!validHttpValuePath(m.path)) errs.push(where + 'path fehlt oder ist kein gueltiger Wertepfad');
+    if (m.aggregate !== undefined && MQTT_AGGREGATES.indexOf(m.aggregate) < 0) {
+      errs.push(where + 'aggregate ist unbekannt');
+    }
+    if (m.value_type !== undefined && MQTT_VALUE_TYPES.indexOf(m.value_type) < 0) {
+      errs.push(where + 'value_type muss number oder bool sein');
+    } else if (m.value_type === 'bool' && m.aggregate !== undefined
+        && MQTT_BOOL_AGGREGATES.indexOf(m.aggregate) < 0) {
+      errs.push(where + 'ein Ja/Nein-Wert kennt nur last, min oder max');
+    }
+    if (m.scale !== undefined && (!num(m.scale) || m.scale === 0)) {
+      errs.push(where + 'scale muss eine Zahl ungleich 0 sein');
+    }
+    if (m.offset !== undefined && !num(m.offset)) errs.push(where + 'offset muss eine Zahl sein');
+    if (m.sentinel !== undefined && m.sentinel !== null && !num(m.sentinel)) {
+      errs.push(where + 'sentinel muss eine Zahl sein');
+    }
+    // ⚠ stale_s gibt es hier NICHT: eine HTTP-Antwort ist EIN Zeitpunkt, und
+    // was sie nicht enthaelt, fehlt. Ein Haltbarkeits-Feld waere die stille
+    // Erlaubnis, einen alten Messwert mit frischem Zeitstempel zu senden.
+    if (m.stale_s !== undefined) {
+      errs.push(where + 'stale_s gibt es beim HTTP-Lesetyp nicht - eine Antwort ist EIN Zeitpunkt');
+    }
+  });
+  return errs;
+}
+
+// Die Anmeldung: die ART reist im Flow, der WERT nie. Ein `secret` im
+// Flow-Dokument wird deshalb nicht ignoriert, sondern BENANNT abgelehnt - ein
+// stillschweigend verworfenes Kennwort waere ein Anschluss, der nie liest,
+// und ein durchgereichtes waere ein Kennwort im Browser.
+function validateHttpAuth(auth) {
+  if (auth === undefined || auth === null) return [];
+  if (typeof auth !== 'object') return ['auth ist unlesbar'];
+  const errs = [];
+  const mode = auth.mode === undefined ? 'none' : auth.mode;
+  if (HTTP_AUTH_MODES.indexOf(mode) < 0) {
+    errs.push('auth.mode muss ' + HTTP_AUTH_MODES.join('/') + ' sein');
+    return errs;
+  }
+  if (auth.secret !== undefined || auth.password !== undefined) {
+    errs.push('auth: ein Geheimnis gehoert nicht in das Flow-Dokument');
+  }
+  if (mode === 'header') {
+    const name = typeof auth.header === 'string' ? auth.header.trim() : '';
+    // Ein Kopfzeilen-Name ist ein RFC-7230-Token; alles andere waere eine
+    // Einladung, eine zweite Kopfzeile einzuschmuggeln.
+    if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(name)) {
+      errs.push('auth.header fehlt oder ist kein gueltiger Kopfzeilen-Name');
+    }
+  }
+  if (mode === 'basic') {
+    const user = typeof auth.username === 'string' ? auth.username : '';
+    if (user === '' || user.length > 64 || /[\s:]/.test(user)) {
+      errs.push('auth.username fehlt oder ist ungueltig');
+    }
+  }
+  return errs;
+}
+
+// Die kompilierte Form ist VOLLSTAENDIG: jede Vorgabe steht ausgeschrieben im
+// Artefakt (die Regel von normalizeMqttMappings, Wort fuer Wort).
+function normalizeHttpAuth(auth) {
+  const a = auth && typeof auth === 'object' ? auth : {};
+  const mode = HTTP_AUTH_MODES.indexOf(a.mode) >= 0 ? a.mode : 'none';
+  const out = { mode: mode };
+  if (mode === 'header') out.header = String(a.header).trim();
+  if (mode === 'basic') out.username = String(a.username);
+  return out;
+}
+
+function normalizeHttpMappings(list) {
+  return (Array.isArray(list) ? list : []).map((m) => {
+    const out = {
+      channel: m.channel,
+      path: m.path,
+      aggregate: MQTT_AGGREGATES.indexOf(m.aggregate) >= 0 ? m.aggregate : 'last',
+      value_type: m.value_type === 'bool' ? 'bool' : 'number',
+      scale: num(m.scale) ? m.scale : 1,
+      offset: num(m.offset) ? m.offset : 0,
     };
     if (num(m.sentinel)) out.sentinel = m.sentinel;
     if (Array.isArray(m.true_values)) out.true_values = m.true_values.slice();

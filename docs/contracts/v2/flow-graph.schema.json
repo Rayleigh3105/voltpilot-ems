@@ -38,7 +38,7 @@
     },
     "origin": {
       "type": "object",
-      "description": "OPTIONAL provenance marker of a GENERATED flow (D-19): present exactly when the platform derived this document from another source of truth. SERVER-STAMPED ONLY - the flow save API refuses customer documents carrying it, so origin can never be forged to unlock generated-only node types. Which kinds a generated-only type unlocks is CATALOG DATA (`generated_origin`), never a constant: today `consumer-policy` owns vp.consumer.reactive and its compiler-stamped override, `modbus-device` owns vp.modbus.switch, `mqtt-device` owns vp.mqtt.read AND its level-2 companion vp.soc.derive. They are NOT interchangeable - a type is valid only under ITS OWN origin kind. A generated flow is not separately editable; portals open the owning builder instead. Three sources exist: a consumer policy (docs/verbrauchssteuerung.md §13.2), a self-built Modbus device (vp-modbus-baukasten-k6 §2.2) and a self-connected battery read over MQTT (vp-deye-diybms-luecke-l5 §3.2b). The `kind` discriminates; each shape is closed, so a document may never mix the vocabularies.",
+      "description": "OPTIONAL provenance marker of a GENERATED flow (D-19): present exactly when the platform derived this document from another source of truth. SERVER-STAMPED ONLY - the flow save API refuses customer documents carrying it, so origin can never be forged to unlock generated-only node types. Which kinds a generated-only type unlocks is CATALOG DATA (`generated_origin`), never a constant: today `consumer-policy` owns vp.consumer.reactive and its compiler-stamped override, `modbus-device` owns vp.modbus.switch, `mqtt-device` owns vp.mqtt.read and `http-device` owns vp.http.read. A type may name SEVERAL kinds (`generated_origin` is a string OR a list): the level-2 companion vp.soc.derive belongs to `mqtt-device` AND `http-device`, because the state of charge is derived from the standard channels and does not care which level-1 read type delivered them. Beyond that they are NOT interchangeable - a level-1 read type is valid only under ITS OWN origin kind. A generated flow is not separately editable; portals open the owning builder instead. Four sources exist: a consumer policy (docs/verbrauchssteuerung.md §13.2), a self-built Modbus device (vp-modbus-baukasten-k6 §2.2) and a self-connected battery read over MQTT or over an HTTP/JSON endpoint (vp-deye-diybms-luecke-l5 §3.2b). The `kind` discriminates; each shape is closed, so a document may never mix the vocabularies.",
       "oneOf": [
         {
           "title": "consumer-policy",
@@ -60,6 +60,26 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "type": "string", "const": "mqtt-device" },
+            "point_id": {
+              "type": "string",
+              "format": "uuid",
+              "description": "The measurement_point (component) this read flow belongs to."
+            },
+            "definition_version": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "measurement_point.definition_version the mapping was compiled from; it IS the flow_version, so a rolled-back definition redeploys its own mapping."
+            }
+          }
+        },
+        {
+          "title": "http-device",
+          "description": "The generated flow of ONE self-connected battery read over an HTTP/JSON endpoint in the customer LAN (P5 Ebene 1 \"HTTP/JSON\", Konzept vp-deye-diybms-luecke-l5 \u00a73.2b): exactly one vp.http.read node that GETs one JSON document per tick and whose user-defined value paths turn its fields into the SAME standard battery channels as the MQTT read type, plus - only when the battery HAS a state of charge - the same vp.soc.derive node wired to its output. It is the exact sibling of mqtt-device and exists as its OWN kind for one reason: a level-1 read type must never be valid under another transport's origin, or a forged mqtt-device document could unlock an HTTP fetch. The auth SECRET is deliberately NOT part of this document (it travels in the entity registry push, driver.connection.auth_secret) - a flow document is readable through the portal API, and a credential in it would be a credential in the browser. Like the other device kinds it marks the flow as platform-owned (portals open the battery assistant, not the flow editor) and names the definition version the mapping was compiled from - which IS flow_version.",
+          "type": "object",
+          "required": ["kind", "point_id", "definition_version"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string", "const": "http-device" },
             "point_id": {
               "type": "string",
               "format": "uuid",

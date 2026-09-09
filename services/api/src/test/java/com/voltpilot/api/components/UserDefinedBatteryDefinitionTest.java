@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Auth;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Broker;
+import com.voltpilot.api.components.UserDefinedBatteryDefinition.Endpoint;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Mapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.NormalizedMapping;
 import com.voltpilot.api.components.UserDefinedBatteryDefinition.Result;
@@ -565,5 +567,160 @@ class UserDefinedBatteryDefinitionTest {
         assertThat(validate(List.of(new Mapping("voltage_v", "emon/pack", "v", "last", "number",
                 1.0, 0.0, null, 1, null, null))).errors())
                 .anyMatch(e -> e.contains("Haltbarkeit"));
+    }
+
+    // -- Der ZWEITE Lesetyp: HTTP/JSON (P5-HTTP) -----------------------------
+
+    private static Endpoint diybmsHa() {
+        return new Endpoint("192.168.40.21", 80, "/ha", false, 5000);
+    }
+
+    /** Die Vorlage „DIYBMS v4 - /ha": ein flaches Dokument, ein Kopfzeilen-Schlüssel. */
+    private static List<Mapping> haMappings() {
+        List<Mapping> out = new ArrayList<>();
+        out.add(new Mapping("soc_pct", null, "soc", "last", "number", 1.0, 0.0, null, null,
+                null, null));
+        out.add(new Mapping("cell_min_mv", null, "lowcellv", "last", "number", 1.0, 0.0, null,
+                null, null, null));
+        out.add(new Mapping("temp_max_c", null, "modules.*.exttemp", "max", "number", 1.0, 0.0,
+                -40.0, null, null, null));
+        return out;
+    }
+
+    private static Result validateHttp(Endpoint endpoint, Auth auth, List<Mapping> mappings) {
+        return UserDefinedBatteryDefinition.validate(
+                UserDefinedBatteryDefinition.TRANSPORT_HTTP, null, endpoint, auth, mappings,
+                null, null, allowed(), null);
+    }
+
+    /**
+     * Der Vorlagen-Fall: derselbe Anschluss, ein anderer Transport - und alles
+     * dahinter (Kanäle, Aggregate, Einheiten) bleibt Wort für Wort dasselbe.
+     */
+    @Test
+    void derHttpLesetypBildetDieselbenStandardKanaeleAb() {
+        Result def = validateHttp(diybmsHa(),
+                new Auth(UserDefinedBatteryDefinition.AUTH_HEADER, "ApiKey", null, "geheim"),
+                haMappings());
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.http()).isTrue();
+        assertThat(def.communication())
+                .isEqualTo(UserDefinedBatteryDefinition.COMMUNICATION_HTTP);
+        assertThat(def.broker()).as("ein HTTP-Anschluss hat keinen Broker").isNull();
+        assertThat(def.channels())
+                .containsExactly("soc_pct", "cell_min_mv", "temp_max_c", "soc_source_code");
+        NormalizedMapping temp = def.mappings().stream()
+                .filter(m -> m.channel().equals("temp_max_c")).findFirst().orElseThrow();
+        assertThat(temp.unit()).isEqualTo("°C");
+        assertThat(temp.path()).isEqualTo("modules.*.exttemp");
+        // ⚠ Der Platzhalter ist das Gegenstück zum Topic-Filter: ohne ihn hätte
+        // `max` an einem HTTP-Anschluss gar keine Bedeutung.
+        assertThat(temp.aggregate()).isEqualTo("max");
+        assertThat(temp.sentinel()).isEqualTo(-40.0);
+        // Weder Topic noch Haltbarkeit: dieser Lesetyp hat beides nicht, und
+        // ein gefüllter Vorgabewert wäre ein Versprechen ohne Ort.
+        assertThat(temp.topic()).isEmpty();
+        assertThat(temp.staleS()).isZero();
+    }
+
+    /** Dieselbe LAN-Regel wie überall - sonst wäre der Anschluss ein Portscanner. */
+    @Test
+    void einHttpZielAusserhalbDesHeimnetzesWirdAbgelehnt() {
+        assertThat(validateHttp(new Endpoint("bms.example.com", 80, "/ha", false, null),
+                null, haMappings()).errors())
+                .anyMatch(e -> e.contains(SelfBuildDefinition.HOST_NOT_PRIVATE));
+        assertThat(validateHttp(new Endpoint("10.0.0.5", null, "/ha", false, null), null,
+                haMappings()).errors()).isEmpty();
+    }
+
+    /**
+     * Der PFAD ist ein Pfad, keine zweite Adresse: „//host/x" wäre eine
+     * protokoll-relative URL und damit ein anderes Ziel als das geprüfte.
+     */
+    @Test
+    void derPfadIstEinPfadUndKeineZweiteAdresse() {
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("/ha")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("/api/status?filter=soc")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("ha")).isFalse();
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("//evil.example/x")).isFalse();
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("/ha x")).isFalse();
+        assertThat(UserDefinedBatteryDefinition.isValidUrlPath("")).isFalse();
+        assertThat(validateHttp(new Endpoint("192.168.40.21", 80, "ha", false, null), null,
+                haMappings()).errors()).anyMatch(e -> e.contains("kein gültiger Pfad"));
+    }
+
+    /**
+     * Ein Wertepfad ist punkt-getrennt mit „*" als GANZEM Segment - und er ist
+     * PFLICHT: eine HTTP-Antwort ist ein Dokument, kein nackter Wert.
+     */
+    @Test
+    void derWertepfadIstPflichtUndKenntDenPlatzhalter() {
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("soc")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("bms.soc")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("cells.*.v")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("banks.*.cells.*.v")).isTrue();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("")).isFalse();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("__proto__")).isFalse();
+        assertThat(UserDefinedBatteryDefinition.isValidHttpValuePath("a.constructor")).isFalse();
+        assertThat(validateHttp(diybmsHa(), null,
+                List.of(new Mapping("soc_pct", null, "", "last", "number", 1.0, 0.0, null, null,
+                        null, null))).errors())
+                .anyMatch(e -> e.contains("wo der Wert in der Antwort steht"));
+    }
+
+    /**
+     * Die ANMELDUNG: die Art ist ein geschlossenes Vokabular, der Kopfzeilen-
+     * Name ein Token (alles andere schmuggelte eine zweite Kopfzeile ein), und
+     * Basic braucht seinen Benutzernamen.
+     */
+    @Test
+    void dieAnmeldungWirdGeprueftUndNieGeraten() {
+        assertThat(validateHttp(diybmsHa(), new Auth("raten", null, null, "x"), haMappings())
+                .errors()).anyMatch(e -> e.contains("Art der Anmeldung"));
+        assertThat(validateHttp(diybmsHa(),
+                new Auth(UserDefinedBatteryDefinition.AUTH_HEADER, null, null, "x"),
+                haMappings()).errors()).anyMatch(e -> e.contains("Namen der Kopfzeile"));
+        assertThat(validateHttp(diybmsHa(),
+                new Auth(UserDefinedBatteryDefinition.AUTH_HEADER, "Api Key", null, "x"),
+                haMappings()).errors()).anyMatch(e -> e.contains("kein gültiger Name"));
+        assertThat(validateHttp(diybmsHa(),
+                new Auth(UserDefinedBatteryDefinition.AUTH_BASIC, null, null, "x"),
+                haMappings()).errors()).anyMatch(e -> e.contains("Benutzernamen"));
+        // Ohne Anmeldung ist alles in Ordnung - die meisten BMS im Heimnetz
+        // verlangen keine.
+        assertThat(validateHttp(diybmsHa(), null, haMappings()).errors()).isEmpty();
+    }
+
+    /** Ein Wort außerhalb des Transport-Vokabulars wird VERWORFEN, nie geraten. */
+    @Test
+    void eineUnbekannteAnschlussartWirdVerworfen() {
+        Result def = UserDefinedBatteryDefinition.validate("carrier_pigeon", lan(), null, null,
+                diybmsCells(), null, null, allowed(), null);
+        assertThat(def.errors()).anyMatch(e -> e.contains("keine bekannte Anschlussart"));
+        assertThat(def.ok()).isFalse();
+    }
+
+    /**
+     * Der HTTP-Wert läuft durch DENSELBEN SoC-Baustein (P5b) und DIESELBE
+     * Speiser-Bindung (P6) - ohne Sonderpfad. Das ist die halbe Aussage dieses
+     * Pakets.
+     */
+    @Test
+    void derHttpWertLaeuftDurchSocUndBindungOhneSonderpfad() {
+        List<Mapping> cells = List.of(
+                new Mapping("cell_min_mv", null, "lowcellv", "last", "number", 1.0, 0.0, null,
+                        null, null, null),
+                new Mapping("cell_max_mv", null, "highcellv", "last", "number", 1.0, 0.0, null,
+                        null, null, null));
+        Result def = UserDefinedBatteryDefinition.validate(
+                UserDefinedBatteryDefinition.TRANSPORT_HTTP, null, diybmsHa(), null, cells, null,
+                derivation(UserDefinedBatteryDefinition.SOC_OCV_CURVE, kennlinie()), allowed(),
+                new UserDefinedBatteryDefinition.Binding(
+                        UserDefinedBatteryDefinition.BINDING_STANDALONE, null));
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.socDerivation().method())
+                .isEqualTo(UserDefinedBatteryDefinition.SOC_OCV_CURVE);
+        assertThat(def.channels()).contains("soc_pct", "soc_source_code");
+        assertThat(def.boundChannels()).containsExactly("soc_pct");
     }
 }

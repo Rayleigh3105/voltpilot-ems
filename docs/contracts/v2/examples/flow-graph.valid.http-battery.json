@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "c2b3d4e5-6f70-4182-9345-6789abcdef01",
+  "flow_version": 1,
+  "name": "Batterie: DIYBMS v4 (/ha)",
+  "description": "Der GENERIERTE Lese-Flow einer SELBST ANGEBUNDENEN Batterie über ihre WEB-SCHNITTSTELLE (P5 Ebene 1 „HTTP/JSON\", Konzept vp-deye-diybms-luecke-l5 §3.2b) - das exakte Geschwister von flow-graph.valid.mqtt-battery.json, nur über einen Anfrage/Antwort-Transport. EIN vp.http.read je Gerät: ein Endpunkt, ein GET je Takt, alle Zuordnungen aus DERSELBEN Antwort - nie eine zweite Verbindung zum selben Gerät. Der Vorlagen-Fall: das DIYBMS v4 beantwortet GET http://<controller>/ha mit dem Kopfzeilen-Schlüssel ApiKey und einem flachen Dokument (soc, v, c, pwr, lowcellv, highcellv, celltemp, chargeallowed, dischargeallowed); die Zellspannungen kommen dort in Millivolt, deshalb steht die Skalierung auf 1. Ein Gerät, das seine Zellen als LISTE ausliefert, wird mit einem Platzhalter-Wertepfad (cells.*.v) und den Aggregaten min/max genauso auf zwei Kanäle gebracht wie die 176 Topics des MQTT-Falls - das ist das HTTP-Gegenstück zum Topic-Filter emon/diybms/+/+. Ein Kanal, den die Antwort nicht hergibt, FEHLT in der Telemetrie statt als 0 zu erscheinen, und ein Fehlschlag veröffentlicht gar nichts. ⚠ Das GEHEIMNIS der Anmeldung steht bewusst NICHT in diesem Dokument: hier reisen nur die Anmelde-Art und der Name der Kopfzeile. Der Wert erreicht die Box über den Registry-Push (driver.connection.auth_secret) - ein Flow-Dokument ist über die Portal-API lesbar, ein Kennwort darin wäre ein Kennwort im Browser. Der SoC-Ableiter dahinter ist derselbe wie beim MQTT-Fall (P5b Ebene 2): er hängt an einer KANTE hinter dem Lese-Knoten, nie am Takt, und er kennt den Transport gar nicht - er rechnet auf den Standard-Kanälen.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "origin": {
+    "kind": "http-device",
+    "point_id": "9d5e1f34-2a6b-4c78-8e90-fedcba987654",
+    "definition_version": 1
+  },
+  "nodes": [
+    {
+      "id": "http",
+      "type": "vp.http.read",
+      "type_version": "1.0.0",
+      "label": "DIYBMS v4",
+      "parameters": {
+        "host": "192.168.40.21",
+        "port": 80,
+        "path": "/ha",
+        "tls": false,
+        "timeout_ms": 5000,
+        "entity_id": "9d5e1f34-2a6b-4c78-8e90-fedcba987654",
+        "auth": {
+          "mode": "header",
+          "header": "ApiKey"
+        },
+        "mappings": [
+          {
+            "channel": "soc_pct",
+            "path": "soc",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "voltage_v",
+            "path": "v",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "current_a",
+            "path": "c",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "power_kw",
+            "path": "pwr",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 0.001,
+            "offset": 0
+          },
+          {
+            "channel": "cell_min_mv",
+            "path": "lowcellv",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "cell_max_mv",
+            "path": "highcellv",
+            "aggregate": "last",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "temp_max_c",
+            "path": "modules.*.exttemp",
+            "aggregate": "max",
+            "value_type": "number",
+            "scale": 1,
+            "offset": 0,
+            "sentinel": -40
+          },
+          {
+            "channel": "charge_allowed",
+            "path": "chargeallowed",
+            "aggregate": "last",
+            "value_type": "bool",
+            "scale": 1,
+            "offset": 0
+          },
+          {
+            "channel": "discharge_allowed",
+            "path": "dischargeallowed",
+            "aggregate": "last",
+            "value_type": "bool",
+            "scale": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "soc",
+      "type": "vp.soc.derive",
+      "type_version": "1.0.0",
+      "label": "Ladestand",
+      "parameters": {
+        "entity_id": "9d5e1f34-2a6b-4c78-8e90-fedcba987654",
+        "method": "direct",
+        "prefer_direct": true,
+        "hold_s": 900,
+        "inputs": {
+          "cell_max": "cell_max_mv",
+          "cell_min": "cell_min_mv",
+          "current": "current_a",
+          "power": "power_kw",
+          "soc": "soc_pct",
+          "voltage": "voltage_v"
+        },
+        "params": {
+          "conservative_min": true,
+          "round_pct": 0.1
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "http-soc",
+      "from": {
+        "node": "http",
+        "port": "value"
+      },
+      "to": {
+        "node": "soc",
+        "port": "channels"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "id": "takt",
+      "kind": "interval",
+      "every_s": 15
+    }
+  ]
+}

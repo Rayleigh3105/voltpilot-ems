@@ -91,17 +91,177 @@ beforeEach(() => {
   siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [HYBRID] });
 });
 
+// -- Die zweite Anschlussart: HTTP/JSON (P5-HTTP) -----------------------------
+
+/** Die gespeicherte Form einer HTTP-Batterie, wie der Server sie zurückgibt. */
+const HTTP_GESPEICHERT = {
+  schema_version: '1.0',
+  transport: 'http_local',
+  endpoint: { host: '192.168.40.21', port: 80, path: '/ha', tls: false },
+  auth: { mode: 'header', header: 'ApiKey' },
+  // ⚠ Der Server gibt nur die MASKE zurück - nie den Schlüssel.
+  auth_secret: '••••••••',
+  timeout_ms: 5000,
+  publish_interval_s: 15,
+  mappings: [
+    {
+      channel: 'soc_pct', unit: '%', path: 'soc', aggregate: 'last',
+      value_type: 'number', scale: 1, offset: 0,
+    },
+  ],
+};
+
+describe('Schritt 1 · die Web-Auskunft (HTTP/JSON)', () => {
+  async function aufHttp() {
+    const r = await zeichne(1);
+    fireEvent.click(screen.getByTestId('anschlussart-http'));
+    return r;
+  }
+
+  it('zeigt statt des Brokers den Endpunkt - und nie beides', async () => {
+    await aufHttp();
+    expect(screen.getByLabelText('Adresse des BMS')).toBeVisible();
+    expect(screen.getByLabelText('Pfad der JSON-Auskunft')).toBeVisible();
+    expect(screen.queryByLabelText('Adresse des Brokers')).toBeNull();
+  });
+
+  it('lässt erst weiter, wenn die Adresse im eigenen Netz steht', async () => {
+    await aufHttp();
+    expect(knopf('Weiter')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Adresse des BMS'), {
+      target: { value: '8.8.8.8' },
+    });
+    fireEvent.change(screen.getByLabelText('Pfad der JSON-Auskunft'), {
+      target: { value: '/ha' },
+    });
+    expect(screen.getByRole('status').textContent).toContain('eigenen Netzwerk');
+    fireEvent.change(screen.getByLabelText('Adresse des BMS'), {
+      target: { value: '192.168.40.21' },
+    });
+    expect(knopf('Weiter')).not.toBeDisabled();
+  });
+
+  /**
+   * Die Vorlage ist der schnelle Weg durch den häufigsten Fall - und sie
+   * hinterlässt ein Formular, das WIRKLICH vollständig ist.
+   */
+  it('die Vorlage „DIYBMS v4" füllt Pfad, Anmeldung und Zuordnung', async () => {
+    const { onSchritt } = await aufHttp();
+    fireEvent.click(screen.getByTestId('http-vorlage-diybms-v4-ha'));
+    expect((screen.getByLabelText('Pfad der JSON-Auskunft') as HTMLInputElement).value)
+      .toBe('/ha');
+    expect((screen.getByLabelText('Name der Kopfzeile') as HTMLInputElement).value)
+      .toBe('ApiKey');
+    fireEvent.change(screen.getByLabelText('Adresse des BMS'), {
+      target: { value: '192.168.40.21' },
+    });
+    fireEvent.change(screen.getByLabelText('Schlüssel'), { target: { value: 'geheim' } });
+    expect(knopf('Weiter')).not.toBeDisabled();
+    fireEvent.click(knopf('Weiter'));
+    expect(onSchritt).toHaveBeenCalledWith(2);
+  });
+
+  /**
+   * ⚠ Ohne Schlüssel fragt die Box gar nicht erst ab - deshalb ist er beim
+   * ANLEGEN Pflicht und wird benannt, statt still gespeichert zu werden.
+   */
+  it('verlangt den Schlüssel beim Anlegen und nennt den Grund', async () => {
+    await aufHttp();
+    fireEvent.click(screen.getByTestId('http-vorlage-diybms-v4-ha'));
+    fireEvent.change(screen.getByLabelText('Adresse des BMS'), {
+      target: { value: '192.168.40.21' },
+    });
+    expect(screen.getByRole('status').textContent).toContain('fehlt der Schlüssel');
+    expect(knopf('Weiter')).toBeDisabled();
+  });
+
+  /**
+   * Beim BEARBEITEN steht die Maske als Platzhalter da und das Feld ist leer:
+   * der Schlüssel verlässt den Server nie, und ein leeres Feld heißt
+   * „unverändert".
+   */
+  it('zeigt beim Bearbeiten die Maske und verlangt nichts', async () => {
+    await zeichne(1, {
+      entityId: 'bat-1',
+      label: 'DIYBMS v4',
+      connection: HTTP_GESPEICHERT,
+    });
+    const feld = screen.getByLabelText('Schlüssel') as HTMLInputElement;
+    expect(feld.value).toBe('');
+    expect(feld.placeholder).toBe('••••••••');
+    expect(screen.getByText(/gespeicherte Schlüssel weiter/)).toBeVisible();
+    expect(knopf('Weiter')).not.toBeDisabled();
+  });
+});
+
+describe('Schritt 2 · die Zuordnung der Web-Auskunft', () => {
+  async function aufHttpSchritt2() {
+    const r = await zeichne(2, {
+      entityId: 'bat-1',
+      label: 'DIYBMS v4',
+      connection: HTTP_GESPEICHERT,
+    });
+    return r;
+  }
+
+  /** Ein Topic gibt es hier nicht - und eine Haltbarkeit auch nicht. */
+  it('fragt nach dem Wertepfad statt nach einem Topic', async () => {
+    await aufHttpSchritt2();
+    expect(screen.queryByLabelText('Topic')).toBeNull();
+    expect(screen.getByLabelText('Wert im JSON')).toBeVisible();
+    expect(screen.getByText(/cells\.\*\.v trifft jede Zelle/)).toBeVisible();
+    expect(screen.queryByLabelText('Haltbarkeit (s)')).toBeNull();
+  });
+
+  /**
+   * Die VORSCHAU: ein Abruf, und der Server bekommt die Komponente mitgeteilt,
+   * damit er den gespeicherten Schlüssel einsetzen kann.
+   */
+  it('ruft die Auskunft EINMAL ab und nennt die Komponente', async () => {
+    previewBattery.mockResolvedValue({
+      results: [{ id: 'batterie', ok: true, samples: [
+        { channel: 'soc_pct', raw: 41.5, value: 41.5, count: 1 },
+      ] }],
+    });
+    await aufHttpSchritt2();
+    expect(screen.getByText(/ruft die Auskunft EINMAL ab/)).toBeVisible();
+    fireEvent.click(knopf('Werte ansehen'));
+    await waitFor(() => expect(previewBattery).toHaveBeenCalled());
+    const [, body, entityId] = previewBattery.mock.calls[0] as [string, Record<string, unknown>, string];
+    expect(body.transport).toBe('http_local');
+    expect(entityId).toBe('bat-1');
+    await waitFor(() =>
+      expect(screen.getByTestId('vorschau-hinweis').textContent).toContain('empfangen'));
+  });
+
+  /**
+   * ⚠ `not_supported` ist eine Aussage über die BOX, nie über die Zuordnung -
+   * und der Satz sagt hier „kann diese Auskunft noch nicht abrufen", nicht
+   * „kann noch nicht mithören".
+   */
+  it('nennt eine ältere Box beim Namen, ohne die Zuordnung zu beschuldigen', async () => {
+    previewBattery.mockResolvedValue({
+      results: [{ id: 'batterie', ok: false, errorCode: 'not_supported' }],
+    });
+    await aufHttpSchritt2();
+    fireEvent.click(knopf('Werte ansehen'));
+    await waitFor(() =>
+      expect(screen.getByTestId('vorschau-hinweis').textContent)
+        .toContain('noch nicht abrufen'));
+  });
+});
+
 describe('Schritt 1 · Wie ist die Batterie erreichbar?', () => {
   /**
-   * HTTP und Modbus stehen SICHTBAR da: sonst ließe die Fläche den Kunden
-   * raten, ob VoltPilot seinen Fall grundsätzlich nicht kann oder nur noch
-   * nicht.
+   * Seit P5-HTTP sind ZWEI Anschlussarten begehbar. Modbus steht weiterhin
+   * SICHTBAR und gesperrt da: sonst ließe die Fläche den Kunden raten, ob
+   * VoltPilot seinen Fall grundsätzlich nicht kann oder nur woanders.
    */
-  it('bietet MQTT an und zeigt die kommenden Arten gesperrt, aber erklärt', async () => {
+  it('bietet MQTT und HTTP an und verweist bei Modbus auf die bestehende Tür', async () => {
     await zeichne(1);
     expect(screen.getByTestId('anschlussart-mqtt')).not.toBeDisabled();
-    expect(screen.getByTestId('anschlussart-http')).toBeDisabled();
-    expect(screen.getByTestId('anschlussart-http').textContent).toContain('Kommt als Nächstes');
+    expect(screen.getByTestId('anschlussart-http')).not.toBeDisabled();
+    expect(screen.getByTestId('anschlussart-modbus')).toBeDisabled();
     // Modbus verweist auf die Tür, die es längst gibt - keine Ankündigung.
     expect(screen.getByTestId('anschlussart-modbus').textContent).toContain('Eigenbau (Modbus)');
   });
