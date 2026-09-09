@@ -28,6 +28,7 @@ import {
 import { shortEntityLabel, shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
 import { NO_DATA, numOrNoData } from './nodata';
+import { ladestandVon } from './batterieAnschluss';
 import { herkunftUeberEntitaeten } from './socHerkunft';
 import type { FlowNode, Role } from './topology';
 
@@ -64,6 +65,22 @@ export interface AdaptiveTile {
    * gelesene Batterie meldet den Kanal nie.
    */
   herkunft?: string;
+  /**
+   * „Ladestand von: <Batterie>" (P6 Speiser-Bindung).
+   *
+   * ⚠ Nur gesetzt, wenn der Ladestand NICHT von dem Gerät kommt, dessen
+   * Kilowatt diese Kachel führt - also genau dann, wenn er sonst dem falschen
+   * Gerät zugeschrieben würde. Ein Hybrid, der seinen eigenen Ladestand meldet,
+   * bekommt die Zeile nicht: „Ladestand von: Deye" an einer Kachel, die schon
+   * „Deye" heißt, ist keine Auskunft.
+   */
+  socQuelle?: string;
+  /**
+   * Was das BMS gerade zulässt („max. 22 A laden · Entladen gesperrt"), P6.
+   * Absent, wenn keine Batterie eine Grenze meldet - fast alle über einen
+   * Katalog-Treiber gelesenen tun das nie.
+   */
+  grenzen?: string;
   /** Read-only device switches for a controllable consumer (v1 display-only). */
   control?: ControlPreset;
 }
@@ -100,13 +117,30 @@ function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTi
   const soc = n.soc_pct ?? null;
   /*
     P5d: ein BERECHNETER Ladestand gibt sich zu erkennen - überall, wo er
-    auftaucht. Die Herkunft kommt aus dem Kanal `soc_source_code` der
-    Mitglieder dieses Knotens, nie aus einer Vermutung über den Gerätetyp; ohne
-    Kanal bleibt sie ABWESEND statt „gemessen" zu behaupten.
+    auftaucht. Die Herkunft kommt aus dem Kanal `soc_source_code`, nie aus einer
+    Vermutung über den Gerätetyp; ohne Kanal bleibt sie ABWESEND statt
+    „gemessen" zu behaupten.
+
+    ⚠ P6: gefragt wird die Entität, die den Ladestand WIRKLICH geliefert hat
+    (`soc_source`), nicht mehr die Fluss-Mitglieder. Eine gebundene
+    Selbstbau-Batterie ist kein Mitglied - ihre Kilowatt bleiben beim
+    Wechselrichter -, also fand die alte Suche ihren Herkunfts-Kanal nie und
+    ein gerechneter Ladestand kam hier ungekennzeichnet an. Die Mitglieder
+    bleiben der Rückfall für jede Batterie, die den Knoten ohne Bindung speist.
   */
+  const quelleId = n.soc_source?.entity_id ?? null;
   const herkunft = herkunftUeberEntitaeten(
-    n.members.map((m) => byId.get(m.entity_id)?.capabilities),
+    quelleId != null
+      ? [byId.get(quelleId)?.capabilities]
+      : n.members.map((m) => byId.get(m.entity_id)?.capabilities),
   );
+  /*
+    P6: WESSEN Ladestand das ist. Nur dann eine eigene Zeile, wenn er von einem
+    ANDEREN Gerät kommt als die Kilowatt dieser Kachel - sonst wäre er eine
+    Wiederholung des Kachel-Namens.
+  */
+  const quelleFremd = quelleId != null
+    && (n.members.length === 0 || n.members.some((m) => m.entity_id !== quelleId));
   const batt = signedBattery(n);
   const title = n.members.length === 1 ? roleMemberLabel(n, 'storage', byId) : 'Speicher';
   let stateLabel = 'Bereit';
@@ -147,7 +181,32 @@ function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTi
     subLine,
     // Ohne Ladestand gibt es nichts, dessen Herkunft man nennen könnte.
     herkunft: soc == null || herkunft == null ? undefined : herkunft.kurz,
+    socQuelle: soc != null && quelleFremd
+      ? (ladestandVon(n.soc_source?.label) ?? undefined)
+      : undefined,
+    grenzen: grenzenWort(n) ?? undefined,
   };
+}
+
+/**
+ * Was das BMS gerade zulässt, in EINEM Satzteil (P6).
+ *
+ * ⚠ Ein abwesendes Feld wird ÜBERGANGEN, nie als „unbegrenzt" oder „erlaubt"
+ * gelesen: eine Batterie, die nur ihre Ladegrenze meldet, sagt nichts über das
+ * Entladen - und „Entladen erlaubt" hinzuschreiben wäre eine Freigabe, die
+ * niemand gegeben hat.
+ */
+function grenzenWort(n: FlowNode): string | null {
+  const l = n.limits;
+  if (!l) return null;
+  const teile: string[] = [];
+  if (l.charge_allowed === false) teile.push('Laden gesperrt');
+  else if (l.charge_limit_a != null) teile.push(`max. ${fmtNum(l.charge_limit_a, 'A', 0)} laden`);
+  if (l.discharge_allowed === false) teile.push('Entladen gesperrt');
+  else if (l.discharge_limit_a != null) {
+    teile.push(`max. ${fmtNum(l.discharge_limit_a, 'A', 0)} entladen`);
+  }
+  return teile.length === 0 ? null : teile.join(' · ');
 }
 
 /** The full, untouched stored name of a single-member role node (for `title`). */

@@ -7770,7 +7770,44 @@ components:
             every channel that currently has a fresh value. It IS the flow's
             trigger interval - there is no second cadence concept.
         socDerivation: { $ref: "#/components/schemas/UserDefinedBatterySocDerivation" }
+        binding: { $ref: "#/components/schemas/UserDefinedBatteryBinding" }
         note: { type: string, maxLength: 200 }
+    UserDefinedBatteryBinding:
+      type: object
+      description: >
+        The SPEISER-BINDUNG (P6, captain decision E6 (a) of 09.09.2026): what
+        this battery IS in the plant. Absent = `unbound`, and that default is
+        the point - a binding NEVER arises by itself, because the channel name
+        `soc_pct` does not say WHOSE state of charge it is.
+
+
+        `feeds_inverter` makes it the SoC / limit / permission source of the
+        hybrid inverter's storage node while the battery POWER stays with the
+        inverter, where it is measured; `standalone` makes it the storage node
+        itself, power included. Only channels the battery actually delivers are
+        fed (a derived soc_pct from P5b counts); a binding that could feed
+        nothing is refused rather than promising an effect that never arrives.
+
+
+        Stored in `connection_json.binding` and materialised as
+        `entity_role_assignment` rows (role `storage`, primary), so the read
+        model and the registry push carry it without a second mechanism - see
+        `docs/contracts/v2/topology-read-model.md`.
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [unbound, feeds_inverter, standalone]
+          default: unbound
+        inverterEntityId:
+          type: string
+          format: uuid
+          description: >
+            The hybrid inverter whose storage node this battery feeds. MANDATORY
+            for `feeds_inverter` ("hangs on some inverter" is not an explicit
+            binding), ignored otherwise. Must be an entity of this site in the
+            `storage` category and not the battery itself - 404 when it does not
+            belong to the site, 422 when it is not a storage inverter.
     UserDefinedBatteryBroker:
       type: object
       description: >
@@ -12515,6 +12552,39 @@ components:
                   role: { type: string, enum: [pv, storage, consumer, grid] }
                   value_kw: { type: number, description: "Display magnitude (>=0); omitted when unknown." }
                   soc_pct: { type: number, description: "Storage only; omitted otherwise/when unknown." }
+                  soc_source:
+                    type: object
+                    description: >
+                      WHICH entity supplied `soc_pct` (P6 Speiser-Bindung).
+                      Present whenever `soc_pct` is. It need not be the device
+                      whose kilowatts the node carries: an explicitly bound
+                      self-connected battery supplies the state of charge while
+                      the hybrid inverter keeps measuring the power - which is
+                      what lets a surface say "Ladestand von: <Batterie>"
+                      instead of printing a percentage nobody stands behind.
+                    properties:
+                      entity_id: { type: string }
+                      label: { type: string }
+                  limits:
+                    type: object
+                    description: >
+                      What the storage node's BMS currently permits (P6).
+                      Omitted when nobody reports a limit - true for every
+                      battery read through a catalogue driver. Every field is
+                      optional: an unmapped or silent channel is ABSENT, never a
+                      fabricated 0 (which on a limit would read as "charging
+                      forbidden") and never a fabricated true. All fields come
+                      from the ONE entity named in `source`.
+                    properties:
+                      source:
+                        type: object
+                        properties:
+                          entity_id: { type: string }
+                          label: { type: string }
+                      charge_limit_a: { type: number }
+                      discharge_limit_a: { type: number }
+                      charge_allowed: { type: boolean }
+                      discharge_allowed: { type: boolean }
                   flow_active: { type: boolean }
                   direction: { type: string, enum: [in, out], description: "node->hub (in) / hub->node (out); omitted when idle." }
                   members:

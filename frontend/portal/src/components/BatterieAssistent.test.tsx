@@ -6,6 +6,7 @@ const socCurveTemplates = vi.fn();
 const previewBattery = vi.fn();
 const createBattery = vi.fn();
 const updateBattery = vi.fn();
+const siteComponents = vi.fn();
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../api');
@@ -16,9 +17,19 @@ vi.mock('../api', async () => {
       previewBattery: (...a: unknown[]) => previewBattery(...a),
       createBattery: (...a: unknown[]) => createBattery(...a),
       updateBattery: (...a: unknown[]) => updateBattery(...a),
+      siteComponents: (...a: unknown[]) => siteComponents(...a),
     },
   };
 });
+
+/** Der Hybrid-Wechselrichter, an den sich eine Batterie hängen lässt (P6). */
+const HYBRID = {
+  id: 'inv-1',
+  role: 'storage',
+  entityType: 'battery-hybrid',
+  label: 'Deye SUN-30K',
+  definitionVersion: 1,
+};
 
 const VORLAGE = {
   id: 'diybms-176s-nmc',
@@ -77,6 +88,7 @@ async function zeichne(
 beforeEach(() => {
   vi.clearAllMocks();
   socCurveTemplates.mockResolvedValue([VORLAGE]);
+  siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [HYBRID] });
 });
 
 describe('Schritt 1 · Wie ist die Batterie erreichbar?', () => {
@@ -279,6 +291,76 @@ describe('Schritt 4 · prüfen & anlegen', () => {
     fireEvent.click(knopf('Batterie anlegen'));
     await waitFor(() => expect(createBattery).toHaveBeenCalled());
     expect(onSaved).toHaveBeenCalled();
+  });
+});
+
+describe('P6 · die Speiser-Bindung im Assistenten', () => {
+  /**
+   * ⚠ DER Entscheid dieses Pakets (Captain E6 (a)): eine Bindung entsteht NIE
+   * von selbst. Der Assistent fragt sie, und bis zur Antwort steht die Batterie
+   * für sich - was der Block auch so sagt.
+   */
+  it('steht auf „ungebunden" und sagt, dass nichts von selbst geschieht', async () => {
+    await zeichne(3);
+    const block = screen.getByTestId('bindung-block');
+    expect(block.textContent).toContain('NICHT von selbst');
+    expect(screen.getByTestId('bindung-unbound').className).toContain('is-on');
+    expect(screen.getByTestId('bindung-feeds_inverter').className).not.toContain('is-on');
+  });
+
+  it('lässt den Speiser erst weiter, wenn der Wechselrichter gewählt ist', async () => {
+    await zeichne(3);
+    fireEvent.click(screen.getByTestId('bindung-feeds_inverter'));
+    expect(screen.getByText(/wessen Ladestand sie liefert/)).toBeTruthy();
+    expect((knopf('Weiter') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('combobox', { name: /An welchem Wechselrichter/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Deye SUN-30K/ }));
+    await waitFor(() =>
+      expect((knopf('Weiter') as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  /**
+   * Ohne Speicher-Wechselrichter in der Anlage gibt es nichts, woran eine
+   * Batterie hängen könnte - die Tür wird GEZEIGT und ehrlich benannt, statt
+   * lautlos zu fehlen.
+   */
+  it('sperrt den Speiser-Weg mit Grund, wenn die Anlage keinen Wechselrichter hat', async () => {
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    await zeichne(3);
+    const knopfEl = screen.getByTestId('bindung-feeds_inverter') as HTMLButtonElement;
+    expect(knopfEl.disabled).toBe(true);
+    expect(knopfEl.textContent).toContain('noch keinen Speicher-Wechselrichter');
+  });
+
+  /**
+   * Die Bindung reist IMMER mit - auch als „unbound": sie ist eine ANTWORT des
+   * Kunden, und ein fehlender Block hiesse „nicht gefragt". Eine einmal
+   * gelöste Bindung liesse sich sonst nie wieder lösen.
+   */
+  it('schickt die gewählte Bindung mit dem Speichern', async () => {
+    createBattery.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    const blatt = (schritt: 1 | 2 | 3 | 4) => (
+      <BatterieAssistent
+        siteId="s1"
+        schritt={schritt}
+        onSchritt={() => {}}
+        navPortal={null}
+        onBack={() => {}}
+        onSaved={() => {}}
+      />
+    );
+    const view = render(blatt(3));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByTestId('bindung-standalone'));
+    view.rerender(blatt(4));
+    expect(screen.getByText(/IST der Speicher der Anlage/)).toBeTruthy();
+
+    fireEvent.click(knopf('Batterie anlegen'));
+    await waitFor(() => expect(createBattery).toHaveBeenCalled());
+    expect(createBattery.mock.calls[0][1]).toMatchObject({ binding: { mode: 'standalone' } });
   });
 });
 

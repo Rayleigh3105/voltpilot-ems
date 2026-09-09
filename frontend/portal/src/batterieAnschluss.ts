@@ -831,6 +831,7 @@ export function speicherRumpf(
   broker: BrokerForm,
   zeilen: ZuordnungZeile[],
   soc: SocForm,
+  bindung: BindungForm = neueBindung(),
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     label: name.trim(),
@@ -840,6 +841,12 @@ export function speicherRumpf(
   };
   const derivation = socRumpf(soc, zeilen);
   if (derivation) body.socDerivation = derivation;
+  // Die Bindung reist IMMER mit - auch als „unbound". Sie ist eine ANTWORT des
+  // Kunden, und ein fehlender Block hiesse „nicht gefragt": eine einmal
+  // gelöste Bindung liesse sich sonst nie wieder lösen.
+  body.binding = bindung.modus === 'feeds_inverter'
+    ? { mode: bindung.modus, inverterEntityId: bindung.inverterEntityId.trim() }
+    : { mode: bindung.modus };
   return body;
 }
 
@@ -857,6 +864,162 @@ export function vorschauRumpf(
     mappings: zeilen.map(mappingRumpf),
     publishIntervalS: zahl(broker.publishIntervalS) ?? DEFAULT_INTERVAL_S,
   };
+}
+
+// -- Die SPEISER-BINDUNG (P6) -------------------------------------------------
+
+/**
+ * Wozu diese Batterie in der Anlage GEHÖRT - der Captain-Entscheid E6 (a) vom
+ * 09.09.2026: eine AUSDRÜCKLICHE Bindung im Assistenten, nie eine
+ * Namens-Heuristik.
+ *
+ * ⚠ Warum das eine eigene Frage ist und nicht aus den Daten folgt: der
+ * Kanalname `soc_pct` sagt NICHT, wessen Ladestand er ist. Ein DIYBMS an einem
+ * Hybrid-Wechselrichter, ein zweiter Speicher im Keller und ein Prüfaufbau auf
+ * dem Tisch schicken denselben Kanal - und nur der Kunde weiß, welcher davon
+ * der Speicher SEINER Anlage ist. Wer das rät, schreibt eine Zahl in die
+ * Speicher-Kachel, für die niemand geradesteht.
+ */
+export type BindungModus = 'unbound' | 'feeds_inverter' | 'standalone';
+
+export type BindungOption = {
+  id: BindungModus;
+  label: string;
+  hint: string;
+};
+
+export const BINDUNGEN: BindungOption[] = [
+  {
+    id: 'unbound',
+    label: 'Sie steht für sich',
+    hint:
+      'VoltPilot zeichnet ihre Messwerte auf, mehr nicht: sie speist weder die '
+      + 'Speicher-Kachel noch die Energiebilanz. Das ist die Vorgabe.',
+  },
+  {
+    id: 'feeds_inverter',
+    label: 'Sie hängt an einem Wechselrichter',
+    hint:
+      'Ladestand, Grenzen und Freigaben des Speichers kommen dann von dieser Batterie. '
+      + 'Die Batterieleistung bleibt beim Wechselrichter - dort wird sie gemessen.',
+  },
+  {
+    id: 'standalone',
+    label: 'Sie IST der Speicher',
+    hint:
+      'Es gibt keinen Hybrid-Wechselrichter, der sie misst. Dann liefert diese Batterie '
+      + 'auch die Speicherleistung.',
+  },
+];
+
+export type BindungForm = {
+  modus: BindungModus;
+  /** Der Wechselrichter, an dem sie hängt; '' = keiner gewählt. */
+  inverterEntityId: string;
+};
+
+export function neueBindung(): BindungForm {
+  return { modus: 'unbound', inverterEntityId: '' };
+}
+
+/**
+ * Die Kanäle, die eine gebundene Batterie in den Speicher-Knoten einspeist -
+ * der Zwilling von `UserDefinedBatteryDefinition.BOUND_CHANNELS`.
+ *
+ * ⚠ `power_kw` steht bewusst NICHT dabei: es ist der eine Kanal, über den sich
+ * die beiden Fälle unterscheiden. Beim Speiser misst der Wechselrichter die
+ * Batterieleistung ohnehin, und dieselben Kilowatt zweimal zu zählen wäre
+ * schlicht falsch.
+ */
+export const BINDUNGS_KANAELE = [
+  'soc_pct',
+  'charge_limit_a',
+  'discharge_limit_a',
+  'charge_allowed',
+  'discharge_allowed',
+];
+
+export const BINDUNGS_LEISTUNGS_KANAL = 'power_kw';
+
+/**
+ * Welche Kanäle diese Batterie WIRKLICH einspeisen würde - nur die, die sie
+ * auch liefert. Eine Rolle für einen Kanal, den niemand meldet, verspräche
+ * einen Messwert, den es nicht gibt.
+ *
+ * Der abgeleitete Ladestand zählt mit: rechnet eine Kennlinie ihn aus, dann
+ * LIEFERT diese Batterie `soc_pct` - er steht nur nicht in der Zuordnung, weil
+ * ihn niemand sendet.
+ */
+export function bindungsKanaele(
+  bindung: BindungForm,
+  zeilen: ZuordnungZeile[],
+  soc: SocForm,
+): string[] {
+  if (bindung.modus === 'unbound') return [];
+  const da = new Set(zeilen.map((z) => z.channel.trim()).filter((c) => c !== ''));
+  if (soc.methode !== 'direct') da.add('soc_pct');
+  const out = BINDUNGS_KANAELE.filter((c) => da.has(c));
+  if (bindung.modus === 'standalone' && da.has(BINDUNGS_LEISTUNGS_KANAL)) {
+    out.push(BINDUNGS_LEISTUNGS_KANAL);
+  }
+  return out;
+}
+
+/**
+ * Was einer Bindung noch fehlt - der Zwilling von
+ * `UserDefinedBatteryDefinition.checkBinding`.
+ */
+export function bindungFehler(
+  bindung: BindungForm,
+  zeilen: ZuordnungZeile[],
+  soc: SocForm,
+): string[] {
+  if (bindung.modus === 'unbound') return [];
+  const out: string[] = [];
+  if (bindung.modus === 'feeds_inverter' && bindung.inverterEntityId.trim() === '') {
+    out.push(
+      'Bitte wählen Sie den Wechselrichter, an dem diese Batterie hängt - ohne ihn bleibt '
+      + 'offen, wessen Ladestand sie liefert.',
+    );
+  }
+  if (bindungsKanaele(bindung, zeilen, soc).length === 0) {
+    out.push(
+      'Diese Batterie kann den Speicher noch nicht speisen: dafür braucht sie einen '
+      + 'Ladestand oder wenigstens eine Grenze bzw. Freigabe. Ordnen Sie einen dieser '
+      + 'Messwerte zu - oder lassen Sie die Batterie für sich stehen.',
+    );
+  }
+  return out;
+}
+
+/** Ein Wechselrichter, an den sich eine Batterie hängen lässt. */
+export type SpeicherZiel = { id: string; label: string };
+
+/**
+ * Die WÄHLBAREN Wechselrichter aus der Komponenten-Liste einer Anlage: die
+ * Speicher-Rolle, ohne die selbst angebundenen Batterien - eine Batterie an
+ * eine Batterie zu hängen wäre keine Bindung, sondern eine Schleife.
+ */
+export function speicherZiele(
+  rows: { id: string; role?: string | null; entityType?: string | null; label?: string | null }[]
+    | null | undefined,
+  ohneId?: string | null,
+): SpeicherZiel[] {
+  if (!rows) return [];
+  return rows
+    .filter((r) => r.role === 'storage'
+      && r.entityType !== 'user-defined-battery'
+      && r.id !== ohneId)
+    .map((r) => ({ id: r.id, label: (r.label ?? '').trim() || 'Wechselrichter' }));
+}
+
+/**
+ * Der Satz „Ladestand von: <Batterie>" - die EINE Formulierung, damit Cockpit
+ * und Geräteseite sie nicht zweimal verschieden erfinden (P6).
+ */
+export function ladestandVon(label: string | null | undefined): string | null {
+  const name = (label ?? '').trim();
+  return name === '' ? null : `Ladestand von: ${name}`;
 }
 
 // -- Was vom Server zurückkommt (Bearbeiten) ----------------------------------
@@ -882,7 +1045,7 @@ function num(v: unknown): string {
  */
 export function ausConnection(
   connection: Record<string, unknown> | null | undefined,
-): { broker: BrokerForm; zeilen: ZuordnungZeile[]; soc: SocForm } | null {
+): { broker: BrokerForm; zeilen: ZuordnungZeile[]; soc: SocForm; bindung: BindungForm } | null {
   if (!connection || connection.transport !== 'mqtt_local') return null;
   const b = (connection.broker ?? {}) as Roh;
   const broker: BrokerForm = {
@@ -935,7 +1098,20 @@ export function ausConnection(
       soc.anchorAt = ankerFeld(anchor.at);
     }
   }
-  return { broker, zeilen, soc };
+
+  // P6: die gespeicherte Bindung. Ein Anschluss von VOR P6 trägt keinen Block -
+  // er ist ungebunden, und das ist die richtige Lesart: bis P6 gab es die Frage
+  // nicht, also hat sie niemand beantwortet.
+  const bindung = neueBindung();
+  const b2 = connection.binding as Roh | undefined;
+  if (b2) {
+    const modus = str(b2.mode);
+    if (modus === 'feeds_inverter' || modus === 'standalone' || modus === 'unbound') {
+      bindung.modus = modus;
+    }
+    bindung.inverterEntityId = str(b2.inverter_entity_id);
+  }
+  return { broker, zeilen, soc, bindung };
 }
 
 function punkteAus(v: unknown): KurvenPunkt[] {
@@ -1117,6 +1293,8 @@ export function pruefen(
   broker: BrokerForm,
   zeilen: ZuordnungZeile[],
   soc: SocForm,
+  bindung: BindungForm = neueBindung(),
+  ziele: SpeicherZiel[] = [],
 ): PruefZeile[] {
   const zugeordnet = zeilen.filter((z) => z.channel.trim() !== '');
   const methode = SOC_METHODEN.find((m) => m.id === soc.methode);
@@ -1136,7 +1314,23 @@ export function pruefen(
           : zugeordnet.map((z) => zielKanal(z.channel.trim())?.label ?? z.channel).join(', '),
     },
     { label: 'Ladestand', wert: ladestand },
+    { label: 'Speicher-Zuordnung', wert: bindungWort(bindung, ziele) },
   ];
+}
+
+/**
+ * Wie die Bindung im letzten Schritt DASTEHT. Sie nennt beim Speiser den
+ * Wechselrichter beim Namen - „gebunden" allein liesse den Kunden raten, woran.
+ */
+export function bindungWort(bindung: BindungForm, ziele: SpeicherZiel[]): string {
+  if (bindung.modus === 'standalone') return 'Diese Batterie IST der Speicher der Anlage';
+  if (bindung.modus === 'feeds_inverter') {
+    const ziel = ziele.find((z) => z.id === bindung.inverterEntityId.trim());
+    return ziel
+      ? `Ladestand, Grenzen und Freigaben für „${ziel.label}“`
+      : 'Ladestand, Grenzen und Freigaben für den gewählten Wechselrichter';
+  }
+  return 'steht für sich - geht nicht in die Energiebilanz ein';
 }
 
 /**

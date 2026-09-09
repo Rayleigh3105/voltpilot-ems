@@ -92,6 +92,115 @@ class TopologyDeriverTest {
                 .allMatch(n -> "out".equals(n.direction()) && n.flowActive());
     }
 
+    // ---- P6 Speiser-Bindung -------------------------------------------------
+
+    /**
+     * Der Kern des Pakets: die gebundene Batterie liefert Ladestand, Grenzen und
+     * Freigaben, der Wechselrichter die LEISTUNG - und {@code soc_source} sagt,
+     * wessen Prozentzahl dort steht. Ohne diesen Satz stünde eine Zahl an der
+     * Speicher-Kachel, für die niemand geradesteht.
+     */
+    @Test
+    void derSpeicherKnotenNenntDieQuelleSeinesLadestands() {
+        TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(List.of(
+                new TopologyDeriver.EntityInput("A", "battery-hybrid", "Deye SUN-30K", "storage",
+                        "ok", List.of(cap("battery_power_kw", "storage", true, -4.2))),
+                new TopologyDeriver.EntityInput("B", "user-defined-battery", "DIY-Speicher",
+                        "storage", "ok", List.of(
+                                cap("soc_pct", "storage", true, 7.4),
+                                cap("charge_limit_a", "storage", true, 22.0),
+                                cap("discharge_allowed", "storage", true, 0.0))))));
+        TopologyDeriver.FlowNode storage = node(topo, "storage");
+        assertThat(storage.socPct()).isEqualTo(7.4);
+        assertThat(storage.socSource())
+                .isEqualTo(new TopologyDeriver.NodeSource("B", "DIY-Speicher"));
+        // Die LEISTUNG bleibt beim Wechselrichter - die Batterie ist kein
+        // Fluss-Mitglied, sonst zählten dieselben Kilowatt zweimal.
+        assertThat(storage.members()).extracting(TopologyDeriver.FlowMember::entityId)
+                .containsExactly("A");
+        assertThat(storage.valueKw()).isEqualTo(4.2);
+    }
+
+    /**
+     * ⚠ Die Grenz-Kanäle sind Speicher-EIGENSCHAFTEN, nie Fluss-Mitglieder: 22 A
+     * in {@code value_kw} zu summieren machte aus der Speichen-Breite eine Zahl
+     * mit zwei Bedeutungen - und aus einem ruhenden Speicher einen laufenden.
+     */
+    @Test
+    void grenzenSindKeineKilowatt() {
+        TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(List.of(
+                new TopologyDeriver.EntityInput("B", "user-defined-battery", "DIY", "storage", "ok",
+                        List.of(cap("soc_pct", "storage", true, 50.0),
+                                cap("charge_limit_a", "storage", true, 270.0))))));
+        TopologyDeriver.FlowNode storage = node(topo, "storage");
+        assertThat(storage.valueKw()).isNull();
+        assertThat(storage.flowActive()).isFalse();
+        assertThat(storage.members()).isEmpty();
+        assertThat(storage.limits().chargeLimitA()).isEqualTo(270.0);
+    }
+
+    /**
+     * Eine Freigabe reist als ZAHL (der Telemetrie-Vertrag kennt nur Zahlen):
+     * 0 heißt „nein", alles andere „ja". Ein ABWESENDER Kanal heißt weder das
+     * eine noch das andere - er fehlt, und „erlaubt" hinzuschreiben wäre eine
+     * Freigabe, die niemand gegeben hat.
+     */
+    @Test
+    void eineFehlendeFreigabeIstKeineErlaubnis() {
+        TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(List.of(
+                new TopologyDeriver.EntityInput("B", "user-defined-battery", "DIY", "storage", "ok",
+                        List.of(cap("charge_allowed", "storage", true, 1.0),
+                                cap("discharge_allowed", "storage", true, 0.0))))));
+        TopologyDeriver.NodeLimits l = node(topo, "storage").limits();
+        assertThat(l.chargeAllowed()).isTrue();
+        assertThat(l.dischargeAllowed()).isFalse();
+        assertThat(l.chargeLimitA()).isNull();
+        assertThat(l.dischargeLimitA()).isNull();
+    }
+
+    /**
+     * Zwei BMS, deren Kappen sich zu einem Block mischen, beschrieben eine
+     * Hülle, die keines von beiden hat: die Grenzen kommen deshalb aus GENAU
+     * EINER Entität - der maßgeblichen.
+     */
+    @Test
+    void dieGrenzenKommenAusEinerEinzigenEntitaet() {
+        TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(List.of(
+                new TopologyDeriver.EntityInput("X", "user-defined-battery", "Erste", "storage",
+                        "ok", List.of(cap("charge_limit_a", "storage", false, 10.0))),
+                new TopologyDeriver.EntityInput("Y", "user-defined-battery", "Zweite", "storage",
+                        "ok", List.of(cap("charge_limit_a", "storage", true, 40.0),
+                                cap("discharge_limit_a", "storage", true, 74.0))))));
+        TopologyDeriver.NodeLimits l = node(topo, "storage").limits();
+        assertThat(l.source().entityId()).isEqualTo("Y");
+        assertThat(l.chargeLimitA()).isEqualTo(40.0);
+        assertThat(l.dischargeLimitA()).isEqualTo(74.0);
+    }
+
+    /**
+     * Ohne Bindung geschieht NICHTS (Captain-Entscheid E6): eine selbst
+     * angebundene Batterie ist Kategorie {@code storage}, ihre Kanäle liefen
+     * also ohne diese Regel von selbst in den Speicher-Knoten - eine
+     * automatische Bindung per Kanalname.
+     */
+    @Test
+    void ohneAusdrueckchlicheBindungBleibtDieBatterieAusDerBilanz() {
+        assertThat(TopologyDeriver.defaultRole("user-defined-battery", "storage", "soc_pct", ""))
+                .isEmpty();
+        assertThat(TopologyDeriver.defaultRole("user-defined-battery", "storage", "power_kw", ""))
+                .isEmpty();
+        assertThat(TopologyDeriver.isSelfBuiltType("user-defined-battery")).isTrue();
+    }
+
+    private static TopologyDeriver.CapabilityInput cap(String channel, String role, boolean primary,
+            Double value) {
+        return new TopologyDeriver.CapabilityInput(channel, role, primary, value);
+    }
+
+    private static TopologyDeriver.FlowNode node(TopologyDeriver.Topology topo, String role) {
+        return topo.nodes().stream().filter(n -> role.equals(n.role())).findFirst().orElseThrow();
+    }
+
     private static TopologyDeriver.EntityInput entity(String id, String role) {
         return new TopologyDeriver.EntityInput(id, id, id, "consumer", "ok",
                 List.of(new TopologyDeriver.CapabilityInput("power_kw", role, true, 1.0)));

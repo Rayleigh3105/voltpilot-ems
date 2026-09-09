@@ -605,6 +605,9 @@ export function GeraetSeiteSection({
       // Batterieleistung des Hybriden, der Relais-Zustand eines Schalters und
       // die selbst definierten Kanäle des Eigenbaus.
       topologie: topology?.entities ?? null,
+      // P6: der SPEICHER-KNOTEN trägt als einziger, WOHER der Ladestand kommt
+      // und was das BMS zulässt - beides muss nicht von diesem Gerät stammen.
+      speicherKnoten: topology?.topology.nodes.find((n) => n.role === 'storage') ?? null,
       // §5.4: WÖRTLICH die geteilte Erfüllungs-Kopfzeile bzw. die geteilte
       // D3-Regel - ein zweites Urteil hier wäre eine zweite Wahrheit.
       erfuellung: fulfilment ? fulfilmentSummary(fulfilment).headline : null,

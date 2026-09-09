@@ -55,6 +55,31 @@ public final class TopologyDeriver {
 
     private static final String SOC_CHANNEL = "soc_pct";
 
+    /**
+     * Die BMS-Grenzen und -Freigaben des Speicher-Knotens (P6 Speiser-Bindung).
+     * Wie {@code soc_pct} sind sie EIGENSCHAFTEN des Speichers, nie
+     * Fluss-Mitglieder: ein Ampere und ein Ja/Nein sind keine Kilowatt, und sie
+     * in {@code value_kw} zu summieren machte aus der Speichen-Breite eine Zahl
+     * mit zwei Bedeutungen.
+     */
+    public static final String CHARGE_LIMIT_CHANNEL = "charge_limit_a";
+    public static final String DISCHARGE_LIMIT_CHANNEL = "discharge_limit_a";
+    public static final String CHARGE_ALLOWED_CHANNEL = "charge_allowed";
+    public static final String DISCHARGE_ALLOWED_CHANNEL = "discharge_allowed";
+
+    /** Speist dieser Kanal eine EIGENSCHAFT des Speicher-Knotens statt seines Flusses? */
+    public static boolean isStorageAttribute(String channel) {
+        return SOC_CHANNEL.equals(channel) || isLimitChannel(channel);
+    }
+
+    /** Gehört dieser Kanal in den {@code limits}-Block des Speicher-Knotens? */
+    public static boolean isLimitChannel(String channel) {
+        return CHARGE_LIMIT_CHANNEL.equals(channel)
+                || DISCHARGE_LIMIT_CHANNEL.equals(channel)
+                || CHARGE_ALLOWED_CHANNEL.equals(channel)
+                || DISCHARGE_ALLOWED_CHANNEL.equals(channel);
+    }
+
     /** The entity TYPES that are charge points. */
     public static final String TYPE_EV_CHARGER = "ev-charger";
     public static final String TYPE_WALLBOX = "wallbox";
@@ -67,6 +92,20 @@ public final class TopologyDeriver {
      */
     public static final String TYPE_MODBUS_GENERIC = "modbus-generic";
     public static final String TYPE_MODBUS_LOAD = "modbus-load";
+
+    /**
+     * Die SELBST ANGEBUNDENE Batterie des Kunden (P5, Konzept
+     * {@code vp-deye-diybms-luecke-l5} §3.2b): ein DIYBMS/Seplos/JK/ESP, per
+     * MQTT gelesen und Feld für Feld auf die Standard-Batteriekanäle abgebildet.
+     *
+     * <p>⚠ Sie ist Kategorie {@code storage} - ohne diesen Eintrag liefen ihr
+     * {@code soc_pct} und ihr {@code power_kw} VON SELBST in den
+     * Speicher-Knoten, also genau die automatische Bindung, die der
+     * Captain-Entscheid E6 ausschließt („nie eine Namens-Heuristik"). In den
+     * Speicher-Knoten kommt sie ausschließlich über die AUSDRÜCKLICHE
+     * Speiser-Bindung (P6), die als Rollen-Zuordnung gespeichert wird.
+     */
+    public static final String TYPE_USER_DEFINED_BATTERY = "user-defined-battery";
 
     /**
      * WHERE a charge point hangs (Cockpit Phase 1 / C1). {@code null}/blank =
@@ -95,9 +134,34 @@ public final class TopologyDeriver {
     public record FlowMember(@JsonProperty("entity_id") String entityId, String label,
             boolean primary, @JsonProperty("value_kw") Double valueKw) {}
 
+    /**
+     * WOHER eine EIGENSCHAFT eines Knotens kommt (P6 Speiser-Bindung). Eine
+     * Eigenschaft des Speicher-Knotens muss nicht vom Gerät stammen, dessen
+     * Kilowatt der Knoten führt: die Bindung lässt die eigene Batterie des
+     * Kunden den Ladestand liefern, während der Hybrid-Wechselrichter die
+     * Leistung weiter misst. „Ladestand von: &lt;Batterie&gt;" ist genau der
+     * Satz, den die Bindung dem Kunden schuldet.
+     */
+    public record NodeSource(@JsonProperty("entity_id") String entityId, String label) {}
+
+    /**
+     * Was das BMS des Speicher-Knotens gerade zulässt (P6). Jedes Feld ist
+     * optional - ein nicht zugeordneter oder schweigender Kanal ist ABWESEND,
+     * nie eine erfundene 0 (die an einer Grenze „Laden verboten" hieße) und nie
+     * ein erfundenes „ja". Alle vier kommen aus EINER Entität.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record NodeLimits(NodeSource source,
+            @JsonProperty("charge_limit_a") Double chargeLimitA,
+            @JsonProperty("discharge_limit_a") Double dischargeLimitA,
+            @JsonProperty("charge_allowed") Boolean chargeAllowed,
+            @JsonProperty("discharge_allowed") Boolean dischargeAllowed) {}
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record FlowNode(String role, @JsonProperty("value_kw") Double valueKw,
-            @JsonProperty("soc_pct") Double socPct, @JsonProperty("flow_active") boolean flowActive,
+            @JsonProperty("soc_pct") Double socPct,
+            @JsonProperty("soc_source") NodeSource socSource, NodeLimits limits,
+            @JsonProperty("flow_active") boolean flowActive,
             String direction, List<FlowMember> members) {}
 
     public record Topology(@JsonProperty("schema_version") String schemaVersion,
@@ -121,7 +185,8 @@ public final class TopologyDeriver {
      * "consumer" - exactly like a grid meter and a heating rod.
      */
     public static boolean isSelfBuiltType(String entityType) {
-        return TYPE_MODBUS_GENERIC.equals(entityType) || TYPE_MODBUS_LOAD.equals(entityType);
+        return TYPE_MODBUS_GENERIC.equals(entityType) || TYPE_MODBUS_LOAD.equals(entityType)
+                || TYPE_USER_DEFINED_BATTERY.equals(entityType);
     }
 
     /**
@@ -250,7 +315,7 @@ public final class TopologyDeriver {
         double sum = 0;
         boolean hasValue = false;
         for (RoleCap rc : caps) {
-            if (SOC_CHANNEL.equals(rc.cap().channel())) {
+            if (isStorageAttribute(rc.cap().channel())) {
                 continue;
             }
             members.add(member(rc));
@@ -260,12 +325,12 @@ public final class TopologyDeriver {
             }
         }
         if (!hasValue) {
-            return new FlowNode(role, null, null, false, null, members);
+            return new FlowNode(role, null, null, null, null, false, null, members);
         }
         double mag = round3(Math.abs(sum));
         boolean active = mag > DEADBAND_KW;
         String dir = active ? (isConsuming(role) ? "out" : "in") : null;
-        return new FlowNode(role, mag, null, active, dir, members);
+        return new FlowNode(role, mag, null, null, null, active, dir, members);
     }
 
     private static FlowNode storageNode(String role, List<RoleCap> caps) {
@@ -273,6 +338,7 @@ public final class TopologyDeriver {
         double sum = 0;
         boolean hasValue = false;
         Double soc = null;
+        NodeSource socSource = null;
         boolean socPrimary = false;
         for (RoleCap rc : caps) {
             if (SOC_CHANNEL.equals(rc.cap().channel())) {
@@ -281,8 +347,12 @@ public final class TopologyDeriver {
                 }
                 if (soc == null || (rc.cap().primary() && !socPrimary)) {
                     soc = round3(rc.cap().value());
+                    socSource = new NodeSource(rc.entity().id(), rc.entity().label());
                     socPrimary = rc.cap().primary();
                 }
+                continue;
+            }
+            if (isLimitChannel(rc.cap().channel())) {
                 continue;
             }
             members.add(member(rc));
@@ -291,14 +361,64 @@ public final class TopologyDeriver {
                 hasValue = true;
             }
         }
+        NodeLimits limits = limitsOf(caps);
         if (!hasValue) {
-            return new FlowNode(role, null, soc, false, null, members);
+            return new FlowNode(role, null, soc, socSource, limits, false, null, members);
         }
         double mag = round3(Math.abs(sum));
         boolean active = mag > DEADBAND_KW;
         // charge (+) -> hub->battery (out), discharge (-) -> battery->hub (in).
         String dir = active ? (sum > 0 ? "out" : "in") : null;
-        return new FlowNode(role, mag, soc, active, dir, members);
+        return new FlowNode(role, mag, soc, socSource, limits, active, dir, members);
+    }
+
+    /**
+     * Die BMS-Hülle des Speicher-Knotens aus den Grenz-Kanälen EINER Entität:
+     * der maßgeblichen, wenn eine so markiert ist, sonst der ersten, die einen
+     * Wert trägt. Zwei BMS, deren Kappen sich zu einem Block mischen,
+     * beschrieben eine Hülle, die keines von beiden hat.
+     *
+     * <p>{@code null}, wenn niemand eine Grenze meldet - die ehrliche Antwort
+     * für jede Anlage, deren Batterie über einen Katalog-Treiber gelesen wird:
+     * die meldet keinen dieser Kanäle.
+     */
+    private static NodeLimits limitsOf(List<RoleCap> caps) {
+        String owner = null;
+        String label = null;
+        boolean ownerPrimary = false;
+        for (RoleCap rc : caps) {
+            if (!isLimitChannel(rc.cap().channel()) || rc.cap().value() == null) {
+                continue;
+            }
+            if (owner == null || (rc.cap().primary() && !ownerPrimary)) {
+                owner = rc.entity().id();
+                label = rc.entity().label();
+                ownerPrimary = rc.cap().primary();
+            }
+        }
+        if (owner == null) {
+            return null;
+        }
+        Double chargeLimit = null;
+        Double dischargeLimit = null;
+        Boolean chargeAllowed = null;
+        Boolean dischargeAllowed = null;
+        for (RoleCap rc : caps) {
+            if (!owner.equals(rc.entity().id()) || rc.cap().value() == null) {
+                continue;
+            }
+            switch (rc.cap().channel()) {
+                case CHARGE_LIMIT_CHANNEL -> chargeLimit = round3(rc.cap().value());
+                case DISCHARGE_LIMIT_CHANNEL -> dischargeLimit = round3(rc.cap().value());
+                // Eine Freigabe reist als ZAHL durch die Telemetrie (der
+                // v2-Kanal-Vertrag kennt nur Zahlen); alles außer 0 heißt „ja".
+                case CHARGE_ALLOWED_CHANNEL -> chargeAllowed = rc.cap().value() != 0;
+                case DISCHARGE_ALLOWED_CHANNEL -> dischargeAllowed = rc.cap().value() != 0;
+                default -> { }
+            }
+        }
+        return new NodeLimits(new NodeSource(owner, label), chargeLimit, dischargeLimit,
+                chargeAllowed, dischargeAllowed);
     }
 
     private static FlowNode gridNode(String role, List<RoleCap> caps) {
@@ -314,17 +434,17 @@ public final class TopologyDeriver {
             primaryIdx = 0;
         }
         if (primaryIdx == -1) {
-            return new FlowNode(role, null, null, false, null, members);
+            return new FlowNode(role, null, null, null, null, false, null, members);
         }
         Double v = caps.get(primaryIdx).cap().value();
         if (v == null) {
-            return new FlowNode(role, null, null, false, null, members);
+            return new FlowNode(role, null, null, null, null, false, null, members);
         }
         double mag = round3(Math.abs(v));
         boolean active = mag > DEADBAND_KW;
         // import (Bezug, +) -> in, export (-) -> out.
         String dir = active ? (v > 0 ? "in" : "out") : null;
-        return new FlowNode(role, mag, null, active, dir, members);
+        return new FlowNode(role, mag, null, null, null, active, dir, members);
     }
 
     private static FlowMember member(RoleCap rc) {

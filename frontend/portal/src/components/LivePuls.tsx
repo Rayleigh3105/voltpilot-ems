@@ -91,6 +91,15 @@ function Row({
             {row.herkunft && (
               <span className="vp-puls-sub vp-puls-herkunft"> · {row.herkunft}</span>
             )}
+            {/* P6: WESSEN Ladestand das ist. Sie steht nur da, wenn er von
+                einem anderen Gerät kommt als die Kilowatt dieser Zeile - der
+                Fall, in dem er sonst dem falschen Gerät zugeschrieben würde. */}
+            {row.socQuelle && (
+              <span className="vp-puls-sub vp-puls-herkunft"> · {row.socQuelle}</span>
+            )}
+            {/* P6: die BMS-Hülle. Ein abwesendes Feld fehlt hier, statt als
+                „erlaubt" gelesen zu werden. */}
+            {row.grenzen && <span className="vp-puls-sub"> · {row.grenzen}</span>}
           </span>
         </span>
       </span>

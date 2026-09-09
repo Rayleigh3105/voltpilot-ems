@@ -449,6 +449,113 @@ class UserDefinedBatteryDefinitionTest {
         return out;
     }
 
+    // -- Die SPEISER-BINDUNG (P6) --------------------------------------------
+
+    private static Result validateBinding(List<Mapping> mappings, SocDerivation soc,
+            UserDefinedBatteryDefinition.Binding binding) {
+        return UserDefinedBatteryDefinition.validate(lan(), mappings, null, soc, allowed(),
+                binding);
+    }
+
+    /**
+     * ⚠ DER Entscheid dieses Pakets (Captain E6 (a), 09.09.2026): OHNE Angabe
+     * ist eine Batterie UNGEBUNDEN. Nichts geschieht von selbst - sie speist
+     * weder den Speicher-Knoten noch die Energiebilanz.
+     */
+    @Test
+    void ohneAngabeIstDieBatterieUngebunden() {
+        Result def = validate(withSoc());
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.bindingOrUnbound().mode())
+                .isEqualTo(UserDefinedBatteryDefinition.BINDING_UNBOUND);
+        assertThat(def.boundChannels()).isEmpty();
+    }
+
+    /**
+     * Der Speiser: Ladestand, Grenzen und Freigaben reisen in den
+     * Speicher-Knoten - {@code power_kw} NICHT. Es ist der eine Kanal, über den
+     * sich die beiden Fälle unterscheiden: die Batterieleistung misst der
+     * Hybrid-Wechselrichter, und dieselben Kilowatt zweimal zu zählen wäre
+     * schlicht falsch.
+     */
+    @Test
+    void derSpeiserGibtLadestandUndGrenzenAberNieDieLeistung() {
+        List<Mapping> m = new ArrayList<>(withSoc());
+        m.add(new Mapping("charge_limit_a", "emon/pack", "cl", "last", "number",
+                1.0, 0.0, null, null, null, null));
+        m.add(new Mapping("power_kw", "emon/pack", "p", "last", "number",
+                0.001, 0.0, null, null, null, null));
+        Result def = validateBinding(m, null, new UserDefinedBatteryDefinition.Binding(
+                UserDefinedBatteryDefinition.BINDING_FEEDS_INVERTER,
+                "11111111-1111-1111-1111-111111111111"));
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.boundChannels()).containsExactly("soc_pct", "charge_limit_a");
+    }
+
+    /** Ohne Hybriden IST sie der Speicher - dann liefert sie auch die Leistung. */
+    @Test
+    void dieEigenstaendigeBatterieLiefertAuchDieLeistung() {
+        List<Mapping> m = new ArrayList<>(withSoc());
+        m.add(new Mapping("power_kw", "emon/pack", "p", "last", "number",
+                0.001, 0.0, null, null, null, null));
+        Result def = validateBinding(m, null, new UserDefinedBatteryDefinition.Binding(
+                UserDefinedBatteryDefinition.BINDING_STANDALONE, null));
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.boundChannels()).containsExactly("soc_pct", "power_kw");
+    }
+
+    /**
+     * Ein Speiser OHNE Wechselrichter ist keine ausdrückliche Bindung - „hängt
+     * an irgendeinem" liesse die Anzeige „Ladestand von: …" ohne Gegenüber.
+     */
+    @Test
+    void einSpeiserBrauchtSeinenWechselrichter() {
+        Result def = validateBinding(withSoc(), null,
+                new UserDefinedBatteryDefinition.Binding(
+                        UserDefinedBatteryDefinition.BINDING_FEEDS_INVERTER, "  "));
+        assertThat(def.errors()).anyMatch(e -> e.contains("Wechselrichter"));
+    }
+
+    /**
+     * Ein Wort ausserhalb des Vokabulars wird VERWORFEN, nie geraten - und
+     * schon gar nicht still als „ungebunden" gelesen: der Kunde hätte die
+     * Bindung ausgesprochen und die Anlage täte, als habe er geschwiegen.
+     */
+    @Test
+    void einUnbekanntesBindungswortWirdVerworfen() {
+        Result def = validateBinding(withSoc(), null,
+                new UserDefinedBatteryDefinition.Binding("haengt_irgendwo", null));
+        assertThat(def.errors()).anyMatch(e -> e.contains("haengt_irgendwo"));
+    }
+
+    /**
+     * Eine Bindung ohne einzuspeisenden Kanal wird abgelehnt: wer nur
+     * Zellspannungen abbildet, kann den Speicher-Knoten nicht speisen - die
+     * Bindung anzunehmen hiesse, eine Wirkung zu versprechen, die ausbleibt.
+     */
+    @Test
+    void eineBindungOhneEinzuspeisendenKanalWirdAbgelehnt() {
+        Result def = validateBinding(diybmsCells(), null,
+                new UserDefinedBatteryDefinition.Binding(
+                        UserDefinedBatteryDefinition.BINDING_STANDALONE, null));
+        assertThat(def.errors()).anyMatch(e -> e.contains("noch nicht speisen"));
+    }
+
+    /**
+     * Der BERECHNETE Ladestand zählt als Kanal - er ist der Grund, aus dem es
+     * die Bindung für diese Anlage überhaupt gibt: das DIYBMS liefert nur
+     * Zellspannungen, die Kennlinie macht daraus den Ladestand.
+     */
+    @Test
+    void einBerechneterLadestandKannGebundenWerden() {
+        Result def = validateBinding(diybmsCells(),
+                derivation(UserDefinedBatteryDefinition.SOC_OCV_CURVE, kennlinie()),
+                new UserDefinedBatteryDefinition.Binding(
+                        UserDefinedBatteryDefinition.BINDING_STANDALONE, null));
+        assertThat(def.errors()).isEmpty();
+        assertThat(def.boundChannels()).containsExactly("soc_pct");
+    }
+
     // -- Schranken -----------------------------------------------------------
 
     @Test

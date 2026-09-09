@@ -887,3 +887,24 @@
   margin-top: 2px;
   flex: none;
 }
+
+/* --- Die SPEISER-BINDUNG (P6) -------------------------------------------- */
+
+/*
+ * Die ausdrückliche Zuordnung „wozu gehört diese Batterie?" steht als EIGENER,
+ * abgesetzter Block im Ladestands-Schritt: sie ist keine weitere Einstellung
+ * an der Rechnung, sondern die Frage, WESSEN Ladestand dabei herauskommt - und
+ * die Antwort holt diese Batterie in die Energiebilanz oder lässt sie
+ * ausdrücklich draußen.
+ */
+.vp-bat-bindung {
+  margin: var(--vp-space-4, 16px) 0;
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-assist-h4 {
+  margin: 0 0 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
