@@ -1823,30 +1823,32 @@ export function AnlageSeite({
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
           {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
           {!isPhone && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
-          {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
-              Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
-              Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
-              nur, wenn es einen Stapel zum Anordnen gibt. */}
-          {showStack && !layout.anpassen && (
+          <div className="vp-anlage-actions">
+            {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
+                Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
+                Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
+                nur, wenn es einen Stapel zum Anordnen gibt. */}
+            {showStack && !layout.anpassen && (
+              <button
+                type="button"
+                className="vp-gear-btn"
+                onClick={layout.start}
+                aria-label="Cockpit anpassen"
+                title="Cockpit anpassen"
+              >
+                <Icon name="sliders" size={18} />
+              </button>
+            )}
             <button
               type="button"
               className="vp-gear-btn"
-              onClick={layout.start}
-              aria-label="Cockpit anpassen"
-              title="Cockpit anpassen"
+              onClick={() => onOpenSub('technik')}
+              aria-label="Einstellungen"
+              title="Einstellungen"
             >
-              <Icon name="sliders" size={18} />
+              <Icon name="settings" size={18} />
             </button>
-          )}
-          <button
-            type="button"
-            className="vp-gear-btn"
-            onClick={() => onOpenSub('technik')}
-            aria-label="Einstellungen"
-            title="Einstellungen"
-          >
-            <Icon name="settings" size={18} />
-          </button>
+          </div>
         </div>
       </div>
 

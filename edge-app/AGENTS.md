@@ -72,6 +72,10 @@ Drift-Wächter, und `nodered/build-flows.js` erzeugt `flows.json` (nie von Hand 
 
 ## Rig- und CI-Fallen (gemessen, nicht vermutet)
 
+**Mobile Kopfzeilen:** Betrieb und Einrichten teilen `.shell-header` als Sticky-Wrapper
+für Kopf + Technikzeile; keine geschätzten `top`-Offsets. Browser-Wächter:
+`test/ui-mobile.mjs`, Befunde: `../docs/mobile-headbar-audit-2026-09-10.md`.
+
 Der Forgejo-Runner fährt selbst in einem Container am Docker-Socket des HOSTS: ein
 veröffentlichter Port und ein Bind-Mount aus dem Workspace gehören dem HOST, nicht dem Job —
 Dateien kommen über einen BUILD-KONTEXT herein, Anfragen laufen als Seitenwagen IM

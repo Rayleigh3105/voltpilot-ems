@@ -70,6 +70,10 @@ Jede Flächen-Änderung wird bei **1440 und 375** durchgespielt: **0 px horizont
 
 **Portal help handbook:** `src/help/README.md` documents the German articles, contextual modals, fictional screenshot capture and checks (`npm run help:screenshots`).
 
+**Mobile Kopfzeilen:** `../../docs/mobile-headbar-audit-2026-09-10.md` dokumentiert
+kompakte Identität bis 1279 px, die zweite Admin-Zeile, den gemessenen Sticky-Abstand
+und `e2e/shell-layout.spec.ts`. Die reservierte Cockpit-Chipzeile (P7) bleibt erhalten.
+
 ## Themen-Index (der ausgelagerte Bestand)
 
 Jede Zeile ist ein frueherer Abschnitt DIESER Datei. Der Text ist unveraendert, er

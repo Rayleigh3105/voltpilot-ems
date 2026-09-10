@@ -373,6 +373,7 @@ svg [tabindex]:focus-visible {
   align-items: center;
   gap: var(--vp-space-4);
   height: 68px;
+  flex-shrink: 0;
   padding: 0 var(--vp-space-6);
 }
 .vp-topbar .crumbs {
@@ -469,6 +470,7 @@ svg [tabindex]:focus-visible {
 }
 .vp-page-head .titles {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .vp-page-head h1 {
   font-size: var(--vp-text-h3);
@@ -5153,9 +5155,9 @@ button.vp-tech-card-h.toggle {
     padding-left: var(--vp-space-2);
     padding-right: var(--vp-space-2);
   }
-  /* Die E-Mail-Zeile ist auf dem Telefon ohnehin ausgeblendet; hier fällt
-     zusätzlich der Avatar weg, wenn es eng wird - Icon + Titel gewinnen. */
-  .vp-topbar .crumbs {
+  /* Only the top-level page breadcrumb grows horizontally. The nested
+     plant breadcrumb sits in a column; growing it pushes the status down. */
+  .vp-topbar > .crumbs {
     flex: 1 1 auto;
   }
 }

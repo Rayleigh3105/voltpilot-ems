@@ -41,6 +41,29 @@ try {
     const browser = await engine.launch();
     try {
       const page = await browser.newPage({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+      // Shared chrome: both pages must keep the same height and the
+      // technical-state row must stay BELOW the header after scrolling.
+      const heights = new Map();
+      for (const route of ['index.html', 'einrichten.html']) {
+        await page.goto(base + '/' + route);
+        await page.locator('#techToggle').click();
+        if (await page.locator('#techToggle').getAttribute('aria-pressed') !== 'true') await page.locator('#techToggle').click();
+        for (const width of [320, 375, 390, 430, 768, 834, 1440]) {
+          await page.setViewportSize({ width, height: 812 });
+          await page.evaluate(() => window.scrollTo(0, 400));
+          const header = await page.locator('.topbar').boundingBox();
+          const state = await page.locator('.tech-bar').boundingBox();
+          assert(header && state);
+          assert(Math.abs(header.y) < 1, 'Header stays pinned');
+          assert(Math.abs(state.y - header.y - header.height) < 1, 'Technical state must not hide behind header');
+          assert((await page.evaluate(() => document.documentElement.scrollWidth)) <= width, 'Compare to requested viewport: mobile innerWidth can silently expand');
+          const brand = await page.locator('.brand').boundingBox();
+          assert(brand.width >= 44 && brand.height >= 44, 'Home link touch target');
+          if (heights.has(width)) assert(Math.abs(heights.get(width) - header.height) < 1, 'Header height stays consistent across pages');
+          else heights.set(width, header.height);
+        }
+      }
+      await page.setViewportSize({ width: 375, height: 812 });
       await page.goto(base + '/einrichten.html#quellen');
       const trigger = page.locator('#erzAdd');
       await trigger.click();

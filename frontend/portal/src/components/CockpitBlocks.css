@@ -653,6 +653,15 @@
   display: flex;
   min-width: 0;
 }
+.vp-anlage-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-anlage-head.is-phone .vp-gear-btn {
+  width: 44px;
+  height: 44px;
+}
 
 /* --- Die EINE Geld-Karte -------------------------------------------------- */
 
@@ -745,8 +754,8 @@
      dann, wenn es unsichtbar ist — das wären ~34 px Leere ueber dem Falz,
      also genau das, was dieser Umbau abschafft. */
   position: fixed;
-  /* Direkt unter der 68-px-Schalenkopfzeile. */
-  top: 68px;
+  /* Also follows the second tenant row on compact admin pages. */
+  top: var(--vp-topbar-height, 68px);
   left: 0;
   right: 0;
   z-index: 5;

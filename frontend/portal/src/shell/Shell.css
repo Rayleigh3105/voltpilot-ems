@@ -303,6 +303,9 @@
   background: transparent;
   box-shadow: none;
   opacity: 0;
+  /* Invisible picker labels still contribute to document scrollWidth.
+     The panel is portalled, so clipping this trigger cannot clip its menu. */
+  overflow: hidden;
   font: inherit;
   cursor: pointer;
 }
@@ -354,7 +357,7 @@
 .vp-bottombar {
   display: none;
 }
-@media (max-width: 720px) {
+@media (max-width: 1279px) {
   /* The plant block becomes the identity: name as a tappable switcher, state
      as its sub-line. „＋ Anlage" and „Abmelden" leave the bar for the sheet
      (concept §3) — an Einmal-im-Leben action must not own the biggest tap
@@ -378,10 +381,12 @@
      rule, because Shell.css loads FIRST (see the load-order note on top). */
   .vp-app .vp-topbar .vp-topbar-anlage .crumbs {
     display: flex;
+    flex: 0 1 auto;
     gap: 0.25rem;
   }
-  .vp-app .vp-topbar-anlage .here {
-    font-size: 1.02rem;
+  .vp-app .vp-topbar .vp-topbar-anlage .here {
+    font-size: var(--vp-text-base);
+    line-height: 1.5;
   }
   .vp-tb-caret {
     display: inline-flex;
@@ -420,11 +425,11 @@
     font-weight: 500;
   }
   /* Der Zustands-Zeile so viel Trefferfläche geben, wie ohne Übergriff auf die
-     Namenszeile geht (≈37px). Sie ist die ZWEITE Handlung des Blocks — der
+     Namenszeile geht (≈31px). Sie ist die ZWEITE Handlung des Blocks — der
      Wechsler darunter nimmt die ganzen 68px —, und ihre Aussage steht ohnehin
      schon als Text da; der Klick öffnet nur die vollständige Befund-Liste. */
   .vp-app .vp-topbar-anlage .vp-healthbadge::before {
-    inset: -6px -8px -11px;
+    inset: 0 -8px -11px;
   }
   /* The state WORD belongs in the sub-line (the pill drops it for room). */
   .vp-app .vp-topbar-anlage .vp-healthbadge-lbl {
@@ -435,6 +440,46 @@
   }
   .vp-app .vp-topbar-anlage .vp-healthbadge-caret {
     display: none;
+  }
+}
+
+/* Compact header shared by customer, fleet and platform pages. Keep one
+   flexible identity column; an empty spacer must not reserve a second gap. */
+@media (max-width: 1279px) {
+  .vp-app .vp-topbar > .spacer { display: none; }
+  .vp-app .vp-topbar > .crumbs { flex: 1 1 auto; }
+  .vp-app .vp-topbar .vp-usermenu { flex: 0 0 auto; margin-left: auto; }
+  .vp-app .vp-topbar .vp-usermenu .meta { display: none; }
+  .vp-app .vp-topbar .vp-avatar-btn { width: 44px; height: 44px; }
+  .vp-app .vp-topbar .vp-context { min-width: 0; max-width: 200px; }
+  .vp-app .vp-topbar .vp-context-picker { max-width: none; }
+  .vp-app .vp-topbar .vp-context .vp-picker-ausloeser { min-height: 44px; }
+  .vp-app .vp-topbar .vp-context { padding-top: 0; padding-bottom: 0; }
+  .vp-app .vp-topbar .vp-crumb-up,
+  .vp-app .vp-topbar .vp-crumb-sep { display: none; }
+  .vp-app .vp-crumb-anlage { position: static; }
+}
+@media (max-width: 720px) {
+  /* A tenant switcher and a plant identity cannot share 320px. The tenant
+     gets a full second row only when a plant is open; fleet/admin pages keep
+     one row, with their tenant picker aligned to the content's left edge. */
+  .vp-app .vp-topbar .vp-context { flex: 1 1 auto; max-width: none; }
+  .vp-app .vp-topbar:has(.vp-topbar-anlage):has(.vp-context) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: 67px auto;
+    height: auto;
+    padding-bottom: var(--vp-space-3);
+    row-gap: 0;
+  }
+  .vp-app .vp-topbar:has(.vp-topbar-anlage) > .vp-context {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .vp-app .vp-topbar:has(.vp-topbar-anlage) > .vp-usermenu {
+    grid-column: 2;
+    grid-row: 1;
   }
   /* „＋ Anlage" ist am Telefon eine Einmal-im-Leben-Aktion und darf der
      Kopfzeile keine Breite nehmen - der Assistent ist über die Anlagen-Liste

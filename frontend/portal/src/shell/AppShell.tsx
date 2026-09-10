@@ -155,6 +155,20 @@ export function AppShell({
   }, [tenantOverride]);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const topbarRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const topbar = topbarRef.current;
+    const app = topbar?.closest<HTMLElement>('.vp-app');
+    if (!topbar || !app) return;
+    const updateHeight = () => app.style.setProperty('--vp-topbar-height', `${topbar.getBoundingClientRect().height}px`);
+    updateHeight();
+    // The admin tenant picker adds a row on phones. Fixed cockpit summaries
+    // follow the measured header, including font changes and picker resizing.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(topbar);
+    return () => observer.disconnect();
+  }, []);
 
   // Navigation schliesst das Avatar-Menü.
   useEffect(() => {
@@ -360,7 +374,7 @@ export function AppShell({
       {sidebar}
 
       <div className="vp-content">
-        <header className="vp-topbar">
+        <header className="vp-topbar" ref={topbarRef}>
           {/* Der PFAD ersetzt den Sprung (E3): „Portfolio › Solarpark Dachau ▾".
               Der Name IST der Anlagen-Umschalter, das führende Wort der
               Rückweg auf die Flotten-Ebene. Auf einer Anlage ohne Flotte
