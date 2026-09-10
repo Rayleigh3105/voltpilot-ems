@@ -7,7 +7,7 @@ geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.
 **Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die
 Projekt-Chronik; einzelne Dateien sind gross.
 
-## `root/` — aus `AGENTS.md` (172 Einträge)
+## `root/` — aus `AGENTS.md` (173 Einträge)
 
 - [Admin API & the Portal-Admin / Portal-User split (services/api + frontend)](root/admin-api-the-portal-admin-portal-user-s.md)
 - [ALIAS-KONTINUITÄT: ein Kundenname überlebt jeden Reparatur- und Anlege-Weg](root/alias-kontinuitaet-ein-kundenname-ueberl.md)
@@ -168,6 +168,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [v2 entity model - generalization (E1b)](root/v2-entity-model-generalization-e1b.md)
 - [v2 entity model - pilot minimum (E1a)](root/v2-entity-model-pilot-minimum-e1a.md)
 - [Verbrauchsmanagement v1 / P8: die SG-Ready-Wärmepumpe ist ein eigener Typ](root/verbrauchsmanagement-v1-p8-die-sg-ready.md)
+- [UEMS-Fachmodell: das EINE Glossar für alle Pakete des Unternehmens-Energiemanagements](root/uems-fachmodell-das-eine-glossar-fuer-al.md)
 - [Verbrauchsmanagement v1 — Paket 1: die Verbraucher-Zone LESEND](root/verbrauchsmanagement-v1-paket-1-die-verb.md)
 - [Verbrauchsmanagement v1 — Paket 2: die Steuerart SCHREIBEN](root/verbrauchsmanagement-v1-paket-2-die-steu.md)
 - [Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts](root/verbrauchsmanagement-v1-paket-3b-laden-p.md)

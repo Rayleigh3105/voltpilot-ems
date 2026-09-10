@@ -309,6 +309,7 @@ Bereiche: `docs/agents/README.md`.
 - **Der OCPP-ANBINDE-ASSISTENT: die Adresse zum Kopieren, die Kennung aus dem Portal** — Bis hierher waren „eine Säule anbinden" … · `der-ocpp-anbinde-assistent-die-adresse-z.md`
 - **Eine Ladepunkt-Kennung ZURÜCKNEHMEN: der GRABSTEIN, nicht das Löschen** — kennungen zu löschen") · `eine-ladepunkt-kennung-zuruecknehmen-der.md`
 - **Der Verbindungstest bietet HEBEL an (Geräteseiten Stufe 3, NACHTRAG 2)** — „Konkrete Hebel direkt im Dialog anbieten … · `der-verbindungstest-bietet-hebel-an-gera.md`
+- **UEMS-Fachmodell: das EINE Glossar für alle Pakete des Unternehmens-Energiemanagements** — Standort · Anlage · Netzanschluss · Messstelle · Messkanal · Datenquelle mit Kardinalität, Zeitgültigkeit und Zustandsvokabular; `docs/fachmodell/` ist die Referenz, die Auswirkungs-Karte sagt je heutiger Tabelle, was aus ihr wird · `uems-fachmodell-das-eine-glossar-fuer-al.md`
 - **Typenschild-Varianten (`Model.Aliases`, Bauplan P8)** — der Kunde findet sein Gerät unter dem Namen, der draufsteht (Deye `…-EU-BM3`/`-BM4`); ein Alias ist NUR ein Name, nie eine zweite Kennung (die Steuerungs-Freigabe hängt an brand+model) · `typenschild-varianten-model-aliases-p8.md`
 - **KACO: EINE Marke, ZWEI Plattformen - und die brand-neutrale SunSpec-Kennung** — Die KACO-Palette in Deye-Dichte (70 … · `kaco-eine-marke-zwei-plattformen-und-die.md`
 - **Versionierter Messpunktkatalog (`catalog/measurement-points`)** — Eine Wahrheit für Portal, Cloud und Edge · `versionierter-messpunktkatalog-catalog-m.md`

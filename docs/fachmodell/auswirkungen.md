@@ -1,0 +1,108 @@
+# Auswirkungs-Karte: was aus dem heutigen Stand wird
+
+Diese Karte ist AP-00 IP-6. Sie sagt je heutiger Tabelle, Klasse und Portal-Datei, welches
+Objekt des Fachmodells sie künftig trägt und **welcher Art** die Änderung ist. Sie ist
+**kein Schema und keine Migration** — sie ist die Landkarte, aus der die Bau-Pakete von
+AP-02, AP-04, AP-06, AP-07 und AP-14 ihre Migrationen ableiten.
+
+Grundlage: AP-00 §6.2 (10.09.2026), verfeinert durch AP-02 §6.2, AP-04 §6.2, AP-06 §6 und
+AP-07 §6.1 — alle vier am 10.09.2026 entschieden. Die Begriffe stehen in
+[`glossar.md`](glossar.md), die Kardinalitäten in [`beziehungen.md`](beziehungen.md).
+
+**Die vier Arten der Änderung:**
+
+| Art | Bedeutung |
+|---|---|
+| **bleibt** | Tabelle, Spalten und Bedeutung unverändert; nichts zieht um. |
+| **bekommt Verweis** | Die Tabelle bleibt und erhält additiv einen nullable Verweis auf ein neues Objekt. Eine alte Zeile ohne Verweis bleibt gültig. |
+| **Felder ziehen um** | Die Wahrheit wandert auf ein neues Objekt; die alte Spalte bleibt lesbar, bis das zuständige Paket sie stilllegt — **nie Doppelpflege**. |
+| **neu daneben** | Ein neues Objekt entsteht neben dem alten, ohne es zu verändern. |
+
+`tools/check_auswirkungen.sh` prüft, dass jede unten genannte Tabelle in den Migrationen
+wirklich existiert.
+
+## Datenhaltung
+
+| Heute | Zielobjekt | Art | Was genau |
+|---|---|---|---|
+| `tenant` (`MIG/V1__core_schema.sql:36-44`) | Kundenbereich | **bleibt** + **neu daneben** | Der Zaun bleibt, wie er ist (RLS, `tenant_id` als Keycloak-Attribut). Daneben entsteht `unternehmen` 1 : 1 mit Name, Kurzname, Zeitzone-Vorgabe, Sitz und Rechtsform; 1 : n für Konzerne bleibt vorbereitet (AP-00 E2, AP-02 §6.2). |
+| `site` (`MIG/V1__core_schema.sql:45-52` + 17 Zusatzspalten) | Anlage | **bleibt** + **Felder ziehen um** | Kennung, Adresse `#/anlage/…`, MQTT-Topics, Betriebsmodell, Fahrplan und Erlöse bleiben unangetastet (AP-00 E1 = A). Die Zuordnung zum Standort liegt in einer eigenen zeitgültigen Beziehung `anlage_standort`, **nicht** in einer Spalte `standort_id` — nur so tragen Umzüge Historie (AP-02 §6.2, revidiert AP-00 §6.2). Die Koordinaten `latitude`/`longitude` (`MIG/V20260701010000__site_geo_and_data_feeds.sql:29-30`) ziehen zum Standort, bleiben aber lesbar; das Portal-Feld heißt weiter „Standort“ (AP-00 E9 = B). Tarif-, Leistungs- und Vergütungsfelder (`tarif_art`, `leistungspreis_eur_kw`, `max_feed_in_kw`, `anzulegender_wert_ct_kwh`, `netzladen_erlaubt`) ziehen mit AP-10 zum Netzanschluss. |
+| `site` | führende Box | **bekommt Verweis** | `site.lead_device_id` — die führende Box je Anlage als gespeicherter, sichtbarer Fakt, nie geraten (AP-06 E3, §6). |
+| `site_supply_price` (`MIG/V20260729000000__site_supply_price.sql`) | Preise am Netzanschluss | **bleibt** | Unverändert bis AP-10; dann zieht die Wahrheit zum Netzanschluss (AP-02 W6). |
+| — | Standort, Gebäude, Bereich | **neu daneben** | `standort` (Adresse, Land, Zeitzone, Nutzung[], Lage, Kurzzeichen, Zustand, Archiv-Felder) und `ort` (art = Gebäude \| Bereich, Name, Kurzzeichen, Nutzung[], Baujahr, Notiz, Zustand) + `ort_zuordnung` mit Intervallen zum Elternknoten und einem Exklusions-Constraint gegen Überlappung. RLS nach dem Muster von `measurement_point` (`MIG/V20260709000000__measurement_point.sql:72-75`) bzw. `site_vehicle_tag` (`MIG/V20260866000000__fahrzeug_profile.sql:38-89`). |
+| — | Bezugsfläche | **neu daneben** | `flaeche_gueltigkeit` (Standort oder Ort, m², Intervall) — zeitgültig (AP-02 E3); AP-09 liest sie als Bezugsgröße. |
+| — | Netzanschluss | **neu daneben** | Marktlokation, Netzbetreiber, Anschlussleistung, vereinbarte Leistung, Tarif, Vergütung, Einspeisegrenze (AP-00 E6). Im ersten Umfang genau einer je Anlage. |
+| — | Prozess, Kostenstelle | **neu daneben** | Prozessbaum mit einer Ebene Verschachtelung; flache Kostenstellen mit festen Prozentanteilen, Summe 100 % (AP-00 E5). |
+| — | Messstelle | **neu daneben** | `messstelle` (+ `messstelle_groesse` für Haupt- und Nebengrößen, AP-04 E1), UNIQUE `(tenant_id, kennzeichen)`, Kennzeichen-Zähler je Mandant. Dazu die zeitgültigen Zuordnungen `messstelle_ort`, `messstelle_stellung`, `messstelle_prozess`, `messstelle_kostenstelle` (je `gueltig_ab DATE`/`gueltig_bis DATE`, EXCLUDE gegen Überlappung, `rueckwirkend`, Akteur) und `messstelle_quelle` (Komponente + Kanalname + Rolle + Zweck, `gueltig_ab TIMESTAMPTZ`, Ablesestände). **Nie in die Reihen hinein** (AP-04 §6.2). |
+| — | Datenquelle | **neu daneben** | `data_source` (mandantengebunden: Kennzeichen DQ-x, Anlage, Protokoll, Adresse, Netzlage, Lesetakt), `data_source_assignment` (zeitgültig, Ausschluss überlappender Zeiträume), `device_data_source_status` je Box × Quelle, `device_status_seen_at` (AP-06 E1/E2/E5, §6). |
+| — | Gerät (physisch) | **neu daneben** | `geraet` (+ `geraet_teil` für Energiekarten): je bestehender Komponente wird ein Gerät abgeleitet, `eingebaut_am` = Beginn des Verlaufs, Seriennummer aus `connection_json.serial`, falls vorhanden (AP-04 §6.2, AP-05 E4). |
+| `device` (`MIG/V1__core_schema.sql:54-62`) | Box (Edge) | **bleibt** + **bekommt Verweis** | Enrollment, Zertifikat, Topic-Adresse und Heimat-Anlage bleiben (AP-00 E7). Neu daneben: die Zuständigkeit je Datenquelle. Ein Box-Tausch überträgt Heimat, Rolle, Zuständigkeiten, Mess-Selektionen, Freigaben und OTA-Zuordnung auf die Nachfolgerin; die alte Box wird „ausgebaut“, **nie gelöscht** (AP-06 E7, AP-07 E8). |
+| `device_enrollment` (`MIG/V20260702040000__device_enrollment.sql:27-37`) | Anmeldung einer Box | **bleibt** | Der Claim-Weg über den Aufkleber ist auch der Weg der Nachfolge-Box (AP-06 E7). |
+| `device_edge_version` (`MIG/V20260803000000__device_edge_version.sql:24-30`) | Fähigkeiten einer Box | **bleibt** + **neu daneben** | Daneben eine Cloud-Tabelle „Version → Fähigkeiten“, die jede Bestandsbox abdeckt; ab dem nächsten Edge-Release übersteuert ein additiver Block `supports[]` im Herzschlag die Tabelle je Box (AP-06 E12). |
+| `device_source_status` (`MIG/V20260721000000__device_source_status.sql:24-41`) | Zustand je Datenquelle | **bleibt** | Die heutige Ist-Rückmeldung je Quelle bleibt; sie bekommt mit `data_sources[]` im Herzschlag ihren Vertrag (AP-06 E5). |
+| `device_site_assignment` (`MIG/V20260843000000__component_edit_contract.sql:54-67`) | Umzug einer Box | **bleibt** | Unangetastet — AP-02 benutzt es nicht, weil die Heimat der Box die Anlage bleibt (AP-00 E7, AP-02 §6.2). |
+| `measurement_point` (`MIG/V20260709000000__measurement_point.sql:27-60`, `entity_type` in `MIG/V20260718000000__v2_entity_registry.sql:22-24`) | Komponente | **bleibt** + **bekommt Verweis** | Rolle, Marke, Modell, Verbindung und Freigabe bleiben Attribute der Komponente. Neu additiv: `geraet_id` (nullable bis zur Ableitung) und `data_source_id` (nullable). Der Lebenszyklus „angehalten“/„archiviert“ kommt als additiver Zustand (AP-00 §6.2, AP-04 §6.2, AP-06 §6). |
+| `measurement_point.folder` (`MIG/V20260709000000__measurement_point.sql:33`) | Anzeige-Ordner | **bleibt** | Wird **nicht** zum Ort umgedeutet — Messstellen verortet der Ortsbaum (AP-02 §6.2). |
+| `component_definition` (`MIG/V20260817000000__component_authority_and_definitions.sql:74-109`) | Fassungs-Historie der Komponente | **bleibt** | Die Zeitgültigkeit der Messstellen-Zuordnungen kommt **nicht** aus diesem Journal: ein Journal sagt, WANN sich etwas geändert hat, eine zeitgültige Zuordnung sagt, WAS in einem Zeitraum galt (AP-00 §6.2). |
+| `component_change_event` (`MIG/V20260843000000__component_edit_contract.sql:8-21`) | Verlauf der Komponente | **bleibt** + additive Art | Neue Art `device_replaced` als Marke „Zähler gewechselt“ (AP-04 §6.2, E10). |
+| `component_activation_outbox` (`MIG/V20260843000000__component_edit_contract.sql:92`) | Zustellung an die Box | **bleibt** | Der Zustellweg bleibt; neu ist nur, WAS je Box hineingehört (die disjunkte Menge ihrer Zuständigkeiten, AP-06 E4). |
+| — | Einstellungs-Fassung je Quelle | **neu daneben** | `quelle_einstellung`: Fassung 1 wird aus den heutigen Werten abgeleitet (`scale`/`offset`/`signed` je Kanal, `invert_*_sign`/`power_scale` je Verbindung, „gilt seit Beginn“). Die heutigen Felder bleiben die Wahrheit der Box, bis AP-06 die Fassungen zustellt (AP-04 §6.2, E4; AP-05 E5). |
+| `telemetry_v2` (`MIG/V20260718010000__telemetry_v2.sql:27-36`) + Rollups | Kern-Telemetrie | **bleibt** | Der Betriebs-Pfad: Cockpit, Fahrplan, Regelung und Erlöse lesen sie wie heute. Sie trägt **keine** Messstellen-Reihe (AP-07 E1). |
+| `device_measurement_sample` (`MIG/V20260848000000__additional_measurement_pipeline.sql:27-55`) | Messreihe (Rohwert) | **bekommt Verweis** + **Felder ziehen um** | ⚠ Der Schlüssel der Reihe wird **Komponente + Messkanal** statt Gerät + `point_key`: die Tabelle bekommt die Schlüsselspalte `entity_id`, Herkunftsspalten (Gerät + Einbau, lesende Box, Einstellungs-Fassung, Katalogstand, Rolle führend \| vergleich \| spiegel) und einen neuen Unique-Index. Das **ersetzt** AP-00 §6.4 „die Reihe bleibt am Gerät geschlüsselt“ (AP-07 E2, W1). |
+| — | Verdichtete Messreihen | **neu daneben** | Hypertables `messreihe_viertelstunde` (Chunk 30 d, Retention 3 653 d) und `messreihe_tag` (Chunk 1 Jahr, Retention 3 653 d) — zehn Jahre für JEDEN Messkanal, eine Regel ohne Sonderfall; RLS, ohne Kompression, Kompressions-Layout vorbereitet (AP-07 E6/E7). |
+| — | Ereignisse | **neu daneben** | `messreihe_ereignis` je Mandant, **append-only und nie gelöscht**, ohne Retention: Lücke, Nachlieferung, Gerätegrenze, Zeitfehler, Duplikat-Konflikt, nicht zugeordneter Leser. Dazu ein additiver Vertrag `…/v2/events` (AP-07 E11). |
+| `device_measurement_selection` (`MIG/V20260841000000__device_measurement_selection.sql:38-39`, je Komponente `MIG/V20260855000000__measurement_selection_per_component.sql:44-45`) | Mess-Selektion | **bleibt** | Sie bleibt die Wahrheit, WELCHE Kanäle die Box liest; die Messstelle bindet einen davon (AP-04 §6.2). Der Push wird je Box aus den Zuständigkeiten zusammengesetzt — **ohne** neue Felder im Mess-Plan, weil alte Boxen unbekannte Felder ablehnen (AP-06 E4/E9). |
+| `entity_registry_state` (`MIG/V20260719030000__entity_sync_state.sql:24-27`) | Soll-Zustand je Box | **Felder ziehen um** | Der Soll-Zustand wird je **(Anlage, Box)** geführt statt je Anlage, und je Box eine disjunkte Menge; optional `data_source_id` je Entität, die eine alte Box überliest. Ein Zuständigkeitswechsel sind zwei Pushes — erst die alte Box ohne die Quelle, dann die neue mit ihr (AP-06 E4/E13). |
+| `entity_role_assignment` (`MIG/V20260719040000__entity_role_assignment.sql`) | Rolle im Energiefluss | **bleibt** | `is_primary` bleibt der Vorschlag für die Hauptzähler-Quelle; bei Abweichung erscheint ein Hinweis (AP-04 W7). |
+| `device_control_activation` (`MIG/V20260814000000__inverter_control_certification.sql:99-111`) | Steuer-Freigabe | **bleibt** | Die Freigabe je Komponente bleibt der eigene Schritt; sie zieht bei einem Box-Tausch mit (AP-06 E7). |
+| `site_profile_state` (`MIG/V20260723000000__site_profile_state.sql:26-36`), `flow_definition` (`MIG/V20260719000000__flow_definition.sql:31`), `consumer_policy` (`MIG/V20260810000000__consumer_profile_and_policy.sql:94`), `site_charging_config` (`MIG/V20260829000000__site_charging_config.sql`) | Betrieb (Betriebsmodell, Regel, Steuerart, Ladepark) | **bleibt** | Unverändert. Die Ruhe einer Anlage ist der heutige Pause-Zustand ohne Enddatum: alles bleibt gespeichert, nur Fahrplan, Regeln und Steuerarten wirken nicht (AP-01 E7/E8). |
+| — | Änderungsprotokolle | **neu daneben** | `ort_aenderung`, `messstelle_aenderung`, `geraet_aenderung` — append-only nach dem Muster `component_change_event` mit Akteur-Anzeigename wie `device_measurement_selection_event` (`MIG/V20260841000000__device_measurement_selection.sql:87-88`); rückwirkende Änderungen tragen ein Kennzeichen (AP-02 E2, §6.2). |
+
+Jede neue mandantengebundene Tabelle braucht in ihrer eigenen Migration: `tenant_id`, Policy
+mit `USING` **und** `WITH CHECK`, `ENABLE` + `FORCE ROW LEVEL SECURITY`, Grants an
+`voltpilot_app` (bei `BIGSERIAL` ein eigenes `GRANT USAGE ON SEQUENCE`) und CHECKs für
+Vokabulare und Namenslängen — Muster
+`MIG/V20260866000000__fahrzeug_profile.sql:38-89`. Überlappungsverbote auf
+Gültigkeitsintervallen sind Exklusions-Constraints.
+
+## Rechte
+
+| Heute | Zielobjekt | Art | Was genau |
+|---|---|---|---|
+| Keycloak-Realm `voltpilot` (`infra/local/keycloak/voltpilot-realm.json:29-45`) | Identität | **bleibt** | Keycloak bleibt Identität (`tenant_id`, `platform-admin`, neu `partner`). |
+| — | Rechte-Zuweisung | **neu daneben** | Eine Zuweisungstabelle im API: Benutzer × Rolle × Standort × Gültigkeit, unter RLS, dazu `/me`. Das API prüft je Anfrage (AP-03 E11). |
+| Realm-Rolle `site-admin` (`infra/local/keycloak/voltpilot-realm.json:37`, geprüft in `services/api/src/main/java/com/voltpilot/api/web/SiteOcppControlController.java:51`) | — | **Felder ziehen um** | ⚠ Namensfalle (AP-00 W3): die Rolle hat heute **keinen** Anlagen- oder Standortbezug. Sie wird abgeschafft — OCPP-Stufen hängen künftig an der Zuweisung, bestehende Träger werden Kundenadministrator; die Realm-Rollen bleiben als Leichen bis zur nächsten Realm-Pflege (AP-03 E13/E12). |
+| Benutzerverwaltung nur durch Plattform-Admin (`services/api/src/main/java/com/voltpilot/api/web/AdminController.java:238-323`) | Kundenadministrator | **neu daneben** | Benutzer, Rollen und Unterstützungen verwaltet der Kundenadministrator selbst; das Startpasswort vergibt er wie heute (AP-03 E2/E14). |
+
+## Portal
+
+| Heute | Zielobjekt | Art | Was genau |
+|---|---|---|---|
+| `PORTAL/nav.ts:280-286`, `:504`, `:612-641`, `:881` | Navigation | **bekommt Verweis** | Über der Anlage entstehen die Ebenen Unternehmen und Standort; das Portfolio-Cockpit bleibt und wird die Unternehmens-Übersicht. Die Startebene ist die tiefste, die alles zeigt: 1 Anlage → Cockpit, 1 Standort mit n Anlagen → Standort-Übersicht, n Standorte → Unternehmens-Übersicht (AP-01 E1/E2). Die Anlagen-Adressen `#/anlage/{siteId}/…` bleiben unverändert. |
+| `PORTAL/anlageNav.ts:16-17`, `:76` | Anlagen-Bereiche | **bleibt** | Die fünf Bereiche Cockpit · Fahrplan · Verlauf · Steuerung · Anlage bleiben, wie sie sind. Neu ist nur der Rückweg: der Pfad im Seitenkopf wird dreigliedrig (Unternehmen → Standort → Anlage), es entsteht **kein** neuer Platz in der Leiste (AP-01 E3/E4). |
+| `PORTAL/pages/AnlageTechnik.tsx:508`, `:1207` | Feld „Standort“ (Koordinaten) | **bleibt** | Behält seinen Namen: beide Bedeutungen bleiben, die Unterscheidung leistet der Kontext der Fläche — heute schon „Standort auf der Karte“ (AP-00 E9 = B; IP-5 entfällt). |
+| `PORTAL/copy.test.ts:77-80`, `:103-113`, `PORTAL/glossar.ts` | Kundensprache | **bleibt** (dieser PR) | Die neuen Kundenwörter (Unternehmen, Standort, Gebäude, Bereich, Netzanschluss, Messstelle; „Datenquelle“ nur auf Einrichtungsflächen) und die verbotenen internen Wörter kommen in AP-00 **IP-4** dazu — nicht hier. Diese Karte ändert keine Sprachregel. |
+| `PORTAL/komponenten.ts:754-766`, `:865-877`, `:306-307` | Zustandswörter | **bleibt** | „Liefert Daten / Meldet sich gerade nicht / Wartet auf die ersten Daten“, „Verbunden“ und „Wird von VoltPilot gesteuert“ bleiben die Kundenwörter des gemeinsamen Zustandsvokabulars ([`zustaende.md`](zustaende.md)). Die harte 5-Minuten-Ableitung wird erst mit AP-00 IP-3 durch die zeitgültige Kadenz ersetzt (AP-07 E9). |
+| `PORTAL/betriebsmodelle.ts:110-137`, `PORTAL/components/Betriebsmodelle.tsx:85` | Betriebsmodell | **bleibt** | Radiogruppe und „läuft seit …“ bleiben; „Marktoptimierung“ bleibt das Kundenwort, nicht „Arbitrage“ (AP-01 E11). |
+
+## Verträge und Dienste
+
+| Heute | Zielobjekt | Art | Was genau |
+|---|---|---|---|
+| MQTT-Topics `ems/{tenant}/{site}/{device}/…` (`docs/architecture.md:90-94`) | Erfassungsweg | **bleibt** | Keine Änderung. Die Box kennt keine Standorte und keine Messstellen; die Zuständigkeit je Datenquelle ist ein Cloud-Konzept, das in die vorhandene Entity- und Measurement-Config übersetzt wird (AP-00 §6.1, AP-06 E4). |
+| `docs/contracts/v2/mqtt-telemetry-2.0.schema.json:8` | Kern-Telemetrie | **bleibt** | Unverändert; `seq` wird weitergereicht (AP-07 §6.1). |
+| `docs/contracts/v2/edge-entity.schema.json:296`, `:348-353`, `:365-367` | Entity-Push | **bekommt Verweis** | Additiv `data_source_id` je Entität — eine ältere Box überliest das Feld (AP-06 §6, Vertrags-Hausregel „Verträge sind additiv“). |
+| `docs/contracts/v2/topology-read-model.md:14-26` | Energiefluss-Read-Model | **bleibt** | Rolle `grid` bleibt „die maßgebliche Messung, nie eine Summe“; das elektrische System bleibt implizit die Anlage mit ihrem einen maßgeblichen Netzpunkt (AP-00 E1/E6). |
+| — | Referenzunternehmen, Zustands-Vektoren | **neu daneben** | `docs/contracts/v2/uems-referenzunternehmen.json` (AP-00 IP-2) und `docs/contracts/v2/uems-zustand-vectors.json` (IP-3) als geteilte Vektor-Dateien mit Zwillingstests in `services/api` und im Portal. **Nicht Teil dieses PR.** |
+| `services/ingest`, `services/timescale-writer` | Messwert-Strecke | **bekommt Verweis** | Ingest: Messzeit-Plausibilität, `seq` weiterreichen, je Sample statt je Batch verwerfen, Ablehnungen als Ereignis, neues Topic `events.raw`. Writer: Herkunfts-Anreicherung, Idempotenz nach Reihe + Messzeit, Zuständigkeitsprüfung zur Messzeit, Verdichtung (AP-07 E3/E4/E5). |
+| `services/api/src/main/java/com/voltpilot/api/repo/OverviewRepository.java:29-31`, `services/api/src/main/java/com/voltpilot/api/repo/AdminFleetRepository.java:50` | „liefert Daten“ | **Felder ziehen um** | Das harte 5-Minuten-Fenster wird durch die zeitgültige Kadenz der Quellenbindung ersetzt (Lücke ab 2 × Kadenz); Ableitung als geteilte reine Funktion mit Vektoren (AP-07 E9, AP-00 IP-3). |
+| `infra/local/timescale/*.sql`, `infra/local/keycloak/voltpilot-realm.json` | Dev-Seed „Ahrenberg“ | **neu daneben** | Ein dritter Mandant mit den drei Anlagen, drei Boxen und den Komponenten des Referenzunternehmens (AP-00 IP-7, erweitert um Ortsstruktur in AP-02 IP-16). **Nicht Teil dieses PR.** |
+
+## Was diese Karte NICHT sagt
+
+- **Kein Schema.** Spaltennamen und -typen oben sind Absicht, nicht Vertrag; die Migration
+  jedes Bau-Pakets entscheidet sie und ist danach unveränderlich.
+- **Keine Reihenfolge.** Die Bau-Reihenfolge steht im Programm-Plan, nicht hier.
+- **Keine Doppelpflege.** Wo „Felder ziehen um“ steht, gibt es genau EINEN Zeitpunkt, ab dem
+  das neue Objekt die Wahrheit trägt; bis dahin bleibt die alte Spalte die Wahrheit. Zwei
+  gleichzeitig gepflegte Orte für dieselbe Zahl sind ein Fehler, keine Übergangslösung.
