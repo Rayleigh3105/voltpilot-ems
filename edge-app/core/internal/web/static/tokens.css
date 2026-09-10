@@ -26,11 +26,12 @@
 
   /* --- Neutrals --- */
   --vp-text-dark:  #1A1A1A;
-  --vp-text-gray:  #6C757D;
+  --vp-text-gray:  #66717C;
   --vp-bg-light:   #F8F9FA;
   --vp-surface:    #FFFFFF;
   --vp-border:     #E9ECEF;
   --vp-gray:       #CED4DA;
+  --vp-field-border: color-mix(in srgb, var(--vp-text-gray) 80%, var(--vp-surface));
 
   /* --- Status --- */
   --vp-green:      #4CAF50;

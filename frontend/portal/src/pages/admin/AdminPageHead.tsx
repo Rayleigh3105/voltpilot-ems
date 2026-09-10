@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import type { IconName } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
+import './AdminPageHead.css';
 
 /**
  * Shared header for the Plattform (Portal-Admin) pages. An IconTile + title +

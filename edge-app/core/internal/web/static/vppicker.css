@@ -30,7 +30,7 @@
   text-align: left;
   color: var(--ink);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--vp-field-border);
   border-radius: var(--radius-sm);
   padding: 11px 13px;
   /* ⚠ Mindestens 46 px hoch - dieselbe Höhe wie `.field input`, und am Telefon
@@ -39,7 +39,7 @@
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
 }
-.vpp-ausloeser:hover:not(:disabled) { border-color: var(--vp-gray); }
+.vpp-ausloeser:hover:not(:disabled) { border-color: var(--brand-deep); }
 .vpp-ausloeser:focus-visible,
 .vpp-ausloeser[aria-expanded="true"] {
   outline: none;

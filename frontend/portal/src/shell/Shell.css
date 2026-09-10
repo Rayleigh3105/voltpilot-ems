@@ -506,7 +506,7 @@
   white-space: nowrap;
 }
 .vp-bottombar-item.active {
-  color: var(--vp-primary-deep);
+  color: var(--vp-action);
 }
 .vp-bottombar-badge {
   position: absolute;

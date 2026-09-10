@@ -118,12 +118,12 @@
 .field input[type="number"] {
   width: 100%; font-size: 15px; font-family: inherit;
   padding: 11px 13px; min-height: 46px;
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  border: 1px solid var(--vp-field-border); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink);
 }
 .field input:focus {
   outline: none;
-  border-color: var(--brand);
+  border-color: var(--brand-deep);
   box-shadow: 0 0 0 3px rgba(90, 141, 232, .22);
 }
 .field-help { margin: 7px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
@@ -391,6 +391,13 @@
 
   .conn { padding: 14px 14px 0; }
 
+  /* Keep editable text at 16px on phones (including the model search and
+     inline rename), so focusing a field does not zoom the whole page on iOS. */
+  .field input[type="text"],
+  .field input[type="number"],
+  .field .picker-search input,
+  .row-rename { font-size: 16px; }
+
   .picker-panel { max-height: 44vh; }
 
   /* Rows: let the status pill drop under the name/meta instead of squeezing. */
@@ -400,7 +407,11 @@
   .row-actions { margin-left: auto; }
 
   /* The drawer becomes a full-screen sheet (portal drawer->sheet convention). */
-  .drawer { width: 100vw; max-width: 100vw; height: 100dvh; }
+  .drawer {
+    width: 100%; max-width: 100%; height: 100dvh;
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+      env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
 
   /* One role card per row on a narrow sheet. */
   .role-pick { grid-template-columns: 1fr; }
@@ -420,6 +431,8 @@
   .form-actions-row .btn-ghost, .form-actions-right .btn-ghost, .form-actions-right .btn-primary { width: 100%; justify-content: center; }
   .drawer-foot { flex-direction: column; }
   .drawer-foot .btn-ghost, .drawer-foot .btn-primary { width: 100%; justify-content: center; }
+  .drawer-head, .drawer-foot { flex-shrink: 0; }
+  .drawer-body { min-height: 0; }
 }
 
 /* Coarse pointers: the two inline text CTAs of the setup card ("Jetzt
@@ -427,6 +440,7 @@
    touch target on the phone this page is installed from. Grow the hit area
    only; the visual weight of the link/secondary button is unchanged. */
 @media (hover: none) and (pointer: coarse) {
+  .icon-btn { min-width: 44px; min-height: 44px; }
   .link-btn-txt { min-height: 44px; display: inline-flex; align-items: center; }
   .btn-secondary { min-height: 44px; }
 }

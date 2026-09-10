@@ -77,7 +77,7 @@
 .input-unit input[type="number"] {
   width: 100%; min-width: 0; font-size: 15px; font-family: inherit;
   padding: 10px 12px; min-height: 44px;
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  border: 1px solid var(--vp-field-border); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
@@ -104,6 +104,7 @@
   .set-card { padding: 18px; }
   .seg { grid-template-columns: repeat(2, 1fr); }
   .chan-inputs { grid-template-columns: 1fr; }
+  .input-unit input[type="number"] { font-size: 16px; }
   .set-actions { flex-direction: column-reverse; align-items: stretch; }
   .btn-ghost, .set-actions .btn-primary { width: 100%; }
 }

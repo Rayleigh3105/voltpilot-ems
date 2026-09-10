@@ -426,7 +426,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
             }
             hint={
               passwordOk ? (
-                <span style={{ color: 'var(--vp-green)' }}>
+                <span style={{ color: 'var(--vp-ok-ink)' }}>
                   <Icon
                     name="check"
                     size={12}
@@ -448,6 +448,10 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         size="lg"
         fullWidth
         disabled={busy}
+        // Blur validation can add a line above this button between pointer
+        // down/up, moving it away from the tap. An invalid submit focuses the
+        // first error itself; keep the field focused until that click lands.
+        onMouseDown={(e) => { if (!valid) e.preventDefault(); }}
         style={{ marginTop: 16 }}
       >
         {busy ? 'Erstelle Konto…' : 'Konto erstellen'}

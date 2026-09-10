@@ -23,10 +23,15 @@ export const Input = React.forwardRef(function Input({
   error = null,
   id,
   style = {},
+  onFocus,
+  onBlur,
+  'aria-describedby': describedBy,
   ...props
 }, ref) {
   const [focused, setFocused] = React.useState(false);
-  const inputId = id || React.useId();
+  const generatedId = React.useId();
+  const inputId = id || generatedId;
+  const feedbackId = `${inputId}-feedback`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -46,8 +51,10 @@ export const Input = React.forwardRef(function Input({
       <input
         ref={ref}
         id={inputId}
-        onFocus={(e) => { setFocused(true); props.onFocus && props.onFocus(e); }}
-        onBlur={(e) => { setFocused(false); props.onBlur && props.onBlur(e); }}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={[describedBy, (hint || error) && feedbackId].filter(Boolean).join(' ') || undefined}
+        onFocus={(e) => { setFocused(true); onFocus?.(e); }}
+        onBlur={(e) => { setFocused(false); onBlur?.(e); }}
         style={{
           fontFamily: 'var(--vp-font-body)',
           fontSize: '1rem',
@@ -66,10 +73,10 @@ export const Input = React.forwardRef(function Input({
         {...props}
       />
       {(hint || error) && (
-        <span style={{
+        <span id={feedbackId} style={{
           fontFamily: 'var(--vp-font-body)',
           fontSize: '0.82rem',
-          color: error ? 'var(--vp-industry)' : 'var(--vp-text-gray)',
+          color: error ? 'var(--vp-industry-end)' : 'var(--vp-text-gray)',
         }}>
           {error || hint}
         </span>

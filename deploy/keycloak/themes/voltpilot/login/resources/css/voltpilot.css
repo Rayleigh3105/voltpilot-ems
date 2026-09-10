@@ -79,7 +79,7 @@ body#keycloak-bg::after {
   --vpl-navy: #1e3a5f; /* --vp-navy */
   --vpl-action: #2c5282; /* --vp-action: Knopf, Link, Fokus */
   --vpl-text: #1a1a1a; /* --vp-text-dark */
-  --vpl-text-gray: #6c757d; /* --vp-text-gray */
+  --vpl-text-gray: #66717c; /* --vp-text-gray */
   --vpl-bg: #f8f9fa; /* --vp-bg-light */
   --vpl-surface: #ffffff; /* --vp-surface */
   --vpl-border: #e9ecef; /* --vp-border */
@@ -117,7 +117,7 @@ body#keycloak-bg::after {
   /* Feldrand: --vp-field-border des Design-Systems. --vp-border (1,19:1) und
      --vp-gray (1,49:1) reissen die 3:1-Grenze fuer Nicht-Text-Kontrast
      (WCAG 1.4.11); der Rand ist die einzige Angabe, wo das Feld anfaengt. */
-  --vpl-field-border: color-mix(in srgb, #6c757d 80%, #ffffff); /* ~#899197, 3,21:1 */
+  --vpl-field-border: color-mix(in srgb, var(--vpl-text-gray) 80%, #ffffff); /* --vp-field-border */
 
   font-family: var(--vpl-font);
   color: var(--vpl-text);
@@ -328,7 +328,7 @@ body#keycloak-bg::after {
   color: var(--vpl-text-gray);
 }
 .vpl-input:focus {
-  border-color: var(--vpl-primary-deep);
+  border-color: var(--vpl-action);
   box-shadow: 0 0 0 3px var(--vpl-focus-ring);
 }
 .vpl-input[aria-invalid='true'] {

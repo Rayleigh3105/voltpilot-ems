@@ -234,7 +234,8 @@ test('transport retry is idempotent and the modal traps focus while every close 
   const state = await mock(page, { failFirstAction: true, slowAction: true });
   await page.goto('/e2e/ocpp-wallbox.html');
   const trigger = page.getByRole('button', { name: 'Laden stoppen', exact: true });
-  await trigger.focus(); await trigger.click();
+  // Exercise keyboard return-focus; Safari taps do not retain button focus.
+  await trigger.focus(); await trigger.press('Enter');
   const dialog = page.getByRole('dialog');
   await expect(dialog).toHaveAttribute('aria-describedby', 'ocpp-action-description');
   const send = page.getByRole('button', { name: 'Prüfen und senden' });

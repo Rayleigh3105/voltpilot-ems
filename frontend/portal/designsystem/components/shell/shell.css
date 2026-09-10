@@ -39,7 +39,7 @@
 }
 .vp-navitem.active {
   background: var(--vp-tint);
-  color: var(--vp-primary-deep);
+  color: var(--vp-action);
   font-weight: 600;
 }
 .vp-navitem.active .ic {
@@ -212,6 +212,7 @@
 }
 .vp-modal .dhead {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--vp-space-3);
   padding: var(--vp-space-5) var(--vp-space-6);
@@ -241,8 +242,10 @@
   overflow-x: hidden;
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 .vp-modal .dfoot {
+  flex-shrink: 0;
   padding: var(--vp-space-5) var(--vp-space-6);
   border-top: 1px solid var(--vp-border);
   display: flex;
@@ -267,6 +270,8 @@
        traegt es das Polster selbst (Stufe-1-Muster). */
     padding-bottom: env(safe-area-inset-bottom, 0);
     padding-right: env(safe-area-inset-right, 0);
+    padding-top: env(safe-area-inset-top, 0);
+    padding-left: env(safe-area-inset-left, 0);
   }
   /* Zwei nebeneinander liegende Aktionen passen bei 375 px nicht in eine
      Zeile: der `flex-wrap` warf sie in zwei rechtsbündige Zeilen (die

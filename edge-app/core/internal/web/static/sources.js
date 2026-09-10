@@ -664,10 +664,13 @@
   }
 
   /* ---------------- drawer ---------------- */
+  var drawerTrigger = null;
 
   // openDrawer(role): each per-category "+ hinzufügen" row opens the drawer
   // with ITS role preselected; the role picker stays available to change it.
-  function openDrawer(role) {
+  function openDrawer(role, trigger) {
+    // Safari does not focus buttons when tapped; remember the actual opener.
+    drawerTrigger = trigger || document.activeElement;
     // Reset the form and role selection each time it opens.
     $("srcLabel").value = "";
     $("srcKwp").value = "";
@@ -689,6 +692,7 @@
   function closeDrawer() {
     $("srcDrawerBackdrop").hidden = true;
     document.body.classList.remove("drawer-open");
+    if (drawerTrigger && drawerTrigger.isConnected) drawerTrigger.focus();
   }
 
   // isSunspecSource: nur eine über SunSpec Modbus gelesene Fronius-Quelle hat
@@ -852,12 +856,26 @@
     if (!$("anlageCard")) return;
     // One "+ hinzufügen" row per category (the empty-state cards are gone);
     // each opens the drawer with its role preselected.
-    $("erzAdd").addEventListener("click", function () { openDrawer(ROLE_ERZEUGER); });
-    $("netzAdd").addEventListener("click", function () { openDrawer(ROLE_NETZ); });
-    $("verbAdd").addEventListener("click", function () { openDrawer(ROLE_CONSUMER); });
+    $("erzAdd").addEventListener("click", function (e) { openDrawer(ROLE_ERZEUGER, e.currentTarget); });
+    $("netzAdd").addEventListener("click", function (e) { openDrawer(ROLE_NETZ, e.currentTarget); });
+    $("verbAdd").addEventListener("click", function (e) { openDrawer(ROLE_CONSUMER, e.currentTarget); });
     $("srcClose").addEventListener("click", closeDrawer);
     $("srcDrawerBackdrop").addEventListener("click", function (e) {
       if (e.target === $("srcDrawerBackdrop")) closeDrawer();
+    });
+    $("srcDrawerBackdrop").addEventListener("keydown", function (e) {
+      if (e.defaultPrevented) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeDrawer();
+      } else if (e.key === "Tab") {
+        var controls = Array.from($("srcDrawerBackdrop").querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), a[href], [tabindex="0"]'
+        )).filter(function (node) { return node.getClientRects().length && getComputedStyle(node).visibility !== "hidden"; });
+        var first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && e.target === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && e.target === last) { e.preventDefault(); first.focus(); }
+      }
     });
     $("roleErz").addEventListener("click", function () { setRole(ROLE_ERZEUGER); });
     $("roleNetz").addEventListener("click", function () { setRole(ROLE_NETZ); });
