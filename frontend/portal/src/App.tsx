@@ -59,6 +59,8 @@ import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
 import { PortfolioTabs } from './components/PortfolioTabs';
+import { helpForRoute } from './help/context';
+const HelpPage = lazy(PAGE_CHUNK.hilfe);
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
 // (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
 // `Onboarding.tsx → AnlageFlow.tsx → LocationMap` an **Leaflet** (146 kB) und
@@ -474,6 +476,10 @@ function UnifiedPortal() {
     return !isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r;
   });
   const page = route.page;
+  const helpReturnHash = useRef<string | null>(page === 'hilfe' ? null : window.location.hash);
+  useEffect(() => {
+    if (route.page !== 'hilfe') helpReturnHash.current = window.location.hash;
+  }, [route]);
 
   // Admin tenant context (the switcher). Customers never have an override -
   // their tenant comes from the JWT and the backend ignores the header anyway.
@@ -943,6 +949,7 @@ function UnifiedPortal() {
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
       anlage={anlageNav}
+      helpArticle={page === 'hilfe' ? null : loadFailed ? 'probleme' : showOnboarding ? null : helpForRoute(route)}
     >
       {updateAvailable && (
         // Der Server liefert einen neueren Stand als den, den dieser Tab
@@ -973,7 +980,14 @@ function UnifiedPortal() {
         </div>
       )}
 
-      {needsTenantPick ? (
+      {page === 'hilfe' ? (
+        <LazyBoundary><HelpPage articleId={route.helpArticle}
+          returnHref={helpReturnHash.current || hashForRoute(
+            isAdmin && !tenantId ? pageRoute('plattform-uebersicht')
+              : sites.length === 1 ? anlageRoute(sites[0].id)
+                : pageRoute(portfolioNav ? 'portfolio' : 'uebersicht'),
+          )} /></LazyBoundary>
+      ) : needsTenantPick ? (
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
       ) : loadFailed ? (
         <LoadErrorNotice onRetry={() => void reload()} />

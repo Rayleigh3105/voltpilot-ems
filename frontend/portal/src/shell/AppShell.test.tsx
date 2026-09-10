@@ -460,13 +460,12 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
   });
 
-  it('the foot Hilfe entry opens an honest help panel, never a dead link', () => {
+  it('the foot Hilfe entry navigates to the global handbook', () => {
     renderShell();
     // Der Fuß der Seitenleiste trägt ihn weiterhin (am Rechner), das
     // Avatar-Menü am Telefon - beide öffnen dieselbe Fläche.
     fireEvent.click(screen.getAllByRole('button', { name: /Hilfe & Kontakt/ })[0]);
-    const panel = screen.getByRole('dialog', { name: 'Hilfe & Kontakt' });
-    expect(panel.textContent).toContain('VoltPilot');
+    expect(baseProps.onNavigate).toHaveBeenCalledWith('hilfe');
   });
 
   it('renders no Anlage nav without an Anlage in scope', () => {

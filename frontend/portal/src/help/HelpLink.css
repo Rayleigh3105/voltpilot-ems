@@ -1,0 +1,7 @@
+.vp-help-link { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; max-width: 100%; color: var(--vp-action); background: none; border: 0; padding: 4px 0; font: inherit; font-size: 13px; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.vp-help-link svg { flex-shrink: 0; }
+.vp-help-link:focus-visible { outline: 2px solid var(--vp-focus-ring-color); outline-offset: 3px; border-radius: 4px; }
+.vp-context-help { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+/* Reuse the shared centered modal, including its stack and closing motion. */
+.vp-modal:has(.vp-help-panel) { width: min(840px, 100%); }
+.vp-modal:has(.vp-help-panel) .dfoot { flex-wrap: wrap; justify-content: space-between; }

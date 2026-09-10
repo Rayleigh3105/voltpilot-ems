@@ -16,7 +16,7 @@ import type { Tenant } from '../admin/adminApi';
 import { MAIN_PAGES, PLATFORM_GROUPS, navPageFor, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
 import {
   bottomBarSlots,
-  HELP_TEXT,
+  HELP_ITEM,
   type AnlageSidebar,
   type NavTarget,
   type SidebarItem,
@@ -27,6 +27,8 @@ import type { VpOption } from '../picker/optionen';
 import type { AnlagenSub } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
+import { HelpProvider, HelpLink } from '../help/HelpProvider';
+import type { HelpArticleId } from '../help/model';
 
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
@@ -101,6 +103,7 @@ export function AppShell({
   tenantOverride,
   onTenantChange,
   anlage = null,
+  helpArticle = null,
   children,
 }: {
   page: PageId;
@@ -135,10 +138,10 @@ export function AppShell({
   onTenantChange: (tenantId: string | null) => void;
   /** Die Anlagen-Navigation (fünf Bereiche + Pfad); null = keine Anlage offen. */
   anlage?: AnlageNav | null;
+  helpArticle?: HelpArticleId | null;
   children: React.ReactNode;
 }) {
   const user = currentUser();
-  const [helpOpen, setHelpOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
@@ -158,13 +161,12 @@ export function AppShell({
     setMenuOpen(false);
   }, [page]);
 
-  // Escape schliesst Menü + Hilfe; ein Klick daneben schliesst das Menü.
+  // Escape oder ein Klick daneben schliesst das Avatar-Menü.
   useEffect(() => {
-    if (!menuOpen && !helpOpen) return undefined;
+    if (!menuOpen) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setMenuOpen(false);
-      setHelpOpen(false);
     };
     const onDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
@@ -175,7 +177,7 @@ export function AppShell({
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('mousedown', onDown);
     };
-  }, [menuOpen, helpOpen]);
+  }, [menuOpen]);
 
   const initials = (user.name || 'VP')
     .split(/\s+/)
@@ -201,7 +203,7 @@ export function AppShell({
         else onNavigate(target.page);
         return;
       case 'help':
-        setHelpOpen(true);
+        onNavigate('hilfe');
         return;
       case 'action':
       default:
@@ -227,7 +229,7 @@ export function AppShell({
       // the accessible name (and the tooltip) stay intact.
       label={<span className="vp-nav-lbl">{item.label}</span>}
       count={item.badge}
-      active={anlage?.activeKey === item.key}
+      active={item.target.kind === 'help' ? page === 'hilfe' : anlage?.activeKey === item.key}
       // ⚠ Der Titel NENNT das Abzeichen, wo es eines gibt (Steuerung Stufe 8):
       // ein nacktes „2" an einer Seitenleiste ist ein Rätsel, und der Satz ist
       // die EINE Stelle, an der steht, was gezählt wurde.
@@ -345,7 +347,7 @@ export function AppShell({
         )}
       </nav>
       <div className="side-foot">
-        {anlage && anlage.sidebar.foot.map(navEntry)}
+        {(anlage?.sidebar.foot ?? [HELP_ITEM]).map(navEntry)}
         <p className="vp-note vp-nav-lbl" style={{ margin: 0, padding: '0 var(--vp-space-3)' }}>
           VoltPilot EMS
         </p>
@@ -354,7 +356,7 @@ export function AppShell({
   );
 
   return (
-    <div className="vp-app">
+    <HelpProvider><div className="vp-app">
       {sidebar}
 
       <div className="vp-content">
@@ -534,7 +536,10 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="vp-main has-bottombar">{children}</main>
+        <main className="vp-main has-bottombar">
+          {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}
+          {children}
+        </main>
       </div>
 
       {/* Die Telefon-Leiste trägt seit E4 die FÜNF Bereiche der Anlage und
@@ -568,22 +573,6 @@ export function AppShell({
         </nav>
       )}
 
-      {helpOpen && (
-        // Hilfe & Kontakt: an honest sentence, not an invented support address
-        // (the platform has no self-service channel - see HELP_TEXT).
-        <>
-          <div className="vp-sheet-scrim" onClick={() => setHelpOpen(false)} aria-hidden="true" />
-          <div className="vp-helppanel" role="dialog" aria-label="Hilfe & Kontakt">
-            <div className="vp-sheet-head">
-              <span>Hilfe &amp; Kontakt</span>
-              <button type="button" aria-label="Schließen" onClick={() => setHelpOpen(false)}>
-                <Icon name="x" size={20} />
-              </button>
-            </div>
-            <p>{HELP_TEXT}</p>
-          </div>
-        </>
-      )}
-    </div>
+    </div></HelpProvider>
   );
 }

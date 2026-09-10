@@ -17,6 +17,7 @@ import {
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
+import { HelpLink } from '../help/HelpProvider';
 import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
@@ -195,6 +196,7 @@ export function AddDeviceDrawer({
             {DEVICE_ID_FIELD.help} Das Gerät verbindet sich selbst - Sie müssen keine
             IDs übertragen.
           </p>
+          <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">
             <Input
               ref={refInput}

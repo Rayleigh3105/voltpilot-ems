@@ -65,6 +65,8 @@ import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { VpPicker } from './VpPicker';
 import { TariffFields } from './TariffFields';
+import { HelpLink } from '../help/HelpProvider';
+import { helpForSetupStep } from '../help/context';
 import {
   buildSupplyPricePatch,
   showSupplyPriceFields,
@@ -271,6 +273,7 @@ export function AnlageFlow({
   return (
     <div className="vp-anlage-flow">
       <StepsRail current={step} />
+      <div className="vp-context-help"><HelpLink article={helpForSetupStep(step)}>Hilfe zu diesem Schritt</HelpLink></div>
       {step === 1 && (
         <AnlageStep
           locationSites={locationSites}

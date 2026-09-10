@@ -28,6 +28,7 @@
 
 /** Die Seiten der Flotten- und Plattform-Ebene (Abnehmer: `App.tsx`). */
 export const PAGE_CHUNK = {
+  hilfe: () => import('./help/HelpPage'),
   onboarding: () => import('./Onboarding'),
   uebersicht: () => import('./pages/UebersichtPage'),
   portfolio: () => import('./pages/PortfolioPage'),

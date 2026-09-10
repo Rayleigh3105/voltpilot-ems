@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:agents-md": "vitest run src/agentsMdBudget.test.ts",
     "test:e2e": "playwright test",
+    "help:screenshots": "node scripts/help-screenshots.mjs",
     "test:watch": "vitest",
     "test:csp": "test/csp-smoke.sh",
     "test:cache": "test/cache-smoke.sh",

@@ -115,7 +115,7 @@ export const HELP_TEXT =
   'Ihr VoltPilot-Team hilft Ihnen weiter. Wenden Sie sich an Ihren Ansprechpartner bei VoltPilot — ' +
   'auch wenn Sie Ihr Passwort zurücksetzen möchten oder ein Gerät sich nicht meldet.';
 
-const HELP_ITEM: SidebarItem = {
+export const HELP_ITEM: SidebarItem = {
   key: 'hilfe',
   label: 'Hilfe & Kontakt',
   icon: 'help-circle',

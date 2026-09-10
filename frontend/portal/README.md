@@ -24,6 +24,14 @@ the entry bundle (230 kB gzip) and shared chart bundle (210 kB gzip).
 
 `designsystem/` holds the shared VoltPilot design system - CSS tokens (`tokens/*.css`), core/form components (`.jsx` + `.d.ts` + `.prompt.md`) and guideline cards. Tokens are imported once in `src/main.tsx`; build new UI on these components, not hand-rolled ones.
 
+## Help center
+
+`#/hilfe` provides the German customer/operator handbook with search, system
+diagrams and annotated portal screenshots. Contextual help opens over the
+current page and preserves unfinished inputs. It also works during onboarding
+and when tenant data cannot load. Article editing, screenshot regeneration and
+verification are documented in [`src/help/README.md`](src/help/README.md).
+
 ## Status
 
 Implemented: Keycloak OIDC login/logout (`voltpilot-frontend` public client, PKCE) plus public **self-registration** ("Konto erstellen") with seamless post-registration auto-login (`loginWithCredentials()` in `src/auth.ts`), the **guided first-run onboarding wizard** (`src/Onboarding.tsx`: Standort -> Gerät -> Startklar, keyless address search, waits for first data), and the unified shell for both roles - sites/devices (live connectivity status from `lastSeenAt`), telemetry/prices/weather/Fahrplan/Historie views (ECharts + design system), and the admin **Plattform** pages (Mandanten, Benutzer incl. "Passwort zurücksetzen", Geräte-Registry) with the tenant switcher.

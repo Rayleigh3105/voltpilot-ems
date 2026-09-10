@@ -138,6 +138,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
  * Geräte-Registry und Edge-Updates teilen sich `GeraeteBereich`.
  */
 const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
+  hilfe: PAGE_CHUNK.hilfe,
   uebersicht: PAGE_CHUNK.uebersicht,
   portfolio: PAGE_CHUNK.portfolio,
   'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],

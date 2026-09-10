@@ -68,6 +68,8 @@ dessen Tabelle ein. Eine Ratschen-Zahl wird nur KLEINER.
 Jede Flächen-Änderung wird bei **1440 und 375** durchgespielt: **0 px horizontaler Überlauf,
 0 überstehende Elemente, keine Konsolenmeldungen**. Werkzeug: `chrome-devtools-axi`.
 
+**Portal help handbook:** `src/help/README.md` documents the German articles, contextual modals, fictional screenshot capture and checks (`npm run help:screenshots`).
+
 ## Themen-Index (der ausgelagerte Bestand)
 
 Jede Zeile ist ein frueherer Abschnitt DIESER Datei. Der Text ist unveraendert, er

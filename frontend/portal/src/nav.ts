@@ -18,6 +18,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
+  | 'hilfe'
   | 'portfolio'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
@@ -111,6 +112,8 @@ export interface Route {
    * Routen-Zusicherung unverändert gültig.
    */
   geraet?: GeraetTarget;
+  /** Global handbook article; never scoped to a tenant or Anlage. */
+  helpArticle?: string;
 }
 
 /**
@@ -363,6 +366,7 @@ export function anlagenLabel(siteCount: number | null): string {
 
 /** Every page def, wherever it is rendered (main nav, mode group, Plattform). */
 export const ALL_PAGES: PageDef[] = [
+  { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   ...MAIN_PAGES,
@@ -490,6 +494,13 @@ export function parseRoute(hash: string): Route {
   const segments = raw.split('/').filter((s) => s.length > 0);
   const head = segments[0] ?? '';
 
+  if (head === 'hilfe') {
+    // Invalid slugs stay in help and receive a useful not-found page.
+    let article = segments.slice(1).join('/');
+    try { article = decodeURIComponent(article); } catch { /* retain malformed input for not-found */ }
+    return { page: 'hilfe', siteId: null, sub: null, ...(article ? { helpArticle: article } : {}) };
+  }
+
   if (head === 'anlage' && segments[1]) {
     const raw = segments[2];
     // `in`-check, not `??`: a legacy sub may map to null (= the cockpit).
@@ -599,6 +610,7 @@ export function canonicalAnlageHash(hash: string): string | null {
 
 /** The canonical hash of a route (what goes into window.location.hash). */
 export function hashForRoute(route: Route): string {
+  if (route.page === 'hilfe') return `#/hilfe${route.helpArticle ? `/${encodeURIComponent(route.helpArticle)}` : ''}`;
   if (route.page === 'anlagen' && route.siteId) {
     if (route.sub === 'geraet' && route.geraet) {
       return geraetSeiteHash(route.siteId, route.geraet.ref, route.geraet.geraetId);

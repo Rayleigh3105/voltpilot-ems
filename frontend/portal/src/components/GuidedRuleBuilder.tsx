@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { VpPicker } from './VpPicker';
+import { HelpLink } from '../help/HelpProvider';
 import {
   UEBERSCHUSS_BLOCKIERT,
   UEBERSCHUSS_HINWEIS,
@@ -316,6 +317,7 @@ export function GuidedRuleBuilder({
 
   return (
     <div className="vp-guided">
+      <div className="vp-context-help"><HelpLink article="regeln">Hilfe beim Erstellen einer Regel</HelpLink></div>
       {vorbelegungen && onVorbelegung
         && (vorbelegungen.liste.length > 0 || vorbelegungen.hinweis) && (
         <div className="vp-guided-start">

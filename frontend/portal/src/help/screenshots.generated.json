@@ -1,0 +1,554 @@
+{
+  "cockpit": {
+    "title": "Cockpit: Energie und Zustand",
+    "file": "cockpit.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Cockpit: Energie und Zustand. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 4.36,
+        "y": 8.5,
+        "text": "Der Anlagenname zeigt, welchen Standort Sie gerade betrachten."
+      },
+      {
+        "x": 30.77,
+        "y": 25.96,
+        "text": "Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse."
+      },
+      {
+        "x": 64.74,
+        "y": 18.1,
+        "text": "Das Ergebnis bezieht sich auf den hier gewählten Zeitraum."
+      }
+    ]
+  },
+  "orientierung": {
+    "title": "Navigation auf dem Rechner",
+    "file": "orientierung.png",
+    "width": 1440,
+    "height": 1000,
+    "alt": "Navigation auf dem Rechner. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 2.22,
+        "y": 16.2,
+        "text": "Die Bereiche führen zu den täglichen Aufgaben dieser Anlage."
+      },
+      {
+        "x": 20.83,
+        "y": 3.35,
+        "text": "Der Anlagenname oben ist zugleich der Anlagenwechsler."
+      },
+      {
+        "x": 96.46,
+        "y": 3.25,
+        "text": "Das Konto-Menü enthält Hilfe & Kontakt sowie Abmelden."
+      }
+    ]
+  },
+  "orientierung-mobil": {
+    "title": "Navigation auf dem Telefon",
+    "file": "orientierung-mobil.png",
+    "width": 390,
+    "height": 844,
+    "alt": "Navigation auf dem Telefon. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 9.23,
+        "y": 2.13,
+        "text": "Hier erkennen und wechseln Sie die geöffnete Anlage."
+      },
+      {
+        "x": 41.79,
+        "y": 10.72,
+        "text": "Hilfe & Kontakt öffnet das vollständige Hilfe-Center."
+      },
+      {
+        "x": 5.13,
+        "y": 95.38,
+        "text": "Die verfügbaren Bereiche bleiben unten erreichbar."
+      }
+    ]
+  },
+  "anlage-anlegen": {
+    "title": "Eine Anlage einrichten",
+    "file": "anlage-anlegen.png",
+    "width": 1192,
+    "height": 1400,
+    "alt": "Eine Anlage einrichten. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 31.63,
+        "y": 35.76,
+        "text": "Geben Sie der Anlage einen wiedererkennbaren Namen."
+      },
+      {
+        "x": 31.63,
+        "y": 46.72,
+        "text": "Der Standort hilft bei der Zuordnung der Wettervorhersage."
+      },
+      {
+        "x": 31.63,
+        "y": 92.2,
+        "text": "Mit Weiter speichern Sie diesen Schritt und gelangen zu den Registerdaten."
+      }
+    ]
+  },
+  "box-verbinden": {
+    "title": "Die Geräte-ID zuordnen",
+    "file": "box-verbinden.png",
+    "width": 640,
+    "height": 544,
+    "alt": "Die Geräte-ID zuordnen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 8.28,
+        "y": 54.37,
+        "text": "Übertragen Sie die vollständige VoltPilot-Geräte-ID."
+      },
+      {
+        "x": 8.28,
+        "y": 71.15,
+        "text": "Prüfen Sie die Anlage, der die Box zugeordnet werden soll."
+      },
+      {
+        "x": 68.57,
+        "y": 90.06,
+        "text": "Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend."
+      }
+    ]
+  },
+  "box-verbinden-mobil": {
+    "title": "Geräte-ID auf dem Telefon eingeben",
+    "file": "box-verbinden-mobil.png",
+    "width": 390,
+    "height": 844,
+    "alt": "Geräte-ID auf dem Telefon eingeben. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 13.33,
+        "y": 40.14,
+        "text": "Die Geräte-ID bleibt während der Eingabe sichtbar."
+      },
+      {
+        "x": 13.33,
+        "y": 50.97,
+        "text": "Die gewählte Anlage bestimmt den Standort der Zuordnung."
+      },
+      {
+        "x": 13.33,
+        "y": 93.7,
+        "text": "Die Abschlussaktion bleibt am unteren Rand erreichbar."
+      }
+    ]
+  },
+  "fahrplan": {
+    "title": "Fahrplan: jetzt und im Tagesverlauf",
+    "file": "fahrplan.png",
+    "width": 1192,
+    "height": 1887,
+    "alt": "Fahrplan: jetzt und im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 4.36,
+        "y": 7.68,
+        "text": "Die Ansicht gehört zur oben genannten Anlage."
+      },
+      {
+        "x": 7.13,
+        "y": 26.51,
+        "text": "Diese Erklärung nennt den Planungshorizont und die Grundlage des Plans."
+      },
+      {
+        "x": 7.8,
+        "y": 46.21,
+        "text": "Preis und Speicherleistung liegen auf getrennten Skalen über derselben Zeitachse."
+      }
+    ]
+  },
+  "messwerte": {
+    "title": "Messwerte: Zeitraum und Energie",
+    "file": "messwerte.png",
+    "width": 1192,
+    "height": 1750,
+    "alt": "Messwerte: Zeitraum und Energie. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 10.17,
+        "y": 12.17,
+        "text": "Wählen Sie den Zeitrahmen passend zu Ihrer Frage."
+      },
+      {
+        "x": 6.46,
+        "y": 20.74,
+        "text": "Diese Mengen summieren die Energie im gewählten Zeitraum."
+      },
+      {
+        "x": 6.46,
+        "y": 60.34,
+        "text": "Das Diagramm zeigt die gemessenen Reihen; Einheiten und Richtung stehen an der Legende."
+      }
+    ]
+  },
+  "erloese": {
+    "title": "Erlöse: Ergebnis und Zusammensetzung",
+    "file": "erloese.png",
+    "width": 1192,
+    "height": 1500,
+    "alt": "Erlöse: Ergebnis und Zusammensetzung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 10.17,
+        "y": 14.2,
+        "text": "Der Zeitrahmen gilt für die gezeigte wirtschaftliche Auswertung."
+      },
+      {
+        "x": 6.46,
+        "y": 35.25,
+        "text": "Einspeisung ist eine eigene Position der Zusammensetzung."
+      },
+      {
+        "x": 6.46,
+        "y": 47.12,
+        "text": "Die Kosten des bezogenen Stroms werden separat ausgewiesen."
+      }
+    ]
+  },
+  "marktpreise": {
+    "title": "Börsenpreise im Tagesverlauf",
+    "file": "marktpreise.png",
+    "width": 1192,
+    "height": 1500,
+    "alt": "Börsenpreise im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 2.64,
+        "y": 12.5,
+        "text": "Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif."
+      },
+      {
+        "x": 6.46,
+        "y": 83.45,
+        "text": "Die Kennzahl gehört zum ausgewählten Zeitraum und ihrer angegebenen Einheit."
+      },
+      {
+        "x": 6.46,
+        "y": 38.05,
+        "text": "Die Zeitachse zeigt die günstigen und teuren Abschnitte des Tages."
+      }
+    ]
+  },
+  "wetter": {
+    "title": "Wetter und erwartete PV-Leistung",
+    "file": "wetter.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Wetter und erwartete PV-Leistung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 2.64,
+        "y": 15.63,
+        "text": "Die Vorhersage bezieht sich auf den Standort der geöffneten Anlage."
+      },
+      {
+        "x": 6.46,
+        "y": 28.32,
+        "text": "Diese Leistung ist vorhergesagt, nicht bereits gemessen."
+      },
+      {
+        "x": 6.46,
+        "y": 35.15,
+        "text": "Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar."
+      }
+    ]
+  },
+  "prognose": {
+    "title": "Prognosequalität und aktive Modelle",
+    "file": "prognose.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Prognosequalität und aktive Modelle. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 6.46,
+        "y": 51.17,
+        "text": "Diese Modelle liefern die Vorhersagen für die laufende Planung."
+      },
+      {
+        "x": 6.46,
+        "y": 32.71,
+        "text": "Die ausgewiesene Abweichung hat eine eigene Einheit und ist keine Genauigkeit in Prozent."
+      },
+      {
+        "x": 76.36,
+        "y": 54.75,
+        "text": "Der Name nennt das Modell, dessen Vorhersage aktuell verwendet wird."
+      }
+    ]
+  },
+  "portfolio": {
+    "title": "Anlagen im Portfolio",
+    "file": "portfolio.png",
+    "width": 1192,
+    "height": 932,
+    "alt": "Anlagen im Portfolio. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 2.73,
+        "y": 15.61,
+        "text": "Das Portfolio fasst die Anlagen Ihres Kontos zusammen."
+      },
+      {
+        "x": 4.45,
+        "y": 37.94,
+        "text": "Die Anlagenliste hilft beim Vergleichen und führt in die einzelne Anlage."
+      },
+      {
+        "x": 4.36,
+        "y": 25.34,
+        "text": "Gemeinsame Kennzahlen sind von Einzelwerten einer Anlage zu unterscheiden."
+      }
+    ]
+  },
+  "steuerung": {
+    "title": "Betriebsmodelle der Anlage",
+    "file": "steuerung.png",
+    "width": 1128,
+    "height": 477,
+    "alt": "Betriebsmodelle der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 1.77,
+        "y": 2.81,
+        "text": "Hier wählen Sie das übergeordnete Betriebsziel des Speichers."
+      },
+      {
+        "x": 8.07,
+        "y": 41.83,
+        "text": "Die Karte erklärt das jeweilige Modell und seine Voraussetzungen."
+      },
+      {
+        "x": 8.07,
+        "y": 66.43,
+        "text": "Vor einem Wechsel lesen Sie die angezeigten Folgen für die aktuelle Betriebsweise."
+      }
+    ]
+  },
+  "regeln": {
+    "title": "Eine Regel im Baukasten erstellen",
+    "file": "regeln.png",
+    "width": 640,
+    "height": 620,
+    "alt": "Eine Regel im Baukasten erstellen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 8.28,
+        "y": 35.88,
+        "text": "Ein aussagekräftiger Name hilft beim späteren Wiederfinden der Regel."
+      },
+      {
+        "x": 8.28,
+        "y": 44.9,
+        "text": "Bedingungen bestimmen, wann die Regel gilt."
+      },
+      {
+        "x": 8.28,
+        "y": 91.78,
+        "text": "Prüfen Sie die Zusammenfassung, bevor Sie die Regel aktivieren."
+      }
+    ]
+  },
+  "regeln-mobil": {
+    "title": "Der Regelbaukasten auf dem Telefon",
+    "file": "regeln-mobil.png",
+    "width": 390,
+    "height": 844,
+    "alt": "Der Regelbaukasten auf dem Telefon. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 13.33,
+        "y": 26.27,
+        "text": "Auch auf dem Telefon wird die Regel über dieselben Eingaben erstellt."
+      },
+      {
+        "x": 13.33,
+        "y": 32.91,
+        "text": "Die Bedingungen stehen vor der auszuführenden Aktion."
+      },
+      {
+        "x": 13.33,
+        "y": 77.98,
+        "text": "Der nächste Schritt führt zur Prüfung, nicht unmittelbar zur Aktivierung."
+      }
+    ]
+  },
+  "lastspitzen": {
+    "title": "Lastspitze und vermiedene Leistung",
+    "file": "lastspitzen.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Lastspitze und vermiedene Leistung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 6.46,
+        "y": 34.65,
+        "text": "Die gemessene Spitze gehört zur genannten Abrechnungsperiode."
+      },
+      {
+        "x": 6.46,
+        "y": 37.57,
+        "text": "Der Vergleich beschreibt die Differenz gegenüber dem dargestellten Betrieb ohne Speicher."
+      },
+      {
+        "x": 6.46,
+        "y": 68.9,
+        "text": "Der Verlauf ordnet die Spitzen über die vorhandenen Perioden ein."
+      }
+    ]
+  },
+  "ladepark": {
+    "title": "Der Ladepark-Rahmen",
+    "file": "ladepark.png",
+    "width": 1128,
+    "height": 524,
+    "alt": "Der Ladepark-Rahmen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 5.41,
+        "y": 14.89,
+        "text": "Der Rahmen beschreibt die Grenzen, innerhalb derer das Lastmanagement verteilt."
+      },
+      {
+        "x": 76.42,
+        "y": 36.63,
+        "text": "Die Anschlussgrenze muss zur tatsächlichen Installation passen."
+      },
+      {
+        "x": 5.41,
+        "y": 48.46,
+        "text": "Die weiteren Werte zeigen die Rückmeldung der Box; nur hinterlegte Werte werden ausdrücklich so bezeichnet."
+      }
+    ]
+  },
+  "ladevorgaenge": {
+    "title": "Aktuelle Ladeleistung und Ladevorgänge",
+    "file": "ladevorgaenge.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Aktuelle Ladeleistung und Ladevorgänge. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 7.13,
+        "y": 14.45,
+        "text": "Das Budget setzt Gebäude, Laden und Anschlussgrenze in Beziehung."
+      },
+      {
+        "x": 7.13,
+        "y": 44.57,
+        "text": "Jeder Anschluss nennt seinen aktuellen Zustand und den Grund."
+      },
+      {
+        "x": 7.13,
+        "y": 76.92,
+        "text": "Über die jeweilige Geräteseite gelangen Sie zu weiteren Details."
+      }
+    ]
+  },
+  "modell": {
+    "title": "Elektrische Struktur und Geräte",
+    "file": "modell.png",
+    "width": 1192,
+    "height": 1400,
+    "alt": "Elektrische Struktur und Geräte. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 20.59,
+        "y": 30.45,
+        "text": "Das Anlagenbild zeigt die Zuordnung der Geräte, keine gemessenen Energieflüsse."
+      },
+      {
+        "x": 10.74,
+        "y": 43.19,
+        "text": "Die Gerätekarte öffnet die zugehörige Detailansicht."
+      },
+      {
+        "x": 14.01,
+        "y": 85.19,
+        "text": "Die Box verbindet die Geräte dieses Standorts mit VoltPilot."
+      }
+    ]
+  },
+  "box": {
+    "title": "Verbindung und Zustand der Box",
+    "file": "box.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Verbindung und Zustand der Box. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 7.8,
+        "y": 16.92,
+        "text": "Prüfen Sie Namen und Geräte-ID der Box."
+      },
+      {
+        "x": 7.97,
+        "y": 49.06,
+        "text": "Der letzte Kontakt beschreibt die Aktualität der Verbindung."
+      },
+      {
+        "x": 69.74,
+        "y": 56.88,
+        "text": "Die Befehlsansicht unterscheidet Aktionen und ihre Rückmeldungen."
+      }
+    ]
+  },
+  "geraete": {
+    "title": "Gerät und Rückmeldungen",
+    "file": "geraete.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Gerät und Rückmeldungen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 7.8,
+        "y": 16.92,
+        "text": "Diese Ansicht gehört zum einzelnen Gerät hinter der Box."
+      },
+      {
+        "x": 30.96,
+        "y": 49.59,
+        "text": "Der Ladestand ist eine Messgröße; die Einheit steht direkt am Wert."
+      },
+      {
+        "x": 69.74,
+        "y": 69.4,
+        "text": "Gesendete Befehle und ihre Rückmeldung helfen bei der Prüfung der Wirkung."
+      }
+    ]
+  },
+  "einstellungen": {
+    "title": "Einstellungen der Anlage",
+    "file": "einstellungen.png",
+    "width": 1192,
+    "height": 1200,
+    "alt": "Einstellungen der Anlage. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "callouts": [
+      {
+        "x": 27.35,
+        "y": 27.44,
+        "text": "Die Suche findet Einstellungen auch über alternative Begriffe."
+      },
+      {
+        "x": 4.36,
+        "y": 30.45,
+        "text": "Bezugspreis und Einspeisevergütung haben getrennte Angaben."
+      },
+      {
+        "x": 4.36,
+        "y": 38.95,
+        "text": "Die Speicherangaben beschreiben Kapazität, Leistung und den Umgang mit dem Speicher."
+      }
+    ]
+  }
+}
