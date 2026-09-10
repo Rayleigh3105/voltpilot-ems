@@ -2,6 +2,8 @@
 
 Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 140).
 
+**Historischer Aufbau:** Die spätere Anlagenbild-/Listen-Ansicht hat diese Oberfläche abgelöst. Der unerreichbare alte Renderer, sein Modell und CSS sowie die exklusiven Tests wurden im September 2026 entfernt; die aktiven Geräte- und Box-Ansichten bleiben erhalten.
+
 
 Der zweite Reiter der Zentrale (Konzept `data/vp-anlagen-zentrale-konzept-h6` §8,
 Revision 2: **es wohnt in einem EIGENEN Reiter neben „Ihre Geräte", nicht als

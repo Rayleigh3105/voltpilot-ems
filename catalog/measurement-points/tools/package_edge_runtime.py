@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from cataloglib import CATALOG_VERSION, ROOT, canonical_json_bytes
 

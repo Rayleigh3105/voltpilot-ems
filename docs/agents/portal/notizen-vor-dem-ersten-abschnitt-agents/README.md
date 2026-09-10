@@ -3,6 +3,8 @@
 Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 1).
 Sammlung: je Aufzaehlungspunkt eine Datei, Text byte-verbatim.
 
+**Removed unreachable UI implementations (September 2026):** the old `components/Schaltbild` renderer/CSS and `schaltbild.ts`, the standalone `components/ErloesKomposition` renderer/CSS, and `flowModules.ts` have been removed together with their exclusive tests. Earlier implementation notes below are historical for those files. The current Anlagenbild/list navigation and the shared `erloesKomposition.ts` calculations remain active; keep their tests and consumers.
+
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
 - [Add durable project-specific notes here as they are discovered through real work.](001-add-durable-project-specific-notes-here.md)

@@ -63,7 +63,6 @@ const BLAETTER: ReadonlyArray<{
        hier auffällt. */
     bekannt: ['.vp-c-led-det > summary'],
   },
-  { reiter: 'Erlöse', datei: 'components/ErloesKomposition.css', offen: 0, bekannt: [] },
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', offen: 0, bekannt: [] },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', offen: 0, bekannt: [] },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', offen: 0, bekannt: [] },

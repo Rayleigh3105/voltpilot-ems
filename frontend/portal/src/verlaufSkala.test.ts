@@ -56,7 +56,6 @@ const BLAETTER: ReadonlyArray<{
   // --- umgestellt (Variante C) — streng ---------------------------------
   { reiter: 'Erlöse', datei: 'components/Erloese.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/erloese/ErgebnisKarte.css', fs: 0, ff: 0, fw: 0 },
-  { reiter: 'Erlöse', datei: 'components/ErloesKomposition.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/SteuerungFormel.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Erlöse', datei: 'components/PortfolioWelt.css', fs: 0, ff: 0, fw: 0 },
   { reiter: 'Reiterleiste', datei: 'components/BereichTabs.css', fs: 0, ff: 0, fw: 0 },

@@ -34,7 +34,6 @@ const BLAETTER = [
   'Erloese.css',
   'erloese/ErgebnisKarte.css',
   'SteuerungFormel.css',
-  'ErloesKomposition.css',
   // ⚠ SEIT P6 auch das Portfolio (Entscheid E2 = „beide", §3.10 Punkt 7:
   //   „Cockpit-Erlöskarte und Portfolio tragen dasselbe Kleid"). Es trägt die
   //   Ergebnis-Fläche selbst über `ErgebnisKarte.css`; eigen bleiben ihm nur

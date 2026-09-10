@@ -648,29 +648,6 @@ public class SelfBuildComponentService {
         return out;
     }
 
-    /** Die gespeicherte Schalt-Definition, oder {@code null} ohne Freigabe. */
-    private SwitchDefinition.NormalizedSwitch storedSwitch(EntityRow row) {
-        JsonNode sw = parseDefinition(row).path("switch");
-        if (!sw.isObject() || !sw.path("freigabe").isObject()) {
-            return null;
-        }
-        SwitchDefinition.Result r = SwitchDefinition.validate(new SwitchDefinition.Switch(
-                sw.path("kind").asText(), sw.path("register_kind").asText(),
-                sw.path("address").asInt(), sw.path("write_fc").asInt(),
-                sw.has("on_value") ? sw.get("on_value").asInt() : null,
-                sw.has("off_value") ? sw.get("off_value").asInt() : null,
-                sw.has("min_value") ? sw.get("min_value").asDouble() : null,
-                sw.has("max_value") ? sw.get("max_value").asDouble() : null,
-                sw.has("safe_value") ? sw.get("safe_value").asDouble() : null,
-                sw.has("scale") ? sw.get("scale").asDouble() : null,
-                sw.has("offset") ? sw.get("offset").asDouble() : null,
-                sw.path("unit").asText(""),
-                sw.has("readback_address") ? sw.get("readback_address").asInt() : null,
-                sw.has("watchdog_address") ? sw.get("watchdog_address").asInt() : null,
-                sw.has("watchdog_value") ? sw.get("watchdog_value").asInt() : null));
-        return r.ok() ? r.value() : null;
-    }
-
     private JsonNode parseDefinition(EntityRow row) {
         try {
             String json = row.connectionJson();

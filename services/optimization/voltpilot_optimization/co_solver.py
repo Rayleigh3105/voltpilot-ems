@@ -145,7 +145,6 @@ from voltpilot_optimization.solver import (
     CURTAIL_TIEBREAK_EUR_PER_KW,
     EARLY_CHARGE_TIEBREAK_EUR_PER_KW,
     EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW,
-    MIP_ABS_GAP,
     _solve,
 )
 
