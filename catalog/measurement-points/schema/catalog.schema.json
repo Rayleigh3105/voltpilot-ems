@@ -10,6 +10,7 @@
     "edge_min_version",
     "families",
     "points",
+    "runtime_catalog_version",
     "schema_version",
     "source_manifest_sha256"
   ],
@@ -17,6 +18,7 @@
     "catalog_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"},
     "deye_point_key_lock_sha256": {"$ref": "#/$defs/sha256"},
     "edge_min_version": {"type": "string", "minLength": 1},
+    "runtime_catalog_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"},
     "schema_version": {"const": "1.0"},
     "source_manifest_sha256": {"$ref": "#/$defs/sha256"},
     "families": {
@@ -107,6 +109,7 @@
         "aggregation_kind",
         "catalog_version",
         "default_cadence_s",
+        "direction",
         "edge_min_version",
         "endian",
         "family",
@@ -118,6 +121,7 @@
         "point_key",
         "point_key_aliases",
         "poll_group",
+        "quantity",
         "readable",
         "scale",
         "selector",
@@ -140,6 +144,7 @@
         "decoder": {"type": "object"},
         "default_cadence_s": {"$ref": "#/$defs/nullableInteger"},
         "derived_from": {"type": "array", "items": {"type": "string"}},
+        "direction": {"enum": ["charge", "charge_discharge", "discharge", "export", "generation", "import", "import_export", "none", null]},
         "dimensions": {
           "type": "object",
           "additionalProperties": false,
@@ -173,6 +178,7 @@
         },
         "point_key_template": {"type": "boolean"},
         "poll_group": {"type": "string", "minLength": 1},
+        "quantity": {"enum": ["active_energy", "active_power", "apparent_energy", "apparent_power", "current", "energy_capacity", "frequency", "power_factor", "reactive_energy", "reactive_power", "soc", "temperature", "voltage", null]},
         "readable": {"type": "boolean"},
         "recommended": {"type": "boolean"},
         "scale": {"$ref": "#/$defs/scale"},

@@ -74,4 +74,25 @@ class MeasurementCatalogTest {
         assertThat(point.retention().longTermCadenceS()).isEqualTo(300);
         assertThat(catalog.resolve("sunspec.model_160.module[999].dcw")).isNull();
     }
+
+    /**
+     * Zwei Stände: die api veröffentlicht und speichert weiter den LAUFZEITSTAND der Box (die
+     * Palette lehnt jede fremde catalog_version ab); Größe und Richtung kommen aus dem
+     * paketierten Inhaltsstand.
+     */
+    @Test
+    void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
+        assertThat(catalog.version()).isEqualTo("2026.08.26.3");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.11.1");
+
+        assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
+                .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
+        assertThat(catalog.semantik("sunspec.model_203.w"))
+                .isEqualTo(new MeasurementCatalog.Semantik("active_power", "import_export"));
+        assertThat(catalog.semantik("sunspec.model_160.module[7].dcwh"))
+                .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "generation"));
+        assertThat(catalog.semantik("goe.api_v2.eto"))
+                .isEqualTo(new MeasurementCatalog.Semantik(null, null));
+        assertThat(catalog.semantik("gibt.es.nicht")).isNull();
+    }
 }

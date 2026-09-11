@@ -44,7 +44,13 @@ Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 154).
   Quellstände, Dubletten/Adressen und deterministische Bytes sind
   regressionsgesichert; das optionale Deye-YAML-Update nutzt ausschließlich die
   in `requirements-update.txt` gepinnte PyYAML-Version. Der Release-Test hält
-  `VERSION`, die Maven-Ressourcenauswahl der API und den paketierten Edge-Katalog
-  auf exakt derselben Version; der gemeinsame API-Publisher-Fixture muss durch
+  `VERSION` und die Maven-Ressourcenauswahl der API auf dem Inhaltsstand und den
+  paketierten Edge-Katalog auf dem LAUFZEITSTAND (`RUNTIME_VERSION`, seit 11.09.2026 —
+  die Palette lehnt jede fremde `catalog_version` ab; Regel im Katalog-README
+  „Inhaltsstand und Laufzeitstand“); der gemeinsame API-Publisher-Fixture muss durch
   den echten Edge-Planer und die Runtime laufen.
+- **Größe und Richtung je Punkt** (`quantity`/`direction`, seit 2026.09.11.1): vergeben in
+  `tools/semantics.py`, Richtungspflicht für jede Energie-Größe mit benannten Ausnahmen,
+  Abbildung auf den Messstellen-Vertrag als Tabelle im Katalog-README ·
+  `uems-messkanal-read-model-richtung-groesse.md`.
 

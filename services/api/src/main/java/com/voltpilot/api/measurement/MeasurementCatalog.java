@@ -22,6 +22,13 @@ import org.springframework.stereotype.Component;
  * Read-only API consumer of the canonical generated catalog. Maven packages the
  * root {@code catalog/measurement-points/dist} artifact byte-for-byte into the
  * jar; this class never carries a second point list.
+ *
+ * <p>⚠ The artifact carries TWO versions (catalog README „Inhaltsstand und
+ * Laufzeitstand“). {@link #version()} is the RUNTIME version the box speaks — it
+ * travels in every measurement config, and the edge palette refuses a config whose
+ * {@code catalog_version} differs from its own catalog. {@link #inhaltsstand()} is
+ * the content version of the packaged file (e.g. {@code quantity}/{@code direction},
+ * which the box never reads).
  */
 @Component
 public class MeasurementCatalog {
@@ -98,21 +105,29 @@ public class MeasurementCatalog {
 
     public record Facet(String value, long count) {}
 
+    /** Größe und Richtung eines Punkts in den Katalogwörtern ({@code null} = nicht belegt). */
+    public record Semantik(String quantity, String direction) {}
+
     public record SearchResult(String catalogVersion, String edgeMinVersion,
             String customPointActionLabel, long total, int offset, int limit,
             List<Facet> groups, List<Facet> semanticStatuses, List<Point> points) {}
 
     private final String version;
+    private final String inhaltsstand;
     private final String edgeMinVersion;
     private final List<Point> points;
     private final Map<String, Point> byKey;
+    private final Map<String, Semantik> semantik;
 
     public MeasurementCatalog(ObjectMapper mapper) {
         JsonNode root = readCanonical(mapper);
-        this.version = required(root, "catalog_version");
+        this.inhaltsstand = required(root, "catalog_version");
+        String runtime = text(root, "runtime_catalog_version");
+        this.version = runtime == null ? inhaltsstand : runtime;
         this.edgeMinVersion = required(root, "edge_min_version");
         List<Point> loaded = new ArrayList<>();
         Map<String, Point> indexed = new LinkedHashMap<>();
+        Map<String, Semantik> meanings = new LinkedHashMap<>();
         for (JsonNode n : root.path("points")) {
             MeasurementRetention retention = MeasurementRetention.ofCatalog(n);
             Point p = new Point(text(n, "family"), text(n, "point_key"),
@@ -135,6 +150,7 @@ public class MeasurementCatalog {
                 throw new IllegalStateException("duplicate/missing measurement point key: "
                         + p.pointKey());
             }
+            meanings.put(p.pointKey(), new Semantik(text(n, "quantity"), text(n, "direction")));
             loaded.add(p);
         }
         if (loaded.isEmpty()) {
@@ -142,10 +158,34 @@ public class MeasurementCatalog {
         }
         this.points = List.copyOf(loaded);
         this.byKey = Map.copyOf(indexed);
+        this.semantik = Map.copyOf(meanings);
     }
 
+    /** The runtime version the box speaks (see the class comment). */
     public String version() {
         return version;
+    }
+
+    /** The content version of the packaged artifact. */
+    public String inhaltsstand() {
+        return inhaltsstand;
+    }
+
+    /**
+     * Größe und Richtung eines Punkts; ein konkreter Modul-Schlüssel ({@code module[3]})
+     * trägt die seiner Vorlage. {@code null} für einen Schlüssel, den der Katalog nicht kennt.
+     */
+    public Semantik semantik(String pointKey) {
+        Semantik exact = pointKey == null ? null : semantik.get(pointKey);
+        if (exact != null || pointKey == null || !pointKey.contains("[")) {
+            return exact;
+        }
+        for (Point candidate : points) {
+            if (candidate.instantiate(pointKey) != null) {
+                return semantik.get(candidate.pointKey());
+            }
+        }
+        return null;
     }
 
     public Set<String> families() {

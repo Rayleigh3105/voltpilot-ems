@@ -79,12 +79,16 @@ class CatalogTest(unittest.TestCase):
             f"measurement-point-catalog-{pom_version}.json").read_text(encoding="utf-8"))
         edge_artifact = json.loads((REPO / "edge-app" / "nodered" / "measurements" /
             "catalog.json").read_text(encoding="utf-8"))
+        runtime = (ROOT / "RUNTIME_VERSION").read_text(encoding="utf-8").strip()
 
         self.assertEqual(pom_version, canonical)
         self.assertEqual(resource_include,
                          "measurement-point-catalog-${measurement.catalog.version}.json")
         self.assertEqual(api_artifact["catalog_version"], canonical)
-        self.assertEqual(edge_artifact["catalog_version"], canonical)
+        # Die Box spricht den LAUFZEITSTAND: die Palette lehnt jede Mess-Konfiguration mit
+        # fremder catalog_version ab, und die api veröffentlicht genau diesen Stand.
+        self.assertEqual(api_artifact["runtime_catalog_version"], runtime)
+        self.assertEqual(edge_artifact["catalog_version"], runtime)
 
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         canonical_link = f"dist/measurement-point-catalog-{canonical}.json"

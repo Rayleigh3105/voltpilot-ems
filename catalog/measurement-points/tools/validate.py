@@ -10,7 +10,16 @@ import re
 from pathlib import Path
 from typing import Any
 
-from cataloglib import CATALOG_VERSION, EDGE_MIN_VERSION, POINT_KEY_RE, ROOT, read_json, sha256
+from cataloglib import (
+    CATALOG_VERSION,
+    EDGE_MIN_VERSION,
+    POINT_KEY_RE,
+    ROOT,
+    RUNTIME_CATALOG_VERSION,
+    read_json,
+    runtime_projection,
+    sha256,
+)
 from generate import (
     DEFAULT_OUTPUT,
     DEYE_KEY_LOCK_PATH,
@@ -19,12 +28,20 @@ from generate import (
     verify_source_hashes,
 )
 from jsonschema_validator import SchemaValidationError, validate_json_schema
+from semantics import (
+    DIRECTIONLESS,
+    DIRECTIONS,
+    ENERGY_QUANTITIES,
+    ENERGY_UNITS,
+    ENERGY_WITHOUT_DIRECTION,
+    QUANTITIES,
+)
 
 
 REQUIRED_POINT_FIELDS = {
-    "address", "aggregation_kind", "catalog_version", "default_cadence_s", "edge_min_version",
+    "address", "aggregation_kind", "catalog_version", "default_cadence_s", "direction", "edge_min_version",
     "endian", "family", "group", "label_de", "label_source", "long_term_cadence_s",
-    "min_cadence_s", "point_key", "point_key_aliases", "poll_group", "readable", "scale", "selector",
+    "min_cadence_s", "point_key", "point_key_aliases", "poll_group", "quantity", "readable", "scale", "selector",
     "semantic_status", "signed", "source_commit", "source_kind", "source_revision",
     "source_sha256", "source_url", "unit", "value_type", "width_bits",
 }
@@ -184,6 +201,44 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
     if point.get("source_kind") == "http_api_key":
         errors.check(point.get("unit") is None, f"{prefix}: go-e unit must stay unknown instead of inferred")
     validate_address(errors, point, prefix)
+    validate_semantics(errors, point, prefix)
+
+
+def validate_semantics(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
+    """Größe und Richtung: geschlossen, ehrlich, und JEDE Energie-Größe hat eine Richtung."""
+    quantity = point.get("quantity")
+    direction = point.get("direction")
+    errors.check(quantity is None or quantity in QUANTITIES, f"{prefix}: invalid quantity")
+    errors.check(direction is None or direction in DIRECTIONS, f"{prefix}: invalid direction")
+    if quantity is None:
+        errors.check(direction is None, f"{prefix}: a direction needs a quantity")
+    if quantity in DIRECTIONLESS:
+        errors.check(direction == "none", f"{prefix}: {quantity} has no flow direction")
+    if quantity in ENERGY_QUANTITIES:
+        if point.get("point_key") in ENERGY_WITHOUT_DIRECTION:
+            errors.check(direction is None, f"{prefix}: listed as energy without direction")
+        else:
+            errors.check(direction is not None, f"{prefix}: energy point without direction")
+    if point.get("unit") in ENERGY_UNITS:
+        errors.check(quantity in ENERGY_QUANTITIES, f"{prefix}: energy unit without energy quantity")
+
+
+def validate_runtime_version(errors: ValidationErrors, document: dict[str, Any]) -> None:
+    """Der Laufzeitstand ist ein ausgelieferter Stand, und Box + Writer sehen dasselbe wie dort."""
+    runtime = document.get("runtime_catalog_version")
+    errors.check(runtime == RUNTIME_CATALOG_VERSION, "root runtime_catalog_version mismatch")
+    if not isinstance(runtime, str) or runtime != RUNTIME_CATALOG_VERSION:
+        return
+    order = lambda version: tuple(int(part) for part in version.split("."))  # noqa: E731
+    errors.check(order(runtime) <= order(CATALOG_VERSION), "runtime version is newer than the content version")
+    shipped = ROOT / "dist" / f"measurement-point-catalog-{runtime}.json"
+    errors.check(shipped.exists(), f"runtime version {runtime} has no shipped artifact")
+    if not shipped.exists() or not isinstance(document.get("points"), list):
+        return
+    errors.check(
+        runtime_projection(document, runtime) == runtime_projection(read_json(shipped), runtime),
+        f"content version changes what the box or writer reads; raise RUNTIME_VERSION (now {runtime})",
+    )
 
 
 def validate_deye_key_lock(errors: ValidationErrors, document: dict[str, Any], points: list[dict[str, Any]]) -> None:
@@ -287,6 +342,7 @@ def validate_catalog(path: Path) -> dict[str, Any]:
     errors.check(document.get("catalog_version") == CATALOG_VERSION, "root catalog_version mismatch")
     errors.check(document.get("edge_min_version") == EDGE_MIN_VERSION, "root edge_min_version mismatch")
     errors.check(document.get("source_manifest_sha256") == sha256(MANIFEST_PATH), "source manifest hash mismatch")
+    validate_runtime_version(errors, document)
     points = document.get("points")
     errors.check(isinstance(points, list) and bool(points), "catalog needs a non-empty points list")
     points = points if isinstance(points, list) else []
@@ -299,6 +355,8 @@ def validate_catalog(path: Path) -> dict[str, Any]:
     aliases = [alias for point in points if isinstance(point, dict) for alias in point.get("point_key_aliases", [])]
     errors.check(len(aliases) == len(set(aliases)), "duplicate point_key alias")
     errors.check(not (set(keys) & set(aliases)), "point_key alias collides with a canonical point_key")
+    stale = sorted(set(ENERGY_WITHOUT_DIRECTION) - set(keys))
+    errors.check(not stale, f"energy-without-direction entries name no point: {stale}")
 
     selectors: collections.defaultdict[tuple[str, str], list[str]] = collections.defaultdict(list)
     modbus_decoders: collections.defaultdict[tuple[str, tuple[int, ...], str], list[str]] = collections.defaultdict(list)

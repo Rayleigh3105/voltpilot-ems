@@ -76,6 +76,9 @@ Katalog; sonst `groesse_ungueltig` mit dem ERSTEN verletzten Merkmal
 
 Die übrigen Medien sind im Vokabular vorbereitet, aber noch ohne Größe — sie kommen mit AP-09.
 Ein Messwert darf eine umrechenbare Einheit tragen: Wh/kWh/MWh, W/kW/MW, varh/kvarh, VA/kVA, %.
+Welche Katalogwörter (`quantity`, `direction` je Messpunkt) auf diese Größen und Richtungen
+abbilden, steht als Tabelle in [`catalog/measurement-points/README.md`](../../../catalog/measurement-points/README.md)
+(„Größe und Richtung“); das Messkanal-Read-Model (AP-04 IP-9) liefert je Kanal genau diese Wörter.
 
 ## 3. Kennzeichen (E7)
 

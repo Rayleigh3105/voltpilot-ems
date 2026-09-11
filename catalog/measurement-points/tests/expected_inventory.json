@@ -1,5 +1,6 @@
 {
-  "catalog_version": "2026.08.26.3",
+  "catalog_version": "2026.09.11.1",
+  "runtime_catalog_version": "2026.08.26.3",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
     "hybrid_1p": 193,
@@ -62,5 +63,34 @@
     "shelly.gen2plus": 120,
     "sunspec.model_160": 10
   },
-  "total_points": 2341
+  "total_points": 2341,
+  "quantity_counts": {
+    "active_energy": 144,
+    "active_power": 184,
+    "apparent_energy": 49,
+    "apparent_power": 39,
+    "current": 152,
+    "energy_capacity": 4,
+    "frequency": 34,
+    "null": 1107,
+    "power_factor": 40,
+    "reactive_energy": 104,
+    "reactive_power": 42,
+    "soc": 29,
+    "temperature": 128,
+    "voltage": 285
+  },
+  "direction_counts": {
+    "charge": 4,
+    "charge_discharge": 5,
+    "discharge": 4,
+    "export": 119,
+    "generation": 55,
+    "import": 138,
+    "import_export": 49,
+    "none": 565,
+    "null": 1402
+  },
+  "energy_points": 301,
+  "energy_points_without_direction": 6
 }

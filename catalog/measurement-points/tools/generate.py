@@ -14,6 +14,7 @@ from cataloglib import (
     CATALOG_VERSION,
     EDGE_MIN_VERSION,
     ROOT,
+    RUNTIME_CATALOG_VERSION,
     base_point,
     canonical_json_bytes,
     read_json,
@@ -23,6 +24,7 @@ from cataloglib import (
     source_file,
     width_bits_from_type,
 )
+from semantics import classify
 
 
 MANIFEST_PATH = ROOT / "sources" / "manifest.json"
@@ -796,6 +798,8 @@ def build_catalog() -> dict[str, Any]:
     for source in manifest["sources"]:
         points.extend(ADAPTERS[source["adapter"]](source))
     points.sort(key=lambda point: point["point_key"])
+    for point in points:
+        point["quantity"], point["direction"] = classify(point)
     family_counts = collections.Counter(point["family"] for point in points)
     families = [
         {
@@ -811,6 +815,7 @@ def build_catalog() -> dict[str, Any]:
         "edge_min_version": EDGE_MIN_VERSION,
         "families": families,
         "points": points,
+        "runtime_catalog_version": RUNTIME_CATALOG_VERSION,
         "schema_version": "1.0",
         "source_manifest_sha256": sha256(MANIFEST_PATH),
     }

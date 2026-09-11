@@ -11,9 +11,33 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Zwei Stände (README „Inhaltsstand und Laufzeitstand“): VERSION ist der Inhaltsstand dieses
+# Artefakts, RUNTIME_VERSION der Stand, den die Box spricht — die Palette lehnt jede
+# Mess-Konfiguration mit fremder catalog_version ab (measurement-planner.js).
 CATALOG_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+RUNTIME_CATALOG_VERSION = (ROOT / "RUNTIME_VERSION").read_text(encoding="utf-8").strip()
 EDGE_MIN_VERSION = "unreleased"
 POINT_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._*\[\]@-]*$")
+
+# Was die Box je Punkt liest (der Palette-Katalog) ...
+EDGE_FIELDS = (
+    "address", "aggregation_kind", "catalog_version", "decoder",
+    "default_cadence_s", "derived_from", "edge_min_version", "endian",
+    "family", "min_cadence_s", "point_key", "poll_group", "readable",
+    "scale", "selector", "signed", "source_kind", "unit", "value_type",
+    "width_bits", "dimensions",
+)
+# ... und was der Writer je Punkt nachschlägt (die Metadaten-Migration).
+RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
+
+
+def runtime_projection(catalog: dict[str, Any], version: str) -> list[dict[str, Any]]:
+    """Die Punkte, wie Box und Writer sie sehen, gestempelt mit dem Laufzeitstand `version`."""
+    return [
+        {key: (version if key == "catalog_version" else point[key])
+         for key in RUNTIME_FIELDS if key in point}
+        for point in catalog["points"]
+    ]
 
 
 def read_json(path: Path) -> Any:
