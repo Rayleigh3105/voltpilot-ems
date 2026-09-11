@@ -1,0 +1,1017 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/ortsbaum.schema.json",
+  "title": "UEMS-Ortsbaum: Zuordnungen mit „gültig ab“, Stand am, Rückwirkung, Archivieren",
+  "description": "Der Vertrag des ORTSBAUMS im Unternehmens-Energiemanagement (UEMS AP-02 IP-1): wie Standorte, Gebäude und Bereiche zusammenhängen, wie Anlagen und Messstellen ihnen zugeordnet sind — und wie das über die Zeit gilt. Er beschreibt (a) den Baum mit seinen Zuordnungen, (b) die Ergebnisse der zwölf Ableitungen samt Kundensätzen und (c) die Vektor-Datei ortsbaum-vectors.json, die beide Zwillinge (Java services/api .../uems/OrtsbaumAbleitung, TS frontend/portal/src/uemsOrtsbaum.ts) gegeneinander pinnt. Ein „gültig ab“ ist immer ein Tag und gilt ab 00:00 Uhr in der Zeitzone des Standorts.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "zeitzone",
+    "regeln",
+    "arten_ort",
+    "erlaubte_eltern",
+    "zustaende_zuordnung",
+    "gruende_liste",
+    "gruende_eintrag",
+    "arten_rueckwirkung",
+    "gruende_nicht_gezeigt",
+    "gruende_verortung",
+    "gruende_archivieren",
+    "gruende_wiederherstellen",
+    "gruende_loeschen",
+    "flaeche_quellen",
+    "objekt_zustaende",
+    "szenarien",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa — dieselbe, die in AP-02 §4.3–§4.5 steht.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "type": "string"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Regeln stammen: Konzeptpaket, Entscheide und Abnahmefälle.",
+      "type": "string"
+    },
+    "zeitzone": {
+      "description": "Die Vorgabe-Zeitzone des Unternehmens. Jeder Standort kann eine eigene tragen; Gebäude und Bereiche erben die ihres Standorts.",
+      "$ref": "#/$defs/zeitzone"
+    },
+    "regeln": {
+      "description": "Die Regeln der Gültigkeit als feste Werte — beide Zwillinge prüfen sie gegen ihren Code.",
+      "type": "object",
+      "required": ["aufloesung", "wirksam_um", "bis_ist_letzter_tag", "unternehmen_kennzeichen"],
+      "properties": {
+        "aufloesung": {
+          "description": "Eine Zuordnung gilt tageweise, nie auf die Viertelstunde (Entscheid E9).",
+          "const": "tag"
+        },
+        "wirksam_um": {
+          "description": "Ein „gültig ab“ gilt ab dieser Uhrzeit in der Zeitzone des Standorts.",
+          "const": "00:00"
+        },
+        "bis_ist_letzter_tag": {
+          "description": "„gültig bis 28.02.2027“ heißt: der 28.02.2027 gilt noch. Ein Wechsel ab 01.03.2027 beendet die alte Zuordnung deshalb am 28.02.2027.",
+          "const": true
+        },
+        "neues_ab_beendet_laufendes_am_vortag": {
+          "description": "Wer ein neues „gültig ab“ einträgt, beendet die laufende Zuordnung am Vortag; nichts wird überschrieben.",
+          "const": true
+        },
+        "fruehestes_ab": {
+          "description": "Früher als der Beginn der ersten Zuordnung eines Objekts geht nicht — dafür gibt es die Korrektur.",
+          "const": "beginn_des_ersten_intervalls"
+        },
+        "rueckwirkend_wenn_ab_vor_eintragstag": {
+          "description": "Ein Eintrag ist rückwirkend, wenn „gültig ab“ vor dem Tag liegt, an dem er eingetragen wird (Entscheid E2).",
+          "const": true
+        },
+        "eintragstag_in_zeitzone_des_standorts": {
+          "description": "Der Eintragstag ist der Kalendertag am Standort, nicht in UTC.",
+          "const": true
+        },
+        "archivieren_beendet_am_vortag": {
+          "description": "Archivieren beendet die letzte Zuordnung am Vortag des Archivtags.",
+          "const": true
+        },
+        "unternehmen_kennzeichen": {
+          "description": "Das Kennzeichen des Unternehmens: ein Ort für eine Messstelle, aber kein Standort.",
+          "const": "U"
+        }
+      }
+    },
+    "arten_ort": {
+      "description": "Die drei Ebenen des Ortsbaums.",
+      "const": ["standort", "gebaeude", "bereich"]
+    },
+    "erlaubte_eltern": {
+      "description": "Woran was hängen darf: ein Gebäude an einem Standort, ein Bereich an einem Gebäude oder direkt an einem Standort (nie an einem anderen Bereich), eine Anlage an einem Standort, eine Messstelle an jedem Ort oder am Unternehmen.",
+      "const": {
+        "gebaeude": ["standort"],
+        "bereich": ["gebaeude", "standort"],
+        "anlage": ["standort"],
+        "messstelle": ["unternehmen", "standort", "gebaeude", "bereich"]
+      }
+    },
+    "zustaende_zuordnung": {
+      "description": "Wie eine Zuordnung heute steht: gültig (heute im Zeitraum), geplant (beginnt später), beendet (ist vorbei), aufgehoben (durch eine Korrektur ersetzt — bleibt lesbar).",
+      "const": ["gueltig", "geplant", "beendet", "aufgehoben"]
+    },
+    "gruende_liste": {
+      "description": "Warum eine Liste von Zuordnungen nicht in Ordnung ist.",
+      "const": ["bis_vor_ab", "ueberlappung"]
+    },
+    "gruende_eintrag": {
+      "description": "Warum ein neues „gültig ab“ abgelehnt wird — genau ein Grund, in dieser Reihenfolge geprüft.",
+      "const": [
+        "ziel_art_unzulaessig",
+        "vor_dem_ersten_intervall",
+        "objekt_archiviert",
+        "gleicher_tag",
+        "kein_beginn_an_dem_tag",
+        "ziel_ist_bisheriger_eltern",
+        "ziel_gab_es_noch_nicht",
+        "ziel_archiviert"
+      ]
+    },
+    "arten_rueckwirkung": {
+      "description": "Wie ein Eintrag zum Eintragstag steht.",
+      "const": ["rueckwirkend", "ab_heute", "geplant"]
+    },
+    "gruende_nicht_gezeigt": {
+      "description": "Warum ein Ort in „Stand am“ fehlt.",
+      "const": ["gab_es_noch_nicht", "archiviert"]
+    },
+    "gruende_verortung": {
+      "description": "Wie der Standort einer Messstelle an einem Tag zustande kommt — oder warum sie keinen hat.",
+      "const": ["verortet", "am_unternehmen", "nicht_verortet", "ort_nicht_im_baum"]
+    },
+    "gruende_archivieren": {
+      "description": "Warum ein Ort nicht archiviert werden kann, in der Reihenfolge der Grundliste.",
+      "const": ["gab_es_noch_nicht", "archiviert", "anlage_aktiv", "messstelle_aktiv", "geplante_zuordnung"]
+    },
+    "gruende_wiederherstellen": {
+      "description": "Warum ein Ort nicht wiederhergestellt werden kann, in dieser Reihenfolge geprüft.",
+      "const": ["nicht_archiviert", "eltern_archiviert", "name_belegt"]
+    },
+    "gruende_loeschen": {
+      "description": "Warum ein Ort nicht gelöscht, sondern nur archiviert werden kann (Entscheid E1).",
+      "const": ["hat_messstellen", "hat_anlagen", "hat_flaeche", "hat_kinder"]
+    },
+    "flaeche_quellen": {
+      "description": "Woher eine Fläche kommt: selbst eingetragen oder aus den Gebäuden eines Standorts summiert.",
+      "const": ["eigen", "aus_gebaeuden_summiert"]
+    },
+    "objekt_zustaende": {
+      "description": "Die Zustände einer Anlage oder Messstelle (AP-00). Nur „aktiv“ verhindert das Archivieren.",
+      "const": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"]
+    },
+    "szenarien": {
+      "description": "Benannte Beispiel-Bäume des Referenzunternehmens, auf die sich die Fälle beziehen.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/szenario" }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "tag": {
+      "description": "Ein Kalendertag ohne Uhrzeit (JJJJ-MM-TT).",
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "tagOderOffen": {
+      "description": "Ein Kalendertag — oder null für „offen, bis auf Weiteres“.",
+      "oneOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }]
+    },
+    "zeitpunkt": {
+      "description": "Ein Zeitpunkt mit Zeitzonen-Versatz.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "zeitzone": {
+      "description": "Die Zeitzonen des DACH-Raums (AP-02 §4.1).",
+      "enum": ["Europe/Berlin", "Europe/Vienna", "Europe/Zurich"]
+    },
+    "kennzeichen": {
+      "description": "Das Kurzzeichen eines Objekts: U (Unternehmen), ST-1 (Standort), G-1 (Gebäude), B-1 (Bereich), AN-1 (Anlage), MS-01 (Messstelle), NA-1 (Netzanschluss).",
+      "type": "string",
+      "pattern": "^(U|(ST|G|B|AN|MS|NA)-\\d+)$"
+    },
+    "kennzeichenOderNichts": {
+      "oneOf": [{ "$ref": "#/$defs/kennzeichen" }, { "type": "null" }]
+    },
+    "kennzeichenListe": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/kennzeichen" }
+    },
+    "zeitraum": {
+      "description": "Ein Zeitraum von Tag bis Tag, beide Tage eingeschlossen.",
+      "type": "object",
+      "required": ["von", "bis"],
+      "additionalProperties": false,
+      "properties": {
+        "von": { "$ref": "#/$defs/tag" },
+        "bis": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "zeitraumOderNichts": {
+      "oneOf": [{ "$ref": "#/$defs/zeitraum" }, { "type": "null" }]
+    },
+    "intervall": {
+      "description": "Eine Zuordnung: ab welchem Tag, bis zu welchem Tag (einschließlich; null = offen) und woran. Beim Standort steht hier sein Bestehen, ohne Elternknoten.",
+      "type": "object",
+      "required": ["ab", "bis", "eltern"],
+      "additionalProperties": false,
+      "properties": {
+        "ab": { "$ref": "#/$defs/tag" },
+        "bis": { "$ref": "#/$defs/tagOderOffen" },
+        "eltern": {
+          "description": "Woran das Objekt in dieser Zeit hängt (bei einer Anlage: ihr Standort); beim Standort null.",
+          "$ref": "#/$defs/kennzeichenOderNichts"
+        },
+        "aufgehoben": {
+          "description": "Durch eine Korrektur ersetzt: bleibt lesbar, gilt aber an keinem Tag mehr.",
+          "type": "boolean"
+        }
+      }
+    },
+    "flaechenIntervall": {
+      "description": "Eine Bezugsfläche mit „gültig ab“ (Entscheid E3).",
+      "type": "object",
+      "required": ["ab", "bis", "m2"],
+      "additionalProperties": false,
+      "properties": {
+        "ab": { "$ref": "#/$defs/tag" },
+        "bis": { "$ref": "#/$defs/tagOderOffen" },
+        "m2": {
+          "description": "Die Fläche in ganzen Quadratmetern, größer als 0.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "objektZustand": {
+      "enum": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"]
+    },
+    "ort": {
+      "description": "Ein Standort, Gebäude oder Bereich.",
+      "type": "object",
+      "required": ["kennzeichen", "art", "name", "intervalle"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+        "art": { "enum": ["standort", "gebaeude", "bereich"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "zeitzone": {
+          "description": "Nur am Standort; Gebäude und Bereiche erben sie.",
+          "$ref": "#/$defs/zeitzone"
+        },
+        "intervalle": { "type": "array", "items": { "$ref": "#/$defs/intervall" } },
+        "flaechen": { "type": "array", "items": { "$ref": "#/$defs/flaechenIntervall" } }
+      }
+    },
+    "anlage": {
+      "description": "Eine Anlage mit ihrer Zuordnung zum Standort.",
+      "type": "object",
+      "required": ["kennzeichen", "name", "netzanschluss", "zustand", "zuordnungen"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+        "name": { "type": "string", "minLength": 1 },
+        "netzanschluss": { "$ref": "#/$defs/kennzeichenOderNichts" },
+        "zustand": { "$ref": "#/$defs/objektZustand" },
+        "zuordnungen": { "type": "array", "items": { "$ref": "#/$defs/intervall" } }
+      }
+    },
+    "messstelle": {
+      "description": "Eine Messstelle mit ihrem Ort über die Zeit. Ihre Anlage liest nur die Folgen-Karte.",
+      "type": "object",
+      "required": ["kennzeichen", "name", "anlage", "zustand", "zuordnungen"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+        "name": { "type": "string", "minLength": 1 },
+        "anlage": { "$ref": "#/$defs/kennzeichenOderNichts" },
+        "zustand": { "$ref": "#/$defs/objektZustand" },
+        "zuordnungen": { "type": "array", "items": { "$ref": "#/$defs/intervall" } }
+      }
+    },
+    "szenario": {
+      "type": "object",
+      "required": ["beschreibung", "orte", "anlagen", "messstellen"],
+      "additionalProperties": false,
+      "properties": {
+        "beschreibung": { "type": "string" },
+        "orte": { "type": "array", "items": { "$ref": "#/$defs/ort" } },
+        "anlagen": { "type": "array", "items": { "$ref": "#/$defs/anlage" } },
+        "messstellen": { "type": "array", "items": { "$ref": "#/$defs/messstelle" } }
+      }
+    },
+    "baumEingang": {
+      "description": "Welches Szenario gilt — und welche Objekte darin für diesen Fall ersetzt oder ergänzt werden (gleiches Kennzeichen ersetzt, neues kommt dazu).",
+      "type": "object",
+      "required": ["szenario"],
+      "properties": {
+        "szenario": { "type": "string" },
+        "ueberlagerung": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "orte": { "type": "array", "items": { "$ref": "#/$defs/ort" } },
+            "anlagen": { "type": "array", "items": { "$ref": "#/$defs/anlage" } },
+            "messstellen": { "type": "array", "items": { "$ref": "#/$defs/messstelle" } }
+          }
+        }
+      }
+    },
+    "flaecheQuelle": {
+      "oneOf": [{ "enum": ["eigen", "aus_gebaeuden_summiert"] }, { "type": "null" }]
+    },
+    "flaecheM2": {
+      "description": "Die Fläche in m² — null, wenn keine eingetragen ist (nie 0).",
+      "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+    },
+
+    "standAmEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["stichtag"],
+      "properties": { "stichtag": { "$ref": "#/$defs/tag" } }
+    },
+    "standAmErgebnis": {
+      "description": "Der Ortsbaum, wie er an diesem Tag galt.",
+      "type": "object",
+      "required": ["orte", "nicht_gezeigt", "anlagen"],
+      "additionalProperties": false,
+      "properties": {
+        "orte": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "eltern", "standort", "flaeche_m2", "flaeche_quelle"],
+            "additionalProperties": false,
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "eltern": { "$ref": "#/$defs/kennzeichenOderNichts" },
+              "standort": { "$ref": "#/$defs/kennzeichenOderNichts" },
+              "flaeche_m2": { "$ref": "#/$defs/flaecheM2" },
+              "flaeche_quelle": { "$ref": "#/$defs/flaecheQuelle" },
+              "summe_gebaeude_m2": {
+                "description": "Nur am Standort: die Summe seiner Gebäude — null, wenn es keine gibt oder einem die Fläche fehlt.",
+                "$ref": "#/$defs/flaecheM2"
+              },
+              "gebaeude_ohne_flaeche": {
+                "description": "Nur am Standort: welche Gebäude für die Summe noch keine Fläche haben.",
+                "$ref": "#/$defs/kennzeichenListe"
+              }
+            }
+          }
+        },
+        "nicht_gezeigt": {
+          "description": "Orte, die es an dem Tag nicht gab — mit Grund und Satz.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "grund", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "grund": { "enum": ["gab_es_noch_nicht", "archiviert"] },
+              "text": { "type": "string" }
+            }
+          }
+        },
+        "anlagen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "standort"],
+            "additionalProperties": false,
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "standort": { "$ref": "#/$defs/kennzeichenOderNichts" }
+            }
+          }
+        }
+      }
+    },
+
+    "listeEingang": {
+      "type": "object",
+      "required": ["intervalle"],
+      "additionalProperties": false,
+      "properties": { "intervalle": { "type": "array", "items": { "$ref": "#/$defs/intervall" } } }
+    },
+    "listeErgebnis": {
+      "type": "object",
+      "required": ["gueltig", "grund", "tag"],
+      "additionalProperties": false,
+      "properties": {
+        "gueltig": { "type": "boolean" },
+        "grund": { "oneOf": [{ "enum": ["bis_vor_ab", "ueberlappung"] }, { "type": "null" }] },
+        "tag": {
+          "description": "Der erste Tag, an dem die Regel bricht.",
+          "$ref": "#/$defs/tagOderOffen"
+        }
+      }
+    },
+
+    "eintragEingang": {
+      "description": "Ein neues „gültig ab“ (verschieben, zuordnen) oder eine Korrektur ab dem Beginn einer Zuordnung.",
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "vorgang", "ab", "eltern", "heute"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "vorgang": { "enum": ["verschieben", "korrektur"] },
+        "ab": { "$ref": "#/$defs/tag" },
+        "eltern": { "$ref": "#/$defs/kennzeichen" },
+        "heute": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "eintragErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "grund", "text", "intervalle"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "grund": {
+          "oneOf": [
+            {
+              "enum": [
+                "ziel_art_unzulaessig",
+                "vor_dem_ersten_intervall",
+                "objekt_archiviert",
+                "gleicher_tag",
+                "kein_beginn_an_dem_tag",
+                "ziel_ist_bisheriger_eltern",
+                "ziel_gab_es_noch_nicht",
+                "ziel_archiviert"
+              ]
+            },
+            { "type": "null" }
+          ]
+        },
+        "text": {
+          "description": "Der Satz, den der Kunde liest, wenn es nicht geht — mit dem Weg.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "intervalle": {
+          "description": "Alle Zuordnungen des Objekts nach dem Eintrag, nach Beginn sortiert.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ab", "bis", "eltern", "aufgehoben", "zustand"],
+                "additionalProperties": false,
+                "properties": {
+                  "ab": { "$ref": "#/$defs/tag" },
+                  "bis": { "$ref": "#/$defs/tagOderOffen" },
+                  "eltern": { "$ref": "#/$defs/kennzeichenOderNichts" },
+                  "aufgehoben": { "type": "boolean" },
+                  "zustand": { "enum": ["gueltig", "geplant", "beendet", "aufgehoben"] }
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+
+    "rueckwirkendEingang": {
+      "type": "object",
+      "required": ["eingetragen_um", "gilt_ab", "gilt_bis", "zeitzone"],
+      "additionalProperties": false,
+      "properties": {
+        "eingetragen_um": { "$ref": "#/$defs/zeitpunkt" },
+        "gilt_ab": { "$ref": "#/$defs/tag" },
+        "gilt_bis": {
+          "description": "Das Ende der Zuordnung, die der Eintrag anlegt; null = offen.",
+          "$ref": "#/$defs/tagOderOffen"
+        },
+        "zeitzone": { "$ref": "#/$defs/zeitzone" },
+        "zeitraum": {
+          "description": "Optional ein Berichtszeitraum, gegen den geprüft wird.",
+          "$ref": "#/$defs/zeitraum"
+        }
+      }
+    },
+    "rueckwirkendErgebnis": {
+      "type": "object",
+      "required": [
+        "art",
+        "eintragstag",
+        "tage",
+        "abzeichen",
+        "rueckwirkend_betroffen",
+        "reicht_in_zeitraum",
+        "rueckwirkend_im_zeitraum"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "art": { "enum": ["rueckwirkend", "ab_heute", "geplant"] },
+        "eintragstag": { "$ref": "#/$defs/tag" },
+        "tage": {
+          "description": "Wie viele Tage „gültig ab“ vor (rückwirkend) bzw. nach (geplant) dem Eintragstag liegt.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "abzeichen": {
+          "description": "„rückwirkend (37 Tage)“ — nur bei rückwirkenden Einträgen.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "rueckwirkend_betroffen": {
+          "description": "Die Tage, die nachträglich anders gelten — daraus macht AP-12 die Revision eines freigegebenen Berichts.",
+          "$ref": "#/$defs/zeitraumOderNichts"
+        },
+        "reicht_in_zeitraum": {
+          "description": "Ob der Eintrag überhaupt in den Berichtszeitraum reicht (null ohne Zeitraum).",
+          "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+        },
+        "rueckwirkend_im_zeitraum": {
+          "description": "Ob der Berichtszeitraum rückwirkend betroffen ist (null ohne Zeitraum).",
+          "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+        }
+      }
+    },
+
+    "verortungEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["messstelle", "tag"],
+      "properties": {
+        "messstelle": { "$ref": "#/$defs/kennzeichen" },
+        "tag": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "verortungErgebnis": {
+      "description": "Der Standort einer Messstelle an einem Tag: die Wurzel ihres Ortes an diesem Tag.",
+      "type": "object",
+      "required": ["ort", "pfad", "standort", "grund"],
+      "additionalProperties": false,
+      "properties": {
+        "ort": { "$ref": "#/$defs/kennzeichenOderNichts" },
+        "pfad": {
+          "description": "Vom Ort der Messstelle hinauf bis zum Standort.",
+          "$ref": "#/$defs/kennzeichenListe"
+        },
+        "standort": { "$ref": "#/$defs/kennzeichenOderNichts" },
+        "grund": { "enum": ["verortet", "am_unternehmen", "nicht_verortet", "ort_nicht_im_baum"] }
+      }
+    },
+
+    "folgenErgebnis": {
+      "description": "Was die Folgen-Karte vor dem Verschieben nennt (Entscheid E11).",
+      "type": "object",
+      "required": ["erlaubt", "grund", "text", "folgen"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "grund": { "$ref": "#/$defs/eintragErgebnis/properties/grund" },
+        "text": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "folgen": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "ziehen_mit",
+                "messstellen_wechseln_standort",
+                "bleiben_anlagen",
+                "bleiben_netzanschluesse",
+                "bleiben_messstellen"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "ziehen_mit": {
+                  "description": "Bereiche, die mit dem Gebäude umziehen.",
+                  "$ref": "#/$defs/kennzeichenListe"
+                },
+                "messstellen_wechseln_standort": {
+                  "description": "Messstellen, deren Standort sich wegen des Umzugs ändert — sie selbst bleiben an ihrem Ort.",
+                  "$ref": "#/$defs/kennzeichenListe"
+                },
+                "bleiben_anlagen": {
+                  "description": "Anlagen dieser Messstellen, die nicht automatisch mitziehen („Anlage zuordnen“ ist ein eigener Schritt).",
+                  "$ref": "#/$defs/kennzeichenListe"
+                },
+                "bleiben_netzanschluesse": { "$ref": "#/$defs/kennzeichenListe" },
+                "bleiben_messstellen": {
+                  "description": "Übrige Messstellen dieser Anlagen, die am alten Standort bleiben.",
+                  "$ref": "#/$defs/kennzeichenListe"
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+
+    "archivierenEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "tag"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "tag": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "archivierenErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "gruende", "text", "archiviert"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "gruende": {
+          "description": "Alle Sperren — die Rückfrage nennt sie vollständig.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["art", "kennzeichen", "name"],
+            "additionalProperties": false,
+            "properties": {
+              "art": {
+                "enum": ["gab_es_noch_nicht", "archiviert", "anlage_aktiv", "messstelle_aktiv", "geplante_zuordnung"]
+              },
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "name": { "type": "string" },
+              "ab": { "$ref": "#/$defs/tag" },
+              "eltern": { "$ref": "#/$defs/kennzeichenOderNichts" }
+            }
+          }
+        },
+        "text": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "archiviert": {
+          "description": "Der Ort und seine leeren Kinder mit ihrem letzten Tag.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["kennzeichen", "letzter_tag"],
+                "additionalProperties": false,
+                "properties": {
+                  "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+                  "letzter_tag": { "$ref": "#/$defs/tag" }
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "wiederherstellenEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "tag"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "tag": { "$ref": "#/$defs/tag" },
+        "neuer_name": {
+          "description": "Ein neuer Name, wenn der alte unter den Geschwistern inzwischen vergeben ist.",
+          "type": "string"
+        }
+      }
+    },
+    "wiederherstellenErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "grund", "text", "intervall", "name", "luecke"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "grund": {
+          "oneOf": [{ "enum": ["nicht_archiviert", "eltern_archiviert", "name_belegt"] }, { "type": "null" }]
+        },
+        "text": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "intervall": {
+          "description": "Die neue Zuordnung ab dem Tag, am alten Elternknoten.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["ab", "bis", "eltern"],
+              "additionalProperties": false,
+              "properties": {
+                "ab": { "$ref": "#/$defs/tag" },
+                "bis": { "$ref": "#/$defs/tagOderOffen" },
+                "eltern": { "$ref": "#/$defs/kennzeichenOderNichts" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "name": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "luecke": {
+          "description": "Die Zeit dazwischen — sie bleibt sichtbar und wird nie aufgefüllt.",
+          "$ref": "#/$defs/zeitraumOderNichts"
+        }
+      }
+    },
+    "loeschenEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt"],
+      "properties": { "objekt": { "$ref": "#/$defs/kennzeichen" } }
+    },
+    "loeschenErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "gruende"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "gruende": {
+          "type": "array",
+          "items": { "enum": ["hat_messstellen", "hat_anlagen", "hat_flaeche", "hat_kinder"] }
+        }
+      }
+    },
+
+    "zeitraumEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "von", "bis"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "von": { "$ref": "#/$defs/tag" },
+        "bis": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "teileErgebnis": {
+      "description": "Ein Zeitraum, tagesgenau an jedem Wechsel des Standorts geteilt.",
+      "type": "object",
+      "required": ["teile"],
+      "additionalProperties": false,
+      "properties": {
+        "teile": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["von", "bis", "standort", "grund", "beginn", "ende", "stunden"],
+            "additionalProperties": false,
+            "properties": {
+              "von": { "$ref": "#/$defs/tag" },
+              "bis": { "$ref": "#/$defs/tag" },
+              "standort": { "$ref": "#/$defs/kennzeichenOderNichts" },
+              "grund": {
+                "description": "Warum ein Teil keinen Standort hat; null, wenn er einen hat.",
+                "oneOf": [
+                  {
+                    "enum": [
+                      "gab_es_noch_nicht",
+                      "archiviert",
+                      "am_unternehmen",
+                      "nicht_verortet",
+                      "ort_nicht_im_baum"
+                    ]
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "beginn": {
+                "description": "00:00 Uhr am ersten Tag in der Zeitzone des Standorts.",
+                "$ref": "#/$defs/zeitpunkt"
+              },
+              "ende": {
+                "description": "00:00 Uhr am Tag nach dem letzten Tag — ausschließlich.",
+                "$ref": "#/$defs/zeitpunkt"
+              },
+              "stunden": {
+                "description": "Wie viele Stunden der Teil hat — am Tag der Zeitumstellung 23 oder 25 je Tag.",
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "flaecheAmTagEingang": {
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "tag"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "tag": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "flaecheAmTagErgebnis": {
+      "type": "object",
+      "required": ["vorhanden", "flaeche_m2", "flaeche_quelle"],
+      "additionalProperties": false,
+      "properties": {
+        "vorhanden": { "description": "Ob es den Ort an dem Tag gab.", "type": "boolean" },
+        "flaeche_m2": { "$ref": "#/$defs/flaecheM2" },
+        "flaeche_quelle": { "$ref": "#/$defs/flaecheQuelle" },
+        "summe_gebaeude_m2": {
+          "description": "Nur am Standort: die Summe seiner Gebäude.",
+          "$ref": "#/$defs/flaecheM2"
+        },
+        "gebaeude_ohne_flaeche": {
+          "description": "Nur am Standort: Gebäude, denen die Fläche fehlt.",
+          "$ref": "#/$defs/kennzeichenListe"
+        }
+      }
+    },
+    "flaecheZeitraumErgebnis": {
+      "description": "Ein Zeitraum in Teile mit je einer Fläche — nie ein Mittelwert.",
+      "type": "object",
+      "required": ["teile"],
+      "additionalProperties": false,
+      "properties": {
+        "teile": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["von", "bis", "vorhanden", "flaeche_m2", "flaeche_quelle"],
+            "additionalProperties": false,
+            "properties": {
+              "von": { "$ref": "#/$defs/tag" },
+              "bis": { "$ref": "#/$defs/tag" },
+              "vorhanden": { "type": "boolean" },
+              "flaeche_m2": { "$ref": "#/$defs/flaecheM2" },
+              "flaeche_quelle": { "$ref": "#/$defs/flaecheQuelle" }
+            }
+          }
+        }
+      }
+    },
+
+    "fall": {
+      "type": "object",
+      "required": ["name", "familie", "ableitung", "why", "input", "expected"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "familie": {
+          "description": "Welche Frage an den Ortsbaum geprüft wird.",
+          "enum": [
+            "stand_am",
+            "ueberlappung",
+            "rueckwirkend",
+            "messstelle_standort",
+            "verschieben",
+            "archiv",
+            "zeitraum_teilung",
+            "flaeche"
+          ]
+        },
+        "ableitung": {
+          "description": "Welche Ableitung dieser Familie.",
+          "enum": [
+            "baum",
+            "liste",
+            "eintrag",
+            "kennzeichen",
+            "am_tag",
+            "folgen",
+            "archivieren",
+            "wiederherstellen",
+            "loeschen",
+            "teile",
+            "zeitraum"
+          ]
+        },
+        "why": {
+          "description": "Warum dieser Fall in der Datei steht — was er beweist.",
+          "type": "string",
+          "minLength": 1
+        },
+        "input": { "type": "object" },
+        "expected": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "familie": { "const": "stand_am" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "baum" },
+              "input": { "$ref": "#/$defs/standAmEingang" },
+              "expected": { "$ref": "#/$defs/standAmErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "ueberlappung" }, "ableitung": { "const": "liste" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/listeEingang" },
+              "expected": { "$ref": "#/$defs/listeErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "ueberlappung" }, "ableitung": { "const": "eintrag" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/eintragEingang" },
+              "expected": { "$ref": "#/$defs/eintragErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "ueberlappung" } }, "required": ["familie"] },
+          "then": { "properties": { "ableitung": { "enum": ["liste", "eintrag"] } } }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "rueckwirkend" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "kennzeichen" },
+              "input": { "$ref": "#/$defs/rueckwirkendEingang" },
+              "expected": { "$ref": "#/$defs/rueckwirkendErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "messstelle_standort" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "am_tag" },
+              "input": { "$ref": "#/$defs/verortungEingang" },
+              "expected": { "$ref": "#/$defs/verortungErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "verschieben" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "folgen" },
+              "input": { "$ref": "#/$defs/eintragEingang" },
+              "expected": { "$ref": "#/$defs/folgenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "archiv" } }, "required": ["familie"] },
+          "then": { "properties": { "ableitung": { "enum": ["archivieren", "wiederherstellen", "loeschen"] } } }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "archiv" }, "ableitung": { "const": "archivieren" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/archivierenEingang" },
+              "expected": { "$ref": "#/$defs/archivierenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "archiv" }, "ableitung": { "const": "wiederherstellen" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/wiederherstellenEingang" },
+              "expected": { "$ref": "#/$defs/wiederherstellenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "archiv" }, "ableitung": { "const": "loeschen" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/loeschenEingang" },
+              "expected": { "$ref": "#/$defs/loeschenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "zeitraum_teilung" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "teile" },
+              "input": { "$ref": "#/$defs/zeitraumEingang" },
+              "expected": { "$ref": "#/$defs/teileErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "flaeche" } }, "required": ["familie"] },
+          "then": { "properties": { "ableitung": { "enum": ["am_tag", "zeitraum"] } } }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "flaeche" }, "ableitung": { "const": "am_tag" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/flaecheAmTagEingang" },
+              "expected": { "$ref": "#/$defs/flaecheAmTagErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "flaeche" }, "ableitung": { "const": "zeitraum" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/zeitraumEingang" },
+              "expected": { "$ref": "#/$defs/flaecheZeitraumErgebnis" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

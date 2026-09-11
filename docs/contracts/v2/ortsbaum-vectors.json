@@ -1,0 +1,2296 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des ORTSBAUMS (UEMS AP-02 IP-1): zeitgültige Zuordnungen von",
+    "Gebäuden, Bereichen, Anlagen und Messstellen — „Stand am“, Überlappung, Rückwirkung,",
+    "abgeleiteter Standort einer Messstelle, Archivieren/Wiederherstellen/Löschen, Fläche",
+    "und die tagesgenaue Teilung eines Zeitraums. Die Prosa-Wahrheit steht im AP-02-Konzept",
+    "(§4.3–§4.5, Entscheide E1, E2, E9, E11, E12 vom 10.09.2026); das Glossar",
+    "(docs/fachmodell/glossar.md, Eintrag „Zuordnung“) verweist hierher.",
+    "",
+    "Sie pinnen die zwei Zwillinge gegeneinander:",
+    "  Java  services/api .../uems/OrtsbaumAbleitung",
+    "  TS    frontend/portal/src/uemsOrtsbaum.ts",
+    "Wer die Regel ändert, ändert BEIDE Seiten UND diese Datei. Die Migrationen",
+    "IP-2a/IP-2b spiegeln dieselben Regeln als Datenbank-Constraints.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Es gibt keine Tabelle, keinen Endpunkt und keine Fläche;",
+    "„Standort“ ist im Code weiterhin nur das Koordinaten-Feld der Anlage. Diese Datei ist",
+    "der Vertrag, gegen den IP-2a/IP-2b (Migrationen), IP-3 (Read-Model mit ?stichtag=)",
+    "und die Portal-Flächen gebaut werden.",
+    "",
+    "═══ DIE MECHANIK IN EINEM SATZ (AP-02 §4.3) ═══",
+    "„gültig ab“ ist ein TAG, wirksam 00:00 Uhr in der Zeitzone des Standorts (E9); je",
+    "Objekt und Zuordnungsart genau ein Intervall je Tag (Überlappungsverbot); ein neues",
+    "„gültig ab“ beendet das laufende Intervall am VORTAG (das neue erbt dessen Ende);",
+    "Rückwirkung ist erlaubt und immer sichtbar (E2); Zukunft ist „geplant“; ein Datum vor",
+    "dem Beginn des ersten Intervalls wird abgelehnt; eine Korrektur ersetzt ein Intervall",
+    "ab seinem Beginn und lässt das alte als „aufgehoben“ lesbar.",
+    "",
+    "⚠ „bis“ IST DER LETZTE GÜLTIGE TAG, einschließlich („Werk Ahrenberg bis 28.02.2027 ·",
+    "Werk Ahrenberg Nord ab 01.03.2027“, A8 „endet am 29.06.2027“). §4.5 Regel 2 schreibt",
+    "„[gültig ab, gültig bis)“ — halboffen sind die ZEITPUNKTE: [ab 00:00, bis+1 Tag 00:00)",
+    "in der Zeitzone des Standorts. Für die Datenbank heißt das daterange(ab, bis, '[]');",
+    "der Fall `bis-ist-der-letzte-tag-darum-ueberlappt-das` pinnt die Falle.",
+    "",
+    "DER BAUM: Standort (ohne Eltern; seine Intervalle sind sein Bestehen) → Gebäude →",
+    "Bereich; ein Bereich hängt an einem Gebäude ODER direkt am Standort, nie an einem",
+    "Bereich (AP-00 E4). Anlage → Standort und Messstelle → Ort nutzen DIESELBE Mechanik",
+    "(AP-04 übernimmt sie). Das Kennzeichen „U“ ist das Unternehmen: ein gültiger Ort für",
+    "eine Messstelle (MS-19), aber kein Standort — ihr abgeleiteter Standort ist null.",
+    "Der abgeleitete Standort ist die Wurzel des Ortsknotens AN DIESEM TAG (Regel 7);",
+    "verschieben zieht Bereiche mit, Messstellen bleiben an ihrem Knoten, Anlagen und",
+    "Netzanschlüsse nie automatisch (E11).",
+    "",
+    "ARCHIVIEREN (E12): nur ohne aktive Anlage (am Standort), ohne aktive Messstelle im",
+    "Teilbaum und ohne geplante Zuordnung hinein oder heraus; leere Kinder werden",
+    "mitarchiviert; jedes Intervall endet am Vortag des Archivtags. WIEDERHERSTELLEN: ein",
+    "neues Intervall ab dem Tag am alten Elternknoten, die Lücke bleibt sichtbar, der",
+    "Name muss unter den Geschwistern frei sein (ohne Groß-/Kleinschreibung und",
+    "Randleerzeichen). LÖSCHEN (E1): nur ohne JE eine Messstelle, Anlage, Fläche oder ein Kind.",
+    "",
+    "RÜCKWIRKUNG (E2): Eintragstag = Tag des Eintrags in der Zeitzone des Standorts;",
+    "rückwirkend, wenn „gilt ab“ davor liegt, und das Abzeichen zählt die Tage davor",
+    "(Eintragstag − gilt ab: A2 = 37). Rückwirkend neu bewertet sind die Tage",
+    "[gilt ab, min(Eintragstag − 1, gilt bis)] — der Fakt, aus dem AP-12 eine Revision macht.",
+    "",
+    "FLÄCHE (E3, Regel 12): je Objekt ein Intervall je Tag. Ein Standort ohne eigene",
+    "Fläche nimmt die Summe seiner Gebäude („aus Gebäuden summiert“) — aber nur, wenn JEDES",
+    "Gebäude eine hat; sonst null. Die eigene Fläche wird nie nachgerechnet, Bereiche",
+    "werden nie addiert, nichts wird erfunden (null statt 0).",
+    "",
+    "DATEN: das Referenzunternehmen Kunststoffwerk Ahrenberg GmbH (AP-00 §4.4) mit dem",
+    "AP-02-Leitbeispiel „Halle 2 wechselt am 01.03.2027 zum Standort Werk Ahrenberg Nord“",
+    "(§5.6). Ein Fall nennt `szenario` (unten) und optional eine `ueberlagerung`: jedes",
+    "Objekt darin ERSETZT das mit demselben Kennzeichen oder kommt neu dazu.",
+    "Wo ein Abnahmefall unter den Entscheiden nicht aufgeht, steht er als eigener Fall mit",
+    "⚠ im `why` (A2, A3, A5/A12, A7, E1)."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./ortsbaum.schema.json",
+  "herkunft": "UEMS AP-02 §4.3–§4.5 (Konzept vp-uems-ap02-ortsstruktur), Entscheide E1, E2, E3, E9, E11, E12 (Captain, 10.09.2026); Abnahmefälle A1, A2, A3, A5, A7, A8, A9, A10, A11, A12, A13, A16; Referenzunternehmen AP-00 §4.4.",
+  "zeitzone": "Europe/Berlin",
+  "regeln": {
+    "aufloesung": "tag",
+    "wirksam_um": "00:00",
+    "bis_ist_letzter_tag": true,
+    "neues_ab_beendet_laufendes_am_vortag": true,
+    "fruehestes_ab": "beginn_des_ersten_intervalls",
+    "rueckwirkend_wenn_ab_vor_eintragstag": true,
+    "eintragstag_in_zeitzone_des_standorts": true,
+    "archivieren_beendet_am_vortag": true,
+    "unternehmen_kennzeichen": "U"
+  },
+  "arten_ort": ["standort", "gebaeude", "bereich"],
+  "erlaubte_eltern": {
+    "gebaeude": ["standort"],
+    "bereich": ["gebaeude", "standort"],
+    "anlage": ["standort"],
+    "messstelle": ["unternehmen", "standort", "gebaeude", "bereich"]
+  },
+  "zustaende_zuordnung": ["gueltig", "geplant", "beendet", "aufgehoben"],
+  "gruende_liste": ["bis_vor_ab", "ueberlappung"],
+  "gruende_eintrag": [
+    "ziel_art_unzulaessig",
+    "vor_dem_ersten_intervall",
+    "objekt_archiviert",
+    "gleicher_tag",
+    "kein_beginn_an_dem_tag",
+    "ziel_ist_bisheriger_eltern",
+    "ziel_gab_es_noch_nicht",
+    "ziel_archiviert"
+  ],
+  "arten_rueckwirkung": ["rueckwirkend", "ab_heute", "geplant"],
+  "gruende_nicht_gezeigt": ["gab_es_noch_nicht", "archiviert"],
+  "gruende_verortung": ["verortet", "am_unternehmen", "nicht_verortet", "ort_nicht_im_baum"],
+  "gruende_archivieren": ["gab_es_noch_nicht", "archiviert", "anlage_aktiv", "messstelle_aktiv", "geplante_zuordnung"],
+  "gruende_wiederherstellen": ["nicht_archiviert", "eltern_archiviert", "name_belegt"],
+  "gruende_loeschen": ["hat_messstellen", "hat_anlagen", "hat_flaeche", "hat_kinder"],
+  "flaeche_quellen": ["eigen", "aus_gebaeuden_summiert"],
+  "objekt_zustaende": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"],
+  "szenarien": {
+    "ahrenberg-vor-dem-umzug": {
+      "beschreibung": "Datenstand am 20.02.2027 um 10:10 Uhr: Werk Ahrenberg Nord (ST-3) ist seit heute angelegt, die Fläche von Halle 2 (3 400 m² ab 01.01.2027) ist eingetragen, der Umzug von Halle 2 noch nicht (A1, §4.4).",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {"kennzeichen": "G-2", "art": "gebaeude", "name": "Halle 2", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]},
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-5"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    },
+    "ahrenberg-nach-dem-umzug": {
+      "beschreibung": "Datenstand am 30.06.2027 vor dem Archivieren: Halle 2 und die Anlage Werk Ahrenberg – Halle 2 gehören ab 01.03.2027 zu Werk Ahrenberg Nord (A1, A11); MS-08 zieht am selben Tag nach Halle 2 Montage (AP-00-Zeitachse, §5.6), MS-13 am 01.06.2027 (A8). Halle 2 Lager ist noch nicht archiviert.",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {
+          "kennzeichen": "G-2",
+          "art": "gebaeude",
+          "name": "Halle 2",
+          "intervalle": [
+            {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+            {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+          ],
+          "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+        },
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-05-31", "eltern": "B-5"}, {"ab": "2027-06-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    },
+    "ahrenberg-lager-archiviert": {
+      "beschreibung": "Datenstand am 01.02.2028 vor dem Wiederherstellen: Halle 2 Lager (B-5) wurde am 30.06.2027 archiviert, sein Intervall endet am 29.06.2027 (A8).",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {
+          "kennzeichen": "G-2",
+          "art": "gebaeude",
+          "name": "Halle 2",
+          "intervalle": [
+            {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+            {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+          ],
+          "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+        },
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": "2027-06-29", "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-05-31", "eltern": "B-5"}, {"ab": "2027-06-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    },
+    "ahrenberg": {
+      "beschreibung": "Die ganze Zeitachse des Neukunden-Wegs (A4): angelegt 01.10.2026/15.10.2026, Anbau Halle 2 ab 01.01.2027 (A3), Werk Ahrenberg Nord ab 20.02.2027, Umzug Halle 2 und Anlage ab 01.03.2027 (A1, A11), MS-13 nach Halle 2 Montage ab 01.06.2027, Halle 2 Lager archiviert 30.06.2027 und wiederhergestellt 01.02.2028 (A8).",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {
+          "kennzeichen": "G-2",
+          "art": "gebaeude",
+          "name": "Halle 2",
+          "intervalle": [
+            {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+            {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+          ],
+          "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+        },
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": "2027-06-29", "eltern": "G-2"}, {"ab": "2028-02-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-05-31", "eltern": "B-5"}, {"ab": "2027-06-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    },
+    "ahrenberg-bestand": {
+      "beschreibung": "Wie „ahrenberg“, aber auf dem Bestandskunden-Weg (A5, §4.4-Protokoll): Werk Ahrenberg entstand automatisch aus der Bestandsanlage Werk Ahrenberg – Halle 1 und hat die Anlagen-Zuordnung ab 12.03.2024.",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {
+          "kennzeichen": "G-2",
+          "art": "gebaeude",
+          "name": "Halle 2",
+          "intervalle": [
+            {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+            {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+          ],
+          "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+        },
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": "2027-06-29", "eltern": "G-2"}, {"ab": "2028-02-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-05-31", "eltern": "B-5"}, {"ab": "2027-06-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    },
+    "ahrenberg-lindach-archiviert": {
+      "beschreibung": "Wie „ahrenberg-vor-dem-umzug“, aber Werk Lindach wurde am 01.04.2027 archiviert: Anlage und Messstellen waren angehalten, Gebäude und Bereiche leer und wurden mitarchiviert (E12) — alle Intervalle enden am 31.03.2027.",
+      "orte": [
+        {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
+        {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": "2027-03-31", "eltern": null}], "flaechen": []},
+        {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {"kennzeichen": "G-2", "art": "gebaeude", "name": "Halle 2", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]},
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": "2027-03-31", "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
+        {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": "2027-03-31", "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
+        {"kennzeichen": "B-6", "art": "bereich", "name": "Lager Lindach", "intervalle": [{"ab": "2026-10-15", "bis": "2027-03-31", "eltern": "G-4"}], "flaechen": []},
+        {"kennzeichen": "B-7", "art": "bereich", "name": "Montage Lindach", "intervalle": [{"ab": "2026-10-15", "bis": "2027-03-31", "eltern": "G-5"}], "flaechen": []}
+      ],
+      "anlagen": [
+        {"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": "NA-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+      ],
+      "messstellen": [
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
+        {"kennzeichen": "MS-12", "name": "Montage Linie M1", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-5"}]},
+        {"kennzeichen": "MS-14", "name": "Ladepunkt Parkplatz Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
+        {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+        {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+        {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]},
+        {"kennzeichen": "MS-19", "name": "Netzbezug gesamt Unternehmen", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "U"}]},
+        {"kennzeichen": "MS-20", "name": "Prozess Spritzguss gesamt", "anlage": null, "zustand": "aktiv", "zuordnungen": []},
+        {"kennzeichen": "MS-21", "name": "Gas Heizung Verwaltung", "anlage": null, "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]}
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "a12-stand-am-15-02-2027",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A12, erste Wahl: Halle 2 mit ihren drei Bereichen unter Werk Ahrenberg, Fläche 3 400 m² (ab 01.01.2027). Werk Ahrenberg Nord gibt es erst ab 20.02.2027 und fehlt deshalb — mit dem Satz aus §5.9. Werk Ahrenberg trägt seine EIGENE Fläche 8 450 m²; die Summe seiner Gebäude ist nach dem Anbau 8 750 m² und steht nur als Hinweis daneben (Regel 12: nie saldiert). Werk Lindach hat keine eigene Fläche: dort gilt die Summe „aus Gebäuden summiert“.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2027-02-15"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 8750, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 3400, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-5", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [
+          {"kennzeichen": "ST-3", "grund": "gab_es_noch_nicht", "text": "Am 15.02.2027 gab es Werk Ahrenberg Nord im Portal noch nicht."}
+        ],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-1"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "a12-stand-am-15-03-2027",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A12, zweite Wahl: ab 01.03.2027 hängt Halle 2 unter Werk Ahrenberg Nord, ihre Bereiche ziehen mit (E11) — sie haben dafür KEIN eigenes neues Intervall, der Standort folgt dem Baum. Werk Ahrenberg Nord hat keine eigene Fläche und nimmt die Summe seines einzigen Gebäudes (3 400 m²); Werk Ahrenberg behält seine eigenen 8 450 m², obwohl nur noch 5 350 m² Gebäude dort stehen (Regel 12). Die Anlage folgt, weil der Kunde sie am 20.02.2027 eigens zugeordnet hat (A11) — nicht, weil das Gebäude umgezogen ist.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2027-03-15"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 5350, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-3", "eltern": null, "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 3400, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-3", "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-5", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-3"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "a12-stand-am-15-09-2026-neukunde",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A12, dritte Wahl, auf dem Neukunden-Weg (A4: Werk Ahrenberg angelegt am 01.10.2026): nichts gab es — jeder Knoten steht mit „gab es im Portal noch nicht“ da, keine Anlage ist zugeordnet. Der Satz für Werk Ahrenberg ist wörtlich der aus §5.9. Den Bestandskunden-Weg pinnt `a5-bestand-standort-besteht-seit-der-anlage`.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2026-09-15"},
+      "expected": {
+        "orte": [],
+        "nicht_gezeigt": [
+          {"kennzeichen": "ST-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht."},
+          {"kennzeichen": "ST-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Lindach im Portal noch nicht."},
+          {"kennzeichen": "ST-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Ahrenberg Nord im Portal noch nicht."},
+          {"kennzeichen": "G-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 im Portal noch nicht."},
+          {"kennzeichen": "G-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 im Portal noch nicht."},
+          {"kennzeichen": "G-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Verwaltung im Portal noch nicht."},
+          {"kennzeichen": "G-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Lagerhalle Lindach im Portal noch nicht."},
+          {"kennzeichen": "G-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Montagehalle Lindach im Portal noch nicht."},
+          {"kennzeichen": "B-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Nord im Portal noch nicht."},
+          {"kennzeichen": "B-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Süd im Portal noch nicht."},
+          {"kennzeichen": "B-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Montage im Portal noch nicht."},
+          {"kennzeichen": "B-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Spritzguss im Portal noch nicht."},
+          {"kennzeichen": "B-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Lager im Portal noch nicht."},
+          {"kennzeichen": "B-6", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Lager Lindach im Portal noch nicht."},
+          {"kennzeichen": "B-7", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Montage Lindach im Portal noch nicht."}
+        ],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": null},
+          {"kennzeichen": "AN-2", "standort": null},
+          {"kennzeichen": "AN-3", "standort": null}
+        ]
+      }
+    },
+    {
+      "name": "a5-bestand-standort-besteht-seit-der-anlage",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "⚠ WIDERSPRUCH IM REPORT, hier aufgelöst: A12 sagt „Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht“ — das gilt auf dem Neukunden-Weg (A4). Das Referenzunternehmen ist aber Bestandskunde seit 12.03.2024, und das Beispiel-Protokoll in §4.4 (wie A5) sagt: Standort automatisch aus der Bestandsanlage angelegt, „Anlage zugeordnet ab 12.03.2024“. Dann MUSS der Standort ab 12.03.2024 bestehen, sonst hinge die Anlage an einem Standort, den es nicht gibt (Regel 1). Auf diesem Weg zeigt „Stand am 15.09.2026“ also Werk Ahrenberg mit der Anlage — ohne Gebäude (die kamen am 01.10.2026) und ohne Fläche (erst ab 01.10.2026 eingetragen, und ohne Gebäude gibt es keine Summe: null, nie 0). Namen sind keine zeitgültigen Felder dieses Vertrags; der Name zum Stichtag kommt aus dem Änderungsprotokoll (§4.3).",
+      "input": {"szenario": "ahrenberg-bestand", "stichtag": "2026-09-15"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null, "summe_gebaeude_m2": null, "gebaeude_ohne_flaeche": []}
+        ],
+        "nicht_gezeigt": [
+          {"kennzeichen": "ST-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Lindach im Portal noch nicht."},
+          {"kennzeichen": "ST-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Ahrenberg Nord im Portal noch nicht."},
+          {"kennzeichen": "G-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 im Portal noch nicht."},
+          {"kennzeichen": "G-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 im Portal noch nicht."},
+          {"kennzeichen": "G-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Verwaltung im Portal noch nicht."},
+          {"kennzeichen": "G-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Lagerhalle Lindach im Portal noch nicht."},
+          {"kennzeichen": "G-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Montagehalle Lindach im Portal noch nicht."},
+          {"kennzeichen": "B-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Nord im Portal noch nicht."},
+          {"kennzeichen": "B-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Süd im Portal noch nicht."},
+          {"kennzeichen": "B-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Montage im Portal noch nicht."},
+          {"kennzeichen": "B-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Spritzguss im Portal noch nicht."},
+          {"kennzeichen": "B-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Lager im Portal noch nicht."},
+          {"kennzeichen": "B-6", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Lager Lindach im Portal noch nicht."},
+          {"kennzeichen": "B-7", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Montage Lindach im Portal noch nicht."}
+        ],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": null},
+          {"kennzeichen": "AN-3", "standort": null}
+        ]
+      }
+    },
+    {
+      "name": "bis-ist-der-letzte-tag-28-02-2027",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "Die Grenze des Umzugs: „gültig bis 28.02.2027“ ist der LETZTE Tag unter Werk Ahrenberg (§4.2: „Werk Ahrenberg bis 28.02.2027 · Werk Ahrenberg Nord ab 01.03.2027“). Am 28.02.2027 steht Halle 2 noch dort, Werk Ahrenberg Nord gibt es schon (seit 20.02.2027), aber noch ohne Gebäude — also ohne Fläche: null, keine 0.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2027-02-28"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 8750, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-3", "eltern": null, "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null, "summe_gebaeude_m2": null, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 3400, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-5", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-1"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "a8-stand-am-15-07-2027-archiviert",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A8: „Stand am 15.07.2027 zeigt B-5 nicht“ — Halle 2 Lager ist seit 30.06.2027 archiviert, sein Intervall endete am 29.06.2027. Er fehlt im Baum und steht mit Grund „archiviert“ da (§4.4: Objekte, die es an dem Tag nicht gab, fehlen). Dass er am 01.02.2028 wiederhergestellt wird, ändert den 15.07.2027 nicht: die Lücke bleibt sichtbar.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2027-07-15"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 5350, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-3", "eltern": null, "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 3400, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-3", "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [{"kennzeichen": "B-5", "grund": "archiviert", "text": "Am 15.07.2027 war Halle 2 Lager archiviert."}],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-3"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "a8-stand-am-15-05-2027",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A8: „Stand am 15.05.2027 zeigt ihn“ — Halle 2 Lager gab es an dem Tag, also erscheint er normal, obwohl er HEUTE archiviert ist (§4.4: archivierte, die es gab, erscheinen normal).",
+      "input": {"szenario": "ahrenberg", "stichtag": "2027-05-15"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 5350, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-3", "eltern": null, "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 3400, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-3", "standort": "ST-3", "flaeche_m2": 3400, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-5", "eltern": "G-2", "standort": "ST-3", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-3"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "a3-stand-am-31-12-2026",
+      "familie": "stand_am",
+      "ableitung": "baum",
+      "why": "A3: „Stand am 31.12.2026 zeigt 3 100 m²“ — der Anbau gilt erst ab 01.01.2027, auch wenn er schon am 15.01.2027 eingetragen ist. Hier ist die Summe der Gebäude von Werk Ahrenberg (4 200 + 3 100 + 1 150) noch gleich seiner eigenen Fläche.",
+      "input": {"szenario": "ahrenberg", "stichtag": "2026-12-31"},
+      "expected": {
+        "orte": [
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": 8450, "flaeche_quelle": "eigen", "summe_gebaeude_m2": 8450, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "ST-2", "eltern": null, "standort": "ST-2", "flaeche_m2": 2600, "flaeche_quelle": "aus_gebaeuden_summiert", "summe_gebaeude_m2": 2600, "gebaeude_ohne_flaeche": []},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 4200, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-2", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 3100, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": 1150, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-4", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 1800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "G-5", "eltern": "ST-2", "standort": "ST-2", "flaeche_m2": 800, "flaeche_quelle": "eigen"},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-3", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-4", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-5", "eltern": "G-2", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-6", "eltern": "G-4", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-7", "eltern": "G-5", "standort": "ST-2", "flaeche_m2": null, "flaeche_quelle": null}
+        ],
+        "nicht_gezeigt": [
+          {"kennzeichen": "ST-3", "grund": "gab_es_noch_nicht", "text": "Am 31.12.2026 gab es Werk Ahrenberg Nord im Portal noch nicht."}
+        ],
+        "anlagen": [
+          {"kennzeichen": "AN-1", "standort": "ST-1"},
+          {"kennzeichen": "AN-2", "standort": "ST-1"},
+          {"kennzeichen": "AN-3", "standort": "ST-2"}
+        ]
+      }
+    },
+    {
+      "name": "halle-2-nach-dem-umzug",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "A1 im Speicher: zwei Intervalle, lückenlos, das jüngste offen — genau ein Intervall je Tag.",
+      "input": {
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+        ]
+      },
+      "expected": {"gueltig": true, "grund": null, "tag": null}
+    },
+    {
+      "name": "bis-ist-der-letzte-tag-darum-ueberlappt-das",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "⚠ Die Falle für die Migration: „bis“ ist der LETZTE gültige Tag (einschließlich). Endet das alte Intervall am 01.03.2027 und beginnt das neue am 01.03.2027, gehört der 01.03.2027 zu beiden — das ist eine Überlappung. §4.5 Regel 2 schreibt „[gültig ab, gültig bis)“; halboffen sind die ZEITPUNKTE (bis+1 Tag, 00:00 Uhr), nicht das gespeicherte Datum. Der Exklusions-Constraint von IP-2b braucht deshalb daterange(ab, bis, '[]').",
+      "input": {
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-03-01", "eltern": "ST-1"},
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+        ]
+      },
+      "expected": {"gueltig": false, "grund": "ueberlappung", "tag": "2027-03-01"}
+    },
+    {
+      "name": "zwei-offene-intervalle",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "Nur das jüngste Intervall darf offen sein (Regel 2): ein offenes Intervall mit einem späteren Nachfolger überlappt ab dessen Beginn.",
+      "input": {
+        "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]
+      },
+      "expected": {"gueltig": false, "grund": "ueberlappung", "tag": "2027-03-01"}
+    },
+    {
+      "name": "ueberlappung-mitten-drin",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "Der erste doppelt belegte Tag wird genannt — hier der Beginn des zweiten Intervalls.",
+      "input": {
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-05-31", "eltern": "B-5"},
+          {"ab": "2027-05-15", "bis": "2027-05-31", "eltern": "G-2"}
+        ]
+      },
+      "expected": {"gueltig": false, "grund": "ueberlappung", "tag": "2027-05-15"}
+    },
+    {
+      "name": "bis-vor-ab",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "Ein Intervall, das vor seinem Beginn endet, ist kein Intervall; der genannte Tag ist sein Beginn.",
+      "input": {"intervalle": [{"ab": "2027-03-01", "bis": "2027-02-28", "eltern": "ST-3"}]},
+      "expected": {"gueltig": false, "grund": "bis_vor_ab", "tag": "2027-03-01"}
+    },
+    {
+      "name": "ein-tag-ist-ein-intervall",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "ab = bis ist erlaubt: das Intervall gilt genau einen Tag.",
+      "input": {
+        "intervalle": [
+          {"ab": "2027-03-01", "bis": "2027-03-01", "eltern": "ST-1"},
+          {"ab": "2027-03-02", "bis": null, "eltern": "ST-3"}
+        ]
+      },
+      "expected": {"gueltig": true, "grund": null, "tag": null}
+    },
+    {
+      "name": "aufgehobene-zaehlen-nicht",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "Ein aufgehobenes Intervall (Korrektur, §4.2) bleibt lesbar, belegt aber keinen Tag mehr — es darf mit seinem Ersatz denselben Beginn haben.",
+      "input": {
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": null, "eltern": "G-1", "aufgehoben": true},
+          {"ab": "2026-10-01", "bis": null, "eltern": "G-2"}
+        ]
+      },
+      "expected": {"gueltig": true, "grund": null, "tag": null}
+    },
+    {
+      "name": "archiv-luecke-ist-erlaubt",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "A8: zwischen Archivieren und Wiederherstellen liegt eine Lücke — erlaubt und sichtbar, nie aufgefüllt.",
+      "input": {
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-06-29", "eltern": "G-2"},
+          {"ab": "2028-02-01", "bis": null, "eltern": "G-2"}
+        ]
+      },
+      "expected": {"gueltig": true, "grund": null, "tag": null}
+    },
+    {
+      "name": "reihenfolge-der-eingabe-egal",
+      "familie": "ueberlappung",
+      "ableitung": "liste",
+      "why": "Die Prüfung sortiert selbst nach Beginn; die gespeicherte Reihenfolge ist keine Aussage.",
+      "input": {
+        "intervalle": [
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"},
+          {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}
+        ]
+      },
+      "expected": {"gueltig": true, "grund": null, "tag": null}
+    },
+    {
+      "name": "a1-verschieben-geplant",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "A1: am 20.02.2027 wird Halle 2 nach Werk Ahrenberg Nord verschoben, gültig ab 01.03.2027. Das neue „gültig ab“ beendet das laufende Intervall am VORTAG (28.02.2027) — nichts wird überschrieben (§4.3). Das neue Intervall ist „geplant“, das alte bis zum Umzug „gültig“ (§4.2: „Werk Ahrenberg bis 28.02.2027 · Werk Ahrenberg Nord ab 01.03.2027“).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1", "aufgehoben": false, "zustand": "gueltig"},
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-3", "aufgehoben": false, "zustand": "geplant"}
+        ]
+      }
+    },
+    {
+      "name": "a11-anlage-zuordnen",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "A11: dieselbe Mechanik für Anlage → Standort — ein eigener, bewusster Schritt (E11); die Box-Heimat ist nicht Teil dieses Vertrags und bleibt.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "AN-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1", "aufgehoben": false, "zustand": "gueltig"},
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-3", "aufgehoben": false, "zustand": "geplant"}
+        ]
+      }
+    },
+    {
+      "name": "a2-rueckwirkend-vor-dem-anlegen-des-ziels",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "⚠ A2 GEHT UNTER DEN REGELN NICHT AUF: der Umzug wird am 10.03.2027 „gültig ab 01.02.2027“ eingetragen — aber Werk Ahrenberg Nord ist erst am 20.02.2027 angelegt (§4.4-Protokoll, V2). Vom 01.02. bis 19.02.2027 hinge Halle 2 an einem Standort, den es nicht gibt (Regel 1: je Tag genau ein Elternknoten — ein bestehender). E2 erlaubt die Rückwirkung bis zum Beginn des ersten Intervalls des OBJEKTS (01.10.2026) — das ist erfüllt; es scheitert am ZIEL. Umgesetzt: abgelehnt nach dem Muster aus §5.10 (vor dem ersten Intervall). Offen für den Captain: ob „Standort anlegen“ ein Datum in der Vergangenheit („besteht seit“) tragen darf. Den Rückwirkungs-Teil von A2 (37 Tage, betrifft den Februar) pinnt die Familie `rueckwirkend`.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-02-01",
+        "eltern": "ST-3",
+        "heute": "2027-03-10"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_gab_es_noch_nicht",
+        "text": "Werk Ahrenberg Nord gibt es im Portal erst seit 20.02.2027. Wählen Sie ein Datum ab dem 20.02.2027.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "rueckwirkend-ab-dem-ersten-tag-des-ziels",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Der Gegenfall zu A2: rückwirkend bis zum ersten Tag des Ziels geht (E2). Am 10.03.2027 eingetragen, gültig ab 20.02.2027 — das alte Intervall ist damit schon „beendet“, das neue „gültig“.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-02-20",
+        "eltern": "ST-3",
+        "heute": "2027-03-10"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-02-19", "eltern": "ST-1", "aufgehoben": false, "zustand": "beendet"},
+          {"ab": "2027-02-20", "bis": null, "eltern": "ST-3", "aufgehoben": false, "zustand": "gueltig"}
+        ]
+      }
+    },
+    {
+      "name": "v2-vor-dem-ersten-intervall",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "V2/§5.10/Regel 3: ein Datum vor dem Beginn des ersten Intervalls wird abgelehnt — mit dem Satz aus §5.10 und dem Weg „ab Beginn ersetzen (Korrektur)“.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2026-09-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "vor_dem_ersten_intervall",
+        "text": "Halle 2 gibt es im Portal erst seit 01.10.2026. Wählen Sie ein Datum ab dem 01.10.2026 — oder ersetzen Sie die Zuordnung ab Beginn (Korrektur).",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "zweiter-umzug-am-selben-tag",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "§5.10: für den 01.03.2027 gibt es schon eine Zuordnung — ein zweites Intervall mit demselben Beginn wäre ein zweites Intervall am selben Tag (Überlappungsverbot). Der Weg ist, die vorhandene zu ändern (Korrektur).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-2",
+        "heute": "2027-02-21",
+        "ueberlagerung": {
+          "orte": [
+            {
+              "kennzeichen": "G-2",
+              "art": "gebaeude",
+              "name": "Halle 2",
+              "intervalle": [
+                {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+                {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+              ],
+              "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "gleicher_tag",
+        "text": "Für den 01.03.2027 gibt es schon eine Zuordnung (Werk Ahrenberg Nord). Ändern Sie diese, statt eine zweite anzulegen.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "ziel-ist-der-bisherige-eltern",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "§5.10: Verschieben an den Elternknoten, an dem das Objekt an dem Tag schon hängt, ist keine Änderung.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_ist_bisheriger_eltern",
+        "text": "Halle 2 hängt bereits an Werk Ahrenberg.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "anlage-ist-bereits-zugeordnet",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Derselbe Grund für eine Anlage — mit dem Verb der Anlage („zugeordnet“), nicht dem des Ortsbaums („hängt an“).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "AN-1",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_ist_bisheriger_eltern",
+        "text": "Werk Ahrenberg – Halle 1 ist bereits Werk Ahrenberg zugeordnet.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "bereich-nicht-in-einen-bereich",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Regel 1/AP-00 E4: Bereiche werden nicht verschachtelt. Die Fläche bietet das Ziel gar nicht an (§5.10); der Vertrag lehnt es trotzdem ab — die Datenbank (IP-2b) spiegelt es als CHECK/Trigger.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "B-5",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "B-3",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_art_unzulaessig",
+        "text": "Ein Bereich kann nur an einem Gebäude oder direkt an einem Standort hängen.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "gebaeude-nur-an-einen-standort",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Regel 1: ein Gebäude hängt an einem Standort, nie an einem anderen Gebäude.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "G-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_art_unzulaessig",
+        "text": "Ein Gebäude kann nur an einem Standort hängen.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "bereich-direkt-an-den-standort",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "§4.1 Bereich: „Hängt an … genau ein Gebäude ODER direkt der Standort“ — etwa, wenn Halle 2 Lager beim Umzug von Halle 2 bei Werk Ahrenberg bleiben soll: dann wird der Bereich vorher direkt an den Standort gehängt.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "B-5",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "G-2", "aufgehoben": false, "zustand": "gueltig"},
+          {"ab": "2027-03-01", "bis": null, "eltern": "ST-1", "aufgehoben": false, "zustand": "geplant"}
+        ]
+      }
+    },
+    {
+      "name": "ziel-reicht-in-die-archivzeit",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Das neue Intervall ist offen und müsste deshalb an JEDEM seiner Tage ein bestehendes Ziel haben. MS-12 soll rückwirkend ab 15.06.2027 an Halle 2 Lager hängen — aber der Bereich ist ab 30.06.2027 archiviert. Genannt wird der erste Tag, an dem das Ziel fehlt. (Messstelle → Ort nutzt dieselbe Mechanik, AP-04.)",
+      "input": {
+        "szenario": "ahrenberg-lager-archiviert",
+        "objekt": "MS-12",
+        "vorgang": "verschieben",
+        "ab": "2027-06-15",
+        "eltern": "B-5",
+        "heute": "2028-01-10"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_archiviert",
+        "text": "Am 30.06.2027 war Halle 2 Lager archiviert.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "objekt-ist-an-dem-tag-archiviert",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Ein Objekt, das an dem Tag archiviert ist, hat kein laufendes Intervall, das ein neues „gültig ab“ beenden könnte — es wird zuerst wiederhergestellt.",
+      "input": {
+        "szenario": "ahrenberg-lager-archiviert",
+        "objekt": "B-5",
+        "vorgang": "verschieben",
+        "ab": "2027-08-01",
+        "eltern": "G-1",
+        "heute": "2028-01-10"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "objekt_archiviert",
+        "text": "Am 01.08.2027 war Halle 2 Lager archiviert.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "korrektur-ersetzt-ab-beginn",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "§4.2 „Zuordnung → aufgehoben“ und Regel 3: Halle 2 Lager wurde versehentlich an Halle 1 angelegt (Fall konstruiert). Die Korrektur mit „gültig ab“ = Beginn des Intervalls ersetzt es vollständig: das alte bleibt als „aufgehoben“ lesbar, das neue übernimmt Beginn und Ende.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "B-5",
+        "vorgang": "korrektur",
+        "ab": "2026-10-01",
+        "eltern": "G-2",
+        "heute": "2026-10-02",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []}
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": null, "eltern": "G-1", "aufgehoben": true, "zustand": "aufgehoben"},
+          {"ab": "2026-10-01", "bis": null, "eltern": "G-2", "aufgehoben": false, "zustand": "gueltig"}
+        ]
+      }
+    },
+    {
+      "name": "korrektur-braucht-einen-beginn",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "Eine Korrektur ersetzt ein Intervall AB SEINEM BEGINN; an einem Tag mitten im Intervall gibt es nichts zu ersetzen.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "B-5",
+        "vorgang": "korrektur",
+        "ab": "2026-11-01",
+        "eltern": "G-2",
+        "heute": "2026-11-02",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []}
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "kein_beginn_an_dem_tag",
+        "text": "Am 01.11.2026 beginnt keine Zuordnung von Halle 2 Lager. Eine Korrektur ersetzt eine Zuordnung ab ihrem Beginn.",
+        "intervalle": null
+      }
+    },
+    {
+      "name": "erste-zuordnung-einer-anlage",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "A6/A15: eine noch nicht zugeordnete Anlage hat kein Intervall — die erste Zuordnung hat nichts zu beenden und keine Untergrenze außer der Existenz des Ziels.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "AN-3",
+        "vorgang": "verschieben",
+        "ab": "2026-10-15",
+        "eltern": "ST-2",
+        "heute": "2026-10-20",
+        "ueberlagerung": {
+          "anlagen": [
+            {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": []}
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2", "aufgehoben": false, "zustand": "gueltig"}]
+      }
+    },
+    {
+      "name": "einfuegen-vor-einem-geplanten-wechsel",
+      "familie": "ueberlappung",
+      "ableitung": "eintrag",
+      "why": "„Ein neues gültig ab beendet das LAUFENDE Intervall am Vortag“ — auch mitten vor einem geplanten Wechsel. MS-13 zieht am 01.06.2027 nach Halle 2 Montage (A8); ab 15.05.2027 hängt sie während eines Umbaus direkt an Halle 2 (Fall konstruiert). Das neue Intervall erbt das Ende des geteilten (31.05.2027), der geplante Wechsel bleibt.",
+      "input": {
+        "szenario": "ahrenberg-nach-dem-umzug",
+        "objekt": "MS-13",
+        "vorgang": "verschieben",
+        "ab": "2027-05-15",
+        "eltern": "G-2",
+        "heute": "2027-05-10"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervalle": [
+          {"ab": "2026-10-01", "bis": "2027-05-14", "eltern": "B-5", "aufgehoben": false, "zustand": "gueltig"},
+          {"ab": "2027-05-15", "bis": "2027-05-31", "eltern": "G-2", "aufgehoben": false, "zustand": "geplant"},
+          {"ab": "2027-06-01", "bis": null, "eltern": "B-3", "aufgehoben": false, "zustand": "geplant"}
+        ]
+      }
+    },
+    {
+      "name": "a1-geplant-februar-unberuehrt",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "A1: eingetragen am 20.02.2027, gilt ab 01.03.2027 — „geplant“, NICHT rückwirkend (§4.4-Protokoll: „nein (geplant)“). Der Februar-Bericht ist nicht betroffen: keine Revision.",
+      "input": {
+        "eingetragen_um": "2027-02-20T10:11:00+01:00",
+        "gilt_ab": "2027-03-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2027-02-01", "bis": "2027-02-28"}
+      },
+      "expected": {
+        "art": "geplant",
+        "eintragstag": "2027-02-20",
+        "tage": 9,
+        "abzeichen": null,
+        "rueckwirkend_betroffen": null,
+        "reicht_in_zeitraum": false,
+        "rueckwirkend_im_zeitraum": false
+      }
+    },
+    {
+      "name": "a1-maerz-liest-den-neuen-stand",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "A1: der Eintrag reicht in den März — der März-Bericht liest ihn, ohne dass etwas rückwirkend wäre.",
+      "input": {
+        "eingetragen_um": "2027-02-20T10:11:00+01:00",
+        "gilt_ab": "2027-03-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2027-03-01", "bis": "2027-03-31"}
+      },
+      "expected": {
+        "art": "geplant",
+        "eintragstag": "2027-02-20",
+        "tage": 9,
+        "abzeichen": null,
+        "rueckwirkend_betroffen": null,
+        "reicht_in_zeitraum": true,
+        "rueckwirkend_im_zeitraum": false
+      }
+    },
+    {
+      "name": "a2-rueckwirkend-37-tage",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "A2: eingetragen am 10.03.2027, gilt ab 01.02.2027 → „rückwirkend (37 Tage)“ (28 Februartage + 9 Märztage vor dem Eintragstag). Rückwirkend neu bewertet sind genau die Tage 01.02.–09.03.2027; der freigegebene Februar-Bericht liegt darin und bekommt in AP-12 eine Revision. (Ob der Umzug nach Werk Ahrenberg Nord SO eingetragen werden kann, entscheidet der Ortsbaum: `a2-rueckwirkend-vor-dem-anlegen-des-ziels`.) Die Uhrzeit ist für den Fall gewählt.",
+      "input": {
+        "eingetragen_um": "2027-03-10T09:30:00+01:00",
+        "gilt_ab": "2027-02-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2027-02-01", "bis": "2027-02-28"}
+      },
+      "expected": {
+        "art": "rueckwirkend",
+        "eintragstag": "2027-03-10",
+        "tage": 37,
+        "abzeichen": "rückwirkend (37 Tage)",
+        "rueckwirkend_betroffen": {"von": "2027-02-01", "bis": "2027-03-09"},
+        "reicht_in_zeitraum": true,
+        "rueckwirkend_im_zeitraum": true
+      }
+    },
+    {
+      "name": "a3-anbau-14-tage-nicht-15",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "⚠ WIDERSPRUCH IM REPORT, hier aufgelöst: A3 und das §4.4-Protokoll nennen für den Eintrag vom 15.01.2027 mit „gültig ab“ 01.01.2027 „rückwirkend (15 Tage)“; A2 zählt für 10.03.2027 / 01.02.2027 „37 Tage“. Beides zugleich geht nicht: 37 ist Eintragstag − gilt ab (die Tage VOR dem Eintragstag), mit derselben Zählung sind es hier 14 (01.–14.01.2027); „15“ zählte den Eintragstag mit, dann wären es in A2 38. Umgesetzt ist die eine Zählung, die zu E2 passt („gilt ab vor dem Eintragstag“): 14. Die Dezember-Kennzahl ist nicht betroffen.",
+      "input": {
+        "eingetragen_um": "2027-01-15T14:40:00+01:00",
+        "gilt_ab": "2027-01-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2026-12-01", "bis": "2026-12-31"}
+      },
+      "expected": {
+        "art": "rueckwirkend",
+        "eintragstag": "2027-01-15",
+        "tage": 14,
+        "abzeichen": "rückwirkend (14 Tage)",
+        "rueckwirkend_betroffen": {"von": "2027-01-01", "bis": "2027-01-14"},
+        "reicht_in_zeitraum": false,
+        "rueckwirkend_im_zeitraum": false
+      }
+    },
+    {
+      "name": "a3-januar-wird-neu-bewertet",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "A3: die Januar-Kennzahl rechnet mit 3 400 m² — rückwirkend für die ersten 14 Januartage.",
+      "input": {
+        "eingetragen_um": "2027-01-15T14:40:00+01:00",
+        "gilt_ab": "2027-01-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2027-01-01", "bis": "2027-01-31"}
+      },
+      "expected": {
+        "art": "rueckwirkend",
+        "eintragstag": "2027-01-15",
+        "tage": 14,
+        "abzeichen": "rückwirkend (14 Tage)",
+        "rueckwirkend_betroffen": {"von": "2027-01-01", "bis": "2027-01-14"},
+        "reicht_in_zeitraum": true,
+        "rueckwirkend_im_zeitraum": true
+      }
+    },
+    {
+      "name": "am-selben-tag-ist-nicht-rueckwirkend",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "§4.4-Protokoll: Werk Ahrenberg Nord, angelegt am 20.02.2027 um 10:05 Uhr, gilt ab 20.02.2027 — „nein“. Rückwirkend ist nur ein „gilt ab“ VOR dem Eintragstag.",
+      "input": {
+        "eingetragen_um": "2027-02-20T10:05:00+01:00",
+        "gilt_ab": "2027-02-20",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "art": "ab_heute",
+        "eintragstag": "2027-02-20",
+        "tage": 0,
+        "abzeichen": null,
+        "rueckwirkend_betroffen": null,
+        "reicht_in_zeitraum": null,
+        "rueckwirkend_im_zeitraum": null
+      }
+    },
+    {
+      "name": "eintragstag-in-der-zeitzone-des-standorts",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "Der Eintragstag ist der Tag in der Zeitzone des Standorts (E9), nicht in UTC: 23:30 Uhr UTC am 09.03.2027 ist 00:30 Uhr am 10.03.2027 in Berlin — ein Eintrag „gültig ab 10.03.2027“ gilt ab heute, nicht geplant.",
+      "input": {
+        "eingetragen_um": "2027-03-09T23:30:00Z",
+        "gilt_ab": "2027-03-10",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "art": "ab_heute",
+        "eintragstag": "2027-03-10",
+        "tage": 0,
+        "abzeichen": null,
+        "rueckwirkend_betroffen": null,
+        "reicht_in_zeitraum": null,
+        "rueckwirkend_im_zeitraum": null
+      }
+    },
+    {
+      "name": "eine-stunde-frueher-ist-es-geplant",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "Der Gegenfall: 22:30 Uhr UTC ist 23:30 Uhr am 09.03.2027 in Berlin — derselbe Eintrag ist einen Tag geplant.",
+      "input": {
+        "eingetragen_um": "2027-03-09T22:30:00Z",
+        "gilt_ab": "2027-03-10",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "art": "geplant",
+        "eintragstag": "2027-03-09",
+        "tage": 1,
+        "abzeichen": null,
+        "rueckwirkend_betroffen": null,
+        "reicht_in_zeitraum": null,
+        "rueckwirkend_im_zeitraum": null
+      }
+    },
+    {
+      "name": "ein-tag-einzahl",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "Einzahl im Abzeichen: „rückwirkend (1 Tag)“.",
+      "input": {
+        "eingetragen_um": "2027-03-02T08:00:00+01:00",
+        "gilt_ab": "2027-03-01",
+        "gilt_bis": null,
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "art": "rueckwirkend",
+        "eintragstag": "2027-03-02",
+        "tage": 1,
+        "abzeichen": "rückwirkend (1 Tag)",
+        "rueckwirkend_betroffen": {"von": "2027-03-01", "bis": "2027-03-01"},
+        "reicht_in_zeitraum": null,
+        "rueckwirkend_im_zeitraum": null
+      }
+    },
+    {
+      "name": "begrenztes-intervall-begrenzt-die-betroffenen-tage",
+      "familie": "rueckwirkend",
+      "ableitung": "kennzeichen",
+      "why": "Ein Eintrag, der vor einem geplanten Wechsel eingefügt wurde, hat ein Ende (hier 31.05.2027, siehe `einfuegen-vor-einem-geplanten-wechsel`). Das Abzeichen zählt, wie weit er zurückreicht (26 Tage); rückwirkend neu bewertet sind nur die Tage seiner Gültigkeit vor dem Eintragstag — und in den Juni reicht er gar nicht.",
+      "input": {
+        "eingetragen_um": "2027-06-10T09:00:00+02:00",
+        "gilt_ab": "2027-05-15",
+        "gilt_bis": "2027-05-31",
+        "zeitzone": "Europe/Berlin",
+        "zeitraum": {"von": "2027-06-01", "bis": "2027-06-30"}
+      },
+      "expected": {
+        "art": "rueckwirkend",
+        "eintragstag": "2027-06-10",
+        "tage": 26,
+        "abzeichen": "rückwirkend (26 Tage)",
+        "rueckwirkend_betroffen": {"von": "2027-05-15", "bis": "2027-05-31"},
+        "reicht_in_zeitraum": false,
+        "rueckwirkend_im_zeitraum": false
+      }
+    },
+    {
+      "name": "ms-10-am-28-02-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "Regel 7: der Standort einer Messstelle ist die Wurzel ihres Ortsknotens AN DIESEM TAG. MS-10 hängt an Halle 2; am letzten Tag vor dem Umzug ist die Wurzel Werk Ahrenberg.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-10", "tag": "2027-02-28"},
+      "expected": {"ort": "G-2", "pfad": ["G-2", "ST-1"], "standort": "ST-1", "grund": "verortet"}
+    },
+    {
+      "name": "ms-10-am-01-03-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "A13/E11: MS-10 bleibt an Halle 2 (ihre eigene Zuordnung ändert sich NICHT), aber ihr Standort wechselt abgeleitet über den Baum auf Werk Ahrenberg Nord.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-10", "tag": "2027-03-01"},
+      "expected": {"ort": "G-2", "pfad": ["G-2", "ST-3"], "standort": "ST-3", "grund": "verortet"}
+    },
+    {
+      "name": "ms-12-im-bereich-am-01-03-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "Zwei Ebenen: MS-12 hängt am Bereich Halle 2 Montage, der Bereich an Halle 2, Halle 2 an Werk Ahrenberg Nord — der Pfad nennt jeden Knoten von unten nach oben.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-12", "tag": "2027-03-01"},
+      "expected": {"ort": "B-3", "pfad": ["B-3", "G-2", "ST-3"], "standort": "ST-3", "grund": "verortet"}
+    },
+    {
+      "name": "a13-ms-14-bleibt-am-standort",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "A13: MS-14 Ladepunkt Parkplatz Halle 2 hängt DIREKT am Standort Werk Ahrenberg und bleibt dort, obwohl sie zur Anlage von Halle 2 gehört — der Ortsbaum entscheidet nichts Elektrisches (Regel 10), und nur ein eigener Umzug der Messstelle (AP-04) verlegt sie.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-14", "tag": "2027-03-01"},
+      "expected": {"ort": "ST-1", "pfad": ["ST-1"], "standort": "ST-1", "grund": "verortet"}
+    },
+    {
+      "name": "a8-ms-13-am-31-05-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "A8: bis 31.05.2027 hängt MS-13 im Bereich Halle 2 Lager — der Mai-Bericht zeigt B-5 mit MS-13 unverändert.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-13", "tag": "2027-05-31"},
+      "expected": {"ort": "B-5", "pfad": ["B-5", "G-2", "ST-3"], "standort": "ST-3", "grund": "verortet"}
+    },
+    {
+      "name": "a8-ms-13-am-01-06-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "A8: ab 01.06.2027 hängt MS-13 in Halle 2 Montage — deshalb darf Halle 2 Lager am 30.06.2027 archiviert werden.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-13", "tag": "2027-06-01"},
+      "expected": {"ort": "B-3", "pfad": ["B-3", "G-2", "ST-3"], "standort": "ST-3", "grund": "verortet"}
+    },
+    {
+      "name": "ms-08-am-28-02-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "§5.6 (März-Zeile): MS-08 Kühlung hängt bis 28.02.2027 in Halle 1 Süd …",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-08", "tag": "2027-02-28"},
+      "expected": {"ort": "B-2", "pfad": ["B-2", "G-1", "ST-1"], "standort": "ST-1", "grund": "verortet"}
+    },
+    {
+      "name": "ms-08-am-01-03-2027",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "… und zieht am selben Tag, an dem Halle 2 den Standort wechselt, selbst nach Halle 2 Montage (AP-00-Zeitachse). Beide Wechsel gelten ab 00:00 Uhr desselben Tages; der abgeleitete Standort springt in einem Schritt von Werk Ahrenberg auf Werk Ahrenberg Nord.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-08", "tag": "2027-03-01"},
+      "expected": {"ort": "B-3", "pfad": ["B-3", "G-2", "ST-3"], "standort": "ST-3", "grund": "verortet"}
+    },
+    {
+      "name": "ms-19-am-unternehmen",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "MS-19 Netzbezug gesamt Unternehmen hängt am Unternehmen (Kennzeichen „U“, AP-00 §4.4) — sie hat KEINEN Standort, und das ist kein Fehler: null mit dem Grund „am_unternehmen“, nie ein geratener Standort.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-19", "tag": "2027-03-01"},
+      "expected": {"ort": "U", "pfad": [], "standort": null, "grund": "am_unternehmen"}
+    },
+    {
+      "name": "ms-20-ohne-ort",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "MS-20 Prozess Spritzguss gesamt läuft über zwei Gebäude und hat keinen Ort (AP-00 §4.4): null mit „nicht_verortet“.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-20", "tag": "2027-03-01"},
+      "expected": {"ort": null, "pfad": [], "standort": null, "grund": "nicht_verortet"}
+    },
+    {
+      "name": "vor-der-ersten-zuordnung",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "Vor ihrer ersten Zuordnung (01.10.2026) hat MS-06 keinen Ort — auch das ist „nicht_verortet“, kein Standort.",
+      "input": {"szenario": "ahrenberg", "messstelle": "MS-06", "tag": "2026-09-15"},
+      "expected": {"ort": null, "pfad": [], "standort": null, "grund": "nicht_verortet"}
+    },
+    {
+      "name": "stillgelegt-am-archivierten-ort",
+      "familie": "messstelle_standort",
+      "ableitung": "am_tag",
+      "why": "Die andere Ausfahrt aus A7 („… oder legen Sie sie still“): wäre MS-13 nur stillgelegt (angehalten) statt umgezogen, sperrte sie das Archivieren nicht (E12 zählt nur AKTIVE Messstellen) und behielte ihre Zuordnung an Halle 2 Lager — keine Kaskade. Nach dem Archivieren ist ihr Ort nicht im Baum: der Standort ist ehrlich null mit „ort_nicht_im_baum“, nie der letzte bekannte.",
+      "input": {
+        "szenario": "ahrenberg",
+        "ueberlagerung": {
+          "messstellen": [
+            {"kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)", "anlage": "AN-2", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-5"}]}
+          ]
+        },
+        "messstelle": "MS-13",
+        "tag": "2027-07-15"
+      },
+      "expected": {"ort": "B-5", "pfad": [], "standort": null, "grund": "ort_nicht_im_baum"}
+    },
+    {
+      "name": "a13-folgen-karte",
+      "familie": "verschieben",
+      "ableitung": "folgen",
+      "why": "A13/V3 wörtlich: mit Halle 2 ziehen ihre drei Bereiche; MS-10, MS-11, MS-12, MS-13 und MS-15 wechseln ab 01.03.2027 den Standort (abgeleitet); es BLEIBEN die Anlage Werk Ahrenberg – Halle 2 und ihr Netzanschluss NA-2 (Weg: „Anlage zuordnen“) und MS-14, die direkt am Standort hängt. Welche Anlagen und Messstellen „bleiben“, folgt aus der Anlage der wechselnden Messstellen — der Ortsbaum selbst kennt nichts Elektrisches (Regel 10).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "folgen": {
+          "ziehen_mit": ["B-3", "B-4", "B-5"],
+          "messstellen_wechseln_standort": ["MS-10", "MS-11", "MS-12", "MS-13", "MS-15"],
+          "bleiben_anlagen": ["AN-2"],
+          "bleiben_netzanschluesse": ["NA-2"],
+          "bleiben_messstellen": ["MS-14"]
+        }
+      }
+    },
+    {
+      "name": "ms-08-mit-bekanntem-umzug-wechselt-auch",
+      "familie": "verschieben",
+      "ableitung": "folgen",
+      "why": "Präzisiert: A13 nennt fünf Messstellen, §5.6 sagt, MS-08 wechsle „ebenfalls den Standort“. Beides stimmt, wenn MS-08s eigener Umzug (AP-04) beim Eintrag am 20.02.2027 noch nicht eingetragen ist — dann ist A13 der Fall oben. Ist er schon eingetragen, wechselt MS-08 am 01.03.2027 WEGEN des Umzugs den Standort (ohne ihn hinge sie an Halle 2 unter Werk Ahrenberg) und steht deshalb auf der Karte. Regel: eine Messstelle steht dort, wenn ihr Standort am Umzugstag mit dem Umzug ein anderer ist als ohne ihn. Ihre Anlage ist die am Umzugstag (AN-2).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20",
+        "ueberlagerung": {
+          "messstellen": [
+            {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]}
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "folgen": {
+          "ziehen_mit": ["B-3", "B-4", "B-5"],
+          "messstellen_wechseln_standort": ["MS-08", "MS-10", "MS-11", "MS-12", "MS-13", "MS-15"],
+          "bleiben_anlagen": ["AN-2"],
+          "bleiben_netzanschluesse": ["NA-2"],
+          "bleiben_messstellen": ["MS-14"]
+        }
+      }
+    },
+    {
+      "name": "anlage-schon-zugeordnet-bleibt-nicht",
+      "familie": "verschieben",
+      "ableitung": "folgen",
+      "why": "Ist die Anlage schon eigens nach Werk Ahrenberg Nord zugeordnet (A11), bleibt sie nicht zurück — die Karte nennt dann nur noch MS-14, die weiter direkt an Werk Ahrenberg hängt.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-3",
+        "heute": "2027-02-20",
+        "ueberlagerung": {
+          "anlagen": [
+            {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "netzanschluss": "NA-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"}, {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}]}
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "folgen": {
+          "ziehen_mit": ["B-3", "B-4", "B-5"],
+          "messstellen_wechseln_standort": ["MS-10", "MS-11", "MS-12", "MS-13", "MS-15"],
+          "bleiben_anlagen": [],
+          "bleiben_netzanschluesse": [],
+          "bleiben_messstellen": ["MS-14"]
+        }
+      }
+    },
+    {
+      "name": "bereich-innerhalb-des-standorts",
+      "familie": "verschieben",
+      "ableitung": "folgen",
+      "why": "Halle 2 Lager wandert zu Halle 1 — beide unter Werk Ahrenberg. Ein Bereich hat keine Kinder, und keine Messstelle wechselt den Standort: die Karte hat nichts zu melden.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "B-5",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "G-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "folgen": {
+          "ziehen_mit": [],
+          "messstellen_wechseln_standort": [],
+          "bleiben_anlagen": [],
+          "bleiben_netzanschluesse": [],
+          "bleiben_messstellen": []
+        }
+      }
+    },
+    {
+      "name": "abgelehnt-hat-keine-folgen",
+      "familie": "verschieben",
+      "ableitung": "folgen",
+      "why": "Ein abgelehnter Eintrag hat keine Folgen-Karte, sondern seinen Grund.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "objekt": "G-2",
+        "vorgang": "verschieben",
+        "ab": "2027-03-01",
+        "eltern": "ST-1",
+        "heute": "2027-02-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ziel_ist_bisheriger_eltern",
+        "text": "Halle 2 hängt bereits an Werk Ahrenberg.",
+        "folgen": null
+      }
+    },
+    {
+      "name": "a8-bereich-ohne-aktive-messstelle",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "A8: MS-13 hängt seit 01.06.2027 in Halle 2 Montage, also ist Halle 2 Lager leer — Archivieren am 30.06.2027 ist erlaubt, das Intervall endet am VORTAG (29.06.2027). Die frühere Zuordnung von MS-13 zählt nicht: sie endete vor dem Archivtag.",
+      "input": {"szenario": "ahrenberg-nach-dem-umzug", "objekt": "B-5", "tag": "2027-06-30"},
+      "expected": {
+        "erlaubt": true,
+        "gruende": [],
+        "text": null,
+        "archiviert": [{"kennzeichen": "B-5", "letzter_tag": "2027-06-29"}]
+      }
+    },
+    {
+      "name": "a7-sperre-sagt-aktiv-nicht-liefert-daten",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "⚠ A7/§5.10 mit einer Korrektur am Wortlaut: gesperrt wird, weil MS-18 AKTIV ist (E12: „nur ohne aktive Messstellen“) — der Report schreibt „1 Messstelle liefert hier Daten“. Das wäre eine Beobachtung, die die Regel gar nicht prüft: auch eine aktive Messstelle, die „Wartet auf erste Daten“, sperrt. Ein Satz, der eine Ursache nennt, braucht den Fakt, der sie trägt (Hausregel) — also „ist hier aktiv“. Sonst gilt der §5.10-Wortlaut (mit Name und dem Weg „(Messstellen)“).",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "G-5", "tag": "2026-10-20"},
+      "expected": {
+        "erlaubt": false,
+        "gruende": [{"art": "messstelle_aktiv", "kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt"}],
+        "text": "Montagehalle Lindach kann nicht archiviert werden: 1 Messstelle ist hier aktiv (MS-18 Montagehalle Lindach gesamt). Ziehen Sie die Messstelle zuerst um oder legen Sie sie still (Messstellen).",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "gebaeude-zaehlt-die-messstellen-seiner-bereiche",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "§4.2: ein Gebäude archiviert nur ohne aktive Messstelle „im Gebäude oder seinen Bereichen“. Die Sperre nennt ALLE — die Rückfrage trägt ihre Folgenliste.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "G-2", "tag": "2027-02-15"},
+      "expected": {
+        "erlaubt": false,
+        "gruende": [
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-10", "name": "Netzbezug Halle 2"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-12", "name": "Montage Linie M1"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-13", "name": "Lager Halle 2 (Allgemein)"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-15", "name": "Halle 2 nicht zugeordnet"}
+        ],
+        "text": "Halle 2 kann nicht archiviert werden: 5 Messstellen sind hier aktiv (MS-10 Netzbezug Halle 2, MS-11 Spritzguss SG07–SG10, MS-12 Montage Linie M1, MS-13 Lager Halle 2 (Allgemein) und MS-15 Halle 2 nicht zugeordnet). Ziehen Sie die Messstellen zuerst um oder legen Sie sie still (Messstellen).",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "standort-mit-aktiver-anlage",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "§5.10 wörtlich: Werk Lindach mit aktiver Anlage (die Messstellen sind in diesem Fall stillgelegt, sonst sperrten sie mit).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "ueberlagerung": {
+          "messstellen": [
+            {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+            {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+            {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]}
+          ]
+        },
+        "objekt": "ST-2",
+        "tag": "2026-10-20"
+      },
+      "expected": {
+        "erlaubt": false,
+        "gruende": [{"art": "anlage_aktiv", "kennzeichen": "AN-3", "name": "Werk Lindach"}],
+        "text": "Werk Lindach kann nicht archiviert werden: die Anlage Werk Lindach ist aktiv. Ordnen Sie die Anlage einem anderen Standort zu oder archivieren Sie sie zuerst.",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "standort-mit-anlage-und-messstellen",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "Beide Sperren zugleich: erst die Anlagen, dann die Messstellen, und je ein Weg.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "ST-2", "tag": "2026-10-20"},
+      "expected": {
+        "erlaubt": false,
+        "gruende": [
+          {"art": "anlage_aktiv", "kennzeichen": "AN-3", "name": "Werk Lindach"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-16", "name": "Netzbezug Lindach"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt"},
+          {"art": "messstelle_aktiv", "kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt"}
+        ],
+        "text": "Werk Lindach kann nicht archiviert werden: die Anlage Werk Lindach ist aktiv und 3 Messstellen sind hier aktiv (MS-16 Netzbezug Lindach, MS-17 Lagerhalle Lindach gesamt und MS-18 Montagehalle Lindach gesamt). Ordnen Sie die Anlage einem anderen Standort zu oder archivieren Sie sie zuerst. Ziehen Sie die Messstellen zuerst um oder legen Sie sie still (Messstellen).",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "leere-kinder-werden-mitarchiviert",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "E12: Anlage und Messstellen angehalten — nichts Aktives mehr. Werk Lindach wird am 01.04.2027 archiviert; seine leeren Gebäude und Bereiche werden mitarchiviert, alle Intervalle enden am 31.03.2027. Keine Kaskade auf Messstellen oder Anlagen: sie behalten ihre Zuordnung (das Ergebnis ist das Szenario „ahrenberg-lindach-archiviert“).",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "ueberlagerung": {
+          "anlagen": [
+            {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
+          ],
+          "messstellen": [
+            {"kennzeichen": "MS-16", "name": "Netzbezug Lindach", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]},
+            {"kennzeichen": "MS-17", "name": "Lagerhalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-4"}]},
+            {"kennzeichen": "MS-18", "name": "Montagehalle Lindach gesamt", "anlage": "AN-3", "zustand": "angehalten", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "G-5"}]}
+          ]
+        },
+        "objekt": "ST-2",
+        "tag": "2027-04-01"
+      },
+      "expected": {
+        "erlaubt": true,
+        "gruende": [],
+        "text": null,
+        "archiviert": [
+          {"kennzeichen": "ST-2", "letzter_tag": "2027-03-31"},
+          {"kennzeichen": "G-4", "letzter_tag": "2027-03-31"},
+          {"kennzeichen": "G-5", "letzter_tag": "2027-03-31"},
+          {"kennzeichen": "B-6", "letzter_tag": "2027-03-31"},
+          {"kennzeichen": "B-7", "letzter_tag": "2027-03-31"}
+        ]
+      }
+    },
+    {
+      "name": "geplante-zuordnung-sperrt",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "Eine Lücke im Report, konservativ geschlossen: Halle 2 soll ab 01.03.2027 an Werk Ahrenberg Nord hängen (A1). Würde der Standort am 25.02.2027 archiviert, hinge Halle 2 ab 01.03.2027 an einem Standort, den es nicht gibt (Regel 1). Der Report nennt diesen Fall nicht; still aufheben hieße, einen Plan des Kunden zu verwerfen. Also sperrt eine geplante Zuordnung wie aktiver Inhalt — mit dem Weg, sie zuerst aufzuheben.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "ueberlagerung": {
+          "orte": [
+            {
+              "kennzeichen": "G-2",
+              "art": "gebaeude",
+              "name": "Halle 2",
+              "intervalle": [
+                {"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "ST-1"},
+                {"ab": "2027-03-01", "bis": null, "eltern": "ST-3"}
+              ],
+              "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
+            }
+          ]
+        },
+        "objekt": "ST-3",
+        "tag": "2027-02-25"
+      },
+      "expected": {
+        "erlaubt": false,
+        "gruende": [{"art": "geplante_zuordnung", "kennzeichen": "G-2", "name": "Halle 2", "ab": "2027-03-01", "eltern": "ST-3"}],
+        "text": "Werk Ahrenberg Nord kann nicht archiviert werden: für Halle 2 ist ab 01.03.2027 eine Zuordnung zu Werk Ahrenberg Nord geplant. Heben Sie die geplante Zuordnung zuerst auf.",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "bereits-archiviert",
+      "familie": "archiv",
+      "ableitung": "archivieren",
+      "why": "Ein Objekt, das am Archivtag schon archiviert ist, kann es nicht noch einmal werden — der Satz ist derselbe wie in „Stand am“.",
+      "input": {"szenario": "ahrenberg", "objekt": "B-5", "tag": "2027-07-15"},
+      "expected": {
+        "erlaubt": false,
+        "gruende": [{"art": "archiviert", "kennzeichen": "B-5", "name": "Halle 2 Lager"}],
+        "text": "Am 15.07.2027 war Halle 2 Lager archiviert.",
+        "archiviert": null
+      }
+    },
+    {
+      "name": "a8-wiederherstellen",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "A8: am 01.02.2028 wiederhergestellt — ein NEUES Intervall ab dem Tag, am alten Elternknoten; die Lücke 30.06.2027–31.01.2028 bleibt sichtbar und wird nie aufgefüllt. Der Name ist unter den Geschwistern frei.",
+      "input": {"szenario": "ahrenberg-lager-archiviert", "objekt": "B-5", "tag": "2028-02-01"},
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervall": {"ab": "2028-02-01", "bis": null, "eltern": "G-2"},
+        "name": "Halle 2 Lager",
+        "luecke": {"von": "2027-06-30", "bis": "2028-01-31"}
+      }
+    },
+    {
+      "name": "a10-name-inzwischen-vergeben",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "A10: nach dem Archivieren durfte ein neuer Bereich „Halle 2 Lager“ heißen — er bekam B-9, nicht B-5 (B-8 war „Halle 2 Test“, A9; Kurzzeichen werden nie wiederverwendet). Beim Wiederherstellen ist der Name belegt: der Satz aus §5.10, und der Dialog bietet das Umbenennen an. Das Anlegedatum von B-9 ist für den Fall gewählt.",
+      "input": {
+        "szenario": "ahrenberg-lager-archiviert",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-9", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2027-09-01", "bis": null, "eltern": "G-2"}], "flaechen": []}
+          ]
+        },
+        "objekt": "B-5",
+        "tag": "2028-02-01"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "name_belegt",
+        "text": "Diesen Namen gibt es hier schon: Halle 2 Lager (B-9). Wählen Sie einen anderen Namen — oder öffnen Sie Halle 2 Lager.",
+        "intervall": null,
+        "name": null,
+        "luecke": null
+      }
+    },
+    {
+      "name": "umbenennen-im-selben-dialog",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "§4.2: „sonst Umbenennen im selben Dialog“ — mit neuem Namen geht es.",
+      "input": {
+        "szenario": "ahrenberg-lager-archiviert",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-9", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2027-09-01", "bis": null, "eltern": "G-2"}], "flaechen": []}
+          ]
+        },
+        "objekt": "B-5",
+        "tag": "2028-02-01",
+        "neuer_name": "Halle 2 Altlager"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervall": {"ab": "2028-02-01", "bis": null, "eltern": "G-2"},
+        "name": "Halle 2 Altlager",
+        "luecke": {"von": "2027-06-30", "bis": "2028-01-31"}
+      }
+    },
+    {
+      "name": "namensvergleich-ohne-gross-klein-und-rand",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "§4.1: Namen werden ohne Groß-/Kleinschreibung und ohne Randleerzeichen verglichen — „  halle 2 LAGER “ ist belegt. Der Satz nennt den Namen, wie er gespeichert ist.",
+      "input": {
+        "szenario": "ahrenberg-lager-archiviert",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-9", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2027-09-01", "bis": null, "eltern": "G-2"}], "flaechen": []}
+          ]
+        },
+        "objekt": "B-5",
+        "tag": "2028-02-01",
+        "neuer_name": "  halle 2 LAGER "
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "name_belegt",
+        "text": "Diesen Namen gibt es hier schon: Halle 2 Lager (B-9). Wählen Sie einen anderen Namen — oder öffnen Sie Halle 2 Lager.",
+        "intervall": null,
+        "name": null,
+        "luecke": null
+      }
+    },
+    {
+      "name": "eltern-zuerst-wiederherstellen",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "Ein Knoten kann nur an einem bestehenden Elternknoten hängen (Regel 1): die Montagehalle kommt erst zurück, wenn Werk Lindach zurück ist.",
+      "input": {"szenario": "ahrenberg-lindach-archiviert", "objekt": "G-5", "tag": "2027-05-01"},
+      "expected": {
+        "erlaubt": false,
+        "grund": "eltern_archiviert",
+        "text": "Montagehalle Lindach kann erst wiederhergestellt werden, wenn Werk Lindach wiederhergestellt ist.",
+        "intervall": null,
+        "name": null,
+        "luecke": null
+      }
+    },
+    {
+      "name": "standort-kinder-bleiben-archiviert",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "Wörtlich umgesetzt, im PR benannt: „Wiederherstellen beginnt ein neues Intervall“ — für das Objekt. Die mit archivierten Gebäude und Bereiche kommen NICHT still mit zurück (sie belegten sonst Namen, ohne dass der Kunde es sieht); jedes wird einzeln wiederhergestellt.",
+      "input": {"szenario": "ahrenberg-lindach-archiviert", "objekt": "ST-2", "tag": "2027-05-01"},
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "text": null,
+        "intervall": {"ab": "2027-05-01", "bis": null, "eltern": null},
+        "name": "Werk Lindach",
+        "luecke": {"von": "2027-04-01", "bis": "2027-04-30"}
+      }
+    },
+    {
+      "name": "nicht-archiviert",
+      "familie": "archiv",
+      "ableitung": "wiederherstellen",
+      "why": "Nur ein archiviertes Objekt kann wiederhergestellt werden.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "G-1", "tag": "2027-02-15"},
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_archiviert",
+        "text": "Halle 1 ist nicht archiviert.",
+        "intervall": null,
+        "name": null,
+        "luecke": null
+      }
+    },
+    {
+      "name": "a9-irrtum-ohne-historie",
+      "familie": "archiv",
+      "ableitung": "loeschen",
+      "why": "A9/E1: „Halle 2 Test“ (B-8) um 10:00 Uhr irrtümlich angelegt — nie eine Messstelle, Anlage oder Fläche, kein Kind: Löschen ist erlaubt.",
+      "input": {
+        "szenario": "ahrenberg-vor-dem-umzug",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "B-8", "art": "bereich", "name": "Halle 2 Test", "intervalle": [{"ab": "2026-10-02", "bis": null, "eltern": "G-2"}], "flaechen": []}
+          ]
+        },
+        "objekt": "B-8"
+      },
+      "expected": {"erlaubt": true, "gruende": []}
+    },
+    {
+      "name": "a9-halle-1-hat-historie",
+      "familie": "archiv",
+      "ableitung": "loeschen",
+      "why": "A9/E1: Halle 1 trägt Historie — Messstellen, Fläche, Bereiche. Kein „Löschen“, nur „Archivieren“. Alle Gründe in fester Reihenfolge; Anlagen hängen an Standorten, für ein Gebäude ist der Grund nie dabei.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "G-1"},
+      "expected": {"erlaubt": false, "gruende": ["hat_messstellen", "hat_flaeche", "hat_kinder"]}
+    },
+    {
+      "name": "standort-mit-anlage-nie-loeschen",
+      "familie": "archiv",
+      "ableitung": "loeschen",
+      "why": "E1: „Ein Standort wird nie gelöscht, sobald ihm je eine Anlage zugeordnet war.“",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "ST-1"},
+      "expected": {"erlaubt": false, "gruende": ["hat_messstellen", "hat_anlagen", "hat_flaeche", "hat_kinder"]}
+    },
+    {
+      "name": "leerer-standort-darf-geloescht-werden",
+      "familie": "archiv",
+      "ableitung": "loeschen",
+      "why": "⚠ Umgesetzt nach dem Entscheid-Wortlaut: §4.1 listet beim Standort kein „Löschen“; E1 = A („Löschen nur für Objekte OHNE jede Historie“ und „ein Standort wird nie gelöscht, sobald ihm je eine Anlage zugeordnet war“) schließt einen leeren Standort ein. Werk Ahrenberg Nord ist am 20.02.2027 frisch angelegt und leer.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "ST-3"},
+      "expected": {"erlaubt": true, "gruende": []}
+    },
+    {
+      "name": "je-heisst-je",
+      "familie": "archiv",
+      "ableitung": "loeschen",
+      "why": "„an dem NIE eine Messstelle … hing“: Halle 2 Lager ist heute leer, aber MS-13 hing bis 31.05.2027 dort — Historie, also kein Löschen.",
+      "input": {"szenario": "ahrenberg", "objekt": "B-5"},
+      "expected": {"erlaubt": false, "gruende": ["hat_messstellen"]}
+    },
+    {
+      "name": "a1-februar-alt-maerz-neu",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "A1/Regel 5: ein Zeitraum mit Wechsel wird TAGESGENAU geteilt — Februar → Werk Ahrenberg, März → Werk Ahrenberg Nord. Die Grenze ist 00:00 Uhr in der Zeitzone des Standorts (E9), nicht UTC; der März hat 743 Stunden, weil am 28.03.2027 die Sommerzeit beginnt. So bleibt der Februar-Bericht bei 156 100 kWh, auch neu erzeugt.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-02-28", "standort": "ST-1", "grund": null, "beginn": "2027-02-01T00:00:00+01:00", "ende": "2027-03-01T00:00:00+01:00", "stunden": 672},
+          {"von": "2027-03-01", "bis": "2027-03-31", "standort": "ST-3", "grund": null, "beginn": "2027-03-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 743}
+        ]
+      }
+    },
+    {
+      "name": "ms-10-folgt-dem-baum",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "Dieselbe Teilung für eine Messstelle: MS-10 hat keine eigene Änderung, ihr Zeitraum wird trotzdem am Umzug ihres Gebäudes geteilt — Berichte lesen den abgeleiteten Standort (Regel 5 + 7).",
+      "input": {"szenario": "ahrenberg", "objekt": "MS-10", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-02-28", "standort": "ST-1", "grund": null, "beginn": "2027-02-01T00:00:00+01:00", "ende": "2027-03-01T00:00:00+01:00", "stunden": 672},
+          {"von": "2027-03-01", "bis": "2027-03-31", "standort": "ST-3", "grund": null, "beginn": "2027-03-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 743}
+        ]
+      }
+    },
+    {
+      "name": "a13-ms-14-ungeteilt",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "MS-14 hängt direkt am Standort und zieht nicht mit (A13): ihr Zeitraum bleibt EIN Teil bei Werk Ahrenberg (672 + 743 = 1 415 Stunden).",
+      "input": {"szenario": "ahrenberg", "objekt": "MS-14", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-03-31", "standort": "ST-1", "grund": null, "beginn": "2027-02-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 1415}
+        ]
+      }
+    },
+    {
+      "name": "ms-08-eigener-umzug-am-selben-tag",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "MS-08 wechselt am 01.03.2027 den Bereich UND (über Halle 2) den Standort: EIN Schnitt, nicht zwei.",
+      "input": {"szenario": "ahrenberg", "objekt": "MS-08", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-02-28", "standort": "ST-1", "grund": null, "beginn": "2027-02-01T00:00:00+01:00", "ende": "2027-03-01T00:00:00+01:00", "stunden": 672},
+          {"von": "2027-03-01", "bis": "2027-03-31", "standort": "ST-3", "grund": null, "beginn": "2027-03-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 743}
+        ]
+      }
+    },
+    {
+      "name": "ortswechsel-im-standort-teilt-nicht",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "MS-13 zieht am 01.06.2027 von Halle 2 Lager nach Halle 2 Montage — beide unter Werk Ahrenberg Nord. Geteilt wird nur, wo der STANDORT wechselt; ein Wechsel innerhalb des Standorts ist für die Standort-Berichte kein Schnitt.",
+      "input": {"szenario": "ahrenberg", "objekt": "MS-13", "von": "2027-05-01", "bis": "2027-06-30"},
+      "expected": {
+        "teile": [
+          {"von": "2027-05-01", "bis": "2027-06-30", "standort": "ST-3", "grund": null, "beginn": "2027-05-01T00:00:00+02:00", "ende": "2027-07-01T00:00:00+02:00", "stunden": 1464}
+        ]
+      }
+    },
+    {
+      "name": "sommerzeit-tag-hat-23-stunden",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "Der Tag der Zeitumstellung im Frühjahr (28.03.2027): 00:00 bis 00:00 Uhr sind 23 Stunden. Wer den Tag als 24 × 60 Minuten ab UTC-Mitternacht schneidet, liegt eine Stunde daneben.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-1", "von": "2027-03-28", "bis": "2027-03-28"},
+      "expected": {
+        "teile": [
+          {"von": "2027-03-28", "bis": "2027-03-28", "standort": "ST-1", "grund": null, "beginn": "2027-03-28T00:00:00+01:00", "ende": "2027-03-29T00:00:00+02:00", "stunden": 23}
+        ]
+      }
+    },
+    {
+      "name": "winterzeit-tag-hat-25-stunden",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "Der Tag der Zeitumstellung im Herbst (31.10.2027) hat 25 Stunden.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-1", "von": "2027-10-31", "bis": "2027-10-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-10-31", "bis": "2027-10-31", "standort": "ST-1", "grund": null, "beginn": "2027-10-31T00:00:00+02:00", "ende": "2027-11-01T00:00:00+01:00", "stunden": 25}
+        ]
+      }
+    },
+    {
+      "name": "a8-luecke-bleibt-sichtbar",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "A8: archiviert am 30.06.2027, wiederhergestellt am 01.02.2028 — die Lücke ist ein eigener Teil OHNE Standort (Grund „archiviert“) und wird nie aufgefüllt. Sie beginnt am 30.06.2027 (der Report sagt ungenau „Juli 2027 bis Januar 2028“) und enthält die Herbst-Umstellung (5 185 Stunden). Der Februar 2028 hat 29 Tage.",
+      "input": {"szenario": "ahrenberg", "objekt": "B-5", "von": "2027-06-01", "bis": "2028-02-29"},
+      "expected": {
+        "teile": [
+          {"von": "2027-06-01", "bis": "2027-06-29", "standort": "ST-3", "grund": null, "beginn": "2027-06-01T00:00:00+02:00", "ende": "2027-06-30T00:00:00+02:00", "stunden": 696},
+          {"von": "2027-06-30", "bis": "2028-01-31", "standort": null, "grund": "archiviert", "beginn": "2027-06-30T00:00:00+02:00", "ende": "2028-02-01T00:00:00+01:00", "stunden": 5185},
+          {"von": "2028-02-01", "bis": "2028-02-29", "standort": "ST-3", "grund": null, "beginn": "2028-02-01T00:00:00+01:00", "ende": "2028-03-01T00:00:00+01:00", "stunden": 696}
+        ]
+      }
+    },
+    {
+      "name": "vor-dem-anlegen-kein-standort",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "§5.6: Werk Ahrenberg Nord „existiert im Februar noch nicht“ — genauer: bis 19.02.2027. Der Teil davor hat keinen Standort (Grund „gab_es_noch_nicht“) und schneidet in der Vorgabe-Zeitzone des Unternehmens; kein Bericht, keine 0.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-3", "von": "2027-02-01", "bis": "2027-02-28"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-02-19", "standort": null, "grund": "gab_es_noch_nicht", "beginn": "2027-02-01T00:00:00+01:00", "ende": "2027-02-20T00:00:00+01:00", "stunden": 456},
+          {"von": "2027-02-20", "bis": "2027-02-28", "standort": "ST-3", "grund": null, "beginn": "2027-02-20T00:00:00+01:00", "ende": "2027-03-01T00:00:00+01:00", "stunden": 216}
+        ]
+      }
+    },
+    {
+      "name": "ms-19-ohne-standort",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "Eine Messstelle am Unternehmen hat in keinem Teil einen Standort — EIN Teil mit Grund „am_unternehmen“.",
+      "input": {"szenario": "ahrenberg", "objekt": "MS-19", "von": "2027-03-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-03-01", "bis": "2027-03-31", "standort": null, "grund": "am_unternehmen", "beginn": "2027-03-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 743}
+        ]
+      }
+    },
+    {
+      "name": "a16-zeitzone-wien",
+      "familie": "zeitraum_teilung",
+      "ableitung": "teile",
+      "why": "A16: ein späterer Standort „Werk Wels“ in Österreich bekommt Europe/Vienna; der Schnitt liegt um 00:00 Uhr SEINER Zeitzone. Die Zeitpunkte sind dieselben wie in Berlin — die DACH-Zeitzonen haben dieselben Regeln —, deshalb ändert die Zeitzone die Auswertung heute nicht (Tages- und Monatsgrenzen bleiben bis AP-07/AP-08 fest Europe/Berlin). Das Anlegedatum ist für den Fall gewählt; A16 nennt keins.",
+      "input": {
+        "szenario": "ahrenberg",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "ST-4", "art": "standort", "name": "Werk Wels", "zeitzone": "Europe/Vienna", "intervalle": [{"ab": "2027-01-04", "bis": null, "eltern": null}], "flaechen": []}
+          ]
+        },
+        "objekt": "ST-4",
+        "von": "2027-03-01",
+        "bis": "2027-03-31"
+      },
+      "expected": {
+        "teile": [
+          {"von": "2027-03-01", "bis": "2027-03-31", "standort": "ST-4", "grund": null, "beginn": "2027-03-01T00:00:00+01:00", "ende": "2027-04-01T00:00:00+02:00", "stunden": 743}
+        ]
+      }
+    },
+    {
+      "name": "a3-dezember-3100",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "A3: am 31.12.2026 gilt 3 100 m² — die Dezember-Kennzahl bleibt 36 100 ÷ 3 100 = 11,6 kWh/m².",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "tag": "2026-12-31"},
+      "expected": {"vorhanden": true, "flaeche_m2": 3100, "flaeche_quelle": "eigen"}
+    },
+    {
+      "name": "a3-januar-3400",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "A3: ab 01.01.2027 gilt 3 400 m² — Januar rechnet 38 900 ÷ 3 400 = 11,4 kWh/m².",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "tag": "2027-01-01"},
+      "expected": {"vorhanden": true, "flaeche_m2": 3400, "flaeche_quelle": "eigen"}
+    },
+    {
+      "name": "standort-eigene-flaeche-wird-nie-nachgerechnet",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "Regel 12: Werk Ahrenberg hat EIGENE 8 450 m²; nach dem Anbau summieren seine Gebäude 8 750 m². Die eigene Zahl gilt, die Summe steht als Hinweis daneben — nichts wird saldiert oder still angeglichen.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-1", "tag": "2027-02-15"},
+      "expected": {
+        "vorhanden": true,
+        "flaeche_m2": 8450,
+        "flaeche_quelle": "eigen",
+        "summe_gebaeude_m2": 8750,
+        "gebaeude_ohne_flaeche": []
+      }
+    },
+    {
+      "name": "standort-ohne-eigene-flaeche-summiert",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "§4.1: leer ⇒ Kennzahlen nehmen die Summe der Gebäudeflächen und sagen es („aus Gebäuden summiert“). Werk Ahrenberg Nord hat ab 01.03.2027 genau ein Gebäude.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-3", "tag": "2027-03-15"},
+      "expected": {
+        "vorhanden": true,
+        "flaeche_m2": 3400,
+        "flaeche_quelle": "aus_gebaeuden_summiert",
+        "summe_gebaeude_m2": 3400,
+        "gebaeude_ohne_flaeche": []
+      }
+    },
+    {
+      "name": "werk-lindach-summe-2600",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "A4 legt Werk Lindach ohne eigene Fläche an, mit Lagerhalle (1 800 m²) und Montagehalle (800 m²): 2 600 m² aus Gebäuden summiert — dieselbe Zahl, die die AP-00-Referenz für den Standort nennt.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-2", "tag": "2026-10-20"},
+      "expected": {
+        "vorhanden": true,
+        "flaeche_m2": 2600,
+        "flaeche_quelle": "aus_gebaeuden_summiert",
+        "summe_gebaeude_m2": 2600,
+        "gebaeude_ohne_flaeche": []
+      }
+    },
+    {
+      "name": "standort-ohne-gebaeude-hat-keine-flaeche",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "Werk Ahrenberg Nord zwischen Anlegen (20.02.2027) und Umzug (01.03.2027): kein Gebäude, keine eigene Fläche — null, nie 0 (Hausregel).",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-3", "tag": "2027-02-25"},
+      "expected": {
+        "vorhanden": true,
+        "flaeche_m2": null,
+        "flaeche_quelle": null,
+        "summe_gebaeude_m2": null,
+        "gebaeude_ohne_flaeche": []
+      }
+    },
+    {
+      "name": "summe-nur-wenn-jedes-gebaeude-eine-flaeche-hat",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "Fehlt einem Gebäude die Fläche, wäre die Summe zu klein und kWh/m² zu groß — eine erfundene Zahl. Die Summe ist dann null, und die Liste sagt, welches Gebäude fehlt („für kWh/m² fehlt die Fläche“, §5.9). Die Fläche der Montagehalle ist in diesem Fall erst ab 01.11.2026 eingetragen (Datum für den Fall gewählt).",
+      "input": {
+        "szenario": "ahrenberg",
+        "ueberlagerung": {
+          "orte": [
+            {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-11-01", "bis": null, "m2": 800}]}
+          ]
+        },
+        "objekt": "ST-2",
+        "tag": "2026-10-20"
+      },
+      "expected": {
+        "vorhanden": true,
+        "flaeche_m2": null,
+        "flaeche_quelle": null,
+        "summe_gebaeude_m2": null,
+        "gebaeude_ohne_flaeche": ["G-5"]
+      }
+    },
+    {
+      "name": "bereich-erbt-keine-flaeche",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "Ein Bereich ohne eigene Fläche hat keine — er erbt nicht die seines Gebäudes, und Bereichs-Flächen werden nie auf das Gebäude addiert (§4.1: „Flächen werden nicht saldiert“).",
+      "input": {"szenario": "ahrenberg", "objekt": "B-3", "tag": "2027-03-15"},
+      "expected": {"vorhanden": true, "flaeche_m2": null, "flaeche_quelle": null}
+    },
+    {
+      "name": "vor-dem-anlegen-nicht-vorhanden",
+      "familie": "flaeche",
+      "ableitung": "am_tag",
+      "why": "Einen Standort, den es an dem Tag nicht gab, gibt es auch ohne Fläche nicht: „vorhanden“ ist falsch.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-3", "tag": "2027-02-01"},
+      "expected": {
+        "vorhanden": false,
+        "flaeche_m2": null,
+        "flaeche_quelle": null,
+        "summe_gebaeude_m2": null,
+        "gebaeude_ohne_flaeche": []
+      }
+    },
+    {
+      "name": "a3-dezember-und-januar",
+      "familie": "flaeche",
+      "ableitung": "zeitraum",
+      "why": "A3 als Zeitraum: Dezember 2026 und Januar 2027 sind zwei Teile mit je EINER Fläche — nie ein Mittelwert.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "von": "2026-12-01", "bis": "2027-01-31"},
+      "expected": {
+        "teile": [
+          {"von": "2026-12-01", "bis": "2026-12-31", "vorhanden": true, "flaeche_m2": 3100, "flaeche_quelle": "eigen"},
+          {"von": "2027-01-01", "bis": "2027-01-31", "vorhanden": true, "flaeche_m2": 3400, "flaeche_quelle": "eigen"}
+        ]
+      }
+    },
+    {
+      "name": "eigene-flaeche-bleibt-beim-umzug",
+      "familie": "flaeche",
+      "ableitung": "zeitraum",
+      "why": "Halle 2 verlässt Werk Ahrenberg am 01.03.2027; die EIGENE Fläche des Standorts bleibt 8 450 m², bis der Kunde sie ändert — ein Teil über beide Monate. Der Hinweis „Summe der Gebäude“ gehört zur Tages-Sicht, nicht zur Teilung.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-1", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [{"von": "2027-02-01", "bis": "2027-03-31", "vorhanden": true, "flaeche_m2": 8450, "flaeche_quelle": "eigen"}]
+      }
+    },
+    {
+      "name": "summe-je-zeitraum-teil",
+      "familie": "flaeche",
+      "ableitung": "zeitraum",
+      "why": "Die Summe über einen Zeitraum-Teil: Werk Ahrenberg Nord gibt es bis 19.02.2027 nicht, bis 28.02.2027 ohne Gebäude (null) und ab 01.03.2027 mit Halle 2 (3 400 m² aus Gebäuden summiert) — drei Teile.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-3", "von": "2027-02-01", "bis": "2027-03-31"},
+      "expected": {
+        "teile": [
+          {"von": "2027-02-01", "bis": "2027-02-19", "vorhanden": false, "flaeche_m2": null, "flaeche_quelle": null},
+          {"von": "2027-02-20", "bis": "2027-02-28", "vorhanden": true, "flaeche_m2": null, "flaeche_quelle": null},
+          {"von": "2027-03-01", "bis": "2027-03-31", "vorhanden": true, "flaeche_m2": 3400, "flaeche_quelle": "aus_gebaeuden_summiert"}
+        ]
+      }
+    }
+  ]
+}

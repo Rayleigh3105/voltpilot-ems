@@ -388,6 +388,7 @@ VERFEINERUNGEN = {
     "zuordnung": [
         ("AP-02 E9", "Die zeitliche Auflösung einer Gültigkeit ist der TAG: „gültig ab“ wirkt 00:00 Uhr in der Zeitzone des Standorts. Ausnahme: die Quellenbindung einer Messstelle trägt einen Zeitpunkt auf die Minute (AP-04 E2)."),
         ("AP-02 E2", "Rückwirkende Verschiebungen und Zuordnungen sind erlaubt — aber immer sichtbar: Kennzeichen „rückwirkend“, Folgen-Karte, Revision in AP-12."),
+        ("AP-02 IP-1", "Die Mechanik der Gültigkeit ist ein Vertrag mit geteilten Vektoren: `docs/contracts/v2/ortsbaum-vectors.json` (Schema `ortsbaum.schema.json`). „gültig bis“ ist der LETZTE gültige Tag — ein Wechsel ab 01.03.2027 beendet das Alte am 28.02.2027; rückwirkend ist ein Eintrag, dessen „gültig ab“ vor dem Eintragstag am Standort liegt; der Standort einer Messstelle ist die Wurzel ihres Ortes an diesem Tag. Zwillinge: `services/api .../uems/OrtsbaumAbleitung` und `frontend/portal/src/uemsOrtsbaum.ts` — noch ruft niemand an."),
         ("AP-07 E4", "Der Writer prüft je Wert die lesende Box gegen die zeitgültige Zuständigkeit der Datenquelle ZUR MESSZEIT: zuständig → führend, bestätigte Vergleichsquelle → `vergleich`, sonst → gespeichert als `spiegel`, nie in Rollups."),
     ],
     "zustaende": [
