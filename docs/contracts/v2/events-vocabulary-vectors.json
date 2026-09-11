@@ -1,0 +1,3380 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des EREIGNIS-VERTRAGS (UEMS AP-07 IP-3, Entscheid E11 = A).",
+    "Die Prosa steht in docs/contracts/v2/events-vocabulary.md; hier steht das geschlossene",
+    "Vokabular — je Art Urheber, Bezug, Zeitregel, Felder, Fortschreibung und Kundensatz — und",
+    "die Fälle, an denen der Umschlag Box → Cloud (mqtt-events-2.1.schema.json) und das",
+    "Redpanda-Ereignis events.raw (events-raw.event.schema.json) gemessen werden.",
+    "",
+    "Gefahren von:",
+    "  Java  services/api .../uems/EreignisVokabular (+ EreignisVokabularVectorsTest) — das Urteil",
+    "  TS    frontend/portal/src/uemsEreignis.ts (+ uemsEreignis.test.ts) — der Kundensatz",
+    "  Java  services/ingest .../EventsContractSchemaTest — Umschläge und Beispiele gegen die Schemas",
+    "Wer eine Art, ein Feld oder einen Satz ändert, ändert Java, TS, beide Schemas UND diese Datei.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Keine Box sendet Ereignisse (erst mit einem Edge-Release,",
+    "IP-18/IP-19), die Datenannahme verarbeitet …/v2/events noch nicht (IP-5), es gibt noch",
+    "keine Ereignis-Tabelle (IP-8). Bis dahin schreibt der Writer weiter device_measurement_event.",
+    "",
+    "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
+    "der ein Ahrenberg-Objekt nennt (E-x, DQ-x, K-x, MS-x, Einbau), übernimmt dessen Werte, und",
+    "der Java-Test prüft das gegen die Referenzdatei. Was ein Fall ERFINDET, nennt er in",
+    "`annahme` und — für ein Kennzeichen oder einen Messkanal außerhalb der Referenz — in",
+    "`erfunden`. Technische Kennungen (UUIDs) nennt die Referenz nicht: `kennungen` legt sie fest.",
+    "Zeiten in Ereignissen sind UTC (…Z); der Kundensatz spricht in der Zeitzone des Standorts."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./events-vocabulary.schema.json",
+  "bezug": "UEMS AP-07 §4.5, §4.8, §4.9, §5.2 und Entscheid E11 vom 10.09.2026; AP-04 E2, AP-05 E6, AP-06 E5/E7/E9; Herkunftsvertrag ./messwert-herkunft.md",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "schemas": {
+    "umschlag": "./mqtt-events-2.1.schema.json",
+    "redpanda": "./events-raw.event.schema.json"
+  },
+  "zeitzone": "Europe/Berlin",
+  "kennungen": {
+    "kundenbereich": {
+      "KB-AHRENBERG": "a4e0b000-0000-4000-8000-000000000001"
+    },
+    "anlagen": {
+      "AN-1": "a4e0b000-0000-4000-8000-0000000000a1",
+      "AN-2": "a4e0b000-0000-4000-8000-0000000000a2",
+      "AN-3": "a4e0b000-0000-4000-8000-0000000000a3"
+    },
+    "boxen": {
+      "E-1": "a4e0b000-0000-4000-8000-0000000000e1",
+      "E-2": "a4e0b000-0000-4000-8000-0000000000e2",
+      "E-2′": "a4e0b000-0000-4000-8000-0000000002e2",
+      "E-3": "a4e0b000-0000-4000-8000-0000000000e3"
+    }
+  },
+  "vokabular": {
+    "urheber": [
+      {
+        "code": "box",
+        "wer": "die VoltPilot-Box (sendet über …/v2/events, erst mit einem Edge-Release)"
+      },
+      {
+        "code": "datenannahme",
+        "wer": "die Datenannahme der Cloud (services/ingest): Uhr, Fassung, Kennung, Form"
+      },
+      {
+        "code": "writer",
+        "wer": "der Schreiber der Cloud (services/timescale-writer): Reihe, Sequenz, Kadenz, Herkunft"
+      },
+      {
+        "code": "cloud",
+        "wer": "die übrige Cloud (services/api): Herzschlag, Zuständigkeit"
+      },
+      {
+        "code": "kunde",
+        "wer": "ein Mensch im Portal (über services/api) — etwa ein eingetragener Zählerwechsel"
+      }
+    ],
+    "grund": [
+      {
+        "code": "herkunft_unvollstaendig",
+        "von": "writer",
+        "text": "Herkunft unvollständig — Gerät oder Einstellung zur Messzeit unbekannt"
+      },
+      {
+        "code": "fassung_unbekannt",
+        "von": "datenannahme",
+        "text": "unbekannte Fassung des Datenpakets"
+      },
+      {
+        "code": "kennung_abweichend",
+        "von": "datenannahme",
+        "text": "es nennt eine andere Box, Anlage oder einen anderen Kundenbereich"
+      },
+      {
+        "code": "schema_verletzt",
+        "von": "datenannahme",
+        "text": "Aufbau des Datenpakets nicht lesbar"
+      },
+      {
+        "code": "wort_unbekannt",
+        "von": "datenannahme",
+        "text": "unbekanntes Wort — verworfen, nie geraten"
+      },
+      {
+        "code": "urheber_unzulaessig",
+        "von": "datenannahme",
+        "text": "diese Meldung kommt nie von diesem Absender"
+      },
+      {
+        "code": "zeit_ungueltig",
+        "von": "datenannahme",
+        "text": "unmögliche Zeitangabe"
+      },
+      {
+        "code": "regel_verletzt",
+        "von": "datenannahme",
+        "text": "die Angaben widersprechen sich"
+      },
+      {
+        "code": "fortschreibung_unzulaessig",
+        "von": "datenannahme",
+        "text": "es würde eine frühere Meldung ändern"
+      }
+    ],
+    "strom": [
+      "telemetry",
+      "measurement-samples",
+      "events"
+    ],
+    "erkannt_aus": [
+      {
+        "code": "kadenz",
+        "urheber": "writer",
+        "text": "kein guter Wert über 2 × Kadenz"
+      },
+      {
+        "code": "verdraengung",
+        "urheber": "box",
+        "text": "die Box hat Werte aus ihrem Puffer verdrängt"
+      },
+      {
+        "code": "herzschlag",
+        "urheber": "cloud",
+        "text": "die Box meldet sich nicht (Herzschlag)"
+      }
+    ],
+    "anlass_geraetegrenze": [
+      "zaehlerwechsel",
+      "kartenwechsel",
+      "controllerwechsel",
+      "zaehler_zurueckgesetzt"
+    ],
+    "anlass_uebergabe": [
+      "uebergabe",
+      "box_tausch"
+    ],
+    "qualitaet": [
+      "good",
+      "uncertain",
+      "invalid",
+      "stale",
+      "device_error"
+    ],
+    "fehlerklasse_datei": "./data-source-vectors.json",
+    "felder": {
+      "ereignis_id": {
+        "typ": "uuid",
+        "beschreibung": "Die Kennung des Ereignisses, vom Urheber vergeben. Eine Fortschreibung trägt dieselbe."
+      },
+      "art": {
+        "typ": "wort",
+        "beschreibung": "Die Ereignisart aus diesem Vokabular."
+      },
+      "zeitpunkt": {
+        "typ": "zeit",
+        "beschreibung": "Wann es geschah (UTC, auf die Sekunde) — auf der Zeitachse der Art."
+      },
+      "von": {
+        "typ": "zeit",
+        "beschreibung": "Beginn des Zeitraums (UTC)."
+      },
+      "bis": {
+        "typ": "zeit_oder_leer",
+        "beschreibung": "Ende des Zeitraums (UTC); leer heißt offen — nur wo die Art es erlaubt."
+      },
+      "box": {
+        "typ": "kennung",
+        "beschreibung": "Die VoltPilot-Box, um die es geht (bei Box-Meldungen: die Box aus dem Topic)."
+      },
+      "box_alt": {
+        "typ": "kennung",
+        "beschreibung": "Die Box, die bis zum Wechsel zuständig war."
+      },
+      "box_neu": {
+        "typ": "kennung",
+        "beschreibung": "Die Box, die ab dem Wechsel zuständig ist."
+      },
+      "zustaendige_box": {
+        "typ": "kennung",
+        "beschreibung": "Die Box, die zur Messzeit zuständig war."
+      },
+      "datenquelle": {
+        "typ": "kennung",
+        "beschreibung": "Die Datenquelle (Adresse + Protokoll, AP-06)."
+      },
+      "komponente": {
+        "typ": "kennung",
+        "beschreibung": "Die Komponente der Reihe."
+      },
+      "messkanal": {
+        "typ": "text",
+        "beschreibung": "Der Messkanal der Reihe (Katalog-Schlüssel oder Kern-Kanal)."
+      },
+      "messstelle": {
+        "typ": "kennung",
+        "beschreibung": "Die Messstelle, deren führende Quelle die Reihe zu diesem Zeitpunkt ist — nur die Cloud kennt sie."
+      },
+      "einbau_alt": {
+        "typ": "kennung",
+        "beschreibung": "Der Einbau (Gerät, AP-04) vor der Grenze."
+      },
+      "einbau_neu": {
+        "typ": "kennung",
+        "beschreibung": "Der Einbau ab der Grenze; derselbe wie vorher bei einer Grenze ohne Gerätewechsel."
+      },
+      "erkannt_aus": {
+        "typ": "wort",
+        "beschreibung": "Woraus die Lücke erkannt wurde."
+      },
+      "erwartet_fehlend": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Wie viele erwartete Werte fehlen — nur, wenn die Kadenz sie bestimmt; nie geschätzt."
+      },
+      "nachgeliefert_am": {
+        "typ": "zeit_oder_leer",
+        "beschreibung": "Eingangszeit des ersten nachgelieferten Werts; bleibt leer, wenn nie etwas kam."
+      },
+      "fehlerklasse": {
+        "typ": "wort",
+        "beschreibung": "Die Fehlerklasse je Quelle (AP-06 E5), NUR wenn ein exportierter Fakt sie trägt."
+      },
+      "ursache_ereignis": {
+        "typ": "uuid",
+        "beschreibung": "Das Ereignis, das die Lücke erklärt (Gerätegrenze, Übergabe)."
+      },
+      "eingang_von": {
+        "typ": "zeit",
+        "beschreibung": "Eingangszeit des ersten Werts."
+      },
+      "eingang_bis": {
+        "typ": "zeit",
+        "beschreibung": "Eingangszeit des letzten Werts."
+      },
+      "anzahl": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Wie viele Werte (bzw. Datenpakete) es betrifft."
+      },
+      "erwartet": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Wie viele Werte erwartet waren; der Anteil ist anzahl/erwartet und wird nie gerundet."
+      },
+      "messzeit": {
+        "typ": "zeit",
+        "beschreibung": "Die Messzeit des betroffenen Werts."
+      },
+      "gespeicherter_wert": {
+        "typ": "messwert",
+        "beschreibung": "Der Wert, der gespeichert ist und bleibt."
+      },
+      "abgewiesener_wert": {
+        "typ": "messwert",
+        "beschreibung": "Der Wert, der abgewiesen wurde."
+      },
+      "sequenzen": {
+        "typ": "ganz_liste",
+        "beschreibung": "Die Sequenzen des gespeicherten und des abgewiesenen Werts."
+      },
+      "einheit": {
+        "typ": "text",
+        "beschreibung": "Die Einheit der Zahlen dieses Ereignisses (aus dem Katalog)."
+      },
+      "strom": {
+        "typ": "wort",
+        "beschreibung": "Der Uplink der Box, dessen Datenpaket es betrifft (das Blatt des Topics)."
+      },
+      "sequenz": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Die Sequenz des betroffenen Datenpakets."
+      },
+      "sequenz_erwartet": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Die Sequenz, die als nächste erwartet war."
+      },
+      "sequenz_erhalten": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Die Sequenz, die ankam."
+      },
+      "eingangszeit": {
+        "typ": "zeit",
+        "beschreibung": "Eingangszeit des ersten verspäteten Werts."
+      },
+      "stand_alt": {
+        "typ": "stand",
+        "beschreibung": "Der letzte Zählerstand vor der Rücksetzung."
+      },
+      "stand_neu": {
+        "typ": "stand",
+        "beschreibung": "Der erste Zählerstand danach."
+      },
+      "messzeit_alt": {
+        "typ": "zeit",
+        "beschreibung": "Die Messzeit des letzten Stands davor."
+      },
+      "anlass": {
+        "typ": "wort",
+        "beschreibung": "Warum die Grenze bzw. der Wechsel entstand."
+      },
+      "eingetragen_am": {
+        "typ": "zeit",
+        "beschreibung": "Wann der Kunde die Grenze eingetragen hat (rückwirkend erlaubt)."
+      },
+      "endstand": {
+        "typ": "stand",
+        "beschreibung": "Der Ablesestand des alten Einbaus (optional)."
+      },
+      "anfangsstand": {
+        "typ": "stand",
+        "beschreibung": "Der Ablesestand des neuen Einbaus (optional)."
+      },
+      "bestaetigt_ereignis": {
+        "typ": "uuid",
+        "beschreibung": "Das Ereignis, dessen Ursache der Kunde damit bestätigt (etwa ein counter_reset)."
+      },
+      "grund": {
+        "typ": "wort",
+        "beschreibung": "Der Ablehnungsgrund aus dem geschlossenen Vokabular."
+      },
+      "vor_s": {
+        "typ": "sekunden",
+        "beschreibung": "Wie weit die Messzeit in der Zukunft liegt."
+      },
+      "alter_s": {
+        "typ": "sekunden",
+        "beschreibung": "Wie weit die Messzeit zurückliegt."
+      },
+      "sprung_s": {
+        "typ": "sekunden",
+        "beschreibung": "Um wie viel die Uhr zwischen zwei Datenpaketen sprang (vorwärts positiv)."
+      },
+      "herzschlag_vorher": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Herzschlag im Registerbild vor dem Neustart."
+      },
+      "herzschlag_nachher": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Herzschlag im Registerbild danach (springt auf 0 oder klein)."
+      },
+      "lesungen": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Wie viele Lesungen der Herzschlag stand."
+      },
+      "herzschlag": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Der stehende Herzschlag."
+      },
+      "statuswort": {
+        "typ": "statuswort",
+        "beschreibung": "Das Statuswort der Karte (16 Bit)."
+      },
+      "fassung_erwartet": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Registerbild-Version, die die Vorlage erwartet."
+      },
+      "fassung_gelesen": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Registerbild-Version, die das Gerät meldet."
+      },
+      "karten_erwartet": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Wie viele Karten die Vorlage erwartet."
+      },
+      "karten_gelesen": {
+        "typ": "ganz_ab_0",
+        "beschreibung": "Wie viele Karten das Gerät meldet."
+      },
+      "alt": {
+        "typ": "wert",
+        "beschreibung": "Der Wert vorher."
+      },
+      "neu": {
+        "typ": "wert",
+        "beschreibung": "Der Wert nachher."
+      }
+    },
+    "arten": [
+      {
+        "art": "data_gap",
+        "name": "Lücke",
+        "urheber": [
+          "writer",
+          "box",
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": true,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [
+          "datenquelle",
+          "komponente",
+          "messkanal",
+          "messstelle"
+        ],
+        "pflicht": [
+          "erkannt_aus"
+        ],
+        "felder": [
+          "erwartet_fehlend",
+          "nachgeliefert_am",
+          "fehlerklasse",
+          "ursache_ereignis"
+        ],
+        "fortschreibbar": [
+          "bis",
+          "erwartet_fehlend",
+          "nachgeliefert_am",
+          "ursache_ereignis"
+        ],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "von",
+            "bis",
+            "erkannt_aus"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "von",
+            "bis",
+            "erkannt_aus",
+            "datenquelle",
+            "komponente",
+            "messkanal",
+            "erwartet_fehlend"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Lücke von {von} bis {bis} — nie als 0 gerechnet",
+          "standard_offen": "Lücke seit {von} — nie als 0 gerechnet"
+        },
+        "zusaetze": {
+          "nachgeliefert_am": " · nachgeliefert am {nachgeliefert_am}"
+        },
+        "regeln": [
+          "`von` ist der erste Zeitpunkt ohne erwarteten Wert (Kadenz) bzw. der letzte Herzschlag (Herzschlag); `bis` die Messzeit des ersten Werts danach; die Lücke ist [von, bis).",
+          "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer, verdraengung ↔ box, herzschlag ↔ cloud.",
+          "Eine Box meldet nur eine geschlossene Lücke (was sie verdrängt hat, weiß sie hinterher).",
+          "`fehlerklasse` `box_meldet_sich_nicht` nur mit `erkannt_aus` herzschlag; eine Herzschlag-Lücke trägt keine andere Klasse — solange die Box schweigt, kennt niemand ihren Grund.",
+          "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6)."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers"
+      },
+      {
+        "art": "backfill",
+        "name": "Nachlieferung",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "geschlossen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "eingang_von",
+          "eingang_bis",
+          "anzahl"
+        ],
+        "felder": [
+          "erwartet"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Nachgeliefert: {anzahl_werte} von {von} bis {bis}, eingegangen {eingang_von} bis {eingang_bis}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`von`/`bis` sind die Messzeiten des ersten und des letzten nachgelieferten Werts (beide enthalten).",
+          "`eingang_bis` ≥ `eingang_von`; `erwartet` ≥ `anzahl`, wenn genannt."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8"
+      },
+      {
+        "art": "duplicate_conflict",
+        "name": "Abweichender Wert",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "messstelle"
+        ],
+        "pflicht": [
+          "messzeit",
+          "gespeicherter_wert",
+          "abgewiesener_wert",
+          "sequenzen"
+        ],
+        "felder": [
+          "einheit"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Zweiter Wert für {messzeit} abgewiesen: {abgewiesener_wert} statt {gespeicherter_wert} — der erste Wert bleibt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist die Eingangszeit des abgewiesenen Werts, `messzeit` die Messzeit der Reihe.",
+          "Gespeicherter und abgewiesener Wert unterscheiden sich (sonst ist es eine Wiederholung, kein Ereignis)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Duplikate Nr. 3, E3; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "sequence_gap",
+        "name": "Datenpakete fehlen",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "sequenz_erwartet",
+          "sequenz_erhalten",
+          "anzahl"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Nie angekommen: {anzahl_datenpakete} von {box} — die Werte darin bleiben Lücke"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`sequenz_erhalten` > `sequenz_erwartet` und `anzahl` = `sequenz_erhalten` − `sequenz_erwartet`."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Duplikate Nr. 5; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "sequence_reset",
+        "name": "Paketzählung neu begonnen",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "sequenz_erwartet",
+          "sequenz_erhalten"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "{box} hat ihre Paketzählung neu begonnen — nichts wird doppelt gezählt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`sequenz_erhalten` < `sequenz_erwartet`."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Duplikate Nr. 2 und 5; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "late_arrival",
+        "name": "Nach Abschluss eingegangen",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "eingangszeit",
+          "anzahl"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Nach Abschluss eingegangen: {anzahl_werte} für {von} bis {bis}, am {eingangszeit} — der endgültige Viertelstundenwert bleibt unverändert"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) ist genau eine Viertelstunde im UTC-Raster."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 4, E5"
+      },
+      {
+        "art": "counter_reset",
+        "name": "Zähler zurückgesetzt",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "stand_alt",
+          "stand_neu"
+        ],
+        "felder": [
+          "messzeit_alt",
+          "einheit"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Zähler zurückgesetzt am {zeitpunkt}: von {stand_alt} auf {stand_neu} (Ursache unbekannt)"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist die Messzeit des ersten Stands unter dem vorigen; `stand_neu` < `stand_alt`.",
+          "Die Ursache bestätigt erst der Kunde mit einer Gerätegrenze (`device_boundary` mit `bestaetigt_ereignis`)."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Writer, wie heute); AP-05 E6, A8"
+      },
+      {
+        "art": "device_boundary",
+        "name": "Gerätegrenze",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente"
+        ],
+        "bezug_erlaubt": [
+          "messkanal",
+          "messstelle"
+        ],
+        "pflicht": [
+          "anlass",
+          "einbau_alt",
+          "einbau_neu",
+          "eingetragen_am"
+        ],
+        "felder": [
+          "endstand",
+          "anfangsstand",
+          "einheit",
+          "bestaetigt_ereignis"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": "anlass",
+        "saetze": {
+          "zaehlerwechsel": "Zählerwechsel am {zeitpunkt}: {einbau_alt} → {einbau_neu}",
+          "controllerwechsel": "Controllerwechsel am {zeitpunkt}: {einbau_alt} → {einbau_neu}",
+          "kartenwechsel": "Karte getauscht am {zeitpunkt} — Gerät bleibt {einbau_alt}",
+          "zaehler_zurueckgesetzt": "Zähler zurückgesetzt am {zeitpunkt} (bestätigt) — Gerät bleibt {einbau_alt}"
+        },
+        "zusaetze": {
+          "endstand": ", Endstand {endstand}",
+          "anfangsstand": ", Anfangsstand {anfangsstand}"
+        },
+        "regeln": [
+          "`zeitpunkt` auf die volle Minute (AP-04 E2); `eingetragen_am` ≥ `zeitpunkt` (rückwirkend erlaubt, nie im Voraus).",
+          "zaehlerwechsel/controllerwechsel: `einbau_neu` ≠ `einbau_alt`; kartenwechsel/zaehler_zurueckgesetzt: derselbe Einbau (Gerätegrenze OHNE Gerätewechsel, AP-05 E6)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8; AP-04 E2/E10; AP-05 E6 (Grenze ohne Gerätewechsel)"
+      },
+      {
+        "art": "handover",
+        "name": "Übergabe",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": true,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "anlass",
+          "box_alt",
+          "box_neu"
+        ],
+        "felder": [],
+        "fortschreibbar": [
+          "bis"
+        ],
+        "mqtt": null,
+        "variante_nach": "anlass",
+        "saetze": {
+          "uebergabe": "Übergabe von {box_alt} an {box_neu}: keine Werte von {von} bis {bis}",
+          "uebergabe_offen": "Übergabe von {box_alt} an {box_neu} seit {von} — {box_neu} hat noch nicht bestätigt",
+          "box_tausch": "Box-Tausch: {box_neu} ersetzt {box_alt} — keine Werte von {von} bis {bis}",
+          "box_tausch_offen": "Box-Tausch: {box_neu} ersetzt {box_alt} seit {von} — {box_neu} hat noch nicht bestätigt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`von` ist der Zuständigkeitswechsel auf die volle Minute (Ende alt = Beginn neu), `bis` die Quittung der neuen Box; offen bis dahin.",
+          "`box_alt` ≠ `box_neu`."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8; AP-06 E7 (Box-Tausch), E9 (Übergabe mit Lücke); data-source-assignment.md §4"
+      },
+      {
+        "art": "unassigned_reader",
+        "name": "Nicht zuständige Box",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "geschlossen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle",
+          "komponente"
+        ],
+        "bezug_erlaubt": [
+          "messkanal"
+        ],
+        "pflicht": [
+          "anzahl"
+        ],
+        "felder": [
+          "zustaendige_box"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Nicht gezählt: {anzahl_werte} von {box} für {komponente} von {von} bis {bis} — {box} war nicht zuständig"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Höchstens eines je Box und Datenquelle und Stunde: `bis` − `von` < 3600 s.",
+          "`zustaendige_box` ≠ `box`, wenn genannt."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Duplikate Nr. 4, E4; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "rejected",
+        "name": "Abgewiesen",
+        "urheber": [
+          "datenannahme",
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "grund"
+        ],
+        "felder": [
+          "anzahl",
+          "sequenz"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Datenpaket von {box} abgewiesen: {grund}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`herkunft_unvollstaendig` stellt nur der Writer fest; alle anderen Gründe die Datenannahme."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8, §4.9 Nr. 1; Herkunftsvertrag (IP-1) §4 (Grund `herkunft_unvollstaendig`)"
+      },
+      {
+        "art": "clock_ahead",
+        "name": "Uhr geht vor",
+        "urheber": [
+          "datenannahme"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "vor_s"
+        ],
+        "felder": [
+          "anzahl",
+          "sequenz"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Uhr von {box} geht {vor_s} vor — Datenpaket abgewiesen"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`vor_s` > 300 (genau 300 s wird angenommen)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Zeit Nr. 3, E13; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "too_old",
+        "name": "Zu alt",
+        "urheber": [
+          "datenannahme"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "alter_s"
+        ],
+        "felder": [
+          "anzahl",
+          "sequenz"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Datenpaket von {box} abgewiesen: Messzeit liegt {alter_s} zurück — angenommen werden höchstens 90 Tage"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`alter_s` > 7 776 000 (genau 90 Tage wird angenommen)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Zeit Nr. 3, E13; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "clock_jump",
+        "name": "Uhrsprung",
+        "urheber": [
+          "datenannahme"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "eingangszeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "strom",
+          "sequenz",
+          "sprung_s"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Uhr von {box} ist um {sprung_s} gesprungen — die Werte bleiben"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "|`sprung_s`| > 300."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.5 Zeit Nr. 3, E13; Herkunftsvertrag (IP-1) §4"
+      },
+      {
+        "art": "box_restart",
+        "name": "Neustart der Box",
+        "urheber": [
+          "box"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "{box} ist neu gestartet"
+        },
+        "zusaetze": {},
+        "regeln": [],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Box, Edge-Release)"
+      },
+      {
+        "art": "device_restart",
+        "name": "Neustart des Geräts",
+        "urheber": [
+          "box"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [
+          "herzschlag_vorher",
+          "herzschlag_nachher"
+        ],
+        "fortschreibbar": [],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle",
+            "herzschlag_vorher",
+            "herzschlag_nachher"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Das Gerät an {datenquelle} ist neu gestartet"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`herzschlag_nachher` < `herzschlag_vorher`, wenn beide genannt."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8; AP-05 §4.6, §6.3"
+      },
+      {
+        "art": "frozen_source",
+        "name": "Werte eingefroren",
+        "urheber": [
+          "box",
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [
+          "komponente",
+          "messkanal"
+        ],
+        "pflicht": [],
+        "felder": [
+          "lesungen",
+          "herzschlag"
+        ],
+        "fortschreibbar": [],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle",
+            "komponente",
+            "messkanal",
+            "lesungen",
+            "herzschlag"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Werte von {datenquelle} eingefroren seit {zeitpunkt} — nicht als gemessen gezählt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist die Messzeit des letzten Wertwechsels; `lesungen` ≥ 3."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (ältere Box: nur aus Writer-Sicht, kein Wertwechsel über 3 Kadenzen); AP-05 §4.6, §6.3"
+      },
+      {
+        "art": "range_limit",
+        "name": "Bereichsbegrenzung",
+        "urheber": [
+          "box"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [
+          "komponente"
+        ],
+        "pflicht": [],
+        "felder": [
+          "statuswort"
+        ],
+        "fortschreibbar": [],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle",
+            "komponente",
+            "statuswort"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Bereichsbegrenzung an {datenquelle} — betroffene Werte gelten als ungültig"
+        },
+        "zusaetze": {
+          "komponente": " · {komponente}"
+        },
+        "regeln": [],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8; AP-05 §4.6, §6.3"
+      },
+      {
+        "art": "layout_changed",
+        "name": "Aufbau geändert",
+        "urheber": [
+          "box"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "box",
+          "datenquelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [
+          "fassung_erwartet",
+          "fassung_gelesen",
+          "karten_erwartet",
+          "karten_gelesen"
+        ],
+        "fortschreibbar": [],
+        "mqtt": {
+          "pflicht": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle"
+          ],
+          "felder": [
+            "ereignis_id",
+            "art",
+            "zeitpunkt",
+            "datenquelle",
+            "fassung_erwartet",
+            "fassung_gelesen",
+            "karten_erwartet",
+            "karten_gelesen"
+          ]
+        },
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Aufbau geändert an {datenquelle} — nichts wurde umgehängt"
+        },
+        "zusaetze": {
+          "fassung_gelesen": " · Registerbild Version {fassung_gelesen} statt {fassung_erwartet}",
+          "karten_gelesen": " · {karten_gelesen} statt {karten_erwartet} Karten"
+        },
+        "regeln": [
+          "`fassung_erwartet` und `fassung_gelesen` nur zusammen und verschieden; ebenso die Karten."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8; AP-05 §6.3; AP-06 E5 (auch Fehlerklasse)"
+      },
+      {
+        "art": "error_change",
+        "name": "Fehlermeldung",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "alt",
+          "neu"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Fehlermeldung geändert: {alt} → {neu}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`alt` ≠ `neu`."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      },
+      {
+        "art": "state_change",
+        "name": "Zustand",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "alt",
+          "neu"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Zustand geändert: {alt} → {neu}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`alt` ≠ `neu`."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      },
+      {
+        "art": "bitfield_change",
+        "name": "Statusbits",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "alt",
+          "neu"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Statusbits geändert: {alt} → {neu}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`alt` ≠ `neu`."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      },
+      {
+        "art": "text_change",
+        "name": "Text",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "alt",
+          "neu"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Text geändert: {alt} → {neu}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`alt` ≠ `neu`."
+        ],
+        "bestand": true,
+        "nie_geloescht": true,
+        "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      }
+    ]
+  },
+  "regeln": {
+    "zukunft_hoechstens_s": 300,
+    "vergangenheit_hoechstens_s": 7776000,
+    "zeitsprung_ab_s": 300,
+    "unassigned_reader_hoechstens_je_s": 3600,
+    "viertelstunde_s": 900,
+    "ereignisse_je_umschlag_hoechstens": 64
+  },
+  "fehlerklassen_einordnung": [
+    {
+      "code": "unreachable",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "no_answer",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "invalid_response",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "implausible",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "fronius_api",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "timeout",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "layout_changed",
+      "einordnung": "zustand_und_ereignis",
+      "ereignis": "layout_changed"
+    },
+    {
+      "code": "budget",
+      "einordnung": "zustand",
+      "ereignis": null
+    },
+    {
+      "code": "box_meldet_sich_nicht",
+      "einordnung": "zustand_und_ursache",
+      "ereignis": "data_gap"
+    }
+  ],
+  "bestand": {
+    "datei": "services/api/src/main/resources/db/migration/V20260848000000__additional_measurement_pipeline.sql",
+    "tabelle": "device_measurement_event",
+    "arten": [
+      "state_change",
+      "error_change",
+      "bitfield_change",
+      "text_change",
+      "counter_reset",
+      "data_gap"
+    ]
+  },
+  "cases": [
+    {
+      "name": "ausfall-e2-luecke-je-box-offen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8, E11 (data_gap je Box für den Kern); Referenz-Zeitachse 03.11.2026 14:00",
+      "why": "Letzter Herzschlag von Box Halle 2 um 14:00: die Cloud öffnet die Lücke JE BOX — offen bis zur Rückkehr. Die Ursache „meldet sich nicht“ trägt der Herzschlag-Fakt, nichts anderes.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000001",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 03.11.2026 14:00 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-je-quelle-dq4-offen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §5.2 (14:05), AP-06 §6.2 (je Quelle)",
+      "why": "Dieselbe Stille je Datenquelle: DQ-4 (WAGO C-1) „liefert keine Daten seit 14:00“ — die Lücke hängt an der Quelle der Box, die zur Messzeit zuständig war.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 03.11.2026 14:00 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-je-reihe-ms10-offen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.6 Nr. 4, §5.2; E9 (ab 2 × Kadenz)",
+      "why": "Der Writer sieht je Reihe ab 2 × Kadenz keinen guten Wert: K-8.1 · Wirkenergie Bezug, führende Quelle von MS-10. Die Messstelle nennt nur die Cloud — die Box kennt keine Messstellen.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000003",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 03.11.2026 14:00 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-geschlossen-box-tausch-ohne-nachlieferung",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §4.5 Nachlieferung Nr. 6, E7; Referenz-Zeitachse 04.11.2026 09:38/09:40",
+      "why": "Box Halle 2 (neu) liest ab 09:40 — die Lücke von DQ-4 schließt dort und bleibt für immer sichtbar: der Puffer der ausgebauten Box ist mit ihr weg, `nachgeliefert_am` bleibt leer.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:40:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:00 bis 04.11.2026 09:40 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "box-tausch-e2-an-e2strich-dq4",
+      "pruefung": "ereignis",
+      "bezug": "AP-06 E7 (Box-Tausch), AP-07 §4.8 handover; Referenz 04.11.2026 09:38",
+      "why": "Der Box-Tausch ist ein Zuständigkeitswechsel: ab 09:38 liest Box Halle 2 (neu) DQ-4. Die Referenz nennt die erste Lesung um 09:40 — sie gilt hier als Quittung.",
+      "annahme": "Die Referenz nennt keine eigene Quittungszeit; die erste Lesung von E-2′ um 09:40 gilt als Quittung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000004",
+          "art": "handover",
+          "von": "2026-11-04T08:38:00Z",
+          "bis": "2026-11-04T08:40:00Z",
+          "datenquelle": "DQ-4",
+          "anlass": "box_tausch",
+          "box_alt": "E-2",
+          "box_neu": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Box-Tausch: Box Halle 2 (neu) ersetzt Box Halle 2 — keine Werte von 04.11.2026 09:38 bis 09:40"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-fehlerklasse-ohne-herzschlag-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "Hausregel Ehrlichkeit (Ursache nur mit exportiertem Fakt); AP-06 E5",
+      "why": "Der Writer sieht nur fehlende Werte — dass die Box sich nicht meldet, weiß allein der Herzschlag. Eine Kadenz-Lücke mit der Klasse `box_meldet_sich_nicht` behauptet eine Ursache ohne Fakt: verworfen.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000005",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ausfall-e2-rueckkehr-variante-nachlieferung",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8 backfill, A3",
+      "why": "3 640 Werte mit Messzeit 14:00–17:30 gehen 17:31–17:34 ein: EIN backfill je Box und Quelle, mit Original-Messzeiten und Eingangszeiten.",
+      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000006",
+          "art": "backfill",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "eingang_von": "2026-11-03T16:31:00Z",
+          "eingang_bis": "2026-11-03T16:34:00Z",
+          "anzahl": 3640
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nachgeliefert: 3.640 Werte von 03.11.2026 14:00 bis 17:30, eingegangen 03.11.2026 17:31 bis 17:34"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-rueckkehr-variante-luecke-ms10-nachgeliefert",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §4.8 data_gap (MS-10 14:00–17:30, nachgeliefert 17:31), §4.9 Nr. 5",
+      "why": "Die Lücke der Reihe schließt um 17:30 und bekommt `nachgeliefert_am` 17:31 — sie bleibt als Ereignis stehen, auch wenn die Werte nun da sind.",
+      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "input": {
+        "urheber": "writer",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000003",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000003",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "nachgeliefert_am": "2026-11-03T16:31:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
+        ]
+      }
+    },
+    {
+      "name": "fortschreibung-aendert-von-verworfen",
+      "pruefung": "fortschreibung",
+      "bezug": "E11 (append-only, nie geändert)",
+      "why": "Eine Fortschreibung darf ein offenes Ende setzen, nie den Beginn verschieben — sonst wäre die erste Meldung still überschrieben.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:05:00Z",
+          "bis": "2026-11-04T08:40:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "fortschreibung_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "fortschreibung-verschiebt-geschlossenes-ende-verworfen",
+      "pruefung": "fortschreibung",
+      "bezug": "E11 (append-only, nie geändert)",
+      "why": "Ein geschlossenes Ende steht: wer es später verschiebt, ändert eine Meldung, statt eine neue zu schreiben.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:40:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T09:00:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "fortschreibung_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "sequenz-luecke-188-datenpakete",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 5, §4.8, A4; Herkunftsvertrag sequenz-luecke-188-umschlaege",
+      "why": "Nach 48 213 kommt 48 402: 188 Datenpakete fehlen — der Writer zählt sie, die Werte darin bleiben Lücke.",
+      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000007",
+          "art": "sequence_gap",
+          "zeitpunkt": "2026-11-03T16:33:40Z",
+          "box": "E-2",
+          "strom": "measurement-samples",
+          "sequenz_erwartet": 48214,
+          "sequenz_erhalten": 48402,
+          "anzahl": 188
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nie angekommen: 188 Datenpakete von Box Halle 2 — die Werte darin bleiben Lücke"
+        ]
+      }
+    },
+    {
+      "name": "sequenz-luecke-anzahl-falsch-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 5",
+      "why": "Die Anzahl folgt aus den Sequenzen — 187 statt 188 wäre eine erfundene Zahl.",
+      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000008",
+          "art": "sequence_gap",
+          "zeitpunkt": "2026-11-03T16:33:40Z",
+          "box": "E-2",
+          "strom": "measurement-samples",
+          "sequenz_erwartet": 48214,
+          "sequenz_erhalten": 48402,
+          "anzahl": 187
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "sequenz-zurueckgesetzt",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 2, §5.2 Variante; Herkunftsvertrag umschlag-48213-sequenz-zurueckgesetzt",
+      "why": "Nach einer Neuinstallation zählt die Box ab 1: ein Ereignis je Box — die Werte selbst sind Wiederholungen (Reihe + Messzeit).",
+      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000009",
+          "art": "sequence_reset",
+          "zeitpunkt": "2026-11-03T16:32:04Z",
+          "box": "E-2",
+          "strom": "measurement-samples",
+          "sequenz_erwartet": 48214,
+          "sequenz_erhalten": 1
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Box Halle 2 hat ihre Paketzählung neu begonnen — nichts wird doppelt gezählt"
+        ]
+      }
+    },
+    {
+      "name": "ms10-nach-abschluss-eingegangen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Nachlieferung Nr. 4, §4.8 late_arrival, E5",
+      "why": "Der Viertelstundenwert 14:00–14:15 von MS-10 ist seit 10.11.2026 14:15 endgültig; 15 Rohwerte kommen am 12.11.2026 09:02 — gespeichert, der Viertelstundenwert bleibt.",
+      "annahme": "AP-07 §4.8 nennt „Puffer der reparierten Box“; die Referenz führt E-2 seit 04.11.2026 als ausgebaut. Der Fall nimmt an, dass die reparierte Box ihren Puffer doch liefert (§4.5 Nachlieferung Nr. 6, letzter Satz).",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000010",
+          "art": "late_arrival",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T13:15:00Z",
+          "box": "E-2",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "eingangszeit": "2026-11-12T08:02:00Z",
+          "anzahl": 15
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nach Abschluss eingegangen: 15 Werte für 03.11.2026 14:00 bis 14:15, am 12.11.2026 09:02 — der endgültige Viertelstundenwert bleibt unverändert"
+        ]
+      }
+    },
+    {
+      "name": "nach-abschluss-nicht-im-viertelstunden-raster-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Zeit Nr. 1 (UTC-Raster)",
+      "why": "Das Intervall eines Viertelstundenwerts beginnt auf dem Raster — 14:05–14:20 gibt es nicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000011",
+          "art": "late_arrival",
+          "von": "2026-11-03T13:05:00Z",
+          "bis": "2026-11-03T13:20:00Z",
+          "box": "E-2",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "eingangszeit": "2026-11-12T08:02:00Z",
+          "anzahl": 15
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ms06-zaehlerwechsel-z5a-z5b",
+      "pruefung": "ereignis",
+      "bezug": "AP-04 E2, AP-07 §4.8 device_boundary, §5.2; Referenz 18.11.2026 10:40",
+      "why": "Ines Kaltenbach trägt um 11:05 den Wechsel ab 10:40 ein — rückwirkend erlaubt. Endstand Z-5a und Anfangsstand Z-5b stehen in der Referenz; die Messstelle bleibt, die Reihe bricht nicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000020",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-18T09:40:00Z",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "anlass": "zaehlerwechsel",
+          "einbau_alt": "Z-5a",
+          "einbau_neu": "Z-5b",
+          "eingetragen_am": "2026-11-18T10:05:00Z",
+          "endstand": 1083415.2,
+          "anfangsstand": 0.0,
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zählerwechsel am 18.11.2026 10:40: Z-5a → Z-5b, Endstand 1.083.415,2 kWh, Anfangsstand 0 kWh"
+        ]
+      }
+    },
+    {
+      "name": "ms06-luecke-geschlossen-mit-ursache-zaehlerwechsel",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §5.2 (data_gap 10:40–10:47 geschlossen, Grund: Zählerwechsel)",
+      "why": "Die Lücke ist seit 10:42 offen; der erste Wert von Z-5b um 10:47 schließt sie, und der Eintrag von 11:05 nennt ihre Ursache — als Verweis auf die Gerätegrenze, nie als geratener Text.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000021",
+          "art": "data_gap",
+          "von": "2026-11-18T09:40:00Z",
+          "bis": null,
+          "box": "E-1",
+          "datenquelle": "DQ-3",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000021",
+          "art": "data_gap",
+          "von": "2026-11-18T09:40:00Z",
+          "bis": "2026-11-18T09:47:00Z",
+          "box": "E-1",
+          "datenquelle": "DQ-3",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "erkannt_aus": "kadenz",
+          "ursache_ereignis": "e7e00000-0000-4000-8000-000000000020"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 18.11.2026 10:40 bis 10:47 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ms06-zaehlerwechsel-gleicher-einbau-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-04 E2, AP-05 E6",
+      "why": "Ein Zählerwechsel ohne neues Gerät ist keiner — Z-5a → Z-5a widerspricht dem Anlass.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000022",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-18T09:40:00Z",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "anlass": "zaehlerwechsel",
+          "einbau_alt": "Z-5a",
+          "einbau_neu": "Z-5a",
+          "eingetragen_am": "2026-11-18T10:05:00Z",
+          "endstand": 1083415.2,
+          "anfangsstand": 0.0,
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ms06-zaehlerwechsel-nicht-auf-die-minute-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-04 E2 (auf die Minute)",
+      "why": "Der Zeitpunkt eines Zählerwechsels steht auf der vollen Minute — 10:40:30 wird abgelehnt, nie gerundet.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000023",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-18T09:40:30Z",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "anlass": "zaehlerwechsel",
+          "einbau_alt": "Z-5a",
+          "einbau_neu": "Z-5b",
+          "eingetragen_am": "2026-11-18T10:05:00Z",
+          "endstand": 1083415.2,
+          "anfangsstand": 0.0,
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ms06-zaehlerwechsel-im-voraus-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-04 E2 (rückwirkend erlaubt, nicht im Voraus)",
+      "why": "Eingetragen wird, was geschah: eine Grenze, die später liegt als ihr Eintrag, ist eine Vermutung.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000024",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-18T09:40:00Z",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "anlass": "zaehlerwechsel",
+          "einbau_alt": "Z-5a",
+          "einbau_neu": "Z-5b",
+          "eingetragen_am": "2026-11-18T09:30:00Z",
+          "endstand": 1083415.2,
+          "anfangsstand": 0.0,
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ms06-zaehlerwechsel-von-der-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 (Urheber Kunde → Cloud)",
+      "why": "Eine Gerätegrenze trägt der Kunde ein; eine Box kann einen Zählerwechsel nicht wissen.",
+      "annahme": null,
+      "input": {
+        "urheber": "box",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000025",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-18T09:40:00Z",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "anlass": "zaehlerwechsel",
+          "einbau_alt": "Z-5a",
+          "einbau_neu": "Z-5b",
+          "eingetragen_am": "2026-11-18T10:05:00Z",
+          "endstand": 1083415.2,
+          "anfangsstand": 0.0,
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ms06-abweichender-wert-1039",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 3, §4.8 (K-5 18.11.2026 10:39); Herkunftsvertrag gleiche-messzeit-abweichender-wert-konflikt",
+      "why": "Zur Messzeit 10:39 kommt ein zweiter, anderer Wert: der erste bleibt (AP-04 E5), der zweite wird abgewiesen und mit beiden Werten festgehalten — nie still.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000026",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T09:40:07Z",
+          "box": "E-1",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-06",
+          "messzeit": "2026-11-18T09:39:00Z",
+          "gespeicherter_wert": {
+            "raw": 10834152,
+            "decoded": 1083415.2,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 10834153,
+            "decoded": 1083415.3,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            48213,
+            48214
+          ],
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zweiter Wert für 18.11.2026 10:39 abgewiesen: 1.083.415,3 kWh statt 1.083.415,2 kWh — der erste Wert bleibt"
+        ]
+      }
+    },
+    {
+      "name": "gleicher-wert-ist-kein-konflikt-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 1",
+      "why": "Dasselbe Paket zweimal ist EIN Wert und wird nur gezählt — ein Konflikt mit zwei gleichen Werten gibt es nicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000027",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T09:40:07Z",
+          "box": "E-1",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2026-11-18T09:39:00Z",
+          "gespeicherter_wert": {
+            "raw": 10834152,
+            "decoded": 1083415.2,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 10834152,
+            "decoded": 1083415.2,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            48213,
+            48213
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "uebergabe-dq3-offen-bis-zur-quittung",
+      "pruefung": "ereignis",
+      "bezug": "AP-06 E9, AP-07 §4.8 handover, §5.2; Referenz 10.04.2027 07:30",
+      "why": "Um 07:30 nimmt die Cloud DQ-3 aus der Menge von Box Halle 1 und stellt sie Box Halle 2 (neu) zu; bis zur Quittung ist die Übergabe offen.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000030",
+          "art": "handover",
+          "von": "2027-04-10T05:30:00Z",
+          "bis": null,
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Übergabe von Box Halle 1 an Box Halle 2 (neu) seit 10.04.2027 07:30 — Box Halle 2 (neu) hat noch nicht bestätigt"
+        ]
+      }
+    },
+    {
+      "name": "uebergabe-dq3-quittung-schliesst",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §4.8 (DQ-3 07:30:00–07:31:00 Box Halle 1 → Box Halle 2)",
+      "why": "Die Quittung um 07:31 schließt die Übergabe: die kurze Lücke ist sichtbar, zwei Leser gab es nie.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000030",
+          "art": "handover",
+          "von": "2027-04-10T05:30:00Z",
+          "bis": null,
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-2′"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000030",
+          "art": "handover",
+          "von": "2027-04-10T05:30:00Z",
+          "bis": "2027-04-10T05:31:00Z",
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Übergabe von Box Halle 1 an Box Halle 2 (neu): keine Werte von 10.04.2027 07:30 bis 07:31"
+        ]
+      }
+    },
+    {
+      "name": "uebergabe-an-dieselbe-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-06 E9",
+      "why": "Eine Übergabe an die Box, die schon liest, ist keine.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "handover",
+          "von": "2027-04-10T05:30:00Z",
+          "bis": null,
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-1"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "uebergabe-nicht-auf-die-minute-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "data-source-assignment.md §4 (auf die Minute)",
+      "why": "Zuständigkeiten wechseln auf die volle Minute; ein Wechsel um 07:30:25 wird abgelehnt, nie gerundet.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000032",
+          "art": "handover",
+          "von": "2027-04-10T05:30:25Z",
+          "bis": null,
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "uebergabe-ende-vor-beginn-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "Zeitraum halboffen [von, bis)",
+      "why": "Ein Ende vor dem Beginn ist keine Zeitangabe.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000033",
+          "art": "handover",
+          "von": "2027-04-10T05:30:00Z",
+          "bis": "2027-04-10T05:29:00Z",
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-1",
+          "box_neu": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "rueckgabe-dq3-e2strich-an-e1",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §5.2 (12.04.2027 16:00 „dasselbe Muster“); Referenz 12.04.2027 16:00",
+      "why": "Die Rückgabe an die Heimat-Box ist wieder eine Übergabe mit kurzer Lücke.",
+      "annahme": "Die Quittungszeit 16:01 folgt dem Muster vom 10.04.2027; die Referenz nennt nur den Wechsel um 16:00.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000034",
+          "art": "handover",
+          "von": "2027-04-12T14:00:00Z",
+          "bis": "2027-04-12T14:01:00Z",
+          "datenquelle": "DQ-3",
+          "anlass": "uebergabe",
+          "box_alt": "E-2′",
+          "box_neu": "E-1"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Übergabe von Box Halle 2 (neu) an Box Halle 1: keine Werte von 12.04.2027 16:00 bis 16:01"
+        ]
+      }
+    },
+    {
+      "name": "uebergabe-plan-verspaetet-nicht-zustaendige-box",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 4, §5.2 (07:31:40), E4; Herkunftsvertrag uebergabe-plan-verspaetet-spiegel",
+      "why": "Box Halle 1 liefert einen Wert mit Messzeit 07:32 — zur Messzeit ist Box Halle 2 (neu) zuständig: gespeichert als Spiegel, gezählt nie, einmal gemeldet.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000035",
+          "art": "unassigned_reader",
+          "von": "2027-04-10T05:32:00Z",
+          "bis": "2027-04-10T05:32:00Z",
+          "box": "E-1",
+          "datenquelle": "DQ-3",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "anzahl": 1,
+          "zustaendige_box": "E-2′"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nicht gezählt: 1 Wert von Box Halle 1 für Unterzähler Spritzguss SG01–SG06 von 10.04.2027 07:32 bis 07:32 — Box Halle 1 war nicht zuständig"
+        ]
+      }
+    },
+    {
+      "name": "nicht-zustaendige-box-ueber-eine-stunde-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "Herkunftsvertrag Regel unassigned_reader_hoechstens_je_s",
+      "why": "Höchstens ein Ereignis je Box, Quelle und Stunde — ein Zeitraum über eine Stunde müsste zwei Ereignisse sein.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000036",
+          "art": "unassigned_reader",
+          "von": "2027-04-10T05:32:00Z",
+          "bis": "2027-04-10T06:32:00Z",
+          "box": "E-1",
+          "datenquelle": "DQ-3",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "anzahl": 61
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ek3-zaehler-zurueckgesetzt",
+      "pruefung": "ereignis",
+      "bezug": "AP-05 A8, E6; AP-07 §4.8 counter_reset",
+      "why": "Rücksetzung per I/O-CHECK: der Stand von K-8.3 fällt von 6 184,37 auf 0,00 kWh. Der Writer meldet es — die Ursache bleibt unbekannt, bis der Kunde sie bestätigt; kein negativer Verbrauch.",
+      "annahme": "AP-05 A8 nennt 09:12, aber keinen Tag; der Fall setzt den 02.11.2026 an (der Stand 6 184,37 kWh passt zum Oktoberwert 6 100 kWh von MS-12). AP-07 §4.8 schreibt „EK-2“ — AP-05 A8 und der Referenzdatensatz nennen EK-3; die Fälle folgen AP-05.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000040",
+          "art": "counter_reset",
+          "zeitpunkt": "2026-11-02T08:12:00Z",
+          "box": "E-2",
+          "komponente": "K-8.3",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-12",
+          "stand_alt": 6184.37,
+          "stand_neu": 0.0,
+          "messzeit_alt": "2026-11-02T08:11:00Z",
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zähler zurückgesetzt am 02.11.2026 09:12: von 6.184,37 kWh auf 0 kWh (Ursache unbekannt)"
+        ]
+      }
+    },
+    {
+      "name": "ek3-ruecksetzung-bestaetigt-grenze-ohne-geraetewechsel",
+      "pruefung": "ereignis",
+      "bezug": "AP-05 E6 (Gerätegrenze OHNE Gerätewechsel)",
+      "why": "Der Kunde bestätigt die Ursache: eine Grenze an der Komponente, das Gerät (C-1) bleibt, die Messstelle bleibt. Sie verweist auf das counter_reset, das sie erklärt.",
+      "annahme": "AP-05 A8 nennt 09:12, aber keinen Tag; der Fall setzt den 02.11.2026 an (der Stand 6 184,37 kWh passt zum Oktoberwert 6 100 kWh von MS-12). AP-07 §4.8 schreibt „EK-2“ — AP-05 A8 und der Referenzdatensatz nennen EK-3; die Fälle folgen AP-05. Die Eintragszeit 10:30 ist angenommen.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000041",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-02T08:12:00Z",
+          "komponente": "K-8.3",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-12",
+          "anlass": "zaehler_zurueckgesetzt",
+          "einbau_alt": "C-1",
+          "einbau_neu": "C-1",
+          "eingetragen_am": "2026-11-02T09:30:00Z",
+          "endstand": 6184.37,
+          "anfangsstand": 0.0,
+          "einheit": "kWh",
+          "bestaetigt_ereignis": "e7e00000-0000-4000-8000-000000000040"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zähler zurückgesetzt am 02.11.2026 09:12 (bestätigt) — Gerät bleibt C-1, Endstand 6.184,37 kWh, Anfangsstand 0 kWh"
+        ]
+      }
+    },
+    {
+      "name": "ek3-ruecksetzung-mit-geraetewechsel-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-05 E6",
+      "why": "Eine Rücksetzung wechselt kein Gerät — ein neuer Einbau widerspricht dem Anlass.",
+      "annahme": "AP-05 A8 nennt 09:12, aber keinen Tag; der Fall setzt den 02.11.2026 an (der Stand 6 184,37 kWh passt zum Oktoberwert 6 100 kWh von MS-12). AP-07 §4.8 schreibt „EK-2“ — AP-05 A8 und der Referenzdatensatz nennen EK-3; die Fälle folgen AP-05.",
+      "erfunden": [
+        "C-1b"
+      ],
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000042",
+          "art": "device_boundary",
+          "zeitpunkt": "2026-11-02T08:12:00Z",
+          "komponente": "K-8.3",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-12",
+          "anlass": "zaehler_zurueckgesetzt",
+          "einbau_alt": "C-1",
+          "einbau_neu": "C-1b",
+          "eingetragen_am": "2026-11-02T09:30:00Z",
+          "endstand": 6184.37,
+          "anfangsstand": 0.0,
+          "einheit": "kWh",
+          "bestaetigt_ereignis": "e7e00000-0000-4000-8000-000000000040"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ek3-stand-steigt-kein-reset-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 (Zählerstand fällt)",
+      "why": "Ein steigender Stand ist keine Rücksetzung.",
+      "annahme": "AP-05 A8 nennt 09:12, aber keinen Tag; der Fall setzt den 02.11.2026 an (der Stand 6 184,37 kWh passt zum Oktoberwert 6 100 kWh von MS-12). AP-07 §4.8 schreibt „EK-2“ — AP-05 A8 und der Referenzdatensatz nennen EK-3; die Fälle folgen AP-05.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000043",
+          "art": "counter_reset",
+          "zeitpunkt": "2026-11-02T08:12:00Z",
+          "box": "E-2",
+          "komponente": "K-8.3",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-12",
+          "stand_alt": 6184.37,
+          "stand_neu": 6190.0,
+          "messzeit_alt": "2026-11-02T08:11:00Z",
+          "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-e2strich-neustart-bei-wandlertausch",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 box_restart/device_restart; AP-05 §4.6; Referenz 01.02.2027 (Wandlertausch EK-2)",
+      "why": "Nach dem Wandlertausch an EK-2 starten Box und Controller neu: die Box meldet beides in EINEM Umschlag. Der Herzschlag im Registerbild springt klein — das ist der Beleg, kein geratener Grund.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Die Referenz nennt am 01.02.2027 den Wandlertausch, keinen Neustart; Uhrzeiten angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 212,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000050",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            },
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000051",
+              "art": "device_restart",
+              "zeitpunkt": "2027-02-01T07:01:10Z",
+              "datenquelle": "DQ-4",
+              "herzschlag_vorher": 51873,
+              "herzschlag_nachher": 4
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Box Halle 2 (neu) ist neu gestartet",
+          "Das Gerät an DQ-4 ist neu gestartet"
+        ]
+      }
+    },
+    {
+      "name": "umschlag-e2strich-aufbau-geaendert-neue-karte",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 layout_changed; AP-06 E5; Referenz 01.03.2027 (EK-7 an C-1)",
+      "why": "Mit dem Umzug des Kaltwassersatzes steckt EK-7 in C-1: die Box liest fünf statt vier Karten und hängt NICHTS um — sie meldet den Aufbau.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Die Referenz nennt den Tag 01.03.2027; die Uhrzeit ist angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 488,
+          "observed_at": "2027-03-01T06:31:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000052",
+              "art": "layout_changed",
+              "zeitpunkt": "2027-03-01T06:30:00Z",
+              "datenquelle": "DQ-4",
+              "karten_erwartet": 4,
+              "karten_gelesen": 5
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Aufbau geändert an DQ-4 — nichts wurde umgehängt · 5 statt 4 Karten"
+        ]
+      }
+    },
+    {
+      "name": "umschlag-e2strich-bereichsbegrenzung-ek3",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 range_limit (EK-3 Statuswort Bereichsbegrenzung); AP-05 §4.6",
+      "why": "Das Statuswort von EK-3 meldet die Bereichsbegrenzung: die Werte der Karte gelten als ungültig, die Box meldet den Zeitpunkt.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Tag, Uhrzeit und Statuswort sind angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 301,
+          "observed_at": "2026-12-14T08:20:05Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000053",
+              "art": "range_limit",
+              "zeitpunkt": "2026-12-14T08:20:00Z",
+              "datenquelle": "DQ-4",
+              "komponente": "K-8.3",
+              "statuswort": 4
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Bereichsbegrenzung an DQ-4 — betroffene Werte gelten als ungültig · Zähler Energiekarte EK-3 (Montage M1)"
+        ]
+      }
+    },
+    {
+      "name": "umschlag-e2strich-werte-eingefroren",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 frozen_source; AP-05 §4.6 (Herzschlag steht über 3 Lesungen)",
+      "why": "Der Herzschlag im Registerbild steht über drei Lesungen: die Box meldet „eingefroren seit“ der letzten Änderung — keine Werte als gemessen.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Der Tag ist angenommen; 11:40 und der Herzschlag 17 stammen aus AP-05 §4.6/Referenzdatensatz.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 256,
+          "observed_at": "2026-12-02T10:43:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000054",
+              "art": "frozen_source",
+              "zeitpunkt": "2026-12-02T10:40:00Z",
+              "datenquelle": "DQ-4",
+              "lesungen": 3,
+              "herzschlag": 17
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Werte von DQ-4 eingefroren seit 02.12.2026 11:40 — nicht als gemessen gezählt"
+        ]
+      }
+    },
+    {
+      "name": "umschlag-e2strich-puffer-verdraengt",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 data_gap (Box, aus Verdrängung)",
+      "why": "Nach einem langen Uplink-Ausfall war der Puffer voll: die Box meldet genau, welche Messzeiten sie verdrängt hat — geschlossen, mit Zählung, nie geschätzt.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Ausfall, Zeitraum und Zählung (eine Karte, 13 Kanäle × 14 Minuten, AP-05 E9) sind angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 322,
+          "observed_at": "2026-12-09T06:12:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000055",
+              "art": "data_gap",
+              "von": "2026-12-09T02:00:00Z",
+              "bis": "2026-12-09T02:14:00Z",
+              "erkannt_aus": "verdraengung",
+              "datenquelle": "DQ-4",
+              "erwartet_fehlend": 182
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 09.12.2026 03:00 bis 03:14 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "umschlag-box-meldet-uebergabe-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 (handover: Urheber Cloud)",
+      "why": "Eine Box kann keine Zuständigkeit übergeben — die Art gibt es, aber nicht von ihr.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 489,
+          "observed_at": "2027-04-10T05:31:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000056",
+              "art": "handover",
+              "von": "2027-04-10T05:30:00Z",
+              "bis": "2027-04-10T05:31:00Z",
+              "datenquelle": "DQ-3",
+              "anlass": "uebergabe",
+              "box_alt": "E-1",
+              "box_neu": "E-2′"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-unbekannte-art-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "Hausregel: ein Wort außerhalb des geschlossenen Vokabulars wird verworfen, nie geraten",
+      "why": "`power_failure` steht in keinem Vokabular — der Umschlag wird verworfen, nichts wird auf eine ähnliche Art abgebildet.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 213,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000057",
+              "art": "power_failure",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-kennung-abweichend-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "x-identity-rule (Topic ⟷ Umschlag byte-gleich)",
+      "why": "Das Topic nennt Box Halle 2 (neu), der Umschlag Box Lindach — die Form stimmt, die Kennung nicht.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
+          "sequence": 214,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000058",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "kennung_abweichend",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-fassung-2-0-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "Verträge sind additiv; `schema_version` 2.1",
+      "why": "Ein Ereignis-Umschlag der Fassung 2.0 gibt es nicht — die Datenannahme rät keine Fassung.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.0",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 215,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000059",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "fassung_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-ohne-ereignis-id-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "Fortschreibung und Wiederholung brauchen die Kennung",
+      "why": "Ohne `ereignis_id` kann niemand eine Wiederholung erkennen — der Umschlag ist nicht lesbar.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 216,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-box-luecke-offen-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "AP-07 §4.8 data_gap (Box, aus Verdrängung)",
+      "why": "Eine Box meldet nur, was sie verdrängt HAT — eine offene Lücke von der Box ist keine Zeitangabe.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 323,
+          "observed_at": "2026-12-09T06:12:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000060",
+              "art": "data_gap",
+              "von": "2026-12-09T02:00:00Z",
+              "bis": null,
+              "erkannt_aus": "verdraengung",
+              "datenquelle": "DQ-4"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "umschlag-leer-verworfen",
+      "pruefung": "umschlag",
+      "bezug": "Umschlag 1…64 Ereignisse",
+      "why": "Ein Umschlag ohne Ereignis ist kein Datenpaket.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "umschlag": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 217,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": []
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "lindach-uhr-14-minuten-vor",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Zeit Nr. 3, §4.8 (Box Lindach: Uhr 14 min vor → 1 Umschlag clock_ahead)",
+      "why": "Die Uhr von Box Lindach geht 14 Minuten vor: das Datenpaket wird abgewiesen und je Box gezählt — kein Wert.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000070",
+          "art": "clock_ahead",
+          "zeitpunkt": "2026-10-20T08:15:00Z",
+          "box": "E-3",
+          "strom": "measurement-samples",
+          "vor_s": 840,
+          "anzahl": 1,
+          "sequenz": 7816
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Uhr von Box Lindach geht 14 min vor — Datenpaket abgewiesen"
+        ]
+      }
+    },
+    {
+      "name": "uhr-genau-5-minuten-vor-ist-kein-ereignis",
+      "pruefung": "ereignis",
+      "bezug": "E13 (Kante: genau 300 s wird angenommen)",
+      "why": "Genau 300 s vor wird angenommen — ein clock_ahead mit 300 s widerspricht der Regel.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000071",
+          "art": "clock_ahead",
+          "zeitpunkt": "2026-10-20T08:15:00Z",
+          "box": "E-3",
+          "strom": "measurement-samples",
+          "vor_s": 300
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "wert-91-tage-alt",
+      "pruefung": "ereignis",
+      "bezug": "E13; Herkunftsvertrag wert-91-tage-alt-too-old",
+      "why": "Ein Paket mit Messzeit vom 20.10.2026 kommt am 19.01.2027 — 91 Tage und eine Stunde: abgewiesen.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000072",
+          "art": "too_old",
+          "zeitpunkt": "2027-01-19T09:15:00Z",
+          "box": "E-1",
+          "strom": "measurement-samples",
+          "alter_s": 7866000,
+          "sequenz": 6429
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Datenpaket von Box Halle 1 abgewiesen: Messzeit liegt 91 Tage 1 h zurück — angenommen werden höchstens 90 Tage"
+        ]
+      }
+    },
+    {
+      "name": "zeitsprung-lindach",
+      "pruefung": "ereignis",
+      "bezug": "E13; Herkunftsvertrag zeitsprung-clock-jump-werte-bleiben",
+      "why": "Zwischen zwei aufeinanderfolgenden Paketen springt die Uhr von Box Lindach um 6 min 30 s: gemeldet, die Werte bleiben.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000073",
+          "art": "clock_jump",
+          "zeitpunkt": "2026-10-20T08:15:02Z",
+          "box": "E-3",
+          "strom": "measurement-samples",
+          "sequenz": 7816,
+          "sprung_s": 390
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Uhr von Box Lindach ist um 6 min 30 s gesprungen — die Werte bleiben"
+        ]
+      }
+    },
+    {
+      "name": "ohne-einbau-zur-messzeit-abgewiesen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.9 Nr. 1; Herkunftsvertrag ohne-einbau-zur-messzeit-abgewiesen",
+      "why": "Ein Wert von vor der Einrichtung von Halle 2 hat keinen Einbau zur Messzeit: der Writer weist ihn ab und nennt den Grund.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000074",
+          "art": "rejected",
+          "zeitpunkt": "2026-09-30T22:00:04Z",
+          "box": "E-2",
+          "strom": "measurement-samples",
+          "grund": "herkunft_unvollstaendig",
+          "anzahl": 1,
+          "sequenz": 1
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Datenpaket von Box Halle 2 abgewiesen: Herkunft unvollständig — Gerät oder Einstellung zur Messzeit unbekannt"
+        ]
+      }
+    },
+    {
+      "name": "datenannahme-verwirft-unbekanntes-wort",
+      "pruefung": "ereignis",
+      "bezug": "Hausregel geschlossenes Vokabular; Fall umschlag-unbekannte-art-verworfen",
+      "why": "Das Verwerfen selbst hinterlässt eine Spur: ein rejected mit Grund `wort_unbekannt` je Umschlag.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet.",
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000075",
+          "art": "rejected",
+          "zeitpunkt": "2027-02-01T07:01:31Z",
+          "box": "E-2′",
+          "strom": "events",
+          "grund": "wort_unbekannt",
+          "sequenz": 213
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Datenpaket von Box Halle 2 (neu) abgewiesen: unbekanntes Wort — verworfen, nie geraten"
+        ]
+      }
+    },
+    {
+      "name": "abgewiesen-mit-unbekanntem-grund-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "Grund aus geschlossenem Vokabular (AP-07 §4.8)",
+      "why": "Auch der Grund einer Ablehnung ist ein geschlossenes Wort — „kaputt“ ist keins.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000076",
+          "art": "rejected",
+          "zeitpunkt": "2027-02-01T07:01:31Z",
+          "box": "E-2′",
+          "strom": "events",
+          "grund": "kaputt"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "herkunft-unvollstaendig-nur-vom-writer",
+      "pruefung": "ereignis",
+      "bezug": "Herkunftsvertrag §3 Nr. 3 (Writer)",
+      "why": "Ob die Herkunft vollständig ist, weiß nur der Writer (Einbau, Fassung zur Messzeit) — die Datenannahme kann es nicht feststellen.",
+      "annahme": null,
+      "input": {
+        "urheber": "datenannahme",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000077",
+          "art": "rejected",
+          "zeitpunkt": "2026-09-30T22:00:04Z",
+          "box": "E-2",
+          "strom": "measurement-samples",
+          "grund": "herkunft_unvollstaendig"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ek3-statuswort-bits-geaendert",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 bitfield_change (EK-3 Statuswort Bereichsbegrenzung)",
+      "why": "Das Statuswort von EK-3 wechselt von 0 auf 4 — der Writer hält den Wechsel an der Reihe fest, wie heute.",
+      "annahme": "Den Messkanal nennt die Referenz nicht (sie führt je Komponente nur die Energie- und Leistungskanäle); der Fall nimmt ihn aus AP-05 §4.6 bzw. dem OCPP-Vokabular an.",
+      "erfunden": [
+        "Statuswort"
+      ],
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000080",
+          "art": "bitfield_change",
+          "zeitpunkt": "2026-12-14T08:20:00Z",
+          "box": "E-2′",
+          "komponente": "K-8.3",
+          "messkanal": "Statuswort",
+          "alt": 0,
+          "neu": 4
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Statusbits geändert: 0 → 4"
+        ]
+      }
+    },
+    {
+      "name": "ladepunkt-zustand-geaendert",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 state_change",
+      "why": "Der Ladepunkt meldet einen neuen Zustand: ein Übergang an der Reihe.",
+      "annahme": "Den Messkanal nennt die Referenz nicht (sie führt je Komponente nur die Energie- und Leistungskanäle); der Fall nimmt ihn aus AP-05 §4.6 bzw. dem OCPP-Vokabular an.",
+      "erfunden": [
+        "Zustand"
+      ],
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000081",
+          "art": "state_change",
+          "zeitpunkt": "2026-12-01T07:02:00Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "Zustand",
+          "alt": "Available",
+          "neu": "Charging"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zustand geändert: Available → Charging"
+        ]
+      }
+    },
+    {
+      "name": "ladepunkt-fehlermeldung-geaendert",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 error_change",
+      "why": "Der Ladepunkt meldet einen Fehlercode: ein Übergang an der Reihe, keine erfundene Ursache.",
+      "annahme": "Den Messkanal nennt die Referenz nicht (sie führt je Komponente nur die Energie- und Leistungskanäle); der Fall nimmt ihn aus AP-05 §4.6 bzw. dem OCPP-Vokabular an.",
+      "erfunden": [
+        "Fehlercode"
+      ],
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000082",
+          "art": "error_change",
+          "zeitpunkt": "2026-12-01T09:14:00Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "Fehlercode",
+          "alt": "NoError",
+          "neu": "GroundFailure"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Fehlermeldung geändert: NoError → GroundFailure"
+        ]
+      }
+    },
+    {
+      "name": "ladepunkt-text-geaendert",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 text_change",
+      "why": "Ein Textkanal ändert sich — der Writer hält alt und neu fest.",
+      "annahme": "Den Messkanal nennt die Referenz nicht (sie führt je Komponente nur die Energie- und Leistungskanäle); der Fall nimmt ihn aus AP-05 §4.6 bzw. dem OCPP-Vokabular an.",
+      "erfunden": [
+        "Anzeigetext"
+      ],
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000083",
+          "art": "text_change",
+          "zeitpunkt": "2026-12-01T07:00:00Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "Anzeigetext",
+          "alt": "Bereit",
+          "neu": "Lädt"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Text geändert: Bereit → Lädt"
+        ]
+      }
+    },
+    {
+      "name": "zustand-unveraendert-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 (Übergang)",
+      "why": "Ein Übergang ohne Änderung ist keiner.",
+      "annahme": "Den Messkanal nennt die Referenz nicht (sie führt je Komponente nur die Energie- und Leistungskanäle); der Fall nimmt ihn aus AP-05 §4.6 bzw. dem OCPP-Vokabular an.",
+      "erfunden": [
+        "Zustand"
+      ],
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000084",
+          "art": "state_change",
+          "zeitpunkt": "2026-12-01T07:02:00Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "Zustand",
+          "alt": "Charging",
+          "neu": "Charging"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "unbekanntes-feld-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "Felder je Art (geschlossen)",
+      "why": "Ein Feld, das die Art nicht kennt, wird nicht still mitgeschleppt.",
+      "annahme": "AP-05 A8 nennt 09:12, aber keinen Tag; der Fall setzt den 02.11.2026 an (der Stand 6 184,37 kWh passt zum Oktoberwert 6 100 kWh von MS-12). AP-07 §4.8 schreibt „EK-2“ — AP-05 A8 und der Referenzdatensatz nennen EK-3; die Fälle folgen AP-05.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000085",
+          "art": "counter_reset",
+          "zeitpunkt": "2026-11-02T08:12:00Z",
+          "box": "E-2",
+          "komponente": "K-8.3",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-12",
+          "stand_alt": 6184.37,
+          "stand_neu": 0.0,
+          "messzeit_alt": "2026-11-02T08:11:00Z",
+          "einheit": "kWh",
+          "ursache": "Wartung"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    }
+  ]
+}

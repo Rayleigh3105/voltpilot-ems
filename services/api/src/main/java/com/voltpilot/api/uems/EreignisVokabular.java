@@ -1,0 +1,991 @@
+package com.voltpilot.api.uems;
+
+import static com.voltpilot.api.uems.EreignisVokabular.Achse.EINGANGSZEIT;
+import static com.voltpilot.api.uems.EreignisVokabular.Achse.MESSZEIT;
+import static com.voltpilot.api.uems.EreignisVokabular.Grenzen.GESCHLOSSEN;
+import static com.voltpilot.api.uems.EreignisVokabular.Grenzen.HALBOFFEN;
+import static com.voltpilot.api.uems.EreignisVokabular.Urheber.BOX;
+import static com.voltpilot.api.uems.EreignisVokabular.Urheber.CLOUD;
+import static com.voltpilot.api.uems.EreignisVokabular.Urheber.DATENANNAHME;
+import static com.voltpilot.api.uems.EreignisVokabular.Urheber.KUNDE;
+import static com.voltpilot.api.uems.EreignisVokabular.Urheber.WRITER;
+import static com.voltpilot.api.uems.EreignisVokabular.Zeitform.ZEITPUNKT;
+import static com.voltpilot.api.uems.EreignisVokabular.Zeitform.ZEITRAUM;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+/**
+ * Das geschlossene EREIGNIS-VOKABULAR und seine reine Prüfung (UEMS AP-07 IP-3, Entscheid E11:
+ * EIN Ereignis-Vertrag für beide Pfade, nie gelöscht; Prosa in
+ * {@code docs/contracts/v2/events-vocabulary.md}).
+ *
+ * <p>Je Art steht fest, wer sie melden darf (Box · Datenannahme · Writer · Cloud · Kunde),
+ * worauf sie sich bezieht (Box, Datenquelle, Reihe, Messstelle), welche Zeitform sie hat
+ * (Zeitpunkt oder Zeitraum, halboffen oder geschlossen, offen erlaubt oder nicht, auf der Achse
+ * Messzeit oder Eingangszeit), welche Felder sie trägt und welche davon eine Fortschreibung
+ * setzen darf. Die Prüfung macht daraus GENAU EIN Urteil: angenommen, oder verworfen mit einem
+ * Grund aus demselben geschlossenen Vokabular, das {@code rejected} trägt.
+ *
+ * <p>Ohne Spring, ohne Repository, ohne Uhr (das {@link ZustandAbleitung}-Muster). Die Schwellen
+ * der Zeit-Ereignisse kommen aus {@link MesswertHerkunft} — gerufen, nicht nachgebaut. Die
+ * Vektoren {@code docs/contracts/v2/events-vocabulary-vectors.json} pinnen Vokabular und Urteile;
+ * der TS-Zwilling {@code frontend/portal/src/uemsEreignis.ts} spricht den Kundensatz aus
+ * derselben Datei. <b>Wer eine Art, ein Feld oder eine Regel ändert, ändert diese Klasse, den
+ * Zwilling, beide Schemas und die Vektor-Datei.</b>
+ *
+ * <h2>⚠ Noch ruft niemand an</h2>
+ *
+ * Keine Box sendet Ereignisse (erst mit einem Edge-Release), die Datenannahme verarbeitet
+ * {@code …/v2/events} noch nicht (IP-5), es gibt noch keine Ereignis-Tabelle (IP-8); der Writer
+ * schreibt weiter {@code device_measurement_event}.
+ *
+ * <h2>Die Reihenfolge der Prüfungen</h2>
+ *
+ * <ol>
+ *   <li><b>Umschlag</b> (nur {@link #pruefeUmschlag}): Fassung {@code 2.1} → Form → Kennung
+ *       (Topic ⟷ Umschlag byte-gleich) → jedes Ereignis wie unten, mit {@code box} aus dem
+ *       Topic. Der Umschlag ist die Einheit: das erste verworfene Ereignis verwirft ihn ganz.
+ *   <li><b>Art</b> bekannt, sonst {@code wort_unbekannt} — nie auf eine ähnliche geraten.
+ *   <li><b>Urheber</b> darf die Art melden, sonst {@code urheber_unzulaessig}.
+ *   <li><b>Felder:</b> alle Pflichtfelder da, kein fremdes Feld, jeder Wert von seinem Typ, sonst
+ *       {@code schema_verletzt}. Eine Box sendet genau ihre Felder plus {@code box} aus dem
+ *       Topic.
+ *   <li><b>Wörter</b> der Teil-Vokabulare bekannt, sonst {@code wort_unbekannt}.
+ *   <li><b>Zeit:</b> Ende nach Beginn (halboffen) bzw. nicht davor (geschlossen), offen nur, wo
+ *       die Art es erlaubt und nie von der Box, volle Minute bzw. Viertelstunden-Raster, wo die Art
+ *       es verlangt, sonst {@code zeit_ungueltig}.
+ *   <li><b>Regeln der Art</b> (Anzahl aus den Sequenzen, Einbau je Anlass, Ursache nur mit
+ *       exportiertem Fakt, …), sonst {@code regel_verletzt}.
+ * </ol>
+ *
+ * <p>Eine <b>Fortschreibung</b> ({@link #pruefeFortschreibung}) trägt dieselbe
+ * {@code ereignis_id}; sie darf nur ein leeres fortschreibbares Feld setzen — nie einen Beginn
+ * verschieben, ein gesetztes Ende ändern oder ein Feld entfernen ({@code
+ * fortschreibung_unzulaessig}). So bleibt der Speicher append-only.
+ */
+public final class EreignisVokabular {
+
+    /** Die Fassung des Umschlags Box → Cloud ({@code mqtt-events-2.1.schema.json}). */
+    public static final String FASSUNG_UMSCHLAG = "2.1";
+
+    /** Höchstens so viele Ereignisse trägt ein Umschlag. */
+    public static final int EREIGNISSE_JE_UMSCHLAG_HOECHSTENS = 64;
+
+    /** Das Viertelstunden-Raster (UTC) eines Viertelstundenwerts. */
+    public static final long VIERTELSTUNDE_S = 900L;
+
+    private EreignisVokabular() {}
+
+    // ------------------------------------------------------------------ Vokabular
+
+    /** Wer ein Ereignis melden darf. */
+    public enum Urheber {
+        BOX("box"),
+        DATENANNAHME("datenannahme"),
+        WRITER("writer"),
+        CLOUD("cloud"),
+        KUNDE("kunde");
+
+        private final String code;
+
+        Urheber(String code) {
+            this.code = code;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public static Urheber vonCode(String code) {
+            for (Urheber u : values()) {
+                if (u.code.equals(code)) {
+                    return u;
+                }
+            }
+            return null;
+        }
+    }
+
+    /** Warum ein Ereignis verworfen wird — dasselbe Vokabular trägt {@code rejected.grund}. */
+    public enum Grund {
+        HERKUNFT_UNVOLLSTAENDIG("herkunft_unvollstaendig"),
+        FASSUNG_UNBEKANNT("fassung_unbekannt"),
+        KENNUNG_ABWEICHEND("kennung_abweichend"),
+        SCHEMA_VERLETZT("schema_verletzt"),
+        WORT_UNBEKANNT("wort_unbekannt"),
+        URHEBER_UNZULAESSIG("urheber_unzulaessig"),
+        ZEIT_UNGUELTIG("zeit_ungueltig"),
+        REGEL_VERLETZT("regel_verletzt"),
+        FORTSCHREIBUNG_UNZULAESSIG("fortschreibung_unzulaessig");
+
+        private final String code;
+
+        Grund(String code) {
+            this.code = code;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public static Grund vonCode(String code) {
+            for (Grund g : values()) {
+                if (g.code.equals(code)) {
+                    return g;
+                }
+            }
+            return null;
+        }
+    }
+
+    public enum Zeitform {
+        ZEITPUNKT,
+        ZEITRAUM
+    }
+
+    /** Halboffen = [von, bis); geschlossen = [von, bis], beide enthalten. */
+    public enum Grenzen {
+        HALBOFFEN,
+        GESCHLOSSEN
+    }
+
+    /** Auf welcher Uhr die Zeitangaben einer Art liegen (E13 Nr. 2). */
+    public enum Achse {
+        MESSZEIT,
+        EINGANGSZEIT
+    }
+
+    /** Der Typ eines Felds. */
+    public enum Typ {
+        UUID,
+        WORT,
+        ZEIT,
+        ZEIT_ODER_LEER,
+        KENNUNG,
+        TEXT,
+        GANZ_AB_0,
+        GANZ_AB_1,
+        SEKUNDEN,
+        STATUSWORT,
+        STAND,
+        MESSWERT,
+        GANZ_LISTE,
+        WERT
+    }
+
+    /** Jedes Feld, das eine Art tragen darf, mit seinem Typ. */
+    public static final Map<String, Typ> FELDER;
+
+    static {
+        Map<String, Typ> f = new LinkedHashMap<>();
+        f.put("ereignis_id", Typ.UUID);
+        f.put("art", Typ.WORT);
+        f.put("zeitpunkt", Typ.ZEIT);
+        f.put("von", Typ.ZEIT);
+        f.put("bis", Typ.ZEIT_ODER_LEER);
+        for (String k : List.of("box", "box_alt", "box_neu", "zustaendige_box", "datenquelle",
+                "komponente")) {
+            f.put(k, Typ.KENNUNG);
+        }
+        f.put("messkanal", Typ.TEXT);
+        f.put("messstelle", Typ.KENNUNG);
+        f.put("einbau_alt", Typ.KENNUNG);
+        f.put("einbau_neu", Typ.KENNUNG);
+        f.put("erkannt_aus", Typ.WORT);
+        f.put("erwartet_fehlend", Typ.GANZ_AB_0);
+        f.put("nachgeliefert_am", Typ.ZEIT_ODER_LEER);
+        f.put("fehlerklasse", Typ.WORT);
+        f.put("ursache_ereignis", Typ.UUID);
+        f.put("eingang_von", Typ.ZEIT);
+        f.put("eingang_bis", Typ.ZEIT);
+        f.put("anzahl", Typ.GANZ_AB_1);
+        f.put("erwartet", Typ.GANZ_AB_1);
+        f.put("messzeit", Typ.ZEIT);
+        f.put("gespeicherter_wert", Typ.MESSWERT);
+        f.put("abgewiesener_wert", Typ.MESSWERT);
+        f.put("sequenzen", Typ.GANZ_LISTE);
+        f.put("einheit", Typ.TEXT);
+        f.put("strom", Typ.WORT);
+        f.put("sequenz", Typ.GANZ_AB_0);
+        f.put("sequenz_erwartet", Typ.GANZ_AB_0);
+        f.put("sequenz_erhalten", Typ.GANZ_AB_0);
+        f.put("eingangszeit", Typ.ZEIT);
+        f.put("stand_alt", Typ.STAND);
+        f.put("stand_neu", Typ.STAND);
+        f.put("messzeit_alt", Typ.ZEIT);
+        f.put("anlass", Typ.WORT);
+        f.put("eingetragen_am", Typ.ZEIT);
+        f.put("endstand", Typ.STAND);
+        f.put("anfangsstand", Typ.STAND);
+        f.put("bestaetigt_ereignis", Typ.UUID);
+        f.put("grund", Typ.WORT);
+        f.put("vor_s", Typ.SEKUNDEN);
+        f.put("alter_s", Typ.SEKUNDEN);
+        f.put("sprung_s", Typ.SEKUNDEN);
+        f.put("herzschlag_vorher", Typ.GANZ_AB_0);
+        f.put("herzschlag_nachher", Typ.GANZ_AB_0);
+        f.put("lesungen", Typ.GANZ_AB_1);
+        f.put("herzschlag", Typ.GANZ_AB_0);
+        f.put("statuswort", Typ.STATUSWORT);
+        f.put("fassung_erwartet", Typ.GANZ_AB_1);
+        f.put("fassung_gelesen", Typ.GANZ_AB_1);
+        f.put("karten_erwartet", Typ.GANZ_AB_0);
+        f.put("karten_gelesen", Typ.GANZ_AB_0);
+        f.put("alt", Typ.WERT);
+        f.put("neu", Typ.WERT);
+        FELDER = Collections.unmodifiableMap(f);
+    }
+
+    /** Die Uplinks einer Box — das Blatt des Topics unter {@code …/v2/}. */
+    public static final List<String> STROM = List.of("telemetry", "measurement-samples", "events");
+
+    /** Woraus eine Lücke erkannt wurde, und wer das kann. */
+    public static final Map<String, Urheber> ERKANNT_AUS;
+
+    static {
+        Map<String, Urheber> e = new LinkedHashMap<>();
+        e.put("kadenz", WRITER);
+        e.put("verdraengung", BOX);
+        e.put("herzschlag", CLOUD);
+        ERKANNT_AUS = Collections.unmodifiableMap(e);
+    }
+
+    public static final List<String> ANLASS_GERAETEGRENZE =
+            List.of("zaehlerwechsel", "kartenwechsel", "controllerwechsel", "zaehler_zurueckgesetzt");
+
+    /** Die Anlässe einer Gerätegrenze, bei denen das Gerät bleibt (AP-05 E6). */
+    public static final Set<String> GRENZE_OHNE_GERAETEWECHSEL =
+            Set.of("kartenwechsel", "zaehler_zurueckgesetzt");
+
+    public static final List<String> ANLASS_UEBERGABE = List.of("uebergabe", "box_tausch");
+
+    public static final List<String> QUALITAET =
+            List.of("good", "uncertain", "invalid", "stale", "device_error");
+
+    /**
+     * Die Fehlerklassen je Datenquelle (AP-06 E5) — gerufen aus
+     * {@link DatenquelleRegeln.Fehlerklasse}, nicht nachgebaut. Sie sind ZUSTAND (Herzschlag je
+     * Quelle, IP-13); ein Ereignis trägt eine nur, wenn ein exportierter Fakt sie belegt.
+     */
+    public static final List<String> FEHLERKLASSEN =
+            Arrays.stream(DatenquelleRegeln.Fehlerklasse.values())
+                    .map(DatenquelleRegeln.Fehlerklasse::code)
+                    .toList();
+
+    public static final String BOX_MELDET_SICH_NICHT =
+            DatenquelleRegeln.Fehlerklasse.BOX_MELDET_SICH_NICHT.code();
+
+    /** Die Ereignisarten — geschlossen. */
+    public enum Art {
+        DATA_GAP("data_gap", EnumSet.of(WRITER, BOX, CLOUD), ZEITRAUM, HALBOFFEN, true, MESSZEIT,
+                List.of("box"), List.of("datenquelle", "komponente", "messkanal", "messstelle"),
+                List.of("erkannt_aus"),
+                List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis"),
+                List.of("bis", "erwartet_fehlend", "nachgeliefert_am", "ursache_ereignis"),
+                List.of("ereignis_id", "art", "von", "bis", "erkannt_aus"),
+                List.of("ereignis_id", "art", "von", "bis", "erkannt_aus", "datenquelle",
+                        "komponente", "messkanal", "erwartet_fehlend")),
+        BACKFILL("backfill", EnumSet.of(WRITER), ZEITRAUM, GESCHLOSSEN, false, MESSZEIT,
+                List.of("box", "datenquelle"), List.of(),
+                List.of("eingang_von", "eingang_bis", "anzahl"), List.of("erwartet"), List.of(),
+                null, null),
+        DUPLICATE_CONFLICT("duplicate_conflict", EnumSet.of(WRITER), ZEITPUNKT, null, false,
+                EINGANGSZEIT, List.of("box", "komponente", "messkanal"), List.of("messstelle"),
+                List.of("messzeit", "gespeicherter_wert", "abgewiesener_wert", "sequenzen"),
+                List.of("einheit"), List.of(), null, null),
+        SEQUENCE_GAP("sequence_gap", EnumSet.of(WRITER), ZEITPUNKT, null, false, EINGANGSZEIT,
+                List.of("box"), List.of(),
+                List.of("strom", "sequenz_erwartet", "sequenz_erhalten", "anzahl"), List.of(),
+                List.of(), null, null),
+        SEQUENCE_RESET("sequence_reset", EnumSet.of(WRITER), ZEITPUNKT, null, false,
+                EINGANGSZEIT, List.of("box"), List.of(),
+                List.of("strom", "sequenz_erwartet", "sequenz_erhalten"), List.of(), List.of(),
+                null, null),
+        LATE_ARRIVAL("late_arrival", EnumSet.of(WRITER), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("box", "messstelle"),
+                List.of("eingangszeit", "anzahl"), List.of(), List.of(), null, null),
+        COUNTER_RESET("counter_reset", EnumSet.of(WRITER), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("box", "messstelle"),
+                List.of("stand_alt", "stand_neu"), List.of("messzeit_alt", "einheit"), List.of(),
+                null, null),
+        DEVICE_BOUNDARY("device_boundary", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("komponente"), List.of("messkanal", "messstelle"),
+                List.of("anlass", "einbau_alt", "einbau_neu", "eingetragen_am"),
+                List.of("endstand", "anfangsstand", "einheit", "bestaetigt_ereignis"), List.of(),
+                null, null),
+        HANDOVER("handover", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, true, MESSZEIT,
+                List.of("datenquelle"), List.of(), List.of("anlass", "box_alt", "box_neu"),
+                List.of(), List.of("bis"), null, null),
+        UNASSIGNED_READER("unassigned_reader", EnumSet.of(WRITER), ZEITRAUM, GESCHLOSSEN, false,
+                MESSZEIT, List.of("box", "datenquelle", "komponente"), List.of("messkanal"),
+                List.of("anzahl"), List.of("zustaendige_box"), List.of(), null, null),
+        REJECTED("rejected", EnumSet.of(DATENANNAHME, WRITER), ZEITPUNKT, null, false,
+                EINGANGSZEIT, List.of("box"), List.of(), List.of("strom", "grund"),
+                List.of("anzahl", "sequenz"), List.of(), null, null),
+        CLOCK_AHEAD("clock_ahead", EnumSet.of(DATENANNAHME), ZEITPUNKT, null, false,
+                EINGANGSZEIT, List.of("box"), List.of(), List.of("strom", "vor_s"),
+                List.of("anzahl", "sequenz"), List.of(), null, null),
+        TOO_OLD("too_old", EnumSet.of(DATENANNAHME), ZEITPUNKT, null, false, EINGANGSZEIT,
+                List.of("box"), List.of(), List.of("strom", "alter_s"),
+                List.of("anzahl", "sequenz"), List.of(), null, null),
+        CLOCK_JUMP("clock_jump", EnumSet.of(DATENANNAHME), ZEITPUNKT, null, false, EINGANGSZEIT,
+                List.of("box"), List.of(), List.of("strom", "sequenz", "sprung_s"), List.of(),
+                List.of(), null, null),
+        BOX_RESTART("box_restart", EnumSet.of(BOX), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("box"), List.of(), List.of(), List.of(), List.of(),
+                List.of("ereignis_id", "art", "zeitpunkt"),
+                List.of("ereignis_id", "art", "zeitpunkt")),
+        DEVICE_RESTART("device_restart", EnumSet.of(BOX), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("box", "datenquelle"), List.of(), List.of(),
+                List.of("herzschlag_vorher", "herzschlag_nachher"), List.of(),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle"),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle", "herzschlag_vorher",
+                        "herzschlag_nachher")),
+        FROZEN_SOURCE("frozen_source", EnumSet.of(BOX, WRITER), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("box", "datenquelle"), List.of("komponente", "messkanal"), List.of(),
+                List.of("lesungen", "herzschlag"), List.of(),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle"),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle", "komponente",
+                        "messkanal", "lesungen", "herzschlag")),
+        RANGE_LIMIT("range_limit", EnumSet.of(BOX), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("box", "datenquelle"), List.of("komponente"), List.of(),
+                List.of("statuswort"), List.of(),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle"),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle", "komponente",
+                        "statuswort")),
+        LAYOUT_CHANGED("layout_changed", EnumSet.of(BOX), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("box", "datenquelle"), List.of(), List.of(),
+                List.of("fassung_erwartet", "fassung_gelesen", "karten_erwartet",
+                        "karten_gelesen"),
+                List.of(), List.of("ereignis_id", "art", "zeitpunkt", "datenquelle"),
+                List.of("ereignis_id", "art", "zeitpunkt", "datenquelle", "fassung_erwartet",
+                        "fassung_gelesen", "karten_erwartet", "karten_gelesen")),
+        ERROR_CHANGE("error_change"),
+        STATE_CHANGE("state_change"),
+        BITFIELD_CHANGE("bitfield_change"),
+        TEXT_CHANGE("text_change");
+
+        private final String code;
+        private final Set<Urheber> urheber;
+        private final Zeitform zeitform;
+        private final Grenzen grenzen;
+        private final boolean offenErlaubt;
+        private final Achse achse;
+        private final List<String> bezugPflicht;
+        private final List<String> bezugErlaubt;
+        private final List<String> pflicht;
+        private final List<String> felder;
+        private final List<String> fortschreibbar;
+        private final List<String> mqttPflicht;
+        private final List<String> mqttFelder;
+
+        /** Die vier Übergangs-Ereignisse des Writers (wie heute, je Reihe, alt → neu). */
+        Art(String code) {
+            this(code, EnumSet.of(WRITER), ZEITPUNKT, null, false, MESSZEIT,
+                    List.of("komponente", "messkanal"), List.of("box", "messstelle"),
+                    List.of("alt", "neu"), List.of(), List.of(), null, null);
+        }
+
+        Art(String code, Set<Urheber> urheber, Zeitform zeitform, Grenzen grenzen,
+                boolean offenErlaubt, Achse achse, List<String> bezugPflicht,
+                List<String> bezugErlaubt, List<String> pflicht, List<String> felder,
+                List<String> fortschreibbar, List<String> mqttPflicht, List<String> mqttFelder) {
+            this.code = code;
+            this.urheber = Collections.unmodifiableSet(EnumSet.copyOf(urheber));
+            this.zeitform = zeitform;
+            this.grenzen = grenzen;
+            this.offenErlaubt = offenErlaubt;
+            this.achse = achse;
+            this.bezugPflicht = bezugPflicht;
+            this.bezugErlaubt = bezugErlaubt;
+            this.pflicht = pflicht;
+            this.felder = felder;
+            this.fortschreibbar = fortschreibbar;
+            this.mqttPflicht = mqttPflicht;
+            this.mqttFelder = mqttFelder;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public Set<Urheber> urheber() {
+            return urheber;
+        }
+
+        public Zeitform zeitform() {
+            return zeitform;
+        }
+
+        /** {@code null} bei einem Zeitpunkt. */
+        public Grenzen grenzen() {
+            return grenzen;
+        }
+
+        public boolean offenErlaubt() {
+            return offenErlaubt;
+        }
+
+        public Achse achse() {
+            return achse;
+        }
+
+        public List<String> bezugPflicht() {
+            return bezugPflicht;
+        }
+
+        public List<String> bezugErlaubt() {
+            return bezugErlaubt;
+        }
+
+        public List<String> pflicht() {
+            return pflicht;
+        }
+
+        public List<String> felder() {
+            return felder;
+        }
+
+        public List<String> fortschreibbar() {
+            return fortschreibbar;
+        }
+
+        /** Meldet eine Box diese Art (über {@code …/v2/events})? */
+        public boolean boxMeldet() {
+            return mqttFelder != null;
+        }
+
+        /** Die Pflichtfelder, die eine Box sendet ({@code box} kommt aus dem Topic); leer, wenn nie. */
+        public List<String> mqttPflicht() {
+            return mqttPflicht == null ? List.of() : mqttPflicht;
+        }
+
+        /** Die Felder, die eine Box senden darf ({@code box} kommt aus dem Topic); leer, wenn nie. */
+        public List<String> mqttFelder() {
+            return mqttFelder == null ? List.of() : mqttFelder;
+        }
+
+        /** {@code zeitpunkt} bzw. {@code von} + {@code bis}. */
+        public List<String> zeitFelder() {
+            return zeitform == ZEITPUNKT ? List.of("zeitpunkt") : List.of("von", "bis");
+        }
+
+        /** Die Pflichtfelder in {@code events.raw}: Kennung, Art, Zeit, Pflicht-Bezug, Pflicht. */
+        public List<String> pflichtFelder() {
+            List<String> p = new ArrayList<>(List.of("ereignis_id", "art"));
+            p.addAll(zeitFelder());
+            p.addAll(bezugPflicht);
+            p.addAll(pflicht);
+            return p;
+        }
+
+        /** Alle Felder, die dieser Urheber für diese Art tragen darf. */
+        public Set<String> erlaubteFelder(Urheber u) {
+            Set<String> s = new LinkedHashSet<>();
+            if (u == BOX) {
+                s.addAll(mqttFelder());
+                s.add("box");
+                return s;
+            }
+            s.addAll(pflichtFelder());
+            s.addAll(bezugErlaubt);
+            s.addAll(felder);
+            return s;
+        }
+
+        private List<String> pflichtFelder(Urheber u) {
+            if (u != BOX) {
+                return pflichtFelder();
+            }
+            List<String> p = new ArrayList<>(mqttPflicht());
+            p.add("box");
+            return p;
+        }
+
+        public static Art vonCode(String code) {
+            for (Art a : values()) {
+                if (a.code.equals(code)) {
+                    return a;
+                }
+            }
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------------ Urteil
+
+    /** Angenommen, oder verworfen mit Grund; {@code hinweis} sagt, woran (für Protokoll und Test). */
+    public record Urteil(boolean angenommen, Grund grund, String hinweis) {
+        public static final Urteil ANGENOMMEN = new Urteil(true, null, null);
+
+        static Urteil verworfen(Grund grund, String hinweis) {
+            return new Urteil(false, grund, hinweis);
+        }
+    }
+
+    private static final class Verworfen extends RuntimeException {
+        private final Urteil urteil;
+
+        Verworfen(Grund grund, String hinweis) {
+            super(hinweis, null, false, false);
+            this.urteil = Urteil.verworfen(grund, hinweis);
+        }
+    }
+
+    private static Verworfen nein(Grund grund, String hinweis) {
+        return new Verworfen(grund, hinweis);
+    }
+
+    // ------------------------------------------------------------------ Prüfungen
+
+    /** Prüft EIN Ereignis (die Form von {@code events.raw#/ereignis}) für diesen Urheber. */
+    public static Urteil pruefe(JsonNode ereignis, Urheber urheber) {
+        try {
+            pruefeOderWirf(ereignis, urheber);
+            return Urteil.ANGENOMMEN;
+        } catch (Verworfen v) {
+            return v.urteil;
+        }
+    }
+
+    /**
+     * Prüft einen Umschlag Box → Cloud gegen sein Topic. Jedes Ereignis bekommt {@code box} =
+     * {@code device_id} und wird wie von {@link Urheber#BOX} gemeldet geprüft; das erste
+     * verworfene verwirft den ganzen Umschlag.
+     */
+    public static Urteil pruefeUmschlag(String topic, JsonNode umschlag) {
+        try {
+            if (umschlag == null || !umschlag.isObject()) {
+                throw nein(Grund.SCHEMA_VERLETZT, "kein Objekt");
+            }
+            JsonNode fassung = umschlag.path("schema_version");
+            if (!fassung.isTextual() || !FASSUNG_UMSCHLAG.equals(fassung.asText())) {
+                throw nein(Grund.FASSUNG_UNBEKANNT, "schema_version");
+            }
+            pruefeUmschlagForm(umschlag);
+            String[] t = topic == null ? new String[0] : topic.split("/", -1);
+            if (t.length != 6 || !"ems".equals(t[0]) || !"v2".equals(t[4]) || !"events".equals(t[5])
+                    || !t[1].equals(umschlag.get("tenant_id").asText())
+                    || !t[2].equals(umschlag.get("site_id").asText())
+                    || !t[3].equals(umschlag.get("device_id").asText())) {
+                throw nein(Grund.KENNUNG_ABWEICHEND, "Topic ⟷ Umschlag");
+            }
+            int i = 0;
+            for (JsonNode e : umschlag.get("events")) {
+                if (!e.isObject() || e.has("box")) {
+                    throw nein(Grund.SCHEMA_VERLETZT, "events[" + i + "]");
+                }
+                ObjectNode mitBox = ((ObjectNode) e).deepCopy();
+                mitBox.put("box", umschlag.get("device_id").asText());
+                Urteil u = pruefe(mitBox, BOX);
+                if (!u.angenommen()) {
+                    return Urteil.verworfen(u.grund(), "events[" + i + "]: " + u.hinweis());
+                }
+                i++;
+            }
+            return Urteil.ANGENOMMEN;
+        } catch (Verworfen v) {
+            return v.urteil;
+        }
+    }
+
+    /**
+     * Prüft eine Fortschreibung: {@code neu} ist dasselbe Ereignis wie {@code alt} (dieselbe
+     * {@code ereignis_id}), mit höchstens gesetzten, vorher leeren fortschreibbaren Feldern.
+     */
+    public static Urteil pruefeFortschreibung(JsonNode alt, JsonNode neu, Urheber urheber) {
+        Urteil n = pruefe(neu, urheber);
+        if (!n.angenommen()) {
+            return n;
+        }
+        try {
+            if (!pruefe(alt, urheber).angenommen()) {
+                throw nein(Grund.FORTSCHREIBUNG_UNZULAESSIG, "die erste Meldung gilt nicht");
+            }
+            if (!alt.get("ereignis_id").equals(neu.get("ereignis_id"))
+                    || !alt.get("art").equals(neu.get("art"))) {
+                throw nein(Grund.FORTSCHREIBUNG_UNZULAESSIG, "anderes Ereignis");
+            }
+            Art art = Art.vonCode(neu.get("art").asText());
+            for (Iterator<String> it = alt.fieldNames(); it.hasNext(); ) {
+                String f = it.next();
+                JsonNode a = alt.get(f);
+                if (!neu.has(f)) {
+                    throw nein(Grund.FORTSCHREIBUNG_UNZULAESSIG, f + " entfernt");
+                }
+                if (!gleich(a, neu.get(f)) && !(a.isNull() && art.fortschreibbar().contains(f))) {
+                    throw nein(Grund.FORTSCHREIBUNG_UNZULAESSIG, f + " geändert");
+                }
+            }
+            for (Iterator<String> it = neu.fieldNames(); it.hasNext(); ) {
+                String f = it.next();
+                if (!alt.has(f) && !art.fortschreibbar().contains(f)) {
+                    throw nein(Grund.FORTSCHREIBUNG_UNZULAESSIG, f + " nicht fortschreibbar");
+                }
+            }
+            return Urteil.ANGENOMMEN;
+        } catch (Verworfen v) {
+            return v.urteil;
+        }
+    }
+
+    private static void pruefeUmschlagForm(JsonNode u) {
+        Set<String> felder = Set.of("schema_version", "tenant_id", "site_id", "device_id",
+                "sequence", "observed_at", "events");
+        for (Iterator<String> it = u.fieldNames(); it.hasNext(); ) {
+            String f = it.next();
+            if (!felder.contains(f)) {
+                throw nein(Grund.SCHEMA_VERLETZT, "unbekanntes Feld " + f);
+            }
+        }
+        for (String f : List.of("tenant_id", "site_id", "device_id")) {
+            if (!u.path(f).isTextual() || !UUID.matcher(u.get(f).asText()).matches()) {
+                throw nein(Grund.SCHEMA_VERLETZT, f);
+            }
+        }
+        if (!u.path("sequence").canConvertToLong() || !u.path("sequence").isIntegralNumber()
+                || u.get("sequence").asLong() < 0) {
+            throw nein(Grund.SCHEMA_VERLETZT, "sequence");
+        }
+        zeit(u, "observed_at");
+        JsonNode events = u.path("events");
+        if (!events.isArray() || events.isEmpty()
+                || events.size() > EREIGNISSE_JE_UMSCHLAG_HOECHSTENS) {
+            throw nein(Grund.SCHEMA_VERLETZT, "events");
+        }
+    }
+
+    private static void pruefeOderWirf(JsonNode e, Urheber u) {
+        if (e == null || !e.isObject() || u == null) {
+            throw nein(Grund.SCHEMA_VERLETZT, "kein Objekt");
+        }
+        if (!e.path("art").isTextual()) {
+            throw nein(Grund.SCHEMA_VERLETZT, "art");
+        }
+        Art art = Art.vonCode(e.get("art").asText());
+        if (art == null) {
+            throw nein(Grund.WORT_UNBEKANNT, "art " + e.get("art").asText());
+        }
+        if (!art.urheber().contains(u)) {
+            throw nein(Grund.URHEBER_UNZULAESSIG, art.code() + " von " + u.code());
+        }
+        pruefeFelder(e, art, u);
+        pruefeWoerter(e, art);
+        pruefeZeit(e, art, u);
+        pruefeRegeln(e, art, u);
+    }
+
+    private static final Pattern UUID =
+            Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    private static final Pattern KENNUNG = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:/′-]*$");
+    private static final Pattern ZEIT_UTC =
+            Pattern.compile("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+
+    private static void pruefeFelder(JsonNode e, Art art, Urheber u) {
+        Set<String> erlaubt = art.erlaubteFelder(u);
+        for (Iterator<String> it = e.fieldNames(); it.hasNext(); ) {
+            String f = it.next();
+            if (!erlaubt.contains(f)) {
+                throw nein(Grund.SCHEMA_VERLETZT, "unbekanntes Feld " + f);
+            }
+        }
+        for (String p : art.pflichtFelder(u)) {
+            if (!e.has(p) || (e.get(p).isNull() && !"bis".equals(p))) {
+                throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
+            }
+        }
+        for (Iterator<Map.Entry<String, JsonNode>> it = e.fields(); it.hasNext(); ) {
+            Map.Entry<String, JsonNode> f = it.next();
+            if (!typPasst(FELDER.get(f.getKey()), f.getValue())) {
+                throw nein(Grund.SCHEMA_VERLETZT, "Typ von " + f.getKey());
+            }
+        }
+    }
+
+    private static boolean typPasst(Typ typ, JsonNode w) {
+        return switch (typ) {
+            case UUID -> w.isTextual() && UUID.matcher(w.asText()).matches();
+            case WORT -> w.isTextual();
+            case ZEIT -> istZeit(w);
+            case ZEIT_ODER_LEER -> w.isNull() || istZeit(w);
+            case KENNUNG -> w.isTextual() && w.asText().length() <= 128
+                    && KENNUNG.matcher(w.asText()).matches();
+            case TEXT -> w.isTextual() && !w.asText().isEmpty() && w.asText().length() <= 240;
+            case GANZ_AB_0 -> ganz(w) && w.asLong() >= 0;
+            case GANZ_AB_1 -> ganz(w) && w.asLong() >= 1;
+            case SEKUNDEN -> ganz(w);
+            case STATUSWORT -> ganz(w) && w.asLong() >= 0 && w.asLong() <= 65_535;
+            case STAND -> w.isNumber();
+            case MESSWERT -> istMesswert(w);
+            case GANZ_LISTE -> istGanzListe(w);
+            case WERT -> w.isNull() || skalar(w);
+        };
+    }
+
+    private static boolean ganz(JsonNode w) {
+        return w.isIntegralNumber() && w.canConvertToLong();
+    }
+
+    private static boolean skalar(JsonNode w) {
+        return w.isNumber() || w.isTextual() || w.isBoolean();
+    }
+
+    private static boolean istZeit(JsonNode w) {
+        if (!w.isTextual() || !ZEIT_UTC.matcher(w.asText()).matches()) {
+            return false;
+        }
+        try {
+            Instant.parse(w.asText());
+            return true;
+        } catch (DateTimeParseException ex) {
+            return false;
+        }
+    }
+
+    private static boolean istMesswert(JsonNode w) {
+        if (!w.isObject() || w.size() != 3) {
+            return false;
+        }
+        return skalar(w.path("raw")) && skalar(w.path("decoded")) && w.path("qualitaet").isTextual();
+    }
+
+    private static boolean istGanzListe(JsonNode w) {
+        if (!w.isArray() || w.size() < 2) {
+            return false;
+        }
+        for (JsonNode x : w) {
+            if (!ganz(x) || x.asLong() < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void pruefeWoerter(JsonNode e, Art art) {
+        wort(e, "strom", STROM);
+        wort(e, "erkannt_aus", List.copyOf(ERKANNT_AUS.keySet()));
+        wort(e, "fehlerklasse", FEHLERKLASSEN);
+        wort(e, "anlass", art == Art.DEVICE_BOUNDARY ? ANLASS_GERAETEGRENZE : ANLASS_UEBERGABE);
+        if (e.has("grund") && Grund.vonCode(e.get("grund").asText()) == null) {
+            throw nein(Grund.WORT_UNBEKANNT, "grund " + e.get("grund").asText());
+        }
+        for (String f : List.of("gespeicherter_wert", "abgewiesener_wert")) {
+            if (e.has(f) && !QUALITAET.contains(e.get(f).get("qualitaet").asText())) {
+                throw nein(Grund.WORT_UNBEKANNT, f + ".qualitaet");
+            }
+        }
+    }
+
+    private static void wort(JsonNode e, String feld, List<String> vokabular) {
+        if (e.has(feld) && !vokabular.contains(e.get(feld).asText())) {
+            throw nein(Grund.WORT_UNBEKANNT, feld + " " + e.get(feld).asText());
+        }
+    }
+
+    private static void pruefeZeit(JsonNode e, Art art, Urheber u) {
+        if (art.zeitform() == ZEITRAUM) {
+            Instant von = zeit(e, "von");
+            if (e.get("bis").isNull()) {
+                if (!art.offenErlaubt() || u == BOX) {
+                    throw nein(Grund.ZEIT_UNGUELTIG, "offen");
+                }
+            } else {
+                Instant bis = zeit(e, "bis");
+                boolean verkehrt = art.grenzen() == HALBOFFEN ? !bis.isAfter(von) : bis.isBefore(von);
+                if (verkehrt) {
+                    throw nein(Grund.ZEIT_UNGUELTIG, "bis vor von");
+                }
+                if (art == Art.LATE_ARRIVAL && (von.getEpochSecond() % VIERTELSTUNDE_S != 0
+                        || Duration.between(von, bis).getSeconds() != VIERTELSTUNDE_S)) {
+                    throw nein(Grund.ZEIT_UNGUELTIG, "keine Viertelstunde im Raster");
+                }
+            }
+            if (art == Art.HANDOVER && von.getEpochSecond() % 60 != 0) {
+                throw nein(Grund.ZEIT_UNGUELTIG, "von nicht auf der Minute");
+            }
+        } else if (art == Art.DEVICE_BOUNDARY && zeit(e, "zeitpunkt").getEpochSecond() % 60 != 0) {
+            throw nein(Grund.ZEIT_UNGUELTIG, "zeitpunkt nicht auf der Minute");
+        }
+    }
+
+    private static void pruefeRegeln(JsonNode e, Art art, Urheber u) {
+        if ((e.has("messkanal") && !e.has("komponente"))
+                || (e.has("messstelle") && !(e.has("komponente") && e.has("messkanal")))) {
+            throw nein(Grund.REGEL_VERLETZT, "Reihe unvollständig");
+        }
+        switch (art) {
+            case DATA_GAP -> {
+                String aus = e.get("erkannt_aus").asText();
+                if (ERKANNT_AUS.get(aus) != u) {
+                    throw nein(Grund.REGEL_VERLETZT, "erkannt_aus " + aus + " von " + u.code());
+                }
+                String klasse = e.path("fehlerklasse").asText(null);
+                boolean herzschlag = "herzschlag".equals(aus);
+                if (klasse != null && herzschlag != BOX_MELDET_SICH_NICHT.equals(klasse)) {
+                    throw nein(Grund.REGEL_VERLETZT, "Ursache ohne Fakt: " + klasse);
+                }
+                if (e.hasNonNull("nachgeliefert_am") && e.get("bis").isNull()) {
+                    throw nein(Grund.REGEL_VERLETZT, "nachgeliefert, aber offen");
+                }
+            }
+            case BACKFILL -> {
+                if (zeit(e, "eingang_bis").isBefore(zeit(e, "eingang_von"))
+                        || (e.has("erwartet") && e.get("erwartet").asLong() < e.get("anzahl").asLong())) {
+                    throw nein(Grund.REGEL_VERLETZT, "Eingang oder Anzahl");
+                }
+            }
+            case DUPLICATE_CONFLICT -> {
+                if (gleich(e.get("gespeicherter_wert"), e.get("abgewiesener_wert"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "gleicher Wert ist eine Wiederholung");
+                }
+            }
+            case SEQUENCE_GAP -> {
+                long erwartet = e.get("sequenz_erwartet").asLong();
+                long erhalten = e.get("sequenz_erhalten").asLong();
+                if (erhalten <= erwartet || e.get("anzahl").asLong() != erhalten - erwartet) {
+                    throw nein(Grund.REGEL_VERLETZT, "Anzahl aus den Sequenzen");
+                }
+            }
+            case SEQUENCE_RESET -> {
+                if (e.get("sequenz_erhalten").asLong() >= e.get("sequenz_erwartet").asLong()) {
+                    throw nein(Grund.REGEL_VERLETZT, "Sequenz nicht zurück");
+                }
+            }
+            case COUNTER_RESET -> {
+                if (zahl(e, "stand_neu").compareTo(zahl(e, "stand_alt")) >= 0
+                        || (e.has("messzeit_alt")
+                                && !zeit(e, "messzeit_alt").isBefore(zeit(e, "zeitpunkt")))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Stand fällt nicht");
+                }
+            }
+            case DEVICE_BOUNDARY -> {
+                if (zeit(e, "eingetragen_am").isBefore(zeit(e, "zeitpunkt"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Grenze im Voraus");
+                }
+                boolean gleicherEinbau = e.get("einbau_alt").asText().equals(e.get("einbau_neu").asText());
+                if (gleicherEinbau != GRENZE_OHNE_GERAETEWECHSEL.contains(e.get("anlass").asText())) {
+                    throw nein(Grund.REGEL_VERLETZT, "Einbau passt nicht zum Anlass");
+                }
+            }
+            case HANDOVER -> {
+                if (e.get("box_alt").asText().equals(e.get("box_neu").asText())) {
+                    throw nein(Grund.REGEL_VERLETZT, "Übergabe an dieselbe Box");
+                }
+            }
+            case UNASSIGNED_READER -> {
+                if (Duration.between(zeit(e, "von"), zeit(e, "bis")).getSeconds()
+                                >= MesswertHerkunft.UNASSIGNED_READER_HOECHSTENS_JE_S
+                        || e.path("zustaendige_box").asText("").equals(e.get("box").asText())) {
+                    throw nein(Grund.REGEL_VERLETZT, "höchstens eines je Stunde");
+                }
+            }
+            case REJECTED -> {
+                boolean herkunft = Grund.HERKUNFT_UNVOLLSTAENDIG.code().equals(e.get("grund").asText());
+                if (herkunft != (u == WRITER)) {
+                    throw nein(Grund.REGEL_VERLETZT, "Grund passt nicht zum Urheber");
+                }
+            }
+            case CLOCK_AHEAD -> schwelle(e.get("vor_s").asLong(), MesswertHerkunft.ZUKUNFT_HOECHSTENS_S);
+            case TOO_OLD -> schwelle(e.get("alter_s").asLong(), MesswertHerkunft.VERGANGENHEIT_HOECHSTENS_S);
+            case CLOCK_JUMP -> schwelle(Math.abs(e.get("sprung_s").asLong()), MesswertHerkunft.ZEITSPRUNG_AB_S);
+            case DEVICE_RESTART -> {
+                if (e.has("herzschlag_vorher") && e.has("herzschlag_nachher")
+                        && e.get("herzschlag_nachher").asLong() >= e.get("herzschlag_vorher").asLong()) {
+                    throw nein(Grund.REGEL_VERLETZT, "Herzschlag springt nicht zurück");
+                }
+            }
+            case FROZEN_SOURCE -> {
+                if (e.has("lesungen") && e.get("lesungen").asLong() < 3) {
+                    throw nein(Grund.REGEL_VERLETZT, "weniger als 3 Lesungen");
+                }
+            }
+            case LAYOUT_CHANGED -> {
+                paar(e, "fassung_erwartet", "fassung_gelesen");
+                paar(e, "karten_erwartet", "karten_gelesen");
+            }
+            case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {
+                if (gleich(e.get("alt"), e.get("neu"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Übergang");
+                }
+            }
+            default -> {
+                // late_arrival: Zeitregel oben; box_restart: nichts weiter
+            }
+        }
+    }
+
+    private static void schwelle(long wert, long schwelle) {
+        if (wert <= schwelle) {
+            throw nein(Grund.REGEL_VERLETZT, wert + " s ≤ " + schwelle + " s");
+        }
+    }
+
+    private static void paar(JsonNode e, String erwartet, String gelesen) {
+        if (e.has(erwartet) != e.has(gelesen)
+                || (e.has(erwartet) && e.get(erwartet).asLong() == e.get(gelesen).asLong())) {
+            throw nein(Grund.REGEL_VERLETZT, erwartet + "/" + gelesen);
+        }
+    }
+
+    private static Instant zeit(JsonNode e, String feld) {
+        JsonNode w = e.path(feld);
+        if (!istZeit(w)) {
+            throw nein(Grund.SCHEMA_VERLETZT, "Zeit " + feld);
+        }
+        return Instant.parse(w.asText());
+    }
+
+    private static BigDecimal zahl(JsonNode e, String feld) {
+        return e.get(feld).decimalValue();
+    }
+
+    /** Gleich heißt: dieselben Felder, Zahlen nach Betrag (1.0 = 1), Texte und Wahrheitswerte wörtlich. */
+    static boolean gleich(JsonNode a, JsonNode b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        if (a.isNumber() && b.isNumber()) {
+            return a.decimalValue().compareTo(b.decimalValue()) == 0;
+        }
+        if (a.isObject() && b.isObject()) {
+            if (a.size() != b.size()) {
+                return false;
+            }
+            for (Iterator<String> it = a.fieldNames(); it.hasNext(); ) {
+                String f = it.next();
+                if (!gleich(a.get(f), b.get(f))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (a.isArray() && b.isArray()) {
+            if (a.size() != b.size()) {
+                return false;
+            }
+            for (int i = 0; i < a.size(); i++) {
+                if (!gleich(a.get(i), b.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return a.equals(b);
+    }
+}

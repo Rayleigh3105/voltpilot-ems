@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/events-vocabulary.schema.json",
+  "title": "Ereignis-Vokabular (UEMS AP-07 IP-3)",
+  "description": "Beschreibt die Vektor-Datei events-vocabulary-vectors.json: das geschlossene Ereignis-Vokabular (je Art Urheber, Bezug, Zeitregel, Felder, Fortschreibung, Kundensatz) und die Fälle, an denen der Umschlag Box → Cloud (mqtt-events-2.1.schema.json), das Redpanda-Ereignis events.raw (events-raw.event.schema.json), die Prüfung (Java services/api .../uems/EreignisVokabular) und der Kundensatz (TS frontend/portal/src/uemsEreignis.ts) gemessen werden. Prosa: events-vocabulary.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bezug", "referenzunternehmen", "schemas", "zeitzone", "kennungen", "vokabular", "regeln", "fehlerklassen_einordnung", "bestand", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieser Datei. Bleibt; Erweiterungen sind additiv." },
+    "$schema_datei": { "type": "string" },
+    "bezug": { "type": "string", "minLength": 1 },
+    "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json" },
+    "schemas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["umschlag", "redpanda"],
+      "properties": {
+        "umschlag": { "type": "string", "const": "./mqtt-events-2.1.schema.json" },
+        "redpanda": { "type": "string", "const": "./events-raw.event.schema.json" }
+      }
+    },
+    "zeitzone": { "type": "string", "const": "Europe/Berlin" },
+    "kennungen": {
+      "type": "object",
+      "description": "Die technischen Kennungen (UUIDs) der Ahrenberg-Objekte, die ein Umschlag braucht — die Referenz nennt keine.",
+      "additionalProperties": false,
+      "required": ["kundenbereich", "anlagen", "boxen"],
+      "properties": {
+        "kundenbereich": { "$ref": "#/$defs/kennungTabelle" },
+        "anlagen": { "$ref": "#/$defs/kennungTabelle" },
+        "boxen": { "$ref": "#/$defs/kennungTabelle" }
+      }
+    },
+    "vokabular": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urheber", "grund", "strom", "erkannt_aus", "anlass_geraetegrenze", "anlass_uebergabe", "qualitaet", "fehlerklasse_datei", "felder", "arten"],
+      "properties": {
+        "urheber": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "wer"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "wer": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "grund": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "von", "text"],
+            "properties": {
+              "code": { "$ref": "#/$defs/code" },
+              "von": { "type": "string", "enum": ["datenannahme", "writer"] },
+              "text": { "type": "string", "minLength": 1, "description": "Der Grund in Kundensprache — er vollendet den Satz „Datenpaket von … abgewiesen: …“." }
+            }
+          }
+        },
+        "strom": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z-]*$" } },
+        "erkannt_aus": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "urheber", "text"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "urheber": { "$ref": "#/$defs/code" }, "text": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "anlass_geraetegrenze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
+        "anlass_uebergabe": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
+        "qualitaet": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
+        "fehlerklasse_datei": { "type": "string", "const": "./data-source-vectors.json" },
+        "felder": {
+          "type": "object",
+          "description": "Jedes Feld, das eine Art tragen darf, mit seinem Typ.",
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["typ", "beschreibung"],
+            "properties": {
+              "typ": { "type": "string", "enum": ["uuid", "wort", "zeit", "zeit_oder_leer", "kennung", "text", "ganz_ab_0", "ganz_ab_1", "sekunden", "statuswort", "stand", "messwert", "ganz_liste", "wert"] },
+              "beschreibung": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "arten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/art" } }
+      }
+    },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zukunft_hoechstens_s", "vergangenheit_hoechstens_s", "zeitsprung_ab_s", "unassigned_reader_hoechstens_je_s", "viertelstunde_s", "ereignisse_je_umschlag_hoechstens"],
+      "properties": {
+        "zukunft_hoechstens_s": { "type": "integer", "minimum": 0 },
+        "vergangenheit_hoechstens_s": { "type": "integer", "minimum": 0 },
+        "zeitsprung_ab_s": { "type": "integer", "minimum": 0 },
+        "unassigned_reader_hoechstens_je_s": { "type": "integer", "minimum": 1 },
+        "viertelstunde_s": { "type": "integer", "const": 900 },
+        "ereignisse_je_umschlag_hoechstens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fehlerklassen_einordnung": {
+      "type": "array", "minItems": 1,
+      "description": "Je Fehlerklasse der Datenquelle (AP-06 E5): Zustand (Herzschlag je Quelle, IP-13) oder zusätzlich ein Ereignis bzw. die Ursache eines Ereignisses.",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["code", "einordnung", "ereignis"],
+        "properties": {
+          "code": { "$ref": "#/$defs/code" },
+          "einordnung": { "type": "string", "enum": ["zustand", "zustand_und_ereignis", "zustand_und_ursache"] },
+          "ereignis": { "anyOf": [{ "$ref": "#/$defs/code" }, { "type": "null" }] }
+        }
+      }
+    },
+    "bestand": {
+      "type": "object", "additionalProperties": false, "required": ["datei", "tabelle", "arten"],
+      "description": "Die Arten, die der Writer HEUTE schon in device_measurement_event schreibt — das Vokabular übernimmt sie in derselben Schreibweise.",
+      "properties": {
+        "datei": { "type": "string", "minLength": 1 },
+        "tabelle": { "type": "string", "const": "device_measurement_event" },
+        "arten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } }
+      }
+    },
+    "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
+  },
+  "$defs": {
+    "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "kennungTabelle": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
+    },
+    "feldliste": { "type": "array", "items": { "$ref": "#/$defs/code" } },
+    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle"] } },
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "name", "urheber", "zeit", "bezug_pflicht", "bezug_erlaubt", "pflicht", "felder", "fortschreibbar", "mqtt", "variante_nach", "saetze", "zusaetze", "regeln", "bestand", "nie_geloescht", "herkunft"],
+      "properties": {
+        "art": { "$ref": "#/$defs/code" },
+        "name": { "type": "string", "minLength": 1, "description": "Die Überschrift des Markers in Kundensprache." },
+        "urheber": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["box", "datenannahme", "writer", "cloud", "kunde"] } },
+        "zeit": {
+          "type": "object", "additionalProperties": false, "required": ["form", "grenzen", "offen_erlaubt", "achse"],
+          "properties": {
+            "form": { "type": "string", "enum": ["zeitpunkt", "zeitraum"] },
+            "grenzen": { "anyOf": [{ "type": "string", "enum": ["halboffen", "geschlossen"] }, { "type": "null" }], "description": "halboffen = [von, bis); geschlossen = [von, bis], beide enthalten; null bei einem Zeitpunkt." },
+            "offen_erlaubt": { "type": "boolean", "description": "Darf `bis` leer (offen) sein? Nie für eine Meldung der Box." },
+            "achse": { "type": "string", "enum": ["messzeit", "eingangszeit"], "description": "Auf welcher Uhr die Zeitangaben der Art liegen (E13 Nr. 2)." }
+          }
+        },
+        "bezug_pflicht": { "$ref": "#/$defs/bezugsliste" },
+        "bezug_erlaubt": { "$ref": "#/$defs/bezugsliste" },
+        "pflicht": { "$ref": "#/$defs/feldliste" },
+        "felder": { "$ref": "#/$defs/feldliste" },
+        "fortschreibbar": { "$ref": "#/$defs/feldliste" },
+        "mqtt": {
+          "anyOf": [
+            {
+              "type": "object", "additionalProperties": false, "required": ["pflicht", "felder"],
+              "properties": { "pflicht": { "$ref": "#/$defs/feldliste" }, "felder": { "$ref": "#/$defs/feldliste" } }
+            },
+            { "type": "null" }
+          ],
+          "description": "Die Felder, die eine BOX für diese Art sendet (ohne `box`, das aus dem Topic kommt); null = die Box meldet diese Art nie."
+        },
+        "variante_nach": { "anyOf": [{ "$ref": "#/$defs/code" }, { "type": "null" }] },
+        "saetze": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+        "zusaetze": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+        "regeln": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "bestand": { "type": "boolean" },
+        "nie_geloescht": { "type": "boolean", "const": true },
+        "herkunft": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "pruefung", "bezug", "why", "annahme", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "pruefung": { "type": "string", "enum": ["ereignis", "umschlag", "fortschreibung"] },
+        "bezug": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "annahme": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "erfunden": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Kennzeichen oder Messkanäle, die der Fall bewusst außerhalb der Referenz nennt — nur mit `annahme`." },
+        "input": {
+          "anyOf": [
+            {
+              "type": "object", "additionalProperties": false, "required": ["urheber", "ereignis"],
+              "properties": { "urheber": { "type": "string" }, "ereignis": { "type": "object" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["topic", "umschlag"],
+              "properties": { "topic": { "type": "string", "minLength": 1 }, "umschlag": { "type": "object" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["urheber", "alt", "neu"],
+              "properties": { "urheber": { "type": "string" }, "alt": { "type": "object" }, "neu": { "type": "object" } }
+            }
+          ]
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema", "urteil", "grund", "saetze"],
+          "properties": {
+            "schema": { "type": "boolean", "description": "Hält die Eingabe ihr JSON-Schema? Umschlag gegen mqtt-events-2.1, sonst gegen events-raw #/$defs/ereignis (bei einer Fortschreibung: `neu`). Ein schema-gültiges Ereignis kann an einer Regel scheitern." },
+            "urteil": { "type": "string", "enum": ["angenommen", "verworfen"] },
+            "grund": { "anyOf": [{ "$ref": "#/$defs/code" }, { "type": "null" }] },
+            "saetze": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Der Kundensatz je angenommenem Ereignis in Reihenfolge; leer, wenn verworfen." }
+          }
+        }
+      }
+    }
+  }
+}

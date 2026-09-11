@@ -62,3 +62,10 @@ The invalid fixtures fail at the JSON-Schema level by design (an ajv run proves 
 validator rules that JSON Schema cannot express (port type compatibility, cycles, exclusive
 resources — [flow-graph.md](../flow-graph.md) §4) are NOT exercised here; they get executable
 fixtures with the platform validator (E2).
+| `mqtt-events-2.1.valid.restart.json` | mqtt-events-2.1 | valid — a box (Ahrenberg Box Halle 2 (neu)) reports its own restart and the restart of the controller behind DQ-4 in ONE envelope; the heartbeat in the register image jumps small (`herzschlag_vorher` 51873 → `herzschlag_nachher` 4). No `box` field: the box IS the topic |
+| `mqtt-events-2.1.valid.layout-and-gap.json` | mqtt-events-2.1 | valid — `layout_changed` (5 instead of 4 cards — the box re-maps NOTHING) plus a CLOSED `data_gap` from buffer displacement (`erkannt_aus: verdraengung`, `erwartet_fehlend` counted, never estimated) |
+| `mqtt-events-2.1.invalid.handover-from-box.json` | mqtt-events-2.1 | **invalid** — a `handover` in a box envelope: the art exists, but only the cloud may report it (no box branch; the api twin says `urheber_unzulaessig`) |
+| `events-raw.valid.box-range-limit.json` | events-raw | valid — box path: `urheber: box` carries the envelope facts (`device_id`, `source_topic`, `sequence`, `observed_at`), and `ereignis.box` = `device_id` |
+| `events-raw.valid.cloud-handover.json` | events-raw | valid — cloud path: the DQ-3 handover of 10.04.2027 07:30, still OPEN (`bis: null`) until the new box acknowledges — a later record with the same `ereignis_id` continues it |
+| `events-raw.valid.writer-duplicate-conflict.json` | events-raw | valid — writer path: the second, different value for MS-06 at 10:39 is refused and kept with BOTH values; the first one stays |
+| `events-raw.invalid.box-without-envelope.json` | events-raw | **invalid** — `urheber: box` without the envelope facts (`device_id`, `source_topic`, `sequence`, `observed_at`): fails the box branch, and the cloud branch by `urheber` |

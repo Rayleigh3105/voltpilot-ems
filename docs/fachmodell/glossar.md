@@ -486,4 +486,4 @@ Zeitgültig sind: Messstelle → Ort, Messstelle → Anlage/elektrische Stellung
 
 > **Verfeinert durch AP-04 E8:** Eine Messstelle ohne Quelle hat die Beobachtung „keine Datenquelle“ — sie ist eingerichtet und aktiv, zeigt aber nie eine 0.
 
-> **Verfeinert durch AP-07 E11:** Ereignisse (Lücke, Nachlieferung, Gerätegrenze, Zeitfehler, Konflikt) reisen über einen additiven Vertrag `…/v2/events` in eine Ereignis-Tabelle je Mandant, append-only und NIE gelöscht — sie sind der Beweis hinter jeder Zustandsaussage.
+> **Verfeinert durch AP-07 E11:** Ereignisse (Lücke, Nachlieferung, Gerätegrenze, Zeitfehler, Konflikt) reisen über einen additiven Vertrag `…/v2/events` in eine Ereignis-Tabelle je Mandant, append-only und NIE gelöscht — sie sind der Beweis hinter jeder Zustandsaussage. Das geschlossene Vokabular (23 Arten mit Urheber, Bezug, Zeitregel und Kundensatz; ein offenes Ereignis wird fortgeschrieben, nie geändert), der Umschlag Box → Cloud (2.1) und das Redpanda-Ereignis `events.raw` stehen als Vertrag mit Vektoren in `docs/contracts/v2/events-vocabulary.md` (AP-07 IP-3).

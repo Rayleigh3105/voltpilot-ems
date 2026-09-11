@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "event_id": "5e7a0000-0000-4000-8000-000000000002",
+  "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+  "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+  "urheber": "cloud",
+  "ingested_at": "2027-04-10T05:30:00Z",
+  "ereignis": {
+    "ereignis_id": "e7e00000-0000-4000-8000-000000000030",
+    "art": "handover",
+    "von": "2027-04-10T05:30:00Z",
+    "bis": null,
+    "datenquelle": "DQ-3",
+    "anlass": "uebergabe",
+    "box_alt": "a4e0b000-0000-4000-8000-0000000000e1",
+    "box_neu": "a4e0b000-0000-4000-8000-0000000002e2"
+  }
+}

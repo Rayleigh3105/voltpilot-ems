@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/mqtt-events-2.1.schema.json",
+  "title": "VoltPilot MQTT Box Events (events 2.1)",
+  "description": "Der Umschlag, mit dem eine VoltPilot-Box Ereignisse an die Cloud meldet (UEMS AP-07 IP-3, Entscheid E11): Neustart der Box, Neustart eines Geräts, eingefrorene Werte, Bereichsbegrenzung, geänderter Aufbau und die Lücke aus Puffer-Verdrängung. Additiv: 2.1 ist die Fassung des v2-Unterbaums, die Ereignisse trägt — die 2.0-Verträge (telemetry, measurement-samples, …) bleiben unverändert gültig, und eine ältere Box sendet auf diesem Topic einfach nichts. Alle übrigen Arten des Vokabulars erzeugt die Cloud selbst (events-raw.event.schema.json). Die Datenannahme prüft den Umschlag als EINHEIT: eine unbekannte Fassung, eine abweichende Kennung, eine verletzte Form oder ein verworfenes Ereignis verwirft den ganzen Umschlag und hinterlässt ein `rejected` mit Grund (events-vocabulary.md §5). Vokabular, Felder und Fälle: events-vocabulary-vectors.json.",
+  "type": "object",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/events  (Edge -> Cloud, QoS1, not retained; device_id ist die Box mit der mTLS-Identität)",
+  "x-mqtt": {
+    "qos": 1,
+    "retained": false
+  },
+  "x-identity-rule": "Die drei Kennungs-Segmente des Topics MÜSSEN byte-gleich den Feldern tenant_id, site_id und device_id sein.",
+  "x-time-rule": "Zeitpunkte der Box sind Messzeiten nach der Uhr der Box (UTC); die Eingangszeit setzt die Datenannahme. Die Zeit-Prüfungen des Herkunftsvertrags (clock_ahead > 300 s, too_old > 90 Tage, clock_jump > 300 s) gelten für observed_at wie für eine Messzeit.",
+  "x-sequence-rule": "sequence zählt die Umschläge DIESES Topics je Box (eigene Outbox, FIFO); ein Sprung wird als sequence_gap / sequence_reset mit strom = events ausgewertet.",
+  "x-additive-rule": "Eine neue Art kommt additiv mit einer neuen Fassung; die Cloud kennt eine Fassung, bevor eine Box sie sendet (Cloud vor Edge-Release).",
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "sequence",
+    "observed_at",
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.1"
+    },
+    "tenant_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "site_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "device_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Umschlag-Sequenz des Ereignis-Stroms dieser Box, monoton steigend."
+    },
+    "observed_at": {
+      "$ref": "#/$defs/zeit_utc"
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/box_ereignis"
+      },
+      "description": "1 bis 64 Ereignisse in der Reihenfolge, in der die Box sie sah."
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "zeit_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "Ein Zeitpunkt in UTC, auf die Sekunde (E13)."
+    },
+    "kennung": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+      "description": "Eine Kennung, wie die Cloud sie der Box zustellt (Datenquelle, Komponente)."
+    },
+    "messkanal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "description": "Der Messkanal der Reihe (Katalog-Schlüssel oder Kern-Kanal)."
+    },
+    "ganz_ab_0": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ganz_ab_1": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "statuswort": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "box_ereignis": {
+      "description": "EIN Ereignis der Box — genau eine Art aus dem geschlossenen Vokabular, das eine Box melden darf.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/box_data_gap"
+        },
+        {
+          "$ref": "#/$defs/box_box_restart"
+        },
+        {
+          "$ref": "#/$defs/box_device_restart"
+        },
+        {
+          "$ref": "#/$defs/box_frozen_source"
+        },
+        {
+          "$ref": "#/$defs/box_range_limit"
+        },
+        {
+          "$ref": "#/$defs/box_layout_changed"
+        }
+      ]
+    },
+    "box_data_gap": {
+      "type": "object",
+      "description": "data_gap — Lücke (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "erkannt_aus"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "data_gap"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "erkannt_aus": {
+          "const": "verdraengung"
+        },
+        "datenquelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "erwartet_fehlend": {
+          "$ref": "#/$defs/ganz_ab_0"
+        }
+      }
+    },
+    "box_box_restart": {
+      "type": "object",
+      "description": "box_restart — Neustart der Box (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "box_restart"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        }
+      }
+    },
+    "box_device_restart": {
+      "type": "object",
+      "description": "device_restart — Neustart des Geräts (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "datenquelle"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "device_restart"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "datenquelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "herzschlag_vorher": {
+          "$ref": "#/$defs/ganz_ab_0"
+        },
+        "herzschlag_nachher": {
+          "$ref": "#/$defs/ganz_ab_0"
+        }
+      }
+    },
+    "box_frozen_source": {
+      "type": "object",
+      "description": "frozen_source — Werte eingefroren (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "datenquelle"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "frozen_source"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "datenquelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "lesungen": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "herzschlag": {
+          "$ref": "#/$defs/ganz_ab_0"
+        }
+      }
+    },
+    "box_range_limit": {
+      "type": "object",
+      "description": "range_limit — Bereichsbegrenzung (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "datenquelle"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "range_limit"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "datenquelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "statuswort": {
+          "$ref": "#/$defs/statuswort"
+        }
+      }
+    },
+    "box_layout_changed": {
+      "type": "object",
+      "description": "layout_changed — Aufbau geändert (von der Box; `box` ergänzt die Datenannahme aus dem Topic).",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "datenquelle"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "layout_changed"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "datenquelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "fassung_erwartet": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "fassung_gelesen": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "karten_erwartet": {
+          "$ref": "#/$defs/ganz_ab_0"
+        },
+        "karten_gelesen": {
+          "$ref": "#/$defs/ganz_ab_0"
+        }
+      }
+    }
+  }
+}

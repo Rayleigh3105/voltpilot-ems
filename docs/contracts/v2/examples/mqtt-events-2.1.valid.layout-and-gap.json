@@ -1,0 +1,27 @@
+{
+  "schema_version": "2.1",
+  "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+  "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+  "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+  "sequence": 488,
+  "observed_at": "2027-03-01T06:31:00Z",
+  "events": [
+    {
+      "ereignis_id": "e7e00000-0000-4000-8000-000000000052",
+      "art": "layout_changed",
+      "zeitpunkt": "2027-03-01T06:30:00Z",
+      "datenquelle": "DQ-4",
+      "karten_erwartet": 4,
+      "karten_gelesen": 5
+    },
+    {
+      "ereignis_id": "e7e00000-0000-4000-8000-000000000055",
+      "art": "data_gap",
+      "von": "2027-03-01T06:28:00Z",
+      "bis": "2027-03-01T06:30:00Z",
+      "erkannt_aus": "verdraengung",
+      "datenquelle": "DQ-4",
+      "erwartet_fehlend": 26
+    }
+  ]
+}

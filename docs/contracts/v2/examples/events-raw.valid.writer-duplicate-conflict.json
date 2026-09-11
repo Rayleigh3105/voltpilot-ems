@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "event_id": "5e7a0000-0000-4000-8000-000000000003",
+  "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+  "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+  "urheber": "writer",
+  "ingested_at": "2026-11-18T09:40:08Z",
+  "ereignis": {
+    "ereignis_id": "e7e00000-0000-4000-8000-000000000026",
+    "art": "duplicate_conflict",
+    "zeitpunkt": "2026-11-18T09:40:07Z",
+    "box": "a4e0b000-0000-4000-8000-0000000000e1",
+    "komponente": "K-5",
+    "messkanal": "Wirkenergie Bezug",
+    "messstelle": "MS-06",
+    "messzeit": "2026-11-18T09:39:00Z",
+    "gespeicherter_wert": {
+      "raw": 10834152,
+      "decoded": 1083415.2,
+      "qualitaet": "good"
+    },
+    "abgewiesener_wert": {
+      "raw": 10834153,
+      "decoded": 1083415.3,
+      "qualitaet": "good"
+    },
+    "sequenzen": [
+      48213,
+      48214
+    ],
+    "einheit": "kWh"
+  }
+}
