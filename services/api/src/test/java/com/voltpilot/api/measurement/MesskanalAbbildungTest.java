@@ -127,7 +127,8 @@ class MesskanalAbbildungTest {
         }
         PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
         for (var form : List.of(Map.entry("MesskanalListe", MesskanalDto.Liste.class),
-                Map.entry("Messkanal", MesskanalDto.Messkanal.class))) {
+                Map.entry("Messkanal", MesskanalDto.Messkanal.class),
+                Map.entry("MesskanalGeraet", MesskanalDto.GeraetEinbau.class))) {
             Map<String, Object> schema = (Map<String, Object>) schemas.get(form.getKey());
             List<String> dto = Arrays.stream(form.getValue().getRecordComponents())
                     .map(c -> snake.translate(c.getName())).toList();
@@ -141,6 +142,16 @@ class MesskanalAbbildungTest {
         assertThat(enumOhneNull(kanal, "groesse")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.GROESSE.values());
         assertThat(enumOhneNull(kanal, "richtung")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.RICHTUNG.values());
         assertThat(enumOhneNull(kanal, "wertart")).containsExactlyInAnyOrderElementsOf(MesskanalAbbildung.WERTARTEN);
+
+        // Das Gerät (IP-10) hat die Form von `geraet_einbau` des Herkunftsvertrags — plus `id`.
+        Set<String> geraet = new HashSet<>(((Map<String, Object>) ((Map<String, Object>) schemas
+                .get("MesskanalGeraet")).get("properties")).keySet());
+        assertThat(geraet.remove("id")).isTrue();
+        JsonNode einbau = lies("docs/contracts/v2/messwert-herkunft.schema.json")
+                .at("/$defs/herkunft/properties/geraet_einbau");
+        assertThat(geraet).containsExactlyInAnyOrderElementsOf(texte(einbau.get("required")));
+        assertThat(einbau.get("properties").fieldNames()).toIterable()
+                .containsExactlyInAnyOrderElementsOf(geraet);
     }
 
     @SuppressWarnings("unchecked")

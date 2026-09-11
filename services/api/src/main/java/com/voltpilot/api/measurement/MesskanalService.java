@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.GeraetRepository;
 import com.voltpilot.api.web.dto.MesskanalDto;
 import java.util.List;
 import java.util.UUID;
@@ -16,7 +17,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Das Messkanal-Read-Model je Komponente (UEMS AP-04 IP-9): jede Zeile der Mess-Selektion der
  * Komponente mit den Fakten, die eine Quellenbindung braucht — aus dem Katalog Anzeigename,
  * Einheit, Wertart, Größe und Richtung ({@link MesskanalAbbildung}), aus der Selektion Kadenz,
- * Zustand und lesende Box.
+ * Zustand und lesende Box, aus der Geräte-Historie das Gerät, das die Komponente gerade speist
+ * (IP-10, {@link GeraetRepository#laufenderDerKomponente}) — für jeden Kanal dasselbe, denn
+ * der Einbau hängt an der Komponente, nicht am Kanal.
  *
  * <p>Der Mandant ist die RLS: die App-Rolle sieht nur die eigenen Standorte, Komponenten und
  * Selektionen, eine fremde Komponente ist 404, nie 403 — und eine Komponente eines ANDEREN
@@ -31,13 +34,15 @@ public class MesskanalService {
     private final SiteRepository sites;
     private final MeasurementCatalog catalog;
     private final ObjectMapper json;
+    private final GeraetRepository geraete;
 
     public MesskanalService(JdbcTemplate jdbc, SiteRepository sites, MeasurementCatalog catalog,
-            ObjectMapper json) {
+            ObjectMapper json, GeraetRepository geraete) {
         this.jdbc = jdbc;
         this.sites = sites;
         this.catalog = catalog;
         this.json = json;
+        this.geraete = geraete;
     }
 
     private record Zeile(UUID deviceId, String pointKey, boolean enabled, Integer cadenceS,
@@ -57,17 +62,21 @@ public class MesskanalService {
                 """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
                         rs.getString("point_key"), rs.getBoolean("enabled"),
                         (Integer) rs.getObject("cadence_s"), rs.getString("custom")), komponente);
+        MesskanalDto.GeraetEinbau geraet = geraete.laufenderDerKomponente(komponente)
+                .map(e -> new MesskanalDto.GeraetEinbau(e.id(), e.kennzeichen(), e.einbauKennzeichen(),
+                        e.seriennummer()))
+                .orElse(null);
         return new MesskanalDto.Liste(siteId, komponente, catalog.inhaltsstand(),
-                zeilen.stream().map(this::kanal).toList());
+                zeilen.stream().map(z -> kanal(z, geraet)).toList());
     }
 
-    private MesskanalDto.Messkanal kanal(Zeile z) {
+    private MesskanalDto.Messkanal kanal(Zeile z, MesskanalDto.GeraetEinbau geraet) {
         if (z.customDefinition() != null) {
             // Selbstbau: Name und Einheit aus der eigenen Definition; eine Wertart, Größe oder
             // Richtung trägt sie (noch) nicht — also keine.
             JsonNode d = lesen(z.customDefinition());
             return new MesskanalDto.Messkanal(z.pointKey(), text(d, "label"), text(d, "unit"),
-                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), null, List.of());
+                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), geraet, List.of());
         }
         MeasurementCatalog.Point p = catalog.resolve(z.pointKey());
         Semantik s = catalog.semantik(z.pointKey());
@@ -77,7 +86,7 @@ public class MesskanalService {
         return new MesskanalDto.Messkanal(z.pointKey(), anzeigename, p == null ? null : p.unit(),
                 p == null ? null : MesskanalAbbildung.wertart(p.aggregationKind()),
                 MesskanalAbbildung.groesse(quantity), MesskanalAbbildung.richtung(direction),
-                quantity, direction, z.cadenceS(), z.enabled(), z.deviceId(), null, List.of());
+                quantity, direction, z.cadenceS(), z.enabled(), z.deviceId(), geraet, List.of());
     }
 
     private JsonNode lesen(String text) {

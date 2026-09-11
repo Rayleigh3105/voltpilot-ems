@@ -21,8 +21,9 @@ public final class GeraetDto {
     private GeraetDto() {}
 
     /**
-     * Ein Einbau. {@code aus_bestand}: aus einer Bestands-Komponente abgeleitet — dann ist
-     * {@code eingebaut_am} der Beginn ihres Verlaufs in VoltPilot, nicht der Einbautag.
+     * Ein Einbau. {@code aus_bestand}: aus der Komponente abgeleitet (Bestand oder Anlege-Weg,
+     * dieselbe Regel — V20260911240000) — dann ist {@code eingebaut_am} der Beginn ihres
+     * Verlaufs in VoltPilot, nicht der Einbautag.
      * {@code seriennummer}, {@code hersteller}, {@code typ}, {@code bezeichnung},
      * {@code data_source_id} und {@code geraete_id} sind {@code null}, solange nichts erhoben
      * ist — nie geraten. {@code vorgaenger}: die früheren Einbauten desselben Geräts, der

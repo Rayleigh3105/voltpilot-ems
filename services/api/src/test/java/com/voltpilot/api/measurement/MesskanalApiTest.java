@@ -43,9 +43,10 @@ import org.testcontainers.utility.DockerImageName;
  * über DQ-2 (Kadenz 10 s) und der Unterzähler K-4.
  *
  * <p>Bewiesen wird: K-3 hat genau drei Kanäle, jeder mit Richtung, Größe, Einheit und Wertart
- * aus dem Katalog; Selbstbau bleibt ohne Wertart/Größe/Richtung; Gerät und „speist“ sind bis
- * IP-10/IP-13 leer; eine fremde Komponente — anderer Kundenbereich, andere Anlage, unbekannt —
- * ist 404, nie 403.
+ * aus dem Katalog; Selbstbau bleibt ohne Wertart/Größe/Richtung; jeder Kanal trägt das Gerät, das
+ * die Komponente gerade speist (IP-10 — die Komponenten bekamen es im Anlege-Weg), „speist“ ist
+ * bis IP-13 leer; eine fremde Komponente — anderer Kundenbereich, andere Anlage, unbekannt — ist
+ * 404, nie 403.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -163,6 +164,16 @@ class MesskanalApiTest {
                 tenant, site, box, entity, kanal, kadenz, selbstbau);
     }
 
+    /** Das Gerät, das die Komponente laut Geräte-Historie gerade speist, in der Form des Read-Models. */
+    private static JsonNode laufendesGeraet(UUID komponente) {
+        Map<String, Object> g = root.queryForMap("SELECT g.id, g.kennzeichen, g.einbau_kennzeichen, g.seriennummer "
+                + "FROM geraet_komponente v JOIN geraet g ON g.id = v.geraet_id "
+                + "WHERE v.entity_id = ? AND v.gueltig_bis IS NULL", komponente);
+        return MAPPER.createObjectNode().put("id", g.get("id").toString())
+                .put("geraet", (String) g.get("kennzeichen")).put("einbau", (String) g.get("einbau_kennzeichen"))
+                .put("seriennummer", (String) g.get("seriennummer"));
+    }
+
     private static JsonNode eintrag(String liste, String kennzeichen) {
         for (JsonNode n : referenz.get(liste)) {
             if (n.get("kennzeichen").asText().equals(kennzeichen)) {
@@ -195,7 +206,7 @@ class MesskanalApiTest {
             assertThat(k.get("kadenz_s").asInt()).isEqualTo(kadenz);
             assertThat(k.get("aktiv").asBoolean()).isTrue();
             assertThat(k.get("lesende_box").asText()).isEqualTo(b.box().toString());
-            assertThat(k.get("geraet").isNull()).as("Gerät kommt mit IP-10").isTrue();
+            assertThat(k.get("geraet")).as("das laufende Gerät von K-3").isEqualTo(laufendesGeraet(b.k3()));
             assertThat(k.get("speist").isArray() && k.get("speist").isEmpty()).as("speist kommt mit IP-13").isTrue();
         }
         // Wirkenergie Abgabe · Wirkenergie Bezug (Zählerstand) · Wirkleistung — wie die Referenz.
@@ -228,9 +239,10 @@ class MesskanalApiTest {
         assertThat(k.get("kanal").asText()).isEqualTo("custom.modbus_holding.0x0048");
         assertThat(k.get("anzeigename").asText()).isEqualTo("Wirkenergie Bezug");
         assertThat(k.get("einheit").asText()).isEqualTo("kWh");
-        for (String leer : List.of("wertart", "groesse", "richtung", "quantity", "direction", "geraet")) {
+        for (String leer : List.of("wertart", "groesse", "richtung", "quantity", "direction")) {
             assertThat(k.get(leer).isNull()).as(leer).isTrue();
         }
+        assertThat(k.get("geraet")).as("auch ein Selbstbau-Kanal hat sein Gerät").isEqualTo(laufendesGeraet(b.k4()));
         assertThat(k.get("kadenz_s").asInt()).isEqualTo(60);
     }
 

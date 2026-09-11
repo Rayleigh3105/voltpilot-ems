@@ -35,6 +35,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -65,6 +67,8 @@ class UemsGeraetMigrationTest {
 
     private static final String DIESE = "20260911200000";
     private static final String DATEI = "V20260911200000__uems_geraet.sql";
+    /** Die Nacharbeit: die Regel je Komponente, der Anlege-Weg (Trigger) und die umgeschriebene Ableitung. */
+    private static final String ANLEGEWEG = "V20260911240000__uems_geraet_anlegeweg.sql";
 
     private static final Path REFERENZ =
             Path.of("..", "..", "docs", "contracts", "v2", "uems-referenzunternehmen.json");
@@ -282,6 +286,57 @@ class UemsGeraetMigrationTest {
         fuehreDieseMigrationErneutAus();
         assertThat(root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class)).isZero();
         assertThat(inhalte()).isEqualTo(vorher);
+        // Die Nacharbeit ebenso — und sie stellt die Ableitung auf die Regel je Komponente zurück.
+        fuehreErneutAus(ANLEGEWEG);
+        assertThat(root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class)).isZero();
+        assertThat(inhalte()).isEqualTo(vorher);
+    }
+
+    /**
+     * V20260911240000 zieht die Regel in {@code uems_geraet_ableiten_fuer} um; die
+     * Bestands-Ableitung ist nur noch die Schleife darüber. Auf DEMSELBEN Bestand gibt die neue
+     * Fassung GENAU die Geräte der Fassung von V20260911200000 — Gruppierung, Kennzeichen,
+     * Werte, Zeiträume. Geprüft in einer Transaktion, die zurückrollt.
+     */
+    @Test
+    void dieUmgeschriebeneAbleitungGibtDemBestandGenauDieGeraeteDerErstenFassung() throws IOException {
+        fuehreErneutAus(ANLEGEWEG);
+        List<String> felder = List.of("site_id", "kennzeichen", "einbau_kennzeichen", "geraeteart", "hersteller",
+                "typ", "seriennummer", "bezeichnung", "data_source_id", "geraete_id", "eingebaut_am",
+                "ausgebaut_am", "aus_bestand", "created_by");
+        new TransactionTemplate(new DataSourceTransactionManager(root.getDataSource())).executeWithoutResult(tx -> {
+            for (String t : List.of("geraet", "geraet_kennzeichen_seq")) {
+                root.update("DELETE FROM " + t + " WHERE tenant_id IN (?, ?)", AHRENBERG, PROBE);
+            }
+            long geraeteVorher = geraeteNachDerMigration.values().stream()
+                    .filter(g -> List.of(AHRENBERG, PROBE).contains((UUID) g.get("tenant_id"))).count();
+            assertThat(root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class))
+                    .isEqualTo((int) geraeteVorher);
+            for (Map.Entry<String, UUID> k : KOMPONENTEN.entrySet()) {
+                Map<String, Object> speisung = root.queryForMap("SELECT geraet_id, teil_id, gueltig_ab, gueltig_bis "
+                        + "FROM geraet_komponente WHERE entity_id = ?", k.getValue());
+                Map<String, Object> vorher = speisungenNachDerMigration.get(k.getValue()).get(0);
+                assertThat(ts(speisung.get("gueltig_ab"))).as(k.getKey()).isEqualTo(ts(vorher.get("gueltig_ab")));
+                assertThat(speisung.get("gueltig_bis")).as(k.getKey()).isNull();
+                assertThat(speisung.get("teil_id")).as(k.getKey()).isNull();
+                Map<String, Object> neu = root.queryForMap("SELECT * FROM geraet WHERE id = ?", speisung.get("geraet_id"));
+                Map<String, Object> alt = geraetVon(k.getKey());
+                for (String f : felder) {
+                    Object a = alt.get(f);
+                    Object n = neu.get(f);
+                    if (a instanceof Timestamp) {
+                        a = ts(a);
+                        n = ts(n);
+                    }
+                    assertThat(n).as(k.getKey() + "." + f).isEqualTo(a);
+                }
+            }
+            assertThat(root.queryForMap("SELECT naechste_nummer FROM geraet_kennzeichen_seq WHERE tenant_id = ?",
+                    AHRENBERG).get("naechste_nummer")).isEqualTo(zaehlerNachDerMigration.get(AHRENBERG));
+            assertThat(root.queryForMap("SELECT naechste_nummer FROM geraet_kennzeichen_seq WHERE tenant_id = ?",
+                    PROBE).get("naechste_nummer")).isEqualTo(zaehlerNachDerMigration.get(PROBE));
+            tx.setRollbackOnly();
+        });
     }
 
     /**
@@ -440,7 +495,7 @@ class UemsGeraetMigrationTest {
             int steckplatz = komponente.get("steckplatz").asInt();
             UUID karte = w.karte(c1, steckplatz, komponente.get("kartentyp").asText(), ab);
             karten.put(steckplatz, karte);
-            w.speisung(c1, w.komponente("modbus-generic", "modbus-generic", null, false, null, ab), karte, ab);
+            w.komponenteAnKarte(c1, karte, ab);
         }
         assertThat(karten.keySet()).containsExactly(2, 3, 4, 5);
         assertThat(anzahl("SELECT count(*) FROM geraet_komponente WHERE geraet_id = ? AND teil_id IS NOT NULL",
@@ -451,15 +506,14 @@ class UemsGeraetMigrationTest {
         UUID frei = w.karte(c1, null, null, ab);
         w.karte(c1, null, null, ab);
         // Je Karte und Zeitpunkt EINE Komponente.
-        UUID weitere = w.komponente("modbus-generic", "modbus-generic", null, false, null, ab);
         abgelehnt("23P01", "geraet_komponente_eine_komponente_je_karte",
-                () -> w.speisung(c1, weitere, karten.get(2), ab));
+                () -> w.komponenteAnKarte(c1, karten.get(2), ab));
         // Karten trägt nur ein Controller.
         UUID zaehler = w.einbau("GR-8", "GR-8", "zaehler", ab);
         abgelehnt("23503", "geraet_teil_geraet_fk", () -> w.karte(zaehler, 1, null, ab));
         // Die Karte gehört dem Gerät der Speisung (eine freie Karte — sonst verböte schon die
         // Ausschluss-Bedingung, die vor dem Fremdschlüssel prüft).
-        abgelehnt("23503", "geraet_komponente_teil_fk", () -> w.speisung(zaehler, weitere, frei, ab));
+        abgelehnt("23503", "geraet_komponente_teil_fk", () -> w.komponenteAnKarte(zaehler, frei, ab));
     }
 
     // ---- Rechte, Löschen, Offboarding -----------------------------------------------------
@@ -470,8 +524,7 @@ class UemsGeraetMigrationTest {
         Instant ab = Instant.parse("2026-10-01T06:00:00Z");
         UUID controller = w.einbau("GR-1", "GR-1", "controller", ab);
         UUID karte = w.karte(controller, 2, null, ab);
-        UUID k = w.komponente("modbus-generic", "modbus-generic", null, false, null, ab);
-        w.speisung(controller, k, karte, ab);
+        UUID k = w.komponenteAnKarte(controller, karte, ab);
 
         alsTue(w.tenant, () -> {
             for (String t : TABELLEN) {
@@ -537,7 +590,7 @@ class UemsGeraetMigrationTest {
         Instant ab = Instant.parse("2026-10-01T06:00:00Z");
         UUID controller = w.einbau("GR-7", "C-1", "controller", ab);
         UUID karte = w.karte(controller, 2, null, ab);
-        w.speisung(controller, w.komponente("modbus-generic", "modbus-generic", null, false, null, ab), karte, ab);
+        w.komponenteAnKarte(controller, karte, ab);
         w.komponente("battery-hybrid", "battery-hybrid", w.box, true, null);
         ableiten();
 
@@ -701,6 +754,19 @@ class UemsGeraetMigrationTest {
                     + "device_id, control, connection_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?) "
                     + "RETURNING id", UUID.class, tenant, site, rolle, art, anBox, steuert, verbindung,
                     Timestamp.from(angelegt));
+        }
+
+        /**
+         * Eine Komponente, die eine Energiekarte des Controllers speist — angelegt, wie AP-05 sie
+         * anlegen wird: Komponente und Speisung in EINER Anweisung (Transaktion). Der Anlege-Weg
+         * (V20260911240000, zur Commit-Zeit) sieht dann ihre Speisung und legt kein Gerät an.
+         */
+        UUID komponenteAnKarte(UUID geraet, UUID karte, Instant ab) {
+            return root.queryForObject("WITH k AS (INSERT INTO measurement_point (tenant_id, site_id, role, "
+                    + "entity_type, control, created_at) VALUES (?, ?, 'modbus-generic', 'modbus-generic', false, ?) "
+                    + "RETURNING id) INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, teil_id, "
+                    + "gueltig_ab) SELECT ?, ?, k.id, ?, ? FROM k RETURNING entity_id", UUID.class, tenant, site,
+                    Timestamp.from(ab), tenant, geraet, karte, Timestamp.from(ab));
         }
 
         UUID einbau(String kennzeichen, String einbau, String art, Instant ab) {
@@ -901,9 +967,13 @@ class UemsGeraetMigrationTest {
 
     /** Dieselbe Datei noch einmal, wie Flyway sie ausführt (Platzhalter ersetzt). */
     private static void fuehreDieseMigrationErneutAus() throws IOException {
+        fuehreErneutAus(DATEI);
+    }
+
+    private static void fuehreErneutAus(String datei) throws IOException {
         String sql;
-        try (InputStream in = UemsGeraetMigrationTest.class.getResourceAsStream("/db/migration/" + DATEI)) {
-            sql = new String(Objects.requireNonNull(in, DATEI).readAllBytes(), StandardCharsets.UTF_8);
+        try (InputStream in = UemsGeraetMigrationTest.class.getResourceAsStream("/db/migration/" + datei)) {
+            sql = new String(Objects.requireNonNull(in, datei).readAllBytes(), StandardCharsets.UTF_8);
         }
         root.execute(sql.replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER));
     }

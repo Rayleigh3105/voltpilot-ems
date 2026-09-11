@@ -6,7 +6,9 @@ Neu angelegt am 11.09.2026 (AP-04 IP-10). Migration
 (`GET /api/v1/sites/{siteId}/geraete`, `GET /api/v1/geraete/{id}`), Formen `web/dto/GeraetDto`.
 Beweise: `UemsGeraetMigrationTest` (Testcontainers: Ableitung, Zaun, Constraints, Rechte,
 Offboarding, Bestand zeichengleich), `GeraetApiTest` (Keycloak: Vorgänger am MS-06-Fall, WAGO
-C-1 mit vier Karten, fremd 404), `GeraetSchnittstelleVertragTest` (rein: OpenAPI ⟷ DTO ⟷ CHECK).
+C-1 mit vier Karten, fremd 404, Messkanal zeigt das laufende Gerät), `GeraetSchnittstelleVertragTest`
+(rein: OpenAPI ⟷ DTO ⟷ CHECK), `GeraetAnlegewegTest` (Keycloak: je Anlege-Route ein Gerät,
+Nachlauf der Ableitung = 0, Hybrid in beiden Reihenfolgen, Zaun, Löschen, Messkanal).
 
 ## Das Modell in drei Sätzen
 
@@ -44,8 +46,29 @@ Code, nichts geraten:
   `unit_id` (bei solarman_v5 `mb_slave_id`). Datenquelle und Bezeichnung bleiben NULL.
 - Kennzeichen GR-n je Kundenbereich über `geraet_kennzeichen_seq` + `uems_geraet_kennzeichen`
   (überspringt belegte Nummern), Reihenfolge: Anlage nach Anlagezeit, darin früheste Komponente.
-- Komponenten, die NACH der Migration entstehen, haben KEIN Gerät, bis ein Folgepaket den
-  Anlege-Weg anschließt (oder die Ableitung erneut läuft) — die API zeigt dann ehrlich keines.
+- Seit `V20260911240000` wohnt die Regel in `uems_geraet_ableiten_fuer(komponente)`; die
+  Bestands-Ableitung ist nur noch die Schleife darüber (siehe „Der Anlege-Weg“).
+
+## Der Anlege-Weg (`V20260911240000`, IP-10-Nacharbeit)
+
+- **Neue Komponenten bekommen ihr Gerät im Anlege-Weg** — nach DERSELBEN Regel, auch
+  `aus_bestand = true` (eingebaut_am ist der Verlaufsbeginn = Anlagezeit, kein erhobener
+  Einbautag). Ein `CONSTRAINT TRIGGER … AFTER INSERT ON measurement_point DEFERRABLE INITIALLY
+  DEFERRED` ruft die Regel je Zeile: deckt alle fünf `INSERT INTO measurement_point` in
+  `EntityRegistryRepository`/`MeasurementPointRepository` und jede künftige Stelle ab.
+- ⚠ **Zur Commit-Zeit**, nicht beim INSERT: die Anlege-Wege setzen Typ, Verbindung, Pin erst
+  NACH der Zeile (setEntityConfig, `ComponentDefinitionRepository`); der Commit sieht den
+  Endstand — und die Geschwister eines Hybrids in jeder Reihenfolge einer Transaktion. Wer eine
+  Komponente samt Speisung in EINER Transaktion anlegt (Controller-Karte, AP-05), behält genau
+  diese: die Regel legt nur für Komponenten OHNE jede Speisung an. Ohne Transaktion (Tests mit
+  autocommit) ist das Ende der Anweisung der Commit. Umgruppiert wird nie: kommt der
+  Wechselrichter in einer SPÄTEREN Transaktion, behalten schon versorgte Geschwister ihr Gerät.
+- Rechte: `uems_geraet_ableiten_fuer` ist SECURITY INVOKER (RLS der App-Rolle, fremde Komponente
+  = tut nichts), EXECUTE nur App- und Admin-Rolle (der Trigger ruft sie unter der anlegenden
+  Rolle); `uems_geraete_ableiten()` (alle Mandanten) bleibt PUBLIC-entzogen.
+- ⚠ Tests, die eine Bestands-Komponente OHNE Gerät brauchen, legen sie bei
+  `ALTER TABLE measurement_point DISABLE TRIGGER uems_geraet_anlegen` an (in EINER Transaktion,
+  `GeraetAnlegewegTest.bestandsKomponente`).
 
 ## Löschen, Rechte, Offboarding
 

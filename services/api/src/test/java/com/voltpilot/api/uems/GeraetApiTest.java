@@ -58,7 +58,9 @@ import org.yaml.snakeyaml.Yaml;
  *   <li>GR-7 „WAGO-Controller C-1" mit EK-1 … EK-4 auf den Steckplätzen 2 … 5, je Karte eine
  *       Komponente;</li>
  *   <li>die Antwort trägt genau die Felder der OpenAPI; ein fremdes Gerät und eine fremde Anlage
- *       sind 404, nie 403.</li>
+ *       sind 404, nie 403;</li>
+ *   <li>das Messkanal-Read-Model zeigt je Kanal das Gerät, das die Komponente gerade speist, in
+ *       der Form von {@code geraet_einbau} des Herkunftsvertrags.</li>
  * </ul>
  * Den Zählerwechsel selbst schreibt hier die Datenbank von Hand, so wie ihn IP-17 schreiben
  * wird — eine Schreib-Route gibt es in diesem Paket nicht.
@@ -132,6 +134,7 @@ class GeraetApiTest {
     private static final Map<String, UUID> ANLAGEN = new LinkedHashMap<>();
     private static final Map<String, UUID> KOMPONENTEN = new LinkedHashMap<>();
     private static final Map<String, UUID> EINBAUTEN = new LinkedHashMap<>();
+    private static final Map<String, UUID> BOXEN = new LinkedHashMap<>();
     private static UUID demoGeraet;
     private static UUID demoAnlage;
 
@@ -315,6 +318,7 @@ class GeraetApiTest {
                     ANLAGEN.get(box.get("heimat_anlage").asText()), box.get("seriennummer").asText(),
                     zeit(box.get("in_betrieb_ab"))));
         }
+        BOXEN.putAll(boxen);
 
         int n = 0;
         for (String k : List.of("K-1", "K-3", "K-4", "K-5", "K-6", "K-7")) {
@@ -333,8 +337,9 @@ class GeraetApiTest {
                     zeit(komponente.get("in_betrieb_ab")));
             KOMPONENTEN.put(k, id);
         }
-        // Dieselbe Ableitung wie die Migration — für die Komponenten, die NACH ihr entstanden sind.
-        root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class);
+        // Die Komponenten bekamen ihr Gerät schon im Anlege-Weg (V20260911240000) — nach derselben
+        // Regel wie die Bestands-Ableitung, die deshalb nichts mehr anlegt.
+        assertThat(root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class)).isZero();
         assertThat(root.queryForList("SELECT kennzeichen FROM geraet WHERE tenant_id = ? ORDER BY "
                 + "length(kennzeichen), kennzeichen", String.class, ahrenberg))
                 .containsExactly("GR-1", "GR-2", "GR-3", "GR-4", "GR-5", "GR-6");
@@ -370,16 +375,18 @@ class GeraetApiTest {
         int ek = 0;
         for (String k : List.of("K-8.1", "K-8.2", "K-8.3", "K-8.4")) {
             JsonNode komponente = element(referenz.get("komponenten"), k);
-            UUID id = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
-                    + "entity_type, device_id, created_at) VALUES (?, ?, 'modbus-generic', ?, 'modbus-generic', ?, ?) "
-                    + "RETURNING id", UUID.class, ahrenberg, ANLAGEN.get("AN-2"), komponente.get("name").asText(),
-                    boxen.get("E-2"), zeit(komponente.get("in_betrieb_ab")));
-            KOMPONENTEN.put(k, id);
             UUID karte = root.queryForObject("INSERT INTO geraet_teil (tenant_id, geraet_id, steckplatz, bezeichnung, "
                     + "typ, eingebaut_am) VALUES (?, ?, ?, ?, ?, ?) RETURNING id", UUID.class, ahrenberg, c1,
                     komponente.get("steckplatz").asInt(), "EK-" + (++ek), komponente.get("kartentyp").asText(), ab);
-            root.update("INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, teil_id, gueltig_ab) "
-                    + "VALUES (?, ?, ?, ?, ?)", ahrenberg, c1, id, karte, ab);
+            // Komponente und Speisung in EINER Anweisung: der Anlege-Weg (zur Commit-Zeit) sieht die
+            // Speisung über die Karte und legt kein eigenes Gerät an.
+            UUID id = root.queryForObject("WITH k AS (INSERT INTO measurement_point (tenant_id, site_id, role, "
+                    + "label, entity_type, device_id, created_at) VALUES (?, ?, 'modbus-generic', ?, 'modbus-generic', "
+                    + "?, ?) RETURNING id) INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, teil_id, "
+                    + "gueltig_ab) SELECT ?, ?, k.id, ?, ? FROM k RETURNING entity_id", UUID.class, ahrenberg,
+                    ANLAGEN.get("AN-2"), komponente.get("name").asText(), boxen.get("E-2"),
+                    zeit(komponente.get("in_betrieb_ab")), ahrenberg, c1, karte, ab);
+            KOMPONENTEN.put(k, id);
         }
 
         // Ein Gerät im Kundenbereich des Benutzers demo — für den Blick mit dem Kunden-Token.
@@ -388,8 +395,67 @@ class GeraetApiTest {
         UUID k = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type, "
                 + "connection_json) VALUES (?, ?, 'modbus-generic', 'modbus-generic', '{\"unit_id\":5}'::jsonb) "
                 + "RETURNING id", UUID.class, DEMO_KUNDENBEREICH, demoAnlage);
-        root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class);
+        assertThat(root.queryForObject("SELECT uems_geraete_ableiten()", Integer.class)).isZero();
         demoGeraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ?", UUID.class, k);
+    }
+
+    // ---- Das Messkanal-Read-Model zeigt das laufende Gerät (IP-10) ---------------------------
+
+    /**
+     * Jeder Kanal trägt das Gerät, das die Komponente JETZT speist — in der Form von
+     * {@code geraet_einbau} des Herkunftsvertrags, plus {@code id}: K-3 → GR-2 ohne Wechsel
+     * (Einbau = Gerät, keine Seriennummer erhoben); K-5 → GR-4 mit dem Einbau, dessen Zeitraum
+     * gerade läuft — Z-5a bis 18.11.2026 10:40, danach Z-5b (Referenzdatei).
+     */
+    @Test
+    void derMesskanalZeigtDasLaufendeGeraetInDerFormDesHerkunftsvertrags() throws IOException {
+        JsonNode herkunft = MAPPER.readTree(CONTRACTS.resolve("v2").resolve("messwert-herkunft.schema.json")
+                .toFile());
+        ObjectNode geraetEinbau = MAPPER.createObjectNode().put("$ref", "#/$defs/herkunft/properties/geraet_einbau");
+        geraetEinbau.set("$defs", herkunft.get("$defs"));
+
+        JsonNode k3 = messkanalGeraet("K-3");
+        UUID gr2 = root.queryForObject("SELECT id FROM geraet WHERE tenant_id = ? AND kennzeichen = 'GR-2'",
+                UUID.class, ahrenberg);
+        JsonNode gr2Referenz = element(referenz.get("geraete"), "GR-2");
+        assertThat(k3.get("id").asText()).isEqualTo(gr2.toString());
+        assertThat(k3.get("geraet").asText()).isEqualTo(gr2Referenz.get("kennzeichen").asText());
+        assertThat(k3.get("einbau").asText()).isEqualTo(gr2Referenz.at("/einbauten/0/kennzeichen").asText());
+        assertThat(k3.get("seriennummer").isNull()).as("im Bestand nicht erhoben — nie erfunden").isTrue();
+
+        JsonNode gr4 = element(referenz.get("geraete"), "GR-4");
+        JsonNode z5a = element(gr4.get("einbauten"), "Z-5a");
+        JsonNode z5b = element(gr4.get("einbauten"), "Z-5b");
+        JsonNode laeuft = zeit(z5a.get("gueltig_bis")).toInstant().isAfter(java.time.Instant.now()) ? z5a : z5b;
+        JsonNode k5 = messkanalGeraet("K-5");
+        assertThat(k5.get("id").asText()).isEqualTo(EINBAUTEN.get(laeuft.get("kennzeichen").asText()).toString());
+        assertThat(k5.get("geraet").asText()).isEqualTo("GR-4");
+        assertThat(k5.get("einbau").asText()).isEqualTo(laeuft.get("kennzeichen").asText());
+        assertThat(k5.get("seriennummer").asText()).isEqualTo(laeuft.get("seriennummer").asText());
+
+        for (JsonNode g : List.of(k3, k5)) {
+            ObjectNode ohneId = g.deepCopy();
+            ohneId.remove("id");
+            assertThat(UemsSchemaLaeufer.verstoesse(ohneId, geraetEinbau)).as(g.toString()).isEmpty();
+        }
+    }
+
+    /** Das {@code geraet} der Kanäle einer Komponente — für jeden Kanal dasselbe. */
+    private JsonNode messkanalGeraet(String komponente) {
+        UUID id = KOMPONENTEN.get(komponente);
+        for (String kanal : List.of("sunspec.model_203.totwhimp", "sunspec.model_203.w")) {
+            root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, "
+                    + "point_key, enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, "
+                    + "apply_status, retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 10, 1, "
+                    + "now(), '2026.08.26.3', 'test', 'pending_edge', 'energy_counter', 'fifteen_minute') "
+                    + "ON CONFLICT DO NOTHING", ahrenberg, ANLAGEN.get("AN-1"), BOXEN.get("E-1"), id, kanal);
+        }
+        JsonNode kanaele = ok(rufe("/api/v1/sites/" + ANLAGEN.get("AN-1") + "/komponenten/" + id + "/messkanaele",
+                ahrenbergAdmin)).get("messkanaele");
+        assertThat(kanaele).hasSize(2);
+        assertThat(kanaele.get(1).get("geraet")).isEqualTo(kanaele.get(0).get("geraet"));
+        assertThat(kanaele.get(0).get("geraet").isObject()).as(komponente).isTrue();
+        return kanaele.get(0).get("geraet");
     }
 
     // ---- Gerüst: Schnittstelle ------------------------------------------------------------

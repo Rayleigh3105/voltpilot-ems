@@ -245,8 +245,10 @@ tags:
       Komponente ein Einbau wann speist, steht zeitgültig halboffen auf die
       Minute in `komponenten`. Wie die übrigen UEMS-Schnittstellen in
       snake_case. Jede Bestands-Komponente hat nach der Migration V20260911200000
-      genau ein laufendes Gerät (`aus_bestand`: eingebaut_am ist dann der Beginn
-      ihres Verlaufs, nicht der Einbautag); was nicht erhoben ist, ist `null`,
+      genau ein laufendes Gerät, jede neu angelegte bekommt es im Anlege-Weg nach
+      derselben Regel (V20260911240000; `aus_bestand`: aus der Komponente
+      abgeleitet, eingebaut_am ist dann der Beginn ihres Verlaufs, nicht der
+      Einbautag); was nicht erhoben ist, ist `null`,
       nie geraten. Mandanten-Zaun ist die RLS (fremd = 404, nie 403;
       Plattform-Admins nutzen X-Tenant-Id). Recht `messwerte.ansehen`
       (docs/contracts/v2/rechte-matrix.json) - die Durchsetzung kommt mit AP-03,
@@ -8134,8 +8136,10 @@ paths:
         Ein Katalogwort ohne Vertragswort (etwa `import_export`, der Vorzeichen-Wert
         eines Zweirichtungszählers) ergibt `null` - nie ein geratenes Nachbarwort.
         Selbstbau trägt Name und Einheit, aber (noch) keine Wertart, Größe oder
-        Richtung. `geraet` kommt mit IP-10, `speist` mit IP-13 - bis dahin `null`
-        bzw. leer. Mandanten-Zaun ist die RLS: eine fremde Komponente, eine
+        Richtung. `geraet` ist das Gerät, das die Komponente JETZT speist (AP-04
+        IP-10: die Speisung, deren halboffener Zeitraum jetzt enthält) - für jeden
+        Kanal dasselbe, `null` ohne laufende Speisung, nie geraten. `speist` kommt
+        mit IP-13 - bis dahin leer. Mandanten-Zaun ist die RLS: eine fremde Komponente, eine
         Komponente einer anderen Anlage und eine unbekannte sind 404, nie 403;
         Plattform-Admins nutzen X-Tenant-Id.
       parameters:
@@ -8163,7 +8167,11 @@ paths:
                     kadenz_s: 10
                     aktiv: true
                     lesende_box: 1c9e3a7b-5d2f-4b60-8e14-7a0b2c3d4e5f
-                    geraet: null
+                    geraet:
+                      id: 7d2c9e14-3a5b-4f60-8b17-2e0c4d6a8f31
+                      geraet: GR-2
+                      einbau: GR-2
+                      seriennummer: null
                     speist: []
   /api/v1/sites/{siteId}/geraete:
     parameters:
@@ -15126,8 +15134,23 @@ components:
         kadenz_s: { type: integer, nullable: true, description: "Die gewünschte Kadenz der Mess-Selektion (AP-07 E9)." }
         aktiv: { type: boolean, description: "Ob die Box den Kanal gerade aufzeichnet; abgewählt bleibt er sichtbar." }
         lesende_box: { type: string, format: uuid, description: "Die Box, die den Kanal liest." }
-        geraet: { type: object, nullable: true, description: "Das eingebaute Gerät - kommt mit AP-04 IP-10, bis dahin null." }
+        geraet:
+          nullable: true
+          description: "Das Gerät, das die Komponente jetzt speist (AP-04 IP-10); null ohne laufende Speisung - nie geraten."
+          allOf: [{ $ref: "#/components/schemas/MesskanalGeraet" }]
         speist: { type: array, items: { type: object }, description: "Welche Messstellen der Kanal speist - kommt mit AP-04 IP-13, bis dahin leer." }
+    MesskanalGeraet:
+      type: object
+      description: >
+        Die Form von `geraet_einbau` des Herkunftsvertrags
+        (docs/contracts/v2/messwert-herkunft.schema.json, Angabe 10) plus `id`:
+        der Nachschlag je Wert (AP-07) und das Read-Model sagen dasselbe.
+      required: [id, geraet, einbau, seriennummer]
+      properties:
+        id: { type: string, format: uuid, description: "Der Einbau - für GET /api/v1/geraete/{id}." }
+        geraet: { type: string, description: "Das Gerät (GR-4), das über einen Wechsel an seiner Stelle bleibt." }
+        einbau: { type: string, nullable: true, description: "Das konkret eingebaute Gerät (Z-5a); ohne Wechsel dasselbe wie `geraet`. Die Tabelle hält es NOT NULL; fehlte es, stünde hier null, nie ein geratenes." }
+        seriennummer: { type: string, nullable: true, description: "Die Seriennummer des Einbaus; null = nicht erhoben." }
     MessstelleAnlegen:
       type: object
       additionalProperties: false
@@ -15412,7 +15435,7 @@ components:
         geraete_id: { type: integer, minimum: 0, nullable: true, description: "Die Geräte-ID hinter der Quelle (Modbus-Unit-ID)." }
         eingebaut_am: { type: string, format: date-time }
         ausgebaut_am: { type: string, format: date-time, nullable: true }
-        aus_bestand: { type: boolean, description: "Aus einer Bestands-Komponente abgeleitet: eingebaut_am ist der Beginn ihres Verlaufs in VoltPilot, nicht der Einbautag." }
+        aus_bestand: { type: boolean, description: "Aus der Komponente abgeleitet (Bestand oder Anlege-Weg, dieselbe Regel): eingebaut_am ist der Beginn ihres Verlaufs in VoltPilot, nicht der Einbautag." }
         komponenten:
           type: array
           items: { $ref: "#/components/schemas/GeraetKomponente" }

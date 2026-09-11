@@ -34,4 +34,7 @@ Neu am 11.09.2026 (AP-04 IP-9). Zwei Teile, ein Zweck: jeder Messkanal trägt di
 - **Kanäle = Zeilen der Mess-Selektion** (aktiv und abgewählt), gelesen nur über `entity_id`.
   Die Standard-Kanäle der v2-Entität (`telemetry_v2.channel`, z. B. `power_kw`) stehen noch
   nicht darin; Selbstbau hat Name und Einheit, aber keine Wertart/Größe/Richtung.
-  `geraet` bleibt bis IP-10 `null`, `speist` bis IP-13 leer — beide additiv zu füllen.
+  `geraet` ist seit der IP-10-Nacharbeit das Gerät der Speisung, deren halboffener Zeitraum
+  JETZT enthält (`GeraetRepository.laufenderDerKomponente`), in der Form von `geraet_einbau` des
+  Herkunftsvertrags plus `id` (`MesskanalDto.GeraetEinbau`, OpenAPI `MesskanalGeraet`); ohne
+  laufende Speisung `null`. `speist` bleibt bis IP-13 leer.

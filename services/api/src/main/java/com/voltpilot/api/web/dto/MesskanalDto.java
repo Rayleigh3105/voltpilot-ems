@@ -13,7 +13,8 @@ import java.util.UUID;
  * Messstellen-Vertrags: {@code groesse}, {@code richtung}, {@code einheit} und {@code wertart}
  * sind genau die Eingänge von {@code MessstelleRegeln.passung} für eine spätere
  * Quellenbindung (IP-13). Daneben stehen die Katalogwörter ({@code quantity},
- * {@code direction}), aus denen sie abgebildet sind.
+ * {@code direction}), aus denen sie abgebildet sind, und das Gerät, das die Komponente gerade
+ * speist (IP-10).
  */
 public final class MesskanalDto {
     private MesskanalDto() {}
@@ -36,7 +37,8 @@ public final class MesskanalDto {
      * @param kadenzS     die gewünschte Kadenz der Mess-Selektion (AP-07 E9)
      * @param aktiv       ob die Box den Kanal gerade aufzeichnet (abgewählt bleibt er sichtbar)
      * @param lesendeBox  die Box, die ihn liest
-     * @param geraet      das eingebaute Gerät — kommt mit IP-10, bis dahin {@code null}
+     * @param geraet      das Gerät, das die Komponente JETZT speist ({@link GeraetEinbau});
+     *                    {@code null} ohne laufende Speisung — nie geraten
      * @param speist      welche Messstellen er speist — kommt mit IP-13, bis dahin leer
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -52,6 +54,22 @@ public final class MesskanalDto {
             Integer kadenzS,
             boolean aktiv,
             UUID lesendeBox,
-            Object geraet,
+            GeraetEinbau geraet,
             List<Object> speist) {}
+
+    /**
+     * Das eingebaute Gerät eines Messkanals (UEMS AP-04 IP-10) — in der Form von
+     * {@code geraet_einbau} des Herkunftsvertrags ({@code messwert-herkunft.schema.json},
+     * Angabe 10), damit der Nachschlag je Wert (AP-07) und diese Fläche dasselbe sagen; dazu
+     * die Zeilen-Kennung für {@code GET /api/v1/geraete/{id}}.
+     *
+     * @param id           der Einbau ({@code geraet.id})
+     * @param geraet       das Gerät, das über einen Wechsel an seiner Stelle bleibt (GR-4)
+     * @param einbau       das konkret eingebaute Gerät (Z-5a) — ohne Wechsel dasselbe wie
+     *                     {@code geraet}. Die Tabelle hält es {@code NOT NULL}; fehlte es,
+     *                     stünde hier {@code null}, nie ein geratenes
+     * @param seriennummer die Seriennummer des Einbaus; {@code null} = nicht erhoben
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record GeraetEinbau(UUID id, String geraet, String einbau, String seriennummer) {}
 }

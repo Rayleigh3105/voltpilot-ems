@@ -56,6 +56,18 @@ public class GeraetRepository {
                 id).stream().findFirst();
     }
 
+    /**
+     * Der Einbau, der die Komponente JETZT speist: die Speisung, deren halboffener Zeitraum
+     * {@code now()} enthält (je Komponente und Zeitpunkt höchstens eine, die
+     * Ausschluss-Bedingung der Tabelle). Leer ohne laufende Speisung — nie geraten.
+     */
+    public Optional<Einbau> laufenderDerKomponente(UUID entityId) {
+        return jdbc.query("SELECT " + SPALTEN + " FROM geraet_komponente v JOIN geraet g ON g.id = v.geraet_id "
+                + "WHERE v.entity_id = ? AND v.gueltig_ab <= now() "
+                + "AND (v.gueltig_bis IS NULL OR v.gueltig_bis > now())",
+                GeraetRepository::einbau, entityId).stream().findFirst();
+    }
+
     /** Alle Einbauten der Anlage, ausgebaute eingeschlossen. */
     public List<Einbau> derAnlage(UUID siteId) {
         return jdbc.query("SELECT " + SPALTEN + " FROM geraet g WHERE g.site_id = ?" + REIHENFOLGE,
