@@ -53,6 +53,9 @@ unternehmen
 standort
 anlage_standort
 ort_aenderung
+ort
+ort_zuordnung
+flaeche_gueltigkeit
 messstelle
 messstelle_groesse
 messstelle_kennzeichen
