@@ -53,6 +53,11 @@ unternehmen
 standort
 anlage_standort
 ort_aenderung
+messstelle
+messstelle_groesse
+messstelle_kennzeichen
+messstelle_kennzeichen_seq
+messstelle_aenderung
 "
 
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.

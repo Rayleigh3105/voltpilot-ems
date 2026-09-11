@@ -120,12 +120,16 @@ public class TenantRepository {
                 }
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
-                // The UEMS master data (V20260911100000) references tenant/site with
-                // ON DELETE RESTRICT - never a cascade. Offboarding is the ONE way a
-                // company ends, so it removes them explicitly, children first. The
-                // append-only log ort_aenderung carries no FK and stays (the
+                // The UEMS master data (V20260911100000, V20260911140000) references
+                // tenant/site with ON DELETE RESTRICT - never a cascade. Offboarding is
+                // the ONE way a company ends, so it removes them explicitly, children
+                // first (a Messstelle before the Orte it will point to). The append-only
+                // logs ort_aenderung and messstelle_aenderung carry no FK and stay (the
                 // component_change_event pattern).
-                for (String table : new String[] {"anlage_standort", "standort", "unternehmen"}) {
+                for (String table : new String[] {
+                        "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
+                        "messstelle_kennzeichen_seq",
+                        "anlage_standort", "standort", "unternehmen"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 deleteByTenant(con, "tenant", tenantId, "id");
