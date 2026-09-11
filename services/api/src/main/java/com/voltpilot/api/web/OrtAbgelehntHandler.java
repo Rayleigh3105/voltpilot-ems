@@ -20,6 +20,14 @@ public class OrtAbgelehntHandler {
 
     @ExceptionHandler(OrtAbgelehnt.class)
     public ResponseEntity<Map<String, Object>> abgelehnt(OrtAbgelehnt e) {
+        return antwort(e);
+    }
+
+    /**
+     * Die Antwort-Form — auch für die Standort-Wahl beim Anlegen einer Anlage
+     * ({@code SiteController}, IP-9), die nur DIESE Ablehnung in dieser Form gibt.
+     */
+    static ResponseEntity<Map<String, Object>> antwort(OrtAbgelehnt e) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", e.code());
         body.put("message", e.getMessage());

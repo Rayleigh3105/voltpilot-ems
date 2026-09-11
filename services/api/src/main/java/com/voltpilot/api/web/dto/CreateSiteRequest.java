@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Request to create a site (Standort). Used both by the customer endpoint
@@ -49,6 +50,14 @@ import java.math.BigDecimal;
  * connection point (Einspeisegrenze am Netzanschlusspunkt, kW, strictly
  * positive); omit/null = no connection-point limit. The optimizer enforces it
  * export-only.
+ *
+ * <p>{@code standortId} (additiv, Bestandsübernahme der Standorte AP-02 IP-9): der
+ * Standort, zu dem die neue Anlage gehört — sie wird ihm ab dem Tag ihres Anlegens
+ * zugeordnet. Weggelassen: bei genau einem Standort des Kundenbereichs ist er vorbelegt,
+ * ohne Standort bleibt die Anlage wie bisher „noch nicht zugeordnet", bei mehreren ist
+ * die Wahl Pflicht (422 {@code standort_waehlen}). Nur {@code POST /api/v1/sites} liest
+ * das Feld; die Plattform-Route {@code POST /api/v1/admin/tenants/{tenantId}/sites}
+ * überliest es (sie legt wie bisher ohne Zuordnung an).
  */
 public record CreateSiteRequest(
         @NotBlank String name,
@@ -79,7 +88,8 @@ public record CreateSiteRequest(
                 message = "maxFeedInKw must be positive")
         @Digits(integer = 6, fraction = 2,
                 message = "maxFeedInKw must have at most 2 decimal places")
-                BigDecimal maxFeedInKw) {
+                BigDecimal maxFeedInKw,
+        UUID standortId) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

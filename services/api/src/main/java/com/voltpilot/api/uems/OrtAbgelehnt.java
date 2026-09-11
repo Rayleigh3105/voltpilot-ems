@@ -47,7 +47,12 @@ public final class OrtAbgelehnt extends RuntimeException {
         /** Den Ort gibt es am „gültig ab“ noch nicht; der Satz nennt seinen ersten Tag. */
         GAB_ES_NOCH_NICHT("gab_es_noch_nicht", 422),
         /** Dieselbe Fläche gilt an dem Tag schon — es gäbe nichts zu ändern. */
-        GLEICHE_FLAECHE("gleiche_flaeche", 400);
+        GLEICHE_FLAECHE("gleiche_flaeche", 400),
+        /**
+         * Eine neue Anlage ohne {@code standortId} in einem Kundenbereich mit MEHREREN Standorten
+         * (IP-9, §6.3: vorbelegt nur bei genau einem); {@code standorte} nennt die Auswahl.
+         */
+        STANDORT_WAEHLEN("standort_waehlen", 422);
 
         private final String code;
         private final int status;

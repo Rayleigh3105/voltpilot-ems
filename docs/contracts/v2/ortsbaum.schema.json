@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/v2/ortsbaum.schema.json",
   "title": "UEMS-Ortsbaum: Zuordnungen mit „gültig ab“, Stand am, Rückwirkung, Archivieren",
-  "description": "Der Vertrag des ORTSBAUMS im Unternehmens-Energiemanagement (UEMS AP-02 IP-1): wie Standorte, Gebäude und Bereiche zusammenhängen, wie Anlagen und Messstellen ihnen zugeordnet sind — und wie das über die Zeit gilt. Er beschreibt (a) den Baum mit seinen Zuordnungen, (b) die Ergebnisse der zwölf Ableitungen samt Kundensätzen und (c) die Vektor-Datei ortsbaum-vectors.json, die beide Zwillinge (Java services/api .../uems/OrtsbaumAbleitung, TS frontend/portal/src/uemsOrtsbaum.ts) gegeneinander pinnt. Ein „gültig ab“ ist immer ein Tag und gilt ab 00:00 Uhr in der Zeitzone des Standorts.",
+  "description": "Der Vertrag des ORTSBAUMS im Unternehmens-Energiemanagement (UEMS AP-02 IP-1): wie Standorte, Gebäude und Bereiche zusammenhängen, wie Anlagen und Messstellen ihnen zugeordnet sind — und wie das über die Zeit gilt. Er beschreibt (a) den Baum mit seinen Zuordnungen, (b) die Ergebnisse der zwölf Ableitungen samt Kundensätzen und (c) die Vektor-Datei ortsbaum-vectors.json, die beide Zwillinge (Java services/api .../uems/OrtsbaumAbleitung, TS frontend/portal/src/uemsOrtsbaum.ts) gegeneinander pinnt. Ein „gültig ab“ ist immer ein Tag und gilt ab 00:00 Uhr in der Zeitzone des Standorts. Dazu (Familie `bestandsuebernahme`, AP-02 IP-9) die Regel der Bestandsübernahme: was ein Kundenbereich mit Bestandsanlagen bei der Einführung bekommt — Zwillinge BestandsuebernahmeAbleitung.java / uemsBestandsuebernahme.ts.",
   "type": "object",
   "required": [
     "schema_version",
@@ -22,6 +22,8 @@
     "flaeche_quellen",
     "gruende_flaeche",
     "objekt_zustaende",
+    "arten_bestandsuebernahme",
+    "gruende_bestandsuebernahme",
     "szenarien",
     "cases"
   ],
@@ -156,6 +158,14 @@
     "objekt_zustaende": {
       "description": "Die Zustände einer Anlage oder Messstelle (AP-00). Nur „aktiv“ verhindert das Archivieren.",
       "const": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"]
+    },
+    "arten_bestandsuebernahme": {
+      "description": "Was die Bestandsübernahme (AP-02 IP-9, E5) für einen Kundenbereich tut: nichts, einen Standort mit Zuordnung anlegen (genau eine Anlage) oder je Anlage einen Vorschlag schreiben (mehrere Anlagen).",
+      "const": ["nichts", "standort_anlegen", "vorschlagen"]
+    },
+    "gruende_bestandsuebernahme": {
+      "description": "Warum — in der Reihenfolge, in der die Regel fragt: kein Unternehmen, keine Anlage, schon ein Standort (auch ein archivierter), schon auf dem Vorschau-Weg, genau eine Anlage, mehrere Anlagen.",
+      "const": ["kein_unternehmen", "keine_anlage", "hat_standort", "vorschau_offen", "eine_anlage", "mehrere_anlagen"]
     },
     "szenarien": {
       "description": "Benannte Beispiel-Bäume des Referenzunternehmens, auf die sich die Fälle beziehen.",
@@ -880,6 +890,107 @@
       }
     },
 
+    "bestandsuebernahmeEingang": {
+      "description": "Was die Regel der Bestandsübernahme liest (AP-02 IP-9): das Unternehmen des Kundenbereichs (nur seine Zeitzone; null = keines), seine Anlagen mit dem Zeitpunkt ihres Anlegens (site.created_at), seine Standorte — archiviert oder nicht, sie zählen — und die Anlagen, die schon einen Vorschlag haben.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unternehmen", "anlagen", "standorte", "vorschlaege"],
+      "properties": {
+        "unternehmen": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["zeitzone"],
+              "properties": { "zeitzone": { "$ref": "#/$defs/zeitzone" } }
+            },
+            { "type": "null" }
+          ]
+        },
+        "anlagen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennzeichen", "name", "angelegt_um"],
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "name": { "type": "string" },
+              "angelegt_um": { "$ref": "#/$defs/zeitpunkt" }
+            }
+          }
+        },
+        "standorte": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennzeichen", "archiviert"],
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+              "archiviert": { "type": "boolean" }
+            }
+          }
+        },
+        "vorschlaege": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" } }
+      }
+    },
+    "bestandsuebernahmeErgebnis": {
+      "description": "Was die Bestandsübernahme für den Kundenbereich tut. `standort` und `zuordnung` nur bei `standort_anlegen` (Name der Anlage, Entwurf, es fehlt: Adresse, Zeitzone des Unternehmens; Zuordnung ab dem Tag des Anlegens in dieser Zeitzone), `vorschlaege` nur bei `vorschlagen` — in der Reihenfolge der Anlagen, nur für Anlagen ohne Vorschlag.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "grund", "standort", "zuordnung", "vorschlaege"],
+      "properties": {
+        "art": { "enum": ["nichts", "standort_anlegen", "vorschlagen"] },
+        "grund": {
+          "enum": ["kein_unternehmen", "keine_anlage", "hat_standort", "vorschau_offen", "eine_anlage", "mehrere_anlagen"]
+        },
+        "standort": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "zustand", "es_fehlt", "zeitzone"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                "zustand": { "const": "entwurf" },
+                "es_fehlt": { "const": ["adresse"] },
+                "zeitzone": { "$ref": "#/$defs/zeitzone" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "zuordnung": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["anlage", "gueltig_ab"],
+              "properties": {
+                "anlage": { "$ref": "#/$defs/kennzeichen" },
+                "gueltig_ab": { "$ref": "#/$defs/tag" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "vorschlaege": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["anlage", "name", "gueltig_ab"],
+            "properties": {
+              "anlage": { "$ref": "#/$defs/kennzeichen" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "gueltig_ab": { "$ref": "#/$defs/tag" }
+            }
+          }
+        }
+      }
+    },
+
     "fall": {
       "type": "object",
       "required": ["name", "familie", "ableitung", "why", "input", "expected"],
@@ -896,7 +1007,8 @@
             "verschieben",
             "archiv",
             "zeitraum_teilung",
-            "flaeche"
+            "flaeche",
+            "bestandsuebernahme"
           ]
         },
         "ableitung": {
@@ -912,7 +1024,8 @@
             "wiederherstellen",
             "loeschen",
             "teile",
-            "zeitraum"
+            "zeitraum",
+            "plan"
           ]
         },
         "why": {
@@ -1079,6 +1192,16 @@
             "properties": {
               "input": { "$ref": "#/$defs/flaecheEintragEingang" },
               "expected": { "$ref": "#/$defs/flaecheEintragErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "bestandsuebernahme" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "plan" },
+              "input": { "$ref": "#/$defs/bestandsuebernahmeEingang" },
+              "expected": { "$ref": "#/$defs/bestandsuebernahmeErgebnis" }
             }
           }
         }

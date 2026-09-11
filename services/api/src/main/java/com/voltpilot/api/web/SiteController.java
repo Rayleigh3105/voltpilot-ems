@@ -18,7 +18,11 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.AnlageStandortService;
+import com.voltpilot.api.uems.OrtAbgelehnt;
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
+import com.voltpilot.api.uems.StandortRepository;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
 import com.voltpilot.api.web.dto.HistoryDto;
@@ -41,13 +45,16 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -86,6 +93,7 @@ public class SiteController {
     private final ForecastModelService forecastModels;
     private final CockpitLayoutRepository cockpitLayouts;
     private final StandortLesemodellService standortLesemodell;
+    private final AnlageStandortService anlageStandort;
 
     public SiteController(
             SiteRepository sites,
@@ -103,7 +111,8 @@ public class SiteController {
             SchedulePricingService schedulePricing,
             ForecastModelService forecastModels,
             CockpitLayoutRepository cockpitLayouts,
-            StandortLesemodellService standortLesemodell) {
+            StandortLesemodellService standortLesemodell,
+            AnlageStandortService anlageStandort) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -120,6 +129,7 @@ public class SiteController {
         this.forecastModels = forecastModels;
         this.cockpitLayouts = cockpitLayouts;
         this.standortLesemodell = standortLesemodell;
+        this.anlageStandort = anlageStandort;
     }
 
     @GetMapping
@@ -149,19 +159,42 @@ public class SiteController {
      * guarantees the row lands in that tenant, so a customer can only ever create a
      * site for themselves. This unblocks the device-claim flow: a fresh customer
      * makes a site here, then claims devices into it.
+     *
+     * <p>Additively (Bestandsübernahme der Standorte, AP-02 IP-9) the new site
+     * gets its Standort in the SAME transaction: the given {@code standortId}, or
+     * the one Standort of the Kundenbereich when there is exactly one; none when
+     * there is none (unchanged); with several the choice is required (422
+     * {@code standort_waehlen}) - judged BEFORE the site is written. The response
+     * stays the plain {@link SiteDto}; {@code GET /sites/{id}} shows the Standort.
      */
+    // Recht: `anlage.verwalten` (die Anlage anlegen); die Zuordnung dazu `anlage.zuordnen`.
     @PostMapping
-    public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request) {
+    @Transactional
+    public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request,
+            Authentication auth) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
+        Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId());
+        ProtokollAkteur wer = standort.isPresent() ? OrtAnfrage.akteur(auth) : null;
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
                 request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt(),
                 request.maxFeedInKw());
+        standort.ifPresent(s -> anlageStandort.beimAnlegen(created.id(), s, wer));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * The Standort choice of {@code POST} answers in the form of the Ortsstruktur
+     * ({@code {code, message, …Fakten}}, {@link OrtAbgelehntHandler}) - only for
+     * this one exception; every other error of this controller keeps its form.
+     */
+    @ExceptionHandler(OrtAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> standortAbgelehnt(OrtAbgelehnt e) {
+        return OrtAbgelehntHandler.antwort(e);
     }
 
     /**
@@ -204,10 +237,14 @@ public class SiteController {
      * schedule/weather/quality rows) is removed in the same transaction. All
      * through the RLS-scoped datasource: a foreign site is a 404 and the
      * cascade can never touch another tenant's rows.
+     *
+     * <p>Its Standort assignment is NOT deleted (AP-02 W5, the Grabstein): it ends
+     * today and stays as an ended interval with a "geloescht" log entry, in the
+     * same transaction (V20260911290000 let the row outlive the site).
      */
     @DeleteMapping("/{siteId}")
     @Transactional
-    public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId) {
+    public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
         if (!sites.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
@@ -223,6 +260,7 @@ public class SiteController {
         // Tabellen), also raeumt es niemand von selbst ab - dieselbe Hygiene
         // wie die Serien-Zeilen darueber.
         cockpitLayouts.deleteForScope(CockpitLayoutRepository.SCOPE_SITE, siteId);
+        anlageStandort.beimLoeschen(siteId, () -> OrtAnfrage.akteur(auth));
         if (!sites.delete(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

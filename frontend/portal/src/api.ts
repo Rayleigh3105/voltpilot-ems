@@ -231,6 +231,17 @@ export interface CreateSiteInput {
   maxFeedInKw?: number | null;
 }
 
+/**
+ * `POST /api/v1/sites`: die Felder von {@link CreateSiteInput} plus — additiv
+ * (UEMS AP-02 IP-9) — der Standort der neuen Anlage. Weggelassen: bei genau
+ * einem Standort des Kundenbereichs ist er vorbelegt, ohne Standort bleibt die
+ * Anlage „noch nicht zugeordnet", bei mehreren antwortet der Server 422
+ * `standort_waehlen` mit der Auswahl. `PUT` (Stammdaten) kennt das Feld nicht.
+ */
+export interface NeueAnlageInput extends CreateSiteInput {
+  standortId?: string;
+}
+
 export interface PricePoint {
   ts: string;
   end: string;
@@ -4178,7 +4189,7 @@ export const api = {
    */
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
   listSites: () => request<Site[]>('/api/v1/sites'),
-  createSite: (input: CreateSiteInput) =>
+  createSite: (input: NeueAnlageInput) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
       body: JSON.stringify(input),

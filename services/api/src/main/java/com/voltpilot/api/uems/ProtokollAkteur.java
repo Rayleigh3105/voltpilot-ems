@@ -31,6 +31,16 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
     /** Dieselbe Realm-Rolle, an der {@code TenantFilter} den Mandanten-Umschalter freigibt. */
     private static final String PLATTFORM_ADMIN = "ROLE_platform-admin";
 
+    /**
+     * VoltPilot selbst, ohne Person: die Bestandsübernahme der Standorte (AP-02 IP-9). Im
+     * Protokoll steht sie als „VoltPilot (Bestandsübernahme)" ({@link OrtProtokoll}), das
+     * Subject ist {@code null} — dasselbe Wort wie der Unternehmen-Backfill (V20260911100000).
+     */
+    public static ProtokollAkteur bestandsuebernahme() {
+        return new ProtokollAkteur(null, "Bestandsübernahme", RechteAbleitung.Rolle.VOLTPILOT_BETRIEB.code(),
+                ART_VOLTPILOT);
+    }
+
     /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)

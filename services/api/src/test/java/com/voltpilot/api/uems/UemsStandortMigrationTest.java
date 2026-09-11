@@ -67,8 +67,10 @@ import org.testcontainers.utility.DockerImageName;
  * bleibt zeichengleich, (d) das Überlappungsverbot — die Fälle der Familie
  * {@code ueberlappung} aus {@code docs/contracts/v2/ortsbaum-vectors.json}
  * gegen den Exklusions-Constraint, (e) die CHECKs, (f) Kurzzeichen je
- * Kundenbereich. Dazu die zwei Folgen von ON DELETE RESTRICT und die Rechte
- * der App-Rolle.
+ * Kundenbereich. Dazu die Folgen von ON DELETE RESTRICT und die Rechte der
+ * App-Rolle. (Seit V20260911290000, AP-02 IP-9/W5, darf eine zugeordnete Anlage
+ * gehen — ihre Zuordnung bleibt als Grabstein; die Einfüge-Hälfte des früheren
+ * Fremdschlüssels auf {@code site} hält ein Trigger mit derselben Ablehnung.)
  *
  * <p>Beispielquelle ist allein das Referenzunternehmen
  * ({@code uems-referenzunternehmen.json}): Kundenbereich, Anlagen und
@@ -605,10 +607,12 @@ class UemsStandortMigrationTest {
                 "{\"name\": \"Probe\"}", LocalDate.parse("2026-10-01"), false, null,
                 "Jonas Wendlinger")));
 
-        // Nie Kaskade: weder der Mandant noch die zugeordnete Anlage gehen still.
+        // Nie Kaskade: der Mandant geht nicht still.
         abgelehnt("23503", null, () -> root.update("DELETE FROM tenant WHERE id = ?", t));
-        abgelehnt("23503", "anlage_standort_site_fk",
-                () -> root.update("DELETE FROM site WHERE id = ?", anlage));
+        // Die zugeordnete Anlage darf gehen (W5, V20260911290000) — ihre Zuordnung bleibt
+        // als Grabstein stehen, nie still mitgenommen.
+        assertThat(root.update("DELETE FROM site WHERE id = ?", anlage)).isOne();
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE site_id = ?", anlage)).isOne();
 
         // Das Offboarding ist der eine Weg, auf dem ein Unternehmen endet.
         new TenantRepository(admin).offboard(t);

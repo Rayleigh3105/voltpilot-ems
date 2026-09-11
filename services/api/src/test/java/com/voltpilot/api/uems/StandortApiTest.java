@@ -374,12 +374,15 @@ class StandortApiTest {
         UUID t = neuerKundenbereich();
         Anrufer wer = admin(t);
         JsonNode szenario = vektoren.at("/szenarien/ahrenberg-vor-dem-umzug");
+        JsonNode an3 = element(szenario.get("anlagen"), "AN-3");
+        // Die Anlage VOR den Standorten: ihre Zuordnung trägt der Fall selbst ein (ab
+        // 15.10.2026) — seit AP-02 IP-9 belegt POST /sites sonst den einen Standort vor
+        // bzw. verlangt bei zweien die Wahl (422).
+        UUID site = UUID.fromString(neueAnlage(t, an3.get("name").asText()));
         uhr("2026-10-01T09:00:00+02:00");
         anlegen(wer, ausReferenz("ST-1"));
         uhr("2026-10-15T08:00:00+02:00");
         UUID lindach = UUID.fromString(anlegen(wer, ausReferenz("ST-2")).get("id").asText());
-        JsonNode an3 = element(szenario.get("anlagen"), "AN-3");
-        UUID site = UUID.fromString(neueAnlage(t, an3.get("name").asText()));
         root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?,?,?,?)",
                 t, site, lindach, LocalDate.parse(an3.at("/zuordnungen/0/ab").asText()));
         Map<String, UUID> gebaeude = new LinkedHashMap<>();

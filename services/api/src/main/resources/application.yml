@@ -373,6 +373,15 @@ voltpilot:
       enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_ENABLED:true}
       reconcile-enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_RECONCILE_ENABLED:true}
       interval-ms: ${VOLTPILOT_COMPONENTS_ADOPTION_INTERVAL_MS:300000}
+  # UEMS AP-02 IP-9: die BESTANDSÜBERNAHME der Standorte läuft AUTOMATISCH bei
+  # jedem Start (BestandsuebernahmeLaeufer, kein Takt): ein Kundenbereich mit
+  # genau einer Anlage bekommt seinen Standort (Entwurf, Adresse fehlt) samt
+  # Zuordnung ab site.created_at, einer mit mehreren je Anlage einen Vorschlag.
+  # Idempotent; ändert keine Anlage, keinen Push, kein Kommando. `enabled` ist
+  # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
+  uems:
+    bestandsuebernahme:
+      enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

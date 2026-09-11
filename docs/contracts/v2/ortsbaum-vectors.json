@@ -63,6 +63,16 @@
     "KORREKTUR (§4.2): sie wird ersetzt und bleibt aufgehoben lesbar. Nur an Tagen, an denen",
     "das Objekt im Baum ist; nur ganze m² > 0; dieselbe Zahl noch einmal ist kein Eintrag.",
     "",
+    "BESTANDSÜBERNAHME (Familie bestandsuebernahme/plan, AP-02 IP-9, E5/E9/E10, A5/A6):",
+    "was ein Kundenbereich mit Bestandsanlagen bei der Einführung bekommt. Kein Unternehmen,",
+    "keine Anlage oder schon ein Standort (auch ein archivierter: die Rücknahme bleibt",
+    "stehen) — nichts. Schon Vorschläge — der Vorschau-Weg bleibt, nur eine Anlage ohne",
+    "Vorschlag bekommt ihren. GENAU EINE Anlage — ein Standort mit ihrem Namen, Entwurf, es",
+    "fehlt: Adresse (nie eine erfundene), in der Zeitzone des Unternehmens, und die Zuordnung",
+    "ab dem TAG ihres Anlegens in dieser Zeitzone. MEHRERE — je Anlage ein Vorschlag „ein",
+    "Standort gleichen Namens“, keine Zuordnung. Zwillinge: BestandsuebernahmeAbleitung.java",
+    "/ uemsBestandsuebernahme.ts; angewandt vom Start-Läufer BestandsuebernahmeLaeufer.",
+    "",
     "DATEN: das Referenzunternehmen Kunststoffwerk Ahrenberg GmbH (AP-00 §4.4) mit dem",
     "AP-02-Leitbeispiel „Halle 2 wechselt am 01.03.2027 zum Standort Werk Ahrenberg Nord“",
     "(§5.6). Ein Fall nennt `szenario` (unten) und optional eine `ueberlagerung`: jedes",
@@ -72,7 +82,7 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./ortsbaum.schema.json",
-  "herkunft": "UEMS AP-02 §4.3–§4.5 (Konzept vp-uems-ap02-ortsstruktur), Entscheide E1, E2, E3, E9, E11, E12 (Captain, 10.09.2026); Abnahmefälle A1, A2, A3, A5, A7, A8, A9, A10, A11, A12, A13, A16; Referenzunternehmen AP-00 §4.4.",
+  "herkunft": "UEMS AP-02 §4.3–§4.5 (Konzept vp-uems-ap02-ortsstruktur), Entscheide E1, E2, E3, E5, E9, E10, E11, E12 (Captain, 10.09.2026); Abnahmefälle A1, A2, A3, A5, A6, A7, A8, A9, A10, A11, A12, A13, A16; Referenzunternehmen AP-00 §4.4.",
   "zeitzone": "Europe/Berlin",
   "regeln": {
     "aufloesung": "tag",
@@ -113,6 +123,8 @@
   "flaeche_quellen": ["eigen", "aus_gebaeuden_summiert"],
   "gruende_flaeche": ["flaeche_ungueltig", "gab_es_noch_nicht", "archiviert", "gleiche_flaeche"],
   "objekt_zustaende": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"],
+  "arten_bestandsuebernahme": ["nichts", "standort_anlegen", "vorschlagen"],
+  "gruende_bestandsuebernahme": ["kein_unternehmen", "keine_anlage", "hat_standort", "vorschau_offen", "eine_anlage", "mehrere_anlagen"],
   "szenarien": {
     "ahrenberg-vor-dem-umzug": {
       "beschreibung": "Datenstand am 20.02.2027 um 10:10 Uhr: Werk Ahrenberg Nord (ST-3) ist seit heute angelegt, die Fläche von Halle 2 (3 400 m² ab 01.01.2027) ist eingetragen, der Umzug von Halle 2 noch nicht (A1, §4.4).",
@@ -2385,6 +2397,102 @@
       "why": "Die Reihenfolge IST die Regel: eine negative Zahl an einem Tag vor dem Beginn nennt zuerst die Zahl — der Kunde korrigiert, was er eintippt, bevor ihm das Datum erklärt wird.",
       "input": {"szenario": "ahrenberg", "objekt": "G-2", "ab": "2026-09-30", "m2": -5, "heute": "2026-10-01"},
       "expected": {"erlaubt": false, "grund": "flaeche_ungueltig", "text": "Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.", "korrektur": null, "vorher_m2": null, "flaechen": null}
+    },
+    {
+      "name": "a5-eine-anlage-bekommt-ihren-standort-ab-dem-tag-ihres-anlegens",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "A5 (E5 = A, E10 = A): der Kundenbereich Ahrenberg hat vor dem 01.10.2026 genau eine Anlage, Werk Ahrenberg – Halle 1 (AN-1, seit 12.03.2024). Er bekommt ohne Zutun den Standort mit dem Namen der Anlage — Entwurf, es fehlt: Adresse, keine erfundene — in der Zeitzone des Unternehmens, und die Zuordnung ab 12.03.2024, bei der Einführung am 01.10.2026 eingetragen und deshalb rückwirkend (933 Tage, uems-referenzunternehmen.json). Dass ST-1 heute „Werk Ahrenberg“ heißt, ist die spätere Umbenennung durch den Kunden (§4.4-Protokoll). ⚠ 00:00 Uhr +01:00 ist in UTC noch der 11.03. — der Tag gilt in der Zeitzone (E9), nie in UTC.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "standort_anlegen", "grund": "eine_anlage", "standort": {"name": "Werk Ahrenberg – Halle 1", "zustand": "entwurf", "es_fehlt": ["adresse"], "zeitzone": "Europe/Berlin"}, "zuordnung": {"anlage": "AN-1", "gueltig_ab": "2024-03-12"}, "vorschlaege": []}
+    },
+    {
+      "name": "a6-zwei-anlagen-bekommen-je-einen-vorschlag-und-keine-zuordnung",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "A6/E5: mit mehreren Anlagen entsteht KEIN Standort und KEINE Zuordnung — je Anlage ein Vorschlag „ein Standort gleichen Namens“ ab dem Tag ihres Anlegens; bestätigt, zusammengelegt oder umbenannt wird in der Vorschau (IP-10), bis dahin bleibt das Portfolio zeichengleich. Annahme: der Kundenbereich hat beide Anlagen, bevor die Übernahme läuft (im Referenzunternehmen entsteht Halle 2 am Tag der Einführung). Die Zeitpunkte sind die der Vektor-Datei des Referenzunternehmens (AN-2 seit 01.10.2026), nicht das „beide seit 2025“ der Prosa von A6.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}, {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "angelegt_um": "2026-10-01T00:00:00+02:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "vorschlagen", "grund": "mehrere_anlagen", "standort": null, "zuordnung": null, "vorschlaege": [{"anlage": "AN-1", "name": "Werk Ahrenberg – Halle 1", "gueltig_ab": "2024-03-12"}, {"anlage": "AN-2", "name": "Werk Ahrenberg – Halle 2", "gueltig_ab": "2026-10-01"}]}
+    },
+    {
+      "name": "drei-anlagen-drei-vorschlaege-in-der-reihenfolge-der-anlagen",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Die Abnahme mit der Dev-Saat (`demo`, drei Anlagen → drei Vorschläge, null Zuordnungen), hier mit den drei Anlagen des Referenzunternehmens. Annahme wie A6: alle drei bestehen, bevor die Übernahme läuft. Werk Lindach (AN-3) ist 00:00 Uhr +02:00 angelegt — in UTC noch der 14.10., der Vorschlag gilt ab dem 15.10.2026.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}, {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "angelegt_um": "2026-10-01T00:00:00+02:00"}, {"kennzeichen": "AN-3", "name": "Werk Lindach", "angelegt_um": "2026-10-15T00:00:00+02:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "vorschlagen", "grund": "mehrere_anlagen", "standort": null, "zuordnung": null, "vorschlaege": [{"anlage": "AN-1", "name": "Werk Ahrenberg – Halle 1", "gueltig_ab": "2024-03-12"}, {"anlage": "AN-2", "name": "Werk Ahrenberg – Halle 2", "gueltig_ab": "2026-10-01"}, {"anlage": "AN-3", "name": "Werk Lindach", "gueltig_ab": "2026-10-15"}]}
+    },
+    {
+      "name": "ohne-unternehmen-nichts",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Ein Standort gehört einem Unternehmen (standort.unternehmen_id ist Pflicht). Seit V20260911100000 hat jeder Kundenbereich eines; fehlt es doch, legt die Übernahme ehrlich nichts an — und nie ein Unternehmen: das entsteht nur mit dem Kundenbereich. Annahme: Ahrenberg ohne Unternehmen-Zeile.",
+      "input": {"unternehmen": null, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "nichts", "grund": "kein_unternehmen", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "ohne-anlage-nichts",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Der Neukunden-Weg (A4): ein Kundenbereich ohne Anlage bekommt nichts — seine Standorte legt der Kunde selbst an, mit Adresse.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "nichts", "grund": "keine_anlage", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "vorhandener-standort-nichts",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Der Kunde hat Werk Ahrenberg (ST-1) schon selbst angelegt (Neukunden-Weg A4), Halle 1 ist noch nicht zugeordnet: die Übernahme legt keinen zweiten Standort an und ordnet nichts zu — Zuordnen und Umziehen gehören der Vorschau und dem Umzug (IP-10, IP-11), nie einer Automatik.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [{"kennzeichen": "ST-1", "archiviert": false}], "vorschlaege": []},
+      "expected": {"art": "nichts", "grund": "hat_standort", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "archivierter-standort-zaehlt-die-ruecknahme-bleibt",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "§6.3 Rücknahme: die Zuordnung ist als Korrektur aufgehoben, der automatisch angelegte Standort archiviert — die Anlage bleibt. Auch ein archivierter Standort zählt: der nächste Lauf legt ihn nicht wieder an.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [{"kennzeichen": "ST-1", "archiviert": true}], "vorschlaege": []},
+      "expected": {"art": "nichts", "grund": "hat_standort", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "zweiter-lauf-alle-vorschlaege-da-nichts",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Idempotent: jede Anlage hat ihren Vorschlag schon — der zweite Lauf schreibt keinen doppelt.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}, {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "angelegt_um": "2026-10-01T00:00:00+02:00"}], "standorte": [], "vorschlaege": ["AN-1", "AN-2"]},
+      "expected": {"art": "nichts", "grund": "vorschau_offen", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "neue-anlage-auf-dem-vorschau-weg-bekommt-nur-ihren-vorschlag",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Eine Anlage, die nach dem ersten Lauf dazukam, bekommt ihren Vorschlag — die übrigen bleiben unberührt. Annahme: Werk Lindach entsteht, bevor die Vorschau bestätigt ist.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "Werk Ahrenberg – Halle 1", "angelegt_um": "2024-03-12T00:00:00+01:00"}, {"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "angelegt_um": "2026-10-01T00:00:00+02:00"}, {"kennzeichen": "AN-3", "name": "Werk Lindach", "angelegt_um": "2026-10-15T00:00:00+02:00"}], "standorte": [], "vorschlaege": ["AN-1", "AN-2"]},
+      "expected": {"art": "vorschlagen", "grund": "vorschau_offen", "standort": null, "zuordnung": null, "vorschlaege": [{"anlage": "AN-3", "name": "Werk Lindach", "gueltig_ab": "2026-10-15"}]}
+    },
+    {
+      "name": "eine-anlage-mit-vorschlag-bleibt-in-der-vorschau",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Wer einmal auf dem Vorschau-Weg ist, bleibt dort: über die Vorschläge entscheidet der Kunde (IP-10), nicht ein späterer Lauf. Annahme: Halle 1 wurde gelöscht (ihr Vorschlag ging mit ihr), Halle 2 ist die einzige Anlage — sie bekommt trotzdem keinen automatischen Standort.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-2", "name": "Werk Ahrenberg – Halle 2", "angelegt_um": "2026-10-01T00:00:00+02:00"}], "standorte": [], "vorschlaege": ["AN-2"]},
+      "expected": {"art": "nichts", "grund": "vorschau_offen", "standort": null, "zuordnung": null, "vorschlaege": []}
+    },
+    {
+      "name": "der-name-folgt-der-namensregel-des-standorts",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "§4.1: ein Standortname hat höchstens 120 Zeichen und keine Randleerzeichen. Der Name der Anlage wird darauf gebracht statt abgelehnt — erst ohne Randleerzeichen, dann nach 120 Unicode-Zeichen gekürzt und das Ende wieder ohne Leerzeichen (hier bleiben 119). Annahme: der Kunde hat Halle 1 im Portal mit ihrer Ausstattung benannt.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "  Werk Ahrenberg – Halle 1 · PV 240 kWp (Dach von Halle 1) + Speicher 200 kWh / 100 kW; Betriebsmodell Lastspitzenkappung seit 02.05.2024 ", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "standort_anlegen", "grund": "eine_anlage", "standort": {"name": "Werk Ahrenberg – Halle 1 · PV 240 kWp (Dach von Halle 1) + Speicher 200 kWh / 100 kW; Betriebsmodell Lastspitzenkappung", "zustand": "entwurf", "es_fehlt": ["adresse"], "zeitzone": "Europe/Berlin"}, "zuordnung": {"anlage": "AN-1", "gueltig_ab": "2024-03-12"}, "vorschlaege": []}
+    },
+    {
+      "name": "ein-leerer-anlagenname-wird-das-kundenwort-standort",
+      "familie": "bestandsuebernahme",
+      "ableitung": "plan",
+      "why": "Über die API unmöglich (@NotBlank), in einer alten Zeile denkbar: statt abzulehnen bekommt der Standort das Kundenwort „Standort“ — dasselbe Muster wie das Unternehmen („Unternehmen“, V20260911100000); der Kunde benennt ihn um. Annahme: Halle 1 hat einen leeren Namen.",
+      "input": {"unternehmen": {"zeitzone": "Europe/Berlin"}, "anlagen": [{"kennzeichen": "AN-1", "name": "   ", "angelegt_um": "2024-03-12T00:00:00+01:00"}], "standorte": [], "vorschlaege": []},
+      "expected": {"art": "standort_anlegen", "grund": "eine_anlage", "standort": {"name": "Standort", "zustand": "entwurf", "es_fehlt": ["adresse"], "zeitzone": "Europe/Berlin"}, "zuordnung": {"anlage": "AN-1", "gueltig_ab": "2024-03-12"}, "vorschlaege": []}
     }
   ]
 }

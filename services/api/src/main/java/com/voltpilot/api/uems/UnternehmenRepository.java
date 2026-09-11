@@ -55,6 +55,18 @@ public class UnternehmenRepository {
                 .stream().findFirst();
     }
 
+    /**
+     * Die ID des Unternehmens mit der Zeilensperre bis zum Ende der Transaktion
+     * ({@code FOR UPDATE}) — der Riegel, hinter dem die Bestandsübernahme (IP-9) die
+     * Standorte des Kundenbereichs zählt und anlegt: zwei gleichzeitige Läufe (etwa zwei
+     * startende Repliken) legen keinen zweiten automatischen Standort an. Leer wie
+     * {@link #desKundenbereichs}.
+     */
+    public Optional<UUID> sperren() {
+        return jdbc.queryForList("SELECT id FROM unternehmen ORDER BY created_at, id FOR UPDATE",
+                UUID.class).stream().findFirst();
+    }
+
     /** Schreibt die Stammdaten — die ganze Menge; {@code false}: nicht da (fremd oder ohne Mandant). */
     public boolean bearbeiten(UUID id, Unternehmen u) {
         return jdbc.update("UPDATE unternehmen SET name = ?, kurzname = ?, zeitzone = ?, "

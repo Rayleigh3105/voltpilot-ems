@@ -212,6 +212,9 @@ class OrtsbaumAbleitungVectorsTest {
         LAEUFER.put("flaeche/eintrag", in -> OrtsbaumAbleitung.flaecheEintrag(baum(in),
                 new OrtsbaumAbleitung.FlaecheAntrag(in.path("objekt").asText(), tag(in.get("ab")),
                         in.path("m2").asInt(), tag(in.get("heute")))));
+        // Die Bestandsübernahme (IP-9) liest keinen Baum: ihr Eingang IST der Kundenbereich.
+        LAEUFER.put("bestandsuebernahme/plan", in -> BestandsuebernahmeAbleitung.plan(
+                MAPPER.treeToValue(in, BestandsuebernahmeAbleitung.Eingang.class)));
     }
 
     // ------------------------------------------------------ die Vektor-Fälle
@@ -304,6 +307,10 @@ class OrtsbaumAbleitungVectorsTest {
         assertThat(ausDatei("gruende_flaeche")).isEqualTo(codes(OrtsbaumAbleitung.FlaecheGrund.values(), alle));
         assertThat(ausDatei("objekt_zustaende"))
                 .isEqualTo(codes(OrtsbaumAbleitung.ObjektZustand.values(), alle));
+        assertThat(ausDatei("arten_bestandsuebernahme"))
+                .isEqualTo(codes(BestandsuebernahmeAbleitung.Art.values(), alle));
+        assertThat(ausDatei("gruende_bestandsuebernahme"))
+                .isEqualTo(codes(BestandsuebernahmeAbleitung.Grund.values(), alle));
     }
 
     /**
@@ -324,7 +331,9 @@ class OrtsbaumAbleitungVectorsTest {
             Map.entry("zeitraum_teilung/teile", List.of("zeitraumEingang", "teileErgebnis")),
             Map.entry("flaeche/am_tag", List.of("flaecheAmTagEingang", "flaecheAmTagErgebnis")),
             Map.entry("flaeche/zeitraum", List.of("zeitraumEingang", "flaecheZeitraumErgebnis")),
-            Map.entry("flaeche/eintrag", List.of("flaecheEintragEingang", "flaecheEintragErgebnis")));
+            Map.entry("flaeche/eintrag", List.of("flaecheEintragEingang", "flaecheEintragErgebnis")),
+            Map.entry("bestandsuebernahme/plan",
+                    List.of("bestandsuebernahmeEingang", "bestandsuebernahmeErgebnis")));
 
     /** Die Datei hält ihr Schema — die Wurzel und jeder Fall mit seinem Eingang und Ergebnis. */
     @Test

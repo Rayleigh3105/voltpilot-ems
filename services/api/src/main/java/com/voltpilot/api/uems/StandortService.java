@@ -474,24 +474,33 @@ public class StandortService {
 
     /** Alle Felder, wie das Protokoll sie nennt (snake_case, Codes, nie Kundenworte). */
     private static Map<String, Object> alleFelder(String kz, Werte w, String zustand) {
+        return protokollFelder(kz, w.name(), w.adresse(), w.zeitzone(), w.nutzung(), w.notiz(), w.lage(),
+                zustand);
+    }
+
+    /**
+     * Alle Felder eines Standorts, wie das Protokoll sie beim Anlegen nennt — EINE Form für die
+     * Schreibroute und die Bestandsübernahme ({@link BestandsuebernahmeService}, IP-9).
+     */
+    static Map<String, Object> protokollFelder(String kz, String name, Adresse a, String zeitzone,
+            List<String> nutzung, String notiz, Lage lageWert, String zustand) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("kurzzeichen", kz);
-        m.put("name", w.name());
-        Adresse a = w.adresse();
+        m.put("name", name);
         Map<String, Object> adresse = new LinkedHashMap<>();
         adresse.put("strasse", a.strasse());
         adresse.put("plz", a.plz());
         adresse.put("ort", a.ort());
         adresse.put("land", a.land());
         m.put("adresse", adresse);
-        m.put("zeitzone", w.zeitzone());
-        m.put("nutzung", w.nutzung());
-        m.put("notiz", w.notiz());
+        m.put("zeitzone", zeitzone);
+        m.put("nutzung", nutzung);
+        m.put("notiz", notiz);
         Map<String, Object> lage = null;
-        if (w.lage() != null) {
+        if (lageWert != null) {
             lage = new LinkedHashMap<>();
-            lage.put("breitengrad", w.lage().breitengrad().stripTrailingZeros().toPlainString());
-            lage.put("laengengrad", w.lage().laengengrad().stripTrailingZeros().toPlainString());
+            lage.put("breitengrad", lageWert.breitengrad().stripTrailingZeros().toPlainString());
+            lage.put("laengengrad", lageWert.laengengrad().stripTrailingZeros().toPlainString());
         }
         m.put("lage", lage);
         m.put("zustand", zustand);

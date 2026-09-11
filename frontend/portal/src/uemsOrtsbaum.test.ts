@@ -40,6 +40,11 @@ import {
   type Ort,
   type Ortsbaum,
 } from './uemsOrtsbaum';
+import {
+  BESTANDSUEBERNAHME_ARTEN,
+  BESTANDSUEBERNAHME_GRUENDE,
+  bestandsuebernahme,
+} from './uemsBestandsuebernahme';
 
 /**
  * Der ORTSBAUM (UEMS AP-02 IP-1) gegen die EINE geteilte Vektor-Datei —
@@ -89,6 +94,8 @@ interface VectorFile {
   flaeche_quellen: string[];
   gruende_flaeche: string[];
   objekt_zustaende: string[];
+  arten_bestandsuebernahme: string[];
+  gruende_bestandsuebernahme: string[];
   szenarien: Record<string, Szenario>;
   cases: Fall[];
 }
@@ -153,6 +160,14 @@ const LAEUFER: Record<string, (i: Eingang) => unknown> = {
   'flaeche/am_tag': (i) => flaecheAm(baumFuer(i), i.objekt, i.tag),
   'flaeche/zeitraum': (i) => ({ teile: flaecheZeitraum(baumFuer(i), i.objekt, i.von, i.bis) }),
   'flaeche/eintrag': (i) => flaecheEintrag(baumFuer(i), { objekt: i.objekt, ab: i.ab, m2: i.m2, heute: i.heute }),
+  // Die Bestandsübernahme (IP-9) liest keinen Baum: ihr Eingang IST der Kundenbereich.
+  'bestandsuebernahme/plan': (i) =>
+    bestandsuebernahme({
+      unternehmen: i.unternehmen,
+      anlagen: i.anlagen.map((a: Eingang) => ({ kennzeichen: a.kennzeichen, name: a.name, angelegtUm: a.angelegt_um })),
+      standorte: i.standorte,
+      vorschlaege: i.vorschlaege,
+    }),
 };
 
 for (const schluessel of Object.keys(LAEUFER)) {
@@ -209,6 +224,8 @@ describe('uemsOrtsbaum · der Vertrag selbst', () => {
     expect(vectors.flaeche_quellen).toEqual([...FLAECHE_QUELLEN]);
     expect(vectors.gruende_flaeche).toEqual([...FLAECHE_GRUENDE]);
     expect(vectors.objekt_zustaende).toEqual([...OBJEKT_ZUSTAENDE]);
+    expect(vectors.arten_bestandsuebernahme).toEqual([...BESTANDSUEBERNAHME_ARTEN]);
+    expect(vectors.gruende_bestandsuebernahme).toEqual([...BESTANDSUEBERNAHME_GRUENDE]);
   });
 
   // A10 über `nameBelegt` — dieselbe Prüfung wie im Java-Zwilling (a10DieNamensregelBeimAnlegenUndUmbenennen).

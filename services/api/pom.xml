@@ -229,6 +229,18 @@
                              Grund wie die zwei Sammler darueber. Wer ihn prueft,
                              ruft renewOnce() direkt. -->
                         <voltpilot.interventions.renewal-enabled>false</voltpilot.interventions.renewal-enabled>
+                        <!-- Die Bestandsuebernahme der Standorte (UEMS AP-02
+                             IP-9) ist ein START-Lauf, kein Takt - aber in jeder
+                             Testklasse mit Dev-Saat (local-Profil) bekaeme
+                             `demo2` sonst schon beim Start einen Standort und
+                             `demo` drei Vorschlaege, und die Antworten der
+                             Anlage truegen das Feld `standort`. Im Testlauf aus,
+                             in PRODUKTION an (application.yml); wer ihn prueft,
+                             ruft BestandsuebernahmeLaeufer.lauf() selbst. Dass
+                             die AUSGELIEFERTE Vorgabe AN ist, prueft
+                             BestandsuebernahmeWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.uems.bestandsuebernahme.enabled>false</voltpilot.uems.bestandsuebernahme.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

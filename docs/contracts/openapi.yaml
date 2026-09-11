@@ -907,6 +907,15 @@ paths:
         CHECK - never from the request body - so a customer can only ever create a
         site for themselves. This unblocks onboarding: a fresh customer creates a
         site, then claims devices into it. Implemented in services/api.
+        Additively (UEMS AP-02 IP-9) the new site is assigned to its Standort in
+        the SAME transaction, from the day of its `created_at` in the Standort's
+        time zone: `standortId` if given; without it the one Standort of the
+        Kundenbereich when there is exactly one; none when there is none (as
+        before - the site stays "noch nicht zugeordnet" until the
+        Bestandsübernahme or the Vorschau); with several the choice is required
+        (422 `standort_waehlen`). The response is the unchanged `Site`; `GET
+        /sites/{siteId}` shows the Standort. Today several Standorte can only
+        come from the Standort API (`POST /api/v1/standorte`).
       requestBody:
         required: true
         content:
@@ -918,8 +927,27 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Site" }
-        "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
+        "400":
+          description: >
+            Invalid input (blank name, out-of-range coordinates, or bad zone).
+            An unknown or foreign `standortId` answers in the form of the
+            Ortsstruktur - `anfrage_ungueltig` with `feld: standortId`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtFehler" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`ziel_archiviert` - the chosen Standort is archived (`feld: standortId`)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtFehler" }
+        "422":
+          description: >
+            `standort_waehlen` - no `standortId` although the Kundenbereich has
+            several (not archived) Standorte; `standorte` lists them.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtFehler" }
   /api/v1/sites/{siteId}:
     get:
       tags: [sites]
@@ -927,9 +955,10 @@ paths:
       description: >
         Exactly the `Site` fields of the list and of PUT, unchanged, plus -
         additively - `standort` (UEMS AP-02 IP-3): the Standort the site is
-        assigned to today, or null while it is not assigned (today every
-        existing site; the assignment arrives with the Bestandsübernahme IP-9).
-        RLS makes a foreign site a 404.
+        assigned to today, or null while it is not assigned (a Kundenbereich
+        with several sites until its Vorschau is confirmed; the
+        Bestandsübernahme IP-9 assigns the one site of a single-site
+        Kundenbereich, `POST /sites` a new one). RLS makes a foreign site a 404.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -972,7 +1001,9 @@ paths:
         first. On success the site's assets cascade by FK and its series data
         (telemetry, rollups, forecast, schedule, weather, forecast-quality rows)
         is deleted in the same transaction. Use the deletion-preview endpoint to
-        show the concrete consequences before confirming.
+        show the concrete consequences before confirming. Its Standort
+        assignment is not deleted (UEMS AP-02 W5): it ends today and stays as an
+        ended interval with a log entry (`geloescht`) at the Standort.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
@@ -4324,6 +4355,8 @@ paths:
         datasource. The tenant is validated to exist first. The tenant is never
         taken from client-controlled body data, so this is a deliberate,
         role-gated cross-tenant write - customer site access stays RLS-scoped.
+        This route does not read `standortId` (UEMS AP-02 IP-9): the site is
+        created without a Standort assignment, as before.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -12376,6 +12409,16 @@ components:
             Optional static feed-in cap at the grid connection point (kW,
             strictly positive, at most 2 decimals); omit/null = no
             connection-point limit. Enforced export-only by the optimizer.
+        standortId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Additiv (UEMS AP-02 IP-9): the Standort the new site belongs to; it is
+            assigned from the day of its creation. Omitted: pre-selected when the
+            Kundenbereich has exactly one Standort, no assignment when it has
+            none, required (422 `standort_waehlen`) when it has several. Only
+            `POST /api/v1/sites` reads it.
     UpdateSiteRequest:
       type: object
       required: [name]
@@ -14499,6 +14542,9 @@ components:
         `ziel_gab_es_noch_nicht` (422), `ziel_archiviert` (409) → `feld`
         (elternId); `flaeche_ungueltig` und `gleiche_flaeche` (400),
         `gab_es_noch_nicht` (422), `archiviert` (409) an der Fläche → `feld`.
+        Anlegen einer Anlage (`POST /api/v1/sites`, IP-9): `standort_waehlen`
+        (422) → `feld` (standortId) und `standorte` (die Auswahl);
+        `ziel_archiviert` (409) und `anfrage_ungueltig` (400) → `feld`.
       required: [code, message]
       properties:
         code:
@@ -14506,7 +14552,7 @@ components:
           enum: [anfrage_ungueltig, nicht_gefunden, name_belegt, kurzzeichen_belegt, archiviert,
                  archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
                  ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
-                 gleiche_flaeche]
+                 gleiche_flaeche, standort_waehlen]
         message: { type: string }
         feld: { type: string }
         verweis:
@@ -14524,6 +14570,16 @@ components:
         gruende:
           type: array
           items: { $ref: "#/components/schemas/ArchivSperrgrund" }
+        standorte:
+          type: array
+          description: Nur bei `standort_waehlen` - die nicht archivierten Standorte zur Wahl.
+          items:
+            type: object
+            required: [id, kurzzeichen, name]
+            properties:
+              id: { type: string, format: uuid }
+              kurzzeichen: { type: string }
+              name: { type: string }
     ArchivSperrgrund:
       type: object
       description: >

@@ -173,8 +173,11 @@ public class TenantRepository {
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
                 // V20260911140000, V20260911150000, V20260911200000, V20260911210000,
-                // V20260911230000, V20260911250000, V20260911280000) references tenant/site/standort/ort
-                // with ON DELETE RESTRICT - never a cascade.
+                // V20260911230000, V20260911250000, V20260911280000, V20260911290000)
+                // references tenant/site/standort/ort with ON DELETE RESTRICT - never a
+                // cascade. (The Bestandsübernahme's suggestion rows follow their site by
+                // CASCADE but hold the tenant by RESTRICT; a Standort assignment outlives
+                // its deleted site, W5.)
                 // Offboarding is the ONE way a company ends, so it removes them
                 // explicitly, children first: a Messstelle's source bindings (V20260911250000)
                 // before the Messstelle and the Geraete they read from; a Messstelle's Ort and
@@ -205,7 +208,8 @@ public class TenantRepository {
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",
-                        "anlage_standort", "standort", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                        "standort_vorschlag", "anlage_standort", "standort", "ort_kurzzeichen",
+                        "ort_kurzzeichen_seq",
                         "unternehmen"}) {
                     deleteByTenant(con, table, tenantId);
                 }

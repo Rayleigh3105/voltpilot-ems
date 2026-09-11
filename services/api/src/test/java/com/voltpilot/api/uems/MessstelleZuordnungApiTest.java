@@ -729,6 +729,13 @@ class MessstelleZuordnungApiTest {
         }
         UUID t = neuerKundenbereich();
         Anrufer wer = admin(t);
+        // Die Anlagen VOR den Standorten: sie bleiben „noch nicht zugeordnet" wie im Gerüst
+        // bisher — nach zwei Standorten verlangte POST /sites seit IP-9 die Wahl (422).
+        Map<String, UUID> anlagen = new LinkedHashMap<>();
+        for (JsonNode an : referenz.get("anlagen")) {
+            anlagen.put(an.get("kennzeichen").asText(), UUID.fromString(ok201(rufeApi(HttpMethod.POST, "/api/v1/sites",
+                    wer, Map.of("name", an.get("name").asText()))).get("id").asText()));
+        }
         Map<String, UUID> standorte = new LinkedHashMap<>();
         standortService.uhrStellen(uhr("2024-03-12T09:00:00+01:00"));
         standorte.put("ST-1", UUID.fromString(ok201(rufe(HttpMethod.POST, "/standorte", wer, ausReferenz("ST-1")))
@@ -746,11 +753,6 @@ class MessstelleZuordnungApiTest {
             String kz = z.get("von").asText();
             String nach = z.get("nach").asText();
             orte.put(kz, neuerOrt(t, kz, standorte.get(nach), orte.get(nach), z.get("gueltig_ab").asText()));
-        }
-        Map<String, UUID> anlagen = new LinkedHashMap<>();
-        for (JsonNode an : referenz.get("anlagen")) {
-            anlagen.put(an.get("kennzeichen").asText(), UUID.fromString(ok201(rufeApi(HttpMethod.POST, "/api/v1/sites",
-                    wer, Map.of("name", an.get("name").asText()))).get("id").asText()));
         }
         Map<String, String> ms = new LinkedHashMap<>();
         for (JsonNode m : referenz.get("messstellen")) {
