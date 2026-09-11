@@ -18,6 +18,7 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
 import com.voltpilot.api.web.dto.HistoryDto;
@@ -28,6 +29,7 @@ import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
+import com.voltpilot.api.web.dto.SiteDetailDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteSourceDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
@@ -83,6 +85,7 @@ public class SiteController {
     private final SchedulePricingService schedulePricing;
     private final ForecastModelService forecastModels;
     private final CockpitLayoutRepository cockpitLayouts;
+    private final StandortLesemodellService standortLesemodell;
 
     public SiteController(
             SiteRepository sites,
@@ -99,7 +102,8 @@ public class SiteController {
             DeviceSourceStatusRepository sourceStatus,
             SchedulePricingService schedulePricing,
             ForecastModelService forecastModels,
-            CockpitLayoutRepository cockpitLayouts) {
+            CockpitLayoutRepository cockpitLayouts,
+            StandortLesemodellService standortLesemodell) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -115,11 +119,27 @@ public class SiteController {
         this.schedulePricing = schedulePricing;
         this.forecastModels = forecastModels;
         this.cockpitLayouts = cockpitLayouts;
+        this.standortLesemodell = standortLesemodell;
     }
 
     @GetMapping
     public List<SiteDto> listSites() {
         return sites.findAll();
+    }
+
+    /**
+     * One site: exactly the {@link SiteDto} fields of the list and of
+     * {@code PUT}, plus - additively - its {@code standort} today (UEMS AP-02
+     * IP-3; {@code null} while it is not assigned to a Standort). RLS makes a
+     * foreign site a 404.
+     */
+    @GetMapping("/{siteId}")
+    public SiteDetailDto getSite(@PathVariable UUID siteId) {
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return new SiteDetailDto(site, standortLesemodell.bezugDerAnlage(siteId));
     }
 
     /**

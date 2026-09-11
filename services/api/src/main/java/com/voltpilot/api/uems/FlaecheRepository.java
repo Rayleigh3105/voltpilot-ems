@@ -1,5 +1,7 @@
 package com.voltpilot.api.uems;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -73,20 +75,29 @@ public class FlaecheRepository {
         return liste("ort_id", ortId);
     }
 
+    /**
+     * Alle Flächen des Mandanten, aufgehobene eingeschlossen — EIN Lesezug für
+     * das Standort-Lesemodell (IP-3), statt einer Abfrage je Objekt.
+     */
+    public List<Flaeche> alle() {
+        return List.copyOf(jdbc.query("SELECT " + SPALTEN + " FROM flaeche_gueltigkeit "
+                + "ORDER BY gueltig_ab, created_at, id", FlaecheRepository::map));
+    }
+
     private List<Flaeche> liste(String spalte, UUID id) {
         return List.copyOf(jdbc.query("SELECT " + SPALTEN + " FROM flaeche_gueltigkeit WHERE "
-                + spalte + " = ? ORDER BY gueltig_ab, created_at, id",
-                (rs, n) -> {
-                    Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
-                    return new Flaeche(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("standort_id", UUID.class),
-                            rs.getObject("ort_id", UUID.class),
-                            rs.getInt("m2"),
-                            rs.getObject("gueltig_ab", LocalDate.class),
-                            rs.getObject("gueltig_bis", LocalDate.class),
-                            aufgehoben == null ? null : aufgehoben.toInstant());
-                },
-                id));
+                + spalte + " = ? ORDER BY gueltig_ab, created_at, id", FlaecheRepository::map, id));
+    }
+
+    private static Flaeche map(ResultSet rs, int n) throws SQLException {
+        Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
+        return new Flaeche(
+                rs.getObject("id", UUID.class),
+                rs.getObject("standort_id", UUID.class),
+                rs.getObject("ort_id", UUID.class),
+                rs.getInt("m2"),
+                rs.getObject("gueltig_ab", LocalDate.class),
+                rs.getObject("gueltig_bis", LocalDate.class),
+                aufgehoben == null ? null : aufgehoben.toInstant());
     }
 }

@@ -1,5 +1,7 @@
 package com.voltpilot.api.uems;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,6 +31,9 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class OrtZuordnungRepository {
+
+    private static final String SELECT = "SELECT id, ort_id, eltern_standort_id, eltern_ort_id, "
+            + "gueltig_ab, gueltig_bis, aufgehoben_am FROM ort_zuordnung ";
 
     private final JdbcTemplate jdbc;
 
@@ -77,20 +82,28 @@ public class OrtZuordnungRepository {
 
     /** Alle Intervalle eines Orts, aufgehobene eingeschlossen, nach Beginn. */
     public List<Zuordnung> fuerOrt(UUID ortId) {
-        return List.copyOf(jdbc.query("SELECT id, ort_id, eltern_standort_id, eltern_ort_id, "
-                + "gueltig_ab, gueltig_bis, aufgehoben_am FROM ort_zuordnung WHERE ort_id = ? "
-                + "ORDER BY gueltig_ab, created_at, id",
-                (rs, n) -> {
-                    Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
-                    return new Zuordnung(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("ort_id", UUID.class),
-                            rs.getObject("eltern_standort_id", UUID.class),
-                            rs.getObject("eltern_ort_id", UUID.class),
-                            rs.getObject("gueltig_ab", LocalDate.class),
-                            rs.getObject("gueltig_bis", LocalDate.class),
-                            aufgehoben == null ? null : aufgehoben.toInstant());
-                },
-                ortId));
+        return List.copyOf(jdbc.query(SELECT + "WHERE ort_id = ? ORDER BY gueltig_ab, created_at, id",
+                OrtZuordnungRepository::map, ortId));
+    }
+
+    /**
+     * Alle Intervalle des Mandanten, aufgehobene eingeschlossen — EIN Lesezug
+     * für das Standort-Lesemodell (IP-3), statt einer Abfrage je Ort.
+     */
+    public List<Zuordnung> alle() {
+        return List.copyOf(jdbc.query(SELECT + "ORDER BY ort_id, gueltig_ab, created_at, id",
+                OrtZuordnungRepository::map));
+    }
+
+    private static Zuordnung map(ResultSet rs, int n) throws SQLException {
+        Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
+        return new Zuordnung(
+                rs.getObject("id", UUID.class),
+                rs.getObject("ort_id", UUID.class),
+                rs.getObject("eltern_standort_id", UUID.class),
+                rs.getObject("eltern_ort_id", UUID.class),
+                rs.getObject("gueltig_ab", LocalDate.class),
+                rs.getObject("gueltig_bis", LocalDate.class),
+                aufgehoben == null ? null : aufgehoben.toInstant());
     }
 }

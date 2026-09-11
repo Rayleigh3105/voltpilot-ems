@@ -31,7 +31,7 @@ public class StandortRepository {
 
     private static final String SPALTEN = "id, unternehmen_id, name, kurzzeichen, strasse, plz, "
             + "ort, land, zeitzone, nutzung, notiz, lage_breitengrad, lage_laengengrad, zustand, "
-            + "archiviert_am";
+            + "archiviert_am, created_at";
 
     private final JdbcTemplate jdbc;
 
@@ -49,11 +49,16 @@ public class StandortRepository {
             List<String> nutzung, String notiz, BigDecimal lageBreitengrad,
             BigDecimal lageLaengengrad, String zustand, String createdBy) {}
 
-    /** {@code nutzung} ist {@code null}, wenn nichts gewählt ist; die erste ist die Hauptnutzung. */
+    /**
+     * {@code nutzung} ist {@code null}, wenn nichts gewählt ist; die erste ist die
+     * Hauptnutzung. {@code createdAt} ist der Zeitpunkt des Anlegens — zusammen
+     * mit {@code archiviertAm} das Bestehen des Standorts (er hat kein eigenes
+     * Intervall, V20260911110000); das Lesemodell leitet daraus die Tage ab.
+     */
     public record Standort(UUID id, UUID unternehmenId, String name, String kurzzeichen,
             String strasse, String plz, String ort, String land, String zeitzone,
             List<String> nutzung, String notiz, BigDecimal lageBreitengrad,
-            BigDecimal lageLaengengrad, String zustand, Instant archiviertAm) {}
+            BigDecimal lageLaengengrad, String zustand, Instant archiviertAm, Instant createdAt) {}
 
     public UUID anlegen(NeuerStandort s) {
         return jdbc.query(con -> {
@@ -118,6 +123,7 @@ public class StandortRepository {
                 rs.getBigDecimal("lage_breitengrad"),
                 rs.getBigDecimal("lage_laengengrad"),
                 rs.getString("zustand"),
-                archiviert == null ? null : archiviert.toInstant());
+                archiviert == null ? null : archiviert.toInstant(),
+                rs.getTimestamp("created_at").toInstant());
     }
 }

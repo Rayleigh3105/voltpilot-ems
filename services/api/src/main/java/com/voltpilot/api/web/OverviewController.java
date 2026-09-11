@@ -9,6 +9,8 @@ import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.OverviewRepository;
 import com.voltpilot.api.repo.SiteProfileStateRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
+import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.OverviewDto;
 import com.voltpilot.api.web.dto.OverviewDto.EnergyTodayDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewDailySavingsDto;
@@ -67,15 +69,18 @@ public class OverviewController {
     private final EntityTypeCatalog catalog;
     private final AnwendungKatalog anwendungen;
     private final SiteProfileStateRepository profileStates;
+    private final StandortLesemodellService standortLesemodell;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
             EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
-            SiteProfileStateRepository profileStates) {
+            SiteProfileStateRepository profileStates,
+            StandortLesemodellService standortLesemodell) {
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
         this.anwendungen = anwendungen;
         this.profileStates = profileStates;
+        this.standortLesemodell = standortLesemodell;
     }
 
     @GetMapping
@@ -103,6 +108,9 @@ public class OverviewController {
                 overview.energyPerSite(todayWindow.from(), todayWindow.to());
         Set<UUID> gridLimitSites = overview.sitesWithGridLimit();
         Map<UUID, Map<String, String>> storedStates = profileStates.findAllForTenant();
+        // UEMS AP-02 IP-3: der Standort je Anlage heute - additiv, null solange
+        // eine Anlage keinem Standort zugeordnet ist (heute: jede).
+        Map<UUID, StandortBezug> standortJeAnlage = standortLesemodell.bezugJeAnlage();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -157,7 +165,8 @@ public class OverviewController {
                     aktiveAnwendungen(site, typeCounts,
                             strategyNodes.getOrDefault(site.id(), Set.of()),
                             liveRow != null, gridLimitSites.contains(site.id()),
-                            storedStates.getOrDefault(site.id(), Map.of()))));
+                            storedStates.getOrDefault(site.id(), Map.of())),
+                    standortJeAnlage.get(site.id())));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();

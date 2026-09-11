@@ -35,10 +35,36 @@ public class TenantRepository {
                 TenantRepository::map);
     }
 
+    /**
+     * Create a tenant - and, in the SAME statement (one transaction), its one
+     * UEMS {@code unternehmen} plus that company's "angelegt" log entry (AP-00
+     * E2, AP-02 §4.1: exactly one company per Kundenbereich, created
+     * automatically with it). This is the same row the migration
+     * V20260911100000 backfilled for every tenant that existed before it: name =
+     * tenant name brought onto the naming rule, zone Europe/Berlin, no person
+     * ({@code created_by}/{@code akteur_sub} NULL). The log names the actor
+     * "VoltPilot" - not "(Bestandsübernahme)": a new Kundenbereich takes over no
+     * existing stock. The app role has no INSERT on {@code unternehmen} at all;
+     * this admin connection (BYPASSRLS) is the only way one comes into being.
+     */
     public TenantDto create(String name, String segment) {
         return jdbc.queryForObject(
-                "INSERT INTO tenant (name, segment) VALUES (?, ?) "
-                        + "RETURNING id, name, segment, plan, betriebsart, created_at",
+                "WITH t AS ("
+                        + " INSERT INTO tenant (name, segment) VALUES (?, ?)"
+                        + " RETURNING id, name, segment, plan, betriebsart, created_at),"
+                        + " u AS ("
+                        + " INSERT INTO unternehmen (tenant_id, name, zeitzone)"
+                        + " SELECT t.id, COALESCE(NULLIF(btrim(left(btrim(t.name), 120)), ''),"
+                        + " 'Unternehmen'), 'Europe/Berlin' FROM t"
+                        + " RETURNING id, tenant_id, name, zeitzone, created_at),"
+                        + " p AS ("
+                        + " INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt,"
+                        + " neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name)"
+                        + " SELECT u.tenant_id, 'unternehmen', u.id, 'angelegt', NULL,"
+                        + " jsonb_build_object('name', u.name, 'zeitzone', u.zeitzone),"
+                        + " (u.created_at AT TIME ZONE u.zeitzone)::date, false, NULL, 'VoltPilot'"
+                        + " FROM u)"
+                        + " SELECT id, name, segment, plan, betriebsart, created_at FROM t",
                 TenantRepository::map, name, segment);
     }
 
@@ -66,10 +92,29 @@ public class TenantRepository {
     /**
      * Delete a tenant row. Used only to compensate a failed self-registration
      * (the tenant was just created and owns no data yet); child rows would make
-     * this fail by FK, which is the safety we want.
+     * this fail by FK, which is the safety we want. The ONE exception is the
+     * {@code unternehmen} {@link #create} made with it (FK ON DELETE RESTRICT):
+     * it goes first, in the same transaction - so a tenant that has grown any
+     * other data still refuses. Its log entry stays (append-only, no FK - the
+     * offboarding rule).
      */
     public void deleteById(UUID tenantId) {
-        jdbc.update("DELETE FROM tenant WHERE id = ?", tenantId);
+        jdbc.execute((java.sql.Connection con) -> {
+            boolean autoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                deleteByTenant(con, "unternehmen", tenantId);
+                deleteByTenant(con, "tenant", tenantId, "id");
+                con.commit();
+                return null;
+            } catch (Exception e) {
+                con.rollback();
+                throw e instanceof java.sql.SQLException sql ? sql
+                        : new java.sql.SQLException("tenant compensation failed", e);
+            } finally {
+                con.setAutoCommit(autoCommit);
+            }
+        });
     }
 
     /** A device row of the tenant, as needed for the MQTT retained-topic cleanup. */

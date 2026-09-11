@@ -28,6 +28,7 @@ import type { SiteVerbraucher } from './verbraucherZone';
 export type { SiteVerbraucher } from './verbraucherZone';
 import type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
 export type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
+import type { Bestand, FlaecheQuelle } from './uemsOrtsbaum';
 import type { FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile';
 export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile';
 import type { Topology } from './topology';
@@ -155,6 +156,14 @@ export interface Site {
    * das Feld gar nicht.
    */
   profil?: Profil | null;
+}
+
+/**
+ * GET /api/v1/sites/{siteId}: genau die `Site`-Felder, plus additiv der
+ * `standort` heute (UEMS AP-02 IP-3); `null` = noch keinem Standort zugeordnet.
+ */
+export interface SiteDetail extends Site {
+  standort: StandortBezug | null;
 }
 
 /**
@@ -1948,6 +1957,11 @@ export interface OverviewSite {
    * Portfolio leitet dann aus der Zeile ab, was es belegen kann.
    */
   anwendungen?: string[];
+  /**
+   * UEMS AP-02 IP-3: der Standort dieser Anlage HEUTE. `null` = noch keinem
+   * Standort zugeordnet (heute jede Bestandsanlage); absent = älteres Backend.
+   */
+  standort?: StandortBezug | null;
 }
 
 /** Die Energie-Summen eines Tages (kWh), jedes Feld einzeln `null`-fähig. */
@@ -1990,6 +2004,96 @@ export interface Overview {
   sites: OverviewSite[];
   totals: OverviewTotals;
   dailySavings: OverviewDailySavings[];
+}
+
+// ---- UEMS-Ortsstruktur: Unternehmen und Standorte (AP-02 IP-3) -------------
+// Nur die Antwortformen von GET /api/v1/unternehmen, GET /api/v1/standorte
+// (?stichtag=) und GET /api/v1/standorte/{id}; die Fläche dazu baut AP-01 IP-5.
+// Die Ableitung (Stand am, Fläche, Zuordnung) ist der Server, gleich dem
+// Vertrag docs/contracts/v2/ortsbaum-vectors.json — das Portal rechnet nichts nach.
+
+/** Der Standort, dem eine Anlage heute zugeordnet ist; `gueltigAb` = Beginn der laufenden Zuordnung (ISO-Tag). */
+export interface StandortBezug {
+  id: string;
+  name: string;
+  kurzzeichen: string;
+  gueltigAb: string;
+}
+
+/**
+ * GET /api/v1/unternehmen — die Zahlen gelten HEUTE. `nicht_angelegt`: ein
+ * Kundenbereich ohne Unternehmen-Zeile; dann sind die Stammdaten `null`, die
+ * Zahlen stimmen trotzdem.
+ */
+export interface Unternehmen {
+  zustand: 'angelegt' | 'nicht_angelegt';
+  id: string | null;
+  name: string | null;
+  kurzname: string | null;
+  zeitzone: string | null;
+  /** Standorte, die es heute gibt (archivierte zählen nicht). */
+  standortZahl: number;
+  anlagenZahl: number;
+  /** Anlagen, die heute keinem Standort zugeordnet sind. */
+  nochNichtZugeordnetZahl: number;
+}
+
+export interface StandortAdresse {
+  strasse: string | null;
+  plz: string | null;
+  ort: string | null;
+  land: 'DE' | 'AT' | 'CH' | null;
+}
+
+/** Eine Anlage am Standort; `gueltigBis` ist der letzte gültige Tag (einschließlich), `null` = offen. */
+export interface StandortAnlage {
+  id: string;
+  name: string;
+  gueltigAb: string;
+  gueltigBis: string | null;
+}
+
+/**
+ * Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`, die Zahlen
+ * und die Fläche; Name, Adresse, Zeitzone, Zustand und `esFehlt` stehen wie
+ * heute. Ohne Bestand am Stichtag: `anlagen` leer, Zahlen und Fläche `null`.
+ */
+export interface StandortAmStichtag {
+  id: string;
+  kurzzeichen: string;
+  name: string;
+  adresse: StandortAdresse | null;
+  zeitzone: string;
+  zustand: 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+  /** Was einem Entwurf zum Einrichten fehlt; leer außerhalb des Entwurfs. */
+  esFehlt: 'adresse'[];
+  bestand: Bestand;
+  /** Der Satz zum Bestand, nur wenn nicht `vorhanden`. */
+  bestandText: string | null;
+  anlagen: StandortAnlage[];
+  anlagenZahl: number | null;
+  gebaeudeZahl: number | null;
+  bereichZahl: number | null;
+  /** Eigene Fläche oder Summe der Gebäude (nur wenn jedes eine hat); `null`, nie 0. */
+  flaecheM2: number | null;
+  flaecheQuelle: FlaecheQuelle | null;
+}
+
+/** Die Gruppe „Noch nicht zugeordnet" — es gibt sie nur, solange sie etwas enthält. */
+export interface NochNichtZugeordnet {
+  anlagenZahl: number;
+  anlagen: { id: string; name: string }[];
+}
+
+/** GET /api/v1/standorte?stichtag= */
+export interface StandorteAmStichtag {
+  stichtag: string;
+  /** Die Standorte, die es am Stichtag gab; leer ohne Standorte (nie ein 0-Objekt). */
+  standorte: StandortAmStichtag[];
+  /** Standorte, die es am Stichtag noch nicht gab oder die archiviert waren. */
+  nichtGezeigt: StandortAmStichtag[];
+  /** `null`, sobald jede Anlage zugeordnet ist. */
+  nochNichtZugeordnet: NochNichtZugeordnet | null;
 }
 
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------

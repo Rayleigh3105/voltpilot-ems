@@ -31,6 +31,12 @@ tags:
       and login in one step (no operator involved). Unauthenticated by design;
       can be disabled platform-wide via VOLTPILOT_REGISTRATION_ENABLED=false.
   - name: sites
+  - name: ortsstruktur
+    description: >
+      UEMS-Ortsstruktur (AP-02): das Unternehmen des Kundenbereichs und seine
+      Standorte zum Stichtag. Mandantengebunden wie /api/v1/sites/** (RLS ist
+      der Zaun; ein fremdes Objekt ist 404, nie 403; Admins über X-Tenant-Id).
+      Lesend seit IP-3; die Schreibrouten folgen mit IP-4/IP-5.
   - name: devices
   - name: enrollment
     description: >
@@ -352,6 +358,84 @@ paths:
               schema: { $ref: "#/components/schemas/TenantContext" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: No tenant context (admin without a selected tenant). }
+  /api/v1/unternehmen:
+    get:
+      tags: [ortsstruktur]
+      summary: Das Unternehmen des Kundenbereichs mit den Zahlen von heute (AP-02 IP-3).
+      description: >
+        Name, Kurzname und Zeitzonen-Vorgabe des Unternehmens (genau eines je
+        Kundenbereich, AP-00 E2) und die Zahlen, auf die die Startansicht-Weiche
+        (AP-01 E1/IP-5) wartet: Standorte, die es heute gibt; Anlagen des
+        Kundenbereichs; Anlagen, die heute keinem Standort zugeordnet sind.
+        Ein Kundenbereich ohne Unternehmen-Zeile bekommt den benannten Zustand
+        `nicht_angelegt` (Stammdaten null, Zahlen trotzdem richtig) - nie einen
+        Fehler. RLS-scoped; ein Admin ohne gewählten Mandanten ist default-deny -> 404.
+        Rechte (rechte-matrix.json): lesend ohne eigene Kennung; Bearbeiten ist
+        `unternehmen.bearbeiten` (IP-4).
+      responses:
+        "200":
+          description: Das Unternehmen und seine Zahlen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unternehmen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: No tenant context (admin without a selected tenant). }
+  /api/v1/standorte:
+    get:
+      tags: [ortsstruktur]
+      summary: Die Standorte zum Stichtag und die Gruppe "noch nicht zugeordnet" (AP-02 IP-3).
+      description: >
+        Das Standort-Read-Model: je Standort Kurzzeichen, Name, Adresse,
+        Zeitzone, Zustand und "es fehlt", die Anlagen mit am Stichtag gültiger
+        Zuordnung, Gebäude- und Bereichszahl und die Fläche (eigene ODER Summe
+        der Gebäude nur, wenn jedes eine hat; Bereiche nie addiert; fehlend null,
+        nie 0) - alles so, wie es am Stichtag galt (dieselbe Ableitung wie der
+        Vertrag docs/contracts/v2/ortsbaum-vectors.json). Standorte, die es an
+        dem Tag nicht gab oder die archiviert waren, stehen mit Grund und Satz
+        unter `nichtGezeigt`. `nochNichtZugeordnet` ist null, sobald jede
+        Anlage zugeordnet ist (A15). Ohne Standorte ist `standorte` eine leere
+        Liste. Name, Adresse, Zustand sind einfache Felder und stehen wie heute.
+        Rechte (rechte-matrix.json): heute lesend ohne eigene Kennung; ein
+        Stichtag in der Vergangenheit ("Stand am") ist `aenderungsprotokoll.lesen`.
+        Additiv vorgesehen: `teilansicht` (AP-03 IP-10).
+      parameters:
+        - name: stichtag
+          in: query
+          required: false
+          description: Der Tag (ISO), Vorgabe heute in der Zeitzone des Unternehmens.
+          schema: { type: string, format: date, example: "2027-02-15" }
+      responses:
+        "200":
+          description: Die Standorte zum Stichtag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandorteAmStichtag" }
+        "400": { description: stichtag ist kein ISO-Tag. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/standorte/{standortId}:
+    get:
+      tags: [ortsstruktur]
+      summary: Ein Standort zum Stichtag (AP-02 IP-3).
+      description: >
+        Derselbe Eintrag wie in der Liste. Gab es den Standort am Stichtag nicht
+        (noch nicht / archiviert), sagt es `bestand` + `bestandText`; die
+        zeitgültigen Teile sind dann leer bzw. null. Ein fremder Standort
+        (anderer Kundenbereich) ist 404, nie 403 (A14).
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: stichtag
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Der Standort zum Stichtag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { description: stichtag ist kein ISO-Tag. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Standort not found for this tenant. }
   /api/v1/overview:
     get:
       tags: [sites]
@@ -477,6 +561,25 @@ paths:
         "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/sites/{siteId}:
+    get:
+      tags: [sites]
+      summary: One site, plus its Standort today.
+      description: >
+        Exactly the `Site` fields of the list and of PUT, unchanged, plus -
+        additively - `standort` (UEMS AP-02 IP-3): the Standort the site is
+        assigned to today, or null while it is not assigned (today every
+        existing site; the assignment arrives with the Bestandsübernahme IP-9).
+        RLS makes a foreign site a 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
     put:
       tags: [sites]
       summary: Update a site (name/bidding zone/coordinates).
@@ -10251,6 +10354,12 @@ components:
             portfolio cockpit composes its Bausteine from the UNION over the
             plants; without this it would have to guess, and a switched-off
             marktvermarktung would stay visible.
+        standort:
+          nullable: true
+          description: >
+            UEMS AP-02 IP-3 (additive): the Standort this site is assigned to
+            today, or null while it is not assigned (today every existing site).
+          allOf: [{ $ref: "#/components/schemas/StandortBezug" }]
     OverviewEnergyToday:
       type: object
       description: >
@@ -13248,6 +13357,143 @@ components:
         name: { type: string }
         segment: { type: string, enum: [CI, B2C] }
         betriebsart: { type: string, enum: [endkunde, betreiber], nullable: true }
+    Unternehmen:
+      type: object
+      description: >
+        GET /api/v1/unternehmen (UEMS AP-02 IP-3). Zahlen gelten heute.
+        `zustand` = `nicht_angelegt` für einen Kundenbereich ohne Unternehmen-Zeile:
+        dann sind id, name, kurzname und zeitzone null (nie erfunden).
+      required: [zustand, standortZahl, anlagenZahl, nochNichtZugeordnetZahl]
+      properties:
+        zustand: { type: string, enum: [angelegt, nicht_angelegt] }
+        id: { type: string, format: uuid, nullable: true }
+        name: { type: string, nullable: true, example: Kunststoffwerk Ahrenberg GmbH }
+        kurzname: { type: string, nullable: true, example: Ahrenberg }
+        zeitzone:
+          type: string
+          nullable: true
+          enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich]
+        standortZahl:
+          type: integer
+          description: Standorte, die es heute gibt (archivierte zählen nicht).
+        anlagenZahl: { type: integer, description: Anlagen des Kundenbereichs. }
+        nochNichtZugeordnetZahl:
+          type: integer
+          description: Anlagen, die heute keinem Standort zugeordnet sind.
+    StandorteAmStichtag:
+      type: object
+      description: >
+        GET /api/v1/standorte (UEMS AP-02 IP-3). Additiv vorgesehen:
+        `teilansicht {sichtbar, gesamt}` (AP-03 IP-10).
+      required: [stichtag, standorte, nichtGezeigt]
+      properties:
+        stichtag: { type: string, format: date }
+        standorte:
+          type: array
+          description: Die Standorte, die es am Stichtag gab, in der Reihenfolge des Anlegens.
+          items: { $ref: "#/components/schemas/StandortAmStichtag" }
+        nichtGezeigt:
+          type: array
+          description: >
+            Standorte, die es am Stichtag noch nicht gab oder die archiviert
+            waren - mit `bestand` und `bestandText`
+            ("Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht.").
+          items: { $ref: "#/components/schemas/StandortAmStichtag" }
+        nochNichtZugeordnet:
+          nullable: true
+          description: >
+            Die Gruppe "Noch nicht zugeordnet" - null, sobald jede Anlage am
+            Stichtag einem Standort zugeordnet ist (kein "0 nicht zugeordnet", A15).
+          allOf: [{ $ref: "#/components/schemas/NochNichtZugeordnet" }]
+    StandortAmStichtag:
+      type: object
+      description: >
+        Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`,
+        die Zahlen und die Fläche; Name, Adresse, Zeitzone, Zustand und
+        `esFehlt` sind einfache Felder und stehen wie heute. Ohne Bestand am
+        Stichtag: `anlagen` leer, Zahlen und Fläche null - nie eine 0.
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string, example: ST-1 }
+        name: { type: string, example: Werk Ahrenberg }
+        adresse:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/StandortAdresse" }]
+        zeitzone: { type: string, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        esFehlt:
+          type: array
+          description: >
+            Was einem Entwurf zum Einrichten fehlt ("Noch nicht eingerichtet -
+            es fehlt: Adresse"); leer außerhalb des Entwurfs.
+          items: { type: string, enum: [adresse] }
+        bestand: { type: string, enum: [vorhanden, gab_es_noch_nicht, archiviert] }
+        bestandText:
+          type: string
+          nullable: true
+          description: Der Satz zum Bestand, nur wenn nicht `vorhanden`.
+        anlagen:
+          type: array
+          items: { $ref: "#/components/schemas/StandortAnlage" }
+        anlagenZahl: { type: integer, nullable: true }
+        gebaeudeZahl: { type: integer, nullable: true }
+        bereichZahl: { type: integer, nullable: true }
+        flaecheM2:
+          type: integer
+          nullable: true
+          description: >
+            Die eigene Bezugsfläche des Standorts, sonst die Summe seiner
+            Gebäude - nur, wenn jedes Gebäude eine hat; null, wenn keine da
+            ist (nie 0; Bereiche werden nie addiert).
+        flaecheQuelle:
+          type: string
+          nullable: true
+          enum: [eigen, aus_gebaeuden_summiert]
+    StandortAdresse:
+      type: object
+      properties:
+        strasse: { type: string, nullable: true }
+        plz: { type: string, nullable: true }
+        ort: { type: string, nullable: true }
+        land: { type: string, nullable: true, enum: [DE, AT, CH] }
+    StandortAnlage:
+      type: object
+      description: Eine Anlage am Standort mit dem am Stichtag gültigen Intervall (`gueltigBis` einschließlich).
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true }
+    NochNichtZugeordnet:
+      type: object
+      properties:
+        anlagenZahl: { type: integer }
+        anlagen:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
+    StandortBezug:
+      type: object
+      description: >
+        Der Standort, dem eine Anlage heute zugeordnet ist (UEMS AP-02 IP-3);
+        `gueltigAb` ist der Beginn der laufenden Zuordnung.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kurzzeichen: { type: string }
+        gueltigAb: { type: string, format: date }
+    SiteDetail:
+      description: GET /api/v1/sites/{siteId} - the Site fields unchanged, plus `standort`.
+      allOf:
+        - { $ref: "#/components/schemas/Site" }
+        - type: object
+          properties:
+            standort:
+              nullable: true
+              allOf: [{ $ref: "#/components/schemas/StandortBezug" }]
     CreateTenantRequest:
       type: object
       required: [name]

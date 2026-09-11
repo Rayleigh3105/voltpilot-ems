@@ -26,6 +26,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Schnittstellen
 
 - **UEMS-Messstellen-API: anlegen, lesen, bearbeiten, anhalten, fortsetzen, archivieren** — `/api/v1/messstellen` in snake_case (die Antwort IST die Messstelle des Schemas + `id`/`fehlt`/`angehalten_ab`/`archiviert_am`), Anfrage streng (unbekanntes Feld 400), Regeln nur aus `MessstelleRegeln`, Urheber an EINER Stelle (`ProtokollAkteur`), Übergänge auf die Minute, nie Zukunft, streng nach dem Vorgänger · `uems-messstellen-api-anlegen-lesen-bear.md`
+- **UEMS-Standort-Lesemodell: Unternehmen und Standorte zum Stichtag** — `GET /api/v1/unternehmen`, `GET /api/v1/standorte?stichtag=` (+ `/{id}`), additiv `standort {id, name, kurzzeichen, gueltigAb}` an `/overview` und am NEUEN `/sites/{id}`; Ableitung = `OrtsbaumAbleitung.standAm`, ein Standort besteht ab `created_at` ODER früher, wenn etwas früher an ihm hängt; ohne Unternehmen-Zeile `nicht_angelegt`, nie 500; neuer Mandant bekommt sein Unternehmen im selben Statement (`TenantRepository.create`) · `uems-standort-lesemodell-unternehmen-st.md`
 
 ## Fachmodell
 

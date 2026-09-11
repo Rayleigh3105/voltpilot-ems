@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -101,7 +102,12 @@ public record OverviewDto(
             BigDecimal storageCapacityKwh,
             EnergyTodayDto energyToday,
             int chargePointCount,
-            List<String> anwendungen) {
+            List<String> anwendungen,
+            // UEMS AP-02 IP-3, additiv am Ende: der Standort der Anlage heute
+            // ({id, name, kurzzeichen, gueltigAb}) oder null, solange sie keinem
+            // zugeordnet ist — heute jede Bestandsanlage (die Zuordnung legt erst
+            // die Bestandsübernahme IP-9 an).
+            StandortBezug standort) {
     }
 
     /**

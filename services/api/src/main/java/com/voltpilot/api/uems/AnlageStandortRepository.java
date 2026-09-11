@@ -1,5 +1,7 @@
 package com.voltpilot.api.uems;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,6 +30,9 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class AnlageStandortRepository {
+
+    private static final String SELECT = "SELECT id, site_id, standort_id, gueltig_ab, gueltig_bis, "
+            + "aufgehoben_am FROM anlage_standort ";
 
     private final JdbcTemplate jdbc;
 
@@ -64,19 +69,27 @@ public class AnlageStandortRepository {
 
     /** Alle Intervalle einer Anlage, aufgehobene eingeschlossen, nach Beginn. */
     public List<Zuordnung> fuerAnlage(UUID siteId) {
-        return List.copyOf(jdbc.query("SELECT id, site_id, standort_id, gueltig_ab, gueltig_bis, "
-                + "aufgehoben_am FROM anlage_standort WHERE site_id = ? "
-                + "ORDER BY gueltig_ab, created_at, id",
-                (rs, n) -> {
-                    Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
-                    return new Zuordnung(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("site_id", UUID.class),
-                            rs.getObject("standort_id", UUID.class),
-                            rs.getObject("gueltig_ab", LocalDate.class),
-                            rs.getObject("gueltig_bis", LocalDate.class),
-                            aufgehoben == null ? null : aufgehoben.toInstant());
-                },
-                siteId));
+        return List.copyOf(jdbc.query(SELECT + "WHERE site_id = ? ORDER BY gueltig_ab, created_at, id",
+                AnlageStandortRepository::map, siteId));
+    }
+
+    /**
+     * Alle Intervalle des Mandanten, aufgehobene eingeschlossen — EIN Lesezug
+     * für das Standort-Lesemodell (IP-3), statt einer Abfrage je Anlage.
+     */
+    public List<Zuordnung> alle() {
+        return List.copyOf(jdbc.query(SELECT + "ORDER BY site_id, gueltig_ab, created_at, id",
+                AnlageStandortRepository::map));
+    }
+
+    private static Zuordnung map(ResultSet rs, int n) throws SQLException {
+        Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
+        return new Zuordnung(
+                rs.getObject("id", UUID.class),
+                rs.getObject("site_id", UUID.class),
+                rs.getObject("standort_id", UUID.class),
+                rs.getObject("gueltig_ab", LocalDate.class),
+                rs.getObject("gueltig_bis", LocalDate.class),
+                aufgehoben == null ? null : aufgehoben.toInstant());
     }
 }
