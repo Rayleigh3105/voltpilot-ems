@@ -59,6 +59,17 @@ mit `management.endpoint.health.probes.enabled: true`. Damit existieren drei Pfa
   per Default *nicht* auf). **Readiness-Probe.** Nicht per
   `management.endpoint.health.group.readiness.include=db` erweitern: sonst nimmt
   ein DB-Blip alle Replicas gleichzeitig aus dem Load-Balancer.
+  **Einzige Ausnahme `ingest`:** `readinessState,eventsTopic` — bereit erst, wenn das
+  Redpanda-Topic `events.raw` existiert (UEMS AP-07 IP-5). Das geht, weil der Ingest
+  keinen fachlichen HTTP-Verkehr bedient: ein nicht bereiter Pod verliert nichts, die
+  Readiness ist hier das sichtbare Signal „Topic fehlt“. Die Prüfung
+  (`EventsTopicPruefung`, Admin-Client, 3 s Frist, höchstens alle 10 s) ist nach dem
+  ersten Treffer für die Lebenszeit des Prozesses zwischengespeichert — ein späterer
+  Redpanda-Aussetzer nimmt den Pod also nie heraus. Readiness hält den MQTT-Konsum
+  nicht an (und mit `strategy: Recreate` läuft kein alter Pod weiter); deshalb fällt
+  der Ingest bei fehlendem Topic selbst zurück: Messwert- und Kern-Weg ohne Ereignisse
+  (nur Log + Zähler `voltpilot.ingest.events.undelivered`, Quittung nach den Messwerten),
+  der Box-Adapter `…/v2/events` verbindet sich erst mit dem Topic.
 
 **Graceful Shutdown.** `server.shutdown: graceful` +
 `spring.lifecycle.timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}` sind
@@ -519,7 +530,7 @@ optional später als Argo-PreSync-Job, sobald Migrationen > 30 s auftreten.
 
 | Zusage | Beweis |
 |---|---|
-| JVM: graceful shutdown + Probe-Gruppen konfiguriert | `K8sReadinessConfigTest` (api, ingest, writer) |
+| JVM: graceful shutdown + Probe-Gruppen konfiguriert | `K8sReadinessConfigTest` (api, ingest, writer; ingest zusätzlich `eventsTopic` in der Readiness-Gruppe) |
 | JVM: `/health/liveness` + `/health/readiness` existieren wirklich (200 UP) | `services/ingest/.../ProbeEndpointsTest` — bootet die echte App (der einzige JVM-Dienst ohne Datasource, also containerlos); alle drei tragen denselben Actuator-Block |
 | Python: SIGTERM stoppt die Schleife | `test_runtime.py` + `test_serve_loop.py` (optimization, forecast) |
 | Python: Backoff statt voller Kadenz | `test_runtime.py`, `test_serve_loop.py` |

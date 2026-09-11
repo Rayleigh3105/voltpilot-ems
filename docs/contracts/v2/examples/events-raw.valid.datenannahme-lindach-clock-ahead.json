@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "event_id": "5e7a0000-0000-4000-8000-000000000005",
+  "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+  "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+  "urheber": "datenannahme",
+  "ingested_at": "2026-10-20T08:15:00Z",
+  "ereignis": {
+    "ereignis_id": "e7e00000-0000-4000-8000-000000000070",
+    "art": "clock_ahead",
+    "zeitpunkt": "2026-10-20T08:15:00Z",
+    "box": "a4e0b000-0000-4000-8000-0000000000e3",
+    "strom": "measurement-samples",
+    "vor_s": 840,
+    "anzahl": 1,
+    "sequenz": 7816
+  }
+}

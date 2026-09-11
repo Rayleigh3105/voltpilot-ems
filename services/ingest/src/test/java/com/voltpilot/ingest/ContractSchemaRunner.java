@@ -21,8 +21,9 @@ import java.util.regex.Pattern;
  * and uuid in these contracts also carries a {@code pattern}.
  *
  * <p>Its twin is {@code services/api .../uems/UemsSchemaLaeufer} (same subset, used by the
- * vocabulary vector test); IP-5 replaces this test-side check with the runtime validator of
- * {@code …/v2/events}, driven by the same fixtures.
+ * vocabulary vector test). The RUNTIME check of {@code …/v2/events} is {@link BoxEventsValidator}
+ * (UEMS AP-07 IP-5), driven by the same fixtures and vector cases; this runner stays the test-side
+ * proof that every record Ingest publishes on {@code events.raw} is schema-valid.
  */
 final class ContractSchemaRunner {
     private final JsonNode root;

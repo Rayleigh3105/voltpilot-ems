@@ -23,19 +23,23 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 | `services/ingest/.../EventsContractSchemaTest.java` | Umschläge und Beispiele gegen beide Schemas (der Prüfnachweis „Schema-Tests Ingest“) |
 | `services/timescale-writer/.../EreignisVokabular.java` (+ `EreignisVokabularZwillingTest`) | der WRITER-ZWILLING der Prüfung (IP-8): prüft jedes `events.raw`-Ereignis vor dem Anhängen; spielt alle Fälle dieser Datei |
 | `services/api/.../V20260911260000__uems_messreihe_ereignis.sql` | der Speicher (IP-8): `messreihe_ereignis` mit dem Vokabular als `messreihe_ereignis_vokabular()` — `MessreiheEreignisMigrationTest` beweist die Gleichheit |
+| `services/ingest/.../BoxEventsValidator.java` (+ `BoxEventsValidatorTest`) | die Laufzeit-Prüfung des Umschlags in der Datenannahme (IP-5) — Zwilling von `pruefeUmschlag`, dieselben Umschlag-Fälle, Tabellen gegen `vokabular` |
+| `services/ingest/.../EventsRawEvent.java` (+ `DatenannahmeTest`) | die `events.raw`-Datensätze beider Wege, jeder im Test gegen das Schema geprüft (§7) |
 | [`examples/`](./examples/) `mqtt-events-2.1.*`, `events-raw.*` | ≥ 2 gültige + 1 ungültiges Beispiel je Schema |
 
 **Wer eine Art, ein Feld, eine Regel oder einen Satz ändert, ändert die Java-Klasse, den
 TS-Zwilling, beide Schemas UND die Vektor-Datei** — der Java-Test prüft, dass die Schemas aus
 genau diesem Vokabular gebaut sind. Seit IP-8 dazu den Writer-Zwilling und, mit einer neuen
-Migration, `messreihe_ereignis_vokabular()`.
+Migration, `messreihe_ereignis_vokabular()`. Bei den Box-Arten, Feldtypen, Wörtern und Gründen
+gehört `services/ingest` `BoxEventsValidator`/`Grund` dazu (`BoxEventsValidatorTest` hält sie an
+der Vektor-Datei).
 
-> ⚠ **Wer schon anruft (Stand IP-8).** Keine Box sendet Ereignisse (erst mit einem
-> Edge-Release, IP-18/IP-19), die Datenannahme verarbeitet `…/v2/events` noch nicht (IP-5). Die
-> Ereignis-Tabelle `messreihe_ereignis` steht (§7 „Der Speicher“): der Writer schreibt
-> `device_measurement_event` (sechs Arten, siehe §4 „Bestand“) unverändert weiter und spiegelt
-> jedes davon hinein; `events.raw` hängt er an, sobald es beschickt wird. Die bestehenden
-> MQTT-Verträge 2.0 sind unverändert.
+> ⚠ **Wer schon anruft (Stand IP-5 + IP-8).** Keine Box sendet Ereignisse (erst mit einem
+> Edge-Release, IP-18/IP-19). Die Datenannahme verarbeitet `…/v2/events` und schreibt ihre
+> eigenen Ablehnungen seit IP-5 auf `events.raw` (§7). Die Ereignis-Tabelle `messreihe_ereignis`
+> steht (§7 „Der Speicher“): der Writer schreibt `device_measurement_event` (sechs Arten, siehe §4
+> „Bestand“) unverändert weiter und spiegelt jedes davon hinein; `events.raw` hängt er an. Die
+> bestehenden MQTT-Verträge 2.0 sind unverändert.
 
 ## 1. Zwei Wege, ein Vertrag
 
@@ -239,6 +243,42 @@ erzeugt keine zweite Zeile. Der Bezug steht wörtlich (`kennungen`) und, wo eind
 kein Kennzeichen — auf `events.raw` sollte `komponente` die `entity_id` sein, sonst bleibt nur die
 Kennung). Verworfen wird, was diese Prüfung verwirft — gezählt mit dem Grund, nie gespeichert.
 
+**Was die Datenannahme schreibt (IP-5, `services/ingest`).** Weg 1: je Eintrag eines
+angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling von
+`EreignisVokabular.pruefeUmschlag` über dieselben Umschlag-Fälle). Weg 2 mit Urheber
+`datenannahme` für alle drei Uplinks (`telemetry`, `measurement-samples`, `events`):
+
+- Die Umschlag-Felder (`device_id`, `source_topic`, `sequence`, `observed_at`) FEHLEN — der Bezug
+  steht im Ereignis: `box` = `device_id` aus dem Topic (die mTLS-geprüfte Identität, auch wenn der
+  Umschlag eine andere nennt), `strom` = Blatt des Topics, `sequenz` = Sequenz des Umschlags, wenn
+  lesbar (nie geraten). `zeitpunkt` = Eingangszeit auf die Sekunde.
+- **Gebündelt je Umschlag, Art und Grund:** ein `rejected` je Grund, ein `clock_ahead`, ein
+  `too_old` — mit `anzahl` = nicht weitergereichte Werte (Samples, Kern-Kanäle, Box-Ereignisse;
+  fehlt, wenn der Umschlag unlesbar war) und bei Zeitfehlern der GRÖSSTEN Abweichung als
+  `vor_s`/`alter_s`. Eine Box mit falscher Uhr hinterlässt so ein Ereignis je Umschlag, nicht je Wert.
+- **Die Einheit:** Fassung, Form und Kennung des Umschlags verwerfen den ganzen Umschlag (ein
+  `rejected`); bei `telemetry`/`measurement-samples` verwirft ein fehlerhafter oder unplausibler
+  WERT nur sich selbst, der Rest geht weiter; bei `events` bleibt der Umschlag die Einheit (§2).
+  Ist die Messzeit des Umschlags selbst unplausibel, geht die Uhr der Box falsch — dann wird kein
+  Wert angenommen.
+- **`ereignis_id`** ist eine Namens-UUID aus Topic, Umschlag-Bytes, Art und Grund: dieselbe
+  Zustellung zweimal (QoS 1, Wiederholung nach einem Redpanda-Fehler) trägt dieselbe Kennung;
+  `zeitpunkt`/`ingested_at` sind die der jeweiligen Zustellung. ⚠ Der Speicher (oben) erkennt
+  eine Wiederholung nur an der GLEICHEN Meldung — die zweite Zustellung unterscheidet sich im
+  `zeitpunkt` und wird als `fortschreibung_unzulaessig` verworfen und gezählt; gespeichert bleibt
+  genau die erste.
+- **Belegt gegen den Verbraucher:** [`datenannahme-events-vectors.json`](./datenannahme-events-vectors.json)
+  — je Art und Grund, den die Datenannahme erzeugt, ein Umschlag und die Nachrichten daraus;
+  `services/ingest` `DatenannahmeVektorenTest` erzeugt genau sie, `services/timescale-writer`
+  `DatenannahmeNachrichtenTest` nimmt jede mit Rahmen und Vertrag an.
+- **Fehlt das Topic `events.raw`** (vergessen beim Deploy), sendet die Datenannahme nicht blind
+  dorthin: auf `telemetry`/`measurement-samples` stehen die Ablehnungen nur im Log (Zähler
+  `voltpilot.ingest.events.undelivered`), die Werte laufen weiter; der Box-Umschlag wird erst
+  angenommen, wenn es das Topic gibt (die persistente Sitzung hält ihn beim Broker).
+- **`clock_jump` schreibt die Datenannahme NICHT:** er vergleicht aufeinanderfolgende Umschläge
+  derselben Box, die zustandslose Datenannahme sieht immer nur einen. Offen für den Writer, der
+  die Sequenz je Box ohnehin auswertet (IP-7/IP-9) — mit einer Erweiterung der Urheber dieser Art.
+
 ## 8. Die Fälle
 
 61 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
@@ -296,8 +336,7 @@ Kennzeichen oder ein erfundener Messkanal zusätzlich in `erfunden`).
 
 ## 10. Was dieser Vertrag nicht regelt
 
-Die Verarbeitung von `…/v2/events` in der Datenannahme (IP-5), die Lücken-Erkennung aus
-Kadenz und Herzschlag (IP-9), den Writer (IP-7), die Ereignis-Tabelle mit RLS, Grants und
+Die Lücken-Erkennung aus Kadenz und Herzschlag (IP-9), `clock_jump` (§7), den Writer (IP-7), die Ereignis-Tabelle mit RLS, Grants und
 Offboarding (IP-8), die Endgültigkeit der Viertelstundenwerte (IP-12/IP-13), die Blöcke
 `data_sources[]` (IP-13) und `supports[]` (IP-18) und das Senden auf der Box (IP-18/IP-19,
 Edge-Release). Die Kern-Telemetrie 2.0 und `measurement-samples` 2.0 bleiben unverändert.
@@ -306,6 +345,6 @@ Edge-Release). Die Kern-Telemetrie 2.0 und `measurement-samples` 2.0 bleiben unv
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='EreignisVokabularVectorsTest')      # rein, kein Docker
-(cd services/ingest && ./mvnw test -Dtest='EventsContractSchemaTest')       # rein, kein Docker
+(cd services/ingest && ./mvnw test -Dtest='EventsContractSchemaTest,BoxEventsValidatorTest,DatenannahmeTest')  # rein
 (cd frontend/portal && npx vitest run src/uemsEreignis.test.ts)
 ```

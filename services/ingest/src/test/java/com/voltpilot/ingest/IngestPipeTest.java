@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -23,7 +27,12 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertySource;
@@ -66,6 +75,21 @@ class IngestPipeTest {
     private static final String MEASUREMENT_TOPIC =
             "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/v2/measurement-samples";
     private static final String MEASUREMENTS_RAW_TOPIC = "measurements.raw";
+    private static final String EVENTS_RAW_TOPIC = "events.raw";
+
+    /**
+     * The fixtures carry fixed measurement times (2026-07-18 / 2026-08-25): a FIXED arrival clock
+     * keeps them inside the E13 window (UEMS AP-07 IP-5) forever, instead of turning into too_old
+     * 90 days after they were written.
+     */
+    @TestConfiguration
+    static class FesteEingangsuhr {
+        @Bean
+        @Primary
+        Clock pipeClock() {
+            return Clock.fixed(Instant.parse("2026-08-25T12:00:30Z"), ZoneOffset.UTC);
+        }
+    }
 
     @Container
     static final GenericContainer<?> EMQX = new GenericContainer<>(DockerImageName.parse("emqx/emqx:5.8.3"))
@@ -83,9 +107,13 @@ class IngestPipeTest {
         registry.add("spring.kafka.bootstrap-servers", REDPANDA::getBootstrapServers);
         registry.add("voltpilot.redpanda.telemetry-topic", () -> RAW_TOPIC);
         registry.add("voltpilot.redpanda.measurements-topic", () -> MEASUREMENTS_RAW_TOPIC);
+        registry.add("voltpilot.redpanda.events-topic", () -> EVENTS_RAW_TOPIC);
     }
 
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Autowired EventsTopicPruefung eventsTopic;
+    @Autowired KafkaAdmin kafkaAdmin;
 
     @Test
     void mqttTelemetryFlowsToRedpandaRawTopic() throws Exception {
@@ -151,6 +179,8 @@ class IngestPipeTest {
             assertThat(event.get("site_id").asText()).isEqualTo(SITE);
             assertThat(event.get("device_id").asText()).isEqualTo(DEVICE);
             assertThat(event.get("source_topic").asText()).isEqualTo(V2_TOPIC);
+            // UEMS AP-07 IP-5: the box's seq is forwarded unchanged.
+            assertThat(event.get("seq").asLong()).isEqualTo(4711L);
             JsonNode entities = event.get("entities");
             assertThat(entities.size()).isEqualTo(3);
             assertThat(entities.get("5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f")
@@ -179,6 +209,68 @@ class IngestPipeTest {
             assertThat(event.get("source_topic").asText()).isEqualTo(MEASUREMENT_TOPIC);
             assertThat(event.get("samples").get(0).get("raw").asLong()).isEqualTo(537L);
             assertThat(event.get("samples").get(0).get("decoded").asDouble()).isEqualTo(53.7);
+        }
+    }
+
+    /**
+     * UEMS AP-07 IP-5, both paths into events.raw: the box envelope fixture on v2/events lands as
+     * one urheber-box record per entry (the box adapter connects only once events.raw exists), and
+     * a measurement envelope with one bad sample leaves its good sample on measurements.raw plus
+     * ONE urheber-datenannahme rejected on events.raw.
+     */
+    @Test
+    void boxEventsAndRefusalsLandOnEventsRaw() throws Exception {
+        // The readiness gate against a real Redpanda: a missing topic is "not there", events.raw is.
+        assertThat(new EventsTopicPruefung(kafkaAdmin, "gibt-es-nicht.raw").vorhanden()).isFalse();
+        createTopic(EVENTS_RAW_TOPIC);
+        // The check asks Redpanda at most every 10 s; the box adapter connects once it has seen the topic.
+        long bis = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (!eventsTopic.vorhanden() && System.nanoTime() < bis) {
+            Thread.sleep(500);
+        }
+        assertThat(eventsTopic.vorhanden()).isTrue();
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String envelope = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../../docs/contracts/v2/examples/mqtt-events-2.1.valid.restart.json"));
+        JsonNode u = mapper.readTree(envelope);
+        String eventsTopic = "ems/" + u.get("tenant_id").asText() + "/" + u.get("site_id").asText()
+                + "/" + u.get("device_id").asText() + "/v2/events";
+        // The fixture was formed 2027-02-01T07:01:30Z; this box clock matches the pipe clock.
+        String now = ((ObjectNode) u).put("observed_at", "2026-08-25T12:00:25Z").toString();
+
+        try (KafkaConsumer<String, String> consumer = consumer()) {
+            consumer.subscribe(List.of(EVENTS_RAW_TOPIC));
+            ConsumerRecord<String, String> record =
+                    publishUntilReceived(eventsTopic, now, consumer, EVENTS_RAW_TOPIC);
+            assertThat(record.key()).isEqualTo(u.get("tenant_id").asText() + ":" + u.get("site_id").asText());
+            JsonNode event = mapper.readTree(record.value());
+            assertThat(event.get("urheber").asText()).isEqualTo("box");
+            assertThat(event.get("source_topic").asText()).isEqualTo(eventsTopic);
+            assertThat(event.get("ereignis").get("box").asText()).isEqualTo(u.get("device_id").asText());
+        }
+
+        String bad = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../../docs/contracts/v2/examples/mqtt-measurement-samples.valid.json"))
+                .replace("\"samples\":[", "\"samples\":[{\"point_key\":\"goe.api_v2.car\",\"quality\":\"good\"},");
+        try (KafkaConsumer<String, String> consumer = consumer()) {
+            consumer.subscribe(List.of(EVENTS_RAW_TOPIC));
+            ConsumerRecord<String, String> record = null;
+            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+            while (record == null && System.nanoTime() < deadline) {
+                publish(MEASUREMENT_TOPIC, bad);
+                for (ConsumerRecord<String, String> r : consumer.poll(Duration.ofSeconds(2))) {
+                    if ("datenannahme".equals(mapper.readTree(r.value()).path("urheber").asText())) {
+                        record = r;
+                    }
+                }
+            }
+            assertThat(record).as("rejected on events.raw").isNotNull();
+            JsonNode ereignis = mapper.readTree(record.value()).get("ereignis");
+            assertThat(ereignis.get("art").asText()).isEqualTo("rejected");
+            assertThat(ereignis.get("grund").asText()).isEqualTo("schema_verletzt");
+            assertThat(ereignis.get("anzahl").asLong()).isEqualTo(1L);
+            assertThat(ereignis.get("sequenz").asLong()).isEqualTo(42L);
+            assertThat(ereignis.get("box").asText()).isEqualTo(DEVICE);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.voltpilot.ingest;
 
 import java.time.Clock;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -29,5 +30,16 @@ public class IngestApplication {
     @Bean
     public Clock clock() {
         return Clock.systemUTC();
+    }
+
+    /**
+     * The measurement-time plausibility (UEMS AP-07 E13) from its ONE named
+     * configuration {@code voltpilot.datenannahme} in application.yml.
+     */
+    @Bean
+    public Messzeitregel messzeitregel(
+            @Value("${voltpilot.datenannahme.zukunft-hoechstens-s}") long zukunftHoechstensS,
+            @Value("${voltpilot.datenannahme.vergangenheit-hoechstens-s}") long vergangenheitHoechstensS) {
+        return new Messzeitregel(zukunftHoechstensS, vergangenheitHoechstensS);
     }
 }

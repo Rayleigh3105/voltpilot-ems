@@ -67,8 +67,10 @@ class MeasurementIngestAcknowledgementTest {
 
     private static MeasurementIngestHandler handler(KafkaTemplate<String, String> kafka) {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        return new MeasurementIngestHandler(new MeasurementSamplesValidator(mapper), mapper, kafka,
-                "measurements.raw", Clock.fixed(Instant.parse("2026-08-25T12:00:01Z"), ZoneOffset.UTC));
+        return new MeasurementIngestHandler(new MeasurementSamplesValidator(mapper, Messzeitregel.E13),
+                mapper, kafka, "measurements.raw", new EventsRawProducer(mapper, kafka, "events.raw",
+                        mock(EventsTopicPruefung.class), new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                Clock.fixed(Instant.parse("2026-08-25T12:00:01Z"), ZoneOffset.UTC));
     }
 
     private static String payload() {

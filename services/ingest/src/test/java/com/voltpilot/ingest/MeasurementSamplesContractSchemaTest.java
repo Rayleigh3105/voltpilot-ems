@@ -21,7 +21,8 @@ import org.junit.jupiter.api.Test;
  * <ul>
  *   <li>every fixture in {@code docs/contracts/v2/examples/} validates against ITS schema exactly
  *       as its name labels it (the E0 fixture discipline), and the runtime
- *       {@link MeasurementSamplesValidator} agrees on every one of them;
+ *       {@link MeasurementSamplesValidator} agrees on every one of them (valid = every sample
+ *       forwarded, nothing refused; invalid = the envelope or a sample refused);
  *   <li>2.1 is 2.0 plus exactly {@code applied_revision} (envelope) and {@code entity_id}
  *       (sample) - nothing else changed, so a 2.0 box stays valid and the two files cannot drift;
  *   <li>the validator's field sets are the schemas' property names.
@@ -35,7 +36,7 @@ class MeasurementSamplesContractSchemaTest {
     private static final String SCHEMA_2_0 = "mqtt-measurement-samples.schema.json";
     private static final String SCHEMA_2_1 = "mqtt-measurement-samples-2.1.schema.json";
 
-    private final MeasurementSamplesValidator validator = new MeasurementSamplesValidator(MAPPER);
+    private final MeasurementSamplesValidator validator = new MeasurementSamplesValidator(MAPPER, Messzeitregel.E13);
 
     private static JsonNode read(Path p) throws Exception {
         return MAPPER.readTree(Files.readString(p));
@@ -58,11 +59,13 @@ class MeasurementSamplesContractSchemaTest {
             assertThat(v.isEmpty()).as(p.getFileName() + " " + v).isEqualTo(expected);
             String topic = "ems/" + payload.path("tenant_id").asText() + "/" + payload.path("site_id").asText()
                     + "/" + payload.path("device_id").asText() + "/v2/measurement-samples";
+            // The fixtures are about form, not time: each arrives 7 s after its own observed_at.
+            Instant eingang = Instant.parse(payload.path("observed_at").asText()).plusSeconds(7);
             boolean accepted;
             try {
-                validator.toEvent(topic, Files.readString(p), Instant.parse("2026-11-18T09:39:07Z"));
-                accepted = true;
-            } catch (InvalidTelemetryException e) {
+                var annahme = validator.annehmen(topic, Files.readString(p), eingang);
+                accepted = annahme.ablehnungen().isEmpty() && annahme.weiter() != null;
+            } catch (UmschlagAbgewiesen e) {
                 accepted = false;
             }
             assertThat(accepted).as("ingest on " + p.getFileName()).isEqualTo(expected);

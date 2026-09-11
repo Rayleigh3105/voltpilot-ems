@@ -32,10 +32,15 @@
       "description": "Time the Ingest service accepted the message; becomes received_at on every exploded row (liveness derives from arrival time, never observed_at)."
     },
     "source_topic": { "type": "string", "description": "Originating MQTT topic, for traceability." },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The box's per-device sequence number (mqtt-telemetry-2.0 `seq`), forwarded UNCHANGED by Ingest (UEMS AP-07 IP-5, mqtt-telemetry-2.0.md §5). ABSENT when the box sent none - absent means \"not reported\", never 0. A marker for gap detection (sequence_gap / sequence_reset with strom = telemetry), not part of any write key. Additive: a consumer that does not know the field ignores it (the writer's Spring ObjectMapper does)."
+    },
     "entities": {
       "type": "object",
       "minProperties": 1,
-      "description": "The validated entities block, carried through unchanged from the MQTT payload (see mqtt-telemetry-2.0.schema.json).",
+      "description": "The validated entities block, carried through unchanged from the MQTT payload (see mqtt-telemetry-2.0.schema.json) - minus the values Ingest refused (UEMS AP-07 IP-5: a bad channel, an entity without readable ts/channels, or an implausible measurement time drops only those values; each refusal lands as a datenannahme event on events.raw).",
       "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
       "additionalProperties": {
         "type": "object",

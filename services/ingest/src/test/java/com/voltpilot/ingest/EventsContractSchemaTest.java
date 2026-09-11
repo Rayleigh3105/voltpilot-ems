@@ -15,8 +15,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Schema proof of the v2 EVENT contract on the ingest side (UEMS AP-07 IP-3, decision E11) -
- * always runs (no Docker). Ingest does not process {@code …/v2/events} yet (that is IP-5);
- * this test pins what IP-5 will accept and emit:
+ * always runs (no Docker). It pins the contract files Ingest accepts and emits since IP-5
+ * (runtime: {@link BoxEventsValidator}, {@link EventsRawEvent}; their proofs
+ * {@code BoxEventsValidatorTest} and {@code DatenannahmeTest} run the same fixtures and vector
+ * cases through the code):
  *
  * <ul>
  *   <li>the box envelope {@code mqtt-events-2.1.schema.json} against its fixtures in
@@ -25,7 +27,7 @@ import org.junit.jupiter.api.Test;
  *   <li>the Redpanda event {@code events.raw} ({@code events-raw.event.schema.json}) - which
  *       Ingest produces from box envelopes and the cloud services from their own events -
  *       against its fixtures;
- *   <li>the transport facts IP-5 must honour: topic leaf {@code v2/events}, QoS 1, not retained,
+ *   <li>the transport facts IP-5 honours: topic leaf {@code v2/events}, QoS 1, not retained,
  *       the topic identity rule, schema_version 2.1, at most 64 events per envelope, and the
  *       Kafka topic/key of {@code events.raw}.
  * </ul>

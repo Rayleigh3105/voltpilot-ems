@@ -1,5 +1,6 @@
 package com.voltpilot.ingest;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.UUID;
@@ -10,7 +11,9 @@ import java.util.UUID;
  * {@code docs/contracts/v2/telemetry-v2-raw.event.schema.json} - lives NEXT TO
  * the v1 {@link TelemetryRawEvent} (dual-consume; the v1 contract is
  * untouched). {@code entities} is the validated per-entity channel block,
- * carried through unchanged.
+ * carried through unchanged (minus refused values, UEMS AP-07 IP-5). {@code seq}
+ * is the box's sequence, forwarded unchanged; a box that sends none gets no
+ * field (absent = not reported, never 0).
  */
 public record TelemetryV2RawEvent(
         String schema_version,
@@ -21,6 +24,7 @@ public record TelemetryV2RawEvent(
         Instant observed_at,
         Instant ingested_at,
         String source_topic,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Long seq,
         JsonNode entities) {
 
     /** The v2 event contract is brand-new and starts at 1.0. */

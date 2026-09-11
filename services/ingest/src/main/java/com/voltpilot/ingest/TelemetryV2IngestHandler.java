@@ -2,6 +2,8 @@ package com.voltpilot.ingest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,9 +19,11 @@ import org.springframework.stereotype.Component;
 /**
  * v2 hop: envelope-validate an inbound mqtt-telemetry-2.0 message and produce
  * the {@code telemetry-v2.raw} event, keyed {@code {tenant}:{site}} (the v1
- * partitioning rule). Malformed messages are LOGGED AND SKIPPED - never crash
- * the stream (the QoS1 delivery is acked; Redpanda is the durable log). The v1
- * {@link TelemetryIngestHandler} is untouched.
+ * partitioning rule). Malformed messages never crash the stream (the QoS1
+ * delivery is acked; Redpanda is the durable log). UEMS AP-07 IP-5: a refused
+ * value drops only itself, and every refusal - of a value or of the whole
+ * envelope - lands as a datenannahme event on {@code events.raw}, not only in
+ * the log. The v1 {@link TelemetryIngestHandler} is untouched.
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.telemetry-v2.enabled", havingValue = "true",
@@ -32,6 +36,7 @@ public class TelemetryV2IngestHandler {
     private final ObjectMapper mapper;
     private final KafkaTemplate<String, String> kafka;
     private final String topic;
+    private final EventsRawProducer ereignisse;
     private final Clock clock;
 
     private final AtomicLong accepted = new AtomicLong();
@@ -40,23 +45,35 @@ public class TelemetryV2IngestHandler {
     public TelemetryV2IngestHandler(TelemetryV2Validator validator, ObjectMapper mapper,
             KafkaTemplate<String, String> kafka,
             @Value("${voltpilot.redpanda.telemetry-v2-topic:telemetry-v2.raw}") String topic,
-            Clock clock) {
+            EventsRawProducer ereignisse, Clock clock) {
         this.validator = validator;
         this.mapper = mapper;
         this.kafka = kafka;
         this.topic = topic;
+        this.ereignisse = ereignisse;
         this.clock = clock;
     }
 
     @ServiceActivator(inputChannel = MqttIngestV2Config.V2_CHANNEL)
     public void handle(Message<String> message,
             @Header(MqttHeaders.RECEIVED_TOPIC) String mqttTopic) {
-        TelemetryV2RawEvent event;
+        Instant eingang = clock.instant();
+        String payload = message.getPayload();
+        Annahme<TelemetryV2RawEvent> annahme;
         try {
-            event = validator.toEvent(mqttTopic, message.getPayload(), clock.instant());
-        } catch (InvalidTelemetryException e) {
+            annahme = validator.annehmen(mqttTopic, payload, eingang);
+        } catch (UmschlagAbgewiesen e) {
             rejected.incrementAndGet();
             log.warn("rejected v2 telemetry on {}: {}", mqttTopic, e.getMessage());
+            melde(EventsRawEvent.abweisung(e, mqttTopic, payload, eingang).stream().toList(), mqttTopic);
+            return;
+        }
+        if (!annahme.ablehnungen().isEmpty()) {
+            log.warn("refused v2 telemetry values on {}: {}", mqttTopic, annahme.ablehnungen());
+            melde(EventsRawEvent.ablehnungen(annahme, mqttTopic, payload, eingang), mqttTopic);
+        }
+        TelemetryV2RawEvent event = annahme.weiter();
+        if (event == null) {
             return;
         }
         try {
@@ -69,6 +86,19 @@ public class TelemetryV2IngestHandler {
             accepted.incrementAndGet();
         } catch (Exception e) {
             log.error("cannot serialize/produce v2 event from {}", mqttTopic, e);
+        }
+    }
+
+    /** The Kern leg stays fire-and-forget (auto-acked QoS1): a failed event send is logged. */
+    private void melde(List<EventsRawEvent> events, String mqttTopic) {
+        try {
+            ereignisse.sende(events).forEach(f -> f.whenComplete((result, error) -> {
+                if (error != null) {
+                    log.error("producing events.raw for {} failed", mqttTopic, error);
+                }
+            }));
+        } catch (Exception e) {
+            log.error("cannot serialize/produce events.raw for {}", mqttTopic, e);
         }
     }
 

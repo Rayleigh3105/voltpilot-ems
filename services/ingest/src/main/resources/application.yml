@@ -38,6 +38,10 @@ voltpilot:
     # matches the 6-segment v2 topic and vice versa (dual-consume).
     telemetry-v2-topic-filter: ${MQTT_TELEMETRY_V2_TOPIC_FILTER:ems/+/+/+/v2/telemetry}
     measurement-topic-filter: ${MQTT_MEASUREMENT_TOPIC_FILTER:ems/+/+/+/v2/measurement-samples}
+    # Box events (docs/contracts/v2/mqtt-events-2.1.schema.json, UEMS AP-07 IP-5):
+    # one events.raw record per entry; persistent session + manual ack like
+    # measurement-samples. An older box simply sends nothing here.
+    events-topic-filter: ${MQTT_EVENTS_TOPIC_FILTER:ems/+/+/+/v2/events}
     qos: ${MQTT_QOS:1}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
@@ -45,6 +49,20 @@ voltpilot:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
     measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
+    # Events of the box AND of the Datenannahme itself (rejected / clock_ahead /
+    # too_old), docs/contracts/v2/events-raw.event.schema.json. Create it before
+    # the next deploy (production: gitops repo; local: redpanda-init). While it
+    # is missing the ingest falls back (values flow, refusals only logged and
+    # counted, box adapter waits, readiness DOWN) - services/ingest/README.md.
+    events-topic: ${REDPANDA_EVENTS_TOPIC:events.raw}
+  # Measurement-time plausibility of the Datenannahme (UEMS AP-07 E13, the
+  # contract values of events-vocabulary-vectors.json "regeln" - not a tuning
+  # knob): a measurement time more than 300 s AFTER arrival is refused as
+  # clock_ahead, more than 90 days before it as too_old; exactly on the limit
+  # is accepted.
+  datenannahme:
+    zukunft-hoechstens-s: 300
+    vergangenheit-hoechstens-s: 7776000
   # v2 entity telemetry leg (envelope-only validation -> telemetry-v2.raw).
   # Disable to run a v1-only ingest.
   telemetry-v2:
@@ -71,3 +89,10 @@ management:
     health:
       probes:
         enabled: true
+      # Readiness = readinessState PLUS, once, the Redpanda topic events.raw
+      # (UEMS AP-07 IP-5): a deploy without the topic never becomes ready, and
+      # once seen the check is cached for the process lifetime, so a later
+      # Redpanda blip never takes the pod out (docs/k8s-readiness.md).
+      group:
+        readiness:
+          include: readinessState,eventsTopic

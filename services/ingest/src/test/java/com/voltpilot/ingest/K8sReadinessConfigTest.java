@@ -68,4 +68,17 @@ class K8sReadinessConfigTest {
         assertThat(at(yml, "management", "endpoint", "health", "probes", "enabled"))
                 .isEqualTo(true);
     }
+
+    /**
+     * UEMS AP-07 IP-5: readiness is readinessState PLUS the one-time check that the Redpanda topic
+     * events.raw exists ({@link EventsTopicHealthIndicator} = contributor "eventsTopic"). Nothing
+     * else external: a DB or broker blip must never take the pod out.
+     */
+    @Test
+    void readinessWaitsForTheEventsTopicAndNothingElseExternal() {
+        Map<String, Object> yml = applicationYml();
+        assertThat(List.of(String.valueOf(at(yml, "management", "endpoint", "health", "group",
+                        "readiness", "include")).split("\\s*,\\s*")))
+                .containsExactlyInAnyOrder("readinessState", "eventsTopic");
+    }
 }

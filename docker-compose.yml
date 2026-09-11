@@ -430,6 +430,7 @@ services:
       REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
       REDPANDA_TELEMETRY_V2_TOPIC: ${REDPANDA_TELEMETRY_V2_TOPIC:-telemetry-v2.raw}
       REDPANDA_MEASUREMENTS_TOPIC: ${REDPANDA_MEASUREMENTS_TOPIC:-measurements.raw}
+      REDPANDA_EVENTS_TOPIC: ${REDPANDA_EVENTS_TOPIC:-events.raw}
       # Zero-touch provisioning resolver: looks a hello's ref up in the device
       # table (trusted backend credentials - a hello carries no tenant) and
       # answers claimed refs with the retained provision/{ref}/config.

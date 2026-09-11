@@ -46,8 +46,17 @@ prüft die neuen Felder (Ganzzahl ≥ 0; UUID in Normalform). Es VERARBEITET sie
 Redpanda-Ereignis `measurements.raw` bleibt
 [`1.0`](./measurements-raw.event.schema.json) und trägt genau die 2.0-Sample-Felder — die
 Datenannahme entfernt `entity_id` vor dem Weiterreichen, denn der Writer prüft die Sample-Felder
-streng und würde das Ereignis sonst verwerfen. Das Durchreichen ins Ereignis (additiv) ist
-AP-07 IP-5, die Spalten dazu IP-6, das Nachschlagen für ältere Boxen IP-7.
+streng und würde das Ereignis sonst verwerfen. Das Durchreichen ins Ereignis (additiv) kommt
+deshalb MIT dem Writer, der die Felder annimmt — mit den Spalten (IP-6) und dem Nachschlagen für
+ältere Boxen (IP-7); IP-5 hat es bewusst nicht getan.
+
+**Seit IP-5** ist das SAMPLE die Einheit für Inhalt und Messzeit: ein fehlerhaftes Sample (Grund
+aus dem geschlossenen Vokabular, doppelter `point_key` = `regel_verletzt` für jedes Vorkommen)
+oder eines mit unplausibler Messzeit (E13: > 300 s nach dem Eingang `clock_ahead`, > 90 Tage davor
+`too_old`) verwirft nur sich selbst, die übrigen gehen weiter; Fassung, Form und Kennung des
+Umschlags verwerfen ihn ganz. Jede Ablehnung wird gebündelt als Ereignis der Datenannahme auf
+`events.raw` festgehalten ([`events-vocabulary.md`](./events-vocabulary.md) §7). `sequence` reist
+wie bisher unverändert in `measurements.raw`.
 
 Die Box sendet 2.1 erst mit einem Edge-Release (AP-07 IP-18).
 

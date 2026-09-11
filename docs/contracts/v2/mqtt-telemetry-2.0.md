@@ -41,8 +41,17 @@ Ingest validates the **envelope**: `schema_version == "2.0"`, topic identity == 
 (the v1 rule), UUID formats, `ts` RFC 3339, entity ids topic-safe, channels flat numeric maps.
 It deliberately does **not** validate channel names against the entity registry or check that an
 entity id exists — capability conformance is an edge/portal concern; an unknown channel or a
-not-yet-synced entity is data, not an error. Malformed messages are logged and skipped (never
-crash the stream — the v1 posture).
+not-yet-synced entity is data, not an error. Malformed messages never crash the stream (the v1
+posture).
+
+**Refusal granularity (UEMS AP-07 IP-5).** The ENVELOPE (`schema_version`, identity, `ts`, `seq`,
+the `entities` object) is refused as a whole; a VALUE is one channel of one entity: a bad channel
+drops only itself, an entity without a readable id, `ts` or channel block drops its channels. The
+measurement-time plausibility of E13 applies per entity (the entity carries the time): more than
+300 s after arrival → `clock_ahead`, more than 90 days before → `too_old`; an implausible top-level
+`ts` means the box clock is off and no value is taken. Every refusal lands as a `datenannahme`
+event on `events.raw` ([`events-vocabulary.md`](./events-vocabulary.md) §7), bundled per envelope
+and reason with a count — not only in the log.
 
 ## 4. Liveness and replay
 
@@ -61,7 +70,7 @@ per box is evaluated exactly like `sequence` of the additional measurements: a j
 `sequence_gap`, a jump down a `sequence_reset` (AP-07 §4.5 rule 5, E11;
 [`events-vocabulary.md`](./events-vocabulary.md)). `seq` is a marker, not part of the write key.
 
-⚠ The implementation is still missing. Today ingest drops `seq` (`TelemetryV2RawEvent` has no
-field for it). AP-07 IP-5 adds the additive optional field to
-[`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) and forwards it.
-Until IP-5 lands, a gap in `seq` is not detected.
+Since AP-07 IP-5 ingest forwards it: the additive optional field `seq` of
+[`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) (absent when the box
+sent none; a present `seq` that is not an integer ≥ 0 refuses the envelope, `schema_verletzt`).
+The writer does not evaluate it yet (IP-7/IP-9) — until then a gap in `seq` is not detected.

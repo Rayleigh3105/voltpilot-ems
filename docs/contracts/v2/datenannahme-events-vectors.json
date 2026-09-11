@@ -1,0 +1,1004 @@
+{
+  "_comment": "Die events.raw-Nachrichten der DATENANNAHME (services/ingest, UEMS AP-07 IP-5) — erzeugt aus je einem Umschlag (input) und vom Verbraucher (services/timescale-writer EventsRawConsumer + EreignisVokabular, IP-8) angenommen. services/ingest DatenannahmeVektorenTest: der Code erzeugt aus jedem input GENAU expected (event_id ausgenommen; neu erzeugen mit -Dvektoren.schreiben=true und den Diff prüfen). services/timescale-writer DatenannahmeNachrichtenTest: jede Nachricht besteht Rahmen und Vertrag. Kennungen, Werte und Zeitpunkte aus dem Referenzunternehmen (Kennungen wie events-vocabulary-vectors.json kennungen), sonst neutrale Test-Kennungen; wo die Referenz schweigt, steht annahme.",
+  "schema_version": "1.0",
+  "bezug": "AP-07 §8 IP-5 × IP-8; events-vocabulary.md §7",
+  "cases": [
+    {
+      "name": "a13-lindach-uhr-14-minuten-vor",
+      "why": "A13 / Vektor-Fall lindach-uhr-14-minuten-vor: die Uhr von Box Lindach geht 14 min vor — kein Wert, EIN clock_ahead mit Zählung.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a3/a4e0b000-0000-4000-8000-0000000000e3/v2/measurement-samples",
+        "eingang": "2026-10-20T08:15:00Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
+          "catalog_version": "2026.08.26.3",
+          "sequence": 7816,
+          "observed_at": "2026-10-20T08:29:00Z",
+          "samples": [
+            {
+              "point_key": "custom.wirkleistung",
+              "raw": 387,
+              "decoded": 38.7,
+              "quality": "good",
+              "observed_at": "2026-10-20T08:29:00Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-10-20T08:15:00Z",
+            "ereignis": {
+              "ereignis_id": "bd85074b-1061-3df3-a45b-d6c5229c0904",
+              "art": "clock_ahead",
+              "zeitpunkt": "2026-10-20T08:15:00Z",
+              "box": "a4e0b000-0000-4000-8000-0000000000e3",
+              "strom": "measurement-samples",
+              "vor_s": 840,
+              "anzahl": 1,
+              "sequenz": 7816
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a13-lindach-nach-korrektur",
+      "why": "A13: nach Korrektur der Uhr gehen die Werte normal durch — kein Ereignis.",
+      "annahme": "Die Referenz nennt kein Paket nach der Korrektur; angenommen ist Paket 7817 um 08:30.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a3/a4e0b000-0000-4000-8000-0000000000e3/v2/measurement-samples",
+        "eingang": "2026-10-20T08:30:03Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e3",
+          "catalog_version": "2026.08.26.3",
+          "sequence": 7817,
+          "observed_at": "2026-10-20T08:30:00Z",
+          "samples": [
+            {
+              "point_key": "custom.wirkleistung",
+              "raw": 387,
+              "decoded": 38.7,
+              "quality": "good",
+              "observed_at": "2026-10-20T08:30:00Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [ ]
+      }
+    },
+    {
+      "name": "wert-91-tage-alt",
+      "why": "Vektor-Fall wert-91-tage-alt / Herkunft wert-91-tage-alt-too-old: Box Halle 1, Messzeit 20.10.2026, Eingang 19.01.2027 — too_old.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a1/a4e0b000-0000-4000-8000-0000000000e1/v2/measurement-samples",
+        "eingang": "2027-01-19T09:15:00Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
+          "catalog_version": "2026.08.26.3",
+          "sequence": 6429,
+          "observed_at": "2026-10-20T08:15:00Z",
+          "samples": [
+            {
+              "point_key": "custom.wirkleistung",
+              "raw": 1486,
+              "decoded": 148.6,
+              "quality": "good"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+            "urheber": "datenannahme",
+            "ingested_at": "2027-01-19T09:15:00Z",
+            "ereignis": {
+              "ereignis_id": "0cf8740a-fbc3-399e-9333-8a1518bf1955",
+              "art": "too_old",
+              "zeitpunkt": "2027-01-19T09:15:00Z",
+              "box": "a4e0b000-0000-4000-8000-0000000000e1",
+              "strom": "measurement-samples",
+              "alter_s": 7866000,
+              "anzahl": 1,
+              "sequenz": 6429
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ein-falsches-sample-ms06-z5a",
+      "why": "Paket 48213 von Box Halle 1 mit einem zweiten Sample ohne raw: der gültige Wert geht weiter, genau ein rejected mit Grund.",
+      "annahme": "Die Referenz kennt keinen fehlerhaften Wert; das zweite Sample trägt keinen Wert (raw fehlt).",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a1/a4e0b000-0000-4000-8000-0000000000e1/v2/measurement-samples",
+        "eingang": "2026-11-18T09:39:07Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
+          "catalog_version": "2026.08.26.3",
+          "sequence": 48213,
+          "observed_at": "2026-11-18T09:39:00Z",
+          "applied_revision": 1,
+          "samples": [
+            {
+              "point_key": "custom.wirkenergie-bezug",
+              "raw": 10834152,
+              "decoded": 1083415.2,
+              "quality": "good",
+              "observed_at": "2026-11-18T09:39:00Z",
+              "entity_id": "a4e0b000-0000-4000-8000-0000000000c5"
+            },
+            {
+              "point_key": "custom.wirkleistung",
+              "quality": "good",
+              "observed_at": "2026-11-18T09:39:00Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-11-18T09:39:07Z",
+            "ereignis": {
+              "ereignis_id": "d59dee94-abcd-3f6c-aef1-7b265bbe9ce7",
+              "art": "rejected",
+              "zeitpunkt": "2026-11-18T09:39:07Z",
+              "box": "a4e0b000-0000-4000-8000-0000000000e1",
+              "strom": "measurement-samples",
+              "grund": "schema_verletzt",
+              "anzahl": 1,
+              "sequenz": 48213
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unbekanntes-qualitaetswort",
+      "why": "Ein Sample mit einem Qualitätswort außerhalb des Vokabulars: verworfen, nie geraten (wort_unbekannt); das andere geht weiter.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/measurement-samples",
+        "eingang": "2026-08-25T12:00:01Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "00000000-0000-0000-0000-000000000001",
+          "site_id": "00000000-0000-0000-0000-000000000002",
+          "device_id": "00000000-0000-0000-0000-000000000003",
+          "catalog_version": "2026.08.25.1",
+          "sequence": 4,
+          "observed_at": "2026-08-25T12:00:00Z",
+          "samples": [
+            {
+              "point_key": "goe.api_v2.alw",
+              "raw": false,
+              "quality": "good"
+            },
+            {
+              "point_key": "goe.api_v2.amp",
+              "raw": 16,
+              "quality": "gut"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-08-25T12:00:01Z",
+            "ereignis": {
+              "ereignis_id": "4df048b5-0478-360b-aec3-00930326a52c",
+              "art": "rejected",
+              "zeitpunkt": "2026-08-25T12:00:01Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "measurement-samples",
+              "grund": "wort_unbekannt",
+              "anzahl": 1,
+              "sequenz": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "point-key-doppelt",
+      "why": "Derselbe point_key zweimal: welcher Wert gilt, wird nie geraten — beide regel_verletzt; das dritte Sample geht weiter.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/measurement-samples",
+        "eingang": "2026-08-25T12:00:01Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "00000000-0000-0000-0000-000000000001",
+          "site_id": "00000000-0000-0000-0000-000000000002",
+          "device_id": "00000000-0000-0000-0000-000000000003",
+          "catalog_version": "2026.08.25.1",
+          "sequence": 4,
+          "observed_at": "2026-08-25T12:00:00Z",
+          "samples": [
+            {
+              "point_key": "goe.api_v2.alw",
+              "raw": false,
+              "quality": "good"
+            },
+            {
+              "point_key": "goe.api_v2.alw",
+              "raw": true,
+              "quality": "good"
+            },
+            {
+              "point_key": "goe.api_v2.amp",
+              "raw": 16,
+              "quality": "good"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-08-25T12:00:01Z",
+            "ereignis": {
+              "ereignis_id": "84b990d0-1f8c-3027-9538-665eee4f4a4e",
+              "art": "rejected",
+              "zeitpunkt": "2026-08-25T12:00:01Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "measurement-samples",
+              "grund": "regel_verletzt",
+              "anzahl": 2,
+              "sequenz": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "umschlag-nennt-andere-box",
+      "why": "Das Topic ist Box Lindach, der Umschlag nennt Box Halle 1: der ganze Umschlag kennung_abweichend, das rejected geht an den Absender des Topics.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a3/a4e0b000-0000-4000-8000-0000000000e3/v2/measurement-samples",
+        "eingang": "2026-10-20T08:15:02Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+          "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
+          "catalog_version": "2026.08.26.3",
+          "sequence": 7816,
+          "observed_at": "2026-10-20T08:15:00Z",
+          "samples": [
+            {
+              "point_key": "custom.wirkleistung",
+              "raw": 387,
+              "decoded": 38.7,
+              "quality": "good",
+              "observed_at": "2026-10-20T08:15:00Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a3",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-10-20T08:15:02Z",
+            "ereignis": {
+              "ereignis_id": "2a43c42c-e3fa-391b-89a4-92749e4b8f43",
+              "art": "rejected",
+              "zeitpunkt": "2026-10-20T08:15:02Z",
+              "box": "a4e0b000-0000-4000-8000-0000000000e3",
+              "strom": "measurement-samples",
+              "grund": "kennung_abweichend",
+              "anzahl": 1,
+              "sequenz": 7816
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "fassung-2-2",
+      "why": "Eine unbekannte Fassung wird nie geraten: der ganze Umschlag fassung_unbekannt.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/measurement-samples",
+        "eingang": "2026-08-25T12:00:01Z",
+        "payload": {
+          "schema_version": "2.2",
+          "tenant_id": "00000000-0000-0000-0000-000000000001",
+          "site_id": "00000000-0000-0000-0000-000000000002",
+          "device_id": "00000000-0000-0000-0000-000000000003",
+          "catalog_version": "2026.08.25.1",
+          "sequence": 4,
+          "observed_at": "2026-08-25T12:00:00Z",
+          "samples": [
+            {
+              "point_key": "goe.api_v2.alw",
+              "raw": false,
+              "quality": "good"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-08-25T12:00:01Z",
+            "ereignis": {
+              "ereignis_id": "69c5f555-dcac-3ce2-a240-39d6194f63ff",
+              "art": "rejected",
+              "zeitpunkt": "2026-08-25T12:00:01Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "measurement-samples",
+              "grund": "fassung_unbekannt",
+              "anzahl": 1,
+              "sequenz": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "kein-json",
+      "why": "Unlesbar: schema_verletzt, ohne sequenz und anzahl (nie geraten).",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/measurement-samples",
+        "eingang": "2026-08-25T12:00:01Z",
+        "payload_text": "kein json"
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-08-25T12:00:01Z",
+            "ereignis": {
+              "ereignis_id": "ef0139e1-0b62-3a35-af08-e0cfd5fb584e",
+              "art": "rejected",
+              "zeitpunkt": "2026-08-25T12:00:01Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "measurement-samples",
+              "grund": "schema_verletzt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "kern-kanal-als-text",
+      "why": "Kern-Telemetrie: ein Kanal als Text verwirft nur diesen Kanal (schema_verletzt, sequenz = seq).",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/telemetry",
+        "eingang": "2026-07-18T11:31:00Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "00000000-0000-0000-0000-000000000001",
+          "site_id": "00000000-0000-0000-0000-000000000002",
+          "device_id": "00000000-0000-0000-0000-000000000003",
+          "ts": "2026-07-18T11:30:05Z",
+          "seq": 4711,
+          "entities": {
+            "5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f": {
+              "channels": {
+                "soc_pct": "62.5",
+                "battery_power_kw": 12.4,
+                "pv_power_kw": 18.9
+              }
+            },
+            "6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60": {
+              "ts": "2026-07-18T11:30:02Z",
+              "channels": {
+                "pv_power_kw": 44.2
+              }
+            },
+            "7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071": {
+              "channels": {
+                "power_kw": -49.7
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "weiter": 4,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-07-18T11:31:00Z",
+            "ereignis": {
+              "ereignis_id": "799daf47-6366-39c9-9764-1020aa07fe73",
+              "art": "rejected",
+              "zeitpunkt": "2026-07-18T11:31:00Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "telemetry",
+              "grund": "schema_verletzt",
+              "anzahl": 1,
+              "sequenz": 4711
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "kern-komponente-uhr-vor",
+      "why": "Kern-Telemetrie: die Zeit einer Komponente liegt 302 s nach dem Eingang — nur deren Kanal clock_ahead.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/v2/telemetry",
+        "eingang": "2026-07-18T11:31:00Z",
+        "payload": {
+          "schema_version": "2.0",
+          "tenant_id": "00000000-0000-0000-0000-000000000001",
+          "site_id": "00000000-0000-0000-0000-000000000002",
+          "device_id": "00000000-0000-0000-0000-000000000003",
+          "ts": "2026-07-18T11:30:05Z",
+          "seq": 4711,
+          "entities": {
+            "5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f": {
+              "channels": {
+                "soc_pct": 62.5,
+                "battery_power_kw": 12.4,
+                "pv_power_kw": 18.9
+              }
+            },
+            "6a1e3d0f-7c2b-4d4e-af90-1b2c3d4e5f60": {
+              "ts": "2026-07-18T11:36:02Z",
+              "channels": {
+                "pv_power_kw": 44.2
+              }
+            },
+            "7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071": {
+              "channels": {
+                "power_kw": -49.7
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "weiter": 4,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "site_id": "00000000-0000-0000-0000-000000000002",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-07-18T11:31:00Z",
+            "ereignis": {
+              "ereignis_id": "9a241e28-18a8-3868-8242-1e50ebbb9b93",
+              "art": "clock_ahead",
+              "zeitpunkt": "2026-07-18T11:31:00Z",
+              "box": "00000000-0000-0000-0000-000000000003",
+              "strom": "telemetry",
+              "vor_s": 302,
+              "anzahl": 1,
+              "sequenz": 4711
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-neustart-bei-wandlertausch",
+      "why": "Beispiel mqtt-events-2.1.valid.restart: je Eintrag ein events.raw mit Urheber box (box_restart, device_restart).",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Die Referenz nennt am 01.02.2027 den Wandlertausch, keinen Neustart; Uhrzeiten angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2027-02-01T07:01:31Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 212,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000050",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            },
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000051",
+              "art": "device_restart",
+              "zeitpunkt": "2027-02-01T07:01:10Z",
+              "datenquelle": "DQ-4",
+              "herzschlag_vorher": 51873,
+              "herzschlag_nachher": 4
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 2,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2027-02-01T07:01:31Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 212,
+            "observed_at": "2027-02-01T07:01:30Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000050",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z",
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          },
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2027-02-01T07:01:31Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 212,
+            "observed_at": "2027-02-01T07:01:30Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000051",
+              "art": "device_restart",
+              "zeitpunkt": "2027-02-01T07:01:10Z",
+              "datenquelle": "DQ-4",
+              "herzschlag_vorher": 51873,
+              "herzschlag_nachher": 4,
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-aufbau-und-luecke",
+      "why": "Beispiel mqtt-events-2.1.valid.layout-and-gap: layout_changed und data_gap (Puffer verdrängt).",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19).",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2027-03-01T06:31:01Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 488,
+          "observed_at": "2027-03-01T06:31:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000052",
+              "art": "layout_changed",
+              "zeitpunkt": "2027-03-01T06:30:00Z",
+              "datenquelle": "DQ-4",
+              "karten_erwartet": 4,
+              "karten_gelesen": 5
+            },
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000055",
+              "art": "data_gap",
+              "von": "2027-03-01T06:28:00Z",
+              "bis": "2027-03-01T06:30:00Z",
+              "erkannt_aus": "verdraengung",
+              "datenquelle": "DQ-4",
+              "erwartet_fehlend": 26
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 2,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2027-03-01T06:31:01Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 488,
+            "observed_at": "2027-03-01T06:31:00Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000052",
+              "art": "layout_changed",
+              "zeitpunkt": "2027-03-01T06:30:00Z",
+              "datenquelle": "DQ-4",
+              "karten_erwartet": 4,
+              "karten_gelesen": 5,
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          },
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2027-03-01T06:31:01Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 488,
+            "observed_at": "2027-03-01T06:31:00Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000055",
+              "art": "data_gap",
+              "von": "2027-03-01T06:28:00Z",
+              "bis": "2027-03-01T06:30:00Z",
+              "erkannt_aus": "verdraengung",
+              "datenquelle": "DQ-4",
+              "erwartet_fehlend": 26,
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-bereichsbegrenzung-ek3",
+      "why": "Vektor-Fall umschlag-e2strich-bereichsbegrenzung-ek3: Das Statuswort von EK-3 meldet die Bereichsbegrenzung: die Werte der Karte gelten als ungültig, die Box meldet den Zeitpunkt.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Tag, Uhrzeit und Statuswort sind angenommen.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2026-12-14T08:20:06Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 301,
+          "observed_at": "2026-12-14T08:20:05Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000053",
+              "art": "range_limit",
+              "zeitpunkt": "2026-12-14T08:20:00Z",
+              "datenquelle": "DQ-4",
+              "komponente": "K-8.3",
+              "statuswort": 4
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2026-12-14T08:20:06Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 301,
+            "observed_at": "2026-12-14T08:20:05Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000053",
+              "art": "range_limit",
+              "zeitpunkt": "2026-12-14T08:20:00Z",
+              "datenquelle": "DQ-4",
+              "komponente": "K-8.3",
+              "statuswort": 4,
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-werte-eingefroren",
+      "why": "Vektor-Fall umschlag-e2strich-werte-eingefroren: Der Herzschlag im Registerbild steht über drei Lesungen: die Box meldet „eingefroren seit“ der letzten Änderung — keine Werte als gemessen.",
+      "annahme": "Box-Meldungen gibt es erst mit einem Edge-Release (IP-18/IP-19); die Referenz nennt kein solches Ereignis. Der Fall nimmt eine Box Halle 2 (neu) an, die schon sendet. Der Tag ist angenommen; 11:40 und der Herzschlag 17 stammen aus AP-05 §4.6/Referenzdatensatz.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2026-12-02T10:43:01Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 256,
+          "observed_at": "2026-12-02T10:43:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000054",
+              "art": "frozen_source",
+              "zeitpunkt": "2026-12-02T10:40:00Z",
+              "datenquelle": "DQ-4",
+              "lesungen": 3,
+              "herzschlag": 17
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 1,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "box",
+            "ingested_at": "2026-12-02T10:43:01Z",
+            "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+            "source_topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+            "sequence": 256,
+            "observed_at": "2026-12-02T10:43:00Z",
+            "ereignis": {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000054",
+              "art": "frozen_source",
+              "zeitpunkt": "2026-12-02T10:40:00Z",
+              "datenquelle": "DQ-4",
+              "lesungen": 3,
+              "herzschlag": 17,
+              "box": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-meldet-uebergabe",
+      "why": "Beispiel mqtt-events-2.1.invalid.handover-from-box: eine Übergabe meldet nie die Box — EIN rejected urheber_unzulaessig.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2027-04-10T05:31:01Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 489,
+          "observed_at": "2027-04-10T05:31:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000056",
+              "art": "handover",
+              "von": "2027-04-10T05:30:00Z",
+              "bis": "2027-04-10T05:31:00Z",
+              "datenquelle": "DQ-3",
+              "anlass": "uebergabe",
+              "box_alt": "a4e0b000-0000-4000-8000-0000000000e1",
+              "box_neu": "a4e0b000-0000-4000-8000-0000000002e2"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "datenannahme",
+            "ingested_at": "2027-04-10T05:31:01Z",
+            "ereignis": {
+              "ereignis_id": "1a5880db-8ea2-3ec0-b2ee-0427439d49e4",
+              "art": "rejected",
+              "zeitpunkt": "2027-04-10T05:31:01Z",
+              "box": "a4e0b000-0000-4000-8000-0000000002e2",
+              "strom": "events",
+              "grund": "urheber_unzulaessig",
+              "anzahl": 1,
+              "sequenz": 489
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-unbekannte-art",
+      "why": "Vektor-Fall umschlag-unbekannte-art-verworfen: `power_failure` steht in keinem Vokabular — der Umschlag wird verworfen, nichts wird auf eine ähnliche Art abgebildet.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2027-02-01T07:01:31Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 213,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000057",
+              "art": "power_failure",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "datenannahme",
+            "ingested_at": "2027-02-01T07:01:31Z",
+            "ereignis": {
+              "ereignis_id": "663786d0-94e3-32cc-bf44-e00305057579",
+              "art": "rejected",
+              "zeitpunkt": "2027-02-01T07:01:31Z",
+              "box": "a4e0b000-0000-4000-8000-0000000002e2",
+              "strom": "events",
+              "grund": "wort_unbekannt",
+              "anzahl": 1,
+              "sequenz": 213
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-luecke-offen",
+      "why": "Vektor-Fall umschlag-box-luecke-offen-verworfen: Eine Box meldet nur, was sie verdrängt HAT — eine offene Lücke von der Box ist keine Zeitangabe.",
+      "annahme": null,
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2026-12-09T06:12:01Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 323,
+          "observed_at": "2026-12-09T06:12:00Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000060",
+              "art": "data_gap",
+              "von": "2026-12-09T02:00:00Z",
+              "bis": null,
+              "erkannt_aus": "verdraengung",
+              "datenquelle": "DQ-4"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "datenannahme",
+            "ingested_at": "2026-12-09T06:12:01Z",
+            "ereignis": {
+              "ereignis_id": "debedb5f-5b4b-3ad9-b8aa-28005dbd3a6a",
+              "art": "rejected",
+              "zeitpunkt": "2026-12-09T06:12:01Z",
+              "box": "a4e0b000-0000-4000-8000-0000000002e2",
+              "strom": "events",
+              "grund": "zeit_ungueltig",
+              "anzahl": 1,
+              "sequenz": 323
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "box-uhr-vor",
+      "why": "Die Uhr der Box geht beim Umschlag 14 min vor (x-time-rule): kein Eintrag angenommen, EIN clock_ahead mit strom events.",
+      "annahme": "Die Referenz nennt keine falsche Uhr bei Box Halle 2 (neu); angenommen am Neustart-Umschlag.",
+      "input": {
+        "topic": "ems/a4e0b000-0000-4000-8000-000000000001/a4e0b000-0000-4000-8000-0000000000a2/a4e0b000-0000-4000-8000-0000000002e2/v2/events",
+        "eingang": "2027-02-01T06:47:30Z",
+        "payload": {
+          "schema_version": "2.1",
+          "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+          "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+          "device_id": "a4e0b000-0000-4000-8000-0000000002e2",
+          "sequence": 212,
+          "observed_at": "2027-02-01T07:01:30Z",
+          "events": [
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000050",
+              "art": "box_restart",
+              "zeitpunkt": "2027-02-01T07:00:40Z"
+            },
+            {
+              "ereignis_id": "e7e00000-0000-4000-8000-000000000051",
+              "art": "device_restart",
+              "zeitpunkt": "2027-02-01T07:01:10Z",
+              "datenquelle": "DQ-4",
+              "herzschlag_vorher": 51873,
+              "herzschlag_nachher": 4
+            }
+          ]
+        }
+      },
+      "expected": {
+        "weiter": 0,
+        "events_raw": [
+          {
+            "schema_version": "1.0",
+            "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+            "site_id": "a4e0b000-0000-4000-8000-0000000000a2",
+            "urheber": "datenannahme",
+            "ingested_at": "2027-02-01T06:47:30Z",
+            "ereignis": {
+              "ereignis_id": "62cef264-4c78-3536-a48f-ba713d2a04c5",
+              "art": "clock_ahead",
+              "zeitpunkt": "2027-02-01T06:47:30Z",
+              "box": "a4e0b000-0000-4000-8000-0000000002e2",
+              "strom": "events",
+              "vor_s": 840,
+              "anzahl": 2,
+              "sequenz": 212
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
