@@ -26,11 +26,11 @@ import java.util.TreeSet;
  * stehen als Daten in {@code docs/contracts/v2/edge-capabilities.json}.
  * <b>Wer die Regel ändert, ändert beide Seiten und die Vektor-Datei.</b>
  *
- * <h2>⚠ Noch ruft niemand an</h2>
+ * <h2>⚠ Wer anruft</h2>
  *
- * Keine Tabelle (IP-2 {@code data_source}/{@code data_source_assignment}), kein Endpunkt
- * (IP-3), kein Push, keine Fläche ist umgestellt; {@code gatewayDevice}, Registry-Push und
- * Herzschlag sind unberührt. Diese Klasse ist der Vertrag, gegen den sie gebaut werden.
+ * {@link DatenquelleService} (IP-3: anlegen, prüfen, zuweisen) über die Tabellen aus IP-2. Kein
+ * Push, keine Fläche ist umgestellt; {@code gatewayDevice}, Registry-Push und Herzschlag sind
+ * unberührt. Diese Klasse ist der Vertrag, gegen den die Folgepakete bauen.
  *
  * <h2>Die Prüfreihenfolge eines Antrags</h2>
  *

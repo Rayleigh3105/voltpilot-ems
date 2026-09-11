@@ -172,8 +172,9 @@ public class TenantRepository {
                 // Messstelle before the Orte it will point to, floor areas and parent
                 // intervals before the buildings/areas they point at, those before the
                 // Standort; the Zustaendigkeiten before their Datenquelle. The
-                // append-only logs ort_aenderung and messstelle_aenderung carry no FK and
-                // stay (the component_change_event pattern). The components go with the
+                // append-only logs ort_aenderung, messstelle_aenderung and
+                // data_source_aenderung carry no FK and stay (the component_change_event
+                // pattern). The components go with the
                 // tenant cascade below, but their data_source_id is RESTRICT too: they
                 // let go of their source first.
                 try (java.sql.PreparedStatement st = con.prepareStatement(

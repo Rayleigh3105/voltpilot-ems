@@ -1,5 +1,7 @@
 package com.voltpilot.api.uems;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -74,16 +76,29 @@ public class ZustaendigkeitRepository {
         return List.copyOf(jdbc.query("SELECT id, data_source_id, device_id, effective_from, "
                 + "effective_to FROM data_source_assignment WHERE data_source_id = ? "
                 + "ORDER BY effective_from, id",
-                (rs, n) -> {
-                    OffsetDateTime bis = rs.getObject("effective_to", OffsetDateTime.class);
-                    return new Zeitraum(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("data_source_id", UUID.class),
-                            rs.getObject("device_id", UUID.class),
-                            rs.getObject("effective_from", OffsetDateTime.class).toInstant(),
-                            bis == null ? null : bis.toInstant());
-                },
-                dataSourceId));
+                ZustaendigkeitRepository::map, dataSourceId));
+    }
+
+    /**
+     * Alle Zeiträume des Kundenbereichs, je Quelle nach Beginn — die Ausgangslage eines
+     * Antrags: Eindeutigkeit je Box und Doppel-Lesen sehen über die Anlage hinaus (eine Box
+     * darf Quellen anderer Anlagen lesen, Vertrag §1).
+     */
+    public List<Zeitraum> alle() {
+        return List.copyOf(jdbc.query("SELECT id, data_source_id, device_id, effective_from, "
+                + "effective_to FROM data_source_assignment "
+                + "ORDER BY data_source_id, effective_from, id",
+                ZustaendigkeitRepository::map));
+    }
+
+    private static Zeitraum map(ResultSet rs, int n) throws SQLException {
+        OffsetDateTime bis = rs.getObject("effective_to", OffsetDateTime.class);
+        return new Zeitraum(
+                rs.getObject("id", UUID.class),
+                rs.getObject("data_source_id", UUID.class),
+                rs.getObject("device_id", UUID.class),
+                rs.getObject("effective_from", OffsetDateTime.class).toInstant(),
+                bis == null ? null : bis.toInstant());
     }
 
     private static OffsetDateTime utc(Instant t) {

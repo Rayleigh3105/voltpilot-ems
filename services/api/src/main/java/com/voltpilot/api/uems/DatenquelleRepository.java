@@ -29,7 +29,8 @@ import org.springframework.stereotype.Repository;
 public class DatenquelleRepository {
 
     private static final String SPALTEN = "id, site_id, kennzeichen, name, protokoll, adresse, "
-            + "geraete_ids, netz, mehrere_leser, steuerquelle, kadenz_s, archiviert_am";
+            + "geraete_ids, netz, mehrere_leser, steuerquelle, vergleichsquelle, kadenz_s, "
+            + "archiviert_am";
 
     private final JdbcTemplate jdbc;
 
@@ -46,10 +47,22 @@ public class DatenquelleRepository {
             String adresse, List<Integer> geraeteIds, String netz, boolean mehrereLeser,
             boolean steuerquelle, int kadenzS, String createdBy) {}
 
-    /** {@code name} und {@code netz} sind {@code null}, solange keiner eingetragen ist. */
+    /**
+     * {@code name} und {@code netz} sind {@code null}, solange keiner eingetragen ist;
+     * {@code vergleichsquelle} ist die Kennzeichnung einer bestätigten Vergleichsquelle
+     * (Vertrag §6, Migration V20260911180000).
+     */
     public record Datenquelle(UUID id, UUID siteId, String kennzeichen, String name,
             String protokoll, String adresse, List<Integer> geraeteIds, String netz,
-            boolean mehrereLeser, boolean steuerquelle, int kadenzS, Instant archiviertAm) {}
+            boolean mehrereLeser, boolean steuerquelle, boolean vergleichsquelle, int kadenzS,
+            Instant archiviertAm) {}
+
+    /** Was eine Bearbeitung schreibt — die volle Darstellung, der Dienst hat sie zusammengesetzt. */
+    public record Bearbeitung(String name, String protokoll, String adresse, List<Integer> geraeteIds,
+            String netz, boolean mehrereLeser, boolean steuerquelle, int kadenzS) {}
+
+    /** Eine Box des Kundenbereichs: ihre Heimat-Anlage und die Wörter, mit denen ein Satz sie nennt. */
+    public record Box(UUID id, UUID siteId, String name, String externalRef) {}
 
     /**
      * Legt die Quelle an und vergibt ihr das nächste freie Kennzeichen DQ-n des
@@ -95,6 +108,63 @@ public class DatenquelleRepository {
                 DatenquelleRepository::map));
     }
 
+    /** Die Quellen EINER Anlage, archivierte eingeschlossen, in der Reihenfolge des Anlegens. */
+    public List<Datenquelle> fuerAnlage(UUID siteId) {
+        return List.copyOf(jdbc.query(
+                "SELECT " + SPALTEN + " FROM data_source WHERE site_id = ? ORDER BY created_at, id",
+                DatenquelleRepository::map, siteId));
+    }
+
+    /**
+     * Sperrt die Quelle bis zum Ende der Transaktion: zwei gleichzeitige Anträge an dieselbe
+     * Quelle werden nacheinander geprüft, statt beide dieselbe Ausgangslage zu sehen. Leer,
+     * wenn es sie im Zaun nicht gibt.
+     */
+    public Optional<Datenquelle> sperren(UUID id) {
+        return jdbc.query("SELECT " + SPALTEN + " FROM data_source WHERE id = ? FOR UPDATE",
+                DatenquelleRepository::map, id).stream().findFirst();
+    }
+
+    /**
+     * Schreibt die Felder einer Bearbeitung. Eine geänderte Adresse zieht die Datenbank in
+     * die Zeiträume der Quelle nach (ON UPDATE CASCADE) — der Dienst lässt sie nur zu, solange
+     * es keinen Zeitraum gibt.
+     */
+    public Optional<Datenquelle> bearbeiten(UUID id, Bearbeitung b) {
+        return jdbc.query(con -> {
+            PreparedStatement ps = con.prepareStatement("UPDATE data_source SET name = ?, "
+                    + "protokoll = ?, adresse = ?, geraete_ids = ?, netz = ?, mehrere_leser = ?, "
+                    + "steuerquelle = ?, kadenz_s = ? WHERE id = ? RETURNING " + SPALTEN);
+            ps.setString(1, b.name());
+            ps.setString(2, b.protokoll());
+            ps.setString(3, b.adresse());
+            ps.setArray(4, con.createArrayOf("integer", b.geraeteIds().toArray(Integer[]::new)));
+            ps.setString(5, b.netz());
+            ps.setBoolean(6, b.mehrereLeser());
+            ps.setBoolean(7, b.steuerquelle());
+            ps.setInt(8, b.kadenzS());
+            ps.setObject(9, id);
+            return ps;
+        }, DatenquelleRepository::map).stream().findFirst();
+    }
+
+    /** Kennzeichnet die Quelle als bestätigte Vergleichsquelle (Vertrag §6) — nie zurück. */
+    public void alsVergleichsquelleKennzeichnen(UUID id) {
+        jdbc.update("UPDATE data_source SET vergleichsquelle = true WHERE id = ?", id);
+    }
+
+    /**
+     * Die Boxen des Kundenbereichs — für die Sätze der Regeln („Box Halle 2 (neu)") und die
+     * Prüfung, dass eine genannte Box zum Mandanten gehört. Unter RLS ist eine fremde Box
+     * schlicht nicht da.
+     */
+    public List<Box> boxen() {
+        return List.copyOf(jdbc.query("SELECT id, site_id, name, external_ref FROM device "
+                + "ORDER BY created_at, id",
+                (rs, n) -> new Box(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class),
+                        rs.getString("name"), rs.getString("external_ref"))));
+    }
+
     private static Datenquelle map(ResultSet rs, int n) throws SQLException {
         Array geraete = rs.getArray("geraete_ids");
         Timestamp archiviert = rs.getTimestamp("archiviert_am");
@@ -109,6 +179,7 @@ public class DatenquelleRepository {
                 rs.getString("netz"),
                 rs.getBoolean("mehrere_leser"),
                 rs.getBoolean("steuerquelle"),
+                rs.getBoolean("vergleichsquelle"),
                 rs.getInt("kadenz_s"),
                 archiviert == null ? null : archiviert.toInstant());
     }

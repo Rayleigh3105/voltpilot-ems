@@ -17,11 +17,12 @@ Portal genau dasselbe Urteil und derselbe Kundensatz wird.
 
 **Wer die Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> ⚠ **Noch ruft niemand an.** Es gibt keine Tabelle `data_source`/`data_source_assignment`
-> (IP-2), keinen Endpunkt (IP-3), keine Vorschlagsliste im Portal (IP-4); `gatewayDevice`,
-> Registry-Push, Mess-Plan und Herzschlag sind unverändert. Heute ist die zuständige Box
-> implizit `measurement_point.device_id` bzw. die eine Box je Anlage. Dieser Vertrag ist das
-> Ziel, gegen das die Folgepakete bauen.
+> ⚠ **Wer anruft (Stand IP-3):** die Datenquellen-Schnittstelle
+> `/api/v1/sites/{siteId}/data-sources` (`DatenquelleService`: anlegen, von genau der Box
+> prüfen, zuweisen) über die Tabellen aus IP-2. Noch NICHT: die Vorschlagsliste im Portal
+> (IP-4) und der Push je Box (IP-6) — `gatewayDevice`, Registry-Push, Mess-Plan und Herzschlag
+> sind unverändert, eine gespeicherte Zuständigkeit erreicht also noch keine Box. Heute ist die
+> lesende Box weiter implizit `measurement_point.device_id` bzw. die eine Box je Anlage.
 
 ## 1. Begriffe
 

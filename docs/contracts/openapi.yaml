@@ -214,6 +214,25 @@ tags:
       Urheber. Ort, Stellung, Prozesse, Kostenstellen (IP-7) und Quellen (IP-13)
       kommen additiv; bis dahin sind diese Listen leer und eine gemessene
       Messstelle ehrlich ein Entwurf (`fehlt: [ort]`).
+  - name: datenquellen
+    description: >
+      UEMS-Datenquellen (AP-06 IP-3): der Erfassungsweg einer Anlage (Protokoll +
+      Adresse, Kennzeichen DQ-n) anlegen, bearbeiten, von GENAU der gewählten Box
+      prüfen und ihr ab einem Zeitpunkt zuweisen - mit Protokoll und Urheber je
+      Quelle. Die Regeln sind der Vertrag docs/contracts/v2/data-source-assignment.md
+      (Java-Zwilling DatenquelleRegeln; kein zweites Regelwerk im Dienst), die Wörter
+      stehen in seiner Schreibweise (snake_case) wie bei den Messstellen.
+      Zuständigkeiten sind halboffen auf die volle Minute (`effective_to` gehört
+      nicht dazu), nie rückwirkend, nie überschrieben: ein Wechsel beendet den
+      laufenden Zeitraum und trägt den neuen ein, in EINER Transaktion. Eine
+      Zuständigkeit braucht die bestandene Erreichbarkeitsprüfung von genau der
+      Ziel-Box - das Ergebnis steht im Protokoll, nie in der Anfrage. Mandanten-Zaun
+      ist die RLS (fremde Anlage, Quelle oder Box = 404, nie 403; Plattform-Admins
+      nutzen X-Tenant-Id). Rechte (AP-06 §4.8): `datenquelle.bearbeiten` /
+      `datenquelle.zustaendigkeit` - noch NICHT in rechte-matrix.json, nächste
+      Zeile dort `geraet.einrichten`; bis AP-03 durchsetzt, gilt authenticated().
+      Push an die Box (IP-6), Übergabe zum Zeitpunkt (IP-7), Budget (IP-10) und die
+      Bestands-Vorschlagsliste (IP-4) kommen mit ihren Paketen.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -7570,6 +7589,201 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/sites/{siteId}/data-sources:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [datenquellen]
+      summary: Die Datenquellen der Anlage, archivierte eingeschlossen, in der Reihenfolge des Anlegens.
+      description: >
+        Recht: lesend (AP-06 §4.8). Je Quelle ihre Zeiträume und die Box, die JETZT
+        liest (`zustaendige_box`, null ohne laufenden Zeitraum). „Liefert Daten“ ist
+        eine Beobachtung aus dem Herzschlag (IP-14) und steht hier nicht.
+      responses:
+        "200":
+          description: Die Quellen (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquelleListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [datenquellen]
+      summary: Legt eine Datenquelle als Entwurf an; das Kennzeichen DQ-n vergibt der Server.
+      description: >
+        Recht `datenquelle.bearbeiten`. Die Adresse wird normalisiert (Vertrag §3
+        Nr. 5: Host klein, ohne Leerzeichen, Modbus-Port fehlend = 502, HTTP-Port
+        ausgeschrieben). Mit `device_id` (der gewählten Box) laufen vorher die Regeln
+        des Antrags `anlegen` bis vor die Prüfung - ein Grund davor
+        (`adresse_an_box_vergeben`, `netzlage_fehlt`, `nur_ein_leser`,
+        `vergleich_bestaetigen`) lehnt ab, BEVOR ein Entwurf entsteht; eine Box
+        außerhalb des Kundenbereichs ist 404. `vergleich_bestaetigt` beantwortet
+        die Rückfrage „als Vergleichsquelle anlegen?“. Ein Protokoll außerhalb des
+        Vokabulars ist 400 `protokoll_unbekannt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatenquelleAnlegen" }
+            example:
+              name: WAGO-Steuerung C-2
+              protokoll: modbus_tcp
+              adresse: 192.168.30.10
+              geraete_ids: [1]
+              netz: 192.168.30.0/24
+              kadenz_s: 60
+              device_id: 6f1c2a9e-0000-4000-8000-0000000000e3
+      responses:
+        "201":
+          description: Angelegt (Entwurf, noch liest keine Box); `Location` zeigt auf die Quelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datenquelle" }
+        "400": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+  /api/v1/sites/{siteId}/data-sources/{id}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [datenquellen]
+      summary: Eine Datenquelle der Anlage.
+      description: Recht lesend. Eine Quelle einer anderen Anlage oder eines anderen Kundenbereichs ist 404.
+      responses:
+        "200":
+          description: Die Quelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datenquelle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [datenquellen]
+      summary: Bearbeitet die Quelle (volle Darstellung); protokolliert wird nur, was sich ändert.
+      description: >
+        Recht `datenquelle.bearbeiten`. Name, Netzlage, Geräte-IDs und Lesetakt
+        jederzeit; Protokoll, Adresse, Ein-Leser-Eigenschaft und Steuerquelle - die
+        Eingänge der Antrags-Regeln - nur, solange die Quelle keinen Zeitraum hat
+        (sonst 409 `weg_fest` mit `felder`). Eine archivierte Quelle ist 409
+        `quelle_archiviert`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatenquelleBearbeiten" }
+      responses:
+        "200":
+          description: Die Quelle danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Datenquelle" }
+        "400": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+  /api/v1/sites/{siteId}/data-sources/{id}/reachability-check:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [datenquellen]
+      summary: Erreichbarkeitsprüfung von GENAU der gewählten Box (E11).
+      description: >
+        Recht `datenquelle.bearbeiten`. Die Box `device_id` - auch eine mit anderer
+        Heimat-Anlage (E7), nie eine außerhalb des Kundenbereichs (404) - liest
+        einmal über den Probe-Kanal (docs/contracts/mqtt-probe.schema.json, op
+        `read`, auf ihrem EIGENEN Topic) die gespeicherte Adresse der Quelle; Host
+        und Port kommen nie aus der Anfrage. Heute für Modbus TCP und
+        SunSpec-Modbus (`register` bei SunSpec mit 40000 „SunS“ vorbelegt); für
+        MQTT, HTTP und OCPP 422 `pruefung_nicht_moeglich`. Die Antwort ist ein
+        ehrlicher AUSGANG (200), auch wenn die Prüfung scheitert. `gewertet`: „ok“
+        oder eine Fehlerklasse der BOX (Vertrag §7) - nur dann steht die Prüfung im
+        Protokoll und zählt für eine Zuständigkeit. Schweigt die Box
+        (`box_meldet_sich_nicht`) oder lehnt ihr Prüf-Kanal ab (`rate_limited`,
+        `not_supported`, `invalid_request`), zählt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatenquellePruefen" }
+            example: { device_id: 6f1c2a9e-0000-4000-8000-0000000000e2, unit_id: 1, register: 0 }
+      responses:
+        "200":
+          description: Das Ergebnis der Prüfung (auch gescheitert oder ohne Antwort der Box).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquellePruefergebnis" }
+        "400": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "503": { description: Die Frage konnte nicht an die Box gehen (Broker nicht erreichbar). }
+  /api/v1/sites/{siteId}/data-sources/{id}/assignments:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [datenquellen]
+      summary: Ab `effective_from` liest `device_id` die Quelle - erste Box oder Wechsel.
+      description: >
+        Recht `datenquelle.zustaendigkeit`. Die erste Box einer Quelle ist ein Antrag
+        `anlegen`, jede weitere ein `wechsel`; geprüft von DatenquelleRegeln in der
+        festen Reihenfolge des Vertrags (§5): protokoll_unbekannt → keine_volle_minute
+        → rueckwirkend → steuerquelle → spaeterer_wechsel_geplant → schon_zustaendig →
+        adresse_an_box_vergeben → netzlage_fehlt → nur_ein_leser →
+        vergleich_bestaetigen → pruefung_fehlt → pruefung_gescheitert; der erste
+        Grund entscheidet (Status siehe DatenquelleFehler). Das Prüfergebnis ist die
+        jüngste gewertete Prüfung dieser Quelle von GENAU dieser Box für ihre heutige
+        Adresse. `effective_from` auf die volle Minute (mit Sekunden 422, nie
+        gerundet), frühestens jetzt; fehlend = jetzt auf die Minute abgerundet.
+        Erlaubt: der laufende Zeitraum wird bei `effective_from` beendet und der neue
+        eingetragen - in EINER Transaktion unter der Zeilensperre der Quelle; die
+        Speicher-Regel (§4, `leerer_zeitraum`, `ueberschneidung`) prüft jeden
+        geänderten Zeitraum; greift trotzdem ein Constraint (gleichzeitiger
+        Schreibvorgang), 409 `gleichzeitig_geaendert` mit `grund`. Die Steuerquelle
+        wechselt ihre Box nicht (409 `steuerquelle`, A13). Eine bestätigte
+        Vergleichsquelle wird gekennzeichnet (`vergleichsquelle`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatenquelleZuweisen" }
+            example: { device_id: 6f1c2a9e-0000-4000-8000-0000000000e2, effective_from: "2027-04-10T07:30:00+02:00" }
+      responses:
+        "201":
+          description: Erlaubt und eingetragen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquelleZugewiesen" }
+        "400": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+  /api/v1/sites/{siteId}/data-sources/{id}/history:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [datenquellen]
+      summary: Das Protokoll der Quelle, jüngster Eintrag zuerst.
+      description: >
+        Recht lesend (`aenderungsprotokoll.lesen`). Append-only (data_source_aenderung):
+        angelegt · bearbeitet (nur die geänderten Felder) · erreichbarkeit_geprueft
+        (Box, Ergebnis) · zustaendigkeit_begonnen · zustaendigkeit_gewechselt (alt:
+        die bisherige Box), jeder Eintrag mit Urheber (Kundenbenutzer =
+        kundenadministrator/kunde, Plattform-Admin = voltpilot_betrieb/voltpilot).
+      responses:
+        "200":
+          description: Die Einträge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquelleProtokoll" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
@@ -7608,6 +7822,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleFehler" }
+    DatenquelleAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. Der Körper trägt `code`, einen deutschen
+        `message`-Satz (bei den Gründen des Vertrags genau dessen Satz) und die Fakten
+        des Urteils (siehe DatenquelleFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/DatenquelleFehler" }
   schemas:
     OcppConnectorState:
       type: object
@@ -14231,3 +14453,178 @@ components:
         code: kennzeichen_belegt
         message: "MS-13 ist bereits vergeben (Lager Halle 2 (Allgemein)). Kennzeichen sind je Unternehmen eindeutig — auch archivierte bleiben belegt."
         bestehend: { kennzeichen: MS-13, messstelle: MS-13, name: Lager Halle 2 (Allgemein), archiviert: true, frueher: false }
+    DatenquelleBox:
+      type: object
+      description: Eine Box, wie ein Satz sie nennt - Kundenname, sonst die Geräte-ID vom Aufkleber; null bei einer entfernten Box.
+      required: [id, name, heimat_anlage]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        heimat_anlage: { type: string, format: uuid, nullable: true }
+    DatenquelleZeitraum:
+      type: object
+      description: Box · ab · bis, halboffen auf die Minute; `effective_to` null = offen.
+      required: [box, effective_from, effective_to]
+      properties:
+        box: { $ref: "#/components/schemas/DatenquelleBox" }
+        effective_from: { type: string, format: date-time }
+        effective_to: { type: string, format: date-time, nullable: true }
+    Datenquelle:
+      type: object
+      required: [id, kennzeichen, name, anlage, protokoll, adresse, geraete_ids, netz, mehrere_leser,
+        steuerquelle, vergleichsquelle, kadenz_s, archiviert_am, zustaendige_box, zeitraeume]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$", example: DQ-6 }
+        name: { type: string, nullable: true }
+        anlage: { type: string, format: uuid, description: "Die Anlage, in der die Geräte verdrahtet sind." }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        adresse: { type: string, example: "192.168.30.10:502" }
+        geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
+        netz: { type: string, nullable: true }
+        mehrere_leser: { type: boolean }
+        steuerquelle: { type: boolean }
+        vergleichsquelle: { type: boolean, description: "Bestätigte Vergleichsquelle (Vertrag §6) - gekennzeichnet, ohne Bewertung." }
+        kadenz_s: { type: integer, minimum: 1, maximum: 86400 }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        zustaendige_box:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
+          nullable: true
+          description: Die Box, deren Zeitraum JETZT läuft; null ohne (Entwurf, Lücke, erst geplant).
+        zeitraeume: { type: array, items: { $ref: "#/components/schemas/DatenquelleZeitraum" } }
+    DatenquelleListe:
+      type: object
+      required: [datenquellen]
+      properties:
+        datenquellen: { type: array, items: { $ref: "#/components/schemas/Datenquelle" } }
+    DatenquelleAnlegen:
+      type: object
+      required: [name, protokoll, adresse, kadenz_s]
+      properties:
+        name: { type: string, maxLength: 120 }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        adresse: { type: string }
+        geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
+        netz: { type: string, nullable: true }
+        mehrere_leser: { type: boolean, default: false }
+        steuerquelle: { type: boolean, default: false }
+        kadenz_s: { type: integer, minimum: 1, maximum: 86400 }
+        device_id: { type: string, format: uuid, description: "Die gewählte Box - prüft die Regeln vor der Prüfung schon beim Anlegen." }
+        vergleich_bestaetigt: { type: boolean, default: false }
+    DatenquelleBearbeiten:
+      type: object
+      description: Die volle Darstellung (fehlend = leer bzw. nein).
+      required: [name, protokoll, adresse, kadenz_s]
+      properties:
+        name: { type: string, maxLength: 120 }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        adresse: { type: string }
+        geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
+        netz: { type: string, nullable: true }
+        mehrere_leser: { type: boolean, default: false }
+        steuerquelle: { type: boolean, default: false }
+        kadenz_s: { type: integer, minimum: 1, maximum: 86400 }
+    DatenquelleZuweisen:
+      type: object
+      required: [device_id]
+      properties:
+        device_id: { type: string, format: uuid }
+        effective_from: { type: string, format: date-time, description: "Volle Minute mit Versatz; fehlend = jetzt (auf die Minute abgerundet)." }
+        vergleich_bestaetigt: { type: boolean, default: false }
+    DatenquelleZugewiesen:
+      type: object
+      required: [urteil, text, hinweis, vergleichsquelle, datenquelle]
+      properties:
+        urteil: { type: string, enum: [erlaubt] }
+        text: { type: string, example: "Ab 10.04.2027 07:30 liest Box Halle 2 (neu)" }
+        hinweis: { type: string, nullable: true, example: "Gleiche Adresse wie DQ-4 — anderes Netz" }
+        vergleichsquelle: { type: boolean }
+        datenquelle: { $ref: "#/components/schemas/Datenquelle" }
+    DatenquellePruefen:
+      type: object
+      required: [device_id, unit_id]
+      properties:
+        device_id: { type: string, format: uuid }
+        unit_id: { type: integer, minimum: 0, maximum: 255 }
+        register: { type: integer, minimum: 0, maximum: 65535, description: "Bei Modbus TCP Pflicht, bei SunSpec-Modbus 40000." }
+        register_kind: { type: string, enum: [holding, input], default: holding }
+        data_type: { type: string, enum: [u16, s16, u32, s32, float32] }
+        word_order: { type: string, enum: [big, little] }
+    DatenquellePruefergebnis:
+      type: object
+      required: [box, adresse, ergebnis, gewertet, text, zeitpunkt, dauer_ms, antwort]
+      properties:
+        box: { $ref: "#/components/schemas/DatenquelleBox" }
+        adresse: { type: string }
+        ergebnis:
+          type: string
+          nullable: true
+          description: "ok, eine Fehlerklasse der Box (unreachable, no_answer, invalid_response, implausible, fronius_api, timeout, layout_changed, budget), box_meldet_sich_nicht oder ein Wort des Prüf-Kanals."
+        gewertet: { type: boolean, description: "Zählt für eine Zuständigkeit und steht im Protokoll." }
+        text: { type: string, example: "Box Halle 2 (neu) erreicht 192.168.10.31:502 nicht — Netz/VLAN prüfen (Bogen D1/D2)" }
+        zeitpunkt: { type: string, format: date-time }
+        dauer_ms: { type: integer, minimum: 0 }
+        antwort:
+          allOf: [{ $ref: "#/components/schemas/ProbeResult" }]
+          nullable: true
+          description: Die rohe Antwort der Box; null, wenn sie nicht geantwortet hat.
+    DatenquelleProtokollEintrag:
+      type: object
+      required: [id, art, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]
+      properties:
+        id: { type: integer, format: int64 }
+        art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt] }
+        box:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
+          nullable: true
+        ergebnis: { type: string, nullable: true }
+        alt: { type: object, nullable: true, additionalProperties: true }
+        neu: { type: object, nullable: true, additionalProperties: true }
+        gilt_ab: { type: string, format: date-time }
+        urheber:
+          type: object
+          required: [name, rolle, art]
+          properties:
+            name: { type: string }
+            rolle: { type: string, nullable: true }
+            art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+        zeitpunkt: { type: string, format: date-time }
+    DatenquelleProtokoll:
+      type: object
+      required: [eintraege]
+      properties:
+        eintraege: { type: array, items: { $ref: "#/components/schemas/DatenquelleProtokollEintrag" } }
+    DatenquelleFehler:
+      type: object
+      description: >
+        Die Ablehnung der Datenquellen-Schnittstelle. Die Gründe des Vertrags
+        (docs/contracts/v2/data-source-assignment.md §4/§5) mit ihrem Satz und `urteil`;
+        der Vertrag nennt keinen HTTP-Status, die Schnittstelle genau einen je Grund:
+        400 `protokoll_unbekannt`; 422 `keine_volle_minute`, `rueckwirkend`,
+        `leerer_zeitraum`; 409 `steuerquelle`, `spaeterer_wechsel_geplant`,
+        `schon_zustaendig`, `ueberschneidung`, `adresse_an_box_vergeben`,
+        `netzlage_fehlt`, `nur_ein_leser`, `vergleich_bestaetigen` (urteil
+        `bestaetigung_noetig`), `pruefung_fehlt`, `pruefung_gescheitert`. Dazu die
+        Codes der Schnittstelle: `anfrage_ungueltig` 400 (`feld`), `weg_fest` 409
+        (`felder`), `quelle_archiviert` 409 (`kennzeichen`),
+        `pruefung_nicht_moeglich` 422 (`protokoll`), `gleichzeitig_geaendert` 409
+        (`grund`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [protokoll_unbekannt, keine_volle_minute, leerer_zeitraum, rueckwirkend, steuerquelle,
+            spaeterer_wechsel_geplant, schon_zustaendig, ueberschneidung, adresse_an_box_vergeben,
+            netzlage_fehlt, nur_ein_leser, vergleich_bestaetigen, pruefung_fehlt, pruefung_gescheitert,
+            anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert]
+        message: { type: string }
+        urteil: { type: string, enum: [abgelehnt, bestaetigung_noetig] }
+        feld: { type: string, description: "anfrage_ungueltig: device_id, adresse, register …" }
+        felder: { type: array, items: { type: string }, description: "weg_fest: die festen Felder, die sich ändern sollten." }
+        kennzeichen: { type: string }
+        protokoll: { type: string }
+        grund: { type: string, description: "gleichzeitig_geaendert: der Grund des Constraints, der gegriffen hat." }
+      example:
+        code: steuerquelle
+        message: "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln"
+        urteil: abgelehnt

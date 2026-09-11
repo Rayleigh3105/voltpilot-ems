@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
@@ -205,6 +206,56 @@ public class ProbeService {
                     "Die Anlage hat nicht rechtzeitig geantwortet. Falls das Gerät doch "
                             + "geschaltet hat, fällt es von selbst wieder zurück.",
                     List.of());
+        } finally {
+            registry.forget(requestId);
+        }
+    }
+
+    /**
+     * Ask EXACTLY this box - the reachability check of a data source (UEMS AP-06
+     * IP-3, E11: a check only counts from EXACTLY the target box).
+     *
+     * <p>Additive on purpose: {@link #probe} and the connection/switch tests keep
+     * resolving the box through the PLANT ({@link #resolveDevice} - the named
+     * device of the site, else its single device); replacing that switch is
+     * IP-5/IP-8. Here the caller NAMES the box, and it may have a different home
+     * plant than the source it checks (a box may read a source of another plant
+     * if it reaches it - contract {@code data-source-assignment.md} §1). So the
+     * box is resolved by id inside the tenant fence (RLS: a foreign box is simply
+     * not there, 404), and the question goes out on the box's OWN topic
+     * {@code ems/{t}/{home site}/{box}/v2/probe} - the only one it listens on and
+     * the only one its ACL lets it answer on. Same envelope, same correlation,
+     * same short wait, nothing persisted, no edge change.
+     *
+     * @return the box's answer; EMPTY when it did not answer within
+     *     {@link #TIMEOUT}. Never a synthesized result: "the box said nothing" is a
+     *     fact about the BOX, and the caller must be able to tell it apart from
+     *     anything the box reported about the device.
+     */
+    public Optional<ProbeResult> probeBox(UUID boxId, List<ProbeRequest.Op> ops, String requestedBy) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Box nicht gefunden.");
+        }
+        DeviceDto box = devices.findById(boxId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Box nicht gefunden."));
+        ProbePublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Prüfung ist derzeit nicht möglich.");
+        }
+        String requestId = newRequestId();
+        CompletableFuture<ProbeResult> future = registry.register(requestId, box.id());
+        try {
+            pub.publish(tenantId, box.siteId(), box.id(), requestId, Instant.now(), requestedBy, ops);
+        } catch (Exception e) {
+            registry.forget(requestId);
+            log.warn("box probe {} could not be published: {}", requestId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Box ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+        }
+        try {
+            return Optional.ofNullable(registry.await(future, TIMEOUT));
         } finally {
             registry.forget(requestId);
         }
