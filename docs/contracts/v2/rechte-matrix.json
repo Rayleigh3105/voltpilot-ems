@@ -1,0 +1,976 @@
+{
+  "_comment": [
+    "Die RECHTE-MATRIX als Daten (UEMS AP-03 IP-1): 48 Kundenaktionen × 7 Rollen, Zelle =",
+    "eindeutiger Geltungsbereich. Die Prosa-Wahrheit ist die Tabelle im AP-03-Konzept §4.3",
+    "(Captain-Entscheide E1–E15 vom 10.09.2026); diese Datei ist ihre Datenfassung und die",
+    "Quelle der künftigen Durchsetzung (`@Recht(\"<kennung>\")`, IP-6/IP-7).",
+    "",
+    "⚠ Die Markdown-Tabelle ./rechte-matrix.md wird aus DIESER Datei erzeugt:",
+    "    python3 docs/contracts/v2/tools/rechte_matrix.py           # schreibt rechte-matrix.md",
+    "    python3 docs/contracts/v2/tools/rechte_matrix.py --check   # prüft, ob sie aktuell ist",
+    "Der Java-Test RechteAbleitungVectorsTest liest die erzeugte Tabelle zurück und hält sie",
+    "zeilengleich an diese Datei (Build-Prüfung im Maven-Lauf von services/api).",
+    "",
+    "ZELLEN-CODES (Legende des Konzepts): U erlaubt, unternehmensweit · S erlaubt je",
+    "zugewiesenem Standort · E nur das eigene Konto · - nein · P bleibt beim VoltPilot-Betrieb",
+    "(Plattform). Unterstützer: A ab Umfang „Ansehen“ · Ei ab Umfang „Einrichten“ · B nur",
+    "„Einrichten und Bedienen“ (E9). Welche Codes eine Spalte tragen darf, steht je Rolle in",
+    "`zellen`; das Schema prüft es.",
+    "",
+    "Kennungen sind stabile Schlüssel (`bereich.tätigkeit`, ASCII) — eine Fläche, eine Route",
+    "und ein Vektor verweisen über die Kennung, nie über den Wortlaut oder die Position.",
+    "Der Wortlaut (`kundenwort`) ist byte-gleich zur Konzept-Tabelle.",
+    "",
+    "Wie aus Matrix + Zuweisungen ein Ja/Nein wird (Geltungsbereich vor Aktion, Unterstützer-",
+    "Umfang, OCPP-Stufe, Teilansicht, Entzug), steht in ./rechte-vectors.json; die Zwillinge",
+    "sind Java services/api .../uems/RechteAbleitung und TS frontend/portal/src/rechte.ts.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN: keine Tabelle, kein Filter, kein Endpunkt, keine Fläche."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./rechte.schema.json#/$defs/matrix",
+  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026",
+  "tabelle": "./rechte-matrix.md",
+  "codes": [
+    {
+      "code": "U",
+      "bedeutung": "erlaubt, unternehmensweit"
+    },
+    {
+      "code": "S",
+      "bedeutung": "erlaubt je zugewiesenem Standort"
+    },
+    {
+      "code": "E",
+      "bedeutung": "nur das eigene Konto"
+    },
+    {
+      "code": "-",
+      "bedeutung": "nein"
+    },
+    {
+      "code": "P",
+      "bedeutung": "bleibt beim VoltPilot-Betrieb (Plattform)"
+    },
+    {
+      "code": "A",
+      "bedeutung": "Unterstützer ab Umfang „Ansehen“"
+    },
+    {
+      "code": "Ei",
+      "bedeutung": "Unterstützer ab Umfang „Einrichten“"
+    },
+    {
+      "code": "B",
+      "bedeutung": "Unterstützer nur mit Umfang „Einrichten und Bedienen“"
+    }
+  ],
+  "rollen": [
+    {
+      "kennung": "kundenadministrator",
+      "kundenwort": "Kundenadministrator",
+      "kuerzel": "KA",
+      "geltungsbereich": "unternehmen",
+      "zuweisbar": true,
+      "zellen": [
+        "U",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten ✔ · Steuerung ✔ (Betrieb + Rahmen) · Verwaltung ✔"
+    },
+    {
+      "kennung": "energiemanager",
+      "kundenwort": "Energiemanager",
+      "kuerzel": "EM",
+      "geltungsbereich": "unternehmen",
+      "zuweisbar": true,
+      "zellen": [
+        "U",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten ✔ (alle Standorte) · Steuerung ✘ · Verwaltung ✘"
+    },
+    {
+      "kennung": "bearbeiter",
+      "kundenwort": "Bearbeiter",
+      "kuerzel": "BE",
+      "geltungsbereich": "standort",
+      "zuweisbar": true,
+      "zellen": [
+        "S",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten ✔ (je Standort) · Steuerung ✘ · Verwaltung ✘"
+    },
+    {
+      "kennung": "bedienberechtigt",
+      "kundenwort": "Bedienberechtigt",
+      "kuerzel": "BD",
+      "geltungsbereich": "standort",
+      "zuweisbar": true,
+      "zellen": [
+        "S",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten: nur sehen · Steuerung ✔ (Betrieb, je Standort) · Verwaltung ✘"
+    },
+    {
+      "kennung": "leser",
+      "kundenwort": "Leser",
+      "kuerzel": "LE",
+      "geltungsbereich": "standort",
+      "zuweisbar": true,
+      "zellen": [
+        "S",
+        "E",
+        "-"
+      ],
+      "achsen": "Daten: sehen (je Standort) · Steuerung ✘ · Verwaltung ✘"
+    },
+    {
+      "kennung": "unterstuetzer",
+      "kundenwort": "Unterstützer",
+      "kuerzel": "US",
+      "geltungsbereich": "standort_befristet",
+      "zuweisbar": false,
+      "zellen": [
+        "A",
+        "Ei",
+        "B",
+        "E",
+        "-"
+      ],
+      "achsen": "je Umfang: Daten sehen/pflegen · Steuerung Betrieb · nie Rahmen, nie Verwaltung · immer befristet + Banner + Protokoll"
+    },
+    {
+      "kennung": "voltpilot_betrieb",
+      "kundenwort": "VoltPilot-Betrieb",
+      "kuerzel": "VP",
+      "geltungsbereich": "plattform",
+      "zuweisbar": false,
+      "zellen": [
+        "P",
+        "E",
+        "-"
+      ],
+      "achsen": "Plattform-Betrieb"
+    }
+  ],
+  "umfaenge": [
+    {
+      "kennung": "ansehen",
+      "kundenwort": "Ansehen",
+      "code": "A"
+    },
+    {
+      "kennung": "einrichten",
+      "kundenwort": "Einrichten",
+      "code": "Ei"
+    },
+    {
+      "kennung": "einrichten_und_bedienen",
+      "kundenwort": "Einrichten und Bedienen",
+      "code": "B"
+    }
+  ],
+  "gruppen": [
+    {
+      "kennung": "struktur",
+      "titel": "Unternehmen, Standorte, Struktur (AP-02)"
+    },
+    {
+      "kennung": "messdaten",
+      "titel": "Messstellen und Messdaten (AP-04, AP-08, AP-09)"
+    },
+    {
+      "kennung": "kennzahlen",
+      "titel": "Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13)"
+    },
+    {
+      "kennung": "steuerung",
+      "titel": "Funktionen und Steuerung (AP-01, Bestand)"
+    },
+    {
+      "kennung": "benutzer",
+      "titel": "Benutzer und Unterstützung (AP-03)"
+    },
+    {
+      "kennung": "plattform",
+      "titel": "Bleibt beim VoltPilot-Betrieb (Plattform)"
+    }
+  ],
+  "aktionen": [
+    {
+      "kennung": "unternehmen.bearbeiten",
+      "gruppe": "struktur",
+      "kundenwort": "Unternehmen bearbeiten (Name, Kurzname, Zeitzone-Vorgabe, Sitz)",
+      "herkunft": "AP-02 §4.1",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "standort.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Standort anlegen · bearbeiten · archivieren · wiederherstellen",
+      "herkunft": "AP-02 §4.6",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-02 nennt Kundenadministrator und Energiemanager."
+    },
+    {
+      "kennung": "gebaeude.pflegen",
+      "gruppe": "struktur",
+      "kundenwort": "Gebäude und Bereiche pflegen (anlegen, bearbeiten, verschieben, Fläche, archivieren)",
+      "herkunft": "AP-02 §4.6",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "„Standort-Bearbeiter“ aus AP-02 = Bearbeiter."
+    },
+    {
+      "kennung": "anlage.zuordnen",
+      "gruppe": "struktur",
+      "kundenwort": "Anlage einem Standort zuordnen / umziehen",
+      "herkunft": "AP-02 §4.6, IP-11",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "aenderung.rueckwirkend",
+      "gruppe": "struktur",
+      "kundenwort": "Rückwirkend ändern („gültig ab“ in der Vergangenheit)",
+      "herkunft": "AP-02 E2",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Bearbeiter nur ab heute (W14)."
+    },
+    {
+      "kennung": "aenderungsprotokoll.lesen",
+      "gruppe": "struktur",
+      "kundenwort": "Änderungsprotokoll und „Stand am“ lesen",
+      "herkunft": "AP-02 §4.4",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "„jeder Leser des Standorts“ (AP-02)."
+    },
+    {
+      "kennung": "anlage.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Anlage anlegen (Assistent) · archivieren · löschen (nur ohne Historie)",
+      "herkunft": "Bestand, AP-02 W5",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "heute jeder Benutzer (SiteController ohne Rollenprüfung)."
+    },
+    {
+      "kennung": "geraet.einrichten",
+      "gruppe": "struktur",
+      "kundenwort": "Box anmelden; Gerät / Komponente anlegen, verbinden, bearbeiten; Verbindungstest",
+      "herkunft": "Einheitsmodell, AP-01 §5.2",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Installateur: Schritte 2–3 des Mess-Assistenten (AP-01)."
+    },
+    {
+      "kennung": "komponente.loeschen",
+      "gruppe": "struktur",
+      "kundenwort": "Komponente löschen · Gerät entfernen",
+      "herkunft": "Bestand",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Unterstützer nie (zerstörend)."
+    },
+    {
+      "kennung": "aufzeichnungen.loeschen",
+      "gruppe": "struktur",
+      "kundenwort": "Datenaufzeichnungen löschen",
+      "herkunft": "Bestand (purge)",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "heute jeder Benutzer."
+    },
+    {
+      "kennung": "mess_selektion.bearbeiten",
+      "gruppe": "struktur",
+      "kundenwort": "Mess-Selektion je Komponente (zusätzliche Messwerte)",
+      "herkunft": "Geräteseite Stufe 3b",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "messstelle.bearbeiten",
+      "gruppe": "messdaten",
+      "kundenwort": "Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen",
+      "herkunft": "AP-04",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "messstelle.quelle_binden",
+      "gruppe": "messdaten",
+      "kundenwort": "Führende Quelle binden · Zählerwechsel · Wandlerfaktoren",
+      "herkunft": "AP-04",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "korrektur.erfassen",
+      "gruppe": "messdaten",
+      "kundenwort": "Korrektur / Ersatzwert erfassen (versioniert, begründet)",
+      "herkunft": "AP-08",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Messdatenpflege — nie der Unterstützer (Nachweis bleibt beim Kunden)."
+    },
+    {
+      "kennung": "bezugsgroesse.eingeben",
+      "gruppe": "messdaten",
+      "kundenwort": "Bezugsgröße eingeben / berichtigen (manuell)",
+      "herkunft": "AP-09",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "bezugsgroesse.importieren",
+      "gruppe": "messdaten",
+      "kundenwort": "CSV-Import mit Vorschau (Bezugsgrößen)",
+      "herkunft": "AP-09",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "messwerte.ansehen",
+      "gruppe": "messdaten",
+      "kundenwort": "Messwerte, Zeitreihen, Datenqualität ansehen",
+      "herkunft": "AP-07, AP-13",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "kennzahl.standort_definieren",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Kennzahl definieren — Geltungsbereich Standort",
+      "herkunft": "AP-11",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "kennzahl.unternehmen_definieren",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Kennzahl definieren — Geltungsbereich Unternehmen",
+      "herkunft": "AP-11",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Unternehmensweite Kennzahlen nur unternehmensweite Rollen (R-A1)."
+    },
+    {
+      "kennung": "bericht.standort_abrufen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf)",
+      "herkunft": "AP-12",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "bericht.standort_freigeben",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Standort-Bericht freigeben (Berichtsstand)",
+      "herkunft": "AP-12",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "bericht.unternehmen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Unternehmens-Bericht abrufen / freigeben",
+      "herkunft": "AP-12",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "export.standort",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Export je Standort (CSV: Messwerte, Kennzahlen)",
+      "herkunft": "AP-12, Bestand Geräte-CSV",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Unterstützer: kein Export (Datenabfluss)."
+    },
+    {
+      "kennung": "export.unternehmen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Unternehmens-Export (alle Standorte)",
+      "herkunft": "AP-12",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "standortbeschränkte Nutzer bekommen stattdessen den Export ihrer Standorte mit Kopfzeile „Teilansicht“ (R-A4)."
+    },
+    {
+      "kennung": "cockpit.anpassen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen)",
+      "herkunft": "Cockpit anpassen, Stufe 3",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Vorgabe-Schicht bleibt VoltPilot; Leser/Bedienberechtigte/Unterstützer schreiben kein Organisations-Layout (W8)."
+    },
+    {
+      "kennung": "auswertung.anlegen",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Eigene Auswertung anlegen (je Anlage)",
+      "herkunft": "Eigene Auswertung, Stufe 5",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "funktion.messen_einrichten",
+      "gruppe": "steuerung",
+      "kundenwort": "Funktion „Messen & Auswerten“ je Standort einrichten",
+      "herkunft": "AP-01 §5.2",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Unterstützer: Schritte 2–3 (Datenquelle, Messstellen); Schritt 1 und Abschluss der Kunde."
+    },
+    {
+      "kennung": "funktion.steuern_einrichten",
+      "gruppe": "steuerung",
+      "kundenwort": "Funktion „Steuern & Optimieren“ je Standort einrichten (Anlage aufnehmen, Freigeben, Grenze, Betriebsweise)",
+      "herkunft": "AP-01 §5.3",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Unterstützer bereitet vor (Tests, Grenze); die Freigabe und der Start bleiben beim Kundenadministrator."
+    },
+    {
+      "kennung": "steuerung.starten_beenden",
+      "gruppe": "steuerung",
+      "kundenwort": "Steuerung starten · beenden je Anlage (nach bestandenen Prüfungen)",
+      "herkunft": "AP-01 R1/R2",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Plan: „Kundenadministrator … nach technischen Prüfungen starten“."
+    },
+    {
+      "kennung": "steuerung.anhalten_fortsetzen",
+      "gruppe": "steuerung",
+      "kundenwort": "Steuerung anhalten · fortsetzen je Anlage; Standort anhalten · fortsetzen",
+      "herkunft": "AP-01 E8, E9, E12",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "S",
+        "leser": "-",
+        "unterstuetzer": "B",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "handeingriff.setzen",
+      "gruppe": "steuerung",
+      "kundenwort": "Handeingriff: Speicher jetzt laden, Ladestand halten, Automatik pausieren, Gerät jetzt an/aus, „Jetzt voll laden“, „Laden pausieren“",
+      "herkunft": "Zone Jetzt (Steuerung Stufe 4, OCPP Stufe 4)",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "S",
+        "leser": "-",
+        "unterstuetzer": "B",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Dauer Pflicht, TTL ≤ 24\u00a0h — bleibt beim Entzug bis zum Ablauf (E15)."
+    },
+    {
+      "kennung": "betriebsweise.aendern",
+      "gruppe": "steuerung",
+      "kundenwort": "Betriebsweise ändern: Betriebsmodell wechseln, Regeln anlegen/aktivieren, Steuerart je Verbraucher, Rangliste",
+      "herkunft": "Steuerung Stufe 5, Verbrauchsmanagement",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "S",
+        "leser": "-",
+        "unterstuetzer": "B",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "E4 = A: Betrieb im Rahmen; Regel gewinnt weiterhin immer."
+    },
+    {
+      "kennung": "ladepunkt.betrieb",
+      "gruppe": "steuerung",
+      "kundenwort": "Ladekarten und Fahrzeug-Profile pflegen; OCPP-Betriebsaktionen (Reservieren, Verfügbarkeit, sanft neu starten)",
+      "herkunft": "OCPP Stufe 3/4, P7",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "S",
+        "leser": "-",
+        "unterstuetzer": "B",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Plattform-Aktionen (HardReset, Firmware, Diagnose) bleiben VoltPilot."
+    },
+    {
+      "kennung": "schalttest.durchfuehren",
+      "gruppe": "steuerung",
+      "kundenwort": "Schalt-Test / Verbindungstest durchführen",
+      "herkunft": "Einheitsmodell Stufe 4",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "freigabe.erteilen",
+      "gruppe": "steuerung",
+      "kundenwort": "Steuern freigeben je Komponente · Freigabe zurücknehmen",
+      "herkunft": "Einheitsmodell Stufe 4 (Stufe 3 „selbst“)",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Stufe 1 (Zertifizierung + Scharfschaltung) bleibt VoltPilot (S1); Widerruf auch durch den Kundenadministrator."
+    },
+    {
+      "kennung": "grenze.eintragen",
+      "gruppe": "steuerung",
+      "kundenwort": "Anschlussgrenze, Einspeisegrenze, Netzladen-Schalter eintragen",
+      "herkunft": "AP-01 E10, Grenzen & Wächter Stufe 0",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Ladepark-Rahmen-Auslegung (Hausreserve, Marge …) bleibt VoltPilot (S5)."
+    },
+    {
+      "kennung": "register.schreiben",
+      "gruppe": "steuerung",
+      "kundenwort": "Register schreiben (Kunden-Lane, Vorschau + Schreiben)",
+      "herkunft": "Register schreiben Stufe 3",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Journal trägt künftig den Benutzer als Urheber (W7)."
+    },
+    {
+      "kennung": "ladepunkt.anbinden",
+      "gruppe": "steuerung",
+      "kundenwort": "Ladepunkt anbinden · Kennung zurücknehmen",
+      "herkunft": "OCPP-Anbinde-Assistent",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "prognose.befoerdern",
+      "gruppe": "steuerung",
+      "kundenwort": "Prognose-Modell je Anlage befördern",
+      "herkunft": "Prognose-Beförderung",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "Plattform-Vorgabe bleibt VoltPilot; „gehört dem Kunden“ → Datenachse."
+    },
+    {
+      "kennung": "benutzer.verwalten",
+      "gruppe": "benutzer",
+      "kundenwort": "Benutzer anlegen (Startpasswort, Pflichtwechsel bei der ersten Anmeldung) · sperren · entfernen",
+      "herkunft": "AP-03",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "VoltPilot legt nur den ersten Kundenadministrator eines Kundenbereichs an (W4)."
+    },
+    {
+      "kennung": "zuweisung.verwalten",
+      "gruppe": "benutzer",
+      "kundenwort": "Rollen und Standorte zuweisen · entziehen",
+      "herkunft": "AP-03",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "der letzte Kundenadministrator ist geschützt (W12)."
+    },
+    {
+      "kennung": "unterstuetzung.verwalten",
+      "gruppe": "benutzer",
+      "kundenwort": "Unterstützung gewähren · verlängern · beenden",
+      "herkunft": "AP-03",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "VoltPilot: nur anfragen; Notfall-Zugriff sichtbar und befristet (E8)."
+    },
+    {
+      "kennung": "zugriffsprotokoll.lesen",
+      "gruppe": "benutzer",
+      "kundenwort": "Zugriffsprotokoll lesen (wer hat wem wann was gewährt/entzogen; Anmeldungen der Unterstützer)",
+      "herkunft": "AP-03",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "VoltPilot sieht das Plattform-Protokoll seiner Notfall-Zugriffe."
+    },
+    {
+      "kennung": "konto.eigenes",
+      "gruppe": "benutzer",
+      "kundenwort": "Eigenes Konto: Name, Passwort, Abmelden; eigene Standorte und Rollen sehen",
+      "herkunft": "AP-03 (`/me`)",
+      "zellen": {
+        "kundenadministrator": "E",
+        "energiemanager": "E",
+        "bearbeiter": "E",
+        "bedienberechtigt": "E",
+        "leser": "E",
+        "unterstuetzer": "E",
+        "voltpilot_betrieb": "E"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "plattform.kundenbereich",
+      "gruppe": "plattform",
+      "kundenwort": "Kundenbereich anlegen / löschen; ersten Kundenadministrator anlegen",
+      "herkunft": "Admin-Konsole",
+      "zellen": {
+        "kundenadministrator": "-",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "plattform.zertifizierung",
+      "gruppe": "plattform",
+      "kundenwort": "Modell zertifizieren · Steuer-Scharfschaltung je Wechselrichter (S1)",
+      "herkunft": "Steuerungs-Zertifizierung",
+      "zellen": {
+        "kundenadministrator": "-",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": null
+    },
+    {
+      "kennung": "plattform.ladepark_rahmen",
+      "gruppe": "plattform",
+      "kundenwort": "Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget)",
+      "herkunft": "Ladepark-Rahmen (Admin-Route)",
+      "zellen": {
+        "kundenadministrator": "-",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "AP-01 W6: Admin-Route bleibt; die Anschlussgrenze gehört dem Kunden."
+    },
+    {
+      "kennung": "plattform.betrieb",
+      "gruppe": "plattform",
+      "kundenwort": "Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe",
+      "herkunft": "`/api/v1/admin/**`",
+      "zellen": {
+        "kundenadministrator": "-",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "P"
+      },
+      "anmerkung": "unverändert."
+    }
+  ]
+}

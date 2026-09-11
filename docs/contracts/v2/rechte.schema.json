@@ -1,0 +1,657 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/rechte.schema.json",
+  "title": "UEMS-Rechte: Rechte-Matrix als Daten und Rechte-Vertrag mit Vektoren",
+  "description": "Der Vertrag der RECHTE (UEMS AP-03 IP-1; Regeln im AP-03-Konzept §4.1–§4.9, Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026). Er beschreibt (a) die Rechte-Matrix rechte-matrix.json — 48 Kundenaktionen × 7 Rollen, Zelle = eindeutiger Geltungsbereich (`$defs/matrix`; die Tabelle rechte-matrix.md wird daraus erzeugt) — und (b) die Vektor-Datei rechte-vectors.json (die Wurzel dieses Schemas), die beide Zwillinge (Java services/api .../uems/RechteAbleitung, TS frontend/portal/src/rechte.ts) gegeneinander pinnt: darf(benutzer, aktion, ziel), sichtbareStandorte, teilansicht(n, m), Summe und Geltungsbereich eines Objekts, OCPP-Stufe aus der Zuweisung, Unterstützung, Entzug und Rechte-Änderung. Noch ruft niemand an — keine Tabelle, kein Filter, kein Endpunkt.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "matrix",
+    "referenzunternehmen",
+    "zeitzone",
+    "familien",
+    "abnahmefaelle",
+    "vokabular",
+    "gruende",
+    "regeln",
+    "texte",
+    "widersprueche",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "type": "string"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": { "type": "string" },
+    "matrix": { "const": "./rechte-matrix.json" },
+    "referenzunternehmen": { "const": "./uems-referenzunternehmen.json" },
+    "zeitzone": {
+      "description": "Die Zeitzone, in der Kundensätze Datum und Uhrzeit nennen (Zeitzone des Unternehmens).",
+      "type": "string"
+    },
+    "familien": {
+      "description": "Die Familien der Fälle.",
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+      }
+    },
+    "abnahmefaelle": {
+      "description": "Die Abnahmefälle des AP-03-Konzepts (§7), die mindestens ein Fall pinnt.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^A[0-9]+$" }
+    },
+    "vokabular": {
+      "type": "object",
+      "required": [
+        "konto",
+        "konto_zustand",
+        "art",
+        "umfang",
+        "ocpp_stufe",
+        "unterstuetzung_zustand",
+        "aenderung",
+        "rolle_noetig_reihenfolge"
+      ],
+      "properties": {
+        "konto": { "type": "array", "items": { "$ref": "#/$defs/konto" } },
+        "konto_zustand": { "type": "array", "items": { "$ref": "#/$defs/konto_zustand" } },
+        "art": { "type": "array", "items": { "$ref": "#/$defs/art" } },
+        "umfang": {
+          "description": "AUFSTEIGEND — die Reihenfolge ist die Regel (Zelle A ≤ Ei ≤ B).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/umfang" }
+        },
+        "ocpp_stufe": {
+          "description": "AUFSTEIGEND, Namen wie in OcppActionPolicy.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ocpp_stufe" }
+        },
+        "unterstuetzung_zustand": { "type": "array", "items": { "$ref": "#/$defs/unterstuetzung_zustand" } },
+        "aenderung": { "type": "array", "items": { "$ref": "#/$defs/aenderung_art" } },
+        "rolle_noetig_reihenfolge": {
+          "description": "In dieser Reihenfolge sucht `rolle_noetig` die kleinste Rolle, die das Recht hätte.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/rolle" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "gruende": {
+      "description": "Das Grund-Vokabular mit seinem HTTP-Status (Fehlerkörper §6.2).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "http"],
+        "properties": {
+          "code": { "$ref": "#/$defs/grund" },
+          "http": { "enum": [200, 201, 401, 403, 404, 409, 422] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "regeln": {
+      "type": "object",
+      "required": [
+        "unterstuetzung_hoechstens_monate",
+        "unterstuetzung_vorgabe_tage",
+        "erinnerung_tage",
+        "notfall_stunden",
+        "vorgabe_umfang"
+      ],
+      "properties": {
+        "unterstuetzung_hoechstens_monate": { "const": 12 },
+        "unterstuetzung_vorgabe_tage": { "const": 30 },
+        "erinnerung_tage": { "const": 7 },
+        "notfall_stunden": { "const": 24 },
+        "vorgabe_umfang": {
+          "type": "object",
+          "required": ["installateur", "voltpilot", "notfall"],
+          "properties": {
+            "installateur": { "$ref": "#/$defs/umfang" },
+            "voltpilot": { "$ref": "#/$defs/umfang" },
+            "notfall": { "$ref": "#/$defs/umfang" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "texte": {
+      "description": "Die Kundensätze als Vorlagen ({…} wird eingesetzt); beide Zwillinge tragen dieselben.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "widersprueche": {
+      "description": "Benannte Widersprüche zwischen Konzept-Stellen samt Auflösung und den Fällen, die sie pinnen.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kennung", "titel", "stelle", "aufloesung", "faelle"],
+        "properties": {
+          "kennung": { "type": "string", "pattern": "^W-R[0-9]+$" },
+          "titel": { "type": "string", "minLength": 1 },
+          "stelle": { "type": "string", "minLength": 1 },
+          "aufloesung": { "type": "string", "minLength": 1 },
+          "faelle": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "zeit": {
+      "description": "ISO 8601 mit Zeitzonen-Versatz.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "zeit_oder_null": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "standort_kennzeichen": { "type": "string", "pattern": "^ST-[0-9]+$" },
+    "rolle": {
+      "enum": [
+        "kundenadministrator",
+        "energiemanager",
+        "bearbeiter",
+        "bedienberechtigt",
+        "leser",
+        "unterstuetzer",
+        "voltpilot_betrieb"
+      ]
+    },
+    "zelle": { "enum": ["U", "S", "E", "-", "P", "A", "Ei", "B"] },
+    "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen"] },
+    "konto": { "enum": ["benutzer", "partner", "plattform"] },
+    "konto_zustand": { "enum": ["angelegt", "aktiv", "gesperrt", "entfernt"] },
+    "art": { "enum": ["installateur", "voltpilot", "notfall"] },
+    "ocpp_stufe": { "enum": ["keine", "CUSTOMER", "SITE_ADMIN", "PLATFORM"] },
+    "unterstuetzung_zustand": { "enum": ["entwurf", "eingerichtet", "aktiv", "archiviert"] },
+    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen"] },
+    "grund": {
+      "enum": [
+        "erlaubt",
+        "recht_fehlt",
+        "ausserhalb_geltungsbereich",
+        "zugriff_beendet",
+        "konto_nicht_aktiv",
+        "eigene_zuweisung",
+        "letzter_kundenadministrator",
+        "standort_fehlt",
+        "hoechstens_12_monate",
+        "grund_fehlt"
+      ]
+    },
+    "aktion_kennung": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" },
+
+    "matrix": {
+      "description": "Die Rechte-Matrix rechte-matrix.json: Codes, Rollen, Umfänge, Gruppen und die 48 Aktionen. Zeilen-Reihenfolge = Konzept-Tabelle §4.3.",
+      "type": "object",
+      "required": ["schema_version", "herkunft", "tabelle", "codes", "rollen", "umfaenge", "gruppen", "aktionen"],
+      "properties": {
+        "_comment": { "type": "array", "items": { "type": "string" } },
+        "schema_version": { "type": "string" },
+        "$schema_datei": { "const": "./rechte.schema.json#/$defs/matrix" },
+        "herkunft": { "type": "string" },
+        "tabelle": { "const": "./rechte-matrix.md" },
+        "codes": {
+          "description": "Die Legende der Konzept-Tabelle.",
+          "type": "array",
+          "minItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["code", "bedeutung"],
+            "properties": {
+              "code": { "$ref": "#/$defs/zelle" },
+              "bedeutung": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "rollen": {
+          "description": "Die sieben Spalten in der Spaltenreihenfolge der Konzept-Tabelle.",
+          "type": "array",
+          "minItems": 7,
+          "items": {
+            "type": "object",
+            "required": ["kennung", "kundenwort", "kuerzel", "geltungsbereich", "zuweisbar", "zellen", "achsen"],
+            "properties": {
+              "kennung": { "$ref": "#/$defs/rolle" },
+              "kundenwort": { "type": "string", "minLength": 1 },
+              "kuerzel": { "type": "string", "pattern": "^[A-Z]{2}$" },
+              "geltungsbereich": { "enum": ["unternehmen", "standort", "standort_befristet", "plattform"] },
+              "zuweisbar": {
+                "description": "Über eine Zuweisung vergeben (true) — der Unterstützer entsteht über eine Unterstützung, der VoltPilot-Betrieb über das Plattform-Konto.",
+                "type": "boolean"
+              },
+              "zellen": {
+                "description": "Die Codes, die diese Spalte tragen darf.",
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/zelle" }
+              },
+              "achsen": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "umfaenge": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["kennung", "kundenwort", "code"],
+            "properties": {
+              "kennung": { "$ref": "#/$defs/umfang" },
+              "kundenwort": { "type": "string", "minLength": 1 },
+              "code": { "enum": ["A", "Ei", "B"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "gruppen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["kennung", "titel"],
+            "properties": {
+              "kennung": { "type": "string", "pattern": "^[a-z]+$" },
+              "titel": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "aktionen": {
+          "type": "array",
+          "minItems": 48,
+          "items": {
+            "type": "object",
+            "required": ["kennung", "gruppe", "kundenwort", "herkunft", "zellen", "anmerkung"],
+            "properties": {
+              "kennung": { "$ref": "#/$defs/aktion_kennung" },
+              "gruppe": { "type": "string", "pattern": "^[a-z]+$" },
+              "kundenwort": {
+                "description": "Der Wortlaut der Zeile — zeichengleich zur Konzept-Tabelle.",
+                "type": "string",
+                "minLength": 1
+              },
+              "herkunft": { "type": "string", "minLength": 1 },
+              "zellen": {
+                "description": "Je Rolle genau ein Code; welche Codes eine Spalte tragen darf, legt die Legende fest.",
+                "type": "object",
+                "required": [
+                  "kundenadministrator",
+                  "energiemanager",
+                  "bearbeiter",
+                  "bedienberechtigt",
+                  "leser",
+                  "unterstuetzer",
+                  "voltpilot_betrieb"
+                ],
+                "properties": {
+                  "kundenadministrator": { "enum": ["U", "E", "-"] },
+                  "energiemanager": { "enum": ["U", "E", "-"] },
+                  "bearbeiter": { "enum": ["S", "E", "-"] },
+                  "bedienberechtigt": { "enum": ["S", "E", "-"] },
+                  "leser": { "enum": ["S", "E", "-"] },
+                  "unterstuetzer": { "enum": ["A", "Ei", "B", "E", "-"] },
+                  "voltpilot_betrieb": { "enum": ["P", "E", "-"] }
+                },
+                "additionalProperties": false
+              },
+              "anmerkung": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "zuweisung": {
+      "description": "Rolle × Geltungsbereich × Gültigkeit; `standorte` null = Unternehmen. Zeit [ab, bis) und [ab, beendet_am).",
+      "type": "object",
+      "required": ["rolle", "standorte", "umfang", "art", "gueltig_ab", "gueltig_bis", "beendet_am"],
+      "properties": {
+        "rolle": { "$ref": "#/$defs/rolle" },
+        "standorte": { "type": ["array", "null"], "items": { "$ref": "#/$defs/standort_kennzeichen" } },
+        "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
+        "art": { "enum": ["installateur", "voltpilot", "notfall", null] },
+        "gueltig_ab": { "$ref": "#/$defs/zeit" },
+        "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+        "beendet_am": { "$ref": "#/$defs/zeit_oder_null" }
+      },
+      "additionalProperties": false
+    },
+    "benutzer": {
+      "type": "object",
+      "required": ["kennung", "name", "konto", "zustand", "zuweisungen"],
+      "properties": {
+        "kennung": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "konto": { "$ref": "#/$defs/konto" },
+        "zustand": { "$ref": "#/$defs/konto_zustand" },
+        "zuweisungen": { "type": "array", "items": { "$ref": "#/$defs/zuweisung" } }
+      },
+      "additionalProperties": false
+    },
+    "person": {
+      "type": "object",
+      "required": ["kennung", "name"],
+      "properties": {
+        "kennung": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "standort": {
+      "type": "object",
+      "required": ["kennzeichen", "name"],
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/standort_kennzeichen" },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "kundenbereich": {
+      "type": "object",
+      "required": ["name", "standorte", "kundenadministratoren"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort" } },
+        "kundenadministratoren": { "type": "array", "items": { "$ref": "#/$defs/person" } }
+      },
+      "additionalProperties": false
+    },
+    "anlage": {
+      "description": "Eine Anlage mit ihren zeitgültigen Standort-Zuordnungen [ab, bis) (AP-02 IP-3); null, wenn das Ziel keine Anlage ist.",
+      "type": ["object", "null"],
+      "required": ["kennzeichen", "zuordnungen"],
+      "properties": {
+        "kennzeichen": { "type": "string", "pattern": "^AN-[0-9]+$" },
+        "zuordnungen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["standort", "gueltig_ab", "gueltig_bis"],
+            "properties": {
+              "standort": { "$ref": "#/$defs/standort_kennzeichen" },
+              "gueltig_ab": { "$ref": "#/$defs/zeit" },
+              "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ziel": {
+      "description": "Das Unternehmen (alles null), ein Standort oder eine Anlage zu einem Stichtag (null = jetzt).",
+      "type": "object",
+      "required": ["standort", "anlage", "stichtag"],
+      "properties": {
+        "standort": { "type": ["string", "null"], "pattern": "^ST-[0-9]+$" },
+        "anlage": { "$ref": "#/$defs/anlage" },
+        "stichtag": { "$ref": "#/$defs/zeit_oder_null" }
+      },
+      "additionalProperties": false
+    },
+    "unterstuetzung": {
+      "type": "object",
+      "required": [
+        "art",
+        "umfang",
+        "standorte",
+        "gewaehrt_am",
+        "gueltig_ab",
+        "gueltig_bis",
+        "beendet_am",
+        "beendet_von",
+        "unterstuetzer",
+        "grund"
+      ],
+      "properties": {
+        "art": { "$ref": "#/$defs/art" },
+        "umfang": { "$ref": "#/$defs/umfang" },
+        "standorte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/standort_kennzeichen" } },
+        "gewaehrt_am": { "$ref": "#/$defs/zeit_oder_null" },
+        "gueltig_ab": { "$ref": "#/$defs/zeit" },
+        "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+        "beendet_am": { "$ref": "#/$defs/zeit_oder_null" },
+        "beendet_von": { "type": ["string", "null"] },
+        "unterstuetzer": {
+          "type": ["object", "null"],
+          "required": ["kennung", "name", "organisation", "anzeigename"],
+          "properties": {
+            "kennung": { "type": "string" },
+            "name": { "type": "string" },
+            "organisation": { "type": "string" },
+            "anzeigename": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "grund": { "type": ["string", "null"], "maxLength": 200 }
+      },
+      "additionalProperties": false
+    },
+    "teilansicht": {
+      "description": "Das Teilansicht-Ergebnis (E10) — oder in der Summe nur {sichtbar, gesamt} (R-A2).",
+      "type": "object",
+      "required": ["sichtbar", "gesamt"],
+      "properties": {
+        "sichtbar": { "type": "integer", "minimum": 0 },
+        "gesamt": { "type": "integer", "minimum": 0 },
+        "unternehmensebene": { "type": "boolean" },
+        "teilansicht": { "type": "boolean" },
+        "kopfzeile": { "type": ["string", "null"] },
+        "export_kopfzeile": { "type": ["string", "null"] },
+        "unternehmensweite_objekte": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "fall": {
+      "type": "object",
+      "required": ["name", "familie", "ableitung", "abnahme", "why", "annahme", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "familie": {
+          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+        },
+        "ableitung": {
+          "description": "Welche Funktion der Fall fährt.",
+          "enum": [
+            "darf",
+            "sichtbare_standorte",
+            "teilansicht",
+            "summe",
+            "geltungsbereich",
+            "ocpp_stufe",
+            "unterstuetzung",
+            "gewaehren",
+            "handeingriff",
+            "zuweisung_aendern"
+          ]
+        },
+        "abnahme": { "type": ["string", "null"], "pattern": "^A[0-9]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "annahme": {
+          "description": "Was der Fall annimmt, weil die Referenzdatei es nicht kennt — null, wenn jede Tatsache aus ihr stammt.",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "input": { "$ref": "#/$defs/eingang" },
+        "expected": { "$ref": "#/$defs/erwartet" }
+      },
+      "additionalProperties": false
+    },
+    "eingang": {
+      "description": "Die Eingänge aller Ableitungen; jede liest ihre eigenen Felder.",
+      "type": "object",
+      "properties": {
+        "benutzer": { "$ref": "#/$defs/benutzer" },
+        "kundenbereich": { "$ref": "#/$defs/kundenbereich" },
+        "aktion": { "$ref": "#/$defs/aktion_kennung" },
+        "ziel": { "$ref": "#/$defs/ziel" },
+        "jetzt": { "$ref": "#/$defs/zeit" },
+        "standort": { "$ref": "#/$defs/standort_kennzeichen" },
+        "namen": { "type": "array", "items": { "type": "string" } },
+        "gesamt": { "type": "integer", "minimum": 0 },
+        "unternehmensweit": { "type": "boolean" },
+        "zeitraum": { "enum": ["oktober_2026", "jahr_2025", "maerz_2027"] },
+        "person": { "type": ["string", "null"] },
+        "werte": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["messstelle", "standort", "kwh"],
+            "properties": {
+              "messstelle": { "type": "string", "pattern": "^MS-[0-9]+$" },
+              "standort": { "$ref": "#/$defs/standort_kennzeichen" },
+              "kwh": { "type": ["number", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "sichtbar": { "type": "array", "items": { "$ref": "#/$defs/standort_kennzeichen" } },
+        "objekt": {
+          "type": "object",
+          "required": ["art", "name", "eingaenge", "geltungsbereich"],
+          "properties": {
+            "art": { "enum": ["kennzahl", "messstelle", "bericht", "export"] },
+            "name": { "type": "string", "minLength": 1 },
+            "eingaenge": { "type": ["array", "null"], "items": { "type": "string", "pattern": "^MS-[0-9]+$" } },
+            "geltungsbereich": {
+              "type": "object",
+              "required": ["unternehmen", "standorte"],
+              "properties": {
+                "unternehmen": { "type": "boolean" },
+                "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_kennzeichen" } }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "unterstuetzung": { "$ref": "#/$defs/unterstuetzung" },
+        "antrag": {
+          "type": "object",
+          "required": ["art", "umfang", "standorte", "gueltig_ab", "gueltig_bis", "grund"],
+          "properties": {
+            "art": { "$ref": "#/$defs/art" },
+            "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
+            "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_kennzeichen" } },
+            "gueltig_ab": { "$ref": "#/$defs/zeit" },
+            "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+            "grund": { "type": ["string", "null"], "maxLength": 200 }
+          },
+          "additionalProperties": false
+        },
+        "handeingriff": {
+          "type": "object",
+          "required": ["standort", "bis", "gesetzt_von", "setzer"],
+          "properties": {
+            "standort": { "$ref": "#/$defs/standort_kennzeichen" },
+            "bis": { "$ref": "#/$defs/zeit" },
+            "gesetzt_von": { "type": "string", "minLength": 1 },
+            "setzer": { "$ref": "#/$defs/benutzer" }
+          },
+          "additionalProperties": false
+        },
+        "handelnder": { "$ref": "#/$defs/benutzer" },
+        "betroffener": { "$ref": "#/$defs/person" },
+        "aenderung": {
+          "type": "object",
+          "required": ["art", "rolle", "standorte"],
+          "properties": {
+            "art": { "$ref": "#/$defs/aenderung_art" },
+            "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", null] },
+            "standorte": { "type": ["array", "null"], "items": { "$ref": "#/$defs/standort_kennzeichen" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "erwartet": {
+      "description": "Die Ergebnisse aller Ableitungen; jede prüft ihre eigenen Felder.",
+      "type": "object",
+      "properties": {
+        "darf": { "type": "boolean" },
+        "sichtbar": {
+          "description": "darf/ocpp_stufe/geltungsbereich: ob das Ziel sichtbar ist.",
+          "type": "boolean"
+        },
+        "http": { "enum": [200, 201, 401, 403, 404, 409, 422] },
+        "grund": { "$ref": "#/$defs/grund" },
+        "standort": { "type": ["string", "null"], "pattern": "^ST-[0-9]+$" },
+        "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "unterstuetzer", "voltpilot_betrieb", null] },
+        "rolle_noetig": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "voltpilot_betrieb", null] },
+        "umfang_noetig": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
+        "text": { "type": ["string", "null"], "minLength": 1 },
+        "standorte": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "name", "rollen", "umfang"],
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/standort_kennzeichen" },
+              "name": { "type": "string" },
+              "rollen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/rolle" } },
+              "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "unternehmensweit": { "type": "boolean" },
+        "kuenftig": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["standort", "ab", "text"],
+            "properties": {
+              "standort": { "$ref": "#/$defs/standort_kennzeichen" },
+              "ab": { "$ref": "#/$defs/zeit" },
+              "text": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "teilansicht": { "$ref": "#/$defs/teilansicht" },
+        "kwh": { "type": ["number", "null"] },
+        "messstellen": { "type": "array", "items": { "type": "string" } },
+        "hinweis": { "type": ["string", "null"] },
+        "stufe": { "$ref": "#/$defs/ocpp_stufe" },
+        "zustand": { "$ref": "#/$defs/unterstuetzung_zustand" },
+        "endet": { "$ref": "#/$defs/zeit_oder_null" },
+        "beendet_durch": { "enum": ["zeitablauf", "kundenadministrator", null] },
+        "banner_kunde": { "type": ["string", "null"] },
+        "banner_unterstuetzer": { "type": ["string", "null"] },
+        "urheber": { "type": "string", "minLength": 1 },
+        "erinnerung": { "type": "boolean" },
+        "gueltig": { "type": "boolean" },
+        "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
+        "wirkt": { "type": "boolean" },
+        "etikett": { "type": "string", "minLength": 1 },
+        "erlaubt": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
