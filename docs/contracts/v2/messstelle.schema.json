@@ -1,0 +1,691 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/messstelle.schema.json",
+  "title": "UEMS-Messstelle: Identität, Größen, Quellen und elektrische Stellung",
+  "description": "Der Vertrag der logischen Messstelle (UEMS AP-04 IP-1, Prosa: messstelle.md). Die Wurzel beschreibt EINE Messstelle — so, wie die Beispiele unter fixtures/messstelle/ sie zeigen. Unter $defs/vektorDatei steht die Form der geteilten Vektor-Datei messstelle-vectors.json, gegen die die Zwillinge (Java services/api .../uems/MessstelleRegeln, TS frontend/portal/src/uemsMessstelle.ts) gepinnt sind. Das Schema prüft die FORM; die Regeln zwischen den Feldern (Kennzeichen eindeutig, keine Überlappung, ein Hauptzähler je Anlage und Richtung …) prüfen die Zwillinge.",
+  "$ref": "#/$defs/messstelle",
+  "$defs": {
+    "messstelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Messstelle: die fachliche Identität einer Messung. Sie überlebt Zählerwechsel, Gerätetausch und den Wechsel der Box — ein Zählerwechsel ändert die Quelle, nie die Messstelle.",
+      "required": ["schema_version", "kennzeichen", "name", "art", "medium", "hauptgroesse", "fuehrende_quelle", "vergleichsquellen", "nebengroessen", "orte", "elektrische_stellung", "kadenz_s", "lebenszyklus", "notiz"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieses Vertrags. Sie bleibt; Erweiterungen kommen dazu, ohne Bestehendes zu ändern." },
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+        "name": { "type": "string", "minLength": 1, "description": "Der Name, unter dem der Kunde die Messstelle kennt. Frei; je Standort eindeutig empfohlen." },
+        "art": { "$ref": "#/$defs/art" },
+        "medium": { "$ref": "#/$defs/medium" },
+        "hauptgroesse": { "$ref": "#/$defs/groesse", "description": "Die EINE Größe, die diese Messstelle ausmacht. Sie ändert sich nie — eine andere Größe ist eine andere Messstelle. Nur Hauptgrößen gehen in eine Bilanz oder einen Bericht ein." },
+        "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher die Hauptgröße kommt, mit Gültigkeit. Je Zeitpunkt höchstens eine; eine Lücke ist erlaubt und bleibt sichtbar. Leer heißt: keine Datenquelle — nie eine 0." },
+        "vergleichsquellen": { "type": "array", "items": { "$ref": "#/$defs/vergleichsbindung" }, "description": "Weitere Messwerte derselben Größe, die zum Vergleich daneben stehen — jeder mit Zweck. Sie werden gezeigt, nicht bewertet, und ersetzen nichts." },
+        "nebengroessen": { "type": "array", "items": { "$ref": "#/$defs/nebengroesse" }, "description": "Weitere Größen desselben Messortes, jede mit eigener führender Quelle. Sie erscheinen in Kennzahlen und Anzeigen, nie in einer Bilanz." },
+        "orte": { "type": "array", "items": { "$ref": "#/$defs/ortZuordnung" }, "description": "Wo die Messstelle sitzt, tagesgenau gültig. Je Tag genau ein Ort; eine gemessene Messstelle ohne Ort ist ein Entwurf." },
+        "elektrische_stellung": { "type": "array", "items": { "$ref": "#/$defs/stellungZuordnung" }, "description": "Wo die Messstelle im elektrischen Baum steht, tagesgenau gültig. Berechnete und nicht-elektrische Messstellen tragen höchstens die Stellung „keine“." },
+        "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden — abgeleitet aus der führenden Quelle. Leer, wenn keine Quelle einen Takt vorgibt (abgelesen oder berechnet)." },
+        "lebenszyklus": { "$ref": "#/$defs/lebenszyklus" },
+        "notiz": { "type": ["string", "null"], "description": "Freie Notiz des Kunden, etwa der Zählerplatz." }
+      }
+    },
+
+    "kennzeichen": {
+      "type": "string",
+      "pattern": "^[A-Z0-9./-]{2,16}$",
+      "description": "Das Kennzeichen der Messstelle. Automatisch „MS-0001“, „MS-0002“ … fortlaufend je Kundenbereich; änderbar auf ein eigenes Kurzzeichen aus 2 bis 16 Zeichen: Großbuchstaben, Ziffern, „-“, „.“ und „/“. Je Kundenbereich eindeutig und nie an eine andere Messstelle weitergegeben — auch ein archiviertes Kennzeichen bleibt belegt."
+    },
+    "verweis": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/′-]*$",
+      "description": "Das Kennzeichen eines anderen Objekts: einer Komponente, eines Geräts, einer Anlage, eines Orts oder einer Messstelle."
+    },
+    "zeitpunkt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00[+-][0-9]{2}:[0-9]{2}$",
+      "description": "Ein Zeitpunkt auf die Minute, mit dem Versatz der Zeitzone des Standorts (Europe/Berlin: +01:00 im Winter, +02:00 im Sommer)."
+    },
+    "zeitpunkt_offen": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00[+-][0-9]{2}:[0-9]{2}$",
+      "description": "Wie ein Zeitpunkt, aber leer erlaubt: leer heißt „bis auf Weiteres“."
+    },
+    "jetzt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      "description": "Der Augenblick der Frage — mit Sekunden, wie eine Uhr ihn liefert. Die Regeln rechnen ihn auf die Minute ab (E2)."
+    },
+    "tag": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Ein Kalendertag (JJJJ-MM-TT) in der Zeitzone des Standorts. Zuordnungen gelten tagesgenau, nie ab einer Uhrzeit — dieselbe Mechanik wie der Ortsbaum (ortsbaum-vectors.json)."
+    },
+    "tag_offen": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Wie ein Tag, aber leer erlaubt: leer heißt „bis auf Weiteres“."
+    },
+
+    "art": { "type": "string", "enum": ["gemessen", "berechnet"], "description": "Ob die Werte gemessen oder aus anderen Messstellen gerechnet werden. Nie änderbar." },
+    "medium": { "type": "string", "enum": ["Strom", "Gas", "Wärme", "Kälte", "Wasser", "Druckluft"], "description": "Was gemessen wird. Nie änderbar. Im ersten Umfang ist nur „Strom“ wählbar; die übrigen sind vorbereitet und binden keinen Messwert aus dem Katalog." },
+    "groesseName": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"], "description": "Was gemessen wird." },
+    "richtung": { "type": "string", "enum": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen", "richtungslos"], "description": "In welche Richtung. Bezug und Abgabe sind zwei Messstellen, nicht eine mit Vorzeichen; „Laden / Entladen“ ist die zusammengefasste Richtung eines Speichers." },
+    "einheit": { "type": "string", "enum": ["kWh", "kW", "kvarh", "kVA", "%", "m³"], "description": "Einheit des Werts." },
+    "wertart": { "type": "string", "enum": ["Zählerstand", "Intervallmenge", "Momentanwert"], "description": "Wie der Wert zu lesen ist: ein fortlaufender Zählerstand, die Menge eines Zeitabschnitts oder ein Wert in diesem Augenblick." },
+    "kanalWertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Messwert am Gerät zu lesen ist: fortlaufender Zähler, Momentanwert, Zustand, Bitfeld oder Text." },
+    "zweck": { "type": "string", "enum": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"], "description": "Wozu eine Vergleichsquelle danebensteht." },
+    "stellung": { "type": "string", "enum": ["Hauptzähler", "Unterzähler", "Erzeuger", "Speicher", "Abzweig", "keine"], "description": "Die Rolle im elektrischen Baum einer Anlage." },
+    "ortArt": { "type": "string", "enum": ["unternehmen", "standort", "gebaeude", "bereich"], "description": "Welche Ebene des Ortsbaums der Ort ist. „unternehmen“ nur bei einer berechneten Messstelle." },
+    "lebenszyklus": { "type": "string", "enum": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"], "description": "Wo die Messstelle in ihrem Leben steht. Eine eingerichtete Messstelle wird von selbst aktiv — Messen kann nichts schalten." },
+
+    "groesse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Messgröße: was gemessen wird, in welche Richtung, in welcher Einheit und wie der Wert zu lesen ist.",
+      "required": ["groesse", "richtung", "einheit", "wertart"],
+      "properties": {
+        "groesse": { "$ref": "#/$defs/groesseName" },
+        "richtung": { "$ref": "#/$defs/richtung" },
+        "einheit": { "$ref": "#/$defs/einheit" },
+        "wertart": { "$ref": "#/$defs/wertart" }
+      }
+    },
+    "stand": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "Ein abgelesener Zählerstand am Wechsel. Freiwillig; fehlt er, bleibt das Feld leer — ein Stand wird nie erfunden.",
+      "required": ["wert", "einheit"],
+      "properties": {
+        "wert": { "type": "number", "description": "Der abgelesene Stand." },
+        "einheit": { "type": ["string", "null"], "description": "Seine Einheit. Fehlt sie, gibt es einen Hinweis zum Prüfen." }
+      }
+    },
+    "quellenbindung": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Die führende Quelle einer Größe für einen Zeitraum: welcher Messwert welcher Komponente an welchem Gerät. Sie wird nie überschrieben — sie endet, und eine neue beginnt.",
+      "required": ["komponente", "kanal", "geraet", "einbau", "kanal_wertart", "gueltig_ab", "gueltig_bis", "anfangsstand", "endstand"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/verweis", "description": "Die Komponente, die den Wert liefert." },
+        "kanal": { "type": "string", "minLength": 1, "description": "Der eine gelesene Messwert dieser Komponente." },
+        "geraet": { "$ref": "#/$defs/verweis", "description": "Das Gerät hinter der Komponente." },
+        "einbau": { "$ref": "#/$defs/verweis", "description": "Das konkret eingebaute Gerät in diesem Zeitraum. Bei einem Zählerwechsel wechselt es — die Messstelle bleibt." },
+        "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Quelle gilt, auf die Minute." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“. Die nächste Quelle beginnt genau hier, oder es bleibt eine sichtbare Lücke." },
+        "anfangsstand": { "$ref": "#/$defs/stand", "description": "Der Stand des Zählers zu Beginn, wenn er abgelesen wurde." },
+        "endstand": { "$ref": "#/$defs/stand", "description": "Der Stand des Zählers am Ende, wenn er abgelesen wurde." }
+      }
+    },
+    "vergleichsbindung": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Vergleichsquelle: ein weiterer Messwert derselben Größe, der mit Zweck danebensteht. Beide Werte werden gezeigt, keiner bewertet.",
+      "required": ["komponente", "kanal", "geraet", "einbau", "kanal_wertart", "zweck", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/verweis", "description": "Die Komponente, die den Wert liefert." },
+        "kanal": { "type": "string", "minLength": 1, "description": "Der eine gelesene Messwert dieser Komponente." },
+        "geraet": { "$ref": "#/$defs/verweis", "description": "Das Gerät hinter der Komponente." },
+        "einbau": { "$ref": "#/$defs/verweis", "description": "Das konkret eingebaute Gerät in diesem Zeitraum." },
+        "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+        "zweck": { "$ref": "#/$defs/zweck" },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Vergleich gilt, auf die Minute." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+      }
+    },
+    "nebengroesse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine weitere Größe desselben Messortes mit eigener führender Quelle.",
+      "required": ["groesse", "richtung", "einheit", "wertart", "lebenszyklus", "fuehrende_quelle", "vergleichsquellen"],
+      "properties": {
+        "groesse": { "$ref": "#/$defs/groesseName" },
+        "richtung": { "$ref": "#/$defs/richtung" },
+        "einheit": { "$ref": "#/$defs/einheit" },
+        "wertart": { "$ref": "#/$defs/wertart" },
+        "lebenszyklus": { "type": "string", "enum": ["aktiv", "archiviert"], "description": "Eine Nebengröße ist aktiv oder archiviert — mit der Messstelle oder einzeln." },
+        "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher diese Größe kommt, mit Gültigkeit." },
+        "vergleichsquellen": { "type": "array", "items": { "$ref": "#/$defs/vergleichsbindung" }, "description": "Vergleichsquellen dieser Größe, jede mit Zweck." }
+      }
+    },
+    "ortZuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ein Ort mit Gültigkeit.",
+      "required": ["ort_art", "kennzeichen", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "ort_art": { "$ref": "#/$defs/ortArt" },
+        "kennzeichen": { "$ref": "#/$defs/verweis", "description": "Der Ort: Unternehmen, Standort, Gebäude oder Bereich." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag." },
+        "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der LETZTE gültige Tag, einschließlich — ein Wechsel ab 01.03.2027 beendet das Alte am 28.02.2027; leer heißt „bis auf Weiteres“." }
+      }
+    },
+    "stellungZuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Die elektrische Stellung mit Gültigkeit.",
+      "required": ["anlage", "stellung", "unterzaehler_von", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "anlage": { "$ref": "#/$defs/verweis", "description": "Die Anlage, in deren elektrischem Baum die Messstelle steht." },
+        "stellung": { "$ref": "#/$defs/stellung" },
+        "unterzaehler_von": { "type": ["string", "null"], "description": "Die übergeordnete Messstelle derselben Anlage — nur bei „Unterzähler“ gesetzt." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag." },
+        "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der LETZTE gültige Tag, einschließlich — ein Wechsel ab 01.03.2027 beendet das Alte am 28.02.2027; leer heißt „bis auf Weiteres“." }
+      }
+    },
+
+    "vektorDatei": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Die geteilte Vektor-Datei messstelle-vectors.json: Vokabular, Größen-Katalog, Fehlertabelle und die Fälle, gegen die beide Zwillinge laufen.",
+      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "cases"],
+      "properties": {
+        "_comment": { "type": "array", "items": { "type": "string" }, "description": "Die Regeln in Prosa — dieselben wie in messstelle.md." },
+        "schema_version": { "type": "string", "const": "1.0", "description": "Fassung der Vektor-Datei." },
+        "$schema_datei": { "type": "string", "description": "Wo das Schema dieser Datei steht." },
+        "herkunft": { "type": "string", "description": "Aus welchem Konzeptpaket und welchen Entscheiden die Regeln stammen." },
+        "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispiele." },
+        "kennzeichen_regel": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Wie ein Kennzeichen aussieht und wie es vergeben wird.",
+          "required": ["praefix", "stellen", "muster", "min_zeichen", "max_zeichen"],
+          "properties": {
+            "praefix": { "type": "string", "const": "MS-", "description": "Womit ein automatisches Kennzeichen beginnt." },
+            "stellen": { "type": "integer", "const": 4, "description": "Mit wie vielen Ziffern die laufende Nummer mindestens geschrieben wird." },
+            "muster": { "type": "string", "const": "^[A-Z0-9./-]{2,16}$", "description": "Welche Zeichen ein Kennzeichen tragen darf." },
+            "min_zeichen": { "type": "integer", "const": 2, "description": "Mindestlänge." },
+            "max_zeichen": { "type": "integer", "const": 16, "description": "Höchstlänge." }
+          }
+        },
+        "medien": { "type": "array", "items": { "$ref": "#/$defs/medium" }, "description": "Das geschlossene Vokabular der Medien, in dieser Reihenfolge." },
+        "medien_waehlbar": { "type": "array", "items": { "$ref": "#/$defs/medium" }, "description": "Was der Anlege-Dialog im ersten Umfang anbietet." },
+        "groessen_katalog": { "type": "array", "items": { "$ref": "#/$defs/katalogEintrag" }, "description": "Welche Größen es gibt und woraus sie gespeist werden dürfen." },
+        "kanal_einheiten": {
+          "type": "object",
+          "description": "Welche Einheiten ein Messwert je Größe tragen darf, weil sie sich umrechnen lassen.",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "lebenszyklus": { "type": "array", "items": { "$ref": "#/$defs/lebenszyklus" }, "description": "Das Vokabular des Lebenszyklus." },
+        "fehlt": { "type": "array", "items": { "$ref": "#/$defs/fehltWort" }, "description": "Was einer Messstelle zur Einrichtung fehlen kann, in der Reihenfolge, in der es genannt wird." },
+        "bindung_status": { "type": "array", "items": { "$ref": "#/$defs/bindungStatus" }, "description": "Wo eine Quelle zeitlich steht." },
+        "herleitungen": { "type": "array", "items": { "$ref": "#/$defs/herleitung" }, "description": "Wie aus dem Messwert die Größe wird." },
+        "vergleich_zwecke": { "type": "array", "items": { "$ref": "#/$defs/zweck" }, "description": "Das Vokabular der Zwecke einer Vergleichsquelle." },
+        "stellungen": { "type": "array", "items": { "$ref": "#/$defs/stellung" }, "description": "Das Vokabular der elektrischen Stellung." },
+        "stellung_gruende": { "type": "array", "items": { "$ref": "#/$defs/stellungGrund" }, "description": "Warum eine Stellung abgelehnt wird, in der Reihenfolge der Prüfung." },
+        "passung_gruende": { "type": "array", "items": { "$ref": "#/$defs/passungGrund" }, "description": "Warum ein Messwert nicht zur Größe passt, in der Reihenfolge der Prüfung." },
+        "fehler": { "type": "array", "items": { "$ref": "#/$defs/fehlerEintrag" }, "description": "Die Fehlertabelle: Code, Status und wer prüft." },
+        "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" }, "description": "Hinweise, die das Speichern nicht verhindern." },
+        "cases": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Die Fälle, nach Regel geordnet.",
+          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung"],
+          "properties": {
+            "kennzeichen_vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenVorschlag" } },
+            "kennzeichen_pruefen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenPruefen" } },
+            "groesse": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallGroesse" } },
+            "lebenszyklus": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallLebenszyklus" } },
+            "passung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallPassung" } },
+            "bindung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBindung" } },
+            "zeitstrahl": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallZeitstrahl" } },
+            "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } }
+          }
+        }
+      }
+    },
+
+    "katalogEintrag": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Eine Größe des Katalogs.",
+      "required": ["groesse", "medien", "einheit", "richtungen", "wertarten", "quellen"],
+      "properties": {
+        "groesse": { "$ref": "#/$defs/groesseName" },
+        "medien": { "type": "array", "items": { "$ref": "#/$defs/medium" }, "description": "Bei welchen Medien es diese Größe gibt." },
+        "einheit": { "$ref": "#/$defs/einheit" },
+        "richtungen": { "type": "array", "items": { "$ref": "#/$defs/richtung" }, "description": "Welche Richtungen sie haben kann." },
+        "wertarten": { "type": "array", "items": { "$ref": "#/$defs/wertart" }, "description": "Wie ihr Wert gelesen werden kann." },
+        "quellen": {
+          "type": "array",
+          "description": "Welche Messwerte sie speisen dürfen. Leer heißt: kein Messwert aus dem Katalog — abgelesen.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kanal_groesse", "kanal_wertart", "nur_wertart"],
+            "properties": {
+              "kanal_groesse": { "type": "string", "description": "Was der Messwert misst." },
+              "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+              "nur_wertart": { "anyOf": [{ "$ref": "#/$defs/wertart" }, { "type": "null" }], "description": "Wenn gesetzt: nur für diese Wertart der Größe — aus einer Leistung wird nur eine Intervallmenge, nie ein Zählerstand." }
+            }
+          }
+        }
+      }
+    },
+    "fehltWort": { "type": "string", "enum": ["kennzeichen", "name", "hauptgroesse", "ort", "formel", "eingaenge"], "description": "Was fehlt." },
+    "bindungStatus": { "type": "string", "enum": ["geplant", "gilt", "beendet"], "description": "Geplant (beginnt in der Zukunft), gilt, oder beendet." },
+    "herleitung": { "type": "string", "enum": ["zaehlerstand", "differenzen", "integration", "momentanwert"], "description": "Zählerstand wie gelesen · Menge aus den Differenzen eines Zählerstands · Menge aus einer Leistung integriert (gekennzeichnet) · Momentanwert wie gelesen." },
+    "stellungGrund": { "type": "string", "enum": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"], "description": "Warum eine Stellung abgelehnt wird." },
+    "passungGrund": { "type": "string", "enum": ["wertart", "groesse", "einheit", "richtung"], "description": "Woran ein Messwert an der Größe scheitert." },
+    "groesseGrund": { "type": "string", "enum": ["groesse", "medium", "einheit", "richtung", "wertart"], "description": "Woran eine Größe am Katalog scheitert." },
+    "fehlerCode": { "type": "string", "enum": ["kennzeichen_format", "kennzeichen_belegt", "groesse_ungueltig", "medium_ohne_quelle", "vergleich_ohne_zweck", "quelle_passt_nicht", "kanal_bereits_fuehrend", "zeitraum_ungueltig", "zeitpunkt_vor_vorgaenger", "bindung_ueberlappt", "hauptzaehler_vorhanden", "stellung_ungueltig", "anteile_summe", "ort_ungueltig"], "description": "Ein Fehler-Code." },
+    "hinweisCode": { "type": "string", "enum": ["ablesestand_pruefen"], "description": "Ein Hinweis-Code." },
+    "fehlerEintrag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "status", "geprueft_von"],
+      "properties": {
+        "code": { "$ref": "#/$defs/fehlerCode" },
+        "status": { "type": "integer", "enum": [400, 409, 422], "description": "Der Antwort-Status der Schnittstelle." },
+        "geprueft_von": { "type": "string", "enum": ["MessstelleRegeln", "IP-7"], "description": "Wer den Fehler feststellt: die Zwillinge dieses Vertrags oder erst die Zuordnungen (IP-7)." }
+      }
+    },
+
+    "fallKennzeichenVorschlag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["zaehler", "belegt"],
+          "properties": {
+            "zaehler": { "type": "integer", "minimum": 0, "description": "Die höchste je automatisch vergebene Nummer des Kundenbereichs." },
+            "belegt": { "type": "array", "items": { "type": "string" }, "description": "Alle Kennzeichen, die schon jemand trägt oder trug — auch archivierte." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["kennzeichen", "zaehler"],
+          "properties": {
+            "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+            "zaehler": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "vergeben": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kennzeichen", "messstelle", "name", "archiviert", "frueher"],
+      "properties": {
+        "kennzeichen": { "type": "string", "description": "Das belegte Kennzeichen." },
+        "messstelle": { "type": "string", "description": "Das heutige Kennzeichen der Messstelle, die es trägt oder trug." },
+        "name": { "type": "string" },
+        "archiviert": { "type": "boolean" },
+        "frueher": { "type": "boolean", "description": "Die Messstelle trug es früher und hat es geändert." }
+      }
+    },
+    "fallKennzeichenPruefen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["kandidat", "fuer_messstelle", "vergeben"],
+          "properties": {
+            "kandidat": { "type": "string", "description": "Das gewünschte Kennzeichen — hier bewusst ohne Muster, weil es geprüft wird." },
+            "fuer_messstelle": { "type": ["string", "null"], "description": "Das heutige Kennzeichen der Messstelle, die umbenannt wird; leer bei einer neuen." },
+            "vergeben": { "type": "array", "items": { "$ref": "#/$defs/vergeben" } }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "bestehend"],
+          "properties": {
+            "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "bestehend": { "anyOf": [{ "$ref": "#/$defs/vergeben" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "fallGroesse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["medium", "groesse"],
+          "properties": {
+            "medium": { "$ref": "#/$defs/medium" },
+            "groesse": { "$ref": "#/$defs/groesse" }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "grund"],
+          "properties": {
+            "fehler": { "type": ["string", "null"], "enum": ["groesse_ungueltig", null] },
+            "grund": { "anyOf": [{ "$ref": "#/$defs/groesseGrund" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "bindungKurz": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine bestehende Quelle einer Messstelle, mit der Größe, zu der sie gehört.",
+      "required": ["rolle", "groesse", "richtung", "komponente", "kanal", "geraet", "einbau", "kanal_wertart", "zweck", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "rolle": { "type": "string", "enum": ["fuehrend", "vergleich"] },
+        "groesse": { "$ref": "#/$defs/groesseName" },
+        "richtung": { "$ref": "#/$defs/richtung" },
+        "komponente": { "$ref": "#/$defs/verweis" },
+        "kanal": { "type": "string", "minLength": 1 },
+        "geraet": { "$ref": "#/$defs/verweis" },
+        "einbau": { "$ref": "#/$defs/verweis" },
+        "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+        "zweck": { "type": ["string", "null"] },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" }
+      }
+    },
+    "quelleKurz": {
+      "type": "object", "additionalProperties": false,
+      "description": "Welche Quelle: Komponente, Messwert, Gerät und Einbau.",
+      "required": ["komponente", "kanal", "geraet", "einbau"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/verweis" },
+        "kanal": { "type": "string" },
+        "geraet": { "$ref": "#/$defs/verweis" },
+        "einbau": { "$ref": "#/$defs/verweis" }
+      }
+    },
+    "quelleZeitraum": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Quelle mit ihrem Zeitraum.",
+      "required": ["komponente", "kanal", "geraet", "einbau", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/verweis" },
+        "kanal": { "type": "string" },
+        "geraet": { "$ref": "#/$defs/verweis" },
+        "einbau": { "$ref": "#/$defs/verweis" },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" }
+      }
+    },
+    "fallLebenszyklus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Messstelle des Referenzunternehmens, deren Quellen dieser Fall unverändert benutzt." },
+        "fortschreibung": { "type": "boolean", "description": "Der Fall schreibt das Referenzunternehmen NACH seinem letzten Ereignis fort; davor ändert er nichts." },
+        "input": {
+          "type": "object", "additionalProperties": false,
+          "required": ["art", "medium", "kennzeichen", "name", "hauptgroesse", "ort_vorhanden", "formel_vorhanden", "eingaenge_eingerichtet", "angehalten", "archiviert", "fuehrende_quelle", "jetzt"],
+          "properties": {
+            "art": { "$ref": "#/$defs/art" },
+            "medium": { "$ref": "#/$defs/medium" },
+            "kennzeichen": { "type": ["string", "null"] },
+            "name": { "type": ["string", "null"] },
+            "hauptgroesse": { "anyOf": [{ "$ref": "#/$defs/groesse" }, { "type": "null" }] },
+            "ort_vorhanden": { "type": "boolean" },
+            "formel_vorhanden": { "type": "boolean", "description": "Nur berechnet: ob eine Formel hinterlegt ist (erst mit AP-10 möglich)." },
+            "eingaenge_eingerichtet": { "type": "boolean", "description": "Nur berechnet: ob alle Eingänge der Formel eingerichtet sind." },
+            "angehalten": { "type": "boolean" },
+            "archiviert": { "type": "boolean" },
+            "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quelleZeitraum" } },
+            "jetzt": { "$ref": "#/$defs/jetzt" }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["lebenszyklus", "eingerichtet", "fehlt", "quelle_vorhanden"],
+          "properties": {
+            "lebenszyklus": { "$ref": "#/$defs/lebenszyklus" },
+            "eingerichtet": { "type": "boolean" },
+            "fehlt": { "type": "array", "items": { "$ref": "#/$defs/fehltWort" } },
+            "quelle_vorhanden": { "type": "boolean", "description": "Ob jetzt eine führende Quelle gilt. Ohne sie lautet die Beobachtung „Keine Datenquelle“ (uems-zustand-vectors.json)." }
+          }
+        }
+      }
+    },
+    "fallBindung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Messstelle des Referenzunternehmens, deren Quellen die Ausgangslage unverändert übernimmt." },
+        "ergebnis_wie_referenz": { "type": "boolean", "description": "Der Zeitstrahl nach dem Fall ist genau der des Referenzunternehmens." },
+        "fortschreibung": { "type": "boolean", "description": "Der Fall schreibt das Referenzunternehmen NACH seinem letzten Ereignis fort; davor ändert er nichts." },
+        "annahme": { "type": "string", "minLength": 1, "description": "Was der Fall über das Referenzunternehmen hinaus annimmt — etwa eine bestehende Vergleichsquelle, die die Datei nicht kennt." },
+        "input": {
+          "type": "object", "additionalProperties": false,
+          "required": ["vorgang", "jetzt", "messstelle", "ziel", "bestehende", "neu", "kanal_fuehrend_anderswo"],
+          "properties": {
+            "vorgang": { "type": "string", "enum": ["binden", "wechsel"], "description": "„binden“ fügt eine Quelle hinzu; „wechsel“ löst die laufende Quelle ab (Zählerwechsel)." },
+            "jetzt": { "$ref": "#/$defs/jetzt" },
+            "messstelle": {
+              "type": "object", "additionalProperties": false, "required": ["kennzeichen", "medium", "beginn"],
+              "properties": {
+                "kennzeichen": { "type": "string" },
+                "medium": { "$ref": "#/$defs/medium" },
+                "beginn": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Seit wann es die Messstelle gibt: Mitternacht des ersten Tages ihres ersten Orts, als Zeitpunkt in der Zeitzone des Standorts; leer bei einem Entwurf ohne Ort." }
+              }
+            },
+            "ziel": { "$ref": "#/$defs/groesse", "description": "Die Größe, an die gebunden wird — Haupt- oder Nebengröße." },
+            "bestehende": { "type": "array", "items": { "$ref": "#/$defs/bindungKurz" }, "description": "Alle Quellen der Messstelle, jede mit ihrer Größe." },
+            "neu": {
+              "type": "object", "additionalProperties": false,
+              "required": ["rolle", "zweck", "komponente", "kanal", "geraet", "einbau", "kanal_groesse", "kanal_richtung", "kanal_einheit", "kanal_wertart", "gueltig_ab", "gueltig_bis", "endstand_vorgaenger", "anfangsstand"],
+              "properties": {
+                "rolle": { "type": "string", "enum": ["fuehrend", "vergleich"] },
+                "zweck": { "type": ["string", "null"], "description": "Nur Vergleich — hier ohne Vokabular, weil ein fehlender Zweck geprüft wird." },
+                "komponente": { "$ref": "#/$defs/verweis" },
+                "kanal": { "type": "string", "minLength": 1 },
+                "geraet": { "$ref": "#/$defs/verweis" },
+                "einbau": { "$ref": "#/$defs/verweis" },
+                "kanal_groesse": { "type": "string", "description": "Was der Messwert misst — aus dem Messwert-Katalog." },
+                "kanal_richtung": { "$ref": "#/$defs/richtung" },
+                "kanal_einheit": { "type": "string" },
+                "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" },
+                "endstand_vorgaenger": { "$ref": "#/$defs/stand" },
+                "anfangsstand": { "$ref": "#/$defs/stand" }
+              }
+            },
+            "kanal_fuehrend_anderswo": {
+              "type": "array",
+              "description": "Wo derselbe Messwert schon eine ANDERE Messstelle führend speist.",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["messstelle", "gueltig_ab", "gueltig_bis"],
+                "properties": {
+                  "messstelle": { "type": "string" },
+                  "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+                  "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" }
+                }
+              }
+            }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fehler", "grund", "bestehend", "messstelle", "beendet", "status", "rueckwirkend", "angekuendigt", "herleitung", "hinweise", "zeitstrahl"],
+          "properties": {
+            "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "grund": { "anyOf": [{ "$ref": "#/$defs/passungGrund" }, { "type": "null" }] },
+            "bestehend": { "anyOf": [{ "$ref": "#/$defs/quelleZeitraum" }, { "type": "null" }], "description": "Die Quelle, an der die neue scheitert." },
+            "messstelle": { "type": ["string", "null"], "description": "Die andere Messstelle, die der Messwert schon führend speist." },
+            "beendet": {
+              "type": ["object", "null"], "additionalProperties": false,
+              "description": "Die laufende Quelle, die die neue genau zu ihrem Beginn beendet.",
+              "required": ["komponente", "kanal", "geraet", "einbau", "gueltig_ab", "gueltig_bis", "endstand"],
+              "properties": {
+                "komponente": { "$ref": "#/$defs/verweis" },
+                "kanal": { "type": "string" },
+                "geraet": { "$ref": "#/$defs/verweis" },
+                "einbau": { "$ref": "#/$defs/verweis" },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt" },
+                "endstand": { "$ref": "#/$defs/stand" }
+              }
+            },
+            "status": { "anyOf": [{ "$ref": "#/$defs/bindungStatus" }, { "type": "null" }] },
+            "rueckwirkend": { "type": "boolean" },
+            "angekuendigt": { "type": "boolean" },
+            "herleitung": { "anyOf": [{ "$ref": "#/$defs/herleitung" }, { "type": "null" }] },
+            "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" } },
+            "zeitstrahl": {
+              "type": ["array", "null"],
+              "description": "Die führenden Quellen der Größe nach dem Vorgang, lückenlos von Beginn der Messstelle an: jede Lücke als eigener Abschnitt ohne Quelle.",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["von", "bis", "quelle"],
+                "properties": {
+                  "von": { "$ref": "#/$defs/zeitpunkt" },
+                  "bis": { "$ref": "#/$defs/zeitpunkt_offen" },
+                  "quelle": { "anyOf": [{ "$ref": "#/$defs/quelleKurz" }, { "type": "null" }] }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "kanalArt": {
+      "type": "object", "additionalProperties": false,
+      "description": "Was der Messwert-Katalog über einen Messwert weiß: was er misst, in welche Richtung, in welcher Einheit und wie er zu lesen ist.",
+      "required": ["groesse", "richtung", "einheit", "wertart"],
+      "properties": {
+        "groesse": { "type": "string", "description": "Was der Messwert misst — offen, denn der Katalog kennt mehr als die Messgrößen." },
+        "richtung": { "$ref": "#/$defs/richtung" },
+        "einheit": { "type": "string", "description": "Einheit des Messwerts, wie der Katalog sie nennt." },
+        "wertart": { "$ref": "#/$defs/kanalWertart" }
+      }
+    },
+    "fallPassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["medium", "ziel", "kanal"],
+          "properties": {
+            "medium": { "$ref": "#/$defs/medium" },
+            "ziel": { "$ref": "#/$defs/groesse" },
+            "kanal": { "$ref": "#/$defs/kanalArt" }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "grund", "herleitung"],
+          "properties": {
+            "fehler": { "type": ["string", "null"], "enum": ["medium_ohne_quelle", "quelle_passt_nicht", null] },
+            "grund": { "anyOf": [{ "$ref": "#/$defs/passungGrund" }, { "type": "null" }] },
+            "herleitung": { "anyOf": [{ "$ref": "#/$defs/herleitung" }, { "type": "null" }] }
+          }
+        }
+      }
+    },
+    "abschnitt": {
+      "type": "object", "additionalProperties": false,
+      "description": "Ein Abschnitt des Zeitstrahls; ohne Quelle ist er eine sichtbare Lücke.",
+      "required": ["von", "bis", "quelle"],
+      "properties": {
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt_offen" },
+        "quelle": { "anyOf": [{ "$ref": "#/$defs/quelleKurz" }, { "type": "null" }] }
+      }
+    },
+    "fallZeitstrahl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Messstelle des Referenzunternehmens, deren Quellen der Fall unverändert benutzt." },
+        "ergebnis_wie_referenz": { "type": "boolean", "description": "Der Zeitstrahl ist genau der des Referenzunternehmens." },
+        "fortschreibung": { "type": "boolean", "description": "Der Fall schreibt das Referenzunternehmen NACH seinem letzten Ereignis fort; davor ändert er nichts." },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["beginn", "fuehrende_quelle"],
+          "properties": {
+            "beginn": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Beginn der Messstelle: Mitternacht des ersten Tages ihres ersten Orts." },
+            "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quelleZeitraum" }, "description": "Die führenden Quellen EINER Größe." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["zeitstrahl"],
+          "properties": {
+            "zeitstrahl": { "type": "array", "items": { "$ref": "#/$defs/abschnitt" } }
+          }
+        }
+      }
+    },
+    "stellungEintrag": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Messstelle mit ihrer Stellung am Stichtag.",
+      "required": ["kennzeichen", "name", "anlage", "stellung", "unterzaehler_von", "richtung", "komponente"],
+      "properties": {
+        "kennzeichen": { "type": "string" },
+        "name": { "type": "string" },
+        "anlage": { "$ref": "#/$defs/verweis" },
+        "stellung": { "$ref": "#/$defs/stellung" },
+        "unterzaehler_von": { "type": ["string", "null"] },
+        "richtung": { "$ref": "#/$defs/richtung" },
+        "komponente": { "type": ["string", "null"], "description": "Die Komponente der führenden Quelle am Stichtag; leer ohne Quelle." }
+      }
+    },
+    "fallStellung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "stichtag", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "stichtag": { "$ref": "#/$defs/tag", "description": "Der Tag, an dem die Stellungen der Liste gelten." },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["messstelle", "stellung", "messstellen"],
+          "properties": {
+            "messstelle": {
+              "type": "object", "additionalProperties": false, "required": ["kennzeichen", "art", "medium", "richtung", "komponente"],
+              "properties": {
+                "kennzeichen": { "type": "string" },
+                "art": { "$ref": "#/$defs/art" },
+                "medium": { "$ref": "#/$defs/medium" },
+                "richtung": { "$ref": "#/$defs/richtung" },
+                "komponente": { "type": ["string", "null"] }
+              }
+            },
+            "stellung": {
+              "type": ["object", "null"], "additionalProperties": false, "required": ["anlage", "stellung", "unterzaehler_von"],
+              "properties": {
+                "anlage": { "$ref": "#/$defs/verweis" },
+                "stellung": { "$ref": "#/$defs/stellung" },
+                "unterzaehler_von": { "type": ["string", "null"] }
+              }
+            },
+            "messstellen": { "type": "array", "items": { "$ref": "#/$defs/stellungEintrag" }, "description": "Die Messstellen des Kundenbereichs mit ihrer Stellung am Stichtag, in der Reihenfolge des Registers." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "grund", "bestehend", "kette"],
+          "properties": {
+            "fehler": { "type": ["string", "null"], "enum": ["hauptzaehler_vorhanden", "stellung_ungueltig", null] },
+            "grund": { "anyOf": [{ "$ref": "#/$defs/stellungGrund" }, { "type": "null" }] },
+            "bestehend": {
+              "type": ["object", "null"], "additionalProperties": false, "required": ["kennzeichen", "name", "anlage"],
+              "properties": {
+                "kennzeichen": { "type": "string" },
+                "name": { "type": "string" },
+                "anlage": { "type": "string" }
+              }
+            },
+            "kette": { "type": "array", "items": { "type": "string" }, "description": "Bei einem Zyklus: der Weg von der Messstelle zurück zu sich selbst." }
+          }
+        }
+      }
+    }
+  }
+}

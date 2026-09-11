@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "MS-06",
+  "name": "Spritzguss SG01–SG06",
+  "art": "gemessen",
+  "medium": "Strom",
+  "hauptgroesse": { "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand" },
+  "fuehrende_quelle": [
+    {
+      "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter",
+      "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00",
+      "anfangsstand": null, "endstand": { "wert": 1083415.2, "einheit": "kWh" }
+    },
+    {
+      "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "counter",
+      "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null,
+      "anfangsstand": { "wert": 0.0, "einheit": "kWh" }, "endstand": null
+    }
+  ],
+  "vergleichsquellen": [],
+  "nebengroessen": [
+    {
+      "groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert", "lebenszyklus": "aktiv",
+      "fuehrende_quelle": [
+        {
+          "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "gauge",
+          "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00",
+          "anfangsstand": null, "endstand": null
+        },
+        {
+          "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "gauge",
+          "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null,
+          "anfangsstand": null, "endstand": null
+        }
+      ],
+      "vergleichsquellen": []
+    }
+  ],
+  "orte": [
+    { "ort_art": "bereich", "kennzeichen": "B-1", "gueltig_ab": "2024-03-12", "gueltig_bis": null }
+  ],
+  "elektrische_stellung": [
+    { "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "gueltig_ab": "2024-03-12", "gueltig_bis": null }
+  ],
+  "kadenz_s": 60,
+  "lebenszyklus": "aktiv",
+  "notiz": null
+}

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
 
 /**
  * Der Vertrag des UEMS-Referenzunternehmens „Kunststoffwerk Ahrenberg GmbH“
@@ -160,78 +161,9 @@ const verweise = (): Array<[string, string, string[]]> => {
   return out;
 };
 
-/**
- * Ein kleiner Läufer über die Teilmenge von JSON-Schema draft 2020-12, die das
- * Schema benutzt — byte-gleich zum Java-Zwilling, weil das Projekt keine
- * Schema-Bibliothek hat.
- */
-const schemaFehler = (wert: any, teilschema: any, pfad: string): string[] => {
-  const fehler: string[] = [];
-  if (teilschema.$ref) {
-    const ziel = teilschema.$ref
-      .slice(2)
-      .split('/')
-      .reduce((o: any, s: string) => (o == null ? o : o[s.replace(/~1/g, '/').replace(/~0/g, '~')]), schema);
-    if (!ziel) return [`${pfad}: unbekannter Schema-Verweis ${teilschema.$ref}`];
-    return schemaFehler(wert, ziel, pfad);
-  }
-  const typVon = (v: any): string => {
-    if (v === null) return 'null';
-    if (Array.isArray(v)) return 'array';
-    if (typeof v === 'number') return Number.isInteger(v) ? 'integer' : 'number';
-    return typeof v === 'object' ? 'object' : typeof v;
-  };
-  const passt = (v: any, t: string): boolean =>
-    t === 'number' ? typeof v === 'number' : typVon(v) === t;
-  if (teilschema.type) {
-    const typen: string[] = Array.isArray(teilschema.type) ? teilschema.type : [teilschema.type];
-    if (!typen.some((t) => passt(wert, t))) {
-      return [`${pfad}: Typ ${typVon(wert)} passt nicht zu ${typen.join('|')}`];
-    }
-  }
-  if ('const' in teilschema && wert !== teilschema.const) {
-    fehler.push(`${pfad}: ${JSON.stringify(wert)} ist nicht ${JSON.stringify(teilschema.const)}`);
-  }
-  if (teilschema.enum && wert !== null && !teilschema.enum.includes(wert)) {
-    fehler.push(`${pfad}: ${JSON.stringify(wert)} steht nicht im Vokabular`);
-  }
-  if (typeof wert === 'string') {
-    if (teilschema.pattern && !new RegExp(teilschema.pattern, 'u').test(wert)) {
-      fehler.push(`${pfad}: „${wert}“ passt nicht zum Muster ${teilschema.pattern}`);
-    }
-    if (teilschema.minLength != null && wert.length < teilschema.minLength) fehler.push(`${pfad}: zu kurz`);
-    if (teilschema.maxLength != null && wert.length > teilschema.maxLength) fehler.push(`${pfad}: zu lang`);
-  }
-  if (typeof wert === 'number') {
-    if (teilschema.minimum != null && wert < teilschema.minimum) fehler.push(`${pfad}: unter dem Mindestwert`);
-    if (teilschema.maximum != null && wert > teilschema.maximum) fehler.push(`${pfad}: über dem Höchstwert`);
-  }
-  if (Array.isArray(wert)) {
-    if (teilschema.minItems != null && wert.length < teilschema.minItems) {
-      fehler.push(`${pfad}: zu wenige Einträge`);
-    }
-    if (teilschema.items) {
-      wert.forEach((v, i) => fehler.push(...schemaFehler(v, teilschema.items, `${pfad}[${i}]`)));
-    }
-  }
-  if (wert !== null && typeof wert === 'object' && !Array.isArray(wert)) {
-    for (const p of teilschema.required ?? []) {
-      if (!(p in wert)) fehler.push(`${pfad}: Pflichtfeld ${p} fehlt`);
-    }
-    const props = teilschema.properties ?? {};
-    const zusatz = teilschema.additionalProperties;
-    for (const [k, v] of Object.entries(wert)) {
-      if (k in props) fehler.push(...schemaFehler(v, props[k], `${pfad}.${k}`));
-      else if (zusatz && typeof zusatz === 'object') fehler.push(...schemaFehler(v, zusatz, `${pfad}.${k}`));
-      else if (zusatz === false) fehler.push(`${pfad}: unbekanntes Feld ${k}`);
-    }
-  }
-  return fehler;
-};
-
 describe('UEMS-Referenzunternehmen — Form', () => {
   it('hält ihr eigenes Schema', () => {
-    expect(schemaFehler(daten, schema, '$')).toEqual([]);
+    expect(schemaVerstoesse(daten, schema)).toEqual([]);
   });
 
   it('hat den Umfang, den AP-00 §4.4 zusagt', () => {

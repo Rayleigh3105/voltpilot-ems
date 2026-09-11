@@ -12,20 +12,21 @@ import java.util.regex.Pattern;
 /**
  * Ein kleiner Läufer über die Teilmenge von JSON-Schema draft 2020-12, die die
  * UEMS-Vektor-Schemas benutzen ({@code uems-referenzunternehmen.schema.json},
- * {@code messwert-herkunft.schema.json}): {@code type}, {@code required},
- * {@code properties}, {@code additionalProperties:false}, {@code items},
- * {@code enum}, {@code const}, {@code pattern}, {@code minItems},
- * {@code minLength}, {@code maxLength}, {@code minimum}, {@code maximum} und
- * {@code $ref} auf {@code #/$defs/…}. Das Projekt hat keine Schema-Bibliothek
+ * {@code messwert-herkunft.schema.json}, {@code messstelle.schema.json}):
+ * {@code type}, {@code required}, {@code properties},
+ * {@code additionalProperties:false}, {@code items}, {@code enum}, {@code const},
+ * {@code pattern}, {@code minItems}, {@code minLength}, {@code maxLength},
+ * {@code minimum}, {@code maximum}, {@code anyOf} (etwa „ein Verweis oder leer“)
+ * und {@code $ref} auf {@code #/$defs/…}. Das Projekt hat keine Schema-Bibliothek
  * (siehe {@code services/api/pom.xml}); der Läufer ersetzt keine — er hält eine
  * Datei an genau den Regeln fest, die ihr Schema aufschreibt, und sagt bei jedem
  * Verstoß den Pfad. Ein Schlüsselwort außerhalb dieser Teilmenge (etwa
  * {@code maxItems}) prüft er NICHT; wer sich darauf verlässt, prüft es im Test
  * selbst.
  *
- * <p>Der TS-Zwilling des Referenzunternehmens
- * ({@code frontend/portal/src/uemsReferenzunternehmen.test.ts}) trägt denselben
- * Läufer.
+ * <p>Der TS-Zwilling ist {@code frontend/portal/src/test/uemsSchemaLaeufer.ts}
+ * (benutzt von {@code uemsReferenzunternehmen.test.ts} und
+ * {@code uemsMessstelle.test.ts}).
  */
 final class UemsSchemaLaeufer {
     private final JsonNode wurzel;
@@ -44,6 +45,12 @@ final class UemsSchemaLaeufer {
         return fehler;
     }
 
+    private List<String> verstoesseGegen(JsonNode wert, JsonNode zweig) {
+        List<String> probe = new ArrayList<>();
+        new UemsSchemaLaeufer(wurzel, probe).pruefe(wert, zweig, "$");
+        return probe;
+    }
+
     void pruefe(JsonNode wert, JsonNode schema, String pfad) {
         if (schema.has("$ref")) {
             String ref = schema.get("$ref").asText();
@@ -54,6 +61,15 @@ final class UemsSchemaLaeufer {
             }
             pruefe(wert, ziel, pfad);
             return;
+        }
+        if (schema.has("anyOf")) {
+            boolean einer = false;
+            for (JsonNode zweig : schema.get("anyOf")) {
+                einer |= verstoesseGegen(wert, zweig).isEmpty();
+            }
+            if (!einer) {
+                fehler.add(pfad + ": " + wert + " passt zu keinem Zweig von anyOf");
+            }
         }
         if (schema.has("type") && !typPasst(wert, schema.get("type"))) {
             fehler.add(pfad + ": Typ " + typVon(wert) + " passt nicht zu " + schema.get("type"));

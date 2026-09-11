@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "MS-21",
+  "name": "Gas Heizung Verwaltung",
+  "art": "gemessen",
+  "medium": "Erdgas",
+  "hauptgroesse": { "groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand" },
+  "fuehrende_quelle": [],
+  "vergleichsquellen": [],
+  "nebengroessen": [],
+  "orte": [
+    { "ort_art": "gebaeude", "kennzeichen": "G-3", "gueltig_ab": "2026-10-01", "gueltig_bis": null }
+  ],
+  "elektrische_stellung": [],
+  "kadenz_s": null,
+  "lebenszyklus": "aktiv",
+  "notiz": null
+}

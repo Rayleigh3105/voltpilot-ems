@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "kennzeichen": "ms-06",
+  "name": "Spritzguss SG01–SG06",
+  "art": "gemessen",
+  "medium": "Strom",
+  "hauptgroesse": { "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand" },
+  "fuehrende_quelle": [],
+  "vergleichsquellen": [],
+  "nebengroessen": [],
+  "orte": [
+    { "ort_art": "bereich", "kennzeichen": "B-1", "gueltig_ab": "2024-03-12", "gueltig_bis": null }
+  ],
+  "elektrische_stellung": [
+    { "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "gueltig_ab": "2024-03-12", "gueltig_bis": null }
+  ],
+  "kadenz_s": 60,
+  "lebenszyklus": "aktiv",
+  "notiz": null
+}

@@ -1,0 +1,2438 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der MESSSTELLE (UEMS AP-04 IP-1). Die Prosa-Wahrheit steht in",
+    "docs/contracts/v2/messstelle.md; hier steht, was jede Regel aus Fakten macht.",
+    "",
+    "Sie pinnen die zwei Zwillinge gegeneinander:",
+    "  Java  services/api .../uems/MessstelleRegeln",
+    "  TS    frontend/portal/src/uemsMessstelle.ts",
+    "Wer eine Regel ändert, ändert BEIDE Seiten UND diese Datei.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Es gibt noch keine Tabelle `messstelle` (IP-2), keinen",
+    "Endpunkt (IP-3) und keine Fläche (IP-5/IP-6). Diese Datei ist der Vertrag, gegen",
+    "den sie gebaut werden.",
+    "",
+    "Alle Beispiele stammen aus dem Referenzunternehmen (uems-referenzunternehmen.json)",
+    "und übernehmen dessen Kennzeichen, Werte und Zeitpunkte unverändert. Ein Fall mit",
+    "`referenz` benutzt die Quellen dieser Messstelle als Ausgangslage; mit",
+    "`ergebnis_wie_referenz` ist sein Zeitstrahl GENAU der des Referenzunternehmens; mit",
+    "`fortschreibung` spielt er NACH dessen letztem Ereignis (12.04.2027) und ändert davor",
+    "nichts; `annahme` nennt, was er darüber hinaus annimmt (eine Vergleichsquelle, die die",
+    "Datei nicht kennt). Beide Zwillinge prüfen das gegen die Referenz-Datei. Nur die",
+    "Familie `passung` ist eine reine Regeltabelle ohne Anlage: sie kennt nur Merkmale.",
+    "",
+    "ACHT FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
+    "passung (Regel 7 als Tabelle) · bindung · zeitstrahl (wie Lücken aussehen) · stellung.",
+    "",
+    "═══ KENNZEICHEN (E7) ═══",
+    "  · automatisch „MS-“ + laufende Nummer, mindestens vierstellig („MS-0022“),",
+    "    fortlaufend je Kundenbereich; der Vorschlag überspringt jede Nummer, deren",
+    "    Kennzeichen schon belegt ist, und der Zähler rückt nur vor, wenn ein",
+    "    automatisches Kennzeichen gespeichert wird.",
+    "  · änderbar auf 2–16 Zeichen aus A–Z, 0–9, „-“, „.“, „/“. Nichts wird",
+    "    umgewandelt: „ms-01“ ist ein Formfehler, nie „MS-01“.",
+    "  · eindeutig je Kundenbereich und NIE an eine andere Messstelle weitergegeben:",
+    "    belegt ist, was eine Messstelle trägt, ein archiviertes Kennzeichen UND das",
+    "    frühere Kennzeichen einer umbenannten (Regel 9). Die Messstelle selbst darf zu",
+    "    ihrem früheren zurück.",
+    "  · Reihenfolge: erst die Form (400 kennzeichen_format), dann die Belegung",
+    "    (409 kennzeichen_belegt).",
+    "",
+    "═══ GRÖSSEN-KATALOG ═══",
+    "  Geschlossen: Größe · Medium · Einheit · Richtung · Wertart müssen zusammen im",
+    "  Katalog stehen, sonst 400 groesse_ungueltig mit dem ersten verletzten Merkmal",
+    "  (groesse → medium → einheit → richtung → wertart). Nur „Strom“ hat Messwerte aus",
+    "  dem Katalog; Gas hat „Volumen“, die übrigen Medien sind vorbereitet, aber noch",
+    "  ohne Größe (AP-09).",
+    "",
+    "═══ LEBENSZYKLUS (E8, E9) ═══",
+    "  gemessen:  eingerichtet = Kennzeichen + Name + Hauptgröße + Ort. Eine Quelle ist",
+    "             KEINE Voraussetzung (E8) — ohne sie heißt die Beobachtung „Keine",
+    "             Datenquelle“ (uems-zustand-vectors.json), nie 0.",
+    "  berechnet: eingerichtet = Kennzeichen + Name + Hauptgröße + Formel + alle",
+    "             Eingänge eingerichtet. Die Formel kommt erst mit AP-10 — bis dahin ist",
+    "             jede berechnete Messstelle ein Entwurf (E9). Ein Ort ist keine Pflicht.",
+    "  Eingerichtet wird von selbst aktiv (kein Start-Knopf). Vorrang: archiviert, dann",
+    "  Entwurf (fehlt etwas), dann angehalten, sonst aktiv. `fehlt` nennt die Lücken in",
+    "  der Reihenfolge des Vokabulars.",
+    "",
+    "═══ QUELLENBINDUNG (Regeln 1, 2, 5, 6, 7; E1, E2, E3) ═══",
+    "  Je Größe (Haupt- ODER Nebengröße) und Zeitpunkt höchstens EINE führende Quelle;",
+    "  Vergleichsquellen beliebig viele, jede mit Zweck. Zeiträume sind halboffen",
+    "  [ab, bis), leer heißt „bis auf Weiteres“. Geprüft wird in DIESER Reihenfolge, der",
+    "  erste Treffer gewinnt:",
+    "    1. Medium ≠ Strom                         → 422 medium_ohne_quelle",
+    "    2. Vergleich ohne Zweck aus dem Vokabular → 400 vergleich_ohne_zweck",
+    "    3. Passung Messwert → Größe (Regel 7)     → 422 quelle_passt_nicht + Grund",
+    "         wertart:  state/bitfield/text; Momentanwert aus Zählerstand; Zählerstand",
+    "                   aus Leistung; die Katalog-Quelle verlangt eine andere Wertart",
+    "         groesse:  der Messwert misst etwas, das die Größe nicht speisen darf",
+    "         einheit:  die Einheit lässt sich nicht umrechnen",
+    "         richtung: Bezug ist nicht Abgabe",
+    "    4. Ende nicht nach Beginn                 → 400 zeitraum_ungueltig",
+    "    5. Führend, und derselbe Messwert speist im Zeitraum schon eine ANDERE",
+    "       Messstelle führend                     → 409 kanal_bereits_fuehrend",
+    "    6. Wechsel, dessen Zeitpunkt nicht nach dem Beginn der laufenden Quelle liegt,",
+    "       oder ein Zeitpunkt vor dem Beginn der Messstelle",
+    "                                              → 422 zeitpunkt_vor_vorgaenger",
+    "    7. Überlappung mit einer Quelle derselben Größe und Rolle (beim Vergleich:",
+    "       desselben Messwerts)                   → 409 bindung_ueberlappt (nennt die",
+    "                                                früheste berührte Quelle)",
+    "  Die EINZIGE Änderung an Bestehendem: eine neue, offene führende Quelle beendet die",
+    "  laufende genau zu ihrem Beginn (Regel 2), wenn sie nach deren Beginn liegt.",
+    "  Bereits beendete Quellen werden nie verschoben; eine begrenzte Quelle passt nur in",
+    "  eine Lücke. Lücken sind erlaubt und im Zeitstrahl ein eigener Abschnitt ohne",
+    "  Quelle — nie aufgefüllt.",
+    "  Ergebnis: Status der neuen Quelle (geplant · gilt · beendet), rückwirkend /",
+    "  angekündigt (auf die Minute gegen „jetzt“), die Herleitung (zaehlerstand ·",
+    "  differenzen · integration — gekennzeichnet für AP-08 · momentanwert), Hinweise",
+    "  (ablesestand_pruefen: Stand ohne Einheit oder Anfangsstand über dem Endstand",
+    "  DESSELBEN Geräts) und der Zeitstrahl der führenden Quellen ab Beginn der",
+    "  Messstelle.",
+    "",
+    "═══ ELEKTRISCHE STELLUNG (Regel 8, E12) ═══",
+    "  Reihenfolge: berechnet oder Medium ≠ Strom nur „keine“ → Bezug nur bei",
+    "  Unterzähler → Unterzähler braucht Bezug → nie auf sich selbst → nur auf eine",
+    "  Messstelle DERSELBEN Anlage → kein Zyklus (422 stellung_ungueltig + Grund).",
+    "  Hauptzähler: je Anlage und Richtung höchstens einer, und alle Hauptzähler einer",
+    "  Anlage lesen DENSELBEN Zähler (dieselbe Komponente) — so sind MS-01 (Bezug) und",
+    "  MS-02 (Abgabe) an K-3 zusammen erlaubt, ein zweiter Zähler nie (409",
+    "  hauptzaehler_vorhanden, nennt den ersten bestehenden in Register-Reihenfolge)."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./messstelle.schema.json#/$defs/vektorDatei",
+  "herkunft": "UEMS AP-04 §4.1–§4.6, §5.12–§5.14, §7 (A1, A3, A10–A13, A15); Entscheide E1, E2, E3, E7, E8, E9, E12 vom 10.09.2026; Beispielwerte aus uems-referenzunternehmen.json.",
+  "zeitzone": "Europe/Berlin",
+  "kennzeichen_regel": {"praefix": "MS-", "stellen": 4, "muster": "^[A-Z0-9./-]{2,16}$", "min_zeichen": 2, "max_zeichen": 16},
+  "medien": ["Strom", "Gas", "Wärme", "Kälte", "Wasser", "Druckluft"],
+  "medien_waehlbar": ["Strom"],
+  "groessen_katalog": [
+    {
+      "groesse": "Wirkenergie",
+      "medien": ["Strom"],
+      "einheit": "kWh",
+      "richtungen": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen"],
+      "wertarten": ["Zählerstand", "Intervallmenge"],
+      "quellen": [
+        {"kanal_groesse": "Wirkenergie", "kanal_wertart": "counter", "nur_wertart": null},
+        {"kanal_groesse": "Wirkleistung", "kanal_wertart": "gauge", "nur_wertart": "Intervallmenge"}
+      ]
+    },
+    {
+      "groesse": "Wirkleistung",
+      "medien": ["Strom"],
+      "einheit": "kW",
+      "richtungen": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "richtungslos"],
+      "wertarten": ["Momentanwert"],
+      "quellen": [
+        {"kanal_groesse": "Wirkleistung", "kanal_wertart": "gauge", "nur_wertart": null}
+      ]
+    },
+    {
+      "groesse": "Blindenergie",
+      "medien": ["Strom"],
+      "einheit": "kvarh",
+      "richtungen": ["Bezug", "Abgabe"],
+      "wertarten": ["Zählerstand", "Intervallmenge"],
+      "quellen": [
+        {"kanal_groesse": "Blindenergie", "kanal_wertart": "counter", "nur_wertart": null}
+      ]
+    },
+    {
+      "groesse": "Scheinleistung",
+      "medien": ["Strom"],
+      "einheit": "kVA",
+      "richtungen": ["richtungslos"],
+      "wertarten": ["Momentanwert"],
+      "quellen": [
+        {"kanal_groesse": "Scheinleistung", "kanal_wertart": "gauge", "nur_wertart": null}
+      ]
+    },
+    {
+      "groesse": "Ladestand",
+      "medien": ["Strom"],
+      "einheit": "%",
+      "richtungen": ["richtungslos"],
+      "wertarten": ["Momentanwert"],
+      "quellen": [
+        {"kanal_groesse": "Ladestand", "kanal_wertart": "gauge", "nur_wertart": null}
+      ]
+    },
+    {
+      "groesse": "Volumen",
+      "medien": ["Gas"],
+      "einheit": "m³",
+      "richtungen": ["Bezug"],
+      "wertarten": ["Zählerstand", "Intervallmenge"],
+      "quellen": []
+    }
+  ],
+  "kanal_einheiten": {
+    "Wirkenergie": ["Wh", "kWh", "MWh"],
+    "Wirkleistung": ["W", "kW", "MW"],
+    "Blindenergie": ["varh", "kvarh"],
+    "Scheinleistung": ["VA", "kVA"],
+    "Ladestand": ["%"]
+  },
+  "lebenszyklus": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"],
+  "fehlt": ["kennzeichen", "name", "hauptgroesse", "ort", "formel", "eingaenge"],
+  "bindung_status": ["geplant", "gilt", "beendet"],
+  "herleitungen": ["zaehlerstand", "differenzen", "integration", "momentanwert"],
+  "vergleich_zwecke": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"],
+  "stellungen": ["Hauptzähler", "Unterzähler", "Erzeuger", "Speicher", "Abzweig", "keine"],
+  "stellung_gruende": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"],
+  "passung_gruende": ["wertart", "groesse", "einheit", "richtung"],
+  "fehler": [
+    {"code": "kennzeichen_format", "status": 400, "geprueft_von": "MessstelleRegeln"},
+    {"code": "kennzeichen_belegt", "status": 409, "geprueft_von": "MessstelleRegeln"},
+    {"code": "groesse_ungueltig", "status": 400, "geprueft_von": "MessstelleRegeln"},
+    {"code": "medium_ohne_quelle", "status": 422, "geprueft_von": "MessstelleRegeln"},
+    {"code": "vergleich_ohne_zweck", "status": 400, "geprueft_von": "MessstelleRegeln"},
+    {"code": "quelle_passt_nicht", "status": 422, "geprueft_von": "MessstelleRegeln"},
+    {"code": "kanal_bereits_fuehrend", "status": 409, "geprueft_von": "MessstelleRegeln"},
+    {"code": "zeitraum_ungueltig", "status": 400, "geprueft_von": "MessstelleRegeln"},
+    {"code": "zeitpunkt_vor_vorgaenger", "status": 422, "geprueft_von": "MessstelleRegeln"},
+    {"code": "bindung_ueberlappt", "status": 409, "geprueft_von": "MessstelleRegeln"},
+    {"code": "hauptzaehler_vorhanden", "status": 409, "geprueft_von": "MessstelleRegeln"},
+    {"code": "stellung_ungueltig", "status": 422, "geprueft_von": "MessstelleRegeln"},
+    {"code": "anteile_summe", "status": 422, "geprueft_von": "IP-7"},
+    {"code": "ort_ungueltig", "status": 422, "geprueft_von": "IP-7"}
+  ],
+  "hinweise": ["ablesestand_pruefen"],
+  "cases": {
+    "kennzeichen_vorschlag": [
+      {
+        "name": "vorschlag-naechste-nummer",
+        "herkunft": "AP-04 A12 · §3 · E7",
+        "why": "Ahrenberg hat 21 Messstellen automatisch nummeriert (und auf MS-01 … MS-21 gekürzt). Die nächste bekommt „MS-0022“ — vierstellig, fortlaufend je Kundenbereich.",
+        "input": {
+          "zaehler": 21,
+          "belegt": ["MS-01", "MS-02", "MS-03", "MS-04", "MS-05", "MS-06", "MS-07", "MS-08", "MS-09", "MS-10", "MS-11", "MS-12", "MS-13", "MS-14", "MS-15", "MS-16", "MS-17", "MS-18", "MS-19", "MS-20", "MS-21"]
+        },
+        "expected": {"kennzeichen": "MS-0022", "zaehler": 22}
+      },
+      {
+        "name": "vorschlag-ueberspringt-belegte-nummer",
+        "herkunft": "AP-04 E7 („nie neu vergeben“, „eindeutig“)",
+        "why": "Hat ein Kunde eine Messstelle von Hand „MS-0022“ genannt, springt der Vorschlag auf „MS-0023“ — eindeutig bleibt vor fortlaufend, und die übersprungene Nummer wird nie mehr vergeben.",
+        "input": {
+          "zaehler": 21,
+          "belegt": ["MS-01", "MS-02", "MS-03", "MS-04", "MS-05", "MS-06", "MS-07", "MS-08", "MS-09", "MS-10", "MS-11", "MS-12", "MS-13", "MS-14", "MS-15", "MS-16", "MS-17", "MS-18", "MS-19", "MS-20", "MS-21", "MS-0022"]
+        },
+        "expected": {"kennzeichen": "MS-0023", "zaehler": 23}
+      },
+      {
+        "name": "vorschlag-erste-messstelle",
+        "herkunft": "AP-04 E7 · AP-00 E10",
+        "why": "Ein neuer Kundenbereich beginnt bei „MS-0001“.",
+        "input": {"zaehler": 0, "belegt": []},
+        "expected": {"kennzeichen": "MS-0001", "zaehler": 1}
+      }
+    ],
+    "kennzeichen_pruefen": [
+      {
+        "name": "kuerzen-auf-eigenes-kennzeichen",
+        "herkunft": "AP-04 E7",
+        "why": "Ahrenberg lässt „MS-0006“ auf „MS-06“ kürzen (E7): 5 Zeichen aus der erlaubten Menge, von niemandem belegt — erlaubt. Die Umbenennung steht im Änderungsprotokoll.",
+        "input": {
+          "kandidat": "MS-06",
+          "fuer_messstelle": "MS-0006",
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-0006", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": null, "bestehend": null}
+      },
+      {
+        "name": "eigener-nummernkreis",
+        "herkunft": "AP-04 E7",
+        "why": "Ein Kunde mit eigenem Nummernkreis trägt „E-HZ-01“ ein (E7) — erlaubt.",
+        "input": {
+          "kandidat": "E-HZ-01",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": null, "bestehend": null}
+      },
+      {
+        "name": "kennzeichen-belegt",
+        "herkunft": "AP-04 §5.12 „Kennzeichen belegt“",
+        "why": "„MS-01 ist bereits vergeben (Netzbezug Halle 1).“ 409; die Antwort nennt, wer es trägt.",
+        "input": {
+          "kandidat": "MS-01",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {
+          "fehler": "kennzeichen_belegt",
+          "bestehend": {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false}
+        }
+      },
+      {
+        "name": "archiviertes-bleibt-belegt",
+        "herkunft": "AP-04 A12 · E7",
+        "why": "MS-13 ist archiviert — ihr Kennzeichen bleibt belegt (E7), sonst zeigte ein alter Bericht plötzlich auf eine andere Messstelle. 409; der Vorschlag MS-0022 bleibt stehen.",
+        "input": {
+          "kandidat": "MS-13",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {
+          "fehler": "kennzeichen_belegt",
+          "bestehend": {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+        }
+      },
+      {
+        "name": "frueheres-kennzeichen-bleibt-belegt",
+        "herkunft": "AP-04 Regel 9 „nie wiederverwendet“",
+        "why": "MS-06 hieß früher „MS-0006“. Eine ANDERE Messstelle bekommt es nie: ein Bericht aus der Zeit vor der Umbenennung nennt „MS-0006“, und das muss dieselbe Messstelle bleiben (Regel 9, AP-12).",
+        "input": {
+          "kandidat": "MS-0006",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {
+          "fehler": "kennzeichen_belegt",
+          "bestehend": {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true}
+        }
+      },
+      {
+        "name": "eigenes-frueheres-kennzeichen-zurueck",
+        "herkunft": "AP-04 Regel 9",
+        "why": "Die Messstelle selbst darf zu ihrem früheren Kennzeichen zurück — das ist keine Wiederverwendung durch eine andere.",
+        "input": {
+          "kandidat": "MS-0006",
+          "fuer_messstelle": "MS-06",
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": null, "bestehend": null}
+      },
+      {
+        "name": "unveraendert-ist-kein-konflikt",
+        "herkunft": "AP-04 E7",
+        "why": "Speichert die Messstelle ihr eigenes Kennzeichen unverändert, kollidiert sie nicht mit sich selbst.",
+        "input": {
+          "kandidat": "MS-06",
+          "fuer_messstelle": "MS-06",
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": null, "bestehend": null}
+      },
+      {
+        "name": "format-kleinbuchstaben",
+        "herkunft": "AP-04 §5.12 „Kennzeichen-Format“ · E7",
+        "why": "Nur Großbuchstaben. „ms-01“ wird NICHT still in „MS-01“ verwandelt — ein Wort außerhalb der Regel wird abgelehnt, nie geraten. Das Format wird VOR der Belegung geprüft: 400, nicht 409.",
+        "input": {
+          "kandidat": "ms-01",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": "kennzeichen_format", "bestehend": null}
+      },
+      {
+        "name": "format-leerzeichen",
+        "herkunft": "AP-04 E7",
+        "why": "Ein Leerzeichen gehört nicht zur erlaubten Menge.",
+        "input": {
+          "kandidat": "MS 22",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": "kennzeichen_format", "bestehend": null}
+      },
+      {
+        "name": "format-umlaut",
+        "herkunft": "AP-04 E7",
+        "why": "Großbuchstaben heißt A–Z: ein Umlaut gehört nicht dazu, damit CSV und Berichte das Kennzeichen sicher tragen.",
+        "input": {
+          "kandidat": "HÄLLE-1",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": "kennzeichen_format", "bestehend": null}
+      },
+      {
+        "name": "format-ein-zeichen",
+        "herkunft": "AP-04 E7",
+        "why": "Mindestens 2 Zeichen.",
+        "input": {
+          "kandidat": "M",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": "kennzeichen_format", "bestehend": null}
+      },
+      {
+        "name": "format-zu-lang",
+        "herkunft": "AP-04 E7",
+        "why": "Höchstens 16 Zeichen — „MS-0006-SPRITZGUSS“ hat 18.",
+        "input": {
+          "kandidat": "MS-0006-SPRITZGUSS",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": "kennzeichen_format", "bestehend": null}
+      },
+      {
+        "name": "format-genau-16-zeichen",
+        "herkunft": "AP-04 E7",
+        "why": "Genau 16 Zeichen mit Punkt und Schrägstrich: die Kante gehört zu „erlaubt“.",
+        "input": {
+          "kandidat": "MS-0006/HALLE.1N",
+          "fuer_messstelle": null,
+          "vergeben": [
+            {"kennzeichen": "MS-01", "messstelle": "MS-01", "name": "Netzbezug Halle 1", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-06", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": false},
+            {"kennzeichen": "MS-0006", "messstelle": "MS-06", "name": "Spritzguss SG01–SG06", "archiviert": false, "frueher": true},
+            {"kennzeichen": "MS-13", "messstelle": "MS-13", "name": "Lager Halle 2 (Allgemein)", "archiviert": true, "frueher": false}
+          ]
+        },
+        "expected": {"fehler": null, "bestehend": null}
+      }
+    ],
+    "groesse": [
+      {
+        "name": "ms-06-hauptgroesse",
+        "herkunft": "Referenzunternehmen MS-06",
+        "why": "Die Hauptgröße von MS-06 steht im Katalog.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": null, "grund": null}
+      },
+      {
+        "name": "ms-21-gas-volumen",
+        "herkunft": "Referenzunternehmen MS-21 · AP-00 E11",
+        "why": "Gas ist vorbereitet: Volumen in m³ gibt es — nur ohne Messwert aus dem Katalog.",
+        "input": {
+          "medium": "Gas",
+          "groesse": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": null, "grund": null}
+      },
+      {
+        "name": "ms-04-laden-entladen",
+        "herkunft": "Referenzunternehmen MS-04 · AP-04 E1",
+        "why": "Die Speicher-Messstelle trägt die zusammengefasste Richtung „Laden / Entladen“ (E1, Referenzunternehmen) — der Katalog kennt sie bei der Wirkenergie.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"}
+        },
+        "expected": {"fehler": null, "grund": null}
+      },
+      {
+        "name": "ladestand-richtungslos",
+        "herkunft": "Referenzunternehmen MS-04 (Nebengröße)",
+        "why": "Der Ladestand ist ein richtungsloser Momentanwert in Prozent.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"}
+        },
+        "expected": {"fehler": null, "grund": null}
+      },
+      {
+        "name": "wirkleistung-als-zaehlerstand",
+        "herkunft": "AP-04 §4.1 Katalog",
+        "why": "Eine Leistung ist ein Momentanwert — einen „Zählerstand der Leistung“ gibt es nicht. Abgelehnt mit Grund „wertart“.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "wertart"}
+      },
+      {
+        "name": "wirkenergie-in-kw",
+        "herkunft": "AP-04 §4.1 Katalog",
+        "why": "Wirkenergie wird in kWh geführt, nie in kW.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kW", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "einheit"}
+      },
+      {
+        "name": "ladestand-mit-richtung",
+        "herkunft": "AP-04 §4.1 Katalog",
+        "why": "Ein Ladestand hat keine Richtung.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Ladestand", "richtung": "Bezug", "einheit": "%", "wertart": "Momentanwert"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "richtung"}
+      },
+      {
+        "name": "volumen-bei-strom",
+        "herkunft": "AP-04 §4.1 Katalog · AP-00 E11",
+        "why": "Volumen gibt es nicht beim Medium Strom.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "medium"}
+      },
+      {
+        "name": "wasser-noch-ohne-groesse",
+        "herkunft": "AP-00 E11",
+        "why": "Wasser ist im Vokabular vorbereitet, aber noch nicht ausgebaut: der Katalog hat für Wasser noch keine Größe (sie kommt mit AP-09). Abgelehnt, nicht geraten.",
+        "input": {
+          "medium": "Wasser",
+          "groesse": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "medium"}
+      }
+    ],
+    "lebenszyklus": [
+      {
+        "name": "ms-06-aktiv-mit-quelle",
+        "herkunft": "AP-04 §4.5 · E8",
+        "referenz": "MS-06",
+        "why": "Kennzeichen, Name, Hauptgröße und Ort sind da — die Messstelle ist eingerichtet und damit sofort aktiv (Messen kann nichts schalten, kein Start-Knopf). Um 11:05 gilt Z-5b als führende Quelle.",
+        "input": {
+          "art": "gemessen",
+          "medium": "Strom",
+          "kennzeichen": "MS-06",
+          "name": "Spritzguss SG01–SG06",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00"},
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ],
+          "jetzt": "2026-11-18T11:05:00+01:00"
+        },
+        "expected": {"lebenszyklus": "aktiv", "eingerichtet": true, "fehlt": [], "quelle_vorhanden": true}
+      },
+      {
+        "name": "ms-21-ohne-quelle-keine-datenquelle",
+        "herkunft": "AP-04 E8 · A10",
+        "referenz": "MS-21",
+        "why": "E8: eine Messstelle OHNE Quelle ist erlaubt — eingerichtet und aktiv, weil Kennzeichen, Name, Hauptgröße und Ort da sind. Es gilt keine führende Quelle, deshalb lautet die Beobachtung „Keine Datenquelle“ (uems-zustand-vectors.json, Fall `keine-datenquelle`) — in Bilanz und Bericht „ohne Werte“, nie 0.",
+        "input": {
+          "art": "gemessen",
+          "medium": "Gas",
+          "kennzeichen": "MS-21",
+          "name": "Gas Heizung Verwaltung",
+          "hauptgroesse": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [],
+          "jetzt": "2026-10-20T10:15:00+02:00"
+        },
+        "expected": {"lebenszyklus": "aktiv", "eingerichtet": true, "fehlt": [], "quelle_vorhanden": false}
+      },
+      {
+        "name": "neue-messstelle-ohne-name-und-ort",
+        "herkunft": "AP-04 §4.5 Übergang „Entwurf → eingerichtet“",
+        "why": "Frisch angelegt: das Kennzeichen MS-0022 ist vergeben, die Hauptgröße gewählt — Name und Ort fehlen noch. Entwurf; der Dialog sagt, was fehlt, in fester Reihenfolge. Eine Quelle ist KEINE Voraussetzung (E8) und steht deshalb nie in dieser Liste.",
+        "input": {
+          "art": "gemessen",
+          "medium": "Strom",
+          "kennzeichen": "MS-0022",
+          "name": null,
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "ort_vorhanden": false,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [],
+          "jetzt": "2026-11-20T09:00:00+01:00"
+        },
+        "expected": {
+          "lebenszyklus": "entwurf",
+          "eingerichtet": false,
+          "fehlt": ["name", "ort"],
+          "quelle_vorhanden": false
+        }
+      },
+      {
+        "name": "ms-20-berechnet-ohne-formel-ist-entwurf",
+        "herkunft": "AP-04 E9 · §4.5 „Messstelle (berechnet)“",
+        "referenz": "MS-20",
+        "why": "E9: eine berechnete Messstelle hat schon Identität (Kennzeichen, Name, Hauptgröße), aber ihre Formel kommt erst mit AP-10 — bis dahin ist sie IMMER ein Entwurf, und der Dialog bietet „berechnet“ gar nicht an. Ein Ort ist für eine berechnete Messstelle keine Pflicht: MS-20 läuft über zwei Gebäude und hat im Referenzunternehmen keinen (AP-00 Inv. 2 gilt der gemessenen).",
+        "input": {
+          "art": "berechnet",
+          "medium": "Strom",
+          "kennzeichen": "MS-20",
+          "name": "Prozess Spritzguss gesamt",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "ort_vorhanden": false,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [],
+          "jetzt": "2026-10-20T10:15:00+02:00"
+        },
+        "expected": {
+          "lebenszyklus": "entwurf",
+          "eingerichtet": false,
+          "fehlt": ["formel"],
+          "quelle_vorhanden": false
+        }
+      },
+      {
+        "name": "ms-19-berechnet-mit-formel-und-eingaengen",
+        "herkunft": "AP-04 §4.5 „Messstelle (berechnet)“ · AP-10",
+        "referenz": "MS-19",
+        "why": "Der Stand NACH AP-10, wie ihn das Referenzunternehmen zeigt: Formel „MS-01 + MS-10 + MS-16“, alle drei Eingänge eingerichtet — dann ist auch die berechnete Messstelle aktiv. Eine führende Quelle hat sie nie; ob sie „vollständig“ ist, sagt die Ableitung `berechnet` in uems-zustand-vectors.json.",
+        "input": {
+          "art": "berechnet",
+          "medium": "Strom",
+          "kennzeichen": "MS-19",
+          "name": "Netzbezug gesamt Unternehmen",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": true,
+          "eingaenge_eingerichtet": true,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [],
+          "jetzt": "2026-10-20T10:15:00+02:00"
+        },
+        "expected": {"lebenszyklus": "aktiv", "eingerichtet": true, "fehlt": [], "quelle_vorhanden": false}
+      },
+      {
+        "name": "ms-19-eingang-nicht-eingerichtet",
+        "herkunft": "AP-04 §4.5 „Messstelle (berechnet)“",
+        "referenz": "MS-19",
+        "why": "Mit Formel, aber ein Eingang ist selbst noch Entwurf: dann ist es die berechnete Messstelle auch — sie könnte nichts rechnen.",
+        "input": {
+          "art": "berechnet",
+          "medium": "Strom",
+          "kennzeichen": "MS-19",
+          "name": "Netzbezug gesamt Unternehmen",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": true,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": false,
+          "fuehrende_quelle": [],
+          "jetzt": "2026-10-20T10:15:00+02:00"
+        },
+        "expected": {
+          "lebenszyklus": "entwurf",
+          "eingerichtet": false,
+          "fehlt": ["eingaenge"],
+          "quelle_vorhanden": false
+        }
+      },
+      {
+        "name": "ms-06-angehalten-behaelt-quelle",
+        "herkunft": "AP-04 §4.5 Übergang „aktiv → angehalten → aktiv“",
+        "referenz": "MS-06",
+        "why": "Angehalten (Umbau) heißt: Bindungen und Zuordnungen bleiben, nur die Werte des Zeitraums werden nicht ausgewertet. Die Quelle gilt weiter, die Messstelle bleibt eingerichtet.",
+        "input": {
+          "art": "gemessen",
+          "medium": "Strom",
+          "kennzeichen": "MS-06",
+          "name": "Spritzguss SG01–SG06",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": true,
+          "archiviert": false,
+          "fuehrende_quelle": [
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00"},
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ],
+          "jetzt": "2026-11-18T11:05:00+01:00"
+        },
+        "expected": {"lebenszyklus": "angehalten", "eingerichtet": true, "fehlt": [], "quelle_vorhanden": true}
+      },
+      {
+        "name": "ms-13-archiviert",
+        "herkunft": "AP-04 A13 · §4.5 Übergang „aktiv → archiviert“",
+        "referenz": "MS-13",
+        "fortschreibung": true,
+        "why": "MS-13 wird am 30.06.2027 um 16:30 archiviert: ihre Bindung endet genau dann, das Kennzeichen bleibt belegt, alles Lesbare bleibt stehen. Am Folgetag gilt keine Quelle mehr. (Fortschreibung nach dem letzten Ereignis des Referenzunternehmens.)",
+        "input": {
+          "art": "gemessen",
+          "medium": "Strom",
+          "kennzeichen": "MS-13",
+          "name": "Lager Halle 2 (Allgemein)",
+          "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "ort_vorhanden": true,
+          "formel_vorhanden": false,
+          "eingaenge_eingerichtet": false,
+          "angehalten": false,
+          "archiviert": true,
+          "fuehrende_quelle": [
+            {"komponente": "K-8.4", "kanal": "Wirkenergie Bezug", "geraet": "GR-7", "einbau": "C-1", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": "2027-06-30T16:30:00+02:00"}
+          ],
+          "jetzt": "2027-07-01T09:00:00+02:00"
+        },
+        "expected": {"lebenszyklus": "archiviert", "eingerichtet": true, "fehlt": [], "quelle_vorhanden": false}
+      }
+    ],
+    "passung": [
+      {
+        "name": "zaehlerstand-aus-zaehlerstand",
+        "herkunft": "AP-04 Regel 7",
+        "why": "Ein Zählerstand-Messwert speist einen Zählerstand — wie gelesen.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter"}
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "zaehlerstand"}
+      },
+      {
+        "name": "intervallmenge-aus-zaehlerstand",
+        "herkunft": "AP-04 Regel 7 · AP-08",
+        "why": "Die Menge je Zeitabschnitt entsteht aus den DIFFERENZEN des Zählerstands.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter"}
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "differenzen"}
+      },
+      {
+        "name": "intervallmenge-aus-leistung",
+        "herkunft": "AP-04 Regel 7 · AP-08",
+        "why": "Aus einem Leistungs-Messwert wird die Menge INTEGRIERT — erlaubt und gekennzeichnet, damit AP-08 weiß, dass sie nicht gezählt ist.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "gauge"}
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "integration"}
+      },
+      {
+        "name": "momentanwert-aus-leistung",
+        "herkunft": "AP-04 Regel 7",
+        "why": "Ein Leistungs-Messwert speist eine Leistung — wie gelesen.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "gauge"}
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "momentanwert"}
+      },
+      {
+        "name": "wh-ist-umrechenbar",
+        "herkunft": "AP-04 Regel 7 „umrechenbare Einheit“",
+        "why": "Ein Zählerstand in Wh lässt sich in kWh umrechnen — erlaubt.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "Wh", "wertart": "counter"}
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "zaehlerstand"}
+      },
+      {
+        "name": "gas-hat-keine-katalogquelle",
+        "herkunft": "AP-04 Regel 11 · AP-00 E11",
+        "why": "Medium ≠ Strom schlägt alles andere: kein Messwert aus dem Katalog.",
+        "input": {
+          "medium": "Gas",
+          "ziel": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter"}
+        },
+        "expected": {"fehler": "medium_ohne_quelle", "grund": null, "herleitung": null}
+      },
+      {
+        "name": "zustand-liefert-keine-groesse",
+        "herkunft": "AP-04 Regel 7 · AP-07 E12",
+        "why": "Ein Zustands-Messwert (state), ein Bitfeld oder ein Text speist nie eine Messgröße — der Grund ist seine Wertart, bevor überhaupt nach der Größe gefragt wird.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Betriebszustand", "richtung": "richtungslos", "einheit": "", "wertart": "state"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "herleitung": null}
+      },
+      {
+        "name": "momentanwert-nie-aus-zaehlerstand",
+        "herkunft": "AP-04 Regel 7",
+        "why": "Regel 7, dritter Satz — der Grund ist die Wertart, noch vor der Größe.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "herleitung": null}
+      },
+      {
+        "name": "zaehlerstand-nie-aus-leistung",
+        "herkunft": "AP-04 §5.12",
+        "why": "Aus einer Leistung wird nie ein Zählerstand — nur eine integrierte Intervallmenge.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "gauge"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "herleitung": null}
+      },
+      {
+        "name": "energie-als-momentanwert-messwert",
+        "herkunft": "AP-04 Regel 7 · Katalog",
+        "why": "Eine Energie, die als Momentanwert gelesen wird (etwa die Energie je Ladevorgang, die mit jedem Vorgang neu beginnt), ist weder Zählerstand noch Leistung — aus ihr entsteht keine Intervallmenge.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "gauge"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "herleitung": null}
+      },
+      {
+        "name": "ladestand-speist-keine-energie",
+        "herkunft": "AP-04 Regel 7",
+        "why": "Der Messwert misst etwas, das die Größe nicht speisen darf.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "groesse", "herleitung": null}
+      },
+      {
+        "name": "energie-in-kw",
+        "herkunft": "AP-04 Regel 7 „umrechenbare Einheit“",
+        "why": "kW lässt sich nicht in kWh umrechnen.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kW", "wertart": "counter"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "einheit", "herleitung": null}
+      },
+      {
+        "name": "bezug-nie-aus-abgabe",
+        "herkunft": "AP-04 Regel 7 · E1",
+        "why": "Gleiche Größe, Einheit und Wertart — aber die Richtung zählt: Bezug ist nicht Abgabe.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter"}
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "herleitung": null}
+      }
+    ],
+    "bindung": [
+      {
+        "name": "ms-06-zaehlerwechsel-zeitstrahl",
+        "herkunft": "AP-04 A1 · §5.13 · §5.14 · E2 · Regel 2/3",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "DER Plan-Fall: Ines Kaltenbach trägt um 11:05 den Zählerwechsel Z-5a → Z-5b für 10:40 ein. Die neue Quelle beendet die laufende GENAU zu ihrem Beginn (Regel 2) — kein Loch, keine Überlappung. Die Messstelle bleibt, Z-5a trägt seinen Endstand 1 083 415,2 kWh, der Eintrag ist rückwirkend (25 min). ⚠ Die 7 Minuten 10:40–10:47, in denen Z-5b noch keinen Wert geliefert hat, sind KEINE Bindungslücke: sie sind die Werte-Lücke der Beobachtung („wartet auf erste Daten von Z-5b“, uems-zustand-vectors.json) und werden dort sichtbar — der Zeitstrahl der Quellen hat an 10:40 keine Fuge. Die Bindung der Nebengröße ist nicht betroffen: sie hat ihren eigenen Zeitstrahl.",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": {"wert": 1083415.2, "einheit": "kWh"},
+            "anfangsstand": {"wert": 0.0, "einheit": "kWh"}
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand": {"wert": 1083415.2, "einheit": "kWh"}
+          },
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-06-wechsel-angekuendigt",
+        "herkunft": "AP-04 A3 · E2",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Derselbe Wechsel, aber am 10.11.2026 im Voraus eingetragen: der Zeitpunkt liegt in der Zukunft, die neue Quelle ist „geplant“ und der Eintrag „angekündigt“ (E2). Z-5a liefert bis dahin weiter; das Ende von Z-5a steht schon fest. Die Ablesestände kennt vor dem Tausch niemand — sie bleiben leer, nie erfunden. (A3 nennt 10:00 und korrigiert später auf 10:40; der Fall nimmt gleich den Zeitpunkt des Referenzunternehmens.)",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-10T09:00:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00", "endstand": null},
+          "status": "geplant",
+          "rueckwirkend": false,
+          "angekuendigt": true,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-06-nebengroesse-eigene-quelle",
+        "herkunft": "AP-04 E1 · §4.3",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Die Nebengröße Wirkleistung wechselt mit EIGENER Bindung auf Z-5b. Dass die Hauptgröße ab 10:40 schon Z-5b führend bindet, ist KEINE Überlappung: „höchstens eine führende Quelle“ gilt je Größe (E1), nicht je Messstelle. Aus einem Leistungs-Messwert wird ein Momentanwert, wie gelesen.",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-5",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-4",
+              "einbau": "Z-5a",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": "2026-11-18T10:40:00+01:00"
+            },
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkleistung",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {"komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00", "endstand": null},
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "momentanwert",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-06-ueberlappung-abgelehnt",
+        "herkunft": "AP-04 §5.12 „Überlappung derselben Rolle“ · Regel 2",
+        "referenz": "MS-06",
+        "why": "Der Wechsel steht schon (Z-5b ab 10:40). Wird er ein zweites Mal eingetragen, kann die neue Quelle die laufende nicht beenden — beide begännen im selben Augenblick. Zwei führende Quellen für dieselbe Größe und Zeit sind verboten: 409, und die Antwort nennt die Quelle, die dort schon gilt („MS-06 hat ab 18.11.2026 10:40 bereits eine führende Quelle (Z-5b)“).",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:10:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-5",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-4",
+              "einbau": "Z-5a",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": "2026-11-18T10:40:00+01:00"
+            },
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "bindung_ueberlappt",
+          "grund": null,
+          "bestehend": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null},
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null
+        }
+      },
+      {
+        "name": "ms-06-wechsel-vor-einbau-abgelehnt",
+        "herkunft": "AP-04 A15 · Regel 5",
+        "referenz": "MS-06",
+        "why": "Ein Wechsel auf den 01.03.2024 läge vor dem Einbau von Z-5a (12.03.2024): die neue Quelle müsste die laufende beenden, bevor sie begonnen hat. 422, die Antwort nennt Z-5a und seinen Beginn — nichts wird gespeichert.",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2024-03-01T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "zeitpunkt_vor_vorgaenger",
+          "grund": null,
+          "bestehend": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null
+        }
+      },
+      {
+        "name": "ms-07-luecke-bleibt-sichtbar",
+        "herkunft": "AP-04 Regel 2 · E2 · §4.5 Übergang „Bindung“",
+        "referenz": "MS-07",
+        "fortschreibung": true,
+        "why": "Eine Lücke entsteht nur, wenn der Kunde eine Quelle ausdrücklich beendet: der Unterzähler Druckluft wird am 03.05.2027 um 07:00 zur Prüfung abgeklemmt (Quelle beendet) und um 15:30 wieder gebunden. Das ist erlaubt — und der Zeitstrahl zeigt die 8,5 Stunden als eigenen Abschnitt OHNE Quelle („keine Quelle von … bis …“). Nichts wird aufgefüllt, nichts ist 0. (Fortschreibung: das Referenzunternehmen endet am 12.04.2027; davor ändert der Fall nichts.)",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2027-05-03T15:45:00+02:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-6",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-5",
+              "einbau": "GR-5",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": "2027-05-03T07:00:00+02:00"
+            }
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2027-05-03T15:30:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2027-05-03T07:00:00+02:00",
+              "quelle": {"komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5"}
+            },
+            {"von": "2027-05-03T07:00:00+02:00", "bis": "2027-05-03T15:30:00+02:00", "quelle": null},
+            {
+              "von": "2027-05-03T15:30:00+02:00",
+              "bis": null,
+              "quelle": {"komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-03-leistung-wird-integriert",
+        "herkunft": "AP-04 Regel 7 · §5.10 Bestandsübernahme",
+        "referenz": "MS-03",
+        "ergebnis_wie_referenz": true,
+        "why": "Die PV-Erzeugung hat keinen Zählerstand: ihre Wirkenergie (Intervallmenge) wird aus dem Leistungs-Messwert integriert — erlaubt und GEKENNZEICHNET (Herleitung „integration“, AP-08 rechnet damit). Die Bestandsübernahme bindet rückwirkend ab Beginn des vorhandenen Verlaufs, damit der Verlauf lückenlos zur Messstelle wird.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T00:00:00+02:00",
+          "messstelle": {"kennzeichen": "MS-03", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "bestehende": [],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-1",
+            "kanal": "PV-Leistung",
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Erzeugung",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "integration",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-1", "kanal": "PV-Leistung", "geraet": "GR-1", "einbau": "GR-1"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-06-zaehlerstand-nie-aus-leistung",
+        "herkunft": "AP-04 §5.12 „Kanal passt nicht zur Größe“ · Regel 7",
+        "referenz": "MS-06",
+        "why": "Der Messwert „Wirkleistung“ (kW, Momentanwert) kann die Größe „Wirkenergie · Zählerstand“ nicht liefern: aus einer Leistung wird höchstens eine integrierte Intervallmenge, nie ein Zählerstand. 422 mit Grund „wertart“ — im Dialog ist der Messwert gar nicht erst wählbar.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-5",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-4",
+              "einbau": "Z-5a",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": "2026-11-18T10:40:00+01:00"
+            },
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkleistung",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2026-11-18T11:05:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-06-momentanwert-nie-aus-zaehlerstand",
+        "herkunft": "AP-04 Regel 7",
+        "referenz": "MS-06",
+        "why": "Regel 7, dritter Satz: eine Momentanwert-Größe nie von einem Zählerstand-Messwert. Die Nebengröße Wirkleistung kann nicht aus „Wirkenergie Bezug“ gespeist werden — Grund „wertart“, noch bevor die Größe verglichen wird.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00"},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5b", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T11:05:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-01-bezug-nie-aus-abgabe",
+        "herkunft": "AP-04 Regel 7 · E1",
+        "referenz": "MS-01",
+        "why": "Bezug und Abgabe sind zwei Messstellen (E1). Der Netzzähler K-3 hat beide Messwerte — aber „Wirkenergie Abgabe“ kann MS-01 Netzbezug nie speisen: gleiche Größe, gleiche Einheit, gleiche Wertart, falsche Richtung. Grund „richtung“.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-20T10:15:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-3",
+            "kanal": "Wirkenergie Abgabe",
+            "geraet": "GR-2",
+            "einbau": "GR-2",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Abgabe",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-10-20T10:15:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-21-gas-bindet-keine-katalogquelle",
+        "herkunft": "AP-04 A10 · Regel 11 · AP-00 E11",
+        "referenz": "MS-21",
+        "why": "Eine Messstelle mit Medium Gas kann keinen Messwert aus dem Katalog binden — der Katalog kennt nur Strom. 422 „medium_ohne_quelle“; die Fläche bietet den Knopf „Quelle binden“ gar nicht erst an. MS-21 bleibt „eingerichtet · keine Datenquelle“ und wartet auf die manuelle Ablesung (AP-09).",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-20T10:15:00+02:00",
+          "messstelle": {"kennzeichen": "MS-21", "medium": "Gas", "beginn": "2026-10-01T00:00:00+02:00"},
+          "ziel": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"},
+          "bestehende": [],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-4",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-3",
+            "einbau": "GR-3",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-10-20T10:15:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "medium_ohne_quelle", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-07-kanal-speist-schon-ms-06",
+        "herkunft": "AP-04 §5.12 „Kanal bereits führend gebunden“ · §4.2 Messkanal",
+        "referenz": "MS-07",
+        "why": "Ein Messwert speist höchstens EINE Messstelle führend. „Wirkenergie Bezug“ von Z-5b speist seit 10:40 MS-06 — MS-07 kann ihn nicht führend binden (als Vergleichsquelle ginge es). 409, die Antwort nennt MS-06. (Innerhalb EINER Messstelle darf ein Messwert zwei Größen speisen: MS-03 nimmt „PV-Leistung“ für Energie und Leistung.)",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T11:05:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": [
+            {"messstelle": "MS-06", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ]
+        },
+        "expected": {"fehler": "kanal_bereits_fuehrend", "grund": null, "bestehend": null, "messstelle": "MS-06", "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-01-vergleichsquelle-mit-zweck",
+        "herkunft": "AP-04 E3 · §5.3",
+        "referenz": "MS-01",
+        "why": "Neben die führende Wirkleistung des Netzzählers K-3 tritt die Netzleistung am Wechselrichter K-1 als Vergleichsquelle mit Zweck „Plausibilität“ (E3). Sie beendet nichts und hat keinen eigenen Zeitstrahl — gezeigt werden später beide Werte nebeneinander (312,4 kW · 309,8 kW), ohne Bewertung und ohne Ersatz. ⚠ Die Auflösung ist die Minute (E2): der Dialog steht um 10:15:40, die Vorgabe „jetzt“ ist 10:15 — das ist NICHT rückwirkend.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-20T10:15:40+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "vergleich",
+            "zweck": "Plausibilität",
+            "komponente": "K-1",
+            "kanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2026-10-20T10:15:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": null, "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": "gilt", "rueckwirkend": false, "angekuendigt": false, "herleitung": "momentanwert", "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-01-vergleich-ohne-zweck",
+        "herkunft": "AP-04 E3 · Regel 1 · IP-13 „Vergleich ohne Zweck 400“",
+        "referenz": "MS-01",
+        "why": "Eine Vergleichsquelle gibt es nie ohne Zweck (Regel 1). Ohne Zweck — oder mit einem Wort außerhalb des Vokabulars, das verworfen und nicht geraten wird — ist es 400.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-20T10:15:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "vergleich",
+            "zweck": null,
+            "komponente": "K-1",
+            "kanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2026-10-20T10:15:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "vergleich_ohne_zweck", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-06-gleicher-zaehler-anfangsstand-ueber-endstand",
+        "herkunft": "AP-04 §5.12 „Ablesestand neu > alt bei gleichem Gerät“",
+        "referenz": "MS-06",
+        "why": "Eine Fehlbedienung: als „neuer“ Zähler wird wieder Z-5a gewählt, der Anfangsstand 1 083 500 kWh liegt über dem Endstand 1 083 415,2 kWh DESSELBEN Zählers. Das ist ein HINWEIS, kein Verbot — gespeichert wird, aber der Kunde soll die Werte prüfen. (Bei verschiedenen Geräten gibt es keinen Hinweis: verschiedene Zählwerke.)",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": {"wert": 1083415.2, "einheit": "kWh"},
+            "anfangsstand": {"wert": 1083500, "einheit": "kWh"}
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand": {"wert": 1083415.2, "einheit": "kWh"}
+          },
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": ["ablesestand_pruefen"],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-07-ende-vor-beginn",
+        "herkunft": "Formregel dieses Vertrags (Ergänzung zu AP-04 §5.12)",
+        "referenz": "MS-07",
+        "why": "Ein Zeitraum, dessen Ende vor seinem Beginn liegt, ist leer — 400 „zeitraum_ungueltig“, bevor irgendeine Quelle verglichen wird.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T11:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:00:00+01:00",
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-06-wechsel-genau-beim-einbau",
+        "herkunft": "AP-04 A15 · Regel 5 (Kante)",
+        "referenz": "MS-06",
+        "why": "Die Kante von A15: ein Wechsel GENAU zum Einbau von Z-5a (12.03.2024 00:00) ließe Z-5a null Minuten gelten — auch das ist „vor dem Vorgänger“, nicht erst ein früherer Zeitpunkt. (Ohne diese Kante fiele der Fall durch zur Überlappung.)",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "zeitpunkt_vor_vorgaenger",
+          "grund": null,
+          "bestehend": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null
+        }
+      },
+      {
+        "name": "ms-06-anderer-zaehler-anfangsstand-ueber-endstand",
+        "herkunft": "AP-04 §5.12 „Warnung, kein Verbot bei verschiedenen Geräten“",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Die Gegenprobe zum Hinweis: der Anfangsstand 1 083 500 kWh von Z-5b liegt über dem Endstand 1 083 415,2 kWh von Z-5a — aber es sind VERSCHIEDENE Geräte mit verschiedenen Zählwerken. Kein Hinweis. (Das Referenzunternehmen nennt für Z-5b 0,0 kWh; der Fall ist ein Vertipper im Dialog, der Zeitstrahl ist trotzdem der des Referenzunternehmens.)",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": {"wert": 1083415.2, "einheit": "kWh"},
+            "anfangsstand": {"wert": 1083500, "einheit": "kWh"}
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand": {"wert": 1083415.2, "einheit": "kWh"}
+          },
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-08-umzug-quellenwechsel",
+        "herkunft": "Referenzunternehmen MS-08 (01.03.2027) · AP-04 §5.4 · E11",
+        "referenz": "MS-08",
+        "ergebnis_wie_referenz": true,
+        "why": "Der Kaltwassersatz zieht nach Halle 2: die Quelle wechselt von K-7 (Gerät GR-6) auf die Energiekarte K-8.7 am Controller C-1 — andere Komponente, anderes Gerät, dieselbe Messstelle. Auch das ist ein Wechsel: K-7 endet genau zum Beginn von K-8.7. Dass ab dann eine andere Box liest, ist KEINE neue Bindung (E11). (§5.4 nennt 06:00; das Referenzunternehmen wechselt um 00:00 — der Fall folgt der Datei.)",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2027-03-01T09:00:00+01:00",
+          "messstelle": {"kennzeichen": "MS-08", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-7", "kanal": "Wirkenergie Bezug", "geraet": "GR-6", "einbau": "GR-6", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-8.7",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2027-03-01T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {"komponente": "K-7", "kanal": "Wirkenergie Bezug", "geraet": "GR-6", "einbau": "GR-6", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2027-03-01T00:00:00+01:00", "endstand": null},
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2027-03-01T00:00:00+01:00",
+              "quelle": {"komponente": "K-7", "kanal": "Wirkenergie Bezug", "geraet": "GR-6", "einbau": "GR-6"}
+            },
+            {
+              "von": "2027-03-01T00:00:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-8.7", "kanal": "Wirkenergie Bezug", "geraet": "GR-7", "einbau": "C-1"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-01-vergleich-derselbe-messwert-doppelt",
+        "herkunft": "AP-04 §4.3 „Überlappung derselben Rolle verboten“ · E3",
+        "referenz": "MS-01",
+        "annahme": "K-1 · Einspeise-/Bezugsleistung am Wechselrichter ist seit der Momentaufnahme Vergleichsquelle der Wirkleistung von MS-01 (Fall ms-01-vergleichsquelle-mit-zweck; dieselbe Annahme wie messwert-herkunft-vectors.json).",
+        "why": "Vergleichsquellen gibt es beliebig viele — aber nicht DENSELBEN Messwert zweimal zur selben Zeit. Soll K-1 künftig „Ersatz bei Ausfall“ statt „Plausibilität“ sein, wird die alte Kennzeichnung beendet und eine neue begonnen; ein zweiter, überlappender Eintrag ist 409 und nennt den bestehenden.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-21T08:00:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {"rolle": "fuehrend", "groesse": "Wirkleistung", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "gauge", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null},
+            {
+              "rolle": "vergleich",
+              "groesse": "Wirkleistung",
+              "richtung": "Bezug",
+              "komponente": "K-1",
+              "kanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+              "geraet": "GR-1",
+              "einbau": "GR-1",
+              "kanal_wertart": "gauge",
+              "zweck": "Plausibilität",
+              "gueltig_ab": "2026-10-20T10:15:00+02:00",
+              "gueltig_bis": null
+            }
+          ],
+          "neu": {
+            "rolle": "vergleich",
+            "zweck": "Ersatz bei Ausfall",
+            "komponente": "K-1",
+            "kanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2026-10-21T08:00:00+02:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "bindung_ueberlappt",
+          "grund": null,
+          "bestehend": {"komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "gueltig_ab": "2026-10-20T10:15:00+02:00", "gueltig_bis": null},
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null
+        }
+      },
+      {
+        "name": "ms-06-endstand-ohne-einheit",
+        "herkunft": "AP-04 §5.12 „Einheit fehlt“ · E2",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Der Endstand 1 083 415,2 ist abgelesen, aber ohne Einheit eingetragen: gespeichert wird trotzdem (Ablesestände sind ein Geschenk, keine Bedingung, E2), doch der Kunde bekommt den Hinweis, die Werte zu prüfen. Eine Einheit wird nie geraten.",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": {"wert": 1083415.2, "einheit": null},
+            "anfangsstand": {"wert": 0.0, "einheit": "kWh"}
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand": {"wert": 1083415.2, "einheit": null}
+          },
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": ["ablesestand_pruefen"],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-06-anfangsstand-ohne-einheit",
+        "herkunft": "AP-04 §5.12 „Einheit fehlt“ · E2",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Dasselbe für den Anfangsstand von Z-5b: 0,0 ohne Einheit ist ein Hinweis, kein Fehler.",
+        "input": {
+          "vorgang": "wechsel",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-06", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T10:40:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": {"wert": 1083415.2, "einheit": "kWh"},
+            "anfangsstand": {"wert": 0.0, "einheit": null}
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": {
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand": {"wert": 1083415.2, "einheit": "kWh"}
+          },
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": ["ablesestand_pruefen"],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-07-energie-in-kw-passt-nicht",
+        "herkunft": "AP-04 Regel 7 „umrechenbare Einheit“",
+        "referenz": "MS-07",
+        "why": "Ein Messwert, der sich „Wirkenergie Bezug“ nennt, aber in kW geliefert wird (etwa eine falsch angelegte Selbstbau-Vorlage), lässt sich nicht in kWh umrechnen — Grund „einheit“. Wh oder MWh gingen (umrechenbar), kW nie.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kW",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T11:05:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "einheit", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-07-zeitraum-null-minuten",
+        "herkunft": "Formregel dieses Vertrags (Kante)",
+        "referenz": "MS-07",
+        "why": "Die Kante: Ende GLEICH Beginn ist ein Zeitraum von null Minuten — ebenso leer wie ein verkehrter. [ab, bis) enthält dann keinen einzigen Augenblick.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2026-11-18T11:00:00+01:00",
+            "gueltig_bis": "2026-11-18T11:00:00+01:00",
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      },
+      {
+        "name": "ms-07-vor-beginn-der-messstelle",
+        "herkunft": "AP-04 Regel 5 · §5.12 „vor Beginn der Messstelle“",
+        "referenz": "MS-07",
+        "why": "Nie vor dem Beginn der Messstelle (Regel 5): eine Quelle für Januar 2024 hätte nichts, dem sie zugeordnet wäre — MS-07 gibt es seit dem 12.03.2024. 422 „zeitpunkt_vor_vorgaenger“ ohne Vorgänger-Quelle, weil es der Beginn der Messstelle selbst ist, der verletzt wird.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {"kennzeichen": "MS-07", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2024-01-02T00:00:00+01:00",
+            "gueltig_bis": "2024-03-12T00:00:00+01:00",
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "zeitpunkt_vor_vorgaenger", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+      }
+    ],
+    "zeitstrahl": [
+      {
+        "name": "ms-06-zaehlerwechsel-ohne-fuge",
+        "herkunft": "Referenzunternehmen MS-06 · AP-04 §5.13",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Der Zeitstrahl des Referenzunternehmens: Z-5a bis 10:40, Z-5b ab 10:40 — zwei Abschnitte, keine Fuge. Die sieben Minuten ohne Wert gehören der Beobachtung, nicht dem Zeitstrahl der Quellen.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00",
+          "fuehrende_quelle": [
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00"},
+            {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
+          ]
+        },
+        "expected": {
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
+            }
+          ]
+        }
+      },
+      {
+        "name": "ms-21-ohne-quelle-ein-offener-abschnitt",
+        "herkunft": "AP-04 E8 · A10",
+        "referenz": "MS-21",
+        "why": "Ohne jede Quelle ist der Zeitstrahl EIN offener Abschnitt ohne Quelle, ab Beginn der Messstelle — „keine Datenquelle seit 01.10.2026“, nie ein leerer Strahl und nie eine 0.",
+        "input": {"beginn": "2026-10-01T00:00:00+02:00", "fuehrende_quelle": []},
+        "expected": {
+          "zeitstrahl": [
+            {"von": "2026-10-01T00:00:00+02:00", "bis": null, "quelle": null}
+          ]
+        }
+      },
+      {
+        "name": "ms-07-quelle-beendet-luecke-seit",
+        "herkunft": "AP-04 Regel 2 · §4.5 Übergang „Bindung“",
+        "referenz": "MS-07",
+        "fortschreibung": true,
+        "why": "Der Stand zwischen den beiden Schritten des Lücken-Falls: der Kunde hat die Quelle um 07:00 ausdrücklich beendet, eine neue gibt es noch nicht. Der Zeitstrahl endet nicht still — er zeigt „keine Quelle seit 07:00“ als offenen Abschnitt.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00",
+          "fuehrende_quelle": [
+            {"komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2027-05-03T07:00:00+02:00"}
+          ]
+        },
+        "expected": {
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2027-05-03T07:00:00+02:00",
+              "quelle": {"komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5"}
+            },
+            {"von": "2027-05-03T07:00:00+02:00", "bis": null, "quelle": null}
+          ]
+        }
+      }
+    ],
+    "stellung": [
+      {
+        "name": "ms-02-abgabe-neben-bezug-desselben-zaehlers",
+        "herkunft": "AP-04 E1 · Regel 8 · Referenzunternehmen AN-1",
+        "stichtag": "2026-10-20",
+        "why": "Bezug und Abgabe desselben Netzzählers K-3 sind zwei Messstellen (E1) — und BEIDE sind Hauptzähler von AN-1. „Genau ein Hauptzähler je Anlage“ heißt deshalb: je Richtung einer, und alle auf demselben Zähler (dieselbe Komponente). MS-02 neben MS-01 ist erlaubt.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-02", "art": "gemessen", "medium": "Strom", "richtung": "Abgabe", "komponente": "K-3"},
+          "stellung": {"anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": null, "grund": null, "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-03-zweiter-hauptzaehler-abgelehnt",
+        "herkunft": "AP-04 A11 · §5.12 · Regel 8",
+        "stichtag": "2026-10-20",
+        "why": "MS-03 (PV-Erzeugung, Wechselrichter K-1) soll Hauptzähler von AN-1 werden. Die Richtung ist zwar eine andere, aber der Zähler auch: zwei verschiedene Zähler können nicht beide die Anlage abschließen. 409 „hauptzaehler_vorhanden“ mit der bestehenden Messstelle MS-01 — der Weg ist „Unterzähler von MS-01“ oder MS-01 ändern.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-03", "art": "gemessen", "medium": "Strom", "richtung": "Erzeugung", "komponente": "K-1"},
+          "stellung": {"anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {
+          "fehler": "hauptzaehler_vorhanden",
+          "grund": null,
+          "bestehend": {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1"},
+          "kette": []
+        }
+      },
+      {
+        "name": "ms-05-zweiter-hauptzaehler-gleiche-richtung",
+        "herkunft": "AP-04 Regel 8 · AP-00 Inv. 1",
+        "stichtag": "2026-10-20",
+        "why": "Ein zweiter Bezugs-Hauptzähler in derselben Anlage ist immer abgelehnt — gleiche Richtung, das ist der eigentliche Fall der Regel.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-05", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-4"},
+          "stellung": {"anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {
+          "fehler": "hauptzaehler_vorhanden",
+          "grund": null,
+          "bestehend": {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1"},
+          "kette": []
+        }
+      },
+      {
+        "name": "ms-08-umzug-unterzaehler-auf-fremde-anlage",
+        "herkunft": "AP-04 E12 · Regel 8 · Referenzunternehmen MS-08 (01.03.2027)",
+        "stichtag": "2027-03-01",
+        "why": "Der Kaltwassersatz zieht am 01.03.2027 in Halle 2 (AN-2). Bliebe die Stellung „Unterzähler von MS-01“, zeigte sie in eine fremde Anlage — abgelehnt (E12). Die Antwort nennt MS-01 und seine Anlage AN-1.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-08", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-8.7"},
+          "stellung": {"anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-01"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10", "richtung": "Bezug", "komponente": "K-8.7"},
+            {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-8.1"},
+            {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10", "richtung": "Bezug", "komponente": "K-8.2"}
+          ]
+        },
+        "expected": {
+          "fehler": "stellung_ungueltig",
+          "grund": "fremde_anlage",
+          "bestehend": {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1"},
+          "kette": []
+        }
+      },
+      {
+        "name": "ms-08-umzug-unterzaehler-von-ms-10",
+        "herkunft": "AP-04 E12 · Referenzunternehmen MS-08 (01.03.2027)",
+        "stichtag": "2027-03-01",
+        "why": "So steht es im Referenzunternehmen: nach dem Umzug ist MS-08 „Unterzähler von MS-10“ — dieselbe Anlage, erlaubt. Die Stellung zeigt auf eine MESSSTELLE, deshalb überlebt sie jeden Zählerwechsel.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-08", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-8.7"},
+          "stellung": {"anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10", "richtung": "Bezug", "komponente": "K-8.7"},
+            {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-8.1"},
+            {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10", "richtung": "Bezug", "komponente": "K-8.2"}
+          ]
+        },
+        "expected": {"fehler": null, "grund": null, "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-06-unterzaehler-von-ms-11-fremde-anlage",
+        "herkunft": "AP-04 §5.12 „Unterzähler von … zeigt auf fremde Anlage“",
+        "stichtag": "2026-10-20",
+        "why": "Der Wortlaut-Fall der Fehlertabelle: „MS-11 gehört zu Halle 2. Ein Unterzähler kann nur auf eine Messstelle derselben Anlage zeigen.“ MS-06 (AN-1) kann nicht Unterzähler von MS-11 (AN-2) sein.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-06", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-5"},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-11"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null},
+            {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-8.1"},
+            {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "stellung": "Unterzähler", "unterzaehler_von": "MS-10", "richtung": "Bezug", "komponente": "K-8.2"}
+          ]
+        },
+        "expected": {
+          "fehler": "stellung_ungueltig",
+          "grund": "fremde_anlage",
+          "bestehend": {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2"},
+          "kette": []
+        }
+      },
+      {
+        "name": "ms-06-unterzaehler-von-sich-selbst",
+        "herkunft": "AP-04 Regel 8 · §5.12",
+        "stichtag": "2026-10-20",
+        "why": "„Eine Messstelle kann nicht ihr eigener Unterzähler sein.“",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-06", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-5"},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-06"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": "stellung_ungueltig", "grund": "selbst", "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-01-unterzaehler-zyklus",
+        "herkunft": "AP-04 E12 · Regel 8",
+        "stichtag": "2026-10-20",
+        "why": "MS-06 ist Unterzähler von MS-01. Würde MS-01 nun „Unterzähler von MS-06“, schlösse sich der Kreis MS-01 → MS-06 → MS-01 — ein Baum ohne Wurzel, den keine Bilanz rechnen kann. Abgelehnt; die Antwort trägt den Kreis.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-01", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-3"},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-06"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {
+          "fehler": "stellung_ungueltig",
+          "grund": "zyklus",
+          "bestehend": null,
+          "kette": ["MS-01", "MS-06", "MS-01"]
+        }
+      },
+      {
+        "name": "ms-09-berechnet-ohne-elektrische-stellung",
+        "herkunft": "AP-04 §4.2 „Die drei Sichten“ · E9",
+        "stichtag": "2026-10-20",
+        "why": "Berechnete Messstellen stehen nicht im elektrischen Baum — sie werden aus anderen gerechnet (AP-10). MS-09 kann nicht „Unterzähler von MS-01“ werden; erlaubt ist nur die Stellung „keine“.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-09", "art": "berechnet", "medium": "Strom", "richtung": "Bezug", "komponente": null},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": "stellung_ungueltig", "grund": "nicht_elektrisch", "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-09-berechnet-stellung-keine",
+        "herkunft": "Referenzunternehmen MS-09",
+        "stichtag": "2026-10-20",
+        "why": "So steht MS-09 im Referenzunternehmen: Anlage AN-1, Stellung „keine“ — erlaubt.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-09", "art": "berechnet", "medium": "Strom", "richtung": "Bezug", "komponente": null},
+          "stellung": {"anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": null, "grund": null, "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-21-gas-ohne-elektrische-stellung",
+        "herkunft": "AP-04 §4.2 · Referenzunternehmen MS-21",
+        "stichtag": "2026-10-20",
+        "why": "Gas hat kein elektrisches System: MS-21 kann nicht „Unterzähler von MS-05“ werden (AP-00 §4.5 Regel 6).",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-21", "art": "gemessen", "medium": "Gas", "richtung": "Bezug", "komponente": null},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-05"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": "stellung_ungueltig", "grund": "nicht_elektrisch", "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-06-unterzaehler-ohne-bezug",
+        "herkunft": "AP-04 §4.1 „Elektrische Stellung“",
+        "stichtag": "2026-10-20",
+        "why": "„Unterzähler“ ohne übergeordnete Messstelle ist unvollständig — abgelehnt, nie geraten (etwa „der Hauptzähler wird’s schon sein“).",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-06", "art": "gemessen", "medium": "Strom", "richtung": "Bezug", "komponente": "K-5"},
+          "stellung": {"anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": null},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": "stellung_ungueltig", "grund": "bezug_fehlt", "bestehend": null, "kette": []}
+      },
+      {
+        "name": "ms-03-erzeuger-mit-bezug",
+        "herkunft": "AP-04 §4.1 „Elektrische Stellung“",
+        "stichtag": "2026-10-20",
+        "why": "Eine übergeordnete Messstelle gibt es nur bei „Unterzähler“. „Erzeuger mit Bezug auf MS-01“ ist widersprüchlich — abgelehnt statt still verworfen.",
+        "input": {
+          "messstelle": {"kennzeichen": "MS-03", "art": "gemessen", "medium": "Strom", "richtung": "Erzeugung", "komponente": "K-1"},
+          "stellung": {"anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": "MS-01"},
+          "messstellen": [
+            {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Bezug", "komponente": "K-3"},
+            {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "richtung": "Abgabe", "komponente": "K-3"},
+            {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "richtung": "Erzeugung", "komponente": "K-1"},
+            {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-4"},
+            {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "stellung": "Unterzähler", "unterzaehler_von": "MS-01", "richtung": "Bezug", "komponente": "K-5"},
+            {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "richtung": "Bezug", "komponente": null}
+          ]
+        },
+        "expected": {"fehler": "stellung_ungueltig", "grund": "bezug_nur_bei_unterzaehler", "bestehend": null, "kette": []}
+      }
+    ]
+  }
+}
