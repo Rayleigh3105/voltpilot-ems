@@ -3,6 +3,8 @@ package com.voltpilot.writer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -21,7 +23,9 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -71,6 +75,15 @@ class WriterPipeTest {
             .withUsername("voltpilot")
             .withPassword("voltpilot_dev_pw")
             .withInitScript("writer-schema.sql");
+
+    @Autowired
+    MeterRegistry meters;
+
+    /** The REAL messreihe_ereignis migration, before the context (and its listeners) start. */
+    @BeforeAll
+    static void ereignisTabelle() throws Exception {
+        EreignisTabelleImTest.anlegen(POSTGRES, TENANT_A, TENANT_B);
+    }
 
     @DynamicPropertySource
     static void wire(DynamicPropertyRegistry registry) {
@@ -523,6 +536,36 @@ class WriterPipeTest {
                     "state_change", "text_change", "bitfield_change");
             assertThat(events.get("bitfield_change")).contains("set_bits", "cleared_bits");
         }
+
+        // UEMS AP-07 IP-8: each Bestand event ALSO lands in messreihe_ereignis - once, in the
+        // same transaction, as the contract's event (box + point; no component; the gap is the
+        // box's displacement without a time span). The Bestand rows above stay as they were.
+        Thread.sleep(1500); // the duplicate deliveries had their chance to double something
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='"
+                + device + "'")).as("Bestand rows").isEqualTo(6);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device
+                + "'")).as("mirrored 1:1, a redelivery doubles nothing").isEqualTo(6);
+        String gemeinsam = " AND aus_bestand AND device_id='" + device + "' AND kennungen = "
+                + "jsonb_build_object('box','" + device + "') AND site_id='" + SITE
+                + "' AND entity_id IS NULL AND data_source_id IS NULL AND von IS NULL AND bis IS NULL"
+                + " AND eingang='2026-08-25T12:00:01Z'";
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='data_gap' "
+                + "AND urheber='box' AND messkanal IS NULL AND zeit='2026-08-25T12:00:00Z' AND "
+                + "nutzlast='{\"erkannt_aus\":\"verdraengung\",\"erwartet_fehlend\":2}'::jsonb"
+                + gemeinsam)).as("data_gap").isOne();
+        for (String[] e : new String[][] {
+                {"error_change", "deye.hybrid_1p.battery.battery-temperature",
+                        "{\"alt\":\"good\",\"neu\":\"device_error\"}"},
+                {"counter_reset", "test.energy", "{\"stand_alt\":100,\"stand_neu\":5}"},
+                {"state_change", "test.state", "{\"alt\":1,\"neu\":2}"},
+                {"text_change", "test.text", "{\"alt\":\"A\",\"neu\":\"B\"}"},
+                {"bitfield_change", "test.flags", "{\"alt\":3,\"neu\":5}"}}) {
+            assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='" + e[0]
+                    + "' AND urheber='writer' AND messkanal='" + e[1] + "' AND nutzlast='" + e[2]
+                    + "'::jsonb AND zeit='2026-08-25T12:01:00Z'" + gemeinsam)).as(e[0]).isOne();
+        }
+        assertThat(ereignisseVisible(TENANT_A, device)).isEqualTo(6L);
+        assertThat(ereignisseVisible(TENANT_B, device)).isZero();
     }
 
     @Test
@@ -581,12 +624,81 @@ class WriterPipeTest {
             rs.next();
             assertThat(rs.getLong(1)).as("error transition and good recovery").isEqualTo(2);
         }
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device
+                + "' AND art='error_change' AND aus_bestand AND messkanal='" + concrete + "' AND ("
+                + "nutzlast='{\"alt\":\"good\",\"neu\":\"device_error\"}'::jsonb OR "
+                + "nutzlast='{\"alt\":\"device_error\",\"neu\":\"good\"}'::jsonb)"))
+                .as("both transitions mirrored").isEqualTo(2);
         try (Connection c = admin(); Statement st = c.createStatement();
                 ResultSet rs = st.executeQuery("SELECT apply_status FROM device_measurement_selection "
                         + "WHERE device_id='" + device + "' AND point_key='" + template + "'")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString(1)).isEqualTo("first_sample");
         }
+    }
+
+    /**
+     * UEMS AP-07 IP-8: the mirror can never break the Bestand path - it runs in its own savepoint.
+     * Forced here with a tenant that has no row in {@code tenant}: the mirror's FK refuses (in
+     * prod every device's tenant exists; this stands in for any mirror failure - a CHECK, a
+     * vocabulary drift). The samples, the Bestand events and the offset still commit, nothing is
+     * thrown out of the consumer, and the counter names the refusing constraint.
+     */
+    @Test
+    void aFailingMirrorIsRolledBackAloneAndTheBestandWriteCommits() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String tenant = "20000000-0000-0000-0000-000000000001"; // deliberately NOT in `tenant`
+        String device = "30000000-0000-0000-0000-0000000000e7";
+        String point = "test.mirror.state";
+        double vorher = spiegel("fehler", "messreihe_ereignis_tenant_fk");
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + device + "','" + tenant
+                    + "','" + SITE + "')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES "
+                    + "('2026.08.25.1','" + point + "','state',900)");
+            st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,"
+                    + "point_key,enabled,cadence_s,desired_revision,enabled_at,catalog_version,"
+                    + "changed_by,apply_status,applied_at,retention_class,raw_retention_days,"
+                    + "long_term_cadence_s,long_term_strategy) VALUES ('" + tenant + "','" + SITE
+                    + "','" + device + "','" + point + "',true,60,1,'2026-08-25T11:00:00Z',"
+                    + "'2026.08.25.1','test','applied','2026-08-25T11:00:01Z','state_event',90,900,"
+                    + "'event_history')");
+        }
+        String topic = "ems/" + tenant + "/" + SITE + "/" + device + "/v2/measurement-samples";
+        String luecke = "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + tenant + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\""
+                + device + "\",\"catalog_version\":\"2026.08.25.1\",\"sequence\":1,"
+                + "\"observed_at\":\"2026-08-25T12:10:00Z\",\"ingested_at\":\"2026-08-25T12:10:01Z\","
+                + "\"source_topic\":\"" + topic + "\",\"gap\":true,\"dropped_samples\":3,"
+                + "\"samples\":[{\"point_key\":\"" + point + "\",\"raw\":1,\"decoded\":1,"
+                + "\"quality\":\"good\"}]}";
+        String wechsel = luecke.replaceFirst("\\\"event_id\\\":\\\"[^\\\"]+",
+                        "\\\"event_id\\\":\\\"" + UUID.randomUUID())
+                .replace("\"sequence\":1", "\"sequence\":2")
+                .replace("2026-08-25T12:10:00Z", "2026-08-25T12:11:00Z")
+                .replace("\"gap\":true,\"dropped_samples\":3", "\"gap\":false,\"dropped_samples\":0")
+                .replace("\"raw\":1,\"decoded\":1", "\"raw\":2,\"decoded\":2");
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = tenant + ":" + SITE + ":" + device;
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, luecke)).get();
+            producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, wechsel)).get();
+            producer.flush();
+        }
+
+        awaitMeasurementRows(device, 2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
+                + "' AND event_kind IN ('data_gap','state_change')"))
+                .as("the Bestand events committed").isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device + "'"))
+                .as("the refused mirrors rolled back alone").isZero();
+        assertThat(spiegel("fehler", "messreihe_ereignis_tenant_fk") - vorher)
+                .as("each refused mirror counted with its constraint").isEqualTo(2.0);
+    }
+
+    private double spiegel(String ergebnis, String grund) {
+        Counter c = meters.find(MessreiheEreignisRepository.SPIEGEL_METRIK).tag("ergebnis", ergebnis)
+                .tag("grund", grund).counter();
+        return c == null ? 0 : c.count();
     }
 
     private static String measurementEvent(String device, String point, long sequence,
@@ -637,6 +749,29 @@ class WriterPipeTest {
                         "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
             rs.next();
             return rs.getLong(1);
+        }
+    }
+
+    private long zaehle(String sql) throws Exception {
+        try (Connection c = admin(); Statement st = c.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    /** messreihe_ereignis rows of the device as the app role sees them under the tenant. */
+    private long ereignisseVisible(String tenant, String device) throws Exception {
+        Properties p = new Properties();
+        p.put("user", "voltpilot_app");
+        p.put("password", APP_PW);
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), p);
+                Statement st = c.createStatement()) {
+            st.execute("SELECT set_config('app.tenant_id','" + tenant + "',false)");
+            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM messreihe_ereignis "
+                    + "WHERE device_id='" + device + "'")) {
+                rs.next();
+                return rs.getLong(1);
+            }
         }
     }
 

@@ -49,6 +49,10 @@ voltpilot:
     # v2 entity telemetry (dual-consume next to v1; docs/contracts/v2).
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
     measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
+    # Ereignisse (UEMS AP-07 IP-8, docs/contracts/v2/events-raw.event.schema.json):
+    # EventsRawConsumer prueft jedes gegen den Vertrag und haengt es an
+    # messreihe_ereignis. Die Datenannahme (IP-5) und die Cloud-Dienste beschicken es.
+    events-topic: ${REDPANDA_EVENTS_TOPIC:events.raw}
   # Kafka-consumer-lag observability (com.voltpilot.writer.KafkaLagMetricsCollector,
   # scout vp-scale-readiness-p4 §5.1/§6.3): the backlog of the telemetry consumer
   # group per topic, so a store-and-forward replay burst is visible BEFORE the

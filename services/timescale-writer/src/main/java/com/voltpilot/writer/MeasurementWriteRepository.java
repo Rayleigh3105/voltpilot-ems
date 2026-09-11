@@ -1,6 +1,8 @@
 package com.voltpilot.writer;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
@@ -11,15 +13,25 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-/** RLS-scoped, idempotent persistence for validated measurements.raw events. */
+/**
+ * RLS-scoped, idempotent persistence for validated measurements.raw events.
+ *
+ * <p>Every event this path newly writes to {@code device_measurement_event} it also writes to
+ * {@code messreihe_ereignis} in the same transaction, inside its own savepoint ({@link
+ * MessreiheEreignisRepository#spiegeln}, UEMS AP-07 IP-8) - the Bestand table stays exactly as
+ * it was, its readers see nothing new, and a failing mirror is rolled back alone (logged,
+ * counted) instead of taking this write with it.
+ */
 @Repository
 public class MeasurementWriteRepository {
     private final JdbcTemplate jdbc;
+    private final MessreiheEreignisRepository ereignisse;
 
     record Meta(String selectionKey, boolean enabled, Instant enabledAt, Instant disabledAt,
             String applyStatus, Instant appliedAt, String aggregationKind, Integer cadence) {}
 
-    record Previous(BigDecimal numeric, String text, String quality) {}
+    /** numeric/text as COALESCE(decoded, raw) per type (the Bestand columns); value like Value.prefer. */
+    record Previous(BigDecimal numeric, String text, String quality, Value value) {}
 
     record Value(BigDecimal numeric, String text) {
         static Value prefer(Value decoded, Value raw) {
@@ -27,8 +39,9 @@ public class MeasurementWriteRepository {
         }
     }
 
-    public MeasurementWriteRepository(JdbcTemplate jdbc) {
+    public MeasurementWriteRepository(JdbcTemplate jdbc, MessreiheEreignisRepository ereignisse) {
         this.jdbc = jdbc;
+        this.ereignisse = ereignisse;
     }
 
     @Transactional
@@ -144,12 +157,18 @@ public class MeasurementWriteRepository {
 
     private void appendTransitions(MeasurementRawEvent event, String pointKey, Instant at,
             Value raw, Value decoded, String quality, Meta meta) {
-        List<Previous> rows = jdbc.query("SELECT COALESCE(decoded_numeric,raw_numeric),"
-                        + "COALESCE(decoded_text,raw_text),quality FROM device_measurement_sample "
+        List<Previous> rows = jdbc.query("SELECT decoded_numeric,decoded_text,raw_numeric,raw_text,"
+                        + "quality FROM device_measurement_sample "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
-                (rs, n) -> new Previous(rs.getBigDecimal(1), rs.getString(2), rs.getString(3)),
+                (rs, n) -> {
+                    Value dec = new Value(rs.getBigDecimal(1), rs.getString(2));
+                    Value was = new Value(rs.getBigDecimal(3), rs.getString(4));
+                    return new Previous(dec.numeric() != null ? dec.numeric() : was.numeric(),
+                            dec.text() != null ? dec.text() : was.text(), rs.getString(5),
+                            Value.prefer(dec, was));
+                },
                 event.tenant_id(), event.site_id(), event.device_id(), pointKey,
                 Timestamp.from(at), Timestamp.from(at), event.sequence());
         Previous previous = rows.isEmpty() ? null : rows.get(0);
@@ -174,31 +193,57 @@ public class MeasurementWriteRepository {
         }
         if (!Objects.equals(previous.quality(), quality)) {
             insertEvent(event, pointKey, at, "error_change", previous.numeric(),
-                    current.numeric(), previous.quality(), quality, "{}");
+                    current.numeric(), previous.quality(), quality, "{}",
+                    nutzlast().put("alt", previous.quality()).put("neu", quality));
         }
         if (eventKind != null) {
             String details = "bitfield_change".equals(eventKind)
                     ? bitfieldDetails(previous.numeric(), current.numeric()) : "{}";
+            ObjectNode nutzlast = "counter_reset".equals(eventKind)
+                    ? nutzlast().put("stand_alt", previous.numeric()).put("stand_neu", current.numeric())
+                    : wert(wert(nutzlast(), "alt", previous.value()), "neu", current);
             insertEvent(event, pointKey, at, eventKind, previous.numeric(), current.numeric(),
-                    previous.text(), current.text(), details);
+                    previous.text(), current.text(), details, nutzlast);
         }
     }
 
     private void insertGap(MeasurementRawEvent event) {
+        // The box displaced values (Verdraengung): it is the box's gap, counted when it counted.
+        ObjectNode nutzlast = nutzlast().put("erkannt_aus", "verdraengung");
+        if (event.dropped_samples() > 0) {
+            nutzlast.put("erwartet_fehlend", event.dropped_samples());
+        }
         insertEvent(event, "_pipeline", event.observed_at(), "data_gap", null, null, null, null,
-                "{\"dropped_samples\":" + event.dropped_samples() + "}");
+                "{\"dropped_samples\":" + event.dropped_samples() + "}", nutzlast);
     }
 
+    /**
+     * Writes the Bestand row and - only when it was new - its mirror in messreihe_ereignis
+     * (same transaction, own savepoint; the mirror never throws). A redelivery hits the Bestand
+     * ON CONFLICT and mirrors nothing.
+     */
     private void insertEvent(MeasurementRawEvent event, String pointKey, Instant at, String kind,
             BigDecimal previousNumeric, BigDecimal valueNumeric, String previousText, String valueText,
-            String details) {
-        jdbc.update("INSERT INTO device_measurement_event(occurred_at,tenant_id,site_id,device_id,"
+            String details, ObjectNode nutzlast) {
+        int inserted = jdbc.update("INSERT INTO device_measurement_event(occurred_at,tenant_id,site_id,device_id,"
                         + "point_key,event_kind,previous_numeric,value_numeric,previous_text,value_text,"
                         + "catalog_version,edge_sequence,details) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb) "
                         + "ON CONFLICT DO NOTHING",
                 Timestamp.from(at), event.tenant_id(), event.site_id(), event.device_id(), pointKey,
                 kind, previousNumeric, valueNumeric, previousText, valueText, event.catalog_version(),
                 event.sequence(), details);
+        if (inserted > 0) {
+            ereignisse.spiegeln(event, pointKey, at, kind, nutzlast);
+        }
+    }
+
+    private static ObjectNode nutzlast() {
+        return JsonNodeFactory.instance.objectNode();
+    }
+
+    /** The contract's alt/neu of a transition: the number, else the text (never both). */
+    private static ObjectNode wert(ObjectNode node, String feld, Value v) {
+        return v.numeric() != null ? node.put(feld, v.numeric()) : node.put(feld, v.text());
     }
 
     private void markFirstSample(MeasurementRawEvent event, String pointKey, Instant at) {

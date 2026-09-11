@@ -17,11 +17,13 @@ Neu angelegt am 11.09.2026 (AP-07 IP-3, Entscheid E11 = A — der Vertrag, an de
   KUNDENSATZ). **Ingest:** `services/ingest/.../EventsContractSchemaTest` +
   `ContractSchemaRunner` (Test-Zwilling des `UemsSchemaLaeufer`, plus `maxItems`).
 
-## ⚠ Noch ruft niemand an
+## ⚠ Wer schon anruft (Stand IP-8)
 
 Keine Box sendet Ereignisse (Edge-Release), die Datenannahme verarbeitet `…/v2/events` nicht
-(IP-5), es gibt keine Ereignis-Tabelle (IP-8). Der Writer schreibt weiter
-`device_measurement_event`; die MQTT-Verträge 2.0 sind unverändert.
+(IP-5). Die Ereignis-Tabelle `messreihe_ereignis` steht (IP-8, `uems-messreihe-ereignis-tabelle.md`):
+der Writer schreibt `device_measurement_event` unverändert weiter und spiegelt jedes Ereignis
+davon hinein, sein `EventsRawConsumer` hängt `events.raw` an (geprüft mit dem Writer-Zwilling der
+Klasse); die MQTT-Verträge 2.0 sind unverändert.
 
 ## Die Fakten, die man ohne Nachlesen braucht
 

@@ -1,16 +1,16 @@
-package com.voltpilot.api.uems;
+package com.voltpilot.writer;
 
-import static com.voltpilot.api.uems.EreignisVokabular.Achse.EINGANGSZEIT;
-import static com.voltpilot.api.uems.EreignisVokabular.Achse.MESSZEIT;
-import static com.voltpilot.api.uems.EreignisVokabular.Grenzen.GESCHLOSSEN;
-import static com.voltpilot.api.uems.EreignisVokabular.Grenzen.HALBOFFEN;
-import static com.voltpilot.api.uems.EreignisVokabular.Urheber.BOX;
-import static com.voltpilot.api.uems.EreignisVokabular.Urheber.CLOUD;
-import static com.voltpilot.api.uems.EreignisVokabular.Urheber.DATENANNAHME;
-import static com.voltpilot.api.uems.EreignisVokabular.Urheber.KUNDE;
-import static com.voltpilot.api.uems.EreignisVokabular.Urheber.WRITER;
-import static com.voltpilot.api.uems.EreignisVokabular.Zeitform.ZEITPUNKT;
-import static com.voltpilot.api.uems.EreignisVokabular.Zeitform.ZEITRAUM;
+import static com.voltpilot.writer.EreignisVokabular.Achse.EINGANGSZEIT;
+import static com.voltpilot.writer.EreignisVokabular.Achse.MESSZEIT;
+import static com.voltpilot.writer.EreignisVokabular.Grenzen.GESCHLOSSEN;
+import static com.voltpilot.writer.EreignisVokabular.Grenzen.HALBOFFEN;
+import static com.voltpilot.writer.EreignisVokabular.Urheber.BOX;
+import static com.voltpilot.writer.EreignisVokabular.Urheber.CLOUD;
+import static com.voltpilot.writer.EreignisVokabular.Urheber.DATENANNAHME;
+import static com.voltpilot.writer.EreignisVokabular.Urheber.KUNDE;
+import static com.voltpilot.writer.EreignisVokabular.Urheber.WRITER;
+import static com.voltpilot.writer.EreignisVokabular.Zeitform.ZEITPUNKT;
+import static com.voltpilot.writer.EreignisVokabular.Zeitform.ZEITRAUM;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,7 +19,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
@@ -42,22 +41,18 @@ import java.util.regex.Pattern;
  * setzen darf. Die Prüfung macht daraus GENAU EIN Urteil: angenommen, oder verworfen mit einem
  * Grund aus demselben geschlossenen Vokabular, das {@code rejected} trägt.
  *
- * <p>Ohne Spring, ohne Repository, ohne Uhr (das {@link ZustandAbleitung}-Muster). Die Schwellen
- * der Zeit-Ereignisse kommen aus {@link MesswertHerkunft} — gerufen, nicht nachgebaut. Die
- * Vektoren {@code docs/contracts/v2/events-vocabulary-vectors.json} pinnen Vokabular und Urteile;
- * der TS-Zwilling {@code frontend/portal/src/uemsEreignis.ts} spricht den Kundensatz aus
- * derselben Datei. <b>Wer eine Art, ein Feld oder eine Regel ändert, ändert diese Klasse, den
- * Zwilling, beide Schemas und die Vektor-Datei — und seit IP-8 auch den Writer-Zwilling
- * ({@code services/timescale-writer/.../EreignisVokabular.java}) und das Vokabular der Tabelle
- * ({@code messreihe_ereignis_vokabular()}, mit einer neuen Migration).</b>
+ * <h2>⚠ Der WRITER-ZWILLING (AP-07 IP-8)</h2>
  *
- * <h2>Wer anruft</h2>
- *
- * Die Ereignis-Tabelle {@code messreihe_ereignis} (IP-8) hängt an, was diese Klasse annimmt:
- * in der api über {@link MessreiheEreignisRepository}, im Writer über seinen Zwilling, der
- * {@code events.raw} liest. Keine Box sendet Ereignisse (erst mit einem Edge-Release), die
- * Datenannahme verarbeitet {@code …/v2/events} noch nicht (IP-5); der Writer schreibt
- * {@code device_measurement_event} unverändert weiter und spiegelt jedes Ereignis davon.
+ * Diese Klasse ist die Kopie von {@code services/api/.../uems/EreignisVokabular.java} — Zeile
+ * für Zeile dieselbe Logik; nur die beiden Quellen, die im Writer fehlen, stehen hier als
+ * Konstanten: die Schwellen des Herkunftsvertrags ({@code MesswertHerkunft}, unten {@code
+ * ZUKUNFT_HOECHSTENS_S} …) und die neun Fehlerklassen ({@code DatenquelleRegeln.Fehlerklasse}).
+ * Der Writer prüft damit JEDES Ereignis von {@code events.raw}, bevor er es an {@code
+ * messreihe_ereignis} hängt ({@link EventsRawConsumer}). {@code EreignisVokabularZwillingTest}
+ * spielt alle Fälle der Vektor-Datei {@code docs/contracts/v2/events-vocabulary-vectors.json}
+ * und prüft Konstanten und Vokabular gegen dieselbe Datei — der Beweis, dass die Zwillinge nicht
+ * auseinanderlaufen. <b>Wer eine Art, ein Feld oder eine Regel ändert, ändert beide Klassen, den
+ * TS-Zwilling, beide Schemas, {@code messreihe_ereignis_vokabular()} und die Vektor-Datei.</b>
  *
  * <h2>Die Reihenfolge der Prüfungen</h2>
  *
@@ -283,17 +278,22 @@ public final class EreignisVokabular {
             List.of("good", "uncertain", "invalid", "stale", "device_error");
 
     /**
-     * Die Fehlerklassen je Datenquelle (AP-06 E5) — gerufen aus
-     * {@link DatenquelleRegeln.Fehlerklasse}, nicht nachgebaut. Sie sind ZUSTAND (Herzschlag je
-     * Quelle, IP-13); ein Ereignis trägt eine nur, wenn ein exportierter Fakt sie belegt.
+     * Die Fehlerklassen je Datenquelle (AP-06 E5) — im api-Zwilling aus {@code
+     * DatenquelleRegeln.Fehlerklasse}; hier als Liste, gegen {@code data-source-vectors.json}
+     * geprüft. Sie sind ZUSTAND (Herzschlag je Quelle, IP-13); ein Ereignis trägt eine nur, wenn
+     * ein exportierter Fakt sie belegt.
      */
-    public static final List<String> FEHLERKLASSEN =
-            Arrays.stream(DatenquelleRegeln.Fehlerklasse.values())
-                    .map(DatenquelleRegeln.Fehlerklasse::code)
-                    .toList();
+    public static final List<String> FEHLERKLASSEN = List.of("unreachable", "no_answer",
+            "invalid_response", "implausible", "fronius_api", "timeout", "layout_changed", "budget",
+            "box_meldet_sich_nicht");
 
-    public static final String BOX_MELDET_SICH_NICHT =
-            DatenquelleRegeln.Fehlerklasse.BOX_MELDET_SICH_NICHT.code();
+    public static final String BOX_MELDET_SICH_NICHT = "box_meldet_sich_nicht";
+
+    /** Die Schwellen des Herkunftsvertrags ({@code MesswertHerkunft} im api-Zwilling). */
+    static final long ZUKUNFT_HOECHSTENS_S = 300L;
+    static final long VERGANGENHEIT_HOECHSTENS_S = 90L * 86_400L;
+    static final long ZEITSPRUNG_AB_S = 300L;
+    static final long UNASSIGNED_READER_HOECHSTENS_JE_S = 3_600L;
 
     /** Die Ereignisarten — geschlossen. */
     public enum Art {
@@ -894,7 +894,7 @@ public final class EreignisVokabular {
             }
             case UNASSIGNED_READER -> {
                 if (Duration.between(zeit(e, "von"), zeit(e, "bis")).getSeconds()
-                                >= MesswertHerkunft.UNASSIGNED_READER_HOECHSTENS_JE_S
+                                >= UNASSIGNED_READER_HOECHSTENS_JE_S
                         || e.path("zustaendige_box").asText("").equals(e.get("box").asText())) {
                     throw nein(Grund.REGEL_VERLETZT, "höchstens eines je Stunde");
                 }
@@ -905,9 +905,9 @@ public final class EreignisVokabular {
                     throw nein(Grund.REGEL_VERLETZT, "Grund passt nicht zum Urheber");
                 }
             }
-            case CLOCK_AHEAD -> schwelle(e.get("vor_s").asLong(), MesswertHerkunft.ZUKUNFT_HOECHSTENS_S);
-            case TOO_OLD -> schwelle(e.get("alter_s").asLong(), MesswertHerkunft.VERGANGENHEIT_HOECHSTENS_S);
-            case CLOCK_JUMP -> schwelle(Math.abs(e.get("sprung_s").asLong()), MesswertHerkunft.ZEITSPRUNG_AB_S);
+            case CLOCK_AHEAD -> schwelle(e.get("vor_s").asLong(), ZUKUNFT_HOECHSTENS_S);
+            case TOO_OLD -> schwelle(e.get("alter_s").asLong(), VERGANGENHEIT_HOECHSTENS_S);
+            case CLOCK_JUMP -> schwelle(Math.abs(e.get("sprung_s").asLong()), ZEITSPRUNG_AB_S);
             case DEVICE_RESTART -> {
                 if (e.has("herzschlag_vorher") && e.has("herzschlag_nachher")
                         && e.get("herzschlag_nachher").asLong() >= e.get("herzschlag_vorher").asLong()) {

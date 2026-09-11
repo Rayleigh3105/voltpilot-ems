@@ -21,17 +21,21 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
 | `frontend/portal/src/uemsEreignis.ts` (+ `.test.ts`) | der KUNDENSATZ je Ereignis — dieselben Sätze wie die Vektor-Datei |
 | `services/ingest/.../EventsContractSchemaTest.java` | Umschläge und Beispiele gegen beide Schemas (der Prüfnachweis „Schema-Tests Ingest“) |
+| `services/timescale-writer/.../EreignisVokabular.java` (+ `EreignisVokabularZwillingTest`) | der WRITER-ZWILLING der Prüfung (IP-8): prüft jedes `events.raw`-Ereignis vor dem Anhängen; spielt alle Fälle dieser Datei |
+| `services/api/.../V20260911260000__uems_messreihe_ereignis.sql` | der Speicher (IP-8): `messreihe_ereignis` mit dem Vokabular als `messreihe_ereignis_vokabular()` — `MessreiheEreignisMigrationTest` beweist die Gleichheit |
 | [`examples/`](./examples/) `mqtt-events-2.1.*`, `events-raw.*` | ≥ 2 gültige + 1 ungültiges Beispiel je Schema |
 
 **Wer eine Art, ein Feld, eine Regel oder einen Satz ändert, ändert die Java-Klasse, den
 TS-Zwilling, beide Schemas UND die Vektor-Datei** — der Java-Test prüft, dass die Schemas aus
-genau diesem Vokabular gebaut sind.
+genau diesem Vokabular gebaut sind. Seit IP-8 dazu den Writer-Zwilling und, mit einer neuen
+Migration, `messreihe_ereignis_vokabular()`.
 
-> ⚠ **Noch ruft niemand an.** Keine Box sendet Ereignisse (erst mit einem Edge-Release,
-> IP-18/IP-19), die Datenannahme verarbeitet `…/v2/events` noch nicht (IP-5), und es gibt noch
-> keine Ereignis-Tabelle (IP-8). Bis dahin schreibt der Writer weiter
-> `device_measurement_event` (sechs Arten, siehe §4 „Bestand“). Die bestehenden MQTT-Verträge
-> 2.0 sind unverändert.
+> ⚠ **Wer schon anruft (Stand IP-8).** Keine Box sendet Ereignisse (erst mit einem
+> Edge-Release, IP-18/IP-19), die Datenannahme verarbeitet `…/v2/events` noch nicht (IP-5). Die
+> Ereignis-Tabelle `messreihe_ereignis` steht (§7 „Der Speicher“): der Writer schreibt
+> `device_measurement_event` (sechs Arten, siehe §4 „Bestand“) unverändert weiter und spiegelt
+> jedes davon hinein; `events.raw` hängt er an, sobald es beschickt wird. Die bestehenden
+> MQTT-Verträge 2.0 sind unverändert.
 
 ## 1. Zwei Wege, ein Vertrag
 
@@ -225,6 +229,15 @@ Kennung des Datensatzes (Nachverfolgung), die Identität des Ereignisses ist
 `ereignis.ereignis_id`. `urheber` sagt den Weg; bei `box` sind `device_id`, `source_topic`,
 `sequence` und `observed_at` des Umschlags Pflicht und `ereignis.box` = `device_id`.
 `ingested_at` ist die Eingangszeit.
+
+**Der Speicher (IP-8).** `messreihe_ereignis` hängt jedes angenommene Ereignis als EINE Zeile je
+Meldung an — eine Fortschreibung ist eine weitere Zeile mit derselben `ereignis_id`, die jüngste
+(`eingang` = `ingested_at`) ist der Stand. Idempotenz-Schlüssel ist der Fingerabdruck der ganzen
+Meldung ohne Eingangszeit: ein erneut zugestellter Datensatz (neue `event_id`, gleiches Ereignis)
+erzeugt keine zweite Zeile. Der Bezug steht wörtlich (`kennungen`) und, wo eindeutig, aufgelöst
+(UUID-Form wörtlich, `DQ-n`/`MS-n` über die Kennzeichen des Kundenbereichs; Komponenten haben dort
+kein Kennzeichen — auf `events.raw` sollte `komponente` die `entity_id` sein, sonst bleibt nur die
+Kennung). Verworfen wird, was diese Prüfung verwirft — gezählt mit dem Grund, nie gespeichert.
 
 ## 8. Die Fälle
 

@@ -137,7 +137,8 @@ public class TenantRepository {
 
     /**
      * Offboard a tenant: remove every series row of the tenant (the hypertables
-     * carry no FKs) and then the tenant row itself, whose FKs cascade
+     * carry no FKs; {@code messreihe_ereignis} holds a RESTRICT one to the
+     * tenant, so it must go first) and then the tenant row itself, whose FKs cascade
      * site/device/asset - all in ONE database transaction, so a failure leaves
      * the tenant fully intact. Keycloak cleanup is separate and best-effort
      * (see the controller): the directory is another system and must not be
@@ -163,6 +164,11 @@ public class TenantRepository {
                         "forecast_model_state", "forecast_accuracy", "plan_accuracy"}) {
                     deleteByTenant(con, table, tenantId);
                 }
+                // The event table (V20260911260000) is never deleted - not by unclaim,
+                // purge or site deletion; it carries no FK to anything deletable. The
+                // offboarding is its ONE deletion path (tenant FK RESTRICT; the admin
+                // role holds DELETE only for this).
+                deleteByTenant(con, "messreihe_ereignis", tenantId);
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

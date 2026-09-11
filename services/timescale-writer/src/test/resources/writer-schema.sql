@@ -222,3 +222,53 @@ ALTER TABLE device_measurement_event FORCE ROW LEVEL SECURITY;
 CREATE POLICY device_measurement_event_isolation ON device_measurement_event
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- ---------------------------------------------------------------------------
+-- messreihe_ereignis (UEMS AP-07 IP-8): the table itself is NOT copied here.
+-- The writer tests run the REAL migration
+-- services/api/src/main/resources/db/migration/V20260911260000__uems_messreihe_ereignis.sql
+-- on top of this schema (EreignisTabelleImTest), so the writer always writes into
+-- exactly what Flyway builds. Below: only what that migration presupposes (the
+-- admin role, the tenant it hangs RESTRICT on, the append-only trigger function of
+-- V20260843000000) and the two code tables the events.raw path resolves DQ-n /
+-- MS-n through (V20260911150000 / V20260911140000, reduced to their key columns).
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'voltpilot_admin') THEN
+        CREATE ROLE voltpilot_admin LOGIN PASSWORD 'voltpilot_admin_test_pw'
+            NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE;
+    END IF;
+END
+$$;
+GRANT USAGE ON SCHEMA public TO voltpilot_admin;
+
+CREATE TABLE tenant (id UUID PRIMARY KEY, name TEXT);
+GRANT SELECT ON tenant TO voltpilot_app, voltpilot_admin;
+
+CREATE OR REPLACE FUNCTION reject_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'audit rows are append-only';
+END $$;
+
+CREATE TABLE data_source (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+    kennzeichen TEXT NOT NULL, UNIQUE (tenant_id, kennzeichen)
+);
+GRANT SELECT ON data_source TO voltpilot_app;
+ALTER TABLE data_source ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_source FORCE ROW LEVEL SECURITY;
+CREATE POLICY data_source_tenant_isolation ON data_source
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE messstelle_kennzeichen (
+    tenant_id UUID NOT NULL, kennzeichen TEXT NOT NULL, messstelle_id UUID NOT NULL,
+    PRIMARY KEY (tenant_id, kennzeichen)
+);
+GRANT SELECT ON messstelle_kennzeichen TO voltpilot_app;
+ALTER TABLE messstelle_kennzeichen ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messstelle_kennzeichen FORCE ROW LEVEL SECURITY;
+CREATE POLICY messstelle_kennzeichen_tenant_isolation ON messstelle_kennzeichen
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

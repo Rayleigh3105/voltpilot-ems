@@ -68,6 +68,7 @@ geraet
 geraet_teil
 geraet_komponente
 geraet_kennzeichen_seq
+messreihe_ereignis
 "
 
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.

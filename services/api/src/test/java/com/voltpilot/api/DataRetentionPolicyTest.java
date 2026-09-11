@@ -36,6 +36,9 @@ import org.testcontainers.utility.DockerImageName;
  *   <li>OCPP protocol/status/auth/meter hypertables carry 90-day retention
  *       jobs, while the daily sensitive-data job purges transactionData and
  *       masked local-auth references from stopped transactions.</li>
+ *   <li>The UEMS event table {@code messreihe_ereignis} (AP-07 IP-8, migration
+ *       {@code V20260911260000}) is NEVER deleted - no job of any kind, no
+ *       compression (RLS, E7); only tenant offboarding clears it.</li>
  * </ul>
  *
  * <p>Runs the real {@code db/migration} chain as the Flyway superuser on the
@@ -96,6 +99,27 @@ class DataRetentionPolicyTest {
         assertThat(compressionEnabled("schedule")).as("schedule NOT compressed").isFalse();
         assertThat(hasJob("policy_compression", "weather_forecast")).isFalse();
         assertThat(hasJob("policy_compression", "schedule")).isFalse();
+    }
+
+    @Test
+    void theEventTableIsNeverDeletedNorCompressed() throws Exception {
+        // AP-07 §4.3: events are kept forever (unclaim, purge and site deletion
+        // leave them; offboarding is the one way out) - so NO background job at
+        // all on the hypertable, and never compression (RLS/FORCE, decision E7).
+        assertThat(hasJob("policy_retention", "messreihe_ereignis"))
+                .as("messreihe_ereignis must have NO retention policy").isFalse();
+        assertThat(hasJob("policy_compression", "messreihe_ereignis"))
+                .as("messreihe_ereignis must have NO compression policy").isFalse();
+        assertThat(compressionEnabled("messreihe_ereignis"))
+                .as("messreihe_ereignis must NOT be compression-enabled").isFalse();
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement("SELECT count(*) FROM "
+                        + "timescaledb_information.jobs WHERE hypertable_name = 'messreihe_ereignis'")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                assertThat(rs.getLong(1)).as("no job of any kind").isZero();
+            }
+        }
     }
 
     @Test
