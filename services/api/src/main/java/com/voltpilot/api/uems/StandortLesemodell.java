@@ -9,6 +9,7 @@ import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtAmStichtag;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtArt;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Ortsbaum;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.StandAm;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -38,7 +39,9 @@ import java.util.function.Predicate;
  * (Vertrag {@code docs/contracts/v2/ortsbaum-vectors.json}). Diese Klasse
  * übersetzt nur Zeilen in dessen Baum und das Ergebnis in die Antwortform.
  * Die Kennzeichen des Baums sind die IDs der Zeilen (als Text) — nie die
- * Kurzzeichen, die zwischen {@code standort} und {@code ort} kollidieren dürften.
+ * Kurzzeichen: die Antwort nennt IDs, und ein Kurzzeichen ist änderbar. (Die
+ * Schreibrouten legen für ihre SÄTZE die Kurzzeichen hinein, {@link StandortService};
+ * zwischen {@code standort} und {@code ort} kollidieren sie seit V20260911210000 nicht mehr.)
  *
  * <h2>Das Bestehen eines Standorts</h2>
  *
@@ -48,8 +51,12 @@ import java.util.function.Predicate;
  * Bestandsübernahme (IP-9) ordnet eine Anlage ab ihrem eigenen Beginn zu —,
  * dann besteht er ab diesem Tag: sonst hinge die Anlage an einem Standort, den
  * es nicht gibt (Regel 1; Vektor-Fall {@code a5-bestand-standort-besteht-seit-der-anlage}).
- * Die Lücke zwischen Archivieren und Wiederherstellen lebt nur im Protokoll;
- * sie liest der Schreibweg, der das Wiederherstellen bringt (IP-4).
+ * Die Lücke zwischen Archivieren und Wiederherstellen lebt nur im Protokoll
+ * (IP-4, §4.2: „die Lücke bleibt sichtbar und wird nie aufgefüllt"): je Paar
+ * {@code archiviert} (gilt ab A) → {@code wiederhergestellt} (gilt ab W) fehlen
+ * die Tage A … W−1 — der Bestand ist dann mehrere Intervalle, genau wie beim
+ * Gebäude, dessen Intervalle in {@code ort_zuordnung} stehen. Ein noch
+ * archivierter Standort endet am Vortag seines {@code archiviert_am}.
  *
  * <h2>Was ein Stichtag NICHT ändert</h2>
  *
@@ -88,7 +95,8 @@ public final class StandortLesemodell {
             List<OrtZuordnungRepository.Zuordnung> ortZuordnungen,
             List<AnlageStandortRepository.Zuordnung> anlageZuordnungen,
             List<FlaecheRepository.Flaeche> flaechen,
-            List<Anlage> anlagen) {
+            List<Anlage> anlagen,
+            List<OrtAenderungRepository.ArchivSchritt> standortArchiv) {
 
         public Zeilen {
             standorte = List.copyOf(standorte);
@@ -97,6 +105,20 @@ public final class StandortLesemodell {
             anlageZuordnungen = List.copyOf(anlageZuordnungen);
             flaechen = List.copyOf(flaechen);
             anlagen = List.copyOf(anlagen);
+            standortArchiv = standortArchiv == null ? List.of() : List.copyOf(standortArchiv);
+        }
+
+        /** Ohne Archiv-Schritte: nie archiviert und wiederhergestellt (der Stand von IP-3). */
+        public Zeilen(
+                UnternehmenRepository.Unternehmen unternehmen,
+                List<StandortRepository.Standort> standorte,
+                List<OrtRepository.Ort> orte,
+                List<OrtZuordnungRepository.Zuordnung> ortZuordnungen,
+                List<AnlageStandortRepository.Zuordnung> anlageZuordnungen,
+                List<FlaecheRepository.Flaeche> flaechen,
+                List<Anlage> anlagen) {
+            this(unternehmen, standorte, orte, ortZuordnungen, anlageZuordnungen, flaechen, anlagen,
+                    List.of());
         }
 
         /** Die Zeitzonen-Vorgabe des Unternehmens; ohne Unternehmen die feste von heute. */
@@ -113,7 +135,9 @@ public final class StandortLesemodell {
      * {@code GET /api/v1/unternehmen}. Die Zahlen gelten HEUTE. Ohne
      * Unternehmen-Zeile ist {@code zustand} {@value #UNTERNEHMEN_NICHT_ANGELEGT}
      * und die Stammdaten sind {@code null} — nie erfunden; die Zahlen stimmen
-     * trotzdem. Additiv vorgesehen: {@code teilansicht} (AP-03 IP-10).
+     * trotzdem. {@code sitz} und {@code rechtsform} (additiv, IP-4: was
+     * {@code PUT /api/v1/unternehmen} bearbeitet) sind {@code null}, wenn nicht
+     * angegeben. Additiv vorgesehen: {@code teilansicht} (AP-03 IP-10).
      */
     public record UnternehmenSicht(
             String zustand,
@@ -123,10 +147,26 @@ public final class StandortLesemodell {
             String zeitzone,
             int standortZahl,
             int anlagenZahl,
-            int nochNichtZugeordnetZahl) {}
+            int nochNichtZugeordnetZahl,
+            Adresse sitz,
+            String rechtsform) {}
 
     /** Die Adresse; ein einzelnes Feld darf fehlen ({@code null}), die ganze Adresse auch. */
     public record Adresse(String strasse, String plz, String ort, String land) {}
+
+    /** Die Lage auf der Karte — beide Koordinaten oder keine (W4). */
+    public record Lage(BigDecimal breitengrad, BigDecimal laengengrad) {}
+
+    /**
+     * §4.1 / E10: eine Adresse ist da, wenn Straße, Ort und Land da sind. Die PLZ
+     * ist optional — das Referenzunternehmen führt seine aktiven Standorte ohne
+     * („{@code plz: null}" = nicht erhoben, nie erfunden); ist sie da, prüft
+     * der Schreibweg ihr Format je Land. Dieselbe Regel für „es fehlt: Adresse"
+     * (hier) und für Anlegen und Einrichten (IP-4, {@link StandortService}).
+     */
+    public static boolean adresseVollstaendig(String strasse, String ort, String land) {
+        return strasse != null && ort != null && land != null;
+    }
 
     /** Eine Anlage am Standort mit dem Intervall, das am Stichtag gilt ({@code gueltigBis} einschließlich). */
     public record ZugeordneteAnlage(UUID id, String name, LocalDate gueltigAb, LocalDate gueltigBis) {}
@@ -138,7 +178,11 @@ public final class StandortLesemodell {
      * vorhanden). Ohne Bestand sind die zeitgültigen Teile leer: keine Anlagen,
      * Zahlen und Fläche {@code null} — nie eine 0 für einen Standort, den es an
      * dem Tag nicht gab. {@code flaecheQuelle}: {@code eigen} ·
-     * {@code aus_gebaeuden_summiert} · {@code null}.
+     * {@code aus_gebaeuden_summiert} · {@code null}. Additiv (IP-4, was die
+     * Schreibrouten bearbeiten; einfache Felder wie heute): {@code nutzung} als
+     * Codes (die erste ist die Hauptnutzung, {@code null} = nichts gewählt),
+     * {@code notiz}, {@code lage} und {@code archiviertAm} ({@code null}, solange
+     * er nicht archiviert ist).
      */
     public record StandortAmStichtag(
             UUID id,
@@ -155,7 +199,11 @@ public final class StandortLesemodell {
             Integer gebaeudeZahl,
             Integer bereichZahl,
             Integer flaecheM2,
-            String flaecheQuelle) {}
+            String flaecheQuelle,
+            List<String> nutzung,
+            String notiz,
+            Lage lage,
+            Instant archiviertAm) {}
 
     public record NichtZugeordneteAnlage(UUID id, String name) {}
 
@@ -192,9 +240,11 @@ public final class StandortLesemodell {
         UnternehmenRepository.Unternehmen u = z.unternehmen();
         return u == null
                 ? new UnternehmenSicht(UNTERNEHMEN_NICHT_ANGELEGT, null, null, null, null,
-                        stand.standorte().size(), z.anlagen().size(), nichtZugeordnet)
+                        stand.standorte().size(), z.anlagen().size(), nichtZugeordnet, null, null)
                 : new UnternehmenSicht(UNTERNEHMEN_ANGELEGT, u.id(), u.name(), u.kurzname(),
-                        u.zeitzone(), stand.standorte().size(), z.anlagen().size(), nichtZugeordnet);
+                        u.zeitzone(), stand.standorte().size(), z.anlagen().size(), nichtZugeordnet,
+                        adresse(u.sitzStrasse(), u.sitzPlz(), u.sitzOrt(), u.sitzLand()),
+                        u.rechtsform());
     }
 
     public static StandorteAmStichtag standorte(Zeilen z, LocalDate stichtag) {
@@ -276,7 +326,8 @@ public final class StandortLesemodell {
             NichtGezeigt n = a.nichtGezeigt().get(k);
             return new StandortAmStichtag(s.id(), s.kurzzeichen(), s.name(), adresse(s),
                     s.zeitzone(), s.zustand(), esFehlt(s), code(n.grund()), n.text(),
-                    List.of(), null, null, null, null, null);
+                    List.of(), null, null, null, null, null,
+                    s.nutzung(), s.notiz(), lage(s), s.archiviertAm());
         }
         List<ZugeordneteAnlage> anlagen = new ArrayList<>();
         for (Anlage an : a.zeilen().anlagen()) {
@@ -292,7 +343,8 @@ public final class StandortLesemodell {
         return new StandortAmStichtag(s.id(), s.kurzzeichen(), s.name(), adresse(s), s.zeitzone(),
                 s.zustand(), esFehlt(s), VORHANDEN, null, List.copyOf(anlagen), anlagen.size(),
                 gebaeude, bereiche, o.flaecheM2(),
-                o.flaecheQuelle() == null ? null : code(o.flaecheQuelle()));
+                o.flaecheQuelle() == null ? null : code(o.flaecheQuelle()),
+                s.nutzung(), s.notiz(), lage(s), s.archiviertAm());
     }
 
     /** Gebäude bzw. Bereiche, deren Wurzel am Stichtag dieser Standort ist. */
@@ -320,6 +372,8 @@ public final class StandortLesemodell {
     /** Die Zeilen als Ortsbaum des Vertrags; Kennzeichen = ID der Zeile. */
     static Ortsbaum baum(Zeilen z) {
         Map<UUID, LocalDate> frueheste = fruehesteBindung(z);
+        Map<UUID, List<OrtAenderungRepository.ArchivSchritt>> archiv = new HashMap<>();
+        z.standortArchiv().forEach(x -> archiv.computeIfAbsent(x.objektId(), k -> new ArrayList<>()).add(x));
         List<OrtsbaumAbleitung.Ort> orte = new ArrayList<>();
         for (StandortRepository.Standort s : z.standorte()) {
             ZoneId zone = ZoneId.of(s.zeitzone());
@@ -334,7 +388,7 @@ public final class StandortLesemodell {
             LocalDate ende = s.archiviertAm() == null
                     ? null : s.archiviertAm().atZone(zone).toLocalDate().minusDays(1);
             orte.add(new OrtsbaumAbleitung.Ort(key(s.id()), OrtArt.STANDORT, s.name(),
-                    s.zeitzone(), List.of(new Intervall(beginn, ende, null)),
+                    s.zeitzone(), bestehen(beginn, ende, archiv.getOrDefault(s.id(), List.of())),
                     flaechen(z, f -> s.id().equals(f.standortId()))));
         }
         Map<UUID, List<Intervall>> ortIntervalle = new HashMap<>();
@@ -357,6 +411,34 @@ public final class StandortLesemodell {
                         ObjektZustand.AKTIV, anlageIntervalle.getOrDefault(an.id(), List.of())))
                 .toList();
         return new Ortsbaum(z.zeitzone(), orte, anlagen, List.of());
+    }
+
+    /**
+     * Das Bestehen eines Standorts als Intervalle: {@code [beginn, ende]}, aus dem jede
+     * ABGESCHLOSSENE Archiv-Lücke des Protokolls herausgeschnitten ist — ein Paar
+     * {@code archiviert} (gilt ab A) → {@code wiederhergestellt} (gilt ab W) nimmt die Tage
+     * A … W−1 heraus (§4.2 „die Lücke bleibt sichtbar"). Das laufende Archiv steht in der
+     * Zeile ({@code ende}), nicht hier; ohne Schritte bleibt es EIN Intervall wie in IP-3.
+     * Am selben Tag archiviert und wiederhergestellt: keine Lücke.
+     */
+    static List<Intervall> bestehen(LocalDate beginn, LocalDate ende,
+            List<OrtAenderungRepository.ArchivSchritt> schritte) {
+        List<Intervall> out = new ArrayList<>();
+        LocalDate ab = beginn;
+        LocalDate archiviertAb = null;
+        for (OrtAenderungRepository.ArchivSchritt x : schritte) {
+            if (OrtAenderungRepository.ARCHIVIERT.equals(x.art())) {
+                archiviertAb = x.giltAb();
+            } else if (archiviertAb != null && x.giltAb().isAfter(archiviertAb)) {
+                out.add(new Intervall(ab, archiviertAb.minusDays(1), null));
+                ab = x.giltAb();
+                archiviertAb = null;
+            } else {
+                archiviertAb = null;
+            }
+        }
+        out.add(new Intervall(ab, ende, null));
+        return List.copyOf(out);
     }
 
     /** Je Standort der früheste Tag, an dem etwas wirksam an ihm hängt (Anlage, Ort, Fläche). */
@@ -394,25 +476,32 @@ public final class StandortLesemodell {
     }
 
     private static Adresse adresse(StandortRepository.Standort s) {
-        if (s.strasse() == null && s.plz() == null && s.ort() == null && s.land() == null) {
+        return adresse(s.strasse(), s.plz(), s.ort(), s.land());
+    }
+
+    /** Die Adresse — {@code null}, wenn kein einziges Feld da ist. */
+    static Adresse adresse(String strasse, String plz, String ort, String land) {
+        if (strasse == null && plz == null && ort == null && land == null) {
             return null;
         }
-        return new Adresse(s.strasse(), s.plz(), s.ort(), s.land());
+        return new Adresse(strasse, plz, ort, land);
+    }
+
+    private static Lage lage(StandortRepository.Standort s) {
+        return s.lageBreitengrad() == null ? null : new Lage(s.lageBreitengrad(), s.lageLaengengrad());
     }
 
     /**
      * Was einem ENTWURF fehlt (§4.2, E10): eingerichtet ist ein Standort mit
      * Name + Adresse + Zeitzone; Name und Zeitzone erzwingt die Datenbank, also
-     * kann nur die Adresse (Straße, PLZ, Ort, Land — §4.1) fehlen. Außerhalb des
-     * Entwurfs fehlt nichts.
+     * kann nur die Adresse fehlen — nach {@link #adresseVollstaendig}. Außerhalb
+     * des Entwurfs fehlt nichts.
      */
     private static List<String> esFehlt(StandortRepository.Standort s) {
         if (!"entwurf".equals(s.zustand())) {
             return List.of();
         }
-        boolean adresseFehlt = s.strasse() == null || s.plz() == null || s.ort() == null
-                || s.land() == null;
-        return adresseFehlt ? List.of(ES_FEHLT_ADRESSE) : List.of();
+        return adresseVollstaendig(s.strasse(), s.ort(), s.land()) ? List.of() : List.of(ES_FEHLT_ADRESSE);
     }
 
     private static OrtArt ortArt(String code) {

@@ -37,11 +37,12 @@ import java.util.function.Predicate;
  * ändert beide Seiten und die Vektor-Datei.</b> Die Migrationen IP-2a/IP-2b
  * spiegeln dieselben Regeln als Datenbank-Constraints.
  *
- * <h2>⚠ Noch ruft niemand an</h2>
+ * <h2>Wer anruft</h2>
  *
- * Es gibt keine Tabelle, keinen Endpunkt und keine Fläche; „Standort“ ist im
- * Code weiterhin nur das Koordinaten-Feld der Anlage. Diese Klasse ist der
- * Vertrag, gegen den IP-2a/IP-2b und das Read-Model IP-3 gebaut werden.
+ * Das Standort-Lesemodell (IP-3, {@link StandortLesemodell}) für „Stand am“ und
+ * die Schreibrouten des Standorts (IP-4, {@link StandortService}) für die
+ * Namensregel, das Archivieren mit seinen Sperrgründen und das Wiederherstellen.
+ * Die Tabellen IP-2a/IP-2b halten dieselben Regeln als Constraints.
  *
  * <h2>Die Mechanik in einem Satz (§4.3)</h2>
  *
@@ -1030,6 +1031,32 @@ public final class OrtsbaumAbleitung {
     }
 
     /**
+     * Regel 13 / §4.1: der Geschwister-Ort, der den Namen am Tag trägt — dieselbe
+     * Art, derselbe Elternknoten ({@code null}: am Unternehmen, also die
+     * Standorte), am Tag im Baum, ohne Groß-/Kleinschreibung und Randleerzeichen.
+     * {@code ausser} ist der Ort selbst (Umbenennen, Wiederherstellen), sonst
+     * {@code null}. Leer = der Name ist frei. Dieselbe Prüfung beim Anlegen,
+     * Umbenennen und Wiederherstellen.
+     */
+    public static Optional<Ort> nameBelegt(
+            Ortsbaum baum, OrtArt art, String eltern, String name, LocalDate tag, String ausser) {
+        String schluessel = namensSchluessel(name);
+        return baum.orte().stream()
+                .filter(x -> !x.kennzeichen().equals(ausser)
+                        && x.art() == art
+                        && intervallAm(x.intervalle(), tag) != null
+                        && Objects.equals(elternAm(x.intervalle(), tag), eltern)
+                        && namensSchluessel(x.name()).equals(schluessel))
+                .findFirst();
+    }
+
+    /** Der Satz aus §5.10 zu einem belegten Namen, mit dem Weg zum vorhandenen Ort. */
+    public static String nameBelegtSatz(Ort belegt) {
+        return "Diesen Namen gibt es hier schon: " + belegt.name() + " (" + belegt.kennzeichen()
+                + "). Wählen Sie einen anderen Namen — oder öffnen Sie " + belegt.name() + ".";
+    }
+
+    /**
      * Ein NEUES Intervall ab dem Tag am alten Elternknoten; die Lücke bleibt; der
      * Name muss unter den Geschwistern derselben Art frei sein (ohne Groß-/
      * Kleinschreibung und Randleerzeichen). Mitarchivierte Kinder kommen nicht
@@ -1052,19 +1079,9 @@ public final class OrtsbaumAbleitung {
                             + " wiederhergestellt ist.");
         }
         String name = (neuerName == null ? o.name() : neuerName).strip();
-        Ort belegt = baum.orte().stream()
-                .filter(x -> !x.kennzeichen().equals(objekt)
-                        && x.art() == o.art()
-                        && intervallAm(x.intervalle(), tag) != null
-                        && Objects.equals(elternAm(x.intervalle(), tag), eltern)
-                        && namensSchluessel(x.name()).equals(namensSchluessel(name)))
-                .findFirst()
-                .orElse(null);
-        if (belegt != null) {
-            return WiederherstellErgebnis.nein(
-                    WiederherstellGrund.NAME_BELEGT,
-                    "Diesen Namen gibt es hier schon: " + belegt.name() + " (" + belegt.kennzeichen()
-                            + "). Wählen Sie einen anderen Namen — oder öffnen Sie " + belegt.name() + ".");
+        Optional<Ort> belegt = nameBelegt(baum, o.art(), eltern, name, tag, objekt);
+        if (belegt.isPresent()) {
+            return WiederherstellErgebnis.nein(WiederherstellGrund.NAME_BELEGT, nameBelegtSatz(belegt.get()));
         }
         LocalDate von = letzte.bis().plusDays(1);
         LocalDate bis = tag.minusDays(1);

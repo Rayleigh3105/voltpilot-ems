@@ -213,6 +213,59 @@ class StandortLesemodellTest {
                 .isEqualTo(2);
     }
 
+    /**
+     * A8 für den Standort (IP-4): Werk Lindach, archiviert am 01.04.2027, wiederhergestellt am
+     * 01.05.2027 (die Tage des Vektor-Falls {@code standort-kinder-bleiben-archiviert}). Die
+     * Zeile ist danach wieder aktiv, ohne {@code archiviert_am} — die Lücke steht nur im
+     * Protokoll (das Paar archiviert → wiederhergestellt), und das Lesemodell zeigt sie.
+     */
+    @Test
+    void a8DieArchivLueckeEinesWiederhergestelltenStandortsKommtAusDemProtokoll() throws IOException {
+        Zeilen z = zeilen(szenario("ahrenberg-lindach-archiviert"), Map.of());
+        List<StandortRepository.Standort> wieder = z.standorte().stream()
+                .map(s -> !s.kurzzeichen().equals("ST-2") ? s : new StandortRepository.Standort(s.id(),
+                        s.unternehmenId(), s.name(), s.kurzzeichen(), s.strasse(), s.plz(), s.ort(),
+                        s.land(), s.zeitzone(), s.nutzung(), s.notiz(), s.lageBreitengrad(),
+                        s.lageLaengengrad(), "aktiv", null, s.createdAt()))
+                .toList();
+        List<OrtAenderungRepository.ArchivSchritt> protokoll = List.of(
+                new OrtAenderungRepository.ArchivSchritt(id("ST-2"), "archiviert", LocalDate.of(2027, 4, 1)),
+                new OrtAenderungRepository.ArchivSchritt(id("ST-2"), "wiederhergestellt",
+                        LocalDate.of(2027, 5, 1)));
+        Zeilen mit = new Zeilen(z.unternehmen(), wieder, z.orte(), z.ortZuordnungen(),
+                z.anlageZuordnungen(), z.flaechen(), z.anlagen(), protokoll);
+
+        assertThat(StandortLesemodell.standort(mit, id("ST-2"), LocalDate.of(2027, 3, 31)).orElseThrow()
+                .bestand()).isEqualTo("vorhanden");
+        for (LocalDate inDerLuecke : List.of(LocalDate.of(2027, 4, 1), LocalDate.of(2027, 4, 30))) {
+            StandortAmStichtag st = StandortLesemodell.standort(mit, id("ST-2"), inDerLuecke).orElseThrow();
+            assertThat(st.bestand()).as(inDerLuecke.toString()).isEqualTo("archiviert");
+            assertThat(st.anlagen()).isEmpty();
+            assertThat(st.gebaeudeZahl()).isNull();
+        }
+        assertThat(eintrag(StandortLesemodell.standorte(mit, LocalDate.of(2027, 4, 15)).nichtGezeigt(), "ST-2")
+                .bestandText()).isEqualTo("Am 15.04.2027 war Werk Lindach archiviert.");
+        StandortAmStichtag mai = StandortLesemodell.standort(mit, id("ST-2"), LocalDate.of(2027, 5, 1))
+                .orElseThrow();
+        assertThat(mai.bestand()).isEqualTo("vorhanden");
+        assertThat(mai.archiviertAm()).isNull();
+        // Die mitarchivierten Gebäude kommen nicht still mit zurück.
+        assertThat(mai.gebaeudeZahl()).isZero();
+
+        // Ohne das Protokoll wäre die Lücke aufgefüllt — genau das liest IP-4 jetzt.
+        Zeilen ohne = new Zeilen(z.unternehmen(), wieder, z.orte(), z.ortZuordnungen(),
+                z.anlageZuordnungen(), z.flaechen(), z.anlagen());
+        assertThat(StandortLesemodell.standort(ohne, id("ST-2"), LocalDate.of(2027, 4, 15)).orElseThrow()
+                .bestand()).isEqualTo("vorhanden");
+
+        // Am selben Tag archiviert und wiederhergestellt: keine Lücke, ein Bestehen.
+        assertThat(StandortLesemodell.bestehen(LocalDate.of(2026, 10, 15), null, List.of(
+                new OrtAenderungRepository.ArchivSchritt(id("ST-2"), "archiviert", LocalDate.of(2027, 4, 1)),
+                new OrtAenderungRepository.ArchivSchritt(id("ST-2"), "wiederhergestellt",
+                        LocalDate.of(2027, 4, 1)))))
+                .containsExactly(new OrtsbaumAbleitung.Intervall(LocalDate.of(2026, 10, 15), null, null));
+    }
+
     @Test
     void a16DerTagBeginntInDerZeitzoneDesStandorts() throws IOException {
         // „Werk Wels" (A16) in Österreich: Europe/Vienna, während das Unternehmen bei

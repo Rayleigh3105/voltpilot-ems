@@ -22,6 +22,8 @@ import {
   flaecheAm,
   flaecheZeitraum,
   loeschen,
+  nameBelegt,
+  nameBelegtSatz,
   pruefeIntervalle,
   rueckwirkung,
   standAm,
@@ -202,6 +204,22 @@ describe('uemsOrtsbaum · der Vertrag selbst', () => {
     expect(vectors.gruende_loeschen).toEqual([...LOESCH_GRUENDE]);
     expect(vectors.flaeche_quellen).toEqual([...FLAECHE_QUELLEN]);
     expect(vectors.objekt_zustaende).toEqual([...OBJEKT_ZUSTAENDE]);
+  });
+
+  // A10 über `nameBelegt` — dieselbe Prüfung wie im Java-Zwilling (a10DieNamensregelBeimAnlegenUndUmbenennen).
+  it('A10: die Namensregel beim Anlegen und Umbenennen', () => {
+    const b = baumFuer({ szenario: 'ahrenberg-vor-dem-umzug' });
+    const tag = '2026-10-20';
+    const g1 = nameBelegt(b, 'gebaeude', 'ST-1', '  halle 1 ', tag, null);
+    expect(g1?.kennzeichen).toBe('G-1');
+    expect(nameBelegtSatz(g1 as Ort)).toBe(
+      'Diesen Namen gibt es hier schon: Halle 1 (G-1). Wählen Sie einen anderen Namen — oder öffnen Sie Halle 1.',
+    );
+    expect(nameBelegt(b, 'gebaeude', 'ST-2', 'Halle 1', tag, null)).toBeUndefined();
+    expect(nameBelegt(b, 'gebaeude', 'ST-1', 'Halle 1', tag, 'G-1')).toBeUndefined();
+    expect(nameBelegt(b, 'standort', null, 'WERK LINDACH', tag, null)?.kennzeichen).toBe('ST-2');
+    // Werk Ahrenberg Nord gibt es erst ab 20.02.2027 — vorher belegt es seinen Namen nicht.
+    expect(nameBelegt(b, 'standort', null, 'Werk Ahrenberg Nord', tag, null)).toBeUndefined();
   });
 
   it('jedes Szenario ist in sich überlappungsfrei — die Beispieldaten halten die eigene Regel', () => {

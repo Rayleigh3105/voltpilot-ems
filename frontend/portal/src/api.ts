@@ -2036,6 +2036,10 @@ export interface Unternehmen {
   anlagenZahl: number;
   /** Anlagen, die heute keinem Standort zugeordnet sind. */
   nochNichtZugeordnetZahl: number;
+  /** Der Sitz (additiv, AP-02 IP-4) — `null`, wenn kein Feld angegeben ist. */
+  sitz?: StandortAdresse | null;
+  /** Additiv (AP-02 IP-4). */
+  rechtsform?: string | null;
 }
 
 export interface StandortAdresse {
@@ -2077,6 +2081,14 @@ export interface StandortAmStichtag {
   /** Eigene Fläche oder Summe der Gebäude (nur wenn jedes eine hat); `null`, nie 0. */
   flaecheM2: number | null;
   flaecheQuelle: FlaecheQuelle | null;
+  /** Additiv (AP-02 IP-4): Codes, die erste ist die Hauptnutzung; `null` = nichts gewählt. */
+  nutzung?: Nutzung[] | null;
+  /** Additiv (AP-02 IP-4). */
+  notiz?: string | null;
+  /** Additiv (AP-02 IP-4): die Lage auf der Karte. */
+  lage?: StandortLage | null;
+  /** Additiv (AP-02 IP-4): wann er archiviert wurde (ISO-Zeitpunkt); `null`, solange er es nicht ist. */
+  archiviertAm?: string | null;
 }
 
 /** Die Gruppe „Noch nicht zugeordnet" — es gibt sie nur, solange sie etwas enthält. */
@@ -2094,6 +2106,110 @@ export interface StandorteAmStichtag {
   nichtGezeigt: StandortAmStichtag[];
   /** `null`, sobald jede Anlage zugeordnet ist. */
   nochNichtZugeordnet: NochNichtZugeordnet | null;
+}
+
+// ---- Ortsstruktur schreiben (UEMS AP-02 IP-4) --------------------------------
+// Nur die Formen von PUT /api/v1/unternehmen und POST/PUT /api/v1/standorte,
+// …/archivieren, …/wiederherstellen, …/kurzzeichen-vorschlag; die Fläche dazu
+// baut IP-6. Jede Standort-Schreibroute antwortet mit `StandortAmStichtag`
+// (heute), PUT /unternehmen mit `Unternehmen`; eine Ablehnung mit `OrtFehler`.
+
+/** AP-02 E4 — Code = Kundenwort in Kleinbuchstaben (ä→ae, ö→oe, ü→ue, ß→ss). */
+export type Nutzung =
+  | 'produktion'
+  | 'montage'
+  | 'lager'
+  | 'logistik'
+  | 'buero'
+  | 'technik'
+  | 'aussenflaeche'
+  | 'werkstatt'
+  | 'labor'
+  | 'verkauf'
+  | 'sozialraeume'
+  | 'sonstiges';
+
+/** Die Lage auf der Karte — beide Koordinaten oder keine. */
+export interface StandortLage {
+  breitengrad: number;
+  laengengrad: number;
+}
+
+/**
+ * POST und PUT /api/v1/standorte. POST: `kurzzeichen` fehlt → automatisch ST-n,
+ * `zeitzone` fehlt → die Vorgabe des Unternehmens; die Adresse ist Pflicht
+ * (Straße, Ort, Land; PLZ optional). PUT: die ganze Menge — `kurzzeichen` und
+ * `zeitzone` Pflicht, die Adresse nur außerhalb des Entwurfs.
+ */
+export interface StandortStammdaten {
+  name: string;
+  kurzzeichen?: string | null;
+  adresse?: StandortAdresse | null;
+  zeitzone?: string | null;
+  nutzung?: Nutzung[] | null;
+  notiz?: string | null;
+  lage?: StandortLage | null;
+}
+
+/** POST …/wiederherstellen — optional ein neuer Name (das Umbenennen im selben Dialog). */
+export interface StandortWiederherstellen {
+  name?: string | null;
+}
+
+/** GET /api/v1/standorte/kurzzeichen-vorschlag — bewegt den Zähler nicht. */
+export interface StandortKurzzeichenVorschlag {
+  kurzzeichen: string;
+}
+
+/** PUT /api/v1/unternehmen — die ganze Menge; ein fehlendes Feld ist leer. */
+export interface UnternehmenBearbeiten {
+  name: string;
+  kurzname?: string | null;
+  zeitzone: string;
+  sitz?: StandortAdresse | null;
+  rechtsform?: string | null;
+}
+
+/** Wer den Namen oder das Kurzzeichen trägt (oder trug) — der Link „oder öffnen Sie …". */
+export interface OrtVerweis {
+  objekt_art: 'standort' | 'gebaeude' | 'bereich';
+  id: string | null;
+  kurzzeichen: string;
+  name: string | null;
+  /** Nur bei Kurzzeichen: das heutige Kurzzeichen des Trägers, ob archiviert, ob früher getragen. */
+  heute?: string | null;
+  archiviert?: boolean;
+  frueher?: boolean;
+}
+
+/** Ein Sperrgrund beim Archivieren, in der festen Reihenfolge des Vertrags. */
+export interface ArchivSperrgrund {
+  art: 'gab_es_noch_nicht' | 'archiviert' | 'anlage_aktiv' | 'messstelle_aktiv' | 'geplante_zuordnung';
+  objekt: 'anlage' | 'messstelle' | 'standort' | 'gebaeude' | 'bereich';
+  id: string | null;
+  kennzeichen: string | null;
+  name: string;
+  ab?: string;
+  eltern?: string;
+  weg: 'anlage_zuordnen' | 'messstelle_umziehen' | 'zuordnung_aufheben' | null;
+}
+
+/** Die Ablehnung der Ortsstruktur-Schreibrouten — nichts ist geschrieben. `message` nennt Grund und Weg. */
+export interface OrtFehler {
+  code:
+    | 'anfrage_ungueltig'
+    | 'nicht_gefunden'
+    | 'name_belegt'
+    | 'kurzzeichen_belegt'
+    | 'archiviert'
+    | 'archivieren_gesperrt'
+    | 'wiederherstellen_gesperrt';
+  message: string;
+  feld?: string;
+  verweis?: OrtVerweis;
+  archiviert_am?: string | null;
+  grund?: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt';
+  gruende?: ArchivSperrgrund[];
 }
 
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------

@@ -21,10 +21,11 @@ import org.springframework.stereotype.Repository;
  *
  * <p>Nur der Unterbau. Die Regeln des Anlegens — Kurzzeichen-Vergabe ST-1 …,
  * Eindeutigkeit mit Verweis, Protokolleintrag — gehören den Schreibrouten
- * (IP-4), das Lesen zum Stichtag dem Read-Model (IP-3). Die Datenbank hält
- * die Invarianten trotzdem selbst (Vokabulare, Namensregel, Kurzzeichen
- * eindeutig je Kundenbereich). Ein Standort wird archiviert, nie gelöscht:
- * deshalb gibt es hier kein DELETE, und die App-Rolle hat keines.
+ * ({@link StandortService}, IP-4), das Lesen zum Stichtag dem Read-Model (IP-3).
+ * Die Datenbank hält die Invarianten trotzdem selbst (Vokabulare, Namensregel,
+ * Kurzzeichen eindeutig je Kundenbereich und nie wiederverwendet). Ein Standort
+ * wird archiviert, nie gelöscht: deshalb gibt es hier kein DELETE, und die
+ * App-Rolle hat keines.
  */
 @Repository
 public class StandortRepository {
@@ -60,12 +61,31 @@ public class StandortRepository {
             List<String> nutzung, String notiz, BigDecimal lageBreitengrad,
             BigDecimal lageLaengengrad, String zustand, Instant archiviertAm, Instant createdAt) {}
 
+    /**
+     * Die Felder, die das Bearbeiten schreibt — die ganze Menge; {@code zustand}
+     * nur {@code entwurf} oder {@code aktiv} (ein archivierter Standort wird nicht
+     * bearbeitet).
+     */
+    public record Stammdaten(String name, String kurzzeichen, String strasse, String plz,
+            String ort, String land, String zeitzone, List<String> nutzung, String notiz,
+            BigDecimal lageBreitengrad, BigDecimal lageLaengengrad, String zustand) {}
+
     public UUID anlegen(NeuerStandort s) {
+        return anlegen(s, null);
+    }
+
+    /**
+     * Wie {@link #anlegen(NeuerStandort)}, mit dem Zeitpunkt des Anlegens von der
+     * Uhr des Schreibwegs ({@code null} = die der Datenbank) — derselbe Zeitpunkt,
+     * den sein Protokolleintrag trägt.
+     */
+    public UUID anlegen(NeuerStandort s, Instant createdAt) {
         return jdbc.query(con -> {
             PreparedStatement ps = con.prepareStatement("INSERT INTO standort (tenant_id, "
                     + "unternehmen_id, name, kurzzeichen, strasse, plz, ort, land, zeitzone, "
-                    + "nutzung, notiz, lage_breitengrad, lage_laengengrad, zustand, created_by) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id");
+                    + "nutzung, notiz, lage_breitengrad, lage_laengengrad, zustand, created_by, "
+                    + "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,coalesce(?, now())) "
+                    + "RETURNING id");
             ps.setObject(1, s.tenantId());
             ps.setObject(2, s.unternehmenId());
             ps.setString(3, s.name());
@@ -85,11 +105,58 @@ public class StandortRepository {
             ps.setBigDecimal(13, s.lageLaengengrad());
             ps.setString(14, s.zustand());
             ps.setString(15, s.createdBy());
+            ps.setTimestamp(16, createdAt == null ? null : Timestamp.from(createdAt));
             return ps;
         }, rs -> {
             rs.next();
             return rs.getObject(1, UUID.class);
         });
+    }
+
+    /** Schreibt die Stammdaten eines NICHT archivierten Standorts; {@code false}: archiviert oder nicht da. */
+    public boolean bearbeiten(UUID id, Stammdaten s) {
+        return jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement("UPDATE standort SET name = ?, "
+                    + "kurzzeichen = ?, strasse = ?, plz = ?, ort = ?, land = ?, zeitzone = ?, "
+                    + "nutzung = ?, notiz = ?, lage_breitengrad = ?, lage_laengengrad = ?, "
+                    + "zustand = ? WHERE id = ? AND archiviert_am IS NULL");
+            ps.setString(1, s.name());
+            ps.setString(2, s.kurzzeichen());
+            ps.setString(3, s.strasse());
+            ps.setString(4, s.plz());
+            ps.setString(5, s.ort());
+            ps.setString(6, s.land());
+            ps.setString(7, s.zeitzone());
+            if (s.nutzung() == null) {
+                ps.setNull(8, Types.ARRAY);
+            } else {
+                ps.setArray(8, con.createArrayOf("text", s.nutzung().toArray(String[]::new)));
+            }
+            ps.setString(9, s.notiz());
+            ps.setBigDecimal(10, s.lageBreitengrad());
+            ps.setBigDecimal(11, s.lageLaengengrad());
+            ps.setString(12, s.zustand());
+            ps.setObject(13, id);
+            return ps;
+        }) == 1;
+    }
+
+    /** Archiviert zum Zeitpunkt {@code am}; {@code false}: schon archiviert oder nicht da. */
+    public boolean archivieren(UUID id, Instant am, String von) {
+        return jdbc.update("UPDATE standort SET zustand = 'archiviert', archiviert_am = ?, "
+                + "archiviert_von = ? WHERE id = ? AND archiviert_am IS NULL",
+                Timestamp.from(am), von, id) == 1;
+    }
+
+    /**
+     * Stellt wieder her — unter {@code name} (dem alten oder dem im selben Dialog
+     * geänderten), im Zustand {@code zustand}. Die Lücke steht NICHT hier, sondern
+     * im Protokoll (archiviert → wiederhergestellt); {@code false}: nicht archiviert.
+     */
+    public boolean wiederherstellen(UUID id, String name, String zustand) {
+        return jdbc.update("UPDATE standort SET zustand = ?, name = ?, archiviert_am = NULL, "
+                + "archiviert_von = NULL WHERE id = ? AND archiviert_am IS NOT NULL",
+                zustand, name, id) == 1;
     }
 
     /** Der Standort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */

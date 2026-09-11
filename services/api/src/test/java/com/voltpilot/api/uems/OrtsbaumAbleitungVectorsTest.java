@@ -349,6 +349,33 @@ class OrtsbaumAbleitungVectorsTest {
         assertThat(namen).doesNotHaveDuplicates();
     }
 
+    /**
+     * A10 über {@link OrtsbaumAbleitung#nameBelegt} — die Prüfung, die {@code wiederherstellen}
+     * benutzt (Fälle {@code a10-name-inzwischen-vergeben}, {@code namensvergleich-…}), jetzt
+     * auch für Anlegen und Umbenennen (IP-4/IP-5): „Halle 1" ist an Werk Lindach frei und an
+     * Werk Ahrenberg belegt (G-1), ohne Groß-/Kleinschreibung und Randleerzeichen; ein Ort
+     * kollidiert nie mit sich selbst. Der TS-Zwilling prüft dasselbe.
+     */
+    @Test
+    void a10DieNamensregelBeimAnlegenUndUmbenennen() throws Exception {
+        Ortsbaum b = baum(MAPPER.createObjectNode().put("szenario", "ahrenberg-vor-dem-umzug"));
+        LocalDate tag = LocalDate.parse("2026-10-20");
+        Ort g1 = OrtsbaumAbleitung.nameBelegt(b, OrtsbaumAbleitung.OrtArt.GEBAEUDE, "ST-1", "  halle 1 ", tag, null)
+                .orElseThrow();
+        assertThat(g1.kennzeichen()).isEqualTo("G-1");
+        assertThat(OrtsbaumAbleitung.nameBelegtSatz(g1)).isEqualTo("Diesen Namen gibt es hier schon: Halle 1 "
+                + "(G-1). Wählen Sie einen anderen Namen — oder öffnen Sie Halle 1.");
+        assertThat(OrtsbaumAbleitung.nameBelegt(b, OrtsbaumAbleitung.OrtArt.GEBAEUDE, "ST-2", "Halle 1", tag, null))
+                .isEmpty();
+        assertThat(OrtsbaumAbleitung.nameBelegt(b, OrtsbaumAbleitung.OrtArt.GEBAEUDE, "ST-1", "Halle 1", tag, "G-1"))
+                .isEmpty();
+        assertThat(OrtsbaumAbleitung.nameBelegt(b, OrtsbaumAbleitung.OrtArt.STANDORT, null, "WERK LINDACH", tag,
+                null)).map(Ort::kennzeichen).contains("ST-2");
+        // Werk Ahrenberg Nord gibt es erst ab 20.02.2027 — vorher belegt es seinen Namen nicht.
+        assertThat(OrtsbaumAbleitung.nameBelegt(b, OrtsbaumAbleitung.OrtArt.STANDORT, null, "Werk Ahrenberg Nord",
+                tag, null)).isEmpty();
+    }
+
     /** Die Beispieldaten halten die eigene Regel: jedes Szenario ist in sich überlappungsfrei. */
     @Test
     void jedesSzenarioIstUeberlappungsfrei() throws Exception {

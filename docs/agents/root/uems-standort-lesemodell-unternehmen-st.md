@@ -13,12 +13,14 @@ Startansicht-Weiche, wartet). Reine Ableitung `services/api/.../uems/StandortLes
 
 - Nur LESEN. Die Ableitung (Stand am, Fläche, Anlagen-Zuordnung) rechnet
   `OrtsbaumAbleitung.standAm`; das Lesemodell übersetzt nur Zeilen in dessen Baum. Kennzeichen
-  im Baum sind die UUIDs der Zeilen, nie die Kurzzeichen (die dürfen zwischen `standort` und
-  `ort` kollidieren).
+  im Baum sind die UUIDs der Zeilen, nie die Kurzzeichen (änderbar; seit `V20260911210000`
+  kollidieren sie zwischen `standort` und `ort` nicht mehr — die Schreibrouten schlüsseln für
+  ihre Sätze auf Kurzzeichen um, `uems-standort-schreibrouten-kurzzeichen-archiv.md`).
 - Antwortformen sind OBJEKTE, damit `teilansicht {sichtbar, gesamt}` (AP-03 IP-10) additiv
   dazukommt. Keine Rechte-Annotation: `authenticated()` + RLS wie `/api/v1/sites/**`.
-- Schreibrouten (IP-4/IP-5), die Lücke Archiv → Wiederherstellen (lebt nur im Protokoll) und
-  der Name zum Stichtag (AP-12) sind NICHT hier.
+- Schreibrouten (IP-4/IP-5) und der Name zum Stichtag (AP-12) sind NICHT hier. Die Lücke
+  Archiv → Wiederherstellen lebt nur im Protokoll; seit IP-4 liest das Lesemodell sie von dort
+  (`Zeilen.standortArchiv`, `StandortLesemodell.bestehen`).
 
 ## ⚠ Die Fallen
 

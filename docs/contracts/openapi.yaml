@@ -399,6 +399,38 @@ paths:
               schema: { $ref: "#/components/schemas/Unternehmen" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: No tenant context (admin without a selected tenant). }
+    put:
+      tags: [ortsstruktur]
+      summary: Das Unternehmen bearbeiten - Name, Kurzname, Zeitzonen-Vorgabe, Sitz, Rechtsform (AP-02 IP-4).
+      description: >
+        Die ganze Menge der bearbeitbaren Stammdaten (§4.1); ein fehlendes Feld
+        ist leer. Kein Anlegen, kein Löschen: das Unternehmen gibt es genau
+        einmal je Kundenbereich. Die Zeitzonen-Vorgabe belegt nur NEUE
+        Standorte vor (Regel 11). Ändert sich etwas, schreibt die Route in
+        einer Transaktion genau einen Eintrag "bearbeitet" ins Änderungsprotokoll
+        (`ort_aenderung`, alt/neu nur der geänderten Felder, Urheber); ohne
+        Änderung wird nichts geschrieben. Ein Feld, das es hier nicht gibt, ist
+        400 `anfrage_ungueltig`. Rechte (rechte-matrix.json): `unternehmen.bearbeiten`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnternehmenBearbeiten" }
+            example:
+              name: Kunststoffwerk Ahrenberg GmbH
+              kurzname: Ahrenberg
+              zeitzone: Europe/Berlin
+              sitz: { strasse: Gewerbering 7, plz: null, ort: Ahrenberg, land: DE }
+              rechtsform: GmbH
+      responses:
+        "200":
+          description: Das Unternehmen, wie GET /api/v1/unternehmen es jetzt zeigt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unternehmen" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/standorte:
     get:
       tags: [ortsstruktur]
@@ -431,6 +463,61 @@ paths:
               schema: { $ref: "#/components/schemas/StandorteAmStichtag" }
         "400": { description: stichtag ist kein ISO-Tag. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [ortsstruktur]
+      summary: Einen Standort anlegen (AP-02 IP-4).
+      description: >
+        Ohne `kurzzeichen` vergibt die Datenbank das nächste ST-n (E8: automatisch,
+        änderbar, eindeutig je Kundenbereich über Standorte UND Gebäude/Bereiche,
+        nie wiederverwendet - auch ein früher getragenes oder archiviertes bleibt
+        belegt). Ohne `zeitzone` gilt die Vorgabe des Unternehmens. Die Adresse
+        ist Pflicht: Straße, Ort, Land (DE, AT, CH); die PLZ ist optional und
+        wird im Format je Land geprüft ("Die PLZ 84xxx passt nicht zu Österreich
+        (vierstellig)."). Mit Adresse ist der Standort sofort eingerichtet und
+        aktiv. Geprüft wird erst die Form (400), dann Name und Kurzzeichen
+        (409 `name_belegt` / `kurzzeichen_belegt` mit `verweis`): der Name ist
+        eindeutig unter den Standorten, die es heute gibt (ohne Groß-/Klein-
+        schreibung und Randleerzeichen; ein archivierter gibt seinen Namen frei).
+        Standort, Kurzzeichen und genau ein Protokolleintrag "angelegt" entstehen
+        in EINER Transaktion. Rechte: `standort.verwalten`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StandortStammdaten" }
+            example:
+              name: Werk Ahrenberg
+              adresse: { strasse: Gewerbering 7, plz: null, ort: Ahrenberg, land: DE }
+              zeitzone: Europe/Berlin
+              nutzung: [produktion, buero]
+              notiz: Zwei Netzanschlüsse (NA-1, NA-2)
+              lage: { breitengrad: 48.25, laengengrad: 11.43 }
+      responses:
+        "201":
+          description: Angelegt; `Location` zeigt auf den neuen Standort (so, wie er heute im Lesemodell steht).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/kurzzeichen-vorschlag:
+    get:
+      tags: [ortsstruktur]
+      summary: Das Kurzzeichen, das ein neuer Standort jetzt bekäme (AP-02 IP-4, E8).
+      description: >
+        Für den Anlege-Dialog ("vorbelegt, meist unberührt"). Bewegt den Zähler
+        nicht; wer es unverändert schickt, bekommt es - außer ein anderer war
+        schneller (dann 409 mit Verweis). Rechte: `standort.verwalten`.
+      responses:
+        "200":
+          description: Der Vorschlag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortKurzzeichenVorschlag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/standorte/{standortId}:
     get:
       tags: [ortsstruktur]
@@ -455,6 +542,101 @@ paths:
         "400": { description: stichtag ist kein ISO-Tag. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Standort not found for this tenant. }
+    put:
+      tags: [ortsstruktur]
+      summary: Einen Standort bearbeiten (AP-02 IP-4).
+      description: >
+        Die ganze Menge der Stammdaten; ein fehlendes Feld ist leer.
+        `kurzzeichen` und `zeitzone` sind Pflicht. Die Adresse (Straße, Ort,
+        Land) darf nur einem Entwurf fehlen (E10); wird sie einem Entwurf
+        nachgetragen, ist er ab jetzt eingerichtet und aktiv. Name und
+        Kurzzeichen wie beim Anlegen (409 mit Verweis; der Standort kollidiert
+        nie mit sich selbst und darf zu seinem früheren Kurzzeichen zurück).
+        Ein archivierter Standort wird nicht bearbeitet (409 `archiviert`).
+        Genau ein Protokolleintrag "bearbeitet" mit alt/neu NUR der geänderten
+        Felder; ohne Änderung wird nichts geschrieben. Ein fremder Standort ist
+        404, nie 403. Rechte: `standort.verwalten`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StandortStammdaten" }
+      responses:
+        "200":
+          description: Der Standort, wie er heute im Lesemodell steht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/archivieren:
+    post:
+      tags: [ortsstruktur]
+      summary: Einen Standort archivieren - nur ohne aktive Anlagen und Messstellen (AP-02 IP-4, E12).
+      description: >
+        Archiviert ab HEUTE in der Zeitzone des Standorts: sein Bestehen endet am
+        Vortag. Gesperrt (409 `archivieren_gesperrt`), solange heute eine Anlage
+        an ihm aktiv ist, eine Messstelle in seinem Teilbaum aktiv ist oder eine
+        Zuordnung hinein oder heraus geplant ist - `gruende` ist die GANZE Liste
+        in fester Reihenfolge (Anlagen, Messstellen, geplante Zuordnungen), je
+        Grund mit `weg`; `message` ist der Satz mit Grund und Weg
+        ("Werk Lindach kann nicht archiviert werden: die Anlage Werk Lindach ist
+        aktiv. Ordnen Sie die Anlage einem anderen Standort zu oder archivieren
+        Sie sie zuerst."). Die Regel ist docs/contracts/v2/ortsbaum-vectors.json
+        (Familie `archiv`). Messstellen sperren, sobald AP-04 IP-7 sie an Orte
+        hängt - bis dahin kennt die Sperre nur Anlagen. Leere Gebäude und
+        Bereiche werden mitarchiviert; keine Kaskade auf Anlagen oder
+        Messstellen. Genau ein Protokolleintrag "archiviert" am Standort
+        (`neu.mitarchiviert` nennt die Kinder). Kein Inhalt oder `{}`; jedes
+        Feld ist 400. Ein Löschen gibt es für den Standort nicht (§4.1, E1).
+        Rechte: `standort.verwalten`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Archiviert - der Standort heute (`bestand` archiviert, `archiviertAm` gesetzt).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/wiederherstellen:
+    post:
+      tags: [ortsstruktur]
+      summary: Einen archivierten Standort wiederherstellen - ein neues Bestehen ab heute (AP-02 IP-4, A8).
+      description: >
+        Ein NEUES Bestehen ab heute; die Lücke seit dem Archivieren bleibt
+        sichtbar und wird nie aufgefüllt (die Sicht "Stand am" zeigt ihn dort als
+        archiviert; das Paar archiviert → wiederhergestellt im Protokoll trägt
+        sie, `neu.luecke`). Der Name muss unter den Standorten, die es heute
+        gibt, frei sein - sonst 409 `wiederherstellen_gesperrt` mit
+        `grund: name_belegt` und `verweis`; optional `{"name": …}` benennt ihn im
+        selben Dialog um. Mitarchivierte Gebäude und Bereiche kommen nicht still
+        mit zurück. Danach aktiv (mit Adresse) bzw. wieder Entwurf. Genau ein
+        Protokolleintrag "wiederhergestellt". Rechte: `standort.verwalten`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StandortWiederherstellen" }
+      responses:
+        "200":
+          description: Wiederhergestellt - der Standort heute.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StandortAmStichtag" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/overview:
     get:
       tags: [sites]
@@ -7875,6 +8057,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/DatenquelleFehler" }
+    OrtAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben (auch kein Protokolleintrag). Der Körper
+        trägt `code`, einen deutschen `message`-Satz mit Grund und Weg (AP-02
+        §5.10) und die Fakten des Urteils (siehe OrtFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/OrtFehler" }
   schemas:
     OcppConnectorState:
       type: object
@@ -13647,6 +13837,130 @@ components:
         nochNichtZugeordnetZahl:
           type: integer
           description: Anlagen, die heute keinem Standort zugeordnet sind.
+        sitz:
+          nullable: true
+          description: Der Sitz (additiv, IP-4) - null, wenn kein Feld angegeben ist; nur Anzeige und Berichtskopf.
+          allOf: [{ $ref: "#/components/schemas/StandortAdresse" }]
+        rechtsform: { type: string, nullable: true, example: GmbH, description: "Additiv (IP-4)." }
+    UnternehmenBearbeiten:
+      type: object
+      description: >
+        PUT /api/v1/unternehmen (UEMS AP-02 IP-4) - die ganze Menge; ein
+        fehlendes Feld ist leer. Eine PLZ braucht ihr Land (DE fünf-, AT/CH
+        vierstellig).
+      required: [name, zeitzone]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kurzname: { type: string, nullable: true, maxLength: 24 }
+        zeitzone: { type: string, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+        sitz:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/StandortAdresse" }]
+        rechtsform: { type: string, nullable: true, maxLength: 40 }
+    StandortStammdaten:
+      type: object
+      description: >
+        POST und PUT /api/v1/standorte (UEMS AP-02 IP-4) - die Stammdaten (§4.1).
+        POST: `kurzzeichen` optional (fehlt: automatisch ST-n), `zeitzone`
+        optional (fehlt: die Vorgabe des Unternehmens), die Adresse Pflicht
+        (Straße, Ort, Land; PLZ optional). PUT: die ganze Menge, `kurzzeichen`
+        und `zeitzone` Pflicht, die Adresse nur außerhalb des Entwurfs.
+        `nutzung` sind Codes des geschlossenen Vokabulars (E4), jede höchstens
+        einmal, die erste ist die Hauptnutzung. Die Bezugsfläche (IP-5) und die
+        Anlagen-Zuordnung (IP-11) haben eigene Routen - hier sind sie 400.
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120, example: Werk Ahrenberg }
+        kurzzeichen: { type: string, nullable: true, maxLength: 24, example: ST-1 }
+        adresse:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/StandortAdresse" }]
+        zeitzone: { type: string, nullable: true, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+        nutzung:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/Nutzung" }
+        notiz: { type: string, nullable: true, maxLength: 500 }
+        lage:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/StandortLage" }]
+    StandortWiederherstellen:
+      type: object
+      description: Optional ein neuer Name - das Umbenennen im selben Dialog, wenn der alte inzwischen vergeben ist.
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+    StandortKurzzeichenVorschlag:
+      type: object
+      properties:
+        kurzzeichen: { type: string, example: ST-3 }
+    Nutzung:
+      type: string
+      description: AP-02 E4 - Code = Kundenwort in Kleinbuchstaben, ä→ae, ö→oe, ü→ue, ß→ss.
+      enum: [produktion, montage, lager, logistik, buero, technik, aussenflaeche, werkstatt, labor,
+             verkauf, sozialraeume, sonstiges]
+    StandortLage:
+      type: object
+      description: Die Lage auf der Karte - beide Koordinaten oder keine (W4).
+      properties:
+        breitengrad: { type: number, minimum: -90, maximum: 90, example: 48.25 }
+        laengengrad: { type: number, minimum: -180, maximum: 180, example: 11.43 }
+    OrtFehler:
+      type: object
+      description: >
+        Die Ablehnung der Ortsstruktur-Schreibrouten (UEMS AP-02 IP-4). Fakten
+        je Code: `anfrage_ungueltig` → `feld`; `name_belegt` und
+        `kurzzeichen_belegt` → `verweis` (der Träger - bei Kurzzeichen auch
+        `archiviert`, `frueher`, `heute`); `archiviert` → `archiviert_am`;
+        `archivieren_gesperrt` → `gruende`; `wiederherstellen_gesperrt` →
+        `grund` (nicht_archiviert | eltern_archiviert | name_belegt) und bei
+        name_belegt `verweis`.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, name_belegt, kurzzeichen_belegt, archiviert,
+                 archivieren_gesperrt, wiederherstellen_gesperrt]
+        message: { type: string }
+        feld: { type: string }
+        verweis:
+          type: object
+          properties:
+            objekt_art: { type: string, enum: [standort, gebaeude, bereich] }
+            id: { type: string, format: uuid, nullable: true }
+            kurzzeichen: { type: string }
+            name: { type: string, nullable: true }
+            heute: { type: string, nullable: true, description: Das heutige Kurzzeichen des Trägers. }
+            archiviert: { type: boolean }
+            frueher: { type: boolean }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        grund: { type: string, enum: [nicht_archiviert, eltern_archiviert, name_belegt] }
+        gruende:
+          type: array
+          items: { $ref: "#/components/schemas/ArchivSperrgrund" }
+    ArchivSperrgrund:
+      type: object
+      description: >
+        Ein Sperrgrund beim Archivieren, in der festen Reihenfolge des Vertrags
+        (docs/contracts/v2/ortsbaum-vectors.json `gruende_archivieren`).
+        `kennzeichen` ist das Kurzzeichen eines Orts bzw. das Kennzeichen einer
+        Messstelle; eine Anlage nennt ihre `id`. `weg` ist der Weg als Code.
+      properties:
+        art:
+          type: string
+          enum: [gab_es_noch_nicht, archiviert, anlage_aktiv, messstelle_aktiv, geplante_zuordnung]
+        objekt: { type: string, enum: [anlage, messstelle, standort, gebaeude, bereich] }
+        id: { type: string, format: uuid, nullable: true }
+        kennzeichen: { type: string, nullable: true }
+        name: { type: string }
+        ab: { type: string, format: date, description: Nur bei geplante_zuordnung. }
+        eltern: { type: string, description: Nur bei geplante_zuordnung - wohin. }
+        weg:
+          type: string
+          nullable: true
+          enum: [anlage_zuordnen, messstelle_umziehen, zuordnung_aufheben, null]
     StandorteAmStichtag:
       type: object
       description: >
@@ -13716,6 +14030,21 @@ components:
           type: string
           nullable: true
           enum: [eigen, aus_gebaeuden_summiert]
+        nutzung:
+          type: array
+          nullable: true
+          description: Additiv (IP-4) - Codes, die erste ist die Hauptnutzung; null = nichts gewählt.
+          items: { $ref: "#/components/schemas/Nutzung" }
+        notiz: { type: string, nullable: true, description: "Additiv (IP-4)." }
+        lage:
+          nullable: true
+          description: Additiv (IP-4).
+          allOf: [{ $ref: "#/components/schemas/StandortLage" }]
+        archiviertAm:
+          type: string
+          format: date-time
+          nullable: true
+          description: Additiv (IP-4) - wann er archiviert wurde; null, solange er es nicht ist.
     StandortAdresse:
       type: object
       properties:

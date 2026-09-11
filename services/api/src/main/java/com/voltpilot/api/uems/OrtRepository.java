@@ -77,6 +77,17 @@ public class OrtRepository {
         });
     }
 
+    /**
+     * Archiviert zum Zeitpunkt {@code am} — der Weg, auf dem ein leeres Kind mit
+     * seinem Standort archiviert wird (E12); {@code false}: schon archiviert oder
+     * nicht da. Seine Intervalle beendet der Schreibweg ({@link OrtZuordnungRepository}).
+     */
+    public boolean archivieren(UUID id, Instant am, String von) {
+        return jdbc.update("UPDATE ort SET zustand = 'archiviert', archiviert_am = ?, "
+                + "archiviert_von = ? WHERE id = ? AND archiviert_am IS NULL",
+                Timestamp.from(am), von, id) == 1;
+    }
+
     /** Der Ort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */
     public Optional<Ort> finde(UUID id) {
         return jdbc.query("SELECT " + SPALTEN + " FROM ort WHERE id = ?", OrtRepository::map, id)

@@ -37,6 +37,26 @@ public class OrtAenderungRepository {
             String neuJson, LocalDate giltAb, boolean rueckwirkend, String akteurSub,
             String akteurName, Instant createdAt) {}
 
+    /** Ein Archiv-Schritt eines Objekts: {@code archiviert} oder {@code wiederhergestellt}, ab {@code giltAb}. */
+    public record ArchivSchritt(UUID objektId, String art, LocalDate giltAb) {}
+
+    public static final String ARCHIVIERT = "archiviert";
+    public static final String WIEDERHERGESTELLT = "wiederhergestellt";
+
+    /**
+     * Die Archiv-Schritte aller Objekte einer Art, in der Reihenfolge des Schreibens —
+     * daraus liest das Standort-Lesemodell die Lücken zwischen Archivieren und
+     * Wiederherstellen (ein Standort hat kein eigenes Intervall).
+     */
+    public List<ArchivSchritt> archivVerlauf(String objektArt) {
+        return List.copyOf(jdbc.query("SELECT objekt_id, art, gilt_ab FROM ort_aenderung "
+                + "WHERE objekt_art = ? AND art IN ('" + ARCHIVIERT + "', '" + WIEDERHERGESTELLT + "') "
+                + "ORDER BY created_at, id",
+                (rs, n) -> new ArchivSchritt(rs.getObject("objekt_id", UUID.class), rs.getString("art"),
+                        rs.getObject("gilt_ab", LocalDate.class)),
+                objektArt));
+    }
+
     public long eintragen(NeuerEintrag e) {
         Long id = jdbc.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, "
                 + "art, alt, neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name) "

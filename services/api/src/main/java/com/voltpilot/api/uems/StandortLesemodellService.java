@@ -38,11 +38,12 @@ public class StandortLesemodellService {
     private final AnlageStandortRepository anlageZuordnungen;
     private final FlaecheRepository flaechen;
     private final SiteRepository sites;
+    private final OrtAenderungRepository aenderungen;
 
     public StandortLesemodellService(JdbcTemplate jdbc, UnternehmenRepository unternehmen,
             StandortRepository standorte, OrtRepository orte,
             OrtZuordnungRepository ortZuordnungen, AnlageStandortRepository anlageZuordnungen,
-            FlaecheRepository flaechen, SiteRepository sites) {
+            FlaecheRepository flaechen, SiteRepository sites, OrtAenderungRepository aenderungen) {
         this.jdbc = jdbc;
         this.unternehmen = unternehmen;
         this.standorte = standorte;
@@ -51,6 +52,7 @@ public class StandortLesemodellService {
         this.anlageZuordnungen = anlageZuordnungen;
         this.flaechen = flaechen;
         this.sites = sites;
+        this.aenderungen = aenderungen;
     }
 
     /**
@@ -103,7 +105,8 @@ public class StandortLesemodellService {
         return !jdbc.queryForList("SELECT id FROM tenant", UUID.class).isEmpty();
     }
 
-    private Zeilen zeilen() {
+    /** Alle Zeilen des Mandanten — auch der Stand, auf dem die Schreibrouten urteilen (IP-4). */
+    Zeilen zeilen() {
         return zeilen(standorte.alle());
     }
 
@@ -116,6 +119,6 @@ public class StandortLesemodellService {
             return new Zeilen(u, st, List.of(), List.of(), List.of(), List.of(), anlagen);
         }
         return new Zeilen(u, st, orte.alle(), ortZuordnungen.alle(), anlageZuordnungen.alle(),
-                flaechen.alle(), anlagen);
+                flaechen.alle(), anlagen, aenderungen.archivVerlauf("standort"));
     }
 }

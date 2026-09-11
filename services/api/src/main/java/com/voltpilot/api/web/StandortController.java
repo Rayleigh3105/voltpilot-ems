@@ -1,39 +1,56 @@
 package com.voltpilot.api.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.StandorteAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodellService;
+import com.voltpilot.api.uems.StandortService;
+import com.voltpilot.api.web.dto.StandortDto;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Das Standort-Lesemodell (UEMS AP-02 IP-3 ★): die Standorte des Unternehmens
- * zum Stichtag — Kurzzeichen, Name, Adresse, Zeitzone, Zustand und „es fehlt",
- * die Anlagen mit gültiger Zuordnung, Gebäude- und Bereichszahl, Fläche — und
- * die Gruppe „noch nicht zugeordnet". Nur lesend; die Schreibrouten bringen
- * IP-4 (Standort) und IP-5 (Gebäude/Bereiche).
+ * Die Standorte des Unternehmens (UEMS AP-02). Lesend das Standort-Lesemodell (IP-3 ★): die
+ * Standorte zum Stichtag — Kurzzeichen, Name, Adresse, Zeitzone, Zustand und „es fehlt",
+ * die Anlagen mit gültiger Zuordnung, Gebäude- und Bereichszahl, Fläche — und die Gruppe
+ * „noch nicht zugeordnet". Schreibend der Lebenszyklus (IP-4, {@link StandortService}):
+ * anlegen, bearbeiten, archivieren, wiederherstellen — jede Schreibroute antwortet mit dem
+ * Standort, wie er heute im Lesemodell steht; eine Ablehnung ist {@code {code, message,
+ * …Fakten}} ({@link OrtAbgelehntHandler}). Gebäude und Bereiche bringt IP-5.
  *
- * <p>Mandantengebunden wie {@code /api/v1/sites/**}: {@code authenticated()}
- * plus RLS, keine eigene Rechte-Annotation. Ein fremder Standort ist 404, nie
- * 403 (A14). {@code stichtag} ist ein ISO-Tag ({@code 2027-02-15}); ohne ihn
- * gilt heute in der Zeitzone des Unternehmens.
+ * <p>Mandantengebunden wie {@code /api/v1/sites/**}: {@code authenticated()} plus RLS, keine
+ * eigene Rechte-Annotation — jede Route nennt ihre Kennung aus
+ * {@code docs/contracts/v2/rechte-matrix.json} im Kommentar, damit AP-03 sie findet. Ein
+ * fremder Standort ist 404, nie 403 (A14). {@code stichtag} ist ein ISO-Tag
+ * ({@code 2027-02-15}); ohne ihn gilt heute in der Zeitzone des Unternehmens.
  */
 @RestController
 @RequestMapping("/api/v1/standorte")
 public class StandortController {
 
     private final StandortLesemodellService lesemodell;
+    private final StandortService standorte;
+    private final OrtAnfrage anfrage;
 
-    public StandortController(StandortLesemodellService lesemodell) {
+    public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
+            OrtAnfrage anfrage) {
         this.lesemodell = lesemodell;
+        this.standorte = standorte;
+        this.anfrage = anfrage;
     }
 
     // Rechte (rechte-matrix.json): heute lesend — keine eigene Kennung; die Sicht
@@ -46,6 +63,12 @@ public class StandortController {
         return lesemodell.standorte(stichtag);
     }
 
+    // Rechte: `standort.verwalten` — der Vorschlag gehört zum Anlege-Dialog.
+    @GetMapping("/kurzzeichen-vorschlag")
+    public StandortDto.Vorschlag vorschlag() {
+        return standorte.vorschlag();
+    }
+
     // Rechte: wie oben.
     @GetMapping("/{standortId}")
     public StandortAmStichtag standort(@PathVariable UUID standortId,
@@ -53,5 +76,38 @@ public class StandortController {
             LocalDate stichtag) {
         return lesemodell.standort(standortId, stichtag).orElseThrow(
                 () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort not found"));
+    }
+
+    // Rechte: `standort.verwalten`.
+    @PostMapping
+    public ResponseEntity<StandortAmStichtag> anlegen(@RequestBody(required = false) JsonNode body,
+            Authentication auth) {
+        StandortAmStichtag neu = standorte.anlegen(anfrage.lies(body, StandortDto.Stammdaten.class, false),
+                OrtAnfrage.akteur(auth));
+        return ResponseEntity.created(URI.create("/api/v1/standorte/" + neu.id())).body(neu);
+    }
+
+    // Rechte: `standort.verwalten`.
+    @PutMapping("/{standortId}")
+    public StandortAmStichtag bearbeiten(@PathVariable UUID standortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return standorte.bearbeiten(standortId, anfrage.lies(body, StandortDto.Stammdaten.class, false),
+                OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `standort.verwalten`. Ohne Inhalt: es gibt nichts zu wählen — archiviert wird ab heute.
+    @PostMapping("/{standortId}/archivieren")
+    public StandortAmStichtag archivieren(@PathVariable UUID standortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        OrtAnfrage.leer(body);
+        return standorte.archivieren(standortId, OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `standort.verwalten`. Optional `{"name": …}` — das Umbenennen im selben Dialog.
+    @PostMapping("/{standortId}/wiederherstellen")
+    public StandortAmStichtag wiederherstellen(@PathVariable UUID standortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return standorte.wiederherstellen(standortId,
+                anfrage.lies(body, StandortDto.Wiederherstellen.class, true), OrtAnfrage.akteur(auth));
     }
 }

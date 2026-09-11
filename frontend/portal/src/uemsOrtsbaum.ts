@@ -916,6 +916,39 @@ function namensSchluessel(name: string): string {
 }
 
 /**
+ * Regel 13 / §4.1: der Geschwister-Ort, der den Namen am Tag trägt — dieselbe
+ * Art, derselbe Elternknoten (`null`: am Unternehmen, also die Standorte), am
+ * Tag im Baum, ohne Groß-/Kleinschreibung und Randleerzeichen. `ausser` ist der
+ * Ort selbst (Umbenennen, Wiederherstellen). `undefined` = der Name ist frei.
+ * Dieselbe Prüfung beim Anlegen, Umbenennen und Wiederherstellen.
+ */
+export function nameBelegt(
+  baum: Ortsbaum,
+  art: OrtArt,
+  eltern: string | null,
+  name: string,
+  tag: Tag,
+  ausser: string | null,
+): Ort | undefined {
+  return baum.orte.find(
+    (x) =>
+      x.kennzeichen !== ausser &&
+      x.art === art &&
+      intervallAm(x.intervalle, tag) !== null &&
+      (intervallAm(x.intervalle, tag)?.eltern ?? null) === eltern &&
+      namensSchluessel(x.name) === namensSchluessel(name),
+  );
+}
+
+/** Der Satz aus §5.10 zu einem belegten Namen, mit dem Weg zum vorhandenen Ort. */
+export function nameBelegtSatz(belegt: Ort): string {
+  return (
+    `Diesen Namen gibt es hier schon: ${belegt.name} (${belegt.kennzeichen}). Wählen Sie einen anderen Namen — ` +
+    `oder öffnen Sie ${belegt.name}.`
+  );
+}
+
+/**
  * Ein NEUES Intervall ab dem Tag am alten Elternknoten; die Lücke bleibt; der
  * Name muss unter den Geschwistern derselben Art frei sein (ohne Groß-/
  * Kleinschreibung und Randleerzeichen). Mitarchivierte Kinder kommen nicht
@@ -945,23 +978,9 @@ export function wiederherstellen(
     };
   }
   const name = (neuerName ?? o.name).trim();
-  const belegt = baum.orte.find(
-    (x) =>
-      x.kennzeichen !== objekt &&
-      x.art === o.art &&
-      intervallAm(x.intervalle, tag) !== null &&
-      (intervallAm(x.intervalle, tag)?.eltern ?? null) === eltern &&
-      namensSchluessel(x.name) === namensSchluessel(name),
-  );
+  const belegt = nameBelegt(baum, o.art, eltern, name, tag, objekt);
   if (belegt !== undefined) {
-    return {
-      erlaubt: false,
-      grund: 'name_belegt',
-      text:
-        `Diesen Namen gibt es hier schon: ${belegt.name} (${belegt.kennzeichen}). Wählen Sie einen anderen Namen — ` +
-        `oder öffnen Sie ${belegt.name}.`,
-      ...nichts,
-    };
+    return { erlaubt: false, grund: 'name_belegt', text: nameBelegtSatz(belegt), ...nichts };
   }
   const von = plusTage(letzte.bis ?? tag, 1);
   const bis = plusTage(tag, -1);

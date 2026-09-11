@@ -166,12 +166,14 @@ public class TenantRepository {
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
-                // V20260911140000, V20260911150000) references tenant/site/standort/ort
-                // with ON DELETE RESTRICT - never a cascade. Offboarding is the ONE way a
-                // company ends, so it removes them explicitly, children first: a
-                // Messstelle before the Orte it will point to, floor areas and parent
-                // intervals before the buildings/areas they point at, those before the
-                // Standort; the Zustaendigkeiten before their Datenquelle. The
+                // V20260911140000, V20260911150000, V20260911210000) references
+                // tenant/site/standort/ort with ON DELETE RESTRICT - never a cascade.
+                // Offboarding is the ONE way a company ends, so it removes them
+                // explicitly, children first: a Messstelle before the Orte it will point
+                // to, floor areas and parent intervals before the buildings/areas they
+                // point at, those before the Standort; the Zustaendigkeiten before their
+                // Datenquelle; the Kurzzeichen occupancy and counter of the Orte (no FK
+                // to the Orte, only to the tenant) with them. The
                 // append-only logs ort_aenderung, messstelle_aenderung and
                 // data_source_aenderung carry no FK and stay (the component_change_event
                 // pattern). The components go with the
@@ -188,7 +190,8 @@ public class TenantRepository {
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",
-                        "anlage_standort", "standort", "unternehmen"}) {
+                        "anlage_standort", "standort", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                        "unternehmen"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 deleteByTenant(con, "tenant", tenantId, "id");
