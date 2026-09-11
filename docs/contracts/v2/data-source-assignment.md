@@ -198,6 +198,23 @@ bestimmt in dieser Vorrang-Reihenfolge — **nie geraten**:
 Jede Box der Anlage liest „liest 2 Datenquellen · führt die Anlage“ bzw. „liest 1 Datenquelle ·
 führt die Anlage nicht“ (A9). Zwei Boxen in einer Anlage sind nie von selbst ein Verbund.
 
+**Der Dienst (IP-5).** Registry-Push und Flow-Aktivierung stellen der führenden Box zu
+(`LeadDeviceService`, Ableitung `uems/FuehrendeBoxAbleitung`, Vektoren
+[`lead-device-vectors.json`](./lead-device-vectors.json)). Die Vorrang-Reihenfolge ist die obige;
+dazu kommen zwei Regeln, die nur ein Dienst mit echten Boxen braucht:
+
+- Eine gespeicherte Wahl gilt nur, wenn die Box in DIESER Anlage angemeldet und nicht ausgebaut
+  ist; sonst führt keine Box (`gespeichert_nicht_in_anlage`) — nie still eine andere, auch nicht
+  die einzige. Heute löscht das Entfernen einer Box ihre Zeile und leert damit die Wahl
+  (`ON DELETE SET NULL`); danach gilt wieder Speicher-Box → einzige Box.
+- „Keine“ ist zweigeteilt: `keine_wahl` (mehrere Boxen, keine gewählt — der Kunde wählt) und
+  `keine_box` (die Anlage hat keine Box — es gibt nichts zu wählen).
+
+Die Box des Speichers gilt wie bis IP-5 ohne Anmelde-Prüfung. Für jede Bestandsanlage ist
+`site.lead_device_id` NULL; dann ist die führende Box genau die der alten Einzel-Gateway-Weiche,
+und wo die keine hatte, bleibt das Beobachtbare gleich (kein Push, `refused(no_gateway_device)`,
+Vorschau-Grund `no_claimed_device` bzw. `multiple_devices_no_battery_link`).
+
 **Bestands-Übernahme (A12, IP-4):** die vorhandenen Komponenten werden nach Box + Protokoll +
 Adresse zu Vorschlägen gruppiert (Reihenfolge des ersten Auftretens, Kennzeichen ab der
 nächsten freien Nummer des Kundenbereichs, Geräte-IDs aufsteigend, Steuerquelle, wenn eine
@@ -286,4 +303,5 @@ Ladepunkte an einer zweiten Box (§5.2, bis AP-15) und das Entfernen einer noch 
 ```bash
 (cd services/api && ./mvnw test -Dtest='DatenquelleRegelnVectorsTest')   # 117 Tests, rein
 (cd frontend/portal && npx vitest run src/uemsDatenquelle.test.ts)       # 61 Tests
+(cd services/api && ./mvnw test -Dtest='FuehrendeBoxAbleitungVectorsTest,LeadDeviceServiceTest,LeadDeviceBestandVerhaltensgleichTest')   # IP-5, rein
 ```

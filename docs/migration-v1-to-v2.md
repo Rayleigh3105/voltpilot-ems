@@ -146,6 +146,10 @@ Read the response and confirm it matches the physical plant:
   - `no_claimed_device` → claim the edge device first;
   - `multiple_devices_no_battery_link` → link the battery to its controlling
     device (the battery editor's device picker) so the gateway is unambiguous.
+  - `no_gateway_device` → the site's stored lead box (`site.lead_device_id`,
+    UEMS AP-06 IP-5) is not (or no longer) registered in this site; the gateway
+    is the lead box of `LeadDeviceService`, which never falls back to another
+    box - choose the lead box again.
 - `skipped[]` — honest notes (e.g. "no battery asset"). Fix the master data and
   re-preview if anything important is skipped. **Since U2 this list is noisier:**
   the preview only composes the three pilot types, so an entity that already

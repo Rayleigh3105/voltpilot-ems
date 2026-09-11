@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/lead-device.schema.json",
+  "title": "Führende Box einer Anlage: eine Box oder ein benannter Grund",
+  "description": "Die führende Box, wie ein Dienst sie braucht (UEMS AP-06 IP-5, E3 = A; Prosa in data-source-assignment.md §8). Beschrieben wird die Vektor-Datei lead-device-vectors.json, die die Java-Ableitung services/api .../uems/FuehrendeBoxAbleitung pinnt (gerufen von entities/LeadDeviceService, dem Ziel von Registry-Push und Flow-Aktivierung). Die Vorrang-Reihenfolge ist die der Familie fuehrende_box in data-source-vectors.json; hier kommen die Anmelde-Prüfung der gespeicherten Wahl und die Trennung von keine_wahl und keine_box dazu. Die Datei ist zugleich ihre eigene Fixture.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "referenzunternehmen",
+    "grundlage",
+    "gruende",
+    "bestimmt",
+    "abnahmefaelle",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa — dieselbe wie im Vertrag.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieser Vektoren. Bleibt; Erweiterungen sind additiv.",
+      "const": "1.0"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Regel stammt: Konzeptpaket, Entscheid, Abnahmefälle.",
+      "type": "string",
+      "minLength": 1
+    },
+    "referenzunternehmen": {
+      "description": "Die Beispielwelt: jede Tatsache eines Falls über ein Ahrenberg-Objekt steht so in dieser Datei.",
+      "const": "./uems-referenzunternehmen.json"
+    },
+    "grundlage": {
+      "description": "Die Vektoren der Vorrang-Reihenfolge; ihre Gründe sind die ersten vier dieses Vokabulars, ihre Fälle gelten hier unverändert.",
+      "const": "./data-source-vectors.json"
+    },
+    "gruende": {
+      "description": "Das geschlossene Vokabular, in dieser Reihenfolge: drei Wege zu einer Box, drei benannte Gründe für keine.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/grund" }
+    },
+    "bestimmt": {
+      "description": "Die Gründe, die eine Box nennen. Jeder andere Grund heißt: keine Box führt.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/grund" }
+    },
+    "abnahmefaelle": {
+      "description": "Die Abnahmefälle aus AP-06 §7, die ein Fall pinnt.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^A[0-9]+$" }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "grund": {
+      "description": "Woher die führende Box kommt — oder warum keine führt.",
+      "enum": ["gespeichert", "speicher", "einzige", "keine_wahl", "keine_box", "gespeichert_nicht_in_anlage"]
+    },
+    "zeitpunkt": {
+      "description": "Ein Zeitpunkt mit Zeitzonen-Versatz (ISO 8601), nie eine nackte Ortszeit.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "boxKennzeichen": {
+      "description": "Das Kennzeichen einer Box (E-1, E-2′ …).",
+      "type": "string",
+      "pattern": "^E-[0-9A-Z]+′?$"
+    },
+    "boxKennzeichenOderNull": {
+      "type": ["string", "null"],
+      "pattern": "^E-[0-9A-Z]+′?$"
+    },
+    "anlagenKennzeichen": {
+      "type": "string",
+      "pattern": "^AN-[0-9]+$"
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "abnahme": { "type": "string", "pattern": "^A[0-9]+$" },
+        "annahme": {
+          "description": "Was der Fall gegenüber der Referenz erfindet.",
+          "type": "string",
+          "minLength": 1
+        },
+        "why": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anlage", "stichtag", "boxen", "speicher_box", "gespeichert"],
+          "properties": {
+            "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+            "stichtag": {
+              "description": "Der Zeitpunkt der Referenz-Zeitachse, dessen Stand der Fall beschreibt.",
+              "$ref": "#/$defs/zeitpunkt"
+            },
+            "boxen": {
+              "description": "Die zum Stichtag in der Anlage angemeldeten, nicht ausgebauten Boxen in Anmelde-Reihenfolge.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/boxKennzeichen" }
+            },
+            "speicher_box": {
+              "description": "Die Box, die den primären Speicher liest (asset.device_id), oder null.",
+              "$ref": "#/$defs/boxKennzeichenOderNull"
+            },
+            "gespeichert": {
+              "description": "Die ausdrücklich gewählte Box (site.lead_device_id), oder null.",
+              "$ref": "#/$defs/boxKennzeichenOderNull"
+            }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["box", "grund", "weiche_bis_ip5"],
+          "properties": {
+            "box": {
+              "description": "Die führende Box, oder null, wenn keine führt.",
+              "$ref": "#/$defs/boxKennzeichenOderNull"
+            },
+            "grund": { "$ref": "#/$defs/grund" },
+            "weiche_bis_ip5": {
+              "description": "Was die Einzel-Gateway-Weiche bis IP-5 gewählt hätte (Speicher-Box, sonst einzige Box, sonst keine).",
+              "$ref": "#/$defs/boxKennzeichenOderNull"
+            }
+          }
+        }
+      }
+    }
+  }
+}

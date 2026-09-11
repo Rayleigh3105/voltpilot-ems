@@ -28,8 +28,10 @@ import java.util.TreeSet;
  *
  * <h2>⚠ Wer anruft</h2>
  *
- * {@link DatenquelleService} (IP-3: anlegen, prüfen, zuweisen) über die Tabellen aus IP-2. Kein
- * Push, keine Fläche ist umgestellt; {@code gatewayDevice}, Registry-Push und Herzschlag sind
+ * {@link DatenquelleService} (IP-3: anlegen, prüfen, zuweisen) über die Tabellen aus IP-2, und
+ * {@link FuehrendeBoxAbleitung} (IP-5) über {@link #fuehrung} — die Vorrang-Reihenfolge der
+ * führenden Box, aus der {@code LeadDeviceService} das Ziel von Registry-Push und
+ * Flow-Aktivierung bestimmt. Keine Fläche ist umgestellt; Herzschlag und Push-Inhalt sind
  * unberührt. Diese Klasse ist der Vertrag, gegen den die Folgepakete bauen.
  *
  * <h2>Die Prüfreihenfolge eines Antrags</h2>
@@ -415,6 +417,9 @@ public final class DatenquelleRegeln {
 
     public record FuehrungsErgebnis(String box, FuehrungsGrund grund, String text, List<BoxRolle> rollen) {}
 
+    /** Die führende Box ohne Sätze: die Box (oder {@code null}) und woher sie kommt. */
+    public record Fuehrung<B>(B box, FuehrungsGrund grund) {}
+
     /** Was eine Box über ihre Software meldet; {@code supports == null}: kein Block. */
     public record Stand(String version, String release, List<String> supports) {}
 
@@ -643,21 +648,10 @@ public final class DatenquelleRegeln {
      * Speichers, sonst die einzige Box — sonst keine, und das Portal fragt. Nie geraten.
      */
     public static FuehrungsErgebnis fuehrendeBox(List<BoxLiest> boxen, String speicherBox, String gespeichert) {
-        String box;
-        FuehrungsGrund grund;
-        if (gespeichert != null) {
-            box = gespeichert;
-            grund = FuehrungsGrund.GESPEICHERT;
-        } else if (speicherBox != null) {
-            box = speicherBox;
-            grund = FuehrungsGrund.SPEICHER;
-        } else if (boxen.size() == 1) {
-            box = boxen.get(0).kennzeichen();
-            grund = FuehrungsGrund.EINZIGE;
-        } else {
-            box = null;
-            grund = FuehrungsGrund.KEINE_WAHL;
-        }
+        Fuehrung<String> fuehrung = fuehrung(boxen.stream().map(BoxLiest::kennzeichen).toList(),
+                speicherBox, gespeichert);
+        String box = fuehrung.box();
+        FuehrungsGrund grund = fuehrung.grund();
         List<BoxRolle> rollen = new ArrayList<>();
         String name = null;
         for (BoxLiest b : boxen) {
@@ -672,6 +666,25 @@ public final class DatenquelleRegeln {
                 ? TEXTE.get("keine_wahl")
                 : fuelle(TEXTE.get("fuehrt"), Map.of("box", name == null ? box : name));
         return new FuehrungsErgebnis(box, grund, text, List.copyOf(rollen));
+    }
+
+    /**
+     * Die Vorrang-Reihenfolge allein (E3 = A), für jede Art Box-Kennung — das Kennzeichen der
+     * Vektoren wie die Geräte-UUID des Dienstes. {@link #fuehrendeBox} baut daraus die Sätze,
+     * {@link FuehrendeBoxAbleitung} das Ziel von Registry-Push und Flow-Aktivierung; die Regel
+     * steht damit genau hier.
+     */
+    public static <B> Fuehrung<B> fuehrung(List<B> boxen, B speicherBox, B gespeichert) {
+        if (gespeichert != null) {
+            return new Fuehrung<>(gespeichert, FuehrungsGrund.GESPEICHERT);
+        }
+        if (speicherBox != null) {
+            return new Fuehrung<>(speicherBox, FuehrungsGrund.SPEICHER);
+        }
+        if (boxen.size() == 1) {
+            return new Fuehrung<>(boxen.get(0), FuehrungsGrund.EINZIGE);
+        }
+        return new Fuehrung<>(null, FuehrungsGrund.KEINE_WAHL);
     }
 
     private static String anzahl(int n) {

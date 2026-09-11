@@ -27,7 +27,9 @@ E10 = B, E11, E12); der Glossar-Hinweis steht bei „Datenquelle“ in
 
 IP-1 stellt NICHTS um: keine Tabelle (IP-2 `data_source`, `data_source_assignment`,
 `site.lead_device_id`), kein Endpunkt (IP-3), keine Vorschlagsliste (IP-4), kein Push je Box
-(E4), kein Herzschlag-Block (IP-13/IP-18). `gatewayDevice` bleibt die heutige Weiche.
+(E4), kein Herzschlag-Block (IP-13/IP-18). `gatewayDevice` bleibt die heutige Weiche — bis
+IP-5: seitdem stellt `LeadDeviceService` Registry-Push und Flow-Aktivierung der führenden Box zu
+(`DatenquelleRegeln.fuehrung` + `lead-device-vectors.json`, `uems-fuehrende-box-lead-device-service.md`).
 
 ## Die fünf Fakten, die man ohne Nachlesen braucht
 

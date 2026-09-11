@@ -10813,8 +10813,8 @@ components:
       description: A read-only dry-run of the v1->v2 conversion (MIG). Writes nothing.
       properties:
         alreadyConverted: { type: boolean, description: The site already has v2 entities. }
-        gatewayDevice: { type: string, format: uuid, nullable: true, description: The resolved gateway device (null when ambiguous/none). }
-        gatewayReason: { type: string, nullable: true, enum: [no_claimed_device, multiple_devices_no_battery_link, no_gateway_device, null] }
+        gatewayDevice: { type: string, format: uuid, nullable: true, description: "The resolved gateway device - the site's lead box (LeadDeviceService, UEMS AP-06 IP-5); null when none leads." }
+        gatewayReason: { type: string, nullable: true, enum: [no_claimed_device, multiple_devices_no_battery_link, no_gateway_device, null], description: "Why no box leads (null when one does): no_claimed_device = the site has no box; multiple_devices_no_battery_link = several boxes, none linked to the battery and none chosen; no_gateway_device = the stored lead box is not (or no longer) registered in this site." }
         plan:
           type: array
           items:

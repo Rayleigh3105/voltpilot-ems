@@ -12,6 +12,7 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -109,6 +110,7 @@ public class EntityRegistryService {
     private final AssetRepository assets;
     private final FlowClaimRepository claims;
     private final DeviceOverrideRepository overrides;
+    private final LeadDeviceService leadDevices;
     private final Clock clock;
 
     /**
@@ -121,14 +123,15 @@ public class EntityRegistryService {
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides) {
-        this(repo, publisher, mapper, catalog, assets, claims, overrides, Clock.systemUTC());
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices) {
+        this(repo, publisher, mapper, catalog, assets, claims, overrides, leadDevices,
+                Clock.systemUTC());
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides, Clock clock) {
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, Clock clock) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
@@ -136,6 +139,7 @@ public class EntityRegistryService {
         this.assets = assets;
         this.claims = claims;
         this.overrides = overrides;
+        this.leadDevices = leadDevices;
         this.clock = clock;
     }
 
@@ -150,11 +154,14 @@ public class EntityRegistryService {
         List<String> skipped = new ArrayList<>();
 
         BatteryAsset battery = repo.batteryAsset(siteId);
+        // Die führende Box (IP-5): EINMAL aufgelöst, dieselbe für beide Kompositionen hier und
+        // für den Push am Ende - bis IP-6 trägt sie die ganze Anlagen-Summe.
+        UUID gateway = leadDevices.fuehrendeBox(siteId).box();
         if (battery != null) {
             UUID pointId = repo.batteryHybridPointId(siteId);
             if (pointId == null) {
                 pointId = repo.createBatteryHybridPoint(tenantId, siteId, COMPOSED_LABEL,
-                        gatewayDevice(siteId, battery));
+                        gateway);
             }
             repo.setEntityConfig(pointId, TYPE_BATTERY_HYBRID,
                     write(batteryCapabilities(battery)),
@@ -163,7 +170,7 @@ public class EntityRegistryService {
             skipped.add("battery-hybrid: no battery asset on this site");
         }
 
-        synthesizeGatewayPoints(tenantId, siteId, gatewayDevice(siteId, battery), skipped);
+        synthesizeGatewayPoints(tenantId, siteId, gateway, skipped);
 
         for (EntityRow point : repo.pointsForSite(siteId)) {
             switch (point.role()) {
@@ -283,7 +290,7 @@ public class EntityRegistryService {
         if (repo.hasEntities(siteId) && !batteryUncomposed) {
             return BackfillOutcome.ALREADY_V2;
         }
-        if (gatewayDevice(siteId, battery) == null) {
+        if (!leadDevices.fuehrendeBox(siteId).bestimmt()) {
             return BackfillOutcome.SKIPPED_NO_GATEWAY;
         }
         bootstrap(siteId);
@@ -369,7 +376,8 @@ public class EntityRegistryService {
             }
         }
 
-        UUID gateway = gatewayDevice(siteId, battery);
+        LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
+        UUID gateway = lead.box();
         // The synthesized gateway points (MIG §2.3/§2.4) - LOCKSTEP with
         // synthesizeGatewayPoints() in bootstrap(), or the preview lies about
         // what the conversion will do.
@@ -387,8 +395,8 @@ public class EntityRegistryService {
                         rolesFor(TYPE_HOUSE_LOAD, caps), caps, houseLoadGuards()));
             }
         }
-        return new ConversionPreview(repo.hasEntities(siteId), gateway,
-                gateway == null ? gatewayReason(siteId, battery) : null, plan, skipped);
+        return new ConversionPreview(repo.hasEntities(siteId), gateway, gatewayReason(lead),
+                plan, skipped);
     }
 
     /**
@@ -469,16 +477,19 @@ public class EntityRegistryService {
         return new HistoryCutover(repo.v2HistoryCutover(siteId));
     }
 
-    /** Why no unambiguous gateway device could be resolved (for the preview). */
-    private String gatewayReason(UUID siteId, BatteryAsset battery) {
-        int devices = repo.siteDeviceIds(siteId).size();
-        if (devices == 0) {
-            return "no_claimed_device";
-        }
-        if (battery == null || battery.deviceId() == null) {
-            return "multiple_devices_no_battery_link";
-        }
-        return "no_gateway_device";
+    /**
+     * Why no unambiguous gateway device could be resolved (for the preview), in the preview's
+     * own closed vocabulary (openapi {@code gatewayReason}); {@code null} when a box leads. The
+     * named reason of {@link LeadDeviceService} maps onto it 1:1 - a stored lead box that is not
+     * (or no longer) registered in this site is the {@code no_gateway_device} case.
+     */
+    private static String gatewayReason(LeadDeviceService.FuehrendeBox lead) {
+        return switch (lead.grund()) {
+            case GESPEICHERT, SPEICHER, EINZIGE -> null;
+            case KEINE_BOX -> "no_claimed_device";
+            case KEINE_WAHL -> "multiple_devices_no_battery_link";
+            case GESPEICHERT_NICHT_IN_ANLAGE -> "no_gateway_device";
+        };
     }
 
     /**
@@ -488,10 +499,11 @@ public class EntityRegistryService {
      */
     public PushOutcome pushRegistryBestEffort(UUID siteId) {
         UUID tenantId = TenantContext.get();
-        UUID gateway = gatewayDevice(siteId, repo.batteryAsset(siteId));
+        LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
+        UUID gateway = lead.box();
         if (gateway == null) {
-            log.warn("v2 entity registry for site {} not pushed: no unambiguous gateway device",
-                    siteId);
+            log.warn("v2 entity registry for site {} not pushed: no unambiguous gateway device "
+                    + "({})", siteId, lead.grund().code());
             return PushOutcome.noGateway();
         }
         // The composed revision is the Soll the edge is expected to echo in
@@ -947,43 +959,33 @@ public class EntityRegistryService {
     }
 
     /**
-     * The device carrying the site's v2 subtree: the battery's controlling
-     * device when linked, else the site's SINGLE claimed device - never a guess
-     * between several (the autoLinkBatteryDevice rule).
-     */
-    /**
-     * Das Gerät, dem der Push dieser Anlage zugestellt würde, oder {@code null}.
-     * Die Bestands-Übernahme (Stufe 2) fragt es VOR dem Schreiben: eine
-     * Autorität ohne Empfänger wäre genau der Halbzustand, den sie ausschließt.
+     * Das Gerät, dem der Push dieser Anlage zugestellt würde, oder {@code null}:
+     * die führende Box des {@link LeadDeviceService} (IP-5), dieselbe wie in
+     * {@link #pushRegistryBestEffort}. Die Bestands-Übernahme (Stufe 2) fragt es
+     * VOR dem Schreiben: eine Autorität ohne Empfänger wäre genau der
+     * Halbzustand, den sie ausschließt.
      */
     public UUID gatewayDeviceFor(UUID siteId) {
-        return gatewayDevice(siteId, repo.batteryAsset(siteId));
+        return leadDevices.fuehrendeBox(siteId).box();
     }
 
     /**
      * Ob diese Anlage GERAETE hat, aber kein eindeutiges Empfaenger-Geraet - der
-     * Fall {@code multiple_devices_no_battery_link} von {@link #gatewayReason}:
-     * mehrere beanspruchte Geraete und keiner davon als steuerndes Geraet des
-     * Speichers hinterlegt.
+     * Fall {@code multiple_devices_no_battery_link} von {@link #gatewayReason},
+     * also der Grund {@code keine_wahl} des {@link LeadDeviceService}: mehrere
+     * beanspruchte Geraete, keiner davon als steuerndes Geraet des Speichers
+     * hinterlegt und keine Box ausdruecklich gewaehlt.
      *
      * <p>⚠ Bewusst NICHT wahr, wenn die Anlage GAR KEIN Geraet hat: dort gibt es
      * kein Geraet, das einen Stand haben koennte, und ein Satz ueber „mehrere
      * Geraete" waere dann schlicht falsch. Diese eine Unterscheidung ist der
      * ganze Grund, warum es die Methode neben {@link #gatewayDeviceFor} gibt.
+     * Ebenso NICHT wahr fuer {@code gespeichert_nicht_in_anlage}: der Satz der
+     * Flaeche nennt „mehrere Geraete und keinen zugeordneten Speicher" als
+     * Ursache, und die traegt dieser Fall nicht (er kann auch EINE Box haben).
      */
     public boolean gatewayAmbiguous(UUID siteId) {
-        if (gatewayDevice(siteId, repo.batteryAsset(siteId)) != null) {
-            return false;
-        }
-        return !repo.siteDeviceIds(siteId).isEmpty();
-    }
-
-    private UUID gatewayDevice(UUID siteId, BatteryAsset battery) {
-        if (battery != null && battery.deviceId() != null) {
-            return battery.deviceId();
-        }
-        List<UUID> devices = repo.siteDeviceIds(siteId);
-        return devices.size() == 1 ? devices.get(0) : null;
+        return leadDevices.fuehrendeBox(siteId).grund() == Grund.KEINE_WAHL;
     }
 
     /** The registry_push payload (edge-entity.schema.json $defs/registry_push). */

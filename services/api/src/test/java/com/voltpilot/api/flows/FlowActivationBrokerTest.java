@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.tenant.TenantContext;
@@ -106,7 +107,8 @@ class FlowActivationBrokerTest {
                 URI.create("http://flowc:8099"), MAPPER);
 
         FlowDeploymentPublisher publisher = new FlowDeploymentPublisher(brokerUrl(), "", "");
-        FlowActivationService service = new FlowActivationService(flows, entities,
+        FlowActivationService service = new FlowActivationService(flows,
+                new LeadDeviceService(entities),
                 mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider(compiler), provider(publisher), MAPPER, true,

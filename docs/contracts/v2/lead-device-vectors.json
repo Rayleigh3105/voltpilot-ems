@@ -1,0 +1,231 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der FÜHRENDEN BOX, wie ein Dienst sie braucht (UEMS AP-06 IP-5, E3 = A).",
+    "Die Prosa-Wahrheit steht in data-source-assignment.md §8; hier steht, wie aus den Boxen",
+    "einer Anlage, der Box des Speichers und der gespeicherten Wahl GENAU EINE Box oder GENAU",
+    "EIN benannter Grund wird — nie `null` ohne Grund.",
+    "",
+    "Sie pinnen:",
+    "  Java  services/api .../uems/FuehrendeBoxAbleitung (gerufen von entities/LeadDeviceService,",
+    "        dem Ziel von Registry-Push und Flow-Aktivierung).",
+    "Einen TS-Zwilling gibt es nicht: das Portal leitet die führende Box nicht selbst ab. Wer die",
+    "Regel ändert, ändert die Java-Seite UND diese Datei.",
+    "",
+    "DIE REGEL. Die Vorrang-Reihenfolge gespeichert → Box des Speichers → einzige Box ist die",
+    "des Vertrags (data-source-vectors.json, Familie `fuehrende_box`; Java DatenquelleRegeln.fuehrung)",
+    "und wird hier nicht ein zweites Mal aufgeschrieben. Dazu kommen genau zwei Dinge:",
+    "  1. Eine gespeicherte Wahl gilt nur, wenn die Box in DIESER Anlage angemeldet und nicht",
+    "     ausgebaut ist (`boxen`). Sonst führt keine Box: `gespeichert_nicht_in_anlage` — nie",
+    "     still eine andere, auch nicht die einzige.",
+    "  2. „Keine“ ist zweigeteilt: `keine_wahl` (mehrere Boxen, keine gewählt — der Kunde wählt)",
+    "     und `keine_box` (die Anlage hat gar keine Box — es gibt nichts zu wählen).",
+    "Die Box des Speichers gilt wie bis IP-5: ohne Anmelde-Prüfung (die Verknüpfung setzt ihr",
+    "eigener Weg; ein Bestandskunde darf nichts merken).",
+    "",
+    "VERHALTENSGLEICH. `weiche_bis_ip5` ist, was die Einzel-Gateway-Weiche bis IP-5 gewählt hätte",
+    "(Speicher-Box, sonst einzige Box, sonst keine; die gespeicherte Wahl kannte sie nicht). Für",
+    "jeden Fall ohne gespeicherte Wahl — der Stand JEDER Bestandsanlage, `site.lead_device_id` ist",
+    "NULL — ist `box` gleich `weiche_bis_ip5`. Die Tests prüfen das je Fall und über alle",
+    "kleinen Welten.",
+    "",
+    "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). `stichtag` ist",
+    "ein Zeitpunkt seiner Zeitachse; `boxen` sind GENAU seine zu diesem Zeitpunkt in der Anlage",
+    "angemeldeten, nicht ausgebauten Boxen in Anmelde-Reihenfolge; die Box des Speichers gibt es",
+    "genau dann, wenn die Anlage einen Speicher hat; eine Box, die führt, führt diese Anlage auch",
+    "in der Referenz. Was ein Fall ERFINDET (eine Box, eine Anlage, eine gespeicherte Wahl gegen",
+    "die Referenz), nennt er in `annahme`."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./lead-device.schema.json",
+  "herkunft": "UEMS AP-06 §8 IP-5 und §2.4 (Konzept vp-uems-ap06-edges), Entscheid E3 = A (Captain, 10.09.2026); Abnahmefälle A9, A12.",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "grundlage": "./data-source-vectors.json",
+  "gruende": [
+    "gespeichert",
+    "speicher",
+    "einzige",
+    "keine_wahl",
+    "keine_box",
+    "gespeichert_nicht_in_anlage"
+  ],
+  "bestimmt": [
+    "gespeichert",
+    "speicher",
+    "einzige"
+  ],
+  "abnahmefaelle": [
+    "A9",
+    "A12"
+  ],
+  "cases": [
+    {
+      "name": "a12-bestandskunde-eine-box-mit-speicher-unveraendert",
+      "abnahme": "A12",
+      "why": "A12 / E3 = A: Halle 1 vor der Einführung — eine Box, der Speicher an Box Halle 1, keine gespeicherte Wahl (wie jede Bestandsanlage). Die führende Box ist Box Halle 1 aus dem Speicher: genau die Box, der die Weiche Registry-Push und Flows zugestellt hat. Es ändert sich nichts.",
+      "input": {
+        "anlage": "AN-1",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-1"],
+        "speicher_box": "E-1",
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-1",
+        "grund": "speicher",
+        "weiche_bis_ip5": "E-1"
+      }
+    },
+    {
+      "name": "a9-zweite-box-in-halle-1-speicher-box-bleibt-fuehrend",
+      "abnahme": "A9",
+      "annahme": "Die zusätzliche Lese-Box E-A9 in Halle 1 ist der Aufbau von A9, kein Objekt der Referenzdatei.",
+      "why": "A9: eine zweite Box kommt in Halle 1 dazu — die führende Box bleibt Box Halle 1, weil sie den Speicher liest. Registry-Push und Flows gehen weiter nur an Box Halle 1; kein noGateway-Fall, kein Verbund.",
+      "input": {
+        "anlage": "AN-1",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-1", "E-A9"],
+        "speicher_box": "E-1",
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-1",
+        "grund": "speicher",
+        "weiche_bis_ip5": "E-1"
+      }
+    },
+    {
+      "name": "einzige-box-ohne-speicher-fuehrt",
+      "why": "E3 = A: Werk Lindach hat keinen Speicher und genau eine Box — Box Lindach führt, wie bei der Weiche.",
+      "input": {
+        "anlage": "AN-3",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-3"],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-3",
+        "grund": "einzige",
+        "weiche_bis_ip5": "E-3"
+      }
+    },
+    {
+      "name": "nach-dem-tausch-fuehrt-die-nachfolgerin-als-einzige-box",
+      "why": "E3 = A / E7: nach dem Tausch um 09:38 ist Box Halle 2 (neu) die einzige angemeldete Box von Halle 2 — Box Halle 2 ist ausgebaut und steht nicht mehr unter den Boxen der Anlage. Die Nachfolgerin führt.",
+      "input": {
+        "anlage": "AN-2",
+        "stichtag": "2026-11-04T09:40:00+01:00",
+        "boxen": ["E-2′"],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-2′",
+        "grund": "einzige",
+        "weiche_bis_ip5": "E-2′"
+      }
+    },
+    {
+      "name": "zwei-boxen-ohne-speicher-keine-wahl",
+      "annahme": "Eine zweite Box in Werk Lindach (E-X) ist erfunden.",
+      "why": "E3 = A „nie geraten“: zwei Boxen, kein Speicher, keine gespeicherte Wahl — keine Box führt (`keine_wahl`), wie bei der Weiche (dort: kein Push, Vorschau `multiple_devices_no_battery_link`). Das Portal fragt, welche Box führt.",
+      "input": {
+        "anlage": "AN-3",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-3", "E-X"],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": null,
+        "grund": "keine_wahl",
+        "weiche_bis_ip5": null
+      }
+    },
+    {
+      "name": "ausdrueckliche-wahl-fuehrt",
+      "annahme": "Eine zweite Box in Werk Lindach (E-X) ist erfunden. Die gespeicherte Wahl setzt erst die Wahl im Portal; keine Bestandsanlage hat eine.",
+      "why": "E3 = A: hat der Kundenadministrator gewählt, gilt seine Wahl. Das ist der EINE Unterschied zur Weiche: sie fand bei zwei Boxen ohne Speicher keine Box.",
+      "input": {
+        "anlage": "AN-3",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-3", "E-X"],
+        "speicher_box": null,
+        "gespeichert": "E-3"
+      },
+      "expected": {
+        "box": "E-3",
+        "grund": "gespeichert",
+        "weiche_bis_ip5": null
+      }
+    },
+    {
+      "name": "gespeicherte-wahl-geht-vor-dem-speicher",
+      "annahme": "Die zusätzliche Lese-Box E-A9 in Halle 1 ist der Aufbau von A9; dass Halle 1 Box Halle 1 ausdrücklich gewählt hat, ist angenommen.",
+      "why": "E3 = A, Vorrang-Reihenfolge: eine gespeicherte Wahl kommt vor der Box des Speichers — hier nennen beide dieselbe Box, der Grund ist die Wahl.",
+      "input": {
+        "anlage": "AN-1",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": ["E-1", "E-A9"],
+        "speicher_box": "E-1",
+        "gespeichert": "E-1"
+      },
+      "expected": {
+        "box": "E-1",
+        "grund": "gespeichert",
+        "weiche_bis_ip5": "E-1"
+      }
+    },
+    {
+      "name": "keine-box-in-der-anlage",
+      "annahme": "Eine vierte Anlage (AN-4) ist erfunden: im Portal angelegt, noch keine Box angemeldet.",
+      "why": "IP-5 „benannter Grund statt null“: ohne jede Box gibt es nichts zu wählen — `keine_box`, getrennt von `keine_wahl` (die Vorschau sagt `no_claimed_device`, nicht „mehrere Geräte“).",
+      "input": {
+        "anlage": "AN-4",
+        "stichtag": "2026-10-20T10:15:00+02:00",
+        "boxen": [],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": null,
+        "grund": "keine_box",
+        "weiche_bis_ip5": null
+      }
+    },
+    {
+      "name": "gespeicherte-box-ausgebaut-nie-ausweichen",
+      "annahme": "Angenommen, die gespeicherte Wahl zeigte nach dem Tausch noch auf Box Halle 2. Die Referenz nimmt die führende Rolle beim Tausch mit (E7); eine Box, die ohne Tausch ausgebaut wird, nimmt sie nicht mit.",
+      "why": "IP-5: eine gespeicherte Wahl gilt nur für eine in der Anlage angemeldete, nicht ausgebaute Box. Box Halle 2 ist seit 09:38 ausgebaut — keine Box führt (`gespeichert_nicht_in_anlage`), auch nicht die einzige Box Halle 2 (neu): nie still auf eine andere Box ausweichen. Die Weiche kannte keine Wahl und hätte Box Halle 2 (neu) genommen.",
+      "input": {
+        "anlage": "AN-2",
+        "stichtag": "2026-11-04T09:40:00+01:00",
+        "boxen": ["E-2′"],
+        "speicher_box": null,
+        "gespeichert": "E-2"
+      },
+      "expected": {
+        "box": null,
+        "grund": "gespeichert_nicht_in_anlage",
+        "weiche_bis_ip5": "E-2′"
+      }
+    },
+    {
+      "name": "gespeicherte-box-einer-anderen-anlage-nie-ausweichen",
+      "annahme": "Dass Halle 2 Box Halle 1 als führende Box gespeichert hat, ist erfunden — so stünde es, wenn eine gewählte Box danach in eine andere Anlage umzieht (die Wahl zieht nie mit).",
+      "why": "IP-5: Box Halle 1 ist in Halle 1 angemeldet, nicht in Halle 2 — sie führt Halle 2 nicht, und der Dienst nimmt auch nicht die einzige Box von Halle 2 (`gespeichert_nicht_in_anlage`).",
+      "input": {
+        "anlage": "AN-2",
+        "stichtag": "2026-11-04T09:40:00+01:00",
+        "boxen": ["E-2′"],
+        "speicher_box": null,
+        "gespeichert": "E-1"
+      },
+      "expected": {
+        "box": null,
+        "grund": "gespeichert_nicht_in_anlage",
+        "weiche_bis_ip5": "E-2′"
+      }
+    }
+  ]
+}

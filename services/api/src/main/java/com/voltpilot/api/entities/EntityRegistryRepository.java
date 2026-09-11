@@ -458,6 +458,18 @@ public class EntityRegistryRepository {
     }
 
     /**
+     * Die ausdrücklich gewählte führende Box der Anlage ({@code site.lead_device_id}), oder
+     * {@code null}: keine Wahl gespeichert (der Stand jeder Bestandsanlage) oder die Anlage ist
+     * unter dem Mandanten nicht sichtbar. Ob die Box noch in DIESER Anlage angemeldet ist, prüft
+     * {@link LeadDeviceService}, nicht die Spalte.
+     */
+    public UUID storedLeadDeviceId(UUID siteId) {
+        List<UUID> rows = jdbc.query("SELECT lead_device_id FROM site WHERE id = ?",
+                (rs, n) -> rs.getObject("lead_device_id", UUID.class), siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
      * Set (or clear, with null) the site's v1->v2 history cutover instant (MIG).
      * RLS-scoped: only a row visible under the session tenant is updated.
      * Returns true when a row was affected (the site exists for the tenant).

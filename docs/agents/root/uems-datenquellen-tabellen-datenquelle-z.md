@@ -16,8 +16,10 @@ sind der Vertrag `docs/contracts/v2/data-source-assignment.md` mit `DatenquelleR
   (Box · ab · bis). Nach der Migration LEER.
 - `site.lead_device_id` und `measurement_point.data_source_id`: je EINE nullable Spalte mit
   ihrem Fremdschlüssel, sonst sind beide Tabellen zeichengleich; der Bestand behält NULL.
-- Kein Endpunkt (IP-3), keine Vorschlagsliste (IP-4), kein `LeadDeviceService` (IP-5);
-  `gatewayDevice`, Registry-Push, Mess-Plan und Herzschlag lesen keine der neuen Spalten. Kein
+- Kein Endpunkt (IP-3), keine Vorschlagsliste (IP-4); `site.lead_device_id` liest seit IP-5
+  allein `LeadDeviceService` (Ziel von Registry-Push und Flow-Aktivierung,
+  `uems-fuehrende-box-lead-device-service.md`), Mess-Plan und Herzschlag lesen keine der neuen
+  Spalten. Kein
   Quellen-Protokoll (bringt IP-3 mit), keine Rücknahme eines geplanten Wechsels (IP-12). Der
   ⚠-Stand-Hinweis im Vertrag („es gibt keine Tabelle …“) ist mit IP-2 überholt und wird mit
   IP-3 nachgezogen.

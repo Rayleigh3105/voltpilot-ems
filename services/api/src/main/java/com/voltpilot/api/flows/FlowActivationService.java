@@ -3,8 +3,8 @@ package com.voltpilot.api.flows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
@@ -64,7 +64,7 @@ public class FlowActivationService {
     public record DeactivationOutcome(boolean published) {}
 
     private final FlowRepository flows;
-    private final EntityRegistryRepository entities;
+    private final LeadDeviceService leadDevices;
     private final FlowClaimRepository claims;
     private final FlowCatalog catalog;
     private final ObjectProvider<EntityRegistryService> registry;
@@ -80,23 +80,23 @@ public class FlowActivationService {
      * cannot pick an injection constructor.
      */
     @org.springframework.beans.factory.annotation.Autowired
-    public FlowActivationService(FlowRepository flows, EntityRegistryRepository entities,
+    public FlowActivationService(FlowRepository flows, LeadDeviceService leadDevices,
             FlowClaimRepository claims, FlowCatalog catalog,
             ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
             ObjectMapper mapper,
             @Value("${voltpilot.flows.activation.enabled:false}") boolean activationEnabled) {
-        this(flows, entities, claims, catalog, registry, compiler, publisher, mapper,
+        this(flows, leadDevices, claims, catalog, registry, compiler, publisher, mapper,
                 activationEnabled, Clock.systemUTC());
     }
 
-    FlowActivationService(FlowRepository flows, EntityRegistryRepository entities,
+    FlowActivationService(FlowRepository flows, LeadDeviceService leadDevices,
             FlowClaimRepository claims, FlowCatalog catalog,
             ObjectProvider<EntityRegistryService> registry,
             ObjectProvider<FlowCompiler> compiler, ObjectProvider<FlowDeploymentPublisher> publisher,
             ObjectMapper mapper, boolean activationEnabled, Clock clock) {
         this.flows = flows;
-        this.entities = entities;
+        this.leadDevices = leadDevices;
         this.claims = claims;
         this.catalog = catalog;
         this.registry = registry;
@@ -122,7 +122,7 @@ public class FlowActivationService {
                     "Die Flow-Aktivierung ist auf dieser Umgebung deaktiviert (Feature-Flag "
                             + "VOLTPILOT_FLOWS_ACTIVATION_ENABLED, nur für das Simulator-Rig).");
         }
-        UUID gateway = gatewayDevice(siteId);
+        UUID gateway = leadDevices.fuehrendeBox(siteId).box();
         if (gateway == null) {
             return ActivationOutcome.refused("no_gateway_device",
                     "Diese Anlage hat kein eindeutiges Gateway-Gerät - der Rollout braucht "
@@ -178,11 +178,12 @@ public class FlowActivationService {
         // A claim never outlives the flow that holds it (Stufe 3): dropping it
         // here is what makes the plan take the component back on the next push.
         claims.clearForFlow(flowId);
-        UUID gateway = gatewayDevice(siteId);
+        LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
+        UUID gateway = lead.box();
         boolean published = gateway != null && publishDeploymentSet(siteId, gateway);
         if (gateway == null) {
             log.warn("flow {} deactivated but deployment for site {} not re-published: "
-                    + "no unique gateway device", flowId, siteId);
+                    + "no unique gateway device ({})", flowId, siteId, lead.grund().code());
         }
         pushRegistry(siteId);
         return new DeactivationOutcome(published);
@@ -224,17 +225,19 @@ public class FlowActivationService {
      * → {@code false}, logged - the caller decides whether that is fatal.
      */
     public boolean republishForSite(UUID siteId) {
-        UUID gateway = gatewayDevice(siteId);
+        LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
+        UUID gateway = lead.box();
         if (gateway == null) {
-            log.warn("deployment for site {} not re-published: no unique gateway device", siteId);
+            log.warn("deployment for site {} not re-published: no unique gateway device ({})",
+                    siteId, lead.grund().code());
             return false;
         }
         return publishDeploymentSet(siteId, gateway);
     }
 
-    /** Whether the site resolves to exactly one gateway device (E1a rule). */
+    /** Whether the site resolves to exactly one gateway device - its lead box (IP-5). */
     public boolean hasGatewayDevice(UUID siteId) {
-        return gatewayDevice(siteId) != null;
+        return leadDevices.fuehrendeBox(siteId).bestimmt();
     }
 
     /**
@@ -264,19 +267,5 @@ public class FlowActivationService {
                 clock.instant(), artifacts);
         return pub.publishDeployment(tenantId, siteId, gateway,
                 deployment.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
-     * The device carrying the site's v2 subtree - the E1a gateway rule: the
-     * battery's controlling device when linked, else the site's SINGLE claimed
-     * device, never a guess between several.
-     */
-    private UUID gatewayDevice(UUID siteId) {
-        EntityRegistryRepository.BatteryAsset battery = entities.batteryAsset(siteId);
-        if (battery != null && battery.deviceId() != null) {
-            return battery.deviceId();
-        }
-        List<UUID> devices = entities.siteDeviceIds(siteId);
-        return devices.size() == 1 ? devices.get(0) : null;
     }
 }

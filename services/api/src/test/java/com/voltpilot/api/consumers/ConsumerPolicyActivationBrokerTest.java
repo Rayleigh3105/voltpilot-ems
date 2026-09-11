@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
 import com.voltpilot.api.consumers.ConsumerRepository.PolicyRow;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCatalog;
@@ -145,7 +146,8 @@ class ConsumerPolicyActivationBrokerTest {
                 new ConsumerPolicyCompiler(new ConsumerSignalCatalog(), MAPPER);
         ConsumerPolicyCompiler.WindowSource windows =
                 (siteId, signal, op, value, from, to) -> List.of();
-        FlowActivationService deployments = new FlowActivationService(flows, entities,
+        FlowActivationService deployments = new FlowActivationService(flows,
+                new LeadDeviceService(entities),
                 org.mockito.Mockito.mock(com.voltpilot.api.repo.FlowClaimRepository.class),
                 new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),

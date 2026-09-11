@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.tenant.TenantContext;
@@ -93,7 +94,7 @@ class FlowActivationServiceTest {
     }
 
     private FlowActivationService service(FlowCompiler compiler, boolean enabled) {
-        return new FlowActivationService(flows, entities,
+        return new FlowActivationService(flows, new LeadDeviceService(entities),
                 mock(com.voltpilot.api.repo.FlowClaimRepository.class), new FlowCatalog(MAPPER),
                 provider((com.voltpilot.api.entities.EntityRegistryService) null),
                 provider(compiler), provider(publisher), MAPPER, enabled,

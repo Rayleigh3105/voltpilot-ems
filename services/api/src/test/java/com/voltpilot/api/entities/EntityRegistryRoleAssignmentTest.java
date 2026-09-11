@@ -50,7 +50,7 @@ class EntityRegistryRoleAssignmentTest {
         ObjectProvider<EntityRegistryPublisher> publisher = mock(ObjectProvider.class);
         return new EntityRegistryService(repo, publisher, MAPPER, mock(EntityTypeCatalog.class),
                 mock(AssetRepository.class), mock(FlowClaimRepository.class),
-                mock(DeviceOverrideRepository.class));
+                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo));
     }
 
     private static EntityRegistryRepository repoWith(Map<UUID, List<RoleAssignment>> roles) {
