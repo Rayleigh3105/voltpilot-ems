@@ -1,0 +1,1957 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des HERKUNFTSVERTRAGS je Messwert (UEMS AP-07 IP-1).",
+    "Die Prosa steht in docs/contracts/v2/messwert-herkunft.md; hier steht, wie aus",
+    "dem, was die Box liefert, und dem, was die Cloud ZUR MESSZEIT weiß, GENAU EIN",
+    "Urteil wird — und für einen gespeicherten Wert die fünfzehn Angaben.",
+    "",
+    "Gefahren von:",
+    "  Java  services/api .../uems/MesswertHerkunft (+ MesswertHerkunftVectorsTest)",
+    "  TS    folgt mit der Rohtabelle (AP-07 IP-6)",
+    "Wer die Regel ändert, ändert die Java-Klasse UND diese Datei.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Datenannahme und Writer sind unverändert (heute:",
+    "ON CONFLICT DO NOTHING auf (device_id, point_key, time, edge_sequence), kein",
+    "Wert trägt Komponente, Gerät oder Fassung). Diese Datei ist der Vertrag, gegen",
+    "den AP-07 IP-5 (Datenannahme), IP-6 (Rohtabelle) und IP-7 (Writer) bauen.",
+    "",
+    "DIE REIHENFOLGE DER PRÜFUNGEN:",
+    "  1. Zeit (E13): Messzeit mehr als 300 s nach der Cloud-Uhr → abgewiesen,",
+    "     clock_ahead; älter als 90 × 24 h → abgewiesen, too_old. Die Kanten",
+    "     (genau 300 s, genau 90 Tage) werden angenommen. Ein abgewiesener Wert",
+    "     erzeugt GENAU sein Abweisungs-Ereignis.",
+    "  2. Sequenz der Box (E3/E13) gegen den zuletzt gesehenen Umschlag derselben",
+    "     Box: nach oben gesprungen → sequence_gap (mit Anzahl); nach unten →",
+    "     sequence_reset; aufeinanderfolgend, aber Messzeit mehr als 300 s",
+    "     auseinander → clock_jump. Der Wert bleibt.",
+    "  3. Herkunft vollständig (Invariante 1): ohne Komponente, Gerät-Einbau oder",
+    "     Fassung → abgewiesen, rejected (Grund herkunft_unvollstaendig). Nie",
+    "     geraten.",
+    "  4. Rolle zur Messzeit (E4): lesende Box ≠ zuständige Box → spiegel und",
+    "     unassigned_reader (höchstens einmal je Stunde je Box und Datenquelle);",
+    "     sonst entscheidet die Quellenbindung: fuehrend · vergleich · beobachtung.",
+    "  5. Idempotenz (E3): Schlüssel = Reihe + Messzeit, je SPUR — die zuständige",
+    "     Spur (fuehrend/vergleich/beobachtung) oder die Spiegel-Spur der lesenden",
+    "     Box. Gleicher Wert → wiederholung (nur gezählt, kein Ereignis);",
+    "     abweichender Wert → abgewiesen, duplicate_conflict. Der erste bleibt.",
+    "     „Gleich“ heißt raw, decoded und Qualität gleich.",
+    "  6. Zustellart: Eingang später als max(300 s, 3 × Kadenz) nach der Messzeit",
+    "     → nachgeliefert, sonst direkt. Die Verzögerung reist ungeschönt mit —",
+    "     auch negativ, wenn die Uhr der Box innerhalb der Toleranz vorgeht.",
+    "",
+    "ZEIT: Eingangs-Zeitpunkte stehen mit dem Versatz der Zeitzone Europe/Berlin",
+    "(wie die Referenzdatei), die fünfzehn Angaben in UTC („Messzeit in UTC in",
+    "allen Klassen“, §4.5 Zeit Regel 1).",
+    "",
+    "BEISPIELWELT: Kennzeichen, Seriennummern, Einbauten, Zuständigkeiten,",
+    "Quellenbindungen, Kadenzen und die Zeitpunkte des Referenzunternehmens stammen",
+    "aus ./uems-referenzunternehmen.json — der Java-Test prüft jeden Fall dagegen.",
+    "Was die Datei NICHT nennt (Sequenzen, Eingangszeiten, Katalogstand, Fassungs-",
+    "Nummern, Zählerstände außer Endstand/Anfangsstand), sind Werte DIESER Datei;",
+    "ihre Quelle nennt der Fall (`why`), Annahmen stehen in `annahme`.",
+    "Die Sequenz zählt je Box: 48 213 kommt bei Box Halle 1 (§4.2) und bei Box",
+    "Halle 2 (A1) vor — zwei Zähler, zufällig derselbe Stand.",
+    "",
+    "`vorheriger_umschlag: null` heißt: dieser Fall prüft die Sequenz der Box nicht.",
+    "`lieferung: null` heißt: zur Messzeit kam nichts an — `reihe` und `messzeit`",
+    "nennen dann die Stelle der Lücke."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./messwert-herkunft.schema.json",
+  "bezug": "UEMS AP-07 §4.1/§4.2/§4.5/§4.7/§4.8/§4.9, Entscheide E1–E4 und E13 vom 10.09.2026; Beispielwelt ./uems-referenzunternehmen.json",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "angaben": [
+    {
+      "feld": "kundenbereich",
+      "angabe": "Kundenbereich",
+      "art": "schluessel",
+      "woher": "datenannahme",
+      "woher_aeltere_box": null,
+      "beschreibung": "Der Datenraum des Kunden. Er folgt aus der Anmeldung der Box und steht im Paket byte-gleich."
+    },
+    {
+      "feld": "komponente",
+      "angabe": "Komponente",
+      "art": "schluessel",
+      "woher": "box",
+      "woher_aeltere_box": "nachschlag",
+      "beschreibung": "Die Komponente, für die der Messkanal gelesen wurde. Eine ältere Box nennt sie nicht — dann ergänzt die Cloud sie aus der Auswahl."
+    },
+    {
+      "feld": "messkanal",
+      "angabe": "Messkanal",
+      "art": "schluessel",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Die gelesene Größe, benannt nach dem Messwert-Katalog; Einheit und Wertart kommen aus dem Katalog."
+    },
+    {
+      "feld": "messzeit",
+      "angabe": "Messzeit",
+      "art": "schluessel",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Wann gemessen wurde — nach der Uhr der Box, gespeichert in UTC, auch beim Nachliefern das Original."
+    },
+    {
+      "feld": "eingangszeit",
+      "angabe": "Eingangszeit",
+      "art": "marker",
+      "woher": "datenannahme",
+      "woher_aeltere_box": null,
+      "beschreibung": "Wann die Datenannahme den Wert entgegennahm — nach der Uhr der Cloud."
+    },
+    {
+      "feld": "wert",
+      "angabe": "Wert",
+      "art": "inhalt",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Der empfangene Rohwert und der skalierte Wert, dazu die Einheit aus dem Katalog."
+    },
+    {
+      "feld": "qualitaet",
+      "angabe": "Qualität",
+      "art": "marker",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Wie die Box den Wert beurteilt (gut · unsicher · ungültig · veraltet · Gerätefehler)."
+    },
+    {
+      "feld": "wertart",
+      "angabe": "Wertart",
+      "art": "marker",
+      "woher": "nachschlag",
+      "woher_aeltere_box": null,
+      "beschreibung": "Zählerstand, Momentanwert, Zustand, Bitfeld oder Text — aus Katalog oder Vorlage zur Messzeit."
+    },
+    {
+      "feld": "lesende_box",
+      "angabe": "Lesende Box",
+      "art": "marker",
+      "woher": "datenannahme",
+      "woher_aeltere_box": null,
+      "beschreibung": "Die VoltPilot-Box, die den Wert gelesen und gesendet hat. Sie ist Herkunft, nie Teil der Reihe."
+    },
+    {
+      "feld": "geraet_einbau",
+      "angabe": "Gerät und Einbau",
+      "art": "marker",
+      "woher": "nachschlag",
+      "woher_aeltere_box": null,
+      "beschreibung": "Das Gerät und sein Einbau an der Komponente, der zur Messzeit galt — mit Seriennummer, wenn bekannt."
+    },
+    {
+      "feld": "einstellungs_fassung",
+      "angabe": "Einstellungs-Fassung",
+      "art": "marker",
+      "woher": "box",
+      "woher_aeltere_box": "nachschlag",
+      "beschreibung": "Die Fassung der messwertrelevanten Einstellungen, die die Box beim Erfassen angewendet hat. Eine ältere Box meldet sie nicht — dann schlägt die Cloud die zur Messzeit angewendete Fassung nach."
+    },
+    {
+      "feld": "katalogstand",
+      "angabe": "Katalogstand",
+      "art": "marker",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Die Fassung des Messwert-Katalogs im Mess-Plan der Box."
+    },
+    {
+      "feld": "sequenz",
+      "angabe": "Sequenz",
+      "art": "marker",
+      "woher": "box",
+      "woher_aeltere_box": null,
+      "beschreibung": "Die fortlaufende Nummer des Umschlags je Box — ein Kennzeichen für Lücken und Wiederholungen, kein Schlüssel."
+    },
+    {
+      "feld": "zustellart",
+      "angabe": "Zustellart",
+      "art": "marker",
+      "woher": "ableitung",
+      "woher_aeltere_box": null,
+      "beschreibung": "Direkt oder nachgeliefert, mit der Verzögerung zwischen Messzeit und Eingangszeit."
+    },
+    {
+      "feld": "rolle",
+      "angabe": "Rolle",
+      "art": "marker",
+      "woher": "ableitung",
+      "woher_aeltere_box": null,
+      "beschreibung": "Führend, Vergleich, Spiegel oder Beobachtung — zur Messzeit aus Zuständigkeit und Quellenbindung. Nur führende Werte fließen in Verbrauch und Bilanz."
+    }
+  ],
+  "vokabular": {
+    "urteil": [
+      "gespeichert",
+      "wiederholung",
+      "abgewiesen",
+      "kein_wert"
+    ],
+    "grund": [
+      "clock_ahead",
+      "too_old",
+      "herkunft_unvollstaendig",
+      "duplicate_conflict"
+    ],
+    "rolle": [
+      "fuehrend",
+      "vergleich",
+      "spiegel",
+      "beobachtung"
+    ],
+    "bindung": [
+      "fuehrend",
+      "vergleich",
+      "keine"
+    ],
+    "zustellart": [
+      "direkt",
+      "nachgeliefert"
+    ],
+    "fassung_quelle": [
+      "box",
+      "zustellung"
+    ],
+    "ereignis": [
+      "clock_ahead",
+      "too_old",
+      "clock_jump",
+      "sequence_gap",
+      "sequence_reset",
+      "rejected",
+      "unassigned_reader",
+      "duplicate_conflict"
+    ],
+    "qualitaet": [
+      "good",
+      "uncertain",
+      "invalid",
+      "stale",
+      "device_error"
+    ],
+    "wertart": [
+      "counter",
+      "gauge",
+      "state",
+      "bitfield",
+      "text"
+    ]
+  },
+  "regeln": {
+    "idempotenz_schluessel": [
+      "kundenbereich",
+      "komponente",
+      "messkanal",
+      "messzeit"
+    ],
+    "zukunft_hoechstens_s": 300,
+    "vergangenheit_hoechstens_s": 7776000,
+    "zeitsprung_ab_s": 300,
+    "nachgeliefert_mindestens_s": 300,
+    "nachgeliefert_faktor_kadenz": 3,
+    "unassigned_reader_hoechstens_je_s": 3600
+  },
+  "cases": [
+    {
+      "name": "ms06-1039-letzter-wert-z5a",
+      "bezug": "AP-07 §4.2 (Herkunfts-Karte), §5.2 Zählerwechsel, A5",
+      "why": "DIE Karte aus §4.2: der letzte Wert von Z-5a vor dem Zählerwechsel. Box Halle 1 ist zur Messzeit für DQ-3 zuständig, der Messkanal ist führende Quelle von MS-06 — also führend. 7 s zwischen Messzeit und Eingang: direkt. Gerät und Einbau nennt die Gerät-Historie zur MESSZEIT (Z-5a, Seriennummer 4471023), nie das Gerät, das heute eingebaut ist.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-18T10:39:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-18T10:39:00+01:00",
+            "raw": 10834152,
+            "decoded": 1083415.2,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-18T10:39:07+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": {
+            "sequenz": 48212,
+            "messzeit": "2026-11-18T10:38:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2026-11-18T09:39:00Z",
+          "eingangszeit": "2026-11-18T09:39:07Z",
+          "wert": {
+            "raw": 10834152,
+            "decoded": 1083415.2,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 48213,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 7
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "ms06-1041-luecke-nie-null",
+      "bezug": "AP-07 §4.2, §5.2 Zählerwechsel, A5",
+      "why": "10:41 liegt in der Lücke des Zählerwechsels: Z-5a ist um 10:40 ausgebaut, Z-5b liefert erst ab 10:47. Es kommt NICHTS an — also steht zur Messzeit kein Wert in der Reihe, und niemals eine 0. Die Gerät-Historie nennt für 10:41 schon Z-5b (gültig ab 10:40, einschließend); ein Wert, der doch käme, trüge Z-5b. Die Lücke meldet die Lücken-Erkennung ab 2 × Kadenz (AP-07 IP-9), nicht diese Ableitung.",
+      "annahme": null,
+      "input": {
+        "lieferung": null,
+        "reihe": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug"
+        },
+        "messzeit": "2026-11-18T10:41:00+01:00",
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "kein_wert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": null
+      }
+    },
+    {
+      "name": "ms06-1047-erster-wert-z5b",
+      "bezug": "AP-07 §4.2, §5.2 Zählerwechsel, A5",
+      "why": "Der erste Wert von Z-5b: 0,0 kWh (Anfangsstand aus der Referenzdatei). Dieselbe Reihe „K-5 · Wirkenergie Bezug“ läuft ohne Bruch weiter (E2) — nur Gerät und Einbau wechseln (Z-5b, Seriennummer 88231). Die Cloud erfährt den Wechsel erst um 11:05; bis dahin nennt die Gerät-Historie noch Z-5a. Der Eintrag gilt rückwirkend ab 10:40, und die Herkunft der Werte 10:47–11:05 wird NACHGEFÜHRT — der einzige erlaubte Herkunfts-Nachtrag, protokolliert. Dieser Fall zeigt den Stand nach dem Eintrag; die Ableitung ist beim Schreiben und beim Nachführen dieselbe: der Einbau, den die Historie für die Messzeit nennt.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 48221,
+            "messzeit": "2026-11-18T10:47:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-18T10:47:00+01:00",
+            "raw": 0,
+            "decoded": 0.0,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-18T10:47:07+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": {
+            "sequenz": 48220,
+            "messzeit": "2026-11-18T10:46:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2026-11-18T09:47:00Z",
+          "eingangszeit": "2026-11-18T09:47:07Z",
+          "wert": {
+            "raw": 0,
+            "decoded": 0.0,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 48221,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 7
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "gleiche-messzeit-abweichender-wert-konflikt",
+      "bezug": "AP-07 E3, §4.5 Duplikate Regel 3, A11",
+      "why": "Für K-5 · 10:39:00 ist 1 083 415,2 kWh gespeichert; im nächsten Umschlag kommt für DIESELBE Messzeit 1 083 415,3. Der erste gespeicherte Wert bleibt (AP-04 E5), der zweite wird abgewiesen und als `duplicate_conflict` mit beiden Werten und beiden Sequenzen festgehalten — nie still, nie überschrieben. Eine Korrektur ist ein eigener Vorgang (AP-08).",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 48214,
+            "messzeit": "2026-11-18T10:40:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-18T10:39:00+01:00",
+            "raw": 10834153,
+            "decoded": 1083415.3,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-18T10:40:07+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [
+            {
+              "box": "E-1",
+              "rolle": "fuehrend",
+              "raw": 10834152,
+              "decoded": 1083415.2,
+              "qualitaet": "good",
+              "sequenz": 48213
+            }
+          ],
+          "vorheriger_umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-18T10:39:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "abgewiesen",
+        "grund": "duplicate_conflict",
+        "ereignisse": [
+          {
+            "art": "duplicate_conflict",
+            "box": "E-1",
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-18T09:39:00Z",
+            "gespeicherter_wert": {
+              "raw": 10834152,
+              "decoded": 1083415.2,
+              "qualitaet": "good"
+            },
+            "abgewiesener_wert": {
+              "raw": 10834153,
+              "decoded": 1083415.3,
+              "qualitaet": "good"
+            },
+            "sequenzen": [
+              48213,
+              48214
+            ]
+          }
+        ],
+        "zaehler": null,
+        "herkunft": null
+      }
+    },
+    {
+      "name": "nachlieferung-box-halle-2-nach-ausfall",
+      "bezug": "AP-07 §4.1 (Messzeit und Eingangszeit), §5.2 Box-Ausfall, A3",
+      "why": "Box Halle 2 misst MS-10 um 15:12:00 während des Ausfalls 14:00–17:30 und liefert den Wert um 17:31:08 aus ihrem Puffer nach: 2 h 19 min 8 s > max(5 min, 3 × 60 s) → nachgeliefert. Die Messzeit bleibt das Original. Zur Messzeit ist Box Halle 2 für DQ-4 zuständig → führend. Box Halle 2 ist eine ÄLTERE Box (Vertrag 2.0): sie nennt weder Komponente noch Fassung — die Cloud ergänzt die Komponente aus der Auswahl und die Fassung aus der Zustellung, nie geraten. ⚠ Variante des Abnahmefalls A3 (Box kehrt um 17:30 zurück, AP-00 §7.6); die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (AP-06), in dem Box Halle 2 nichts nachliefert (§4.5 Nachlieferung Regel 6). Der Zählerstand von K-8.1 ist ein Beispielwert dieser Datei.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "umschlag": {
+            "sequenz": 48285,
+            "messzeit": "2026-11-03T15:12:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": null
+          },
+          "wert": {
+            "komponente": null,
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-03T15:12:00+01:00",
+            "raw": 406280,
+            "decoded": 40628.0,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-03T17:31:08+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": "K-8.1",
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": 1,
+          "datenquelle": "DQ-4",
+          "zustaendige_box": "E-2",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-10"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": {
+            "sequenz": 48284,
+            "messzeit": "2026-11-03T15:11:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2026-11-03T14:12:00Z",
+          "eingangszeit": "2026-11-03T16:31:08Z",
+          "wert": {
+            "raw": 406280,
+            "decoded": 40628.0,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "zustellung"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 48285,
+          "zustellart": {
+            "art": "nachgeliefert",
+            "verzoegerung_s": 8348
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "umschlag-48213-doppelt-ein-wert",
+      "bezug": "AP-07 E3, §5.2 Dasselbe Paket zweimal, A1 (Plan-Abnahme 1)",
+      "why": "Die Quittung für Umschlag 48 213 geht verloren; Box Halle 2 sendet ihn nach 30 s erneut — gleiche Sequenz, gleiche Werte. Der Schlüssel Reihe + Messzeit trifft: EIN Wert, der zweite wird nur gezählt („wiederholt“), kein Ereignis, kein Konflikt. Der Viertelstundenwert 14:00–14:15 sieht 15 Werte, nicht 30 — der Verbrauch verdoppelt sich nicht. Gleiche Sequenz wie zuletzt gesehen: kein Sequenz-Ereignis.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-03T14:00:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": null
+          },
+          "wert": {
+            "komponente": null,
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-03T14:00:00+01:00",
+            "raw": 405128,
+            "decoded": 40512.8,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-03T17:31:33+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": "K-8.1",
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": 1,
+          "datenquelle": "DQ-4",
+          "zustaendige_box": "E-2",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-10"
+          },
+          "gespeichert_zur_messzeit": [
+            {
+              "box": "E-2",
+              "rolle": "fuehrend",
+              "raw": 405128,
+              "decoded": 40512.8,
+              "qualitaet": "good",
+              "sequenz": 48213
+            }
+          ],
+          "vorheriger_umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-03T14:00:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "wiederholung",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": "wiederholt",
+        "herkunft": null
+      }
+    },
+    {
+      "name": "umschlag-48213-sequenz-zurueckgesetzt",
+      "bezug": "AP-07 E3, §4.5 Duplikate Regel 2, §5.2 Variante Zähler-Reset, A1",
+      "why": "Derselbe Wert noch einmal, jetzt mit Sequenz 1 (der Zähler der Box wurde zurückgesetzt). Die Sequenz ist KEIN Schlüssel mehr: Reihe + Messzeit trifft, gleicher Wert → wieder EIN Wert, gezählt. Der Rücksprung selbst ist ein Ereignis `sequence_reset` der Box — genau eines, der Wert bleibt Wiederholung.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "umschlag": {
+            "sequenz": 1,
+            "messzeit": "2026-11-03T14:00:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": null
+          },
+          "wert": {
+            "komponente": null,
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-03T14:00:00+01:00",
+            "raw": 405128,
+            "decoded": 40512.8,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-03T17:32:04+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": "K-8.1",
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": 1,
+          "datenquelle": "DQ-4",
+          "zustaendige_box": "E-2",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-10"
+          },
+          "gespeichert_zur_messzeit": [
+            {
+              "box": "E-2",
+              "rolle": "fuehrend",
+              "raw": 405128,
+              "decoded": 40512.8,
+              "qualitaet": "good",
+              "sequenz": 48213
+            }
+          ],
+          "vorheriger_umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-03T14:00:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "wiederholung",
+        "grund": null,
+        "ereignisse": [
+          {
+            "art": "sequence_reset",
+            "box": "E-2",
+            "sequenz_erwartet": 48214,
+            "sequenz_erhalten": 1
+          }
+        ],
+        "zaehler": "wiederholt",
+        "herkunft": null
+      }
+    },
+    {
+      "name": "sequenz-luecke-188-umschlaege",
+      "bezug": "AP-07 §4.5 Duplikate Regel 5, §4.8 (Beispiel 48 213 → 48 402), A4",
+      "why": "Nach Umschlag 48 213 kommt als nächster 48 402: 188 Umschläge (48 214 … 48 401) fehlen — Ereignis `sequence_gap` mit Zählung (Zahlen aus AP-07 §4.8). Der Wert selbst ist gemessen und wird gespeichert (nachgeliefert, 24 min 40 s); die fehlenden Messzeiten bleiben Lücke, nichts wird erfunden. Variante A4 (Puffer verdrängt) des Ausfalls vom 03.11.2026 — im Abnahmefall A3 selbst fehlt nichts. Zählerstand: Beispielwert.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "umschlag": {
+            "sequenz": 48402,
+            "messzeit": "2026-11-03T17:09:00+01:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": null
+          },
+          "wert": {
+            "komponente": null,
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-11-03T17:09:00+01:00",
+            "raw": 408152,
+            "decoded": 40815.2,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-11-03T17:33:40+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": "K-8.1",
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": 1,
+          "datenquelle": "DQ-4",
+          "zustaendige_box": "E-2",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-10"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": {
+            "sequenz": 48213,
+            "messzeit": "2026-11-03T14:00:00+01:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [
+          {
+            "art": "sequence_gap",
+            "box": "E-2",
+            "sequenz_erwartet": 48214,
+            "sequenz_erhalten": 48402,
+            "anzahl": 188
+          }
+        ],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2026-11-03T16:09:00Z",
+          "eingangszeit": "2026-11-03T16:33:40Z",
+          "wert": {
+            "raw": 408152,
+            "decoded": 40815.2,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-7",
+            "einbau": "C-1",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "zustellung"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 48402,
+          "zustellart": {
+            "art": "nachgeliefert",
+            "verzoegerung_s": 1480
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "uebergabe-nachzuegler-vor-der-uebergabe",
+      "bezug": "AP-07 E4, §5.2 Edge-Wechsel DQ-3, A6",
+      "why": "DQ-3 wechselt am 10.04.2027 um 07:30 von Box Halle 1 (E-1) zu Box Halle 2 (neu) (E-2′). Um 07:31:40 kommt aus dem Puffer von Box Halle 1 noch ein Wert mit Messzeit 07:29:50. Geprüft wird die Zuständigkeit ZUR MESSZEIT, nicht zur Eingangszeit: um 07:29:50 war Box Halle 1 zuständig → führend. Nichts wird verworfen (W8 hebt „vor enabled_at verworfen“ auf). Zählerstand von Z-5b: Beispielwert.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 253943,
+            "messzeit": "2027-04-10T07:29:50+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2027-04-10T07:29:50+02:00",
+            "raw": 2503184,
+            "decoded": 250318.4,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2027-04-10T07:31:40+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2027-04-10T05:29:50Z",
+          "eingangszeit": "2027-04-10T05:31:40Z",
+          "wert": {
+            "raw": 2503184,
+            "decoded": 250318.4,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 253943,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 110
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "uebergabe-plan-verspaetet-spiegel",
+      "bezug": "AP-07 E4, §4.5 Duplikate Regel 4, §5.2 Edge-Wechsel DQ-3, A6",
+      "why": "Der neue Mess-Plan erreicht Box Halle 1 verspätet; sie liest DQ-3 noch um 07:32:00 — zwei Minuten NACH der Übergabe. Zur Messzeit ist Box Halle 2 (neu) zuständig → der Wert wird GESPEICHERT, aber mit Rolle `spiegel`: nie in der führenden Reihe, nie in der Verdichtung. Dazu das Ereignis `unassigned_reader` für Box Halle 1 und DQ-3 (das erste in dieser Stunde). Zählerstand: Beispielwert.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 253945,
+            "messzeit": "2027-04-10T07:32:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2027-04-10T07:32:00+02:00",
+            "raw": 2503238,
+            "decoded": 250323.8,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2027-04-10T07:32:06+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-2′",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [
+          {
+            "art": "unassigned_reader",
+            "box": "E-1",
+            "datenquelle": "DQ-3",
+            "komponente": "K-5"
+          }
+        ],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2027-04-10T05:32:00Z",
+          "eingangszeit": "2027-04-10T05:32:06Z",
+          "wert": {
+            "raw": 2503238,
+            "decoded": 250323.8,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 253945,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 6
+          },
+          "rolle": "spiegel"
+        }
+      }
+    },
+    {
+      "name": "spiegel-bei-gleicher-messzeit-verdraengt-nicht",
+      "bezug": "AP-07 E3 + E4, §4.5 Duplikate Regel 4, A9 (A/B-Test mit identischen Messzeiten)",
+      "why": "Box Halle 1 liest weiter falsch: Messzeit 07:33:10 — genau die Messzeit, zu der Box Halle 2 (neu) den führenden Wert schon gespeichert hat, und derselbe Zählerstand (beide lesen denselben Zähler). Das ist WEDER Wiederholung NOCH Konflikt: der Spiegel liegt in der Spur seiner Box, der Schlüssel Reihe + Messzeit gilt je Spur — der führende Wert wird nie still verdrängt. `unassigned_reader` kam für Box Halle 1 und DQ-3 um 07:32:06 schon einmal; höchstens einmal je Stunde → diesmal kein Ereignis.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 253946,
+            "messzeit": "2027-04-10T07:33:10+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2027-04-10T07:33:10+02:00",
+            "raw": 2503267,
+            "decoded": 250326.7,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2027-04-10T07:33:14+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-2′",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [
+            {
+              "box": "E-2′",
+              "rolle": "fuehrend",
+              "raw": 2503267,
+              "decoded": 250326.7,
+              "qualitaet": "good",
+              "sequenz": 225953
+            }
+          ],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": "2027-04-10T07:32:06+02:00"
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkenergie Bezug",
+          "messzeit": "2027-04-10T05:33:10Z",
+          "eingangszeit": "2027-04-10T05:33:14Z",
+          "wert": {
+            "raw": 2503267,
+            "decoded": 250326.7,
+            "einheit": "kWh"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5b",
+            "seriennummer": "88231"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 253946,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 4
+          },
+          "rolle": "spiegel"
+        }
+      }
+    },
+    {
+      "name": "beobachtung-kanal-ohne-messstelle",
+      "bezug": "AP-07 §4.1 Rolle der Reihe, E4",
+      "why": "K-4 · Wirkleistung ist an KEINE Messstelle gebunden (MS-05 bindet von K-4 nur die Wirkenergie Bezug). Box Halle 1 ist zuständig → Rolle `beobachtung`: gespeichert und sichtbar, fließt aber nie in Verbrauch oder Bilanz. Der Wert 21,3 kW ist die Momentanleistung von MS-05 aus der Momentaufnahme der Referenzdatei.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 6429,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-4",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 213,
+            "decoded": 21.3,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:15:04+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-3",
+            "einbau": "GR-3",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "keine",
+            "messstelle": null
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-4",
+          "messkanal": "Wirkleistung",
+          "messzeit": "2026-10-20T08:15:00Z",
+          "eingangszeit": "2026-10-20T08:15:04Z",
+          "wert": {
+            "raw": 213,
+            "decoded": 21.3,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-3",
+            "einbau": "GR-3",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 6429,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 4
+          },
+          "rolle": "beobachtung"
+        }
+      }
+    },
+    {
+      "name": "vergleichsquelle-bestaetigt",
+      "bezug": "AP-07 E4, AP-04 E3, AP-06 E10",
+      "why": "Eine bestätigte, gekennzeichnete Vergleichsquelle bekommt die Rolle `vergleich`: angezeigt, nie verrechnet. Die lesende Box ist für die Datenquelle der Komponente zuständig; die Kennzeichnung kommt aus der Quellenbindung. Liest dasselbe Gerät über eine ZWEITE Box (AP-06 E10), ist die Vergleichsquelle eine eigene Komponente an dieser Box — die Regel ist dieselbe. Der Wert 311,9 kW ist ein Beispielwert (MS-01 zeigt in der Momentaufnahme 312,4 kW über K-3 — zwei Abtastungen desselben Anschlusses).",
+      "annahme": "Die Referenzdatei kennt keine Vergleichsquelle. Angenommen: Ines Kaltenbach hat K-1 · Einspeise-/Bezugsleistung am Wechselrichter an der Messstelle MS-01 als Vergleichsquelle gekennzeichnet und bestätigt (AP-04 E3). Alle übrigen Fakten stammen aus der Referenzdatei.",
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 6429,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-1",
+            "messkanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 3119,
+            "decoded": 311.9,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:15:03+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 10,
+          "einbau": {
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-1",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "vergleich",
+            "messstelle": "MS-01"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-1",
+          "messkanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+          "messzeit": "2026-10-20T08:15:00Z",
+          "eingangszeit": "2026-10-20T08:15:03Z",
+          "wert": {
+            "raw": 3119,
+            "decoded": 311.9,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 6429,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 3
+          },
+          "rolle": "vergleich"
+        }
+      }
+    },
+    {
+      "name": "ohne-einbau-zur-messzeit-abgewiesen",
+      "bezug": "AP-07 §4.9 Invariante 1",
+      "why": "Box Halle 2 liest die Energiekarte EK-1 schon eine Minute vor dem Beginn des Einbaus (C-1 gilt ab 01.10.2026, die Referenzdatei kennt nur den Tag). Zur Messzeit gilt KEIN Einbau — ohne Gerät-Einbau ist der Wert kein Messwert des Unternehmens-Energiemanagements: abgewiesen und als `rejected` gezählt, nie einem Gerät zugeraten.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-2",
+            "seriennummer": "VP-BOX-2026-0482"
+          },
+          "umschlag": {
+            "sequenz": 1,
+            "messzeit": "2026-09-30T23:59:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": null
+          },
+          "wert": {
+            "komponente": null,
+            "messkanal": "Wirkenergie Bezug",
+            "messzeit": "2026-09-30T23:59:00+02:00",
+            "raw": 0,
+            "decoded": 0.0,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-01T00:00:04+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": "K-8.1",
+          "einheit": "kWh",
+          "wertart": "counter",
+          "kadenz_s": 60,
+          "einbau": null,
+          "fassung_aus_zustellung": 1,
+          "datenquelle": "DQ-4",
+          "zustaendige_box": null,
+          "bindung": {
+            "art": "keine",
+            "messstelle": null
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "abgewiesen",
+        "grund": "herkunft_unvollstaendig",
+        "ereignisse": [
+          {
+            "art": "rejected",
+            "box": "E-2",
+            "grund": "herkunft_unvollstaendig"
+          }
+        ],
+        "zaehler": null,
+        "herkunft": null
+      }
+    },
+    {
+      "name": "uhr-6-minuten-vor-clock-ahead",
+      "bezug": "AP-07 E13, §4.5 Zeit Regel 3, A13",
+      "why": "Die Uhr von Box Lindach geht 6 Minuten vor: sie stempelt 10:21:00, die Cloud-Uhr sagt 10:15:00. Mehr als 5 Minuten in der Zukunft → abgewiesen, Ereignis `clock_ahead` (gezählt je Box). Kein Wert in der Zukunft, keine geratene Messzeit. Gemessen hat die Box um 10:15 — die 38,7 kW sind die Momentanleistung von MS-16 aus der Momentaufnahme.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-3",
+            "seriennummer": "VP-BOX-2026-0503"
+          },
+          "umschlag": {
+            "sequenz": 7816,
+            "messzeit": "2026-10-20T10:21:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-11",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:21:00+02:00",
+            "raw": 387,
+            "decoded": 38.7,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:15:00+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 10,
+          "einbau": {
+            "geraet": "GR-10",
+            "einbau": "GR-10",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-7",
+          "zustaendige_box": "E-3",
+          "bindung": {
+            "art": "keine",
+            "messstelle": null
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "abgewiesen",
+        "grund": "clock_ahead",
+        "ereignisse": [
+          {
+            "art": "clock_ahead",
+            "box": "E-3",
+            "vor_s": 360
+          }
+        ],
+        "zaehler": null,
+        "herkunft": null
+      }
+    },
+    {
+      "name": "uhr-genau-5-minuten-vor-angenommen",
+      "bezug": "AP-07 E13 (Kante)",
+      "why": "Die Kante: GENAU 5 Minuten vor ist noch nicht „mehr als 5 Minuten“ — der Wert wird angenommen. Die Verzögerung reist ungeschönt mit: −300 s, weil die Uhr der Box vorgeht; direkt. K-11 · Wirkleistung ist an keine Messstelle gebunden → Beobachtung.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-3",
+            "seriennummer": "VP-BOX-2026-0503"
+          },
+          "umschlag": {
+            "sequenz": 7816,
+            "messzeit": "2026-10-20T10:20:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-11",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:20:00+02:00",
+            "raw": 387,
+            "decoded": 38.7,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:15:00+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 10,
+          "einbau": {
+            "geraet": "GR-10",
+            "einbau": "GR-10",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-7",
+          "zustaendige_box": "E-3",
+          "bindung": {
+            "art": "keine",
+            "messstelle": null
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-11",
+          "messkanal": "Wirkleistung",
+          "messzeit": "2026-10-20T08:20:00Z",
+          "eingangszeit": "2026-10-20T08:15:00Z",
+          "wert": {
+            "raw": 387,
+            "decoded": 38.7,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-3",
+            "seriennummer": "VP-BOX-2026-0503"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-10",
+            "einbau": "GR-10",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 7816,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": -300
+          },
+          "rolle": "beobachtung"
+        }
+      }
+    },
+    {
+      "name": "zeitsprung-clock-jump-werte-bleiben",
+      "bezug": "AP-07 E13, §4.5 Zeit Regel 3",
+      "why": "Zwischen den aufeinanderfolgenden Umschlägen 7 815 (10:08:30) und 7 816 (10:15:00) springt die Uhr von Box Lindach um 6 min 30 s — mehr als 5 Minuten → Ereignis `clock_jump`. Der Wert BLEIBT, seine Qualität bleibt unverändert; der Kunde sieht den Marker.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-3",
+            "seriennummer": "VP-BOX-2026-0503"
+          },
+          "umschlag": {
+            "sequenz": 7816,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-11",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 387,
+            "decoded": 38.7,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:15:02+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 10,
+          "einbau": {
+            "geraet": "GR-10",
+            "einbau": "GR-10",
+            "seriennummer": null
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-7",
+          "zustaendige_box": "E-3",
+          "bindung": {
+            "art": "keine",
+            "messstelle": null
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": {
+            "sequenz": 7815,
+            "messzeit": "2026-10-20T10:08:30+02:00"
+          },
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [
+          {
+            "art": "clock_jump",
+            "box": "E-3",
+            "sequenz": 7816,
+            "sprung_s": 390
+          }
+        ],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-11",
+          "messkanal": "Wirkleistung",
+          "messzeit": "2026-10-20T08:15:00Z",
+          "eingangszeit": "2026-10-20T08:15:02Z",
+          "wert": {
+            "raw": 387,
+            "decoded": 38.7,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-3",
+            "seriennummer": "VP-BOX-2026-0503"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-10",
+            "einbau": "GR-10",
+            "seriennummer": null
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 7816,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 2
+          },
+          "rolle": "beobachtung"
+        }
+      }
+    },
+    {
+      "name": "wert-91-tage-alt-too-old",
+      "bezug": "AP-07 E13, §4.5 Zeit Regel 3, §5.2 Rohdatenablauf",
+      "why": "Die Momentanleistung von MS-06 aus der Momentaufnahme (20.10.2026 10:15, 148,6 kW) kommt erst am 19.01.2027 10:15 an — z. B. aus einem zurückgespielten Puffer. Das sind 91 Tage und 1 Stunde (die Zeitumstellung am 25.10.2026 liegt dazwischen): älter als 90 Tage → abgewiesen, `too_old`. Die Rohwerte dieses Tages sind da schon abgelaufen.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 6429,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 1486,
+            "decoded": 148.6,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2027-01-19T10:15:00+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "abgewiesen",
+        "grund": "too_old",
+        "ereignisse": [
+          {
+            "art": "too_old",
+            "box": "E-1",
+            "alter_s": 7866000
+          }
+        ],
+        "zaehler": null,
+        "herkunft": null
+      }
+    },
+    {
+      "name": "genau-90-tage-angenommen",
+      "bezug": "AP-07 E13 (Kante), §4.5 Nachlieferung Regel 1",
+      "why": "Die Kante: 90 Tage sind 90 × 24 h in UTC. Über die Zeitumstellung hinweg liegt sie am 18.01.2027 um 09:15 Ortszeit, nicht um 10:15. Genau 90 Tage alt ist noch nicht „älter als 90 Tage“ → angenommen, nachgeliefert (7 776 000 s), Zuständigkeit und Einbau zur Messzeit (Box Halle 1, Z-5a). Dass der Viertelstundenwert längst endgültig ist, meldet die Endgültigkeit (`late_arrival`, AP-07 IP-13) — nicht diese Ableitung.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 6429,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 1486,
+            "decoded": 148.6,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2027-01-18T09:15:00+01:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkleistung",
+          "messzeit": "2026-10-20T08:15:00Z",
+          "eingangszeit": "2027-01-18T08:15:00Z",
+          "wert": {
+            "raw": 1486,
+            "decoded": 148.6,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 6429,
+          "zustellart": {
+            "art": "nachgeliefert",
+            "verzoegerung_s": 7776000
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    },
+    {
+      "name": "nachgeliefert-kante-300-s-direkt",
+      "bezug": "AP-07 §4.2 Zustellart (Kante)",
+      "why": "Die Kante der Zustellart: „später als max(5 min, 3 × Kadenz)“. Bei 60 s Kadenz ist die Schwelle 300 s; genau 300 s nach der Messzeit ist noch DIREKT, erst 301 s wären nachgeliefert. Ein Ahrenberg-Messkanal mit mehr als 100 s Kadenz, bei dem 3 × Kadenz die Schwelle bestimmte, existiert nicht — diesen Zweig prüft der Java-Test als Einheit.",
+      "annahme": null,
+      "input": {
+        "lieferung": {
+          "kundenbereich": "KB-AHRENBERG",
+          "box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "umschlag": {
+            "sequenz": 6429,
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "katalogstand": "2026.08.26.3",
+            "angewendete_fassung": 1
+          },
+          "wert": {
+            "komponente": "K-5",
+            "messkanal": "Wirkleistung",
+            "messzeit": "2026-10-20T10:15:00+02:00",
+            "raw": 1486,
+            "decoded": 148.6,
+            "qualitaet": "good"
+          },
+          "eingangszeit": "2026-10-20T10:20:00+02:00"
+        },
+        "fakten": {
+          "komponente_aus_auswahl": null,
+          "einheit": "kW",
+          "wertart": "gauge",
+          "kadenz_s": 60,
+          "einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "fassung_aus_zustellung": null,
+          "datenquelle": "DQ-3",
+          "zustaendige_box": "E-1",
+          "bindung": {
+            "art": "fuehrend",
+            "messstelle": "MS-06"
+          },
+          "gespeichert_zur_messzeit": [],
+          "vorheriger_umschlag": null,
+          "unassigned_reader_zuletzt": null
+        }
+      },
+      "expected": {
+        "urteil": "gespeichert",
+        "grund": null,
+        "ereignisse": [],
+        "zaehler": null,
+        "herkunft": {
+          "kundenbereich": "KB-AHRENBERG",
+          "komponente": "K-5",
+          "messkanal": "Wirkleistung",
+          "messzeit": "2026-10-20T08:15:00Z",
+          "eingangszeit": "2026-10-20T08:20:00Z",
+          "wert": {
+            "raw": 1486,
+            "decoded": 148.6,
+            "einheit": "kW"
+          },
+          "qualitaet": "good",
+          "wertart": "gauge",
+          "lesende_box": {
+            "kennzeichen": "E-1",
+            "seriennummer": "VP-BOX-2024-0117"
+          },
+          "geraet_einbau": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "seriennummer": "4471023"
+          },
+          "einstellungs_fassung": {
+            "fassung": 1,
+            "quelle": "box"
+          },
+          "katalogstand": "2026.08.26.3",
+          "sequenz": 6429,
+          "zustellart": {
+            "art": "direkt",
+            "verzoegerung_s": 300
+          },
+          "rolle": "fuehrend"
+        }
+      }
+    }
+  ]
+}

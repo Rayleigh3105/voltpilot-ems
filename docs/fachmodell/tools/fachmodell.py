@@ -361,6 +361,7 @@ VERFEINERUNGEN = {
         ("AP-07 E1", "Die Strecke der Zusätzlichen Messwerte wird die EINE Messwert-Strecke, additiv erweitert um Komponente, Herkunft und Fassung; die Kern-Telemetrie bleibt der Betriebs-Pfad (Cockpit, Fahrplan, Regelung) und trägt keine Messstellen-Reihe."),
         ("AP-07 E6/E7", "Jeder Messkanal jeder Komponente bekommt Viertelstunden- und Tageswerte für zehn Jahre (Retention 3 653 Tage) — eine Regel, kein Sonderfall."),
         ("AP-07 E9", "Die Kadenz ist ein Feld der Quellenbindung, zeitgültig; sie reist als Soll zur Box und wird je Viertelstundenwert als „erwartet“ gespeichert. Eine Lücke beginnt ab 2 × Kadenz ohne guten Wert."),
+        ("AP-07 E3/E13", "Derselbe Wert ist Reihe + Messzeit — die Sequenz ist nur noch Kennzeichen: dasselbe Paket zweimal ist EIN Wert, ein abweichender Wert zur selben Messzeit wird abgewiesen und als `duplicate_conflict` festgehalten, der erste bleibt. Eine Messzeit mehr als 5 Minuten in der Zukunft oder älter als 90 Tage wird abgewiesen; ein Uhrsprung wird gemeldet, der Wert bleibt. Die 15 Angaben je Wert und diese Ableitung stehen als Vertrag mit Vektoren in `docs/contracts/v2/messwert-herkunft.md` (AP-07 IP-1)."),
         ("AP-05 E9", "Standardsatz für eine Energiekarte: 13 Kanäle bei 60 s; die Wirkleistung gesamt bildet die Box als Summe, die Hauptzuleitung darf 10 s."),
     ],
     "messstelle": [

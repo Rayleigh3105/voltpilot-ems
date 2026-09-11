@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/messwert-herkunft.schema.json",
+  "title": "Herkunftsvertrag je Messwert",
+  "description": "Der Vertrag, was JEDER Messwert des Unternehmens-Energiemanagements über seine Herkunft trägt (UEMS AP-07 §4.2, Prosa: messwert-herkunft.md), und wie aus dem, was die Box liefert, und dem, was die Cloud zur Messzeit weiß, GENAU EIN Urteil wird. Er beschreibt die Vektor-Datei messwert-herkunft-vectors.json, gegen die die Ableitung (Java services/api .../uems/MesswertHerkunft; der Zwilling folgt mit AP-07 IP-6) gefahren wird.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bezug", "referenzunternehmen", "angaben", "vokabular", "regeln", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in messwert-herkunft.md." },
+    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv." },
+    "$schema_datei": { "type": "string", "description": "Verweis auf dieses Schema." },
+    "bezug": { "type": "string", "minLength": 1, "description": "Woher die Regel stammt: Konzeptpaket und Entscheide." },
+    "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json", "description": "Die EINE Beispielwelt. Jedes Kennzeichen, jede Seriennummer, jeder Einbau und jede Zuständigkeit eines Falls stammt von dort." },
+
+    "angaben": {
+      "type": "array", "minItems": 15, "maxItems": 15,
+      "description": "Die fünfzehn Angaben, die jeder gespeicherte Wert trägt und die bis in den Viertelstundenwert überleben — in der Reihenfolge von AP-07 §4.2.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["feld", "angabe", "art", "woher", "woher_aeltere_box", "beschreibung"],
+        "properties": {
+          "feld": { "type": "string", "pattern": "^[a-z_]+$", "description": "Der Name der Angabe in der Herkunft eines Werts." },
+          "angabe": { "type": "string", "minLength": 1, "description": "Das Wort, mit dem der Kunde die Angabe liest." },
+          "art": { "type": "string", "enum": ["schluessel", "marker", "inhalt"], "description": "Schlüssel bilden die Reihe und den Wert; ein Marker reist als Herkunft mit; der Inhalt ist der Wert selbst." },
+          "woher": { "$ref": "#/$defs/woher" },
+          "woher_aeltere_box": { "type": ["string", "null"], "enum": ["nachschlag", null], "description": "Wer die Angabe ergänzt, wenn eine ältere Box sie nicht mitschickt. Leer: es gibt keinen zweiten Weg." },
+          "beschreibung": { "type": "string", "minLength": 1, "description": "Was die Angabe bedeutet — in Kundensprache." }
+        }
+      }
+    },
+
+    "vokabular": {
+      "type": "object", "additionalProperties": false,
+      "description": "Die geschlossenen Wortlisten dieses Vertrags. Ein Wort außerhalb wird nie geraten.",
+      "required": ["urteil", "grund", "rolle", "bindung", "zustellart", "fassung_quelle", "ereignis", "qualitaet", "wertart"],
+      "properties": {
+        "urteil": { "type": "array", "items": { "$ref": "#/$defs/urteil" }, "description": "Was mit einem gelieferten Wert geschieht." },
+        "grund": { "type": "array", "items": { "$ref": "#/$defs/grund" }, "description": "Warum ein Wert abgewiesen wird." },
+        "rolle": { "type": "array", "items": { "$ref": "#/$defs/rolle" }, "description": "Die Rolle eines Werts zur Messzeit." },
+        "bindung": { "type": "array", "items": { "$ref": "#/$defs/bindung_art" }, "description": "Wie die Quellenbindung einen Messkanal führt." },
+        "zustellart": { "type": "array", "items": { "$ref": "#/$defs/zustellart" }, "description": "Direkt oder nachgeliefert." },
+        "fassung_quelle": { "type": "array", "items": { "$ref": "#/$defs/fassung_quelle" }, "description": "Woher die Einstellungs-Fassung eines Werts stammt." },
+        "ereignis": { "type": "array", "items": { "$ref": "#/$defs/ereignis_art" }, "description": "Die Ereignisse, die beim Annehmen eines Werts entstehen können." },
+        "qualitaet": { "type": "array", "items": { "$ref": "#/$defs/qualitaet" }, "description": "Wie die Box einen Wert beurteilt — unverändert aus dem heutigen Vertrag." },
+        "wertart": { "type": "array", "items": { "$ref": "#/$defs/wertart" }, "description": "Zählerstand, Momentanwert, Zustand, Bitfeld, Text (AP-07 E12)." }
+      }
+    },
+
+    "regeln": {
+      "type": "object", "additionalProperties": false,
+      "description": "Die Zahlen der Regel. Die Ableitung trägt dieselben Konstanten; der Test prüft sie gegeneinander.",
+      "required": ["idempotenz_schluessel", "zukunft_hoechstens_s", "vergangenheit_hoechstens_s", "zeitsprung_ab_s", "nachgeliefert_mindestens_s", "nachgeliefert_faktor_kadenz", "unassigned_reader_hoechstens_je_s"],
+      "properties": {
+        "idempotenz_schluessel": { "type": "array", "minItems": 4, "items": { "type": "string", "enum": ["kundenbereich", "komponente", "messkanal", "messzeit"] }, "description": "Woran „derselbe Wert“ erkannt wird: die Reihe (Kundenbereich, Komponente, Messkanal) und die Messzeit (AP-07 E3). Die Sequenz ist kein Schlüssel." },
+        "zukunft_hoechstens_s": { "type": "integer", "const": 300, "description": "Liegt die Messzeit MEHR als 5 Minuten nach der Uhr der Cloud, wird der Wert abgewiesen (AP-07 E13)." },
+        "vergangenheit_hoechstens_s": { "type": "integer", "const": 7776000, "description": "Ist die Messzeit ÄLTER als 90 × 24 Stunden, wird der Wert abgewiesen (AP-07 E13) — so lange werden Rohwerte aufbewahrt." },
+        "zeitsprung_ab_s": { "type": "integer", "const": 300, "description": "Liegen die Messzeiten zweier aufeinanderfolgender Umschläge einer Box MEHR als 5 Minuten auseinander, ist die Uhr gesprungen; der Wert bleibt." },
+        "nachgeliefert_mindestens_s": { "type": "integer", "const": 300, "description": "Boden der Schwelle für „nachgeliefert“: 5 Minuten." },
+        "nachgeliefert_faktor_kadenz": { "type": "integer", "const": 3, "description": "Die Schwelle für „nachgeliefert“ ist das Größere aus 5 Minuten und dem Dreifachen der erwarteten Häufigkeit." },
+        "unassigned_reader_hoechstens_je_s": { "type": "integer", "const": 3600, "description": "Werte aus einer nicht zuständigen Box werden höchstens einmal je Stunde je Box und Datenquelle gemeldet (AP-07 E4)." }
+      }
+    },
+
+    "cases": {
+      "type": "array", "minItems": 1,
+      "description": "Die Fälle. Jeder nennt, was ankommt, was die Cloud zur Messzeit weiß, und das eine erwartete Urteil.",
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+
+  "$defs": {
+    "kennzeichen": { "type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9][A-Za-z0-9._/′-]*$", "description": "Ein Kennzeichen aus dem Referenzunternehmen." },
+    "kennzeichen_oder_leer": { "type": ["string", "null"], "maxLength": 32, "pattern": "^[A-Za-z0-9][A-Za-z0-9._/′-]*$", "description": "Ein Kennzeichen aus dem Referenzunternehmen — oder leer." },
+    "zeitpunkt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$", "description": "Ein Zeitpunkt mit dem Versatz der Zeitzone Europe/Berlin (+01:00 im Winter, +02:00 im Sommer), wie im Referenzunternehmen." },
+    "zeitpunkt_oder_leer": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$", "description": "Ein Zeitpunkt mit Versatz — oder leer." },
+    "zeitpunkt_utc": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "Ein Zeitpunkt in UTC, auf die Sekunde — so wird jede Messzeit gespeichert." },
+    "katalogstand": { "type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$", "description": "Die Fassung des Messwert-Katalogs (JJJJ.MM.TT.N)." },
+    "messwert": { "type": ["number", "string", "boolean"], "description": "Ein Wert so, wie er am Draht steht: Zahl, Text oder Wahrheitswert — nie leer." },
+    "urteil": { "type": "string", "enum": ["gespeichert", "wiederholung", "abgewiesen", "kein_wert"], "description": "gespeichert · Wiederholung (derselbe Wert noch einmal, nur gezählt) · abgewiesen · kein Wert (zur Messzeit kam nichts an — eine Lücke, nie eine 0)." },
+    "grund": { "type": "string", "enum": ["clock_ahead", "too_old", "herkunft_unvollstaendig", "duplicate_conflict"], "description": "Uhr der Box geht vor · zu alt · Herkunft unvollständig · anderer Wert zur selben Messzeit." },
+    "rolle": { "type": "string", "enum": ["fuehrend", "vergleich", "spiegel", "beobachtung"], "description": "Führend (fließt in Verbrauch und Bilanz) · Vergleich (angezeigt, nie verrechnet) · Spiegel (dieselbe Messung auf einem zweiten Weg) · Beobachtung (an keine Messstelle gebunden)." },
+    "bindung_art": { "type": "string", "enum": ["fuehrend", "vergleich", "keine"], "description": "Führende Quelle einer Messstelle · bestätigte Vergleichsquelle · an keine Messstelle gebunden." },
+    "zustellart": { "type": "string", "enum": ["direkt", "nachgeliefert"], "description": "Direkt · nachgeliefert (später als das Größere aus 5 Minuten und 3 × erwarteter Häufigkeit)." },
+    "fassung_quelle": { "type": "string", "enum": ["box", "zustellung"], "description": "Die Box meldet die angewendete Fassung · die Cloud schlägt sie für eine ältere Box nach." },
+    "ereignis_art": { "type": "string", "enum": ["clock_ahead", "too_old", "clock_jump", "sequence_gap", "sequence_reset", "rejected", "unassigned_reader", "duplicate_conflict"], "description": "Eine Ereignisart aus AP-07 §4.8." },
+    "qualitaet": { "type": "string", "enum": ["good", "uncertain", "invalid", "stale", "device_error"], "description": "Gut · unsicher · ungültig · veraltet · Gerätefehler." },
+    "wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Zählerstand · Momentanwert · Zustand · Bitfeld · Text." },
+    "woher": { "type": "string", "enum": ["box", "datenannahme", "nachschlag", "ableitung"], "description": "Die Box liefert es · die Datenannahme stempelt es · die Cloud schlägt es zur Messzeit nach · es wird abgeleitet." },
+
+    "box": {
+      "type": "object", "additionalProperties": false, "required": ["kennzeichen", "seriennummer"],
+      "description": "Die VoltPilot-Box, erkannt an ihrer Anmeldung.",
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+        "seriennummer": { "type": "string", "minLength": 1, "description": "Die Seriennummer auf dem Aufkleber der Box." }
+      }
+    },
+    "einbau": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["geraet", "einbau", "seriennummer"],
+      "description": "Ein Gerät und sein Einbau an der Komponente, der zur Messzeit galt. Leer: zur Messzeit gilt kein Einbau.",
+      "properties": {
+        "geraet": { "$ref": "#/$defs/kennzeichen" },
+        "einbau": { "$ref": "#/$defs/kennzeichen" },
+        "seriennummer": { "type": ["string", "null"], "description": "Die Seriennummer des Geräts — leer, wenn sie nicht erhoben ist, nie geraten." }
+      }
+    },
+    "fall": {
+      "type": "object", "additionalProperties": false, "required": ["name", "bezug", "why", "annahme", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "Eindeutiger Name des Falls." },
+        "bezug": { "type": "string", "minLength": 1, "description": "Abschnitt, Entscheid oder Abnahmefall, den der Fall belegt." },
+        "why": { "type": "string", "minLength": 1, "description": "Warum genau dieses Urteil entsteht." },
+        "annahme": { "type": ["string", "null"], "description": "Was der Fall annimmt, das NICHT im Referenzunternehmen steht. Leer: nichts." },
+        "input": { "$ref": "#/$defs/eingang" },
+        "expected": { "$ref": "#/$defs/ergebnis" }
+      }
+    },
+    "eingang": {
+      "type": "object", "additionalProperties": false, "required": ["lieferung", "fakten"],
+      "properties": {
+        "lieferung": { "$ref": "#/$defs/lieferung" },
+        "reihe": {
+          "type": "object", "additionalProperties": false, "required": ["kundenbereich", "komponente", "messkanal"],
+          "description": "Nur ohne Lieferung: die Reihe, in der zur Messzeit nichts ankam.",
+          "properties": {
+            "kundenbereich": { "$ref": "#/$defs/kennzeichen" },
+            "komponente": { "$ref": "#/$defs/kennzeichen" },
+            "messkanal": { "type": "string", "minLength": 1 }
+          }
+        },
+        "messzeit": { "$ref": "#/$defs/zeitpunkt", "description": "Nur ohne Lieferung: die Messzeit der Lücke." },
+        "fakten": { "$ref": "#/$defs/fakten" }
+      }
+    },
+    "lieferung": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["kundenbereich", "box", "umschlag", "wert", "eingangszeit"],
+      "description": "Was ankommt. Leer: zur Messzeit kam nichts an.",
+      "properties": {
+        "kundenbereich": { "$ref": "#/$defs/kennzeichen" },
+        "box": { "$ref": "#/$defs/box" },
+        "umschlag": {
+          "type": "object", "additionalProperties": false, "required": ["sequenz", "messzeit", "katalogstand", "angewendete_fassung"],
+          "description": "Die Hülle, in der der Wert reiste.",
+          "properties": {
+            "sequenz": { "type": "integer", "minimum": 0, "description": "Die fortlaufende Nummer des Umschlags je Box." },
+            "messzeit": { "$ref": "#/$defs/zeitpunkt" },
+            "katalogstand": { "$ref": "#/$defs/katalogstand" },
+            "angewendete_fassung": { "type": ["integer", "null"], "minimum": 0, "description": "Die Fassung, die die Box beim Erfassen angewendet hat. Leer: eine ältere Box, die sie nicht meldet." }
+          }
+        },
+        "wert": {
+          "type": "object", "additionalProperties": false, "required": ["komponente", "messkanal", "messzeit", "raw", "decoded", "qualitaet"],
+          "description": "Der gemessene Wert.",
+          "properties": {
+            "komponente": { "$ref": "#/$defs/kennzeichen_oder_leer", "description": "Die Komponente. Leer: eine ältere Box, die sie nicht nennt." },
+            "messkanal": { "type": "string", "minLength": 1, "description": "Der Messkanal, benannt wie im Referenzunternehmen." },
+            "messzeit": { "$ref": "#/$defs/zeitpunkt" },
+            "raw": { "$ref": "#/$defs/messwert" },
+            "decoded": { "$ref": "#/$defs/messwert" },
+            "qualitaet": { "$ref": "#/$defs/qualitaet" }
+          }
+        },
+        "eingangszeit": { "$ref": "#/$defs/zeitpunkt", "description": "Wann die Datenannahme den Wert entgegennahm (Uhr der Cloud)." }
+      }
+    },
+    "fakten": {
+      "type": "object", "additionalProperties": false,
+      "required": ["komponente_aus_auswahl", "einheit", "wertart", "kadenz_s", "einbau", "fassung_aus_zustellung", "datenquelle", "zustaendige_box", "bindung", "gespeichert_zur_messzeit", "vorheriger_umschlag", "unassigned_reader_zuletzt"],
+      "description": "Was die Cloud beim Annehmen ZUR MESSZEIT nachschlägt.",
+      "properties": {
+        "komponente_aus_auswahl": { "$ref": "#/$defs/kennzeichen_oder_leer", "description": "Nur für eine ältere Box: die Komponente aus der Auswahl." },
+        "einheit": { "type": "string", "minLength": 1, "description": "Die Einheit des Messkanals aus dem Katalog." },
+        "wertart": { "$ref": "#/$defs/wertart" },
+        "kadenz_s": { "type": "integer", "minimum": 1, "description": "Die erwartete Häufigkeit in Sekunden." },
+        "einbau": { "$ref": "#/$defs/einbau" },
+        "fassung_aus_zustellung": { "type": ["integer", "null"], "minimum": 0, "description": "Nur für eine ältere Box: die Fassung, die zur Messzeit angewendet war." },
+        "datenquelle": { "$ref": "#/$defs/kennzeichen", "description": "Die Datenquelle der Komponente." },
+        "zustaendige_box": { "$ref": "#/$defs/kennzeichen_oder_leer", "description": "Die Box, die zur Messzeit für die Datenquelle zuständig ist. Leer: keine." },
+        "bindung": {
+          "type": "object", "additionalProperties": false, "required": ["art", "messstelle"],
+          "description": "Wie die Quellenbindung den Messkanal zur Messzeit führt.",
+          "properties": {
+            "art": { "$ref": "#/$defs/bindung_art" },
+            "messstelle": { "$ref": "#/$defs/kennzeichen_oder_leer", "description": "Die Messstelle. Leer, wenn der Messkanal an keine gebunden ist." }
+          }
+        },
+        "gespeichert_zur_messzeit": {
+          "type": "array",
+          "description": "Alle Werte derselben Reihe mit derselben Messzeit, die schon gespeichert sind — aus jeder Spur.",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["box", "rolle", "raw", "decoded", "qualitaet", "sequenz"],
+            "properties": {
+              "box": { "$ref": "#/$defs/kennzeichen" },
+              "rolle": { "$ref": "#/$defs/rolle" },
+              "raw": { "$ref": "#/$defs/messwert" },
+              "decoded": { "$ref": "#/$defs/messwert" },
+              "qualitaet": { "$ref": "#/$defs/qualitaet" },
+              "sequenz": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "vorheriger_umschlag": {
+          "type": ["object", "null"], "additionalProperties": false, "required": ["sequenz", "messzeit"],
+          "description": "Der zuletzt gesehene Umschlag derselben Box. Leer: der Fall prüft die Sequenz nicht.",
+          "properties": {
+            "sequenz": { "type": "integer", "minimum": 0 },
+            "messzeit": { "$ref": "#/$defs/zeitpunkt" }
+          }
+        },
+        "unassigned_reader_zuletzt": { "$ref": "#/$defs/zeitpunkt_oder_leer", "description": "Wann zuletzt gemeldet wurde, dass diese Box diese Datenquelle liest, ohne zuständig zu sein. Leer: noch nie." }
+      }
+    },
+    "ergebnis": {
+      "type": "object", "additionalProperties": false, "required": ["urteil", "grund", "ereignisse", "zaehler", "herkunft"],
+      "properties": {
+        "urteil": { "$ref": "#/$defs/urteil" },
+        "grund": { "type": ["string", "null"], "enum": ["clock_ahead", "too_old", "herkunft_unvollstaendig", "duplicate_conflict", null], "description": "Nur bei „abgewiesen“." },
+        "ereignisse": { "type": "array", "items": { "$ref": "#/$defs/ereignis" }, "description": "Die Ereignisse in der Reihenfolge ihres Entstehens." },
+        "zaehler": { "type": ["string", "null"], "enum": ["wiederholt", null], "description": "Nur bei einer Wiederholung: der Zähler, der hochgezählt wird — kein Ereignis je Wert." },
+        "herkunft": { "$ref": "#/$defs/herkunft" }
+      }
+    },
+    "ereignis": {
+      "type": "object", "additionalProperties": false, "required": ["art", "box"],
+      "description": "Ein Ereignis mit den Feldern, die beim Annehmen EINES Werts bekannt sind (Ausschnitt; die volle Nutzlast legt der Ereignis-Vertrag AP-07 IP-3 fest).",
+      "properties": {
+        "art": { "$ref": "#/$defs/ereignis_art" },
+        "box": { "$ref": "#/$defs/kennzeichen" },
+        "vor_s": { "type": "integer", "minimum": 0, "description": "Wie viele Sekunden die Messzeit in der Zukunft liegt." },
+        "alter_s": { "type": "integer", "minimum": 0, "description": "Wie viele Sekunden die Messzeit zurückliegt." },
+        "sequenz": { "type": "integer", "minimum": 0, "description": "Die Sequenz des Umschlags, bei dem die Uhr sprang." },
+        "sprung_s": { "type": "integer", "description": "Um wie viele Sekunden die Uhr zwischen zwei aufeinanderfolgenden Umschlägen sprang (vorwärts positiv)." },
+        "sequenz_erwartet": { "type": "integer", "minimum": 0, "description": "Die Sequenz, die als nächste erwartet war." },
+        "sequenz_erhalten": { "type": "integer", "minimum": 0, "description": "Die Sequenz, die ankam." },
+        "anzahl": { "type": "integer", "minimum": 1, "description": "Wie viele Umschläge fehlen." },
+        "grund": { "$ref": "#/$defs/grund" },
+        "datenquelle": { "$ref": "#/$defs/kennzeichen" },
+        "komponente": { "$ref": "#/$defs/kennzeichen" },
+        "messkanal": { "type": "string", "minLength": 1 },
+        "messzeit": { "$ref": "#/$defs/zeitpunkt_utc" },
+        "gespeicherter_wert": { "$ref": "#/$defs/konflikt_wert" },
+        "abgewiesener_wert": { "$ref": "#/$defs/konflikt_wert" },
+        "sequenzen": { "type": "array", "minItems": 2, "items": { "type": "integer", "minimum": 0 }, "description": "Die Sequenzen des gespeicherten und des abgewiesenen Werts." }
+      }
+    },
+    "konflikt_wert": {
+      "type": "object", "additionalProperties": false, "required": ["raw", "decoded", "qualitaet"],
+      "properties": {
+        "raw": { "$ref": "#/$defs/messwert" },
+        "decoded": { "$ref": "#/$defs/messwert" },
+        "qualitaet": { "$ref": "#/$defs/qualitaet" }
+      }
+    },
+    "herkunft": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["kundenbereich", "komponente", "messkanal", "messzeit", "eingangszeit", "wert", "qualitaet", "wertart", "lesende_box", "geraet_einbau", "einstellungs_fassung", "katalogstand", "sequenz", "zustellart", "rolle"],
+      "description": "Die fünfzehn Angaben eines gespeicherten Werts. Leer bei jedem anderen Urteil.",
+      "properties": {
+        "kundenbereich": { "$ref": "#/$defs/kennzeichen" },
+        "komponente": { "$ref": "#/$defs/kennzeichen" },
+        "messkanal": { "type": "string", "minLength": 1 },
+        "messzeit": { "$ref": "#/$defs/zeitpunkt_utc" },
+        "eingangszeit": { "$ref": "#/$defs/zeitpunkt_utc" },
+        "wert": {
+          "type": "object", "additionalProperties": false, "required": ["raw", "decoded", "einheit"],
+          "properties": {
+            "raw": { "$ref": "#/$defs/messwert" },
+            "decoded": { "$ref": "#/$defs/messwert" },
+            "einheit": { "type": "string", "minLength": 1 }
+          }
+        },
+        "qualitaet": { "$ref": "#/$defs/qualitaet" },
+        "wertart": { "$ref": "#/$defs/wertart" },
+        "lesende_box": { "$ref": "#/$defs/box" },
+        "geraet_einbau": {
+          "type": "object", "additionalProperties": false, "required": ["geraet", "einbau", "seriennummer"],
+          "properties": {
+            "geraet": { "$ref": "#/$defs/kennzeichen" },
+            "einbau": { "$ref": "#/$defs/kennzeichen" },
+            "seriennummer": { "type": ["string", "null"] }
+          }
+        },
+        "einstellungs_fassung": {
+          "type": "object", "additionalProperties": false, "required": ["fassung", "quelle"],
+          "properties": {
+            "fassung": { "type": "integer", "minimum": 0 },
+            "quelle": { "$ref": "#/$defs/fassung_quelle" }
+          }
+        },
+        "katalogstand": { "$ref": "#/$defs/katalogstand" },
+        "sequenz": { "type": "integer", "minimum": 0 },
+        "zustellart": {
+          "type": "object", "additionalProperties": false, "required": ["art", "verzoegerung_s"],
+          "properties": {
+            "art": { "$ref": "#/$defs/zustellart" },
+            "verzoegerung_s": { "type": "integer", "description": "Sekunden von der Messzeit bis zum Eingang — ungeschönt, auch negativ, wenn die Uhr der Box innerhalb der Toleranz vorgeht." }
+          }
+        },
+        "rolle": { "$ref": "#/$defs/rolle" }
+      }
+    }
+  }
+}
