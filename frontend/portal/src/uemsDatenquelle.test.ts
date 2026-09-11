@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  AUSLASS_GRUENDE,
   FEHLERKLASSEN,
   FUEHRUNGS_GRUENDE,
   GRUENDE,
@@ -131,9 +132,10 @@ describe('Datenquelle und Zuständigkeit — Fehlerklassen', () => {
 
 describe('Datenquelle und Zuständigkeit — Bestand', () => {
   it.each(vonFamilie('bestand').map((c) => [c.name, c] as const))('%s', (_, c) => {
-    const ist = vorschlagsliste(c.input.komponenten, c.input.naechste_nummer);
+    const ist = vorschlagsliste(c.input.komponenten, c.input.naechste_nummer, c.input.belegt ?? []);
     const zeitNorm = (vs: any[]) => vs.map((v) => ({ ...v, zeitraeume: norm(v.zeitraeume) }));
-    expect(zeitNorm(ist)).toEqual(zeitNorm(c.expected.vorschlaege));
+    expect(zeitNorm(ist.vorschlaege)).toEqual(zeitNorm(c.expected.vorschlaege));
+    expect(ist.ausgelassen).toStrictEqual(c.expected.ausgelassen);
   });
 });
 
@@ -153,6 +155,7 @@ describe('Datenquelle und Zuständigkeit — die Datei als Ganzes', () => {
     expect(FEHLERKLASSEN).toEqual(datei.fehlerklassen);
     expect([...FUEHRUNGS_GRUENDE]).toEqual(datei.gruende_fuehrende_box);
     expect(TEXTE).toEqual(datei.texte);
+    expect(AUSLASS_GRUENDE).toEqual(datei.auslass_gruende);
     expect(datei.zeitzone).toBe(VORGABE_ZEITZONE);
   });
 

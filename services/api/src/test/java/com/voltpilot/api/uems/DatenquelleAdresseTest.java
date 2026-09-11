@@ -27,6 +27,8 @@ class DatenquelleAdresseTest {
         "http           | http://192.168.30.20:8080/ | http://192.168.30.20:8080/",
         "mqtt           | '  Halle1/BMS/+/Zelle  '   | Halle1/BMS/+/Zelle",
         "ocpp           | ' AHR-LP-01 '              | AHR-LP-01",
+        "solarman_v5    | ' 192.168.0.28 : 8899 / 2985159064 ' | 192.168.0.28:8899/2985159064",
+        "solarman_v5    | Deye-Halle.LAN/2985159064  | deye-halle.lan:8899/2985159064",
     })
     void normalisiertJeProtokoll(String protokoll, String roh, String gespeichert) {
         assertThat(DatenquelleAdresse.normalisiere(protokoll, roh)).isEqualTo(gespeichert);
@@ -43,6 +45,9 @@ class DatenquelleAdresseTest {
         "modbus_tcp | _wago_:502            | Host und Port",
         "http       | ftp://192.168.30.20   | http:// oder https://",
         "http       | http://nutzer:geheim@zaehler.lan/api | Zugangsdaten",
+        "solarman_v5 | 192.168.0.28:8899    | Seriennummer",
+        "solarman_v5 | 192.168.0.28:8899/   | Seriennummer",
+        "solarman_v5 | 192.168.0.28:0/2985159064 | Port",
     })
     void lehntEineAdresseOhneFormMitSatzAb(String protokoll, String roh, String satz) {
         assertThatThrownBy(() -> DatenquelleAdresse.normalisiere(protokoll, roh))

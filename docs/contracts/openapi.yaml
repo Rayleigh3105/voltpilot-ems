@@ -8176,7 +8176,7 @@ paths:
       description: >
         Recht `datenquelle.bearbeiten`. Die Adresse wird normalisiert (Vertrag §3
         Nr. 5: Host klein, ohne Leerzeichen, Modbus-Port fehlend = 502, HTTP-Port
-        ausgeschrieben). Mit `device_id` (der gewählten Box) laufen vorher die Regeln
+        ausgeschrieben; Solarman-Datenlogger `host:port/seriennummer`, Port fehlend = 8899). Mit `device_id` (der gewählten Box) laufen vorher die Regeln
         des Antrags `anlegen` bis vor die Prüfung - ein Grund davor
         (`adresse_an_box_vergeben`, `netzlage_fehlt`, `nur_ein_leser`,
         `vergleich_bestaetigen`) lehnt ab, BEVOR ein Entwurf entsteht; eine Box
@@ -8337,7 +8337,8 @@ paths:
         Recht lesend (`aenderungsprotokoll.lesen`). Append-only (data_source_aenderung):
         angelegt · bearbeitet (nur die geänderten Felder) · erreichbarkeit_geprueft
         (Box, Ergebnis) · zustaendigkeit_begonnen · zustaendigkeit_gewechselt (alt:
-        die bisherige Box), jeder Eintrag mit Urheber (Kundenbenutzer =
+        die bisherige Box) · aus_bestand_uebernommen (IP-4: neu = Kennzeichen, Weg,
+        Takt, Box, Beginn, Komponenten; `gilt_ab` = Reihenbeginn), jeder Eintrag mit Urheber (Kundenbenutzer =
         kundenadministrator/kunde, Plattform-Admin = voltpilot_betrieb/voltpilot).
       responses:
         "200":
@@ -8345,6 +8346,72 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DatenquelleProtokoll" }
+  /api/v1/sites/{siteId}/data-sources/vorschlag:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [datenquellen]
+      summary: Die Vorschlagsliste der Bestands-Übernahme - vorhandene Komponenten, gruppiert zu Datenquellen je Box.
+      description: >
+        Recht `datenquelle.ansehen` (AP-06 IP-4, Vertrag §8, Abnahme A12). Liest nur -
+        bis zur Bestätigung ändert sich nichts: kein Push, kein Fahrplan, keine Fläche.
+        Gruppiert werden die Komponenten der Anlage OHNE Quelle nach Box + Protokoll +
+        Adresse (DatenquelleRegeln.vorschlagsliste, Vektoren Familie `bestand`); ein
+        komponiertes Geschwister landet bei seinem Wechselrichter; was keinen lesbaren
+        Weg hat, steht benannt unter `ausgelassen` (keine_box · keine_adresse ·
+        protokoll_unbekannt · anker_ohne_vorschlag) - nie geraten. Die Box einer
+        Komponente ist die, die sie heute liest: die eigene einer komponierten Zeile, die
+        Box der Ladestation, sonst die führende Box (LeadDeviceService, `fuehrung`).
+        `ab` ist der Reihenbeginn (erste Speisung der Komponente, frühestens seit die Box
+        in der Anlage ist); `kennzeichen` ab der nächsten freien Nummer des Kundenbereichs.
+      responses:
+        "200":
+          description: Die Vorschläge und die ausgelassenen Komponenten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquelleVorschlagsliste" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/data-sources/vorschlag/uebernehmen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [datenquellen]
+      summary: Übernimmt bestätigte Vorschläge - Quelle, Zuständigkeit ab Reihenbeginn, Verweise, Protokoll.
+      description: >
+        Recht `datenquelle.bearbeiten` (AP-06 §4.8 anlegen; die Zuständigkeit ist die der
+        HEUTIGEN Box, kein Wechsel). Je Vorschlag, in EINER Transaktion: die Quelle
+        (Kennzeichen DQ-n vergibt der Server, ohne Name, Netzlage leer, Ein-Leser), ihre
+        Zuständigkeit `[ab, offen)` auf die Minute - der EINZIGE Weg zu einem Beginn in der
+        Vergangenheit (Vertrag §4) -, `measurement_point.data_source_id` der Komponenten,
+        `geraet.data_source_id` des Geräts ihrer laufenden Speisung und EIN Protokoll-Eintrag
+        `aus_bestand_uebernommen`. Bestätigt wird nur, was gezeigt wurde (Box, Protokoll,
+        Adresse, Komponenten): sonst 409 `vorschlag_geaendert`. Hat eine Komponente
+        inzwischen auf anderem Weg eine Quelle: 409 `komponente_hat_quelle`. Ist die
+        Adresse an der Box schon vergeben: 409 `adresse_an_box_vergeben`. Ein schon
+        übernommener Vorschlag zählt als `unveraendert` - ein zweiter Aufruf legt nichts an.
+        Registry-Push, Flow-Aktivierung und Herzschlag bleiben unberührt (Push je Box: IP-6).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DatenquelleUebernehmen" }
+            example:
+              vorschlaege:
+                - device_id: 6f1c2a9e-0000-4000-8000-0000000000e1
+                  protokoll: modbus_tcp
+                  adresse: "192.168.10.31:502"
+                  komponenten: [2b7e0f1a-0000-4000-8000-0000000000a4, 2b7e0f1a-0000-4000-8000-0000000000a5]
+      responses:
+        "200":
+          description: Übernommen (auch, wenn schon alles übernommen war - dann `neu` 0).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatenquelleUebernommen" }
+        "400": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/DatenquelleAbgelehnt" }
   /api/v1/sites/{siteId}/komponenten/{entityId}/messkanaele:
     get:
       tags: [messstellen]
@@ -15786,14 +15853,14 @@ components:
         kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$", example: DQ-6 }
         name: { type: string, nullable: true }
         anlage: { type: string, format: uuid, description: "Die Anlage, in der die Geräte verdrahtet sind." }
-        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp, solarman_v5] }
         adresse: { type: string, example: "192.168.30.10:502" }
         geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
         netz: { type: string, nullable: true }
         mehrere_leser: { type: boolean }
         steuerquelle: { type: boolean }
         vergleichsquelle: { type: boolean, description: "Bestätigte Vergleichsquelle (Vertrag §6) - gekennzeichnet, ohne Bewertung." }
-        kadenz_s: { type: integer, minimum: 1, maximum: 86400 }
+        kadenz_s: { type: integer, minimum: 1, maximum: 86400, nullable: true, description: "null = nicht erhoben (eine aus dem Bestand übernommene Quelle, deren Komponenten keinen Takt nennen, IP-4)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         zustaendige_box:
           allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
@@ -15810,7 +15877,7 @@ components:
       required: [name, protokoll, adresse, kadenz_s]
       properties:
         name: { type: string, maxLength: 120 }
-        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp, solarman_v5] }
         adresse: { type: string }
         geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
         netz: { type: string, nullable: true }
@@ -15825,7 +15892,7 @@ components:
       required: [name, protokoll, adresse, kadenz_s]
       properties:
         name: { type: string, maxLength: 120 }
-        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp] }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp, solarman_v5] }
         adresse: { type: string }
         geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
         netz: { type: string, nullable: true }
@@ -15881,7 +15948,7 @@ components:
       required: [id, art, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]
       properties:
         id: { type: integer, format: int64 }
-        art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt] }
+        art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt, aus_bestand_uebernommen] }
         box:
           allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
           nullable: true
@@ -15902,6 +15969,77 @@ components:
       required: [eintraege]
       properties:
         eintraege: { type: array, items: { $ref: "#/components/schemas/DatenquelleProtokollEintrag" } }
+    DatenquelleVorschlagKomponente:
+      type: object
+      required: [id, name, art]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true, description: "Der Kundenname der Komponente; null = keiner vergeben." }
+        art: { type: string, nullable: true, example: battery-hybrid }
+    DatenquelleVorschlag:
+      type: object
+      description: >
+        EINE Quelle, die `box` ab `ab` (dem Reihenbeginn) ohnehin liest. `kennzeichen`
+        bekäme sie, wenn alles (oder der Anfang der Liste) bestätigt wird - vergeben wird
+        es erst beim Speichern. `grund` null: übernehmbar; sonst der Grund des Vertrags
+        (`adresse_an_box_vergeben`), `text` der Satz dazu.
+      required: [kennzeichen, box, protokoll, adresse, geraete_ids, kadenz_s, steuerquelle, ab,
+        komponenten, grund, text]
+      properties:
+        kennzeichen: { type: string, example: DQ-3 }
+        box: { $ref: "#/components/schemas/DatenquelleBox" }
+        protokoll: { type: string, enum: [modbus_tcp, sunspec_modbus, mqtt, http, ocpp, solarman_v5] }
+        adresse: { type: string, example: "192.168.10.31:502" }
+        geraete_ids: { type: array, items: { type: integer, minimum: 0 } }
+        kadenz_s: { type: integer, nullable: true, description: "Der kleinste bekannte Lesetakt der Komponenten; null = von keiner erhoben." }
+        steuerquelle: { type: boolean }
+        ab: { type: string, format: date-time, description: "Reihenbeginn - der Beginn der Zuständigkeit, auf die Minute." }
+        komponenten: { type: array, items: { $ref: "#/components/schemas/DatenquelleVorschlagKomponente" } }
+        grund: { type: string, nullable: true, enum: [adresse_an_box_vergeben, null] }
+        text: { type: string, example: "Ab 12.03.2024 00:00 liest Box Halle 1" }
+    DatenquelleAusgelassen:
+      type: object
+      required: [komponente, grund, protokoll, anker, text]
+      properties:
+        komponente: { $ref: "#/components/schemas/DatenquelleVorschlagKomponente" }
+        grund: { type: string, enum: [keine_box, keine_adresse, protokoll_unbekannt, anker_ohne_vorschlag] }
+        protokoll: { type: string, nullable: true, description: "protokoll_unbekannt: das verworfene Wort - die Rückwand für einen Transport, den keine Vorlage und kein Treiber trägt (z. B. opc_ua)." }
+        anker:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleVorschlagKomponente" }]
+          nullable: true
+          description: "anker_ohne_vorschlag: der Wechselrichter, über den gelesen wird."
+        text: { type: string }
+    DatenquelleVorschlagsliste:
+      type: object
+      required: [fuehrende_box, fuehrung, vorschlaege, ausgelassen]
+      properties:
+        fuehrende_box:
+          allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
+          nullable: true
+        fuehrung: { type: string, enum: [gespeichert, speicher, einzige, keine_wahl, keine_box, gespeichert_nicht_in_anlage] }
+        vorschlaege: { type: array, items: { $ref: "#/components/schemas/DatenquelleVorschlag" } }
+        ausgelassen: { type: array, items: { $ref: "#/components/schemas/DatenquelleAusgelassen" } }
+    DatenquelleBestaetigt:
+      type: object
+      description: Ein bestätigter Vorschlag - genau so, wie das GET ihn zeigte.
+      required: [device_id, protokoll, adresse, komponenten]
+      properties:
+        device_id: { type: string, format: uuid, description: "Die Box des Vorschlags (`box.id`)." }
+        protokoll: { type: string }
+        adresse: { type: string }
+        komponenten: { type: array, minItems: 1, items: { type: string, format: uuid } }
+    DatenquelleUebernehmen:
+      type: object
+      required: [vorschlaege]
+      properties:
+        vorschlaege: { type: array, minItems: 1, items: { $ref: "#/components/schemas/DatenquelleBestaetigt" } }
+    DatenquelleUebernommen:
+      type: object
+      required: [neu, unveraendert, datenquellen]
+      properties:
+        neu: { type: integer, description: "Angelegte Quellen." }
+        unveraendert: { type: integer, description: "Schon übernommene Vorschläge - ein zweiter Aufruf legt nichts an." }
+        datenquellen: { type: array, items: { $ref: "#/components/schemas/Datenquelle" }, description: "In der Reihenfolge der Anfrage." }
     DatenquelleFehler:
       type: object
       description: >
@@ -15916,7 +16054,9 @@ components:
         Codes der Schnittstelle: `anfrage_ungueltig` 400 (`feld`), `weg_fest` 409
         (`felder`), `quelle_archiviert` 409 (`kennzeichen`),
         `pruefung_nicht_moeglich` 422 (`protokoll`), `gleichzeitig_geaendert` 409
-        (`grund`).
+        (`grund`), und für die Bestands-Übernahme (IP-4) `komponente_hat_quelle` 409
+        (`komponenten`, `datenquellen`) und `vorschlag_geaendert` 409 (`device_id`,
+        `protokoll`, `adresse`).
       required: [code, message]
       properties:
         code:
@@ -15924,7 +16064,8 @@ components:
           enum: [protokoll_unbekannt, keine_volle_minute, leerer_zeitraum, rueckwirkend, steuerquelle,
             spaeterer_wechsel_geplant, schon_zustaendig, ueberschneidung, adresse_an_box_vergeben,
             netzlage_fehlt, nur_ein_leser, vergleich_bestaetigen, pruefung_fehlt, pruefung_gescheitert,
-            anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert]
+            anfrage_ungueltig, weg_fest, quelle_archiviert, pruefung_nicht_moeglich, gleichzeitig_geaendert,
+            komponente_hat_quelle, vorschlag_geaendert]
         message: { type: string }
         urteil: { type: string, enum: [abgelehnt, bestaetigung_noetig] }
         feld: { type: string, description: "anfrage_ungueltig: device_id, adresse, register …" }
@@ -15932,6 +16073,10 @@ components:
         kennzeichen: { type: string }
         protokoll: { type: string }
         grund: { type: string, description: "gleichzeitig_geaendert: der Grund des Constraints, der gegriffen hat." }
+        komponenten: { type: array, items: { type: string, format: uuid }, description: "komponente_hat_quelle: die Komponenten, die inzwischen eine Quelle haben." }
+        datenquellen: { type: array, items: { type: string }, description: "komponente_hat_quelle: deren Kennzeichen." }
+        device_id: { type: string, format: uuid, description: "vorschlag_geaendert / komponente_hat_quelle: die Box des bestätigten Vorschlags." }
+        adresse: { type: string }
       example:
         code: steuerquelle
         message: "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln"

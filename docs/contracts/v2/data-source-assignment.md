@@ -9,7 +9,7 @@ Portal genau dasselbe Urteil und derselbe Kundensatz wird.
 
 | Datei | Rolle |
 |---|---|
-| [`data-source-vectors.json`](./data-source-vectors.json) | 56 Fälle in acht Familien, Vokabular, Prüfreihenfolgen, Sätze; spielt im Referenzunternehmen Ahrenberg |
+| [`data-source-vectors.json`](./data-source-vectors.json) | 61 Fälle in acht Familien, Vokabular, Prüfreihenfolgen, Sätze; spielt im Referenzunternehmen Ahrenberg |
 | [`data-source-assignment.schema.json`](./data-source-assignment.schema.json) | JSON Schema 2020-12 der Vektor-Datei; ihre `$defs` sind die Formen dieses Vertrags |
 | [`edge-capabilities.json`](./edge-capabilities.json) + [`edge-capabilities.schema.json`](./edge-capabilities.schema.json) | die Tabelle „Software-Stand → Fähigkeiten“ als Daten (E12) |
 | `services/api/.../uems/DatenquelleRegeln.java` + `DatenquelleRegelnVectorsTest` | Java-Zwilling; der Test prüft Schema, Fälle, Vokabular und jeden Fall gegen [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) |
@@ -17,12 +17,14 @@ Portal genau dasselbe Urteil und derselbe Kundensatz wird.
 
 **Wer die Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> ⚠ **Wer anruft (Stand IP-3):** die Datenquellen-Schnittstelle
+> ⚠ **Wer anruft (Stand IP-4):** die Datenquellen-Schnittstelle
 > `/api/v1/sites/{siteId}/data-sources` (`DatenquelleService`: anlegen, von genau der Box
-> prüfen, zuweisen) über die Tabellen aus IP-2. Noch NICHT: die Vorschlagsliste im Portal
-> (IP-4) und der Push je Box (IP-6) — `gatewayDevice`, Registry-Push, Mess-Plan und Herzschlag
-> sind unverändert, eine gespeicherte Zuständigkeit erreicht also noch keine Box. Heute ist die
-> lesende Box weiter implizit `measurement_point.device_id` bzw. die eine Box je Anlage.
+> prüfen, zuweisen) über die Tabellen aus IP-2, und die Vorschlagsliste der Bestands-Übernahme
+> `…/data-sources/vorschlag` + `…/vorschlag/uebernehmen` (`DatenquelleVorschlagService`, §8). Noch
+> NICHT: die Liste im Übernahme-Assistenten des Portals und der Push je Box (IP-6) — Registry-Push,
+> Mess-Plan und Herzschlag sind unverändert, eine gespeicherte Zuständigkeit erreicht also noch
+> keine Box. Heute ist die lesende Box weiter implizit `measurement_point.device_id` bzw. die
+> führende Box der Anlage.
 
 ## 1. Begriffe
 
@@ -54,8 +56,8 @@ Datenquelle, Gerät, Komponente, Anlage) gelten unverändert. Dazu:
 |---|---|---|
 | Kennzeichen | `DQ-n`, eindeutig je Kundenbereich, automatisch vergeben; ändert sich nie durch Technik | `kennzeichen` |
 | Anlage | wo die Geräte verdrahtet sind — darf von der Heimat der lesenden Box abweichen | `anlage` |
-| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station; neue nur über den Katalog | `protokoll` |
-| Adresse | Host:Port · Themenfilter · URL · Stations-Kennung — ein Parameter, nie die Identität | `adresse` |
+| Protokoll | geschlossenes Vokabular: `modbus_tcp` Modbus TCP · `sunspec_modbus` SunSpec-Modbus · `mqtt` MQTT-Themen · `http` HTTP-Auskunft · `ocpp` OCPP-Station · `solarman_v5` Solarman-Datenlogger (seit IP-4, nach AP-06 Soll-Regel 8); neue nur über den Katalog | `protokoll` |
+| Adresse | Host:Port · Themenfilter · URL · Stations-Kennung · Host:Port/Seriennummer des Solarman-Datenloggers — ein Parameter, nie die Identität | `adresse` |
 | Geräte hinter der Quelle | Geräte-ID je Gerät (Steckplatz bei Energiekarten, AP-05 E4) | `geraete_ids` |
 | Netzlage | dokumentiertes Netz oder `null` | `netz` |
 | Ein-Leser-Eigenschaft | Katalog-Flag der Vorlage: verträgt das Gerät einen zweiten Leser? **Vorgabe nein.** | `mehrere_leser` |
@@ -215,11 +217,66 @@ Die Box des Speichers gilt wie bis IP-5 ohne Anmelde-Prüfung. Für jede Bestand
 und wo die keine hatte, bleibt das Beobachtbare gleich (kein Push, `refused(no_gateway_device)`,
 Vorschau-Grund `no_claimed_device` bzw. `multiple_devices_no_battery_link`).
 
-**Bestands-Übernahme (A12, IP-4):** die vorhandenen Komponenten werden nach Box + Protokoll +
+**Bestands-Übernahme (A9, A12, IP-4):** die vorhandenen Komponenten werden nach Box + Protokoll +
 Adresse zu Vorschlägen gruppiert (Reihenfolge des ersten Auftretens, Kennzeichen ab der
 nächsten freien Nummer des Kundenbereichs, Geräte-IDs aufsteigend, Steuerquelle, wenn eine
 Komponente steuerbar ist); zuständig ist die heutige Box ab Reihenbeginn. Bis zur Bestätigung
-ändert sich nichts.
+ändert sich nichts. Die Regel ist `vorschlagsliste` (Familie `bestand`); dazu:
+
+- **Ein komponiertes Geschwister** (`gehoert_zu`: Erzeuger, Netzzähler oder Hausverbrauch ohne
+  eigenen Anschluss, gespeist vom Gerät seines Wechselrichters — die Gruppierung der
+  Geräte-Ableitung `uems_geraet_ableiten_fuer`) landet in der Quelle seines Wechselrichters, auch
+  wenn es vor ihm steht. Hat der keinen Vorschlag: `anker_ohne_vorschlag`.
+- **Benannt ausgelassen, nie geraten** (`auslass_gruende`, in Prüfreihenfolge): `keine_box` (keine
+  Box liest sie) → `keine_adresse` (kein Transport) → `protokoll_unbekannt` (die Rückwand für ein
+  Wort, das kein realer Bestands-Transport ist — verworfen, nie auf ein anderes Wort abgebildet) →
+  `keine_adresse` (keine eindeutige Adresse).
+- **Lesetakt** ist der kleinste bekannte der Komponenten, sonst `null` = nicht erhoben.
+- **Belegte Nummern** (`belegt`) werden übersprungen — wie `uems_datenquelle_kennzeichen()` es
+  beim Speichern tut.
+
+**Die Schnittstelle (`DatenquelleVorschlagService`).** `GET …/vorschlag` liest nur. Die Box einer
+Komponente ist die, die sie heute liest: die eigene einer komponierten Zeile
+(`measurement_point.device_id`), die Box, an deren Zentrale eine Ladestation hängt
+(`device_charge_point`), sonst die führende Box (`LeadDeviceService`, dorthin geht der
+Registry-Push). Der Reihenbeginn ist der Beginn ihrer ersten Speisung (`geraet_komponente`, AP-04),
+frühestens ab der Ankunft der Box in ihrer Anlage (auf die nächste volle Minute). Ein Vorschlag,
+dessen Adresse an seiner Box ab Reihenbeginn schon eine andere Quelle liest, trägt den Grund
+`adresse_an_box_vergeben` (`bestandWegVergeben`, derselbe Satz wie im Antrag).
+`POST …/vorschlag/uebernehmen` schreibt je bestätigtem Vorschlag in EINER Transaktion die Quelle
+(ohne Name, Netzlage leer, Ein-Leser), ihre Zuständigkeit `[Reihenbeginn, offen)`,
+`measurement_point.data_source_id`, `geraet.data_source_id` der laufenden Speisung und EINEN
+Protokoll-Eintrag `aus_bestand_uebernommen` (`gilt_ab` = Reihenbeginn — die einzige Ausnahme von §4).
+Bestätigt wird nur, was gezeigt wurde (Box, Protokoll, Adresse, Komponenten; sonst 409
+`vorschlag_geaendert`); hat eine Komponente inzwischen auf anderem Weg eine Quelle, 409
+`komponente_hat_quelle`; ein schon übernommener Vorschlag zählt als unverändert.
+
+**Vom Transport zum Protokoll** (`BestandAnschluss`, nur Cloud — die Box kennt keine Quelle, bevor
+IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connection_json`, so, wie
+`EntityRegistryService.driverBlock` sie der Box reicht.
+
+| Transport | Protokoll | Adresse | Geräte-ID |
+|---|---|---|---|
+| `modbus_tcp`, `kostal_modbus`, `kaco_modbus`, Selbstbau `modbus_baukasten` | `modbus_tcp` | `ip:port` (Selbstbau: `transport.host:port`) | `unit_id` |
+| `sunspec_tcp`, `fronius_sunspec` | `sunspec_modbus` | `ip:port` | `unit_id` |
+| `solarman_v5` (Deye über den Datenlogger) | `solarman_v5` | `ip:port/serial` — die Seriennummer des Datenloggers trägt jeder Solarman-V5-Rahmen; ohne sie keine Adresse | `mb_slave_id` |
+| `kaco_http`, `fronius_solar_api`, `goe_http_api`, `shelly_http`, Batterie-Anschluss `http_local` | `http` | `schema://host:port[/pfad]` — `https`, wo der Treiber es nimmt (`scheme: https`, `insecure_tls`, `endpoint.tls`) | — |
+| `mqtt_local` | `mqtt` | das EINE Thema aller Zuordnungen; mehrere Themen: keine Adresse | — |
+| Ladestation (`device_charge_point`) | `ocpp` | die Stations-Kennung | — |
+| jedes andere Wort (die Rückwand) | das Wort selbst → `protokoll_unbekannt` | — | — |
+
+**Die Tabelle ist vollständig** (AP-06 Soll-Regel 8, Konzept vom Captain am 10.09.2026 abgenommen: JEDE vorhandene Komponente
+wird genau einer Datenquelle zugeordnet): sie kennt genau die Transport-Wörter, die eine
+Bestandsanlage tragen kann — die Vorlagen des Katalogs (`builtin.json`), die Anbindungs-Arten des
+Admin-Werkzeugs (`ComponentTemplateDefinition.COMMUNICATIONS`), Selbstbau und Batterie-Anschluss
+und die Treiber der Box (`edge-app/core/internal/inverter`, `componentapply`);
+`BestandAnschlussTest.dieTabelleKenntJedesTransportWortDesBestands` hält das gleich. Ein fehlender
+Port und eine fehlende Geräte-ID sind die Vorgaben des Treibers (eine 0 liest ein Treiber der Box
+wie „fehlt“) — dieselben wie die Vorbelegung der Vorlage im Katalog (`BestandAnschlussTest` hält
+die Ports gleich). Der Takt kommt aus `connection_json.interval_s` (von dort
+hebt ihn der Push auf die Treiber-Ebene), sonst ist er nicht erhoben (`data_source.kadenz_s` NULL,
+Migration V20260911270000) — die Spalte `measurement_point.interval_s` trägt die Vorgabe 5 JEDER
+Zeile, erreicht die Box nicht und ist darum kein Beleg.
 
 ## 9. Fähigkeiten einer Box (E12 = A)
 
@@ -254,7 +311,7 @@ Nachfolger-Anmeldung (E7, Cloud) und die lesende Box je Wert (Topic) — dafür 
 | `fuehrende_box` | 5 | A9, A12, einzige Box, zwei Boxen ohne Speicher, ausdrückliche Wahl |
 | `faehigkeiten` | 9 | A7 mit der echten Tabelle, Register-Ordnung, Stand ohne Release, `supports[]` (übersteuert · leer · mehr als die Tabelle), kein Stand |
 | `fehlerklasse` | 9 | angenommen, verworfen (Konzept-Wort `exception`, fremdes Wort, Schreibweise), falscher Absender |
-| `bestand` | 2 | A12 Vorschlagsliste Halle 1, Nummern laufen im Kundenbereich weiter |
+| `bestand` | 7 | A12 Vorschlagsliste Halle 1 (Speicher als Geschwister von K-1), Nummern laufen im Kundenbereich weiter, Geschwister vor seinem Wechselrichter, Deye über den Datenlogger (`solarman_v5`), benannt ausgelassen (alle vier Gründe, kleinster Takt), A9 Vorschläge je Box, belegte Nummer übersprungen |
 
 **Die Beispielwelt ist das Referenzunternehmen.** Jeder Fall, der ein Ahrenberg-Objekt nennt,
 übernimmt dessen Werte; `DatenquelleRegelnVectorsTest.jederFallStehtImReferenzunternehmen`
@@ -289,6 +346,26 @@ künftige Tabelle), nennt er in `annahme` — sonst ist der Test rot.
    Vertrag schließt die Lücke konservativ (`netzlage_fehlt`, nie „anderes Netz“ geraten).
 8. **„Update nötig für …“** nennt der Satz auch, solange noch kein Release die Fähigkeit trägt;
    einen Weg zu Edge-Updates bietet die Fläche (IP-16) erst an, wenn `ab_release` gesetzt ist.
+9. **K-1 in der Datenbank (IP-4).** Die Referenz führt K-1 (Wechselrichter) und K-2 (der über ihn
+   gemeldete Speicher) als zwei Komponenten an EINEM Gerät GR-1; die Datenbank hält beide in EINER
+   Zeile (`battery-hybrid`), die PV eines Hybrid-Wechselrichters als komponiertes Geschwister an
+   seiner Box. Die Vektoren folgen der Referenz (K-2 `gehoert_zu` K-1), `DatenquelleVorschlagApiTest`
+   der Datenbank — beide ergeben DQ-1. K-1 heißt „SunSpec-Modbus“, DQ-1 führt `modbus_tcp`: gelesen
+   wird er über den generischen Modbus-Treiber mit SunSpec-Karte (`communication: modbus_tcp`); der
+   Treiber `sunspec_tcp` ergäbe `sunspec_modbus`.
+10. **Der Deye-Datenlogger (`solarman_v5`) — erledigt (nach AP-06 Soll-Regel 8, Konzept vom Captain am
+   10.09.2026 abgenommen).** Das Vokabular hatte
+   für den häufigsten Bestands-Transport kein Wort, der Wechselrichter wäre ausgelassen worden —
+   gegen Soll-Regel 8. Seit IP-4 ist `solarman_v5` („Solarman-Datenlogger“) ein eigenes Wort (nie
+   auf `modbus_tcp` abgebildet: anderer Rahmen, anderer Port, die Seriennummer gehört zum Weg):
+   Adresse `host:port/seriennummer` (`DatenquelleAdresse`), Slave-ID als Geräte-ID, CHECK
+   `data_source_protokoll_chk` in V20260911270000 geweitet, Fall `bestand-deye-ueber-datenlogger`.
+   Eine Erreichbarkeitsprüfung von der Box gibt es für den Datenlogger noch nicht
+   (`pruefung_nicht_moeglich`) — die Übernahme braucht keine, sie beschreibt, was die Box liest.
+11. **Der Lesetakt einer übernommenen Quelle** ist nur bekannt, wo eine Komponente ihn nennt; sonst
+   liest die Box nach der Vorgabe ihres Treibers, die die Cloud nicht kennt. `kadenz_s` ist dann
+   NULL — wer ihn braucht (Lesebudget IP-10, „liefert Daten“ IP-14), behandelt „nicht erhoben“
+   ausdrücklich.
 
 ## 12. Was dieser Vertrag nicht regelt
 
@@ -301,7 +378,8 @@ Ladepunkte an einer zweiten Box (§5.2, bis AP-15) und das Entfernen einer noch 
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='DatenquelleRegelnVectorsTest')   # 117 Tests, rein
-(cd frontend/portal && npx vitest run src/uemsDatenquelle.test.ts)       # 61 Tests
+(cd services/api && ./mvnw test -Dtest='DatenquelleRegelnVectorsTest,BestandAnschlussTest')   # 127 + 11 Tests, rein
+(cd frontend/portal && npx vitest run src/uemsDatenquelle.test.ts)       # 66 Tests
+(cd services/api && ./mvnw test -Dtest='DatenquelleVorschlagApiTest')    # IP-4, Testcontainers
 (cd services/api && ./mvnw test -Dtest='FuehrendeBoxAbleitungVectorsTest,LeadDeviceServiceTest,LeadDeviceBestandVerhaltensgleichTest')   # IP-5, rein
 ```

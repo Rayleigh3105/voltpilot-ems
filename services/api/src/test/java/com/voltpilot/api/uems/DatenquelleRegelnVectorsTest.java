@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.DatenquelleRegeln.Antrag;
 import com.voltpilot.api.uems.DatenquelleRegeln.AntragErgebnis;
 import com.voltpilot.api.uems.DatenquelleRegeln.Art;
+import com.voltpilot.api.uems.DatenquelleRegeln.Auslass;
+import com.voltpilot.api.uems.DatenquelleRegeln.AuslassGrund;
 import com.voltpilot.api.uems.DatenquelleRegeln.BestandKomponente;
 import com.voltpilot.api.uems.DatenquelleRegeln.BoxLiest;
 import com.voltpilot.api.uems.DatenquelleRegeln.FaehigkeitStatus;
@@ -24,6 +26,7 @@ import com.voltpilot.api.uems.DatenquelleRegeln.Stand;
 import com.voltpilot.api.uems.DatenquelleRegeln.TabellenEintrag;
 import com.voltpilot.api.uems.DatenquelleRegeln.TauschErgebnis;
 import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlag;
+import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlagsliste;
 import com.voltpilot.api.uems.DatenquelleRegeln.Zeitraum;
 import com.voltpilot.api.uems.DatenquelleRegeln.ZeitraumErgebnis;
 import java.nio.file.Files;
@@ -40,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -87,6 +91,19 @@ class DatenquelleRegelnVectorsTest {
 
     private static String text(JsonNode n) {
         return n == null || n.isNull() || n.isMissingNode() ? null : n.asText();
+    }
+
+    private static Integer ganzzahl(JsonNode n) {
+        return n == null || n.isNull() || n.isMissingNode() ? null : n.asInt();
+    }
+
+    private static AuslassGrund auslassGrund(String code) {
+        for (AuslassGrund g : AuslassGrund.values()) {
+            if (g.code().equals(code)) {
+                return g;
+            }
+        }
+        throw new AssertionError("unbekannter Auslass-Grund " + code);
     }
 
     private static ZoneId zone(JsonNode in) {
@@ -297,10 +314,11 @@ class DatenquelleRegelnVectorsTest {
             JsonNode in = c.path("input");
             List<BestandKomponente> ks = new ArrayList<>();
             in.path("komponenten").forEach(k -> ks.add(new BestandKomponente(k.path("kennzeichen").asText(),
-                    k.path("anlage").asText(), k.path("box").asText(), k.path("protokoll").asText(),
-                    k.path("adresse").asText(), k.path("geraete_id").isNull() ? null : k.path("geraete_id").asInt(),
+                    k.path("anlage").asText(), text(k.get("box")), text(k.get("protokoll")), text(k.get("adresse")),
+                    ganzzahl(k.get("geraete_id")), text(k.get("gehoert_zu")), ganzzahl(k.get("kadenz_s")),
                     instant(k.get("in_betrieb_ab")), k.path("steuerbar").asBoolean())));
-            List<Vorschlag> ist = DatenquelleRegeln.vorschlagsliste(ks, in.path("naechste_nummer").asInt());
+            Vorschlagsliste ist = DatenquelleRegeln.vorschlagsliste(ks, in.path("naechste_nummer").asInt(),
+                    texte(in.path("belegt")), Map.of());
             List<Vorschlag> soll = new ArrayList<>();
             c.path("expected").path("vorschlaege").forEach(v -> {
                 List<Integer> ids = new ArrayList<>();
@@ -308,9 +326,14 @@ class DatenquelleRegelnVectorsTest {
                 soll.add(new Vorschlag(v.path("kennzeichen").asText(), v.path("anlage").asText(),
                         v.path("box").asText(), v.path("protokoll").asText(), v.path("adresse").asText(), ids,
                         texte(v.path("komponenten")), v.path("steuerquelle").asBoolean(),
-                        zeitraeume(v.path("zeitraeume"))));
+                        ganzzahl(v.get("kadenz_s")), zeitraeume(v.path("zeitraeume"))));
             });
-            assertThat(ist).isEqualTo(soll);
+            List<Auslass> sollAus = new ArrayList<>();
+            c.path("expected").path("ausgelassen").forEach(a -> sollAus.add(new Auslass(
+                    a.path("komponente").asText(), auslassGrund(a.path("grund").asText()), text(a.get("protokoll")),
+                    text(a.get("anker")), a.path("text").asText())));
+            assertThat(ist.vorschlaege()).isEqualTo(soll);
+            assertThat(ist.ausgelassen()).isEqualTo(sollAus);
         });
     }
 
@@ -371,6 +394,14 @@ class DatenquelleRegelnVectorsTest {
         }
         assertThat(fuehrung).containsExactlyElementsOf(texte(root.path("gruende_fuehrende_box")));
         assertThat(MAPPER.convertValue(root.path("texte"), Map.class)).isEqualTo(DatenquelleRegeln.TEXTE);
+
+        List<String> auslass = new ArrayList<>();
+        root.path("auslass_gruende").forEach(g -> auslass.add(g.path("code").asText() + "|" + g.path("text").asText()));
+        List<String> javaAuslass = new ArrayList<>();
+        for (AuslassGrund g : AuslassGrund.values()) {
+            javaAuslass.add(g.code() + "|" + g.text());
+        }
+        assertThat(javaAuslass).containsExactlyElementsOf(auslass);
         assertThat(root.path("zeitzone").asText()).isEqualTo(ZustandAbleitung.VORGABE_ZEITZONE.getId());
     }
 
@@ -436,7 +467,9 @@ class DatenquelleRegelnVectorsTest {
                 List<String> fehler = new ArrayList<>();
                 boolean erlaubt = !c.path("expected").has("urteil")
                         || "erlaubt".equals(c.path("expected").path("urteil").asText());
-                boolean erfunden = pruefeGegenReferenz(c.path("input"), erlaubt, new Referenz(ref), fehler);
+                Referenz r = new Referenz(ref);
+                boolean erfunden = pruefeGegenReferenz(c.path("input"), erlaubt, r, fehler);
+                pruefeVorschlaege(c.path("expected").path("vorschlaege"), r, fehler);
                 if (erfunden && !c.hasNonNull("annahme")) {
                     fehler.add("der Fall erfindet etwas, nennt aber keine `annahme`");
                 }
@@ -645,12 +678,75 @@ class DatenquelleRegelnVectorsTest {
         Instant ab = instant(k.get("in_betrieb_ab"));
         gleich(fehler, kz + " Anlage", rk.path("anlage").asText(), k.path("anlage").asText());
         gleich(fehler, kz + " in Betrieb", instant(rk.get("in_betrieb_ab")).toString(), ab.toString());
-        gleich(fehler, kz + " Protokoll", q.path("protokoll").asText(), k.path("protokoll").asText());
-        gleich(fehler, kz + " Adresse", adresseAusReferenz(q), k.path("adresse").asText());
-        gleich(fehler, kz + " Geräte-ID", text(g.get("modbus_geraete_id")), text(k.get("geraete_id")));
+        String anker = text(k.get("gehoert_zu"));
+        if (anker != null) {
+            // Ein komponiertes Geschwister hat keinen eigenen Weg: es hängt am GERÄT seines
+            // Wechselrichters (Referenz: K-2 „über K-1 gemeldet“, beide an GR-1).
+            JsonNode ra = r.komponenten().get(anker);
+            gleich(fehler, kz + " gehört zu " + anker, rk.path("geraet").asText(),
+                    ra == null ? null : ra.path("geraet").asText());
+            if (k.hasNonNull("protokoll") || k.hasNonNull("adresse")) {
+                fehler.add(kz + " gehört zu " + anker + ", nennt aber einen eigenen Weg");
+            }
+        } else {
+            gleich(fehler, kz + " Protokoll", q.path("protokoll").asText(), text(k.get("protokoll")));
+            gleich(fehler, kz + " Adresse", adresseAusReferenz(q), text(k.get("adresse")));
+            gleich(fehler, kz + " Geräte-ID", text(g.get("modbus_geraete_id")), text(k.get("geraete_id")));
+            if (k.hasNonNull("kadenz_s")) {
+                gleich(fehler, kz + " Takt", text(q.get("kadenz_s")), text(k.get("kadenz_s")));
+            }
+        }
+        String box = text(k.get("box"));
+        if (box == null || !r.boxen().containsKey(box)) {
+            return true;
+        }
         gleich(fehler, kz + " Box", DatenquelleRegeln.zustaendigeBox(r.perioden().get(q.path("kennzeichen").asText()), ab),
-                k.path("box").asText());
+                box);
         return false;
+    }
+
+    /**
+     * Ein Vorschlag aus lauter Komponenten der Referenz IST die Quelle ihres Geräts: dasselbe
+     * Kennzeichen, dieselbe Anlage, derselbe Weg, dieselben Geräte-IDs, dieselbe Steuerquelle,
+     * derselbe Takt, derselbe Beginn — und ALLE Komponenten der Referenz, die an ihr hängen (A12:
+     * „genau DQ-1…DQ-3“). Ein Vorschlag mit einer erfundenen Komponente nennt sie in `annahme`.
+     */
+    private static void pruefeVorschlaege(JsonNode vorschlaege, Referenz r, List<String> fehler) {
+        for (JsonNode v : vorschlaege) {
+            List<String> ks = texte(v.path("komponenten"));
+            if (!r.komponenten().keySet().containsAll(ks)) {
+                continue;
+            }
+            String dq = v.path("kennzeichen").asText();
+            Set<String> quellenDerGeraete = new TreeSet<>();
+            ks.forEach(kz -> quellenDerGeraete.add(quelleDerKomponente(r, kz)));
+            gleich(fehler, dq + " ist die Quelle ihrer Geräte", List.of(dq).toString(), quellenDerGeraete.toString());
+            JsonNode rq = r.quellen().get(dq);
+            if (rq == null) {
+                continue;
+            }
+            List<String> alle = new ArrayList<>();
+            r.komponenten().keySet().stream().filter(kz -> dq.equals(quelleDerKomponente(r, kz))).forEach(alle::add);
+            gleich(fehler, dq + " Komponenten", new TreeSet<>(alle).toString(),
+                    new TreeSet<>(ks).toString());
+            gleich(fehler, dq + " Anlage", rq.path("anlage").asText(), v.path("anlage").asText());
+            gleich(fehler, dq + " Protokoll", rq.path("protokoll").asText(), v.path("protokoll").asText());
+            gleich(fehler, dq + " Adresse", adresseAusReferenz(rq), v.path("adresse").asText());
+            gleich(fehler, dq + " Geräte-IDs", rq.path("geraete_ids").toString(), v.path("geraete_ids").toString());
+            gleich(fehler, dq + " Steuerquelle", rq.path("steuerquelle").asText(), v.path("steuerquelle").asText());
+            gleich(fehler, dq + " Takt", text(rq.get("kadenz_s")), text(v.get("kadenz_s")));
+            List<Zeitraum> perioden = r.perioden().get(dq);
+            Instant ab = instant(v.path("zeitraeume").get(0).get("effective_from"));
+            gleich(fehler, dq + " Reihenbeginn", perioden.get(0).von().toString(), ab.toString());
+            String box = v.path("box").asText();
+            if (r.boxen().containsKey(box)) {
+                gleich(fehler, dq + " Box", DatenquelleRegeln.zustaendigeBox(perioden, ab), box);
+            }
+        }
+    }
+
+    private static String quelleDerKomponente(Referenz r, String kz) {
+        return r.geraete().get(r.komponenten().get(kz).path("geraet").asText()).path("datenquelle").asText();
     }
 
     /** Die Adresse, wie der Vertrag sie führt: Host:Port — bei OCPP die Stations-Kennung selbst. */

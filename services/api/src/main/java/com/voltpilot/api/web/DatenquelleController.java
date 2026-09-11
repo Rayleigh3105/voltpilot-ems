@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.DatenquelleAbgelehnt;
 import com.voltpilot.api.uems.DatenquelleService;
+import com.voltpilot.api.uems.DatenquelleVorschlagService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.DatenquelleDto;
 import java.net.URI;
@@ -30,7 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Die Datenquellen einer Anlage (UEMS AP-06 IP-3, Vertrag
- * {@code docs/contracts/v2/data-source-assignment.md}). Die Arbeit macht {@link DatenquelleService}.
+ * {@code docs/contracts/v2/data-source-assignment.md}). Die Arbeit macht {@link DatenquelleService},
+ * die Vorschlagsliste der Bestands-Übernahme (IP-4) {@link DatenquelleVorschlagService}.
  *
  * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Anlage, Quelle oder Box ist
@@ -50,10 +52,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class DatenquelleController {
 
     private final DatenquelleService datenquellen;
+    private final DatenquelleVorschlagService vorschlaege;
     private final ObjectMapper streng;
 
-    public DatenquelleController(DatenquelleService datenquellen, ObjectMapper json) {
+    public DatenquelleController(DatenquelleService datenquellen, DatenquelleVorschlagService vorschlaege,
+            ObjectMapper json) {
         this.datenquellen = datenquellen;
+        this.vorschlaege = vorschlaege;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -112,6 +117,26 @@ public class DatenquelleController {
         DatenquelleDto.Zugewiesen z = datenquellen.zuweisen(siteId, id,
                 lies(body, DatenquelleDto.Zuweisen.class), akteur(auth));
         return ResponseEntity.status(HttpStatus.CREATED).body(z);
+    }
+
+    /**
+     * Recht: {@code datenquelle.ansehen} — die Vorschlagsliste der Bestands-Übernahme (IP-4): die
+     * vorhandenen Komponenten, gruppiert zu Quellen je Box. Liest nur; bis zur Bestätigung
+     * ändert sich nichts (A12).
+     */
+    @GetMapping("/vorschlag")
+    public DatenquelleDto.Vorschlagsliste vorschlag(@PathVariable UUID siteId) {
+        return vorschlaege.vorschlag(siteId);
+    }
+
+    /**
+     * Recht: {@code datenquelle.bearbeiten} — die Bestätigung legt Quellen an (AP-06 §4.8). Die
+     * Zuständigkeit, die sie mitschreibt, ist die der HEUTIGEN Box ab Reihenbeginn — kein Wechsel.
+     */
+    @PostMapping("/vorschlag/uebernehmen")
+    public DatenquelleDto.Uebernommen uebernehmen(@PathVariable UUID siteId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return vorschlaege.uebernehmen(siteId, lies(body, DatenquelleDto.Uebernehmen.class), akteur(auth));
     }
 
     // ---------------------------------------------------------------- Gerüst

@@ -5,10 +5,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 
 /**
@@ -31,8 +34,10 @@ import java.util.TreeSet;
  * {@link DatenquelleService} (IP-3: anlegen, prüfen, zuweisen) über die Tabellen aus IP-2, und
  * {@link FuehrendeBoxAbleitung} (IP-5) über {@link #fuehrung} — die Vorrang-Reihenfolge der
  * führenden Box, aus der {@code LeadDeviceService} das Ziel von Registry-Push und
- * Flow-Aktivierung bestimmt. Keine Fläche ist umgestellt; Herzschlag und Push-Inhalt sind
- * unberührt. Diese Klasse ist der Vertrag, gegen den die Folgepakete bauen.
+ * Flow-Aktivierung bestimmt, und {@link DatenquelleVorschlagService} (IP-4) über
+ * {@link #vorschlagsliste} — die Vorschlagsliste der Bestands-Übernahme. Keine Fläche ist
+ * umgestellt; Herzschlag und Push-Inhalt sind unberührt. Diese Klasse ist der Vertrag, gegen den
+ * die Folgepakete bauen.
  *
  * <h2>Die Prüfreihenfolge eines Antrags</h2>
  *
@@ -60,7 +65,9 @@ public final class DatenquelleRegeln {
         SUNSPEC_MODBUS("sunspec_modbus", "SunSpec-Modbus"),
         MQTT("mqtt", "MQTT-Themen"),
         HTTP("http", "HTTP-Auskunft"),
-        OCPP("ocpp", "OCPP-Station");
+        OCPP("ocpp", "OCPP-Station"),
+        /** Deye über den Datenlogger: Modbus-RTU im Solarman-V5-Rahmen über TCP (IP-4, AP-06 Soll-Regel 8). */
+        SOLARMAN_V5("solarman_v5", "Solarman-Datenlogger");
 
         private final String code;
         private final String kundenwort;
@@ -334,6 +341,40 @@ public final class DatenquelleRegeln {
         return Map.copyOf(t);
     }
 
+    /**
+     * Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle
+     * bekommt (§8) — geschlossen, in Prüfreihenfolge, je Grund der Kundensatz. Platzhalter:
+     * {@code {anker}}.
+     */
+    public enum AuslassGrund {
+        KEINE_BOX("keine_box",
+                "Keine Box liest diese Komponente — ohne Box gibt es keine Datenquelle vorzuschlagen"),
+        KEINE_ADRESSE("keine_adresse",
+                "Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie"
+                        + " liest — sie bekommt keine Datenquelle"),
+        PROTOKOLL_UNBEKANNT("protokoll_unbekannt",
+                "Für dieses Protokoll gibt es noch keine Datenquelle — neue Protokolle kommen nur über"
+                        + " den Katalog"),
+        ANKER_OHNE_VORSCHLAG("anker_ohne_vorschlag",
+                "Wird über {anker} gelesen — dafür gibt es hier keinen Vorschlag");
+
+        private final String code;
+        private final String text;
+
+        AuslassGrund(String code, String text) {
+            this.code = code;
+            this.text = text;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public String text() {
+            return text;
+        }
+    }
+
     // ------------------------------------------------------------------- Formen
 
     /**
@@ -430,7 +471,19 @@ public final class DatenquelleRegeln {
 
     public record FaehigkeitenErgebnis(List<FaehigkeitStatus> faehigkeiten, String text) {}
 
-    /** Eine vorhandene Komponente mit ihrem heutigen Anschluss. */
+    /**
+     * Eine vorhandene Komponente mit ihrem heutigen Anschluss.
+     *
+     * @param box         die Box, die sie heute liest; {@code null}: keine
+     * @param protokoll   ein Wort des Vokabulars — oder das Transport-Wort, das es dort nicht gibt
+     *                    (wird verworfen, nie abgebildet); {@code null}: kein lesbarer Weg
+     * @param adresse     so, wie eine Quelle sie speichert (§3 Nr. 5); {@code null}: keine
+     *                    eindeutige
+     * @param gehoertZu   ein komponiertes Geschwister ohne eigenen Anschluss: der Wechselrichter,
+     *                    über den es gelesen wird — dann zählen DESSEN Box, Protokoll und Adresse
+     * @param kadenzS     wie oft die Box sie heute liest; {@code null}: nicht erhoben
+     * @param inBetriebAb der Beginn ihrer Reihe an dieser Box
+     */
     public record BestandKomponente(
             String kennzeichen,
             String anlage,
@@ -438,9 +491,12 @@ public final class DatenquelleRegeln {
             String protokoll,
             String adresse,
             Integer geraeteId,
+            String gehoertZu,
+            Integer kadenzS,
             Instant inBetriebAb,
             boolean steuerbar) {}
 
+    /** Ein Vorschlag: EINE Quelle mit den Komponenten dahinter und dem Zeitraum ab Reihenbeginn. */
     public record Vorschlag(
             String kennzeichen,
             String anlage,
@@ -450,7 +506,14 @@ public final class DatenquelleRegeln {
             List<Integer> geraeteIds,
             List<String> komponenten,
             boolean steuerquelle,
+            Integer kadenzS,
             List<Zeitraum> zeitraeume) {}
+
+    /** Eine Komponente ohne Vorschlag: der Grund, das verworfene Wort bzw. der Wechselrichter. */
+    public record Auslass(String komponente, AuslassGrund grund, String protokoll, String anker, String text) {}
+
+    /** Die Vorschlagsliste: die Vorschläge und — benannt — was keinen bekommt. */
+    public record Vorschlagsliste(List<Vorschlag> vorschlaege, List<Auslass> ausgelassen) {}
 
     // ------------------------------------------------------------------ Antrag
 
@@ -494,16 +557,9 @@ public final class DatenquelleRegeln {
         }
 
         // Eindeutigkeit je Box (§4.3 Nr. 2): an der Ziel-Box liest niemand sonst diesen Weg.
-        for (Quelle o : quellen) {
-            if (!andererGleicherWeg(o, q)) {
-                continue;
-            }
-            for (Zeitraum z : o.zeitraeume()) {
-                if (z.box().equals(ziel) && z.reichtUeber(t)) {
-                    return abgelehnt(Grund.ADRESSE_AN_BOX_VERGEBEN,
-                            Map.of("box", name(boxNamen, ziel), "kennzeichen", o.kennzeichen()));
-                }
-            }
+        AntragErgebnis vergeben = adresseAnBoxVergeben(q, ziel, t, quellen, boxNamen);
+        if (vergeben != null) {
+            return vergeben;
         }
 
         // Doppel-Lesen (E10 = B): gleicher Weg an einer ANDEREN Box.
@@ -739,42 +795,155 @@ public final class DatenquelleRegeln {
 
     // ------------------------------------------------------------------ Bestand
 
+    /** Der Erfassungsweg an einer Box — der Schlüssel einer Gruppe (§4.4 Nr. 8). */
+    private record Weg(String box, String protokoll, String adresse) {}
+
     /**
-     * Die Vorschlagsliste der Bestands-Übernahme (§4.4 Nr. 8, A12): Komponenten gruppiert nach
-     * Box + Protokoll + Adresse, in der Reihenfolge ihres ersten Auftretens; Kennzeichen ab
-     * {@code naechsteNummer}; zuständig die heutige Box ab Reihenbeginn. Das ist der EINZIGE
-     * Weg, auf dem ein Zeitraum in der Vergangenheit beginnt — er beschreibt, was die Box
-     * ohnehin gelesen hat, und wird erst mit der Bestätigung geschrieben.
+     * Die Vorschlagsliste der Bestands-Übernahme (§4.4 Nr. 8, §8, A9, A12): Komponenten gruppiert
+     * nach Box + Protokoll + Adresse, in der Reihenfolge ihres ersten Auftretens; zuständig die
+     * heutige Box ab Reihenbeginn. Das ist der EINZIGE Weg, auf dem ein Zeitraum in der
+     * Vergangenheit beginnt — er beschreibt, was die Box ohnehin gelesen hat, und wird erst mit
+     * der Bestätigung geschrieben.
+     *
+     * <ul>
+     *   <li>Ein komponiertes Geschwister ({@code gehoertZu}) landet in der Quelle seines
+     *       Wechselrichters, auch wenn es vor ihm steht; hat der keinen Vorschlag, wird es mit
+     *       {@code anker_ohne_vorschlag} ausgelassen.</li>
+     *   <li>Was keinen lesbaren Weg hat, wird BENANNT ausgelassen — nie geraten, nie auf ein
+     *       anderes Wort abgebildet. Prüfreihenfolge: {@code keine_box} → {@code keine_adresse}
+     *       (kein Protokoll) → {@code protokoll_unbekannt} → {@code keine_adresse} (keine
+     *       Adresse).</li>
+     *   <li>Kennzeichen ab {@code naechsteNummer}; eine Nummer, die {@code belegt} schon trägt,
+     *       wird übersprungen (wie {@code uems_datenquelle_kennzeichen()} beim Speichern).</li>
+     *   <li>Geräte-IDs aufsteigend (die der Komponenten mit eigenem Weg), Steuerquelle, wenn eine
+     *       Komponente steuerbar ist, Lesetakt der kleinste bekannte (sonst {@code null}).</li>
+     * </ul>
+     *
+     * @param namen Kennzeichen → Name, für den Satz von {@code anker_ohne_vorschlag}
      */
-    public static List<Vorschlag> vorschlagsliste(List<BestandKomponente> komponenten, int naechsteNummer) {
-        Map<String, List<BestandKomponente>> gruppen = new LinkedHashMap<>();
+    public static Vorschlagsliste vorschlagsliste(List<BestandKomponente> komponenten, int naechsteNummer,
+            Collection<String> belegt, Map<String, String> namen) {
+        Map<String, Weg> eigenerWeg = new HashMap<>();
+        Map<String, Auslass> aus = new HashMap<>();
         for (BestandKomponente k : komponenten) {
-            gruppen.computeIfAbsent(k.box() + " " + k.protokoll() + " " + k.adresse(),
-                    x -> new ArrayList<>()).add(k);
+            if (k.gehoertZu() != null) {
+                continue;
+            }
+            AuslassGrund g = auslassGrund(k);
+            if (g != null) {
+                aus.put(k.kennzeichen(), new Auslass(k.kennzeichen(), g,
+                        g == AuslassGrund.PROTOKOLL_UNBEKANNT ? k.protokoll() : null, null, g.text()));
+            } else {
+                eigenerWeg.put(k.kennzeichen(), new Weg(k.box(), k.protokoll(), k.adresse()));
+            }
         }
+        Map<String, Weg> weg = new HashMap<>(eigenerWeg);
+        for (BestandKomponente k : komponenten) {
+            if (k.gehoertZu() == null) {
+                continue;
+            }
+            Weg w = eigenerWeg.get(k.gehoertZu());
+            if (w != null) {
+                weg.put(k.kennzeichen(), w);
+            } else {
+                AuslassGrund g = AuslassGrund.ANKER_OHNE_VORSCHLAG;
+                aus.put(k.kennzeichen(), new Auslass(k.kennzeichen(), g, null, k.gehoertZu(),
+                        fuelle(g.text(), Map.of("anker", namen.getOrDefault(k.gehoertZu(), k.gehoertZu())))));
+            }
+        }
+
+        Map<Weg, List<BestandKomponente>> gruppen = new LinkedHashMap<>();
+        List<Auslass> ausgelassen = new ArrayList<>();
+        for (BestandKomponente k : komponenten) {
+            Weg w = weg.get(k.kennzeichen());
+            if (w != null) {
+                gruppen.computeIfAbsent(w, x -> new ArrayList<>()).add(k);
+            } else {
+                ausgelassen.add(aus.get(k.kennzeichen()));
+            }
+        }
+
+        Set<String> vergeben = Set.copyOf(belegt);
         List<Vorschlag> out = new ArrayList<>();
         int nummer = naechsteNummer;
-        for (List<BestandKomponente> g : gruppen.values()) {
-            BestandKomponente erste = g.get(0);
+        for (Map.Entry<Weg, List<BestandKomponente>> e : gruppen.entrySet()) {
+            Weg w = e.getKey();
+            List<BestandKomponente> g = e.getValue();
             TreeSet<Integer> ids = new TreeSet<>();
-            List<String> namen = new ArrayList<>();
-            Instant beginn = erste.inBetriebAb();
+            List<String> kennzeichen = new ArrayList<>();
+            Instant beginn = g.get(0).inBetriebAb();
             boolean steuerquelle = false;
+            Integer kadenz = null;
             for (BestandKomponente k : g) {
-                if (k.geraeteId() != null) {
+                if (k.gehoertZu() == null && k.geraeteId() != null) {
                     ids.add(k.geraeteId());
                 }
-                namen.add(k.kennzeichen());
+                kennzeichen.add(k.kennzeichen());
                 if (k.inBetriebAb().isBefore(beginn)) {
                     beginn = k.inBetriebAb();
                 }
                 steuerquelle |= k.steuerbar();
+                if (k.kadenzS() != null && (kadenz == null || k.kadenzS() < kadenz)) {
+                    kadenz = k.kadenzS();
+                }
             }
-            out.add(new Vorschlag("DQ-" + nummer++, erste.anlage(), erste.box(), erste.protokoll(), erste.adresse(),
-                    List.copyOf(ids), List.copyOf(namen), steuerquelle,
-                    List.of(new Zeitraum(erste.box(), beginn, null))));
+            while (vergeben.contains("DQ-" + nummer)) {
+                nummer++;
+            }
+            out.add(new Vorschlag("DQ-" + nummer++, g.get(0).anlage(), w.box(), w.protokoll(), w.adresse(),
+                    List.copyOf(ids), List.copyOf(kennzeichen), steuerquelle, kadenz,
+                    List.of(new Zeitraum(w.box(), beginn, null))));
         }
-        return List.copyOf(out);
+        return new Vorschlagsliste(List.copyOf(out), List.copyOf(ausgelassen));
+    }
+
+    /**
+     * Die Eindeutigkeit je Box (§3 Nr. 2) für einen Vorschlag der Bestands-Übernahme: liest an
+     * seiner Box ab Reihenbeginn schon eine ANDERE Quelle denselben Weg? Derselbe Grund und Satz
+     * wie im Antrag ({@code adresse_an_box_vergeben}). Die übrigen Regeln des Antrags — nie
+     * rückwirkend, Prüfung von der Box — gelten für den Bestand nicht: er beschreibt, was die Box
+     * ohnehin gelesen hat (§4, §8).
+     */
+    public static Optional<AntragErgebnis> bestandWegVergeben(Vorschlag v, List<Quelle> quellen,
+            Map<String, String> boxNamen) {
+        Quelle q = new Quelle(null, v.protokoll(), v.adresse(), null, v.steuerquelle(), false, List.of());
+        return Optional.ofNullable(adresseAnBoxVergeben(q, v.box(), v.zeitraeume().get(0).von(), quellen, boxNamen));
+    }
+
+    /** Der Satz einer Zuständigkeit — „Ab 12.03.2024 00:00 liest Box Halle 1“ ({@code texte.erlaubt}). */
+    public static String liestAb(Instant t, String boxName, ZoneId zone) {
+        return fuelle(TEXTE.get("erlaubt"), Map.of("zeitpunkt", zeit(t, zone), "box", boxName));
+    }
+
+    /** Liest an {@code ziel} ab {@code t} schon eine andere Quelle den Weg von {@code q}? Sonst {@code null}. */
+    private static AntragErgebnis adresseAnBoxVergeben(Quelle q, String ziel, Instant t, List<Quelle> quellen,
+            Map<String, String> boxNamen) {
+        for (Quelle o : quellen) {
+            if (!andererGleicherWeg(o, q)) {
+                continue;
+            }
+            for (Zeitraum z : o.zeitraeume()) {
+                if (z.box().equals(ziel) && z.reichtUeber(t)) {
+                    return abgelehnt(Grund.ADRESSE_AN_BOX_VERGEBEN,
+                            Map.of("box", name(boxNamen, ziel), "kennzeichen", o.kennzeichen()));
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Warum eine Komponente mit EIGENEM Anschluss keinen Vorschlag bekommt — oder {@code null}. */
+    private static AuslassGrund auslassGrund(BestandKomponente k) {
+        if (k.box() == null) {
+            return AuslassGrund.KEINE_BOX;
+        }
+        if (k.protokoll() == null) {
+            return AuslassGrund.KEINE_ADRESSE;
+        }
+        if (Protokoll.vonCode(k.protokoll()).isEmpty()) {
+            return AuslassGrund.PROTOKOLL_UNBEKANNT;
+        }
+        return k.adresse() == null ? AuslassGrund.KEINE_ADRESSE : null;
     }
 
     // ------------------------------------------------------------------- Hilfen

@@ -492,7 +492,7 @@ public class DatenquelleService {
     }
 
     /** Eine Box, die es nicht mehr gibt (entfernt), bleibt im Zeitraum stehen — nur ohne Namen. */
-    private static DatenquelleDto.Box dto(UUID id, Map<UUID, Box> boxen) {
+    static DatenquelleDto.Box dto(UUID id, Map<UUID, Box> boxen) {
         Box b = boxen.get(id);
         return b == null ? new DatenquelleDto.Box(id, null, null)
                 : new DatenquelleDto.Box(id, anzeigename(b), b.siteId());
@@ -510,7 +510,7 @@ public class DatenquelleService {
 
     /** Die bearbeitbaren Felder in der gespeicherten Form. */
     private record Felder(String name, String protokoll, String adresse, List<Integer> geraeteIds,
-            String netz, boolean mehrereLeser, boolean steuerquelle, int kadenzS) {
+            String netz, boolean mehrereLeser, boolean steuerquelle, Integer kadenzS) {
 
         static Felder aus(Datenquelle q) {
             return new Felder(q.name(), q.protokoll(), q.adresse(), q.geraeteIds(), q.netz(),
@@ -617,7 +617,7 @@ public class DatenquelleService {
 
     // ------------------------------------------------------------------ Gerüst
 
-    private void anlage(UUID siteId) {
+    void anlage(UUID siteId) {
         if (!anlagen.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
@@ -650,7 +650,7 @@ public class DatenquelleService {
         }
     }
 
-    private static UUID mandant() {
+    static UUID mandant() {
         UUID t = TenantContext.get();
         if (t == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
@@ -658,7 +658,7 @@ public class DatenquelleService {
         return t;
     }
 
-    private static DatenquelleAbgelehnt gleichzeitig(Grund g) {
+    static DatenquelleAbgelehnt gleichzeitig(Grund g) {
         return DatenquelleAbgelehnt.schnittstelle(Schnittstelle.GLEICHZEITIG_GEAENDERT,
                 "Gleichzeitig hat sich an den Zuständigkeiten dieser Quelle etwas geändert — bitte neu"
                         + " laden und erneut versuchen",
@@ -669,7 +669,7 @@ public class DatenquelleService {
      * Die Rückwand hat gegriffen: ein Constraint aus V20260911150000 — also hat ein
      * gleichzeitiger Schreibvorgang die Lage geändert, die die Regeln gerade noch erlaubt hatten.
      */
-    private static RuntimeException rueckwand(DataIntegrityViolationException e) {
+    static RuntimeException rueckwand(DataIntegrityViolationException e) {
         String text = String.valueOf(e.getMostSpecificCause().getMessage());
         if (text.contains("data_source_assignment_box_fk")) {
             return new ResponseStatusException(HttpStatus.NOT_FOUND, "Box nicht gefunden.");
@@ -682,7 +682,7 @@ public class DatenquelleService {
         return e;
     }
 
-    private void eintragen(UUID mandant, UUID quelle, String art, UUID box, String ergebnis,
+    void eintragen(UUID mandant, UUID quelle, String art, UUID box, String ergebnis,
             Map<String, Object> alt, Map<String, Object> neu, Instant giltAb, ProtokollAkteur wer) {
         protokoll.eintragen(new NeuerEintrag(mandant, quelle, art, box, ergebnis, schreib(alt),
                 schreib(neu), giltAb, wer));

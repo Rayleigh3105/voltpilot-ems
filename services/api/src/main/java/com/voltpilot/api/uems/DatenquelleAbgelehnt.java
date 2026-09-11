@@ -41,7 +41,18 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
          * gleichzeitiger Schreibvorgang hat die Ausgangslage geändert. Der Grund des
          * Constraints steht als Fakt {@code grund} daneben.
          */
-        GLEICHZEITIG_GEAENDERT("gleichzeitig_geaendert", 409);
+        GLEICHZEITIG_GEAENDERT("gleichzeitig_geaendert", 409),
+        /**
+         * Bestands-Übernahme (IP-4): eine Komponente des bestätigten Vorschlags hat inzwischen eine
+         * Quelle — auf einem anderen Weg als diesem Vorschlag. Fakten: {@code komponenten},
+         * {@code datenquellen}.
+         */
+        KOMPONENTE_HAT_QUELLE("komponente_hat_quelle", 409),
+        /**
+         * Bestands-Übernahme (IP-4): den bestätigten Vorschlag gibt es so nicht mehr (andere Box,
+         * anderer Weg, andere Komponenten) — bestätigt wird nur, was gezeigt wurde.
+         */
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409);
 
         private final String code;
         private final int status;

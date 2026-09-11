@@ -12,7 +12,9 @@
  * `docs/contracts/v2/edge-capabilities.json`.
  * **Wer die Regel ändert, ändert beide Seiten UND die Vektor-Datei.**
  *
- * ⚠ NOCH RUFT NIEMAND AN: keine Fläche, kein Endpunkt, kein Push ist umgestellt.
+ * ⚠ IM PORTAL RUFT NOCH NIEMAND AN: keine Fläche ist umgestellt. Der Java-Zwilling trägt die
+ * Datenquellen-Schnittstelle, seit IP-4 auch die Vorschlagsliste (`…/data-sources/vorschlag`);
+ * die Liste im Übernahme-Assistenten kommt mit einem Portal-Paket.
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
 
@@ -25,6 +27,7 @@ export const PROTOKOLLE = [
   { code: 'mqtt', name: 'MQTT-Themen' },
   { code: 'http', name: 'HTTP-Auskunft' },
   { code: 'ocpp', name: 'OCPP-Station' },
+  { code: 'solarman_v5', name: 'Solarman-Datenlogger' },
 ] as const;
 export type Protokoll = (typeof PROTOKOLLE)[number]['code'];
 
@@ -216,6 +219,29 @@ export const TEXTE = {
   update_noetig: 'Update nötig für: {liste}',
 } as const;
 
+/**
+ * Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle
+ * bekommt (§8) — geschlossen, in Prüfreihenfolge, je Grund der Kundensatz. Platzhalter: {anker}.
+ */
+export const AUSLASS_GRUENDE = [
+  {
+    code: 'keine_box',
+    text: 'Keine Box liest diese Komponente — ohne Box gibt es keine Datenquelle vorzuschlagen',
+  },
+  {
+    code: 'keine_adresse',
+    text:
+      'Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie liest — sie bekommt ' +
+      'keine Datenquelle',
+  },
+  {
+    code: 'protokoll_unbekannt',
+    text: 'Für dieses Protokoll gibt es noch keine Datenquelle — neue Protokolle kommen nur über den Katalog',
+  },
+  { code: 'anker_ohne_vorschlag', text: 'Wird über {anker} gelesen — dafür gibt es hier keinen Vorschlag' },
+] as const;
+export type AuslassGrund = (typeof AUSLASS_GRUENDE)[number]['code'];
+
 // ───────────────────────────────────────────────────────────────────────── Formen
 
 /** Ein Zeitraum, in dem `box` liest: `effective_from` gehört dazu, `effective_to` nicht; `null` = offen. */
@@ -325,18 +351,28 @@ export interface FaehigkeitenErgebnis {
   text: string;
 }
 
-/** Eine vorhandene Komponente mit ihrem heutigen Anschluss. */
+/**
+ * Eine vorhandene Komponente mit ihrem heutigen Anschluss. `box` null: keine Box liest sie;
+ * `protokoll`/`adresse` null: kein lesbarer Weg; ein `protokoll` außerhalb des Vokabulars (das
+ * Transport-Wort) wird verworfen, nie abgebildet. `gehoert_zu`: ein komponiertes Geschwister ohne
+ * eigenen Anschluss — dann zählen Box, Protokoll und Adresse seines Wechselrichters.
+ * `kadenz_s`: wie oft die Box sie heute liest, null = nicht erhoben. `in_betrieb_ab`: der Beginn
+ * ihrer Reihe an dieser Box.
+ */
 export interface BestandKomponente {
   kennzeichen: string;
   anlage: string;
-  box: string;
-  protokoll: string;
-  adresse: string;
+  box: string | null;
+  protokoll: string | null;
+  adresse: string | null;
   geraete_id: number | null;
+  gehoert_zu?: string;
+  kadenz_s?: number | null;
   in_betrieb_ab: string;
   steuerbar: boolean;
 }
 
+/** Ein Vorschlag: EINE Quelle mit den Komponenten dahinter und dem Zeitraum ab Reihenbeginn. */
 export interface Vorschlag {
   kennzeichen: string;
   anlage: string;
@@ -346,7 +382,23 @@ export interface Vorschlag {
   geraete_ids: number[];
   komponenten: string[];
   steuerquelle: boolean;
+  kadenz_s: number | null;
   zeitraeume: Zeitraum[];
+}
+
+/** Eine Komponente ohne Vorschlag: der Grund, das verworfene Wort bzw. der Wechselrichter. */
+export interface Auslass {
+  komponente: string;
+  grund: AuslassGrund;
+  protokoll?: string;
+  anker?: string;
+  text: string;
+}
+
+/** Die Vorschlagsliste: die Vorschläge und — benannt — was keinen bekommt. */
+export interface Vorschlagsliste {
+  vorschlaege: Vorschlag[];
+  ausgelassen: Auslass[];
 }
 
 // ───────────────────────────────────────────────────────────────────────── Hilfen
@@ -655,32 +707,101 @@ export function faehigkeiten(
 
 // ─────────────────────────────────────────────────────────────────────── Bestand
 
+/** Warum eine Komponente mit EIGENEM Anschluss keinen Vorschlag bekommt — oder null. */
+function auslassGrund(k: BestandKomponente): AuslassGrund | null {
+  if (k.box === null) return 'keine_box';
+  if (k.protokoll === null) return 'keine_adresse';
+  if (!PROTOKOLLE.some((p) => p.code === k.protokoll)) return 'protokoll_unbekannt';
+  return k.adresse === null ? 'keine_adresse' : null;
+}
+
+const auslassText = (g: AuslassGrund): string => AUSLASS_GRUENDE.find((x) => x.code === g)!.text;
+
 /**
- * Die Vorschlagsliste der Bestands-Übernahme (§4.4 Nr. 8, A12): Komponenten gruppiert nach Box +
- * Protokoll + Adresse, in der Reihenfolge ihres ersten Auftretens; Kennzeichen ab
- * `naechsteNummer`; zuständig die heutige Box ab Reihenbeginn. Das ist der EINZIGE Weg, auf dem
- * ein Zeitraum in der Vergangenheit beginnt — er beschreibt, was die Box ohnehin gelesen hat.
+ * Die Vorschlagsliste der Bestands-Übernahme (§4.4 Nr. 8, §8, A9, A12): Komponenten gruppiert nach
+ * Box + Protokoll + Adresse, in der Reihenfolge ihres ersten Auftretens; zuständig die heutige Box
+ * ab Reihenbeginn. Das ist der EINZIGE Weg, auf dem ein Zeitraum in der Vergangenheit beginnt — er
+ * beschreibt, was die Box ohnehin gelesen hat.
+ *
+ * Ein komponiertes Geschwister (`gehoert_zu`) landet in der Quelle seines Wechselrichters, auch
+ * wenn es vor ihm steht; hat der keinen Vorschlag: `anker_ohne_vorschlag`. Was keinen lesbaren Weg
+ * hat, wird BENANNT ausgelassen (keine_box → keine_adresse → protokoll_unbekannt → keine_adresse),
+ * nie geraten. Kennzeichen ab `naechsteNummer`, eine `belegt`e Nummer wird übersprungen; Geräte-IDs
+ * aufsteigend (die der Komponenten mit eigenem Weg), Lesetakt der kleinste bekannte.
+ *
+ * @param namen Kennzeichen → Name, für den Satz von `anker_ohne_vorschlag`
  */
-export function vorschlagsliste(komponenten: BestandKomponente[], naechsteNummer: number): Vorschlag[] {
-  const gruppen = new Map<string, BestandKomponente[]>();
+export function vorschlagsliste(
+  komponenten: BestandKomponente[],
+  naechsteNummer: number,
+  belegt: string[] = [],
+  namen: Record<string, string> = {},
+): Vorschlagsliste {
+  const eigenerWeg = new Map<string, { box: string; protokoll: string; adresse: string }>();
+  const aus = new Map<string, Auslass>();
   for (const k of komponenten) {
-    const schluessel = `${k.box} ${k.protokoll} ${k.adresse}`;
-    gruppen.set(schluessel, [...(gruppen.get(schluessel) ?? []), k]);
+    if (k.gehoert_zu !== undefined) continue;
+    const g = auslassGrund(k);
+    if (g === null) {
+      eigenerWeg.set(k.kennzeichen, { box: k.box!, protokoll: k.protokoll!, adresse: k.adresse! });
+    } else {
+      aus.set(k.kennzeichen, {
+        komponente: k.kennzeichen,
+        grund: g,
+        ...(g === 'protokoll_unbekannt' ? { protokoll: k.protokoll! } : {}),
+        text: auslassText(g),
+      });
+    }
   }
-  return [...gruppen.values()].map((g, i) => {
-    const erste = g[0];
-    const beginn = g.reduce((b, k) => (ms(k.in_betrieb_ab) < ms(b) ? k.in_betrieb_ab : b), erste.in_betrieb_ab);
-    const ids = [...new Set(g.flatMap((k) => (k.geraete_id === null ? [] : [k.geraete_id])))].sort((a, b) => a - b);
+  const weg = new Map(eigenerWeg);
+  for (const k of komponenten) {
+    if (k.gehoert_zu === undefined) continue;
+    const w = eigenerWeg.get(k.gehoert_zu);
+    if (w) {
+      weg.set(k.kennzeichen, w);
+    } else {
+      aus.set(k.kennzeichen, {
+        komponente: k.kennzeichen,
+        grund: 'anker_ohne_vorschlag',
+        anker: k.gehoert_zu,
+        text: fuelle(auslassText('anker_ohne_vorschlag'), { anker: namen[k.gehoert_zu] ?? k.gehoert_zu }),
+      });
+    }
+  }
+
+  const gruppen = new Map<string, BestandKomponente[]>();
+  const ausgelassen: Auslass[] = [];
+  for (const k of komponenten) {
+    const w = weg.get(k.kennzeichen);
+    if (w) {
+      const schluessel = JSON.stringify([w.box, w.protokoll, w.adresse]);
+      gruppen.set(schluessel, [...(gruppen.get(schluessel) ?? []), k]);
+    } else {
+      ausgelassen.push(aus.get(k.kennzeichen)!);
+    }
+  }
+
+  let nummer = naechsteNummer;
+  const vorschlaege = [...gruppen.values()].map((g): Vorschlag => {
+    const w = weg.get(g[0].kennzeichen)!;
+    const beginn = g.reduce((b, k) => (ms(k.in_betrieb_ab) < ms(b) ? k.in_betrieb_ab : b), g[0].in_betrieb_ab);
+    const ids = [
+      ...new Set(g.flatMap((k) => (k.gehoert_zu === undefined && k.geraete_id !== null ? [k.geraete_id] : []))),
+    ].sort((a, b) => a - b);
+    const takte = g.flatMap((k) => (k.kadenz_s == null ? [] : [k.kadenz_s]));
+    while (belegt.includes(`DQ-${nummer}`)) nummer++;
     return {
-      kennzeichen: `DQ-${naechsteNummer + i}`,
-      anlage: erste.anlage,
-      box: erste.box,
-      protokoll: erste.protokoll,
-      adresse: erste.adresse,
+      kennzeichen: `DQ-${nummer++}`,
+      anlage: g[0].anlage,
+      box: w.box,
+      protokoll: w.protokoll,
+      adresse: w.adresse,
       geraete_ids: ids,
       komponenten: g.map((k) => k.kennzeichen),
       steuerquelle: g.some((k) => k.steuerbar),
-      zeitraeume: [{ box: erste.box, effective_from: beginn, effective_to: null }],
+      kadenz_s: takte.length === 0 ? null : Math.min(...takte),
+      zeitraeume: [{ box: w.box, effective_from: beginn, effective_to: null }],
     };
   });
+  return { vorschlaege, ausgelassen };
 }

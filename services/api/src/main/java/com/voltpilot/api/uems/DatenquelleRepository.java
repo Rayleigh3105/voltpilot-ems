@@ -45,7 +45,7 @@ public class DatenquelleRepository {
      */
     public record NeueDatenquelle(UUID tenantId, UUID siteId, String name, String protokoll,
             String adresse, List<Integer> geraeteIds, String netz, boolean mehrereLeser,
-            boolean steuerquelle, int kadenzS, String createdBy) {}
+            boolean steuerquelle, Integer kadenzS, String createdBy) {}
 
     /**
      * {@code name} und {@code netz} sind {@code null}, solange keiner eingetragen ist;
@@ -54,7 +54,7 @@ public class DatenquelleRepository {
      */
     public record Datenquelle(UUID id, UUID siteId, String kennzeichen, String name,
             String protokoll, String adresse, List<Integer> geraeteIds, String netz,
-            boolean mehrereLeser, boolean steuerquelle, boolean vergleichsquelle, int kadenzS,
+            boolean mehrereLeser, boolean steuerquelle, boolean vergleichsquelle, Integer kadenzS,
             Instant archiviertAm) {}
 
     /** Was eine Bearbeitung schreibt — die volle Darstellung, der Dienst hat sie zusammengesetzt. */
@@ -86,7 +86,7 @@ public class DatenquelleRepository {
             ps.setString(8, q.netz());
             ps.setBoolean(9, q.mehrereLeser());
             ps.setBoolean(10, q.steuerquelle());
-            ps.setInt(11, q.kadenzS());
+            ps.setObject(11, q.kadenzS(), java.sql.Types.INTEGER);
             ps.setString(12, q.createdBy());
             return ps;
         }, rs -> {
@@ -180,7 +180,7 @@ public class DatenquelleRepository {
                 rs.getBoolean("mehrere_leser"),
                 rs.getBoolean("steuerquelle"),
                 rs.getBoolean("vergleichsquelle"),
-                rs.getInt("kadenz_s"),
+                rs.getObject("kadenz_s", Integer.class),
                 archiviert == null ? null : archiviert.toInstant());
     }
 }

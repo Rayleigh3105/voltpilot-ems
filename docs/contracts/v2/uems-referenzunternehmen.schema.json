@@ -217,7 +217,7 @@
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Datenquelle (DQ-1 …)." },
           "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Anlage, in der die Geräte hinter dieser Quelle hängen — die Verdrahtung, nicht die Box." },
-          "protokoll": { "type": "string", "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"], "description": "Wie gesprochen wird — das geschlossene Vokabular des Datenquellen-Vertrags (data-source-vectors.json `protokolle`); die OCPP-Fassung ist ein Parameter der Station und steht im Weg." },
+          "protokoll": { "type": "string", "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5"], "description": "Wie gesprochen wird — das geschlossene Vokabular des Datenquellen-Vertrags (data-source-vectors.json `protokolle`); die OCPP-Fassung ist ein Parameter der Station und steht im Weg." },
           "adresse": { "type": ["string", "null"], "description": "Die Adresse, wie der Datenquellen-Vertrag sie führt: der Host (der Port steht daneben), bei OCPP die Stations-Kennung, unter der sich die Station selbst meldet." },
           "port": { "type": ["integer", "null"], "description": "Anschlussnummer im Netz." },
           "geraete_ids": { "type": "array", "items": { "type": "integer" }, "description": "Gerätenummern hinter dieser einen Adresse." },

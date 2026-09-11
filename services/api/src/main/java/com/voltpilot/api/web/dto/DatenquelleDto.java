@@ -33,7 +33,9 @@ public final class DatenquelleDto {
      * Eine Datenquelle. {@code zustaendige_box} ist die Box, deren Zeitraum JETZT läuft —
      * {@code null}, wenn keine liest (Entwurf, Lücke oder erst geplant). Lebenszyklus und
      * „liefert Daten“ sind bewusst KEINE Felder: „aktiv“ ist eine Beobachtung aus dem
-     * Herzschlag (IP-14) und wird hier nicht geraten.
+     * Herzschlag (IP-14) und wird hier nicht geraten. {@code kadenz_s} ist {@code null}, wo der
+     * Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten keinen
+     * nennen (IP-4).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Datenquelle(
@@ -48,7 +50,7 @@ public final class DatenquelleDto {
             boolean mehrereLeser,
             boolean steuerquelle,
             boolean vergleichsquelle,
-            int kadenzS,
+            Integer kadenzS,
             Instant archiviertAm,
             Box zustaendigeBox,
             List<Zeitraum> zeitraeume) {}
@@ -157,4 +159,68 @@ public final class DatenquelleDto {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Protokoll(List<ProtokollEintrag> eintraege) {}
+
+    // ------------------------------------------------ Vorschlagsliste (IP-4)
+
+    /** Eine Komponente in der Vorschlagsliste: Kennung, Kundenname ({@code null} = keiner) und Art. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VorschlagKomponente(UUID id, String name, String art) {}
+
+    /**
+     * Ein Vorschlag der Bestands-Übernahme: EINE Quelle, die die Box {@code box} ab {@code ab}
+     * (dem Reihenbeginn) ohnehin liest. {@code kennzeichen} ist das, das eine Bestätigung in
+     * dieser Reihenfolge bekäme; {@code grund} ist {@code null}, wenn der Vorschlag übernommen
+     * werden kann, sonst der Grund des Vertrags ({@code adresse_an_box_vergeben}); {@code text}
+     * ist der Satz dazu.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschlag(
+            String kennzeichen,
+            Box box,
+            String protokoll,
+            String adresse,
+            List<Integer> geraeteIds,
+            Integer kadenzS,
+            boolean steuerquelle,
+            Instant ab,
+            List<VorschlagKomponente> komponenten,
+            String grund,
+            String text) {}
+
+    /** Eine Komponente ohne Vorschlag — mit dem Grund des Vertrags und seinem Satz. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Ausgelassen(
+            VorschlagKomponente komponente,
+            String grund,
+            String protokoll,
+            VorschlagKomponente anker,
+            String text) {}
+
+    /**
+     * {@code GET …/vorschlag}: was die Bestätigung schriebe. {@code fuehrende_box} und
+     * {@code fuehrung} kommen aus {@code LeadDeviceService} ({@code einzige}, {@code speicher},
+     * {@code gespeichert}, sonst der Grund, warum keine führt). Das GET schreibt nichts.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschlagsliste(
+            Box fuehrendeBox,
+            String fuehrung,
+            List<Vorschlag> vorschlaege,
+            List<Ausgelassen> ausgelassen) {}
+
+    /** Ein bestätigter Vorschlag — genau so, wie das GET ihn zeigte: Box, Weg, Komponenten. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten) {}
+
+    /** {@code POST …/vorschlag/uebernehmen}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Uebernehmen(List<Bestaetigt> vorschlaege) {}
+
+    /**
+     * Was die Bestätigung geschrieben hat: {@code neu} Quellen angelegt, {@code unveraendert}
+     * waren schon übernommen (ein zweiter Aufruf ist 0 neue); {@code datenquellen} in der
+     * Reihenfolge der Anfrage.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Uebernommen(int neu, int unveraendert, List<Datenquelle> datenquellen) {}
 }

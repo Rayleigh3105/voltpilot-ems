@@ -11,8 +11,9 @@
     "",
     "WER ANRUFT: DatenquelleService (IP-3) und — nur mit der Vorrang-Reihenfolge der führenden",
     "Box — LeadDeviceService (IP-5, Ziel von Registry-Push und Flow-Aktivierung; seine zwei",
-    "zusätzlichen Regeln pinnt lead-device-vectors.json). Keine Fläche ist umgestellt;",
-    "Herzschlag und Push-Inhalt sind unberührt.",
+    "zusätzlichen Regeln pinnt lead-device-vectors.json) — und mit der Familie `bestand` die",
+    "Vorschlagsliste der Bestands-Übernahme (IP-4, GET/POST …/data-sources/vorschlag). Keine",
+    "Fläche ist umgestellt; Herzschlag und Push-Inhalt sind unberührt.",
     "",
     "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
     "der ein Ahrenberg-Objekt nennt (DQ-x, E-x), übernimmt dessen Werte — Adresse, Netz,",
@@ -40,7 +41,13 @@
     "  fuehrende_box – E3: gespeichert → Box des Speichers → einzige Box → keine (nie geraten).",
     "  faehigkeiten  – E12: `supports[]` übersteuert; sonst Tabelle + Register-Ordnung.",
     "  fehlerklasse  – das geschlossene Vokabular je Quelle; ein fremdes Wort wird verworfen.",
-    "  bestand       – die Vorschlagsliste der Bestands-Übernahme (A12)."
+    "  bestand       – die Vorschlagsliste der Bestands-Übernahme (A9, A12): gruppiert nach",
+    "                  Box + Protokoll + Adresse; ein komponiertes Geschwister (`gehoert_zu`)",
+    "                  landet bei seinem Wechselrichter; was keinen lesbaren Weg hat, wird mit",
+    "                  einem Grund aus `auslass_gruende` benannt ausgelassen — nie geraten.",
+    "                  Prüfreihenfolge je Komponente: keine_box → keine_adresse (kein",
+    "                  Protokoll) → protokoll_unbekannt → keine_adresse (keine Adresse); ein",
+    "                  Geschwister, dessen Wechselrichter keinen Vorschlag hat: anker_ohne_vorschlag."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./data-source-assignment.schema.json",
@@ -89,6 +96,10 @@
     {
       "code": "ocpp",
       "name": "OCPP-Station"
+    },
+    {
+      "code": "solarman_v5",
+      "name": "Solarman-Datenlogger"
     }
   ],
   "urteile": [
@@ -270,6 +281,24 @@
     "alle_faehigkeiten": "alle Fähigkeiten",
     "update_noetig": "Update nötig für: {liste}"
   },
+  "auslass_gruende": [
+    {
+      "code": "keine_box",
+      "text": "Keine Box liest diese Komponente — ohne Box gibt es keine Datenquelle vorzuschlagen"
+    },
+    {
+      "code": "keine_adresse",
+      "text": "Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie liest — sie bekommt keine Datenquelle"
+    },
+    {
+      "code": "protokoll_unbekannt",
+      "text": "Für dieses Protokoll gibt es noch keine Datenquelle — neue Protokolle kommen nur über den Katalog"
+    },
+    {
+      "code": "anker_ohne_vorschlag",
+      "text": "Wird über {anker} gelesen — dafür gibt es hier keinen Vorschlag"
+    }
+  ],
   "cases": [
     {
       "name": "eindeutig-je-box-zweite-quelle-auf-derselben-adresse",
@@ -2897,7 +2926,7 @@
       "name": "a12-vorschlagsliste-halle-1",
       "familie": "bestand",
       "abnahme": "A12",
-      "why": "A12 / §4.4 Nr. 8 / E1 = A: die Komponenten des Bestands werden nach Box + Protokoll + Adresse gruppiert — genau DQ-1…DQ-3. Der Wechselrichter und der über ihn gemeldete Speicher sind EINE Quelle (Steuerquelle), vier Unterzähler hinter dem Gateway EINE Quelle mit vier Geräte-IDs. Zuständig ist die heutige Box ab Reihenbeginn: das ist der EINZIGE Weg, auf dem ein Zeitraum in der Vergangenheit beginnt — er beschreibt, was die Box ohnehin gelesen hat, und wird erst mit der Bestätigung geschrieben.",
+      "why": "A12 / §4.4 Nr. 8 / E1 = A: die Komponenten des Bestands werden nach Box + Protokoll + Adresse gruppiert — genau DQ-1…DQ-3. Der Speicher K-2 wird über den Wechselrichter K-1 gemeldet (Referenz: beide hängen am Gerät GR-1) und hat keinen eigenen Anschluss: als komponiertes Geschwister (`gehoert_zu`) landet er in dessen Quelle, der Steuerquelle; vier Unterzähler hinter dem Gateway sind EINE Quelle mit vier Geräte-IDs. Der Lesetakt ist der der Komponenten (Referenz: 10 s, 10 s, 60 s). Zuständig ist die heutige Box ab Reihenbeginn: das ist der EINZIGE Weg, auf dem ein Zeitraum in der Vergangenheit beginnt — er beschreibt, was die Box ohnehin gelesen hat, und wird erst mit der Bestätigung geschrieben.",
       "input": {
         "naechste_nummer": 1,
         "komponenten": [
@@ -2908,6 +2937,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.21:502",
             "geraete_id": 1,
+            "kadenz_s": 10,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": true
           },
@@ -2915,9 +2945,11 @@
             "kennzeichen": "K-2",
             "anlage": "AN-1",
             "box": "E-1",
-            "protokoll": "modbus_tcp",
-            "adresse": "192.168.10.21:502",
-            "geraete_id": 1,
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "gehoert_zu": "K-1",
+            "kadenz_s": null,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           },
@@ -2928,6 +2960,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.30:502",
             "geraete_id": 1,
+            "kadenz_s": 10,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           },
@@ -2938,6 +2971,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.31:502",
             "geraete_id": 1,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           },
@@ -2948,6 +2982,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.31:502",
             "geraete_id": 2,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           },
@@ -2958,6 +2993,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.31:502",
             "geraete_id": 3,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           },
@@ -2968,6 +3004,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.10.31:502",
             "geraete_id": 4,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
             "steuerbar": false
           }
@@ -2989,6 +3026,7 @@
               "K-2"
             ],
             "steuerquelle": true,
+            "kadenz_s": 10,
             "zeitraeume": [
               {
                 "box": "E-1",
@@ -3010,6 +3048,7 @@
               "K-3"
             ],
             "steuerquelle": false,
+            "kadenz_s": 10,
             "zeitraeume": [
               {
                 "box": "E-1",
@@ -3037,6 +3076,7 @@
               "K-7"
             ],
             "steuerquelle": false,
+            "kadenz_s": 60,
             "zeitraeume": [
               {
                 "box": "E-1",
@@ -3045,7 +3085,8 @@
               }
             ]
           }
-        ]
+        ],
+        "ausgelassen": []
       }
     },
     {
@@ -3062,6 +3103,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.30.10:502",
             "geraete_id": 1,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
             "steuerbar": false
           },
@@ -3072,6 +3114,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.30.10:502",
             "geraete_id": 1,
+            "kadenz_s": 60,
             "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
             "steuerbar": false
           },
@@ -3082,6 +3125,7 @@
             "protokoll": "modbus_tcp",
             "adresse": "192.168.30.11:502",
             "geraete_id": 1,
+            "kadenz_s": 10,
             "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
             "steuerbar": false
           }
@@ -3103,6 +3147,7 @@
               "K-10.2"
             ],
             "steuerquelle": false,
+            "kadenz_s": 60,
             "zeitraeume": [
               {
                 "box": "E-3",
@@ -3124,6 +3169,7 @@
               "K-11"
             ],
             "steuerquelle": false,
+            "kadenz_s": 10,
             "zeitraeume": [
               {
                 "box": "E-3",
@@ -3132,7 +3178,596 @@
               }
             ]
           }
+        ],
+        "ausgelassen": []
+      }
+    },
+    {
+      "name": "bestand-geschwister-vor-ihrem-wechselrichter",
+      "familie": "bestand",
+      "why": "§8 Bestand / Kopf von V20260911200000: ein komponiertes Geschwister hat keinen eigenen Anschluss und wird über seinen Wechselrichter gelesen — es landet in DESSEN Quelle, auch wenn es in der Liste vor ihm steht. Die Gruppe steht dort, wo ihr erstes Mitglied auftritt; die Komponenten bleiben in der Reihenfolge der Liste.",
+      "input": {
+        "naechste_nummer": 1,
+        "komponenten": [
+          {
+            "kennzeichen": "K-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "gehoert_zu": "K-1",
+            "kadenz_s": null,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-3",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": true
+          }
         ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-2",
+              "K-1"
+            ],
+            "steuerquelle": true,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-3"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "ausgelassen": []
+      }
+    },
+    {
+      "name": "bestand-deye-ueber-datenlogger",
+      "familie": "bestand",
+      "annahme": "Erfunden ist ein Deye-Hybrid-Wechselrichter K-80 in Werk Lindach (AN-3, Box E-3), den die Box nur lesend über seinen Datenlogger 192.168.30.28:8899 (Seriennummer 2985159064, Slave-ID 1) liest, und sein komponiertes Geschwister K-81 (die PV am Wechselrichter).",
+      "why": "Nach AP-06 Soll-Regel 8 (Konzept vom Captain am 10.09.2026 abgenommen: „JEDE vorhandene Komponente wird … genau einer Datenquelle zugeordnet“): auch Deye über seinen Datenlogger bekommt eine Quelle — mit dem eigenen Protokoll-Wort `solarman_v5`, nie auf `modbus_tcp` abgebildet. Die Adresse ist Host:Port/Seriennummer des Datenloggers (jeder Solarman-V5-Rahmen trägt sie), die Slave-ID eine Geräte-ID; das Geschwister landet in derselben Quelle.",
+      "input": {
+        "naechste_nummer": 8,
+        "komponenten": [
+          {
+            "kennzeichen": "K-80",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "solarman_v5",
+            "adresse": "192.168.30.28:8899/2985159064",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2026-10-20T09:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-81",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "gehoert_zu": "K-80",
+            "kadenz_s": null,
+            "in_betrieb_ab": "2026-10-20T09:00:00+02:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-8",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "solarman_v5",
+            "adresse": "192.168.30.28:8899/2985159064",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-80",
+              "K-81"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-10-20T09:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "ausgelassen": []
+      }
+    },
+    {
+      "name": "bestand-ohne-lesbaren-weg-benannt-ausgelassen",
+      "familie": "bestand",
+      "annahme": "Erfunden sind die Komponenten K-90 … K-95 und K-99 in Anlage AN-1: eine reine Rechen-Komponente ohne Anschluss (K-90), ein Zähler, den heute keine Box liest (K-91), ein Hybrid-Wechselrichter, dessen Anschluss noch nicht eingetragen ist (K-92), und sein komponiertes Geschwister (K-93), ein Gerät hinter einem Transport, den keine Vorlage und kein Treiber trägt (K-99, `opc_ua`), dazu zwei Zähler hinter einem zweiten Gateway 192.168.10.40:502 mit verschiedenem Takt (K-94, K-95); die Nummern ab DQ-8 folgen den sieben Quellen der Referenz.",
+      "why": "§8 Bestand: nie geraten. Was keinen lesbaren Weg hat, bekommt keinen Vorschlag, sondern einen benannten Grund — in der Prüfreihenfolge keine_box → keine_adresse (kein Protokoll) → protokoll_unbekannt (die Rückwand für ein Wort, das kein realer Bestands-Transport ist: verworfen, nie auf ein anderes abgebildet) → keine_adresse (keine Adresse); ein Geschwister, dessen Wechselrichter keinen Vorschlag hat, sagt das (anker_ohne_vorschlag). Liest die Box eine Adresse für mehrere Komponenten verschieden oft, gilt der kleinste bekannte Takt; der Zeitraum beginnt mit der frühesten Reihe.",
+      "input": {
+        "naechste_nummer": 8,
+        "komponenten": [
+          {
+            "kennzeichen": "K-90",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "kadenz_s": null,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-91",
+            "anlage": "AN-1",
+            "box": null,
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.41:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-92",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "kadenz_s": null,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-93",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "gehoert_zu": "K-92",
+            "kadenz_s": null,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-99",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "opc_ua",
+            "adresse": null,
+            "geraete_id": null,
+            "kadenz_s": null,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-94",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.40:502",
+            "geraete_id": 2,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2026-10-01T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-95",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.40:502",
+            "geraete_id": 1,
+            "kadenz_s": 30,
+            "in_betrieb_ab": "2026-10-05T08:15:00+02:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-8",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.40:502",
+            "geraete_ids": [
+              1,
+              2
+            ],
+            "komponenten": [
+              "K-94",
+              "K-95"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 30,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "ausgelassen": [
+          {
+            "komponente": "K-90",
+            "grund": "keine_adresse",
+            "text": "Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie liest — sie bekommt keine Datenquelle"
+          },
+          {
+            "komponente": "K-91",
+            "grund": "keine_box",
+            "text": "Keine Box liest diese Komponente — ohne Box gibt es keine Datenquelle vorzuschlagen"
+          },
+          {
+            "komponente": "K-92",
+            "grund": "keine_adresse",
+            "text": "Für diese Komponente kennt VoltPilot keine eindeutige Adresse, unter der eine Box sie liest — sie bekommt keine Datenquelle"
+          },
+          {
+            "komponente": "K-93",
+            "grund": "anker_ohne_vorschlag",
+            "anker": "K-92",
+            "text": "Wird über K-92 gelesen — dafür gibt es hier keinen Vorschlag"
+          },
+          {
+            "komponente": "K-99",
+            "grund": "protokoll_unbekannt",
+            "protokoll": "opc_ua",
+            "text": "Für dieses Protokoll gibt es noch keine Datenquelle — neue Protokolle kommen nur über den Katalog"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a9-zweite-box-vorschlaege-je-box",
+      "familie": "bestand",
+      "abnahme": "A9",
+      "annahme": "Erfunden sind die zusätzliche Lese-Box E-4 in AN-1 (A9: „eine zusätzliche Lese-Box wird in AN-1 verbunden“) und der Zähler K-96, den sie seit 15.01.2027 09:00 unter 192.168.10.50:502 liest.",
+      "why": "A9 / §4.4 Nr. 1–2: eine zweite Box in der Anlage ist nie von selbst ein Verbund — gruppiert wird JE BOX. Was Box Halle 1 liest, wird DQ-1…DQ-3 wie in A12 (zuständig E-1, die Steuerquelle bleibt an der Heimat-Box); was die zweite Box liest, wird eine eigene Quelle mit IHRER Box und IHREM Reihenbeginn.",
+      "input": {
+        "naechste_nummer": 1,
+        "komponenten": [
+          {
+            "kennzeichen": "K-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": true
+          },
+          {
+            "kennzeichen": "K-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": null,
+            "adresse": null,
+            "geraete_id": null,
+            "gehoert_zu": "K-1",
+            "kadenz_s": null,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-3",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-4",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 1,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-5",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 2,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-6",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 3,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-7",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 4,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-96",
+            "anlage": "AN-1",
+            "box": "E-4",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.50:502",
+            "geraete_id": 1,
+            "kadenz_s": 10,
+            "in_betrieb_ab": "2027-01-15T09:00:00+01:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-1",
+              "K-2"
+            ],
+            "steuerquelle": true,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-3"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "komponenten": [
+              "K-4",
+              "K-5",
+              "K-6",
+              "K-7"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 60,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-1",
+            "box": "E-4",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.50:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-96"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 10,
+            "zeitraeume": [
+              {
+                "box": "E-4",
+                "effective_from": "2027-01-15T09:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "ausgelassen": []
+      }
+    },
+    {
+      "name": "bestand-vergebene-nummer-wird-uebersprungen",
+      "familie": "bestand",
+      "annahme": "Erfunden sind zwei weitere Zähler K-97 und K-98 in Werk Lindach (AN-3, Box E-3) unter 192.168.30.20:502 und 192.168.30.21:502 und eine von Hand vergebene Quelle DQ-9.",
+      "why": "§3/§8: das Kennzeichen kommt aus der nächsten FREIEN Nummer des Kundenbereichs — eine Nummer, die schon eine Quelle trägt, wird übersprungen, genau wie uems_datenquelle_kennzeichen() es beim Speichern tut. So nennt der Vorschlag das Kennzeichen, das die Bestätigung schreibt.",
+      "input": {
+        "naechste_nummer": 8,
+        "belegt": [
+          "DQ-9"
+        ],
+        "komponenten": [
+          {
+            "kennzeichen": "K-97",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.20:502",
+            "geraete_id": 1,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2026-11-02T10:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-98",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.21:502",
+            "geraete_id": 1,
+            "kadenz_s": 60,
+            "in_betrieb_ab": "2026-11-02T10:00:00+01:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-8",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.20:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-97"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 60,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-11-02T10:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-10",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.21:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-98"
+            ],
+            "steuerquelle": false,
+            "kadenz_s": 60,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-11-02T10:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "ausgelassen": []
       }
     }
   ]

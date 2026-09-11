@@ -75,6 +75,17 @@ class DatenquelleSchnittstelleVertragTest {
         }
     }
 
+    /** Die Vorschlagsliste (IP-4) nennt genau die Auslass-Gründe des Vertrags. */
+    @Test
+    void dieAuslassGruendeSindDieDesVertrags() {
+        List<String> vertrag = StreamSupport.stream(vektoren.get("auslass_gruende").spliterator(), false)
+                .map(g -> g.get("code").asText()).toList();
+        assertThat(Arrays.stream(DatenquelleRegeln.AuslassGrund.values()).map(DatenquelleRegeln.AuslassGrund::code)
+                .toList()).containsExactlyElementsOf(vertrag);
+        assertThat(liste(schema("DatenquelleAusgelassen"), "properties", "grund", "enum"))
+                .containsExactlyElementsOf(vertrag);
+    }
+
     /** Jede Form der Schnittstelle trägt genau die Felder der OpenAPI — in der Schreibweise des Vertrags. */
     @Test
     void jedeFormTraegtGenauDieFelderDerOpenApi() {
@@ -90,7 +101,14 @@ class DatenquelleSchnittstelleVertragTest {
                 Map.entry("DatenquellePruefen", DatenquelleDto.Pruefen.class),
                 Map.entry("DatenquellePruefergebnis", DatenquelleDto.Pruefergebnis.class),
                 Map.entry("DatenquelleProtokollEintrag", DatenquelleDto.ProtokollEintrag.class),
-                Map.entry("DatenquelleProtokoll", DatenquelleDto.Protokoll.class));
+                Map.entry("DatenquelleProtokoll", DatenquelleDto.Protokoll.class),
+                Map.entry("DatenquelleVorschlagKomponente", DatenquelleDto.VorschlagKomponente.class),
+                Map.entry("DatenquelleVorschlag", DatenquelleDto.Vorschlag.class),
+                Map.entry("DatenquelleAusgelassen", DatenquelleDto.Ausgelassen.class),
+                Map.entry("DatenquelleVorschlagsliste", DatenquelleDto.Vorschlagsliste.class),
+                Map.entry("DatenquelleBestaetigt", DatenquelleDto.Bestaetigt.class),
+                Map.entry("DatenquelleUebernehmen", DatenquelleDto.Uebernehmen.class),
+                Map.entry("DatenquelleUebernommen", DatenquelleDto.Uebernommen.class));
         formen.forEach((name, form) -> {
             List<String> felder = Arrays.stream(form.getRecordComponents())
                     .map(c -> SNAKE.translate(c.getName())).toList();

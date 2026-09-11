@@ -91,4 +91,6 @@ Anlagen-Liste = jeder Einbau (ausgebaute eingeschlossen), GR-2 vor GR-10; jeder 
 ## Nicht dieses Paket
 
 Zähler-/Controllerwechsel (IP-17/IP-19), Einstellungs-Fassungen (IP-11), Geräteseite im Portal
-(IP-12), Ablesestände (IP-13/IP-17), `geraet_aenderung` (IP-21), Datenquelle am Gerät (AP-06 IP-4).
+(IP-12), Ablesestände (IP-13/IP-17), `geraet_aenderung` (IP-21), Datenquelle am Gerät (AP-06 IP-4 —
+seitdem setzt die Bestätigung der Vorschlagsliste `geraet.data_source_id` der laufenden Speisung,
+`uems-datenquelle-vorschlagsliste-bestand.md`).

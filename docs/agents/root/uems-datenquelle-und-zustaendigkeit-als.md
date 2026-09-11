@@ -30,6 +30,8 @@ IP-1 stellt NICHTS um: keine Tabelle (IP-2 `data_source`, `data_source_assignmen
 (E4), kein Herzschlag-Block (IP-13/IP-18). `gatewayDevice` bleibt die heutige Weiche — bis
 IP-5: seitdem stellt `LeadDeviceService` Registry-Push und Flow-Aktivierung der führenden Box zu
 (`DatenquelleRegeln.fuehrung` + `lead-device-vectors.json`, `uems-fuehrende-box-lead-device-service.md`).
+Seit IP-4 ruft `DatenquelleVorschlagService` die Regel `vorschlagsliste` (Familie `bestand`,
+`uems-datenquelle-vorschlagsliste-bestand.md`).
 
 ## Die fünf Fakten, die man ohne Nachlesen braucht
 

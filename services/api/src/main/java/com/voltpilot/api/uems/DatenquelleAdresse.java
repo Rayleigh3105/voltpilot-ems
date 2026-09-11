@@ -22,6 +22,10 @@ import java.util.regex.Pattern;
  *       reist nie in einem gespeicherten Dokument).</li>
  *   <li>MQTT-Themen und OCPP-Station: nur ohne Randleerzeichen — Themen und Stations-Kennungen
  *       unterscheiden Groß- und Kleinschreibung.</li>
+ *   <li>Solarman-Datenlogger: {@code host:port/seriennummer} — Host und Port wie bei Modbus, Port
+ *       fehlend = 8899 (der Port des Datenloggers); die Seriennummer des Datenloggers ist Teil des
+ *       Wegs, weil jeder Solarman-V5-Rahmen sie trägt (ohne sie liest der Treiber nicht). Die
+ *       Slave-ID des Wechselrichters ist eine Geräte-ID der Quelle, kein Teil der Adresse.</li>
  * </ul>
  */
 public final class DatenquelleAdresse {
@@ -31,10 +35,14 @@ public final class DatenquelleAdresse {
     /** Der Standard-Port von Modbus TCP. */
     public static final int MODBUS_PORT = 502;
 
+    /** Der Standard-Port des Solarman-V5-Datenloggers (Deye). */
+    public static final int SOLARMAN_PORT = 8899;
+
     private static final Pattern HOSTNAME =
             Pattern.compile("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$");
     private static final Pattern IPV6 = Pattern.compile("^[0-9a-f:.]+$");
     private static final Pattern PORT = Pattern.compile("^[0-9]{1,5}$");
+    private static final Pattern SERIENNUMMER = Pattern.compile("^[0-9A-Za-z-]{1,32}$");
 
     /** Host und Port einer Modbus-Adresse, der Host ohne Klammern. */
     public record HostPort(String host, int port) {}
@@ -56,15 +64,16 @@ public final class DatenquelleAdresse {
             throw new Ungueltig("Unter welcher Adresse erreicht die Box die Quelle?");
         }
         return switch (protokoll) {
-            case "modbus_tcp", "sunspec_modbus" -> modbus(adresse);
+            case "modbus_tcp", "sunspec_modbus" -> modbus(adresse, MODBUS_PORT);
             case "http" -> http(adresse.strip());
+            case "solarman_v5" -> solarman(adresse);
             default -> adresse.strip();
         };
     }
 
     /** Host und Port einer gespeicherten Modbus-Adresse (für den Lese-Schritt der Prüfung). */
     public static HostPort hostPort(String gespeichert) {
-        String a = modbus(gespeichert);
+        String a = modbus(gespeichert, MODBUS_PORT);
         int trenner = a.lastIndexOf(':');
         String host = a.substring(0, trenner);
         if (host.startsWith("[")) {
@@ -73,7 +82,8 @@ public final class DatenquelleAdresse {
         return new HostPort(host, Integer.parseInt(a.substring(trenner + 1)));
     }
 
-    private static String modbus(String roh) {
+    /** {@code host:port} — Host klein, ohne Leerzeichen, Port fehlend = {@code standardPort}. */
+    private static String modbus(String roh, int standardPort) {
         String a = roh.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
         String host;
         String port;
@@ -91,7 +101,7 @@ public final class DatenquelleAdresse {
             if (host.isEmpty() || !IPV6.matcher(host).matches()) {
                 throw new Ungueltig("Diese IPv6-Adresse hat keine gültige Form.");
             }
-            return "[" + host + "]:" + port(port);
+            return "[" + host + "]:" + port(port, standardPort);
         }
         int doppelpunkte = a.length() - a.replace(":", "").length();
         if (doppelpunkte > 1) {
@@ -103,12 +113,28 @@ public final class DatenquelleAdresse {
         if (!HOSTNAME.matcher(host).matches()) {
             throw new Ungueltig("Die Adresse braucht Host und Port, z. B. 192.168.20.10:502.");
         }
-        return host + ":" + port(port);
+        return host + ":" + port(port, standardPort);
     }
 
-    private static int port(String port) {
+    /** {@code host:port/seriennummer} — die Seriennummer bleibt, wie sie ist (kein Kleinschreiben). */
+    private static String solarman(String roh) {
+        String a = roh.replaceAll("\\s+", "");
+        int trenner = a.lastIndexOf('/');
+        if (trenner < 0) {
+            throw new Ungueltig("Ein Solarman-Datenlogger braucht seine Seriennummer: Host:Port/Seriennummer,"
+                    + " z. B. 192.168.0.28:8899/2985159064.");
+        }
+        String seriennummer = a.substring(trenner + 1);
+        if (!SERIENNUMMER.matcher(seriennummer).matches()) {
+            throw new Ungueltig("Die Seriennummer des Datenloggers besteht aus Ziffern und Buchstaben,"
+                    + " z. B. 2985159064.");
+        }
+        return modbus(a.substring(0, trenner), SOLARMAN_PORT) + "/" + seriennummer;
+    }
+
+    private static int port(String port, int standardPort) {
         if (port.isEmpty()) {
-            return MODBUS_PORT;
+            return standardPort;
         }
         int p = PORT.matcher(port).matches() ? Integer.parseInt(port) : -1;
         if (p < 1 || p > 65535) {

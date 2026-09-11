@@ -22,6 +22,7 @@
     "fehlerklassen",
     "gruende_fuehrende_box",
     "texte",
+    "auslass_gruende",
     "cases"
   ],
   "properties": {
@@ -185,6 +186,20 @@
         "update_noetig": { "type": "string" }
       }
     },
+    "auslass_gruende": {
+      "description": "Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle bekommt — geschlossen, in Prüfreihenfolge, je Grund der Satz, den der Kunde liest. Platzhalter: {anker}.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["code", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "enum": ["keine_box", "keine_adresse", "protokoll_unbekannt", "anker_ohne_vorschlag"] },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "cases": {
       "description": "Die Fälle. Jeder ist ein Eingang und das GENAU EINE Ergebnis, das beide Zwillinge daraus ziehen müssen.",
       "type": "array",
@@ -258,10 +273,10 @@
         },
         "protokoll": {
           "description": "Wie die Box die Quelle liest.",
-          "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"]
+          "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5"]
         },
         "adresse": {
-          "description": "Wo die Box die Quelle findet — Host:Port, Themenfilter, Adresse der Auskunft oder die Kennung der Ladestation. Die Adresse ist ein Parameter, nie die Identität.",
+          "description": "Wo die Box die Quelle findet — Host:Port, Themenfilter, Adresse der Auskunft, die Kennung der Ladestation oder Host:Port/Seriennummer des Solarman-Datenloggers. Die Adresse ist ein Parameter, nie die Identität.",
           "type": "string",
           "minLength": 1
         },
@@ -409,17 +424,28 @@
       }
     },
     "bestandKomponente": {
-      "description": "Eine vorhandene Komponente mit ihrem heutigen Anschluss — der Rohstoff der Vorschlagsliste.",
+      "description": "Eine vorhandene Komponente mit ihrem heutigen Anschluss — der Rohstoff der Vorschlagsliste. `box` null: keine Box liest sie; `protokoll`/`adresse` null: kein lesbarer Weg bekannt; ein `protokoll` außerhalb des Vokabulars (das Transport-Wort, z. B. `solarman_v5`) wird verworfen, nie abgebildet.",
       "type": "object",
       "required": ["kennzeichen", "anlage", "box", "protokoll", "adresse", "geraete_id", "in_betrieb_ab", "steuerbar"],
       "additionalProperties": false,
       "properties": {
         "kennzeichen": { "type": "string", "pattern": "^K-[0-9.]+$" },
         "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
-        "box": { "$ref": "#/$defs/boxKennzeichen" },
-        "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"] },
-        "adresse": { "type": "string", "minLength": 1 },
+        "box": { "$ref": "#/$defs/boxKennzeichenOderNull" },
+        "protokoll": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$" },
+        "adresse": { "type": ["string", "null"], "minLength": 1 },
         "geraete_id": { "type": ["integer", "null"], "minimum": 0 },
+        "gehoert_zu": {
+          "description": "Ein komponiertes Geschwister ohne eigenen Anschluss: das Kennzeichen des Wechselrichters, über den es gelesen wird. Dann zählen Box, Protokoll und Adresse des Wechselrichters. Fehlt das Feld, hat die Komponente ihren eigenen Anschluss.",
+          "type": "string",
+          "pattern": "^K-[0-9.]+$"
+        },
+        "kadenz_s": {
+          "description": "Wie oft die Box die Komponente heute liest (Sekunden); null = nicht erhoben. Fehlt das Feld: null.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 86400
+        },
         "in_betrieb_ab": { "$ref": "#/$defs/zeitpunkt" },
         "steuerbar": { "type": "boolean" }
       }
@@ -454,6 +480,11 @@
         "code": { "type": "string", "minLength": 1 },
         "von": { "enum": ["box", "cloud"] },
         "naechste_nummer": { "type": "integer", "minimum": 1 },
+        "belegt": {
+          "description": "Kennzeichen, die im Kundenbereich schon eine Quelle trägt — die Vorschlagsliste überspringt sie. Fehlt das Feld: keine.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/quellenKennzeichen" }
+        },
         "komponenten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/bestandKomponente" } }
       }
     },
@@ -527,18 +558,45 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["kennzeichen", "anlage", "box", "protokoll", "adresse", "geraete_ids", "komponenten", "steuerquelle", "zeitraeume"],
+            "required": ["kennzeichen", "anlage", "box", "protokoll", "adresse", "geraete_ids", "komponenten", "steuerquelle", "kadenz_s", "zeitraeume"],
             "additionalProperties": false,
             "properties": {
               "kennzeichen": { "$ref": "#/$defs/quellenKennzeichen" },
               "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
               "box": { "$ref": "#/$defs/boxKennzeichen" },
-              "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"] },
+              "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp", "solarman_v5"] },
               "adresse": { "type": "string" },
               "geraete_ids": { "type": "array", "items": { "type": "integer" } },
               "komponenten": { "type": "array", "minItems": 1, "items": { "type": "string" } },
               "steuerquelle": { "type": "boolean" },
+              "kadenz_s": {
+                "description": "Der kleinste bekannte Lesetakt der Komponenten; null = von keiner erhoben.",
+                "type": ["integer", "null"]
+              },
               "zeitraeume": { "type": "array", "items": { "$ref": "#/$defs/zeitraum" } }
+            }
+          }
+        },
+        "ausgelassen": {
+          "description": "Die Komponenten ohne Vorschlag, in der Reihenfolge der Liste, je mit ihrem Grund.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["komponente", "grund", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "komponente": { "type": "string", "pattern": "^K-[0-9.]+$" },
+              "grund": { "enum": ["keine_box", "keine_adresse", "protokoll_unbekannt", "anker_ohne_vorschlag"] },
+              "protokoll": {
+                "description": "Nur bei protokoll_unbekannt: das verworfene Wort.",
+                "type": "string"
+              },
+              "anker": {
+                "description": "Nur bei anker_ohne_vorschlag: der Wechselrichter, über den gelesen wird.",
+                "type": "string",
+                "pattern": "^K-[0-9.]+$"
+              },
+              "text": { "type": "string", "minLength": 1 }
             }
           }
         }
