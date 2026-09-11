@@ -1,0 +1,3137 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des Vertrags „Datenquelle und Zuständigkeit“ (UEMS AP-06 IP-1).",
+    "Die Prosa-Wahrheit steht in data-source-assignment.md; hier steht, wie aus Fakten",
+    "GENAU EIN Urteil und GENAU EIN Kundensatz wird.",
+    "",
+    "Sie pinnen die zwei Zwillinge gegeneinander:",
+    "  Java  services/api .../uems/DatenquelleRegeln",
+    "  TS    frontend/portal/src/uemsDatenquelle.ts",
+    "Wer die Regel ändert, ändert BEIDE Seiten UND diese Datei.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Keine Tabelle (IP-2), kein Endpunkt (IP-3), kein Push und keine",
+    "Fläche ist umgestellt; `gatewayDevice`, Registry-Push und Herzschlag sind unberührt.",
+    "",
+    "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
+    "der ein Ahrenberg-Objekt nennt (DQ-x, E-x), übernimmt dessen Werte — Adresse, Netz,",
+    "Steuerquelle, Box-Name, Heimat, Software-Stand und die Zeiträume der zuständigen Box —, und",
+    "beide Zwillings-Tests prüfen das gegen die Referenzdatei. Ein Zeitraum darf OFFEN stehen,",
+    "wo die Referenz ein Ende nennt, das zum Zeitpunkt `jetzt` noch nicht eingetreten war (der",
+    "Wechsel war noch nicht eingetragen). Was ein Fall ERFINDET (eine zusätzliche Box, einen",
+    "Testaufbau, eine künftige Fähigkeiten-Tabelle), nennt er in `annahme`.",
+    "Das Protokoll der Referenz wird auf das geschlossene Vokabular abgebildet:",
+    "„Modbus TCP“ → modbus_tcp, „OCPP 1.6J“ → ocpp (die OCPP-Fassung ist Parameter der",
+    "Station); die Adresse ist Host:Port, bei OCPP die Stations-Kennung aus dem Weg.",
+    "",
+    "ZEIT: Zeitpunkte tragen immer ihren Versatz. `effective_from` gehört zum Zeitraum,",
+    "`effective_to` nicht (halboffen, auf die volle Minute); `effective_to: null` = offen.",
+    "„jetzt“ zählt auf die Minute abgerundet: ein Beginn in der laufenden Minute ist nicht",
+    "rückwirkend. Kundensätze nennen Datum und Uhrzeit in `zeitzone`.",
+    "",
+    "ACHT FAMILIEN:",
+    "  antrag        – darf diese Box diese Quelle ab diesem Zeitpunkt lesen? (anlegen | wechsel)",
+    "                  Prüfreihenfolge = `pruefreihenfolge_antrag`, der ERSTE Grund entscheidet.",
+    "  zeitraeume    – die Speicher-Regel (IP-2: Ausschluss überlappender Zeiträume); sie",
+    "                  beendet nichts von selbst.",
+    "  zustaendig    – welche Box liest zum Zeitpunkt (die Herkunft je Wert, A3/A5).",
+    "  box_tausch    – die Nachfolgerin übernimmt ab dem Zeitpunkt alles (E7), nie rückwirkend.",
+    "  fuehrende_box – E3: gespeichert → Box des Speichers → einzige Box → keine (nie geraten).",
+    "  faehigkeiten  – E12: `supports[]` übersteuert; sonst Tabelle + Register-Ordnung.",
+    "  fehlerklasse  – das geschlossene Vokabular je Quelle; ein fremdes Wort wird verworfen.",
+    "  bestand       – die Vorschlagsliste der Bestands-Übernahme (A12)."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./data-source-assignment.schema.json",
+  "herkunft": "UEMS AP-06 §4.1–§4.7 und §5.1/§5.2 (Konzept vp-uems-ap06-edges), Entscheide E1, E2, E3, E5, E7, E8, E9, E10 = B, E11, E12 (Captain, 10.09.2026); Abnahmefälle A3, A4, A5, A7, A8, A9, A11, A12, A13.",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "faehigkeiten_datei": "./edge-capabilities.json",
+  "zeitzone": "Europe/Berlin",
+  "familien": [
+    "antrag",
+    "zeitraeume",
+    "zustaendig",
+    "box_tausch",
+    "fuehrende_box",
+    "faehigkeiten",
+    "fehlerklasse",
+    "bestand"
+  ],
+  "abnahmefaelle": [
+    "A3",
+    "A4",
+    "A5",
+    "A7",
+    "A8",
+    "A9",
+    "A11",
+    "A12",
+    "A13"
+  ],
+  "protokolle": [
+    {
+      "code": "modbus_tcp",
+      "name": "Modbus TCP"
+    },
+    {
+      "code": "sunspec_modbus",
+      "name": "SunSpec-Modbus"
+    },
+    {
+      "code": "mqtt",
+      "name": "MQTT-Themen"
+    },
+    {
+      "code": "http",
+      "name": "HTTP-Auskunft"
+    },
+    {
+      "code": "ocpp",
+      "name": "OCPP-Station"
+    }
+  ],
+  "urteile": [
+    "erlaubt",
+    "bestaetigung_noetig",
+    "abgelehnt"
+  ],
+  "gruende": [
+    {
+      "code": "protokoll_unbekannt",
+      "urteil": "abgelehnt",
+      "text": "Dieses Protokoll kennt VoltPilot nicht — neue Protokolle kommen nur über den Katalog"
+    },
+    {
+      "code": "keine_volle_minute",
+      "urteil": "abgelehnt",
+      "text": "Eine Zuständigkeit beginnt auf die volle Minute — bitte eine Uhrzeit ohne Sekunden wählen"
+    },
+    {
+      "code": "leerer_zeitraum",
+      "urteil": "abgelehnt",
+      "text": "Das Ende liegt nicht nach dem Beginn — ein Zeitraum dauert mindestens eine Minute"
+    },
+    {
+      "code": "rueckwirkend",
+      "urteil": "abgelehnt",
+      "text": "Eine Zuständigkeit beginnt frühestens jetzt — nie rückwirkend"
+    },
+    {
+      "code": "steuerquelle",
+      "urteil": "abgelehnt",
+      "text": "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln"
+    },
+    {
+      "code": "spaeterer_wechsel_geplant",
+      "urteil": "abgelehnt",
+      "text": "Ab {zeitpunkt} liest bereits {box} — erst diesen geplanten Wechsel zurücknehmen"
+    },
+    {
+      "code": "schon_zustaendig",
+      "urteil": "abgelehnt",
+      "text": "{box} liest diese Quelle zu diesem Zeitpunkt bereits"
+    },
+    {
+      "code": "ueberschneidung",
+      "urteil": "abgelehnt",
+      "text": "Überschneidet sich mit der Zuständigkeit von {box} — je Zeitpunkt liest höchstens eine Box"
+    },
+    {
+      "code": "adresse_an_box_vergeben",
+      "urteil": "abgelehnt",
+      "text": "Diese Adresse liest {box} bereits als {kennzeichen} — Gerät dort hinzufügen?"
+    },
+    {
+      "code": "netzlage_fehlt",
+      "urteil": "abgelehnt",
+      "text": "Gleiche Adresse wie {kennzeichen} an {box} — erst das Netz beider Quellen eintragen (Bogen D1/D2)"
+    },
+    {
+      "code": "nur_ein_leser",
+      "urteil": "abgelehnt",
+      "text": "Gleiche Adresse wie {kennzeichen} an {box} im selben Netz — nicht möglich: dieses Gerät verträgt nur einen Leser"
+    },
+    {
+      "code": "vergleich_bestaetigen",
+      "urteil": "bestaetigung_noetig",
+      "text": "Gleiche Adresse wie {kennzeichen} an {box} im selben Netz — als Vergleichsquelle anlegen (gekennzeichnet)?"
+    },
+    {
+      "code": "pruefung_fehlt",
+      "urteil": "abgelehnt",
+      "text": "Es fehlt: Prüfung von {box}"
+    },
+    {
+      "code": "pruefung_gescheitert",
+      "urteil": "abgelehnt",
+      "text": "{fehlerklasse}"
+    }
+  ],
+  "pruefreihenfolge_antrag": [
+    "protokoll_unbekannt",
+    "keine_volle_minute",
+    "rueckwirkend",
+    "steuerquelle",
+    "spaeterer_wechsel_geplant",
+    "schon_zustaendig",
+    "adresse_an_box_vergeben",
+    "netzlage_fehlt",
+    "nur_ein_leser",
+    "vergleich_bestaetigen",
+    "pruefung_fehlt",
+    "pruefung_gescheitert"
+  ],
+  "pruefreihenfolge_zeitraum": [
+    "keine_volle_minute",
+    "leerer_zeitraum",
+    "ueberschneidung"
+  ],
+  "pruefreihenfolge_tausch": [
+    "keine_volle_minute",
+    "rueckwirkend"
+  ],
+  "fehlerklassen": [
+    {
+      "code": "unreachable",
+      "name": "nicht erreichbar",
+      "von": "box",
+      "text": "{box} erreicht {adresse} nicht — Netz/VLAN prüfen (Bogen D1/D2)"
+    },
+    {
+      "code": "no_answer",
+      "name": "Zeitüberschreitung",
+      "von": "box",
+      "text": "Gerät antwortet nicht rechtzeitig — Geräte-ID, Last oder Watchdog prüfen (Bogen D3/D4)"
+    },
+    {
+      "code": "invalid_response",
+      "name": "Gerät meldet Fehler",
+      "von": "box",
+      "text": "Gerät antwortet mit Fehler — Registerbild oder Vorlage prüfen"
+    },
+    {
+      "code": "implausible",
+      "name": "Werte unplausibel",
+      "von": "box",
+      "text": "Gerät antwortet, die Werte sind aber unplausibel — Vorlage und Wandlerfaktor prüfen"
+    },
+    {
+      "code": "fronius_api",
+      "name": "Solar-API antwortet nicht",
+      "von": "box",
+      "text": "Die Solar-API des Geräts antwortet nicht"
+    },
+    {
+      "code": "timeout",
+      "name": "kein Ergebnis",
+      "von": "box",
+      "text": "{box} bekommt von {adresse} kein Ergebnis im Lesefenster"
+    },
+    {
+      "code": "layout_changed",
+      "name": "Aufbau geändert",
+      "von": "box",
+      "text": "Aufbau geändert — nichts wurde umgehängt"
+    },
+    {
+      "code": "budget",
+      "name": "Budget überschritten",
+      "von": "box",
+      "text": "Diese Quelle passt nicht mehr in das Lesebudget von {box} — Takt strecken oder andere Box wählen"
+    },
+    {
+      "code": "box_meldet_sich_nicht",
+      "name": "Box meldet sich nicht",
+      "von": "cloud",
+      "text": "{box} meldet sich nicht"
+    }
+  ],
+  "gruende_fuehrende_box": [
+    "gespeichert",
+    "speicher",
+    "einzige",
+    "keine_wahl"
+  ],
+  "texte": {
+    "erlaubt": "Ab {zeitpunkt} liest {box}",
+    "hinweis_anderes_netz": "Gleiche Adresse wie {kennzeichen} — anderes Netz",
+    "hinweis_vergleichsquelle": "Vergleichsquelle zu {kennzeichen} an {box} — gekennzeichnet, ohne Bewertung",
+    "ausgebaut": "Ausgebaut am {zeitpunkt} — ersetzt durch {box}",
+    "fuehrt": "{box} führt die Anlage",
+    "keine_wahl": "Welche Box führt diese Anlage? — Box wählen",
+    "rolle_fuehrt": "liest {anzahl} · führt die Anlage",
+    "rolle_fuehrt_nicht": "liest {anzahl} · führt die Anlage nicht",
+    "anzahl_null": "keine Datenquelle",
+    "anzahl_eins": "1 Datenquelle",
+    "anzahl_viele": "{n} Datenquellen",
+    "software": "Software {stand}",
+    "software_unbekannt": "Software-Stand unbekannt",
+    "alle_faehigkeiten": "alle Fähigkeiten",
+    "update_noetig": "Update nötig für: {liste}"
+  },
+  "cases": [
+    {
+      "name": "eindeutig-je-box-zweite-quelle-auf-derselben-adresse",
+      "familie": "antrag",
+      "why": "§4.3 Nr. 2 / §5.2: an EINER Box gibt es je Zeitpunkt nur EINE Quelle je Protokoll + Adresse. Box Halle 2 liest 192.168.20.10:502 bereits als DQ-4 — eine zweite Quelle dort wäre ein zweiter Leser am selben Stecker. Der Satz bietet den Weg zur bestehenden Quelle an.",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-2",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-2",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "adresse_an_box_vergeben",
+        "text": "Diese Adresse liest Box Halle 2 bereits als DQ-4 — Gerät dort hinzufügen?",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "gateway-weiterer-zaehler-ist-ein-geraet-der-quelle",
+      "familie": "antrag",
+      "annahme": "Ein fünfter Zähler (Geräte-ID 5) am Gateway ist erfunden; die Referenzdatei kennt vier (GR-3…GR-6).",
+      "why": "E1/E2 + §4.3 Nr. 1: die Geräte-ID identifiziert das GERÄT hinter der Quelle, nie eine neue Quelle. Ein fünfter Zähler am Multi-Zähler-Gateway (192.168.10.31:502) ist ein weiteres Gerät von DQ-3 — ein Gateway mit fünf Zählern bleibt EINE Quelle, und eine zweite Quelle auf derselben Adresse wird abgelehnt.",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "geraete_ids": [
+              5
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-1",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "adresse_an_box_vergeben",
+        "text": "Diese Adresse liest Box Halle 1 bereits als DQ-3 — Gerät dort hinzufügen?",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a4-gleiche-adresse-anderes-netz-andere-box",
+      "familie": "antrag",
+      "abnahme": "A4",
+      "annahme": "Testaufbau im Simulator (AP-06 A4, AP-05 A5): eine zweite WAGO-Steuerung „DQ-6′“ mit derselben Adresse 192.168.20.10:502 im Netz „Lindach 192.168.20.0/24“ an Box Lindach. Sie ist KEIN Objekt der Referenzdatei — dort liest Box Lindach im Netz 192.168.30.0/24.",
+      "why": "A4: dieselbe Adresse an einer ANDEREN Box mit ANDERER dokumentierter Netzlage ist eine andere Quelle (§4.3 Nr. 2) — sie wird angelegt, nicht abgelehnt, und der Hinweis sagt es. Die Ein-Leser-Eigenschaft der WAGO-Vorlage spielt keine Rolle: es ist ein anderes Gerät.",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-3",
+            "name": "Box Lindach"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "Lindach 192.168.20.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-3",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-3",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 20.10.2026 10:15 liest Box Lindach",
+        "hinweis": "Gleiche Adresse wie DQ-4 — anderes Netz",
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-3",
+            "effective_from": "2026-10-20T10:15:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "netzlage-fehlt-bei-gleicher-adresse-an-anderer-box",
+      "familie": "antrag",
+      "annahme": "Testaufbau im Simulator (AP-06 A4, AP-05 A5): eine zweite WAGO-Steuerung „DQ-6′“ mit derselben Adresse 192.168.20.10:502 OHNE eingetragene Netzlage an Box Lindach. Sie ist KEIN Objekt der Referenzdatei — dort liest Box Lindach im Netz 192.168.30.0/24.",
+      "why": "Lücke im Konzept, konservativ geschlossen: ob zwei gleiche Adressen an zwei Boxen dasselbe Gerät sind, entscheidet die DOKUMENTIERTE Netzlage (§4.3 Nr. 5). Fehlt sie, ist „anderes Netz“ nicht bewiesen — geraten wird nie. Die Quelle wartet, bis das Netz eingetragen ist (Bogen D1/D2).",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-3",
+            "name": "Box Lindach"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": null,
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-3",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-3",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "netzlage_fehlt",
+        "text": "Gleiche Adresse wie DQ-4 an Box Halle 2 — erst das Netz beider Quellen eintragen (Bogen D1/D2)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a8-vergleichsquelle-braucht-bestaetigung",
+      "familie": "antrag",
+      "abnahme": "A8",
+      "annahme": "Die Vorlage des Netzzählers NA-1 verträgt mehrere Leser (Katalog-Flag `mehrere_leser`, das die Referenzdatei nicht führt); Box Halle 2 (neu) erreicht 192.168.10.30 über eine Route (A8 „Route vorhanden“).",
+      "why": "A8 / E10 = B: gleiche Adresse UND gleiche dokumentierte Netzlage an einer zweiten Box heißt: dasselbe Gerät würde zweimal gelesen. Das geht nie still — nur als gekennzeichnete Vergleichsquelle nach ausdrücklicher Bestätigung (AP-04 E3). Ohne Bestätigung bleibt es bei der Frage.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": true,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": true
+          },
+          "box": "E-2′",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "bestaetigung_noetig",
+        "grund": "vergleich_bestaetigen",
+        "text": "Gleiche Adresse wie DQ-2 an Box Halle 1 im selben Netz — als Vergleichsquelle anlegen (gekennzeichnet)?",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a8-vergleichsquelle-nach-bestaetigung-gekennzeichnet",
+      "familie": "antrag",
+      "abnahme": "A8",
+      "annahme": "Die Vorlage des Netzzählers NA-1 verträgt mehrere Leser (Katalog-Flag `mehrere_leser`, das die Referenzdatei nicht führt); Box Halle 2 (neu) erreicht 192.168.10.30 über eine Route (A8 „Route vorhanden“).",
+      "why": "A8: nach der Bestätigung wird die Quelle angelegt — als eigene, gekennzeichnete Vergleichsquelle ohne Bewertung (AP-04 E3), nie als dieselbe Komponente aus zwei Boxen.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": true,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": true
+          },
+          "box": "E-2′",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": true
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 20.04.2027 10:00 liest Box Halle 2 (neu)",
+        "hinweis": "Vergleichsquelle zu DQ-2 an Box Halle 1 — gekennzeichnet, ohne Bewertung",
+        "vergleichsquelle": true,
+        "zeitraeume": [
+          {
+            "box": "E-2′",
+            "effective_from": "2027-04-20T10:00:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a8-ein-leser-steuerung-bleibt-gesperrt",
+      "familie": "antrag",
+      "abnahme": "A8",
+      "annahme": "Box Halle 1 erreicht 192.168.20.10 über eine Route (A8: „dasselbe mit der WAGO-Steuerung C-1“).",
+      "why": "A8 / E10 = B: die WAGO-Steuerung C-1 verträgt nur EINEN Leser (Vorgabe des Katalog-Flags; die Koppler-Mailbox, AP-05 §6.2). Auch eine Bestätigung öffnet das nicht. Die Kollision nennt die Box, die zum Zeitpunkt liest — Box Halle 2 (neu), nicht die ausgebaute Box Halle 2, deren Zeitraum am 04.11.2026 endete.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": "2026-11-04T09:38:00+01:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2026-11-04T09:38:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-1",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": true
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "nur_ein_leser",
+        "text": "Gleiche Adresse wie DQ-4 an Box Halle 2 (neu) im selben Netz — nicht möglich: dieses Gerät verträgt nur einen Leser",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "steuerquelle-vertraegt-keinen-zweiten-leser",
+      "familie": "antrag",
+      "annahme": "Der Katalog-Eintrag des Wechselrichters erlaubte mehrere Leser (`mehrere_leser`), und Box Halle 2 (neu) erreichte 192.168.10.21 — beides angenommen, um zu zeigen, dass die Steuerquelle trotzdem gesperrt bleibt.",
+      "why": "E10 = B nennt „jede Steuerquelle“ ausdrücklich als Ein-Leser: der Wechselrichter von Halle 1 (DQ-1) wird nie von einer zweiten Box gelesen — auch dann nicht, wenn sein Katalog-Eintrag mehrere Leser erlaubte und der Kunde bestätigt.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": true,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": true
+          },
+          "box": "E-2′",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": true
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "nur_ein_leser",
+        "text": "Gleiche Adresse wie DQ-1 an Box Halle 1 im selben Netz — nicht möglich: dieses Gerät verträgt nur einen Leser",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a3-wechsel-dq3-zu-box-halle-2-geplant",
+      "familie": "antrag",
+      "abnahme": "A3",
+      "why": "A3 / §5.1, Vorbereitung am 09.04.2027 15:10: Route frei, Prüfung von Box Halle 2 (neu) bestanden, Wechsel für 10.04.2027 07:30 eingetragen. Der laufende Zeitraum von Box Halle 1 wird BEENDET (Ende alt = Beginn neu, auf die Minute), nicht überschrieben (AP-00 Regel 4). Die Quelle wechselt als Ganzes (E2) — K-4…K-7 gehen mit.",
+      "input": {
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T15:10:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 10.04.2027 07:30 liest Box Halle 2 (neu)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          },
+          {
+            "box": "E-2′",
+            "effective_from": "2027-04-10T07:30:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a3-rueckwechsel-zu-box-halle-1-geplant",
+      "familie": "antrag",
+      "abnahme": "A3",
+      "annahme": "Die Referenzdatei nennt nur den Tag, an dem der Rückwechsel eingetragen wurde (10.04.2027); 07:45 ist angenommen.",
+      "why": "A3: der Rückwechsel wird am 10.04.2027 eingetragen (hier 07:45, vor dem Trennen von Box Halle 1 um 08:00) und gilt ab 12.04.2027 16:00. Danach steht genau die Zeitreihe der Referenzdatei: Box Halle 1 · Box Halle 2 (neu) · Box Halle 1, lückenlos und ohne Überlappung.",
+      "input": {
+        "jetzt": "2027-04-10T07:45:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": "2027-04-10T07:30:00+02:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2027-04-10T07:30:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-1",
+          "effective_from": "2027-04-12T16:00:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-10T07:45:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 12.04.2027 16:00 liest Box Halle 1",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          },
+          {
+            "box": "E-2′",
+            "effective_from": "2027-04-10T07:30:00+02:00",
+            "effective_to": "2027-04-12T16:00:00+02:00"
+          },
+          {
+            "box": "E-1",
+            "effective_from": "2027-04-12T16:00:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "a3-wechsel-in-der-laufenden-minute-ist-nicht-rueckwirkend",
+      "familie": "antrag",
+      "abnahme": "A3",
+      "annahme": "Der Wechsel wird erst in der Minute selbst eingetragen statt am Vortag.",
+      "why": "„nur Jetzt oder Zukunft“: jetzt zählt auf die Minute. Wer um 07:30:25 den Wechsel ab 07:30 einträgt, trägt JETZT ein — das ist nicht rückwirkend. Erst eine vergangene Minute wäre es.",
+      "input": {
+        "jetzt": "2027-04-10T07:30:25+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T15:10:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 10.04.2027 07:30 liest Box Halle 2 (neu)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          },
+          {
+            "box": "E-2′",
+            "effective_from": "2027-04-10T07:30:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "wechsel-mit-vergangenem-zeitpunkt-abgelehnt",
+      "familie": "antrag",
+      "why": "§4.2 / Invariante 3: eine Zuständigkeit beginnt nie rückwirkend — die Box kann nicht nachträglich gelesen haben, und die Herkunft vergangener Werte bleibt, wie sie war. 15:00 liegt zehn Minuten vor jetzt.",
+      "input": {
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-09T15:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T15:10:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "rueckwirkend",
+        "text": "Eine Zuständigkeit beginnt frühestens jetzt — nie rückwirkend",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "wechsel-nur-auf-die-volle-minute",
+      "familie": "antrag",
+      "why": "§4.1: Zuständigkeiten beginnen und enden auf die Minute. Ein Zeitpunkt mit Sekunden wird abgelehnt, nie still gerundet.",
+      "input": {
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:30+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T15:10:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "keine_volle_minute",
+        "text": "Eine Zuständigkeit beginnt auf die volle Minute — bitte eine Uhrzeit ohne Sekunden wählen",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "wechsel-vor-einem-geplanten-wechsel-abgelehnt",
+      "familie": "antrag",
+      "annahme": "Jemand möchte den für 07:30 geplanten Wechsel schon am Vorabend um 18:00.",
+      "why": "Überlappende Zeiträume werden abgelehnt: der Wechsel zu Box Halle 2 (neu) ab 10.04.2027 07:30 ist schon eingetragen. Ein zweiter Wechsel am Vorabend würde sich mit ihm überschneiden — erst den geplanten zurücknehmen. Nichts wird still verschoben.",
+      "input": {
+        "jetzt": "2027-04-09T16:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": "2027-04-10T07:30:00+02:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2027-04-10T07:30:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-09T18:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T15:10:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "spaeterer_wechsel_geplant",
+        "text": "Ab 10.04.2027 07:30 liest bereits Box Halle 2 (neu) — erst diesen geplanten Wechsel zurücknehmen",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "wechsel-zur-schon-zustaendigen-box",
+      "familie": "antrag",
+      "why": "Ein Wechsel zu der Box, die zum Zeitpunkt ohnehin liest, ist keiner — er würde nur einen Zeitraum zerteilen.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": "2027-04-10T07:30:00+02:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2027-04-10T07:30:00+02:00",
+                "effective_to": "2027-04-12T16:00:00+02:00"
+              },
+              {
+                "box": "E-1",
+                "effective_from": "2027-04-12T16:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-1",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "schon_zustaendig",
+        "text": "Box Halle 1 liest diese Quelle zu diesem Zeitpunkt bereits",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a11-pruefung-scheitert-vor-der-route",
+      "familie": "antrag",
+      "abnahme": "A11",
+      "annahme": "Die Referenzdatei nennt die bestandene Prüfung am 09.04.2027; der gescheiterte Versuch um 09:00 davor ist angenommen.",
+      "why": "A11 / E11: am Morgen des 09.04.2027 ist die Route VLAN 20 → VLAN 10 noch nicht frei (§5.1: frei um 15:10). Die Prüfung von Box Halle 2 (neu) meldet `unreachable` — der Wechsel wird nicht angelegt, DQ-3 bleibt ohne Unterbrechung bei Box Halle 1. Der Satz ist der der Fehlerklasse.",
+      "input": {
+        "jetzt": "2027-04-09T09:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "unreachable",
+            "zeitpunkt": "2027-04-09T09:00:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "pruefung_gescheitert",
+        "text": "Box Halle 2 (neu) erreicht 192.168.10.31:502 nicht — Netz/VLAN prüfen (Bogen D1/D2)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a11-ohne-pruefung-keine-zustaendigkeit",
+      "familie": "antrag",
+      "abnahme": "A11",
+      "why": "§4.4 Nr. 7 / E11: die Zuständigkeit gilt erst mit bestandener Erreichbarkeitsprüfung von der gewählten Box — ohne Prüfung liest keine neue Box.",
+      "input": {
+        "jetzt": "2027-04-09T09:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "pruefung": null,
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "pruefung_fehlt",
+        "text": "Es fehlt: Prüfung von Box Halle 2 (neu)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "pruefung-einer-anderen-box-zaehlt-nicht",
+      "familie": "antrag",
+      "abnahme": "A11",
+      "why": "§5.2: die Prüfung zählt nur „von genau dieser Box“. Dass Box Halle 1 die Adresse erreicht, beweist nichts für Box Halle 2 (neu) in einem anderen Netz.",
+      "input": {
+        "jetzt": "2027-04-09T09:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-3",
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-09T09:00:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "pruefung_fehlt",
+        "text": "Es fehlt: Prüfung von Box Halle 2 (neu)",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a13-steuerquelle-wechselt-nicht",
+      "familie": "antrag",
+      "abnahme": "A13",
+      "annahme": "Box Halle 2 (neu) erreichte 192.168.10.21 — angenommen, damit allein die Steuerquellen-Regel entscheidet.",
+      "why": "A13 / §4.4 Nr. 4: DQ-1 trägt die steuernde Komponente K-1 von Halle 1 und wird immer von der Heimat-Box gelesen; ihr Wechsel ist bis zur gemeinsamen Steuerung gesperrt — auch mit bestandener Prüfung. Kein Fahrplan wird geteilt. Der Satz nennt KEIN internes Paketkürzel.",
+      "input": {
+        "jetzt": "2027-04-20T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-1",
+          "box": "E-2′",
+          "effective_from": "2027-04-20T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-2′",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-04-20T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "steuerquelle",
+        "text": "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "protokoll-ausserhalb-des-katalogs",
+      "familie": "antrag",
+      "annahme": "Eine OPC-UA-Steuerung unter 192.168.10.40:4840 ist erfunden.",
+      "why": "§4.2: Protokoll ist ein geschlossenes Vokabular; neue Protokolle kommen nur über den Katalog. Ein unbekanntes Wort wird abgelehnt, nie auf ein ähnliches abgebildet.",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          }
+        ],
+        "quellen": [],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "opc_ua",
+            "adresse": "192.168.10.40:4840",
+            "netz": "192.168.10.0/24",
+            "geraete_ids": [],
+            "mehrere_leser": false
+          },
+          "box": "E-1",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-1",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "protokoll_unbekannt",
+        "text": "Dieses Protokoll kennt VoltPilot nicht — neue Protokolle kommen nur über den Katalog",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": null
+      }
+    },
+    {
+      "name": "a7-neue-quelle-an-alter-box-anlegbar",
+      "familie": "antrag",
+      "abnahme": "A7",
+      "annahme": "DQ-8 (zweiter Netzzähler Lindach, A7) steht nicht in der Referenzdatei; die Adresse 192.168.30.12:502 ist angenommen.",
+      "why": "A7 / E8 = A: auch eine Box mit altem Software-Stand (Box Lindach, 2.5.0) darf eine neue Quelle bekommen — das Lesen braucht keine neue Fähigkeit, nur die Rückmeldung je Quelle. Die Regeln fragen nach keiner Version.",
+      "input": {
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-3",
+            "name": "Box Lindach"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-6",
+            "anlage": "AN-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.10:502",
+            "netz": "192.168.30.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-10-15T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-7",
+            "anlage": "AN-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.11:502",
+            "netz": "192.168.30.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-10-15T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "anlegen",
+          "kandidat": {
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.12:502",
+            "netz": "192.168.30.0/24",
+            "geraete_ids": [
+              1
+            ],
+            "mehrere_leser": false
+          },
+          "box": "E-3",
+          "effective_from": "2026-10-20T10:15:00+02:00",
+          "pruefung": {
+            "box": "E-3",
+            "ergebnis": "ok",
+            "zeitpunkt": "2026-10-20T10:14:00+02:00"
+          },
+          "vergleich_bestaetigt": false
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 20.10.2026 10:15 liest Box Lindach",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-3",
+            "effective_from": "2026-10-20T10:15:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "zeitraeume-ende-alt-ist-beginn-neu",
+      "familie": "zeitraeume",
+      "why": "Invariante 1: Ende alt = Beginn neu, auf die Minute. `effective_from` gehört dazu, `effective_to` nicht — deshalb berühren sich die zwei Zeiträume, ohne sich zu überschneiden.",
+      "input": {
+        "quelle": "DQ-3",
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "bestehend": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          }
+        ],
+        "neu": {
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "effective_to": "2027-04-12T16:00:00+02:00"
+        }
+      },
+      "expected": {
+        "gueltig": true,
+        "grund": null,
+        "text": null
+      }
+    },
+    {
+      "name": "zeitraeume-ueberschneidung-um-eine-minute-abgelehnt",
+      "familie": "zeitraeume",
+      "why": "Überlappende Zeiträume werden abgelehnt — schon eine Minute Überschneidung hieße zwei Leser am selben Stecker (E2, AP-05 §6.2). Das ist die Regel, die IP-2 als Ausschluss-Bedingung in der Datenbank trägt.",
+      "input": {
+        "quelle": "DQ-3",
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "bestehend": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          }
+        ],
+        "neu": {
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:29:00+02:00",
+          "effective_to": null
+        }
+      },
+      "expected": {
+        "gueltig": false,
+        "grund": "ueberschneidung",
+        "text": "Überschneidet sich mit der Zuständigkeit von Box Halle 1 — je Zeitpunkt liest höchstens eine Box"
+      }
+    },
+    {
+      "name": "zeitraeume-zweiter-offener-zeitraum-abgelehnt",
+      "familie": "zeitraeume",
+      "why": "Die Speicher-Regel beendet NICHTS von selbst: ein neuer offener Zeitraum neben einem offenen ist eine Überschneidung. Das Beenden des alten ist Sache des Wechsels (Familie antrag), nie ein stilles Überschreiben.",
+      "input": {
+        "quelle": "DQ-3",
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "bestehend": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": null
+          }
+        ],
+        "neu": {
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "effective_to": null
+        }
+      },
+      "expected": {
+        "gueltig": false,
+        "grund": "ueberschneidung",
+        "text": "Überschneidet sich mit der Zuständigkeit von Box Halle 1 — je Zeitpunkt liest höchstens eine Box"
+      }
+    },
+    {
+      "name": "zeitraeume-ohne-dauer-abgelehnt",
+      "familie": "zeitraeume",
+      "why": "Ein Zeitraum, dessen Ende nicht nach dem Beginn liegt, ist leer — er würde einen Wechsel behaupten, der nie gegolten hat.",
+      "input": {
+        "quelle": "DQ-3",
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "bestehend": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          }
+        ],
+        "neu": {
+          "box": "E-2′",
+          "effective_from": "2027-04-10T07:30:00+02:00",
+          "effective_to": "2027-04-10T07:30:00+02:00"
+        }
+      },
+      "expected": {
+        "gueltig": false,
+        "grund": "leerer_zeitraum",
+        "text": "Das Ende liegt nicht nach dem Beginn — ein Zeitraum dauert mindestens eine Minute"
+      }
+    },
+    {
+      "name": "zeitraeume-luecke-ist-erlaubt",
+      "familie": "zeitraeume",
+      "annahme": "Eine halbe Stunde ohne lesende Box ist erfunden; die Referenz übergibt lückenlos.",
+      "why": "§4.1: je Zeitpunkt genau eine Box ODER KEINE — eine Lücke ist erlaubt und heißt „angehalten — keine Box liest“. Sie wird nie aufgefüllt.",
+      "input": {
+        "quelle": "DQ-3",
+        "jetzt": "2027-04-09T15:10:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "bestehend": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          }
+        ],
+        "neu": {
+          "box": "E-2′",
+          "effective_from": "2027-04-10T08:00:00+02:00",
+          "effective_to": null
+        }
+      },
+      "expected": {
+        "gueltig": true,
+        "grund": null,
+        "text": null
+      }
+    },
+    {
+      "name": "a3-herkunft-je-wert-nennt-die-lesende-box",
+      "familie": "zustaendig",
+      "abnahme": "A3",
+      "why": "A3: die Herkunft je Wert nennt die Box, die zum Messzeitpunkt zuständig war — bis 10.04.2027 07:30 Box Halle 1, bis 12.04.2027 16:00 Box Halle 2 (neu), danach wieder Box Halle 1. Der Beginn gehört dazu, das Ende nicht; vor dem ersten Zeitraum liest keine Box.",
+      "input": {
+        "quelle": "DQ-3",
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-04-10T07:30:00+02:00"
+          },
+          {
+            "box": "E-2′",
+            "effective_from": "2027-04-10T07:30:00+02:00",
+            "effective_to": "2027-04-12T16:00:00+02:00"
+          },
+          {
+            "box": "E-1",
+            "effective_from": "2027-04-12T16:00:00+02:00",
+            "effective_to": null
+          }
+        ],
+        "zeitpunkte": [
+          "2024-03-11T23:59:00+01:00",
+          "2027-04-10T07:29:59+02:00",
+          "2027-04-10T07:30:00+02:00",
+          "2027-04-12T15:59:59+02:00",
+          "2027-04-12T16:00:00+02:00"
+        ]
+      },
+      "expected": {
+        "boxen": [
+          null,
+          "E-1",
+          "E-2′",
+          "E-2′",
+          "E-1"
+        ]
+      }
+    },
+    {
+      "name": "a5-herkunft-bis-zum-umhaengen-die-alte-box",
+      "familie": "zustaendig",
+      "abnahme": "A5",
+      "why": "A5: der Ausfall ändert keine Zuständigkeit — während der Lücke ab 03.11.2026 14:00 bleibt Box Halle 2 zuständig (die Werte fehlen bei IHR). Erst das Umhängen um 09:38 macht Box Halle 2 (neu) zuständig; ihre erste Lesung um 09:40 liegt schon in ihrem Zeitraum.",
+      "input": {
+        "quelle": "DQ-4",
+        "zeitraeume": [
+          {
+            "box": "E-2",
+            "effective_from": "2026-10-01T00:00:00+02:00",
+            "effective_to": "2026-11-04T09:38:00+01:00"
+          },
+          {
+            "box": "E-2′",
+            "effective_from": "2026-11-04T09:38:00+01:00",
+            "effective_to": null
+          }
+        ],
+        "zeitpunkte": [
+          "2026-11-03T14:00:00+01:00",
+          "2026-11-04T09:37:00+01:00",
+          "2026-11-04T09:38:00+01:00",
+          "2026-11-04T09:40:00+01:00"
+        ]
+      },
+      "expected": {
+        "boxen": [
+          "E-2",
+          "E-2",
+          "E-2′",
+          "E-2′"
+        ]
+      }
+    },
+    {
+      "name": "a5-box-tausch-uebertraegt-zustaendigkeiten",
+      "familie": "box_tausch",
+      "abnahme": "A5",
+      "why": "A5 / E7 = A: Box Halle 2 (neu) wird Nachfolgerin von Box Halle 2. Ab 04.11.2026 09:38 übernimmt sie Heimat-Anlage, führende Rolle und die Zuständigkeiten für DQ-4 und DQ-5; die Zeiträume der alten Box werden beendet, nicht gelöscht. DQ-3 an Box Halle 1 bleibt unberührt. Die Zahl der Quellen ist vorher = nachher.",
+      "input": {
+        "jetzt": "2026-11-04T09:38:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-5",
+            "anlage": "AN-2",
+            "protokoll": "ocpp",
+            "adresse": "AHR-LP-01",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "tausch": {
+          "alt": {
+            "kennzeichen": "E-2",
+            "heimat_anlage": "AN-2",
+            "fuehrend_fuer": [
+              "AN-2"
+            ]
+          },
+          "neu": "E-2′",
+          "zeitpunkt": "2026-11-04T09:38:00+01:00"
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ausgebaut am 04.11.2026 09:38 — ersetzt durch Box Halle 2 (neu)",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-4",
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": "2026-11-04T09:38:00+01:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2026-11-04T09:38:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-5",
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": "2026-11-04T09:38:00+01:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2026-11-04T09:38:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "neu": {
+          "kennzeichen": "E-2′",
+          "heimat_anlage": "AN-2",
+          "fuehrend_fuer": [
+            "AN-2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "box-tausch-nicht-rueckwirkend",
+      "familie": "box_tausch",
+      "abnahme": "A5",
+      "why": "A5: die Lücke 03.11.2026 14:00 – 04.11.2026 09:40 bleibt bei der alten Box. Die Nachfolgerin ab dem Ausfall zuständig zu machen, schriebe ihr Werte zu, die nie jemand gelesen hat — falsche Herkunft.",
+      "input": {
+        "jetzt": "2026-11-04T09:38:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-5",
+            "anlage": "AN-2",
+            "protokoll": "ocpp",
+            "adresse": "AHR-LP-01",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "tausch": {
+          "alt": {
+            "kennzeichen": "E-2",
+            "heimat_anlage": "AN-2",
+            "fuehrend_fuer": [
+              "AN-2"
+            ]
+          },
+          "neu": "E-2′",
+          "zeitpunkt": "2026-11-03T14:00:00+01:00"
+        }
+      },
+      "expected": {
+        "urteil": "abgelehnt",
+        "grund": "rueckwirkend",
+        "text": "Eine Zuständigkeit beginnt frühestens jetzt — nie rückwirkend",
+        "quellen": null,
+        "neu": null
+      }
+    },
+    {
+      "name": "box-tausch-nimmt-geplante-zustaendigkeiten-mit",
+      "familie": "box_tausch",
+      "annahme": "Angenommen, Box Halle 2 (neu) würde am 09.04.2027 um 16:00 durch eine „Ersatzbox Halle 2“ (E-X) getauscht — nach dem Eintragen des Wechsels von DQ-3, vor dessen Beginn. Die Referenz kennt diesen Tausch nicht.",
+      "why": "E7 = A „alle Zuständigkeiten“: auch eine GEPLANTE geht an die Nachfolgerin. Der laufende Zeitraum von DQ-4 wird zum Tauschzeitpunkt geteilt; der für 10.04.2027 07:30 geplante Zeitraum von DQ-3 liegt ganz nach dem Tausch und wechselt vollständig die Box. Was vor dem Tausch liegt, bleibt, wie es war.",
+      "input": {
+        "jetzt": "2027-04-09T16:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-2",
+            "name": "Box Halle 2"
+          },
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)"
+          },
+          {
+            "kennzeichen": "E-X",
+            "name": "Ersatzbox Halle 2"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": "2027-04-10T07:30:00+02:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2027-04-10T07:30:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-4",
+            "anlage": "AN-2",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.20.10:502",
+            "netz": "VLAN 20 „Produktion“ 192.168.20.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": "2026-11-04T09:38:00+01:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2026-11-04T09:38:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "tausch": {
+          "alt": {
+            "kennzeichen": "E-2′",
+            "heimat_anlage": "AN-2",
+            "fuehrend_fuer": [
+              "AN-2"
+            ]
+          },
+          "neu": "E-X",
+          "zeitpunkt": "2027-04-09T16:00:00+02:00"
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ausgebaut am 09.04.2027 16:00 — ersetzt durch Ersatzbox Halle 2",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-3",
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": "2027-04-10T07:30:00+02:00"
+              },
+              {
+                "box": "E-X",
+                "effective_from": "2027-04-10T07:30:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-4",
+            "zeitraeume": [
+              {
+                "box": "E-2",
+                "effective_from": "2026-10-01T00:00:00+02:00",
+                "effective_to": "2026-11-04T09:38:00+01:00"
+              },
+              {
+                "box": "E-2′",
+                "effective_from": "2026-11-04T09:38:00+01:00",
+                "effective_to": "2027-04-09T16:00:00+02:00"
+              },
+              {
+                "box": "E-X",
+                "effective_from": "2027-04-09T16:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "neu": {
+          "kennzeichen": "E-X",
+          "heimat_anlage": "AN-2",
+          "fuehrend_fuer": [
+            "AN-2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "a9-zweite-box-in-halle-1-fuehrt-nicht",
+      "familie": "fuehrende_box",
+      "abnahme": "A9",
+      "annahme": "Die zusätzliche Box (E-A9) und ihre Zuständigkeit für DQ-3 sind der Aufbau von A9, kein Objekt der Referenzdatei.",
+      "why": "A9 / E3 = A: eine zusätzliche Lese-Box in Halle 1 übernimmt DQ-3 — die führende Box bleibt Box Halle 1, weil sie den Speicher liest. Fahrplan, Handeingriffe und Regeln gehen weiter nur dorthin; zwei Boxen sind kein Verbund.",
+      "input": {
+        "anlage": "AN-1",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1",
+            "liest": 2
+          },
+          {
+            "kennzeichen": "E-A9",
+            "name": "Zusätzliche Box Halle 1",
+            "liest": 1
+          }
+        ],
+        "speicher_box": "E-1",
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-1",
+        "grund": "speicher",
+        "text": "Box Halle 1 führt die Anlage",
+        "rollen": [
+          {
+            "box": "E-1",
+            "text": "liest 2 Datenquellen · führt die Anlage"
+          },
+          {
+            "box": "E-A9",
+            "text": "liest 1 Datenquelle · führt die Anlage nicht"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a12-einzige-box-mit-speicher-fuehrt-automatisch",
+      "familie": "fuehrende_box",
+      "abnahme": "A12",
+      "why": "A12: für einen Bestandskunden mit einer Box ändert sich nichts — Box Halle 1 ist automatisch führend (Box des Speichers) und liest DQ-1…DQ-3.",
+      "input": {
+        "anlage": "AN-1",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1",
+            "liest": 3
+          }
+        ],
+        "speicher_box": "E-1",
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-1",
+        "grund": "speicher",
+        "text": "Box Halle 1 führt die Anlage",
+        "rollen": [
+          {
+            "box": "E-1",
+            "text": "liest 3 Datenquellen · führt die Anlage"
+          }
+        ]
+      }
+    },
+    {
+      "name": "einzige-box-ohne-speicher-fuehrt",
+      "familie": "fuehrende_box",
+      "why": "E3 = A: ohne Speicher führt die einzige Box — Halle 2 hat keinen Speicher und genau eine Box.",
+      "input": {
+        "anlage": "AN-2",
+        "boxen": [
+          {
+            "kennzeichen": "E-2′",
+            "name": "Box Halle 2 (neu)",
+            "liest": 2
+          }
+        ],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": "E-2′",
+        "grund": "einzige",
+        "text": "Box Halle 2 (neu) führt die Anlage",
+        "rollen": [
+          {
+            "box": "E-2′",
+            "text": "liest 2 Datenquellen · führt die Anlage"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zwei-boxen-ohne-speicher-nie-geraten",
+      "familie": "fuehrende_box",
+      "annahme": "Eine zweite Box in Werk Lindach (E-X) ist erfunden.",
+      "why": "E3 = A „nie geraten“ / §5.2: zwei Boxen ohne Speicher und ohne ausdrückliche Wahl — keine Box führt, und das Portal fragt. Bis zur Wahl läuft das Lesen weiter.",
+      "input": {
+        "anlage": "AN-3",
+        "boxen": [
+          {
+            "kennzeichen": "E-3",
+            "name": "Box Lindach",
+            "liest": 2
+          },
+          {
+            "kennzeichen": "E-X",
+            "name": "Zweite Box Lindach",
+            "liest": 0
+          }
+        ],
+        "speicher_box": null,
+        "gespeichert": null
+      },
+      "expected": {
+        "box": null,
+        "grund": "keine_wahl",
+        "text": "Welche Box führt diese Anlage? — Box wählen",
+        "rollen": [
+          {
+            "box": "E-3",
+            "text": "liest 2 Datenquellen · führt die Anlage nicht"
+          },
+          {
+            "box": "E-X",
+            "text": "liest keine Datenquelle · führt die Anlage nicht"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ausdrueckliche-wahl-ist-der-gespeicherte-fakt",
+      "familie": "fuehrende_box",
+      "annahme": "Eine zweite Box in Werk Lindach (E-X) ist erfunden.",
+      "why": "E3 = A: die führende Box ist ein gespeicherter Fakt — hat der Kundenadministrator gewählt, gilt seine Wahl.",
+      "input": {
+        "anlage": "AN-3",
+        "boxen": [
+          {
+            "kennzeichen": "E-3",
+            "name": "Box Lindach",
+            "liest": 2
+          },
+          {
+            "kennzeichen": "E-X",
+            "name": "Zweite Box Lindach",
+            "liest": 0
+          }
+        ],
+        "speicher_box": null,
+        "gespeichert": "E-3"
+      },
+      "expected": {
+        "box": "E-3",
+        "grund": "gespeichert",
+        "text": "Box Lindach führt die Anlage",
+        "rollen": [
+          {
+            "box": "E-3",
+            "text": "liest 2 Datenquellen · führt die Anlage"
+          },
+          {
+            "box": "E-X",
+            "text": "liest keine Datenquelle · führt die Anlage nicht"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a7-box-lindach-2-5-0-update-noetig",
+      "familie": "faehigkeiten",
+      "abnahme": "A7",
+      "why": "A7 / E8 = A / E12 = A: Box Lindach meldet 2.5.0, keinen Block `supports[]`. Die echte Tabelle (edge-capabilities.json) sagt: kein ausgeliefertes Release trägt die Fähigkeiten — also fehlen beide, und die Fläche nennt sie in der Reihenfolge der Tabelle. „2.5.0“ gehört zu keinem Release des Registers und beweist deshalb auch künftig nichts.",
+      "input": {
+        "box": "E-3",
+        "stand": {
+          "version": "2.5.0",
+          "release": null,
+          "supports": null
+        },
+        "register": []
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "tabelle-release-traegt-eine-faehigkeit",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "E12 = A: ohne `supports[]` entscheidet die Tabelle über die Ordnung des Release-Registers (release_seq, D5) — edge-2026.10.1 liegt nicht vor edge-2026.10.0, also ist die Rückmeldung je Datenquelle da. Die zweite Fähigkeit trägt noch kein Release. Die Fläche nennt das Release-Tag, nicht den Build.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.10.1-3bf8c038e1d2",
+          "release": "edge-2026.10.1",
+          "supports": null
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": null
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "vorhanden",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software edge-2026.10.1 · Update nötig für: Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "tabelle-release-zu-alt",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "E12 = A: edge-2026.09.4 liegt im Register VOR edge-2026.10.0 — die Fähigkeit fehlt.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.09.4-3bf8c038e1d2",
+          "release": "edge-2026.09.4",
+          "supports": null
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": "edge-2026.10.0"
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software edge-2026.09.4 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "stand-ohne-release-beweist-nichts",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "Hausregel `releaseIsRunning`: ein Bestandsbau mit nackter SHA gehört zu KEINEM Release. Er beweist keine Fähigkeit — sie fehlt, statt geraten „ist wohl aktuell“ (E12 C: „kann alles“ wäre falsch).",
+      "input": {
+        "stand": {
+          "version": "3bf8c038e1d2",
+          "release": null,
+          "supports": null
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": "edge-2026.10.0"
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software 3bf8c038e1d2 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "alle-faehigkeiten",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "§4.5: eine Box, deren Release beide Fähigkeiten trägt, zeigt „alle Fähigkeiten“.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.10.1-3bf8c038e1d2",
+          "release": "edge-2026.10.1",
+          "supports": null
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": "edge-2026.10.0"
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "vorhanden",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "vorhanden",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software edge-2026.10.1 · alle Fähigkeiten"
+      }
+    },
+    {
+      "name": "supports-uebersteuert-die-tabelle",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "E12 = A: meldet die Box `supports[]`, entscheidet ALLEIN ihre Meldung — auch gegen die Tabelle (etwa ein Sonderbau). Ein Wort, das die Tabelle nicht kennt („vlan_tagging“), wird verworfen und taucht nirgends auf.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.10.1-3bf8c038e1d2",
+          "release": "edge-2026.10.1",
+          "supports": [
+            "data_sources",
+            "vlan_tagging"
+          ]
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": "edge-2026.10.0"
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "vorhanden",
+            "nachweis": "supports"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "supports"
+          }
+        ],
+        "text": "Software edge-2026.10.1 · Update nötig für: Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "supports-leer-uebersteuert-auch",
+      "familie": "faehigkeiten",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "why": "E12 = A: ein LEERER Block `supports[]` ist eine Meldung („ich kann keine davon“) und übersteuert die Tabelle ebenfalls — nur ein FEHLENDER Block lässt die Tabelle sprechen.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.10.1-3bf8c038e1d2",
+          "release": "edge-2026.10.1",
+          "supports": []
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0",
+          "edge-2026.10.1"
+        ],
+        "tabelle": [
+          {
+            "code": "data_sources",
+            "name": "Rückmeldung je Datenquelle",
+            "ab_release": "edge-2026.10.0"
+          },
+          {
+            "code": "assignment_effective_at",
+            "name": "Zuständigkeit ab Zeitpunkt",
+            "ab_release": "edge-2026.10.0"
+          }
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "fehlt",
+            "nachweis": "supports"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "supports"
+          }
+        ],
+        "text": "Software edge-2026.10.1 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "supports-meldet-mehr-als-die-echte-tabelle",
+      "familie": "faehigkeiten",
+      "annahme": "Ein künftiges Release edge-2026.10.0 mit Block `supports[]` (AP-06 IP-18) ist angenommen.",
+      "why": "E12 = A: die echte Tabelle kennt noch kein Release mit den Fähigkeiten — eine Box, die sie in `supports[]` meldet, hat sie trotzdem. Die Meldung der Box ist der Fakt; die Tabelle deckt nur Boxen ab, die nichts melden.",
+      "input": {
+        "stand": {
+          "version": "edge-2026.10.0-3bf8c038e1d2",
+          "release": "edge-2026.10.0",
+          "supports": [
+            "data_sources",
+            "assignment_effective_at"
+          ]
+        },
+        "register": [
+          "edge-2026.09.4",
+          "edge-2026.10.0"
+        ]
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "vorhanden",
+            "nachweis": "supports"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "vorhanden",
+            "nachweis": "supports"
+          }
+        ],
+        "text": "Software edge-2026.10.0 · alle Fähigkeiten"
+      }
+    },
+    {
+      "name": "kein-stand-gemeldet",
+      "familie": "faehigkeiten",
+      "why": "Ohne gemeldeten Software-Stand ist keine Fähigkeit bewiesen — der Satz nennt den Stand „unbekannt“ und erfindet keine Nummer.",
+      "input": {
+        "stand": {
+          "version": null,
+          "release": null,
+          "supports": null
+        },
+        "register": []
+      },
+      "expected": {
+        "faehigkeiten": [
+          {
+            "code": "data_sources",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          },
+          {
+            "code": "assignment_effective_at",
+            "status": "fehlt",
+            "nachweis": "tabelle"
+          }
+        ],
+        "text": "Software-Stand unbekannt · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+      }
+    },
+    {
+      "name": "fehlerklasse-nicht-erreichbar",
+      "familie": "fehlerklasse",
+      "why": "E5 = A: `unreachable` ist ein Wort des Verbindungstests — die Box meldet es je Quelle.",
+      "input": {
+        "code": "unreachable",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": "unreachable",
+        "name": "nicht erreichbar"
+      }
+    },
+    {
+      "name": "fehlerklasse-zeitueberschreitung-heisst-no-answer",
+      "familie": "fehlerklasse",
+      "why": "E5 = A („Vokabular des Verbindungstests“): „Verbindung steht, keine Antwort im Zeitfenster“ (AP-06 §4.5) heißt im Verbindungstest `no_answer` — dieses Wort gilt.",
+      "input": {
+        "code": "no_answer",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": "no_answer",
+        "name": "Zeitüberschreitung"
+      }
+    },
+    {
+      "name": "fehlerklasse-budget-aus-dem-herzschlag",
+      "familie": "fehlerklasse",
+      "why": "E5 = A: das Vokabular des Verbindungstests plus `budget`.",
+      "input": {
+        "code": "budget",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": "budget",
+        "name": "Budget überschritten"
+      }
+    },
+    {
+      "name": "fehlerklasse-box-meldet-sich-nicht-aus-der-cloud",
+      "familie": "fehlerklasse",
+      "why": "E5 = A: „Box meldet sich nicht“ ergänzt die Cloud aus der letzten Status-Ankunft der Box — dasselbe Wort wie im Zustandsvokabular (uems-zustand-vectors.json).",
+      "input": {
+        "code": "box_meldet_sich_nicht",
+        "von": "cloud"
+      },
+      "expected": {
+        "klasse": "box_meldet_sich_nicht",
+        "name": "Box meldet sich nicht"
+      }
+    },
+    {
+      "name": "fehlerklasse-box-kann-ihr-schweigen-nicht-melden",
+      "familie": "fehlerklasse",
+      "why": "Ehrlichkeitsregel: eine Box, die meldet, schweigt nicht — meldet sie „box_meldet_sich_nicht“, wird das Wort verworfen. Nur die Cloud leitet es ab.",
+      "input": {
+        "code": "box_meldet_sich_nicht",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": null,
+        "name": null
+      }
+    },
+    {
+      "name": "fehlerklasse-cloud-sieht-kein-geraet",
+      "familie": "fehlerklasse",
+      "why": "Die Cloud sieht die Verbindung zum Gerät nicht — eine Geräte-Klasse kommt nur von der Box. Behauptete die Cloud sie, wäre die Ursache geraten.",
+      "input": {
+        "code": "unreachable",
+        "von": "cloud"
+      },
+      "expected": {
+        "klasse": null,
+        "name": null
+      }
+    },
+    {
+      "name": "fehlerklasse-exception-aus-dem-konzept-verworfen",
+      "familie": "fehlerklasse",
+      "why": "Widerspruch benannt: AP-06 §4.5 schreibt `exception`, der Verbindungstest kennt dafür `invalid_response`. E5 = A bindet an das Vokabular des Verbindungstests — `exception` steht außerhalb und wird verworfen.",
+      "input": {
+        "code": "exception",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": null,
+        "name": null
+      }
+    },
+    {
+      "name": "fehlerklasse-unbekanntes-wort-verworfen",
+      "familie": "fehlerklasse",
+      "why": "Hausregel: ein Wort außerhalb des geschlossenen Vokabulars wird beim Annehmen VERWORFEN, nie auf ein ähnliches abgebildet.",
+      "input": {
+        "code": "connection_refused",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": null,
+        "name": null
+      }
+    },
+    {
+      "name": "fehlerklasse-grossschreibung-wird-nicht-geraten",
+      "familie": "fehlerklasse",
+      "why": "Nie geraten: auch eine andere Schreibweise eines bekannten Worts wird verworfen, nicht angeglichen.",
+      "input": {
+        "code": "UNREACHABLE",
+        "von": "box"
+      },
+      "expected": {
+        "klasse": null,
+        "name": null
+      }
+    },
+    {
+      "name": "a12-vorschlagsliste-halle-1",
+      "familie": "bestand",
+      "abnahme": "A12",
+      "why": "A12 / §4.4 Nr. 8 / E1 = A: die Komponenten des Bestands werden nach Box + Protokoll + Adresse gruppiert — genau DQ-1…DQ-3. Der Wechselrichter und der über ihn gemeldete Speicher sind EINE Quelle (Steuerquelle), vier Unterzähler hinter dem Gateway EINE Quelle mit vier Geräte-IDs. Zuständig ist die heutige Box ab Reihenbeginn: das ist der EINZIGE Weg, auf dem ein Zeitraum in der Vergangenheit beginnt — er beschreibt, was die Box ohnehin gelesen hat, und wird erst mit der Bestätigung geschrieben.",
+      "input": {
+        "naechste_nummer": 1,
+        "komponenten": [
+          {
+            "kennzeichen": "K-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": true
+          },
+          {
+            "kennzeichen": "K-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-3",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-4",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-5",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 2,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-6",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 3,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-7",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_id": 4,
+            "in_betrieb_ab": "2024-03-12T00:00:00+01:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-1",
+              "K-2"
+            ],
+            "steuerquelle": true,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-3"
+            ],
+            "steuerquelle": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-3",
+            "anlage": "AN-1",
+            "box": "E-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.31:502",
+            "geraete_ids": [
+              1,
+              2,
+              3,
+              4
+            ],
+            "komponenten": [
+              "K-4",
+              "K-5",
+              "K-6",
+              "K-7"
+            ],
+            "steuerquelle": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "bestand-nummern-laufen-im-kundenbereich-weiter",
+      "familie": "bestand",
+      "why": "§4.2: das Kennzeichen ist eindeutig je Kundenbereich und wird automatisch vergeben — die Vorschläge für Werk Lindach zählen dort weiter, wo der Kundenbereich steht (DQ-6, DQ-7). Zwei Energiekarten einer WAGO-Steuerung sind EINE Quelle.",
+      "input": {
+        "naechste_nummer": 6,
+        "komponenten": [
+          {
+            "kennzeichen": "K-10.1",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.10:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-10.2",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.10:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
+            "steuerbar": false
+          },
+          {
+            "kennzeichen": "K-11",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.11:502",
+            "geraete_id": 1,
+            "in_betrieb_ab": "2026-10-15T00:00:00+02:00",
+            "steuerbar": false
+          }
+        ]
+      },
+      "expected": {
+        "vorschlaege": [
+          {
+            "kennzeichen": "DQ-6",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.10:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-10.1",
+              "K-10.2"
+            ],
+            "steuerquelle": false,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-10-15T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          },
+          {
+            "kennzeichen": "DQ-7",
+            "anlage": "AN-3",
+            "box": "E-3",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.30.11:502",
+            "geraete_ids": [
+              1
+            ],
+            "komponenten": [
+              "K-11"
+            ],
+            "steuerquelle": false,
+            "zeitraeume": [
+              {
+                "box": "E-3",
+                "effective_from": "2026-10-15T00:00:00+02:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

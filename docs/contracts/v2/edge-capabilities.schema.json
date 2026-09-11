@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/edge-capabilities.schema.json",
+  "title": "Fähigkeiten einer VoltPilot-Box je Software-Stand",
+  "description": "Die Tabelle „Software-Stand → Fähigkeiten“ (UEMS AP-06 E12 = A): welche Fähigkeit ab welchem Release einer VoltPilot-Box vorhanden ist. Sie gilt, bis die Box ihre Fähigkeiten selbst im Herzschlag meldet (`supports[]`); danach entscheidet ihre Meldung. Vertrag: data-source-assignment.md §7.",
+  "type": "object",
+  "required": ["schema_version", "herkunft", "stand", "faehigkeiten", "keine_faehigkeit"],
+  "additionalProperties": false,
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "const": "1.0"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Tabelle stammt: Konzeptpaket und Entscheide.",
+      "type": "string",
+      "minLength": 1
+    },
+    "stand": {
+      "description": "Tag der letzten Änderung der Tabelle.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "faehigkeiten": {
+      "description": "Die Fähigkeiten, deren Fehlen eine Fläche mit „Update nötig für …“ benennt — in der Reihenfolge, in der der Satz sie aufzählt.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/faehigkeit" }
+    },
+    "keine_faehigkeit": {
+      "description": "Was bewusst KEINE Fähigkeit ist, weil es ohne Zutun der Box vollständig funktioniert — dafür gibt es nie einen Hinweis „Update nötig“.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["was", "warum"],
+        "additionalProperties": false,
+        "properties": {
+          "was": { "type": "string", "minLength": 1 },
+          "warum": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "faehigkeit": {
+      "type": "object",
+      "required": ["code", "name", "ermoeglicht", "ohne", "ab_release"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Das Wort, mit dem die Box die Fähigkeit in `supports[]` meldet. Ein Wort außerhalb dieser Liste wird verworfen.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "name": {
+          "description": "Wie die Fähigkeit dem Kunden heißt, etwa im Satz „Update nötig für: Rückmeldung je Datenquelle“.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ermoeglicht": {
+          "description": "Was die Box mit dieser Fähigkeit kann.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ohne": {
+          "description": "Was eine Box ohne diese Fähigkeit tut — sie liest trotzdem genau das, was sie heute liest.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ab_release": {
+          "description": "Das erste Release (Tag `edge-JJJJ.MM.N` aus dem Release-Register), das die Fähigkeit trägt; null, solange noch kein ausgeliefertes Release sie hat.",
+          "type": ["string", "null"],
+          "pattern": "^edge-[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"
+        }
+      }
+    }
+  }
+}

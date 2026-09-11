@@ -420,7 +420,7 @@ export function steuert(e: SteuertEingang): SteuertErgebnis {
 // ───────────────────────────────────────────────────────────────────────── Text
 
 /** Datum und Uhrzeit eines Zeitpunkts in der Zeitzone des Standorts. */
-function teile(iso: string, zone: string): { tag: string; stunde: string; minute: string } {
+export function teile(iso: string, zone: string): { tag: string; stunde: string; minute: string } {
   // 'sv-SE' liefert die ISO-Schreibweise "2026-09-10 14:00:00"; das ist die
   // schon im Portal benutzte Art, eine Zeitzone anzuwenden (`anlage.ts`).
   const s = new Date(iso).toLocaleString('sv-SE', { timeZone: zone });

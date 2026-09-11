@@ -1,0 +1,580 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/data-source-assignment.schema.json",
+  "title": "Datenquelle und Zuständigkeit: welche Box liest welchen Erfassungsweg, ab wann",
+  "description": "Der Vertrag „Datenquelle und Zuständigkeit“ (UEMS AP-06 IP-1; Prosa in data-source-assignment.md). Er beschreibt die Datenquelle als eigenes Objekt (E1), ihre zeitgültige zuständige Box (E2, E9), die Regeln, nach denen eine Quelle angelegt oder einer anderen Box übergeben werden darf (Eindeutigkeit je Box, Doppel-Lesen nur als Vergleichsquelle — E10 = B, Erreichbarkeit vor Zuständigkeit — E11, nie rückwirkend), den Box-Tausch (E7), die führende Box einer Anlage (E3), die Fehlerklassen je Quelle (E5) und das Lesen der Fähigkeiten-Tabelle (E12, Datei edge-capabilities.json). Beschrieben wird die Vektor-Datei data-source-vectors.json, die beide Zwillinge (Java services/api .../uems/DatenquelleRegeln, TS frontend/portal/src/uemsDatenquelle.ts) gegeneinander pinnt; ihre Objekte ($defs) sind die Formen des Vertrags. Die Datei ist zugleich ihre eigene Fixture.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "referenzunternehmen",
+    "faehigkeiten_datei",
+    "zeitzone",
+    "familien",
+    "abnahmefaelle",
+    "protokolle",
+    "urteile",
+    "gruende",
+    "pruefreihenfolge_antrag",
+    "pruefreihenfolge_zeitraum",
+    "pruefreihenfolge_tausch",
+    "fehlerklassen",
+    "gruende_fuehrende_box",
+    "texte",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa — dieselbe wie im Vertrag.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "const": "1.0"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Regeln stammen: Konzeptpaket, Entscheide, Abnahmefälle.",
+      "type": "string",
+      "minLength": 1
+    },
+    "referenzunternehmen": {
+      "description": "Die Beispielwelt: jede Tatsache eines Falls über ein Ahrenberg-Objekt steht so in dieser Datei.",
+      "const": "./uems-referenzunternehmen.json"
+    },
+    "faehigkeiten_datei": {
+      "description": "Die Tabelle „Software-Stand → Fähigkeiten“, die ein Fall ohne eigene Tabelle liest.",
+      "const": "./edge-capabilities.json"
+    },
+    "zeitzone": {
+      "description": "Die Zeitzone, in der die Sätze Datum und Uhrzeit nennen (Zeitzone des Standorts).",
+      "type": "string",
+      "minLength": 1
+    },
+    "familien": {
+      "description": "Die acht Familien der Fälle.",
+      "type": "array",
+      "items": {
+        "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand"]
+      }
+    },
+    "abnahmefaelle": {
+      "description": "Die Abnahmefälle des AP-06-Konzepts (§7), die mindestens ein Fall pinnt.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^A[0-9]+$" }
+    },
+    "protokolle": {
+      "description": "Das geschlossene Vokabular der Protokolle, mit dem Wort, das der Kunde liest. Neue Protokolle kommen nur über den Katalog.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["code", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/$defs/code" },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "urteile": {
+      "description": "Die drei möglichen Antworten auf einen Antrag.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/urteil" }
+    },
+    "gruende": {
+      "description": "Jeder Grund, aus dem ein Antrag, ein Zeitraum oder ein Tausch nicht (oder erst nach Bestätigung) gilt — mit dem Satz, den der Kunde liest. Platzhalter: {box} Name der Box, {kennzeichen} die andere Quelle, {zeitpunkt} Datum und Uhrzeit, {fehlerklasse} der Satz der Fehlerklasse.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["code", "urteil", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/$defs/code" },
+          "urteil": { "$ref": "#/$defs/urteil" },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "pruefreihenfolge_antrag": {
+      "description": "In dieser Reihenfolge wird ein Antrag geprüft; der ERSTE zutreffende Grund entscheidet.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/code" }
+    },
+    "pruefreihenfolge_zeitraum": {
+      "description": "In dieser Reihenfolge wird ein neuer Zeitraum gegen die gespeicherten geprüft.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/code" }
+    },
+    "pruefreihenfolge_tausch": {
+      "description": "In dieser Reihenfolge wird ein Box-Tausch geprüft.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/code" }
+    },
+    "fehlerklassen": {
+      "description": "Das geschlossene Vokabular, warum eine Quelle nicht gelesen wird: die Wörter des Verbindungstests, dazu „Budget überschritten“ und „Aufbau geändert“ von der Box sowie „Box meldet sich nicht“, das nur die Cloud ableitet. Ein anderes Wort wird beim Annehmen verworfen.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "von", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "code": { "$ref": "#/$defs/code" },
+          "name": {
+            "description": "Wie die Klasse dem Kunden heißt.",
+            "type": "string",
+            "minLength": 1
+          },
+          "von": {
+            "description": "Wer die Klasse feststellen kann: die Box (sie sieht das Gerät) oder die Cloud (sie sieht nur, ob die Box sich meldet).",
+            "enum": ["box", "cloud"]
+          },
+          "text": {
+            "description": "Der Satz, den der Kunde liest. Platzhalter: {box}, {adresse}.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "gruende_fuehrende_box": {
+      "description": "Woher die führende Box einer Anlage kommt, in Vorrang-Reihenfolge: ausdrücklich gewählt → Box des Speichers → einzige Box → keine (dann fragt das Portal).",
+      "type": "array",
+      "items": { "enum": ["gespeichert", "speicher", "einzige", "keine_wahl"] }
+    },
+    "texte": {
+      "description": "Die übrigen Sätze und Satzteile, die beide Zwillinge gleich bilden.",
+      "type": "object",
+      "required": [
+        "erlaubt",
+        "hinweis_anderes_netz",
+        "hinweis_vergleichsquelle",
+        "ausgebaut",
+        "fuehrt",
+        "keine_wahl",
+        "rolle_fuehrt",
+        "rolle_fuehrt_nicht",
+        "anzahl_null",
+        "anzahl_eins",
+        "anzahl_viele",
+        "software",
+        "software_unbekannt",
+        "alle_faehigkeiten",
+        "update_noetig"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "string" },
+        "hinweis_anderes_netz": { "type": "string" },
+        "hinweis_vergleichsquelle": { "type": "string" },
+        "ausgebaut": { "type": "string" },
+        "fuehrt": { "type": "string" },
+        "keine_wahl": { "type": "string" },
+        "rolle_fuehrt": { "type": "string" },
+        "rolle_fuehrt_nicht": { "type": "string" },
+        "anzahl_null": { "type": "string" },
+        "anzahl_eins": { "type": "string" },
+        "anzahl_viele": { "type": "string" },
+        "software": { "type": "string" },
+        "software_unbekannt": { "type": "string" },
+        "alle_faehigkeiten": { "type": "string" },
+        "update_noetig": { "type": "string" }
+      }
+    },
+    "cases": {
+      "description": "Die Fälle. Jeder ist ein Eingang und das GENAU EINE Ergebnis, das beide Zwillinge daraus ziehen müssen.",
+      "type": "array",
+      "minItems": 12,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "urteil": {
+      "description": "erlaubt · erst nach Bestätigung · abgelehnt.",
+      "enum": ["erlaubt", "bestaetigung_noetig", "abgelehnt"]
+    },
+    "zeitpunkt": {
+      "description": "Ein Zeitpunkt mit Zeitzonen-Versatz (ISO 8601), nie eine nackte Ortszeit.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "zeitpunktOderNull": {
+      "description": "Ein Zeitpunkt, oder null für „offen“.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "boxKennzeichen": {
+      "description": "Das Kennzeichen einer Box (E-1, E-2′ …).",
+      "type": "string",
+      "pattern": "^E-[0-9A-Z]+′?$"
+    },
+    "boxKennzeichenOderNull": {
+      "type": ["string", "null"],
+      "pattern": "^E-[0-9A-Z]+′?$"
+    },
+    "quellenKennzeichen": {
+      "description": "Das Kennzeichen einer Datenquelle (DQ-1 …), eindeutig je Kundenbereich.",
+      "type": "string",
+      "pattern": "^DQ-[0-9]+′?$"
+    },
+    "anlagenKennzeichen": {
+      "type": "string",
+      "pattern": "^AN-[0-9]+$"
+    },
+    "releaseTag": {
+      "description": "Ein Release des Release-Registers (edge-JJJJ.MM.N).",
+      "type": "string",
+      "pattern": "^edge-[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"
+    },
+    "zeitraum": {
+      "description": "Ein Zeitraum, in dem eine Box eine Datenquelle liest. Der Beginn gehört dazu, das Ende nicht; ein offenes Ende heißt: bis auf Weiteres. Beides auf die volle Minute.",
+      "type": "object",
+      "required": ["box", "effective_from", "effective_to"],
+      "additionalProperties": false,
+      "properties": {
+        "box": { "$ref": "#/$defs/boxKennzeichen" },
+        "effective_from": { "$ref": "#/$defs/zeitpunkt" },
+        "effective_to": { "$ref": "#/$defs/zeitpunktOderNull" }
+      }
+    },
+    "quelle": {
+      "description": "Eine bestehende Datenquelle: der Erfassungsweg mit Kennzeichen, Anlage, Protokoll, Adresse, dokumentierter Netzlage und den Zeiträumen ihrer zuständigen Box.",
+      "type": "object",
+      "required": ["kennzeichen", "anlage", "protokoll", "adresse", "netz", "steuerquelle", "mehrere_leser", "zeitraeume"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/quellenKennzeichen" },
+        "anlage": {
+          "description": "Die Anlage, in der die Geräte hinter der Quelle verdrahtet sind — sie darf von der Heimat-Anlage der lesenden Box abweichen.",
+          "$ref": "#/$defs/anlagenKennzeichen"
+        },
+        "protokoll": {
+          "description": "Wie die Box die Quelle liest.",
+          "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"]
+        },
+        "adresse": {
+          "description": "Wo die Box die Quelle findet — Host:Port, Themenfilter, Adresse der Auskunft oder die Kennung der Ladestation. Die Adresse ist ein Parameter, nie die Identität.",
+          "type": "string",
+          "minLength": 1
+        },
+        "netz": {
+          "description": "Das dokumentierte Netz der Quelle (Bezeichnung und Adressbereich, Erhebungsbogen D1/D2); null, wenn es noch nicht eingetragen ist.",
+          "type": ["string", "null"]
+        },
+        "steuerquelle": {
+          "description": "Ob hinter dieser Quelle die steuernde Komponente der Anlage antwortet.",
+          "type": "boolean"
+        },
+        "mehrere_leser": {
+          "description": "Ob das Gerät laut Katalog einen zweiten Leser verträgt. Vorgabe: nein — ein Leser.",
+          "type": "boolean"
+        },
+        "zeitraeume": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/zeitraum" }
+        }
+      }
+    },
+    "kandidat": {
+      "description": "Eine Quelle, die neu angelegt werden soll — noch ohne Kennzeichen.",
+      "type": "object",
+      "required": ["protokoll", "adresse", "netz", "geraete_ids", "mehrere_leser"],
+      "additionalProperties": false,
+      "properties": {
+        "protokoll": {
+          "description": "Das gewählte Protokoll — ein Wort außerhalb des Vokabulars wird abgelehnt.",
+          "$ref": "#/$defs/code"
+        },
+        "adresse": { "type": "string", "minLength": 1 },
+        "netz": { "type": ["string", "null"] },
+        "geraete_ids": {
+          "description": "Die Geräte hinter der Quelle (Geräte-ID je Gerät). Sie unterscheiden Geräte, nie Quellen.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "mehrere_leser": { "type": "boolean" }
+      }
+    },
+    "pruefung": {
+      "description": "Das Ergebnis der Erreichbarkeitsprüfung: von welcher Box, wann, und ob sie bestanden ist („ok“) oder mit welcher Fehlerklasse sie scheiterte. null: noch nicht geprüft.",
+      "type": ["object", "null"],
+      "required": ["box", "ergebnis", "zeitpunkt"],
+      "additionalProperties": false,
+      "properties": {
+        "box": { "$ref": "#/$defs/boxKennzeichen" },
+        "ergebnis": { "$ref": "#/$defs/code" },
+        "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+    "antrag": {
+      "description": "Der Wunsch: eine neue Quelle anlegen oder eine bestehende einer anderen Box übergeben — ab einem Zeitpunkt.",
+      "type": "object",
+      "required": ["art", "box", "effective_from", "pruefung", "vergleich_bestaetigt"],
+      "additionalProperties": false,
+      "properties": {
+        "art": { "enum": ["anlegen", "wechsel"] },
+        "quelle": {
+          "description": "Beim Wechsel: welche bestehende Quelle.",
+          "$ref": "#/$defs/quellenKennzeichen"
+        },
+        "kandidat": { "$ref": "#/$defs/kandidat" },
+        "box": {
+          "description": "Die Box, die künftig lesen soll.",
+          "$ref": "#/$defs/boxKennzeichen"
+        },
+        "effective_from": {
+          "description": "Ab wann — jetzt oder später, auf die volle Minute.",
+          "$ref": "#/$defs/zeitpunkt"
+        },
+        "pruefung": { "$ref": "#/$defs/pruefung" },
+        "vergleich_bestaetigt": {
+          "description": "Ob der Kunde ausdrücklich bestätigt hat, das Gerät als gekennzeichnete Vergleichsquelle ein zweites Mal zu lesen.",
+          "type": "boolean"
+        }
+      }
+    },
+    "boxEintrag": {
+      "type": "object",
+      "required": ["kennzeichen", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/boxKennzeichen" },
+        "name": { "type": "string", "minLength": 1 },
+        "liest": {
+          "description": "Wie viele Datenquellen die Box zum Zeitpunkt liest.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tausch": {
+      "description": "Box tauschen: eine neue Box wird Nachfolgerin der alten — ab einem Zeitpunkt.",
+      "type": "object",
+      "required": ["alt", "neu", "zeitpunkt"],
+      "additionalProperties": false,
+      "properties": {
+        "alt": { "$ref": "#/$defs/rolle" },
+        "neu": { "$ref": "#/$defs/boxKennzeichen" },
+        "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+    "rolle": {
+      "description": "Die Rolle einer Box: ihre Heimat-Anlage und die Anlagen, die sie führt.",
+      "type": "object",
+      "required": ["kennzeichen", "heimat_anlage", "fuehrend_fuer"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/boxKennzeichen" },
+        "heimat_anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+        "fuehrend_fuer": { "type": "array", "items": { "$ref": "#/$defs/anlagenKennzeichen" } }
+      }
+    },
+    "stand": {
+      "description": "Was die Box über ihre Software meldet: den Stempel, das Release, zu dem er gehört (oder null), und — ab einem künftigen Release — ihre Fähigkeiten selbst.",
+      "type": "object",
+      "required": ["version", "release", "supports"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": ["string", "null"] },
+        "release": {
+          "type": ["string", "null"],
+          "pattern": "^edge-[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"
+        },
+        "supports": {
+          "description": "null: die Box meldet keinen Block. Eine Liste (auch eine leere) ist ihre Meldung.",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "tabellenEintrag": {
+      "type": "object",
+      "required": ["code", "name", "ab_release"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "$ref": "#/$defs/code" },
+        "name": { "type": "string", "minLength": 1 },
+        "ab_release": {
+          "type": ["string", "null"],
+          "pattern": "^edge-[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"
+        }
+      }
+    },
+    "bestandKomponente": {
+      "description": "Eine vorhandene Komponente mit ihrem heutigen Anschluss — der Rohstoff der Vorschlagsliste.",
+      "type": "object",
+      "required": ["kennzeichen", "anlage", "box", "protokoll", "adresse", "geraete_id", "in_betrieb_ab", "steuerbar"],
+      "additionalProperties": false,
+      "properties": {
+        "kennzeichen": { "type": "string", "pattern": "^K-[0-9.]+$" },
+        "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+        "box": { "$ref": "#/$defs/boxKennzeichen" },
+        "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"] },
+        "adresse": { "type": "string", "minLength": 1 },
+        "geraete_id": { "type": ["integer", "null"], "minimum": 0 },
+        "in_betrieb_ab": { "$ref": "#/$defs/zeitpunkt" },
+        "steuerbar": { "type": "boolean" }
+      }
+    },
+    "eingang": {
+      "description": "Die Fakten eines Falls. Jede Familie liest ihre eigenen Felder; ein Feld außerhalb dieser Liste ist ein Fehler.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string", "minLength": 1 },
+        "boxen": { "type": "array", "items": { "$ref": "#/$defs/boxEintrag" } },
+        "quellen": { "type": "array", "items": { "$ref": "#/$defs/quelle" } },
+        "antrag": { "$ref": "#/$defs/antrag" },
+        "quelle": { "$ref": "#/$defs/quellenKennzeichen" },
+        "bestehend": { "type": "array", "items": { "$ref": "#/$defs/zeitraum" } },
+        "neu": { "$ref": "#/$defs/zeitraum" },
+        "zeitraeume": { "type": "array", "items": { "$ref": "#/$defs/zeitraum" } },
+        "zeitpunkte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/zeitpunkt" } },
+        "tausch": { "$ref": "#/$defs/tausch" },
+        "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+        "speicher_box": { "$ref": "#/$defs/boxKennzeichenOderNull" },
+        "gespeichert": { "$ref": "#/$defs/boxKennzeichenOderNull" },
+        "box": { "$ref": "#/$defs/boxKennzeichen" },
+        "stand": { "$ref": "#/$defs/stand" },
+        "register": {
+          "description": "Das Release-Register in seiner Ordnung (älteste zuerst).",
+          "type": "array",
+          "items": { "$ref": "#/$defs/releaseTag" }
+        },
+        "tabelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tabellenEintrag" } },
+        "code": { "type": "string", "minLength": 1 },
+        "von": { "enum": ["box", "cloud"] },
+        "naechste_nummer": { "type": "integer", "minimum": 1 },
+        "komponenten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/bestandKomponente" } }
+      }
+    },
+    "ergebnis": {
+      "description": "Das eine Ergebnis eines Falls. Jede Familie füllt ihre eigenen Felder.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "urteil": { "$ref": "#/$defs/urteil" },
+        "grund": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$" },
+        "text": { "type": ["string", "null"] },
+        "hinweis": { "type": ["string", "null"] },
+        "vergleichsquelle": { "type": "boolean" },
+        "zeitraeume": { "type": ["array", "null"], "items": { "$ref": "#/$defs/zeitraum" } },
+        "gueltig": { "type": "boolean" },
+        "boxen": { "type": "array", "items": { "$ref": "#/$defs/boxKennzeichenOderNull" } },
+        "quellen": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "zeitraeume"],
+            "additionalProperties": false,
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/quellenKennzeichen" },
+              "zeitraeume": { "type": "array", "items": { "$ref": "#/$defs/zeitraum" } }
+            }
+          }
+        },
+        "neu": {
+          "type": ["object", "null"],
+          "required": ["kennzeichen", "heimat_anlage", "fuehrend_fuer"],
+          "additionalProperties": false,
+          "properties": {
+            "kennzeichen": { "$ref": "#/$defs/boxKennzeichen" },
+            "heimat_anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+            "fuehrend_fuer": { "type": "array", "items": { "$ref": "#/$defs/anlagenKennzeichen" } }
+          }
+        },
+        "box": { "$ref": "#/$defs/boxKennzeichenOderNull" },
+        "rollen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["box", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "box": { "$ref": "#/$defs/boxKennzeichen" },
+              "text": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "faehigkeiten": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "status", "nachweis"],
+            "additionalProperties": false,
+            "properties": {
+              "code": { "$ref": "#/$defs/code" },
+              "status": { "enum": ["vorhanden", "fehlt"] },
+              "nachweis": {
+                "description": "Woher das Urteil kommt: aus der Meldung der Box oder aus der Tabelle.",
+                "enum": ["supports", "tabelle"]
+              }
+            }
+          }
+        },
+        "klasse": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "vorschlaege": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "anlage", "box", "protokoll", "adresse", "geraete_ids", "komponenten", "steuerquelle", "zeitraeume"],
+            "additionalProperties": false,
+            "properties": {
+              "kennzeichen": { "$ref": "#/$defs/quellenKennzeichen" },
+              "anlage": { "$ref": "#/$defs/anlagenKennzeichen" },
+              "box": { "$ref": "#/$defs/boxKennzeichen" },
+              "protokoll": { "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"] },
+              "adresse": { "type": "string" },
+              "geraete_ids": { "type": "array", "items": { "type": "integer" } },
+              "komponenten": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "steuerquelle": { "type": "boolean" },
+              "zeitraeume": { "type": "array", "items": { "$ref": "#/$defs/zeitraum" } }
+            }
+          }
+        }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "required": ["name", "familie", "why", "input", "expected"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Eindeutiger Name des Falls.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "familie": {
+          "enum": ["antrag", "zeitraeume", "zustaendig", "box_tausch", "fuehrende_box", "faehigkeiten", "fehlerklasse", "bestand"]
+        },
+        "abnahme": {
+          "description": "Der Abnahmefall des Konzepts, den dieser Fall pinnt.",
+          "type": "string",
+          "pattern": "^A[0-9]+$"
+        },
+        "annahme": {
+          "description": "Was der Fall erfindet, das nicht in der Referenzdatei steht — Pflicht, sobald er ein Objekt oder einen Wert außerhalb der Referenz benutzt.",
+          "type": "string",
+          "minLength": 1
+        },
+        "why": {
+          "description": "Warum der Fall in der Datei steht.",
+          "type": "string",
+          "minLength": 1
+        },
+        "input": { "$ref": "#/$defs/eingang" },
+        "expected": { "$ref": "#/$defs/ergebnis" }
+      }
+    }
+  }
+}

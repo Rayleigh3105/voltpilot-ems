@@ -1,0 +1,65 @@
+{
+  "_comment": [
+    "Die Tabelle „Software-Stand → Fähigkeiten“ einer VoltPilot-Box (UEMS AP-06 E12 = A,",
+    "Vertrag: docs/contracts/v2/data-source-assignment.md §7). Sie ist DATEN, keine Codezeile je",
+    "Version: eine neue Fähigkeit ist eine neue Zeile, ein neues Release, das sie trägt, ein",
+    "ausgefülltes `ab_release`.",
+    "",
+    "WIE SIE GELESEN WIRD (Zwillinge Java services/api .../uems/DatenquelleRegeln.faehigkeiten ⟷",
+    "TS frontend/portal/src/uemsDatenquelle.ts faehigkeiten, Fälle der Familie `faehigkeiten` in",
+    "data-source-vectors.json):",
+    "  1. Meldet die Box einen Block `supports[]` im Herzschlag (ab AP-06 IP-18), entscheidet",
+    "     ALLEIN er — auch ein leerer Block übersteuert die Tabelle. Ein Wort, das hier nicht",
+    "     steht, wird verworfen (geschlossenes Vokabular), nie geraten.",
+    "  2. Sonst entscheidet diese Tabelle: die Box hat eine Fähigkeit, wenn ihr gemeldeter Stand",
+    "     zu einem Release des Release-Registers (`edge_release`) gehört (Präfix-Regel",
+    "     `RolloutStates.releaseIsRunning`) und dieses Release in der Ordnung des Registers",
+    "     (`release_seq`, Captain-Entscheid D5 — nie ein Zeichenketten- oder SHA-Vergleich) NICHT",
+    "     VOR `ab_release` liegt.",
+    "  3. Ein Stand, der zu keinem Release gehört (nackte SHA eines Bestandsbaus, „dev“, das",
+    "     semver-Beispiel „2.5.0“ des Referenzunternehmens) beweist keine Fähigkeit: sie FEHLT,",
+    "     und die Fläche sagt „Update nötig für …“ — nie „kann alles“ (E12 C).",
+    "",
+    "⚠ STAND HEUTE: `ab_release` ist bei BEIDEN Fähigkeiten null — kein ausgeliefertes Release",
+    "trägt sie; bis dahin fährt jede Box das Übergangs-Verhalten (E8: die Cloud stellt zum",
+    "Zeitpunkt zu, die Quelle zeigt „Box meldet noch nicht je Quelle“). Wer das Release baut,",
+    "das eine Fähigkeit mitbringt (AP-06 IP-13 für `data_sources`), trägt sein Tag hier ein.",
+    "",
+    "Was hier BEWUSST fehlt, steht in `keine_faehigkeit`: Dinge, die ohne Box-Fähigkeit",
+    "vollständig funktionieren — für sie gibt es keinen Hinweis „Update nötig“."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./edge-capabilities.schema.json",
+  "herkunft": "UEMS AP-06 §4.1 (Fähigkeit einer Box), §4.5 (Fähigkeiten und das Verhalten ohne sie), Entscheide E8 = A und E12 = A (Captain, 10.09.2026); Abnahmefall A7.",
+  "stand": "2026-09-11",
+  "faehigkeiten": [
+    {
+      "code": "data_sources",
+      "name": "Rückmeldung je Datenquelle",
+      "ermoeglicht": "Die Box meldet im Herzschlag je Datenquelle, ob sie liest, seit wann nicht und warum (Block `data_sources[]`, Fehlerklasse aus dem geschlossenen Vokabular).",
+      "ohne": "Rückmeldung nur je Box und die heutige Gesundheit je Messwert; die Datenquelle zeigt „Box meldet noch nicht je Quelle“ und nennt nie eine Ursache.",
+      "ab_release": null
+    },
+    {
+      "code": "assignment_effective_at",
+      "name": "Zuständigkeit ab Zeitpunkt",
+      "ermoeglicht": "Die Box bekommt eine Zuständigkeit mit Gültigkeitsbeginn zugestellt und liest erst ab diesem Zeitpunkt.",
+      "ohne": "Die Cloud stellt zum Zeitpunkt zu; die Lücke bei einer Übergabe kann um eine Herzschlag-Kadenz größer sein — sichtbar und benannt.",
+      "ab_release": null
+    }
+  ],
+  "keine_faehigkeit": [
+    {
+      "was": "Zustellung je Box",
+      "warum": "E4: die Cloud setzt den Registry-Push jeder Box aus deren Zuständigkeiten zusammen — jede Box, auch eine alte, liest, was ihr zugestellt wird."
+    },
+    {
+      "was": "Nachfolger-Anmeldung",
+      "warum": "E7: der Box-Tausch läuft über Portal und Cloud; die neue Box meldet sich normal an und die Cloud hängt um."
+    },
+    {
+      "was": "Herkunft je Wert: lesende Box",
+      "warum": "Ohne Box-Kennung am Wert bleibt die Herkunft aus dem Topic richtig, weil die Box im Topic steht (AP-07)."
+    }
+  ]
+}

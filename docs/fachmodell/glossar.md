@@ -222,6 +222,8 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 
 > **Verfeinert durch AP-06 E10:** Zwei Boxen dürfen dasselbe Gerät nur als gekennzeichnete Vergleichsquelle lesen, nach ausdrücklicher Bestätigung — und nie bei Protokollen oder Vorlagen, die nur einen Leser vertragen.
 
+> **Verfeinert durch AP-06 E1/E2/E5/E12:** Identität, Zuständigkeitszeiträume (halboffen auf die Minute, nie überlappend, nie rückwirkend, beendet statt überschrieben), Doppel-Lesen, Fehlerklassen je Quelle und die Tabelle „Software-Stand → Fähigkeiten“ sind Vertrag: `docs/contracts/v2/data-source-assignment.md` mit `data-source-vectors.json` und `edge-capabilities.json` (AP-06 IP-1, Zwillinge `uems/DatenquelleRegeln` ⟷ `uemsDatenquelle.ts`).
+
 > **Verfeinert durch AP-04 E4 · AP-05 E5:** Wandlerfaktor und Einstellungen hängen an der QUELLE (Gerät bzw. Gerät + Kanal), zeitgültig als Fassung; die Messstelle bleibt hardwarefrei.
 
 ## Gerät (physisches Messgerät, Controller, Energiekarte)

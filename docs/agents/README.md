@@ -174,6 +174,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [UEMS-Herkunftsvertrag je Messwert als Vertrag mit Vektoren](root/uems-herkunftsvertrag-je-messwert-als-v.md)
 - [UEMS-Ortsbaum: zeitgültige Zuordnungen als Vertrag mit Vektoren](root/uems-ortsbaum-zeitgueltige-zuordnungen-a.md)
 - [UEMS-Messstellen-Vertrag: Kennzeichen, Größen, Quellenbindung und Stellung als Vertrag mit Vektoren](root/uems-messstellen-vertrag-kennzeichen-gro.md)
+- [UEMS-Datenquelle und Zuständigkeit als Vertrag mit Vektoren](root/uems-datenquelle-und-zustaendigkeit-als.md)
 - [Verbrauchsmanagement v1 — Paket 1: die Verbraucher-Zone LESEND](root/verbrauchsmanagement-v1-paket-1-die-verb.md)
 - [Verbrauchsmanagement v1 — Paket 2: die Steuerart SCHREIBEN](root/verbrauchsmanagement-v1-paket-2-die-steu.md)
 - [Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts](root/verbrauchsmanagement-v1-paket-3b-laden-p.md)
