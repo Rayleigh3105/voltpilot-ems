@@ -1,0 +1,596 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/uems-referenzunternehmen.schema.json",
+  "title": "UEMS-Referenzunternehmen (Kunststoffwerk Ahrenberg GmbH)",
+  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 21 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben tragen „gültig ab“ (einschließend) und „gültig bis“ (ausschließend); eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, eine zuständige Box je Datenquelle und Zeitpunkt — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "zuordnungen", "zeitachse"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert." },
+    "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
+    "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
+    "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
+    "_herkunft": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Je Abschnitt: aus welchem Konzeptpaket die Angaben stammen und was bewusst weggelassen wurde." },
+
+    "unternehmen": {
+      "type": "object", "additionalProperties": false,
+      "description": "Das Unternehmen, dem alles darunter gehört. Genau eines je Kundenbereich.",
+      "required": ["kennzeichen", "name", "zeitzone", "kunde_seit", "ems_seit", "momentaufnahme"],
+      "properties": {
+        "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kennzeichen des Kundenbereichs." },
+        "name": { "type": "string", "description": "Vollständiger Firmenname; steht im Berichtskopf." },
+        "kurzname": { "type": ["string", "null"], "description": "Kurzform für Pfad und Kopfzeile; leer heißt „Name gekürzt“." },
+        "rechtsform": { "type": ["string", "null"], "description": "Nur für den Berichtskopf." },
+        "branche": { "type": ["string", "null"], "description": "Was das Unternehmen herstellt." },
+        "mitarbeitende": { "type": ["integer", "null"], "minimum": 0, "description": "Zahl der Beschäftigten." },
+        "zeitzone": { "type": "string", "description": "Vorbelegung für jeden neuen Standort; bestimmt Tages- und Monatsgrenzen der Auswertung." },
+        "geschaeftsjahr": { "type": ["string", "null"], "description": "Zeitraum, auf den sich Jahresberichte beziehen." },
+        "sitz": { "$ref": "#/$defs/adresse", "description": "Anschrift des Firmensitzes; reine Anzeige." },
+        "kunde_seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann das Unternehmen VoltPilot nutzt." },
+        "kunde_seit_grund": { "type": ["string", "null"], "description": "Womit die Kundenbeziehung begann." },
+        "ems_seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann das Unternehmens-Energiemanagement läuft." },
+        "momentaufnahme": { "$ref": "#/$defs/zeitpunkt", "description": "Der Zeitpunkt, für den alle Momentanwerte dieser Datei gelten. Jede Abnahme, die „jetzt“ meint, meint diesen Zeitpunkt." },
+        "momentaufnahme_beschreibung": { "type": ["string", "null"], "description": "Derselbe Zeitpunkt in Kundensprache." }
+      }
+    },
+
+    "standorte": {
+      "type": "array", "minItems": 1,
+      "description": "Räumlich abgegrenzte Orte des Unternehmens mit eigener Anschrift. Der Standort ist die Rechte- und die Berichts-Einheit.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "adresse", "zeitzone", "nutzung", "bezugsflaechen", "aktiv_seit"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Automatisch vergebenes Kurzzeichen (ST-1, ST-2 …); erscheint in Listen, Exporten und Berichten, nie in Überschriften." },
+          "name": { "type": "string", "description": "Name, den der Kunde vergibt." },
+          "adresse": { "$ref": "#/$defs/adresse", "description": "Anschrift des Standorts." },
+          "zeitzone": { "type": "string", "description": "Zeitzone des Standorts; Gebäude und Bereiche erben sie." },
+          "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu der Standort dient; die erste Auswahl ist die Hauptnutzung." },
+          "nutzung_beschreibung": { "type": ["string", "null"], "description": "Die Nutzung, wie das Fachmodell sie in Prosa nennt." },
+          "bezugsflaechen": { "type": "array", "items": { "$ref": "#/$defs/flaeche" }, "description": "Bezugsfläche mit Gültigkeit; Kennzahlen je Quadratmeter rechnen mit der Fläche, die im Berichtszeitraum galt." },
+          "lage": { "$ref": "#/$defs/lage", "description": "Punkt auf der Karte; belegt beim Zuordnen einer Anlage ohne eigenen Punkt deren Feld vor." },
+          "notiz": { "type": ["string", "null"], "description": "Freie Bemerkung des Kunden." },
+          "gebaeudeebene": { "type": "boolean", "description": "Ob dieser Standort die Gebäudeebene nutzt; ohne sie hängen Bereiche direkt am Standort." },
+          "aktiv_seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann der Standort eingerichtet ist." }
+        }
+      }
+    },
+
+    "gebaeude": {
+      "type": "array",
+      "description": "Bauwerke an einem Standort. Zuordnungsziel für Messstellen und Bezugsflächen, nie eine Versorgungsgrenze.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "standort", "name", "nutzung", "bezugsflaechen"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Automatisches Kurzzeichen (G-1, G-2 …)." },
+          "standort": { "$ref": "#/$defs/kennzeichen", "description": "Standort, an dem das Gebäude steht." },
+          "name": { "type": "string", "description": "Name des Gebäudes, eindeutig je Standort." },
+          "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu das Gebäude dient." },
+          "nutzung_beschreibung": { "type": ["string", "null"], "description": "Die Nutzung in Prosa." },
+          "baujahr": { "type": ["integer", "null"], "description": "Jahr der Errichtung." },
+          "bezugsflaechen": { "type": "array", "items": { "$ref": "#/$defs/flaeche" }, "description": "Fläche mit Gültigkeit; ein Anbau beendet die alte Fläche und beginnt eine neue." }
+        }
+      }
+    },
+
+    "bereiche": {
+      "type": "array",
+      "description": "Räumliche Teile eines Gebäudes oder eines Standorts — eine Halle, eine Etage, eine Außenfläche.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "eltern_art", "eltern", "name"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Automatisches Kurzzeichen (B-1, B-2 …)." },
+          "eltern_art": { "type": "string", "enum": ["gebaeude", "standort"], "description": "Ob der Bereich an einem Gebäude oder direkt am Standort hängt." },
+          "eltern": { "$ref": "#/$defs/kennzeichen", "description": "Gebäude oder Standort, zu dem der Bereich gehört." },
+          "name": { "type": "string", "description": "Name des Bereichs." },
+          "beschreibung": { "type": ["string", "null"], "description": "Was in diesem Bereich steht." },
+          "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu der Bereich dient." }
+        }
+      }
+    },
+
+    "prozesse": {
+      "type": "array",
+      "description": "Wofür Energie eingesetzt wird. Ein Prozess ist unabhängig vom Ort und darf über mehrere Gebäude und Anlagen laufen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen des Prozesses (P-1 …)." },
+          "name": { "type": "string", "description": "Name des Prozesses in Kundensprache." },
+          "eltern": { "type": ["string", "null"], "description": "Übergeordneter Prozess, wenn der Kunde staffelt." },
+          "hinweis": { "type": ["string", "null"], "description": "Wo der Prozess läuft und was ihn besonders macht." }
+        }
+      }
+    },
+
+    "kostenstellen": {
+      "type": "array",
+      "description": "Wem der Verbrauch zugerechnet wird. Eine Kostenstelle hat eine Gültigkeit: wird sie aufgeteilt, behalten alte Berichte die alte.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "gueltig_ab"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Nummer der Kostenstelle, wie der Kunde sie führt." },
+          "name": { "type": "string", "description": "Name der Kostenstelle." },
+          "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann es diese Kostenstelle gibt." },
+          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+          "hinweis": { "type": ["string", "null"], "description": "Was mit der Kostenstelle geschehen ist." }
+        }
+      }
+    },
+
+    "netzanschluesse": {
+      "type": "array",
+      "description": "Die Übergabepunkte zum Netzbetreiber mit ihren kaufmännischen Eckdaten.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "standort", "name", "malo", "messung"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen des Anschlusses (NA-1 …)." },
+          "standort": { "$ref": "#/$defs/kennzeichen", "description": "Standort, an dem der Anschluss liegt." },
+          "name": { "type": "string", "description": "Name des Anschlusses in Kundensprache." },
+          "malo": { "type": "string", "description": "Marktlokations-Nummer (hier erfunden)." },
+          "netzbetreiber": { "type": ["string", "null"], "description": "Wer das Netz betreibt." },
+          "anschluss_kva": { "type": ["number", "null"], "description": "Anschlussleistung in Kilovoltampere." },
+          "vereinbart_kw": { "type": ["number", "null"], "description": "Vertraglich vereinbarte Höchstleistung in Kilowatt." },
+          "messung": { "type": "string", "description": "Art der Messung (RLM = registrierende Leistungsmessung)." },
+          "arbeitspreis_ct_kwh": { "type": ["number", "null"], "description": "Arbeitspreis in Cent je Kilowattstunde." },
+          "leistungspreis_eur_kw_a": { "type": ["number", "null"], "description": "Leistungspreis in Euro je Kilowatt und Jahr." },
+          "versorgt": { "type": ["string", "null"], "description": "Was hinter diesem Anschluss hängt." },
+          "ladepark_rahmen": {
+            "type": ["object", "null"], "additionalProperties": false,
+            "description": "Obergrenze, die sich alle Ladepunkte an diesem Anschluss teilen; leer heißt „kein Ladepark“.",
+            "required": ["leistung_kw", "hausreserve_kw", "gueltig_ab"],
+            "properties": {
+              "leistung_kw": { "type": "number", "description": "Gesamtleistung, die der Ladepark ausschöpfen darf." },
+              "hausreserve_kw": { "type": "number", "description": "Leistung, die dem Haus vorbehalten bleibt." },
+              "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann der Rahmen gilt." }
+            }
+          }
+        }
+      }
+    },
+
+    "anlagen": {
+      "type": "array",
+      "description": "Die elektrischen Systeme des Unternehmens. Eine Anlage liegt an genau einem Standort und hängt an genau einem Netzanschluss.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "standort", "netzanschluss", "seit", "zustand"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Anlage (AN-1 …)." },
+          "name": { "type": "string", "description": "Name der Anlage in Kundensprache." },
+          "standort": { "$ref": "#/$defs/kennzeichen", "description": "Standort der Anlage." },
+          "netzanschluss": { "$ref": "#/$defs/kennzeichen", "description": "Netzanschluss, an dem die Anlage hängt." },
+          "versorgt_gebaeude": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Welche Gebäude diese Anlage elektrisch versorgt — eine Sicht aus den Orten ihrer Messstellen, nie aus dem Ortsbaum abgeleitet." },
+          "seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann die Anlage im Portal geführt wird." },
+          "seit_beschreibung": { "type": ["string", "null"], "description": "Dasselbe Datum in Kundensprache." },
+          "profil": { "type": ["string", "null"], "description": "Voreinstellung der Anlage (privat oder gewerblich)." },
+          "pv_kwp": { "type": ["number", "null"], "description": "Erzeugungsleistung der Photovoltaik in Kilowatt-Peak; leer heißt „keine Erzeugung“." },
+          "speicher_kwh": { "type": ["number", "null"], "description": "Nutzbarer Speicherinhalt in Kilowattstunden." },
+          "speicher_kw": { "type": ["number", "null"], "description": "Lade- und Entladeleistung des Speichers in Kilowatt." },
+          "betriebsmodell": { "type": ["string", "null"], "description": "Das eine Betriebsmodell, das die Anlage fährt; leer heißt „reine Messung“." },
+          "betriebsmodell_seit": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Seit wann dieses Betriebsmodell läuft." },
+          "betrieb": { "type": ["string", "null"], "description": "Was die Anlage tut, in einem Satz." },
+          "zustand": { "type": "string", "description": "Beobachteter Zustand zur Momentaufnahme — nie gesetzt, immer beobachtet." }
+        }
+      }
+    },
+
+    "boxen": {
+      "type": "array",
+      "description": "Die VoltPilot-Boxen beim Kunden. Jede Box ist in genau eine Anlage angemeldet (ihre Heimat); welche Datenquellen sie liest, steht getrennt in den Zuordnungen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "seriennummer", "heimat_anlage", "in_betrieb_ab"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Box (E-1 …); die Nachfolgerin einer getauschten Box trägt einen Strich (E-2′)." },
+          "name": { "type": "string", "description": "Name, unter dem der Kunde die Box sieht." },
+          "seriennummer": { "type": "string", "description": "Aufdruck auf dem Gerät." },
+          "heimat_anlage": { "$ref": "#/$defs/kennzeichen", "description": "Anlage, in die die Box angemeldet ist. Sie bleibt auch dann die Heimat, wenn die Box eine Quelle einer anderen Anlage liest." },
+          "fuehrend_fuer": { "type": ["string", "null"], "description": "Anlage, für die diese Box steuert und summiert. Je Anlage gibt es genau eine führende Box." },
+          "ort_art": { "type": ["string", "null"], "enum": ["bereich", "gebaeude", "standort", null], "description": "Auf welcher Ebene die Box hängt." },
+          "ort": { "type": ["string", "null"], "description": "Bereich, Gebäude oder Standort, in dem die Box eingebaut ist." },
+          "ort_hinweis": { "type": ["string", "null"], "description": "Wo genau, in Kundensprache." },
+          "in_betrieb_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Box arbeitet." },
+          "ausgebaut_am": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Wann die Box ersetzt oder entfernt wurde; leer heißt „läuft“. Werte, Herkunft und Protokoll bleiben lesbar." },
+          "lan": { "type": ["string", "null"], "description": "Netz, in dem die Box steht." },
+          "software": { "type": ["string", "null"], "description": "Installierter Softwarestand, wenn er erhoben ist." },
+          "vorgaenger": { "type": ["string", "null"], "description": "Box, die diese hier ersetzt hat." },
+          "steuert": { "type": ["string", "null"], "description": "Was die Box aktiv stellt; ein Strich heißt „sie misst nur“." }
+        }
+      }
+    },
+
+    "datenquellen": {
+      "type": "array",
+      "description": "Die Wege, auf denen eine Box Werte holt — Adresse und Protokoll, nicht das Gerät und nicht die Messstelle.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "anlage", "protokoll", "weg"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Datenquelle (DQ-1 …)." },
+          "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Anlage, in der die Geräte hinter dieser Quelle hängen — die Verdrahtung, nicht die Box." },
+          "protokoll": { "type": "string", "description": "Wie gesprochen wird." },
+          "adresse": { "type": ["string", "null"], "description": "Netzadresse; leer, wenn sich das Gerät selbst meldet." },
+          "port": { "type": ["integer", "null"], "description": "Anschlussnummer im Netz." },
+          "geraete_ids": { "type": "array", "items": { "type": "integer" }, "description": "Gerätenummern hinter dieser einen Adresse." },
+          "weg": { "type": "string", "description": "Der ganze Erfassungsweg in einem Satz, so wie ihn der Installateur liest." },
+          "netz": { "type": ["string", "null"], "description": "Netz oder VLAN, in dem die Quelle erreichbar ist. Zwei Quellen mit gleicher Adresse UND gleichem Netz sind ein Hinweis, dass dasselbe Gerät zweimal gelesen wird." },
+          "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden. Die Zahl ist der Maßstab für „liefert Daten“ und für die Abdeckung — sie wird nie aus den Daten geschätzt." },
+          "kadenz_beschreibung": { "type": ["string", "null"], "description": "Die Erwartung in Kundensprache, wenn eine Zahl sie nicht trifft." },
+          "kanaele": { "type": ["integer", "null"], "minimum": 0, "description": "Wie viele Werte diese Quelle je Takt liefert; Grundlage des Budgets je Box." },
+          "steuerquelle": { "type": "boolean", "description": "Ob hinter dieser Quelle die steuerbare Komponente der Anlage antwortet. Höchstens eine je Anlage; sie wird immer von der Heimat-Box gelesen." },
+          "hinweis": { "type": ["string", "null"], "description": "Was an dieser Quelle besonders ist." }
+        }
+      }
+    },
+
+    "geraete": {
+      "type": "array",
+      "description": "Die physischen Kästchen hinter einer Datenquelle: Zähler, Wechselrichter, Steuerungen, Ladestationen. Ein Gerät kann mehrere Komponenten speisen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "datenquelle", "einbauten"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen des Geräts (GR-1 …)." },
+          "name": { "type": "string", "description": "Was der Kunde vor sich hat." },
+          "datenquelle": { "$ref": "#/$defs/kennzeichen", "description": "Weg, über den das Gerät antwortet." },
+          "art": { "type": ["string", "null"], "description": "Gerätegattung in Kundensprache." },
+          "hersteller": { "type": ["string", "null"], "description": "Hersteller laut Typenschild." },
+          "typ": { "type": ["string", "null"], "description": "Typbezeichnung laut Typenschild." },
+          "firmware": { "type": ["string", "null"], "description": "Firmwarestand, wenn er erhoben ist." },
+          "anwendung": { "type": ["string", "null"], "description": "Bei einer Steuerung: welches Programm die Werte bereitstellt und wer es geschrieben hat." },
+          "modbus_geraete_id": { "type": ["integer", "null"], "description": "Gerätenummer auf dem Bus." },
+          "einbauten": {
+            "type": "array", "minItems": 1,
+            "description": "Die einzelnen Geräte, die nacheinander an dieser Stelle steckten. Ein Zählerwechsel beendet den alten Einbau und beginnt einen neuen; die Messstelle bleibt, alte Werte bleiben dem alten Einbau zugeordnet.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kennzeichen", "gueltig_ab"],
+              "properties": {
+                "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kennzeichen dieses Einbaus; ohne Wechsel dasselbe wie das Gerät." },
+                "seriennummer": { "type": ["string", "null"], "description": "Seriennummer des eingebauten Geräts." },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieses Gerät hing." },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „hängt noch“." },
+                "endstand_kwh": { "type": ["number", "null"], "description": "Abgelesener Stand beim Ausbau; leer heißt „nicht abgelesen“, nie 0." },
+                "anfangsstand_kwh": { "type": ["number", "null"], "description": "Abgelesener Stand beim Einbau." }
+              }
+            }
+          },
+          "hinweis": { "type": ["string", "null"], "description": "Was an diesem Gerät zu wissen ist." }
+        }
+      }
+    },
+
+    "komponenten": {
+      "type": "array",
+      "description": "Die Dinge im elektrischen System, die messen oder gestellt werden. Jede Komponente wird von genau einem Gerät gespeist; je Energiekarte einer Steuerung gibt es genau eine Komponente.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "anlage", "geraet", "in_betrieb_ab"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Komponente (K-1, K-8.1 …)." },
+          "name": { "type": "string", "description": "Name in Kundensprache." },
+          "art": { "type": ["string", "null"], "description": "Was für ein Ding es ist und woher seine Beschreibung kommt." },
+          "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Elektrisches System, in dem die Komponente hängt." },
+          "ort_art": { "type": ["string", "null"], "enum": ["bereich", "gebaeude", "standort", null], "description": "Auf welcher Ebene die Komponente sitzt." },
+          "ort": { "type": ["string", "null"], "description": "Bereich, Gebäude oder Standort." },
+          "ort_hinweis": { "type": ["string", "null"], "description": "Wo genau, in Kundensprache." },
+          "geraet": { "$ref": "#/$defs/kennzeichen", "description": "Das eine Gerät, das diese Komponente speist." },
+          "steckplatz": { "type": ["integer", "null"], "minimum": 1, "description": "Bei einer Energiekarte: die Position am Klemmenbus. Zusammen mit dem Gerät ist sie die Identität der Karte — ein Umstecken wird ausdrücklich zugeordnet, nie still umgehängt." },
+          "kartentyp": { "type": ["string", "null"], "description": "Artikelnummer der Energiekarte." },
+          "wandler": {
+            "type": "array",
+            "description": "Stromwandler an dieser Komponente, mit Gültigkeit — ein Wandlertausch bewertet die Vergangenheit nie neu.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["primaer_a", "sekundaer_a", "gueltig_ab"],
+              "properties": {
+                "primaer_a": { "type": "number", "description": "Primärstrom in Ampere." },
+                "sekundaer_a": { "type": "number", "description": "Sekundärstrom in Ampere." },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Wandler hängt." },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „hängt noch“." }
+              }
+            }
+          },
+          "kanaele": { "type": ["string", "null"], "description": "Welche Werte diese Komponente liefert." },
+          "steuerbar": { "type": ["string", "null"], "description": "Ob und wie die Komponente gestellt werden darf." },
+          "in_betrieb_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Komponente Werte liefert." },
+          "in_betrieb_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „liefert weiter“." }
+        }
+      }
+    },
+
+    "messstellen": {
+      "type": "array",
+      "description": "Die fachliche Identität einer Messung. Eine Messstelle überlebt jeden Gerätewechsel, jede Box und jeden Erfassungsweg; sie hat genau eine Hauptgröße und beliebig viele Nebengrößen desselben Messortes.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "art", "medium", "hauptgroesse", "nebengroessen", "ort", "elektrische_stellung", "prozesse", "kostenstellen_anteile", "fuehrende_quelle", "beispielwerte", "zustand"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Stabiler Schlüssel der Messstelle. Automatisch vergeben (MS-0001 …), vom Kunden auf ein eigenes Kurzzeichen änderbar, eindeutig je Kundenbereich — und nie durch Technik verändert." },
+          "name": { "type": "string", "description": "Name in Kundensprache." },
+          "art": { "type": "string", "enum": ["gemessen", "berechnet"], "description": "Ob die Werte gemessen oder aus anderen Messstellen gerechnet werden." },
+          "art_beschreibung": { "type": ["string", "null"], "description": "Die Art genauer, wenn das Fachmodell sie näher benennt." },
+          "medium": { "type": "string", "enum": ["Strom", "Gas"], "description": "Was gemessen wird. Nur „Strom“ kann eine Katalog-Quelle binden; ein anderes Medium wird abgelesen." },
+          "hauptgroesse": { "$ref": "#/$defs/groesse", "description": "Die eine Größe, die diese Messstelle ausmacht. Sie ist identitätsstiftend und ändert sich nie — eine andere Größe ist eine andere Messstelle. Nur Hauptgrößen gehen in eine Bilanz ein." },
+          "nebengroessen": {
+            "type": "array",
+            "description": "Weitere Größen desselben Messortes, jede mit eigener führender Quelle. Sie erscheinen in Kennzahlen und Anzeigen, nie in einer Bilanz.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["groesse", "richtung", "einheit", "wertart", "fuehrende_quelle"],
+              "properties": {
+                "groesse": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"], "description": "Was gemessen wird." },
+                "richtung": { "$ref": "#/$defs/richtung", "description": "In welche Richtung." },
+                "einheit": { "$ref": "#/$defs/einheit", "description": "Einheit des Werts." },
+                "wertart": { "$ref": "#/$defs/wertart", "description": "Wie der Wert zu lesen ist." },
+                "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher diese Nebengröße kommt, mit Gültigkeit." }
+              }
+            }
+          },
+          "ort": {
+            "type": "object", "additionalProperties": false,
+            "description": "Wo gemessen wird — der Ort zur Momentaufnahme. Der ganze Verlauf steht in den Zuordnungen.",
+            "required": ["art", "kennzeichen"],
+            "properties": {
+              "art": { "type": "string", "enum": ["standort", "gebaeude", "bereich", "unternehmen", "keiner"], "description": "Auf welcher Ebene der Ort liegt. „keiner“ trägt nur eine berechnete Messstelle, die über mehrere Gebäude läuft." },
+              "kennzeichen": { "type": ["string", "null"], "description": "Standort, Gebäude, Bereich oder Unternehmen." },
+              "hinweis": { "type": ["string", "null"], "description": "Wo genau, in Kundensprache." }
+            }
+          },
+          "elektrische_stellung": {
+            "type": "array",
+            "description": "Wo die Messstelle im elektrischen Baum sitzt, mit Gültigkeit. Je Anlage und Richtung gibt es genau einen Hauptzähler; „Unterzähler“ verweist immer auf eine Messstelle derselben Anlage, nie auf sich selbst.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["anlage", "stellung", "gueltig_ab"],
+              "properties": {
+                "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Elektrisches System." },
+                "stellung": { "type": "string", "enum": ["Hauptzähler", "Unterzähler", "Erzeuger", "Speicher", "Abzweig", "keine"], "description": "Die Rolle im Baum." },
+                "unterzaehler_von": { "type": ["string", "null"], "description": "Übergeordnete Messstelle; nur bei „Unterzähler“ gesetzt." },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Stellung gilt." },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+              }
+            }
+          },
+          "prozesse": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Wofür die gemessene Energie eingesetzt wird." },
+          "kostenstellen_anteile": {
+            "type": "array",
+            "description": "Wem der Verbrauch zugerechnet wird. Die Anteile eines Zeitpunkts ergeben zusammen 100 %; eine leere Liste heißt „nicht zugerechnet“, nie „0 %“.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kostenstelle", "anteil_prozent", "gueltig_ab"],
+              "properties": {
+                "kostenstelle": { "$ref": "#/$defs/kennzeichen", "description": "Kostenstelle." },
+                "anteil_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "Anteil in Prozent." },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Anteil gilt." },
+                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+              }
+            }
+          },
+          "kostenstellen_beschreibung": { "type": ["string", "null"], "description": "Die Zurechnung so, wie das Fachmodell sie in Prosa schreibt — auch dann, wenn sie über eine Umlage läuft." },
+          "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher die Hauptgröße kommt, mit Gültigkeit. Je Zeitpunkt höchstens eine; eine leere Liste heißt „keine Datenquelle“ und ist erlaubt." },
+          "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden; Grundlage der Abdeckung („85 von 90“) und der Beobachtung „liefert Daten“." },
+          "kadenz_beschreibung": { "type": ["string", "null"], "description": "Die Erwartung in Kundensprache, wenn eine Zahl in Sekunden sie nicht trifft." },
+          "formel": { "type": ["string", "null"], "description": "Bei einer berechneten Messstelle: wie sie gerechnet wird." },
+          "quelle_hinweis": { "type": ["string", "null"], "description": "Was zur Herkunft dieser Messstelle zu wissen ist." },
+          "beispielwerte": {
+            "type": "object", "additionalProperties": false,
+            "description": "Die Beispielzahlen dieser Messstelle. Eine leere Zahl heißt „nicht erhoben“, nie 0; steht in der Quelle nur ein Satz, trägt ihn das Beschreibungsfeld.",
+            "required": ["jahr_2025_kwh", "oktober_2026_kwh", "momentanleistung_kw"],
+            "properties": {
+              "jahr_2025_kwh": { "type": ["number", "null"], "description": "Jahresmenge 2025 in Kilowattstunden (nur bei Bestandsmessstellen)." },
+              "jahr_2025_beschreibung": { "type": ["string", "null"], "description": "Die Jahresmenge in Worten, wenn eine Zahl sie nicht trägt." },
+              "oktober_2026_kwh": { "type": ["number", "null"], "description": "Menge im Oktober 2026 in Kilowattstunden." },
+              "oktober_2026_m3": { "type": ["number", "null"], "description": "Menge im Oktober 2026 in Kubikmetern (nur beim Medium Gas)." },
+              "oktober_2026_beschreibung": { "type": ["string", "null"], "description": "Die Monatsmenge in Worten, etwa wenn der Monat angebrochen war." },
+              "momentanleistung_kw": { "type": ["number", "null"], "description": "Leistung zur Momentaufnahme in Kilowatt; ein Minus heißt Entladen." },
+              "momentanwert_beschreibung": { "type": ["string", "null"], "description": "Die Momentaufnahme in Worten." },
+              "ladestand_prozent": { "type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Ladestand des Speichers zur Momentaufnahme." }
+            }
+          },
+          "zustand": { "type": "string", "description": "Beobachteter Zustand zur Momentaufnahme; jedes „nicht“ nennt Grund und Zeitpunkt." }
+        }
+      }
+    },
+
+    "personen": {
+      "type": "array",
+      "description": "Wer beim Kunden mit dem Portal arbeitet — mit Rolle, Geltungsbereich und Gültigkeit. Ein Unterstützer ist kein Benutzer des Kundenbereichs; sein Zugriff ist befristet, sichtbar und protokolliert.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kuerzel", "name", "rolle", "art", "geltungsbereich_art", "standorte", "seit"],
+        "properties": {
+          "kuerzel": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Person in dieser Beispielwelt." },
+          "name": { "type": "string", "description": "Name der Person (erfunden)." },
+          "funktion": { "type": ["string", "null"], "description": "Aufgabe im Unternehmen." },
+          "rolle": { "type": "string", "enum": ["Kundenadministrator", "Energiemanager", "Bearbeiter", "Bedienberechtigt", "Leser", "Unterstützer"], "description": "Das Rechtebündel." },
+          "art": { "type": "string", "enum": ["benutzer", "unterstuetzer"], "description": "Ob die Person zum Kundenbereich gehört oder von außen unterstützt." },
+          "geltungsbereich_art": { "type": "string", "enum": ["unternehmen", "standorte"], "description": "Ob die Rolle für alle Standorte gilt oder für eine ausdrückliche Liste." },
+          "standorte": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Die zugewiesenen Standorte; leer bei unternehmensweitem Geltungsbereich." },
+          "seit": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Zuweisung gilt." },
+          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+          "unterstuetzung": {
+            "type": ["object", "null"], "additionalProperties": false,
+            "description": "Nur bei einem Unterstützer: wer ihn womit und wozu betraut hat.",
+            "required": ["organisation", "art", "umfang", "gewaehrt_am", "gewaehrt_von"],
+            "properties": {
+              "organisation": { "type": "string", "description": "Firma, für die der Unterstützer arbeitet." },
+              "art": { "type": "string", "description": "Art des Kontos." },
+              "umfang": { "type": "string", "enum": ["Ansehen", "Einrichten", "Einrichten und Bedienen"], "description": "Wie weit der Zugriff reicht." },
+              "gewaehrt_am": { "$ref": "#/$defs/zeitpunkt", "description": "Wann der Zugriff gewährt wurde." },
+              "gewaehrt_von": { "$ref": "#/$defs/kennzeichen", "description": "Wer ihn gewährt hat." },
+              "anlass": { "type": ["string", "null"], "description": "Wozu er gewährt wurde." }
+            }
+          },
+          "hinweis": { "type": ["string", "null"], "description": "Was zu dieser Person zu wissen ist." }
+        }
+      }
+    },
+
+    "bezugsgroessen": {
+      "type": "array",
+      "description": "Die Nenner der Kennzahlen: Produktionsmengen, Betriebsstunden, Flächen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "einheit", "periode", "geltung_art"],
+        "properties": {
+          "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Bezugsgröße (BZ-1 …)." },
+          "name": { "type": "string", "description": "Name in Kundensprache." },
+          "einheit": { "type": "string", "description": "Einheit des Werts." },
+          "periode": { "type": "string", "description": "Wie oft der Wert erfasst wird." },
+          "herkunft": { "type": ["string", "null"], "description": "Woher der Wert kommt." },
+          "geltung_art": { "type": "string", "enum": ["prozess", "ort"], "description": "Ob die Größe für einen Prozess oder für einen Ort gilt." },
+          "geltung": { "type": ["string", "null"], "description": "Prozess, für den sie gilt; leer bei einer Größe, die an vielen Orten hängt." },
+          "oktober_2026_wert": { "type": ["number", "null"], "description": "Wert im Oktober 2026; leer heißt „nicht als eine Zahl erfassbar“." },
+          "oktober_2026_beschreibung": { "type": ["string", "null"], "description": "Der Wert in Worten, wenn eine Zahl ihn nicht trägt." }
+        }
+      }
+    },
+
+    "kennzahl_beispiel": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine durchgerechnete Kennzahl der Beispielwelt — die Probe darauf, dass Messstellen, Anteile und Bezugsgrößen zusammenpassen.",
+      "required": ["name", "rechnung", "ergebnis", "einheit"],
+      "properties": {
+        "name": { "type": "string", "description": "Wie die Kennzahl heißt." },
+        "rechnung": { "type": "string", "description": "Der Rechenweg mit den Zahlen der Beispielwelt." },
+        "ergebnis": { "type": "number", "description": "Das Ergebnis." },
+        "einheit": { "type": "string", "description": "Einheit des Ergebnisses." }
+      }
+    },
+
+    "zuordnungen": {
+      "type": "array",
+      "description": "Die zeitgültigen Beziehungen, die sich im Lauf der Beispielwelt ändern. Eine Zuordnung wird nie überschrieben: die alte endet, die neue beginnt — Ende der alten ist Beginn der neuen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["art", "von", "nach", "gueltig_ab"],
+        "properties": {
+          "art": { "type": "string", "enum": ["anlage_standort", "messstelle_ort", "datenquelle_box"], "description": "Welche Beziehung: eine Anlage liegt an einem Standort, eine Messstelle misst an einem Ort, eine Box ist für eine Datenquelle zuständig." },
+          "von": { "$ref": "#/$defs/kennzeichen", "description": "Das zugeordnete Objekt." },
+          "nach": { "$ref": "#/$defs/kennzeichen", "description": "Das Ziel der Zuordnung." },
+          "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Zuordnung gilt (einschließend)." },
+          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann (ausschließend); leer heißt „bis auf Weiteres“." },
+          "hinweis": { "type": ["string", "null"], "description": "Warum die Zuordnung so ist." }
+        }
+      }
+    },
+
+    "zeitachse": {
+      "type": "array",
+      "description": "Die Ereignisse der Beispielwelt in ihrer Reihenfolge. Jede Zeile ist ein Prüffall für ein Folgepaket.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["zeitpunkt", "genauigkeit", "ereignis", "herkunft"],
+        "properties": {
+          "zeitpunkt": { "$ref": "#/$defs/zeitpunkt", "description": "Wann es geschah." },
+          "genauigkeit": { "type": "string", "enum": ["tag", "minute"], "description": "Wie genau die Quelle den Zeitpunkt nennt — eine Tagesangabe behauptet nie eine Uhrzeit." },
+          "ereignis": { "type": "string", "description": "Was geschah, in Kundensprache." },
+          "herkunft": { "type": "string", "description": "Aus welchem Konzeptpaket die Zeile stammt." }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "kennzeichen": {
+      "type": "string", "minLength": 1, "maxLength": 32,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/′-]*$",
+      "description": "Ein stabiler Schlüssel: Großbuchstaben, Ziffern, Bindestrich, Punkt, Schrägstrich. Er wird nie wiederverwendet und ändert sich nie durch Technik."
+    },
+    "zeitpunkt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      "description": "Ein Zeitpunkt mit dem Versatz der Zeitzone Europe/Berlin (+01:00 im Winter, +02:00 im Sommer)."
+    },
+    "zeitpunkt_offen": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      "description": "Wie ein Zeitpunkt, aber leer erlaubt: leer heißt „bis auf Weiteres“, nie „gerade eben beendet“."
+    },
+    "adresse": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "description": "Eine Anschrift. Die Postleitzahl bleibt leer, weil das Referenzunternehmen erfunden ist und keine echte Postleitzahl tragen darf.",
+      "required": ["strasse", "ort", "land"],
+      "properties": {
+        "strasse": { "type": ["string", "null"], "description": "Straße und Hausnummer." },
+        "plz": { "type": ["string", "null"], "description": "Postleitzahl; hier bewusst leer." },
+        "ort": { "type": ["string", "null"], "description": "Ort." },
+        "land": { "type": "string", "enum": ["DE", "AT", "CH"], "description": "Land." }
+      }
+    },
+    "lage": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "description": "Punkt auf der Karte.",
+      "required": ["breitengrad", "laengengrad"],
+      "properties": {
+        "breitengrad": { "type": "number", "minimum": -90, "maximum": 90, "description": "Breitengrad." },
+        "laengengrad": { "type": "number", "minimum": -180, "maximum": 180, "description": "Längengrad." }
+      }
+    },
+    "flaeche": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Bezugsfläche mit Gültigkeit. Flächen werden nie saldiert und nie erfunden.",
+      "required": ["flaeche_m2", "gueltig_ab"],
+      "properties": {
+        "flaeche_m2": { "type": "number", "minimum": 1, "description": "Fläche in Quadratmetern." },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Fläche gilt." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+        "hinweis": { "type": ["string", "null"], "description": "Woher die Fläche kommt oder warum sie sich geändert hat." }
+      }
+    },
+    "nutzung": {
+      "type": "array",
+      "description": "Wozu ein Ort dient. Mehrfachauswahl aus einem geschlossenen Vokabular; die erste Auswahl ist die Hauptnutzung. Ein Wort außerhalb der Liste wird abgelehnt, nie geraten.",
+      "items": { "type": "string", "enum": ["Produktion", "Montage", "Lager", "Logistik", "Büro", "Technik", "Außenfläche", "Werkstatt", "Labor", "Verkauf", "Sozialräume", "Sonstiges"] }
+    },
+    "groesse": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Messgröße: was gemessen wird, in welche Richtung, in welcher Einheit und wie der Wert zu lesen ist. Die Hauptgröße einer Messstelle ist identitätsstiftend und ändert sich nie.",
+      "required": ["groesse", "richtung", "einheit", "wertart"],
+      "properties": {
+        "groesse": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"], "description": "Was gemessen wird." },
+        "richtung": { "$ref": "#/$defs/richtung", "description": "In welche Richtung." },
+        "einheit": { "$ref": "#/$defs/einheit", "description": "Einheit des Werts." },
+        "wertart": { "$ref": "#/$defs/wertart", "description": "Wie der Wert zu lesen ist." },
+        "wertart_beschreibung": { "type": ["string", "null"], "description": "Die Wertart so, wie das Fachmodell sie in Prosa schreibt — etwa „Zählerstand + 15-min-Menge“, wenn die Strecke die Viertelstundenmenge aus dem Zählerstand bildet." }
+      }
+    },
+    "richtung": {
+      "type": "string",
+      "enum": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen", "richtungslos"],
+      "description": "In welche Richtung gemessen wird. Bezug und Abgabe sind zwei Messstellen, nicht eine mit Vorzeichen. „Laden / Entladen“ ist die zusammengefasste Richtung der Speicher-Messstelle."
+    },
+    "einheit": {
+      "type": "string",
+      "enum": ["kWh", "kW", "kvarh", "kVA", "%", "m³"],
+      "description": "Einheit des Werts."
+    },
+    "wertart": {
+      "type": "string",
+      "enum": ["Zählerstand", "Intervallmenge", "Momentanwert"],
+      "description": "Wie der Wert zu lesen ist: ein fortlaufender Zählerstand, die Menge eines Intervalls oder ein Wert in diesem Augenblick."
+    },
+    "quellenbindung": {
+      "type": "object", "additionalProperties": false,
+      "description": "Woher eine Größe kommt, mit Gültigkeit: Komponente und Kanal, dazu Gerät und Einbau, damit jeder Wert seine Herkunft trägt. Je Größe und Zeitpunkt gibt es höchstens eine.",
+      "required": ["komponente", "kanal", "geraet", "einbau", "kanal_wertart", "gueltig_ab"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/kennzeichen", "description": "Komponente, die den Wert liefert." },
+        "kanal": { "type": "string", "description": "Der eine gelesene Wert dieser Komponente." },
+        "geraet": { "$ref": "#/$defs/kennzeichen", "description": "Gerät hinter der Komponente." },
+        "einbau": { "$ref": "#/$defs/kennzeichen", "description": "Das konkret eingebaute Gerät zu dieser Zeit — bei einem Zählerwechsel wechselt es, die Messstelle bleibt." },
+        "kanal_wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Kanal am Draht zu lesen ist: fortlaufender Zähler, Momentanwert, Zustand, Bitfeld oder Text." },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Bindung gilt (auf die Minute)." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+      }
+    }
+  }
+}
