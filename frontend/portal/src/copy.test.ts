@@ -114,6 +114,196 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
 ];
 
 /**
+ * UEMS · AP-00 IP-4 — die INTERNEN Wörter, die in keinem Kundentext stehen.
+ *
+ * Die Kundenwörter des Unternehmens-Energiemanagements sind entschieden und
+ * wohnen byte-verbatim in `docs/fachmodell/glossar.md` (die Pflegeregel steht
+ * in `docs/fachmodell/README.md`); als Konstanten stehen sie in `glossar.ts`.
+ * Diese Liste ist die andere Hälfte: sie verbietet die WERKSTATT-Wörter, mit
+ * denen dieselben Dinge im Code, in der Datenbank und in den Verträgen heißen.
+ *
+ * ⚠ Warum eine ZWEITE Liste statt `FORBIDDEN` zu erweitern: `FORBIDDEN` läuft
+ * über den ganzen kommentarfreien QUELLTEXT. Das trägt bei deutschen Wörtern
+ * („Entität", „Messpunkt"), die als Bezeichner nicht vorkommen — englische
+ * Werkstatt-Wörter sind aber genau die Bezeichner dieses Codes (`Device`,
+ * `Site`, `Channel`, `Entity`). Diese Liste läuft deshalb nur über die
+ * EXTRAHIERTEN sichtbaren Texte (`visibleTexts()`): Zeichenketten und
+ * JSX-Text, nie ein Typname und nie ein Importpfad.
+ *
+ * Die Muster sind bewusst GROSS-/KLEINSCHREIBUNGS-EMPFINDLICH, wo das Wort
+ * auch klein als Kennung vorkommt (`Edge` vs. die Beispiel-Kennung
+ * „edge-k7m2xqp", `Slot` vs. `plan.slots`): ein deutscher Kundensatz schreibt
+ * das Substantiv groß, eine Kennung nicht.
+ */
+const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [
+  { re: /\bTenant\w*/, why: 'UEMS: „Kundenbereich" (bzw. „Unternehmen") statt „Tenant"' },
+  { re: /\bSites?\b/, why: 'UEMS: „Anlage" oder „Standort" statt „Site"' },
+  { re: /\bStandort-ID\b/i, why: 'UEMS: der Standort trägt einen NAMEN, keine „Standort-ID"' },
+  { re: /\bEntit(y|ies)\b/i, why: 'UEMS: „Komponente" statt „Entity"' },
+  { re: /\bChannels?\b/i, why: 'UEMS: „Messkanal"/„Messwert" statt „Channel"' },
+  { re: /\bpoint[_-]?key\b/i, why: 'UEMS: „Messwert" statt „point_key"' },
+  { re: /\bDevices?\b/i, why: 'UEMS: „Gerät" oder „VoltPilot-Box" statt „Device"' },
+  { re: /\bRollups?\b/i, why: 'UEMS: „Verdichtung" statt „Rollup"' },
+  { re: /\bBuckets?\b/i, why: 'UEMS: „Zeitraster" statt „Bucket"' },
+  { re: /\bRetention\b/i, why: 'UEMS: „Aufbewahrung" statt „Retention"' },
+  { re: /\bIngest\w*/i, why: 'UEMS: „Datenannahme" statt „Ingest"' },
+  { re: /\bWriter\b/i, why: 'UEMS: „Datenannahme" statt „Writer"' },
+  { re: /\bRead-Model\b/i, why: 'UEMS: kein „Read-Model" in der Kundensicht' },
+  { re: /\bEdge\b/, why: 'UEMS: „VoltPilot-Box" statt „Edge"' },
+  { re: /\bSlots?\b/, why: 'UEMS: „Steckplatz" (Karte) bzw. „Viertelstunde" (Zeit) statt „Slot"' },
+  { re: /\b(un)?claim\w*/i, why: 'UEMS: „anmelden"/„abmelden" statt „Claim"/„Unclaim"' },
+];
+
+/**
+ * Die dokumentierte Ausnahme zu „Edge": der ADMIN-Menüpunkt „Edge-Updates".
+ *
+ * Sie folgt dem Präzedenzfall „Optimizer" darüber: das Wort überlebt allein
+ * als NAME einer Plattform-Seite (`nav.ts`, `adminOnly: true`), die kein Kunde
+ * je sieht. Jeder andere Satz mit „Edge" fällt weiterhin durch.
+ */
+const ADMIN_EDGE_UPDATES = /\bEdge-Updates\b/g;
+
+/**
+ * Die dokumentierte Ausnahme zu „Slot": der ZEIT-Slot des Fahrplans.
+ *
+ * ⚠ Das ist ALTBESTAND, kein Freibrief. Das UEMS-Wort „Slot" meint den
+ * STECKPLATZ einer Energiekarte (AP-05); die drei Sätze unten meinen die
+ * Viertelstunde und sind älter als diese Regel. Sie stehen namentlich hier,
+ * damit ein NEUER „Slot" — in beiden Bedeutungen — durchfällt, statt dass das
+ * Wort still ganz erlaubt bleibt. Die Stellen sind im PR gelistet
+ * (`control.ts`, `regeln/folgen.ts`, `optimizer.ts`).
+ */
+const ZEIT_SLOT = /\bVerbrauchs-Slot\b|\bViertelstunden-Slot\b|\bBeleg-Slots\b|\bim Slot\b/g;
+
+/**
+ * Die dritte dokumentierte Ausnahme: die SUCHWÖRTER des Hilfe-Handbuchs
+ * (`help/content/*.ts`, Feld `keywords`).
+ *
+ * Sie sind, was ein Mensch TIPPT, nicht was VoltPilot sagt — genau deshalb
+ * stehen dort absichtlich die Wörter vom Aufkleber und aus dem Support-Ticket
+ * („edge", „VP", „Claim"). Ein Suchwort weniger ist ein unauffindbarer
+ * Artikel. Die Ausnahme ist STRUKTURELL an das Feld gebunden: die Fließtexte
+ * derselben Datei bleiben unter dem Wächter.
+ */
+const HILFE_SUCHWOERTER = /keywords:\s*\[[^\]]*\]/g;
+
+/**
+ * Die SICHTBAREN Texte einer Quelldatei: Zeichenketten-Inhalte und JSX-Text.
+ *
+ * `stripComments()` darüber reicht für die deutschen Wörter, nicht für die
+ * englischen: `Device`, `Site` und `Channel` sind die Bezeichner dieses Codes.
+ * Dieser Abtaster läuft deshalb einmal durch die Datei und gibt NUR heraus,
+ * was ein Mensch lesen kann — Kommentare, Typnamen, Importpfade und
+ * Platzhalter (`${…}`) fallen dabei weg. Über-Auslassen kann nur einen Treffer
+ * VERBERGEN (ein falsches Grün), nie einen erfinden — dieselbe Abwägung wie
+ * bei `stripComments()`.
+ */
+function visibleTexts(code: string): string[] {
+  const out: string[] = [];
+  const n = code.length;
+  let i = 0;
+  let prev = '';
+  while (i < n) {
+    const c = code[i];
+    if (c === '/' && code[i + 1] === '/') {
+      while (i < n && code[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && code[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(code[i] === '*' && code[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    // Ein regulärer Ausdruck darf Anführungszeichen tragen (`/['"]/`) - er
+    // würde den Abtaster sonst mitten im Code eine Zeichenkette öffnen lassen.
+    if (c === '/' && /[(=,:[!&|?{};+\n]/.test(prev)) {
+      i++;
+      let klasse = false;
+      while (i < n) {
+        const d = code[i];
+        if (d === '\\') { i += 2; continue; }
+        if (d === '[') klasse = true;
+        else if (d === ']') klasse = false;
+        else if (d === '/' && !klasse) { i++; break; }
+        else if (d === '\n') break;
+        i++;
+      }
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      const q = c;
+      i++;
+      let buf = '';
+      while (i < n && code[i] !== q) {
+        if (code[i] === '\\') { buf += ' '; i += 2; continue; }
+        if (code[i] === '\n') break;
+        buf += code[i++];
+      }
+      i++;
+      out.push(buf);
+      prev = q;
+      continue;
+    }
+    if (c === '`') {
+      i++;
+      let buf = '';
+      while (i < n && code[i] !== '`') {
+        if (code[i] === '\\') { buf += ' '; i += 2; continue; }
+        if (code[i] === '$' && code[i + 1] === '{') {
+          let tiefe = 1;
+          i += 2;
+          while (i < n && tiefe > 0) {
+            if (code[i] === '{') tiefe++;
+            else if (code[i] === '}') tiefe--;
+            i++;
+          }
+          buf += ' ';
+          continue;
+        }
+        buf += code[i++];
+      }
+      i++;
+      out.push(buf);
+      prev = '`';
+      continue;
+    }
+    if (c === '>') {
+      // JSX-Text: nur ein echter `>Text<`-Lauf ohne Code-Zeichen. Damit trifft
+      // der Abtaster weder `=>` noch `Array<Foo>`.
+      let j = i + 1;
+      let buf = '';
+      while (j < n && !'<{}>`\'"'.includes(code[j])) buf += code[j++];
+      if (code[j] === '<' && /[A-Za-zÄÖÜäöüß]/.test(buf) && !/[;=:?]/.test(buf)) out.push(buf);
+    }
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Ist diese Zeichenkette überhaupt KUNDENTEXT? Ein Importpfad, eine URL, ein
+ * Bezeichner in Zeichenketten-Form (`'pointKey'` als Abfrage-Parameter) und
+ * ein HTTP-Kopfzeilen-Name (`X-Tenant-Id`) sind Protokoll, kein Satz — sie
+ * tragen die Werkstatt-Wörter zu Recht.
+ */
+function isKundentext(text: string): boolean {
+  const t = text.trim();
+  if (/^[./]/.test(t)) return false;
+  if (/:\/\//.test(t) || /[?&=]/.test(t)) return false;
+  // Ein deutscher Kundensatz beginnt gross oder hat Leerzeichen; ein
+  // Bezeichner, ein Klassenname (`vp-tech-device`) und ein Praefix
+  // (`entity:`) tun beides nicht.
+  if (!/\s/.test(t) && !/^[A-ZÄÖÜ]/.test(t)) return false;
+  // …und eine Klassen-LISTE hat zwar Leerzeichen, aber kein einziges
+  // grosses Wort (`vp-card vp-device-row`).
+  if (/^[a-z0-9 _:-]+$/.test(t)) return false;
+  if (/^X-[A-Za-z-]+$/.test(t)) return false;
+  return /[a-zäöüß]{3}/.test(t);
+}
+
+/**
  * Die EINE dokumentierte Ausnahme zu „Modus": die BETRIEBSART EINES GERÄTS.
  *
  * Ein Verbraucher, den eine Regel „auf Modus „eco"" stellt, hat eine
@@ -125,6 +315,17 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
  * Sie wird VOR dem Scan entfernt; der Test darunter beweist, dass sie eng ist.
  */
 const GERAETE_MODUS = /auf Modus [„"]/g;
+
+/**
+ * Alle dokumentierten Ausnahmen an EINER Stelle — so kann kein Fall des
+ * Wächters versehentlich eine davon vergessen (und keiner eine zu viel haben).
+ */
+function ohneAusnahmen(text: string): string {
+  return text
+    .replace(GERAETE_MODUS, ' ')
+    .replace(ADMIN_EDGE_UPDATES, ' ')
+    .replace(ZEIT_SLOT, ' ');
+}
 
 /** Every customer-facing portal source file (no tests, no excluded paths). */
 /** JEDE Quelldatei - der Wächter über die Ausnahme braucht auch die ausgenommenen. */
@@ -192,6 +393,65 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
   });
 
   /**
+   * UEMS · AP-00 IP-4 — die WERKSTATT-Wörter erreichen keinen Kundensatz.
+   *
+   * Derselbe Dateibestand wie oben, nur eine Ebene enger gelesen: nicht der
+   * Quelltext, sondern die daraus EXTRAHIERTEN sichtbaren Texte. Das ist der
+   * Preis dafür, dass `Device`, `Site` und `Channel` gleichzeitig verboten und
+   * die Bezeichner dieses Codes sind.
+   */
+  it('nennt kein internes Werkstatt-Wort in einem sichtbaren Text (UEMS AP-00 IP-4)', () => {
+    const violations: string[] = [];
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      const quelle = readFileSync(file, 'utf8').replace(HILFE_SUCHWOERTER, ' ');
+      for (const text of visibleTexts(quelle)) {
+        if (!isKundentext(text)) continue;
+        const sauber = ohneAusnahmen(text);
+        for (const { re, why } of FORBIDDEN_INTERN) {
+          const m = re.exec(sauber);
+          if (m) violations.push(`${rel}: „${m[0]}" in „${text.trim().slice(0, 70)}" — ${why}`);
+        }
+      }
+    }
+    expect(
+      violations,
+      `Interne Wörter in der Kundensicht:\n${violations.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * Der Wächter über den ABTASTER: er muss wirklich Texte herausgeben und
+   * wirklich Code auslassen. Ohne diesen Fall könnte ein kaputter Abtaster den
+   * Fall darüber still leer und damit grün machen.
+   */
+  it('der Abtaster gibt sichtbaren Text heraus und lässt Code aus', () => {
+    expect(visibleTexts("const t = 'Ihre Anlage liefert Daten';")).toContain(
+      'Ihre Anlage liefert Daten',
+    );
+    expect(visibleTexts('return <p>Ihr Standort ist eingerichtet</p>;')).toContain(
+      'Ihr Standort ist eingerichtet',
+    );
+    // Bezeichner, Typen, Importpfade und Kommentare kommen NICHT heraus.
+    const codeOnly = visibleTexts(
+      [
+        'import { DeviceDrawer } from "./DeviceDrawers";',
+        '// Die Site wird per Channel gelesen.',
+        '/** Das Device des Tenants. */',
+        'const f = (d: Device): Site[] => d.sites;',
+      ].join('\n'),
+    );
+    expect(codeOnly.filter((t) => isKundentext(t))).toEqual([]);
+    // Ein Platzhalter reisst keinen Code in den Text.
+    expect(visibleTexts('const t = `Standort ${site.name} ist aktiv`;')[0]).toBe(
+      'Standort   ist aktiv',
+    );
+    // Ein regulaerer Ausdruck mit Anfuehrungszeichen bringt den Abtaster nicht
+    // aus dem Tritt (sonst faengt mitten im Code eine Zeichenkette an).
+    expect(visibleTexts(`const r = /['"]/; const t = 'Ihr Gerät';`)).toContain('Ihr Gerät');
+  });
+
+  /**
    * ⚠ Der EINE Anwendungs-Katalog ist seit Stufe 1 ein KUNDEN-Textwohnort
    * (Label, Nutzen-Satz, Voraussetzungs-Chips samt Sperr-Sätzen, Leer-Zustand,
    * Freischaltungs-Chips) — er liegt aber als JSON und wird vom Datei-Walker
@@ -214,8 +474,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       texte.push(String(a.blocked_reason_immer ?? ''), String(a.leer_zustand ?? ''));
       texte.push(...(a.unlock_chips as string[]));
       for (const t of texte) {
-        for (const { re, why } of FORBIDDEN) {
-          const m = re.exec(t.replace(GERAETE_MODUS, ' '));
+        for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+          const m = re.exec(ohneAusnahmen(t));
           if (m) violations.push(`anwendungen/catalog.json · ${id}: „${m[0]}" — ${why}`);
         }
       }
@@ -253,8 +513,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     ];
     const violations: string[] = [];
     for (const [wo, text] of texte) {
-      for (const { re, why } of FORBIDDEN) {
-        const m = re.exec(text.replace(GERAETE_MODUS, ' '));
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
         if (m) violations.push(`anwendungen/catalog.json · ${wo}: „${m[0]}" — ${why}`);
       }
     }
@@ -359,6 +619,44 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       const bareWord = re.source.replace(/\\b/g, '');
       expect(re.test(bareWord)).toBe(true);
     }
+    // UEMS · AP-00 IP-4: jedes Werkstatt-Wort beisst in einem echten Satz —
+    // und der Satz muss den Abtaster UND den Kundentext-Filter passieren.
+    const beisst = (satz: string) => {
+      const texte = visibleTexts(`const t = '${satz}';`).filter((x) => isKundentext(x));
+      expect(texte, satz).not.toEqual([]);
+      return FORBIDDEN_INTERN.filter(({ re }) => texte.some((x) => re.test(ohneAusnahmen(x))))
+        .map(({ re }) => re.source);
+    };
+    expect(beisst('Der Tenant wurde gewechselt')).toContain('\\bTenant\\w*');
+    expect(beisst('Diese Site liefert keine Daten')).toContain('\\bSites?\\b');
+    expect(beisst('Die Standort-ID fehlt noch')).toContain('\\bStandort-ID\\b');
+    expect(beisst('Die Entity ist unvollständig')).toContain('\\bEntit(y|ies)\\b');
+    expect(beisst('Kein Channel gefunden')).toContain('\\bChannels?\\b');
+    expect(beisst('Der point_key ist unbekannt')).toContain('\\bpoint[_-]?key\\b');
+    expect(beisst('Das Device meldet sich nicht')).toContain('\\bDevices?\\b');
+    expect(beisst('Das Rollup ist noch nicht fertig')).toContain('\\bRollups?\\b');
+    expect(beisst('Der Bucket ist zu grob gewählt')).toContain('\\bBuckets?\\b');
+    expect(beisst('Die Retention greift ab morgen')).toContain('\\bRetention\\b');
+    expect(beisst('Der Ingest hat den Wert verworfen')).toContain('\\bIngest\\w*');
+    expect(beisst('Der Writer schreibt gerade nach')).toContain('\\bWriter\\b');
+    expect(beisst('Das Read-Model ist veraltet')).toContain('\\bRead-Model\\b');
+    expect(beisst('Ihre Edge ist nicht verbunden')).toContain('\\bEdge\\b');
+    expect(beisst('Der Slot 3 ist frei')).toContain('\\bSlots?\\b');
+    expect(beisst('Der Claim wurde abgelehnt')).toContain('\\b(un)?claim\\w*');
+    expect(beisst('Das Gerät ist unclaimed')).toContain('\\b(un)?claim\\w*');
+    // …und die zwei dokumentierten Ausnahmen lassen GENAU ihren Fall durch.
+    expect(beisst('Edge-Updates')).toEqual([]);
+    expect(beisst('statt in diesem Verbrauchs-Slot einzuspeisen')).toEqual([]);
+    // Die dritte Ausnahme trifft NUR das Suchwort-Feld, nicht den Fliesstext.
+    const hilfe = (code: string) =>
+      visibleTexts(code.replace(HILFE_SUCHWOERTER, ' '))
+        .filter((t) => isKundentext(t))
+        .filter((t) => FORBIDDEN_INTERN.some(({ re }) => re.test(ohneAusnahmen(t))));
+    expect(hilfe("const a = { keywords: ['Claim', 'Device'] };")).toEqual([]);
+    expect(hilfe("const a = { body: 'Der Claim wurde abgelehnt' };")).not.toEqual([]);
+    // Die Ausnahmen sind ENG: ein anderer Satz mit demselben Wort faellt durch.
+    expect(beisst('Die Edge bekommt ein Update')).toContain('\\bEdge\\b');
+    expect(beisst('Der Slot der Karte ist belegt')).toContain('\\bSlots?\\b');
     // A forbidden word in a normal string literal IS caught…
     expect(stripComments('const x = "Entität";')).toMatch(/Entität/);
     // …while the same word inside a comment is NOT (it is stripped first).

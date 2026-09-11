@@ -1581,7 +1581,7 @@ const VORSCHAU_FEHLER: Record<string, string> = {
   timeout: 'Ihre Anlage hat nicht rechtzeitig geantwortet. Bitte erneut versuchen.',
   rate_limited: 'Es laufen gerade zu viele Prüfungen. Bitte einen Moment warten.',
   not_supported:
-    'Ihre Box kann noch nicht mithören - dafür braucht sie das neuere Edge-Release. '
+    'Ihre Box kann noch nicht mithören - dafür braucht sie eine neuere Box-Version. '
     + 'Die Zuordnung lässt sich trotzdem speichern; die Werte erscheinen dann auf der Geräteseite.',
 };
 
@@ -1600,8 +1600,8 @@ const VORSCHAU_FEHLER_HTTP: Record<string, string> = {
     'Die Antwort war nicht auswertbar - sie war kein JSON, oder die Anmeldung wurde '
     + 'abgelehnt. Bitte Pfad und Schlüssel prüfen.',
   not_supported:
-    'Ihre Box kann diese Auskunft noch nicht abrufen - dafür braucht sie das neuere '
-    + 'Edge-Release. Die Zuordnung lässt sich trotzdem speichern; die Werte erscheinen dann '
+    'Ihre Box kann diese Auskunft noch nicht abrufen - dafür braucht sie eine neuere '
+    + 'Box-Version. Die Zuordnung lässt sich trotzdem speichern; die Werte erscheinen dann '
     + 'auf der Geräteseite.',
 };
 

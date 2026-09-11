@@ -47,9 +47,43 @@ gezielt lokal fahren.
   (`src/keineSeitenleisten.test.ts` verweigert schon den Bausteinnamen `Drawer`).
 - **Kunden-Vokabular.** Interne Wörter (Entität, Messpunkt, Mandant, Modus, Broker, RLS …)
   stehen in keinem Kundentext; `src/copy.test.ts` liest die Quellen und wacht darüber.
+  Die UEMS-Wörter stehen in der Tabelle darunter.
 - **Bewegung** ist die letzte Sektion dieser Datei (verbatim, weil parallel gepflegt): EIN
   Token-Satz, Presets in `src/motionPresets.ts`, Wächter `src/motionTokens.test.ts` +
   `src/chartMotion.test.ts`, `prefers-reduced-motion` an EINER Stelle.
+
+## UEMS-Kundenwörter (Quelle: `../../docs/fachmodell/glossar.md`)
+
+Die Wortquelle ist das Fachmodell-Glossar — dort steht je Begriff Definition, Beispiel und
+Stand im Code; die Pflegeregel (neues Wort zuerst ins Glossar, dann ins Portal) steht in
+`../../docs/fachmodell/README.md`. Als Konstanten leben die Wörter in `src/glossar.ts`
+(`UEMS_*`), bewacht wird die andere Hälfte — die verbotenen Werkstatt-Wörter — von
+`src/copy.test.ts` (`FORBIDDEN_INTERN`).
+
+| Kundenwort | gemeint ist | nicht sagen |
+|---|---|---|
+| Unternehmen · Standort · Gebäude · Bereich | der Ortsbaum des Kunden | Site, Standort-ID |
+| Netzanschluss · elektrisches System | Übergabepunkt bzw. Bilanzgrenze dahinter | Grid Connection |
+| Messstelle · Messgröße · Medium | die fachliche Messung, ihr Was und ihr Worin | Channel, Point-Key, `point_key` |
+| Hauptgröße / Nebengröße | die EINE identitätsstiftende Größe je Messstelle + ihre Geschwister (AP-04 E1) | Primary/Secondary |
+| Hauptzähler / „Unterzähler von …" | die elektrische Stellung; „von" zeigt auf die übergeordnete MESSSTELLE (AP-04 E12) | Submeter, Parent |
+| Prozess · Kostenstelle · Bezugsgröße | Tätigkeit, Verrechnungseinheit, Nenner einer Kennzahl | Cost Center, KPI-Base |
+| Gerät · Komponente | das physische Kästchen bzw. das EMS-Objekt in der Anlage | Device, Entity |
+| VoltPilot-Box · führende Box | die Hardware beim Kunden; bei mehreren die eine mit Summe + Fahrplan (AP-06 E3) | Edge, Gateway, Device |
+| Datenquelle | Adresse + Protokoll — **nur auf Einrichtungsflächen**, nie in einer Auswertung | Source, Connection |
+| Kundenbereich | der Datenraum eines Vertragspartners | Tenant, Mandant |
+| Entwurf · eingerichtet · aktiv · angehalten · archiviert | der Lebenszyklus, den der Kunde setzt (AP-01 E8) | draft, enabled |
+| liefert Daten · steuert | die Beobachtung — nie von Hand gesetzt (AP-01 E8) | online, healthy |
+| Kundenadministrator · Energiemanager · Bearbeiter · Bedienberechtigt · Leser · Unterstützer | die sechs Rollen (AP-03 E1) | Admin, Operator, Viewer |
+| „Messen & Auswerten" / „Steuern & Optimieren" | die zwei Funktionen, JE STANDORT (AP-01 E6) | Monitoring, Control |
+| Marktoptimierung | die Option der Radiogruppe Betriebsmodell (AP-01 E11) | Arbitrage |
+| anmelden / abmelden | eine Box in Betrieb nehmen bzw. lösen | Claim, Unclaim |
+| Steckplatz | die Karte im Controller (AP-05) | Slot |
+| Viertelstunde | das Zeitraster des Fahrplans | Slot, Bucket, Rollup |
+| Aufbewahrung · Datenannahme | wie lange Werte bleiben bzw. wer sie annimmt | Retention, Ingest, Writer, Read-Model |
+
+Drei dokumentierte Ausnahmen stehen im Wächter selbst (Admin-Menüpunkt „Edge-Updates", die
+Zeit-Slot-Sätze des Altbestands, die Suchwörter des Hilfe-Handbuchs).
 
 ## Die Text-Wächter (quellenlesende Tests — das Muster für neue Regeln)
 

@@ -615,7 +615,7 @@ export function actionState(state: string): { response: string; effect: string; 
     case 'call_error': return { response: 'CallError der Station', effect: 'Keine Wirkung erwartet', tone: 'error', pending: false };
     case 'not_sendable': return { response: 'Nicht sendbar', effect: 'Station war offline oder Ziel veraltet', tone: 'error', pending: false };
     case 'transport_failed': return { response: 'Transport fehlgeschlagen', effect: 'Keine bestätigte Zustellung', tone: 'error', pending: false };
-    case 'edge_rejected': return { response: 'Edge hat den Versand abgelehnt', effect: 'Keine Wirkung erwartet', tone: 'error', pending: false };
+    case 'edge_rejected': return { response: 'Die Box hat den Versand abgelehnt', effect: 'Keine Wirkung erwartet', tone: 'error', pending: false };
     case 'effect_failed': return { response: 'CallResult · Befehl angenommen', effect: 'Wirkung widerspricht oder ist fehlgeschlagen', tone: 'error', pending: false };
     case 'timed_out': case 'effect_timeout': return { response: 'Frist abgelaufen', effect: 'Wirkung nicht innerhalb der Frist beobachtet', tone: 'warn', pending: false };
     case 'late_response': return { response: 'Antwort verspätet eingetroffen', effect: 'Ursprünglicher Abschluss bleibt bestehen', tone: 'warn', pending: false };

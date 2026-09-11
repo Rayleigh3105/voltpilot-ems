@@ -71,7 +71,143 @@ export const GROUP_LABEL: Record<SettingsGroupId, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// 2 · Der Suchindex
+// 2 · UEMS — die Kundenwörter des Unternehmens-Energiemanagements (AP-00 IP-4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Die WORTQUELLE ist `docs/fachmodell/glossar.md` (PR 649) — dort steht je
+ * Begriff die Definition, das Beispiel des Referenzunternehmens und der Stand
+ * im Code. Hier stehen die Wörter nur als Konstanten, damit die Flächen, die
+ * das UEMS Stück für Stück baut (Ortsbaum, Messstellen, Rechte, Boxen), NIE
+ * auseinanderlaufen — dasselbe Motiv wie bei den D6-Umbenennungen darüber.
+ *
+ * ⚠ Der Wächter dazu ist `copy.test.ts`: er verbietet die INTERNEN Wörter
+ * (Tenant, Site, Entity, Device, Channel, Slot …) in Kundentexten. Diese Datei
+ * ist die andere Hälfte — sie sagt, was stattdessen dasteht.
+ *
+ * Neue Wörter kommen zuerst ins Fachmodell-Glossar, dann hierher; nie
+ * umgekehrt (Pflegeregel: `docs/fachmodell/README.md`).
+ */
+
+/** Die Wurzel des Ortsbaums — das, worüber der Kunde berichtet. */
+export const UEMS_UNTERNEHMEN = 'Unternehmen';
+
+/** Ein räumlich abgegrenzter Ort des Unternehmens mit Adresse. */
+export const UEMS_STANDORT = 'Standort';
+
+/** Die optionale zweite Ebene des Ortsbaums. */
+export const UEMS_GEBAEUDE = 'Gebäude';
+
+/** Die dritte, optionale Ebene (Halle Nord, Etage, Technikraum). */
+export const UEMS_BEREICH = 'Bereich';
+
+/** Der Übergabepunkt zum öffentlichen Netz. */
+export const UEMS_NETZANSCHLUSS = 'Netzanschluss';
+
+/** Alles, was hinter einem Netzanschluss elektrisch zusammenhängt. */
+export const UEMS_ELEKTRISCHES_SYSTEM = 'elektrisches System';
+
+/** Die fachliche Identität einer Messung — sie überlebt Gerät, Kanal und Box. */
+export const UEMS_MESSSTELLE = 'Messstelle';
+
+/** WAS gemessen wird (Wirkenergie, Leistung, Volumen …). */
+export const UEMS_MESSGROESSE = 'Messgröße';
+
+/** WORIN gemessen wird (Strom, Gas, Wärme, Wasser, Druckluft). */
+export const UEMS_MEDIUM = 'Medium';
+
+/** Eine betriebliche Tätigkeit, die Energie einsetzt (Spritzguss, Logistik). */
+export const UEMS_PROZESS = 'Prozess';
+
+/** Die Verrechnungseinheit des Kunden (Nummer + Name). */
+export const UEMS_KOSTENSTELLE = 'Kostenstelle';
+
+/** Die nicht-energetische Größe, auf die Energie bezogen wird (AP-09). */
+export const UEMS_BEZUGSGROESSE = 'Bezugsgröße';
+
+/**
+ * ⚠ Der Erfassungsweg — Adresse plus Protokoll. Das Glossar bindet dieses Wort
+ * ausdrücklich an die EINRICHTUNGSFLÄCHEN: „‚Datenquelle‘ ist ein Fachwort für
+ * Einrichtende, kein Wort der Auswertungsflächen." Eine Auswertung nennt
+ * stattdessen die Messstelle oder die Komponente.
+ */
+export const UEMS_DATENQUELLE = 'Datenquelle';
+
+/** Das physische Kästchen hinter der Box (Wechselrichter, Zähler, Säule). */
+export const UEMS_GERAET = 'Gerät';
+
+/** Das EMS-Objekt in einer Anlage, das misst und/oder gesteuert wird. */
+export const UEMS_KOMPONENTE = 'Komponente';
+
+/** Die Hardware beim Kunden — nie „Edge", nie „Device" (bestehendes Wort). */
+export const UEMS_BOX = 'VoltPilot-Box';
+
+/**
+ * Hat eine Anlage mehrere Boxen, ist EINE davon die führende (AP-06 E3): sie
+ * bildet die Anlagen-Summe und empfängt den Fahrplan. Ein gespeicherter,
+ * sichtbarer Fakt — nie geraten.
+ */
+export const UEMS_FUEHRENDE_BOX = 'führende Box';
+
+/**
+ * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
+ * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
+ * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.
+ */
+export const UEMS_LEBENSZYKLUS = [
+  'Entwurf',
+  'eingerichtet',
+  'aktiv',
+  'angehalten',
+  'archiviert',
+] as const;
+
+/** Die beobachteten Zustände — abgeleitet, nie gesetzt (AP-01 E8). */
+export const UEMS_BEOBACHTUNG = ['liefert Daten', 'steuert'] as const;
+
+/**
+ * Die Rollen (AP-03 E1): zwei unternehmensweite, drei je Standort und die
+ * befristete Unterstützung.
+ */
+export const UEMS_ROLLEN_UNTERNEHMEN = ['Kundenadministrator', 'Energiemanager'] as const;
+
+/** Die drei Rollen, die je Standort vergeben werden (AP-03 E1). */
+export const UEMS_ROLLEN_STANDORT = ['Bearbeiter', 'Bedienberechtigt', 'Leser'] as const;
+
+/** Die befristete Rolle (Installateur | VoltPilot) mit Pflicht-Enddatum. */
+export const UEMS_ROLLE_UNTERSTUETZER = 'Unterstützer';
+
+/** Die zwei Funktionen, die JE STANDORT gelten (AP-01 E6). */
+export const UEMS_FUNKTION_MESSEN = 'Messen & Auswerten';
+
+/** Die zweite Funktion — sie trägt Geld, Betriebsmodell und Steuerung. */
+export const UEMS_FUNKTION_STEUERN = 'Steuern & Optimieren';
+
+/** Das Kundenwort der Radiogruppe Betriebsmodell — nicht „Arbitrage" (AP-01 E11). */
+export const UEMS_MARKTOPTIMIERUNG = 'Marktoptimierung';
+
+/**
+ * Eine Messstelle hat genau EINE Hauptgröße (identitätsstiftend, nie änderbar)
+ * und 0..n Nebengrößen desselben Messortes (AP-04 E1). Nebengrößen tragen nie
+ * Bilanz oder Bericht.
+ */
+export const UEMS_HAUPTGROESSE = 'Hauptgröße';
+
+/** Die Geschwister der Hauptgröße — nie in Bilanz oder Bericht (AP-04 E1). */
+export const UEMS_NEBENGROESSE = 'Nebengröße';
+
+/** Die elektrische Stellung am Netzanschluss (AP-04 E12). */
+export const UEMS_HAUPTZAEHLER = 'Hauptzähler';
+
+/**
+ * Die elektrische Stellung darunter — sie bezieht sich auf die übergeordnete
+ * MESSSTELLE derselben Anlage, nicht auf eine Komponente (AP-04 E12). Der Satz
+ * steht mit dem Namen der übergeordneten Messstelle: „Unterzähler von MS-01".
+ */
+export const UEMS_UNTERZAEHLER_VON = 'Unterzähler von';
+
+// ---------------------------------------------------------------------------
+// 3 · Der Suchindex
 // ---------------------------------------------------------------------------
 
 export interface GlossarEntry {
