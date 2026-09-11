@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -42,6 +43,22 @@ public class MessstelleAenderungRepository {
                 Long.class, e.tenantId(), e.messstelleId(), e.art(), e.altJson(), e.neuJson(),
                 Timestamp.from(e.giltAb()), e.rueckwirkend(), e.grund(), e.actorSub(),
                 e.actorName(), e.actorRolle(), e.actorArt());
+    }
+
+    /** Ein Übergang des Lebenszyklus: {@code art} „angehalten“ oder „fortgesetzt“, ab wann er gilt. */
+    public record Uebergang(String art, Instant giltAb) {}
+
+    /**
+     * Der späteste Übergang „angehalten“/„fortgesetzt“ der Messstelle — der Vorgänger, NACH dem
+     * jeder weitere Übergang liegen muss. Gespeichert ist an der Messstelle nur der heutige
+     * Zustands-Eingang {@code angehalten_ab}; wann sie zuletzt fortgesetzt wurde, weiß nur das
+     * Protokoll. Leer, wenn sie nie angehalten wurde (oder fremd ist).
+     */
+    public Optional<Uebergang> letzterUebergang(UUID messstelleId) {
+        return jdbc.query("SELECT art, gilt_ab FROM messstelle_aenderung WHERE messstelle_id = ? "
+                + "AND art IN ('angehalten', 'fortgesetzt') ORDER BY gilt_ab DESC, id DESC LIMIT 1",
+                (rs, n) -> new Uebergang(rs.getString("art"), rs.getTimestamp("gilt_ab").toInstant()),
+                messstelleId).stream().findFirst();
     }
 
     /** Das Protokoll EINER Messstelle, jüngster Eintrag zuerst — leer für eine fremde. */

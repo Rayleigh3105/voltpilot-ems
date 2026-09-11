@@ -7,7 +7,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.support.DataAccessUtils;
@@ -23,9 +26,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * die Route macht daraus 404, nie 403.
  *
  * <p>Nur der Unterbau (AP-04 IP-2). Die Regeln prüft {@link MessstelleRegeln}: die
- * Schreibrouten (IP-3) fragen {@code kennzeichenPruefen} mit {@link #vergeben()} VOR dem
- * Schreiben, damit das Urteil den Träger nennt. Die Datenbank hält die Invarianten
- * trotzdem selbst — ein Kennzeichen außerhalb der Form scheitert mit 23514 an
+ * Schreibrouten ({@link MessstelleService}, IP-3) fragen {@code kennzeichenPruefen} mit
+ * {@link #vergeben()} VOR dem Schreiben, damit das Urteil den Träger nennt. Die Datenbank
+ * hält die Invarianten trotzdem selbst — ein Kennzeichen außerhalb der Form scheitert mit 23514 an
  * {@code messstelle_kennzeichen_format}, eines, das eine ANDERE Messstelle trägt oder
  * trug, mit 23505 an {@code messstelle_kennzeichen_eindeutig} (heute getragen) oder
  * {@code messstelle_kennzeichen_belegt} (archiviert oder früher getragen).
@@ -137,10 +140,38 @@ public class MessstelleRepository {
                 kennzeichen, id) == 1;
     }
 
+    /**
+     * Schreibt die drei änderbaren Felder (Vertrag §1: Art, Medium und Hauptgröße nie). Ein
+     * neues Kennzeichen belegt der Trigger wie bei {@link #kennzeichenAendern}; das bisherige
+     * bleibt der Messstelle belegt. {@code false}: nicht da oder archiviert.
+     */
+    public boolean bearbeiten(UUID id, String kennzeichen, String name, String notiz) {
+        return jdbc.update("UPDATE messstelle SET kennzeichen = ?, name = ?, notiz = ?, "
+                + "updated_at = now() WHERE id = ? AND archiviert_am IS NULL",
+                kennzeichen, name, notiz, id) == 1;
+    }
+
     /** Archiviert die Messstelle; ihr Kennzeichen bleibt belegt. {@code false}: nicht da oder schon archiviert. */
     public boolean archivieren(UUID id, Instant am) {
         return jdbc.update("UPDATE messstelle SET archiviert_am = ?, updated_at = now() "
                 + "WHERE id = ? AND archiviert_am IS NULL", Timestamp.from(am), id) == 1;
+    }
+
+    /** Hält die Messstelle ab {@code ab} an. {@code false}: nicht da, archiviert oder schon angehalten. */
+    public boolean anhalten(UUID id, Instant ab) {
+        return jdbc.update("UPDATE messstelle SET angehalten_ab = ?, updated_at = now() "
+                + "WHERE id = ? AND archiviert_am IS NULL AND angehalten_ab IS NULL",
+                Timestamp.from(ab), id) == 1;
+    }
+
+    /**
+     * Setzt die angehaltene Messstelle fort. Gespeichert bleibt nur der Zustands-Eingang; wann
+     * sie angehalten war, erzählt das Änderungsprotokoll. {@code false}: nicht da, archiviert
+     * oder nicht angehalten.
+     */
+    public boolean fortsetzen(UUID id) {
+        return jdbc.update("UPDATE messstelle SET angehalten_ab = NULL, updated_at = now() "
+                + "WHERE id = ? AND archiviert_am IS NULL AND angehalten_ab IS NOT NULL", id) == 1;
     }
 
     /**
@@ -172,6 +203,21 @@ public class MessstelleRepository {
                         groesse(rs),
                         instant(rs.getTimestamp("archiviert_am"))),
                 messstelleId));
+    }
+
+    /** Die Nebengrößen ALLER Messstellen des Mandanten in einer Abfrage, je Messstelle in der Reihenfolge des Hinzufügens. */
+    public Map<UUID, List<Nebengroesse>> nebengroessenAlle() {
+        Map<UUID, List<Nebengroesse>> jeMessstelle = new LinkedHashMap<>();
+        jdbc.query("SELECT id, messstelle_id, groesse, richtung, einheit, wertart, archiviert_am "
+                + "FROM messstelle_groesse ORDER BY created_at, id", rs -> {
+                    Nebengroesse n = new Nebengroesse(
+                            rs.getObject("id", UUID.class),
+                            rs.getObject("messstelle_id", UUID.class),
+                            groesse(rs),
+                            instant(rs.getTimestamp("archiviert_am")));
+                    jeMessstelle.computeIfAbsent(n.messstelleId(), k -> new ArrayList<>()).add(n);
+                });
+        return jeMessstelle;
     }
 
     /** Legt die Zählerzeile des Mandanten an, falls sie fehlt, und sperrt sie bis zum Transaktionsende. */

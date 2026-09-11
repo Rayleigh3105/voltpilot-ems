@@ -182,6 +182,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [UEMS-Datenquellen-Tabellen: Datenquelle, zeitgültige Zuständigkeit je Box, führende Box](root/uems-datenquellen-tabellen-datenquelle-z.md)
 - [UEMS-Ereignis-Vertrag Box → Cloud und das geschlossene Ereignis-Vokabular](root/uems-ereignis-vertrag-box-cloud-und-das.md)
 - [UEMS: `measurement-samples` 2.1 — optionale Herkunftsfelder, 2.0 bleibt gültig](root/uems-measurement-samples-2-1-herkunftsfelder.md)
+- [UEMS-Messstellen-API: anlegen, lesen, bearbeiten, anhalten, fortsetzen, archivieren](root/uems-messstellen-api-anlegen-lesen-bear.md)
 - [Verbrauchsmanagement v1 — Paket 1: die Verbraucher-Zone LESEND](root/verbrauchsmanagement-v1-paket-1-die-verb.md)
 - [Verbrauchsmanagement v1 — Paket 2: die Steuerart SCHREIBEN](root/verbrauchsmanagement-v1-paket-2-die-steu.md)
 - [Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts](root/verbrauchsmanagement-v1-paket-3b-laden-p.md)

@@ -192,6 +192,22 @@ tags:
       customer: a flow carrying a GATED strategy node activates only after a
       Portal-Admin enables that node type for the site. Governance WRITE and the
       auto-start seed stay platform-admin-only (the admin flow API).
+  - name: messstellen
+    description: >
+      UEMS-Messstellen (AP-04 IP-3): die logische Messstelle des Kundenbereichs
+      anlegen, lesen, bearbeiten, anhalten, fortsetzen und archivieren. Die Regeln
+      sind der Vertrag docs/contracts/v2/messstelle.md (Java-Zwilling
+      MessstelleRegeln); die Antwort IST eine Messstelle nach messstelle.schema.json
+      - deshalb, anders als der Rest dieser API, in snake_case - plus `id`,
+      `fehlt`, `angehalten_ab`, `archiviert_am`. Mandanten-Zaun ist die RLS
+      (fremde Messstelle = 404, nie 403; Plattform-Admins nutzen X-Tenant-Id). Die
+      Durchsetzung der Rechte-Matrix (docs/contracts/v2/rechte-matrix.json:
+      `messstelle.bearbeiten`, `messwerte.ansehen`, `aenderung.rueckwirkend`) kommt
+      mit AP-03; bis dahin gilt authenticated(). Jeder Schreibvorgang schreibt
+      GENAU EINEN Eintrag in das Änderungsprotokoll (messstelle_aenderung) mit
+      Urheber. Ort, Stellung, Prozesse, Kostenstellen (IP-7) und Quellen (IP-13)
+      kommen additiv; bis dahin sind diese Listen leer und eine gemessene
+      Messstelle ehrlich ein Entwurf (`fehlt: [ort]`).
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -7245,6 +7261,212 @@ paths:
                 items: { $ref: "#/components/schemas/RegisterWriteEvent" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage nicht gefunden. }
+  /api/v1/messstellen:
+    get:
+      tags: [messstellen]
+      summary: Alle Messstellen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
+      description: >
+        Recht `messwerte.ansehen`. Die schlichte Liste; das Register mit Filtern
+        (Standort, Ort, Anlage, Zustand, ohne Quelle, Stichtag) und `teilansicht`
+        ergänzt AP-04 IP-4 additiv - deshalb ein Objekt, kein nacktes Array.
+      responses:
+        "200":
+          description: Die Messstellen (leer ohne gewählten Kundenbereich).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [messstellen]
+      summary: Legt eine Messstelle an; ohne Kennzeichen das nächste automatische (MS-0001 …).
+      description: >
+        Recht `messstelle.bearbeiten`. Geprüft wird erst jede Form (400:
+        `kennzeichen_format`, `anfrage_ungueltig`, `groesse_ungueltig` mit dem ersten
+        verletzten Merkmal nach dem Größen-Katalog), dann die Belegung (409
+        `kennzeichen_belegt` - belegt ist, was eine Messstelle trägt, ein
+        archiviertes UND das frühere Kennzeichen einer umbenannten; `bestehend`
+        nennt den Träger). Das automatische Kennzeichen vergibt der Server unter
+        der Zeilensperre des Zählers in derselben Transaktion wie Nebengrößen und
+        Protokolleintrag. Das Medium ist das volle Vokabular des Vertrags, geprüft
+        über den Größen-Katalog: Gas/Volumen (MS-21) ist anlegbar, Wasser, Wärme,
+        Kälte und Druckluft haben noch keine Größe (400 `groesse_ungueltig`,
+        `grund: medium`). Dass der Dialog im ersten Umfang nur „Strom“ anbietet
+        (AP-00 E11) und keine berechnete Messstelle (E9), ist eine Regel der
+        Fläche, nicht der Schnittstelle. Ein Feld, das es hier nicht gibt, ist 400
+        `anfrage_ungueltig` - nie still verworfen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleAnlegen" }
+            example:
+              name: Spritzguss SG01–SG06
+              art: gemessen
+              medium: Strom
+              hauptgroesse: { groesse: Wirkenergie, richtung: Bezug, einheit: kWh, wertart: Zählerstand }
+              nebengroessen:
+                - { groesse: Wirkleistung, richtung: Bezug, einheit: kW, wertart: Momentanwert }
+      responses:
+        "201":
+          description: Angelegt; `Location` zeigt auf die neue Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Kein Kundenbereich gewählt (Plattform-Admin ohne X-Tenant-Id). }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/kennzeichen-vorschlag:
+    get:
+      tags: [messstellen]
+      summary: Das nächste automatische Kennzeichen für den Anlege-Dialog.
+      description: >
+        Recht `messstelle.bearbeiten`. Die kleinste Nummer über dem Zähler, deren
+        Kennzeichen niemand trägt oder trug (E7); der Zähler bewegt sich erst, wenn
+        eine Messstelle ohne Kennzeichen gespeichert wird.
+      responses:
+        "200":
+          description: Der Vorschlag.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kennzeichen]
+                properties:
+                  kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$", example: MS-0022 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/messstellen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Eine Messstelle.
+      description: Recht `messwerte.ansehen`.
+      responses:
+        "200":
+          description: Die Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [messstellen]
+      summary: Schreibt Kennzeichen, Name und Notiz (die ganze Menge).
+      description: >
+        Recht `messstelle.bearbeiten`. Art, Medium und Hauptgröße sind nie änderbar
+        (eine andere Größe ist eine andere Messstelle): wer sie mitschickt, bekommt
+        400 `anfrage_ungueltig`. Ein fehlendes Feld ist leer - ohne `kennzeichen` ist
+        die Anfrage 400 `kennzeichen_format`, ohne `name` fehlt der Name danach
+        (Entwurf). Das bisherige Kennzeichen bleibt der Messstelle belegt; sie darf
+        zu ihm zurück. Ändert sich nichts, wird nichts geschrieben und nichts
+        protokolliert. Eine archivierte Messstelle bleibt, wie sie ist (409
+        `zustand_passt_nicht`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleBearbeiten" }
+            example: { kennzeichen: MS-06, name: Spritzguss SG01–SG06, notiz: Zählerplatz UV-3 }
+      responses:
+        "200":
+          description: Die Messstelle nach dem Bearbeiten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/anhalten:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Hält die Messstelle an (Umbau, Zähler ausgebaut) - Quellen und Zuordnungen bleiben.
+      description: >
+        Recht `messstelle.bearbeiten`, rückwirkend zusätzlich `aenderung.rueckwirkend`.
+        Nur, wenn sie weder angehalten noch archiviert ist (sonst 409
+        `zustand_passt_nicht`). Zeitpunkt auf die Minute (sonst 400), Vorgabe jetzt;
+        die Vergangenheit ist erlaubt und steht als „rückwirkend“ im Protokoll, die
+        Zukunft nicht (422 `zeitpunkt_in_zukunft`); er liegt NACH dem letzten
+        Fortsetzen (422 `zeitpunkt_vor_vorgaenger`, `vorgaenger` nennt es).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleUebergang" }
+            example: { zeitpunkt: "2026-11-18T10:40:00+01:00", grund: Umbau }
+      responses:
+        "200":
+          description: Die angehaltene Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/fortsetzen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Setzt die angehaltene Messstelle fort; die Lücke bleibt sichtbar, nie aufgefüllt.
+      description: >
+        Recht `messstelle.bearbeiten`, rückwirkend zusätzlich `aenderung.rueckwirkend`.
+        Nur, wenn sie angehalten und nicht archiviert ist (sonst 409
+        `zustand_passt_nicht`). Der Zeitpunkt liegt NACH dem Anhalten (422
+        `zeitpunkt_vor_vorgaenger` - dieselbe Regel und derselbe Code wie der Wechsel
+        einer Quelle, A15), nie in der Zukunft (422 `zeitpunkt_in_zukunft`).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleUebergang" }
+      responses:
+        "200":
+          description: Die fortgesetzte Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/archivieren:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Archiviert die Messstelle - das Kennzeichen bleibt belegt, kein Wiederbeleben.
+      description: >
+        Recht `messstelle.bearbeiten`, rückwirkend zusätzlich `aenderung.rueckwirkend`.
+        Zeitpunkt jetzt oder Vergangenheit (AP-04 §4.5; Zukunft 422
+        `zeitpunkt_in_zukunft`), nach dem letzten Anhalten/Fortsetzen (422
+        `zeitpunkt_vor_vorgaenger`). Auch eine angehaltene Messstelle lässt sich
+        archivieren; eine archivierte nicht noch einmal (409 `zustand_passt_nicht`).
+        Ihre Nebengrößen gelten mit ihr als archiviert. Das Beenden der Quellen zum
+        Archivzeitpunkt (IP-13) und der Zuordnungen am Vortag (IP-7) kommt mit
+        diesen Paketen.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleUebergang" }
+      responses:
+        "200":
+          description: Die archivierte Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -7276,6 +7498,13 @@ components:
       description: >
         Rejected before anything was written; the body carries a German
         `message`.
+    MessstelleAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. Der Körper trägt `code`, einen deutschen
+        `message`-Satz und die Fakten des Urteils (siehe MessstelleFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/MessstelleFehler" }
   schemas:
     OcppConnectorState:
       type: object
@@ -13608,3 +13837,151 @@ components:
           type: integer
           readOnly: true
           description: Serverseitige, konservative Kostenannahme; im Request nicht erlaubt.
+    MessGroesse:
+      type: object
+      description: >
+        Eine Messgröße wie `$defs/groesse` in docs/contracts/v2/messstelle.schema.json.
+        Nur zusammen mit dem Medium im Größen-Katalog gültig (Vertrag §2).
+      additionalProperties: false
+      required: [groesse, richtung, einheit, wertart]
+      properties:
+        groesse: { type: string, enum: [Wirkenergie, Wirkleistung, Blindenergie, Scheinleistung, Ladestand, Volumen] }
+        richtung: { type: string, enum: [Bezug, Abgabe, Erzeugung, Laden, Entladen, "Laden / Entladen", richtungslos] }
+        einheit: { type: string, enum: [kWh, kW, kvarh, kVA, "%", "m³"] }
+        wertart: { type: string, enum: [Zählerstand, Intervallmenge, Momentanwert] }
+    Messstelle:
+      type: object
+      description: >
+        Eine Messstelle nach docs/contracts/v2/messstelle.schema.json (dieselben
+        Feldnamen in snake_case) plus die vier Felder der Schnittstelle `id`, `fehlt`,
+        `angehalten_ab`, `archiviert_am`. Bis IP-7/IP-13 sind `fuehrende_quelle`,
+        `vergleichsquellen`, `orte` und `elektrische_stellung` leer und `kadenz_s`
+        null. `lebenszyklus` und `fehlt` leitet MessstelleRegeln.lebenszyklus aus den
+        gespeicherten Eingängen ab (ohne Ort ist eine gemessene Messstelle ein
+        Entwurf, eine berechnete ohne Formel ebenso); gespeichert ist nie die Stufe.
+      required: [id, schema_version, kennzeichen, name, art, medium, hauptgroesse, fuehrende_quelle,
+        vergleichsquellen, nebengroessen, orte, elektrische_stellung, kadenz_s, lebenszyklus, fehlt,
+        notiz, angehalten_ab, archiviert_am]
+      properties:
+        id: { type: string, format: uuid }
+        schema_version: { type: string, enum: ["1.0"] }
+        kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string, nullable: true, description: "null = fehlt noch (Entwurf)." }
+        art: { type: string, enum: [gemessen, berechnet] }
+        medium: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        fuehrende_quelle: { type: array, items: { type: object }, description: "Bis IP-13 leer." }
+        vergleichsquellen: { type: array, items: { type: object }, description: "Bis IP-13 leer." }
+        nebengroessen:
+          type: array
+          items:
+            type: object
+            required: [groesse, richtung, einheit, wertart, lebenszyklus, fuehrende_quelle, vergleichsquellen]
+            properties:
+              groesse: { type: string }
+              richtung: { type: string }
+              einheit: { type: string }
+              wertart: { type: string }
+              lebenszyklus: { type: string, enum: [aktiv, archiviert], description: "archiviert auch mit der Messstelle." }
+              fuehrende_quelle: { type: array, items: { type: object } }
+              vergleichsquellen: { type: array, items: { type: object } }
+        orte: { type: array, items: { type: object }, description: "Bis IP-7 leer." }
+        elektrische_stellung: { type: array, items: { type: object }, description: "Bis IP-7 leer." }
+        kadenz_s: { type: integer, nullable: true }
+        lebenszyklus: { type: string, enum: [entwurf, eingerichtet, aktiv, angehalten, archiviert] }
+        fehlt:
+          type: array
+          items: { type: string, enum: [kennzeichen, name, hauptgroesse, ort, formel, eingaenge] }
+        notiz: { type: string, nullable: true }
+        angehalten_ab: { type: string, format: date-time, nullable: true, description: "Auf die Minute, Versatz Europe/Berlin." }
+        archiviert_am: { type: string, format: date-time, nullable: true, description: "Auf die Minute, Versatz Europe/Berlin." }
+    MessstelleListe:
+      type: object
+      required: [messstellen]
+      properties:
+        messstellen:
+          type: array
+          items: { $ref: "#/components/schemas/Messstelle" }
+    MessstelleAnlegen:
+      type: object
+      additionalProperties: false
+      required: [art, medium, hauptgroesse]
+      properties:
+        kennzeichen:
+          type: string
+          nullable: true
+          pattern: "^[A-Z0-9./-]{2,16}$"
+          description: "Fehlend oder null = das nächste automatische (MS-0001 …). Nichts wird umgewandelt: „ms-01“ ist 400."
+        name: { type: string, nullable: true, description: "Fehlend, leer oder nur Leerzeichen = fehlt noch (Entwurf)." }
+        art: { type: string, enum: [gemessen, berechnet] }
+        medium: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        nebengroessen:
+          type: array
+          description: "Je (Größe, Richtung) einmal und nie die Hauptgröße."
+          items: { $ref: "#/components/schemas/MessGroesse" }
+        notiz: { type: string, nullable: true }
+    MessstelleBearbeiten:
+      type: object
+      additionalProperties: false
+      required: [kennzeichen]
+      properties:
+        kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string, nullable: true }
+        notiz: { type: string, nullable: true }
+    MessstelleUebergang:
+      type: object
+      additionalProperties: false
+      properties:
+        zeitpunkt:
+          type: string
+          format: date-time
+          description: "Auf die Minute mit Versatz (E2), fehlend = jetzt; vor jetzt = rückwirkend."
+        grund: { type: string, nullable: true, description: "Steht im Änderungsprotokoll." }
+    MessstelleFehler:
+      type: object
+      description: >
+        Die Ablehnung der Messstellen-Schnittstelle. Die Codes des Regel-Vertrags
+        (docs/contracts/v2/messstelle.md §7) tragen dessen Status - aus dieser
+        Schnittstelle heute `kennzeichen_format` 400, `kennzeichen_belegt` 409
+        (`bestehend`), `groesse_ungueltig` 400 (`grund`, `feld`),
+        `zeitpunkt_vor_vorgaenger` 422 (`vorgaenger`); die übrigen antworten die
+        Routen von IP-7 und IP-13. Dazu die drei Codes der Schnittstelle:
+        `anfrage_ungueltig` 400 (`feld` - fehlt, falsche Form, gibt es hier nicht),
+        `zustand_passt_nicht` 409 (`angehalten_ab`, `archiviert_am`),
+        `zeitpunkt_in_zukunft` 422 (`zeitpunkt`). Den Satz baut die Fläche später aus
+        den Fakten (IP-6); `message` ist der Wortlaut von AP-04 §5.12, wo es ihn gibt.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [kennzeichen_format, kennzeichen_belegt, groesse_ungueltig, medium_ohne_quelle,
+            vergleich_ohne_zweck, quelle_passt_nicht, kanal_bereits_fuehrend, zeitraum_ungueltig,
+            zeitpunkt_vor_vorgaenger, bindung_ueberlappt, hauptzaehler_vorhanden, stellung_ungueltig,
+            anteile_summe, ort_ungueltig, anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft]
+        message: { type: string }
+        feld: { type: string, description: "anfrage_ungueltig, groesse_ungueltig: hauptgroesse, nebengroessen[1], zeitpunkt …" }
+        grund: { type: string, enum: [groesse, medium, einheit, richtung, wertart] }
+        bestehend:
+          type: object
+          description: "kennzeichen_belegt: wer es trägt (frueher false) oder trug (frueher true)."
+          required: [kennzeichen, messstelle, name, archiviert, frueher]
+          properties:
+            kennzeichen: { type: string }
+            messstelle: { type: string, description: "Das HEUTIGE Kennzeichen des Trägers." }
+            name: { type: string, nullable: true }
+            archiviert: { type: boolean }
+            frueher: { type: boolean }
+        vorgaenger:
+          type: object
+          description: "zeitpunkt_vor_vorgaenger: der letzte Übergang, nach dem der neue liegen muss."
+          properties:
+            art: { type: string, enum: [angehalten, fortgesetzt] }
+            gilt_ab: { type: string, format: date-time }
+        zeitpunkt: { type: string, format: date-time }
+        angehalten_ab: { type: string, format: date-time, nullable: true }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+      example:
+        code: kennzeichen_belegt
+        message: "MS-13 ist bereits vergeben (Lager Halle 2 (Allgemein)). Kennzeichen sind je Unternehmen eindeutig — auch archivierte bleiben belegt."
+        bestehend: { kennzeichen: MS-13, messstelle: MS-13, name: Lager Halle 2 (Allgemein), archiviert: true, frueher: false }
