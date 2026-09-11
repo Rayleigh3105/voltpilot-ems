@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { VpPicker } from '../../components/VpPicker';
@@ -71,6 +71,7 @@ export function GeraeteDrawer({
   releases,
   journal,
   busy,
+  error,
   onClose,
   onAssign,
   onRevert,
@@ -80,6 +81,7 @@ export function GeraeteDrawer({
   releases: EdgeUpdatesRelease[];
   journal: JournalEntry[];
   busy: boolean;
+  error?: string | null;
   onClose: () => void;
   onAssign?: (releaseSeq: number) => Promise<void>;
   onRevert?: () => Promise<void>;
@@ -103,6 +105,7 @@ export function GeraeteDrawer({
 
   return (
     <Modal open title={device.siteName ?? device.label ?? device.externalRef} onClose={onClose}>
+      <UpdateActionError error={error} />
       <p className="vp-muted">
         {[device.tenantName, device.externalRef].filter(Boolean).join(' · ')}
       </p>
@@ -119,51 +122,21 @@ export function GeraeteDrawer({
         </p>
       )}
 
-      <h4>Identität</h4>
-      <dl className="vp-kv-list">
-        <dt>Referenz</dt>
-        <dd className="vp-mono">{device.externalRef}</dd>
-        {device.kind && (
-          <>
-            <dt>Typ</dt>
-            <dd>{deviceKindLabel(device.kind)}</dd>
-          </>
-        )}
-        <dt>Registry</dt>
-        <dd>
-          {/* Eine `edge-`Referenz läuft per Konstruktion an der
-              Aufkleber-Registry vorbei - das ist der Normalfall der
-              Bestandsflotte und ausdrücklich kein Mangel. */}
-          {device.provisioned === false ? REGISTRY_SELBST : REGISTRY_AUFKLEBER}
-        </dd>
-        {device.note && (
-          <>
-            <dt>Notiz</dt>
-            <dd>{device.note}</dd>
-          </>
-        )}
-        {device.lastSeenAt !== undefined && (
-          <>
-            <dt>Zuletzt gemeldet</dt>
-            <dd>{device.lastSeenAt ? fmtRelative(device.lastSeenAt) : 'noch nie'}</dd>
-          </>
-        )}
-      </dl>
 
       {connected ? (
         <>
-          <h4>Stand</h4>
+          <h4>Software-Version</h4>
           <dl className="vp-kv-list">
             {/* Tag + Build getrennt: `edge-2026.08.0-3bf8c038e1d2` neben
                 `edge-2026.08.0` sind zwei verschieden AUSSEHENDE Zeichenketten
                 für dieselbe Frage. */}
-            <dt>Ist</dt>
+            <dt>Installiert</dt>
             <dd>{versionLabel(device.ist, releases)}</dd>
-            <dt>Ist gemeldet</dt>
+            <dt>Zuletzt gemeldet</dt>
             <dd>{device.reportedAt ? fmtRelative(device.reportedAt) : 'noch nie'}</dd>
-            <dt>Soll</dt>
+            <dt>Zielversion</dt>
             <dd>{device.soll ? versionLabel(device.soll, releases) : '–'}</dd>
-            <dt>Zustand</dt>
+            <dt>Update-Status</dt>
             <dd>
               <span className={`vp-ustate vp-ustate-${stateLabel(device.state).cls}`}>
                 <i className="vp-ustate-dot" aria-hidden="true" />
@@ -254,6 +227,39 @@ export function GeraeteDrawer({
         )
       )}
 
+      <details className="vp-box-support">
+        <summary>Geräte-Details</summary>
+      <dl className="vp-kv-list">
+        <dt>Referenz</dt>
+        <dd className="vp-mono">{device.externalRef}</dd>
+        {device.kind && (
+          <>
+            <dt>Typ</dt>
+            <dd>{deviceKindLabel(device.kind)}</dd>
+          </>
+        )}
+        <dt>Registry</dt>
+        <dd>
+          {/* Eine `edge-`Referenz läuft per Konstruktion an der
+              Aufkleber-Registry vorbei - das ist der Normalfall der
+              Bestandsflotte und ausdrücklich kein Mangel. */}
+          {device.provisioned === false ? REGISTRY_SELBST : REGISTRY_AUFKLEBER}
+        </dd>
+        {device.note && (
+          <>
+            <dt>Notiz</dt>
+            <dd>{device.note}</dd>
+          </>
+        )}
+        {device.lastSeenAt !== undefined && (
+          <>
+            <dt>Zuletzt gemeldet</dt>
+            <dd>{device.lastSeenAt ? fmtRelative(device.lastSeenAt) : 'noch nie'}</dd>
+          </>
+        )}
+      </dl>
+      </details>
+
       {connected && (
         <>
           <h4>Update-Historie</h4>
@@ -278,4 +284,13 @@ export function GeraeteDrawer({
       )}
     </Modal>
   );
+}
+
+/** A pending action disables its submit button, which drops focus in Chrome.
+ * Return focus to the failure inside the drawer so it is announced and the
+ * dialog's Escape/Tab handling continues to own the keyboard. */
+export function UpdateActionError({ error }: { error?: string | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (error) ref.current?.focus(); }, [error]);
+  return error ? <div ref={ref} tabIndex={-1} className="vp-alert vp-alert-warn" role="alert">{error}</div> : null;
 }

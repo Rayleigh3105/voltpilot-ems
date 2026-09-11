@@ -240,15 +240,9 @@ export const PLATFORM_GROUPS: PlatformGroup[] = [
     key: 'flotte',
     label: 'Flotte',
     pages: [
-      // E4: „Geräte", nicht mehr „Geräte-Registry" - die Seite ist seit dem
-      // Konsolidierungs-Umbau das INVENTAR über den ganzen Lebenszyklus, nicht
-      // mehr nur die Manufacturing-Registry (die echte Flotte kam dort gar
-      // nicht vor). Die Id bleibt, damit jedes Lesezeichen und jeder Deep-Link
-      // gilt.
-      // Seit Stufe 3 „Zusammenwachsen" ist das EIN Bereich mit zwei Tabs
-      // (`GERAETE_BEREICH`): Inventar + Updates. Der Nav-Punkt ist einer, die
-      // zwei Routen bleiben beide gültig.
-      { id: 'geraete-registry', label: 'Geräte', icon: 'cpu', adminOnly: true },
+      // Updates are the default device workspace; registration keeps its
+      // existing route and device deep links as the secondary tab.
+      { id: 'edge-updates', label: 'Geräte', icon: 'cpu', adminOnly: true },
       // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird
       // EINMAL am Pruefstand freigegeben, jede Anlage wird einzeln
       // scharfgeschaltet. Seit Stufe 3 wohnen die steuerbaren GERÄTETYPEN als
@@ -294,28 +288,13 @@ export interface BereichTab {
   label: string;
 }
 
-/**
- * Der Bereich **Geräte** (Admin-Umbau Stufe 3 „Zusammenwachsen",
- * Captain-Entscheid F3): EIN Nav-Punkt mit zwei Tabs - **Inventar** (der
- * Lebenszyklus je Box) und **Updates** (die Rollout-Kampagne).
- *
- * **Die revidierte Entscheidung, mit Begründung:** `vp-admin-geraete-ux-k2` §4
- * hatte die Voll-Fusion abgelehnt („zwei Job-Familien mit verschiedener
- * Kadenz auf einer Fläche" ergäbe eine Tabellen-Wand). Das Argument gilt
- * weiter - es richtet sich aber gegen EINE SEITE, nicht gegen EINEN ORT. Beide
- * Flächen bleiben inhaltlich, wie sie sind; nur ihr Ort wird einer.
- *
- * **Beide Routen bleiben ECHTE `PageId`s, kein Redirect** (§6.3): ein
- * Lesezeichen auf `#/edge-updates` landet auf dem Tab Updates, und der
- * programmatische Sprung des Flotten-Pulses (`onNavigate('edge-updates')`)
- * funktioniert unverändert. Nur die NAVIGATION zeigt einen Punkt - welchen,
- * beantwortet {@link navPageFor}.
- */
+/** Devices opens on Updates, with Registration as the secondary tab.
+ * Both PageIds stay routable; navPageFor highlights the shared sidebar entry. */
 export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
-  host: 'geraete-registry',
+  host: 'edge-updates',
   tabs: [
-    { id: 'geraete-registry', label: 'Inventar' },
     { id: 'edge-updates', label: 'Updates' },
+    { id: 'geraete-registry', label: 'Registrierung' },
   ],
 };
 
@@ -326,8 +305,8 @@ export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
  * eben nicht in {@link PLATFORM_GROUPS}, das die NAVIGATION beschreibt.
  */
 export const PLATFORM_TAB_PAGES: PageDef[] = [
-  // OTA Stufe 2: Releases, der laufende Rollout und das Audit-Journal.
-  { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
+  // Existing registration links remain valid, including ?geraet= references.
+  { id: 'geraete-registry', label: 'Registrierung', icon: 'plus', adminOnly: true },
 ];
 
 /**
@@ -336,9 +315,8 @@ export const PLATFORM_TAB_PAGES: PageDef[] = [
  * jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`); die Gruppen
  * beschreiben davon nur die PRÄSENTATION.
  *
- * **Der Unterschied ist tragend:** stünde `edge-updates` nur in den Gruppen,
- * verlöre die Seite mit Stufe 3 ihren Admin-Zaun - ein Nicht-Admin käme über
- * `#/edge-updates` durch.
+ * **Admin boundary:** secondary tabs must stay in this list even though
+ * they do not appear as separate sidebar entries.
  */
 export const PLATFORM_PAGES: PageDef[] = [
   ...PLATFORM_GROUPS.flatMap((g) => g.pages),

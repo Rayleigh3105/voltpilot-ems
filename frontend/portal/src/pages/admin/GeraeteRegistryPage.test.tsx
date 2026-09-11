@@ -89,15 +89,13 @@ beforeEach(() => {
   });
 });
 
-describe('GeraeteRegistryPage (B3 - der Onboarding-Funnel)', () => {
-  it('shows the FOUR funnel stages - der Funnel endet nicht mehr bei „verbunden"', async () => {
+describe('Geräteregistrierung und nachrangige Support-Zuordnung', () => {
+  it('zeigt das Inventar ohne Onboarding-Kennzahlen oder leere Support-Karten', async () => {
     render(<GeraeteRegistryPage />);
-    expect(await screen.findByText('Registriert')).toBeInTheDocument();
-    expect(screen.getByText('Wartet auf Zuordnung')).toBeInTheDocument();
-    expect(screen.getByText('Verbunden')).toBeInTheDocument();
-    // Die vierte Stufe: erst der TOFU-Crossover macht eine Box update-fähig.
-    // Sie wohnte bis zum Umbau als Spalte in der Matrix der ANDEREN Seite.
-    expect(await screen.findByText('Vertrauen gekreuzt')).toBeInTheDocument();
+    await screen.findByTestId('devices');
+    expect(screen.queryByText('Wartet auf Zuordnung')).toBeNull();
+    expect(screen.queryByText('Vertrauen gekreuzt')).toBeNull();
+    expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
   });
 
   it('surfaces a device that reported but met no claim - the typo window', async () => {
@@ -112,14 +110,18 @@ describe('GeraeteRegistryPage (B3 - der Onboarding-Funnel)', () => {
     ]);
     render(<GeraeteRegistryPage />);
 
-    expect(await screen.findByText('edge-k7m2p4x')).toBeInTheDocument();
+    const summary = await screen.findByText('1 Box ohne Kundenkonto');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(summary);
+    expect(await screen.findByText('edge-k7m2p4x')).toBeVisible();
     expect(screen.getByText('VP Edge · Raspberry Pi')).toBeInTheDocument();
     expect(screen.getByText('Vermutlich Tippfehler beim Kunden')).toBeInTheDocument();
   });
 
-  it('says plainly that nobody is waiting instead of showing an empty table', async () => {
+  it('lässt die Support-Fläche ohne offene Zuordnung weg', async () => {
     render(<GeraeteRegistryPage />);
-    expect(await screen.findByText('Kein Gerät wartet auf Zuordnung')).toBeInTheDocument();
+    await screen.findByTestId('devices');
+    expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
   });
 
   it('a failed pending load is a FAILURE, never "nobody is waiting"', async () => {
@@ -211,8 +213,8 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
       .toBeInTheDocument();
     expect(screen.queryByTestId('devices')).toBeNull();
     expect(document.body.textContent).not.toContain('noch nicht verbunden —');
-    // Der Funnel oben bleibt gültig - er hat eine eigene Quelle.
-    expect(screen.getByText('Registriert')).toBeInTheDocument();
+    // Die Registrierung bleibt auch bei einem Lesefehler erreichbar.
+    expect(screen.getByRole('button', { name: 'Geräte-ID registrieren' })).toBeEnabled();
   });
 
   it('fragt vor dem Entfernen im Haus-Muster - mit Folgenliste', async () => {

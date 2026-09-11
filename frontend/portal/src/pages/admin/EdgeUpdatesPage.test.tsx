@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -94,9 +94,81 @@ describe('EdgeUpdatesPage', () => {
     expect(await screen.findByTestId('journal')).toBeInTheDocument();
   });
 
+  it('zeigt jede Box mit installierter Version und Ziel, auch ohne laufenden Rollout', async () => {
+    const d = data({ rollouts: [] });
+    d.fleet[0].ist = 'edge-2026.08.0-3bf8c038e1d2';
+    d.fleet[0].soll = 'edge-2026.07.2';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    const table = await screen.findByTestId('box-versions');
+    const row = within(table).getByText('Pilsting').closest('tr')!;
+    expect(row).toHaveTextContent('edge-2026.08.0');
+    expect(row).toHaveTextContent('Build 3bf8c038');
+    expect(row).toHaveTextContent('edge-2026.07.2');
+    expect(within(table).getByText('Auernheim').closest('tr')).toHaveTextContent('Noch nicht gemeldet');
+    expect(screen.getByRole('button', { name: 'Update verteilen' })).toBeEnabled();
+    expect(screen.getByText('Alle Releases (2)').closest('details')).not.toHaveAttribute('open');
+    expect(screen.getByText('Verlauf').closest('details')).not.toHaveAttribute('open');
+  });
+
+  it('sucht über Box, Anlage, Kunde und Version und setzt Filter gemeinsam zurück', async () => {
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('box-versions');
+    fireEvent.click(screen.getByText('Suche & Filter'));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'edge-a1' } });
+    expect(screen.getByTestId('box-versions')).toHaveTextContent('Pilsting');
+    expect(screen.getByTestId('box-versions')).not.toHaveTextContent('Auernheim');
+    fireEvent.click(screen.getByRole('button', { name: /Ohne Versionsmeldung/ }));
+    expect(screen.getByText('Keine passende Box')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
+    expect(screen.getByTestId('box-versions')).toHaveTextContent('Auernheim');
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+  });
+
+  it('ordnet Releases nach Sequenz und bietet ein unsigniertes neuestes Release nicht an', async () => {
+    const d = data();
+    d.releases[1].releaseSeq = 20;
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('box-versions');
+    const newest = screen.getByRole('region', { name: 'Neueste Version' });
+    expect(newest).toHaveTextContent('edge-2026.07.2');
+    expect(within(newest).getByRole('button', { name: 'Update verteilen' })).toBeDisabled();
+  });
+
+  it('zeigt eine Ablehnung direkt im Box-Dialog und erhält die Auswahl', async () => {
+    const { ApiError } = await import('../../api');
+    setUpdateTarget.mockRejectedValue(new ApiError(409, 'Dieses Release ist nicht mehr verfügbar.'));
+    render(<EdgeUpdatesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Update verwalten für Pilsting · edge-a1' }));
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Aktualisieren' }));
+    expect(await within(drawer).findByRole('alert')).toHaveTextContent('Dieses Release ist nicht mehr verfügbar.');
+    expect(drawer).toBeInTheDocument();
+  });
+
+  it('erhält bei einem fehlgeschlagenen Refresh die Versionen mit sichtbarem Hinweis', async () => {
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('box-versions');
+    edgeUpdates.mockRejectedValue(new Error('offline'));
+    fireEvent.click(screen.getByRole('button', { name: 'Neu laden' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('zuletzt geladenen Versionsstände bleiben sichtbar');
+    expect(screen.getByTestId('box-versions')).toHaveTextContent('edge-2026.08.0');
+  });
+
+  it('behauptet bei einem laufenden Einzelupdate ohne Rollout keinen Ruhezustand', async () => {
+    const d = data({ rollouts: [] });
+    d.fleet[0].state = 'laedt';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('box-versions');
+    expect(screen.queryByTestId('resting-line')).toBeNull();
+  });
+
   it('bietet ein Update NUR für ein signiertes Release an', async () => {
     render(<EdgeUpdatesPage />);
     const table = await screen.findByTestId('releases');
+    fireEvent.click(screen.getByText('Alle Releases (2)'));
     const rows = within(table).getAllByRole('row');
     // Das signierte Release trägt den Knopf, das unsignierte den Grund.
     expect(within(rows[1]).getByRole('button', { name: /Aktualisieren/ })).toBeEnabled();
@@ -110,6 +182,7 @@ describe('EdgeUpdatesPage', () => {
     createRollout.mockResolvedValue({ rolloutId: 'r2' });
     render(<EdgeUpdatesPage />);
     const table = await screen.findByTestId('releases');
+    fireEvent.click(screen.getByText('Alle Releases (2)'));
     fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
 
     const drawer = await screen.findByRole('dialog');
@@ -193,6 +266,7 @@ describe('EdgeUpdatesPage', () => {
   it('blendet das Zustands-Protokoll aus dem Verlauf aus', async () => {
     render(<EdgeUpdatesPage />);
     const journal = await screen.findByTestId('journal');
+    fireEvent.click(screen.getByText('Verlauf'));
     expect(journal).toHaveTextContent('Aktualisierung gestartet');
     expect(within(journal).queryByText(/bestaetigt/)).toBeNull();
   });
@@ -230,6 +304,7 @@ describe('EdgeUpdatesPage', () => {
     );
     render(<EdgeUpdatesPage />);
     const table = await screen.findByTestId('releases');
+    fireEvent.click(screen.getByText('Alle Releases (2)'));
     fireEvent.click(within(table).getAllByRole('button', { name: /Aktualisieren/ })[0]);
     const drawer = await screen.findByRole('dialog');
     fireEvent.click(within(drawer).getByTestId('choose-all').querySelector('input')!);
@@ -265,8 +340,9 @@ describe('EdgeUpdatesPage', () => {
     vi.useFakeTimers();
     try {
       render(<EdgeUpdatesPage />);
-      await vi.waitFor(() => expect(edgeUpdates).toHaveBeenCalledTimes(1));
-      await vi.advanceTimersByTimeAsync(30_000);
+      await act(async () => { await Promise.resolve(); });
+      expect(edgeUpdates).toHaveBeenCalledTimes(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
       expect(edgeUpdates.mock.calls.length).toBeGreaterThan(1);
     } finally {
       vi.useRealTimers();

@@ -48,12 +48,12 @@ describe('GeraeteBereich - EIN Ort, zwei Tabs', () => {
   it('markiert den laufenden Tab und navigiert auf den anderen', () => {
     render(<GeraeteBereich page="edge-updates" onNavigate={onNavigate} />);
     const tabs = screen.getByRole('tablist', { name: 'Geräte-Bereich' });
-    expect(tabs.textContent).toContain('Inventar');
+    expect(tabs.textContent).toContain('Registrierung');
     expect(tabs.textContent).toContain('Updates');
     expect(screen.getByRole('tab', { name: 'Updates' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Inventar' }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('tab', { name: 'Registrierung' }).getAttribute('aria-selected')).toBe('false');
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Inventar' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Registrierung' }));
     expect(onNavigate).toHaveBeenCalledWith({ page: 'geraete-registry', siteId: null, sub: null });
   });
 

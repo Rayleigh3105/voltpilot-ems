@@ -463,8 +463,8 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     // Der Admin-Zaun in `App.tsx` prüft gegen `PLATFORM_PAGES`. Stünde
     // `edge-updates` nur in den Gruppen, käme ein Nicht-Admin über
     // `#/edge-updates` ungefencet durch.
-    expect(PLATFORM_PAGES.some((p) => p.id === 'edge-updates')).toBe(true);
-    expect(PLATFORM_GROUPS.flatMap((g) => g.pages).some((p) => p.id === 'edge-updates'))
+    expect(PLATFORM_PAGES.some((p) => p.id === 'geraete-registry')).toBe(true);
+    expect(PLATFORM_GROUPS.flatMap((g) => g.pages).some((p) => p.id === 'geraete-registry'))
       .toBe(false);
   });
 
@@ -483,14 +483,14 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
 
   it('hat die zwei gefalteten Punkte aus der Navigation genommen (Stufe 3)', () => {
     const flotte = PLATFORM_GROUPS.find((g) => g.key === 'flotte')!.pages.map((p) => p.id);
-    expect(flotte).toEqual(['geraete-registry', 'steuerungs-freigabe']);
+    expect(flotte).toEqual(['edge-updates', 'steuerungs-freigabe']);
   });
 
   it('lässt den Tab „Updates" den Nav-Punkt „Geräte" leuchten', () => {
     // Der Bereich ist EIN Ort; der Tab darf die Leiste nicht ins Nichts zeigen
     // lassen. Jede andere Seite bleibt sie selbst.
-    expect(navPageFor('edge-updates')).toBe('geraete-registry');
-    expect(navPageFor('geraete-registry')).toBe('geraete-registry');
+    expect(navPageFor('edge-updates')).toBe('edge-updates');
+    expect(navPageFor('geraete-registry')).toBe('edge-updates');
     expect(navPageFor('mandanten')).toBe('mandanten');
     expect(isGeraeteBereich('edge-updates')).toBe(true);
     expect(isGeraeteBereich('geraete-registry')).toBe(true);
@@ -499,8 +499,8 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
 
   it('nennt die zwei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
     expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
-      ['geraete-registry', 'Inventar'],
       ['edge-updates', 'Updates'],
+      ['geraete-registry', 'Registrierung'],
     ]);
     // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
     expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
@@ -540,7 +540,8 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
   });
 
   it('behält die Beschriftungen, die Lesezeichen und Copy schon kennen', () => {
-    expect(pageLabel('geraete-registry')).toBe('Geräte');
+    expect(pageLabel('geraete-registry')).toBe('Registrierung');
+    expect(pageLabel('edge-updates')).toBe('Geräte');
     expect(pageLabel('steuerungs-freigabe')).toBe('Steuerungs-Freigabe');
     expect(pageLabel('plattform-uebersicht')).toBe('Plattform-Übersicht');
   });

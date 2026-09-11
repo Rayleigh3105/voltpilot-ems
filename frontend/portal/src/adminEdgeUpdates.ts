@@ -658,6 +658,8 @@ export function progressBackbone(rollout: Rollout | null, fleet: FleetRow[]): Pr
  */
 export function restingLine(data: EdgeUpdates | null): string | null {
   if (!data || data.rollouts.length > 0) return null;
+  // An individually assigned update has no rollout card but still runs.
+  if (data.fleet.some((r) => stateLabel(r.state).cls === 'busy')) return null;
   const kpi = data.kpi;
   if (kpi.known === 0 && kpi.unknown === 0) {
     return 'Es ist kein Gerät verbunden. Gerade wird nichts aktualisiert.';

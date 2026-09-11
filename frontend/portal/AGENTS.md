@@ -74,6 +74,8 @@ Jede Flächen-Änderung wird bei **1440 und 375** durchgespielt: **0 px horizont
 kompakte Identität bis 1279 px, die zweite Admin-Zeile, den gemessenen Sticky-Abstand
 und `e2e/shell-layout.spec.ts`. Die reservierte Cockpit-Chipzeile (P7) bleibt erhalten.
 
+**Geräte & Updates:** Einstieg, Versionsübersicht und Support-Zuordnung: `../../docs/agents/portal/geraete-updates.md`.
+
 ## Themen-Index (der ausgelagerte Bestand)
 
 Jede Zeile ist ein frueherer Abschnitt DIESER Datei. Der Text ist unveraendert, er

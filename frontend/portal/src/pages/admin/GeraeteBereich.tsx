@@ -2,30 +2,8 @@ import { GERAETE_BEREICH, pageRoute, type PageId, type Route } from '../../nav';
 import { GeraeteRegistryPage } from './GeraeteRegistryPage';
 import { EdgeUpdatesPage } from './EdgeUpdatesPage';
 
-/**
- * Plattform → **Geräte**: EIN Bereich, zwei Tabs (Admin-Umbau Stufe 3
- * „Zusammenwachsen", Konzept `vp-admin-neu-konzept-a9` §3.2, Captain-Entscheid
- * F3).
- *
- * Der Captain-Schmerz war, dass ein GERÄT über drei Flächen verstreut lag,
- * obwohl seine Daten längst in einer Zeile liegen. Stufe 2 gab ihm seine
- * Detailseite; diese Stufe gibt seinen zwei Arbeits-Flächen EINEN Ort:
- * **Inventar** (der Lebenszyklus je Box: Funnel, Tabelle, „wartet auf
- * Zuordnung") und **Updates** (die Rollout-Kampagne: Handeln-Karte, Wellen,
- * Releases, Verlauf).
- *
- * **Die zwei FLÄCHEN sind unangetastet** - `vp-admin-geraete-ux-k2` §4 hatte
- * die Voll-Fusion abgelehnt („zwei Job-Familien mit verschiedener Kadenz auf
- * einer Fläche" ergäbe eine Tabellen-Wand), und dieses Argument gilt weiter:
- * es richtet sich gegen EINE SEITE, nicht gegen EINEN ORT. Deshalb ist dieser
- * Wirt bewusst dünn - er reicht nur die Tab-Leiste als Knoten durch, und jede
- * Seite entscheidet selbst, WO sie sie zeigt (die Detailseite eines Geräts
- * zeigt sie gar nicht: sie ist eine Ebene tiefer).
- *
- * **Beide Routen bleiben ECHTE `PageId`s** - ein Lesezeichen auf
- * `#/edge-updates` landet auf dem Tab Updates, und der programmatische Sprung
- * des Flotten-Pulses funktioniert unverändert.
- */
+/** Geräte opens on Updates: version overview and rollout actions. Registration
+ * is the secondary tab. Both existing routes and device deep links survive. */
 export function GeraeteBereich({
   page,
   onNavigate,

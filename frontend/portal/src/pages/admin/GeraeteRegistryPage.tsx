@@ -6,14 +6,12 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Modal } from '../../../designsystem/components/shell/Modal';
-import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
 import {
   adminApi,
   type AdminDeviceRow,
   type PendingEnrollment,
-  type ProvisionedDevice,
 } from '../../admin/adminApi';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
@@ -21,7 +19,7 @@ import { Blende } from '../../components/Lazy';
 import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { fmtRelative } from '../../format';
-import { deviceRows, funnelStages, pendingRows, versionLabel } from '../../onboardingFunnel';
+import { deviceRows, pendingRows, versionLabel } from '../../onboardingFunnel';
 import {
   crossoverState,
   stateLabel,
@@ -30,28 +28,10 @@ import {
 import { geraetLinkAusgang } from '../../adminGeraet';
 import { parseGeraetRef, type Route } from '../../nav';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
+import './BoxVersions.css';
 
-/**
- * Plattform → **Geräte**: das INVENTAR über den ganzen Lebenszyklus (UX-Konzept
- * `vp-admin-geraete-ux-k2` §4, E1/E4 — umbenannt aus „Geräte-Registry").
- *
- * Vier Stufen: **registriert** (die Aufkleber-ID steht hier, nur sie kann ein
- * Kunde verbinden — ein Tippfehler wird sofort abgewiesen statt ein Geist-Gerät
- * anzulegen) → **wartet auf Zuordnung** (das Gerät hat sich gemeldet, aber kein
- * Claim passt: das Tippfehler-Fenster) → **verbunden** → **Vertrauen
- * gekreuzt**.
- *
- * **Zwei Befunde, die diese Seite hier behebt:** sie enthielt die ECHTE Flotte
- * gar nicht (ihre Tabelle listete ausschließlich `VP-`Aufkleber-IDs, während
- * die Bestandsboxen über selbst generierte `edge-`Referenzen verbunden sind und
- * mit NULL Zeilen auftauchten), und der Funnel endete eine Stufe zu früh —
- * „verbunden" ist nicht das Onboarding-Ende, erst der TOFU-Crossover macht eine
- * Box update-fähig. Diese Spalte wohnte in der Flotten-Matrix der ANDEREN
- * Seite.
- *
- * Eine Zeile öffnet den EINEN Geräte-Drawer, den auch die Update-Seite
- * benutzt — ein Gerät hat genau einen Ort.
- */
+/** Registration is secondary to the version overview. Unclaimed enrollments
+ * remain available as a collapsed support detail below the inventory. */
 export function GeraeteRegistryPage({
   onJumpToTenant,
   tabs,
@@ -61,7 +41,6 @@ export function GeraeteRegistryPage({
   /** Die Tab-Leiste des Geräte-Bereichs, vom Wirt `GeraeteBereich`. */
   tabs?: ReactNode;
 } = {}) {
-  const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
   const [fleet, setFleet] = useState<AdminDeviceRow[] | null>(null);
   // Die Deep-Link-Referenz (`?geraet=<referenz>`). Sie ist der Zustand: ein
   // Lesezeichen darauf führt exakt dorthin, wohin es immer geführt hat - seit
@@ -81,6 +60,7 @@ export function GeraeteRegistryPage({
   // Load failure kept distinct from action errors (and from the loading `null`)
   // so a failed load shows a retryable ErrorState, not a permanent skeleton.
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
 
@@ -91,35 +71,15 @@ export function GeraeteRegistryPage({
   async function reload() {
     setError(null);
     setLoadError(null);
-    try {
-      setDevices(await adminApi.listProvisionedDevices());
-    } catch (e) {
-      setLoadError(e instanceof ApiError ? e.message : 'Die Registry konnte nicht geladen werden.');
-    }
-    // Das Inventar ist eine EIGENE Wahrheit: ein älteres Backend kennt die
-    // Route noch nicht, dann fehlt die Flotte - und das ist ehrlicher als eine
-    // erfundene Zeile.
-    try {
-      setFleet(await adminApi.listDevices());
-    } catch {
-      setFleet(null);
-    }
-    try {
-      setUpdates(await adminApi.edgeUpdates());
-    } catch {
-      setUpdates(null);
-    }
-    // Die wartenden Geräte sind eine EIGENE Wahrheit: fällt ihr Abruf aus,
-    // bleibt die Registry darunter benutzbar (und die Sektion sagt selbst, dass
-    // sie gerade nichts weiß) - nie eine leere Liste, die „niemand wartet"
-    // behaupten würde.
-    try {
-      setPending(await adminApi.listPendingEnrollments());
-      setPendingFailed(false);
-    } catch {
-      setPending(null);
-      setPendingFailed(true);
-    }
+    const [inventory, releases, enrollments] = await Promise.allSettled([
+      adminApi.listDevices(), adminApi.edgeUpdates(), adminApi.listPendingEnrollments(),
+    ]);
+    if (inventory.status === 'fulfilled') setFleet(inventory.value);
+    else setLoadError('Das Geräte-Inventar ist gerade nicht abrufbar. Bitte erneut versuchen.');
+    setUpdates(releases.status === 'fulfilled' ? releases.value : null);
+    setPending(enrollments.status === 'fulfilled' ? enrollments.value : null);
+    setPendingFailed(enrollments.status === 'rejected');
+    setLoading(false);
   }
 
   // Auch hier die Folgenliste des Hauses statt des nativen Ein-Satz-Dialogs:
@@ -206,8 +166,8 @@ export function GeraeteRegistryPage({
       <AdminPageHead
         icon="cpu"
         category="primary"
-        title="Geräte"
-        description="Jedes Gerät über seinen ganzen Lebenszyklus: gedruckte Aufkleber-IDs und die verbundene Flotte in EINER Tabelle. Eine Zeile öffnet das Gerät."
+        title="Geräte registrieren"
+        description="Geräte-IDs registrieren und die Zuordnung zu Kundenkonten prüfen."
         actions={registerButton}
       />
 
@@ -224,15 +184,6 @@ export function GeraeteRegistryPage({
         </div>
       )}
 
-      <FunnelStrip
-        devices={devices ?? []}
-        pending={pending ?? []}
-        fleet={fleet ?? []}
-        known={devices != null}
-      />
-
-      <PendingEnrollments rows={pending} failed={pendingFailed} onRetry={() => void reload()} />
-
       {loadError ? (
         <ErrorState message={loadError} onRetry={() => void reload()} />
       ) : (
@@ -240,7 +191,7 @@ export function GeraeteRegistryPage({
            Rahmen — die Tabelle bestimmt vom ersten Frame an die Höhe, das
            Skelett verblasst darüber (`Blende`, `src/components/Lazy.tsx`). */
         <Blende
-          laedt={devices == null}
+          laedt={loading}
           skelett={
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <TableSkeleton rows={4} cols={6} />
@@ -256,6 +207,8 @@ export function GeraeteRegistryPage({
           />
         </Blende>
       )}
+
+      <PendingEnrollments rows={pending} failed={pendingFailed} onRetry={() => void reload()} />
 
       {removing && (
         <ConfirmDialog
@@ -285,53 +238,6 @@ export function GeraeteRegistryPage({
         onCreated={() => void reload()}
       />
     </>
-  );
-}
-
-/**
- * Die drei Funnel-Stufen als ruhiger Streifen (das `MandantenPulse`-Muster).
- * Solange die Registry noch lädt, werden gar keine Zahlen behauptet.
- */
-function FunnelStrip({
-  devices,
-  pending,
-  fleet,
-  known,
-}: {
-  devices: ProvisionedDevice[];
-  pending: PendingEnrollment[];
-  fleet: AdminDeviceRow[];
-  known: boolean;
-}) {
-  if (!known) return null;
-  const stages = funnelStages(devices, pending, fleet);
-  const icons: Record<string, 'list' | 'history' | 'check' | 'shield'> = {
-    registriert: 'list',
-    wartet: 'history',
-    verbunden: 'check',
-    // Die vierte Stufe: erst der TOFU-Crossover macht eine Box update-fähig.
-    vertrauen: 'shield',
-  };
-  return (
-    <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
-      {stages.map((s) => (
-        <KpiCard
-          key={s.id}
-          icon={<Icon name={icons[s.id]} size={20} />}
-          category={s.attention ? 'dynamic'
-            : s.id === 'verbunden' || s.id === 'vertrauen' ? 'battery' : 'primary'}
-          value={String(s.count)}
-          label={
-            // `.vp-cell-main` ist die vorhandene Spalten-Klasse (flex column) -
-            // so steht der einordnende Satz unter dem Wort statt daneben.
-            <span className="vp-cell-main">
-              <span>{s.label}</span>
-              <span className="vp-cell-sub">{s.note}</span>
-            </span>
-          }
-        />
-      ))}
-    </div>
   );
 }
 
@@ -373,7 +279,7 @@ function DeviceInventory({
           icon="list"
           category="primary"
           title="Das Geräte-Inventar ist gerade nicht abrufbar"
-          description="Die Liste aller Geräte konnte nicht geladen werden. Der Funnel oben und die wartenden Geräte bleiben gültig."
+          description="Die Liste aller Geräte konnte nicht geladen werden. Bitte erneut laden."
         />
       </Card>
     );
@@ -508,65 +414,30 @@ function PendingEnrollments({
   failed: boolean;
   onRetry: () => void;
 }) {
-  if (failed) {
-    return (
-      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
-        <ErrorState
-          message="Die wartenden Geräte konnten nicht geladen werden."
-          onRetry={onRetry}
-        />
-      </Card>
-    );
-  }
-  if (rows == null) return null;
-  const list = pendingRows(rows);
-  if (list.length === 0) {
-    return (
-      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
-        <EmptyState
-          icon="check"
-          category="battery"
-          title="Kein Gerät wartet auf Zuordnung"
-          description="Jedes Gerät, das sich gemeldet hat, ist einem Kundenkonto zugeordnet."
-        />
-      </Card>
-    );
-  }
+  if (!failed && (rows == null || rows.length === 0)) return null;
+  const list = pendingRows(rows ?? []);
   return (
-    <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 'var(--vp-space-6)' }}>
-      <div className="vp-admin-sec-head">
-        <h2>Wartet auf Zuordnung</h2>
-        <p>
-          Diese Geräte melden sich, treffen aber auf kein Kundenkonto - meist,
-          weil beim Verbinden eine andere Referenz eingegeben wurde.
-        </p>
-      </div>
-      <table className="vp-table responsive">
-        <thead>
-          <tr>
-            <th>Referenz</th>
-            <th>Geräte-Info</th>
-            <th>Meldet sich seit</th>
-            <th>Hinweis</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((r) => (
-            <tr key={r.externalRef}>
-              <td data-label="Referenz" className="vp-mono">
-                {r.externalRef}
-              </td>
-              <td data-label="Geräte-Info">{r.deviceInfo ?? '—'}</td>
-              <td data-label="Meldet sich seit">{fmtRelative(r.csrUpdatedAt)}</td>
-              <td data-label="Hinweis">
-                <Badge variant={r.suspect ? 'warn' : 'off'} dot>
-                  {r.hint}
-                </Badge>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Card className="vp-box-support">
+      <details>
+        <summary>
+          {failed ? 'Zuordnung nicht abrufbar' : `${list.length} ${list.length === 1 ? 'Box ohne' : 'Boxen ohne'} Kundenkonto`}
+          {' '}<small>· Support</small>
+        </summary>
+        {failed ? <ErrorState message="Die wartenden Geräte konnten nicht geladen werden." onRetry={onRetry} /> : <>
+          <p className="vp-muted vp-text-sm">Diese Boxen haben sich gemeldet, sind aber noch keinem Kundenkonto zugeordnet. Bei Rückfragen die Referenz mit der im Kundenkonto verbundenen Box vergleichen.</p>
+          <div className="vp-table-scroll">
+            <table className="vp-table responsive">
+              <thead><tr><th>Referenz</th><th>Geräte-Info</th><th>Meldet sich seit</th><th>Hinweis</th></tr></thead>
+              <tbody>{list.map((r) => <tr key={r.externalRef}>
+                <td data-label="Referenz" className="vp-mono">{r.externalRef}</td>
+                <td data-label="Geräte-Info">{r.deviceInfo ?? '—'}</td>
+                <td data-label="Meldet sich seit">{fmtRelative(r.csrUpdatedAt)}</td>
+                <td data-label="Hinweis"><Badge variant={r.suspect ? 'warn' : 'off'} dot>{r.hint}</Badge></td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </>}
+      </details>
     </Card>
   );
 }

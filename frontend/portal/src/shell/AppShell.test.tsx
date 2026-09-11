@@ -637,7 +637,7 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
     expect(screen.queryByTitle('Gerätetypen')).toBeNull();
     expect(screen.queryByTitle('Benutzer')).toBeNull();
     fireEvent.click(screen.getByTitle('Geräte'));
-    expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
+    expect(onNavigate).toHaveBeenCalledWith('edge-updates');
     expect(screen.getByTitle('Mandanten').textContent).toContain('1');
   });
 

@@ -10,9 +10,10 @@ import { MiniShareBar } from '../../components/MiniChart';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
-import { pageRoute, type Route } from '../../nav';
+import type { Route } from '../../nav';
+import { BoxVersions } from './BoxVersions';
 import { AdminPageHead } from './AdminPageHead';
-import { GeraeteDrawer } from './GeraeteDrawer';
+import { GeraeteDrawer, UpdateActionError } from './GeraeteDrawer';
 import {
   actorLabel,
   blockerLever,
@@ -79,7 +80,6 @@ function StateChip({ state }: { state: string }) {
  * Sperre - die übrigen Geräte laufen weiter.
  */
 export function EdgeUpdatesPage({
-  onNavigate,
   onJumpToTenant,
   tabs,
 }: {
@@ -175,22 +175,22 @@ export function EdgeUpdatesPage({
   const resting = restingLine(data ? { ...data, rollouts } : null);
 
   return (
-    <>
+    <div className="vp-edge-updates">
       {tabs}
       <AdminPageHead
         icon="refresh-cw"
-        category="industry"
-        title="Edge-Updates"
-        description="Release wählen, Geräte wählen, fertig - die Geräte aktualisieren sich selbst."
+        category="primary"
+        title="Geräte & Updates"
         actions={
           <div className="vp-row-gap" style={{ alignItems: 'center' }}>
             {/* Die Bezugszeit der gezeigten Daten - ohne sie ist „nichts
                 bewegt sich" von „niemand hat nachgesehen" nicht zu trennen. */}
             <span className="vp-muted vp-text-sm" data-testid="freshness">
-              {freshnessLabel(fetchedAt, tick)} · aktualisiert sich alle 30 s
+              {data ? freshnessLabel(fetchedAt, tick) : 'Versionsstände werden geladen …'} · alle 30 s
             </span>
             <Button
               variant="outline"
+              size="sm"
               iconLeft={<Icon name="refresh-cw" size={18} />}
               onClick={() => void load()}
             >
@@ -208,7 +208,10 @@ export function EdgeUpdatesPage({
           {banner}
         </div>
       )}
-      {actionError && <div className="vp-alert vp-alert-warn">{actionError}</div>}
+      {actionError && !rolloutFor && !deviceFor && <div className="vp-alert vp-alert-warn" role="alert">{actionError}</div>}
+      {loadError && data && <div className="vp-alert vp-alert-warn" role="alert">
+        Die Aktualisierung ist fehlgeschlagen. Die zuletzt geladenen Versionsstände bleiben sichtbar.
+      </div>}
 
       {loadError && data == null ? (
         <ErrorState message={loadError} onRetry={() => void load()} />
@@ -218,16 +221,16 @@ export function EdgeUpdatesPage({
         </Card>
       ) : (
         <>
-          {/* Der Ruhezustand: EINE Zeile statt leerer Karten. */}
-          {resting && (
-            <div className="vp-alert vp-alert-info" data-testid="resting-line">{resting}</div>
-          )}
+          <BoxVersions data={data} busy={busy}
+            onUpdate={(release) => { setActionError(null); setRolloutFor(release); }}
+            onOpen={(id) => { setActionError(null); setDeviceFor(id); }} />
 
           {/* ── 1. Releases ─────────────────────────────────────────────── */}
           {/* Der EINE Einstieg: je Release ein Knopf, der die Geräte-Auswahl
               öffnet. Mehr braucht dieser Ablauf nicht. */}
-          <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
-            <h3 style={{ marginTop: 0 }}>Releases</h3>
+          <Card className="vp-box-secondary" padding="lg" radius="lg">
+            <details>
+            <summary className="vp-sec-summary"><h3 style={{ display: 'inline', margin: 0 }}>Alle Releases ({data.releases.length})</h3></summary>
             {data.releases.length === 0 ? (
               <EmptyState
                 title="Noch kein Release registriert"
@@ -245,7 +248,7 @@ export function EdgeUpdatesPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {data.releases.map((r) => {
+                  {[...data.releases].sort((a, b) => b.releaseSeq - a.releaseSeq).map((r) => {
                     const sig = signatureLabel(r);
                     return (
                       <tr key={r.releaseSeq}>
@@ -277,7 +280,7 @@ export function EdgeUpdatesPage({
                           {r.signed ? (
                             <Button
                               variant="primary"
-                              onClick={() => setRolloutFor(r)}
+                              onClick={() => { setActionError(null); setRolloutFor(r); }}
                               disabled={busy || data.fleet.length === 0}
                             >
                               Aktualisieren ▸
@@ -294,6 +297,7 @@ export function EdgeUpdatesPage({
                 </tbody>
               </table>
             )}
+            </details>
           </Card>
 
           {/* ── 2. Laufende Aktualisierungen ────────────────────────────── */}
@@ -310,21 +314,12 @@ export function EdgeUpdatesPage({
             />
           ))}
 
-          {/* Ein VERWEIS ist keine Meldung: er steht ruhig. */}
-          <p className="vp-muted vp-text-sm" data-testid="fleet-pointer"
-             style={{ marginBottom: 'var(--vp-space-6)' }}>
-            Der heutige Stand JEDES Geräts steht in der{' '}
-            <button type="button" className="vp-linkbtn"
-                    onClick={() => onNavigate?.(pageRoute('geraete-registry'))}>
-              Geräte-Übersicht
-            </button>
-            {' '}und im Flotten-Puls.
-            {crossover ? ` ${crossover}` : ''}
-          </p>
+          {resting && <p className="vp-muted vp-text-sm" data-testid="resting-line">{resting}</p>}
+          {crossover && <p className="vp-muted vp-text-sm" data-testid="fleet-pointer">{crossover}</p>}
 
           {/* ── 3. Verlauf ──────────────────────────────────────────────── */}
           <Card padding="lg" radius="lg">
-            <details open={rollouts.length === 0}>
+            <details>
             <summary className="vp-sec-summary"><h3 style={{ margin: 0, display: 'inline' }}>
               Verlauf
             </h3></summary>
@@ -355,7 +350,8 @@ export function EdgeUpdatesPage({
             releases={data.releases}
             journal={data.journal}
             busy={busy}
-            onClose={() => setDeviceFor(null)}
+            error={actionError}
+            onClose={() => { setDeviceFor(null); setActionError(null); }}
             onAssign={async (releaseSeq) => {
               if (await act(() => adminApi.setUpdateTarget(row.deviceId, { releaseSeq }))) {
                 setDeviceFor(null);
@@ -388,7 +384,8 @@ export function EdgeUpdatesPage({
           release={rolloutFor}
           fleet={data.fleet}
           busy={busy}
-          onClose={() => setRolloutFor(null)}
+          error={actionError}
+          onClose={() => { setRolloutFor(null); setActionError(null); }}
           onStart={async (devices) => {
             const ok = await act(() =>
               adminApi.createRollout({ releaseSeq: rolloutFor.releaseSeq, devices }),
@@ -397,7 +394,7 @@ export function EdgeUpdatesPage({
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -548,12 +545,14 @@ function StartRolloutDrawer({
   release,
   fleet,
   busy,
+  error,
   onClose,
   onStart,
 }: {
   release: EdgeUpdatesRelease;
   fleet: FleetRow[];
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onStart: (devices: string[]) => Promise<void>;
 }) {
@@ -564,6 +563,7 @@ function StartRolloutDrawer({
 
   return (
     <Modal open title={`Aktualisieren auf ${release.version}`} onClose={onClose}>
+      <UpdateActionError error={error} />
       <p className="vp-muted">
         Die gewählten Geräte bekommen das Release sofort zugewiesen und aktualisieren sich
         selbst. Es gibt keinen zweiten Schritt - niemand muss an ein Gerät.
