@@ -670,9 +670,10 @@ paths:
         es am Stichtag nicht gab, fehlt; einer, der heute archiviert ist, es an
         dem Tag aber gab, steht mit `zustand: archiviert` da. Gab es den
         Standort am Stichtag nicht, sagt es `standort.bestand`, und die
-        zeitgültigen Teile sind leer bzw. null. `messstellenZahl` ist ein
-        Platzhalter: null an jedem Knoten, bis AP-04 IP-7 die Zuordnung
-        Messstelle -> Ort baut (nie eine erfundene 0). Gebäude und Bereiche
+        zeitgültigen Teile sind leer bzw. null. `messstellenZahl` (AP-04 IP-7): je
+        Knoten die Messstellen, deren Ort am Stichtag GENAU dieser Knoten ist (am
+        Gebäude nicht die seiner Bereiche; `direktAmStandort` die am Standort
+        selbst), 0 wenn keine. Gebäude und Bereiche
         tragen keine Zeitzone - sie erben die des Standorts (A16). Ein fremder
         Standort ist 404, nie 403 (A14). Rechte (rechte-matrix.json): heute
         lesend ohne eigene Kennung; ein Stichtag in der Vergangenheit ("Stand
@@ -7852,7 +7853,9 @@ paths:
         `zustand_passt_nicht`). Zeitpunkt auf die Minute (sonst 400), Vorgabe jetzt;
         die Vergangenheit ist erlaubt und steht als „rückwirkend“ im Protokoll, die
         Zukunft nicht (422 `zeitpunkt_in_zukunft`); er liegt NACH dem letzten
-        Fortsetzen (422 `zeitpunkt_vor_vorgaenger`, `vorgaenger` nennt es).
+        Fortsetzen (422 `zeitpunkt_vor_vorgaenger`, `vorgaenger` nennt es) und nie vor
+        dem Beginn der Messstelle (Mitternacht des ersten Tages ihres ersten Orts; 422
+        `zeitpunkt_vor_vorgaenger` mit `beginn`).
       requestBody:
         required: false
         content:
@@ -7910,9 +7913,11 @@ paths:
         `zeitpunkt_in_zukunft`), nach dem letzten Anhalten/Fortsetzen (422
         `zeitpunkt_vor_vorgaenger`). Auch eine angehaltene Messstelle lässt sich
         archivieren; eine archivierte nicht noch einmal (409 `zustand_passt_nicht`).
-        Ihre Nebengrößen gelten mit ihr als archiviert. Das Beenden der Quellen zum
-        Archivzeitpunkt (IP-13) und der Zuordnungen am Vortag (IP-7) kommt mit
-        diesen Paketen.
+        Ihre Nebengrößen gelten mit ihr als archiviert. Ihre Zuordnungen (Ort,
+        Stellung) enden am Vortag des Archivtags, eine erst an ihm oder später
+        beginnende wird aufgehoben (A13); der Protokolleintrag nennt den letzten Tag
+        (`zuordnungen_bis`). Das Beenden der Quellen zum Archivzeitpunkt kommt mit
+        IP-13.
       requestBody:
         required: false
         content:
@@ -7929,6 +7934,111 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/ort:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [messstellen]
+      summary: Setzt den Ort der Messstelle ab einem Tag (AP-04 IP-7).
+      description: >
+        Recht `messstelle.bearbeiten`, mit `gueltig_ab` vor heute zusätzlich
+        `aenderung.rueckwirkend`. Die Tages-Mechanik des Ortsbaums
+        (docs/contracts/v2/ortsbaum-vectors.json): `gueltig_ab` ist ein Tag, das
+        laufende Intervall endet am Vortag, das neue erbt dessen Ende (bis zu einer
+        geplanten Zuordnung); `korrektur: true` ersetzt das Intervall, das an
+        `gueltig_ab` beginnt (das alte bleibt aufgehoben lesbar). Rückwirkend ist
+        erlaubt und steht im Protokoll (`rueckwirkend`), die Zukunft ist geplant.
+        Der Ort ist das Kurzzeichen eines Standorts, Gebäudes oder Bereichs - oder `U`,
+        das Unternehmen (nur eine berechnete Messstelle). Abgelehnt: den Ort gibt es
+        nicht, gab es an einem Tag noch nicht oder er war archiviert, `U` für eine
+        gemessene (422 `ort_ungueltig` mit `grund`); an dem Tag beginnt schon ein Ort
+        (409 `zuordnung_ueberlappt` - der Weg ist die Korrektur); schon genau dieser Ort
+        (400 `zuordnung_unveraendert`); vor dem ersten Ort, kein Beginn am Tag der
+        Korrektur (422 `zuordnung_ungueltig` mit `grund`); archivierte Messstelle (409
+        `zustand_passt_nicht`). Status wie AP-02 §5.10, `ort_ungueltig` wie der
+        Messstellen-Vertrag §7. Je Schreibvorgang genau ein Protokolleintrag
+        (`ort_zugeordnet` bzw. `ort_korrigiert`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleOrtAendern" }
+            example: { kennzeichen: B-3, gueltig_ab: "2027-03-01", grund: Kaltwassersatz zieht in Halle 2 }
+      responses:
+        "200":
+          description: Die Messstelle mit ihren Orten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/stellung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [messstellen]
+      summary: Setzt die elektrische Stellung der Messstelle ab einem Tag (AP-04 IP-7).
+      description: >
+        Recht `messstelle.bearbeiten`, mit `gueltig_ab` vor heute zusätzlich
+        `aenderung.rueckwirkend`. Dieselbe Tages-Mechanik wie beim Ort (409
+        `zuordnung_ueberlappt`, 400 `zuordnung_unveraendert`, 422 `zuordnung_ungueltig`). Regel 8 (Vertrag
+        docs/contracts/v2/messstelle.md §6, E12) an JEDEM Tag des neuen Intervalls, an
+        dem sich etwas ändert (`tag` nennt den ersten verletzten): 422
+        `stellung_ungueltig` mit `grund` nicht_elektrisch · bezug_nur_bei_unterzaehler
+        · bezug_fehlt · selbst · fremde_anlage (`bestehend`) · zyklus (`kette`); 409
+        `hauptzaehler_vorhanden` mit `bestehend` - je Anlage und Richtung einer, alle
+        am selben Zähler. Bis IP-13 die Quellen bindet, ist der Zähler einer Messstelle
+        unbekannt: dann ist auch ein zweiter Hauptzähler in anderer Richtung 409. Eine
+        Messstelle, die an einem Tag Unterzähler der geänderten ist, darf dadurch nicht
+        in eine fremde Anlage zeigen (422 `stellung_ungueltig` mit `betroffen`). Die
+        Anlage ist die ID einer Anlage des Kundenbereichs (sonst 400
+        `anfrage_ungueltig`, `feld: anlage`), `unterzaehler_von` das Kennzeichen der
+        Bezug-Messstelle. Je Schreibvorgang genau ein Protokolleintrag
+        (`stellung_zugeordnet` bzw. `stellung_korrigiert`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleStellungAendern" }
+            example: { anlage: 5b0c0c6e-8f3a-4d7e-9a61-2f4f1c9d7b10, stellung: Unterzähler, unterzaehler_von: MS-10, gueltig_ab: "2027-03-01" }
+      responses:
+        "200":
+          description: Die Messstelle mit ihrer elektrischen Stellung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Messstelle" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/standort:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: am, in: query, required: false, schema: { type: string, format: date }, description: "Der Tag; fehlend = heute in der Zeitzone des Unternehmens." }
+    get:
+      tags: [messstellen]
+      summary: Der Stand der Zuordnungen an einem Tag - Ort, Pfad, abgeleiteter Standort, Stellung.
+      description: >
+        Recht `messstelle.ansehen`, ein Tag in der Vergangenheit ("Stand am")
+        zusätzlich `aenderungsprotokoll.lesen`. Die Verortung des Ortsbaum-Vertrags
+        (Familie `messstelle_standort`): der Standort ist die Wurzel des Ortsknotens
+        AN DIESEM TAG - zieht ein Gebäude um, wechselt der Standort ohne eigene
+        Zuordnung. `grund`: verortet · am_unternehmen (Ort `U`, Standort null) ·
+        nicht_verortet (an dem Tag kein Ort) · ort_nicht_im_baum. Dazu die Stellung,
+        die an dem Tag gilt (null ohne). Eine fremde Messstelle ist 404, nie 403.
+      responses:
+        "200":
+          description: Der Stand am Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleStandortAm" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/data-sources:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14295,7 +14405,7 @@ components:
         messstellenZahl:
           type: integer
           nullable: true
-          description: Platzhalter bis AP-04 IP-7 (Messstelle -> Ort) - heute immer null.
+          description: "Die Messstellen, deren Ort am Stichtag dieses Gebäude selbst ist (nicht seine Bereiche); 0 wenn keine, null nur ohne Messstellen-Quelle."
         bereiche:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
@@ -14313,14 +14423,14 @@ components:
         gueltigBis: { type: string, format: date, nullable: true }
         flaecheM2: { type: integer, nullable: true }
         flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
-        messstellenZahl: { type: integer, nullable: true, description: Platzhalter bis AP-04 IP-7 - heute null. }
+        messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
     OrtsbaumDirektAmStandort:
       type: object
       properties:
         bereiche:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
-        messstellenZahl: { type: integer, nullable: true, description: Platzhalter bis AP-04 IP-7 - heute null. }
+        messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
     OrtAnlegen:
       type: object
       additionalProperties: false
@@ -15061,11 +15171,13 @@ components:
       description: >
         Eine Messstelle nach docs/contracts/v2/messstelle.schema.json (dieselben
         Feldnamen in snake_case) plus die vier Felder der Schnittstelle `id`, `fehlt`,
-        `angehalten_ab`, `archiviert_am`. Bis IP-7/IP-13 sind `fuehrende_quelle`,
-        `vergleichsquellen`, `orte` und `elektrische_stellung` leer und `kadenz_s`
-        null. `lebenszyklus` und `fehlt` leitet MessstelleRegeln.lebenszyklus aus den
-        gespeicherten Eingängen ab (ohne Ort ist eine gemessene Messstelle ein
-        Entwurf, eine berechnete ohne Formel ebenso); gespeichert ist nie die Stufe.
+        `angehalten_ab`, `archiviert_am`. `orte` und `elektrische_stellung` tragen die
+        wirksamen Zuordnungen nach Beginn (IP-7); bis IP-13 sind `fuehrende_quelle` und
+        `vergleichsquellen` leer und `kadenz_s` null. `lebenszyklus` und `fehlt`
+        leitet MessstelleRegeln.lebenszyklus aus den gespeicherten Eingängen ab (ohne
+        Ort ist eine gemessene Messstelle ein Entwurf, eine berechnete ohne Formel
+        ebenso; ein Ort, gleich ab wann, zählt als vorhanden); gespeichert ist nie
+        die Stufe.
       required: [id, schema_version, kennzeichen, name, art, medium, hauptgroesse, fuehrende_quelle,
         vergleichsquellen, nebengroessen, orte, elektrische_stellung, kadenz_s, lebenszyklus, fehlt,
         notiz, angehalten_ab, archiviert_am]
@@ -15092,8 +15204,14 @@ components:
               lebenszyklus: { type: string, enum: [aktiv, archiviert], description: "archiviert auch mit der Messstelle." }
               fuehrende_quelle: { type: array, items: { type: object } }
               vergleichsquellen: { type: array, items: { type: object } }
-        orte: { type: array, items: { type: object }, description: "Bis IP-7 leer." }
-        elektrische_stellung: { type: array, items: { type: object }, description: "Bis IP-7 leer." }
+        orte:
+          type: array
+          description: "Wo die Messstelle sitzt, tagesgenau gültig - je Tag genau einer."
+          items: { $ref: "#/components/schemas/MessstelleOrtZuordnung" }
+        elektrische_stellung:
+          type: array
+          description: "Wo sie im elektrischen Baum einer Anlage steht, tagesgenau gültig."
+          items: { $ref: "#/components/schemas/MessstelleStellungZuordnung" }
         kadenz_s: { type: integer, nullable: true }
         lebenszyklus: { type: string, enum: [entwurf, eingerichtet, aktiv, angehalten, archiviert] }
         fehlt:
@@ -15187,6 +15305,65 @@ components:
           format: date-time
           description: "Auf die Minute mit Versatz (E2), fehlend = jetzt; vor jetzt = rückwirkend."
         grund: { type: string, nullable: true, description: "Steht im Änderungsprotokoll." }
+    MessstelleOrtZuordnung:
+      type: object
+      description: "Ein Ort mit Gültigkeit wie `$defs/ortZuordnung` in messstelle.schema.json."
+      additionalProperties: false
+      required: [ort_art, kennzeichen, gueltig_ab, gueltig_bis]
+      properties:
+        ort_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich] }
+        kennzeichen: { type: string, description: "Das Kurzzeichen des Orts; U = das Unternehmen.", example: B-2 }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE gültige Tag, einschließlich; null = offen." }
+    MessstelleStellungZuordnung:
+      type: object
+      description: "Die elektrische Stellung mit Gültigkeit wie `$defs/stellungZuordnung` in messstelle.schema.json."
+      additionalProperties: false
+      required: [anlage, stellung, unterzaehler_von, gueltig_ab, gueltig_bis]
+      properties:
+        anlage: { type: string, format: uuid, description: Die ID der Anlage. }
+        stellung: { type: string, enum: [Hauptzähler, Unterzähler, Erzeuger, Speicher, Abzweig, keine] }
+        unterzaehler_von: { type: string, nullable: true, description: "Das heutige Kennzeichen der Bezug-Messstelle - nur bei Unterzähler." }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE gültige Tag, einschließlich; null = offen." }
+    MessstelleOrtAendern:
+      type: object
+      additionalProperties: false
+      required: [kennzeichen, gueltig_ab]
+      properties:
+        kennzeichen: { type: string, description: "Das Kurzzeichen eines Standorts, Gebäudes oder Bereichs; U = das Unternehmen (nur berechnet)." }
+        gueltig_ab: { type: string, format: date, description: "Ab welchem Tag (in der Zeitzone des Unternehmens)." }
+        korrektur: { type: boolean, nullable: true, description: "true = das Intervall ersetzen, das an gueltig_ab beginnt." }
+        grund: { type: string, nullable: true, description: Steht im Änderungsprotokoll. }
+    MessstelleStellungAendern:
+      type: object
+      additionalProperties: false
+      required: [anlage, stellung, gueltig_ab]
+      properties:
+        anlage: { type: string, format: uuid }
+        stellung: { type: string, enum: [Hauptzähler, Unterzähler, Erzeuger, Speicher, Abzweig, keine] }
+        unterzaehler_von: { type: string, nullable: true, description: "Das Kennzeichen der Bezug-Messstelle - genau bei Unterzähler." }
+        gueltig_ab: { type: string, format: date }
+        korrektur: { type: boolean, nullable: true, description: "true = das Intervall ersetzen, das an gueltig_ab beginnt." }
+        grund: { type: string, nullable: true, description: Steht im Änderungsprotokoll. }
+    MessstelleStandortAm:
+      type: object
+      description: >
+        Der Stand der Zuordnungen einer Messstelle an einem Tag: die Verortung des
+        Ortsbaum-Vertrags (`ort`, `pfad` vom Ort hinauf bis zum Standort,
+        `standort`, `grund`) und die Stellung, die an dem Tag gilt.
+      required: [am, ort, ort_art, pfad, standort, standort_id, grund, elektrische_stellung]
+      properties:
+        am: { type: string, format: date }
+        ort: { type: string, nullable: true, description: "Das Kurzzeichen des Orts an dem Tag; U = das Unternehmen; null = keiner.", example: B-3 }
+        ort_art: { type: string, nullable: true, enum: [unternehmen, standort, gebaeude, bereich, null] }
+        pfad: { type: array, items: { type: string }, example: [B-3, G-2, ST-1] }
+        standort: { type: string, nullable: true, description: "Das Kurzzeichen des abgeleiteten Standorts.", example: ST-1 }
+        standort_id: { type: string, format: uuid, nullable: true }
+        grund: { type: string, enum: [verortet, am_unternehmen, nicht_verortet, ort_nicht_im_baum] }
+        elektrische_stellung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleStellungZuordnung" }]
     MessstelleFehler:
       type: object
       description: >
@@ -15194,12 +15371,21 @@ components:
         (docs/contracts/v2/messstelle.md §7) tragen dessen Status - aus dieser
         Schnittstelle heute `kennzeichen_format` 400, `kennzeichen_belegt` 409
         (`bestehend`), `groesse_ungueltig` 400 (`grund`, `feld`),
-        `zeitpunkt_vor_vorgaenger` 422 (`vorgaenger`); die übrigen antworten die
-        Routen von IP-7 und IP-13. Dazu die drei Codes der Schnittstelle:
-        `anfrage_ungueltig` 400 (`feld` - fehlt, falsche Form, gibt es hier nicht),
-        `zustand_passt_nicht` 409 (`angehalten_ab`, `archiviert_am`),
-        `zeitpunkt_in_zukunft` 422 (`zeitpunkt`). Den Satz baut die Fläche später aus
-        den Fakten (IP-6); `message` ist der Wortlaut von AP-04 §5.12, wo es ihn gibt.
+        `zeitpunkt_vor_vorgaenger` 422 (`vorgaenger` oder `beginn`); aus den
+        Zuordnungs-Routen (IP-7) `ort_ungueltig` 422 (`grund`, `gueltig_ab`),
+        `stellung_ungueltig` 422 (`grund`, `tag`, `bestehend`, `kette` oder
+        `betroffen`) und `hauptzaehler_vorhanden` 409 (`bestehend`, `tag`); die
+        übrigen antworten die Routen von IP-13 und die Kostenstellen-Anteile.
+        Dazu die Codes der Schnittstelle: `anfrage_ungueltig` 400 (`feld` - fehlt,
+        falsche Form, gibt es hier nicht), `zustand_passt_nicht` 409
+        (`angehalten_ab`, `archiviert_am`), `zeitpunkt_in_zukunft` 422
+        (`zeitpunkt`), `zuordnung_ueberlappt` 409 (an dem Tag beginnt schon eine
+        Zuordnung - `grund: gleicher_tag`, `gueltig_ab`), `zuordnung_unveraendert` 400
+        (schon genau so zugeordnet - `grund: ziel_ist_bisheriger_eltern`) und
+        `zuordnung_ungueltig` 422 (`grund` des Ortsbaum-Vertrags:
+        vor_dem_ersten_intervall · objekt_archiviert · kein_beginn_an_dem_tag). Den Satz baut die
+        Fläche später aus den Fakten (IP-6); `message` ist der Wortlaut von AP-04
+        §5.12, wo es ihn gibt.
       required: [code, message]
       properties:
         code:
@@ -15207,20 +15393,43 @@ components:
           enum: [kennzeichen_format, kennzeichen_belegt, groesse_ungueltig, medium_ohne_quelle,
             vergleich_ohne_zweck, quelle_passt_nicht, kanal_bereits_fuehrend, zeitraum_ungueltig,
             zeitpunkt_vor_vorgaenger, bindung_ueberlappt, hauptzaehler_vorhanden, stellung_ungueltig,
-            anteile_summe, ort_ungueltig, anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft]
+            anteile_summe, ort_ungueltig, anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft,
+            zuordnung_ueberlappt, zuordnung_ungueltig, zuordnung_unveraendert]
         message: { type: string }
-        feld: { type: string, description: "anfrage_ungueltig, groesse_ungueltig: hauptgroesse, nebengroessen[1], zeitpunkt …" }
-        grund: { type: string, enum: [groesse, medium, einheit, richtung, wertart] }
+        feld: { type: string, description: "anfrage_ungueltig, groesse_ungueltig: hauptgroesse, nebengroessen[1], zeitpunkt, gueltig_ab, anlage, stellung …" }
+        grund:
+          type: string
+          enum: [groesse, medium, einheit, richtung, wertart,
+            unbekannt, unternehmen_nur_berechnet, ziel_art_unzulaessig, ziel_gab_es_noch_nicht, ziel_archiviert,
+            nicht_elektrisch, bezug_nur_bei_unterzaehler, bezug_fehlt, selbst, fremde_anlage, zyklus,
+            vor_dem_ersten_intervall, objekt_archiviert, gleicher_tag, kein_beginn_an_dem_tag,
+            ziel_ist_bisheriger_eltern]
+          description: >
+            groesse_ungueltig: das Merkmal; ort_ungueltig: unbekannt ·
+            unternehmen_nur_berechnet · ziel_*; stellung_ungueltig: die Gründe von
+            Vertrag §6; zuordnung_*: der Grund der Tages-Mechanik.
         bestehend:
-          type: object
-          description: "kennzeichen_belegt: wer es trägt (frueher false) oder trug (frueher true)."
-          required: [kennzeichen, messstelle, name, archiviert, frueher]
-          properties:
-            kennzeichen: { type: string }
-            messstelle: { type: string, description: "Das HEUTIGE Kennzeichen des Trägers." }
-            name: { type: string, nullable: true }
-            archiviert: { type: boolean }
-            frueher: { type: boolean }
+          description: >
+            kennzeichen_belegt: wer es trägt (frueher false) oder trug (frueher true).
+            hauptzaehler_vorhanden, stellung_ungueltig (fremde_anlage): die bestehende
+            Messstelle mit ihrer Anlage am Tag.
+          oneOf:
+            - type: object
+              required: [kennzeichen, messstelle, name, archiviert, frueher]
+              properties:
+                kennzeichen: { type: string }
+                messstelle: { type: string, description: "Das HEUTIGE Kennzeichen des Trägers." }
+                name: { type: string, nullable: true }
+                archiviert: { type: boolean }
+                frueher: { type: boolean }
+            - $ref: "#/components/schemas/MessstelleImBaum"
+        betroffen:
+          description: "stellung_ungueltig: die Messstelle, die Unterzähler der geänderten ist und dadurch in eine fremde Anlage zeigte."
+          allOf: [{ $ref: "#/components/schemas/MessstelleImBaum" }]
+        kette: { type: array, items: { type: string }, description: "stellung_ungueltig (zyklus): der Kreis, von der Messstelle zurück zu ihr." }
+        tag: { type: string, format: date, description: "Der erste Tag, an dem Regel 8 verletzt wäre." }
+        gueltig_ab: { type: string, format: date }
+        beginn: { type: string, format: date-time, description: "zeitpunkt_vor_vorgaenger: der Beginn der Messstelle." }
         vorgaenger:
           type: object
           description: "zeitpunkt_vor_vorgaenger: der letzte Übergang, nach dem der neue liegen muss."
@@ -15234,6 +15443,14 @@ components:
         code: kennzeichen_belegt
         message: "MS-13 ist bereits vergeben (Lager Halle 2 (Allgemein)). Kennzeichen sind je Unternehmen eindeutig — auch archivierte bleiben belegt."
         bestehend: { kennzeichen: MS-13, messstelle: MS-13, name: Lager Halle 2 (Allgemein), archiviert: true, frueher: false }
+    MessstelleImBaum:
+      type: object
+      description: Eine Messstelle mit der Anlage, in der sie am Tag steht.
+      required: [kennzeichen, name, anlage]
+      properties:
+        kennzeichen: { type: string, example: MS-01 }
+        name: { type: string, nullable: true, example: Netzbezug Halle 1 }
+        anlage: { type: string, format: uuid }
     DatenquelleBox:
       type: object
       description: Eine Box, wie ein Satz sie nennt - Kundenname, sonst die Geräte-ID vom Aufkleber; null bei einer entfernten Box.

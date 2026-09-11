@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -81,12 +82,14 @@ public class OrtService {
     private final OrtKurzzeichen kurzzeichen;
     private final OrtProtokoll protokoll;
     private final JdbcTemplate jdbc;
+    private final ObjectProvider<OrtsbaumMessstellen> messstellen;
     private final TransactionTemplate transaktion;
     private volatile Clock uhr = Clock.systemUTC();
 
     public OrtService(StandortLesemodellService lesemodell, OrtRepository orte,
             OrtZuordnungRepository zuordnungen, FlaecheRepository flaechen, OrtKurzzeichen kurzzeichen,
-            OrtProtokoll protokoll, JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
+            OrtProtokoll protokoll, JdbcTemplate jdbc, ObjectProvider<OrtsbaumMessstellen> messstellen,
+            PlatformTransactionManager transactionManager) {
         this.lesemodell = lesemodell;
         this.orte = orte;
         this.zuordnungen = zuordnungen;
@@ -94,6 +97,7 @@ public class OrtService {
         this.kurzzeichen = kurzzeichen;
         this.protokoll = protokoll;
         this.jdbc = jdbc;
+        this.messstellen = messstellen;
         this.transaktion = new TransactionTemplate(transactionManager);
     }
 
@@ -104,7 +108,11 @@ public class OrtService {
 
     // ------------------------------------------------------------------ lesen
 
-    /** Der Ortsbaum zum Stichtag; {@code null} = heute in der Zeitzone des Standorts. Leer = 404. */
+    /**
+     * Der Ortsbaum zum Stichtag; {@code null} = heute in der Zeitzone des Standorts. Leer = 404.
+     * Die Messstellen-Zahl je Knoten kommt aus {@link OrtsbaumMessstellen} (AP-04 IP-7); ohne
+     * Bean bleibt sie {@code null}.
+     */
     public Optional<OrtsbaumAmStichtag> ortsbaum(UUID standortId, LocalDate stichtag) {
         Zeilen z = lesemodell.zeilen();
         Optional<StandortRepository.Standort> st = z.standorte().stream()
@@ -114,7 +122,8 @@ public class OrtService {
         }
         LocalDate tag = stichtag != null
                 ? stichtag : uhr.instant().atZone(ZoneId.of(st.get().zeitzone())).toLocalDate();
-        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag);
+        OrtsbaumMessstellen quelle = messstellen.getIfAvailable();
+        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, quelle == null ? null : quelle.messstellen());
     }
 
     // ---------------------------------------------------------------- anlegen

@@ -27,10 +27,12 @@ import java.util.UUID;
  * aber gab, steht normal da und trägt {@code zustand = archiviert} (§4.4) — die
  * Fläche graut ihn aus.
  *
- * <p><b>Messstellen-Zahl ist ein Platzhalter.</b> Die Zuordnung Messstelle → Ort
- * baut erst AP-04 IP-7; bis dahin ist {@code messstellenZahl} an jedem Knoten
- * und „direkt am Standort“ {@code null} — nie 0, denn „keine Messstelle“ wäre
- * eine Behauptung, die niemand geprüft hat.
+ * <p><b>Messstellen-Zahl</b> (AP-04 IP-7): je Knoten die Messstellen, deren Ort am
+ * Stichtag GENAU dieser Knoten ist — am Gebäude nur die am Gebäude selbst, nicht die seiner
+ * Bereiche; „direkt am Standort“ die am Standort selbst. 0, wenn keine dort hängt. Ohne
+ * Messstellen-Quelle ({@link #ortsbaum(Zeilen, UUID, LocalDate)}, keine
+ * {@link OrtsbaumMessstellen}-Bean) bleibt sie {@code null} — nie 0, denn „keine Messstelle“
+ * wäre dann eine Behauptung, die niemand geprüft hat.
  */
 public final class OrtsbaumLesemodell {
 
@@ -93,8 +95,19 @@ public final class OrtsbaumLesemodell {
             List<Gebaeude> gebaeude,
             DirektAmStandort direktAmStandort) {}
 
-    /** Der Ortsbaum eines Standorts zum Stichtag — leer, wenn es ihn im Mandanten nicht gibt (404). */
+    /** Der Ortsbaum eines Standorts zum Stichtag — ohne Messstellen-Quelle ({@code messstellenZahl} null). */
     public static Optional<OrtsbaumAmStichtag> ortsbaum(Zeilen z, UUID standortId, LocalDate stichtag) {
+        return ortsbaum(z, standortId, stichtag, null);
+    }
+
+    /**
+     * Der Ortsbaum eines Standorts zum Stichtag — leer, wenn es ihn im Mandanten nicht gibt (404).
+     * {@code messstellen}: die Messstellen mit ihren Ort-Intervallen (Eltern = Kurzzeichen bzw.
+     * „U“, wie {@link OrtsbaumMessstellen} sie liefert); {@code null} = unbekannt.
+     */
+    public static Optional<OrtsbaumAmStichtag> ortsbaum(
+            Zeilen z, UUID standortId, LocalDate stichtag, List<OrtsbaumAbleitung.Messstelle> messstellen) {
+        Map<String, Integer> zahl = messstellenJeOrt(messstellen, stichtag);
         Optional<StandortAmStichtag> standort = StandortLesemodell.standort(z, standortId, stichtag);
         if (standort.isEmpty()) {
             return Optional.empty();
@@ -119,34 +132,61 @@ public final class OrtsbaumLesemodell {
                 OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
                 gebaeude.add(new Gebaeude(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.baujahr(),
                         o.notiz(), o.zustand(), iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(),
-                        quelle(a), null, bereicheUnter(z, amTag, o.id().toString(), stichtag)));
+                        quelle(a), zahl(zahl, o.kurzzeichen()),
+                        bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl)));
             } else if (st.equals(a.eltern())) {
-                direkt.add(bereich(z, o, a, stichtag));
+                direkt.add(bereich(z, o, a, stichtag, zahl));
             }
         }
         OrtAmStichtag s = amTag.get(st);
         List<UUID> ohne = s.gebaeudeOhneFlaeche() == null ? List.of()
                 : s.gebaeudeOhneFlaeche().stream().map(UUID::fromString).toList();
         return Optional.of(new OrtsbaumAmStichtag(stichtag, standort.get(), s.summeGebaeudeM2(), ohne,
-                List.copyOf(gebaeude), new DirektAmStandort(List.copyOf(direkt), null)));
+                List.copyOf(gebaeude),
+                new DirektAmStandort(List.copyOf(direkt), zahl(zahl, standort.get().kurzzeichen()))));
     }
 
-    private static List<Bereich> bereicheUnter(
-            Zeilen z, Map<String, OrtAmStichtag> amTag, String gebaeude, LocalDate stichtag) {
+    /**
+     * Je Kurzzeichen die Zahl der Messstellen, deren Ort am Stichtag dieser Knoten ist (eine
+     * aufgehobene Zuordnung zählt nicht); {@code null} ohne Messstellen-Quelle.
+     */
+    private static Map<String, Integer> messstellenJeOrt(
+            List<OrtsbaumAbleitung.Messstelle> messstellen, LocalDate stichtag) {
+        if (messstellen == null) {
+            return null;
+        }
+        Map<String, Integer> out = new HashMap<>();
+        for (OrtsbaumAbleitung.Messstelle m : messstellen) {
+            m.zuordnungen().stream()
+                    .filter(i -> !i.aufgehoben() && i.eltern() != null && !i.ab().isAfter(stichtag)
+                            && (i.bis() == null || !stichtag.isAfter(i.bis())))
+                    .findFirst()
+                    .ifPresent(i -> out.merge(i.eltern(), 1, Integer::sum));
+        }
+        return out;
+    }
+
+    private static Integer zahl(Map<String, Integer> zahl, String kurzzeichen) {
+        return zahl == null ? null : zahl.getOrDefault(kurzzeichen, 0);
+    }
+
+    private static List<Bereich> bereicheUnter(Zeilen z, Map<String, OrtAmStichtag> amTag, String gebaeude,
+            LocalDate stichtag, Map<String, Integer> zahl) {
         List<Bereich> out = new ArrayList<>();
         for (OrtRepository.Ort o : z.orte()) {
             OrtAmStichtag a = amTag.get(o.id().toString());
             if (a != null && "bereich".equals(o.art()) && gebaeude.equals(a.eltern())) {
-                out.add(bereich(z, o, a, stichtag));
+                out.add(bereich(z, o, a, stichtag, zahl));
             }
         }
         return List.copyOf(out);
     }
 
-    private static Bereich bereich(Zeilen z, OrtRepository.Ort o, OrtAmStichtag a, LocalDate stichtag) {
+    private static Bereich bereich(Zeilen z, OrtRepository.Ort o, OrtAmStichtag a, LocalDate stichtag,
+            Map<String, Integer> zahl) {
         OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
         return new Bereich(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.notiz(), o.zustand(),
-                iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), null);
+                iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), zahl(zahl, o.kurzzeichen()));
     }
 
     /**

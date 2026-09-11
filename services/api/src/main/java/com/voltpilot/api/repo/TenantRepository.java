@@ -166,13 +166,15 @@ public class TenantRepository {
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
-                // V20260911140000, V20260911150000, V20260911200000, V20260911210000)
-                // references tenant/site/standort/ort with ON DELETE RESTRICT - never a
-                // cascade.
+                // V20260911140000, V20260911150000, V20260911200000, V20260911210000,
+                // V20260911230000) references tenant/site/standort/ort with ON DELETE
+                // RESTRICT - never a cascade.
                 // Offboarding is the ONE way a company ends, so it removes them
-                // explicitly, children first: a Messstelle before the Orte it will point
-                // to, floor areas and parent intervals before the buildings/areas they
-                // point at, those before the Standort; a Geraet's component periods and
+                // explicitly, children first: a Messstelle's Ort and Stellung intervals
+                // before the Messstelle, the Orte and the sites (tenant cascade) they point
+                // at; a Messstelle before the Orte; floor areas and parent intervals before
+                // the buildings/areas they point at, those before the Standort; a Geraet's
+                // component periods and
                 // cards before the Geraet, the Geraete before the Datenquelle they
                 // answer through; the Zustaendigkeiten before their Datenquelle; the
                 // Kurzzeichen occupancy and counter of the Orte (no FK to the Orte, only
@@ -191,6 +193,7 @@ public class TenantRepository {
                 for (String table : new String[] {
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "data_source_assignment", "data_source", "data_source_kennzeichen_seq",
+                        "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",

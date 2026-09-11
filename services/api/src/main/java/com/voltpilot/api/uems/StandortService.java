@@ -65,7 +65,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Wiederherstellen, das Löschen ohne Historie (E1) bringt IP-15 für Gebäude und Bereiche,
  * und die App-Rolle hat auf {@code standort} kein DELETE. Keine Fläche (IP-5), keine
  * Anlagen-Zuordnung (IP-11). Die Messstellen im Sperrgrund kommen über
- * {@link OrtsbaumMessstellen} — bis AP-04 IP-7 keine.
+ * {@link OrtsbaumMessstellen} — seit AP-04 IP-7 aus {@code messstelle_ort}.
  *
  * <p>Der Mandant ist die RLS: ein fremder Standort ist nicht da (404, nie 403).
  */
@@ -396,8 +396,9 @@ public class StandortService {
      * Der Stand, auf dem geurteilt wird: die Zeilen des Lesemodells als Ortsbaum des Vertrags
      * — Orte mit ihren Kurzzeichen als Schlüssel (eindeutig über Standorte und Orte,
      * V20260911210000), Anlagen mit ihrer ID, dazu die Messstellen aus {@link OrtsbaumMessstellen}.
+     * Derselbe Baum trägt die Zuordnung der Messstelle zu ihrem Ort ({@link MessstelleZuordnungService}).
      */
-    private record Baum(Ortsbaum baum, Zeilen zeilen, Map<String, UUID> standorte,
+    record Baum(Ortsbaum baum, Zeilen zeilen, Map<String, UUID> standorte,
             Map<String, OrtRepository.Ort> orte, Map<String, UUID> anlagen) {
 
         OrtRepository.Ort ort(String kennzeichen) {
@@ -406,6 +407,11 @@ public class StandortService {
     }
 
     private Baum baum() {
+        return baum(messstellen.getIfAvailable(OrtsbaumMessstellen.Keine::new).messstellen());
+    }
+
+    /** Der Baum mit genau diesen Messstellen (deren Intervall-Eltern Kurzzeichen bzw. „U“ sind). */
+    Baum baum(List<OrtsbaumAbleitung.Messstelle> ms) {
         Zeilen z = lesemodell.zeilen();
         Map<String, String> kz = new HashMap<>();
         Map<String, UUID> standortJeKz = new HashMap<>();
@@ -429,8 +435,6 @@ public class StandortService {
                 .map(a -> new OrtsbaumAbleitung.Anlage(a.kennzeichen(), a.name(), a.netzanschluss(), a.zustand(),
                         umschluesseln(a.zuordnungen(), kz)))
                 .toList();
-        List<OrtsbaumAbleitung.Messstelle> ms =
-                messstellen.getIfAvailable(OrtsbaumMessstellen.Keine::new).messstellen();
         return new Baum(new Ortsbaum(roh.zeitzone(), baumOrte, baumAnlagen, ms), z, standortJeKz, ortJeKz,
                 anlageJeKz);
     }

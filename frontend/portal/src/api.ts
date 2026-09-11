@@ -2243,7 +2243,10 @@ export interface OrtsbaumBereich {
   /** Die eigene Fläche am Stichtag — `null`, nie 0. */
   flaecheM2: number | null;
   flaecheQuelle: 'eigen' | null;
-  /** Platzhalter bis AP-04 IP-7 (Messstelle → Ort): heute immer `null`, nie eine erfundene 0. */
+  /**
+   * Die Messstellen, deren Ort am Stichtag GENAU dieser Knoten ist (am Gebäude nicht die
+   * seiner Bereiche; AP-04 IP-7); 0, wenn keine — `null` nur ohne Messstellen-Quelle.
+   */
   messstellenZahl: number | null;
 }
 
@@ -2343,6 +2346,65 @@ export interface Ort {
   flaechen: OrtFlaechenStand[];
   /** Zum „gültig ab“ dieses Vorgangs; `null` beim Bearbeiten. */
   rueckwirkung: OrtRueckwirkung | null;
+}
+
+// ---- Messstelle zuordnen: Ort und elektrische Stellung (UEMS AP-04 IP-7) -----
+// Nur die Formen von PUT /api/v1/messstellen/{id}/ort, …/stellung (Antwort: die
+// Messstelle, deren `orte`/`elektrische_stellung` diese Zuordnungen tragen) und
+// GET …/{id}/standort?am=; die Fläche dazu baut IP-8. Wie die Messstellen-Antwort
+// in snake_case (die Form von docs/contracts/v2/messstelle.schema.json); jede
+// Regel urteilt der Server (Tages-Mechanik des Ortsbaums, Regel 8 des Vertrags).
+
+export type MessstelleStellung = 'Hauptzähler' | 'Unterzähler' | 'Erzeuger' | 'Speicher' | 'Abzweig' | 'keine';
+
+/** Ein Ort mit Gültigkeit; `kennzeichen` ist das Kurzzeichen, `U` das Unternehmen; `gueltig_bis` einschließlich. */
+export interface MessstelleOrtZuordnung {
+  ort_art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich';
+  kennzeichen: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/** Die elektrische Stellung mit Gültigkeit; `anlage` ist die ID, `unterzaehler_von` das Kennzeichen des Bezugs. */
+export interface MessstelleStellungZuordnung {
+  anlage: string;
+  stellung: MessstelleStellung;
+  unterzaehler_von: string | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/** PUT /api/v1/messstellen/{id}/ort — `korrektur: true` ersetzt das Intervall, das an `gueltig_ab` beginnt. */
+export interface MessstelleOrtAendern {
+  kennzeichen: string;
+  gueltig_ab: string;
+  korrektur?: boolean | null;
+  grund?: string | null;
+}
+
+/** PUT /api/v1/messstellen/{id}/stellung */
+export interface MessstelleStellungAendern {
+  anlage: string;
+  stellung: MessstelleStellung;
+  unterzaehler_von?: string | null;
+  gueltig_ab: string;
+  korrektur?: boolean | null;
+  grund?: string | null;
+}
+
+/**
+ * GET /api/v1/messstellen/{id}/standort?am= — der Stand an einem Tag: Ort, Pfad bis zum
+ * abgeleiteten Standort (Ortsbaum-Vertrag, Familie `messstelle_standort`) und die Stellung.
+ */
+export interface MessstelleStandortAm {
+  am: string;
+  ort: string | null;
+  ort_art: MessstelleOrtZuordnung['ort_art'] | null;
+  pfad: string[];
+  standort: string | null;
+  standort_id: string | null;
+  grund: 'verortet' | 'am_unternehmen' | 'nicht_verortet' | 'ort_nicht_im_baum';
+  elektrische_stellung: MessstelleStellungZuordnung | null;
 }
 
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------

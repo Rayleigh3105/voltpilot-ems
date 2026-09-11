@@ -16,15 +16,21 @@ import com.voltpilot.api.uems.MessstelleRegeln.Vergeben;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.uems.MessstelleRepository.Nebengroesse;
 import com.voltpilot.api.uems.MessstelleRepository.NeueMessstelle;
+import com.voltpilot.api.uems.MessstelleZuordnungRepository.OrtZeile;
+import com.voltpilot.api.uems.MessstelleZuordnungRepository.StellungZeile;
+import com.voltpilot.api.uems.MessstelleZuordnungRepository.Tagesintervall;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -65,17 +72,27 @@ import org.springframework.web.server.ResponseStatusException;
  *       es fortgesetzt wird — die Tabelle kennt nur den heutigen Eingang.</li>
  *   <li>Jeder Übergang liegt NACH seinem Vorgänger (dem letzten Anhalten/Fortsetzen), sonst 422
  *       {@code zeitpunkt_vor_vorgaenger} — dieselbe Regel und derselbe Code wie der Wechsel
- *       einer Quelle (Vertrag §5 Regel 6). „Vor dem Beginn der Messstelle“ (Beginn des ersten
- *       Orts) prüft erst IP-7: ohne Ort gibt es keinen Beginn, und {@code MessstelleRegeln}
- *       prüft ihn dann ebenfalls nicht.</li>
+ *       einer Quelle (Vertrag §5 Regel 6) — und nie vor dem Beginn der Messstelle (Regel 5:
+ *       Mitternacht des ersten Tages ihres ersten Orts, IP-7), dann mit {@code beginn} statt
+ *       eines Vorgängers. Ohne Ort gibt es keinen Beginn und nichts zu prüfen.</li>
+ *   <li>Archivieren beendet die Zuordnungen (Ort, Stellung) am Vortag des Archivtags (AP-04 §4.5,
+ *       A13); eine, die erst an ihm oder später beginnt, wird aufgehoben — in DERSELBEN
+ *       Transaktion, der Eintrag „archiviert“ nennt den letzten Tag.</li>
  * </ul>
+ *
+ * <p>Die Zuordnungen selbst schreibt {@link MessstelleZuordnungService}; hier werden sie gelesen
+ * ({@code orte}, {@code elektrische_stellung}) und gehen als „Ort vorhanden“ in den Lebenszyklus.
  *
  * <p>Der Mandant ist die RLS: eine fremde Messstelle ist nicht da (404, nie 403).
  */
 @Service
 public class MessstelleService {
 
-    /** Bis IP-7 den Standort der Messstelle kennt: die Zeitzone der Vektor-Datei (DACH). */
+    /**
+     * Die Zeitzone der Zeitpunkte (die der Vektor-Datei). Alle zulässigen Zeitzonen von
+     * Unternehmen und Standort (Berlin, Wien, Zürich — {@code standort_zeitzone_chk}) haben
+     * dieselben Regeln; Tage und Versätze sind in jeder dieselben.
+     */
     static final ZoneId ZEITZONE = ZoneId.of("Europe/Berlin");
 
     private static final String SCHEMA_VERSION = "1.0";
@@ -84,16 +101,24 @@ public class MessstelleService {
 
     private final MessstelleRepository messstellen;
     private final MessstelleAenderungRepository aenderungen;
+    private final MessstelleZuordnungRepository zuordnungen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
-    private final Clock uhr = Clock.systemUTC();
+    private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleService(MessstelleRepository messstellen, MessstelleAenderungRepository aenderungen,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            MessstelleZuordnungRepository zuordnungen, PlatformTransactionManager transactionManager,
+            ObjectMapper json) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
+        this.zuordnungen = zuordnungen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
+    }
+
+    /** Nur für Tests: die Uhr, an der „jetzt“ hängt (ein Archivieren am 30.06.2027, A13). */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
     }
 
     // ------------------------------------------------------------------ lesen
@@ -101,9 +126,15 @@ public class MessstelleService {
     /** Alle Messstellen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen. */
     public MessstelleDto.Liste alle() {
         Map<UUID, List<Nebengroesse>> neben = messstellen.nebengroessenAlle();
+        Map<UUID, List<OrtZeile>> orte = new HashMap<>();
+        zuordnungen.orteAlle().forEach(z -> orte.computeIfAbsent(z.messstelleId(), k -> new ArrayList<>()).add(z));
+        Map<UUID, List<StellungZeile>> stellungen = new HashMap<>();
+        zuordnungen.stellungenAlle()
+                .forEach(z -> stellungen.computeIfAbsent(z.messstelleId(), k -> new ArrayList<>()).add(z));
         List<MessstelleDto.Messstelle> liste = new ArrayList<>();
         for (Messstelle m : messstellen.alle()) {
-            liste.add(darstellung(m, neben.getOrDefault(m.id(), List.of())));
+            liste.add(darstellung(m, neben.getOrDefault(m.id(), List.of()), orte.getOrDefault(m.id(), List.of()),
+                    stellungen.getOrDefault(m.id(), List.of())));
         }
         return new MessstelleDto.Liste(List.copyOf(liste));
     }
@@ -269,8 +300,9 @@ public class MessstelleService {
 
     /**
      * Archiviert die Messstelle: das Kennzeichen bleibt belegt, alles Lesbare bleibt stehen, kein
-     * Wiederbeleben. Das Beenden der Quellen zum Archivzeitpunkt kommt mit IP-13, das der
-     * Zuordnungen am Vortag mit IP-7 — heute hat sie weder noch.
+     * Wiederbeleben. Ihre Zuordnungen (Ort, Stellung) enden am Vortag des Archivtags — eine, die
+     * erst an ihm oder später beginnt, wird aufgehoben (A13: archiviert am 30.06.2027 16:30, der
+     * Ort endet am 29.06.2027). Das Beenden der Quellen zum Archivzeitpunkt kommt mit IP-13.
      */
     public MessstelleDto.Messstelle archivieren(UUID id, MessstelleDto.Uebergang u, ProtokollAkteur wer) {
         Messstelle m = finde(id);
@@ -279,15 +311,43 @@ public class MessstelleService {
         nichtArchiviert(m);
         nichtInDerZukunft(am, jetzt, "Archivieren");
         nachDemVorgaenger(m, am);
+        LocalDate archivtag = zeit(am).toLocalDate();
         transaktion.execute(s -> {
             if (!messstellen.archivieren(id, am)) {
                 throw zustandPasstNicht(finde(id), "wurde soeben archiviert.");
             }
-            protokoll(id, "archiviert", eintrag("archiviert_am", null), eintrag("archiviert_am", am),
+            boolean beendet = false;
+            for (OrtZeile z : zuordnungen.orte(id)) {
+                beendet |= beendeAm(z, archivtag, jetzt, zuordnungen::ortBeenden, zuordnungen::ortAufheben);
+            }
+            for (StellungZeile z : zuordnungen.stellungen(id)) {
+                beendet |= beendeAm(z, archivtag, jetzt, zuordnungen::stellungBeenden, zuordnungen::stellungAufheben);
+            }
+            Map<String, Object> neu = eintrag("archiviert_am", am);
+            if (beendet) {
+                neu.put("zuordnungen_bis", archivtag.minusDays(1).toString());
+            }
+            protokoll(id, "archiviert", eintrag("archiviert_am", null), neu,
                     am, am.isBefore(jetzt), text(grund(u)), wer);
             return id;
         });
         return eine(id);
+    }
+
+    /**
+     * Beendet ein wirksames Intervall am Vortag von {@code archivtag}; beginnt es erst an ihm oder
+     * später, belegte es danach keinen Tag — dann wird es aufgehoben. {@code true}, wenn sich etwas
+     * geändert hat.
+     */
+    private static boolean beendeAm(Tagesintervall z, LocalDate archivtag, Instant jetzt,
+            BiPredicate<UUID, LocalDate> beenden, BiPredicate<UUID, Instant> aufheben) {
+        if (z.aufgehoben() || (z.gueltigBis() != null && z.gueltigBis().isBefore(archivtag))) {
+            return false;
+        }
+        if (!z.gueltigAb().isBefore(archivtag)) {
+            return aufheben.test(z.id(), jetzt);
+        }
+        return beenden.test(z.id(), archivtag.minusDays(1));
     }
 
     // ------------------------------------------------------------ Regeln
@@ -373,8 +433,17 @@ public class MessstelleService {
         }
     }
 
-    /** Jeder Übergang liegt NACH dem letzten Anhalten/Fortsetzen (Regel 6 des Vertrags, A15). */
+    /**
+     * Jeder Übergang liegt nie vor dem Beginn der Messstelle (Regel 5 — Mitternacht des ersten
+     * Tages ihres ersten Orts) und NACH dem letzten Anhalten/Fortsetzen (Regel 6 des Vertrags, A15).
+     */
     private void nachDemVorgaenger(Messstelle m, Instant zeitpunkt) {
+        Instant beginn = beginn(zuordnungen.orte(m.id()));
+        if (beginn != null && zeitpunkt.isBefore(beginn)) {
+            throw MessstelleAbgelehnt.regel(Fehler.ZEITPUNKT_VOR_VORGAENGER, "Der Zeitpunkt liegt vor dem Beginn "
+                    + "von " + m.kennzeichen() + " am " + anzeige(beginn) + ". Wählen Sie einen späteren Zeitpunkt.",
+                    Map.of("beginn", zeit(beginn)));
+        }
         Uebergang v = aenderungen.letzterUebergang(m.id()).orElse(null);
         if (m.angehaltenAb() != null && (v == null || m.angehaltenAb().isAfter(v.giltAb()))) {
             v = new Uebergang("angehalten", m.angehaltenAb());
@@ -407,19 +476,18 @@ public class MessstelleService {
     }
 
     private MessstelleDto.Messstelle darstellung(Messstelle m) {
-        return darstellung(m, messstellen.nebengroessen(m.id()));
+        return darstellung(m, messstellen.nebengroessen(m.id()), zuordnungen.orte(m.id()),
+                zuordnungen.stellungen(m.id()));
     }
 
     /**
-     * Die Messstelle in der Form des Vertrags. Ort (IP-7), Formel (AP-10) und Quellen (IP-13)
-     * gibt es noch nicht — genau so gehen sie in {@link MessstelleRegeln#lebenszyklus} ein.
+     * Die Messstelle in der Form des Vertrags, mit ihren Zuordnungen (IP-7): alle wirksamen
+     * Intervalle nach Beginn. Formel (AP-10) und Quellen (IP-13) gibt es noch nicht — genau so
+     * gehen sie in {@link MessstelleRegeln#lebenszyklus} ein.
      */
-    private MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben) {
-        LebenszyklusErgebnis z = MessstelleRegeln.lebenszyklus(new LebenszyklusEingang(
-                m.art(), m.medium(), m.kennzeichen(), m.name(), m.hauptgroesse(),
-                false, false, false,
-                m.angehaltenAb() != null, m.archiviertAm() != null,
-                List.of(), OffsetDateTime.ofInstant(uhr.instant(), ZEITZONE)));
+    private MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
+            List<StellungZeile> stellungen) {
+        LebenszyklusErgebnis z = lebenszyklus(m, ortVorhanden(orte), OffsetDateTime.ofInstant(uhr.instant(), ZEITZONE));
         List<MessstelleDto.Nebengroesse> nebengroessen = neben.stream().map(n -> new MessstelleDto.Nebengroesse(
                 n.groesse().groesse(), n.groesse().richtung(), n.groesse().einheit(), n.groesse().wertart(),
                 n.archiviertAm() != null || m.archiviertAm() != null ? "archiviert" : "aktiv",
@@ -427,8 +495,55 @@ public class MessstelleService {
         Groesse h = m.hauptgroesse();
         return new MessstelleDto.Messstelle(m.id(), SCHEMA_VERSION, m.kennzeichen(), m.name(), m.art(),
                 m.medium(), new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                List.of(), List.of(), nebengroessen, List.of(), List.of(), null,
+                List.of(), List.of(), nebengroessen,
+                wirksam(orte).stream().map(MessstelleService::ortZuordnung).toList(),
+                wirksam(stellungen).stream().map(MessstelleService::stellungZuordnung).toList(), null,
                 z.lebenszyklus(), z.fehlt(), m.notiz(), zeit(m.angehaltenAb()), zeit(m.archiviertAm()));
+    }
+
+    /**
+     * Der Lebenszyklus einer gespeicherten Messstelle — die EINE Stelle, an der ihre Eingänge in
+     * {@link MessstelleRegeln#lebenszyklus} gehen (auch für die Archiv-Sperre des Ortsbaums,
+     * {@link MessstelleOrtsbaumMessstellen}).
+     */
+    static LebenszyklusErgebnis lebenszyklus(Messstelle m, boolean ortVorhanden, OffsetDateTime jetzt) {
+        return MessstelleRegeln.lebenszyklus(new LebenszyklusEingang(
+                m.art(), m.medium(), m.kennzeichen(), m.name(), m.hauptgroesse(),
+                ortVorhanden, false, false,
+                m.angehaltenAb() != null, m.archiviertAm() != null,
+                List.of(), jetzt));
+    }
+
+    /**
+     * „Ort vorhanden“ heißt: ein wirksames Ort-Intervall, gleich wann es gilt — der Lebenszyklus
+     * fragt, ob die Stammdaten vollständig sind (AP-04 §4.5), nicht, wo sie heute sitzt; das sagt
+     * {@code GET …/standort?am=}.
+     */
+    static boolean ortVorhanden(List<OrtZeile> orte) {
+        return orte.stream().anyMatch(z -> !z.aufgehoben());
+    }
+
+    /** Der Beginn der Messstelle: Mitternacht des ersten Tages ihres ersten Orts; {@code null} ohne Ort. */
+    static Instant beginn(List<OrtZeile> orte) {
+        return wirksam(orte).stream().findFirst()
+                .map(z -> z.gueltigAb().atStartOfDay(ZEITZONE).toInstant()).orElse(null);
+    }
+
+    /** Die wirksamen (nicht aufgehobenen) Intervalle nach Beginn. */
+    static <T extends Tagesintervall> List<T> wirksam(List<T> zeilen) {
+        return zeilen.stream().filter(z -> !z.aufgehoben())
+                .sorted(Comparator.comparing(Tagesintervall::gueltigAb)).toList();
+    }
+
+    /** Ein Ort-Intervall in der Form des Vertrags ({@code $defs/ortZuordnung}). */
+    static MessstelleDto.OrtZuordnung ortZuordnung(OrtZeile z) {
+        return new MessstelleDto.OrtZuordnung(z.zielArt(), z.kennzeichen(), z.gueltigAb(), z.gueltigBis());
+    }
+
+    /** Ein Stellungs-Intervall in der Form des Vertrags ({@code $defs/stellungZuordnung}). */
+    static MessstelleDto.StellungZuordnung stellungZuordnung(StellungZeile z) {
+        return new MessstelleDto.StellungZuordnung(z.siteId().toString(), z.stellung(),
+                z.unterzaehlerVonKennzeichen(), z.gueltigAb(), z.gueltigBis());
     }
 
     /**
@@ -517,7 +632,8 @@ public class MessstelleService {
         return t.truncatedTo(ChronoUnit.MINUTES);
     }
 
-    private static OffsetDateTime zeit(Instant t) {
+    /** Ein Zeitpunkt mit dem Versatz der Zeitzone; {@code null} bleibt {@code null}. */
+    static OffsetDateTime zeit(Instant t) {
         return t == null ? null : OffsetDateTime.ofInstant(t, ZEITZONE);
     }
 

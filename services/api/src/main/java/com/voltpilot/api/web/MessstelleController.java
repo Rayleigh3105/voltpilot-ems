@@ -8,13 +8,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.MessstelleService;
+import com.voltpilot.api.uems.MessstelleZuordnungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -26,7 +29,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -42,8 +47,9 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt, ist 400
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen. Wer an {@code PUT} ein
- * Medium oder eine Hauptgröße schickt, soll nicht glauben, sie sei gespeichert; wer schon einen
- * Ort mitschickt (IP-7), ebenso nicht.
+ * Medium oder eine Hauptgröße schickt, soll nicht glauben, sie sei gespeichert; wer einen Ort
+ * mitschickt, ebenso nicht — Ort und Stellung haben ihre eigenen, zeitgültigen Routen (IP-7,
+ * {@link MessstelleZuordnungService}).
  */
 @RestController
 @RequestMapping("/api/v1/messstellen")
@@ -52,10 +58,13 @@ public class MessstelleController {
     private static final List<String> NIE_AENDERBAR = List.of("art", "medium", "hauptgroesse");
 
     private final MessstelleService messstellen;
+    private final MessstelleZuordnungService zuordnungen;
     private final ObjectMapper streng;
 
-    public MessstelleController(MessstelleService messstellen, ObjectMapper json) {
+    public MessstelleController(MessstelleService messstellen, MessstelleZuordnungService zuordnungen,
+            ObjectMapper json) {
         this.messstellen = messstellen;
+        this.zuordnungen = zuordnungen;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -114,6 +123,37 @@ public class MessstelleController {
         return messstellen.archivieren(id, uebergang(body), akteur(auth));
     }
 
+    // ------------------------------------------------------------ Zuordnungen (IP-7)
+
+    /**
+     * Recht: {@code messstelle.bearbeiten} („Ort … zuordnen“); mit „gültig ab“ vor heute
+     * zusätzlich {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihren Orten.
+     */
+    @PutMapping("/{id}/ort")
+    public MessstelleDto.Messstelle ort(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        zuordnungen.ortZuordnen(id, lies(body, MessstelleDto.OrtAendern.class), akteur(auth));
+        return messstellen.eine(id);
+    }
+
+    /**
+     * Recht: {@code messstelle.bearbeiten}; mit „gültig ab“ vor heute zusätzlich
+     * {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihrer elektrischen Stellung.
+     */
+    @PutMapping("/{id}/stellung")
+    public MessstelleDto.Messstelle stellung(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        zuordnungen.stellungZuordnen(id, lies(body, MessstelleDto.StellungAendern.class), akteur(auth));
+        return messstellen.eine(id);
+    }
+
+    /** Recht: {@code messstelle.ansehen}; ein Tag in der Vergangenheit („Stand am“) zusätzlich {@code aenderungsprotokoll.lesen}. */
+    @GetMapping("/{id}/standort")
+    public MessstelleDto.StandortAm standort(@PathVariable UUID id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
+        return zuordnungen.standortAm(id, am);
+    }
+
     // ---------------------------------------------------------------- Gerüst
 
     private static ProtokollAkteur akteur(Authentication auth) {
@@ -167,6 +207,12 @@ public class MessstelleController {
         body.put("message", e.getMessage());
         body.putAll(e.fakten());
         return ResponseEntity.status(e.status()).body(body);
+    }
+
+    /** {@code ?am=} kein Tag (JJJJ-MM-TT): dieselbe Form wie jede andere Ablehnung der Anfrage. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> keinTag(MethodArgumentTypeMismatchException e) {
+        return abgelehnt(MessstelleAbgelehnt.anfrage(e.getName(), "„" + e.getName() + "“ ist ein Tag (JJJJ-MM-TT)."));
     }
 
     /** Kein lesbares JSON: dieselbe Form wie jede andere Ablehnung der Anfrage. */

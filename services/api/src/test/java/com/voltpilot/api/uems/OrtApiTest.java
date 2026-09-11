@@ -220,10 +220,11 @@ class OrtApiTest {
         assertThat(halle2.path("gueltigAb").asText()).isEqualTo("2026-10-01");
         assertThat(halle2.path("gueltigBis").isNull()).isTrue();
         assertThat(halle2.has("zeitzone")).isFalse();
-        // Messstellen-Zahl: Platzhalter bis AP-04 IP-7 — null, nie eine erfundene 0.
-        assertThat(halle2.path("messstellenZahl").isNull()).isTrue();
+        // Messstellen-Zahl (AP-04 IP-7): hier ist keine Messstelle angelegt — geprüft 0, nie null.
+        // Die Zahlen des Referenzunternehmens beweist MessstelleZuordnungApiTest.
+        assertThat(halle2.path("messstellenZahl").asInt(-1)).isZero();
         assertThat(werk.path("direktAmStandort").path("bereiche")).isEmpty();
-        assertThat(werk.path("direktAmStandort").path("messstellenZahl").isNull()).isTrue();
+        assertThat(werk.path("direktAmStandort").path("messstellenZahl").asInt(-1)).isZero();
         // Die eigene Fläche des Standorts gilt; die Summe der Gebäude steht daneben.
         assertThat(werk.path("standort").path("flaecheM2").asInt()).isEqualTo(8450);
         assertThat(werk.path("summeGebaeudeM2").asInt()).isEqualTo(4200 + 3100 + 1150);

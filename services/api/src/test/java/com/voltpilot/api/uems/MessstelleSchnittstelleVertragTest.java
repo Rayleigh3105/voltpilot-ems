@@ -103,6 +103,56 @@ class MessstelleSchnittstelleVertragTest {
         }
     }
 
+    /**
+     * Die Zuordnungen (IP-7): die Einträge von {@code orte} und {@code elektrische_stellung} sind
+     * die {@code $defs/ortZuordnung} und {@code $defs/stellungZuordnung} des Vertrags (dieselben
+     * Felder in Java und OpenAPI, das Stellungs-Vokabular das von {@link MessstelleRegeln}); die
+     * Anfragen der beiden Routen und der Stand am Tag tragen genau die Felder der OpenAPI.
+     */
+    @Test
+    void dieZuordnungenSindDieFormenDesVertragsUndDerOpenApi() {
+        PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
+        Map<String, Class<?>> vertragsFormen = Map.of(
+                "ortZuordnung", MessstelleDto.OrtZuordnung.class,
+                "stellungZuordnung", MessstelleDto.StellungZuordnung.class);
+        Map<String, String> openapiFormen = Map.of(
+                "ortZuordnung", "MessstelleOrtZuordnung", "stellungZuordnung", "MessstelleStellungZuordnung");
+        for (Map.Entry<String, Class<?>> f : vertragsFormen.entrySet()) {
+            Set<String> soll = new LinkedHashSet<>();
+            vertrag.at("/$defs/" + f.getKey() + "/required").forEach(n -> soll.add(n.asText()));
+            List<String> dto = Arrays.stream(f.getValue().getRecordComponents())
+                    .map(c -> snake.translate(c.getName())).toList();
+            assertThat(dto).as(f.getKey()).containsExactlyInAnyOrderElementsOf(soll);
+            Map<String, Object> o = schema(openapiFormen.get(f.getKey()));
+            assertThat(liste(o, "required")).as(f.getKey()).containsExactlyInAnyOrderElementsOf(soll);
+            assertThat(map(o, "properties").keySet()).as(f.getKey()).containsExactlyInAnyOrderElementsOf(soll);
+        }
+        List<String> stellungen = StreamSupport.stream(vertrag.at("/$defs/stellung/enum").spliterator(), false)
+                .map(JsonNode::asText).toList();
+        assertThat(stellungen).containsExactlyElementsOf(MessstelleRegeln.STELLUNGEN);
+        assertThat(liste(map(map(schema("MessstelleStellungZuordnung"), "properties"), "stellung"), "enum"))
+                .containsExactlyElementsOf(stellungen);
+        assertThat(liste(map(map(schema("MessstelleStellungAendern"), "properties"), "stellung"), "enum"))
+                .containsExactlyElementsOf(stellungen);
+        List<String> ortArten = StreamSupport.stream(vertrag.at("/$defs/ortArt/enum").spliterator(), false)
+                .map(JsonNode::asText).toList();
+        assertThat(liste(map(map(schema("MessstelleOrtZuordnung"), "properties"), "ort_art"), "enum"))
+                .containsExactlyElementsOf(ortArten);
+
+        Map<String, Class<?>> formen = Map.of("MessstelleOrtAendern", MessstelleDto.OrtAendern.class,
+                "MessstelleStellungAendern", MessstelleDto.StellungAendern.class,
+                "MessstelleStandortAm", MessstelleDto.StandortAm.class);
+        for (Map.Entry<String, Class<?>> f : formen.entrySet()) {
+            assertThat(map(schema(f.getKey()), "properties").keySet()).as(f.getKey())
+                    .containsExactlyInAnyOrderElementsOf(Arrays.stream(f.getValue().getRecordComponents())
+                            .map(c -> snake.translate(c.getName())).toList());
+        }
+        // Der Grund des Stands am Tag ist das Vokabular des Ortsbaums (Verortung).
+        assertThat(liste(map(map(schema("MessstelleStandortAm"), "properties"), "grund"), "enum"))
+                .containsExactlyElementsOf(Arrays.stream(OrtsbaumAbleitung.VerortungGrund.values())
+                        .map(g -> g.name().toLowerCase(java.util.Locale.ROOT)).toList());
+    }
+
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */
     @Test
     void derUrheberKommtAusDerEinenStelle() {

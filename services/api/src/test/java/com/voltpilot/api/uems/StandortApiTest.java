@@ -37,6 +37,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -121,14 +122,16 @@ class StandortApiTest {
     }
 
     /**
-     * Die Messstellen am Ort, bis AP-04 IP-7 sie liefert: der Test legt sie in den Haken
-     * {@link OrtsbaumMessstellen} — genau so ersetzt IP-7 die leere Vorgabe.
+     * Die Messstellen am Ort, wie die Vektor-Fälle sie brauchen: der Test legt sie in den Haken
+     * {@link OrtsbaumMessstellen} — vor die echte Bean ({@code MessstelleOrtsbaumMessstellen},
+     * AP-04 IP-7), deren Weg aus {@code messstelle_ort} {@code MessstelleZuordnungApiTest} beweist.
      */
     static final List<OrtsbaumAbleitung.Messstelle> MESSSTELLEN = new CopyOnWriteArrayList<>();
 
     @TestConfiguration
     static class MessstellenAmOrt {
         @Bean
+        @Primary
         OrtsbaumMessstellen ortsbaumMessstellen() {
             return () -> List.copyOf(MESSSTELLEN);
         }

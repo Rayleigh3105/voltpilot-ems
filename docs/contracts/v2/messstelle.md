@@ -20,10 +20,11 @@ eingerichtet ist, wie eine Quelle gebunden, gewechselt und abgelehnt wird und wo
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> ⚠ **Noch ruft niemand an.** Es gibt noch keine Tabelle `messstelle` (IP-2), keinen
-> Endpunkt (IP-3) und keine Fläche (IP-5/IP-6). Dieser Vertrag ist das Ziel, gegen das sie
-> bauen — nicht ihr Vollzug. Die Box kennt keine Messstellen; der Edge-Vertrag bleibt
-> unverändert.
+> **Wer anruft (Stand IP-7):** die Tabellen `messstelle` … (IP-2, `V20260911140000`) und
+> `messstelle_ort`/`messstelle_stellung` (IP-7, `V20260911230000`), die Schnittstelle
+> `/api/v1/messstellen` (IP-3) mit `PUT …/{id}/ort`, `…/stellung` und `GET …/{id}/standort?am=`
+> (IP-7). Noch ohne Fläche (IP-5/IP-6/IP-8) und ohne Quellenbindung (IP-13). Die Box kennt keine
+> Messstellen; der Edge-Vertrag bleibt unverändert.
 
 ## 1. Die Messstelle
 
@@ -172,6 +173,11 @@ lesen DENSELBEN Zähler (dieselbe Komponente) — so sind MS-01 (Bezug) und MS-0
 K-3 zusammen erlaubt, ein zweiter Zähler nie: 409 `hauptzaehler_vorhanden`, das Urteil nennt
 den ersten bestehenden in Register-Reihenfolge. Die Liste der Messstellen ist der Stand am
 Stichtag (Tag).
+
+**Vollzug (IP-7):** der Schreibweg urteilt an JEDEM Tag des neuen Intervalls, an dem sich der
+Stand ändert, für die Messstelle und für jede, die an dem Tag Unterzähler von ihr ist. Bis IP-13
+die Quellen bindet, ist die Komponente unbekannt — die Regel belegt dann nie „derselbe Zähler“,
+und auch MS-02 neben MS-01 ist 409, bis ihre Quellen es zeigen.
 
 ## 7. Fehler-Codes
 
