@@ -10,8 +10,9 @@
 #
 #   bash docs/fachmodell/tools/check_auswirkungen.sh
 #
-# NEUE Objekte des Fachmodells (`standort`, `messstelle`, `data_source`, `messreihe_*` …)
-# werden hier absichtlich NICHT geprüft: sie entstehen erst mit ihrem Bau-Paket.
+# NEUE Objekte des Fachmodells (`messstelle`, `data_source`, `messreihe_*` …) werden hier
+# erst geprüft, wenn ihr Bau-Paket sie angelegt hat: dann trägt es sie in GEBAUT ein, und
+# ab da gilt für sie dieselbe Regel wie für die heutigen Tabellen.
 set -uo pipefail
 
 cd "$(dirname "$0")/../../.." || exit 1
@@ -46,6 +47,14 @@ consumer_policy
 site_charging_config
 "
 
+# Die neuen Tabellen, die ein UEMS-Bau-Paket schon angelegt hat (je Paket eine Zeile).
+GEBAUT="
+unternehmen
+standort
+anlage_standort
+ort_aenderung
+"
+
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.
 DATEIEN="
 frontend/portal/src/nav.ts
@@ -66,7 +75,7 @@ fehler=0
 n_tab=0
 n_dat=0
 
-for t in $TABELLEN; do
+for t in $TABELLEN $GEBAUT; do
   n_tab=$((n_tab + 1))
   if ! grep -rlEz "CREATE TABLE[^;]*[^a-z_]${t}[^a-z_]" "$MIG" >/dev/null 2>&1; then
     echo "FEHLER  Tabelle \`$t\` hat kein CREATE TABLE in $MIG"

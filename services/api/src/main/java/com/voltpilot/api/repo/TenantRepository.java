@@ -120,6 +120,14 @@ public class TenantRepository {
                 }
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
+                // The UEMS master data (V20260911100000) references tenant/site with
+                // ON DELETE RESTRICT - never a cascade. Offboarding is the ONE way a
+                // company ends, so it removes them explicitly, children first. The
+                // append-only log ort_aenderung carries no FK and stays (the
+                // component_change_event pattern).
+                for (String table : new String[] {"anlage_standort", "standort", "unternehmen"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
                 deleteByTenant(con, "tenant", tenantId, "id");
                 con.commit();
                 return new OffboardCounts(sites, devices, telemetryRows);
