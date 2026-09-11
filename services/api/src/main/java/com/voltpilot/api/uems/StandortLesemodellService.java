@@ -105,7 +105,11 @@ public class StandortLesemodellService {
         return !jdbc.queryForList("SELECT id FROM tenant", UUID.class).isEmpty();
     }
 
-    /** Alle Zeilen des Mandanten — auch der Stand, auf dem die Schreibrouten urteilen (IP-4). */
+    /**
+     * Alle Zeilen des Mandanten — auch der Stand, auf dem die Schreibrouten urteilen: der
+     * Standort (IP-4, {@link StandortService}) und die Gebäude/Bereiche (IP-5,
+     * {@link OrtService}) prüfen gegen DENSELBEN Baum, den das Lesemodell zeigt.
+     */
     Zeilen zeilen() {
         return zeilen(standorte.alle());
     }

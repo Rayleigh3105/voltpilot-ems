@@ -2203,13 +2203,146 @@ export interface OrtFehler {
     | 'kurzzeichen_belegt'
     | 'archiviert'
     | 'archivieren_gesperrt'
-    | 'wiederherstellen_gesperrt';
+    | 'wiederherstellen_gesperrt'
+    // Gebäude/Bereich (IP-5): die Gründe des Ortsbaum-Vertrags mit seinem Satz.
+    | 'ziel_art_unzulaessig'
+    | 'ziel_gab_es_noch_nicht'
+    | 'ziel_archiviert'
+    | 'flaeche_ungueltig'
+    | 'gab_es_noch_nicht'
+    | 'gleiche_flaeche';
   message: string;
   feld?: string;
   verweis?: OrtVerweis;
   archiviert_am?: string | null;
   grund?: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt';
   gruende?: ArchivSperrgrund[];
+}
+
+// ---- UEMS-Ortsstruktur: Gebäude und Bereiche (AP-02 IP-5) -------------------
+// GET /api/v1/standorte/{id}/orte?stichtag= (der Ortsbaum), POST …/orte,
+// PUT /api/v1/orte/{id}, PUT /api/v1/orte/{id}/flaeche. Die Fläche dazu baut
+// IP-7/IP-8; jede Regel urteilt der Server nach docs/contracts/v2/ortsbaum-vectors.json.
+
+export type OrtZustand = 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+
+/**
+ * Ein Bereich im Ortsbaum zum Stichtag. `gueltigAb`/`gueltigBis`: die am
+ * Stichtag gültige Zuordnung (`gueltigBis` einschließlich, `null` = offen).
+ * Ein Bereich erbt nie die Fläche seines Gebäudes.
+ */
+export interface OrtsbaumBereich {
+  id: string;
+  kurzzeichen: string;
+  name: string;
+  nutzung: Nutzung[] | null;
+  notiz: string | null;
+  zustand: OrtZustand;
+  gueltigAb: string;
+  gueltigBis: string | null;
+  /** Die eigene Fläche am Stichtag — `null`, nie 0. */
+  flaecheM2: number | null;
+  flaecheQuelle: 'eigen' | null;
+  /** Platzhalter bis AP-04 IP-7 (Messstelle → Ort): heute immer `null`, nie eine erfundene 0. */
+  messstellenZahl: number | null;
+}
+
+export interface OrtsbaumGebaeude extends OrtsbaumBereich {
+  baujahr: number | null;
+  bereiche: OrtsbaumBereich[];
+}
+
+/**
+ * GET /api/v1/standorte/{id}/orte?stichtag= — die Gebäude mit ihren Bereichen
+ * und die Bereiche „direkt am Standort“, so wie sie am Stichtag galten. Gab es
+ * den Standort am Stichtag nicht, sagt es `standort.bestand`; dann sind
+ * `gebaeude` leer und `direktAmStandort` `null`. Gebäude und Bereiche tragen
+ * keine Zeitzone (sie erben die des Standorts).
+ */
+export interface OrtsbaumAmStichtag {
+  stichtag: string;
+  standort: StandortAmStichtag;
+  /** Die Summe der Gebäudeflächen — nur, wenn jedes eine hat; ein Hinweis, nie saldiert. */
+  summeGebaeudeM2: number | null;
+  /** Die Gebäude, denen am Stichtag die Fläche fehlt („für kWh/m² fehlt die Fläche“). */
+  gebaeudeOhneFlaeche: string[];
+  gebaeude: OrtsbaumGebaeude[];
+  direktAmStandort: { bereiche: OrtsbaumBereich[]; messstellenZahl: number | null } | null;
+}
+
+/** POST /api/v1/standorte/{id}/orte */
+export interface OrtAnlegen {
+  art: 'gebaeude' | 'bereich';
+  name: string;
+  /** Fehlend = automatisch (G-n / B-n). */
+  kurzzeichen?: string | null;
+  /** Nur Bereich: das Gebäude dieses Standorts; fehlend = direkt am Standort. */
+  elternId?: string | null;
+  /** ISO-Tag; fehlend = heute in der Zeitzone des Standorts. */
+  gueltigAb?: string | null;
+  nutzung?: Nutzung[] | null;
+  /** Nur Gebäude. */
+  baujahr?: number | null;
+  notiz?: string | null;
+  /** Die erste Fläche, ab `gueltigAb`. */
+  flaecheM2?: number | null;
+}
+
+/** PUT /api/v1/orte/{id} — ganz: fehlend ist leer; Name und Kurzzeichen Pflicht. */
+export interface OrtBearbeiten {
+  name: string;
+  kurzzeichen: string;
+  nutzung?: Nutzung[] | null;
+  baujahr?: number | null;
+  notiz?: string | null;
+}
+
+/** PUT /api/v1/orte/{id}/flaeche — ganze m² ab einem Tag (E3). */
+export interface OrtFlaeche {
+  m2: number;
+  gueltigAb?: string | null;
+}
+
+/** `zustand` relativ zu heute; `gueltigBis` einschließlich. */
+export interface OrtZuordnung {
+  elternId: string;
+  elternArt: 'standort' | 'gebaeude';
+  elternName: string;
+  gueltigAb: string;
+  gueltigBis: string | null;
+  zustand: 'gueltig' | 'geplant' | 'beendet';
+}
+
+export interface OrtFlaechenStand {
+  m2: number;
+  gueltigAb: string;
+  gueltigBis: string | null;
+  zustand: 'gueltig' | 'geplant' | 'beendet';
+}
+
+/** E2: rückwirkend erlaubt, aber sichtbar — `abzeichen` nur rückwirkend („rückwirkend (14 Tage)“). */
+export interface OrtRueckwirkung {
+  art: 'rueckwirkend' | 'ab_heute' | 'geplant';
+  tage: number;
+  abzeichen: string | null;
+}
+
+/** Ein Gebäude oder Bereich nach dem Schreiben (Antwort von POST/PUT). */
+export interface Ort {
+  id: string;
+  art: 'gebaeude' | 'bereich';
+  kurzzeichen: string;
+  name: string;
+  nutzung: Nutzung[] | null;
+  baujahr: number | null;
+  notiz: string | null;
+  zustand: OrtZustand;
+  /** Der Standort, an dessen Baum der Ort heute hängt. */
+  standortId: string | null;
+  zuordnungen: OrtZuordnung[];
+  flaechen: OrtFlaechenStand[];
+  /** Zum „gültig ab“ dieses Vorgangs; `null` beim Bearbeiten. */
+  rueckwirkung: OrtRueckwirkung | null;
 }
 
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------

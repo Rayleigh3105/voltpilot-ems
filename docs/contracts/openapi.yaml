@@ -656,6 +656,143 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/orte:
+    get:
+      tags: [ortsstruktur]
+      summary: Der Ortsbaum eines Standorts zum Stichtag (AP-02 IP-5).
+      description: >
+        Die Gebäude mit ihren Bereichen, die Bereiche "direkt am Standort" und
+        je Knoten die Fläche mit ihrer Quelle, so wie sie am Stichtag galten -
+        dieselbe Ableitung wie GET /api/v1/standorte (Vertrag
+        docs/contracts/v2/ortsbaum-vectors.json, "Stand am"). Ein Knoten, den
+        es am Stichtag nicht gab, fehlt; einer, der heute archiviert ist, es an
+        dem Tag aber gab, steht mit `zustand: archiviert` da. Gab es den
+        Standort am Stichtag nicht, sagt es `standort.bestand`, und die
+        zeitgültigen Teile sind leer bzw. null. `messstellenZahl` ist ein
+        Platzhalter: null an jedem Knoten, bis AP-04 IP-7 die Zuordnung
+        Messstelle -> Ort baut (nie eine erfundene 0). Gebäude und Bereiche
+        tragen keine Zeitzone - sie erben die des Standorts (A16). Ein fremder
+        Standort ist 404, nie 403 (A14). Rechte (rechte-matrix.json): heute
+        lesend ohne eigene Kennung; ein Stichtag in der Vergangenheit ("Stand
+        am") ist `aenderungsprotokoll.lesen`. Additiv vorgesehen: `teilansicht`
+        (AP-03 IP-10).
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: stichtag
+          in: query
+          required: false
+          description: Der Tag (ISO), Vorgabe heute in der Zeitzone des Standorts.
+          schema: { type: string, format: date, example: "2026-10-20" }
+      responses:
+        "200":
+          description: Der Ortsbaum zum Stichtag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtsbaumAmStichtag" }
+        "400": { description: stichtag ist kein ISO-Tag. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [ortsstruktur]
+      summary: Ein Gebäude oder einen Bereich anlegen (AP-02 IP-5).
+      description: >
+        Legt den Ort mit seiner Zuordnung ab `gueltigAb` an (fehlend: heute in
+        der Zeitzone des Standorts; rückwirkend erlaubt und sichtbar, E2),
+        auf Wunsch mit der ersten Fläche ab demselben Tag, und schreibt GENAU
+        EINEN Eintrag ins Änderungsprotokoll ("angelegt"). Ohne `kurzzeichen`
+        wird das nächste vergeben (G-1 ... / B-1 ..., je Kundenbereich, nie
+        wiederverwendet, E8). Ein Bereich hängt an einem Gebäude dieses
+        Standorts (`elternId`) oder direkt am Standort (E7); ein Gebäude nur
+        am Standort. Die Regeln urteilt der Ortsbaum-Vertrag in fester
+        Reihenfolge - ein Ziel falscher Art ist 400 `ziel_art_unzulaessig`
+        (Bereich unter Bereich, Gebäude unter Bereich), ein Ziel, das es am
+        Tag noch nicht gab, 422 `ziel_gab_es_noch_nicht`, ein archiviertes 409
+        `ziel_archiviert`; danach der Name unter den Geschwistern am Tag (409
+        `name_belegt` mit Verweis) und das Kurzzeichen (409
+        `kurzzeichen_belegt`, auch gegen einen Standort). Rechte:
+        `gebaeude.pflegen`, mit `gueltigAb` vor heute zusätzlich
+        `aenderung.rueckwirkend`.
+      parameters:
+        - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrtAnlegen" }
+      responses:
+        "201":
+          description: Angelegt; `Location` ist /api/v1/orte/{id}.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ort" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}:
+    put:
+      tags: [ortsstruktur]
+      summary: Ein Gebäude oder einen Bereich bearbeiten (AP-02 IP-5).
+      description: >
+        Die einfachen Felder (§4.3: ohne Gültigkeit, sofort wirksam) - ganz:
+        fehlend ist leer, Name und Kurzzeichen sind Pflicht. Das Protokoll
+        ("bearbeitet", gilt ab heute) trägt nur die geänderten Felder alt ->
+        neu; ohne Änderung gibt es keinen Eintrag. Woran der Ort hängt, ändert
+        das Verschieben (IP-12) - `elternId` an dieser Route ist 400. Ein
+        archivierter Ort ist 409 `archiviert`. Rechte: `gebaeude.pflegen`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrtBearbeiten" }
+      responses:
+        "200":
+          description: Der Ort nach dem Bearbeiten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ort" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}/flaeche:
+    put:
+      tags: [ortsstruktur]
+      summary: Die Bezugsfläche ab einem Tag setzen oder ändern (AP-02 IP-5, E3).
+      description: >
+        Ganze m² > 0 ab `gueltigAb` (fehlend: heute in der Zeitzone des
+        Standorts). Die laufende Fläche endet am Vortag, die neue erbt deren
+        Ende; beginnt am Tag schon eine, wird sie ersetzt (Korrektur - sie
+        bleibt aufgehoben lesbar). Die Regel ist die des Vertrags
+        (ortsbaum-vectors.json, Familie flaeche/eintrag). Rückwirkend ist
+        erlaubt und sichtbar: `rueckwirkung` sagt "rückwirkend (14 Tage)"
+        (A3), das Protokoll ("flaeche_geaendert", alt -> neu) trägt es.
+        Abgelehnt: 400 `flaeche_ungueltig` (keine ganze Zahl > 0 - 3100.5
+        wird nie gerundet), 400 `gleiche_flaeche`, 422 `gab_es_noch_nicht`
+        (vor dem ersten Tag des Orts), 409 `archiviert`. Rechte:
+        `gebaeude.pflegen`, mit `gueltigAb` vor heute zusätzlich
+        `aenderung.rueckwirkend`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrtFlaeche" }
+      responses:
+        "200":
+          description: Der Ort mit seinen Flächen nach dem Eintrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ort" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/overview:
     get:
       tags: [sites]
@@ -13970,13 +14107,19 @@ components:
         `archiviert`, `frueher`, `heute`); `archiviert` → `archiviert_am`;
         `archivieren_gesperrt` → `gruende`; `wiederherstellen_gesperrt` →
         `grund` (nicht_archiviert | eltern_archiviert | name_belegt) und bei
-        name_belegt `verweis`.
+        name_belegt `verweis`. Gebäude/Bereich (IP-5): die Gründe des
+        Ortsbaum-Vertrags mit seinem Satz - `ziel_art_unzulaessig` (400),
+        `ziel_gab_es_noch_nicht` (422), `ziel_archiviert` (409) → `feld`
+        (elternId); `flaeche_ungueltig` und `gleiche_flaeche` (400),
+        `gab_es_noch_nicht` (422), `archiviert` (409) an der Fläche → `feld`.
       required: [code, message]
       properties:
         code:
           type: string
           enum: [anfrage_ungueltig, nicht_gefunden, name_belegt, kurzzeichen_belegt, archiviert,
-                 archivieren_gesperrt, wiederherstellen_gesperrt]
+                 archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
+                 ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
+                 gleiche_flaeche]
         message: { type: string }
         feld: { type: string }
         verweis:
@@ -14099,6 +14242,166 @@ components:
           format: date-time
           nullable: true
           description: Additiv (IP-4) - wann er archiviert wurde; null, solange er es nicht ist.
+    OrtsbaumAmStichtag:
+      type: object
+      description: >
+        GET /api/v1/standorte/{id}/orte (UEMS AP-02 IP-5). Additiv vorgesehen:
+        `teilansicht` (AP-03 IP-10).
+      required: [stichtag, standort, gebaeudeOhneFlaeche, gebaeude]
+      properties:
+        stichtag: { type: string, format: date }
+        standort: { $ref: "#/components/schemas/StandortAmStichtag" }
+        summeGebaeudeM2:
+          type: integer
+          nullable: true
+          description: >
+            Die Summe der Gebäudeflächen am Stichtag - nur, wenn jedes Gebäude
+            eine hat (sonst null); ein Hinweis neben der eigenen Fläche, nie
+            saldiert.
+        gebaeudeOhneFlaeche:
+          type: array
+          description: Die Gebäude, denen am Stichtag die Fläche fehlt ("für kWh/m² fehlt die Fläche").
+          items: { type: string, format: uuid }
+        gebaeude:
+          type: array
+          description: Die Gebäude am Standort, in der Reihenfolge des Anlegens.
+          items: { $ref: "#/components/schemas/OrtsbaumGebaeude" }
+        direktAmStandort:
+          nullable: true
+          description: Was ohne Gebäude am Standort hängt - null, wenn es den Standort am Stichtag nicht gab.
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDirektAmStandort" }]
+    OrtsbaumGebaeude:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string, example: G-2 }
+        name: { type: string, example: Halle 2 }
+        nutzung: { type: array, nullable: true, description: "E4 - das erste Wort ist die Hauptnutzung; null = keine gewählt.", items: { $ref: "#/components/schemas/Nutzung" } }
+        baujahr: { type: integer, nullable: true, example: 2019 }
+        notiz: { type: string, nullable: true }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        gueltigAb: { type: string, format: date, description: Die am Stichtag gültige Zuordnung. }
+        gueltigBis: { type: string, format: date, nullable: true, description: Einschließlich; null = offen. }
+        flaecheM2: { type: integer, nullable: true, description: Die eigene Fläche am Stichtag - null, nie 0. }
+        flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
+        messstellenZahl:
+          type: integer
+          nullable: true
+          description: Platzhalter bis AP-04 IP-7 (Messstelle -> Ort) - heute immer null.
+        bereiche:
+          type: array
+          items: { $ref: "#/components/schemas/OrtsbaumBereich" }
+    OrtsbaumBereich:
+      type: object
+      description: Ein Bereich erbt nie die Fläche seines Gebäudes (§4.1).
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string, example: B-3 }
+        name: { type: string, example: Halle 2 Montage }
+        nutzung: { type: array, nullable: true, description: "E4 - das erste Wort ist die Hauptnutzung; null = keine gewählt.", items: { $ref: "#/components/schemas/Nutzung" } }
+        notiz: { type: string, nullable: true }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true }
+        flaecheM2: { type: integer, nullable: true }
+        flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
+        messstellenZahl: { type: integer, nullable: true, description: Platzhalter bis AP-04 IP-7 - heute null. }
+    OrtsbaumDirektAmStandort:
+      type: object
+      properties:
+        bereiche:
+          type: array
+          items: { $ref: "#/components/schemas/OrtsbaumBereich" }
+        messstellenZahl: { type: integer, nullable: true, description: Platzhalter bis AP-04 IP-7 - heute null. }
+    OrtAnlegen:
+      type: object
+      additionalProperties: false
+      required: [art, name]
+      properties:
+        art: { type: string, enum: [gebaeude, bereich] }
+        name: { type: string, minLength: 1, maxLength: 120, description: Eindeutig unter den Geschwistern am Tag. }
+        kurzzeichen:
+          type: string
+          nullable: true
+          maxLength: 24
+          description: Fehlend = automatisch (G-n / B-n).
+        elternId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Nur Bereich - das Gebäude dieses Standorts; fehlend = direkt am Standort.
+        gueltigAb: { type: string, format: date, nullable: true, description: Fehlend = heute in der Zeitzone des Standorts. }
+        nutzung: { type: array, nullable: true, description: "E4 - das erste Wort ist die Hauptnutzung; null = keine gewählt.", items: { $ref: "#/components/schemas/Nutzung" } }
+        baujahr: { type: integer, nullable: true, description: Nur Gebäude; 1800 ... laufendes Jahr. }
+        notiz: { type: string, nullable: true, maxLength: 500 }
+        flaecheM2: { type: integer, nullable: true, minimum: 1, description: Die erste Fläche, ab gueltigAb. }
+    OrtBearbeiten:
+      type: object
+      additionalProperties: false
+      required: [name, kurzzeichen]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        kurzzeichen: { type: string, maxLength: 24 }
+        nutzung: { type: array, nullable: true, description: "E4 - das erste Wort ist die Hauptnutzung; null = keine gewählt.", items: { $ref: "#/components/schemas/Nutzung" } }
+        baujahr: { type: integer, nullable: true }
+        notiz: { type: string, nullable: true, maxLength: 500 }
+    OrtFlaeche:
+      type: object
+      additionalProperties: false
+      required: [m2]
+      properties:
+        m2: { type: integer, minimum: 1, example: 3400 }
+        gueltigAb: { type: string, format: date, nullable: true, example: "2027-01-01" }
+    Ort:
+      type: object
+      description: >
+        Ein Gebäude oder Bereich nach dem Schreiben. `standortId`: der Standort,
+        an dessen Baum der Ort heute hängt (sonst der seines ersten Tages).
+        `rueckwirkung` gehört zum "gültig ab" dieses Vorgangs - null beim
+        Bearbeiten (einfache Felder gelten ab sofort). Keine Zeitzone: sie ist
+        die des Standorts (A16).
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [gebaeude, bereich] }
+        kurzzeichen: { type: string, example: G-2 }
+        name: { type: string, example: Halle 2 }
+        nutzung: { type: array, nullable: true, description: "E4 - das erste Wort ist die Hauptnutzung; null = keine gewählt.", items: { $ref: "#/components/schemas/Nutzung" } }
+        baujahr: { type: integer, nullable: true }
+        notiz: { type: string, nullable: true }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        standortId: { type: string, format: uuid, nullable: true }
+        zuordnungen:
+          type: array
+          items: { $ref: "#/components/schemas/OrtZuordnung" }
+        flaechen:
+          type: array
+          items: { $ref: "#/components/schemas/OrtFlaechenStand" }
+        rueckwirkung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtRueckwirkung" }]
+    OrtZuordnung:
+      type: object
+      properties:
+        elternId: { type: string, format: uuid }
+        elternArt: { type: string, enum: [standort, gebaeude] }
+        elternName: { type: string }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true }
+        zustand: { type: string, enum: [gueltig, geplant, beendet] }
+    OrtFlaechenStand:
+      type: object
+      properties:
+        m2: { type: integer, example: 3100 }
+        gueltigAb: { type: string, format: date, example: "2026-10-01" }
+        gueltigBis: { type: string, format: date, nullable: true, example: "2026-12-31" }
+        zustand: { type: string, enum: [gueltig, geplant, beendet] }
+    OrtRueckwirkung:
+      type: object
+      description: E2 - erlaubt, aber sichtbar; der Eintragstag in der Zeitzone des Standorts.
+      properties:
+        art: { type: string, enum: [rueckwirkend, ab_heute, geplant] }
+        tage: { type: integer, description: Abstand zwischen "gilt ab" und Eintragstag. }
+        abzeichen: { type: string, nullable: true, example: rückwirkend (14 Tage) }
     StandortAdresse:
       type: object
       properties:

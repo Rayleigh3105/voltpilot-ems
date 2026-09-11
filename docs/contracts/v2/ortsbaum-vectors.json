@@ -57,6 +57,11 @@
     "Fläche nimmt die Summe seiner Gebäude („aus Gebäuden summiert“) — aber nur, wenn JEDES",
     "Gebäude eine hat; sonst null. Die eigene Fläche wird nie nachgerechnet, Bereiche",
     "werden nie addiert, nichts wird erfunden (null statt 0).",
+    "FLÄCHE ÄNDERN (Familie flaeche/eintrag, Schreibweg IP-5): dieselbe Mechanik wie eine",
+    "Zuordnung — die laufende Fläche endet am Vortag, die neue erbt deren Ende; in einer",
+    "Lücke endet sie am Vortag der nächsten. „gültig ab“ = Beginn einer Fläche ist eine",
+    "KORREKTUR (§4.2): sie wird ersetzt und bleibt aufgehoben lesbar. Nur an Tagen, an denen",
+    "das Objekt im Baum ist; nur ganze m² > 0; dieselbe Zahl noch einmal ist kein Eintrag.",
     "",
     "DATEN: das Referenzunternehmen Kunststoffwerk Ahrenberg GmbH (AP-00 §4.4) mit dem",
     "AP-02-Leitbeispiel „Halle 2 wechselt am 01.03.2027 zum Standort Werk Ahrenberg Nord“",
@@ -106,6 +111,7 @@
   "gruende_wiederherstellen": ["nicht_archiviert", "eltern_archiviert", "name_belegt"],
   "gruende_loeschen": ["hat_messstellen", "hat_anlagen", "hat_flaeche", "hat_kinder"],
   "flaeche_quellen": ["eigen", "aus_gebaeuden_summiert"],
+  "gruende_flaeche": ["flaeche_ungueltig", "gab_es_noch_nicht", "archiviert", "gleiche_flaeche"],
   "objekt_zustaende": ["entwurf", "eingerichtet", "aktiv", "angehalten", "archiviert"],
   "szenarien": {
     "ahrenberg-vor-dem-umzug": {
@@ -2291,6 +2297,94 @@
           {"von": "2027-03-01", "bis": "2027-03-31", "vorhanden": true, "flaeche_m2": 3400, "flaeche_quelle": "aus_gebaeuden_summiert"}
         ]
       }
+    },
+    {
+      "name": "a3-anbau-beendet-3100-am-vortag",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "A3: am 15.01.2027 trägt Ines für Halle 2 3 400 m² ab 01.01.2027 ein (Anbau). Die 3 100 m² enden am Vortag, 31.12.2026 — die Dezember-Kennzahl rechnet weiter mit ihnen —, die neue Fläche ist offen: genau der Stand, den das Szenario `ahrenberg` danach trägt. Wie weit der Eintrag zurückreicht, sagt die Familie rueckwirkend (`a3-anbau-14-tage-nicht-15`).",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "ueberlagerung": {"orte": [{"kennzeichen": "G-2", "art": "gebaeude", "name": "Halle 2", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 3100}]}]}, "objekt": "G-2", "ab": "2027-01-01", "m2": 3400, "heute": "2027-01-15"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": false, "vorher_m2": 3100, "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100, "zustand": "beendet"}, {"ab": "2027-01-01", "bis": null, "m2": 3400, "zustand": "gueltig"}]}
+    },
+    {
+      "name": "korrektur-am-beginn-ersetzt-die-flaeche",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "§4.2 „gültig ab = Beginn des laufenden Intervalls“ ist eine Korrektur: ein Tippfehler beim Anlegen (3 100 statt 3 010) wird ersetzt — keine zweite Fläche am selben Tag, kein Umschreiben; die alte bleibt als aufgehoben lesbar (der Schreibweg hebt sie auf).",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "ueberlagerung": {"orte": [{"kennzeichen": "G-2", "art": "gebaeude", "name": "Halle 2", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 3100}]}]}, "objekt": "G-2", "ab": "2026-10-01", "m2": 3010, "heute": "2026-10-20"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": true, "vorher_m2": 3100, "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 3010, "zustand": "gueltig"}]}
+    },
+    {
+      "name": "einfuegen-vor-der-geplanten-flaeche",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Die neue Fläche erbt das Ende der laufenden (31.12.2026): die geplante 3 400 m² ab 01.01.2027 bleibt unberührt — dieselbe Regel wie `einfuegen-vor-einem-geplanten-wechsel` bei den Zuordnungen.",
+      "input": {"szenario": "ahrenberg-vor-dem-umzug", "objekt": "G-2", "ab": "2026-12-01", "m2": 3200, "heute": "2026-11-20"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": false, "vorher_m2": 3100, "flaechen": [{"ab": "2026-10-01", "bis": "2026-11-30", "m2": 3100, "zustand": "gueltig"}, {"ab": "2026-12-01", "bis": "2026-12-31", "m2": 3200, "zustand": "geplant"}, {"ab": "2027-01-01", "bis": null, "m2": 3400, "zustand": "geplant"}]}
+    },
+    {
+      "name": "erste-flaeche-ist-offen",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Ein Bereich ohne Fläche bekommt seine erste: offen, nichts wird beendet, vorher war keine (null, nie 0).",
+      "input": {"szenario": "ahrenberg", "objekt": "B-3", "ab": "2026-10-01", "m2": 900, "heute": "2026-10-01"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": false, "vorher_m2": null, "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 900, "zustand": "gueltig"}]}
+    },
+    {
+      "name": "nachtrag-in-der-luecke-endet-am-vortag-der-naechsten",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Die Fläche von Halle 2 Montage steht erst ab 01.01.2027 im Portal; der Kunde trägt die Zeit davor nach. Die nachgetragene endet am Vortag der nächsten — die Lücke wird gefüllt, die spätere Fläche nicht angetastet.",
+      "input": {"szenario": "ahrenberg", "ueberlagerung": {"orte": [{"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": [{"ab": "2027-01-01", "bis": null, "m2": 1200}]}]}, "objekt": "B-3", "ab": "2026-10-01", "m2": 1100, "heute": "2027-02-01"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": false, "vorher_m2": null, "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 1100, "zustand": "beendet"}, {"ab": "2027-01-01", "bis": null, "m2": 1200, "zustand": "gueltig"}]}
+    },
+    {
+      "name": "standort-eigene-flaeche-ab-dem-umzugstag",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Dieselbe Mechanik am Standort: Halle 2 zieht am 01.03.2027 aus, der Kunde ändert die eigene Fläche von Werk Ahrenberg ab dem Umzugstag (8 450 − 3 400 = 5 050 m²) — geplant; die 8 450 m² enden am 28.02.2027.",
+      "input": {"szenario": "ahrenberg", "objekt": "ST-1", "ab": "2027-03-01", "m2": 5050, "heute": "2027-02-20"},
+      "expected": {"erlaubt": true, "grund": null, "text": null, "korrektur": false, "vorher_m2": 8450, "flaechen": [{"ab": "2026-10-01", "bis": "2027-02-28", "m2": 8450, "zustand": "gueltig"}, {"ab": "2027-03-01", "bis": null, "m2": 5050, "zustand": "geplant"}]}
+    },
+    {
+      "name": "vor-dem-ersten-tag-abgelehnt",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "§4.3/§5.10: vor dem ersten Tag des Objekts gibt es keine Fläche — Halle 2 hängt erst ab 01.10.2026 im Baum. Der Satz nennt den Weg (ein Datum ab dem ersten Tag).",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "ab": "2026-09-30", "m2": 3100, "heute": "2026-10-01"},
+      "expected": {"erlaubt": false, "grund": "gab_es_noch_nicht", "text": "Halle 2 gibt es im Portal erst seit 01.10.2026. Wählen Sie ein Datum ab dem 01.10.2026.", "korrektur": null, "vorher_m2": null, "flaechen": null}
+    },
+    {
+      "name": "am-archivierten-tag-abgelehnt",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Halle 2 Lager ist ab 30.06.2027 archiviert (A8): an einem Tag, an dem das Objekt nicht im Baum ist, gibt es keine Fläche.",
+      "input": {"szenario": "ahrenberg-lager-archiviert", "objekt": "B-5", "ab": "2027-07-01", "m2": 400, "heute": "2027-07-01"},
+      "expected": {"erlaubt": false, "grund": "archiviert", "text": "Am 01.07.2027 war Halle 2 Lager archiviert.", "korrektur": null, "vorher_m2": null, "flaechen": null}
+    },
+    {
+      "name": "dieselbe-flaeche-ist-kein-eintrag",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Halle 1 hat seit 01.10.2026 4 200 m²; dieselbe Zahl ab 01.01.2027 änderte nichts und legte doch ein Intervall und einen Protokolleintrag an — abgelehnt, wie „Ziel = bisheriger Elternknoten“.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-1", "ab": "2027-01-01", "m2": 4200, "heute": "2027-01-15"},
+      "expected": {"erlaubt": false, "grund": "gleiche_flaeche", "text": "Halle 1 hat am 01.01.2027 bereits 4\u00a0200\u00a0m².", "korrektur": null, "vorher_m2": null, "flaechen": null}
+    },
+    {
+      "name": "null-ist-keine-flaeche",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "§5.10: 0 ist keine Fläche — „nicht erhoben“ ist KEIN Eintrag (Hausregel: null statt 0); der Satz aus der Fehlertabelle.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "ab": "2027-01-01", "m2": 0, "heute": "2027-01-15"},
+      "expected": {"erlaubt": false, "grund": "flaeche_ungueltig", "text": "Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.", "korrektur": null, "vorher_m2": null, "flaechen": null}
+    },
+    {
+      "name": "die-zahl-kommt-vor-dem-tag",
+      "familie": "flaeche",
+      "ableitung": "eintrag",
+      "why": "Die Reihenfolge IST die Regel: eine negative Zahl an einem Tag vor dem Beginn nennt zuerst die Zahl — der Kunde korrigiert, was er eintippt, bevor ihm das Datum erklärt wird.",
+      "input": {"szenario": "ahrenberg", "objekt": "G-2", "ab": "2026-09-30", "m2": -5, "heute": "2026-10-01"},
+      "expected": {"erlaubt": false, "grund": "flaeche_ungueltig", "text": "Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.", "korrektur": null, "vorher_m2": null, "flaechen": null}
     }
   ]
 }

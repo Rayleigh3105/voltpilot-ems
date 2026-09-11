@@ -393,7 +393,7 @@ class StandortLesemodellTest {
     }
 
     /** Eine feste ID je Kennzeichen — der Baum des Lesemodells kennt nur IDs. */
-    private static UUID id(String kennzeichen) {
+    static UUID id(String kennzeichen) {
         return UUID.nameUUIDFromBytes(("ahrenberg:" + kennzeichen).getBytes());
     }
 
@@ -408,9 +408,10 @@ class StandortLesemodellTest {
     /**
      * Ein Szenario als die Zeilen der Repositories. Ein Standort hat kein
      * Intervall, sondern {@code created_at} (Beginn 00:00, außer {@code angelegt}
-     * überschreibt den Tag) und {@code archiviert_am} (am Tag nach dem Ende).
+     * überschreibt den Tag) und {@code archiviert_am} (am Tag nach dem Ende). Auch
+     * {@code OrtsbaumLesemodellTest} baut seine Zeilen hier.
      */
-    private static Zeilen zeilen(JsonNode s, Map<String, LocalDate> angelegt) throws IOException {
+    static Zeilen zeilen(JsonNode s, Map<String, LocalDate> angelegt) throws IOException {
         JsonNode ref = referenz();
         JsonNode u = ref.path("unternehmen");
         UnternehmenRepository.Unternehmen unternehmen = new UnternehmenRepository.Unternehmen(
@@ -478,13 +479,13 @@ class StandortLesemodellTest {
                 flaechen, anlagen);
     }
 
-    private static JsonNode szenario(String name) throws IOException {
+    static JsonNode szenario(String name) throws IOException {
         JsonNode s = vektoren().path("szenarien").path(name);
         assertThat(s.isMissingNode()).as("Szenario %s", name).isFalse();
         return s;
     }
 
-    private static synchronized JsonNode vektoren() throws IOException {
+    static synchronized JsonNode vektoren() throws IOException {
         if (vektoren == null) {
             vektoren = MAPPER.readTree(Files.readString(VEKTOREN));
         }

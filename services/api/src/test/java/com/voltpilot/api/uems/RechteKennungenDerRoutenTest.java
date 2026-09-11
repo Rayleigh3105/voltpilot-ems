@@ -45,10 +45,11 @@ class RechteKennungenDerRoutenTest {
 
     /**
      * Die UEMS-Controller von heute: Messstellen, Messkanäle, Geräte (AP-04), Datenquellen (AP-06),
-     * Standorte und Unternehmen (AP-02).
+     * Standorte, Unternehmen, Gebäude und Bereiche (AP-02).
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
-            "GeraetController", "DatenquelleController", "StandortController", "UnternehmenController");
+            "GeraetController", "DatenquelleController", "StandortController", "UnternehmenController",
+            "OrtController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");

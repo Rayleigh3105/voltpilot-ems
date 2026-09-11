@@ -23,11 +23,19 @@ am“, §4.5 Invarianten; Entscheide E1, E2, E3, E9, E11, E12 vom 10.09.2026). D
   vergleichen generisch (Java: Records → Jackson `SNAKE_CASE`; TS: camelCase → snake_case); ein
   Schlüssel, den der Vertrag für eine Zeile nicht nennt, muss im Ergebnis null bzw. abwesend sein.
 
-## ⚠ Noch ruft niemand an
+## Wer anruft
 
-Keine Tabelle, kein Endpunkt, keine Fläche. „Standort“ ist im Code weiterhin nur das
-Koordinaten-Feld der Anlage (AP-00 E9 = B). Der Vertrag ist das Ziel für IP-2a/IP-2b
-(Migrationen), IP-3 (Read-Model `?stichtag=`) und die Portal-Flächen — nicht ihr Vollzug.
+Das Standort-Lesemodell (IP-3) und das Ortsbaum-Lesemodell (IP-5) für „Stand am“, die
+Standort-Schreibrouten (IP-4) für Namensregel, Archivieren und Wiederherstellen, die
+Gebäude/Bereich-Schreibrouten (IP-5) für `eintrag`, `nameBelegt` und `flaecheEintrag`
+(`uems-orte-schreibweg-gebaeude-bereich-fl.md`). Die Portal-Flächen rufen den TS-Zwilling noch
+nicht.
+
+**Fläche ab einem Tag** (Familie `flaeche/eintrag`, seit IP-5): dieselbe Mechanik wie eine
+Zuordnung — die laufende endet am Vortag, die neue erbt deren Ende, in einer Lücke endet sie am
+Vortag der nächsten; `gültig ab` = Beginn einer Fläche ist eine KORREKTUR (§4.2, die alte bleibt
+aufgehoben lesbar); Gründe `flaeche_ungueltig` → `gab_es_noch_nicht` → `archiviert` →
+`gleiche_flaeche`. Die Sätze setzen m² mit geschütztem Leerzeichen („3 400 m²“, §5.10).
 
 ## Die Fakten, die man ohne Nachlesen braucht
 
@@ -71,8 +79,8 @@ darf gelöscht werden).
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='OrtsbaumAbleitungVectorsTest')   # 110 Tests, rein (inkl. Schema über `UemsSchemaLaeufer`)
-(cd frontend/portal && npx vitest run src/uemsOrtsbaum.test.ts)          # 122 Tests
+(cd services/api && ./mvnw test -Dtest='OrtsbaumAbleitungVectorsTest')   # rein (inkl. Schema über `UemsSchemaLaeufer`)
+(cd frontend/portal && npx vitest run src/uemsOrtsbaum.test.ts)
 python3 docs/fachmodell/tools/build_fachmodell.py --check               # Glossar aktuell
 ```
 

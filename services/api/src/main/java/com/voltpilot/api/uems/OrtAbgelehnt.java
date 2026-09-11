@@ -33,7 +33,21 @@ public final class OrtAbgelehnt extends RuntimeException {
         /** Archivieren gesperrt (E12); {@code gruende} ist die ganze Liste in fester Reihenfolge. */
         ARCHIVIEREN_GESPERRT("archivieren_gesperrt", 409),
         /** Wiederherstellen gesperrt; {@code grund} sagt, warum (nicht archiviert, Name belegt …). */
-        WIEDERHERSTELLEN_GESPERRT("wiederherstellen_gesperrt", 409);
+        WIEDERHERSTELLEN_GESPERRT("wiederherstellen_gesperrt", 409),
+        // Die Gründe des Ortsbaum-Vertrags beim Anlegen und bei der Fläche (IP-5) — Code und
+        // Satz aus OrtsbaumAbleitung#eintrag bzw. #flaecheEintrag, Status nach AP-02 §5.10.
+        /** Woran der Ort hängen soll, geht nicht (Bereich unter Bereich, Gebäude unter Gebäude …). */
+        ZIEL_ART_UNZULAESSIG("ziel_art_unzulaessig", 400),
+        /** Der Elternknoten besteht am „gültig ab“ noch nicht; der Satz nennt seinen ersten Tag. */
+        ZIEL_GAB_ES_NOCH_NICHT("ziel_gab_es_noch_nicht", 422),
+        /** Der Elternknoten ist an einem Tag des neuen Intervalls archiviert. */
+        ZIEL_ARCHIVIERT("ziel_archiviert", 409),
+        /** Keine ganze Zahl größer als 0 (§5.10). */
+        FLAECHE_UNGUELTIG("flaeche_ungueltig", 400),
+        /** Den Ort gibt es am „gültig ab“ noch nicht; der Satz nennt seinen ersten Tag. */
+        GAB_ES_NOCH_NICHT("gab_es_noch_nicht", 422),
+        /** Dieselbe Fläche gilt an dem Tag schon — es gäbe nichts zu ändern. */
+        GLEICHE_FLAECHE("gleiche_flaeche", 400);
 
         private final String code;
         private final int status;

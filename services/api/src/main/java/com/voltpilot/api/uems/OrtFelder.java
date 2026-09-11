@@ -26,6 +26,7 @@ public final class OrtFelder {
     public static final int NOTIZ_HOECHSTENS = 500;
     public static final int KURZNAME_HOECHSTENS = 24;
     public static final int RECHTSFORM_HOECHSTENS = 40;
+    public static final int BAUJAHR_FRUEHESTENS = 1800;
 
     /** Die Zeitzonen des DACH-Raums (§4.1); die erste ist die Vorgabe. */
     public static final List<String> ZEITZONEN = List.of("Europe/Berlin", "Europe/Vienna", "Europe/Zurich");
@@ -134,6 +135,15 @@ public final class OrtFelder {
             }
         }
         return List.copyOf(roh);
+    }
+
+    /** §4.1 Gebäude: das Baujahr, vierstellig, 1800 … laufendes Jahr; fehlend ist {@code null}. */
+    public static Integer baujahr(Integer roh, String feld, int laufendesJahr) {
+        if (roh != null && (roh < BAUJAHR_FRUEHESTENS || roh > laufendesJahr)) {
+            throw OrtAbgelehnt.anfrage(feld, "Das Baujahr liegt zwischen " + BAUJAHR_FRUEHESTENS + " und "
+                    + laufendesJahr + ".");
+        }
+        return roh;
     }
 
     /** Die Lage auf der Karte: beide Koordinaten oder keine, in ihrem Wertebereich. */

@@ -20,6 +20,7 @@
     "gruende_wiederherstellen",
     "gruende_loeschen",
     "flaeche_quellen",
+    "gruende_flaeche",
     "objekt_zustaende",
     "szenarien",
     "cases"
@@ -147,6 +148,10 @@
     "flaeche_quellen": {
       "description": "Woher eine Fläche kommt: selbst eingetragen oder aus den Gebäuden eines Standorts summiert.",
       "const": ["eigen", "aus_gebaeuden_summiert"]
+    },
+    "gruende_flaeche": {
+      "description": "Warum eine Fläche ab einem Tag abgelehnt wird — genau ein Grund, in dieser Reihenfolge geprüft.",
+      "const": ["flaeche_ungueltig", "gab_es_noch_nicht", "archiviert", "gleiche_flaeche"]
     },
     "objekt_zustaende": {
       "description": "Die Zustände einer Anlage oder Messstelle (AP-00). Nur „aktiv“ verhindert das Archivieren.",
@@ -820,6 +825,60 @@
         }
       }
     },
+    "flaecheEintragEingang": {
+      "description": "Eine Bezugsfläche ab einem Tag (E3) — ändern, nachtragen oder ab ihrem Beginn ersetzen (Korrektur).",
+      "allOf": [{ "$ref": "#/$defs/baumEingang" }],
+      "required": ["objekt", "ab", "m2", "heute"],
+      "properties": {
+        "objekt": { "$ref": "#/$defs/kennzeichen" },
+        "ab": { "$ref": "#/$defs/tag" },
+        "m2": { "description": "Die eingegebene Fläche — auch eine ungültige (0, negativ), damit ihr Grund geprüft wird.", "type": "integer" },
+        "heute": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "flaecheEintragErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "grund", "text", "korrektur", "vorher_m2", "flaechen"],
+      "additionalProperties": false,
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "grund": {
+          "oneOf": [{ "enum": ["flaeche_ungueltig", "gab_es_noch_nicht", "archiviert", "gleiche_flaeche"] }, { "type": "null" }]
+        },
+        "text": {
+          "description": "Der Satz, den der Kunde liest, wenn es nicht geht — mit dem Weg.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "korrektur": {
+          "description": "Am Tag begann schon eine Fläche: sie wird ersetzt (aufgehoben, bleibt lesbar). null, wenn abgelehnt.",
+          "oneOf": [{ "type": "boolean" }, { "type": "null" }]
+        },
+        "vorher_m2": {
+          "description": "Die Fläche, die an dem Tag bisher galt — null, wenn keine (oder abgelehnt).",
+          "$ref": "#/$defs/flaecheM2"
+        },
+        "flaechen": {
+          "description": "Alle wirksamen Flächen des Objekts nach dem Eintrag, nach Beginn sortiert.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ab", "bis", "m2", "zustand"],
+                "additionalProperties": false,
+                "properties": {
+                  "ab": { "$ref": "#/$defs/tag" },
+                  "bis": { "$ref": "#/$defs/tagOderOffen" },
+                  "m2": { "type": "integer", "minimum": 1 },
+                  "zustand": { "enum": ["gueltig", "geplant", "beendet", "aufgehoben"] }
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
 
     "fall": {
       "type": "object",
@@ -1008,6 +1067,18 @@
             "properties": {
               "input": { "$ref": "#/$defs/zeitraumEingang" },
               "expected": { "$ref": "#/$defs/flaecheZeitraumErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "flaeche" }, "ableitung": { "const": "eintrag" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/flaecheEintragEingang" },
+              "expected": { "$ref": "#/$defs/flaecheEintragErgebnis" }
             }
           }
         }

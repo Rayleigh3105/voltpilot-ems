@@ -209,6 +209,9 @@ class OrtsbaumAbleitungVectorsTest {
                 OrtsbaumAbleitung.flaecheAm(baum(in), in.path("objekt").asText(), tag(in.get("tag"))));
         LAEUFER.put("flaeche/zeitraum", in -> mitTeilen(OrtsbaumAbleitung.flaecheZeitraum(
                 baum(in), in.path("objekt").asText(), tag(in.get("von")), tag(in.get("bis")))));
+        LAEUFER.put("flaeche/eintrag", in -> OrtsbaumAbleitung.flaecheEintrag(baum(in),
+                new OrtsbaumAbleitung.FlaecheAntrag(in.path("objekt").asText(), tag(in.get("ab")),
+                        in.path("m2").asInt(), tag(in.get("heute")))));
     }
 
     // ------------------------------------------------------ die Vektor-Fälle
@@ -298,6 +301,7 @@ class OrtsbaumAbleitungVectorsTest {
                 .isEqualTo(codes(OrtsbaumAbleitung.WiederherstellGrund.values(), alle));
         assertThat(ausDatei("gruende_loeschen")).isEqualTo(codes(OrtsbaumAbleitung.LoeschGrund.values(), alle));
         assertThat(ausDatei("flaeche_quellen")).isEqualTo(codes(OrtsbaumAbleitung.FlaecheQuelle.values(), alle));
+        assertThat(ausDatei("gruende_flaeche")).isEqualTo(codes(OrtsbaumAbleitung.FlaecheGrund.values(), alle));
         assertThat(ausDatei("objekt_zustaende"))
                 .isEqualTo(codes(OrtsbaumAbleitung.ObjektZustand.values(), alle));
     }
@@ -319,7 +323,8 @@ class OrtsbaumAbleitungVectorsTest {
             Map.entry("archiv/loeschen", List.of("loeschenEingang", "loeschenErgebnis")),
             Map.entry("zeitraum_teilung/teile", List.of("zeitraumEingang", "teileErgebnis")),
             Map.entry("flaeche/am_tag", List.of("flaecheAmTagEingang", "flaecheAmTagErgebnis")),
-            Map.entry("flaeche/zeitraum", List.of("zeitraumEingang", "flaecheZeitraumErgebnis")));
+            Map.entry("flaeche/zeitraum", List.of("zeitraumEingang", "flaecheZeitraumErgebnis")),
+            Map.entry("flaeche/eintrag", List.of("flaecheEintragEingang", "flaecheEintragErgebnis")));
 
     /** Die Datei hält ihr Schema — die Wurzel und jeder Fall mit seinem Eingang und Ergebnis. */
     @Test

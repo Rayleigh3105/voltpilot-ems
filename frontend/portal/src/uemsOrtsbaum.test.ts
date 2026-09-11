@@ -5,6 +5,7 @@ import {
   ARCHIV_GRUENDE,
   EINTRAG_GRUENDE,
   ERLAUBTE_ELTERN,
+  FLAECHE_GRUENDE,
   FLAECHE_QUELLEN,
   LISTEN_GRUENDE,
   LOESCH_GRUENDE,
@@ -20,6 +21,7 @@ import {
   archivieren,
   eintrag,
   flaecheAm,
+  flaecheEintrag,
   flaecheZeitraum,
   loeschen,
   nameBelegt,
@@ -85,6 +87,7 @@ interface VectorFile {
   gruende_wiederherstellen: string[];
   gruende_loeschen: string[];
   flaeche_quellen: string[];
+  gruende_flaeche: string[];
   objekt_zustaende: string[];
   szenarien: Record<string, Szenario>;
   cases: Fall[];
@@ -149,6 +152,7 @@ const LAEUFER: Record<string, (i: Eingang) => unknown> = {
   'zeitraum_teilung/teile': (i) => ({ teile: teile(baumFuer(i), i.objekt, i.von, i.bis) }),
   'flaeche/am_tag': (i) => flaecheAm(baumFuer(i), i.objekt, i.tag),
   'flaeche/zeitraum': (i) => ({ teile: flaecheZeitraum(baumFuer(i), i.objekt, i.von, i.bis) }),
+  'flaeche/eintrag': (i) => flaecheEintrag(baumFuer(i), { objekt: i.objekt, ab: i.ab, m2: i.m2, heute: i.heute }),
 };
 
 for (const schluessel of Object.keys(LAEUFER)) {
@@ -203,6 +207,7 @@ describe('uemsOrtsbaum · der Vertrag selbst', () => {
     expect(vectors.gruende_wiederherstellen).toEqual([...WIEDERHERSTELL_GRUENDE]);
     expect(vectors.gruende_loeschen).toEqual([...LOESCH_GRUENDE]);
     expect(vectors.flaeche_quellen).toEqual([...FLAECHE_QUELLEN]);
+    expect(vectors.gruende_flaeche).toEqual([...FLAECHE_GRUENDE]);
     expect(vectors.objekt_zustaende).toEqual([...OBJEKT_ZUSTAENDE]);
   });
 

@@ -450,6 +450,119 @@ public final class OrtsbaumAbleitung {
         return out;
     }
 
+    // ----------------------------------------------------------- Fläche ändern
+
+    /** §5.10: der Satz zu einer Fläche, die keine ganze Zahl größer als 0 ist. */
+    public static final String FLAECHE_SATZ =
+            "Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.";
+
+    /** Die Reihenfolge IST die Regel: sie entscheidet, welcher Grund gilt, wenn mehrere zutreffen. */
+    public enum FlaecheGrund {
+        FLAECHE_UNGUELTIG, GAB_ES_NOCH_NICHT, ARCHIVIERT, GLEICHE_FLAECHE
+    }
+
+    public record FlaecheAntrag(String objekt, LocalDate ab, int m2, LocalDate heute) {}
+
+    public record FlaechenIntervallMitZustand(LocalDate ab, LocalDate bis, int m2, ZuordnungZustand zustand) {}
+
+    /**
+     * {@code korrektur}: am Tag {@code ab} begann schon eine Fläche — sie wird
+     * ersetzt (aufgehoben, bleibt lesbar). {@code vorherM2}: die Fläche, die an dem
+     * Tag bisher galt ({@code null}: keine). {@code flaechen}: alle wirksamen
+     * Flächen des Objekts nach dem Eintrag, nach Beginn sortiert.
+     */
+    public record FlaecheErgebnis(
+            boolean erlaubt,
+            FlaecheGrund grund,
+            String text,
+            Boolean korrektur,
+            Integer vorherM2,
+            List<FlaechenIntervallMitZustand> flaechen) {
+
+        static FlaecheErgebnis nein(FlaecheGrund grund, String text) {
+            return new FlaecheErgebnis(false, grund, text, null, null, null);
+        }
+    }
+
+    /** „3 400 m²“ — Tausender und Einheit mit geschütztem Leerzeichen, wie die Sätze des Konzepts. */
+    public static String m2Text(int m2) {
+        String z = Integer.toString(m2);
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < z.length(); i++) {
+            if (i > 0 && (z.length() - i) % 3 == 0) {
+                s.append('\u00a0');
+            }
+            s.append(z.charAt(i));
+        }
+        return s + "\u00a0m²";
+    }
+
+    /**
+     * E3: eine Bezugsfläche ab einem Tag — dieselbe Mechanik wie eine Zuordnung
+     * (§4.3): die laufende Fläche endet am VORTAG, die neue erbt deren Ende (auch
+     * das vor einer geplanten); in einer Lücke endet sie am Vortag der nächsten.
+     * Beginnt am Tag schon eine, ist es eine Korrektur (§4.2 „gültig ab = Beginn
+     * des laufenden Intervalls“): sie wird ersetzt, nie umgeschrieben. Vor dem
+     * ersten Tag des Objekts und an einem Tag, an dem es archiviert war, gibt es
+     * keine Fläche. GENAU EIN Grund in der Reihenfolge von {@link FlaecheGrund}.
+     */
+    public static FlaecheErgebnis flaecheEintrag(Ortsbaum baum, FlaecheAntrag antrag) {
+        if (antrag.m2() <= 0) {
+            return FlaecheErgebnis.nein(FlaecheGrund.FLAECHE_UNGUELTIG, FLAECHE_SATZ);
+        }
+        Ort o = baum.ort(antrag.objekt())
+                .orElseThrow(() -> new IllegalArgumentException("unbekannter Ort: " + antrag.objekt()));
+        LocalDate ab = antrag.ab();
+        Bestand b = bestand(o.intervalle(), ab);
+        if (b == Bestand.GAB_ES_NOCH_NICHT) {
+            List<Intervall> w = wirksam(o.intervalle());
+            if (w.isEmpty()) {
+                return FlaecheErgebnis.nein(FlaecheGrund.GAB_ES_NOCH_NICHT,
+                        o.name() + " gibt es im Portal noch nicht.");
+            }
+            String erster = datumText(w.get(0).ab());
+            return FlaecheErgebnis.nein(FlaecheGrund.GAB_ES_NOCH_NICHT,
+                    o.name() + " gibt es im Portal erst seit " + erster + ". Wählen Sie ein Datum ab dem "
+                            + erster + ".");
+        }
+        if (b == Bestand.ARCHIVIERT) {
+            return FlaecheErgebnis.nein(FlaecheGrund.ARCHIVIERT,
+                    "Am " + datumText(ab) + " war " + o.name() + " archiviert.");
+        }
+        List<FlaechenIntervall> liste = o.flaechen().stream()
+                .sorted(Comparator.comparing(FlaechenIntervall::ab))
+                .toList();
+        FlaechenIntervall laufend = liste.stream().filter(f -> f.deckt(ab)).findFirst().orElse(null);
+        if (laufend != null && laufend.m2() == antrag.m2()) {
+            return FlaecheErgebnis.nein(FlaecheGrund.GLEICHE_FLAECHE,
+                    o.name() + " hat am " + datumText(ab) + " bereits " + m2Text(antrag.m2()) + ".");
+        }
+        boolean korrektur = laufend != null && laufend.ab().equals(ab);
+        LocalDate bis = laufend != null
+                ? laufend.bis()
+                : liste.stream()
+                        .map(FlaechenIntervall::ab)
+                        .filter(t -> t.isAfter(ab))
+                        .findFirst()
+                        .map(t -> t.minusDays(1))
+                        .orElse(null);
+        List<FlaechenIntervall> danach = new ArrayList<>();
+        for (FlaechenIntervall f : liste) {
+            if (f != laufend) {
+                danach.add(f);
+            } else if (!korrektur) {
+                danach.add(new FlaechenIntervall(f.ab(), ab.minusDays(1), f.m2()));
+            }
+        }
+        danach.add(new FlaechenIntervall(ab, bis, antrag.m2()));
+        List<FlaechenIntervallMitZustand> sortiert = danach.stream()
+                .sorted(Comparator.comparing(FlaechenIntervall::ab))
+                .map(f -> new FlaechenIntervallMitZustand(f.ab(), f.bis(), f.m2(),
+                        zuordnungZustand(new Intervall(f.ab(), f.bis(), null), antrag.heute())))
+                .toList();
+        return new FlaecheErgebnis(true, null, null, korrektur, laufend == null ? null : laufend.m2(), sortiert);
+    }
+
     // ---------------------------------------------------------------- Stand am
 
     /** Eine Zeile des Baums; Summe und fehlende Gebäudeflächen nur am Standort. */

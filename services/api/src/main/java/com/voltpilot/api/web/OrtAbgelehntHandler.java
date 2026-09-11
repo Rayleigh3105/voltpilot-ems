@@ -11,10 +11,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /**
  * Die Antwort-Form jeder Ablehnung der Ortsstruktur: {@code {code, message, …Fakten}} mit dem
  * Status aus {@link OrtAbgelehnt.Grund} — dieselbe Form wie die Messstellen-Schnittstelle.
- * Nur für die Controller der Ortsstruktur (IP-5 trägt seinen hier ein); die übrige API
- * behält ihre Fehlerform.
+ * Nur für die Controller der Ortsstruktur (Standort, Unternehmen, Gebäude/Bereich); die
+ * übrige API behält ihre Fehlerform.
  */
-@RestControllerAdvice(assignableTypes = {StandortController.class, UnternehmenController.class})
+@RestControllerAdvice(assignableTypes = {StandortController.class, UnternehmenController.class,
+        OrtController.class})
 public class OrtAbgelehntHandler {
 
     @ExceptionHandler(OrtAbgelehnt.class)

@@ -5,9 +5,15 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.voltpilot.api.uems.OrtAbgelehnt;
+import com.voltpilot.api.uems.OrtsbaumAbleitung;
 import com.voltpilot.api.uems.ProtokollAkteur;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -19,14 +25,24 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen. Wer an einen Standort
  * schon eine Fläche (IP-5) oder eine Anlage (IP-11) schickt, soll nicht glauben, sie sei
  * gespeichert. Dasselbe Muster wie {@code MessstelleController}.
+ *
+ * <p>Eine ganze Zahl ist eine ganze Zahl: {@code 3100.5} oder {@code "3100"} an einem
+ * Zahlenfeld ist 400, nie still gerundet oder umgedeutet — an einer Fläche (IP-5) mit dem
+ * Code und Satz des Vertrags ({@code flaeche_ungueltig}, AP-02 §5.10).
  */
 @Component
 public class OrtAnfrage {
+
+    /** Die Felder, die eine Bezugsfläche in ganzen m² tragen (IP-5). */
+    private static final Set<String> FLAECHEN = Set.of("m2", "flaecheM2");
 
     private final ObjectMapper streng;
 
     public OrtAnfrage(ObjectMapper json) {
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        this.streng.coercionConfigFor(LogicalType.Integer)
+                .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+                .setCoercion(CoercionInputShape.String, CoercionAction.Fail);
     }
 
     /** Der Urheber des Protokolleintrags; ohne Anmeldung (nur bei abgeschaltetem OIDC) 401. */
@@ -62,6 +78,10 @@ public class OrtAnfrage {
             throw OrtAbgelehnt.anfrage(feld, "„" + feld + "“ gibt es hier nicht.");
         } catch (JsonMappingException e) {
             String feld = pfad(e);
+            if (FLAECHEN.contains(feld)) {
+                throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.FLAECHE_UNGUELTIG, OrtsbaumAbleitung.FLAECHE_SATZ,
+                        Map.of("feld", feld));
+            }
             throw OrtAbgelehnt.anfrage(feld, "„" + feld + "“ hat nicht die erwartete Form.");
         } catch (JsonProcessingException e) {
             throw OrtAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");

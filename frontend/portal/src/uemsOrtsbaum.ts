@@ -340,6 +340,102 @@ export function flaecheZeitraum(baum: Ortsbaum, objekt: string, von: Tag, bis: T
   return out;
 }
 
+// ─────────────────────────────────────────────────────── Fläche ändern
+
+/** §5.10: der Satz zu einer Fläche, die keine ganze Zahl größer als 0 ist. */
+export const FLAECHE_SATZ = 'Bitte geben Sie die Bezugsfläche als ganze Zahl in m² an, z. B. 3\u00a0100.';
+
+/** Die Reihenfolge IST die Regel: sie entscheidet, welcher Grund gilt, wenn mehrere zutreffen. */
+export const FLAECHE_GRUENDE = ['flaeche_ungueltig', 'gab_es_noch_nicht', 'archiviert', 'gleiche_flaeche'] as const;
+export type FlaecheGrund = (typeof FLAECHE_GRUENDE)[number];
+
+export interface FlaecheAntrag {
+  objekt: string;
+  ab: Tag;
+  m2: number;
+  heute: Tag;
+}
+
+export interface FlaechenIntervallMitZustand extends FlaechenIntervall {
+  zustand: ZuordnungZustand;
+}
+
+export interface FlaecheErgebnis {
+  erlaubt: boolean;
+  grund: FlaecheGrund | null;
+  text: string | null;
+  /** Am Tag `ab` begann schon eine Fläche — sie wird ersetzt (aufgehoben, bleibt lesbar). */
+  korrektur: boolean | null;
+  /** Die Fläche, die an dem Tag bisher galt (`null`: keine). */
+  vorherM2: number | null;
+  /** Alle wirksamen Flächen des Objekts nach dem Eintrag, nach Beginn sortiert. */
+  flaechen: FlaechenIntervallMitZustand[] | null;
+}
+
+function flaecheNein(grund: FlaecheGrund, text: string): FlaecheErgebnis {
+  return { erlaubt: false, grund, text, korrektur: null, vorherM2: null, flaechen: null };
+}
+
+/** „3 400 m²" — Tausender und Einheit mit geschütztem Leerzeichen, wie die Sätze des Konzepts. */
+export function m2Text(m2: number): string {
+  return `${String(m2).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0')}\u00a0m²`;
+}
+
+/**
+ * E3: eine Bezugsfläche ab einem Tag — dieselbe Mechanik wie eine Zuordnung
+ * (§4.3): die laufende Fläche endet am VORTAG, die neue erbt deren Ende (auch
+ * das vor einer geplanten); in einer Lücke endet sie am Vortag der nächsten.
+ * Beginnt am Tag schon eine, ist es eine Korrektur (§4.2): sie wird ersetzt,
+ * nie umgeschrieben. Vor dem ersten Tag des Objekts und an einem Tag, an dem es
+ * archiviert war, gibt es keine Fläche. GENAU EIN Grund in der Reihenfolge von
+ * `FLAECHE_GRUENDE`.
+ */
+export function flaecheEintrag(baum: Ortsbaum, antrag: FlaecheAntrag): FlaecheErgebnis {
+  if (!Number.isInteger(antrag.m2) || antrag.m2 <= 0) return flaecheNein('flaeche_ungueltig', FLAECHE_SATZ);
+  const o = ort(baum, antrag.objekt);
+  if (o === undefined) throw new Error(`unbekannter Ort: ${antrag.objekt}`);
+  const { ab } = antrag;
+  const b = bestand(o.intervalle, ab);
+  if (b === 'gab_es_noch_nicht') {
+    const w = wirksam(o.intervalle);
+    if (w.length === 0) return flaecheNein('gab_es_noch_nicht', `${o.name} gibt es im Portal noch nicht.`);
+    const erster = datumText(w[0].ab);
+    return flaecheNein(
+      'gab_es_noch_nicht',
+      `${o.name} gibt es im Portal erst seit ${erster}. Wählen Sie ein Datum ab dem ${erster}.`,
+    );
+  }
+  if (b === 'archiviert') return flaecheNein('archiviert', `Am ${datumText(ab)} war ${o.name} archiviert.`);
+  const liste = [...(o.flaechen ?? [])].sort((x, y) => (x.ab < y.ab ? -1 : x.ab > y.ab ? 1 : 0));
+  const laufend = liste.find((f) => deckt(f, ab)) ?? null;
+  if (laufend !== null && laufend.m2 === antrag.m2) {
+    return flaecheNein('gleiche_flaeche', `${o.name} hat am ${datumText(ab)} bereits ${m2Text(antrag.m2)}.`);
+  }
+  const korrektur = laufend !== null && laufend.ab === ab;
+  const naechster = liste.find((f) => f.ab > ab);
+  const bis = laufend !== null ? laufend.bis : naechster === undefined ? null : plusTage(naechster.ab, -1);
+  const danach: FlaechenIntervall[] = [];
+  for (const f of liste) {
+    if (f !== laufend) danach.push(f);
+    else if (!korrektur) danach.push({ ab: f.ab, bis: plusTage(ab, -1), m2: f.m2 });
+  }
+  danach.push({ ab, bis, m2: antrag.m2 });
+  danach.sort((x, y) => (x.ab < y.ab ? -1 : x.ab > y.ab ? 1 : 0));
+  return {
+    erlaubt: true,
+    grund: null,
+    text: null,
+    korrektur,
+    vorherM2: laufend === null ? null : laufend.m2,
+    flaechen: danach.map((f) => ({
+      ab: f.ab,
+      bis: f.bis,
+      m2: f.m2,
+      zustand: zuordnungZustand({ ab: f.ab, bis: f.bis, eltern: null }, antrag.heute),
+    })),
+  };
+}
+
 // ──────────────────────────────────────────────────────────── Stand am
 
 export interface OrtAmStichtag extends Omit<FlaecheAmTag, 'vorhanden'> {

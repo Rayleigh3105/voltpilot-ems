@@ -25,7 +25,7 @@ import org.springframework.stereotype.Repository;
  * entscheidet (Art, Vokabular, Namensregel, Kurzzeichen eindeutig je
  * Kundenbereich, Baujahr nur am Gebäude). Ein Ort wird archiviert, nie
  * gelöscht, und seine Art ändert sich nie: deshalb gibt es hier weder DELETE
- * noch ein Umschreiben der Art.
+ * noch ein Umschreiben der Art. Die Schreibroute ist {@link OrtService}.
  */
 @Repository
 public class OrtRepository {
@@ -98,6 +98,29 @@ public class OrtRepository {
     public List<Ort> alle() {
         return List.copyOf(jdbc.query("SELECT " + SPALTEN + " FROM ort ORDER BY created_at, id",
                 OrtRepository::map));
+    }
+
+    /**
+     * Schreibt die einfachen Felder (§4.3: ohne Gültigkeit) — nie an einem archivierten
+     * Ort; {@code false}, wenn es ihn (im Zaun) nicht gibt oder er archiviert ist.
+     */
+    public boolean bearbeiten(UUID id, String name, String kurzzeichen, List<String> nutzung,
+            Integer baujahr, String notiz) {
+        return jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement("UPDATE ort SET name = ?, kurzzeichen = ?, "
+                    + "nutzung = ?, baujahr = ?, notiz = ? WHERE id = ? AND archiviert_am IS NULL");
+            ps.setString(1, name);
+            ps.setString(2, kurzzeichen);
+            if (nutzung == null) {
+                ps.setNull(3, Types.ARRAY);
+            } else {
+                ps.setArray(3, con.createArrayOf("text", nutzung.toArray(String[]::new)));
+            }
+            ps.setObject(4, baujahr, Types.INTEGER);
+            ps.setString(5, notiz);
+            ps.setObject(6, id);
+            return ps;
+        }) == 1;
     }
 
     private static Ort map(ResultSet rs, int n) throws SQLException {
