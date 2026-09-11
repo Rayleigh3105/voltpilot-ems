@@ -3,6 +3,8 @@ package com.voltpilot.ingest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
@@ -17,11 +19,18 @@ public class MeasurementSamplesValidator {
     private static final Pattern CATALOG = Pattern.compile("^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$");
     private static final Set<String> QUALITY = Set.of(
             "good", "uncertain", "invalid", "stale", "device_error");
-    private static final Set<String> ROOT_FIELDS = Set.of("schema_version", "tenant_id",
+    static final Set<String> ROOT_FIELDS_2_0 = Set.of("schema_version", "tenant_id",
             "site_id", "device_id", "catalog_version", "sequence", "observed_at", "samples",
             "dropped_samples", "gap");
-    private static final Set<String> SAMPLE_FIELDS = Set.of("point_key", "raw", "decoded",
+    static final Set<String> SAMPLE_FIELDS_2_0 = Set.of("point_key", "raw", "decoded",
             "quality", "observed_at", "signed_data", "signed_data_format");
+    // 2.1 (UEMS AP-07 IP-2) = 2.0 plus two OPTIONAL provenance fields, and only under 2.1.
+    // Ingest validates them but does not forward them yet (IP-5): the measurements.raw event
+    // stays 1.0 with exactly the 2.0 sample fields, which the writer checks strictly.
+    static final String APPLIED_REVISION = "applied_revision";
+    static final String ENTITY_ID = "entity_id";
+    static final Set<String> ROOT_FIELDS_2_1 = plus(ROOT_FIELDS_2_0, APPLIED_REVISION);
+    static final Set<String> SAMPLE_FIELDS_2_1 = plus(SAMPLE_FIELDS_2_0, ENTITY_ID);
     private final ObjectMapper mapper;
 
     public MeasurementSamplesValidator(ObjectMapper mapper) {
@@ -32,8 +41,11 @@ public class MeasurementSamplesValidator {
         try {
             JsonNode r = mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .readTree(payload);
-            if (r == null || !r.isObject() || !onlyFields(r, ROOT_FIELDS)
-                    || !"2.0".equals(r.path("schema_version").asText())) bad("schema");
+            if (r == null || !r.isObject()) bad("schema");
+            String version = text(r, "schema_version");
+            boolean v21 = "2.1".equals(version);
+            if (!v21 && !"2.0".equals(version)
+                    || !onlyFields(r, v21 ? ROOT_FIELDS_2_1 : ROOT_FIELDS_2_0)) bad("schema");
             UUID tenant = uuid(r, "tenant_id");
             UUID site = uuid(r, "site_id");
             UUID device = uuid(r, "device_id");
@@ -50,9 +62,13 @@ public class MeasurementSamplesValidator {
             JsonNode samples = r.get("samples");
             if (seq < 0 || samples == null || !samples.isArray() || samples.isEmpty()
                     || samples.size() > 256) bad("batch bounds");
+            if (r.has(APPLIED_REVISION) && (!r.get(APPLIED_REVISION).isIntegralNumber()
+                    || r.get(APPLIED_REVISION).asLong(-1) < 0)) bad(APPLIED_REVISION);
             Set<String> points = new HashSet<>();
             for (JsonNode s : samples) {
-                if (!s.isObject() || !onlyFields(s, SAMPLE_FIELDS)) bad("sample fields");
+                if (!s.isObject() || !onlyFields(s, v21 ? SAMPLE_FIELDS_2_1 : SAMPLE_FIELDS_2_0))
+                    bad("sample fields");
+                if (s.has(ENTITY_ID) && !canonicalUuid(text(s, ENTITY_ID))) bad(ENTITY_ID);
                 String key = text(s, "point_key");
                 JsonNode raw = s.get("raw");
                 if (!KEY.matcher(key).matches() || !points.add(key) || raw == null || !scalar(raw)
@@ -68,13 +84,35 @@ public class MeasurementSamplesValidator {
             long dropped = r.path("dropped_samples").asLong(0);
             if (dropped < 0) bad("drops");
             return new MeasurementRawEvent("1.0", UUID.randomUUID(), tenant, site, device,
-                    catalog, seq, observed, ingestedAt, topic, samples, dropped,
+                    catalog, seq, observed, ingestedAt, topic, v21 ? without2_1(samples) : samples,
+                    dropped,
                     r.path("gap").asBoolean(false));
         } catch (InvalidTelemetryException e) {
             throw e;
         } catch (Exception e) {
             throw new InvalidTelemetryException("invalid measurement samples: " + e.getMessage());
         }
+    }
+
+    /** The samples exactly as a 2.0 box would have sent them: the 2.1 provenance fields removed. */
+    private static JsonNode without2_1(JsonNode samples) {
+        ArrayNode copy = samples.deepCopy();
+        copy.forEach(s -> ((ObjectNode) s).remove(ENTITY_ID));
+        return copy;
+    }
+
+    private static boolean canonicalUuid(String value) {
+        try {
+            return UUID.fromString(value).toString().equalsIgnoreCase(value);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static Set<String> plus(Set<String> base, String field) {
+        Set<String> all = new HashSet<>(base);
+        all.add(field);
+        return Set.copyOf(all);
     }
 
     private static boolean scalar(JsonNode node) {

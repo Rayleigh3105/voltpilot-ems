@@ -46,6 +46,13 @@ const ajv = new Ajv2020({ strict: false });
 | `mqtt-measurement-config-status.valid.json` | mqtt-measurement-config-status | valid — monotone apply receipt |
 | `mqtt-measurement-samples.valid.json` | mqtt-measurement-samples | valid — exact raw sample batch |
 | `mqtt-measurement-samples.invalid.no-raw.json` | mqtt-measurement-samples | **invalid** — a sample may never invent or omit its wire/API raw value |
+| `mqtt-measurement-samples.valid.box-halle-2-nachlieferung.json` | mqtt-measurement-samples | valid — an OLDER box (Ahrenberg Box Halle 2, 2.0) delivers the 15:12 value of the outage from its buffer: no `entity_id`, no `applied_revision` — the cloud completes component and revision, never refuses |
+| `mqtt-measurement-samples.invalid.herkunft-unter-2.0.json` | mqtt-measurement-samples | **invalid** — the MS-06 10:39 envelope with the provenance fields but `schema_version: "2.0"`: the new fields exist only under 2.1 |
+| `mqtt-measurement-samples-2.1.valid.ms06-letzter-wert-z5a.json` | mqtt-measurement-samples-2.1 | valid — Box Halle 1 sends the last value of Z-5a (MS-06 · K-5 · Wirkenergie Bezug, 18.11.2026 10:39 local = 09:39Z) with `entity_id` (K-5) and `applied_revision: 1` |
+| `mqtt-measurement-samples-2.1.valid.ms06-erster-wert-z5b.json` | mqtt-measurement-samples-2.1 | valid — the first value of Z-5b (0,0 kWh) after the meter swap: the SAME `entity_id`, so the series continues without a break |
+| `mqtt-measurement-samples-2.1.valid.ohne-herkunftsfelder.json` | mqtt-measurement-samples-2.1 | valid — 2.1 without the new fields (a selection without a component binding); the neutral twin of `mqtt-measurement-samples.valid.json` |
+| `mqtt-measurement-samples-2.1.invalid.fremdes-feld-messstelle.json` | mqtt-measurement-samples-2.1 | **invalid** — a sample names `messstelle`: a foreign field stays refused in 2.1 (the cloud derives the Messstelle from the source binding) |
+| `mqtt-measurement-samples-2.1.invalid.komponente-als-kennzeichen.json` | mqtt-measurement-samples-2.1 | **invalid** — `entity_id: "K-5"`: the wire carries the component UUID, never the customer's Kennzeichen |
 | `edge-entity.valid.config-battery.json` | edge-entity | valid — retained per-entity config for a battery-hybrid (guard limits + self-consumption failsafe) |
 | `edge-entity.valid.config-wallbox.json` | edge-entity | valid — retained per-entity config for a wallbox (E1b consumer type: `max_consumption_kw`, `release` failsafe) |
 | `edge-entity.valid.registry-push.json` | edge-entity | valid — full `…/v2/entities` push carrying the three pilot entity descriptors |

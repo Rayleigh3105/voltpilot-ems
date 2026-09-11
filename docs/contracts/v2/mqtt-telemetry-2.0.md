@@ -50,3 +50,18 @@ Carried over from 1.0 verbatim: `ts` is the ORIGINAL observation time; a store-a
 replays with original timestamps. The cloud writer stamps arrival time (`received_at`) per row
 and any liveness derivation MUST use arrival time, never `ts`. Writes are idempotent per
 `(entity_id, channel, time)`, so Kafka redelivery and edge replay are safe.
+
+## 5. `seq` — optional for the box, a MUST-forward for the cloud (UEMS AP-07 IP-2)
+
+No schema change: `seq` stays OPTIONAL in the payload, and a box that omits it stays valid.
+What changes is the cloud's obligation. When a box sends `seq`, ingest MUST pass it on
+unchanged with the message's `telemetry-v2.raw` event. It is never dropped, renumbered or
+filled in when absent, because absent means "not reported", never 0. Downstream, the sequence
+per box is evaluated exactly like `sequence` of the additional measurements: a jump up is a
+`sequence_gap`, a jump down a `sequence_reset` (AP-07 §4.5 rule 5, E11;
+[`events-vocabulary.md`](./events-vocabulary.md)). `seq` is a marker, not part of the write key.
+
+⚠ The implementation is still missing. Today ingest drops `seq` (`TelemetryV2RawEvent` has no
+field for it). AP-07 IP-5 adds the additive optional field to
+[`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) and forwards it.
+Until IP-5 lands, a gap in `seq` is not detected.

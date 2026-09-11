@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/mqtt-measurement-samples/2.1",
+  "title": "VoltPilot additional measurement sample batch (2.1: provenance fields)",
+  "description": "Additive successor of mqtt-measurement-samples.schema.json (2.0, unchanged and still valid on the same topic). 2.1 = 2.0 plus exactly two OPTIONAL provenance fields of the per-value provenance contract (messwert-herkunft.md, UEMS AP-07 IP-2): applied_revision per envelope and entity_id per sample. Every other unknown field is still refused. The new fields exist ONLY under schema_version 2.1; a 2.0 envelope carrying them is invalid. See mqtt-measurement-samples-2.1.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "catalog_version", "sequence", "observed_at", "samples"],
+  "properties": {
+    "schema_version": {"const": "2.1"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "site_id": {"$ref": "#/$defs/uuid"},
+    "device_id": {"$ref": "#/$defs/uuid"},
+    "catalog_version": {"type": "string", "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}\\.[0-9]+$"},
+    "sequence": {"type": "integer", "minimum": 0},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "samples": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/sample"}},
+    "dropped_samples": {"type": "integer", "minimum": 0},
+    "gap": {"type": "boolean"},
+    "applied_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OPTIONAL (2.1). The settings revision (Einstellungs-Fassung, AP-04 E5) the box APPLIED when it captured every sample of this envelope - the provenance field einstellungs_fassung / umschlag.angewendete_fassung of messwert-herkunft. Absent = the box does not report it (the state of before): the cloud looks up the revision applied at the measuring time from the delivery (applied_at), never guesses it."
+    }
+  },
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "point_key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$"},
+    "wire_value": {"type": ["number", "string", "boolean"]},
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point_key", "raw", "quality"],
+      "properties": {
+        "point_key": {"$ref": "#/$defs/point_key"},
+        "raw": {"$ref": "#/$defs/wire_value"},
+        "decoded": {"$ref": "#/$defs/wire_value"},
+        "quality": {"enum": ["good", "uncertain", "invalid", "stale", "device_error"]},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "signed_data": {"type": "string", "maxLength": 32768},
+        "signed_data_format": {"type": "string", "maxLength": 128},
+        "entity_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "description": "OPTIONAL (2.1). The component (registry entity id, the same UUID as selections[].entity_id of mqtt-measurement-config) this point was read FOR - the provenance field komponente of messwert-herkunft. Never the customer's Kennzeichen. Absent = the box does not name it (an older box, or a selection without an entity binding): the cloud resolves it from the selection, and an ambiguous one is a mirror - never guessed."
+        }
+      }
+    }
+  },
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/measurement-samples",
+  "x-mqtt": {"qos": 1, "retained": false},
+  "x-identity-rule": "The three topic identity segments MUST byte-equal the payload identity fields.",
+  "x-honesty-rule": "A sample exists only after a physical/protocol read. raw is the received value; decoded MUST NOT be inverted to manufacture raw.",
+  "x-compat-rule": "Additive (house rule 'contracts are additive', AP-07 W4): the same topic carries 2.0 and 2.1 side by side; ingest accepts both. A 2.0 envelope is exactly the 2.0 contract - it never carries applied_revision or entity_id. point_key stays unique per envelope, as in 2.0."
+}

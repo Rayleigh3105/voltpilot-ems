@@ -1,0 +1,20 @@
+{
+  "schema_version": "2.1",
+  "tenant_id": "a4e0b000-0000-4000-8000-000000000001",
+  "site_id": "a4e0b000-0000-4000-8000-0000000000a1",
+  "device_id": "a4e0b000-0000-4000-8000-0000000000e1",
+  "catalog_version": "2026.08.26.3",
+  "sequence": 48213,
+  "observed_at": "2026-11-18T09:39:00Z",
+  "applied_revision": 1,
+  "samples": [
+    {
+      "point_key": "custom.wirkenergie-bezug",
+      "raw": 10834152,
+      "decoded": 1083415.2,
+      "quality": "good",
+      "observed_at": "2026-11-18T09:39:00Z",
+      "entity_id": "K-5"
+    }
+  ]
+}
