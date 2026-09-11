@@ -1,0 +1,618 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/funktion-zustand.schema.json",
+  "title": "UEMS-Funktions-Zustand: Messen & Auswerten · Steuern & Optimieren je Standort, Teilnahme je Anlage",
+  "description": "Der Vertrag des FUNKTIONS-ZUSTANDS (UEMS AP-01 IP-1; Regeln im AP-01-Konzept §4.2–§4.7, Entscheide E6 = C, E7, E8, E9, Auflösungen W3, W5, W7). Beide Funktionen gelten je Standort; bei „Steuern & Optimieren“ nimmt jede Anlage einzeln teil, und der Standort trägt den höchsten Zustand seiner Teilnahmen. Er beschreibt (a) die Fakten, aus denen ein Zustand entsteht, (b) das Ergebnis samt „es fehlt“-Liste und Kundensatz, (c) die erlaubten und abgelehnten Übergänge und (d) die Vektor-Datei funktion-zustand-vectors.json, die beide Zwillinge (Java services/api .../uems/FunktionZustandAbleitung, TS frontend/portal/src/uemsFunktion.ts) gegeneinander pinnt. Der Zustand ist ein Objekt-Zustand aus Fakten, nie ein Absichts-Schalter (W3). „liefert Daten“ und „steuert“ kommen aus uems-zustand.schema.json.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "zeitzone",
+    "familien",
+    "abnahmefaelle",
+    "funktionen",
+    "zustaende",
+    "zustaende_messen",
+    "pruefungen",
+    "aktionen",
+    "gruende",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa — dieselbe, die im Kopf der Vektor-Datei steht.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "type": "string"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Regel stammt: Konzeptpaket und Entscheide.",
+      "type": "string"
+    },
+    "zeitzone": {
+      "description": "Die Zeitzone, in der die Kundensätze ihr Datum nennen (Zeitzone des Standorts, Vorgabe Europe/Berlin).",
+      "type": "string"
+    },
+    "familien": {
+      "description": "Die fünf Familien der Fälle.",
+      "type": "array",
+      "items": { "enum": ["teilnahme", "standort", "messen", "uebergaenge", "bestand"] }
+    },
+    "abnahmefaelle": {
+      "description": "Die Abnahmefälle des AP-01-Konzepts (§7), die mindestens ein Fall pinnt.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "funktionen": {
+      "description": "Die zwei Funktionen mit ihrem Kundenwort.",
+      "type": "object",
+      "required": ["messen", "steuern"],
+      "properties": {
+        "messen": { "const": "Messen & Auswerten" },
+        "steuern": { "const": "Steuern & Optimieren" }
+      },
+      "additionalProperties": false
+    },
+    "zustaende": {
+      "description": "Das geschlossene Vokabular, AUFSTEIGEND nach Rang — der „höchste Zustand“ eines Standorts ist der letzte, der vorkommt.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/zustand" }
+    },
+    "zustaende_messen": {
+      "description": "Die Zustände, die „Messen & Auswerten“ annehmen kann: eingerichtet geht sofort in aktiv über, angehalten wird es nicht als Ganzes.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/zustand" }
+    },
+    "pruefungen": {
+      "description": "Die Zeilen der Prüfliste vor dem Start und beim Fortsetzen, in ihrer Reihenfolge.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/pruefung" }
+    },
+    "aktionen": {
+      "description": "Was der Kunde auslösen kann.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/aktion" }
+    },
+    "gruende": {
+      "description": "Je Grund einer Ablehnung GENAU EIN Kundensatz. „pruefliste_offen“ wird um „ — es fehlt: …“ ergänzt.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/grund" },
+      "additionalProperties": { "type": "string" }
+    },
+    "cases": {
+      "description": "Die Fälle. Jeder Fall ist ein Eingang und das GENAU EINE Ergebnis, das beide Zwillinge daraus ziehen müssen.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "zeitpunkt": {
+      "description": "Ein Zeitpunkt mit Zeitzonen-Versatz (ISO 8601). Nie eine nackte Ortszeit.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "zeitpunktOderNull": {
+      "description": "Ein Zeitpunkt, oder null, wenn er nicht bekannt ist — dann wird im Satz keiner erfunden.",
+      "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+    },
+    "zustand": {
+      "description": "kein_objekt = die Funktion wird nur angeboten · entwurf = begonnen, es fehlt noch etwas · eingerichtet = alles geprüft, Steuerung noch nicht gestartet · angehalten = gestartet und vom Kunden angehalten, alles bleibt · aktiv = läuft · archiviert = beendet, die Historie bleibt.",
+      "enum": ["kein_objekt", "archiviert", "entwurf", "eingerichtet", "angehalten", "aktiv"]
+    },
+    "pruefung": {
+      "description": "box = die Box der Anlage ist verbunden · freigabe = mindestens eine Komponente ist zum Steuern freigegeben · verbindungstest = jede freigegebene Komponente hat ihren Test bestanden · grenze = die Grenze der Anlage ist plausibel · hauptzaehler = der Hauptzähler liefert Daten · betriebsweise = jede freigegebene Komponente hat ihre Steuerart, ein Speicher sein Betriebsmodell.",
+      "enum": ["box", "freigabe", "verbindungstest", "grenze", "hauptzaehler", "betriebsweise"]
+    },
+    "aktion": {
+      "description": "aufnehmen = eine Anlage nimmt an Steuern & Optimieren teil · einrichten = Messen & Auswerten für den Standort anlegen · starten · anhalten · fortsetzen · beenden.",
+      "enum": ["aufnehmen", "einrichten", "starten", "anhalten", "fortsetzen", "beenden"]
+    },
+    "grund": {
+      "description": "Warum ein Übergang abgelehnt wird — genau einer.",
+      "enum": [
+        "nicht_aufgenommen",
+        "bereits_aufgenommen",
+        "pruefliste_offen",
+        "noch_nicht_gestartet",
+        "laeuft_bereits",
+        "ist_angehalten",
+        "bereits_angehalten",
+        "beendet",
+        "bereits_angelegt",
+        "standort_archiviert",
+        "startet_automatisch",
+        "nicht_als_ganzes",
+        "nur_mit_dem_standort"
+      ]
+    },
+    "box": {
+      "type": "object",
+      "required": ["name", "verbunden"],
+      "properties": {
+        "name": { "description": "Der Name, den der Kunde liest („Box Halle 2“).", "type": "string" },
+        "verbunden": { "description": "Ob ihr Herzschlag in ihrer Kadenz ankommt.", "type": "boolean" }
+      }
+    },
+    "fehlt": {
+      "description": "Je roter Prüfzeile, WAS fehlt — mit dem Namen des Objekts („Hauptzähler Halle 2“). Leer, wenn nichts fehlt oder die Prüfliste nicht gefragt ist.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "teilnahmeEingang": {
+      "description": "Was über die Teilnahme EINER Anlage an „Steuern & Optimieren“ bekannt ist — Bestandsfakten und die Fakten der Prüfliste.",
+      "type": "object",
+      "required": [
+        "anlage",
+        "aufgenommen",
+        "eingerichtet_am",
+        "gestartet_am",
+        "uebernommen",
+        "ruhe_eintrag",
+        "beendet_am",
+        "boxen",
+        "hauptzaehler",
+        "komponenten",
+        "betriebsmodell",
+        "grenze_plausibel",
+        "ausfuehrung",
+        "jetzt"
+      ],
+      "properties": {
+        "anlage": { "description": "Der Name der Anlage, wie der Kunde sie kennt.", "type": "string" },
+        "aufgenommen": {
+          "description": "Ob die Anlage aufgenommen ist. Ohne Aufnahme gibt es keine Teilnahme — „Diese Anlage misst nur“.",
+          "type": "boolean"
+        },
+        "eingerichtet_am": {
+          "description": "Wann die Prüfliste grün wurde; nur für den Satz „Eingerichtet am …“.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "gestartet_am": {
+          "description": "Wann „Steuerung starten“ geklickt wurde; null = nie gestartet.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "uebernommen": {
+          "description": "Ob die Teilnahme beim Umstieg aus dem Bestand abgeleitet wurde (W5) — der Satz sagt dann „(übernommen)“.",
+          "type": "boolean"
+        },
+        "ruhe_eintrag": {
+          "description": "Der Ruhe-Eintrag der Anlage. OHNE Ende ist er die Ruhe bis zum Start oder das Anhalten (E7); MIT Ende ist er ein Handeingriff mit Pflicht-Dauer (S7), kein Anhalten.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["seit", "ende"],
+              "properties": {
+                "seit": { "$ref": "#/$defs/zeitpunkt" },
+                "ende": { "$ref": "#/$defs/zeitpunktOderNull" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "beendet_am": {
+          "description": "Wann „Steuerung beenden“ geklickt wurde; null = nicht beendet.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "boxen": {
+          "description": "Die Boxen der Anlage.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/box" }
+        },
+        "hauptzaehler": {
+          "description": "Der Hauptzähler der Anlage mit seinem Zustand „liefert Daten“ (uems-zustand.schema.json); null, wenn keiner zugeordnet ist.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kennzeichen", "zustand", "seit"],
+              "properties": {
+                "kennzeichen": { "description": "Das Kennzeichen der Messstelle („MS-10“).", "type": "string" },
+                "zustand": { "enum": ["liefert", "liefert_nicht_seit", "wartet_auf_erste_daten", "keine_datenquelle"] },
+                "seit": { "$ref": "#/$defs/zeitpunktOderNull" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "komponenten": {
+          "description": "Die steuerbaren Komponenten der Anlage.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "art", "freigegeben", "verbindungstest_bestanden", "steuerart"],
+            "properties": {
+              "name": { "description": "Der Name der Komponente („Ladepunkt Parkplatz Halle 2“).", "type": "string" },
+              "art": {
+                "description": "verbraucher braucht eine Steuerart; speicher (Wechselrichter mit Speicher) braucht ein Betriebsmodell der Anlage.",
+                "enum": ["verbraucher", "speicher"]
+              },
+              "freigegeben": {
+                "description": "Ob „Steuern freigeben“ erteilt ist; beim Wechselrichter heißt das: zertifiziert UND von VoltPilot scharfgeschaltet.",
+                "type": "boolean"
+              },
+              "verbindungstest_bestanden": {
+                "description": "Ob der Verbindungstest über den Probe-Kanal bestanden ist.",
+                "type": "boolean"
+              },
+              "steuerart": {
+                "description": "Die gewählte Steuerart eines Verbrauchers („Netzschonend laden“); null = keine gewählt.",
+                "oneOf": [{ "type": "string" }, { "type": "null" }]
+              }
+            }
+          }
+        },
+        "betriebsmodell": {
+          "description": "Das für den Speicher GEWÄHLTE Betriebsmodell („Lastspitzenkappung“) — gewählt, nicht eingeschaltet; null = keines gewählt.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "grenze_plausibel": {
+          "description": "Ob die Grenze der Anlage gegen den Netzanschluss plausibel ist (Ladepark-Rahmen, Einspeisegrenze, Netzladen).",
+          "type": "boolean"
+        },
+        "ausfuehrung": {
+          "description": "Was gerade läuft und ob die Box die Ausführung bestätigt — nur für die Beobachtung „steuert“; null, wenn sie nicht gefragt ist.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["laeuft", "laeuft_art", "laeuft_name", "box_bestaetigt"],
+              "properties": {
+                "laeuft": { "type": "boolean" },
+                "laeuft_art": { "oneOf": [{ "enum": ["betriebsmodell", "regel"] }, { "type": "null" }] },
+                "laeuft_name": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+                "box_bestaetigt": { "type": "boolean" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "teilnahmeErgebnis": {
+      "type": "object",
+      "required": ["zustand", "seit", "pruefliste", "fehlt", "text", "steuert"],
+      "properties": {
+        "zustand": { "$ref": "#/$defs/zustand" },
+        "seit": {
+          "description": "eingerichtet: eingerichtet_am · aktiv: gestartet_am · angehalten: Beginn des Ruhe-Eintrags · archiviert: beendet_am · sonst null.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "pruefliste": {
+          "description": "Die sechs Zeilen der Prüfliste — nur in entwurf, eingerichtet und angehalten; sonst leer. bestanden = null heißt „nicht prüfbar“, nie „bestanden“.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pruefung", "bestanden"],
+            "properties": {
+              "pruefung": { "$ref": "#/$defs/pruefung" },
+              "bestanden": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }
+            }
+          }
+        },
+        "fehlt": { "$ref": "#/$defs/fehlt" },
+        "text": { "description": "Der Satz, den der Kunde liest.", "type": "string" },
+        "steuert": {
+          "description": "Die Beobachtung „steuert“ (uems-zustand.schema.json steuertErgebnis); null ohne ausfuehrung.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["zustand", "grund", "text"],
+              "properties": {
+                "zustand": { "enum": ["steuert", "steuert_nicht"] },
+                "grund": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+                "text": { "type": "string" }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "teilnahmeStand": {
+      "description": "Eine bereits abgeleitete Teilnahme, so wie Standort und Übergänge sie brauchen.",
+      "type": "object",
+      "required": ["anlage", "zustand", "seit", "fehlt"],
+      "properties": {
+        "anlage": { "type": "string" },
+        "zustand": { "$ref": "#/$defs/zustand" },
+        "seit": { "$ref": "#/$defs/zeitpunktOderNull" },
+        "fehlt": { "$ref": "#/$defs/fehlt" }
+      }
+    },
+    "standortEingang": {
+      "type": "object",
+      "required": ["teilnahmen"],
+      "properties": {
+        "teilnahmen": { "type": "array", "items": { "$ref": "#/$defs/teilnahmeStand" } },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "standortErgebnis": {
+      "description": "„Steuern & Optimieren“ am Standort: der höchste Zustand seiner Teilnahmen; kein Objekt, wenn keine.",
+      "type": "object",
+      "required": ["zustand", "seit", "text"],
+      "properties": {
+        "zustand": { "$ref": "#/$defs/zustand" },
+        "seit": {
+          "description": "aktiv/eingerichtet: der früheste — die erste Anlage · angehalten/archiviert: der späteste — erst mit der letzten ist der Standort dort · sonst null.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "messenEingang": {
+      "description": "Was über „Messen & Auswerten“ an einem Standort bekannt ist.",
+      "type": "object",
+      "required": [
+        "standort",
+        "angelegt",
+        "standort_eingerichtet",
+        "standort_archiviert_am",
+        "eingerichtet_am",
+        "boxen",
+        "messstellen",
+        "anlagen",
+        "jetzt"
+      ],
+      "properties": {
+        "standort": { "description": "Der Name des Standorts („Werk Lindach“).", "type": "string" },
+        "angelegt": { "description": "Ob „Einrichten“ gedrückt wurde.", "type": "boolean" },
+        "standort_eingerichtet": {
+          "description": "Ob der Standort Name, Adresse und Zeitzone hat (AP-02).",
+          "type": "boolean"
+        },
+        "standort_archiviert_am": {
+          "description": "Wann der Standort archiviert wurde (AP-02); damit ist auch Messen archiviert.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "eingerichtet_am": {
+          "description": "Wann Messen eingerichtet wurde. Einmal gesetzt, bleibt die Funktion aktiv — ein späterer Ausfall ist Datenlage, kein Rückfall.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "boxen": { "type": "array", "items": { "$ref": "#/$defs/box" } },
+        "messstellen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "manuell", "quelle_vorhanden", "letzter_guter_wert", "je_ein_wert", "kadenz_s"],
+            "properties": {
+              "kennzeichen": { "type": "string" },
+              "manuell": {
+                "description": "Manuell abgelesen — zählt als Messstelle mit Daten und steht getrennt in der Datenlage.",
+                "type": "boolean"
+              },
+              "quelle_vorhanden": {
+                "description": "Ob eine Datenquelle gebunden ist. Ohne Quelle blockiert sie nicht (AP-04 E8).",
+                "type": "boolean"
+              },
+              "letzter_guter_wert": { "$ref": "#/$defs/zeitpunktOderNull" },
+              "je_ein_wert": { "type": "boolean" },
+              "kadenz_s": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "anlagen": {
+          "description": "Die Anlagen des Standorts MIT Netzanschluss und die Zahl ihrer Hauptzähler — gefordert ist genau einer.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "hauptzaehler_anzahl"],
+            "properties": {
+              "name": { "type": "string" },
+              "hauptzaehler_anzahl": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "messenErgebnis": {
+      "type": "object",
+      "required": ["zustand", "seit", "fehlt", "text", "datenlage"],
+      "properties": {
+        "zustand": { "enum": ["kein_objekt", "entwurf", "aktiv", "archiviert"] },
+        "seit": { "$ref": "#/$defs/zeitpunktOderNull" },
+        "fehlt": { "$ref": "#/$defs/fehlt" },
+        "text": { "type": "string" },
+        "datenlage": {
+          "description": "„5 von 5 Messstellen liefern Daten · 1 manuell abgelesen“; null, wenn es keine Funktion (mehr) gibt.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      }
+    },
+    "uebergangEingang": {
+      "type": "object",
+      "required": ["funktion", "aktion"],
+      "properties": {
+        "funktion": { "enum": ["messen", "steuern"] },
+        "aktion": { "$ref": "#/$defs/aktion" },
+        "teilnahme": {
+          "description": "Steuern je Anlage: die aus FRISCHEN Fakten abgeleitete Teilnahme.",
+          "$ref": "#/$defs/teilnahmeStand"
+        },
+        "teilnahmen": {
+          "description": "Steuern je Standort: alle Teilnahmen des Standorts.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/teilnahmeStand" }
+        },
+        "zustand": {
+          "description": "Messen je Standort: der Zustand vorher.",
+          "$ref": "#/$defs/zustand"
+        }
+      }
+    },
+    "uebergangErgebnis": {
+      "type": "object",
+      "required": ["erlaubt", "grund", "nachher", "betroffen", "text"],
+      "properties": {
+        "erlaubt": { "type": "boolean" },
+        "grund": { "oneOf": [{ "$ref": "#/$defs/grund" }, { "type": "null" }] },
+        "nachher": {
+          "description": "Der Zustand danach — bei Ablehnung der unveränderte; bei einer Aktion für den Standort der des STANDORTS.",
+          "$ref": "#/$defs/zustand"
+        },
+        "betroffen": {
+          "description": "Die Anlagen, deren Teilnahme sich ändert.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "text": {
+          "description": "Der Grund in Kundensprache; null, wenn erlaubt.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      }
+    },
+    "bestandAnlage": {
+      "description": "Was der Bestand vor dem Umstieg über eine Anlage weiß.",
+      "type": "object",
+      "required": [
+        "anlage",
+        "betriebsmodell_an",
+        "betriebsmodell_seit",
+        "eigenverbrauch_laeuft",
+        "eigenverbrauch_seit",
+        "steuerart_oder_regel_aktiv",
+        "steuerart_seit",
+        "scharfschaltung"
+      ],
+      "properties": {
+        "anlage": { "type": "string" },
+        "betriebsmodell_an": { "description": "Ein Betriebsmodell ist eingeschaltet.", "type": "boolean" },
+        "betriebsmodell_seit": { "$ref": "#/$defs/zeitpunktOderNull" },
+        "eigenverbrauch_laeuft": {
+          "description": "Der scharfgeschaltete Speicher fährt ohne Betriebsmodell den Eigenverbrauchs-Fahrplan — auch das ist eine laufende Betriebsweise.",
+          "type": "boolean"
+        },
+        "eigenverbrauch_seit": { "$ref": "#/$defs/zeitpunktOderNull" },
+        "steuerart_oder_regel_aktiv": {
+          "description": "Eine freigegebene Komponente trägt eine wirksame Steuerart oder Regel.",
+          "type": "boolean"
+        },
+        "steuerart_seit": { "$ref": "#/$defs/zeitpunktOderNull" },
+        "scharfschaltung": {
+          "description": "Ein Wechselrichter ist von VoltPilot scharfgeschaltet.",
+          "type": "boolean"
+        }
+      }
+    },
+    "bestandErgebnis": {
+      "type": "object",
+      "required": ["zustand", "gestartet_am", "text"],
+      "properties": {
+        "zustand": { "enum": ["kein_objekt", "eingerichtet", "aktiv"] },
+        "gestartet_am": {
+          "description": "Der Beginn der frühesten laufenden Betriebsweise; null, wenn keiner bekannt ist.",
+          "$ref": "#/$defs/zeitpunktOderNull"
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "required": ["name", "familie", "ableitung", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string" },
+        "familie": { "enum": ["teilnahme", "standort", "messen", "uebergaenge", "bestand"] },
+        "ableitung": {
+          "description": "anlage = eine Anlage · standort = ein Standort · messen = ein Übergang von Messen & Auswerten.",
+          "enum": ["anlage", "standort", "messen"]
+        },
+        "abnahme": {
+          "description": "Der Abnahmefall des AP-01-Konzepts, den dieser Fall pinnt.",
+          "type": "string"
+        },
+        "why": {
+          "description": "Warum dieser Fall in der Datei steht — was er beweist.",
+          "type": "string",
+          "minLength": 1
+        },
+        "input": { "type": "object" },
+        "expected": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "familie": { "const": "teilnahme" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "anlage" },
+              "input": { "$ref": "#/$defs/teilnahmeEingang" },
+              "expected": { "$ref": "#/$defs/teilnahmeErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "standort" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "standort" },
+              "input": { "$ref": "#/$defs/standortEingang" },
+              "expected": { "$ref": "#/$defs/standortErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "messen" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "ableitung": { "const": "standort" },
+              "input": { "$ref": "#/$defs/messenEingang" },
+              "expected": { "$ref": "#/$defs/messenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "familie": { "const": "uebergaenge" } }, "required": ["familie"] },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/uebergangEingang" },
+              "expected": { "$ref": "#/$defs/uebergangErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "bestand" }, "ableitung": { "const": "anlage" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "type": "object",
+                "required": ["anlage"],
+                "properties": {
+                  "anlage": { "$ref": "#/$defs/bestandAnlage" },
+                  "zeitzone": { "type": "string" }
+                }
+              },
+              "expected": { "$ref": "#/$defs/bestandErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "familie": { "const": "bestand" }, "ableitung": { "const": "standort" } },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": {
+                "type": "object",
+                "required": ["anlagen"],
+                "properties": {
+                  "anlagen": { "type": "array", "items": { "$ref": "#/$defs/bestandAnlage" } },
+                  "zeitzone": { "type": "string" }
+                }
+              },
+              "expected": { "$ref": "#/$defs/standortErgebnis" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

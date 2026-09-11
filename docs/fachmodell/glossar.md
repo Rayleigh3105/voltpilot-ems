@@ -470,6 +470,8 @@ Zeitgültig sind: Messstelle → Ort, Messstelle → Anlage/elektrische Stellung
 
 > **Verfeinert durch AP-01 E9:** Beim Fortsetzen läuft die Prüfliste erneut, dann zeigt eine Folgen-Karte, was passiert — und dann genügt ein Klick.
 
+> **Verfeinert durch AP-01 E6 = C/W7:** Der Funktions-Zustand gilt je STANDORT und ist der HÖCHSTE Zustand seiner Teilnahmen (Rang: kein Objekt < archiviert < Entwurf < eingerichtet < angehalten < aktiv — angehalten, solange keine Anlage aktiv teilnimmt). Je Anlage entscheidet vor dem Start und beim Fortsetzen DIESELBE Prüfliste (Box, Freigabe, Verbindungstest, Grenze, Hauptzähler, Betriebsweise), und „Entwurf“ nennt, was fehlt. Die Ableitung ist Vertrag: `docs/contracts/v2/funktion-zustand-vectors.json` (AP-01 IP-1, Zwillinge `uems/FunktionZustandAbleitung` ⟷ `uemsFunktion.ts`).
+
 > **Verfeinert durch AP-07 E9:** „liefert Daten“ ist geschärft: letzter guter Wert jünger als 3 × Kadenz nach Eingangszeit, mindestens 5 Minuten und höchstens 1 Tag; eine Lücke der Reihe beginnt schon ab 2 × Kadenz. Die Kadenz ist ein zeitgültiges Feld der Quellenbindung, kein fester 5-Minuten-Deckel.
 
 > **Verfeinert durch AP-04 E8:** Eine Messstelle ohne Quelle hat die Beobachtung „keine Datenquelle“ — sie ist eingerichtet und aktiv, zeigt aber nie eine 0.

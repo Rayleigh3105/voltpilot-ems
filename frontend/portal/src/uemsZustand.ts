@@ -442,8 +442,11 @@ export function zeitpunktText(seit: string, jetzt: string, zeitzone?: string): s
   return s.tag === j.tag ? uhr : `${s.tag} ${uhr}`;
 }
 
-/** „a" · „a und b" · „a, b und c" — eine deutsche Aufzählung. */
-function aufzaehlung(worte: string[]): string {
+/**
+ * „a" · „a und b" · „a, b und c" — eine deutsche Aufzählung. Exportiert, damit
+ * `uemsFunktion.ts` dieselbe benutzt.
+ */
+export function aufzaehlung(worte: string[]): string {
   if (worte.length === 1) return worte[0];
   return `${worte.slice(0, -1).join(', ')} und ${worte[worte.length - 1]}`;
 }

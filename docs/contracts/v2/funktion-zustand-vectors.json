@@ -1,0 +1,4498 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des FUNKTIONS-ZUSTANDS je Standort und der TEILNAHME je Anlage",
+    "(UEMS AP-01 IP-1). Die Prosa-Wahrheit steht im AP-01-Konzept §4.2–§4.7 und in",
+    "docs/fachmodell/zustaende.md; hier steht, wie aus Bestandsfakten und der Prüfliste",
+    "GENAU EIN Zustand, GENAU EINE „es fehlt“-Liste und GENAU EIN Kundensatz werden.",
+    "",
+    "Sie pinnen die zwei Zwillinge gegeneinander:",
+    "  Java  services/api .../uems/FunktionZustandAbleitung",
+    "  TS    frontend/portal/src/uemsFunktion.ts",
+    "Wer die Regel ändert, ändert BEIDE Seiten UND diese Datei. Wo „liefert Daten“ oder",
+    "„steuert“ gebraucht wird, rufen beide das Zustandsvokabular (uems-zustand-vectors.json,",
+    "ZustandAbleitung / uemsZustand.ts) — hier wird nichts davon nachgebaut.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Keine Tabelle (IP-2), kein Endpunkt (IP-3), keine Fläche",
+    "(IP-8/IP-11) ist umgestellt; die Steuerung, der Publisher und die Box sind unberührt.",
+    "Diese Datei ist der Vertrag, gegen den IP-2 (Backfill) und IP-3 (Endpunkte) bauen.",
+    "",
+    "═══ DAS VOKABULAR (AP-00 E8 + AP-01 §4.3) ═══",
+    "",
+    "Sechs Zustände, AUFSTEIGEND nach Rang — der „höchste Zustand“ ist der letzte:",
+    "  kein_objekt < archiviert < entwurf < eingerichtet < angehalten < aktiv",
+    "  · aktiv schlägt alles: der Standort wird mit der ERSTEN gestarteten Anlage aktiv (W7).",
+    "  · angehalten schlägt eingerichtet: die Standort-Funktion ist „angehalten, solange",
+    "    keine Anlage aktiv teilnimmt“ (A4) — eine angehaltene Anlage WAR gestartet, und",
+    "    „eingerichtet“ gilt nur, „solange keine Anlage gestartet ist“ (§4.3).",
+    "  · archiviert liegt UNTER entwurf: „ohne teilnehmende Anlage ist die Standort-Funktion",
+    "    archiviert“; wer danach eine Anlage neu aufnimmt, beginnt eine neue Einrichtung.",
+    "  · kein_objekt ist der Boden: keine Teilnahme ⇒ kein Objekt.",
+    "",
+    "═══ FAMILIE teilnahme — Steuern & Optimieren je ANLAGE ═══",
+    "",
+    "Reihenfolge der Zustandsregel (die erste, die greift, gilt):",
+    "  1. nicht aufgenommen                          → kein_objekt",
+    "  2. beendet_am gesetzt („Steuerung beenden“)   → archiviert",
+    "  3. gestartet_am gesetzt: Ruhe-Eintrag OHNE Ende → angehalten, sonst → aktiv",
+    "  4. nie gestartet: Prüfliste grün → eingerichtet, sonst → entwurf",
+    "Die Prüfliste zählt nur VOR dem Start und beim Fortsetzen. Nach dem Start ist ein",
+    "Box-Ausfall eine BEOBACHTUNG („steuert nicht — Box meldet sich nicht“), kein",
+    "Zustandswechsel (A12); ein Ruhe-Eintrag MIT Ende ist ein Handeingriff (S7), kein",
+    "Anhalten. Vor dem Start ist die Prüfliste LEBENDIG: fällt die Box weg, ist eine",
+    "eingerichtete Anlage wieder Entwurf — ein toter Knopf wird nicht angeboten (R2).",
+    "",
+    "DIE PRÜFLISTE — sechs Zeilen in dieser Reihenfolge (AP-01 §4.7/§5.3 Schritt 5):",
+    "  box → freigabe → verbindungstest → grenze → hauptzaehler → betriebsweise",
+    "  · box + hauptzaehler kommen aus EINEM Aufruf von liefertDatenAnlage (IP-3 von AP-00):",
+    "    eine stumme Box erklärt den stillen Zähler, die Zeile hauptzaehler ist dann",
+    "    null („nicht prüfbar“) und steht nicht in „es fehlt“.",
+    "  · verbindungstest und betriebsweise hängen an den FREIGEGEBENEN Komponenten; ohne",
+    "    Freigabe sind sie null — die fehlende Freigabe erklärt sie.",
+    "  · null heißt „nicht geprüft“, nie „bestanden“. Grün ist die Liste nur, wenn JEDE",
+    "    Zeile true ist.",
+    "  · Start und Fortsetzen prüfen DIESELBE Liste (E9: „ein Muster statt zwei“).",
+    "",
+    "„es fehlt“ nennt je roter Zeile, WAS fehlt (W3), mit dem Namen des Objekts —",
+    "„Noch nicht eingerichtet — es fehlt: Hauptzähler Halle 2“ (AP-00-Wortlaut).",
+    "",
+    "DIE NAHT ZU „steuert“: die Beobachtung wird mit ZustandAbleitung.steuert gebildet,",
+    "  funktion_gestartet = Zustand aktiv oder angehalten",
+    "  ruhe_eintrag       = Zustand angehalten",
+    "⚠ NICHT der rohe Ruhe-Eintrag: vor dem Start trägt jede Anlage die Ruhe R0 ohne Ende,",
+    "und der Kunde soll dort „noch nicht gestartet“ lesen, nicht „angehalten“. Der Fall",
+    "`a3-eingerichtet-ruhe-bis-zum-start` pinnt genau das.",
+    "",
+    "═══ FAMILIE standort — Steuern & Optimieren je STANDORT ═══",
+    "",
+    "Zustand = höchster Zustand seiner Teilnahmen (E6 = C, W7); kein Objekt, wenn keine.",
+    "`seit`: aktiv/eingerichtet → der FRÜHESTE (die erste gestartete Anlage);",
+    "angehalten/archiviert → der SPÄTESTE (erst mit der letzten ist der Standort dort).",
+    "",
+    "═══ FAMILIE messen — Messen & Auswerten je STANDORT ═══",
+    "",
+    "Messen kennt nur kein_objekt · entwurf · aktiv · archiviert: „eingerichtet“ geht",
+    "sofort in „aktiv“ über, und es wird nicht als Ganzes angehalten (§4.2/§4.3).",
+    "Grün (§4.1 „jede Prüfung bestanden“, §4.2, §5.2 Schritt 4, AP-04 E8):",
+    "  Standort eingerichtet · jede Box verbunden · jede Messstelle MIT Quelle liefert",
+    "  Daten · mindestens eine liefert oder ist manuell abgelesen · jede Anlage mit",
+    "  Netzanschluss hat GENAU EINEN Hauptzähler.",
+    "  Eine Messstelle OHNE Quelle blockiert nicht (AP-04 E8: eingerichtet und aktiv).",
+    "Einmal eingerichtet (eingerichtet_am gesetzt), bleibt Messen aktiv: ein späterer",
+    "Ausfall ist Beobachtung (Datenlage), kein Rückfall in den Entwurf (§5.4).",
+    "",
+    "═══ FAMILIE uebergaenge ═══",
+    "",
+    "Erlaubt/abgelehnt aus dem ABGELEITETEN Zustand (Start und Fortsetzen: die",
+    "Teilnahme wird vorher aus frischen Fakten neu abgeleitet — „prüft erneut in",
+    "derselben Transaktion“, IP-3). Je Anlage: aufnehmen · starten · anhalten ·",
+    "fortsetzen · beenden. Je Standort (alle passenden Teilnahmen): anhalten · fortsetzen",
+    "(GANZ ODER GAR NICHT: ist eine Prüfliste rot, wird keine fortgesetzt) · beenden.",
+    "Messen: einrichten; starten (startet von selbst), anhalten/fortsetzen (nicht als",
+    "Ganzes) und beenden (endet mit dem Archivieren des Standorts) werden abgelehnt.",
+    "",
+    "═══ FAMILIE bestand — der einmalige Umstieg (W5, A11) ═══",
+    "",
+    "Eine laufende Betriebsweise (Betriebsmodell „an“ ODER Eigenverbrauchs-Fahrplan des",
+    "scharfgeschalteten Speichers ODER freigegebene Komponente mit Steuerart/Regel) →",
+    "aktiv, „Gestartet am … (übernommen)“; Scharfschaltung ohne laufende Betriebsweise →",
+    "eingerichtet; sonst kein_objekt („Diese Anlage misst nur“). Die Ableitung ist",
+    "LESEND: sie schaltet nichts, sie legt keinen Ruhe-Eintrag an.",
+    "",
+    "ZEIT: Zeitpunkte reisen als Instant mit Zeitzonen-Versatz; das Datum im Kundensatz",
+    "steht in der Zeitzone des Standorts (`zeitzone`, Vorgabe Europe/Berlin). Ein",
+    "unbekanntes Datum lässt den Satz kürzer — es wird nie eines erfunden."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./funktion-zustand.schema.json",
+  "herkunft": "UEMS AP-01 §4.2–§4.7 (Entscheide E6 = C, E7, E8, E9; Auflösungen W3, W5, W7); Zustandsvokabular aus AP-00 IP-3 (uems-zustand-vectors.json).",
+  "zeitzone": "Europe/Berlin",
+  "familien": [
+    "teilnahme",
+    "standort",
+    "messen",
+    "uebergaenge",
+    "bestand"
+  ],
+  "abnahmefaelle": [
+    "A1",
+    "A3",
+    "A4",
+    "A5",
+    "A11",
+    "A12"
+  ],
+  "funktionen": {
+    "messen": "Messen & Auswerten",
+    "steuern": "Steuern & Optimieren"
+  },
+  "zustaende": [
+    "kein_objekt",
+    "archiviert",
+    "entwurf",
+    "eingerichtet",
+    "angehalten",
+    "aktiv"
+  ],
+  "zustaende_messen": [
+    "kein_objekt",
+    "entwurf",
+    "aktiv",
+    "archiviert"
+  ],
+  "pruefungen": [
+    "box",
+    "freigabe",
+    "verbindungstest",
+    "grenze",
+    "hauptzaehler",
+    "betriebsweise"
+  ],
+  "aktionen": [
+    "aufnehmen",
+    "einrichten",
+    "starten",
+    "anhalten",
+    "fortsetzen",
+    "beenden"
+  ],
+  "gruende": {
+    "nicht_aufgenommen": "Nimmt noch nicht an Steuern & Optimieren teil",
+    "bereits_aufgenommen": "Nimmt bereits an Steuern & Optimieren teil",
+    "pruefliste_offen": "Noch nicht möglich",
+    "noch_nicht_gestartet": "Steuerung noch nicht gestartet",
+    "laeuft_bereits": "Steuerung läuft bereits",
+    "ist_angehalten": "Steuerung angehalten — fortsetzen statt neu starten",
+    "bereits_angehalten": "Steuerung bereits angehalten",
+    "beendet": "Steuerung beendet — ein Neubeginn ist eine neue Einrichtung",
+    "bereits_angelegt": "Messen & Auswerten ist hier bereits angelegt",
+    "standort_archiviert": "Der Standort ist archiviert",
+    "startet_automatisch": "Messen & Auswerten startet mit der Einrichtung von selbst",
+    "nicht_als_ganzes": "Messen & Auswerten wird nicht als Ganzes angehalten — angehalten wird je Messstelle",
+    "nur_mit_dem_standort": "Messen & Auswerten endet mit dem Archivieren des Standorts"
+  },
+  "cases": [
+    {
+      "name": "kein-objekt-reine-messung",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Halle 2 am 20.10.2026: misst seit 01.10.2026, nimmt aber nicht teil (AP-00 AN-2 „steuert nicht (bis 01.12.2026)“). Keine Teilnahme ist KEIN Objekt — der Kunde liest den Leerzustand der Steuerung, die Prüfliste ist gar nicht gefragt. Der Ladepunkt ist „Nur messen“, also sagt die Beobachtung „nicht freigegeben“.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": false,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": false,
+            "verbindungstest_bestanden": false,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": false,
+        "ausfuehrung": {
+          "laeuft": false,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": false
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "seit": null,
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Diese Anlage misst nur",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "nicht_freigegeben",
+          "text": "Steuert nicht — nicht freigegeben"
+        }
+      }
+    },
+    {
+      "name": "entwurf-freigabe-fehlt-verdeckt-test-und-betriebsweise",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A1",
+      "why": "A1 Schritt 1 (Halle 2 aufgenommen, 01.12.2026 09:00): Box und Hauptzähler sind da, Freigabe und Grenze noch nicht. Ohne Freigabe sind Verbindungstest und Betriebsweise NICHT PRÜFBAR (null) — die fehlende Freigabe erklärt sie, „es fehlt“ nennt sie nicht doppelt.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": false,
+            "verbindungstest_bestanden": false,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": false,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T09:05:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": false
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": null
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": false
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": null
+          }
+        ],
+        "fehlt": [
+          "Steuer-Freigabe Halle 2",
+          "plausible Grenze Halle 2"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Steuer-Freigabe Halle 2 und plausible Grenze Halle 2",
+        "steuert": null
+      }
+    },
+    {
+      "name": "entwurf-hauptzaehler-halle-2",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Der Wortlaut des Fachmodells (AP-00 §4.3, AP-01 W3): „Noch nicht eingerichtet — es fehlt: Hauptzähler Halle 2“. Alles andere ist grün; ohne Hauptzähler gibt es keine Netzmessung und damit keine Netz-Regelung (§4.2).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": null,
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:00:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Hauptzähler Halle 2"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Hauptzähler Halle 2",
+        "steuert": null
+      }
+    },
+    {
+      "name": "entwurf-steuerart-fehlt",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "A3 vor Schritt 4: der Ladepunkt ist freigegeben und getestet, aber ohne Steuerart. Jeder freigegebene Verbraucher braucht seine Steuerart (§4.2 „Betriebsweise gewählt“, §5.3 Schritt 4).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:15:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": false
+          }
+        ],
+        "fehlt": [
+          "Steuerart Ladepunkt Parkplatz Halle 2"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Steuerart Ladepunkt Parkplatz Halle 2",
+        "steuert": null
+      }
+    },
+    {
+      "name": "entwurf-verbindungstest-offen",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Eine Freigabe zählt nur mit bestandenem Test (§4.2 „inkl. bestandenem Schalt-/Verbindungstest“); der Verbindungstest OCPP steht in der Prüfliste von §5.3 Schritt 5. Offen ⇒ rot, mit dem Namen der Komponente.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": false,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:10:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": false
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Verbindungstest Ladepunkt Parkplatz Halle 2"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Verbindungstest Ladepunkt Parkplatz Halle 2",
+        "steuert": null
+      }
+    },
+    {
+      "name": "a3-eingerichtet-ruhe-bis-zum-start",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A3",
+      "why": "⚠ A3: der Assistent wurde nach Schritt 4 geschlossen — alles grün, NICHT gestartet, die Anlage trägt die Ruhe R0 ohne Ende. Zustand „eingerichtet“ mit Datum. Und die Beobachtung sagt „noch nicht gestartet“, NICHT „angehalten“: an ZustandAbleitung.steuert geht ruhe_eintrag = (Zustand angehalten), nie der rohe Ruhe-Eintrag.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": false,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": false
+        },
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "seit": "2026-12-01T10:30:00+01:00",
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [],
+        "text": "Eingerichtet am 01.12.2026 — Steuerung noch nicht gestartet",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "funktion_nicht_gestartet",
+          "text": "Steuert nicht — noch nicht gestartet"
+        }
+      }
+    },
+    {
+      "name": "eingerichtet-ohne-bekanntes-datum",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Ist der Tag der Einrichtung nicht bekannt, bleibt der Satz kürzer — es wird kein Datum erfunden.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [],
+        "text": "Eingerichtet — Steuerung noch nicht gestartet",
+        "steuert": null
+      }
+    },
+    {
+      "name": "eingerichtet-faellt-zurueck-wenn-box-schweigt",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "R2: vor dem Start ist die Prüfliste lebendig. Schweigt die Box, ist Halle 2 wieder Entwurf — ein toter Knopf „Steuerung starten“ wird nicht angeboten. Der Hauptzähler ist dann NICHT PRÜFBAR (null): die stumme Box erklärt ihn (die Regel aus liefertDatenAnlage).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": false
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": null
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Verbindung Box Halle 2"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Verbindung Box Halle 2",
+        "steuert": null
+      }
+    },
+    {
+      "name": "a1-gestartet-wartet-auf-erste-bestaetigung",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A1",
+      "why": "A1: „Steuerung für Halle 2 starten“ um 11:00 hebt die Ruhe auf. Die Teilnahme ist aktiv — aber K-9 zeigt „Wird von VoltPilot gesteuert“ erst nach der ersten Box-Bestätigung; bis dahin sagt die Beobachtung genau das.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": "2026-12-01T11:00:00+01:00",
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": true,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": false
+        },
+        "jetzt": "2026-12-01T11:05:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-12-01T11:00:00+01:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 01.12.2026",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "box_bestaetigt_nicht",
+          "text": "Steuert nicht — Box bestätigt die Ausführung nicht"
+        }
+      }
+    },
+    {
+      "name": "a1-nach-der-ersten-bestaetigung",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A1",
+      "why": "A1: nach der ersten Box-Bestätigung „Wird von VoltPilot gesteuert“ — ohne Namenszusatz, weil der Report den nackten Satz zeigt.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": "2026-12-01T11:00:00+01:00",
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": true,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": true
+        },
+        "jetzt": "2026-12-01T11:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-12-01T11:00:00+01:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 01.12.2026",
+        "steuert": {
+          "zustand": "steuert",
+          "grund": null,
+          "text": "Wird von VoltPilot gesteuert"
+        }
+      }
+    },
+    {
+      "name": "a12-box-ausfall-ist-beobachtung",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A12",
+      "why": "A12: Box E-2 ohne Verbindung am 03.12.2026 ab 14:00. Die Teilnahme BLEIBT aktiv — nach dem Start ist die Prüfliste kein Zustands-Eingang mehr (leer), der Ausfall ist eine Beobachtung: „Steuert nicht — Box meldet sich nicht“.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": "2026-12-01T11:00:00+01:00",
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert_nicht_seit",
+          "seit": "2026-12-03T14:00:00+01:00"
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": true,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": false
+        },
+        "jetzt": "2026-12-03T15:00:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-12-01T11:00:00+01:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 01.12.2026",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "box_meldet_sich_nicht",
+          "text": "Steuert nicht — Box meldet sich nicht"
+        }
+      }
+    },
+    {
+      "name": "a4-angehalten",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A4",
+      "why": "A4: Ines Kaltenbach hält Halle 1 am 03.11.2026 um 14:10 an — ein Ruhe-Eintrag OHNE Ende an einer gestarteten Anlage. Alles bleibt (E8), die Prüfliste wird für das spätere Fortsetzen mitgeführt; die Beobachtung sagt „angehalten“ (der lauteste Grund des Zustandsvokabulars).",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "uebernommen": true,
+        "ruhe_eintrag": {
+          "seit": "2026-11-03T14:10:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": "Lastspitzenkappung",
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": false,
+          "laeuft_art": "betriebsmodell",
+          "laeuft_name": "Lastspitzenkappung",
+          "box_bestaetigt": false
+        },
+        "jetzt": "2026-11-03T14:15:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-11-03T14:10:00+01:00",
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [],
+        "text": "Angehalten seit 03.11.2026",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "angehalten",
+          "text": "Steuert nicht — angehalten"
+        }
+      }
+    },
+    {
+      "name": "a5-angehalten-pruefliste-gruen",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A5",
+      "why": "A5, 05.11.2026 08:00 vor dem Klick: die Prüfliste ist DIESELBE wie beim Start (E9 „ein Muster statt zwei“) — Box Halle 1 ✓, Freigabe Wechselrichter ✓, Grenze (Einspeisegrenze/Netzladen) ✓, Hauptzähler MS-01 ✓ und die bewahrte Betriebsmodell-Wahl ✓. Grün ⇒ „Fortsetzen“ ist erlaubt.",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "uebernommen": true,
+        "ruhe_eintrag": {
+          "seit": "2026-11-03T14:10:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": "Lastspitzenkappung",
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-11-05T08:00:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-11-03T14:10:00+01:00",
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [],
+        "text": "Angehalten seit 03.11.2026",
+        "steuert": null
+      }
+    },
+    {
+      "name": "angehalten-pruefliste-rot-bleibt-angehalten",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A5",
+      "why": "E8/E9: ist beim Fortsetzen etwas rot, BLEIBT die Anlage angehalten (kein Rückfall in den Entwurf — alles ist bewahrt); „es fehlt“ nennt den Grund. Der Zeitpunkt kommt aus zeitpunktText des Zustandsvokabulars (heute ⇒ nur die Uhrzeit).",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "uebernommen": true,
+        "ruhe_eintrag": {
+          "seit": "2026-11-03T14:10:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert_nicht_seit",
+          "seit": "2026-11-05T07:40:00+01:00"
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": "Lastspitzenkappung",
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-11-05T08:00:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-11-03T14:10:00+01:00",
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Daten Hauptzähler MS-01 seit 07:40 Uhr"
+        ],
+        "text": "Angehalten seit 03.11.2026",
+        "steuert": null
+      }
+    },
+    {
+      "name": "handeingriff-pause-mit-ende-ist-kein-anhalten",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "S7: „Automatik pausieren“ hat eine Pflicht-Dauer — ein Ruhe-Eintrag MIT Ende ist ein Handeingriff, kein Anhalten. Nur der Eintrag OHNE Ende (E7) macht eine gestartete Anlage „angehalten“.",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "uebernommen": true,
+        "ruhe_eintrag": {
+          "seit": "2026-10-20T10:00:00+02:00",
+          "ende": "2026-10-20T12:00:00+02:00"
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": "Lastspitzenkappung",
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 02.05.2024 (übernommen)",
+        "steuert": null
+      }
+    },
+    {
+      "name": "beendet-ist-archiviert",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "„Steuerung beenden“ (§4.3): Freigaben erlöschen, die Anlage misst weiter. Der Satz ist der Wortlaut der Zustandstabelle; die Beobachtung sagt „nicht freigegeben“, weil die Freigabe zeitgültig beendet ist.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": "2026-12-01T11:00:00+01:00",
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": "2027-03-31T16:00:00+02:00",
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": false,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": false,
+          "laeuft_art": null,
+          "laeuft_name": null,
+          "box_bestaetigt": false
+        },
+        "jetzt": "2027-03-31T16:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "archiviert",
+        "seit": "2027-03-31T16:00:00+02:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Steuerung beendet am 31.03.2027",
+        "steuert": {
+          "zustand": "steuert_nicht",
+          "grund": "nicht_freigegeben",
+          "text": "Steuert nicht — nicht freigegeben"
+        }
+      }
+    },
+    {
+      "name": "datum-in-der-zeitzone-des-standorts",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Das Datum steht in der Zeitzone des Standorts, nie in UTC: 30.11.2026 23:30 UTC ist in Ahrenberg schon der 01.12.2026.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": "2026-12-01T10:30:00+01:00",
+        "gestartet_am": "2026-11-30T23:30:00Z",
+        "uebernommen": false,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T00:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-11-30T23:30:00Z",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 01.12.2026",
+        "steuert": null
+      }
+    },
+    {
+      "name": "keine-box",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Gedankenexperiment Werk Lindach, noch ohne angemeldete Box: „es fehlt: Box Werk Lindach“. Der Hauptzähler ist nicht prüfbar (keine Box), und ohne Freigabe sind Test und Betriebsweise nicht gefragt.",
+      "input": {
+        "anlage": "Werk Lindach",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-11-20T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [],
+        "hauptzaehler": {
+          "kennzeichen": "MS-16",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [],
+        "betriebsmodell": null,
+        "grenze_plausibel": false,
+        "ausfuehrung": null,
+        "jetzt": "2026-11-20T09:05:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": false
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": false
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": null
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": false
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": null
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": null
+          }
+        ],
+        "fehlt": [
+          "Box Werk Lindach",
+          "Steuer-Freigabe Werk Lindach",
+          "plausible Grenze Werk Lindach"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Box Werk Lindach, Steuer-Freigabe Werk Lindach und plausible Grenze Werk Lindach",
+        "steuert": null
+      }
+    },
+    {
+      "name": "hauptzaehler-wartet-auf-erste-daten",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Der Hauptzähler ist zugeordnet, hat aber noch keinen guten Wert: er liefert nicht — rot, mit dem Wort des Zustandsvokabulars („wartet auf erste Daten“).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "wartet_auf_erste_daten",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "erste Daten Hauptzähler MS-10"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: erste Daten Hauptzähler MS-10",
+        "steuert": null
+      }
+    },
+    {
+      "name": "hauptzaehler-ohne-datenquelle-blockiert-die-steuerung",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "AP-04 E8 lässt eine Messstelle ohne Quelle eingerichtet und aktiv — für MESSEN. Steuern braucht die Netzmessung (§4.2 „ohne Netzmessung keine Netz-Regelung“): ein Hauptzähler ohne Datenquelle ist hier rot.",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "keine_datenquelle",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Datenquelle Hauptzähler MS-10"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Datenquelle Hauptzähler MS-10",
+        "steuert": null
+      }
+    },
+    {
+      "name": "hauptzaehler-liefert-nicht-seit-gestern",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Liegt der letzte gute Wert nicht mehr am heutigen Tag des Standorts, trägt der Zeitpunkt das Datum (zeitpunktText des Zustandsvokabulars, wiederverwendet).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert_nicht_seit",
+          "seit": "2026-11-30T23:50:00+01:00"
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T09:30:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Daten Hauptzähler MS-10 seit 30.11.2026 23:50 Uhr"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Daten Hauptzähler MS-10 seit 30.11.2026 23:50 Uhr",
+        "steuert": null
+      }
+    },
+    {
+      "name": "hauptzaehler-liefert-nicht-ohne-zeitpunkt",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Ein Hauptzähler, der nicht liefert, ohne bekannten Zeitpunkt: der Satz bleibt kurz, statt „jetzt“ zu behaupten (dieselbe Regel wie liefertDatenAnlage).",
+      "input": {
+        "anlage": "Halle 2",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2026-12-01T09:00:00+01:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-10",
+          "zustand": "liefert_nicht_seit",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Ladepunkt Parkplatz Halle 2",
+            "art": "verbraucher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": "Netzschonend laden"
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2026-12-01T10:45:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": false
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": true
+          }
+        ],
+        "fehlt": [
+          "Daten Hauptzähler MS-10"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Daten Hauptzähler MS-10",
+        "steuert": null
+      }
+    },
+    {
+      "name": "betriebsmodell-fehlt-beim-speicher",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "why": "Halle 1 nach „Steuerung beenden“ neu aufgenommen (Wiederbeleben = neue Einrichtung): der Wechselrichter ist freigegeben, aber für den Speicher ist kein Betriebsmodell gewählt (§4.2 „Betriebsmodell (bei Speicher)“).",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": null,
+        "uebernommen": false,
+        "ruhe_eintrag": {
+          "seit": "2027-04-01T09:00:00+02:00",
+          "ende": null
+        },
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": null,
+        "grenze_plausibel": true,
+        "ausfuehrung": null,
+        "jetzt": "2027-04-01T09:30:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "pruefliste": [
+          {
+            "pruefung": "box",
+            "bestanden": true
+          },
+          {
+            "pruefung": "freigabe",
+            "bestanden": true
+          },
+          {
+            "pruefung": "verbindungstest",
+            "bestanden": true
+          },
+          {
+            "pruefung": "grenze",
+            "bestanden": true
+          },
+          {
+            "pruefung": "hauptzaehler",
+            "bestanden": true
+          },
+          {
+            "pruefung": "betriebsweise",
+            "bestanden": false
+          }
+        ],
+        "fehlt": [
+          "Betriebsmodell Halle 1"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Betriebsmodell Halle 1",
+        "steuert": null
+      }
+    },
+    {
+      "name": "uebernommen-aktiv",
+      "familie": "teilnahme",
+      "ableitung": "anlage",
+      "abnahme": "A11",
+      "why": "A11 nach dem Backfill (IP-2): Halle 1 nimmt als übernommene Teilnahme teil — „gestartet am 02.05.2024 (übernommen)“ — und steuert mit Lastspitzenkappung.",
+      "input": {
+        "anlage": "Halle 1",
+        "aufgenommen": true,
+        "eingerichtet_am": null,
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "uebernommen": true,
+        "ruhe_eintrag": null,
+        "beendet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "kennzeichen": "MS-01",
+          "zustand": "liefert",
+          "seit": null
+        },
+        "komponenten": [
+          {
+            "name": "Hybrid-Wechselrichter 100 kW",
+            "art": "speicher",
+            "freigegeben": true,
+            "verbindungstest_bestanden": true,
+            "steuerart": null
+          }
+        ],
+        "betriebsmodell": "Lastspitzenkappung",
+        "grenze_plausibel": true,
+        "ausfuehrung": {
+          "laeuft": true,
+          "laeuft_art": "betriebsmodell",
+          "laeuft_name": "Lastspitzenkappung",
+          "box_bestaetigt": true
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "pruefliste": [],
+        "fehlt": [],
+        "text": "Gestartet am 02.05.2024 (übernommen)",
+        "steuert": {
+          "zustand": "steuert",
+          "grund": null,
+          "text": "Wird von VoltPilot gesteuert · Lastspitzenkappung"
+        }
+      }
+    },
+    {
+      "name": "keine-teilnahme-kein-objekt",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Kein Objekt, wenn keine Teilnahme: die Standort-Funktion entsteht erst mit der ersten aufgenommenen Anlage.",
+      "input": {
+        "teilnahmen": [],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "seit": null,
+        "text": "Steuern & Optimieren — noch nicht eingerichtet"
+      }
+    },
+    {
+      "name": "reine-messanlage-kein-objekt",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Werk Lindach misst nur (AP-00 AN-3): seine eine Anlage nimmt nicht teil ⇒ kein Objekt, die Karte bietet die Funktion an.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Werk Lindach",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "seit": null,
+        "text": "Steuern & Optimieren — noch nicht eingerichtet"
+      }
+    },
+    {
+      "name": "referenzfall-3-eine-steuert-eine-misst",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "W7 / Referenzfall 3 am 20.10.2026: Werk Ahrenberg ist aktiv, weil Halle 1 teilnimmt; Halle 2 misst. „Werk Ahrenberg mit Halle 1“ (Funktions-Karte, §5.1).",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": "2024-05-02T09:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 1"
+      }
+    },
+    {
+      "name": "a3-aktiv-schlaegt-eingerichtet",
+      "familie": "standort",
+      "ableitung": "standort",
+      "abnahme": "A3",
+      "why": "A3: Halle 2 ist eingerichtet, aber nicht gestartet — Halle 1 steuert unverändert weiter, die Standort-Funktion bleibt aktiv; nur die aktiven Anlagen stehen im Satz.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": "2024-05-02T09:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "eingerichtet",
+            "seit": "2026-12-01T10:30:00+01:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 1"
+      }
+    },
+    {
+      "name": "a1-zwei-anlagen-aktiv",
+      "familie": "standort",
+      "ableitung": "standort",
+      "abnahme": "A1",
+      "why": "A1: die Standort-Funktion läuft seit 02.05.2024 mit Halle 1 und bleibt aktiv, jetzt mit 2 Anlagen (E6 = C). `seit` ist die ERSTE gestartete Anlage.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": "2024-05-02T09:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "aktiv",
+            "seit": "2026-12-01T11:00:00+01:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 1 und Halle 2"
+      }
+    },
+    {
+      "name": "aktiv-seit-der-ersten-gestarteten",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "`seit` ist der FRÜHESTE Start, nicht der erste Listeneintrag; die Anlagen stehen in der Reihenfolge, in der sie kommen.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 2",
+            "zustand": "aktiv",
+            "seit": "2026-12-01T11:00:00+01:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": "2024-05-02T09:00:00+02:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 2 und Halle 1"
+      }
+    },
+    {
+      "name": "a4-angehalten-solange-keine-aktiv",
+      "familie": "standort",
+      "ableitung": "standort",
+      "abnahme": "A4",
+      "why": "A4: „die Standort-Funktion ist „angehalten“, solange keine Anlage aktiv teilnimmt“ — Halle 1 angehalten, Halle 2 misst.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": "2026-11-03T14:10:00+01:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-11-03T14:10:00+01:00",
+        "text": "Angehalten seit 03.11.2026"
+      }
+    },
+    {
+      "name": "angehalten-schlaegt-eingerichtet",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "⚠ Halle 1 angehalten, Halle 2 eingerichtet und nie gestartet: der Standort ist ANGEHALTEN, nicht eingerichtet. „eingerichtet“ gilt nur, „solange keine Anlage gestartet ist“ (§4.3) — Halle 1 war gestartet; und A4 sagt „angehalten, solange keine Anlage aktiv teilnimmt“.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": "2026-12-02T08:00:00+01:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "eingerichtet",
+            "seit": "2026-12-01T10:30:00+01:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-12-02T08:00:00+01:00",
+        "text": "Angehalten seit 02.12.2026"
+      }
+    },
+    {
+      "name": "angehalten-seit-der-zuletzt-angehaltenen",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Angehalten ist der Standort erst, seit die LETZTE aktive Anlage angehalten wurde — `seit` ist der späteste.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": "2026-12-02T08:00:00+01:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "angehalten",
+            "seit": "2026-12-03T09:30:00+01:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": "2026-12-03T09:30:00+01:00",
+        "text": "Angehalten seit 03.12.2026"
+      }
+    },
+    {
+      "name": "eingerichtet-solange-keine-gestartet",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Gedankenexperiment Werk Lindach nimmt Steuern auf: eingerichtet, noch nicht gestartet — der Wortlaut der Zustandstabelle §4.3 („Eingerichtet am 30.11.2026 — Steuerung noch nicht gestartet“).",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Werk Lindach",
+            "zustand": "eingerichtet",
+            "seit": "2026-11-30T15:00:00+01:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "seit": "2026-11-30T15:00:00+01:00",
+        "text": "Eingerichtet am 30.11.2026 — Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "eingerichtet-ohne-datum",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Ohne bekanntes Datum (z. B. aus dem Umstieg) bleibt der Satz kürzer.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Werk Lindach",
+            "zustand": "eingerichtet",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "seit": null,
+        "text": "Eingerichtet — Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "entwurf-nennt-was-fehlt",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "W3: „Entwurf“ zeigt immer, WAS fehlt — am Standort dieselbe Liste wie an der Anlage.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Werk Lindach",
+            "zustand": "entwurf",
+            "seit": null,
+            "fehlt": [
+              "Steuer-Freigabe Werk Lindach",
+              "plausible Grenze Werk Lindach"
+            ]
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "text": "Noch nicht eingerichtet — es fehlt: Steuer-Freigabe Werk Lindach und plausible Grenze Werk Lindach"
+      }
+    },
+    {
+      "name": "entwurf-zweier-anlagen",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Zwei Anlagen im Entwurf: ihre Listen stehen hintereinander, in der Reihenfolge der Anlagen — die Namen im Text machen jeden Punkt eindeutig.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "entwurf",
+            "seit": null,
+            "fehlt": [
+              "Betriebsmodell Halle 1"
+            ]
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "entwurf",
+            "seit": null,
+            "fehlt": [
+              "Verbindung Box Halle 2"
+            ]
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "text": "Noch nicht eingerichtet — es fehlt: Betriebsmodell Halle 1 und Verbindung Box Halle 2"
+      }
+    },
+    {
+      "name": "neue-aufnahme-nach-beenden-ist-entwurf",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "archiviert liegt UNTER entwurf: nach „Steuerung beenden“ für Halle 1 beginnt die Aufnahme von Halle 2 eine neue Einrichtung (§4.2 „Ein Wiederbeleben ist eine neue Einrichtung“).",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "archiviert",
+            "seit": "2027-03-31T16:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "entwurf",
+            "seit": null,
+            "fehlt": [
+              "Steuerart Ladepunkt Parkplatz Halle 2"
+            ]
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "text": "Noch nicht eingerichtet — es fehlt: Steuerart Ladepunkt Parkplatz Halle 2"
+      }
+    },
+    {
+      "name": "alle-beendet-archiviert",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "„Ohne teilnehmende Anlage ist die Standort-Funktion archiviert“ (§4.2) — seit der zuletzt beendeten.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "archiviert",
+            "seit": "2027-03-30T10:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "archiviert",
+            "seit": "2027-03-31T16:00:00+02:00",
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "archiviert",
+        "seit": "2027-03-31T16:00:00+02:00",
+        "text": "Steuerung beendet am 31.03.2027"
+      }
+    },
+    {
+      "name": "archiviert-schlaegt-kein-objekt",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Eine beendete Teilnahme ist mehr als keine: der Standort sagt „Steuerung beendet“, die andere Anlage misst.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "archiviert",
+            "seit": "2027-03-31T16:00:00+02:00",
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "archiviert",
+        "seit": "2027-03-31T16:00:00+02:00",
+        "text": "Steuerung beendet am 31.03.2027"
+      }
+    },
+    {
+      "name": "angehalten-ohne-datum",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Ohne bekanntes Datum bleibt auch „angehalten“ kürzer — nie ein erfundenes.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "angehalten",
+        "seit": null,
+        "text": "Angehalten"
+      }
+    },
+    {
+      "name": "archiviert-ohne-datum",
+      "familie": "standort",
+      "ableitung": "standort",
+      "why": "Ohne bekanntes Datum bleibt auch „beendet“ kürzer.",
+      "input": {
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "archiviert",
+            "seit": null,
+            "fehlt": []
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "archiviert",
+        "seit": null,
+        "text": "Steuerung beendet"
+      }
+    },
+    {
+      "name": "a11-messen-kein-objekt",
+      "familie": "messen",
+      "ableitung": "standort",
+      "abnahme": "A11",
+      "why": "A11: nach dem Umstieg ist „Messen & Auswerten“ für Werk Ahrenberg KEIN Objekt — die Karte bietet es an („noch nicht eingerichtet“, §4.3). Keine Datenlage: ohne Funktion wird nichts gezählt.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": false,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [],
+        "messstellen": [],
+        "anlagen": [],
+        "jetzt": "2026-09-30T12:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "seit": null,
+        "fehlt": [],
+        "text": "Messen & Auswerten — noch nicht eingerichtet",
+        "datenlage": null
+      }
+    },
+    {
+      "name": "standort-noch-ohne-messstelle",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§5.4 Leerzustand: „Werk Lindach ist angelegt — noch ohne Messstelle“. Es fehlt eine Messstelle mit Daten (§4.2 „mindestens eine“) und der Hauptzähler der Anlage mit Netzanschluss (AP-00 §4.5).",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 0
+          }
+        ],
+        "jetzt": "2026-10-15T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "Messstelle mit Daten",
+          "Hauptzähler Werk Lindach"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Messstelle mit Daten und Hauptzähler Werk Lindach",
+        "datenlage": "Noch keine Messstellen"
+      }
+    },
+    {
+      "name": "m4-ms12-wartet-haelt-den-entwurf",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§5.2 Schritt 4 / §5.4 Fehler (Mockup M4): „MS-12 wartet auf erste Daten“ ist eine rote Zeile, der Entwurf bleibt. Ausschnitt des §5.2-Beispiels: die Messanlage Halle 2 mit MS-10…MS-14 und Hauptzähler MS-10.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "erste Daten MS-12"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: erste Daten MS-12",
+        "datenlage": "4 von 5 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "eingerichtet-am-01-10-2026-ist-aktiv",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§5.2 Schritt 5: „Messen & Auswerten ist für Werk Ahrenberg eingerichtet und aktiv“ — die Standort-Karte zeigt „Eingerichtet am 01.10.2026“; Prüfliste „5 von 5 Messstellen liefern Daten“.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": "2026-10-01T10:30:00+02:00",
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T10:29:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T10:29:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T10:29:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T10:29:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T10:29:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:30:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-10-01T10:30:00+02:00",
+        "fehlt": [],
+        "text": "Eingerichtet am 01.10.2026",
+        "datenlage": "5 von 5 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "alles-gruen-geht-sofort-in-aktiv",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§4.3: bei Messen geht „eingerichtet“ SOFORT in „aktiv“ über — kein eigener Zwischenstand. Ist der Tag noch nicht festgehalten, heißt es nur „Eingerichtet“.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": null,
+        "fehlt": [],
+        "text": "Eingerichtet",
+        "datenlage": "5 von 5 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "box-ausfall-nach-der-einrichtung-ist-beobachtung",
+      "familie": "messen",
+      "ableitung": "standort",
+      "abnahme": "A12",
+      "why": "A12 / §5.4: Box E-2 ab 14:00 ohne Verbindung — MS-10…MS-14 „liefern keine Daten seit 14:00“, die Funktion bleibt aktiv. Einmal eingerichtet, ist ein Ausfall Datenlage, kein Rückfall in den Entwurf.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": "2026-10-01T10:30:00+02:00",
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-12-03T14:00:00+01:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-12-03T14:00:00+01:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-12-03T14:00:00+01:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-12-03T14:00:00+01:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-12-03T14:00:00+01:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-12-03T15:00:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-10-01T10:30:00+02:00",
+        "fehlt": [],
+        "text": "Eingerichtet am 01.10.2026",
+        "datenlage": "0 von 5 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "messstelle-ohne-quelle-blockiert-nicht",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "AP-04 E8: eine Messstelle OHNE Quelle ist eingerichtet und aktiv, zeigt aber nie eine 0 — sie hält die Einrichtung nicht auf. Sie steht im Nenner der Datenlage, nie im Zähler.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": null,
+        "fehlt": [],
+        "text": "Eingerichtet",
+        "datenlage": "4 von 5 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "nur-messstellen-ohne-quelle-reichen-nicht",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§4.2: mindestens EINE Messstelle muss Daten liefern (oder manuell abgelesen sein). Drei Messstellen ohne Quelle blockieren einzeln nicht — aber zusammen fehlt die eine mit Daten.",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-16",
+            "manuell": false,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-17",
+            "manuell": false,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-18",
+            "manuell": false,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-15T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "Messstelle mit Daten"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Messstelle mit Daten",
+        "datenlage": "0 von 3 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "manuell-abgelesen-in-der-datenlage",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "MS-21 Gas Heizung Verwaltung wird monatlich abgelesen (AP-00 §4.4): sie blockiert nichts und steht getrennt in der Datenlage — „· 1 manuell abgelesen“ (AP-01 §4.2).",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-21",
+            "manuell": true,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": null,
+        "fehlt": [],
+        "text": "Eingerichtet",
+        "datenlage": "5 von 5 Messstellen liefern Daten · 1 manuell abgelesen"
+      }
+    },
+    {
+      "name": "nur-manuell-abgelesen-reicht",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "Gedankenexperiment: Werk Ahrenberg misst zunächst nur das Gas der Verwaltung (MS-21, kein elektrisches System, also keine Anlage mit Netzanschluss). „oder als manuell abgelesen angelegt“ (§4.2) erfüllt das „mindestens eine“; die Datenlage zählt dann nur die Ablesung.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-21",
+            "manuell": true,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": null,
+        "fehlt": [],
+        "text": "Eingerichtet",
+        "datenlage": "1 manuell abgelesen"
+      }
+    },
+    {
+      "name": "standort-angaben-fehlen",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "AP-02 E8/E10: ein automatisch angelegter Standort bleibt Entwurf, bis die Adresse steht — und ohne eingerichteten Standort ist Messen nicht eingerichtet (§4.2).",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": false,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-16",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-17",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-18",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-15T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "Standort-Angaben Werk Lindach"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Standort-Angaben Werk Lindach",
+        "datenlage": "3 von 3 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "box-lindach-schweigt-im-entwurf",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "Vor der Einrichtung schweigt Box Lindach: die Prüfliste nennt die Box UND jede Messstelle, die deshalb nicht liefert (§5.2 Schritt 4 hat für beide eine Zeile). Der Zeitpunkt kommt aus liefertDaten des Zustandsvokabulars.",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": false
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-16",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:40:00+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-17",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:40:00+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-18",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:40:00+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-15T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "Verbindung Box Lindach",
+          "Daten MS-16 seit 09:40 Uhr",
+          "Daten MS-17 seit 09:40 Uhr",
+          "Daten MS-18 seit 09:40 Uhr"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: Verbindung Box Lindach, Daten MS-16 seit 09:40 Uhr, Daten MS-17 seit 09:40 Uhr und Daten MS-18 seit 09:40 Uhr",
+        "datenlage": "0 von 3 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "hauptzaehler-nicht-eindeutig",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "AP-00 §4.5: GENAU EIN Hauptzähler je Anlage mit Netzanschluss — zwei sind so falsch wie keiner.",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-16",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-17",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-18",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 2
+          }
+        ],
+        "jetzt": "2026-10-15T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "entwurf",
+        "seit": null,
+        "fehlt": [
+          "eindeutiger Hauptzähler Werk Lindach"
+        ],
+        "text": "Noch nicht eingerichtet — es fehlt: eindeutiger Hauptzähler Werk Lindach",
+        "datenlage": "3 von 3 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "archiviert-mit-dem-standort",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "§4.2: Messen & Auswerten wird „mit dem Archivieren des Standorts“ archiviert (AP-02); Historie und alte Berichte bleiben lesbar, eine Datenlage gibt es nicht mehr. Das Datum ist illustrativ.",
+      "input": {
+        "standort": "Werk Lindach",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": "2027-03-31T16:00:00+02:00",
+        "eingerichtet_am": "2026-10-15T10:30:00+02:00",
+        "boxen": [
+          {
+            "name": "Box Lindach",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-16",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-17",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-18",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-15T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "anlagen": [
+          {
+            "name": "Werk Lindach",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2027-03-31T16:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "archiviert",
+        "seit": "2027-03-31T16:00:00+02:00",
+        "fehlt": [],
+        "text": "Archiviert am 31.03.2027",
+        "datenlage": null
+      }
+    },
+    {
+      "name": "aufnehmen-aus-kein-objekt",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "abnahme": "A1",
+      "why": "A1 Schritt 1 / §4.3 „— → Entwurf“: „Halle 2 aufnehmen“ legt NUR die Teilnahme an — keine Freigabe, kein Betriebsmodell (R1).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "aufnehmen",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "kein_objekt",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "entwurf",
+        "betroffen": [
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "aufnehmen-nach-beenden-ist-neue-einrichtung",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "§4.2: „Ein Wiederbeleben ist eine neue Einrichtung“ — nach „Steuerung beenden“ beginnt Aufnehmen wieder beim Entwurf.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "aufnehmen",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "archiviert",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "entwurf",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "aufnehmen-bereits-aufgenommen",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Eine Anlage nimmt höchstens einmal teil; eine offene Einrichtung wird fortgesetzt, nicht neu angelegt.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "aufnehmen",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "entwurf",
+          "seit": null,
+          "fehlt": [
+            "Steuerart Ladepunkt Parkplatz Halle 2"
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "bereits_aufgenommen",
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": "Nimmt bereits an Steuern & Optimieren teil"
+      }
+    },
+    {
+      "name": "starten-a1",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "abnahme": "A1",
+      "why": "A1 Schritt 6: „Steuerung für Halle 2 starten“ — der EINE Klick, erlaubt nur aus „eingerichtet“ (Prüfliste grün, eben neu abgeleitet).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "eingerichtet",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "aktiv",
+        "betroffen": [
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "starten-toter-knopf-box-weg",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "§5.4 Fehler: „Start-Klick bei zwischenzeitlich getrennter Box: 409 mit Grund, Prüfliste erneut.“ Die frisch abgeleitete Teilnahme ist Entwurf — abgelehnt, mit dem, was fehlt (R2).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "entwurf",
+          "seit": null,
+          "fehlt": [
+            "Verbindung Box Halle 2"
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "pruefliste_offen",
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": "Noch nicht möglich — es fehlt: Verbindung Box Halle 2"
+      }
+    },
+    {
+      "name": "starten-ohne-teilnahme",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Eine reine Messanlage kann nicht gestartet werden — erst aufnehmen und einrichten.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "kein_objekt",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_aufgenommen",
+        "nachher": "kein_objekt",
+        "betroffen": [],
+        "text": "Nimmt noch nicht an Steuern & Optimieren teil"
+      }
+    },
+    {
+      "name": "starten-laeuft-bereits",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Ein zweiter Start ändert nichts — die Steuerung läuft.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "aktiv",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "laeuft_bereits",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Steuerung läuft bereits"
+      }
+    },
+    {
+      "name": "starten-angehalten-heisst-fortsetzen",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Eine angehaltene Anlage wird FORTGESETZT (E9), nicht neu gestartet — derselbe Weg, aber das eigene Wort.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "angehalten",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "ist_angehalten",
+        "nachher": "angehalten",
+        "betroffen": [],
+        "text": "Steuerung angehalten — fortsetzen statt neu starten"
+      }
+    },
+    {
+      "name": "starten-beendet",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Nach „Steuerung beenden“ gibt es keinen Start mehr — nur eine neue Aufnahme.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "starten",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "archiviert",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "beendet",
+        "nachher": "archiviert",
+        "betroffen": [],
+        "text": "Steuerung beendet — ein Neubeginn ist eine neue Einrichtung"
+      }
+    },
+    {
+      "name": "anhalten-a4",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "abnahme": "A4",
+      "why": "A4: „Steuerung anhalten“ je Anlage (Zone Jetzt) — aus aktiv wird angehalten; alles bleibt gespeichert (E8).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "aktiv",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "angehalten",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "anhalten-vor-dem-start",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Vor dem Start ist die Anlage schon in Ruhe (R0) — anzuhalten gibt es nichts.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "eingerichtet",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "noch_nicht_gestartet",
+        "nachher": "eingerichtet",
+        "betroffen": [],
+        "text": "Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "anhalten-bereits-angehalten",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Zweimal anhalten ist einmal anhalten.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "angehalten",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "bereits_angehalten",
+        "nachher": "angehalten",
+        "betroffen": [],
+        "text": "Steuerung bereits angehalten"
+      }
+    },
+    {
+      "name": "anhalten-ohne-teilnahme",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Eine reine Messanlage hat keine Steuerung, die man anhalten könnte.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "kein_objekt",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_aufgenommen",
+        "nachher": "kein_objekt",
+        "betroffen": [],
+        "text": "Nimmt noch nicht an Steuern & Optimieren teil"
+      }
+    },
+    {
+      "name": "fortsetzen-a5",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "abnahme": "A5",
+      "why": "A5: „Steuerung fortsetzen“ nach grüner Prüfliste — aus angehalten wird aktiv, mit dem nächsten Fahrplan.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "angehalten",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "aktiv",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "fortsetzen-a5-pruefliste-rot",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "abnahme": "A5",
+      "why": "E9: Fortsetzen prüft erneut; ist etwas rot, wird abgelehnt — „Fehler werden vor dem ersten Kommando sichtbar“. Die Anlage bleibt angehalten.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "angehalten",
+          "seit": null,
+          "fehlt": [
+            "Daten Hauptzähler MS-01 seit 07:40 Uhr"
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "pruefliste_offen",
+        "nachher": "angehalten",
+        "betroffen": [],
+        "text": "Noch nicht möglich — es fehlt: Daten Hauptzähler MS-01 seit 07:40 Uhr"
+      }
+    },
+    {
+      "name": "fortsetzen-laeuft-bereits",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Fortsetzen einer laufenden Steuerung ändert nichts.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "aktiv",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "laeuft_bereits",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Steuerung läuft bereits"
+      }
+    },
+    {
+      "name": "fortsetzen-vor-dem-start",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Wer nie gestartet hat, setzt nicht fort — er startet.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "eingerichtet",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "noch_nicht_gestartet",
+        "nachher": "eingerichtet",
+        "betroffen": [],
+        "text": "Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "beenden-aus-aktiv",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "§4.3 „aktiv/angehalten → archiviert“: „Steuerung beenden“ — Freigaben erlöschen zeitgültig, die Anlage misst weiter.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "aktiv",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "archiviert",
+        "betroffen": [
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "beenden-aus-angehalten",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Auch aus „angehalten“ darf beendet werden (§4.3).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "angehalten",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "archiviert",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "beenden-vor-dem-start-abgelehnt",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "⚠ Die Übergangstabelle §4.3 kennt nur „aktiv/angehalten → archiviert“. Ein Entwurf „darf beliebig lange offen bleiben“; ihn zu verwerfen ist im Konzept nicht entschieden — also abgelehnt, statt einen Weg zu erfinden (im PR benannt).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahme": {
+          "anlage": "Halle 2",
+          "zustand": "entwurf",
+          "seit": null,
+          "fehlt": [
+            "Steuerart Ladepunkt Parkplatz Halle 2"
+          ]
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "noch_nicht_gestartet",
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": "Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "beenden-bereits-beendet",
+      "familie": "uebergaenge",
+      "ableitung": "anlage",
+      "why": "Was beendet ist, ist beendet.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahme": {
+          "anlage": "Halle 1",
+          "zustand": "archiviert",
+          "seit": null,
+          "fehlt": []
+        }
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "beendet",
+        "nachher": "archiviert",
+        "betroffen": [],
+        "text": "Steuerung beendet — ein Neubeginn ist eine neue Einrichtung"
+      }
+    },
+    {
+      "name": "standort-anhalten-a4",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "abnahme": "A4",
+      "why": "A4: „Standort anhalten“ auf der Funktions-Karte hält alle TEILNEHMENDEN Anlagen an — hier nur Halle 1; Halle 2 misst und bleibt unberührt.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "angehalten",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-anhalten-alle-teilnehmenden",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Nach dem 01.12.2026 nehmen beide Hallen teil — „Standort anhalten“ hält beide zugleich an (W7).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "angehalten",
+        "betroffen": [
+          "Halle 1",
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-anhalten-laesst-eingerichtete-in-ruhe",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Eine eingerichtete, nie gestartete Anlage ist schon in Ruhe — sie ist nicht betroffen. Danach ist der Standort angehalten (angehalten schlägt eingerichtet).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "eingerichtet",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "angehalten",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-anhalten-nichts-laeuft",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Läuft an keiner Anlage etwas, wird abgelehnt — mit dem Grund, den die Anlage im Zustand des STANDORTS bekäme (hier: bereits angehalten).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "anhalten",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "bereits_angehalten",
+        "nachher": "angehalten",
+        "betroffen": [],
+        "text": "Steuerung bereits angehalten"
+      }
+    },
+    {
+      "name": "standort-fortsetzen-alles-gruen",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "„Standort fortsetzen“: jede angehaltene Anlage mit grüner Prüfliste läuft wieder — der Standort ist aktiv.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "aktiv",
+        "betroffen": [
+          "Halle 1",
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-fortsetzen-ganz-oder-gar-nicht",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "⚠ Ist die Prüfliste EINER angehaltenen Anlage rot, wird KEINE fortgesetzt: IP-3 prüft die Liste „in derselben Transaktion“, und E9 will Fehler vor dem ersten Kommando sehen. Halle 1 wird dann einzeln fortgesetzt (Zone Jetzt).",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": [
+              "Verbindung Box Halle 2"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "pruefliste_offen",
+        "nachher": "angehalten",
+        "betroffen": [],
+        "text": "Noch nicht möglich — es fehlt: Verbindung Box Halle 2"
+      }
+    },
+    {
+      "name": "standort-fortsetzen-nichts-angehalten",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Ist keine Anlage angehalten, gibt es nichts fortzusetzen — der Standort läuft.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "fortsetzen",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "laeuft_bereits",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Steuerung läuft bereits"
+      }
+    },
+    {
+      "name": "standort-beenden",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "„Steuerung beenden“ für den Standort: alle gestarteten Teilnahmen enden; ohne teilnehmende Anlage ist die Standort-Funktion archiviert.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "angehalten",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "archiviert",
+        "betroffen": [
+          "Halle 1",
+          "Halle 2"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-beenden-entwurf-bleibt",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Ein offener Entwurf ist nicht gestartet und wird nicht beendet (§4.3); er hält die Standort-Funktion am Leben — sie ist danach Entwurf, nicht archiviert.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahmen": [
+          {
+            "anlage": "Halle 1",
+            "zustand": "aktiv",
+            "seit": null,
+            "fehlt": []
+          },
+          {
+            "anlage": "Halle 2",
+            "zustand": "entwurf",
+            "seit": null,
+            "fehlt": [
+              "Steuerart Ladepunkt Parkplatz Halle 2"
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "entwurf",
+        "betroffen": [
+          "Halle 1"
+        ],
+        "text": null
+      }
+    },
+    {
+      "name": "standort-beenden-ohne-teilnahme",
+      "familie": "uebergaenge",
+      "ableitung": "standort",
+      "why": "Ein Standort ohne Teilnahme hat nichts zu beenden.",
+      "input": {
+        "funktion": "steuern",
+        "aktion": "beenden",
+        "teilnahmen": [
+          {
+            "anlage": "Werk Lindach",
+            "zustand": "kein_objekt",
+            "seit": null,
+            "fehlt": []
+          }
+        ]
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_aufgenommen",
+        "nachher": "kein_objekt",
+        "betroffen": [],
+        "text": "Nimmt noch nicht an Steuern & Optimieren teil"
+      }
+    },
+    {
+      "name": "messen-einrichten",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "§4.3 „— → Entwurf“: „Einrichten“ für einen Standort legt das Funktionsobjekt an.",
+      "input": {
+        "funktion": "messen",
+        "aktion": "einrichten",
+        "zustand": "kein_objekt"
+      },
+      "expected": {
+        "erlaubt": true,
+        "grund": null,
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": null
+      }
+    },
+    {
+      "name": "messen-einrichten-bereits-angelegt",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "Je Standort gibt es genau eine Funktion „Messen & Auswerten“ (E6 = C).",
+      "input": {
+        "funktion": "messen",
+        "aktion": "einrichten",
+        "zustand": "aktiv"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "bereits_angelegt",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Messen & Auswerten ist hier bereits angelegt"
+      }
+    },
+    {
+      "name": "messen-einrichten-entwurf-ist-angelegt",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "Ein Entwurf ist schon angelegt — er wird fortgesetzt („Einrichtung fortsetzen“), nicht zum zweiten Mal angelegt.",
+      "input": {
+        "funktion": "messen",
+        "aktion": "einrichten",
+        "zustand": "entwurf"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "bereits_angelegt",
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": "Messen & Auswerten ist hier bereits angelegt"
+      }
+    },
+    {
+      "name": "messen-einrichten-standort-archiviert",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "Ein archivierter Standort misst nicht mehr; ihn wieder zu beleben ist Sache des Standorts (AP-02).",
+      "input": {
+        "funktion": "messen",
+        "aktion": "einrichten",
+        "zustand": "archiviert"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "standort_archiviert",
+        "nachher": "archiviert",
+        "betroffen": [],
+        "text": "Der Standort ist archiviert"
+      }
+    },
+    {
+      "name": "messen-starten-automatisch",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "§5.2 Schritt 5: „Kein Start-Knopf: Messen wird mit der Einrichtung automatisch aktiv.“",
+      "input": {
+        "funktion": "messen",
+        "aktion": "starten",
+        "zustand": "entwurf"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "startet_automatisch",
+        "nachher": "entwurf",
+        "betroffen": [],
+        "text": "Messen & Auswerten startet mit der Einrichtung von selbst"
+      }
+    },
+    {
+      "name": "messen-anhalten-nicht-als-ganzes",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "§4.2: „„Messen & Auswerten anhalten“ gibt es NICHT als Ganzes — angehalten wird je Messstelle (Umbau).“",
+      "input": {
+        "funktion": "messen",
+        "aktion": "anhalten",
+        "zustand": "aktiv"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_als_ganzes",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Messen & Auswerten wird nicht als Ganzes angehalten — angehalten wird je Messstelle"
+      }
+    },
+    {
+      "name": "messen-fortsetzen-nicht-als-ganzes",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "Was nicht als Ganzes angehalten wird, wird auch nicht als Ganzes fortgesetzt.",
+      "input": {
+        "funktion": "messen",
+        "aktion": "fortsetzen",
+        "zustand": "aktiv"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nicht_als_ganzes",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Messen & Auswerten wird nicht als Ganzes angehalten — angehalten wird je Messstelle"
+      }
+    },
+    {
+      "name": "messen-beenden-nur-mit-dem-standort",
+      "familie": "uebergaenge",
+      "ableitung": "messen",
+      "why": "§4.2: archiviert wird Messen „mit dem Archivieren des Standorts (AP-02)“ — es gibt kein eigenes Beenden.",
+      "input": {
+        "funktion": "messen",
+        "aktion": "beenden",
+        "zustand": "aktiv"
+      },
+      "expected": {
+        "erlaubt": false,
+        "grund": "nur_mit_dem_standort",
+        "nachher": "aktiv",
+        "betroffen": [],
+        "text": "Messen & Auswerten endet mit dem Archivieren des Standorts"
+      }
+    },
+    {
+      "name": "a11-betriebsmodell-an-ist-aktiv",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "abnahme": "A11",
+      "why": "A11 / W5: AN-1 mit Betriebsmodell „an“ (Lastspitzenkappung seit 02.05.2024) und freigegebenem Wechselrichter wird als AKTIV übernommen — „gestartet am 02.05.2024 (übernommen)“. Nichts wird geschaltet: die Ableitung ist lesend.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 1",
+          "betriebsmodell_an": true,
+          "betriebsmodell_seit": "2024-05-02T09:00:00+02:00",
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": true
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "text": "Gestartet am 02.05.2024 (übernommen)"
+      }
+    },
+    {
+      "name": "steuerart-an-freigegebener-komponente-ist-aktiv",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "§4.3 Umstieg: „freigegebene Komponente mit Steuerart/Regel → Teilnahme aktiv“. Gedankenexperiment: der Umstieg käme nach dem 01.12.2026 — Ladepunkt K-9 „Netzschonend laden“.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 2",
+          "betriebsmodell_an": false,
+          "betriebsmodell_seit": null,
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": true,
+          "steuerart_seit": "2026-12-01T11:00:00+01:00",
+          "scharfschaltung": false
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "gestartet_am": "2026-12-01T11:00:00+01:00",
+        "text": "Gestartet am 01.12.2026 (übernommen)"
+      }
+    },
+    {
+      "name": "eigenverbrauchs-fahrplan-laeuft-ist-aktiv",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "⚠ Die Umstiegs-Regel nennt „Betriebsmodell „an““ und „Steuerart/Regel“ — aber ohne Betriebsmodell fährt ein scharfgeschalteter Speicher den Eigenverbrauchs-Fahrplan (Grundmodus, „Speicher-Fahrplan“ in §4.2, betriebsmodelle.ts GRUNDMODUS_SATZ). Das IST eine laufende Betriebsweise: VoltPilot steuert. „eingerichtet — noch nicht gestartet“ wäre falsch, und die Ruhe R0 schaltete ihn ab — gegen W5. Also aktiv (im PR benannt). Halle 1 zwischen 12.03.2024 und 02.05.2024.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 1",
+          "betriebsmodell_an": false,
+          "betriebsmodell_seit": null,
+          "eigenverbrauch_laeuft": true,
+          "eigenverbrauch_seit": "2024-03-12T10:00:00+01:00",
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": true
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "gestartet_am": "2024-03-12T10:00:00+01:00",
+        "text": "Gestartet am 12.03.2024 (übernommen)"
+      }
+    },
+    {
+      "name": "scharf-ohne-laufende-betriebsweise-ist-eingerichtet",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "§4.3 Umstieg: „Steuer-Scharfschaltung ohne laufende Betriebsweise → eingerichtet“ — Gedankenexperiment: Wechselrichter scharfgeschaltet, Speicher noch nicht angeschlossen, also kein Fahrplan.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 1",
+          "betriebsmodell_an": false,
+          "betriebsmodell_seit": null,
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": true
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "gestartet_am": null,
+        "text": "Eingerichtet — Steuerung noch nicht gestartet"
+      }
+    },
+    {
+      "name": "keine-steuerung-ist-reine-messung",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "§4.3 Umstieg: „keine Steuerung → keine Teilnahme („reine Messung“)“ — Halle 2 am 01.10.2026. Wörtlich: auch eine Freigabe ohne Steuerart/Regel und ohne Scharfschaltung steuert nichts (W1) — der Assistent übernimmt sie später.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 2",
+          "betriebsmodell_an": false,
+          "betriebsmodell_seit": null,
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": false
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "gestartet_am": null,
+        "text": "Diese Anlage misst nur"
+      }
+    },
+    {
+      "name": "fruehester-beginn-gilt",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "Laufen mehrere Betriebsweisen, ist die Anlage seit der FRÜHESTEN dabei.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 1",
+          "betriebsmodell_an": true,
+          "betriebsmodell_seit": "2024-05-02T09:00:00+02:00",
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": true,
+          "steuerart_seit": "2026-12-01T11:00:00+01:00",
+          "scharfschaltung": true
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "gestartet_am": "2024-05-02T09:00:00+02:00",
+        "text": "Gestartet am 02.05.2024 (übernommen)"
+      }
+    },
+    {
+      "name": "beginn-unbekannt",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "Ist der Beginn im Bestand nicht bekannt, wird kein Datum erfunden — die Anlage ist trotzdem aktiv.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 1",
+          "betriebsmodell_an": true,
+          "betriebsmodell_seit": null,
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": true
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "gestartet_am": null,
+        "text": "Gestartet (übernommen)"
+      }
+    },
+    {
+      "name": "abgeschaltete-betriebsweise-zaehlt-nicht",
+      "familie": "bestand",
+      "ableitung": "anlage",
+      "why": "Ein Seit-Datum ohne laufende Betriebsweise (Betriebsmodell „aus“) zählt nicht — nur was LÄUFT, macht die Anlage aktiv.",
+      "input": {
+        "anlage": {
+          "anlage": "Halle 2",
+          "betriebsmodell_an": false,
+          "betriebsmodell_seit": "2024-05-02T09:00:00+02:00",
+          "eigenverbrauch_laeuft": false,
+          "eigenverbrauch_seit": null,
+          "steuerart_oder_regel_aktiv": false,
+          "steuerart_seit": null,
+          "scharfschaltung": false
+        },
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "gestartet_am": null,
+        "text": "Diese Anlage misst nur"
+      }
+    },
+    {
+      "name": "a11-standort-aus-halle-1",
+      "familie": "bestand",
+      "ableitung": "standort",
+      "abnahme": "A11",
+      "why": "A11: der Standort Werk Ahrenberg (aus AN-1 angelegt) übernimmt den höchsten Zustand seiner Anlagen — Funktion steuern = aktiv.",
+      "input": {
+        "anlagen": [
+          {
+            "anlage": "Halle 1",
+            "betriebsmodell_an": true,
+            "betriebsmodell_seit": "2024-05-02T09:00:00+02:00",
+            "eigenverbrauch_laeuft": false,
+            "eigenverbrauch_seit": null,
+            "steuerart_oder_regel_aktiv": false,
+            "steuerart_seit": null,
+            "scharfschaltung": true
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 1"
+      }
+    },
+    {
+      "name": "referenzfall-3-beim-umstieg",
+      "familie": "bestand",
+      "ableitung": "standort",
+      "why": "W7 / Referenzfall 3 beim Umstieg: Halle 1 aktiv, Halle 2 reine Messung ⇒ der Standort ist aktiv mit Halle 1.",
+      "input": {
+        "anlagen": [
+          {
+            "anlage": "Halle 1",
+            "betriebsmodell_an": true,
+            "betriebsmodell_seit": "2024-05-02T09:00:00+02:00",
+            "eigenverbrauch_laeuft": false,
+            "eigenverbrauch_seit": null,
+            "steuerart_oder_regel_aktiv": false,
+            "steuerart_seit": null,
+            "scharfschaltung": true
+          },
+          {
+            "anlage": "Halle 2",
+            "betriebsmodell_an": false,
+            "betriebsmodell_seit": null,
+            "eigenverbrauch_laeuft": false,
+            "eigenverbrauch_seit": null,
+            "steuerart_oder_regel_aktiv": false,
+            "steuerart_seit": null,
+            "scharfschaltung": false
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2024-05-02T09:00:00+02:00",
+        "text": "Läuft mit Halle 1"
+      }
+    },
+    {
+      "name": "reine-messung-beim-umstieg",
+      "familie": "bestand",
+      "ableitung": "standort",
+      "why": "Werk Lindach misst nur: keine Teilnahme ⇒ die Standort-Funktion ist kein Objekt.",
+      "input": {
+        "anlagen": [
+          {
+            "anlage": "Werk Lindach",
+            "betriebsmodell_an": false,
+            "betriebsmodell_seit": null,
+            "eigenverbrauch_laeuft": false,
+            "eigenverbrauch_seit": null,
+            "steuerart_oder_regel_aktiv": false,
+            "steuerart_seit": null,
+            "scharfschaltung": false
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "kein_objekt",
+        "seit": null,
+        "text": "Steuern & Optimieren — noch nicht eingerichtet"
+      }
+    },
+    {
+      "name": "eingerichtet-beim-umstieg",
+      "familie": "bestand",
+      "ableitung": "standort",
+      "why": "Nur eine Scharfschaltung ohne laufende Betriebsweise ⇒ der Standort ist eingerichtet, ohne Datum (der Bestand kennt keines).",
+      "input": {
+        "anlagen": [
+          {
+            "anlage": "Halle 1",
+            "betriebsmodell_an": false,
+            "betriebsmodell_seit": null,
+            "eigenverbrauch_laeuft": false,
+            "eigenverbrauch_seit": null,
+            "steuerart_oder_regel_aktiv": false,
+            "steuerart_seit": null,
+            "scharfschaltung": true
+          }
+        ],
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "eingerichtet",
+        "seit": null,
+        "text": "Eingerichtet — Steuerung noch nicht gestartet"
+      }
+    }
+  ]
+}

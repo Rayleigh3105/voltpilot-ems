@@ -534,8 +534,11 @@ public final class ZustandAbleitung {
                 "%02d.%02d.%04d %s", s.getDayOfMonth(), s.getMonthValue(), s.getYear(), uhr);
     }
 
-    /** „a“ · „a und b“ · „a, b und c“ — eine deutsche Aufzählung. */
-    private static String aufzaehlung(List<String> worte) {
+    /**
+     * „a“ · „a und b“ · „a, b und c“ — eine deutsche Aufzählung. Paket-sichtbar, damit
+     * {@link FunktionZustandAbleitung} dieselbe benutzt.
+     */
+    static String aufzaehlung(List<String> worte) {
         if (worte.size() == 1) {
             return worte.get(0);
         }
