@@ -179,6 +179,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [UEMS-Rechte-Matrix als Daten und Rechte-Vertrag mit Vektoren](root/uems-rechte-matrix-als-daten-und-rechte-v.md)
 - [UEMS-Messstellen-Tabellen: Messstelle, Nebengröße, Kennzeichen-Belegung, Zähler, Änderungsprotokoll](root/uems-messstellen-tabellen-messstelle-ne.md)
 - [UEMS-Orte-Tabellen: Gebäude, Bereich, Ort-Zuordnung, Bezugsfläche](root/uems-orte-tabellen-gebaeude-bereich-ort.md)
+- [UEMS-Datenquellen-Tabellen: Datenquelle, zeitgültige Zuständigkeit je Box, führende Box](root/uems-datenquellen-tabellen-datenquelle-z.md)
 - [Verbrauchsmanagement v1 — Paket 1: die Verbraucher-Zone LESEND](root/verbrauchsmanagement-v1-paket-1-die-verb.md)
 - [Verbrauchsmanagement v1 — Paket 2: die Steuerart SCHREIBEN](root/verbrauchsmanagement-v1-paket-2-die-steu.md)
 - [Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts](root/verbrauchsmanagement-v1-paket-3b-laden-p.md)

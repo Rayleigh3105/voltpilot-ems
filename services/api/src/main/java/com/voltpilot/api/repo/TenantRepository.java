@@ -121,14 +121,24 @@ public class TenantRepository {
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
-                // V20260911140000) references tenant/site/standort/ort with ON DELETE
-                // RESTRICT - never a cascade. Offboarding is the ONE way a company
-                // ends, so it removes them explicitly, children first: a Messstelle
-                // before the Orte it will point to, floor areas and parent intervals
-                // before the buildings/areas they point at, those before the Standort.
-                // The append-only logs ort_aenderung and messstelle_aenderung carry no
-                // FK and stay (the component_change_event pattern).
+                // V20260911140000, V20260911150000) references tenant/site/standort/ort
+                // with ON DELETE RESTRICT - never a cascade. Offboarding is the ONE way a
+                // company ends, so it removes them explicitly, children first: a
+                // Messstelle before the Orte it will point to, floor areas and parent
+                // intervals before the buildings/areas they point at, those before the
+                // Standort; the Zustaendigkeiten before their Datenquelle. The
+                // append-only logs ort_aenderung and messstelle_aenderung carry no FK and
+                // stay (the component_change_event pattern). The components go with the
+                // tenant cascade below, but their data_source_id is RESTRICT too: they
+                // let go of their source first.
+                try (java.sql.PreparedStatement st = con.prepareStatement(
+                        "UPDATE measurement_point SET data_source_id = NULL "
+                                + "WHERE tenant_id = ? AND data_source_id IS NOT NULL")) {
+                    st.setObject(1, tenantId);
+                    st.executeUpdate();
+                }
                 for (String table : new String[] {
+                        "data_source_assignment", "data_source", "data_source_kennzeichen_seq",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",

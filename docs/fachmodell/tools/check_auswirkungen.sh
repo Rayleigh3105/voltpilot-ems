@@ -61,6 +61,9 @@ messstelle_groesse
 messstelle_kennzeichen
 messstelle_kennzeichen_seq
 messstelle_aenderung
+data_source
+data_source_assignment
+data_source_kennzeichen_seq
 "
 
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.
