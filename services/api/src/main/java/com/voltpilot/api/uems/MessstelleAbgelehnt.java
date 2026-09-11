@@ -45,7 +45,13 @@ public final class MessstelleAbgelehnt extends RuntimeException {
          * Die Messstelle ist an dem Tag schon genau so zugeordnet — es gäbe nichts zu ändern
          * (Grund {@code ziel_ist_bisheriger_eltern}; AP-02 §5.10: 400 wie „dieselbe Fläche“).
          */
-        ZUORDNUNG_UNVERAENDERT("zuordnung_unveraendert", 400);
+        ZUORDNUNG_UNVERAENDERT("zuordnung_unveraendert", 400),
+        /**
+         * Die bestätigte Zeile der Vorschlagsliste (IP-16) gibt es so nicht mehr — ein Messwert
+         * speist inzwischen eine andere Messstelle, oder die Liste hat sich geändert. Nichts ist
+         * geschrieben; die Liste ist neu zu laden.
+         */
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409);
 
         private final String code;
         private final int status;

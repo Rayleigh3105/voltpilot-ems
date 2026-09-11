@@ -2518,6 +2518,127 @@ export interface MessstellenRegister {
   teilansicht: boolean;
 }
 
+// ---- Vorschlagsliste der Bestandsübernahme (UEMS AP-04 IP-16) ---------------
+// Die Formen von GET /api/v1/standorte/{id}/messstellen-vorschlag und
+// POST …/uebernehmen; die Fläche dazu baut AP-01 IP-9b. Nichts entsteht
+// ungefragt: das GET liest nur, erst die Bestätigung legt Messstellen an.
+// Was vorgeschlagen wird, entscheidet der Zwilling `uemsMessstelle.ts`
+// (`vorschlagsliste`) — die Antwort trägt sein Urteil in snake_case.
+
+/** Der Messwert hinter einer Größe des Vorschlags, mit der Herleitung (Regel 7). */
+export interface MessstelleVorschlagQuelle {
+  kanal: string;
+  anzeigename: string | null;
+  kanal_wertart: 'counter' | 'gauge';
+  herleitung: 'zaehlerstand' | 'differenzen' | 'integration' | 'momentanwert';
+}
+
+/** Eine Größe der Messstelle (wie in der Messstellen-Antwort). */
+export interface MessstelleVorschlagGroesse {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  wertart: string;
+}
+
+export interface MessstelleVorschlagNebengroesse {
+  groesse: MessstelleVorschlagGroesse;
+  quelle: MessstelleVorschlagQuelle;
+}
+
+/** „Unterzähler von": eine bestehende Messstelle oder eine Zeile DIESER Liste. */
+export interface MessstelleVorschlagBezug {
+  messstelle: string;
+  bestehend: boolean;
+  komponente: string | null;
+  kanal: string | null;
+}
+
+export interface MessstelleVorschlagHinweis {
+  code: 'integration' | 'ladestand_herkunft' | 'geraet_gewechselt' | 'standort_spaeter';
+  text: string;
+}
+
+/**
+ * Eine Zeile: was aus diesem Messwert eine Messstelle machen würde. `kennzeichen` ist
+ * der automatische Vorschlag (E7) — vergeben wird es erst bei der Übernahme; `ab` ist
+ * der Beginn der Bindung (der Verlauf der Komponente), `stellung` bleibt `null`, wo
+ * die Topologie keine hergibt — nie geraten.
+ */
+export interface MessstelleVorschlag {
+  kennzeichen: string;
+  name: string;
+  anlage: string;
+  anlage_name: string | null;
+  komponente: string;
+  komponente_name: string | null;
+  hauptgroesse: MessstelleVorschlagGroesse;
+  quelle: MessstelleVorschlagQuelle;
+  nebengroessen: MessstelleVorschlagNebengroesse[];
+  stellung: MessstelleStellung | null;
+  unterzaehler_von: MessstelleVorschlagBezug | null;
+  ort: string;
+  ab: string;
+  stellung_ab: string;
+  hinweise: MessstelleVorschlagHinweis[];
+}
+
+/** Was nicht vorgeschlagen wird, mit Grund und Satz; `kanal: null` = die ganze Komponente. */
+export interface MessstelleVorschlagAusgelassen {
+  anlage: string;
+  komponente: string;
+  komponente_name: string | null;
+  kanal: string | null;
+  grund:
+    | 'abgeleitet'
+    | 'ohne_messkanal'
+    | 'ohne_geraet'
+    | 'attribut_kanal'
+    | 'keine_messgroesse'
+    | 'ohne_richtung'
+    | 'weitere_groesse'
+    | 'vorzeichen_wert'
+    | 'vergleich_kandidat'
+    | 'gleicher_fluss'
+    | 'passt_nicht';
+  zu: string | null;
+  text: string;
+}
+
+/** GET /api/v1/standorte/{id}/messstellen-vorschlag — `leer`/`text` nur ohne Vorschlag. */
+export interface MessstelleVorschlagsliste {
+  standort: string;
+  standort_kennzeichen: string;
+  standort_name: string;
+  vorschlaege: MessstelleVorschlag[];
+  ausgelassen: MessstelleVorschlagAusgelassen[];
+  leer: 'alle_zugeordnet' | 'keine_komponente' | null;
+  text: string | null;
+}
+
+/** Eine bestätigte Zeile — so, wie die Liste sie zeigt; nur `name` darf anders sein. */
+export interface MessstelleVorschlagBestaetigt {
+  komponente: string;
+  kanal: string;
+  hauptgroesse: MessstelleVorschlagGroesse;
+  nebengroessen?: MessstelleVorschlagNebengroesse[];
+  stellung?: MessstelleStellung | null;
+  ab: string;
+  name?: string | null;
+}
+
+/** POST …/messstellen-vorschlag/uebernehmen */
+export interface MessstelleVorschlagUebernehmen {
+  vorschlaege: MessstelleVorschlagBestaetigt[];
+}
+
+/** Die Antwort der Übernahme; `unveraendert` sind Zeilen, die es schon gab. */
+export interface MessstelleVorschlagUebernommen<T = unknown> {
+  neu: number;
+  unveraendert: number;
+  messstellen: T[];
+}
+
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------
 
 /**

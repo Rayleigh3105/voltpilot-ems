@@ -189,6 +189,16 @@ public class MessstelleQuelleService {
      * 2) — in DERSELBEN Transaktion, mit dem Endstand des Vorgängers, und EINEM Protokolleintrag.
      */
     public MessstelleQuelleDto.Vorgang binden(UUID messstelleId, MessstelleQuelleDto.Binden b, ProtokollAkteur wer) {
+        return binden(messstelleId, b, wer, null);
+    }
+
+    /**
+     * Derselbe Weg mit einer HERKUNFT: {@code bestandsuebernahme} für die Vorschlagsliste des
+     * Standorts (IP-16, E6) — sie steht an der Bindung und im Protokolleintrag, sonst ändert sie
+     * nichts. Von Hand gebunden wird ohne Herkunft ({@code null}).
+     */
+    MessstelleQuelleDto.Vorgang binden(UUID messstelleId, MessstelleQuelleDto.Binden b, ProtokollAkteur wer,
+            String herkunft) {
         Messstelle m = finde(messstelleId);
         Instant jetzt = uhr.instant();
         Instant minute = jetzt.truncatedTo(ChronoUnit.MINUTES);
@@ -244,7 +254,7 @@ public class MessstelleQuelleService {
             UUID neu = quellen.anlegen(new NeueQuelle(tenant, m.id(), ziel.groesse().groesse(),
                     ziel.groesse().richtung(), k.id(), speisung.einbau().id(), b.kanal(), kanal.wertart(),
                     u.herleitung(), rolle, b.zweck(), ab, bis, repoStand(anfangsstand), u.rueckwirkend(),
-                    jetzt, wer));
+                    herkunft, jetzt, wer));
             Map<String, Object> eintrag = new LinkedHashMap<>();
             eintrag.put("quelle_id", neu.toString());
             eintrag.put("groesse", ziel.groesse().groesse());
@@ -259,6 +269,9 @@ public class MessstelleQuelleService {
             eintrag.put("gueltig_bis", iso(bis));
             eintrag.put("herleitung", u.herleitung());
             eintrag.put("anfangsstand", standAlsMap(anfangsstand));
+            if (herkunft != null) {
+                eintrag.put("herkunft", herkunft);
+            }
             Map<String, Object> alt = null;
             if (vorgaenger != null) {
                 Map<String, Object> beendet = new LinkedHashMap<>();
@@ -616,7 +629,7 @@ public class MessstelleQuelleService {
                 q.zweck(), q.entityId(), q.komponenteName(), q.siteId(), q.kanal(), q.kanalWertart(), q.herleitung(),
                 new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau()), zeit(q.gueltigAb()),
                 zeit(q.gueltigBis()), status, dtoStand(q.anfangsstand()), dtoStand(q.endstand()), q.rueckwirkend(),
-                zeit(q.eingetragenAm()), q.eingetragenVon());
+                q.herkunft(), zeit(q.eingetragenAm()), q.eingetragenVon());
     }
 
     private static MessstelleQuelleDto.Stand dtoStand(MessstelleQuelleRepository.Stand s) {

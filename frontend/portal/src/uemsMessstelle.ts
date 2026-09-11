@@ -26,6 +26,8 @@
  *   höchstens ein Hauptzähler, alle an DEMSELBEN Zähler.
  */
 
+import { VORGABE_ZEITZONE, lokalerTag, mitternacht } from './uemsOrtsbaum';
+
 /** Womit ein automatisches Kennzeichen beginnt. */
 export const KENNZEICHEN_PRAEFIX = 'MS-';
 
@@ -832,6 +834,694 @@ export function stellungPruefen(
     }
   }
   return ok;
+}
+
+// ------------------------------------------------------- Vorschlagsliste (E6)
+
+/** Die Flüsse, aus denen ein Vorschlag wird (E6) — in der Reihenfolge der Liste. */
+export const VORSCHLAG_FLUESSE = ['Bezug', 'Abgabe', 'Erzeugung', 'Laden / Entladen', 'Laden', 'Entladen'] as const;
+
+/** Was eine Komponente in der Vorschlagsliste ist — sie sagt, welche Stellung ein Fluss bekommt. */
+export const VORSCHLAG_ROLLEN = ['netzmessung', 'zaehler', 'geraet', 'abgeleitet'] as const;
+export type VorschlagRolle = (typeof VORSCHLAG_ROLLEN)[number];
+
+/** Warum eine Komponente oder ein Messwert NICHT vorgeschlagen wird — in der Reihenfolge der Prüfung. */
+export const VORSCHLAG_GRUENDE = [
+  'abgeleitet',
+  'ohne_messkanal',
+  'ohne_geraet',
+  'attribut_kanal',
+  'keine_messgroesse',
+  'ohne_richtung',
+  'weitere_groesse',
+  'vorzeichen_wert',
+  'vergleich_kandidat',
+  'gleicher_fluss',
+  'passt_nicht',
+] as const;
+export type VorschlagGrund = (typeof VORSCHLAG_GRUENDE)[number];
+
+/** Was an einem Vorschlag hängt, ohne ihn zu verhindern — in der Reihenfolge der Zeile. */
+export const VORSCHLAG_HINWEISE = ['integration', 'ladestand_herkunft', 'geraet_gewechselt', 'standort_spaeter'] as const;
+export type VorschlagHinweisCode = (typeof VORSCHLAG_HINWEISE)[number];
+
+/** Warum die Liste leer ist. */
+export const VORSCHLAG_LEER = ['alle_zugeordnet', 'keine_komponente'] as const;
+export type VorschlagLeer = (typeof VORSCHLAG_LEER)[number];
+
+/**
+ * Die Kanäle, die nie ein Messwert einer Messstelle sind (P4, P5b, P5c): die Herkunft des
+ * Ladestands, die Freigaben und die Grenzen. Dazu der Namensraum `ATTRIBUT_PRAEFIX`.
+ */
+export const ATTRIBUT_KANAELE = [
+  'soc_source_code',
+  'charge_allowed',
+  'discharge_allowed',
+  'charge_limit_a',
+  'discharge_limit_a',
+] as const;
+
+/** Der Namensraum der BMS-Kanäle (P4) — Zustände, Grenzen und Bitfelder, nie eine Messung. */
+export const ATTRIBUT_PRAEFIX = 'bms_';
+
+const WIRKENERGIE = 'Wirkenergie';
+const WIRKLEISTUNG = 'Wirkleistung';
+const LADESTAND = 'Ladestand';
+const INTERVALLMENGE = 'Intervallmenge';
+const BEZUG = 'Bezug';
+const RICHTUNGSLOS = 'richtungslos';
+const IMPORT_EXPORT = 'import_export';
+const HAUPTZAEHLER = 'Hauptzähler';
+const UNTERZAEHLER = 'Unterzähler';
+const ERZEUGER = 'Erzeuger';
+const SPEICHER = 'Speicher';
+const SOC_SOURCE_CODE = 'soc_source_code';
+
+/** Ein Messkanal der Komponente, wie das Read-Model ihn zeigt (IP-9). */
+export interface VorschlagKanal {
+  kanal: string;
+  anzeigename: string | null;
+  groesse: string | null;
+  richtung: string | null;
+  einheit: string | null;
+  wertart: string | null;
+  /** Das Katalogwort; `import_export` ist ein Vorzeichen-Wert (AP-08). */
+  direction: string | null;
+  /** Das Kennzeichen der Messstelle, die dieser Messwert schon speist. */
+  speist: string | null;
+}
+
+export interface VorschlagKomponente {
+  id: string;
+  anlage: string;
+  name: string;
+  rolle: VorschlagRolle;
+  verlaufsbeginn: string | null;
+  /** Der Beginn der LAUFENDEN Speisung — ein Vorschlag beginnt nie davor. */
+  speisungAb: string | null;
+  messkanaele: VorschlagKanal[];
+}
+
+export interface VorschlagHauptzaehler {
+  messstelle: string;
+  richtung: string;
+  komponente: string | null;
+  seit: string | null;
+}
+
+export interface VorschlagAnlage {
+  id: string;
+  name: string;
+  netzanschluss: boolean;
+  hauptzaehler: VorschlagHauptzaehler[];
+}
+
+export interface VorschlagStandort {
+  kennzeichen: string;
+  name: string;
+  beginn: string | null;
+  zeitzone: string;
+}
+
+export interface VorschlagEingang {
+  standort: VorschlagStandort;
+  anlagen: VorschlagAnlage[];
+  komponenten: VorschlagKomponente[];
+  zaehler: number;
+  belegt: string[];
+}
+
+export interface VorschlagQuelle {
+  kanal: string;
+  anzeigename: string | null;
+  kanalWertart: string;
+  herleitung: Herleitung;
+}
+
+export interface VorschlagNebengroesse {
+  groesse: Groesse;
+  quelle: VorschlagQuelle;
+}
+
+export interface VorschlagBezug {
+  messstelle: string;
+  bestehend: boolean;
+  komponente: string | null;
+  kanal: string | null;
+}
+
+export interface VorschlagHinweis {
+  code: VorschlagHinweisCode;
+  text: string;
+}
+
+export interface VorschlagZeile {
+  kennzeichen: string;
+  name: string;
+  anlage: string;
+  komponente: string;
+  hauptgroesse: Groesse;
+  quelle: VorschlagQuelle;
+  nebengroessen: VorschlagNebengroesse[];
+  stellung: string | null;
+  unterzaehlerVon: VorschlagBezug | null;
+  ort: string;
+  ab: string;
+  stellungAb: string;
+  hinweise: VorschlagHinweis[];
+}
+
+export interface Ausgelassen {
+  anlage: string;
+  komponente: string;
+  kanal: string | null;
+  grund: VorschlagGrund;
+  zu: string | null;
+  text: string;
+}
+
+export interface Vorschlagsliste {
+  vorschlaege: VorschlagZeile[];
+  ausgelassen: Ausgelassen[];
+  leer: VorschlagLeer | null;
+  text: string | null;
+  zaehler: number;
+}
+
+/** Ein Vorschlag, bevor Reihenfolge, Kennzeichen und Name feststehen. */
+interface Roh {
+  anlage: VorschlagAnlage;
+  komponente: VorschlagKomponente;
+  anlageIndex: number;
+  komponenteIndex: number;
+  flussIndex: number;
+  hauptgroesse: Groesse;
+  quelle: VorschlagQuelle;
+  nebengroessen: VorschlagNebengroesse[];
+  stellung: string | null;
+  bezugBestehend: VorschlagHauptzaehler | null;
+  bezugVorschlag: Roh | null;
+  ab: string;
+  hinweise: VorschlagHinweisCode[];
+  kennzeichen: string;
+}
+
+interface RohAusgelassen {
+  anlage: string;
+  komponente: string;
+  kanal: string | null;
+  anzeige: string;
+  grund: VorschlagGrund;
+  zuBestehend: string | null;
+  zuVorschlag: Roh | null;
+  passungGrund: PassungGrund | null;
+  einheit: string | null;
+  anlageIndex: number;
+  komponenteIndex: number;
+  kanalIndex: number;
+}
+
+/**
+ * Die Vorschlagsliste eines Standorts (E6, §5.10, §5.15): aus den Komponenten seiner Anlagen
+ * und deren Messkanälen wird je Komponente und Fluss HÖCHSTENS EIN Vorschlag — nie aus einem
+ * Attribut-Kanal, nie aus einer Ableitung (Haus), nie ein zweiter für denselben Messwert.
+ *
+ * - **Die Größe kommt aus dem Messwert:** ein Zählerstand trägt die Wirkenergie als
+ *   Zählerstand, eine Leistung als Intervallmenge (Herleitung `integration`, gekennzeichnet).
+ *   Ein Ladestand steht als Nebengröße neben dem Speicher-Fluss derselben Komponente.
+ * - **Die Stellung kommt aus der Topologie:** die maßgebliche Netzmessung wird Hauptzähler
+ *   (nur mit Netzanschluss), Erzeugung → Erzeuger, Speicher → Speicher, jeder andere Bezug →
+ *   „Unterzähler von" dem Bezug-Hauptzähler seiner Anlage. Findet sich keiner, bleibt die
+ *   Stellung offen — nie geraten.
+ * - **Der Beginn ist der Verlauf:** die Bindung beginnt am Beginn der laufenden Speisung (ein
+ *   vorhandener Gerätewechsel wird NIE verkettet) und nie vor dem ersten Tag des Standorts.
+ */
+export function vorschlagsliste(e: VorschlagEingang): Vorschlagsliste {
+  const zone = e.standort.zeitzone || VORGABE_ZEITZONE;
+  const standortBeginn = e.standort.beginn === null ? null : mitternacht(e.standort.beginn, zone).iso;
+  const rohe: Roh[] = [];
+  const ausgelassen: RohAusgelassen[] = [];
+  let etwasGespeist = false;
+  let etwasVorhanden = false;
+
+  e.anlagen.forEach((a, ai) => {
+    const ihre: { k: VorschlagKomponente; index: number }[] = [];
+    e.komponenten.forEach((k, ki) => {
+      if (k.anlage === a.id) ihre.push({ k, index: ki });
+    });
+    // Die Netzmessung zuerst: erst nach ihr steht fest, ob die Anlage einen
+    // Hauptzähler-Vorschlag hat, an dem die Unterzähler hängen.
+    const reihenfolge = [
+      ...ihre.filter((x) => x.k.rolle === 'netzmessung'),
+      ...ihre.filter((x) => x.k.rolle !== 'netzmessung'),
+    ];
+    for (const { k, index } of reihenfolge) {
+      etwasVorhanden = true;
+      if (k.messkanaele.some((c) => c.speist !== null)) etwasGespeist = true;
+      komponenteZuVorschlaegen(a, ai, k, index, standortBeginn, rohe, ausgelassen);
+    }
+  });
+
+  rohe.sort(
+    (x, y) =>
+      x.anlageIndex - y.anlageIndex ||
+      stellungRang(x.stellung) - stellungRang(y.stellung) ||
+      x.komponenteIndex - y.komponenteIndex ||
+      x.flussIndex - y.flussIndex,
+  );
+  let zaehler = e.zaehler;
+  const belegt = new Set(e.belegt);
+  for (const r of rohe) {
+    const v = kennzeichenVorschlag(zaehler, belegt);
+    r.kennzeichen = v.kennzeichen;
+    belegt.add(v.kennzeichen);
+    zaehler = v.zaehler;
+  }
+
+  const zeilen: VorschlagZeile[] = rohe.map((r) => {
+    const eigene = rohe.filter((x) => x.komponente === r.komponente).length + gespeisteFluesse(r.komponente);
+    const name = eigene > 1 ? `${r.komponente.name} · ${nameZusatz(r.hauptgroesse)}` : r.komponente.name;
+    const bezug: VorschlagBezug | null =
+      r.bezugVorschlag !== null
+        ? {
+            messstelle: r.bezugVorschlag.kennzeichen,
+            bestehend: false,
+            komponente: r.bezugVorschlag.komponente.id,
+            kanal: r.bezugVorschlag.quelle.kanal,
+          }
+        : r.bezugBestehend !== null
+          ? { messstelle: r.bezugBestehend.messstelle, bestehend: true, komponente: null, kanal: null }
+          : null;
+    let stellungAb = lokalerTag(r.ab, zone);
+    if (r.bezugVorschlag !== null) stellungAb = spaeter(stellungAb, lokalerTag(r.bezugVorschlag.ab, zone));
+    else if (r.bezugBestehend !== null && r.bezugBestehend.seit !== null)
+      stellungAb = spaeter(stellungAb, r.bezugBestehend.seit);
+    return {
+      kennzeichen: r.kennzeichen,
+      name,
+      anlage: r.anlage.id,
+      komponente: r.komponente.id,
+      hauptgroesse: r.hauptgroesse,
+      quelle: r.quelle,
+      nebengroessen: r.nebengroessen,
+      stellung: r.stellung,
+      unterzaehlerVon: bezug,
+      ort: e.standort.kennzeichen,
+      ab: r.ab,
+      stellungAb,
+      hinweise: VORSCHLAG_HINWEISE.filter((code) => r.hinweise.includes(code)).map((code) => ({
+        code,
+        text: hinweisText(code),
+      })),
+    };
+  });
+
+  ausgelassen.sort(
+    (x, y) =>
+      x.anlageIndex - y.anlageIndex || x.komponenteIndex - y.komponenteIndex || x.kanalIndex - y.kanalIndex,
+  );
+  const ohne: Ausgelassen[] = ausgelassen.map((x) => {
+    const zu = x.zuVorschlag !== null ? x.zuVorschlag.kennzeichen : x.zuBestehend;
+    return {
+      anlage: x.anlage,
+      komponente: x.komponente,
+      kanal: x.kanal,
+      grund: x.grund,
+      zu,
+      text: ausgelassenText(x, zu),
+    };
+  });
+  const leerGrund: VorschlagLeer | null =
+    zeilen.length > 0 ? null : etwasGespeist && etwasVorhanden ? 'alle_zugeordnet' : 'keine_komponente';
+  const text =
+    leerGrund === null
+      ? null
+      : leerGrund === 'alle_zugeordnet'
+        ? `Alle Komponenten von ${e.standort.name} sind Messstellen zugeordnet.`
+        : `In ${e.standort.name} gibt es keine Komponente, aus der eine Messstelle werden kann.`;
+  return { vorschlaege: zeilen, ausgelassen: ohne, leer: leerGrund, text, zaehler };
+}
+
+/** Eine Komponente: ihre Messkanäle werden zu Vorschlägen — oder benannt ausgelassen. */
+function komponenteZuVorschlaegen(
+  a: VorschlagAnlage,
+  anlageIndex: number,
+  k: VorschlagKomponente,
+  komponenteIndex: number,
+  standortBeginn: string | null,
+  rohe: Roh[],
+  ausgelassen: RohAusgelassen[],
+): void {
+  const kanaele = k.messkanaele;
+  const ohne = (kanal: string | null, anzeige: string, grund: VorschlagGrund, kanalIndex = -1): RohAusgelassen => ({
+    anlage: a.id,
+    komponente: k.id,
+    kanal,
+    anzeige,
+    grund,
+    zuBestehend: null,
+    zuVorschlag: null,
+    passungGrund: null,
+    einheit: null,
+    anlageIndex,
+    komponenteIndex,
+    kanalIndex,
+  });
+  if (k.rolle === 'abgeleitet') {
+    ausgelassen.push(ohne(null, k.name, 'abgeleitet'));
+    return;
+  }
+  if (kanaele.length === 0) {
+    ausgelassen.push(ohne(null, k.name, 'ohne_messkanal'));
+    return;
+  }
+  if (kanaele.every((c) => c.speist !== null)) return;
+  if (k.speisungAb === null) {
+    ausgelassen.push(ohne(null, k.name, 'ohne_geraet'));
+    return;
+  }
+  let ab = aufDieMinute(k.speisungAb);
+  let standortSpaeter = false;
+  if (standortBeginn !== null && zeit(standortBeginn) > zeit(ab)) {
+    ab = standortBeginn;
+    standortSpaeter = true;
+  }
+  const gewechselt = k.verlaufsbeginn !== null && zeit(k.speisungAb) > zeit(k.verlaufsbeginn);
+
+  // 1. Jeden Messwert einordnen; ein gespeister sagt nur, welcher Fluss schon vergeben ist.
+  const fluesse = new Map<string, VorschlagKanal[]>();
+  const vergeben = new Map<string, string>();
+  const ladestand: VorschlagKanal[] = [];
+  let ladestandVergeben: string | null = null;
+  const einfach = new Map<string, VorschlagGrund>();
+  const vorzeichen = new Set<string>();
+  for (const c of kanaele) {
+    const f = fluss(c);
+    const wirkgroesse = c.groesse === WIRKENERGIE || c.groesse === WIRKLEISTUNG;
+    if (c.speist !== null) {
+      if (f !== null) {
+        if (!vergeben.has(f)) vergeben.set(f, c.speist);
+      } else if (c.groesse === LADESTAND && ladestandVergeben === null) {
+        ladestandVergeben = c.speist;
+      }
+    } else if (attributKanal(c)) {
+      einfach.set(c.kanal, 'attribut_kanal');
+    } else if (c.groesse === null || (c.wertart !== 'counter' && c.wertart !== 'gauge')) {
+      einfach.set(c.kanal, 'keine_messgroesse');
+    } else if (f !== null) {
+      fluesse.set(f, [...(fluesse.get(f) ?? []), c]);
+    } else if (c.groesse === LADESTAND) {
+      ladestand.push(c);
+    } else if (wirkgroesse && c.direction === IMPORT_EXPORT) {
+      vorzeichen.add(c.kanal);
+    } else if (wirkgroesse) {
+      einfach.set(c.kanal, 'ohne_richtung');
+    } else {
+      einfach.set(c.kanal, 'weitere_groesse');
+    }
+  }
+
+  // 2. Je Fluss EIN Messwert: Zählerstand vor Leistung, und Regel 7 entscheidet.
+  const verwendet = new Set<string>();
+  const passtNicht = new Map<string, PassungGrund>();
+  const gleicherFluss = new Map<string, Roh>();
+  const gleicherFlussBestehend = new Map<string, string>();
+  const vergleichBestehend = new Map<string, string>();
+  for (const f of VORSCHLAG_FLUESSE) {
+    const kandidaten = fluesse.get(f) ?? [];
+    if (kandidaten.length === 0) continue;
+    const schonVergeben = vergeben.get(f);
+    if (schonVergeben !== undefined) {
+      kandidaten.forEach((c) => gleicherFlussBestehend.set(c.kanal, schonVergeben));
+      continue;
+    }
+    // Ist diese Richtung an der Anlage schon ein Hauptzähler, misst dieser Messwert den
+    // Netzanschluss ein zweites Mal: ein Kandidat für eine Vergleichsquelle (E3).
+    const schon = k.rolle === 'netzmessung' ? hauptzaehlerDer(a, f) : null;
+    if (schon !== null) {
+      kandidaten.forEach((c) => vergleichBestehend.set(c.kanal, schon.messstelle));
+      continue;
+    }
+    let treffer: Roh | null = null;
+    for (const c of nachWertart(kandidaten)) {
+      const ziel: Groesse = {
+        groesse: WIRKENERGIE,
+        richtung: f,
+        einheit: einheitVon(WIRKENERGIE),
+        wertart: c.wertart === 'counter' ? 'Zählerstand' : INTERVALLMENGE,
+      };
+      const p = passung(STROM, ziel, c.groesse, c.richtung, c.einheit, c.wertart);
+      if (p.fehler !== null) {
+        passtNicht.set(c.kanal, p.grund as PassungGrund);
+      } else if (treffer === null) {
+        treffer = neuerRoh(a, k, anlageIndex, komponenteIndex, f, ziel, quelleAus(c, p), ab, rohe);
+        verwendet.add(c.kanal);
+        hinweiseSetzen(treffer, p.herleitung, standortSpaeter, gewechselt);
+      } else {
+        gleicherFluss.set(c.kanal, treffer);
+      }
+    }
+  }
+
+  // 3. Der Ladestand: Nebengröße des Speichers derselben Komponente, sonst eine eigene Zeile.
+  const speicher = rohe.find((r) => r.komponente === k && r.stellung === SPEICHER) ?? null;
+  const speicherVergeben =
+    [...vergeben.entries()].filter(([f]) => speicherFluss(f)).map(([, m]) => m)[0] ?? ladestandVergeben;
+  let ladestandZeile: Roh | null = null;
+  for (const c of ladestand) {
+    const ziel: Groesse = {
+      groesse: LADESTAND,
+      richtung: RICHTUNGSLOS,
+      einheit: einheitVon(LADESTAND),
+      wertart: 'Momentanwert',
+    };
+    const p = passung(STROM, ziel, c.groesse, c.richtung, c.einheit, c.wertart);
+    if (p.fehler !== null) {
+      passtNicht.set(c.kanal, p.grund as PassungGrund);
+    } else if (speicher !== null && speicher.nebengroessen.length === 0) {
+      speicher.nebengroessen.push({ groesse: ziel, quelle: quelleAus(c, p) });
+      verwendet.add(c.kanal);
+      if (kanaele.some((x) => x.kanal === SOC_SOURCE_CODE)) speicher.hinweise.push('ladestand_herkunft');
+    } else if (speicher !== null) {
+      gleicherFluss.set(c.kanal, speicher);
+    } else if (speicherVergeben !== null && speicherVergeben !== undefined) {
+      gleicherFlussBestehend.set(c.kanal, speicherVergeben);
+    } else if (ladestandZeile === null) {
+      ladestandZeile = neuerRoh(a, k, anlageIndex, komponenteIndex, LADESTAND, ziel, quelleAus(c, p), ab, rohe);
+      verwendet.add(c.kanal);
+      hinweiseSetzen(ladestandZeile, p.herleitung, standortSpaeter, gewechselt);
+      if (kanaele.some((x) => x.kanal === SOC_SOURCE_CODE)) ladestandZeile.hinweise.push('ladestand_herkunft');
+    } else {
+      gleicherFluss.set(c.kanal, ladestandZeile);
+    }
+  }
+
+  // 4. Jeden ausgelassenen Messwert in der Reihenfolge der Komponente benennen.
+  const vorschlagBezug = bezugVorschlagDer(rohe, a, BEZUG);
+  const bestehend = hauptzaehlerDer(a, BEZUG);
+  kanaele.forEach((c, ci) => {
+    if (c.speist !== null || verwendet.has(c.kanal)) return;
+    const anzeige = anzeigeVon(c);
+    const grundEinfach = einfach.get(c.kanal);
+    if (grundEinfach !== undefined) {
+      ausgelassen.push(ohne(c.kanal, anzeige, grundEinfach, ci));
+    } else if (vorzeichen.has(c.kanal)) {
+      const kandidat = k.rolle === 'geraet' && (vorschlagBezug !== null || bestehend !== null);
+      ausgelassen.push({
+        ...ohne(c.kanal, anzeige, kandidat ? 'vergleich_kandidat' : 'vorzeichen_wert', ci),
+        zuBestehend: kandidat && vorschlagBezug === null && bestehend !== null ? bestehend.messstelle : null,
+        zuVorschlag: kandidat ? vorschlagBezug : null,
+      });
+    } else if (vergleichBestehend.has(c.kanal)) {
+      ausgelassen.push({
+        ...ohne(c.kanal, anzeige, 'vergleich_kandidat', ci),
+        zuBestehend: vergleichBestehend.get(c.kanal) ?? null,
+      });
+    } else if (gleicherFluss.has(c.kanal)) {
+      ausgelassen.push({
+        ...ohne(c.kanal, anzeige, 'gleicher_fluss', ci),
+        zuVorschlag: gleicherFluss.get(c.kanal) ?? null,
+      });
+    } else if (gleicherFlussBestehend.has(c.kanal)) {
+      ausgelassen.push({
+        ...ohne(c.kanal, anzeige, 'gleicher_fluss', ci),
+        zuBestehend: gleicherFlussBestehend.get(c.kanal) ?? null,
+      });
+    } else if (passtNicht.has(c.kanal)) {
+      ausgelassen.push({
+        ...ohne(c.kanal, anzeige, 'passt_nicht', ci),
+        passungGrund: passtNicht.get(c.kanal) ?? null,
+        einheit: c.einheit,
+      });
+    }
+  });
+}
+
+/** Zählerstände zuerst: aus einem Zählerstand wird eine Wirkenergie ohne Rechenweg. */
+const nachWertart = (kandidaten: VorschlagKanal[]): VorschlagKanal[] => [
+  ...kandidaten.filter((c) => c.wertart === 'counter'),
+  ...kandidaten.filter((c) => c.wertart !== 'counter'),
+];
+
+const quelleAus = (c: VorschlagKanal, p: Passung): VorschlagQuelle => ({
+  kanal: c.kanal,
+  anzeigename: c.anzeigename,
+  kanalWertart: c.wertart as string,
+  herleitung: p.herleitung as Herleitung,
+});
+
+function hinweiseSetzen(r: Roh, herleitung: Herleitung | null, standortSpaeter: boolean, gewechselt: boolean): void {
+  if (herleitung === 'integration') r.hinweise.push('integration');
+  if (gewechselt) r.hinweise.push('geraet_gewechselt');
+  if (standortSpaeter) r.hinweise.push('standort_spaeter');
+}
+
+/** Legt den Vorschlag an — mit Stellung und „Unterzähler von" aus Topologie und Fluss. */
+function neuerRoh(
+  a: VorschlagAnlage,
+  k: VorschlagKomponente,
+  anlageIndex: number,
+  komponenteIndex: number,
+  fluss: string,
+  ziel: Groesse,
+  quelle: VorschlagQuelle,
+  ab: string,
+  rohe: Roh[],
+): Roh {
+  let stellung: string | null = null;
+  let bestehend: VorschlagHauptzaehler | null = null;
+  let bezug: Roh | null = null;
+  if (fluss === LADESTAND || speicherFluss(fluss)) {
+    stellung = SPEICHER;
+  } else if (fluss === 'Erzeugung') {
+    stellung = ERZEUGER;
+  } else if (k.rolle === 'netzmessung' && a.netzanschluss) {
+    const fremderZaehler = a.hauptzaehler.some((h) => h.komponente === null || h.komponente !== k.id);
+    stellung = fremderZaehler ? null : HAUPTZAEHLER;
+  } else if (fluss === BEZUG) {
+    const v = bezugVorschlagDer(rohe, a, BEZUG);
+    const b = hauptzaehlerDer(a, BEZUG);
+    if (v !== null) {
+      stellung = UNTERZAEHLER;
+      bezug = v;
+    } else if (b !== null) {
+      stellung = UNTERZAEHLER;
+      bestehend = b;
+    }
+  }
+  const r: Roh = {
+    anlage: a,
+    komponente: k,
+    anlageIndex,
+    komponenteIndex,
+    flussIndex: fluss === LADESTAND ? VORSCHLAG_FLUESSE.length : VORSCHLAG_FLUESSE.indexOf(fluss as never),
+    hauptgroesse: ziel,
+    quelle,
+    nebengroessen: [],
+    stellung,
+    bezugBestehend: bestehend,
+    bezugVorschlag: bezug,
+    ab,
+    hinweise: [],
+    kennzeichen: '',
+  };
+  rohe.push(r);
+  return r;
+}
+
+const speicherFluss = (fluss: string): boolean =>
+  fluss === 'Laden / Entladen' || fluss === 'Laden' || fluss === 'Entladen';
+
+/** Der Bezug-Hauptzähler-Vorschlag DERSELBEN Anlage, wenn es ihn schon gibt. */
+const bezugVorschlagDer = (rohe: Roh[], a: VorschlagAnlage, richtung: string): Roh | null =>
+  rohe.find((r) => r.anlage === a && r.stellung === HAUPTZAEHLER && r.hauptgroesse.richtung === richtung) ?? null;
+
+const hauptzaehlerDer = (a: VorschlagAnlage, richtung: string): VorschlagHauptzaehler | null =>
+  a.hauptzaehler.find((h) => h.richtung === richtung) ?? null;
+
+/** Der Fluss eines Messwerts: seine Vertrags-Richtung, wenn sie eine Wirkgröße trägt. */
+function fluss(c: VorschlagKanal): string | null {
+  if (c.groesse !== WIRKENERGIE && c.groesse !== WIRKLEISTUNG) return null;
+  return c.richtung !== null && (VORSCHLAG_FLUESSE as readonly string[]).includes(c.richtung) ? c.richtung : null;
+}
+
+/**
+ * Wie viele Flüsse der Komponente schon eine Messstelle speisen — zusammen mit ihren
+ * Vorschlägen sagen sie, ob der Name den Fluss nennen muss („Netzzähler Halle 1 · Bezug").
+ */
+function gespeisteFluesse(k: VorschlagKomponente): number {
+  const gesehen = new Set<string>();
+  for (const c of k.messkanaele) {
+    if (c.speist === null || attributKanal(c)) continue;
+    const f = fluss(c);
+    if (f !== null) gesehen.add(f);
+    else if (c.groesse === LADESTAND) gesehen.add(LADESTAND);
+  }
+  return gesehen.size;
+}
+
+/** Ein Attribut-Kanal: eine Herkunft, eine Freigabe, eine Grenze oder ein Zustand (P4, P5b, P5c). */
+function attributKanal(c: VorschlagKanal): boolean {
+  if ((ATTRIBUT_KANAELE as readonly string[]).includes(c.kanal) || c.kanal.startsWith(ATTRIBUT_PRAEFIX)) return true;
+  return c.wertart !== null && c.wertart !== 'counter' && c.wertart !== 'gauge';
+}
+
+const stellungRang = (stellung: string | null): number =>
+  stellung === HAUPTZAEHLER ? 0 : stellung === ERZEUGER ? 1 : stellung === SPEICHER ? 2 : stellung === UNTERZAEHLER ? 3 : 4;
+
+/** Was hinter den Namen der Komponente tritt, wenn sie mehr als einen Fluss liest. */
+const nameZusatz = (g: Groesse): string => (g.groesse === LADESTAND ? LADESTAND : g.richtung);
+
+const einheitVon = (groesse: string): string => katalog(groesse)?.einheit ?? '';
+
+const anzeigeVon = (c: VorschlagKanal): string => (leer(c.anzeigename) ? c.kanal : (c.anzeigename as string));
+
+const spaeter = (a: string, b: string): string => (b > a ? b : a);
+
+/** Die Auflösung eines Zeitpunkts ist die Minute (E2) — Sekunden fallen weg. */
+const aufDieMinute = (t: string): string => t.replace(/:\d\d([+-]\d\d:\d\d|Z)$/, ':00$1');
+
+function hinweisText(code: VorschlagHinweisCode): string {
+  switch (code) {
+    case 'integration':
+      return 'Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet.';
+    case 'ladestand_herkunft':
+      return 'Die Herkunft des Ladestands reist mit (soc_source_code).';
+    case 'geraet_gewechselt':
+      return 'Das Gerät wurde gewechselt — die Messstelle beginnt beim heutigen Gerät; die Zeit davor verketten Sie von Hand.';
+    case 'standort_spaeter':
+      return 'Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm.';
+  }
+}
+
+function ausgelassenText(x: RohAusgelassen, zu: string | null): string {
+  const was = `„${x.anzeige}“`;
+  switch (x.grund) {
+    case 'abgeleitet':
+      return `${was} ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später.`;
+    case 'ohne_messkanal':
+      return `${was} liest keinen Messwert — ohne Messwert gibt es keine Messstelle.`;
+    case 'ohne_geraet':
+      return `${was} wird gerade von keinem Gerät gespeist — ohne Gerät gibt es keine Quelle.`;
+    case 'attribut_kanal':
+      return `${was} ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle.`;
+    case 'keine_messgroesse':
+      return `${was} misst keine Größe, die eine Messstelle trägt.`;
+    case 'ohne_richtung':
+      return `${was} nennt keine Richtung — ob Bezug, Abgabe oder Erzeugung, sagt der Messwert nicht.`;
+    case 'weitere_groesse':
+      return `${was} misst eine weitere Größe — sie kommt als Nebengröße von Hand dazu.`;
+    case 'vorzeichen_wert':
+      return `${was} trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle.`;
+    case 'vergleich_kandidat':
+      return `${was} misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an ${zu}, nie eine eigene Messstelle.`;
+    case 'gleicher_fluss':
+      return `${was} misst denselben Fluss wie ${zu} — als Nebengröße oder Vergleichsquelle von Hand.`;
+    case 'passt_nicht':
+      return x.passungGrund === 'einheit'
+        ? `${was} hat eine Einheit, die sich nicht umrechnen lässt („${x.einheit}“).`
+        : `${was} passt nicht zu dieser Größe (${x.passungGrund}).`;
+  }
 }
 
 // ------------------------------------------------------------------ Hilfen

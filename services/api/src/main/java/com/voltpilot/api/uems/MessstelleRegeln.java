@@ -1,6 +1,8 @@
 package com.voltpilot.api.uems;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -8,6 +10,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -105,6 +108,38 @@ public final class MessstelleRegeln {
 
     public static final List<String> HINWEISE = List.of("ablesestand_pruefen");
 
+    /** Die Flüsse, aus denen ein Vorschlag wird (E6) — in der Reihenfolge der Liste. */
+    public static final List<String> VORSCHLAG_FLUESSE =
+            List.of("Bezug", "Abgabe", "Erzeugung", "Laden / Entladen", "Laden", "Entladen");
+
+    /** Was eine Komponente in der Vorschlagsliste ist — sie sagt, welche Stellung ein Fluss bekommt. */
+    public static final List<String> VORSCHLAG_ROLLEN =
+            List.of("netzmessung", "zaehler", "geraet", "abgeleitet");
+
+    /** Warum eine Komponente oder ein Messwert NICHT vorgeschlagen wird — in der Reihenfolge der Prüfung. */
+    public static final List<String> VORSCHLAG_GRUENDE = List.of(
+            "abgeleitet", "ohne_messkanal", "ohne_geraet", "attribut_kanal", "keine_messgroesse",
+            "ohne_richtung", "weitere_groesse", "vorzeichen_wert", "vergleich_kandidat",
+            "gleicher_fluss", "passt_nicht");
+
+    /** Was an einem Vorschlag hängt, ohne ihn zu verhindern — in der Reihenfolge der Zeile. */
+    public static final List<String> VORSCHLAG_HINWEISE =
+            List.of("integration", "ladestand_herkunft", "geraet_gewechselt", "standort_spaeter");
+
+    /** Warum die Liste leer ist. */
+    public static final List<String> VORSCHLAG_LEER = List.of("alle_zugeordnet", "keine_komponente");
+
+    /**
+     * Die Kanäle, die nie ein Messwert einer Messstelle sind (P4, P5b, P5c): die Herkunft des
+     * Ladestands, die Freigaben und die Grenzen. Dazu der Namensraum {@link #ATTRIBUT_PRAEFIX}.
+     */
+    public static final List<String> ATTRIBUT_KANAELE = List.of(
+            "soc_source_code", "charge_allowed", "discharge_allowed",
+            "charge_limit_a", "discharge_limit_a");
+
+    /** Der Namensraum der BMS-Kanäle (P4) — Zustände, Grenzen und Bitfelder, nie eine Messung. */
+    public static final String ATTRIBUT_PRAEFIX = "bms_";
+
     /** Wo ein Zeitpunkt gegen „jetzt“ steht (E2): rückwirkend markiert, angekündigt in der Zukunft. */
     public static final List<String> RUECKWIRKUNG_ARTEN = List.of("rueckwirkend", "ab_jetzt", "angekuendigt");
 
@@ -116,6 +151,20 @@ public final class MessstelleRegeln {
     private static final String KEINE = "keine";
     private static final String ZAEHLERSTAND = "Zählerstand";
     private static final String MOMENTANWERT = "Momentanwert";
+    private static final String ERZEUGER = "Erzeuger";
+    private static final String SPEICHER = "Speicher";
+    private static final String WIRKENERGIE = "Wirkenergie";
+    private static final String WIRKLEISTUNG = "Wirkleistung";
+    private static final String LADESTAND = "Ladestand";
+    private static final String INTERVALLMENGE = "Intervallmenge";
+    private static final String BEZUG = "Bezug";
+    private static final String RICHTUNGSLOS = "richtungslos";
+    /** Das Katalogwort eines Vorzeichen-Werts: Bezug UND Abgabe in einem (AP-08). */
+    private static final String IMPORT_EXPORT = "import_export";
+    private static final String NETZMESSUNG = "netzmessung";
+    private static final String ABGELEITET = "abgeleitet";
+    private static final String GERAET = "geraet";
+    private static final String SOC_SOURCE_CODE = "soc_source_code";
     private static final String COUNTER = "counter";
     private static final String GAUGE = "gauge";
     private static final String VERGLEICH = "vergleich";
@@ -840,6 +889,628 @@ public final class MessstelleRegeln {
 
     private static StellungUrteil ungueltig(String grund, StellungEintrag bestehend, List<String> kette) {
         return new StellungUrteil(Fehler.STELLUNG_UNGUELTIG, grund, bestehend, kette);
+    }
+
+    // ------------------------------------------------------- Vorschlagsliste (E6)
+
+    /**
+     * Ein Messkanal einer Komponente, so wie das Read-Model ihn zeigt (IP-9): die Vertragswörter
+     * ({@code groesse}, {@code richtung}, {@code einheit}, {@code wertart}) und das Katalogwort
+     * {@code direction}, an dem ein Vorzeichen-Wert ({@code import_export}) erkennbar ist.
+     *
+     * @param speist das Kennzeichen der Messstelle, die dieser Messwert schon speist, sonst
+     *               {@code null} — ein gespeister Messwert wird nie noch einmal vorgeschlagen
+     */
+    public record VorschlagKanal(String kanal, String anzeigename, String groesse, String richtung,
+            String einheit, String wertart, String direction, String speist) {}
+
+    /**
+     * Eine Komponente mit ihren Messkanälen.
+     *
+     * @param rolle          {@link #VORSCHLAG_ROLLEN}: {@code netzmessung} (die maßgebliche
+     *                       Netzmessung ihrer Anlage), {@code zaehler}, {@code abgeleitet}
+     *                       (Haus — eine Ableitung, keine Messung) oder {@code geraet}
+     * @param verlaufsbeginn der Beginn ihres Verlaufs (erste Speisung), {@code null} = unbekannt
+     * @param speisungAb     der Beginn der LAUFENDEN Speisung — ein Vorschlag beginnt nie davor
+     *                       (ein Gerätewechsel wird nie verkettet); {@code null} = kein Gerät
+     */
+    public record VorschlagKomponente(String id, String anlage, String name, String rolle,
+            OffsetDateTime verlaufsbeginn, OffsetDateTime speisungAb, List<VorschlagKanal> messkanaele) {}
+
+    /** Ein BESTEHENDER Hauptzähler der Anlage mit der Komponente seiner führenden Quelle. */
+    public record VorschlagHauptzaehler(String messstelle, String richtung, String komponente,
+            LocalDate seit) {}
+
+    /** Eine Anlage des Standorts; ohne Netzanschluss gibt es keinen Hauptzähler (§5.15). */
+    public record VorschlagAnlage(String id, String name, boolean netzanschluss,
+            List<VorschlagHauptzaehler> hauptzaehler) {}
+
+    /** Der Standort: der Ort jeder vorgeschlagenen Messstelle, und sein erster Tag. */
+    public record VorschlagStandort(String kennzeichen, String name, LocalDate beginn, ZoneId zeitzone) {}
+
+    public record VorschlagEingang(VorschlagStandort standort, List<VorschlagAnlage> anlagen,
+            List<VorschlagKomponente> komponenten, int zaehler, List<String> belegt) {}
+
+    /** Der Messwert hinter einer Größe des Vorschlags, mit der Herleitung aus Regel 7. */
+    public record VorschlagQuelle(String kanal, String anzeigename, String kanalWertart,
+            String herleitung) {}
+
+    public record VorschlagNebengroesse(Groesse groesse, VorschlagQuelle quelle) {}
+
+    /**
+     * „Unterzähler von“: entweder eine BESTEHENDE Messstelle ({@code bestehend}) oder ein
+     * Vorschlag DIESER Liste — dann sagen {@code komponente} und {@code kanal}, welcher.
+     */
+    public record VorschlagBezug(String messstelle, boolean bestehend, String komponente, String kanal) {}
+
+    public record VorschlagHinweis(String code, String text) {}
+
+    /**
+     * Eine Zeile der Vorschlagsliste: was aus diesem Messwert eine Messstelle machen würde.
+     * {@code ab} ist der Beginn der Bindung (Verlaufsbeginn, nie vor dem Standort und nie vor der
+     * laufenden Speisung); {@code stellungAb} der Tag, ab dem die Stellung gilt (nie vor dem Tag,
+     * an dem ihr Hauptzähler einer ist).
+     */
+    public record VorschlagZeile(String kennzeichen, String name, String anlage, String komponente,
+            Groesse hauptgroesse, VorschlagQuelle quelle, List<VorschlagNebengroesse> nebengroessen,
+            String stellung, VorschlagBezug unterzaehlerVon, String ort, OffsetDateTime ab,
+            LocalDate stellungAb, List<VorschlagHinweis> hinweise) {}
+
+    /**
+     * Was NICHT vorgeschlagen wird, mit Grund und Satz. {@code kanal} {@code null} heißt: die
+     * ganze Komponente; {@code zu} nennt die Messstelle, auf die der Grund zeigt.
+     */
+    public record Ausgelassen(String anlage, String komponente, String kanal, String grund,
+            String zu, String text) {}
+
+    /**
+     * Die Liste. {@code leer} ({@link #VORSCHLAG_LEER}) und {@code text} sind gesetzt, WENN es
+     * keinen Vorschlag gibt — nie daneben; {@code zaehler} ist der Stand, den der
+     * Kennzeichen-Zähler nach einer vollständigen Übernahme hätte.
+     */
+    public record Vorschlagsliste(List<VorschlagZeile> vorschlaege, List<Ausgelassen> ausgelassen,
+            String leer, String text, int zaehler) {}
+
+    /** Ein Vorschlag, bevor Reihenfolge, Kennzeichen und Name feststehen. */
+    private static final class Roh {
+        private final VorschlagAnlage anlage;
+        private final VorschlagKomponente komponente;
+        private final int anlageIndex;
+        private final int komponenteIndex;
+        private final int flussIndex;
+        private final Groesse hauptgroesse;
+        private final VorschlagQuelle quelle;
+        private final List<VorschlagNebengroesse> nebengroessen = new ArrayList<>();
+        private final String stellung;
+        private final VorschlagHauptzaehler bezugBestehend;
+        private final Roh bezugVorschlag;
+        private final OffsetDateTime ab;
+        private final List<String> hinweise = new ArrayList<>();
+        private String kennzeichen;
+
+        private Roh(VorschlagAnlage anlage, VorschlagKomponente komponente, int anlageIndex,
+                int komponenteIndex, int flussIndex, Groesse hauptgroesse, VorschlagQuelle quelle,
+                String stellung, VorschlagHauptzaehler bezugBestehend, Roh bezugVorschlag,
+                OffsetDateTime ab) {
+            this.anlage = anlage;
+            this.komponente = komponente;
+            this.anlageIndex = anlageIndex;
+            this.komponenteIndex = komponenteIndex;
+            this.flussIndex = flussIndex;
+            this.hauptgroesse = hauptgroesse;
+            this.quelle = quelle;
+            this.stellung = stellung;
+            this.bezugBestehend = bezugBestehend;
+            this.bezugVorschlag = bezugVorschlag;
+            this.ab = ab;
+        }
+    }
+
+    /** Eine ausgelassene Zeile, deren „zu“ erst feststeht, wenn die Kennzeichen vergeben sind. */
+    private record RohAusgelassen(String anlage, String komponente, String kanal, String anzeige,
+            String grund, String zuBestehend, Roh zuVorschlag, String passungGrund, String einheit,
+            int anlageIndex, int komponenteIndex, int kanalIndex) {}
+
+    /**
+     * Die Vorschlagsliste eines Standorts (E6, §5.10, §5.15): aus den Komponenten seiner Anlagen
+     * und deren Messkanälen wird je Komponente und Fluss HÖCHSTENS EIN Vorschlag — nie aus einem
+     * Attribut-Kanal, nie aus einer Ableitung (Haus), nie ein zweiter für denselben Messwert.
+     *
+     * <p><b>Die Größe kommt aus dem Messwert:</b> ein Zählerstand trägt die Wirkenergie als
+     * Zählerstand, eine Leistung als Intervallmenge (Herleitung {@code integration},
+     * gekennzeichnet). Ein Ladestand steht als Nebengröße neben dem Speicher-Fluss derselben
+     * Komponente, sonst für sich.
+     *
+     * <p><b>Die Stellung kommt aus der Topologie:</b> die maßgebliche Netzmessung wird Hauptzähler
+     * (nur mit Netzanschluss und nur, solange kein anderer Zähler schon einer ist), Erzeugung wird
+     * Erzeuger, Speicher wird Speicher, jeder andere Bezug wird „Unterzähler von“ dem
+     * Bezug-Hauptzähler seiner Anlage — vorgeschlagen oder schon bestehend. Findet sich keiner,
+     * bleibt die Stellung offen, nie geraten.
+     *
+     * <p><b>Der Beginn ist der Verlauf:</b> die Bindung beginnt am Beginn der laufenden Speisung
+     * (ein vorhandener Gerätewechsel wird NIE verkettet, Hinweis {@code geraet_gewechselt}) und nie
+     * vor dem ersten Tag des Standorts ({@code standort_spaeter}).
+     *
+     * <p>Die Reihenfolge ist die der Liste UND die der Übernahme: je Anlage erst die Hauptzähler,
+     * dann Erzeuger, Speicher, Unterzähler, zuletzt das Stellungslose — so trägt ein Unterzähler
+     * ein Kennzeichen, das es beim Schreiben schon gibt. Die Kennzeichen sind die automatischen
+     * (E7) in genau dieser Reihenfolge.
+     */
+    public static Vorschlagsliste vorschlagsliste(VorschlagEingang e) {
+        ZoneId zone = e.standort().zeitzone() == null ? ZoneId.of("Europe/Berlin") : e.standort().zeitzone();
+        OffsetDateTime standortBeginn = e.standort().beginn() == null ? null
+                : mitternacht(e.standort().beginn(), zone);
+        List<Roh> rohe = new ArrayList<>();
+        List<RohAusgelassen> ausgelassen = new ArrayList<>();
+        boolean etwasGespeist = false;
+        boolean etwasVorhanden = false;
+
+        List<VorschlagAnlage> anlagen = e.anlagen() == null ? List.of() : e.anlagen();
+        for (int ai = 0; ai < anlagen.size(); ai++) {
+            VorschlagAnlage a = anlagen.get(ai);
+            List<VorschlagKomponente> ihre = new ArrayList<>();
+            List<Integer> index = new ArrayList<>();
+            List<VorschlagKomponente> alle = e.komponenten() == null ? List.of() : e.komponenten();
+            for (int ki = 0; ki < alle.size(); ki++) {
+                if (alle.get(ki).anlage().equals(a.id())) {
+                    ihre.add(alle.get(ki));
+                    index.add(ki);
+                }
+            }
+            // Die Netzmessung zuerst: erst nach ihr steht fest, ob die Anlage einen
+            // Hauptzähler-Vorschlag hat, an dem die Unterzähler hängen.
+            List<Integer> reihenfolge = new ArrayList<>();
+            for (int i = 0; i < ihre.size(); i++) {
+                if (NETZMESSUNG.equals(ihre.get(i).rolle())) {
+                    reihenfolge.add(i);
+                }
+            }
+            for (int i = 0; i < ihre.size(); i++) {
+                if (!NETZMESSUNG.equals(ihre.get(i).rolle())) {
+                    reihenfolge.add(i);
+                }
+            }
+            for (int i : reihenfolge) {
+                VorschlagKomponente k = ihre.get(i);
+                etwasVorhanden = true;
+                if (k.messkanaele() != null
+                        && k.messkanaele().stream().anyMatch(c -> c.speist() != null)) {
+                    etwasGespeist = true;
+                }
+                komponente(e, a, ai, k, index.get(i), zone, standortBeginn, rohe, ausgelassen);
+            }
+        }
+
+        rohe.sort(Comparator.<Roh>comparingInt(r -> r.anlageIndex)
+                .thenComparingInt(r -> stellungRang(r.stellung))
+                .thenComparingInt(r -> r.komponenteIndex)
+                .thenComparingInt(r -> r.flussIndex));
+        int zaehler = e.zaehler();
+        Set<String> belegt = new HashSet<>(e.belegt() == null ? List.of() : e.belegt());
+        for (Roh r : rohe) {
+            Vorschlag v = kennzeichenVorschlag(zaehler, belegt);
+            r.kennzeichen = v.kennzeichen();
+            belegt.add(v.kennzeichen());
+            zaehler = v.zaehler();
+        }
+
+        List<VorschlagZeile> zeilen = new ArrayList<>();
+        for (Roh r : rohe) {
+            long eigene = rohe.stream().filter(x -> x.komponente == r.komponente).count()
+                    + gespeisteFluesse(r.komponente);
+            boolean mehrere = eigene > 1;
+            String name = mehrere ? r.komponente.name() + " · " + nameZusatz(r.hauptgroesse)
+                    : r.komponente.name();
+            VorschlagBezug bezug = r.bezugVorschlag != null
+                    ? new VorschlagBezug(r.bezugVorschlag.kennzeichen, false,
+                            r.bezugVorschlag.komponente.id(), r.bezugVorschlag.quelle.kanal())
+                    : r.bezugBestehend != null
+                            ? new VorschlagBezug(r.bezugBestehend.messstelle(), true, null, null)
+                            : null;
+            LocalDate stellungAb = tag(r.ab, zone);
+            if (r.bezugVorschlag != null) {
+                stellungAb = spaeter(stellungAb, tag(r.bezugVorschlag.ab, zone));
+            } else if (r.bezugBestehend != null && r.bezugBestehend.seit() != null) {
+                stellungAb = spaeter(stellungAb, r.bezugBestehend.seit());
+            }
+            List<VorschlagHinweis> hinweise = new ArrayList<>();
+            for (String code : VORSCHLAG_HINWEISE) {
+                if (r.hinweise.contains(code)) {
+                    hinweise.add(new VorschlagHinweis(code, hinweisText(code)));
+                }
+            }
+            zeilen.add(new VorschlagZeile(r.kennzeichen, name, r.anlage.id(), r.komponente.id(),
+                    r.hauptgroesse, r.quelle, List.copyOf(r.nebengroessen), r.stellung, bezug,
+                    e.standort().kennzeichen(), r.ab, stellungAb, List.copyOf(hinweise)));
+        }
+
+        List<Ausgelassen> ohne = new ArrayList<>();
+        ausgelassen.sort(Comparator.comparingInt(RohAusgelassen::anlageIndex)
+                .thenComparingInt(RohAusgelassen::komponenteIndex)
+                .thenComparingInt(RohAusgelassen::kanalIndex));
+        for (RohAusgelassen x : ausgelassen) {
+            String zu = x.zuVorschlag() != null ? x.zuVorschlag().kennzeichen : x.zuBestehend();
+            ohne.add(new Ausgelassen(x.anlage(), x.komponente(), x.kanal(), x.grund(), zu,
+                    ausgelassenText(x, zu)));
+        }
+        String leer = !zeilen.isEmpty() ? null
+                : etwasGespeist && etwasVorhanden ? "alle_zugeordnet" : "keine_komponente";
+        String text = leer == null ? null
+                : "alle_zugeordnet".equals(leer)
+                        ? "Alle Komponenten von " + e.standort().name() + " sind Messstellen zugeordnet."
+                        : "In " + e.standort().name()
+                                + " gibt es keine Komponente, aus der eine Messstelle werden kann.";
+        return new Vorschlagsliste(List.copyOf(zeilen), List.copyOf(ohne), leer, text, zaehler);
+    }
+
+    /** Eine Komponente: ihre Messkanäle werden zu Vorschlägen — oder benannt ausgelassen. */
+    private static void komponente(VorschlagEingang e, VorschlagAnlage a, int anlageIndex,
+            VorschlagKomponente k, int komponenteIndex, ZoneId zone, OffsetDateTime standortBeginn,
+            List<Roh> rohe, List<RohAusgelassen> ausgelassen) {
+        List<VorschlagKanal> kanaele = k.messkanaele() == null ? List.of() : k.messkanaele();
+        if (ABGELEITET.equals(k.rolle())) {
+            ausgelassen.add(new RohAusgelassen(a.id(), k.id(), null, k.name(), ABGELEITET, null, null,
+                    null, null, anlageIndex, komponenteIndex, -1));
+            return;
+        }
+        if (kanaele.isEmpty()) {
+            ausgelassen.add(new RohAusgelassen(a.id(), k.id(), null, k.name(), "ohne_messkanal",
+                    null, null, null, null, anlageIndex, komponenteIndex, -1));
+            return;
+        }
+        if (kanaele.stream().allMatch(c -> c.speist() != null)) {
+            return;
+        }
+        if (k.speisungAb() == null) {
+            ausgelassen.add(new RohAusgelassen(a.id(), k.id(), null, k.name(), "ohne_geraet",
+                    null, null, null, null, anlageIndex, komponenteIndex, -1));
+            return;
+        }
+        OffsetDateTime ab = minute(k.speisungAb());
+        boolean standortSpaeter = false;
+        if (standortBeginn != null && standortBeginn.isAfter(ab)) {
+            ab = standortBeginn;
+            standortSpaeter = true;
+        }
+        boolean gewechselt = k.verlaufsbeginn() != null && k.speisungAb().isAfter(k.verlaufsbeginn());
+
+        // 1. Jeden Messwert einordnen; ein gespeister sagt nur, welcher Fluss schon vergeben ist.
+        Map<String, List<VorschlagKanal>> fluesse = new LinkedHashMap<>();
+        Map<String, String> vergeben = new LinkedHashMap<>();
+        List<VorschlagKanal> ladestand = new ArrayList<>();
+        String ladestandVergeben = null;
+        Map<String, String> einfach = new LinkedHashMap<>();
+        Set<String> vorzeichen = new LinkedHashSet<>();
+        for (VorschlagKanal c : kanaele) {
+            String fluss = fluss(c);
+            boolean wirkgroesse = WIRKENERGIE.equals(c.groesse()) || WIRKLEISTUNG.equals(c.groesse());
+            if (c.speist() != null) {
+                if (fluss != null) {
+                    vergeben.putIfAbsent(fluss, c.speist());
+                } else if (LADESTAND.equals(c.groesse()) && ladestandVergeben == null) {
+                    ladestandVergeben = c.speist();
+                }
+            } else if (attributKanal(c)) {
+                einfach.put(c.kanal(), "attribut_kanal");
+            } else if (c.groesse() == null || !enthaelt(List.of(COUNTER, GAUGE), c.wertart())) {
+                einfach.put(c.kanal(), "keine_messgroesse");
+            } else if (fluss != null) {
+                fluesse.computeIfAbsent(fluss, x -> new ArrayList<>()).add(c);
+            } else if (LADESTAND.equals(c.groesse())) {
+                ladestand.add(c);
+            } else if (wirkgroesse && IMPORT_EXPORT.equals(c.direction())) {
+                vorzeichen.add(c.kanal());
+            } else if (wirkgroesse) {
+                einfach.put(c.kanal(), "ohne_richtung");
+            } else {
+                einfach.put(c.kanal(), "weitere_groesse");
+            }
+        }
+
+        // 2. Je Fluss EIN Messwert: Zählerstand vor Leistung, und Regel 7 entscheidet.
+        Set<String> verwendet = new LinkedHashSet<>();
+        Map<String, String> passtNicht = new LinkedHashMap<>();
+        Map<String, Roh> gleicherFluss = new LinkedHashMap<>();
+        Map<String, String> gleicherFlussBestehend = new LinkedHashMap<>();
+        Map<String, String> vergleichBestehend = new LinkedHashMap<>();
+        for (String fluss : VORSCHLAG_FLUESSE) {
+            List<VorschlagKanal> kandidaten = fluesse.getOrDefault(fluss, List.of());
+            if (kandidaten.isEmpty()) {
+                continue;
+            }
+            if (vergeben.containsKey(fluss)) {
+                kandidaten.forEach(c -> gleicherFlussBestehend.put(c.kanal(), vergeben.get(fluss)));
+                continue;
+            }
+            // Ist diese Richtung an der Anlage schon ein Hauptzähler, misst dieser Messwert den
+            // Netzanschluss ein zweites Mal: ein Kandidat für eine Vergleichsquelle (E3).
+            VorschlagHauptzaehler schon = NETZMESSUNG.equals(k.rolle()) ? hauptzaehler(a, fluss) : null;
+            if (schon != null) {
+                kandidaten.forEach(c -> vergleichBestehend.put(c.kanal(), schon.messstelle()));
+                continue;
+            }
+            Roh treffer = null;
+            for (VorschlagKanal c : nachWertart(kandidaten)) {
+                Groesse ziel = new Groesse(WIRKENERGIE, fluss, einheit(WIRKENERGIE),
+                        COUNTER.equals(c.wertart()) ? ZAEHLERSTAND : INTERVALLMENGE);
+                Passung p = passung(STROM, ziel, c.groesse(), c.richtung(), c.einheit(), c.wertart());
+                if (p.fehler() != null) {
+                    passtNicht.put(c.kanal(), p.grund());
+                } else if (treffer == null) {
+                    treffer = neuerRoh(a, k, anlageIndex, komponenteIndex, fluss, ziel,
+                            quelle(c, p), ab, rohe);
+                    verwendet.add(c.kanal());
+                    hinweise(treffer, p.herleitung(), standortSpaeter, gewechselt);
+                } else {
+                    gleicherFluss.put(c.kanal(), treffer);
+                }
+            }
+        }
+
+        // 3. Der Ladestand: Nebengröße des Speichers derselben Komponente, sonst eine eigene Zeile.
+        Roh speicher = rohe.stream().filter(r -> r.komponente == k && SPEICHER.equals(r.stellung))
+                .findFirst().orElse(null);
+        String speicherVergeben = vergeben.entrySet().stream().filter(x -> speicherFluss(x.getKey()))
+                .map(Map.Entry::getValue).findFirst().orElse(ladestandVergeben);
+        Roh ladestandZeile = null;
+        for (VorschlagKanal c : ladestand) {
+            Groesse ziel = new Groesse(LADESTAND, RICHTUNGSLOS, einheit(LADESTAND), MOMENTANWERT);
+            Passung p = passung(STROM, ziel, c.groesse(), c.richtung(), c.einheit(), c.wertart());
+            if (p.fehler() != null) {
+                passtNicht.put(c.kanal(), p.grund());
+            } else if (speicher != null && speicher.nebengroessen.isEmpty()) {
+                speicher.nebengroessen.add(new VorschlagNebengroesse(ziel, quelle(c, p)));
+                verwendet.add(c.kanal());
+                if (hatKanal(kanaele, SOC_SOURCE_CODE)) {
+                    speicher.hinweise.add("ladestand_herkunft");
+                }
+            } else if (speicher != null) {
+                gleicherFluss.put(c.kanal(), speicher);
+            } else if (speicherVergeben != null) {
+                gleicherFlussBestehend.put(c.kanal(), speicherVergeben);
+            } else if (ladestandZeile == null) {
+                ladestandZeile = neuerRoh(a, k, anlageIndex, komponenteIndex, LADESTAND, ziel,
+                        quelle(c, p), ab, rohe);
+                verwendet.add(c.kanal());
+                hinweise(ladestandZeile, p.herleitung(), standortSpaeter, gewechselt);
+                if (hatKanal(kanaele, SOC_SOURCE_CODE)) {
+                    ladestandZeile.hinweise.add("ladestand_herkunft");
+                }
+            } else {
+                gleicherFluss.put(c.kanal(), ladestandZeile);
+            }
+        }
+
+        // 4. Jeden ausgelassenen Messwert in der Reihenfolge der Komponente benennen.
+        Roh vorschlagBezug = bezugVorschlag(rohe, a, BEZUG);
+        VorschlagHauptzaehler bestehend = hauptzaehler(a, BEZUG);
+        for (int ci = 0; ci < kanaele.size(); ci++) {
+            VorschlagKanal c = kanaele.get(ci);
+            if (c.speist() != null || verwendet.contains(c.kanal())) {
+                continue;
+            }
+            String anzeige = anzeige(c);
+            if (einfach.containsKey(c.kanal())) {
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        einfach.get(c.kanal()), null, null, null, null, anlageIndex, komponenteIndex, ci));
+            } else if (vorzeichen.contains(c.kanal())) {
+                boolean kandidat = GERAET.equals(k.rolle()) && (vorschlagBezug != null || bestehend != null);
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        kandidat ? "vergleich_kandidat" : "vorzeichen_wert",
+                        kandidat && vorschlagBezug == null ? bestehend.messstelle() : null,
+                        kandidat ? vorschlagBezug : null, null, null, anlageIndex, komponenteIndex, ci));
+            } else if (vergleichBestehend.containsKey(c.kanal())) {
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        "vergleich_kandidat", vergleichBestehend.get(c.kanal()), null, null, null,
+                        anlageIndex, komponenteIndex, ci));
+            } else if (gleicherFluss.containsKey(c.kanal())) {
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        "gleicher_fluss", null, gleicherFluss.get(c.kanal()), null, null,
+                        anlageIndex, komponenteIndex, ci));
+            } else if (gleicherFlussBestehend.containsKey(c.kanal())) {
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        "gleicher_fluss", gleicherFlussBestehend.get(c.kanal()), null, null, null,
+                        anlageIndex, komponenteIndex, ci));
+            } else if (passtNicht.containsKey(c.kanal())) {
+                ausgelassen.add(new RohAusgelassen(a.id(), k.id(), c.kanal(), anzeige,
+                        "passt_nicht", null, null, passtNicht.get(c.kanal()), c.einheit(),
+                        anlageIndex, komponenteIndex, ci));
+            }
+        }
+    }
+
+    /** Zählerstände zuerst: aus einem Zählerstand wird eine Wirkenergie ohne Rechenweg. */
+    private static List<VorschlagKanal> nachWertart(List<VorschlagKanal> kandidaten) {
+        List<VorschlagKanal> reihe = new ArrayList<>(
+                kandidaten.stream().filter(c -> COUNTER.equals(c.wertart())).toList());
+        reihe.addAll(kandidaten.stream().filter(c -> !COUNTER.equals(c.wertart())).toList());
+        return reihe;
+    }
+
+    private static VorschlagQuelle quelle(VorschlagKanal c, Passung p) {
+        return new VorschlagQuelle(c.kanal(), c.anzeigename(), c.wertart(), p.herleitung());
+    }
+
+    private static void hinweise(Roh r, String herleitung, boolean standortSpaeter, boolean gewechselt) {
+        if ("integration".equals(herleitung)) {
+            r.hinweise.add("integration");
+        }
+        if (gewechselt) {
+            r.hinweise.add("geraet_gewechselt");
+        }
+        if (standortSpaeter) {
+            r.hinweise.add("standort_spaeter");
+        }
+    }
+
+    /** Legt den Vorschlag an — mit Stellung und „Unterzähler von“ aus Topologie und Fluss. */
+    private static Roh neuerRoh(VorschlagAnlage a, VorschlagKomponente k, int anlageIndex,
+            int komponenteIndex, String fluss, Groesse ziel, VorschlagQuelle quelle,
+            OffsetDateTime ab, List<Roh> rohe) {
+        String stellung = null;
+        VorschlagHauptzaehler bestehend = null;
+        Roh bezug = null;
+        if (LADESTAND.equals(fluss) || speicherFluss(fluss)) {
+            stellung = SPEICHER;
+        } else if ("Erzeugung".equals(fluss)) {
+            stellung = ERZEUGER;
+        } else if (NETZMESSUNG.equals(k.rolle()) && a.netzanschluss()) {
+            boolean fremderZaehler = (a.hauptzaehler() == null ? List.<VorschlagHauptzaehler>of()
+                    : a.hauptzaehler()).stream()
+                    .anyMatch(h -> h.komponente() == null || !h.komponente().equals(k.id()));
+            stellung = fremderZaehler ? null : HAUPTZAEHLER;
+        } else if (BEZUG.equals(fluss)) {
+            Roh v = bezugVorschlag(rohe, a, BEZUG);
+            VorschlagHauptzaehler b = hauptzaehler(a, BEZUG);
+            if (v != null) {
+                stellung = UNTERZAEHLER;
+                bezug = v;
+            } else if (b != null) {
+                stellung = UNTERZAEHLER;
+                bestehend = b;
+            }
+        }
+        Roh r = new Roh(a, k, anlageIndex, komponenteIndex,
+                LADESTAND.equals(fluss) ? VORSCHLAG_FLUESSE.size() : VORSCHLAG_FLUESSE.indexOf(fluss),
+                ziel, quelle, stellung, bestehend, bezug, ab);
+        rohe.add(r);
+        return r;
+    }
+
+    private static boolean speicherFluss(String fluss) {
+        return "Laden / Entladen".equals(fluss) || "Laden".equals(fluss) || "Entladen".equals(fluss);
+    }
+
+    /** Der Bezug-Hauptzähler-Vorschlag DERSELBEN Anlage, wenn es ihn schon gibt. */
+    private static Roh bezugVorschlag(List<Roh> rohe, VorschlagAnlage a, String richtung) {
+        return rohe.stream().filter(r -> r.anlage == a && HAUPTZAEHLER.equals(r.stellung)
+                && richtung.equals(r.hauptgroesse.richtung())).findFirst().orElse(null);
+    }
+
+    private static VorschlagHauptzaehler hauptzaehler(VorschlagAnlage a, String richtung) {
+        return (a.hauptzaehler() == null ? List.<VorschlagHauptzaehler>of() : a.hauptzaehler()).stream()
+                .filter(h -> richtung.equals(h.richtung())).findFirst().orElse(null);
+    }
+
+    /** Der Fluss eines Messwerts: seine Vertrags-Richtung, wenn sie eine Wirkgröße trägt. */
+    private static String fluss(VorschlagKanal c) {
+        if (!WIRKENERGIE.equals(c.groesse()) && !WIRKLEISTUNG.equals(c.groesse())) {
+            return null;
+        }
+        return enthaelt(VORSCHLAG_FLUESSE, c.richtung()) ? c.richtung() : null;
+    }
+
+    /**
+     * Wie viele Flüsse der Komponente schon eine Messstelle speisen — zusammen mit ihren
+     * Vorschlägen sagen sie, ob der Name den Fluss nennen muss („Netzzähler Halle 1 · Bezug“).
+     */
+    private static long gespeisteFluesse(VorschlagKomponente k) {
+        Set<String> gesehen = new HashSet<>();
+        for (VorschlagKanal c : k.messkanaele() == null ? List.<VorschlagKanal>of() : k.messkanaele()) {
+            if (c.speist() == null || attributKanal(c)) {
+                continue;
+            }
+            String f = fluss(c);
+            if (f != null) {
+                gesehen.add(f);
+            } else if (LADESTAND.equals(c.groesse())) {
+                gesehen.add(LADESTAND);
+            }
+        }
+        return gesehen.size();
+    }
+
+    /** Ein Attribut-Kanal: eine Herkunft, eine Freigabe, eine Grenze oder ein Zustand (P4, P5b, P5c). */
+    private static boolean attributKanal(VorschlagKanal c) {
+        String kanal = c.kanal() == null ? "" : c.kanal();
+        if (ATTRIBUT_KANAELE.contains(kanal) || kanal.startsWith(ATTRIBUT_PRAEFIX)) {
+            return true;
+        }
+        return c.wertart() != null && !COUNTER.equals(c.wertart()) && !GAUGE.equals(c.wertart());
+    }
+
+    private static boolean hatKanal(List<VorschlagKanal> kanaele, String kanal) {
+        return kanaele.stream().anyMatch(c -> kanal.equals(c.kanal()));
+    }
+
+    private static int stellungRang(String stellung) {
+        if (HAUPTZAEHLER.equals(stellung)) {
+            return 0;
+        }
+        if (ERZEUGER.equals(stellung)) {
+            return 1;
+        }
+        if (SPEICHER.equals(stellung)) {
+            return 2;
+        }
+        return UNTERZAEHLER.equals(stellung) ? 3 : 4;
+    }
+
+    /** Was hinter den Namen der Komponente tritt, wenn sie mehr als einen Fluss liest. */
+    private static String nameZusatz(Groesse g) {
+        return LADESTAND.equals(g.groesse()) ? LADESTAND : g.richtung();
+    }
+
+    private static String einheit(String groesse) {
+        KatalogEintrag e = katalog(groesse);
+        return e == null ? null : e.einheit();
+    }
+
+    private static String anzeige(VorschlagKanal c) {
+        return leer(c.anzeigename()) ? c.kanal() : c.anzeigename();
+    }
+
+    private static String hinweisText(String code) {
+        return switch (code) {
+            case "integration" -> "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet.";
+            case "ladestand_herkunft" -> "Die Herkunft des Ladestands reist mit (soc_source_code).";
+            case "geraet_gewechselt" -> "Das Gerät wurde gewechselt — die Messstelle beginnt beim "
+                    + "heutigen Gerät; die Zeit davor verketten Sie von Hand.";
+            case "standort_spaeter" -> "Der Verlauf beginnt vor dem Standort — die Messstelle "
+                    + "beginnt mit ihm.";
+            default -> null;
+        };
+    }
+
+    private static String ausgelassenText(RohAusgelassen x, String zu) {
+        String was = "„" + x.anzeige() + "“";
+        return switch (x.grund()) {
+            case "abgeleitet" -> was + " ist keine Messung, sondern eine Ableitung der Box — eine "
+                    + "berechnete Messstelle kommt später.";
+            case "ohne_messkanal" -> was + " liest keinen Messwert — ohne Messwert gibt es keine "
+                    + "Messstelle.";
+            case "ohne_geraet" -> was + " wird gerade von keinem Gerät gespeist — ohne Gerät gibt es "
+                    + "keine Quelle.";
+            case "attribut_kanal" -> was + " ist ein Attribut (Zustand, Grenze, Freigabe oder "
+                    + "Herkunft), kein Messwert — daraus wird nie eine Messstelle.";
+            case "keine_messgroesse" -> was + " misst keine Größe, die eine Messstelle trägt.";
+            case "ohne_richtung" -> was + " nennt keine Richtung — ob Bezug, Abgabe oder Erzeugung, "
+                    + "sagt der Messwert nicht.";
+            case "weitere_groesse" -> was + " misst eine weitere Größe — sie kommt als Nebengröße "
+                    + "von Hand dazu.";
+            case "vorzeichen_wert" -> was + " trägt Bezug und Abgabe in einem Vorzeichen — bis die "
+                    + "Aufteilung da ist, wird daraus keine Messstelle.";
+            case "vergleich_kandidat" -> was + " misst den Netzanschluss ein zweites Mal — ein "
+                    + "Kandidat für eine Vergleichsquelle an " + zu + ", nie eine eigene Messstelle.";
+            case "gleicher_fluss" -> was + " misst denselben Fluss wie " + zu + " — als Nebengröße "
+                    + "oder Vergleichsquelle von Hand.";
+            case "passt_nicht" -> "einheit".equals(x.passungGrund())
+                    ? was + " hat eine Einheit, die sich nicht umrechnen lässt („" + x.einheit() + "“)."
+                    : was + " passt nicht zu dieser Größe (" + x.passungGrund() + ").";
+            default -> null;
+        };
+    }
+
+    private static LocalDate tag(OffsetDateTime t, ZoneId zone) {
+        return t.atZoneSameInstant(zone).toLocalDate();
+    }
+
+    private static LocalDate spaeter(LocalDate a, LocalDate b) {
+        return b.isAfter(a) ? b : a;
+    }
+
+    private static OffsetDateTime mitternacht(LocalDate tag, ZoneId zone) {
+        return tag.atStartOfDay(zone).toOffsetDateTime();
     }
 
     // ------------------------------------------------------------------ Hilfen

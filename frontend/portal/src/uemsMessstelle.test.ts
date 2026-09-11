@@ -23,6 +23,13 @@ import {
   STELLUNGEN,
   STELLUNG_GRUENDE,
   VERGLEICH_ZWECKE,
+  ATTRIBUT_KANAELE,
+  ATTRIBUT_PRAEFIX,
+  VORSCHLAG_FLUESSE,
+  VORSCHLAG_GRUENDE,
+  VORSCHLAG_HINWEISE,
+  VORSCHLAG_LEER,
+  VORSCHLAG_ROLLEN,
   beendenPruefen,
   bindungPruefen,
   groessePruefen,
@@ -33,6 +40,7 @@ import {
   passung,
   rueckwirkung,
   stellungPruefen,
+  vorschlagsliste,
   zeitstrahlAus,
   type Abschnitt,
   type Bindung,
@@ -43,6 +51,9 @@ import {
   type QuelleZeitraum,
   type Stand,
   type StellungEintrag,
+  type VorschlagEingang,
+  type VorschlagQuelle,
+  type Vorschlagsliste,
 } from './uemsMessstelle';
 import { mitternacht } from './uemsOrtsbaum';
 import { liefertDaten } from './uemsZustand';
@@ -175,6 +186,58 @@ const quelleZeitraum = (q: Json): QuelleZeitraum => ({
 });
 const quelleMitZeit = (b: Bindung) => ({ ...quelle(b), gueltig_ab: b.gueltigAb, gueltig_bis: b.gueltigBis });
 
+const vorschlagEingang = (i: Json): VorschlagEingang => ({
+  standort: i.standort,
+  anlagen: i.anlagen,
+  komponenten: i.komponenten.map((k: Json) => ({
+    id: k.id,
+    anlage: k.anlage,
+    name: k.name,
+    rolle: k.rolle,
+    verlaufsbeginn: k.verlaufsbeginn,
+    speisungAb: k.speisung_ab,
+    messkanaele: k.messkanaele,
+  })),
+  zaehler: i.zaehler,
+  belegt: i.belegt,
+});
+
+const vorschlagQuelleAlsJson = (q: VorschlagQuelle): Json => ({
+  kanal: q.kanal,
+  anzeigename: q.anzeigename,
+  kanal_wertart: q.kanalWertart,
+  herleitung: q.herleitung,
+});
+
+const vorschlagAlsJson = (l: Vorschlagsliste): Json => ({
+  vorschlaege: l.vorschlaege.map((z) => ({
+    kennzeichen: z.kennzeichen,
+    name: z.name,
+    anlage: z.anlage,
+    komponente: z.komponente,
+    hauptgroesse: z.hauptgroesse,
+    quelle: vorschlagQuelleAlsJson(z.quelle),
+    nebengroessen: z.nebengroessen.map((n) => ({ groesse: n.groesse, quelle: vorschlagQuelleAlsJson(n.quelle) })),
+    stellung: z.stellung,
+    unterzaehler_von: z.unterzaehlerVon
+      ? {
+          messstelle: z.unterzaehlerVon.messstelle,
+          bestehend: z.unterzaehlerVon.bestehend,
+          komponente: z.unterzaehlerVon.komponente,
+          kanal: z.unterzaehlerVon.kanal,
+        }
+      : null,
+    ort: z.ort,
+    ab: z.ab,
+    stellung_ab: z.stellungAb,
+    hinweise: z.hinweise,
+  })),
+  ausgelassen: l.ausgelassen,
+  leer: l.leer,
+  text: l.text,
+  zaehler: l.zaehler,
+});
+
 const urteilAlsJson = (u: BindungUrteil): Json => ({
   fehler: u.fehler,
   grund: u.grund,
@@ -235,6 +298,13 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
     expect(vectors.passung_gruende).toEqual([...PASSUNG_GRUENDE]);
     expect(vectors.hinweise).toEqual([...HINWEISE]);
     expect(vectors.rueckwirkung_arten).toEqual([...RUECKWIRKUNG_ARTEN]);
+    expect(vectors.vorschlag_fluesse).toEqual([...VORSCHLAG_FLUESSE]);
+    expect(vectors.vorschlag_rollen).toEqual([...VORSCHLAG_ROLLEN]);
+    expect(vectors.vorschlag_gruende).toEqual([...VORSCHLAG_GRUENDE]);
+    expect(vectors.vorschlag_hinweise).toEqual([...VORSCHLAG_HINWEISE]);
+    expect(vectors.vorschlag_leer).toEqual([...VORSCHLAG_LEER]);
+    expect(vectors.attribut_kanaele).toEqual([...ATTRIBUT_KANAELE]);
+    expect(vectors.attribut_praefix).toEqual(ATTRIBUT_PRAEFIX);
     expect(vectors.fehler).toEqual(
       FEHLER.map((f) => ({ code: f.code, status: f.status, geprueft_von: f.geprueftVon })),
     );
@@ -287,6 +357,10 @@ describe('Messstellen-Vertrag — die Fälle', () => {
   it.each(faelle('passung'))('Passung: $name', (c) => {
     const k = c.input.kanal;
     expect(passung(c.input.medium, c.input.ziel, k.groesse, k.richtung, k.einheit, k.wertart)).toEqual(c.expected);
+  });
+
+  it.each(faelle('vorschlag'))('Vorschlag Bestand: $name', (c) => {
+    expect(vorschlagAlsJson(vorschlagsliste(vorschlagEingang(c.input)))).toEqual(c.expected);
   });
 
   it.each(faelle('bindung'))('Quelle: $name', (c) => {

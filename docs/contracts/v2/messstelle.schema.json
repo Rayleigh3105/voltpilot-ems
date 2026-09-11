@@ -176,7 +176,7 @@
       "type": "object",
       "additionalProperties": false,
       "description": "Die geteilte Vektor-Datei messstelle-vectors.json: Vokabular, Größen-Katalog, Fehlertabelle und die Fälle, gegen die beide Zwillinge laufen.",
-      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "rueckwirkung_arten", "cases"],
+      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "rueckwirkung_arten", "vorschlag_fluesse", "vorschlag_rollen", "vorschlag_gruende", "vorschlag_hinweise", "vorschlag_leer", "attribut_kanaele", "attribut_praefix", "cases"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" }, "description": "Die Regeln in Prosa — dieselben wie in messstelle.md." },
         "schema_version": { "type": "string", "const": "1.0", "description": "Fassung der Vektor-Datei." },
@@ -215,11 +215,18 @@
         "fehler": { "type": "array", "items": { "$ref": "#/$defs/fehlerEintrag" }, "description": "Die Fehlertabelle: Code, Status und wer prüft." },
         "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" }, "description": "Hinweise, die das Speichern nicht verhindern." },
         "rueckwirkung_arten": { "type": "array", "items": { "$ref": "#/$defs/rueckwirkungArt" }, "description": "Wo ein Zeitpunkt gegen „jetzt“ steht, in dieser Reihenfolge (E2)." },
+        "vorschlag_fluesse": { "type": "array", "items": { "$ref": "#/$defs/richtung" }, "description": "Die Flüsse, aus denen die Vorschlagsliste eine Messstelle macht — in ihrer Reihenfolge (E6)." },
+        "vorschlag_rollen": { "type": "array", "items": { "$ref": "#/$defs/vorschlagRolle" }, "description": "Was eine Komponente in der Vorschlagsliste ist; daraus folgt die Stellung." },
+        "vorschlag_gruende": { "type": "array", "items": { "$ref": "#/$defs/vorschlagGrund" }, "description": "Warum eine Komponente oder ein Messwert nicht vorgeschlagen wird, in der Reihenfolge der Prüfung." },
+        "vorschlag_hinweise": { "type": "array", "items": { "$ref": "#/$defs/vorschlagHinweisCode" }, "description": "Was an einem Vorschlag hängt, ohne ihn zu verhindern — in der Reihenfolge der Zeile." },
+        "vorschlag_leer": { "type": "array", "items": { "$ref": "#/$defs/vorschlagLeer" }, "description": "Warum die Liste leer ist." },
+        "attribut_kanaele": { "type": "array", "items": { "type": "string" }, "description": "Die Kanäle, die nie ein Messwert einer Messstelle sind (P4, P5b, P5c)." },
+        "attribut_praefix": { "type": "string", "const": "bms_", "description": "Der Namensraum der BMS-Kanäle — Zustände, Grenzen und Bitfelder, nie eine Messung." },
         "cases": {
           "type": "object",
           "additionalProperties": false,
           "description": "Die Fälle, nach Regel geordnet.",
-          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung", "beenden", "rueckwirkung"],
+          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung", "beenden", "rueckwirkung", "vorschlag"],
           "properties": {
             "kennzeichen_vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenVorschlag" } },
             "kennzeichen_pruefen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenPruefen" } },
@@ -230,7 +237,8 @@
             "zeitstrahl": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallZeitstrahl" } },
             "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } },
             "beenden": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBeenden" } },
-            "rueckwirkung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallRueckwirkung" } }
+            "rueckwirkung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallRueckwirkung" } },
+            "vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallVorschlag" } }
           }
         }
       }
@@ -265,6 +273,10 @@
     },
     "fehltWort": { "type": "string", "enum": ["kennzeichen", "name", "hauptgroesse", "ort", "formel", "eingaenge"], "description": "Was fehlt." },
     "bindungStatus": { "type": "string", "enum": ["geplant", "gilt", "beendet"], "description": "Geplant (beginnt in der Zukunft), gilt, oder beendet." },
+    "vorschlagRolle": { "type": "string", "enum": ["netzmessung", "zaehler", "geraet", "abgeleitet"], "description": "Was eine Komponente in der Vorschlagsliste ist: die maßgebliche Netzmessung ihrer Anlage, ein weiterer Zähler, ein Gerät oder eine Ableitung der Box (Haus)." },
+    "vorschlagGrund": { "type": "string", "enum": ["abgeleitet", "ohne_messkanal", "ohne_geraet", "attribut_kanal", "keine_messgroesse", "ohne_richtung", "weitere_groesse", "vorzeichen_wert", "vergleich_kandidat", "gleicher_fluss", "passt_nicht"], "description": "Warum aus dieser Komponente oder diesem Messwert keine Messstelle vorgeschlagen wird." },
+    "vorschlagHinweisCode": { "type": "string", "enum": ["integration", "ladestand_herkunft", "geraet_gewechselt", "standort_spaeter"], "description": "Was an einem Vorschlag hängt, ohne ihn zu verhindern." },
+    "vorschlagLeer": { "type": "string", "enum": ["alle_zugeordnet", "keine_komponente"], "description": "Warum die Liste leer ist: alles übernommen, oder es gibt nichts zu übernehmen." },
     "herleitung": { "type": "string", "enum": ["zaehlerstand", "differenzen", "integration", "momentanwert"], "description": "Zählerstand wie gelesen · Menge aus den Differenzen eines Zählerstands · Menge aus einer Leistung integriert (gekennzeichnet) · Momentanwert wie gelesen." },
     "stellungGrund": { "type": "string", "enum": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"], "description": "Warum eine Stellung abgelehnt wird." },
     "passungGrund": { "type": "string", "enum": ["wertart", "groesse", "einheit", "richtung"], "description": "Woran ein Messwert an der Größe scheitert." },
@@ -697,6 +709,184 @@
         "unterzaehler_von": { "type": ["string", "null"] },
         "richtung": { "$ref": "#/$defs/richtung" },
         "komponente": { "type": ["string", "null"], "description": "Die Komponente der führenden Quelle am Stichtag; leer ohne Quelle." }
+      }
+    },
+    "vorschlagKanal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ein Messkanal der Komponente, wie das Read-Model ihn zeigt (IP-9): die Vertragswörter und das Katalogwort `direction`, an dem ein Vorzeichen-Wert (`import_export`) erkennbar ist.",
+      "required": ["kanal", "anzeigename", "groesse", "richtung", "einheit", "wertart", "direction", "speist"],
+      "properties": {
+        "kanal": { "type": "string", "minLength": 1 },
+        "anzeigename": { "type": ["string", "null"], "description": "Der Name aus dem Katalog; fehlt er, spricht die Fläche vom Kanal." },
+        "groesse": { "anyOf": [{ "$ref": "#/$defs/groesseName" }, { "type": "null" }], "description": "Die Vertrags-Größe des Messwerts; `null` = der Katalog kennt keine." },
+        "richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "type": "null" }], "description": "Die Vertrags-Richtung; `null` = keine (ein Vorzeichen-Wert oder ein Nenn-/Grenzwert)." },
+        "einheit": { "type": ["string", "null"] },
+        "wertart": { "anyOf": [{ "$ref": "#/$defs/kanalWertart" }, { "type": "null" }] },
+        "direction": { "type": ["string", "null"], "description": "Das Katalogwort (import · export · generation · charge_discharge · import_export · none …)." },
+        "speist": { "type": ["string", "null"], "description": "Das Kennzeichen der Messstelle, die dieser Messwert schon speist — dann wird er nie noch einmal vorgeschlagen." }
+      }
+    },
+    "vorschlagQuelle": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Der Messwert hinter einer Größe des Vorschlags, mit der Herleitung aus Regel 7.",
+      "required": ["kanal", "anzeigename", "kanal_wertart", "herleitung"],
+      "properties": {
+        "kanal": { "type": "string", "minLength": 1 },
+        "anzeigename": { "type": ["string", "null"] },
+        "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
+        "herleitung": { "$ref": "#/$defs/herleitung" }
+      }
+    },
+    "fallVorschlag": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ein Fall der Vorschlagsliste (E6, §5.15, IP-16): aus den Komponenten eines Standorts und ihren Messkanälen wird je Komponente und Fluss höchstens EIN Vorschlag.",
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Anlage des Referenzunternehmens, deren Komponenten der Fall unverändert benutzt." },
+        "annahme": { "type": "string", "minLength": 1, "description": "Was der Fall über das Referenzunternehmen hinaus annimmt." },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["standort", "zaehler", "belegt", "anlagen", "komponenten"],
+          "properties": {
+            "standort": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kennzeichen", "name", "beginn", "zeitzone"],
+              "properties": {
+                "kennzeichen": { "$ref": "#/$defs/verweis" },
+                "name": { "type": "string", "minLength": 1 },
+                "beginn": { "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }], "description": "Der erste Tag, an dem es den Standort gibt — keine Messstelle beginnt davor." },
+                "zeitzone": { "type": "string" }
+              }
+            },
+            "zaehler": { "type": "integer", "minimum": 0, "description": "Der Stand des Kennzeichen-Zählers des Kundenbereichs." },
+            "belegt": { "type": "array", "items": { "type": "string" }, "description": "Die belegten Kennzeichen (E7, Regel 9)." },
+            "anlagen": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["id", "name", "netzanschluss", "hauptzaehler"],
+                "properties": {
+                  "id": { "$ref": "#/$defs/verweis" },
+                  "name": { "type": "string" },
+                  "netzanschluss": { "type": "boolean", "description": "Ohne Netzanschluss gibt es keinen Hauptzähler (§5.15)." },
+                  "hauptzaehler": {
+                    "type": "array",
+                    "description": "Die BESTEHENDEN Hauptzähler der Anlage mit der Komponente ihrer führenden Quelle.",
+                    "items": {
+                      "type": "object", "additionalProperties": false,
+                      "required": ["messstelle", "richtung", "komponente", "seit"],
+                      "properties": {
+                        "messstelle": { "type": "string" },
+                        "richtung": { "$ref": "#/$defs/richtung" },
+                        "komponente": { "type": ["string", "null"] },
+                        "seit": { "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }] }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "komponenten": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["id", "anlage", "name", "rolle", "verlaufsbeginn", "speisung_ab", "messkanaele"],
+                "properties": {
+                  "id": { "$ref": "#/$defs/verweis" },
+                  "anlage": { "$ref": "#/$defs/verweis" },
+                  "name": { "type": "string", "minLength": 1, "description": "Der Name, unter dem der Kunde sie kennt (Alias, „getippt gewinnt“)." },
+                  "rolle": { "$ref": "#/$defs/vorschlagRolle" },
+                  "verlaufsbeginn": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Der Beginn ihres Verlaufs (erste Speisung)." },
+                  "speisung_ab": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "Der Beginn der LAUFENDEN Speisung; `null` = kein Gerät, also keine Quelle." },
+                  "messkanaele": { "type": "array", "items": { "$ref": "#/$defs/vorschlagKanal" } }
+                }
+              }
+            }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vorschlaege", "ausgelassen", "leer", "text", "zaehler"],
+          "properties": {
+            "vorschlaege": {
+              "type": "array",
+              "description": "Die Zeilen in der Reihenfolge der Liste UND der Übernahme: je Anlage Hauptzähler, Erzeuger, Speicher, Unterzähler, zuletzt das Stellungslose.",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["kennzeichen", "name", "anlage", "komponente", "hauptgroesse", "quelle", "nebengroessen", "stellung", "unterzaehler_von", "ort", "ab", "stellung_ab", "hinweise"],
+                "properties": {
+                  "kennzeichen": { "$ref": "#/$defs/kennzeichen" },
+                  "name": { "type": "string", "minLength": 1, "description": "Der Alias der Komponente; liest sie mehr als einen Fluss, nennt der Name ihn („Netzzähler Halle 1 · Bezug“)." },
+                  "anlage": { "$ref": "#/$defs/verweis" },
+                  "komponente": { "$ref": "#/$defs/verweis" },
+                  "hauptgroesse": { "$ref": "#/$defs/groesse" },
+                  "quelle": { "$ref": "#/$defs/vorschlagQuelle" },
+                  "nebengroessen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object", "additionalProperties": false, "required": ["groesse", "quelle"],
+                      "properties": {
+                        "groesse": { "$ref": "#/$defs/groesse" },
+                        "quelle": { "$ref": "#/$defs/vorschlagQuelle" }
+                      }
+                    }
+                  },
+                  "stellung": { "anyOf": [{ "$ref": "#/$defs/stellung" }, { "type": "null" }], "description": "`null` = offen; sie wird nie geraten." },
+                  "unterzaehler_von": {
+                    "type": ["object", "null"], "additionalProperties": false,
+                    "required": ["messstelle", "bestehend", "komponente", "kanal"],
+                    "properties": {
+                      "messstelle": { "type": "string" },
+                      "bestehend": { "type": "boolean", "description": "true = eine schon bestehende Messstelle; false = ein Vorschlag dieser Liste." },
+                      "komponente": { "type": ["string", "null"] },
+                      "kanal": { "type": ["string", "null"] }
+                    }
+                  },
+                  "ort": { "$ref": "#/$defs/verweis", "description": "Der Standort (Verfeinerung später, §5.15)." },
+                  "ab": { "$ref": "#/$defs/zeitpunkt", "description": "Der Beginn der Bindung — rückwirkend, Herkunft „Bestandsübernahme“." },
+                  "stellung_ab": { "$ref": "#/$defs/tag", "description": "Ab wann die Stellung gilt — nie vor dem Tag, an dem ihr Hauptzähler einer ist." },
+                  "hinweise": {
+                    "type": "array",
+                    "items": {
+                      "type": "object", "additionalProperties": false, "required": ["code", "text"],
+                      "properties": {
+                        "code": { "$ref": "#/$defs/vorschlagHinweisCode" },
+                        "text": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "ausgelassen": {
+              "type": "array",
+              "description": "Was nicht vorgeschlagen wird, mit Grund und Satz — in der Reihenfolge der Komponenten und ihrer Messkanäle.",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["anlage", "komponente", "kanal", "grund", "zu", "text"],
+                "properties": {
+                  "anlage": { "$ref": "#/$defs/verweis" },
+                  "komponente": { "$ref": "#/$defs/verweis" },
+                  "kanal": { "type": ["string", "null"], "description": "`null` = die ganze Komponente." },
+                  "grund": { "$ref": "#/$defs/vorschlagGrund" },
+                  "zu": { "type": ["string", "null"], "description": "Die Messstelle, auf die der Grund zeigt (Vergleichsquelle, gleicher Fluss)." },
+                  "text": { "type": "string", "minLength": 1 }
+                }
+              }
+            },
+            "leer": { "anyOf": [{ "$ref": "#/$defs/vorschlagLeer" }, { "type": "null" }], "description": "Gesetzt, WENN es keinen Vorschlag gibt — nie daneben." },
+            "text": { "type": ["string", "null"], "description": "Der Satz zur leeren Liste." },
+            "zaehler": { "type": "integer", "minimum": 0, "description": "Der Stand des Kennzeichen-Zählers nach einer vollständigen Übernahme." }
+          }
+        }
       }
     },
     "fallStellung": {

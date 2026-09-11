@@ -733,6 +733,88 @@ paths:
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
         "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/standorte/{standortId}/messstellen-vorschlag:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Die Vorschlagsliste der Bestandsübernahme - aus den Komponenten des Standorts werden Messstellen (AP-04 IP-16).
+      description: >
+        Recht `messstelle.ansehen` (AP-04 E6, §5.10/§5.15, Abnahme A9; Portal-Hälfte
+        AP-01 IP-9b). Liest nur - nichts entsteht ungefragt: keine Messstelle, keine
+        Bindung, keine Zeile an der Anlage. Aus den Komponenten der Anlagen des
+        Standorts und ihren Messkanälen (IP-9) wird je Komponente und Fluss HÖCHSTENS
+        EIN Vorschlag (MessstelleRegeln.vorschlagsliste, Vektoren Familie `vorschlag`):
+        Zählerstand vor Leistung (aus einer Leistung wird die Wirkenergie integriert,
+        `herleitung: integration`), der Ladestand steht als Nebengröße neben dem
+        Speicher-Fluss derselben Komponente. Die Stellung kommt aus der Topologie -
+        maßgebliche Netzmessung → Hauptzähler (nur mit Netzanschluss), Erzeugung →
+        Erzeuger, Speicher → Speicher, jeder andere Bezug → "Unterzähler von" dem
+        Bezug-Hauptzähler seiner Anlage (vorgeschlagen oder bestehend); findet sich
+        keiner, bleibt sie leer - nie geraten. Der Name ist der Alias der Komponente
+        ("getippt gewinnt"), der Ort der Standort, `ab` der Beginn des Verlaufs (nie vor
+        dem Standort und nie über einen Gerätewechsel hinweg). Was NICHT vorgeschlagen
+        wird, steht mit Grund und Satz unter `ausgelassen` (abgeleitet · ohne_messkanal ·
+        ohne_geraet · attribut_kanal · keine_messgroesse · ohne_richtung · weitere_groesse ·
+        vorzeichen_wert · vergleich_kandidat · gleicher_fluss · passt_nicht). Ist alles
+        übernommen, ist die Liste leer und sagt es (`leer`, `text`).
+      responses:
+        "200":
+          description: Die Vorschläge und die ausgelassenen Messwerte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleVorschlagsliste" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/standorte/{standortId}/messstellen-vorschlag/uebernehmen:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Die ausgewählten Vorschläge übernehmen - Messstellen mit rückwirkender Bindung (AP-04 IP-16).
+      description: >
+        Rechte `messstelle.bearbeiten` und `messstelle.quelle`; die Bindung beginnt am
+        Beginn des Verlaufs, also zusätzlich `aenderung.rueckwirkend`. Je Zeile entstehen
+        in EINER Transaktion: die Messstelle (Kennzeichen vom Server, E7), ihr Ort (der
+        Standort) ab dem Verlaufsbeginn, die führende Quelle ab dem Verlaufsbeginn
+        (rückwirkend, `herkunft: bestandsuebernahme`), die Nebengrößen und zuletzt die
+        Stellung. Geschrieben wird in der Reihenfolge der Liste, damit ein Unterzähler
+        seinen Hauptzähler schon vorfindet; fehlt dieser (nicht mitbestätigt), ist das
+        422 `stellung_ungueltig` (`grund: bezug_fehlt`). Bestätigt wird nur, was gezeigt
+        wurde - eine abweichende Zeile ist 409 `vorschlag_geaendert`, und nichts wird
+        geschrieben. Ein Messwert, der dieselbe Messstelle schon speist, zählt als
+        `unveraendert`: ein zweiter Aufruf legt nichts an (A9). Der Name darf
+        überschrieben werden ("benennt um"); an Komponenten, Mess-Selektion, Geräten und
+        Reihen ändert sich nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleVorschlagUebernehmen" }
+      responses:
+        "200":
+          description: Die angelegten (und die schon vorhandenen) Messstellen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleVorschlagUebernommen" }
+        "400":
+          description: Die Anfrage ist unvollständig (`anfrage_ungueltig`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleFehler" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Der Vorschlag hat sich geändert (`vorschlag_geaendert`) oder ein Kennzeichen ist belegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleFehler" }
+        "422":
+          description: Eine Regel des Vertrags lehnt ab (Passung, Gerät zum Zeitpunkt, Stellung).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleFehler" }
+
   /api/v1/orte/{ortId}:
     put:
       tags: [ortsstruktur]
@@ -15825,7 +15907,7 @@ components:
       description: "Eine Quellenbindung, wie sie gespeichert ist; `status` gegen jetzt."
       required: [id, messstelle_id, groesse, richtung, rolle, zweck, komponente, komponente_name, anlage, kanal,
         kanal_wertart, herleitung, geraet, gueltig_ab, gueltig_bis, status, anfangsstand, endstand, rueckwirkend,
-        eingetragen_am, eingetragen_von]
+        herkunft, eingetragen_am, eingetragen_von]
       properties:
         id: { type: string, format: uuid }
         messstelle_id: { type: string, format: uuid }
@@ -15846,6 +15928,7 @@ components:
         anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
         endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
         rueckwirkend: { type: boolean, description: "Lag der Beginn beim Eintragen schon zurück (E2)?" }
+        herkunft: { type: string, nullable: true, enum: [bestandsuebernahme, null], description: "Woher die Bindung stammt: leer = von Hand gebunden, `bestandsuebernahme` = aus der Vorschlagsliste des Standorts übernommen (IP-16, E6)." }
         eingetragen_am: { type: string, format: date-time }
         eingetragen_von: { type: string }
     MessstelleQuelleRueckwirkung:
@@ -15995,6 +16078,127 @@ components:
         elektrische_stellung:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleStellungZuordnung" }]
+    MessstelleVorschlagQuelle:
+      type: object
+      description: "Der Messwert hinter einer Größe des Vorschlags, mit der Herleitung aus Regel 7."
+      required: [kanal, anzeigename, kanal_wertart, herleitung]
+      properties:
+        kanal: { type: string, description: "Der point_key der Mess-Selektion." }
+        anzeigename: { type: string, nullable: true, description: "Der Name aus dem Katalog; fehlt er, spricht die Fläche vom Kanal." }
+        kanal_wertart: { type: string, enum: [counter, gauge] }
+        herleitung: { type: string, enum: [zaehlerstand, differenzen, integration, momentanwert] }
+    MessstelleVorschlagNebengroesse:
+      type: object
+      description: "Eine Nebengröße des Vorschlags (der Ladestand am Speicher) mit ihrem Messwert."
+      required: [groesse, quelle]
+      properties:
+        groesse: { $ref: "#/components/schemas/MessGroesse" }
+        quelle: { $ref: "#/components/schemas/MessstelleVorschlagQuelle" }
+    MessstelleVorschlagBezug:
+      type: object
+      description: "„Unterzähler von“: eine bestehende Messstelle oder ein Vorschlag DIESER Liste."
+      required: [messstelle, bestehend, komponente, kanal]
+      properties:
+        messstelle: { type: string, description: "Das Kennzeichen des Hauptzählers (MS-0001 oder das bestehende)." }
+        bestehend: { type: boolean, description: "true = eine schon vorhandene Messstelle; false = ein Vorschlag dieser Liste." }
+        komponente: { type: string, format: uuid, nullable: true, description: "Nur beim Vorschlag: welche Zeile gemeint ist." }
+        kanal: { type: string, nullable: true }
+    MessstelleVorschlagHinweis:
+      type: object
+      description: "Was an einer Zeile hängt, ohne sie zu verhindern."
+      required: [code, text]
+      properties:
+        code: { type: string, enum: [integration, ladestand_herkunft, geraet_gewechselt, standort_spaeter] }
+        text: { type: string }
+    MessstelleVorschlag:
+      type: object
+      description: >
+        Eine Zeile der Vorschlagsliste: was aus diesem Messwert eine Messstelle machen
+        würde. `kennzeichen` ist der automatische Vorschlag (E7) - vergeben wird es erst
+        bei der Übernahme; `ab` der Beginn der Bindung, `stellung_ab` der Tag, ab dem die
+        Stellung gilt (nie vor dem Tag, an dem ihr Hauptzähler einer ist).
+      required: [kennzeichen, name, anlage, anlage_name, komponente, komponente_name, hauptgroesse, quelle,
+        nebengroessen, stellung, unterzaehler_von, ort, ab, stellung_ab, hinweise]
+      properties:
+        kennzeichen: { type: string, example: "MS-0001" }
+        name: { type: string, description: "Der Alias der Komponente; liest sie mehr als einen Fluss, nennt der Name ihn („Netzzähler Halle 1 · Bezug“)." }
+        anlage: { type: string, format: uuid }
+        anlage_name: { type: string, nullable: true }
+        komponente: { type: string, format: uuid }
+        komponente_name: { type: string, nullable: true }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        quelle: { $ref: "#/components/schemas/MessstelleVorschlagQuelle" }
+        nebengroessen: { type: array, items: { $ref: "#/components/schemas/MessstelleVorschlagNebengroesse" } }
+        stellung:
+          type: string
+          nullable: true
+          enum: [Hauptzähler, Unterzähler, Erzeuger, Speicher, Abzweig, keine, null]
+          description: "null = offen; sie wird nie geraten."
+        unterzaehler_von:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleVorschlagBezug" }]
+        ort: { type: string, description: "Das Kurzzeichen des Standorts (Verfeinerung später, §5.15)." }
+        ab: { type: string, format: date-time, description: "Der Beginn der Bindung - rückwirkend, Herkunft „Bestandsübernahme“." }
+        stellung_ab: { type: string, format: date }
+        hinweise: { type: array, items: { $ref: "#/components/schemas/MessstelleVorschlagHinweis" } }
+    MessstelleVorschlagAusgelassen:
+      type: object
+      description: "Was nicht vorgeschlagen wird, mit Grund und Satz; `kanal` leer = die ganze Komponente."
+      required: [anlage, komponente, komponente_name, kanal, grund, zu, text]
+      properties:
+        anlage: { type: string, format: uuid }
+        komponente: { type: string, format: uuid }
+        komponente_name: { type: string, nullable: true }
+        kanal: { type: string, nullable: true }
+        grund:
+          type: string
+          enum: [abgeleitet, ohne_messkanal, ohne_geraet, attribut_kanal, keine_messgroesse, ohne_richtung,
+            weitere_groesse, vorzeichen_wert, vergleich_kandidat, gleicher_fluss, passt_nicht]
+        zu: { type: string, nullable: true, description: "Die Messstelle, auf die der Grund zeigt (Vergleichsquelle, gleicher Fluss)." }
+        text: { type: string }
+    MessstelleVorschlagsliste:
+      type: object
+      description: "Die Vorschlagsliste eines Standorts; `leer` und `text` sind gesetzt, WENN es keinen Vorschlag gibt."
+      required: [standort, standort_kennzeichen, standort_name, vorschlaege, ausgelassen, leer, text]
+      properties:
+        standort: { type: string, format: uuid }
+        standort_kennzeichen: { type: string, example: "ST-1" }
+        standort_name: { type: string }
+        vorschlaege: { type: array, items: { $ref: "#/components/schemas/MessstelleVorschlag" } }
+        ausgelassen: { type: array, items: { $ref: "#/components/schemas/MessstelleVorschlagAusgelassen" } }
+        leer: { type: string, nullable: true, enum: [alle_zugeordnet, keine_komponente, null] }
+        text: { type: string, nullable: true, description: "„Alle Komponenten von Werk Ahrenberg sind Messstellen zugeordnet.“" }
+    MessstelleVorschlagBestaetigt:
+      type: object
+      description: >
+        Eine bestätigte Zeile: die Felder, die das GET gezeigt hat. `name` darf
+        überschrieben werden (leer = der vorgeschlagene); alles andere muss noch so sein,
+        sonst 409 `vorschlag_geaendert`.
+      required: [komponente, kanal, hauptgroesse, ab]
+      properties:
+        komponente: { type: string, format: uuid }
+        kanal: { type: string }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        nebengroessen: { type: array, items: { $ref: "#/components/schemas/MessstelleVorschlagNebengroesse" } }
+        stellung: { type: string, nullable: true }
+        ab: { type: string, format: date-time }
+        name: { type: string, nullable: true }
+    MessstelleVorschlagUebernehmen:
+      type: object
+      required: [vorschlaege]
+      properties:
+        vorschlaege:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/MessstelleVorschlagBestaetigt" }
+    MessstelleVorschlagUebernommen:
+      type: object
+      description: "Wie viele Messstellen neu entstanden sind, wie viele es schon gab, und sie selbst in der Reihenfolge der Anfrage."
+      required: [neu, unveraendert, messstellen]
+      properties:
+        neu: { type: integer }
+        unveraendert: { type: integer, description: "Zeilen, die schon übernommen waren - ein zweiter Aufruf legt nichts an." }
+        messstellen: { type: array, items: { $ref: "#/components/schemas/Messstelle" } }
     MessstelleFehler:
       type: object
       description: >
@@ -16019,7 +16223,9 @@ components:
         Zuordnung - `grund: gleicher_tag`, `gueltig_ab`), `zuordnung_unveraendert` 400
         (schon genau so zugeordnet - `grund: ziel_ist_bisheriger_eltern`) und
         `zuordnung_ungueltig` 422 (`grund` des Ortsbaum-Vertrags:
-        vor_dem_ersten_intervall · objekt_archiviert · kein_beginn_an_dem_tag). Den Satz baut die
+        vor_dem_ersten_intervall · objekt_archiviert · kein_beginn_an_dem_tag) und
+        `vorschlag_geaendert` 409 (die bestätigte Zeile der Vorschlagsliste gibt es
+        so nicht mehr - `komponente`, `kanal`; IP-16). Den Satz baut die
         Fläche später aus den Fakten (IP-6); `message` ist der Wortlaut von AP-04
         §5.12, wo es ihn gibt.
       required: [code, message]
@@ -16031,7 +16237,7 @@ components:
             zeitpunkt_vor_vorgaenger, bindung_ueberlappt, hauptzaehler_vorhanden, stellung_ungueltig,
             anteile_summe, ort_ungueltig, kein_geraet_zum_zeitpunkt, bindung_bereits_beendet,
             anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft,
-            zuordnung_ueberlappt, zuordnung_ungueltig, zuordnung_unveraendert]
+            zuordnung_ueberlappt, zuordnung_ungueltig, zuordnung_unveraendert, vorschlag_geaendert]
         message: { type: string }
         feld: { type: string, description: "anfrage_ungueltig, groesse_ungueltig: hauptgroesse, nebengroessen[1], zeitpunkt, gueltig_ab, anlage, stellung …" }
         grund:

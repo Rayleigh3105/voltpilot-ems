@@ -94,6 +94,19 @@ public class MessstelleRepository {
         return neu;
     }
 
+    /**
+     * Der Stand des Kennzeichen-Zählers und die belegten Kennzeichen — die Eingänge von
+     * {@link MessstelleRegeln#kennzeichenVorschlag} für eine LISTE von Vorschlägen (IP-16).
+     * Bewegt den Zähler nicht.
+     */
+    public Kennzeichenstand kennzeichenstand() {
+        Integer zaehler = DataAccessUtils.singleResult(
+                jdbc.queryForList("SELECT zaehler FROM messstelle_kennzeichen_seq", Integer.class));
+        return new Kennzeichenstand(zaehler == null ? 0 : zaehler, belegteKennzeichen());
+    }
+
+    public record Kennzeichenstand(int zaehler, List<String> belegt) {}
+
     /** Der nächste automatische Vorschlag für den Dialog — ohne den Zähler zu bewegen. */
     public Vorschlag vorschlag() {
         Integer zaehler = DataAccessUtils.singleResult(

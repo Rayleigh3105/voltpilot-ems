@@ -49,7 +49,9 @@ public final class MessstelleQuelleDto {
 
     /**
      * Eine Quellenbindung. {@code status} gegen „jetzt“ (geplant · gilt · beendet);
-     * {@code rueckwirkend} sagt, ob der Beginn beim Eintragen schon vorbei war.
+     * {@code rueckwirkend} sagt, ob der Beginn beim Eintragen schon vorbei war, {@code herkunft}
+     * woher sie stammt: {@code null} = von Hand gebunden, {@code bestandsuebernahme} = aus der
+     * Vorschlagsliste des Standorts übernommen (IP-16, E6).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Quelle(
@@ -72,6 +74,7 @@ public final class MessstelleQuelleDto {
             Stand anfangsstand,
             Stand endstand,
             boolean rueckwirkend,
+            String herkunft,
             OffsetDateTime eingetragenAm,
             String eingetragenVon) {}
 

@@ -27,8 +27,8 @@ public class MessstelleQuelleRepository {
             + "q.richtung, q.entity_id, p.site_id, p.label AS komponente_name, q.geraet_id, "
             + "g.kennzeichen AS geraet, g.einbau_kennzeichen AS einbau, q.kanal, q.kanal_wertart, "
             + "q.herleitung, q.rolle, q.zweck, q.gueltig_ab, q.gueltig_bis, q.anfangsstand, "
-            + "q.anfangsstand_einheit, q.endstand, q.endstand_einheit, q.rueckwirkend, q.eingetragen_am, "
-            + "q.actor_name";
+            + "q.anfangsstand_einheit, q.endstand, q.endstand_einheit, q.rueckwirkend, q.herkunft, "
+            + "q.eingetragen_am, q.actor_name";
     private static final String VON = " FROM messstelle_quelle q JOIN messstelle m ON m.id = q.messstelle_id "
             + "JOIN geraet g ON g.id = q.geraet_id JOIN measurement_point p ON p.id = q.entity_id ";
     /** Hauptgröße vor Nebengrößen ist Sache der Darstellung; hier: je Größe nach Rolle und Beginn. */
@@ -51,22 +51,24 @@ public class MessstelleQuelleRepository {
             UUID entityId, UUID siteId, String komponenteName, UUID geraetId, String geraet, String einbau,
             String kanal, String kanalWertart, String herleitung, String rolle, String zweck,
             Instant gueltigAb, Instant gueltigBis, Stand anfangsstand, Stand endstand, boolean rueckwirkend,
-            Instant eingetragenAm, String eingetragenVon) {}
+            String herkunft, Instant eingetragenAm, String eingetragenVon) {}
 
+    /** {@code herkunft}: {@code null} = von Hand gebunden, {@code bestandsuebernahme} = aus der Liste (IP-16). */
     public record NeueQuelle(UUID tenantId, UUID messstelleId, String groesse, String richtung, UUID entityId,
             UUID geraetId, String kanal, String kanalWertart, String herleitung, String rolle, String zweck,
-            Instant gueltigAb, Instant gueltigBis, Stand anfangsstand, boolean rueckwirkend,
+            Instant gueltigAb, Instant gueltigBis, Stand anfangsstand, boolean rueckwirkend, String herkunft,
             Instant eingetragenAm, ProtokollAkteur wer) {}
 
     public UUID anlegen(NeueQuelle q) {
         return jdbc.queryForObject("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, "
                 + "entity_id, geraet_id, kanal, kanal_wertart, herleitung, rolle, zweck, gueltig_ab, gueltig_bis, "
-                + "anfangsstand, anfangsstand_einheit, rueckwirkend, eingetragen_am, actor_sub, actor_name, "
-                + "actor_rolle, actor_art) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
+                + "anfangsstand, anfangsstand_einheit, rueckwirkend, herkunft, eingetragen_am, actor_sub, "
+                + "actor_name, actor_rolle, actor_art) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                + "RETURNING id",
                 UUID.class, q.tenantId(), q.messstelleId(), q.groesse(), q.richtung(), q.entityId(),
                 q.geraetId(), q.kanal(), q.kanalWertart(), q.herleitung(), q.rolle(), q.zweck(),
                 Timestamp.from(q.gueltigAb()), zeit(q.gueltigBis()), wert(q.anfangsstand()),
-                q.anfangsstand() == null ? null : q.anfangsstand().einheit(), q.rueckwirkend(),
+                q.anfangsstand() == null ? null : q.anfangsstand().einheit(), q.rueckwirkend(), q.herkunft(),
                 Timestamp.from(q.eingetragenAm()), q.wer().sub(), q.wer().name(), q.wer().rolle(), q.wer().art());
     }
 
@@ -124,7 +126,8 @@ public class MessstelleQuelleRepository {
                 zeit(rs, "gueltig_ab"), zeit(rs, "gueltig_bis"),
                 stand(rs.getBigDecimal("anfangsstand"), rs.getString("anfangsstand_einheit")),
                 stand(rs.getBigDecimal("endstand"), rs.getString("endstand_einheit")),
-                rs.getBoolean("rueckwirkend"), zeit(rs, "eingetragen_am"), rs.getString("actor_name"));
+                rs.getBoolean("rueckwirkend"), rs.getString("herkunft"), zeit(rs, "eingetragen_am"),
+                rs.getString("actor_name"));
     }
 
     private static Stand stand(BigDecimal wert, String einheit) {

@@ -28,6 +28,16 @@ import com.voltpilot.api.uems.MessstelleRegeln.StellungEintrag;
 import com.voltpilot.api.uems.MessstelleRegeln.StellungKandidat;
 import com.voltpilot.api.uems.MessstelleRegeln.StellungUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.Vergeben;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagAnlage;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagEingang;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagHauptzaehler;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagHinweis;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagKanal;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagKomponente;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagNebengroesse;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagQuelle;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagStandort;
+import com.voltpilot.api.uems.MessstelleRegeln.VorschlagZeile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -150,6 +160,13 @@ class MessstelleRegelnVectorsTest {
         assertThat(texte(v.path("passung_gruende"))).isEqualTo(MessstelleRegeln.PASSUNG_GRUENDE);
         assertThat(texte(v.path("hinweise"))).isEqualTo(MessstelleRegeln.HINWEISE);
         assertThat(texte(v.path("rueckwirkung_arten"))).isEqualTo(MessstelleRegeln.RUECKWIRKUNG_ARTEN);
+        assertThat(texte(v.path("vorschlag_fluesse"))).isEqualTo(MessstelleRegeln.VORSCHLAG_FLUESSE);
+        assertThat(texte(v.path("vorschlag_rollen"))).isEqualTo(MessstelleRegeln.VORSCHLAG_ROLLEN);
+        assertThat(texte(v.path("vorschlag_gruende"))).isEqualTo(MessstelleRegeln.VORSCHLAG_GRUENDE);
+        assertThat(texte(v.path("vorschlag_hinweise"))).isEqualTo(MessstelleRegeln.VORSCHLAG_HINWEISE);
+        assertThat(texte(v.path("vorschlag_leer"))).isEqualTo(MessstelleRegeln.VORSCHLAG_LEER);
+        assertThat(texte(v.path("attribut_kanaele"))).isEqualTo(MessstelleRegeln.ATTRIBUT_KANAELE);
+        assertThat(v.path("attribut_praefix").asText()).isEqualTo(MessstelleRegeln.ATTRIBUT_PRAEFIX);
 
         List<String> fehlerDatei = new ArrayList<>();
         v.path("fehler").forEach(f -> fehlerDatei.add(
@@ -391,6 +408,108 @@ class MessstelleRegelnVectorsTest {
         return tests;
     }
 
+    /** Die Vorschlagsliste der Bestandsübernahme (E6, §5.15, IP-16). */
+    @TestFactory
+    List<DynamicTest> vorschlag() throws Exception {
+        return fuerJedenFall("vorschlag", c -> vorschlagAlsJson(
+                MessstelleRegeln.vorschlagsliste(vorschlagEingang(c.path("input")))));
+    }
+
+    private static VorschlagEingang vorschlagEingang(JsonNode in) {
+        JsonNode s = in.path("standort");
+        VorschlagStandort standort = new VorschlagStandort(s.path("kennzeichen").asText(),
+                s.path("name").asText(),
+                text(s.path("beginn")) == null ? null : LocalDate.parse(s.path("beginn").asText()),
+                ZoneId.of(s.path("zeitzone").asText()));
+        List<VorschlagAnlage> anlagen = new ArrayList<>();
+        in.path("anlagen").forEach(a -> {
+            List<VorschlagHauptzaehler> hz = new ArrayList<>();
+            a.path("hauptzaehler").forEach(h -> hz.add(new VorschlagHauptzaehler(
+                    h.path("messstelle").asText(), h.path("richtung").asText(), text(h.path("komponente")),
+                    text(h.path("seit")) == null ? null : LocalDate.parse(h.path("seit").asText()))));
+            anlagen.add(new VorschlagAnlage(a.path("id").asText(), a.path("name").asText(),
+                    a.path("netzanschluss").asBoolean(), hz));
+        });
+        List<VorschlagKomponente> komponenten = new ArrayList<>();
+        in.path("komponenten").forEach(k -> {
+            List<VorschlagKanal> kanaele = new ArrayList<>();
+            k.path("messkanaele").forEach(c -> kanaele.add(new VorschlagKanal(c.path("kanal").asText(),
+                    text(c.path("anzeigename")), text(c.path("groesse")), text(c.path("richtung")),
+                    text(c.path("einheit")), text(c.path("wertart")), text(c.path("direction")),
+                    text(c.path("speist")))));
+            komponenten.add(new VorschlagKomponente(k.path("id").asText(), k.path("anlage").asText(),
+                    k.path("name").asText(), k.path("rolle").asText(), zeit(k.path("verlaufsbeginn")),
+                    zeit(k.path("speisung_ab")), kanaele));
+        });
+        return new VorschlagEingang(standort, anlagen, komponenten, in.path("zaehler").asInt(),
+                texte(in.path("belegt")));
+    }
+
+    private static JsonNode vorschlagAlsJson(MessstelleRegeln.Vorschlagsliste l) {
+        ObjectNode out = MAPPER.createObjectNode();
+        ArrayNode zeilen = out.putArray("vorschlaege");
+        for (VorschlagZeile z : l.vorschlaege()) {
+            ObjectNode o = zeilen.addObject();
+            o.put("kennzeichen", z.kennzeichen());
+            o.put("name", z.name());
+            o.put("anlage", z.anlage());
+            o.put("komponente", z.komponente());
+            o.set("hauptgroesse", groesseAlsJson(z.hauptgroesse()));
+            o.set("quelle", quelleAlsJson(z.quelle()));
+            ArrayNode neben = o.putArray("nebengroessen");
+            for (VorschlagNebengroesse n : z.nebengroessen()) {
+                ObjectNode g = neben.addObject();
+                g.set("groesse", groesseAlsJson(n.groesse()));
+                g.set("quelle", quelleAlsJson(n.quelle()));
+            }
+            o.put("stellung", z.stellung());
+            if (z.unterzaehlerVon() == null) {
+                o.putNull("unterzaehler_von");
+            } else {
+                ObjectNode b = o.putObject("unterzaehler_von");
+                b.put("messstelle", z.unterzaehlerVon().messstelle());
+                b.put("bestehend", z.unterzaehlerVon().bestehend());
+                b.put("komponente", z.unterzaehlerVon().komponente());
+                b.put("kanal", z.unterzaehlerVon().kanal());
+            }
+            o.put("ort", z.ort());
+            o.put("ab", zeitText(z.ab()));
+            o.put("stellung_ab", z.stellungAb() == null ? null : z.stellungAb().toString());
+            ArrayNode hinweise = o.putArray("hinweise");
+            for (VorschlagHinweis h : z.hinweise()) {
+                hinweise.addObject().put("code", h.code()).put("text", h.text());
+            }
+        }
+        ArrayNode ohne = out.putArray("ausgelassen");
+        for (MessstelleRegeln.Ausgelassen a : l.ausgelassen()) {
+            ohne.addObject().put("anlage", a.anlage()).put("komponente", a.komponente())
+                    .put("kanal", a.kanal()).put("grund", a.grund()).put("zu", a.zu())
+                    .put("text", a.text());
+        }
+        out.put("leer", l.leer());
+        out.put("text", l.text());
+        out.put("zaehler", l.zaehler());
+        return out;
+    }
+
+    private static ObjectNode groesseAlsJson(Groesse g) {
+        ObjectNode o = MAPPER.createObjectNode();
+        o.put("groesse", g.groesse());
+        o.put("richtung", g.richtung());
+        o.put("einheit", g.einheit());
+        o.put("wertart", g.wertart());
+        return o;
+    }
+
+    private static ObjectNode quelleAlsJson(VorschlagQuelle q) {
+        ObjectNode o = MAPPER.createObjectNode();
+        o.put("kanal", q.kanal());
+        o.put("anzeigename", q.anzeigename());
+        o.put("kanal_wertart", q.kanalWertart());
+        o.put("herleitung", q.herleitung());
+        return o;
+    }
+
     /** Die gültigen Beispiele halten auch die Regeln, die das Schema nicht ausdrücken kann. */
     @TestFactory
     List<DynamicTest> dieGueltigenBeispieleHaltenDieRegeln() throws Exception {
@@ -418,6 +537,60 @@ class MessstelleRegelnVectorsTest {
     }
 
     // ------------------------------------------------- das Referenzunternehmen
+
+    /**
+     * Die acht Vorschläge für AN-1 sind die acht Messstellen MS-01…MS-08 des
+     * Referenzunternehmens: dieselbe Komponente, derselbe Messwert, dieselbe Hauptgröße,
+     * dieselbe Stellung und derselbe Beginn (12.03.2024). Nur Kennzeichen und Name sind die
+     * automatischen des Vorschlags — beide benennt der Kunde bei der Übernahme um (§5.15).
+     */
+    @Test
+    void dieVorschlaegeFuerAn1SindDieMessstellenDesReferenzunternehmens() throws Exception {
+        JsonNode ref = lies(REFERENZ);
+        JsonNode fall = faelle("vorschlag").stream()
+                .filter(c -> "an-1-acht-vorschlaege".equals(c.path("name").asText())).findFirst().orElseThrow();
+        JsonNode zeilen = fall.path("expected").path("vorschlaege");
+        List<String> kennzeichen = List.of("MS-01", "MS-02", "MS-03", "MS-04", "MS-05", "MS-06",
+                "MS-07", "MS-08");
+        assertThat(zeilen).hasSize(kennzeichen.size());
+        for (int i = 0; i < kennzeichen.size(); i++) {
+            JsonNode z = zeilen.get(i);
+            JsonNode m = refMessstelle(ref, kennzeichen.get(i));
+            JsonNode q = m.path("fuehrende_quelle").get(0);
+            String kz = kennzeichen.get(i);
+            assertThat(z.path("komponente").asText()).as(kz + " Komponente").isEqualTo(q.path("komponente").asText());
+            assertThat(z.path("quelle").path("kanal").asText()).as(kz + " Messwert")
+                    .isEqualTo(q.path("kanal").asText());
+            assertThat(z.path("quelle").path("kanal_wertart").asText()).as(kz + " Wertart des Messwerts")
+                    .isEqualTo(q.path("kanal_wertart").asText());
+            assertThat(groesse(z.path("hauptgroesse"))).as(kz + " Hauptgröße")
+                    .isEqualTo(groesse(m.path("hauptgroesse")));
+            assertThat(z.path("ab").asText()).as(kz + " Beginn der Bindung")
+                    .isEqualTo(q.path("gueltig_ab").asText());
+            JsonNode stellung = m.path("elektrische_stellung").get(0);
+            assertThat(z.path("stellung").asText()).as(kz + " Stellung")
+                    .isEqualTo(stellung.path("stellung").asText());
+            assertThat(z.path("stellung_ab").asText()).as(kz + " Stellung ab")
+                    .isEqualTo(stellung.path("gueltig_ab").asText());
+            assertThat(z.path("anlage").asText()).as(kz + " Anlage").isEqualTo(stellung.path("anlage").asText());
+            if (stellung.path("unterzaehler_von").isNull()) {
+                assertThat(z.path("unterzaehler_von").isNull()).as(kz + " ohne Bezug").isTrue();
+            } else {
+                // Der Vorschlag zeigt auf den Hauptzähler-VORSCHLAG (MS-0001), die Referenzdatei
+                // auf dessen späteres Kennzeichen (MS-01) — dieselbe Messstelle, dieselbe Zeile.
+                assertThat(z.path("unterzaehler_von").path("komponente").asText()).as(kz + " Bezug")
+                        .isEqualTo(refMessstelle(ref, stellung.path("unterzaehler_von").asText())
+                                .path("fuehrende_quelle").get(0).path("komponente").asText());
+            }
+        }
+        // Die Nebengröße von MS-04 ist die des Referenzunternehmens (Ladestand aus K-1).
+        JsonNode neben = zeilen.get(3).path("nebengroessen").get(0);
+        JsonNode refNeben = refMessstelle(ref, "MS-04").path("nebengroessen").get(0);
+        assertThat(groesse(neben.path("groesse"))).isEqualTo(groesse(refNeben));
+        assertThat(neben.path("quelle").path("kanal").asText())
+                .isEqualTo(refNeben.path("fuehrende_quelle").get(0).path("kanal").asText());
+    }
+
 
     /** MS-06 und MS-21 sind die Messstellen des Referenzunternehmens — Feld für Feld. */
     @TestFactory

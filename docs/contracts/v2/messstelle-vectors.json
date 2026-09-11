@@ -21,9 +21,10 @@
     "kennt). Beide Zwillinge prüfen das gegen die Referenz-Datei — auch Vergleichsquellen. Nur die",
     "Familie `passung` ist eine reine Regeltabelle ohne Anlage: sie kennt nur Merkmale.",
     "",
-    "ZEHN FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
+    "ELF FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
     "passung (Regel 7 als Tabelle) · bindung · zeitstrahl (wie Lücken aussehen) · stellung ·",
-    "beenden (eine Quelle endet genau einmal) · rueckwirkung (das Abzeichen „rückwirkend“).",
+    "beenden (eine Quelle endet genau einmal) · rueckwirkung (das Abzeichen „rückwirkend“) ·",
+    "vorschlag (die Bestandsübernahme je Standort).",
     "",
     "═══ KENNZEICHEN (E7) ═══",
     "  · automatisch „MS-“ + laufende Nummer, mindestens vierstellig („MS-0022“),",
@@ -117,7 +118,35 @@
     "  Hauptzähler: je Anlage und Richtung höchstens einer, und alle Hauptzähler einer",
     "  Anlage lesen DENSELBEN Zähler (dieselbe Komponente) — so sind MS-01 (Bezug) und",
     "  MS-02 (Abgabe) an K-3 zusammen erlaubt, ein zweiter Zähler nie (409",
-    "  hauptzaehler_vorhanden, nennt den ersten bestehenden in Register-Reihenfolge)."
+    "  hauptzaehler_vorhanden, nennt den ersten bestehenden in Register-Reihenfolge).",
+    "",
+    "═══ VORSCHLAGSLISTE DER BESTANDSÜBERNAHME (E6, §5.10, §5.15) ═══",
+    "  Aus den Komponenten der Anlagen EINES Standorts und ihren Messkanälen wird je",
+    "  Komponente und Fluss HÖCHSTENS EIN Vorschlag. Nichts entsteht ungefragt: die Liste",
+    "  liest nur; erst die Übernahme legt an.",
+    "  · Größe aus dem Messwert: ein Zählerstand trägt die Wirkenergie als Zählerstand,",
+    "    eine Leistung als Intervallmenge (Herleitung integration, gekennzeichnet);",
+    "    Zählerstand vor Leistung, und Regel 7 entscheidet. Ein Ladestand steht als",
+    "    Nebengröße neben dem Speicher-Fluss derselben Komponente, sonst für sich.",
+    "  · Stellung aus der Topologie: die maßgebliche Netzmessung wird Hauptzähler (nur mit",
+    "    Netzanschluss und nur, solange kein anderer Zähler schon einer ist), Erzeugung →",
+    "    Erzeuger, Speicher → Speicher, jeder andere Bezug → „Unterzähler von“ dem",
+    "    Bezug-Hauptzähler seiner Anlage (vorgeschlagen ODER bestehend). Findet sich",
+    "    keiner, bleibt die Stellung offen — nie geraten.",
+    "  · Name aus dem Alias der Komponente („getippt gewinnt“); liest sie mehr als einen",
+    "    Fluss, nennt der Name ihn („Netzzähler Halle 1 · Bezug“). Ort ist der Standort.",
+    "  · Beginn ist der Verlauf: die Bindung beginnt am Beginn der LAUFENDEN Speisung (ein",
+    "    vorhandener Gerätewechsel wird nie verkettet, Hinweis geraet_gewechselt) und nie",
+    "    vor dem ersten Tag des Standorts (standort_spaeter).",
+    "  · Nie vorgeschlagen, jeder mit Grund: eine Ableitung der Box (abgeleitet), eine",
+    "    Komponente ohne Messkanal oder ohne laufendes Gerät, ein Attribut-Kanal",
+    "    (soc_source_code, bms_*, Grenzen, Freigaben, Zustände), ein Messwert ohne",
+    "    Vertrags-Größe, ohne Richtung oder mit einer weiteren Größe, ein Vorzeichen-Wert",
+    "    (am Gerät ein Kandidat für die Vergleichsquelle des Hauptzählers, E3), ein zweiter",
+    "    Messwert desselben Flusses und einer, der Regel 7 nicht besteht.",
+    "  · Kennzeichen: die automatischen (E7) in der Reihenfolge der Liste — sie ist auch",
+    "    die Reihenfolge der Übernahme, damit ein Unterzähler ein Kennzeichen trägt, das es",
+    "    beim Schreiben schon gibt."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./messstelle.schema.json#/$defs/vektorDatei",
@@ -222,6 +251,13 @@
   ],
   "hinweise": ["ablesestand_pruefen"],
   "rueckwirkung_arten": ["rueckwirkend", "ab_jetzt", "angekuendigt"],
+  "vorschlag_fluesse": ["Bezug", "Abgabe", "Erzeugung", "Laden / Entladen", "Laden", "Entladen"],
+  "vorschlag_rollen": ["netzmessung", "zaehler", "geraet", "abgeleitet"],
+  "vorschlag_gruende": ["abgeleitet", "ohne_messkanal", "ohne_geraet", "attribut_kanal", "keine_messgroesse", "ohne_richtung", "weitere_groesse", "vorzeichen_wert", "vergleich_kandidat", "gleicher_fluss", "passt_nicht"],
+  "vorschlag_hinweise": ["integration", "ladestand_herkunft", "geraet_gewechselt", "standort_spaeter"],
+  "vorschlag_leer": ["alle_zugeordnet", "keine_komponente"],
+  "attribut_kanaele": ["soc_source_code", "charge_allowed", "discharge_allowed", "charge_limit_a", "discharge_limit_a"],
+  "attribut_praefix": "bms_",
   "cases": {
     "kennzeichen_vorschlag": [
       {
@@ -3103,6 +3139,1936 @@
           "minuten": 15,
           "abzeichen": "rückwirkend (15 min)"
         }
+      }
+    ],
+    "vorschlag": [
+      {
+        "name": "an-1-acht-vorschlaege",
+        "herkunft": "AP-04 §5.15 (Tabelle VORSCHLAG) · E6 · Abnahme A9",
+        "referenz": "AN-1",
+        "why": "Die acht Zeilen der Bestandsübernahme von Halle 1: der Netzzähler K-3 wird Bezug und Abgabe (Hauptzähler), der Wechselrichter K-1 die Erzeugung (aus der Leistung integriert) und den Speicher samt Ladestand, die vier Unterzähler K-4…K-7 hängen an MS-0001. Nicht vorgeschlagen: die Netzleistung am Wechselrichter (Kandidat für eine Vergleichsquelle an MS-0001, E3), die Attribut-Kanäle soc_source_code und bms_* (P4/P5b), der abgeleitete Hausverbrauch und die Vorzeichen-Leistungen der Zähler (ihre Aufteilung kommt mit AP-08). Ort ist der Standort, die Bindung beginnt am Beginn des Verlaufs (12.03.2024).",
+        "annahme": "Die Referenzdatei kennt K-2 (Speicher) als eigene Komponente, die „über K-1 gemeldet“ wird: ihre Messwerte stehen an K-1 (MS-04 liest K-1 · Speicherleistung und K-1 · Ladestand), sie selbst liest keinen eigenen Messkanal. Den abgeleiteten Hausverbrauch (Ableitung der Box, Einheitsmodell E2) führt die Referenzdatei nicht als Komponente; §5.15 nennt ihn ausdrücklich als nicht vorgeschlagen.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": null},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": null},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": null}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Netzzähler Halle 1 · Bezug",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0002",
+              "name": "Netzzähler Halle 1 · Abgabe",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Hybrid-Wechselrichter 100 kW · Erzeugung",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [],
+              "stellung": "Erzeuger",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Hybrid-Wechselrichter 100 kW · Laden / Entladen",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [
+                {
+                  "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+                  "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"}
+                }
+              ],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "ladestand_herkunft", "text": "Die Herkunft des Ladestands reist mit (soc_source_code)."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0006",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0007",
+              "name": "Unterzähler Druckluft",
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0008",
+              "name": "Unterzähler Kühlung",
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vergleich_kandidat",
+              "zu": "MS-0001",
+              "text": "„Netzleistung“ misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an MS-0001, nie eine eigene Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "an-1-zweiter-aufruf-alles-zugeordnet",
+        "herkunft": "AP-04 §5.11 (Leere Zustände) · Abnahme A9",
+        "referenz": "AN-1",
+        "why": "Nach der Übernahme speist jeder vorgeschlagene Messwert seine Messstelle: es gibt keinen zweiten Vorschlag mehr, und die Fläche sagt es in einem Satz. Die Messwerte, die nie eine Messstelle werden, bleiben mit ihrem Grund sichtbar.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 8,
+          "belegt": ["MS-0001", "MS-0002", "MS-0003", "MS-0004", "MS-0005", "MS-0006", "MS-0007", "MS-0008"],
+          "anlagen": [
+            {
+              "id": "AN-1",
+              "name": "Werk Ahrenberg – Halle 1",
+              "netzanschluss": true,
+              "hauptzaehler": [
+                {"messstelle": "MS-0001", "richtung": "Bezug", "komponente": "K-3", "seit": "2024-03-12"},
+                {"messstelle": "MS-0002", "richtung": "Abgabe", "komponente": "K-3", "seit": "2024-03-12"}
+              ]
+            }
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": "MS-0003"},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": "MS-0004"},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": "MS-0004"},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-0001"},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": "MS-0002"}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-0005"}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-0006"}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-0007"}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-0008"}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vergleich_kandidat",
+              "zu": "MS-0001",
+              "text": "„Netzleistung“ misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an MS-0001, nie eine eigene Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": "alle_zugeordnet",
+          "text": "Alle Komponenten von Werk Ahrenberg sind Messstellen zugeordnet.",
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "an-1-hauptzaehler-besteht-schon",
+        "herkunft": "AP-04 §5.15 · Regel 8 · E12",
+        "referenz": "AN-1",
+        "why": "Der Bezug des Netzzählers speist schon MS-01: die Abgabe desselben Zählers wird der zweite Hauptzähler (derselbe Zähler, andere Richtung), und die Unterzähler hängen an der BESTEHENDEN MS-01, nicht an einem Vorschlag. Die Kennzeichen laufen ab dem Stand des Zählers weiter.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 1,
+          "belegt": ["MS-01"],
+          "anlagen": [
+            {
+              "id": "AN-1",
+              "name": "Werk Ahrenberg – Halle 1",
+              "netzanschluss": true,
+              "hauptzaehler": [
+                {"messstelle": "MS-01", "richtung": "Bezug", "komponente": "K-3", "seit": "2024-03-12"}
+              ]
+            }
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": null},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": null},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": "MS-01"},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": null}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0002",
+              "name": "Netzzähler Halle 1 · Abgabe",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Hybrid-Wechselrichter 100 kW · Erzeugung",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [],
+              "stellung": "Erzeuger",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Hybrid-Wechselrichter 100 kW · Laden / Entladen",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [
+                {
+                  "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+                  "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"}
+                }
+              ],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "ladestand_herkunft", "text": "Die Herkunft des Ladestands reist mit (soc_source_code)."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-01", "bestehend": true, "komponente": null, "kanal": null},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0006",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-01", "bestehend": true, "komponente": null, "kanal": null},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0007",
+              "name": "Unterzähler Druckluft",
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-01", "bestehend": true, "komponente": null, "kanal": null},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0008",
+              "name": "Unterzähler Kühlung",
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-01", "bestehend": true, "komponente": null, "kanal": null},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vergleich_kandidat",
+              "zu": "MS-01",
+              "text": "„Netzleistung“ misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an MS-01, nie eine eigene Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "k-5-zaehlerwechsel-beginnt-beim-heutigen-geraet",
+        "herkunft": "AP-04 §5.15 („kein Verketten vorhandener Gerätewechsel“) · W2",
+        "referenz": "AN-1",
+        "why": "K-5 hat am 18.11.2026 10:40 einen neuen Zähler bekommen (Z-5a → Z-5b). Ein Messkanal gehört genau einem Gerät: der Vorschlag beginnt beim heutigen Gerät, nie über den Wechsel hinweg — die Zeit davor verkettet der Kunde von Hand.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": null},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": null},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": null}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2026-11-18T10:40:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Netzzähler Halle 1 · Bezug",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0002",
+              "name": "Netzzähler Halle 1 · Abgabe",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Hybrid-Wechselrichter 100 kW · Erzeugung",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [],
+              "stellung": "Erzeuger",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Hybrid-Wechselrichter 100 kW · Laden / Entladen",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [
+                {
+                  "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+                  "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"}
+                }
+              ],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "ladestand_herkunft", "text": "Die Herkunft des Ladestands reist mit (soc_source_code)."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0006",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2026-11-18T10:40:00+01:00",
+              "stellung_ab": "2026-11-18",
+              "hinweise": [
+                {"code": "geraet_gewechselt", "text": "Das Gerät wurde gewechselt — die Messstelle beginnt beim heutigen Gerät; die Zeit davor verketten Sie von Hand."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0007",
+              "name": "Unterzähler Druckluft",
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0008",
+              "name": "Unterzähler Kühlung",
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vergleich_kandidat",
+              "zu": "MS-0001",
+              "text": "„Netzleistung“ misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an MS-0001, nie eine eigene Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "standort-beginnt-nach-dem-verlauf",
+        "herkunft": "AP-04 E6 (Bindung ab Verlaufsbeginn) · AP-02 E2/E5",
+        "referenz": "AN-1",
+        "why": "Der Standort wurde erst bei der Einführung am 01.10.2026 angelegt, der Verlauf der Komponenten beginnt am 12.03.2024. Eine Messstelle sitzt an einem Ort, den es gibt: die Bindung beginnt mit dem Standort, und die Zeile sagt warum. Rückwirkend wird sie trotzdem.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2026-10-01", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": null},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": null},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": null}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Netzzähler Halle 1 · Bezug",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0002",
+              "name": "Netzzähler Halle 1 · Abgabe",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Hauptzähler",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Hybrid-Wechselrichter 100 kW · Erzeugung",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [],
+              "stellung": "Erzeuger",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Hybrid-Wechselrichter 100 kW · Laden / Entladen",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [
+                {
+                  "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+                  "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"}
+                }
+              ],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "ladestand_herkunft", "text": "Die Herkunft des Ladestands reist mit (soc_source_code)."},
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0006",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0007",
+              "name": "Unterzähler Druckluft",
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0008",
+              "name": "Unterzähler Kühlung",
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": "Unterzähler",
+              "unterzaehler_von": {"messstelle": "MS-0001", "bestehend": false, "komponente": "K-3", "kanal": "Wirkenergie Bezug"},
+              "ort": "ST-1",
+              "ab": "2026-10-01T00:00:00+02:00",
+              "stellung_ab": "2026-10-01",
+              "hinweise": [
+                {"code": "standort_spaeter", "text": "Der Verlauf beginnt vor dem Standort — die Messstelle beginnt mit ihm."}
+              ]
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vergleich_kandidat",
+              "zu": "MS-0001",
+              "text": "„Netzleistung“ misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an MS-0001, nie eine eigene Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "ohne-netzanschluss-kein-hauptzaehler",
+        "herkunft": "AP-04 §5.15 („nur wenn die Anlage einen Netzanschluss hat“)",
+        "why": "Ohne Netzanschluss ist keine Messung die maßgebliche Netzmessung: die Zähler werden trotzdem vorgeschlagen, aber ohne Stellung — sie wird nie geraten. Ohne Hauptzähler hängt auch kein Unterzähler an einem.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": false, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "gauge", "direction": "generation", "speist": null},
+                {"kanal": "Netzleistung", "anzeigename": "Netzleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "groesse": "Wirkleistung", "richtung": "Laden / Entladen", "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge", "speist": null},
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "bms_soc_pct", "anzeigename": "bms_soc_pct", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            },
+            {"id": "K-2", "anlage": "AN-1", "name": "Batteriespeicher 200 kWh", "rolle": "geraet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []},
+            {
+              "id": "K-3",
+              "anlage": "AN-1",
+              "name": "Netzzähler Halle 1",
+              "rolle": "netzmessung",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null},
+                {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter", "direction": "export", "speist": null}
+              ]
+            },
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-5",
+              "anlage": "AN-1",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {
+              "id": "K-7",
+              "anlage": "AN-1",
+              "name": "Unterzähler Kühlung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkleistung", "anzeigename": "Wirkleistung", "groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "import_export", "speist": null},
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-HAUS", "anlage": "AN-1", "name": "Hausverbrauch", "rolle": "abgeleitet", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Hybrid-Wechselrichter 100 kW · Erzeugung",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "PV-Leistung", "anzeigename": "PV-Leistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [],
+              "stellung": "Erzeuger",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0002",
+              "name": "Hybrid-Wechselrichter 100 kW · Laden / Entladen",
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Laden / Entladen", "einheit": "kWh", "wertart": "Intervallmenge"},
+              "quelle": {"kanal": "Speicherleistung", "anzeigename": "Speicherleistung", "kanal_wertart": "gauge", "herleitung": "integration"},
+              "nebengroessen": [
+                {
+                  "groesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+                  "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"}
+                }
+              ],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": [
+                {"code": "integration", "text": "Die Wirkenergie wird aus der Leistung integriert — gekennzeichnet."},
+                {"code": "ladestand_herkunft", "text": "Die Herkunft des Ladestands reist mit (soc_source_code)."}
+              ]
+            },
+            {
+              "kennzeichen": "MS-0003",
+              "name": "Netzzähler Halle 1 · Bezug",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0004",
+              "name": "Netzzähler Halle 1 · Abgabe",
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Abgabe", "anzeigename": "Wirkenergie Abgabe", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0005",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0006",
+              "name": "Unterzähler Spritzguss SG01–SG06",
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0007",
+              "name": "Unterzähler Druckluft",
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            },
+            {
+              "kennzeichen": "MS-0008",
+              "name": "Unterzähler Kühlung",
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "Netzleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Netzleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_soc_pct",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_soc_pct“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-2", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Batteriespeicher 200 kWh“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."},
+            {
+              "anlage": "AN-1",
+              "komponente": "K-3",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-5",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-6",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-7",
+              "kanal": "Wirkleistung",
+              "grund": "vorzeichen_wert",
+              "zu": null,
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 8
+        }
+      },
+      {
+        "name": "attribut-kanaele-und-fremde-groessen-nie",
+        "herkunft": "AP-04 §5.15 („Attribut-Kanäle … nie Messkanäle (P4/P5b)“)",
+        "why": "Herkunft, Freigabe, Grenze, Bitfeld und BMS-Namensraum sind Attribute, kein Messwert; eine Spannung ist eine Messung, aber keine Größe des Messstellen-Katalogs, und eine Blindenergie kommt als Nebengröße von Hand dazu. Bleibt nichts übrig, ist die Liste leer und sagt es.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-1",
+              "anlage": "AN-1",
+              "name": "Hybrid-Wechselrichter 100 kW",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "soc_source_code", "anzeigename": "soc_source_code", "groesse": null, "richtung": null, "einheit": null, "wertart": null, "direction": null, "speist": null},
+                {"kanal": "charge_allowed", "anzeigename": "charge_allowed", "groesse": null, "richtung": null, "einheit": null, "wertart": "state", "direction": null, "speist": null},
+                {"kanal": "charge_limit_a", "anzeigename": "charge_limit_a", "groesse": null, "richtung": null, "einheit": "A", "wertart": "gauge", "direction": null, "speist": null},
+                {"kanal": "bms_alarm", "anzeigename": "bms_alarm", "groesse": null, "richtung": null, "einheit": null, "wertart": "bitfield", "direction": null, "speist": null},
+                {"kanal": "Spannung L1", "anzeigename": "Spannung L1", "groesse": null, "richtung": null, "einheit": "V", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "Blindenergie Bezug", "anzeigename": "Blindenergie Bezug", "groesse": "Blindenergie", "richtung": "Bezug", "einheit": "kvarh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            }
+          ]
+        },
+        "expected": {
+          "vorschlaege": [],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "soc_source_code",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„soc_source_code“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "charge_allowed",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„charge_allowed“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "charge_limit_a",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„charge_limit_a“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {
+              "anlage": "AN-1",
+              "komponente": "K-1",
+              "kanal": "bms_alarm",
+              "grund": "attribut_kanal",
+              "zu": null,
+              "text": "„bms_alarm“ ist ein Attribut (Zustand, Grenze, Freigabe oder Herkunft), kein Messwert — daraus wird nie eine Messstelle."
+            },
+            {"anlage": "AN-1", "komponente": "K-1", "kanal": "Spannung L1", "grund": "keine_messgroesse", "zu": null, "text": "„Spannung L1“ misst keine Größe, die eine Messstelle trägt."},
+            {"anlage": "AN-1", "komponente": "K-1", "kanal": "Blindenergie Bezug", "grund": "weitere_groesse", "zu": null, "text": "„Blindenergie Bezug“ misst eine weitere Größe — sie kommt als Nebengröße von Hand dazu."}
+          ],
+          "leer": "keine_komponente",
+          "text": "In Werk Ahrenberg gibt es keine Komponente, aus der eine Messstelle werden kann.",
+          "zaehler": 0
+        }
+      },
+      {
+        "name": "ladestand-ohne-speicherleistung-ist-die-messstelle",
+        "herkunft": "AP-04 §4.1 (Ladestand) · §5.15",
+        "why": "Liest eine Komponente nur den Ladestand, wird er selbst die Messstelle (Momentanwert, Stellung Speicher) — nie eine erfundene Leistung daneben. Ein zweiter Ladestand-Messwert misst denselben Fluss und steht nur als Vergleich zur Verfügung.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-2",
+              "anlage": "AN-1",
+              "name": "Batteriespeicher 200 kWh",
+              "rolle": "geraet",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Ladestand", "anzeigename": "Ladestand", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null},
+                {"kanal": "Ladestand (Gegenprobe)", "anzeigename": "Ladestand (Gegenprobe)", "groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "gauge", "direction": "none", "speist": null}
+              ]
+            }
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Batteriespeicher 200 kWh",
+              "anlage": "AN-1",
+              "komponente": "K-2",
+              "hauptgroesse": {"groesse": "Ladestand", "richtung": "richtungslos", "einheit": "%", "wertart": "Momentanwert"},
+              "quelle": {"kanal": "Ladestand", "anzeigename": "Ladestand", "kanal_wertart": "gauge", "herleitung": "momentanwert"},
+              "nebengroessen": [],
+              "stellung": "Speicher",
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-2",
+              "kanal": "Ladestand (Gegenprobe)",
+              "grund": "gleicher_fluss",
+              "zu": "MS-0001",
+              "text": "„Ladestand (Gegenprobe)“ misst denselben Fluss wie MS-0001 — als Nebengröße oder Vergleichsquelle von Hand."
+            }
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 1
+        }
+      },
+      {
+        "name": "ein-fluss-ein-vorschlag-zaehlerstand-vor-leistung",
+        "herkunft": "AP-04 §5.15 („je Komponente und Messkanal höchstens EIN Vorschlag“) · Regel 7",
+        "why": "Ein Zähler liest seinen Bezug als Zählerstand UND als Leistung: die Messstelle nimmt den Zählerstand (ohne Rechenweg), die Leistung misst denselben Fluss und bleibt als Nebengröße oder Vergleichsquelle für die Hand. Eine Gesamterzeugung in „0,1 kWh“ lässt sich nicht umrechnen — sie wird gar nichts.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-4",
+              "anlage": "AN-1",
+              "name": "Unterzähler Verwaltung",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": "2024-03-12T00:00:00+01:00",
+              "messkanaele": [
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null},
+                {"kanal": "Wirkleistung Bezug", "anzeigename": "Wirkleistung Bezug", "groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "gauge", "direction": "import", "speist": null},
+                {"kanal": "Gesamterzeugung", "anzeigename": "Gesamterzeugung", "groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "0,1 kWh", "wertart": "counter", "direction": "generation", "speist": null}
+              ]
+            }
+          ]
+        },
+        "expected": {
+          "vorschlaege": [
+            {
+              "kennzeichen": "MS-0001",
+              "name": "Unterzähler Verwaltung",
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "hauptgroesse": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand"},
+              "quelle": {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "kanal_wertart": "counter", "herleitung": "zaehlerstand"},
+              "nebengroessen": [],
+              "stellung": null,
+              "unterzaehler_von": null,
+              "ort": "ST-1",
+              "ab": "2024-03-12T00:00:00+01:00",
+              "stellung_ab": "2024-03-12",
+              "hinweise": []
+            }
+          ],
+          "ausgelassen": [
+            {
+              "anlage": "AN-1",
+              "komponente": "K-4",
+              "kanal": "Wirkleistung Bezug",
+              "grund": "gleicher_fluss",
+              "zu": "MS-0001",
+              "text": "„Wirkleistung Bezug“ misst denselben Fluss wie MS-0001 — als Nebengröße oder Vergleichsquelle von Hand."
+            },
+            {"anlage": "AN-1", "komponente": "K-4", "kanal": "Gesamterzeugung", "grund": "passt_nicht", "zu": null, "text": "„Gesamterzeugung“ hat eine Einheit, die sich nicht umrechnen lässt („0,1 kWh“)."}
+          ],
+          "leer": null,
+          "text": null,
+          "zaehler": 1
+        }
+      },
+      {
+        "name": "ohne-geraet-und-ohne-messkanal",
+        "herkunft": "AP-04 §5.15 · Regel 6 (ein Messkanal gehört genau einem Gerät)",
+        "why": "Eine Komponente ohne laufende Speisung hat keinen Messkanal, den eine Quelle lesen könnte, und eine ohne ausgewählten Messwert nichts, woraus eine Messstelle würde. Beides steht mit Grund da, nichts wird geraten.",
+        "input": {
+          "standort": {"kennzeichen": "ST-1", "name": "Werk Ahrenberg", "beginn": "2024-03-12", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [
+            {"id": "AN-1", "name": "Werk Ahrenberg – Halle 1", "netzanschluss": true, "hauptzaehler": []}
+          ],
+          "komponenten": [
+            {
+              "id": "K-6",
+              "anlage": "AN-1",
+              "name": "Unterzähler Druckluft",
+              "rolle": "zaehler",
+              "verlaufsbeginn": "2024-03-12T00:00:00+01:00",
+              "speisung_ab": null,
+              "messkanaele": [
+                {"kanal": "Wirkenergie Bezug", "anzeigename": "Wirkenergie Bezug", "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "counter", "direction": "import", "speist": null}
+              ]
+            },
+            {"id": "K-7", "anlage": "AN-1", "name": "Unterzähler Kühlung", "rolle": "zaehler", "verlaufsbeginn": "2024-03-12T00:00:00+01:00", "speisung_ab": "2024-03-12T00:00:00+01:00", "messkanaele": []}
+          ]
+        },
+        "expected": {
+          "vorschlaege": [],
+          "ausgelassen": [
+            {"anlage": "AN-1", "komponente": "K-6", "kanal": null, "grund": "ohne_geraet", "zu": null, "text": "„Unterzähler Druckluft“ wird gerade von keinem Gerät gespeist — ohne Gerät gibt es keine Quelle."},
+            {"anlage": "AN-1", "komponente": "K-7", "kanal": null, "grund": "ohne_messkanal", "zu": null, "text": "„Unterzähler Kühlung“ liest keinen Messwert — ohne Messwert gibt es keine Messstelle."}
+          ],
+          "leer": "keine_komponente",
+          "text": "In Werk Ahrenberg gibt es keine Komponente, aus der eine Messstelle werden kann.",
+          "zaehler": 0
+        }
+      },
+      {
+        "name": "standort-ohne-anlage",
+        "herkunft": "AP-04 §5.11 (Leere Zustände)",
+        "why": "Ein Standort ohne Anlage hat keine Komponente — die Liste ist leer und sagt es, statt einen leeren Knopf anzubieten.",
+        "input": {
+          "standort": {"kennzeichen": "ST-2", "name": "Werk Lindach", "beginn": "2026-10-15", "zeitzone": "Europe/Berlin"},
+          "zaehler": 0,
+          "belegt": [],
+          "anlagen": [],
+          "komponenten": []
+        },
+        "expected": {"vorschlaege": [], "ausgelassen": [], "leer": "keine_komponente", "text": "In Werk Lindach gibt es keine Komponente, aus der eine Messstelle werden kann.", "zaehler": 0}
       }
     ]
   }

@@ -98,6 +98,12 @@ public class MessstelleService {
     public static final ZoneId ZEITZONE = ZoneId.of("Europe/Berlin");
 
     private static final String SCHEMA_VERSION = "1.0";
+
+    /** Der Grund, den die Bestandsübernahme in jeden Protokolleintrag schreibt (E6). */
+    static final String HERKUNFT_GRUND = "Bestandsübernahme";
+
+    /** Die Herkunft einer Bindung aus der Vorschlagsliste ({@code messstelle_quelle.herkunft}). */
+    static final String HERKUNFT_BESTAND = "bestandsuebernahme";
     private static final List<String> ARTEN = List.of("gemessen", "berechnet");
     private static final DateTimeFormatter ANZEIGE = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
@@ -151,6 +157,14 @@ public class MessstelleService {
      * Geprüft wird erst jede Form (400), dann die Belegung (409).
      */
     public MessstelleDto.Messstelle anlegen(MessstelleDto.Anlegen a, ProtokollAkteur wer) {
+        return anlegen(a, wer, null);
+    }
+
+    /**
+     * Derselbe Weg mit einer HERKUNFT: {@code bestandsuebernahme} für die Vorschlagsliste des
+     * Standorts (IP-16, E6) — sie steht im Protokolleintrag „angelegt“, sonst ändert sie nichts.
+     */
+    MessstelleDto.Messstelle anlegen(MessstelleDto.Anlegen a, ProtokollAkteur wer, String herkunft) {
         UUID tenant = TenantContext.get();
         if (tenant == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Kein Kundenbereich gewählt.");
@@ -203,7 +217,10 @@ public class MessstelleService {
             neu.put("hauptgroesse", groesseAlsMap(haupt));
             neu.put("nebengroessen", neben.stream().map(MessstelleService::groesseAlsMap).toList());
             neu.put("notiz", notiz);
-            protokoll(m.id(), "angelegt", null, neu, jetzt, false, null, wer);
+            if (herkunft != null) {
+                neu.put("herkunft", herkunft);
+            }
+            protokoll(m.id(), "angelegt", null, neu, jetzt, false, herkunft == null ? null : HERKUNFT_GRUND, wer);
             return m.id();
         }));
         return eine(id);

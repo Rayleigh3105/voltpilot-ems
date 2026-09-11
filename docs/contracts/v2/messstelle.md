@@ -1,7 +1,7 @@
 # Messstellen-Vertrag (UEMS AP-04 IP-1)
 
 Stand 11.09.2026 · Vertrag 1.0 (additiv ergänzt mit IP-13: Gerät zum Zeitpunkt, Beenden,
-Rückwirkung) · Bezug: AP-04 §4.1–§4.6, §5.12–§5.14, §7 und die Captain-Entscheide **E1, E2,
+Rückwirkung; mit IP-16: die Vorschlagsliste der Bestandsübernahme) · Bezug: AP-04 §4.1–§4.6, §5.12–§5.14, §7 und die Captain-Entscheide **E1, E2,
 E3, E7, E8, E9, E12** vom 10.09.2026 (alle Option A).
 
 Dieser Vertrag sagt, **was eine logische Messstelle ist** — Kennzeichen, Größen, Quellen,
@@ -14,7 +14,7 @@ eingerichtet ist, wie eine Quelle gebunden, gewechselt und abgelehnt wird und wo
 |---|---|
 | [`messstelle.schema.json`](./messstelle.schema.json) | JSON Schema 2020-12: die Wurzel ist EINE Messstelle, `$defs/vektorDatei` die Form der Vektor-Datei |
 | [`fixtures/messstelle/`](./fixtures/messstelle/) | MS-06 und MS-21 aus dem Referenzunternehmen (gültig) und zwei ungültige Gegenbeispiele ([README](./fixtures/messstelle/README.md)) |
-| [`messstelle-vectors.json`](./messstelle-vectors.json) | 107 Fälle in zehn Familien, dazu Vokabular, Größen-Katalog und Fehlertabelle |
+| [`messstelle-vectors.json`](./messstelle-vectors.json) | 118 Fälle in elf Familien, dazu Vokabular, Größen-Katalog und Fehlertabelle |
 | `services/api/.../uems/MessstelleRegeln.java` | der Java-Zwilling (rein: ohne Spring, ohne Datenbank, ohne Uhr) |
 | `frontend/portal/src/uemsMessstelle.ts` | der TS-Zwilling |
 | `…/uems/MessstelleRegelnVectorsTest.java` · `src/uemsMessstelle.test.ts` | beide fahren DIESELBE Datei — plus Schema, Beispiele, Regel-Konstanten und jeden Fall gegen [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json); zwei Zweige, die die Referenzdatei nicht erreicht, prüfen beide als Einheit (zwei verschiedene Vergleichsquellen nebeneinander; zwei Hauptzähler gleicher Richtung am selben Zähler) |
@@ -24,8 +24,11 @@ eingerichtet ist, wie eine Quelle gebunden, gewechselt und abgelehnt wird und wo
 > **Wer anruft (Stand IP-13):** die Tabellen `messstelle` … (IP-2, `V20260911140000`),
 > `messstelle_ort`/`messstelle_stellung` (IP-7, `V20260911230000`) und `messstelle_quelle`
 > (IP-13, `V20260911250000`), die Schnittstelle `/api/v1/messstellen` (IP-3) mit `PUT …/{id}/ort`,
-> `…/stellung` und `GET …/{id}/standort?am=` (IP-7) und `…/{id}/quellen` (IP-13). Noch ohne Fläche
-> (IP-5/IP-6/IP-8). Die Box kennt keine Messstellen; der Edge-Vertrag bleibt unverändert.
+> `…/stellung` und `GET …/{id}/standort?am=` (IP-7) und `…/{id}/quellen` (IP-13), dazu die
+> Vorschlagsliste `GET /api/v1/standorte/{id}/messstellen-vorschlag` und
+> `POST …/uebernehmen` (IP-16, `messstelle_quelle.herkunft` in `V20260911310000`). Noch ohne
+> Fläche (IP-5/IP-6/IP-8/AP-01 IP-9b). Die Box kennt keine Messstellen; der Edge-Vertrag bleibt
+> unverändert.
 
 ## 1. Die Messstelle
 
@@ -247,6 +250,7 @@ Regeln.
 | `zeitstrahl` | 3 — MS-06 ohne Fuge, MS-21 ein offener Abschnitt ohne Quelle, MS-07 „keine Quelle seit 07:00“ | Regel 2, E8 |
 | `beenden` | 8 — Z-5a endet mit Endstand 1 083 415,2 kWh (A1), angekündigt am Vortag, beendete Quelle nie erneut, Ende vor und genau am Beginn, Endstand ohne Einheit, MS-07 zur Prüfung abgeklemmt, Vergleichsquelle vor Beginn begrenzt | Regel 2, E2, E3 |
 | `rueckwirkung` | 8 — 25 min (§5.14), 933 Tage (Bestandsübernahme), Sekunden zählen nicht, angekündigt, 2 h 5 min, volle Stunden, ein Tag, Sommerzeit | E2, Regel 5 |
+| `vorschlag` | 11 — **AN-1: die acht Zeilen von §5.15** (A9), alles übernommen (der Satz), bestehender Hauptzähler MS-01, Zählerwechsel an K-5, Standort jünger als der Verlauf, ohne Netzanschluss, Attribut-Kanäle und fremde Größen, Ladestand ohne Speicherleistung, Zählerstand vor Leistung (und „0,1 kWh“ passt nicht), ohne Gerät / ohne Messkanal, Standort ohne Anlage | E6, §5.10, §5.15, A9 |
 | `stellung` | 13 — Bezug + Abgabe desselben Zählers, **zweiter Hauptzähler** (A11) und gleiche Richtung, **Fremdanlage** (MS-08-Umzug, MS-11), Umzug erlaubt, sich selbst, **Zyklus**, berechnet und Gas nur „keine“, Bezug fehlt, Bezug ohne Unterzähler | Regel 8, E12 |
 
 Jeder Fall mit `referenz` übernimmt die Quellen der genannten Messstelle unverändert (oder
@@ -314,6 +318,23 @@ die Referenzdatei, für Regeln der Entscheid-Wortlaut.
     IP-9) führt diesen Messwert als Vorzeichen-Wert `import_export`. Der Vertrag bleibt streng:
     422 `quelle_passt_nicht`, Grund `richtung`, bis AP-08 die Aufteilung entscheidet. Fall
     `ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`.
+15. **Die NAMEN der Vorschlagsliste (IP-16).** §5.15 zeigt die Zeilen mit den Namen, die die
+    Messstellen am Ende TRAGEN („Netzbezug Halle 1“, „Verwaltung gesamt“) — die entstehen erst
+    beim Umbenennen („der Kunde bestätigt, benennt um, lässt weg“). Der Vorschlag selbst kann nur
+    nennen, was er hat: den Alias der Komponente, bei mehr als einem Fluss mit dem Fluss dahinter
+    („Netzzähler Halle 1 · Bezug“). Die Übernahme nimmt einen überschriebenen Namen entgegen; der
+    Fall `an-1-acht-vorschlaege` zeigt die vorgeschlagenen, die API-Abnahme A9 das Umbenennen.
+16. **Der Speicher von AN-1 (IP-16).** §5.15 nennt als Quelle von MS-0004 „Batteriespeicher (K-2)
+    · Speicherleistung“, die Referenzdatei und E6 lassen MS-04 aus **K-1** lesen (K-2 ist „über
+    K-1 gemeldet“). Für Werte gewinnt die Datei: der Vorschlag liest K-1 · Speicherleistung mit
+    der Nebengröße Ladestand aus K-1 · Ladestand; K-2 selbst liest keinen eigenen Messkanal
+    (`ohne_messkanal`). In VoltPilot ist der Speicher eines Hybrid-Wechselrichters ohnehin keine
+    eigene Komponentenzeile.
+17. **„Alle Komponenten von …“ (IP-16, §5.11/A9).** Der Wortlaut nennt „Halle 1“ — das ist die
+    ANLAGE; die Liste steht je STANDORT (E6). Der Satz nennt deshalb den Standort („Alle
+    Komponenten von Werk Ahrenberg sind Messstellen zugeordnet.“). Ebenso zeigt §5.15 „Ort später
+    verfeinern: Verwaltung (G-3)“ als Hinweis: den Ort der Komponente kennt das Portal heute nicht
+    als Objekt (AP-02), also verspricht die Zeile ihn nicht — sie nennt den Standort als Ort.
 
 ## 10. Was dieser Vertrag nicht regelt
 
@@ -322,14 +343,72 @@ Endpunkte und Rechte (IP-3, IP-13, AP-03),
 Register und Dialog samt Wortlaut (IP-4 bis IP-6), Zuordnungen mit Tages-Mechanik, Prozessen,
 Kostenstellen-Anteilen und Ort-Prüfung (IP-7), Gerät, Messkanal-Katalog und
 Einstellungs-Fassungen (IP-9 bis IP-11), die Beobachtung „liefert Daten“ selbst
-([`uems-zustand-vectors.json`](./uems-zustand-vectors.json), IP-15), die Vorschlagsliste
-(IP-16), Zähler- und Controllerwechsel als Transaktion (IP-17/IP-19) und das
+([`uems-zustand-vectors.json`](./uems-zustand-vectors.json), IP-15), die FLÄCHE der
+Vorschlagsliste (AP-01 IP-9b; ihre Regeln stehen hier in §11), Zähler- und Controllerwechsel
+als Transaktion (IP-17/IP-19) und das
 Änderungsprotokoll (IP-21). Die Herkunft je Wert steht in
 [`messwert-herkunft.md`](./messwert-herkunft.md).
+
+## 11. Die Vorschlagsliste der Bestandsübernahme (E6, IP-16)
+
+Ein Bestandskunde hat seine Komponenten längst; Messstellen bekommt er aus einem **Vorschlag**,
+nie ungefragt (E6). Die Liste steht je STANDORT: aus den Komponenten seiner Anlagen und deren
+Messkanälen (IP-9) wird **je Komponente und Fluss höchstens EIN Vorschlag**. Regel und Sätze
+sind die Familie `vorschlag` der Vektor-Datei; beide Zwillinge rechnen sie.
+
+**Die Größe kommt aus dem Messwert.** Je Fluss (Vertrags-Richtung einer Wirkgröße) gewinnt der
+Zählerstand vor der Leistung, und Regel 7 entscheidet: aus einem Zählerstand wird die
+Wirkenergie als `Zählerstand`, aus einer Leistung als `Intervallmenge` mit der Herleitung
+`integration` (gekennzeichnet, AP-08 rechnet damit). Ein Ladestand steht als NEBENGRÖSSE neben
+dem Speicher-Fluss derselben Komponente — sonst für sich, mit der Stellung Speicher.
+
+**Die Stellung kommt aus der Topologie**: die maßgebliche Netzmessung wird Hauptzähler (nur,
+wenn die Anlage einen Netzanschluss hat, und nur, solange kein anderer Zähler schon einer ist),
+Erzeugung wird Erzeuger, Speicher wird Speicher, jeder andere Bezug wird „Unterzähler von“ dem
+Bezug-Hauptzähler seiner Anlage — vorgeschlagen oder schon bestehend. Findet sich keiner, bleibt
+die Stellung LEER; sie wird nie geraten.
+
+**Name, Ort, Beginn.** Der Name ist der Alias der Komponente („getippt gewinnt“); liest sie mehr
+als einen Fluss, nennt der Name ihn („Netzzähler Halle 1 · Bezug“). Der Ort ist der Standort
+(Verfeinerung später). Der Beginn ist der Verlauf: die Bindung beginnt am Beginn der LAUFENDEN
+Speisung — ein vorhandener Gerätewechsel wird nie verkettet (Hinweis `geraet_gewechselt`) — und
+nie vor dem ersten Tag des Standorts (`standort_spaeter`). Die Kennzeichen sind die automatischen
+(E7) in der Reihenfolge der Liste, und diese Reihenfolge ist auch die der Übernahme: je Anlage
+erst die Hauptzähler, dann Erzeuger, Speicher, Unterzähler, zuletzt das Stellungslose.
+
+**Was NICHT vorgeschlagen wird, steht mit Grund da** (`ausgelassen`, in der Reihenfolge der
+Komponenten und ihrer Messkanäle):
+
+| Grund | wann | Beispiel (AN-1) |
+|---|---|---|
+| `abgeleitet` | die Komponente ist eine Ableitung der Box (Haus) | „Hausverbrauch“ — eine berechnete Messstelle kommt später (AP-10) |
+| `ohne_messkanal` | sie liest keinen Messwert | K-2, die über K-1 gemeldet wird |
+| `ohne_geraet` | keine laufende Speisung — ohne Gerät keine Quelle | eine ausgebaute Komponente |
+| `attribut_kanal` | Herkunft, Freigabe, Grenze, Zustand, Bitfeld oder der Namensraum `bms_` | `soc_source_code`, `bms_soc_pct` (P4/P5b/P5c) |
+| `keine_messgroesse` | keine Vertrags-Größe (Spannung, Strom, Selbstbau) | „Spannung L1“ |
+| `ohne_richtung` | eine Wirkgröße, deren Richtung der Katalog nicht nennt | Nenn- und Grenzwerte |
+| `weitere_groesse` | eine andere Vertrags-Größe (Blindenergie, Scheinleistung) | kommt als Nebengröße von Hand dazu |
+| `vorzeichen_wert` | Bezug UND Abgabe in einem Vorzeichen (`import_export`) | die Wirkleistung der Zähler — ihre Aufteilung wartet auf AP-08 |
+| `vergleich_kandidat` | dasselbe misst schon der Hauptzähler | die Netzleistung am Wechselrichter → Vergleichsquelle an MS-0001 (E3) |
+| `gleicher_fluss` | ein zweiter Messwert desselben Flusses | die Leistung neben dem Zählerstand |
+| `passt_nicht` | Regel 7 lehnt ab (mit ihrem Grund) | eine Gesamterzeugung in „0,1 kWh“ |
+
+Gibt es keinen Vorschlag, sagt es die Liste in EINEM Satz: `alle_zugeordnet` („Alle Komponenten
+von Werk Ahrenberg sind Messstellen zugeordnet.“) oder `keine_komponente`.
+
+**Die Übernahme** (`POST …/uebernehmen`) schreibt nur, was gezeigt wurde: eine abweichende Zeile
+ist 409 `vorschlag_geaendert`, ein Messwert, der dieselbe Messstelle schon speist, zählt als
+unverändert — ein zweiter Aufruf legt nichts an. Je Zeile entstehen in EINER Transaktion die
+Messstelle (Kennzeichen vom Server), ihr Ort, die führende Quelle ab dem Verlaufsbeginn
+(rückwirkend, `herkunft: bestandsuebernahme`), die Nebengrößen und die Stellung — jede über den
+Weg von IP-3/IP-7/IP-13, mit deren Regeln und Protokoll-Einträgen (Grund „Bestandsübernahme“).
+Der Name darf dabei überschrieben werden („benennt um“). An Komponenten, Mess-Selektion, Geräten
+und Reihen ändert sich nichts.
 
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='MessstelleRegelnVectorsTest')   # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsMessstelle.test.ts)
+(cd services/api && ./mvnw test -Dtest='MessstelleVorschlagApiTest')     # IP-16 gegen die Datenbank
 ```
