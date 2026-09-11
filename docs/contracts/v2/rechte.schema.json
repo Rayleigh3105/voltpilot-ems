@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/v2/rechte.schema.json",
   "title": "UEMS-Rechte: Rechte-Matrix als Daten und Rechte-Vertrag mit Vektoren",
-  "description": "Der Vertrag der RECHTE (UEMS AP-03 IP-1; Regeln im AP-03-Konzept §4.1–§4.9, Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026). Er beschreibt (a) die Rechte-Matrix rechte-matrix.json — 48 Kundenaktionen × 7 Rollen, Zelle = eindeutiger Geltungsbereich (`$defs/matrix`; die Tabelle rechte-matrix.md wird daraus erzeugt) — und (b) die Vektor-Datei rechte-vectors.json (die Wurzel dieses Schemas), die beide Zwillinge (Java services/api .../uems/RechteAbleitung, TS frontend/portal/src/rechte.ts) gegeneinander pinnt: darf(benutzer, aktion, ziel), sichtbareStandorte, teilansicht(n, m), Summe und Geltungsbereich eines Objekts, OCPP-Stufe aus der Zuweisung, Unterstützung, Entzug und Rechte-Änderung. Noch ruft niemand an — keine Tabelle, kein Filter, kein Endpunkt.",
+  "description": "Der Vertrag der RECHTE (UEMS AP-03 IP-1; Regeln im AP-03-Konzept §4.1–§4.9, Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026). Er beschreibt (a) die Rechte-Matrix rechte-matrix.json — 48 Kundenaktionen aus der Konzept-Tabelle AP-03 §4.3 plus die Nachträge aus den Rechte-Abschnitten von AP-04 §6.7, AP-05 §6, AP-06 §4.8 und AP-07 §4.10, je × 7 Rollen, Zelle = eindeutiger Geltungsbereich (`$defs/matrix`; die Tabelle rechte-matrix.md wird daraus erzeugt) — und (b) die Vektor-Datei rechte-vectors.json (die Wurzel dieses Schemas), die beide Zwillinge (Java services/api .../uems/RechteAbleitung, TS frontend/portal/src/rechte.ts) gegeneinander pinnt: darf(benutzer, aktion, ziel), sichtbareStandorte, teilansicht(n, m), Summe und Geltungsbereich eines Objekts, OCPP-Stufe aus der Zuweisung, Unterstützung, Entzug und Rechte-Änderung. Noch ruft niemand an — keine Tabelle, kein Filter, kein Endpunkt.",
   "type": "object",
   "required": [
     "schema_version",
@@ -212,17 +212,34 @@
       ]
     },
     "aktion_kennung": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" },
+    "abschnitt": {
+      "description": "Paket und Abschnitt eines Konzepts, z. B. „AP-06 §4.8“.",
+      "type": "string",
+      "pattern": "^AP-[0-9]{2} §[0-9]+(\\.[0-9]+)*$"
+    },
 
     "matrix": {
-      "description": "Die Rechte-Matrix rechte-matrix.json: Codes, Rollen, Umfänge, Gruppen und die 48 Aktionen. Zeilen-Reihenfolge = Konzept-Tabelle §4.3.",
+      "description": "Die Rechte-Matrix rechte-matrix.json: Codes, Rollen, Umfänge, Gruppen, die Aktionen und die Nachträge. Die Zeilen OHNE `nachtrag` sind die 48 der Konzept-Tabelle AP-03 §4.3 in ihrer Reihenfolge (`konzept_tabelle` pinnt sie byte-gleich); die Zeilen MIT `nachtrag` stammen aus dem Rechte-Abschnitt eines späteren Pakets.",
       "type": "object",
-      "required": ["schema_version", "herkunft", "tabelle", "codes", "rollen", "umfaenge", "gruppen", "aktionen"],
+      "required": ["schema_version", "herkunft", "tabelle", "konzept_tabelle", "codes", "rollen", "umfaenge", "gruppen", "aktionen", "nachtraege"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" } },
         "schema_version": { "type": "string" },
         "$schema_datei": { "const": "./rechte.schema.json#/$defs/matrix" },
         "herkunft": { "type": "string" },
         "tabelle": { "const": "./rechte-matrix.md" },
+        "konzept_tabelle": {
+          "description": "Der Fingerabdruck der Konzept-Tabelle: SHA-256 (UTF-8) der erzeugten Tabelle unter „Matrix“ aus den Zeilen OHNE `nachtrag` — Kopfzeile bis letzte Zeile, jede Zeile mit Zeilenumbruch. Generator und Java-Test prüfen ihn.",
+          "type": "object",
+          "required": ["abschnitt", "aktionen", "sha256", "hinweis"],
+          "properties": {
+            "abschnitt": { "const": "AP-03 §4.3" },
+            "aktionen": { "const": 48 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "hinweis": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
         "codes": {
           "description": "Die Legende der Konzept-Tabelle.",
           "type": "array",
@@ -305,7 +322,19 @@
                 "type": "string",
                 "minLength": 1
               },
-              "herkunft": { "type": "string", "minLength": 1 },
+              "herkunft": {
+                "description": "Paket und Abschnitt. Bei einer Zeile mit `nachtrag` beginnt sie mit genau diesem Abschnitt (Pflicht, der Test prüft es).",
+                "type": "string",
+                "minLength": 1
+              },
+              "nachtrag": {
+                "description": "Nur an Zeilen aus dem Rechte-Abschnitt eines späteren Pakets: der Abschnitt aus `nachtraege`. Abwesend = Zeile der Konzept-Tabelle AP-03 §4.3.",
+                "$ref": "#/$defs/abschnitt"
+              },
+              "wie": {
+                "description": "Der Abschnitt sagt „wie Zeile X“: die Kennung von X — die Zellen sind dann die von X (der Test prüft es).",
+                "$ref": "#/$defs/aktion_kennung"
+              },
               "zellen": {
                 "description": "Je Rolle genau ein Code; welche Codes eine Spalte tragen darf, legt die Legende fest.",
                 "type": "object",
@@ -330,6 +359,50 @@
                 "additionalProperties": false
               },
               "anmerkung": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "nachtraege": {
+          "description": "Die Rechte-Abschnitte der später konzipierten Pakete: JEDE Handlung mit der Kennung, die sie trägt — `neu` (die Zeile mit diesem `nachtrag` entsteht hier) oder `zugeordnet` (eine andere Zeile regelt sie) —, dazu die Sätze, die keine Handlung sind.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["abschnitt", "titel", "konzept", "handlungen", "regeln"],
+            "properties": {
+              "abschnitt": { "$ref": "#/$defs/abschnitt" },
+              "titel": { "type": "string", "minLength": 1 },
+              "konzept": { "type": "string", "minLength": 1 },
+              "handlungen": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["handlung", "wer", "recht", "kennungen", "zuordnung", "anmerkung"],
+                  "properties": {
+                    "handlung": { "description": "Wortlaut des Abschnitts.", "type": "string", "minLength": 1 },
+                    "wer": { "description": "Wortlaut des Abschnitts.", "type": "string", "minLength": 1 },
+                    "recht": { "description": "Die Spalte „Recht“ des Abschnitts, wörtlich — null, wenn er keine hat.", "type": ["string", "null"] },
+                    "kennungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/aktion_kennung" } },
+                    "zuordnung": { "enum": ["neu", "zugeordnet"] },
+                    "anmerkung": { "type": ["string", "null"] }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "regeln": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["wortlaut", "wo"],
+                  "properties": {
+                    "wortlaut": { "type": "string", "minLength": 1 },
+                    "wo": { "type": "string", "minLength": 1 }
+                  },
+                  "additionalProperties": false
+                }
+              }
             },
             "additionalProperties": false
           }

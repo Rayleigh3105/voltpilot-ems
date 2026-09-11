@@ -41,7 +41,8 @@ Protokoll-Tabelle `data_source_aenderung` (Migration `V20260911180000`, dazu
 - **Die Uhr ist injizierbar** (`ObjectProvider<Clock>`, sonst Systemuhr): der API-Test setzt eine
   Test-`Clock`-Bean und spielt so die „jetzt“-Zeitpunkte der Vektoren (2026/2027). Die Anmeldung
   setzt `jwt()` von spring-security-test — kein Keycloak-Container nötig.
-- **Offen benannt:** `datenquelle.bearbeiten`/`datenquelle.zustaendigkeit` (AP-06 §4.8) fehlen in
-  `rechte-matrix.json` (nächste Zeile `geraet.einrichten`); die Sätze formatieren in
+- **Offen benannt:** die Sätze formatieren in
   Europe/Berlin (Zone des Standorts später); eine Steuerquelle darf ihre ERSTE Box an jeder Box
   des Kundenbereichs bekommen (der Vertrag regelt „nur die Heimat-Box“ nicht als Grund).
+- **Rechte:** `datenquelle.ansehen`/`datenquelle.bearbeiten`/`datenquelle.zustaendigkeit` stehen seit
+  der Nacharbeit als Nachtrag AP-06 §4.8 in `rechte-matrix.json` (`uems-rechte-matrix-nachtraege.md`).

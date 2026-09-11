@@ -436,7 +436,7 @@ AP-00 legt nur den Geltungsbereich fest: Rollen wirken auf das Unternehmen oder 
 
 > **Verfeinert durch AP-03 W3/E13:** Die Realm-Rolle `site-admin` wird abgeschafft: OCPP-Stufen hängen künftig an der Zuweisung; bestehende Träger werden Kundenadministrator.
 
-> **Verfeinert durch AP-03 IP-1:** Die Rechte-Matrix ist Daten: 48 Kundenaktionen × 7 Rollen mit stabiler Kennung je Zeile (`docs/contracts/v2/rechte-matrix.json`, die Tabelle `rechte-matrix.md` wird daraus erzeugt). Ob ein Benutzer eine Aktion an einem Standort darf, welche Standorte er sieht, die Teilansicht, die OCPP-Stufe aus der Zuweisung, Unterstützung und Entzug sind Vertrag: `docs/contracts/v2/rechte-vectors.json` (Zwillinge `uems/RechteAbleitung` ⟷ `rechte.ts`) — erst der Geltungsbereich (404), dann die Aktion (403 mit der nötigen Rolle).
+> **Verfeinert durch AP-03 IP-1:** Die Rechte-Matrix ist Daten: 48 Kundenaktionen × 7 Rollen mit stabiler Kennung je Zeile (`docs/contracts/v2/rechte-matrix.json`, die Tabelle `rechte-matrix.md` wird daraus erzeugt), dazu als Nachträge die Rechte-Abschnitte der später konzipierten Pakete AP-04, AP-06 und AP-07 (Zeilen mit `nachtrag`, z. B. `datenquelle.zustaendigkeit`). Ob ein Benutzer eine Aktion an einem Standort darf, welche Standorte er sieht, die Teilansicht, die OCPP-Stufe aus der Zuweisung, Unterstützung und Entzug sind Vertrag: `docs/contracts/v2/rechte-vectors.json` (Zwillinge `uems/RechteAbleitung` ⟷ `rechte.ts`) — erst der Geltungsbereich (404), dann die Aktion (403 mit der nötigen Rolle).
 
 ## Zuordnung (zeitgültig)
 

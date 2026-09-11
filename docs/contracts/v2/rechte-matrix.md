@@ -1,6 +1,6 @@
 <!-- ERZEUGT von docs/contracts/v2/tools/rechte_matrix.py aus rechte-matrix.json — nicht von Hand ändern. -->
 
-# Rechte-Matrix (UEMS AP-03 §4.3)
+# Rechte-Matrix (UEMS AP-03 §4.3 und Nachträge)
 
 Die Quelle ist [`rechte-matrix.json`](./rechte-matrix.json); diese Datei wird aus ihr erzeugt (`python3 docs/contracts/v2/tools/rechte_matrix.py`, `--check` prüft). Wie aus Matrix und Zuweisungen ein Ja oder Nein wird — Geltungsbereich vor Aktion, Unterstützer-Umfang, OCPP-Stufe, Teilansicht, Entzug —, pinnen [`rechte-vectors.json`](./rechte-vectors.json) und die Zwillinge Java `services/api/.../uems/RechteAbleitung` ⟷ TS `frontend/portal/src/rechte.ts`.
 
@@ -28,7 +28,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Matrix
 
-48 Aktionen × 7 Rollen — zeichengleich zur Tabelle im AP-03-Konzept §4.3.
+48 Aktionen × 7 Rollen — zeichengleich zur Tabelle im AP-03-Konzept §4.3 (SHA-256 `fa96d75444e46487274d89b23cac88ff4190760cef604db7c07e83fe836cc20a`).
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
@@ -87,57 +87,110 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 | Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget) | Ladepark-Rahmen (Admin-Route) | - | - | - | - | - | - | P | AP-01 W6: Admin-Route bleibt; die Anschlussgrenze gehört dem Kunden. |
 | Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe | `/api/v1/admin/**` | - | - | - | - | - | - | P | unverändert. |
 
+## Nachträge der später konzipierten Pakete
+
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026). Die 5 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+
+| Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
+|---|---|---|---|---|---|---|---|---|---|
+| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
+| Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 | U | U | S | S | S | A | - | AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2). |
+| Ereignisse einsehen | AP-07 §4.10 | U | U | S | S | S | A | - | AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“. |
+| **Datenquellen und Boxen (AP-06)** |  |  |  |  |  |  |  |  |  |
+| Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 | U | U | S | - | - | Ei | - | Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10). |
+| Zuständige Box wechseln · Box tauschen | AP-06 §4.8 | U | - | S | - | - | Ei | - | Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9). |
+| Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 | U | U | S | S | S | A | - | AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““. |
+
+### Jede Handlung der Rechte-Abschnitte
+
+Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **bestehende Zeile**, die sie schon regelt.
+
+| Abschnitt | Handlung | Wer (Wortlaut des Abschnitts) | Recht (Abschnitt) | Kennung | Zuordnung | Anmerkung |
+|---|---|---|---|---|---|---|
+| AP-04 §6.7 | Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen | Kundenadministrator und Energiemanager unternehmensweit, Bearbeiter je Standort, Unterstützer mit Umfang „Einrichten“ | `@Recht("messstelle.bearbeiten")` | `messstelle.bearbeiten` | bestehende Zeile | AP-04 zitiert die Matrix-Zeile wörtlich; die Zellen stimmen überein. |
+| AP-04 §6.7 | Führende Quelle binden · Zählerwechsel · Wandlerfaktoren | Kundenadministrator und Energiemanager unternehmensweit, Bearbeiter je Standort, Unterstützer mit Umfang „Einrichten“ | `@Recht("messstelle.quelle")` | `messstelle.quelle` | bestehende Zeile | AP-04 zitiert die Matrix-Zeile wörtlich; die Zellen stimmen überein. Die Kennung hieß bis hierher `messstelle.quelle_binden` (W-R8). |
+| AP-04 §6.7 | Register lesen | Leser und Bedienberechtigte | — | `messstelle.ansehen` | neue Zeile |  |
+| AP-05 §6 | Bogen und Assistent (Erhebungsbogen, Assistent „WAGO-Steuerung anbinden“) | Kundenadministrator (unternehmensweit), Bearbeiter je Standort, Unterstützer „Einrichten“ (Installateur, befristet) | — | `datenquelle.bearbeiten` · `geraet.einrichten` | bestehende Zeile | Der Bogen ist der erste Schritt der Datenquelle „WAGO-Steuerung“, der Assistent legt je Karte eine Komponente an. Den Energiemanager nennt AP-05 nicht (W-R10). |
+| AP-05 §6 | Vorlagen-Freigabe | nur VoltPilot-Admin | — | `plattform.betrieb` | bestehende Zeile | „Vorlagen“ steht in der Plattform-Zeile. |
+| AP-06 §4.8 | Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | Kundenadministrator (U), Energiemanager (U), Bearbeiter je Standort (S), Unterstützer ab Umfang „Einrichten“ (Ei) | `datenquelle.bearbeiten` | `datenquelle.bearbeiten` | neue Zeile |  |
+| AP-06 §4.8 | Zuständige Box wechseln · Box tauschen | Kundenadministrator (U), Bearbeiter je Standort (S), Unterstützer „Einrichten“ (Ei) — Steuerquelle: nur Kundenadministrator (und dort in diesem Paket gesperrt) | `datenquelle.zustaendigkeit` | `datenquelle.zustaendigkeit` | neue Zeile | Die Steuerquelle ist eine Regel des Objekts, keine Zelle — der Schreibweg lehnt sie ab (Grund `steuerquelle`). Kein Energiemanager (W-R9). |
+| AP-06 §4.8 | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen“ | lesend | `datenquelle.ansehen` | neue Zeile |  |
+| AP-06 §4.8 | Steuern freigeben (Komponente) | unverändert Kundenadministrator (AP-03) — AP-06 fasst Freigaben nicht an | unverändert | `freigabe.erteilen` | bestehende Zeile |  |
+| AP-07 §4.10 | Herkunft eines Werts sehen | jeder mit Leserecht auf den Standort der Messstelle (AP-03) | Standortleser | `messwerte.ansehen` | bestehende Zeile | Die Herkunft gehört zum Messwert; die Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“ trägt AP-07 schon als Herkunft und gibt jedem Standortleser das Recht. |
+| AP-07 §4.10 | Export mit Herkunfts-Spalten | Standortleser für Messstellen des Standorts; unternehmensweite Messstellen nur Energiemanager/Kundenadministrator (AP-00 §7.6 „Standortrecht schneidet auch Summen“) | AP-03 | `export.standort` · `export.unternehmen` | bestehende Zeile | Die Herkunfts-Spalten ändern das Recht nicht; unternehmensweite Messstellen schneidet der Geltungsbereich. Der Unterstützer exportiert nicht (W-R11). |
+| AP-07 §4.10 | Ereignisse einsehen | wie Verlauf | Standortleser | `ereignisse.ansehen` | neue Zeile |  |
+| AP-07 §4.10 | Korrektur nach `late_arrival` anstoßen | Messdatenpflege (AP-03 Achse Messdaten), Ablauf AP-08 | Bearbeiter | `korrektur.erfassen` | bestehende Zeile | Der Anstoß öffnet den Korrektur-Ablauf von AP-08; das Recht ist die Messdatenpflege dieser Zeile — nie der Unterstützer. |
+| AP-07 §4.10 | Datenaufzeichnungen löschen (Purge) | Kundenadministrator; für Messstellen-gebundene Reihen gesperrt (E8) | Kundenadministrator | `aufzeichnungen.loeschen` | bestehende Zeile | Die Sperre für Messstellen-gebundene Reihen (AP-07 E8) ist eine Regel des Objekts, keine Zelle — sie gilt auch für den Kundenadministrator und wird im Löschweg geprüft, nicht in `darf`. |
+
+### Regeln ohne eigene Zeile
+
+Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
+
+| Abschnitt | Wortlaut | Wo es gilt |
+|---|---|---|
+| AP-04 §6.7 | Geltungsbereich = Standort des Orts | rechte-vectors.json, Familie darf: das Ziel ist der Standort, an dem der Ort der Messstelle hängt |
+| AP-04 §6.7 | fremde Messstellen 404 | rechte-vectors.json, Familie darf: Geltungsbereich vor Aktion (404 `ausserhalb_geltungsbereich`) |
+| AP-04 §6.7 | Urheber `actor_*` in jedem Protokolleintrag | keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur) |
+| AP-04 §6.7 | Aggregate („x von y Messstellen liefern Daten“) serverseitig über die sichtbare Menge mit `teilansicht` | rechte-vectors.json, Familie teilansicht (Ableitungen `teilansicht` und `summe`) |
+| AP-05 §6 | Pilot-Protokolle als Verlauf-Einträge mit Urheber | keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur) |
+| AP-05 §6 | „AP-05 sagt nur, wer den Bogen ausfüllt, wer die Karte einstellt und wer die Vorlage freigibt“ (§6.1) | Bogen → `datenquelle.bearbeiten`; die Karte stellt der Installateur AM GERÄT ein (WAGO-I/O-CHECK, §4.7) — keine Portal-Handlung, die Einstellungs-Fassung trägt `messstelle.quelle` (Wandlerfaktoren, AP-04); Vorlage → `plattform.betrieb` |
+
 ## Kennungen
 
-Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor verweisen über sie (`@Recht("messstelle.bearbeiten")`), nie über den Wortlaut.
+Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor verweisen über sie (`@Recht("messstelle.bearbeiten")`), nie über den Wortlaut. Jede Kennung, die ein Routen-Kommentar in `services/api` nennt, steht hier (`RechteKennungenDerRoutenTest`).
 
-| Kennung | Gruppe | Aktion |
-|---|---|---|
-| `unternehmen.bearbeiten` | Unternehmen, Standorte, Struktur (AP-02) | Unternehmen bearbeiten (Name, Kurzname, Zeitzone-Vorgabe, Sitz) |
-| `standort.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Standort anlegen · bearbeiten · archivieren · wiederherstellen |
-| `gebaeude.pflegen` | Unternehmen, Standorte, Struktur (AP-02) | Gebäude und Bereiche pflegen (anlegen, bearbeiten, verschieben, Fläche, archivieren) |
-| `anlage.zuordnen` | Unternehmen, Standorte, Struktur (AP-02) | Anlage einem Standort zuordnen / umziehen |
-| `aenderung.rueckwirkend` | Unternehmen, Standorte, Struktur (AP-02) | Rückwirkend ändern („gültig ab“ in der Vergangenheit) |
-| `aenderungsprotokoll.lesen` | Unternehmen, Standorte, Struktur (AP-02) | Änderungsprotokoll und „Stand am“ lesen |
-| `anlage.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Anlage anlegen (Assistent) · archivieren · löschen (nur ohne Historie) |
-| `geraet.einrichten` | Unternehmen, Standorte, Struktur (AP-02) | Box anmelden; Gerät / Komponente anlegen, verbinden, bearbeiten; Verbindungstest |
-| `komponente.loeschen` | Unternehmen, Standorte, Struktur (AP-02) | Komponente löschen · Gerät entfernen |
-| `aufzeichnungen.loeschen` | Unternehmen, Standorte, Struktur (AP-02) | Datenaufzeichnungen löschen |
-| `mess_selektion.bearbeiten` | Unternehmen, Standorte, Struktur (AP-02) | Mess-Selektion je Komponente (zusätzliche Messwerte) |
-| `messstelle.bearbeiten` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen |
-| `messstelle.quelle_binden` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Führende Quelle binden · Zählerwechsel · Wandlerfaktoren |
-| `korrektur.erfassen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Korrektur / Ersatzwert erfassen (versioniert, begründet) |
-| `bezugsgroesse.eingeben` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Bezugsgröße eingeben / berichtigen (manuell) |
-| `bezugsgroesse.importieren` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | CSV-Import mit Vorschau (Bezugsgrößen) |
-| `messwerte.ansehen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messwerte, Zeitreihen, Datenqualität ansehen |
-| `kennzahl.standort_definieren` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Kennzahl definieren — Geltungsbereich Standort |
-| `kennzahl.unternehmen_definieren` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Kennzahl definieren — Geltungsbereich Unternehmen |
-| `bericht.standort_abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf) |
-| `bericht.standort_freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht freigeben (Berichtsstand) |
-| `bericht.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Bericht abrufen / freigeben |
-| `export.standort` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Export je Standort (CSV: Messwerte, Kennzahlen) |
-| `export.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Export (alle Standorte) |
-| `cockpit.anpassen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen) |
-| `auswertung.anlegen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Eigene Auswertung anlegen (je Anlage) |
-| `funktion.messen_einrichten` | Funktionen und Steuerung (AP-01, Bestand) | Funktion „Messen & Auswerten“ je Standort einrichten |
-| `funktion.steuern_einrichten` | Funktionen und Steuerung (AP-01, Bestand) | Funktion „Steuern & Optimieren“ je Standort einrichten (Anlage aufnehmen, Freigeben, Grenze, Betriebsweise) |
-| `steuerung.starten_beenden` | Funktionen und Steuerung (AP-01, Bestand) | Steuerung starten · beenden je Anlage (nach bestandenen Prüfungen) |
-| `steuerung.anhalten_fortsetzen` | Funktionen und Steuerung (AP-01, Bestand) | Steuerung anhalten · fortsetzen je Anlage; Standort anhalten · fortsetzen |
-| `handeingriff.setzen` | Funktionen und Steuerung (AP-01, Bestand) | Handeingriff: Speicher jetzt laden, Ladestand halten, Automatik pausieren, Gerät jetzt an/aus, „Jetzt voll laden“, „Laden pausieren“ |
-| `betriebsweise.aendern` | Funktionen und Steuerung (AP-01, Bestand) | Betriebsweise ändern: Betriebsmodell wechseln, Regeln anlegen/aktivieren, Steuerart je Verbraucher, Rangliste |
-| `ladepunkt.betrieb` | Funktionen und Steuerung (AP-01, Bestand) | Ladekarten und Fahrzeug-Profile pflegen; OCPP-Betriebsaktionen (Reservieren, Verfügbarkeit, sanft neu starten) |
-| `schalttest.durchfuehren` | Funktionen und Steuerung (AP-01, Bestand) | Schalt-Test / Verbindungstest durchführen |
-| `freigabe.erteilen` | Funktionen und Steuerung (AP-01, Bestand) | Steuern freigeben je Komponente · Freigabe zurücknehmen |
-| `grenze.eintragen` | Funktionen und Steuerung (AP-01, Bestand) | Anschlussgrenze, Einspeisegrenze, Netzladen-Schalter eintragen |
-| `register.schreiben` | Funktionen und Steuerung (AP-01, Bestand) | Register schreiben (Kunden-Lane, Vorschau + Schreiben) |
-| `ladepunkt.anbinden` | Funktionen und Steuerung (AP-01, Bestand) | Ladepunkt anbinden · Kennung zurücknehmen |
-| `prognose.befoerdern` | Funktionen und Steuerung (AP-01, Bestand) | Prognose-Modell je Anlage befördern |
-| `benutzer.verwalten` | Benutzer und Unterstützung (AP-03) | Benutzer anlegen (Startpasswort, Pflichtwechsel bei der ersten Anmeldung) · sperren · entfernen |
-| `zuweisung.verwalten` | Benutzer und Unterstützung (AP-03) | Rollen und Standorte zuweisen · entziehen |
-| `unterstuetzung.verwalten` | Benutzer und Unterstützung (AP-03) | Unterstützung gewähren · verlängern · beenden |
-| `zugriffsprotokoll.lesen` | Benutzer und Unterstützung (AP-03) | Zugriffsprotokoll lesen (wer hat wem wann was gewährt/entzogen; Anmeldungen der Unterstützer) |
-| `konto.eigenes` | Benutzer und Unterstützung (AP-03) | Eigenes Konto: Name, Passwort, Abmelden; eigene Standorte und Rollen sehen |
-| `plattform.kundenbereich` | Bleibt beim VoltPilot-Betrieb (Plattform) | Kundenbereich anlegen / löschen; ersten Kundenadministrator anlegen |
-| `plattform.zertifizierung` | Bleibt beim VoltPilot-Betrieb (Plattform) | Modell zertifizieren · Steuer-Scharfschaltung je Wechselrichter (S1) |
-| `plattform.ladepark_rahmen` | Bleibt beim VoltPilot-Betrieb (Plattform) | Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget) |
-| `plattform.betrieb` | Bleibt beim VoltPilot-Betrieb (Plattform) | Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe |
+| Kennung | Gruppe | Aktion | Quelle |
+|---|---|---|---|
+| `unternehmen.bearbeiten` | Unternehmen, Standorte, Struktur (AP-02) | Unternehmen bearbeiten (Name, Kurzname, Zeitzone-Vorgabe, Sitz) | AP-03 §4.3 |
+| `standort.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Standort anlegen · bearbeiten · archivieren · wiederherstellen | AP-03 §4.3 |
+| `gebaeude.pflegen` | Unternehmen, Standorte, Struktur (AP-02) | Gebäude und Bereiche pflegen (anlegen, bearbeiten, verschieben, Fläche, archivieren) | AP-03 §4.3 |
+| `anlage.zuordnen` | Unternehmen, Standorte, Struktur (AP-02) | Anlage einem Standort zuordnen / umziehen | AP-03 §4.3 |
+| `aenderung.rueckwirkend` | Unternehmen, Standorte, Struktur (AP-02) | Rückwirkend ändern („gültig ab“ in der Vergangenheit) | AP-03 §4.3 |
+| `aenderungsprotokoll.lesen` | Unternehmen, Standorte, Struktur (AP-02) | Änderungsprotokoll und „Stand am“ lesen | AP-03 §4.3 |
+| `anlage.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Anlage anlegen (Assistent) · archivieren · löschen (nur ohne Historie) | AP-03 §4.3 |
+| `geraet.einrichten` | Unternehmen, Standorte, Struktur (AP-02) | Box anmelden; Gerät / Komponente anlegen, verbinden, bearbeiten; Verbindungstest | AP-03 §4.3 |
+| `komponente.loeschen` | Unternehmen, Standorte, Struktur (AP-02) | Komponente löschen · Gerät entfernen | AP-03 §4.3 |
+| `aufzeichnungen.loeschen` | Unternehmen, Standorte, Struktur (AP-02) | Datenaufzeichnungen löschen | AP-03 §4.3 |
+| `mess_selektion.bearbeiten` | Unternehmen, Standorte, Struktur (AP-02) | Mess-Selektion je Komponente (zusätzliche Messwerte) | AP-03 §4.3 |
+| `messstelle.bearbeiten` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen | AP-03 §4.3 |
+| `messstelle.quelle` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Führende Quelle binden · Zählerwechsel · Wandlerfaktoren | AP-03 §4.3 |
+| `korrektur.erfassen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Korrektur / Ersatzwert erfassen (versioniert, begründet) | AP-03 §4.3 |
+| `bezugsgroesse.eingeben` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Bezugsgröße eingeben / berichtigen (manuell) | AP-03 §4.3 |
+| `bezugsgroesse.importieren` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | CSV-Import mit Vorschau (Bezugsgrößen) | AP-03 §4.3 |
+| `messwerte.ansehen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messwerte, Zeitreihen, Datenqualität ansehen | AP-03 §4.3 |
+| `kennzahl.standort_definieren` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Kennzahl definieren — Geltungsbereich Standort | AP-03 §4.3 |
+| `kennzahl.unternehmen_definieren` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Kennzahl definieren — Geltungsbereich Unternehmen | AP-03 §4.3 |
+| `bericht.standort_abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf) | AP-03 §4.3 |
+| `bericht.standort_freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht freigeben (Berichtsstand) | AP-03 §4.3 |
+| `bericht.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Bericht abrufen / freigeben | AP-03 §4.3 |
+| `export.standort` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Export je Standort (CSV: Messwerte, Kennzahlen) | AP-03 §4.3 |
+| `export.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Export (alle Standorte) | AP-03 §4.3 |
+| `cockpit.anpassen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen) | AP-03 §4.3 |
+| `auswertung.anlegen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Eigene Auswertung anlegen (je Anlage) | AP-03 §4.3 |
+| `funktion.messen_einrichten` | Funktionen und Steuerung (AP-01, Bestand) | Funktion „Messen & Auswerten“ je Standort einrichten | AP-03 §4.3 |
+| `funktion.steuern_einrichten` | Funktionen und Steuerung (AP-01, Bestand) | Funktion „Steuern & Optimieren“ je Standort einrichten (Anlage aufnehmen, Freigeben, Grenze, Betriebsweise) | AP-03 §4.3 |
+| `steuerung.starten_beenden` | Funktionen und Steuerung (AP-01, Bestand) | Steuerung starten · beenden je Anlage (nach bestandenen Prüfungen) | AP-03 §4.3 |
+| `steuerung.anhalten_fortsetzen` | Funktionen und Steuerung (AP-01, Bestand) | Steuerung anhalten · fortsetzen je Anlage; Standort anhalten · fortsetzen | AP-03 §4.3 |
+| `handeingriff.setzen` | Funktionen und Steuerung (AP-01, Bestand) | Handeingriff: Speicher jetzt laden, Ladestand halten, Automatik pausieren, Gerät jetzt an/aus, „Jetzt voll laden“, „Laden pausieren“ | AP-03 §4.3 |
+| `betriebsweise.aendern` | Funktionen und Steuerung (AP-01, Bestand) | Betriebsweise ändern: Betriebsmodell wechseln, Regeln anlegen/aktivieren, Steuerart je Verbraucher, Rangliste | AP-03 §4.3 |
+| `ladepunkt.betrieb` | Funktionen und Steuerung (AP-01, Bestand) | Ladekarten und Fahrzeug-Profile pflegen; OCPP-Betriebsaktionen (Reservieren, Verfügbarkeit, sanft neu starten) | AP-03 §4.3 |
+| `schalttest.durchfuehren` | Funktionen und Steuerung (AP-01, Bestand) | Schalt-Test / Verbindungstest durchführen | AP-03 §4.3 |
+| `freigabe.erteilen` | Funktionen und Steuerung (AP-01, Bestand) | Steuern freigeben je Komponente · Freigabe zurücknehmen | AP-03 §4.3 |
+| `grenze.eintragen` | Funktionen und Steuerung (AP-01, Bestand) | Anschlussgrenze, Einspeisegrenze, Netzladen-Schalter eintragen | AP-03 §4.3 |
+| `register.schreiben` | Funktionen und Steuerung (AP-01, Bestand) | Register schreiben (Kunden-Lane, Vorschau + Schreiben) | AP-03 §4.3 |
+| `ladepunkt.anbinden` | Funktionen und Steuerung (AP-01, Bestand) | Ladepunkt anbinden · Kennung zurücknehmen | AP-03 §4.3 |
+| `prognose.befoerdern` | Funktionen und Steuerung (AP-01, Bestand) | Prognose-Modell je Anlage befördern | AP-03 §4.3 |
+| `benutzer.verwalten` | Benutzer und Unterstützung (AP-03) | Benutzer anlegen (Startpasswort, Pflichtwechsel bei der ersten Anmeldung) · sperren · entfernen | AP-03 §4.3 |
+| `zuweisung.verwalten` | Benutzer und Unterstützung (AP-03) | Rollen und Standorte zuweisen · entziehen | AP-03 §4.3 |
+| `unterstuetzung.verwalten` | Benutzer und Unterstützung (AP-03) | Unterstützung gewähren · verlängern · beenden | AP-03 §4.3 |
+| `zugriffsprotokoll.lesen` | Benutzer und Unterstützung (AP-03) | Zugriffsprotokoll lesen (wer hat wem wann was gewährt/entzogen; Anmeldungen der Unterstützer) | AP-03 §4.3 |
+| `konto.eigenes` | Benutzer und Unterstützung (AP-03) | Eigenes Konto: Name, Passwort, Abmelden; eigene Standorte und Rollen sehen | AP-03 §4.3 |
+| `plattform.kundenbereich` | Bleibt beim VoltPilot-Betrieb (Plattform) | Kundenbereich anlegen / löschen; ersten Kundenadministrator anlegen | AP-03 §4.3 |
+| `plattform.zertifizierung` | Bleibt beim VoltPilot-Betrieb (Plattform) | Modell zertifizieren · Steuer-Scharfschaltung je Wechselrichter (S1) | AP-03 §4.3 |
+| `plattform.ladepark_rahmen` | Bleibt beim VoltPilot-Betrieb (Plattform) | Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget) | AP-03 §4.3 |
+| `plattform.betrieb` | Bleibt beim VoltPilot-Betrieb (Plattform) | Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe | AP-03 §4.3 |
+| `messstelle.ansehen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 |
+| `ereignisse.ansehen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Ereignisse einsehen | AP-07 §4.10 |
+| `datenquelle.bearbeiten` | Datenquellen und Boxen (AP-06) | Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 |
+| `datenquelle.zustaendigkeit` | Datenquellen und Boxen (AP-06) | Zuständige Box wechseln · Box tauschen | AP-06 §4.8 |
+| `datenquelle.ansehen` | Datenquellen und Boxen (AP-06) | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 |

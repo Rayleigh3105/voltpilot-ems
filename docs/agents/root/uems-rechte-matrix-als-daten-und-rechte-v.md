@@ -10,14 +10,15 @@ E15 vom 10.09.2026); der Glossar-Hinweis steht in [`docs/fachmodell/glossar.md`]
 Matrix und Ableitung Vertrag:
 
 - **[`docs/contracts/v2/rechte-matrix.json`](../../contracts/v2/rechte-matrix.json)** — 48
-  Kundenaktionen × 7 Rollen, je Zeile eine stabile Kennung (`messstelle.bearbeiten`, künftig
+  Kundenaktionen × 7 Rollen (plus die Nachträge aus AP-04/05/06/07 — siehe
+  `uems-rechte-matrix-nachtraege.md`), je Zeile eine stabile Kennung (`messstelle.bearbeiten`, künftig
   `@Recht("…")`), Zellen `U`/`S`/`E`/`-`/`P` und für den Unterstützer `A`/`Ei`/`B` (E9).
   **[`rechte-matrix.md`](../../contracts/v2/rechte-matrix.md) wird daraus ERZEUGT**
-  (`python3 docs/contracts/v2/tools/rechte_matrix.py`, `--check`) und ist zeichengleich zur
-  Konzept-Tabelle §4.3 — nie von Hand ändern.
-- **[`docs/contracts/v2/rechte-vectors.json`](../../contracts/v2/rechte-vectors.json)** — 141
+  (`python3 docs/contracts/v2/tools/rechte_matrix.py`, `--check`); ihre Tabelle „Matrix“ ist
+  zeichengleich zur Konzept-Tabelle §4.3 (SHA-256 gepinnt) — nie von Hand ändern.
+- **[`docs/contracts/v2/rechte-vectors.json`](../../contracts/v2/rechte-vectors.json)** — 164
   Fälle in sieben Familien (`darf`, `sichtbare_standorte`, `teilansicht`, `ocpp_stufe`,
-  `unterstuetzung`, `entzug`, `aenderung`), A1–A16 je Fall mit `abnahme` markiert, sieben benannte
+  `unterstuetzung`, `entzug`, `aenderung`), A1–A16 je Fall mit `abnahme` markiert, elf benannte
   Widersprüche in `widersprueche`; dazu Vokabular, Gründe mit HTTP-Status, Kundensätze, Regel-Zahlen.
 - **[`docs/contracts/v2/rechte.schema.json`](../../contracts/v2/rechte.schema.json)** — JSON Schema
   2020-12 für BEIDE Dateien (Wurzel = Vektoren, `$defs/matrix` = Matrix).
@@ -66,8 +67,8 @@ und ruft `rechte.ts`). `TenantFilter`, `SecurityConfig`, `OcppActionPolicy` und 
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='RechteAbleitungVectorsTest')   # 295 Tests, rein
-(cd frontend/portal && npx vitest run src/rechte.test.ts)               # 151 Tests
+(cd services/api && ./mvnw test -Dtest='RechteAbleitungVectorsTest')   # 343 Tests, rein
+(cd frontend/portal && npx vitest run src/rechte.test.ts)               # 175 Tests
 python3 docs/contracts/v2/tools/rechte_matrix.py --check                # Tabelle aktuell
 python3 docs/fachmodell/tools/build_fachmodell.py --check               # Glossar aktuell
 ```

@@ -36,11 +36,10 @@ import org.springframework.web.server.ResponseStatusException;
  * Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Anlage, Quelle oder Box ist
  * 404, nie 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Eine
  * eigene Rechte-Annotation gibt es hier bewusst nicht. Jede Route nennt im Kommentar ihr Recht
- * nach AP-06 §4.8 — ⚠ {@code datenquelle.bearbeiten} und {@code datenquelle.zustaendigkeit}
- * stehen NOCH NICHT in {@code docs/contracts/v2/rechte-matrix.json}; bis AP-03 sie aufnimmt,
- * ist die nächste Zeile der Matrix {@code geraet.einrichten} (dieselben Zellen wie
- * {@code datenquelle.bearbeiten}; für die Zuständigkeit gibt AP-06 dem Energiemanager kein
- * Recht, die Matrix-Zeile schon).
+ * nach AP-06 §4.8 — {@code datenquelle.ansehen}, {@code datenquelle.bearbeiten} und
+ * {@code datenquelle.zustaendigkeit} stehen als Nachtrag in
+ * {@code docs/contracts/v2/rechte-matrix.json} (die Zuständigkeit ohne Energiemanager,
+ * Widerspruch W-R9); {@code RechteKennungenDerRoutenTest} hält jede genannte Kennung an die Matrix.
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt, ist 400
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen (wer ein Prüfergebnis
@@ -58,13 +57,13 @@ public class DatenquelleController {
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
-    /** Recht: lesend (AP-06 §4.8: alle Rollen des Standorts). */
+    /** Recht: {@code datenquelle.ansehen} (AP-06 §4.8: alle Rollen des Standorts). */
     @GetMapping
     public DatenquelleDto.Liste alle(@PathVariable UUID siteId) {
         return datenquellen.alle(siteId);
     }
 
-    /** Recht: lesend. */
+    /** Recht: {@code datenquelle.ansehen}. */
     @GetMapping("/{id}")
     public DatenquelleDto.Datenquelle eine(@PathVariable UUID siteId, @PathVariable UUID id) {
         return datenquellen.eine(siteId, id);
@@ -76,7 +75,7 @@ public class DatenquelleController {
         return datenquellen.protokoll(siteId, id);
     }
 
-    /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8; bis AP-03: {@code geraet.einrichten}). */
+    /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8). */
     @PostMapping
     public ResponseEntity<DatenquelleDto.Datenquelle> anlegen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
@@ -86,7 +85,7 @@ public class DatenquelleController {
                 .body(neu);
     }
 
-    /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8; bis AP-03: {@code geraet.einrichten}). */
+    /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8). */
     @PutMapping("/{id}")
     public DatenquelleDto.Datenquelle bearbeiten(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {

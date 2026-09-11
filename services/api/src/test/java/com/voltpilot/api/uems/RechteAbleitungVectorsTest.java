@@ -43,8 +43,10 @@ import com.voltpilot.api.uems.RechteAbleitung.UnterstuetzungsZustand;
 import com.voltpilot.api.uems.RechteAbleitung.Wert;
 import com.voltpilot.api.uems.RechteAbleitung.Ziel;
 import com.voltpilot.api.uems.RechteAbleitung.Zuweisung;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -54,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,7 +70,9 @@ import org.junit.jupiter.api.TestFactory;
 /**
  * Der Vertrag der RECHTE (UEMS AP-03 IP-1): die Matrix-Datei {@code rechte-matrix.json} und die
  * Vektor-Datei {@code rechte-vectors.json} halten ihr Schema, die erzeugte Tabelle
- * {@code rechte-matrix.md} ist zeilengleich zur Matrix-Datei (die Build-Prüfung), und
+ * {@code rechte-matrix.md} ist zeilengleich zur Matrix-Datei (die Build-Prüfung), die 48
+ * Konzept-Zeilen sind byte-gleich die Tabelle AP-03 §4.3 (SHA-256), jede Nachtrags-Zeile steht
+ * gegen ihren Rechte-Abschnitt (AP-04 §6.7, AP-05 §6, AP-06 §4.8, AP-07 §4.10), und
  * {@link RechteAbleitung} zieht aus JEDEM Fall genau das Ergebnis, das dort steht — dieselbe
  * Datei fährt der TS-Zwilling {@code frontend/portal/src/rechte.test.ts}.
  *
@@ -117,12 +122,17 @@ class RechteAbleitungVectorsTest {
         assertThat(UemsSchemaLaeufer.verstoesse(lies(MATRIX), schema)).isEmpty();
     }
 
-    /** 48 Zeilen mit eindeutiger Kennung, 7 Rollen in der Spaltenreihenfolge, 3 Umfänge aufsteigend. */
+    /**
+     * 48 Konzept-Zeilen (ohne {@code nachtrag}) plus die Nachträge, jede Kennung eindeutig; 7 Rollen
+     * in der Spaltenreihenfolge, 3 Umfänge aufsteigend.
+     */
     @Test
-    void dieMatrixIstDieKonzeptTabelle() throws Exception {
+    void dieMatrixIstDieKonzeptTabelleMitIhrenNachtraegen() throws Exception {
         JsonNode m = lies(MATRIX);
         List<String> kennungen = texte(m.path("aktionen"), "kennung");
-        assertThat(kennungen).hasSize(48).doesNotHaveDuplicates();
+        assertThat(kennungen).doesNotHaveDuplicates();
+        assertThat(konzeptZeilen(m)).hasSize(m.path("konzept_tabelle").path("aktionen").asInt()).hasSize(48);
+        assertThat(nachtragsZeilen(m)).isNotEmpty();
         assertThat(texte(m.path("rollen"), "kennung")).containsExactlyElementsOf(codes(Rolle.values()));
         assertThat(texte(m.path("umfaenge"), "kennung")).containsExactlyElementsOf(codes(Umfang.values()));
         for (JsonNode r : m.path("rollen")) {
@@ -146,18 +156,123 @@ class RechteAbleitungVectorsTest {
                 assertThat(z.path("kundenadministrator").asText()).as(a.path("kennung").asText()).isEqualTo("U");
             }
         }
-        assertThat(matrix().aktionen()).hasSize(48);
+        assertThat(matrix().aktionen()).hasSize(kennungen.size());
     }
 
     /**
-     * Die BUILD-PRÜFUNG: die erzeugte Tabelle {@code rechte-matrix.md} (Abschnitt „Matrix“) ist
-     * zeilengleich zur Matrix-Datei — Kopf, Gruppenzeilen, Wortlaut, Herkunft, sieben Zellen,
-     * Anmerkung. Wer die JSON-Datei ändert, erzeugt die Tabelle neu
-     * ({@code python3 docs/contracts/v2/tools/rechte_matrix.py}).
+     * Die BUILD-PRÜFUNG: die erzeugte Tabelle {@code rechte-matrix.md} ist zeilengleich zur
+     * Matrix-Datei — unter „Matrix“ die Konzept-Zeilen, unter „Nachträge …“ die Zeilen mit
+     * {@code nachtrag}: Kopf, Gruppenzeilen, Wortlaut, Herkunft, sieben Zellen, Anmerkung. Wer die
+     * JSON-Datei ändert, erzeugt die Tabelle neu ({@code python3 docs/contracts/v2/tools/rechte_matrix.py}).
      */
     @Test
     void dieErzeugteTabelleIstZeilengleichZurMatrix() throws Exception {
         JsonNode m = lies(MATRIX);
+        List<List<String>> tabellen = matrixTabellen();
+        assertThat(tabellen).as("rechte-matrix.md: Konzept-Tabelle und Nachtrags-Tabelle").hasSize(2);
+        assertThat(tabellen.get(0)).as("rechte-matrix.md veraltet → python3 docs/contracts/v2/tools/rechte_matrix.py")
+                .containsExactlyElementsOf(sollTabelle(m, konzeptZeilen(m)));
+        assertThat(tabellen.get(1)).as("rechte-matrix.md veraltet → python3 docs/contracts/v2/tools/rechte_matrix.py")
+                .containsExactlyElementsOf(sollTabelle(m, nachtragsZeilen(m)));
+    }
+
+    /**
+     * Die 48 Konzept-Zeilen sind BYTE-GLEICH die Tabelle im AP-03-Konzept §4.3: der SHA-256 der
+     * Tabelle unter „Matrix“ (jede Zeile mit Zeilenumbruch) ist der des Konzepts, abgeglichen am
+     * 11.09.2026 und in {@code konzept_tabelle.sha256} gepinnt. Eine Konzept-Zeile ändert nur ein
+     * benannter Widerspruch — und dann auch diesen Fingerabdruck.
+     */
+    @Test
+    void dieKonzeptZeilenSindByteGleichZurKonzeptTabelle() throws Exception {
+        String tabelle = String.join("\n", sollTabelle(lies(MATRIX), konzeptZeilen(lies(MATRIX)))) + "\n";
+        String ist = HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(tabelle.getBytes(StandardCharsets.UTF_8)));
+        assertThat(ist).isEqualTo(lies(MATRIX).path("konzept_tabelle").path("sha256").asText())
+                .isEqualTo("fa96d75444e46487274d89b23cac88ff4190760cef604db7c07e83fe836cc20a");
+        assertThat(String.join("\n", matrixTabellen().get(0)) + "\n").isEqualTo(tabelle);
+    }
+
+    /**
+     * Jede Nachtrags-Zeile steht gegen ihre HERKUNFT: ihr {@code nachtrag} ist ein Abschnitt aus
+     * {@code nachtraege}, ihre {@code herkunft} beginnt mit genau diesem Abschnitt, eine Handlung des
+     * Abschnitts legt sie {@code neu} an, „wie Zeile X“ heißt dieselben Zellen wie X, und je neuer
+     * Kennung pinnt mindestens ein darf-Fall sie. Umgekehrt trägt JEDE Handlung der Abschnitte eine
+     * Kennung, die in der Matrix steht — so bleibt „jede Aktion ist in der Matrix“ prüfbar.
+     */
+    @Test
+    void jedeNachtragsZeileStehtGegenIhreHerkunft() throws Exception {
+        JsonNode m = lies(MATRIX);
+        Map<String, JsonNode> zeilen = new LinkedHashMap<>();
+        m.path("aktionen").forEach(a -> zeilen.put(a.path("kennung").asText(), a));
+        Map<String, JsonNode> abschnitte = new LinkedHashMap<>();
+        m.path("nachtraege").forEach(n -> abschnitte.put(n.path("abschnitt").asText(), n));
+        Set<String> neuAngelegt = new HashSet<>();
+        for (JsonNode n : m.path("nachtraege")) {
+            String abschnitt = n.path("abschnitt").asText();
+            for (JsonNode h : n.path("handlungen")) {
+                String wo = abschnitt + " · " + h.path("handlung").asText();
+                boolean neu = h.path("zuordnung").asText().equals("neu");
+                for (JsonNode k : h.path("kennungen")) {
+                    JsonNode zeile = zeilen.get(k.asText());
+                    assertThat(zeile).as("%s: Kennung %s steht nicht in der Matrix", wo, k.asText()).isNotNull();
+                    if (neu) {
+                        assertThat(zeile.path("nachtrag").asText()).as("%s legt %s an", wo, k.asText())
+                                .isEqualTo(abschnitt);
+                        neuAngelegt.add(k.asText());
+                    } else {
+                        assertThat(zeile.path("nachtrag").asText()).as("%s ordnet %s nur zu", wo, k.asText())
+                                .isNotEqualTo(abschnitt);
+                    }
+                }
+            }
+        }
+        Set<String> gepinnt = new HashSet<>();
+        for (JsonNode c : lies(VECTORS).path("cases")) {
+            if (c.path("familie").asText().equals("darf")) {
+                gepinnt.add(c.path("input").path("aktion").asText());
+            }
+        }
+        for (JsonNode a : nachtragsZeilen(m)) {
+            String kennung = a.path("kennung").asText();
+            String nachtrag = a.path("nachtrag").asText();
+            assertThat(abschnitte).as(kennung).containsKey(nachtrag);
+            assertThat(a.path("herkunft").asText()).as("Herkunft von %s", kennung).startsWith(nachtrag);
+            assertThat(neuAngelegt).as("%s: keine Handlung aus %s legt die Zeile an", kennung, nachtrag)
+                    .contains(kennung);
+            assertThat(gepinnt).as("%s: kein darf-Fall in rechte-vectors.json", kennung).contains(kennung);
+            if (a.has("wie")) {
+                JsonNode x = zeilen.get(a.path("wie").asText());
+                assertThat(x).as("%s: wie %s", kennung, a.path("wie").asText()).isNotNull();
+                assertThat(a.path("zellen")).as("%s: Zellen wie %s", kennung, a.path("wie").asText())
+                        .isEqualTo(x.path("zellen"));
+            }
+        }
+        // Die Konzept-Zeilen tragen nichts aus einem Nachtrag.
+        konzeptZeilen(m).forEach(a -> assertThat(a.has("wie")).as(a.path("kennung").asText()).isFalse());
+    }
+
+    private static List<JsonNode> konzeptZeilen(JsonNode m) {
+        List<JsonNode> out = new ArrayList<>();
+        m.path("aktionen").forEach(a -> {
+            if (!a.has("nachtrag")) {
+                out.add(a);
+            }
+        });
+        return out;
+    }
+
+    private static List<JsonNode> nachtragsZeilen(JsonNode m) {
+        List<JsonNode> out = new ArrayList<>();
+        m.path("aktionen").forEach(a -> {
+            if (a.has("nachtrag")) {
+                out.add(a);
+            }
+        });
+        return out;
+    }
+
+    /** Die Zeilen der Tabelle, die der Generator aus diesen Aktionen erzeugt. */
+    private static List<String> sollTabelle(JsonNode m, List<JsonNode> aktionen) {
         List<String> soll = new ArrayList<>();
         List<String> kopf = new ArrayList<>(List.of("Aktion", "Herkunft"));
         m.path("rollen").forEach(r -> kopf.add(r.path("kundenwort").asText()));
@@ -167,7 +282,7 @@ class RechteAbleitungVectorsTest {
         Map<String, String> titel = new HashMap<>();
         m.path("gruppen").forEach(g -> titel.put(g.path("kennung").asText(), g.path("titel").asText()));
         String gruppe = null;
-        for (JsonNode a : m.path("aktionen")) {
+        for (JsonNode a : aktionen) {
             if (!a.path("gruppe").asText().equals(gruppe)) {
                 gruppe = a.path("gruppe").asText();
                 List<String> g = new ArrayList<>(List.of("**" + titel.get(gruppe) + "**"));
@@ -181,21 +296,26 @@ class RechteAbleitungVectorsTest {
             z.add(a.path("anmerkung").isNull() ? "" : a.path("anmerkung").asText());
             soll.add(zeile(z));
         }
-        List<String> ist = new ArrayList<>();
-        boolean drin = false;
+        return soll;
+    }
+
+    /** Die Matrix-Tabellen in {@code rechte-matrix.md}: jede beginnt mit „| Aktion | Herkunft |“. */
+    private static List<List<String>> matrixTabellen() throws Exception {
+        List<List<String>> tabellen = new ArrayList<>();
+        List<String> drin = null;
         for (String l : Files.readAllLines(TABELLE)) {
             if (l.startsWith("| Aktion | Herkunft |")) {
-                drin = true;
+                drin = new ArrayList<>();
+                tabellen.add(drin);
             }
-            if (drin && l.isEmpty()) {
-                break;
+            if (drin != null && l.isEmpty()) {
+                drin = null;
             }
-            if (drin) {
-                ist.add(l);
+            if (drin != null) {
+                drin.add(l);
             }
         }
-        assertThat(ist).as("rechte-matrix.md veraltet → python3 docs/contracts/v2/tools/rechte_matrix.py")
-                .containsExactlyElementsOf(soll);
+        return tabellen;
     }
 
     private static String zeile(List<String> zellen) {

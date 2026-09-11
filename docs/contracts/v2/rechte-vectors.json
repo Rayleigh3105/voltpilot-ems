@@ -2,8 +2,9 @@
   "_comment": [
     "Geteilte Vektoren des RECHTE-VERTRAGS (UEMS AP-03 IP-1). Die Prosa-Wahrheit steht im",
     "AP-03-Konzept §4.1–§4.9; die Matrix als Daten ist ./rechte-matrix.json (48 Aktionen × 7",
-    "Rollen, zeichengleich zur Konzept-Tabelle §4.3). Hier steht, wie aus Matrix, Zuweisungen und",
-    "einem Zeitpunkt GENAU EIN Ja oder Nein mit Grund in Kundensprache wird.",
+    "Rollen, zeichengleich zur Konzept-Tabelle §4.3, plus die Nachträge aus den Rechte-Abschnitten",
+    "von AP-04 §6.7, AP-05 §6, AP-06 §4.8 und AP-07 §4.10). Hier steht, wie aus Matrix, Zuweisungen",
+    "und einem Zeitpunkt GENAU EIN Ja oder Nein mit Grund in Kundensprache wird.",
     "",
     "Sie pinnen die zwei Zwillinge gegeneinander:",
     "  Java  services/api .../uems/RechteAbleitung",
@@ -125,11 +126,11 @@
     "— der Java-Test prüft das Fall für Fall. Was die Referenzdatei nicht kennt (ST-3 „Werk Ahrenberg",
     "Nord“, Sabine Rauch, Zeitpunkte aus den Abnahmefällen, zusätzliche Zuweisungen), nennt der Fall",
     "in `annahme`. `widersprueche` führt die benannten Widersprüche mit den Fällen, die ihre",
-    "Auflösung pinnen."
+    "Auflösung pinnen — W-R8 … W-R11 sind die Widersprüche der Nachträge (Rechte-Abschnitt eines späteren Pakets gegen eine Konzept-Zeile oder gegen sich selbst)."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json",
-  "herkunft": "UEMS AP-03 §4.1–§4.9 und §7 (A1–A16), Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026; Matrix ./rechte-matrix.json; Beispielwelt ./uems-referenzunternehmen.json",
+  "herkunft": "UEMS AP-03 §4.1–§4.9 und §7 (A1–A16), Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026; Nachträge AP-04 §6.7, AP-05 §6, AP-06 §4.8, AP-07 §4.10; Matrix ./rechte-matrix.json; Beispielwelt ./uems-referenzunternehmen.json",
   "matrix": "./rechte-matrix.json",
   "referenzunternehmen": "./uems-referenzunternehmen.json",
   "zeitzone": "Europe/Berlin",
@@ -363,6 +364,46 @@
       "faelle": [
         "w7-bearbeiter-verbindungstest-beim-anlegen",
         "w7-bearbeiter-kein-schalt-test-403"
+      ]
+    },
+    {
+      "kennung": "W-R8",
+      "titel": "Die Kennung der Zeile „Führende Quelle binden · Zählerwechsel · Wandlerfaktoren“",
+      "stelle": "AP-04 §6.7: die Zeile trägt `@Recht(\"messstelle.quelle\")` · rechte-matrix.json bis hierher (Rechte-Vertrag, AP-03 IP-1): Kennung `messstelle.quelle_binden`",
+      "aufloesung": "AP-04 regelt ausdrücklich dieselbe Aktion (Wortlaut der Zeile zitiert, dieselben Zellen) und nennt ihre Kennung — der abgenommene Wortlaut gilt: die Kennung heißt `messstelle.quelle`. Die Zellen bleiben; die Konzept-Tabelle §4.3 trägt keine Kennungen und bleibt byte-gleich. Auf `messstelle.quelle_binden` verwies noch keine Route, kein Vektor, keine Fläche.",
+      "faelle": [
+        "w8-brunner-zaehlerwechsel-ms06-darf",
+        "w8-berger-kein-zaehlerwechsel-403"
+      ]
+    },
+    {
+      "kennung": "W-R9",
+      "titel": "Der Energiemanager und „Zuständige Box wechseln · Box tauschen“",
+      "stelle": "AP-06 §4.8 (`datenquelle.zustaendigkeit`: Kundenadministrator, Bearbeiter je Standort, Unterstützer „Einrichten“) und AP-06 §5 (Bedienablauf, Wer: dieselben drei) · AP-06 §5.1 Zeitstrahl: „Ines Kaltenbach öffnet „Zuständige Box wechseln“ an DQ-3“ (09.04.2027) · Zeile `geraet.einrichten` („Box anmelden; …“): Energiemanager U",
+      "aufloesung": "Der Rechte-Abschnitt regelt die Aktion ausdrücklich und mit eigener Kennung, der Bedienablauf bestätigt ihn — seine Zellen gelten: `datenquelle.zustaendigkeit` ohne Energiemanager (403 `recht_fehlt`, Weg zum Kundenadministrator). Eine Box ANMELDEN bleibt `geraet.einrichten` (Energiemanager U). Den Wechsel aus §5.1 trägt nach der Matrix Jonas Wendlinger (Kundenadministrator) ein; soll der Energiemanager wechseln dürfen, ändert der Captain GENAU diese eine Zelle.",
+      "faelle": [
+        "w9-ines-zustaendige-box-403",
+        "w9-ines-meldet-box-an",
+        "w9-jonas-wechselt-zustaendige-box-dq3"
+      ]
+    },
+    {
+      "kennung": "W-R10",
+      "titel": "AP-05 „Bogen und Assistent“ ohne Energiemanager",
+      "stelle": "AP-05 §6, Zeile „Rechte (AP-03)“: „Bogen und Assistent: Kundenadministrator (unternehmensweit), Bearbeiter je Standort, Unterstützer „Einrichten“ (Installateur, befristet)“ · AP-06 §4.8 `datenquelle.bearbeiten` und Zeile `geraet.einrichten`: Energiemanager U",
+      "aufloesung": "AP-05 hat keinen Rechte-Abschnitt und sagt selbst, es nenne nur, wer den Bogen ausfüllt (§6.1, Abgrenzung zu AP-03). Der Bogen ist der erste Schritt der Datenquelle „WAGO-Steuerung“, der Assistent legt Komponenten an: beides regeln `datenquelle.bearbeiten` (AP-06 §4.8, ausdrücklich mit Energiemanager) und `geraet.einrichten` — keine eigene Zeile, der Energiemanager darf.",
+      "faelle": [
+        "w10-ines-legt-wago-datenquelle-an"
+      ]
+    },
+    {
+      "kennung": "W-R11",
+      "titel": "Der Unterstützer „Ansehen“ und der Export mit Herkunfts-Spalten",
+      "stelle": "AP-07 §4.10: „Herkunft eines Werts sehen — jeder mit Leserecht auf den Standort“ und „Export mit Herkunfts-Spalten — Standortleser für Messstellen des Standorts …, Recht: AP-03“ · Zeile `export.standort`: Unterstützer -",
+      "aufloesung": "AP-07 nennt für den Export AP-03 als Recht: `export.standort` gilt unverändert — der Unterstützer exportiert nicht (Datenabfluss an Dritte, AP-03 §4.2, wie W-R4). Die Herkunft SEHEN gehört zu `messwerte.ansehen` (Unterstützer „Ansehen“ = A).",
+      "faelle": [
+        "a5-voss-sieht-werk-ahrenberg",
+        "w11-voss-export-mit-herkunfts-spalten-403"
       ]
     }
   ],
@@ -3712,6 +3753,1402 @@
         "rolle_noetig": "energiemanager",
         "umfang_noetig": null,
         "text": "Dafür fehlt Ihnen das Recht. Ihre Kundenadministratoren: Jonas Wendlinger und Ines Kaltenbach."
+      }
+    },
+    {
+      "name": "ap04-claudia-liest-das-messstellen-register",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-04 §6.7 (A14): „Register lesbar für Leser“ — Claudia Berger (Leserin für Werk Ahrenberg und Werk Lindach) liest nach dem Zählerwechsel an MS-06 (18.11.2026 10:40) das Messstellen-Register von Werk Ahrenberg über die neue Zeile `messstelle.ansehen` (Leser S).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap04-murat-liest-das-messstellen-register",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-04 §6.7: auch Bedienberechtigte lesen das Register — Murat Demirci (Bedienberechtigt Werk Ahrenberg) über die Zelle S der Zeile `messstelle.ansehen`.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "bedienberechtigt",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap04-peter-ms06-gibt-es-nicht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-04 A14: für Peter Hollerbach (Bearbeiter nur Werk Lindach) existiert MS-06 (Werk Ahrenberg) nicht — Geltungsbereich vor Aktion: 404, nie 403, auch beim Lesen des Registers.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "ap04-peter-bearbeitet-ms17",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-04 A14: MS-17 (Lagerhalle Lindach, G-4) ist für Peter Hollerbach bearbeitbar — AP-04 §6.7 nennt die Matrix-Zeile „Messstelle anlegen · bearbeiten …“ wörtlich, Bearbeiter S.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.bearbeiten",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "w8-brunner-zaehlerwechsel-ms06-darf",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R8 · AP-04 A14: Elektro Brunner darf an MS-06 (Werk Ahrenberg) einen Zählerwechsel eintragen — die Zeile „Führende Quelle binden · Zählerwechsel · Wandlerfaktoren“ trägt jetzt die Kennung aus AP-04 §6.7 (`messstelle.quelle`); Unterstützer ab „Einrichten“, Brunner hat „Einrichten und Bedienen“.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.quelle",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-12-01T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "w8-berger-kein-zaehlerwechsel-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R8 · AP-04 A14: Claudia Berger liest das Register, einen Zählerwechsel an MS-06 trägt sie nicht ein — 403 mit Weg (Leser -, die nötige Rolle ist Bearbeiter).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.quelle",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ap06-peter-legt-datenquelle-in-lindach-an",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8: Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung = Bearbeiter je Standort — Peter Hollerbach an der Anlage Werk Lindach (AN-3, Werk Lindach) über `datenquelle.bearbeiten`.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.bearbeiten",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-3",
+            "zuordnungen": [
+              {
+                "standort": "ST-2",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-claudia-legt-keine-datenquelle-an-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8 nennt den Leser beim Anlegen nicht: Claudia Berger sieht Werk Ahrenberg (AN-1), legt dort aber keine Datenquelle an — 403, nötige Rolle Bearbeiter.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.bearbeiten",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-1",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "w10-ines-legt-wago-datenquelle-an",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R10: Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6) sind das Anlegen der Datenquelle DQ-4 (WAGO-Controller C-1, Halle 2, AN-2); AP-06 §4.8 gibt dem Energiemanager dafür U — Ines Kaltenbach darf, obwohl AP-05 sie nicht nennt.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.bearbeiten",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-2",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-voss-legt-keine-datenquelle-an-403-umfang",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8: Unterstützer erst ab Umfang „Einrichten“ (Ei) — Lena Voss hat für die Speicher-Diagnose nur „Ansehen“: 403 mit dem nötigen Umfang.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.bearbeiten",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": "einrichten",
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "w9-ines-zustaendige-box-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R9: der Rechte-Abschnitt AP-06 §4.8 nennt für „Zuständige Box wechseln · Box tauschen“ keinen Energiemanager — Ines Kaltenbach bekommt am 09.04.2027 für DQ-3 (AN-1) 403 mit Weg, obwohl der Zeitstrahl AP-06 §5.1 sie den Wechsel eintragen lässt; die Zeile ist die EINE Stelle zum Umstellen.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.zustaendigkeit",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-1",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2027-04-09T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "w9-ines-meldet-box-an",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R9: eine Box ANMELDEN bleibt die Konzept-Zeile `geraet.einrichten` (Energiemanager U) — nur der Wechsel und der Tausch der zuständigen Box sind AP-06s eigene Zeile ohne Energiemanager.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "geraet.einrichten",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-1",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2027-04-09T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "w9-jonas-wechselt-zustaendige-box-dq3",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R9: den Wechsel von DQ-3 auf Box Halle 2 (10.04.2027 07:30) trägt nach der Matrix der Kundenadministrator ein — Jonas Wendlinger über `datenquelle.zustaendigkeit` (U).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.zustaendigkeit",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-1",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2027-04-09T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-jonas-tauscht-box-halle-2",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8 „Box tauschen“: am 04.11.2026 09:20 verbindet Jonas Wendlinger die neue Box und wählt „als Nachfolger von Box Halle 2“ (E-2 → E-2′, AN-2) — Kundenadministrator U.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.zustaendigkeit",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-2",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-04T09:20:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-peter-wechselt-box-in-lindach",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8: den Zuständigkeitswechsel darf der Bearbeiter je Standort — Peter Hollerbach an der Anlage Werk Lindach (AN-3).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.zustaendigkeit",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-3",
+            "zuordnungen": [
+              {
+                "standort": "ST-2",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-claudia-sieht-box-uebersicht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8: Box-Übersicht, Rückmeldung und Ausfall-Anzeige lesen alle Rollen des Standorts inkl. Leser — Claudia Berger sieht am 03.11.2026 den Ausfall von Box Halle 2 an der Anlage Halle 2 (AN-2, Werk Ahrenberg; `datenquelle.ansehen`, Leser S).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.ansehen",
+        "ziel": {
+          "standort": null,
+          "anlage": {
+            "kennzeichen": "AN-2",
+            "zuordnungen": [
+              {
+                "standort": "ST-1",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "stichtag": null
+        },
+        "jetzt": "2026-11-03T14:10:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap06-voss-sieht-box-uebersicht",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-06 §4.8: Unterstützer ab „Ansehen“ — Lena Voss (VoltPilot-Support, Speicher-Diagnose) sieht die Boxen von Werk Ahrenberg.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "datenquelle.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap07-claudia-sieht-die-ereignisse",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-07 §4.10: Ereignisse einsehen „wie Verlauf“ — Claudia Berger sieht an Werk Ahrenberg die Lücke von Box Halle 2 (03.11.2026 14:00–17:30, nachgeliefert ab 17:31) über `ereignisse.ansehen`, dieselben Zellen wie „Messwerte, Zeitreihen, Datenqualität ansehen“.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ereignisse.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-03T17:45:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "leser",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap07-voss-sieht-die-ereignisse",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-07 §4.10 „wie Verlauf“: Lena Voss (Unterstützung „Ansehen“) sieht die Ereignisse von Werk Ahrenberg wie den Verlauf (A).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ereignisse.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "w11-voss-export-mit-herkunfts-spalten-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W-R11: die Herkunft eines Werts SIEHT Lena Voss (`messwerte.ansehen`, Fall a5-voss-sieht-werk-ahrenberg); den Export mit Herkunfts-Spalten nicht — AP-07 §4.10 nennt dafür AP-03, und `export.standort` gibt dem Unterstützer nichts (Datenabfluss).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "export.standort",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
       }
     },
     {

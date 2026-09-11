@@ -69,7 +69,8 @@ public class StandortController {
         return standorte.vorschlag();
     }
 
-    // Rechte: wie oben.
+    // Rechte: wie die Liste — heute lesend, keine eigene Kennung; ein Stichtag in der
+    // Vergangenheit ist `aenderungsprotokoll.lesen`.
     @GetMapping("/{standortId}")
     public StandortAmStichtag standort(@PathVariable UUID standortId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)

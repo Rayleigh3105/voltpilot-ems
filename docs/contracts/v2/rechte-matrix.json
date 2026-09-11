@@ -1,8 +1,10 @@
 {
   "_comment": [
-    "Die RECHTE-MATRIX als Daten (UEMS AP-03 IP-1): 48 Kundenaktionen × 7 Rollen, Zelle =",
+    "Die RECHTE-MATRIX als Daten (UEMS AP-03 IP-1): 48 Kundenaktionen × 7 Rollen aus der",
+    "Konzept-Tabelle AP-03 §4.3 plus die NACHTRÄGE der später konzipierten Pakete, Zelle =",
     "eindeutiger Geltungsbereich. Die Prosa-Wahrheit ist die Tabelle im AP-03-Konzept §4.3",
-    "(Captain-Entscheide E1–E15 vom 10.09.2026); diese Datei ist ihre Datenfassung und die",
+    "(Captain-Entscheide E1–E15 vom 10.09.2026) und je Nachtrag der Rechte-Abschnitt des",
+    "späteren, vom Captain abgenommenen Pakets; diese Datei ist ihre Datenfassung und die",
     "Quelle der künftigen Durchsetzung (`@Recht(\"<kennung>\")`, IP-6/IP-7).",
     "",
     "⚠ Die Markdown-Tabelle ./rechte-matrix.md wird aus DIESER Datei erzeugt:",
@@ -10,6 +12,19 @@
     "    python3 docs/contracts/v2/tools/rechte_matrix.py --check   # prüft, ob sie aktuell ist",
     "Der Java-Test RechteAbleitungVectorsTest liest die erzeugte Tabelle zurück und hält sie",
     "zeilengleich an diese Datei (Build-Prüfung im Maven-Lauf von services/api).",
+    "",
+    "ZWEI HERKÜNFTE, EINE MATRIX:",
+    "  · Eine Zeile OHNE `nachtrag` ist eine Zeile der Konzept-Tabelle AP-03 §4.3. Ihre 48 Zeilen",
+    "    ergeben die Tabelle unter „Matrix“, byte-gleich zum Konzept: `konzept_tabelle.sha256`",
+    "    ist der SHA-256 dieser Tabelle (Generator und Java-Test prüfen ihn). Wortlaut, Herkunft,",
+    "    Zellen und Anmerkung dieser Zeilen ändert nur ein benannter Widerspruch.",
+    "  · Eine Zeile MIT `nachtrag` stammt aus dem Rechte-Abschnitt eines späteren Pakets; ihre",
+    "    `herkunft` beginnt mit genau diesem Abschnitt, ihre Zellen sind die des Abschnitts",
+    "    (`wie` = der Abschnitt sagt „wie Zeile X“, dann trägt sie die Zellen von X).",
+    "  · `nachtraege` führt JEDE Handlung dieser Abschnitte auf und sagt, welche Kennung sie trägt:",
+    "    `neu` (die Zeile entsteht hier) oder `zugeordnet` (eine bestehende Zeile regelt sie).",
+    "    Widersprüche zwischen Abschnitt und Matrix stehen benannt in rechte-vectors.json",
+    "    (`widersprueche`, W-R8 … W-R11) — samt Fällen, die die Auflösung pinnen.",
     "",
     "ZELLEN-CODES (Legende des Konzepts): U erlaubt, unternehmensweit · S erlaubt je",
     "zugewiesenem Standort · E nur das eigene Konto · - nein · P bleibt beim VoltPilot-Betrieb",
@@ -19,7 +34,9 @@
     "",
     "Kennungen sind stabile Schlüssel (`bereich.tätigkeit`, ASCII) — eine Fläche, eine Route",
     "und ein Vektor verweisen über die Kennung, nie über den Wortlaut oder die Position.",
-    "Der Wortlaut (`kundenwort`) ist byte-gleich zur Konzept-Tabelle.",
+    "Der Wortlaut (`kundenwort`) ist byte-gleich zur Konzept-Tabelle bzw. zum Rechte-Abschnitt.",
+    "Jede Kennung, die ein Routen-Kommentar in services/api nennt, steht hier",
+    "(RechteKennungenDerRoutenTest).",
     "",
     "Wie aus Matrix + Zuweisungen ein Ja/Nein wird (Geltungsbereich vor Aktion, Unterstützer-",
     "Umfang, OCPP-Stufe, Teilansicht, Entzug), steht in ./rechte-vectors.json; die Zwillinge",
@@ -29,8 +46,14 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json#/$defs/matrix",
-  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026",
+  "herkunft": "UEMS AP-03 §4.3 (Konzept-Tabelle, Quelle k_matrix.py), §4.1/§4.2 (Rollen, Achsen), Entscheide E1–E15 vom 10.09.2026 · Nachträge: AP-04 §6.7, AP-05 §6 (Zeile „Rechte (AP-03)“), AP-06 §4.8, AP-07 §4.10 (je vom Captain mit dem Paket abgenommen, 10.09.2026)",
   "tabelle": "./rechte-matrix.md",
+  "konzept_tabelle": {
+    "abschnitt": "AP-03 §4.3",
+    "aktionen": 48,
+    "sha256": "fa96d75444e46487274d89b23cac88ff4190760cef604db7c07e83fe836cc20a",
+    "hinweis": "SHA-256 (UTF-8) der erzeugten Tabelle unter „Matrix“ — Kopfzeile bis letzte Zeile, jede Zeile mit Zeilenumbruch; aus den Zeilen OHNE `nachtrag`. Gleich der Tabelle im AP-03-Konzept §4.3 (report.md), abgeglichen am 11.09.2026."
+  },
   "codes": [
     {
       "code": "U",
@@ -201,6 +224,10 @@
     {
       "kennung": "plattform",
       "titel": "Bleibt beim VoltPilot-Betrieb (Plattform)"
+    },
+    {
+      "kennung": "datenquellen",
+      "titel": "Datenquellen und Boxen (AP-06)"
     }
   ],
   "aktionen": [
@@ -397,7 +424,7 @@
       "anmerkung": null
     },
     {
-      "kennung": "messstelle.quelle_binden",
+      "kennung": "messstelle.quelle",
       "gruppe": "messdaten",
       "kundenwort": "Führende Quelle binden · Zählerwechsel · Wandlerfaktoren",
       "herkunft": "AP-04",
@@ -971,6 +998,294 @@
         "voltpilot_betrieb": "P"
       },
       "anmerkung": "unverändert."
+    },
+    {
+      "kennung": "messstelle.ansehen",
+      "gruppe": "messdaten",
+      "kundenwort": "Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert)",
+      "herkunft": "AP-04 §6.7",
+      "nachtrag": "AP-04 §6.7",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2)."
+    },
+    {
+      "kennung": "ereignisse.ansehen",
+      "gruppe": "messdaten",
+      "kundenwort": "Ereignisse einsehen",
+      "herkunft": "AP-07 §4.10",
+      "nachtrag": "AP-07 §4.10",
+      "wie": "messwerte.ansehen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“."
+    },
+    {
+      "kennung": "datenquelle.bearbeiten",
+      "gruppe": "datenquellen",
+      "kundenwort": "Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung",
+      "herkunft": "AP-06 §4.8",
+      "nachtrag": "AP-06 §4.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10)."
+    },
+    {
+      "kennung": "datenquelle.zustaendigkeit",
+      "gruppe": "datenquellen",
+      "kundenwort": "Zuständige Box wechseln · Box tauschen",
+      "herkunft": "AP-06 §4.8",
+      "nachtrag": "AP-06 §4.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9)."
+    },
+    {
+      "kennung": "datenquelle.ansehen",
+      "gruppe": "datenquellen",
+      "kundenwort": "Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen",
+      "herkunft": "AP-06 §4.8",
+      "nachtrag": "AP-06 §4.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "A",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““."
+    }
+  ],
+  "nachtraege": [
+    {
+      "abschnitt": "AP-04 §6.7",
+      "titel": "Rechte (AP-03)",
+      "konzept": "UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen",
+          "wer": "Kundenadministrator und Energiemanager unternehmensweit, Bearbeiter je Standort, Unterstützer mit Umfang „Einrichten“",
+          "recht": "`@Recht(\"messstelle.bearbeiten\")`",
+          "kennungen": [
+            "messstelle.bearbeiten"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "AP-04 zitiert die Matrix-Zeile wörtlich; die Zellen stimmen überein."
+        },
+        {
+          "handlung": "Führende Quelle binden · Zählerwechsel · Wandlerfaktoren",
+          "wer": "Kundenadministrator und Energiemanager unternehmensweit, Bearbeiter je Standort, Unterstützer mit Umfang „Einrichten“",
+          "recht": "`@Recht(\"messstelle.quelle\")`",
+          "kennungen": [
+            "messstelle.quelle"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "AP-04 zitiert die Matrix-Zeile wörtlich; die Zellen stimmen überein. Die Kennung hieß bis hierher `messstelle.quelle_binden` (W-R8)."
+        },
+        {
+          "handlung": "Register lesen",
+          "wer": "Leser und Bedienberechtigte",
+          "recht": null,
+          "kennungen": [
+            "messstelle.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": null
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Geltungsbereich = Standort des Orts",
+          "wo": "rechte-vectors.json, Familie darf: das Ziel ist der Standort, an dem der Ort der Messstelle hängt"
+        },
+        {
+          "wortlaut": "fremde Messstellen 404",
+          "wo": "rechte-vectors.json, Familie darf: Geltungsbereich vor Aktion (404 `ausserhalb_geltungsbereich`)"
+        },
+        {
+          "wortlaut": "Urheber `actor_*` in jedem Protokolleintrag",
+          "wo": "keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur)"
+        },
+        {
+          "wortlaut": "Aggregate („x von y Messstellen liefern Daten“) serverseitig über die sichtbare Menge mit `teilansicht`",
+          "wo": "rechte-vectors.json, Familie teilansicht (Ableitungen `teilansicht` und `summe`)"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-05 §6",
+      "titel": "Auswirkungen, Zeile „Rechte (AP-03)“ — AP-05 hat keinen eigenen Rechte-Abschnitt",
+      "konzept": "UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Bogen und Assistent (Erhebungsbogen, Assistent „WAGO-Steuerung anbinden“)",
+          "wer": "Kundenadministrator (unternehmensweit), Bearbeiter je Standort, Unterstützer „Einrichten“ (Installateur, befristet)",
+          "recht": null,
+          "kennungen": [
+            "datenquelle.bearbeiten",
+            "geraet.einrichten"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Der Bogen ist der erste Schritt der Datenquelle „WAGO-Steuerung“, der Assistent legt je Karte eine Komponente an. Den Energiemanager nennt AP-05 nicht (W-R10)."
+        },
+        {
+          "handlung": "Vorlagen-Freigabe",
+          "wer": "nur VoltPilot-Admin",
+          "recht": null,
+          "kennungen": [
+            "plattform.betrieb"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "„Vorlagen“ steht in der Plattform-Zeile."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Pilot-Protokolle als Verlauf-Einträge mit Urheber",
+          "wo": "keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur)"
+        },
+        {
+          "wortlaut": "„AP-05 sagt nur, wer den Bogen ausfüllt, wer die Karte einstellt und wer die Vorlage freigibt“ (§6.1)",
+          "wo": "Bogen → `datenquelle.bearbeiten`; die Karte stellt der Installateur AM GERÄT ein (WAGO-I/O-CHECK, §4.7) — keine Portal-Handlung, die Einstellungs-Fassung trägt `messstelle.quelle` (Wandlerfaktoren, AP-04); Vorlage → `plattform.betrieb`"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-06 §4.8",
+      "titel": "Rechte (AP-03)",
+      "konzept": "UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung",
+          "wer": "Kundenadministrator (U), Energiemanager (U), Bearbeiter je Standort (S), Unterstützer ab Umfang „Einrichten“ (Ei)",
+          "recht": "`datenquelle.bearbeiten`",
+          "kennungen": [
+            "datenquelle.bearbeiten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": null
+        },
+        {
+          "handlung": "Zuständige Box wechseln · Box tauschen",
+          "wer": "Kundenadministrator (U), Bearbeiter je Standort (S), Unterstützer „Einrichten“ (Ei) — Steuerquelle: nur Kundenadministrator (und dort in diesem Paket gesperrt)",
+          "recht": "`datenquelle.zustaendigkeit`",
+          "kennungen": [
+            "datenquelle.zustaendigkeit"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Die Steuerquelle ist eine Regel des Objekts, keine Zelle — der Schreibweg lehnt sie ab (Grund `steuerquelle`). Kein Energiemanager (W-R9)."
+        },
+        {
+          "handlung": "Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen",
+          "wer": "alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen“",
+          "recht": "lesend",
+          "kennungen": [
+            "datenquelle.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": null
+        },
+        {
+          "handlung": "Steuern freigeben (Komponente)",
+          "wer": "unverändert Kundenadministrator (AP-03) — AP-06 fasst Freigaben nicht an",
+          "recht": "unverändert",
+          "kennungen": [
+            "freigabe.erteilen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": null
+        }
+      ],
+      "regeln": []
+    },
+    {
+      "abschnitt": "AP-07 §4.10",
+      "titel": "Rechte (AP-03)",
+      "konzept": "UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Herkunft eines Werts sehen",
+          "wer": "jeder mit Leserecht auf den Standort der Messstelle (AP-03)",
+          "recht": "Standortleser",
+          "kennungen": [
+            "messwerte.ansehen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Herkunft gehört zum Messwert; die Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“ trägt AP-07 schon als Herkunft und gibt jedem Standortleser das Recht."
+        },
+        {
+          "handlung": "Export mit Herkunfts-Spalten",
+          "wer": "Standortleser für Messstellen des Standorts; unternehmensweite Messstellen nur Energiemanager/Kundenadministrator (AP-00 §7.6 „Standortrecht schneidet auch Summen“)",
+          "recht": "AP-03",
+          "kennungen": [
+            "export.standort",
+            "export.unternehmen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Herkunfts-Spalten ändern das Recht nicht; unternehmensweite Messstellen schneidet der Geltungsbereich. Der Unterstützer exportiert nicht (W-R11)."
+        },
+        {
+          "handlung": "Ereignisse einsehen",
+          "wer": "wie Verlauf",
+          "recht": "Standortleser",
+          "kennungen": [
+            "ereignisse.ansehen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": null
+        },
+        {
+          "handlung": "Korrektur nach `late_arrival` anstoßen",
+          "wer": "Messdatenpflege (AP-03 Achse Messdaten), Ablauf AP-08",
+          "recht": "Bearbeiter",
+          "kennungen": [
+            "korrektur.erfassen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Der Anstoß öffnet den Korrektur-Ablauf von AP-08; das Recht ist die Messdatenpflege dieser Zeile — nie der Unterstützer."
+        },
+        {
+          "handlung": "Datenaufzeichnungen löschen (Purge)",
+          "wer": "Kundenadministrator; für Messstellen-gebundene Reihen gesperrt (E8)",
+          "recht": "Kundenadministrator",
+          "kennungen": [
+            "aufzeichnungen.loeschen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Sperre für Messstellen-gebundene Reihen (AP-07 E8) ist eine Regel des Objekts, keine Zelle — sie gilt auch für den Kundenadministrator und wird im Löschweg geprüft, nicht in `darf`."
+        }
+      ],
+      "regeln": []
     }
   ]
 }

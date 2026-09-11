@@ -37,7 +37,8 @@ import org.springframework.web.server.ResponseStatusException;
  * die Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Messstelle ist 404, nie
  * 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route nennt
  * im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}, damit AP-03 sie
- * findet; eine eigene Rechte-Annotation gibt es hier bewusst nicht.
+ * findet ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); eine eigene
+ * Rechte-Annotation gibt es hier bewusst nicht.
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt, ist 400
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen. Wer an {@code PUT} ein
@@ -58,7 +59,7 @@ public class MessstelleController {
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
-    /** Recht: {@code messwerte.ansehen}. Das Register mit Filtern und Stichtag bringt IP-4. */
+    /** Recht: {@code messstelle.ansehen} (AP-04 §6.7). Das Register mit Filtern und Stichtag bringt IP-4. */
     @GetMapping
     public MessstelleDto.Liste alle() {
         return messstellen.alle();
@@ -70,7 +71,7 @@ public class MessstelleController {
         return messstellen.vorschlag();
     }
 
-    /** Recht: {@code messwerte.ansehen}. */
+    /** Recht: {@code messstelle.ansehen}. */
     @GetMapping("/{id}")
     public MessstelleDto.Messstelle eine(@PathVariable UUID id) {
         return messstellen.eine(id);

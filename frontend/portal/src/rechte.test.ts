@@ -92,10 +92,17 @@ const vectors: {
   widersprueche: { kennung: string; faelle: string[] }[];
   cases: Fall[];
 } = lies('rechte-vectors.json');
+interface Handlung {
+  handlung: string;
+  kennungen: string[];
+  zuordnung: 'neu' | 'zugeordnet';
+}
 const matrixDatei: {
   rollen: { kennung: string; kundenwort: string }[];
   umfaenge: { kennung: string; kundenwort: string }[];
-  aktionen: Aktion[];
+  konzept_tabelle: { aktionen: number };
+  aktionen: (Aktion & { herkunft: string; nachtrag?: string; wie?: string })[];
+  nachtraege: { abschnitt: string; handlungen: Handlung[] }[];
 } = lies('rechte-matrix.json');
 const matrix = matrixAus(matrixDatei);
 const ZONE = vectors.zeitzone;
@@ -295,11 +302,43 @@ describe('rechte · Vokabular, Sätze und Matrix sind dieselben', () => {
     expect(matrixDatei.umfaenge.map((u) => [u.kennung, u.kundenwort])).toEqual(Object.entries(UMFANG_KUNDENWORT));
   });
 
-  it('die Matrix hat 48 Zeilen mit eindeutiger Kennung, und jede Aktion eines Falls steht darin', () => {
-    expect(matrix.size).toBe(48);
-    expect(new Set(matrixDatei.aktionen.map((a) => a.kennung)).size).toBe(48);
+  it('die Matrix hat die 48 Konzept-Zeilen plus die Nachträge, jede Kennung eindeutig, und jede Aktion eines Falls steht darin', () => {
+    const konzept = matrixDatei.aktionen.filter((a) => a.nachtrag === undefined);
+    expect(konzept).toHaveLength(48);
+    expect(konzept).toHaveLength(matrixDatei.konzept_tabelle.aktionen);
+    expect(matrixDatei.aktionen.length).toBeGreaterThan(48);
+    expect(matrix.size).toBe(matrixDatei.aktionen.length);
+    expect(new Set(matrixDatei.aktionen.map((a) => a.kennung)).size).toBe(matrixDatei.aktionen.length);
     for (const c of vectors.cases) {
       if (c.input.aktion !== undefined) expect(matrix.has(c.input.aktion), c.name).toBe(true);
+    }
+  });
+
+  it('jede Nachtrags-Zeile steht gegen ihre Herkunft, und jede Handlung der Rechte-Abschnitte trägt eine Kennung der Matrix', () => {
+    const zeilen = new Map(matrixDatei.aktionen.map((a) => [a.kennung, a]));
+    const neuAngelegt = new Set<string>();
+    for (const n of matrixDatei.nachtraege) {
+      for (const h of n.handlungen) {
+        for (const k of h.kennungen) {
+          const zeile = zeilen.get(k);
+          expect(zeile, `${n.abschnitt} · ${h.handlung}: ${k}`).toBeDefined();
+          if (h.zuordnung === 'neu') {
+            expect(zeile?.nachtrag, `${n.abschnitt} legt ${k} an`).toBe(n.abschnitt);
+            neuAngelegt.add(k);
+          } else {
+            expect(zeile?.nachtrag, `${n.abschnitt} ordnet ${k} nur zu`).not.toBe(n.abschnitt);
+          }
+        }
+      }
+    }
+    const abschnitte = new Set(matrixDatei.nachtraege.map((n) => n.abschnitt));
+    const gepinnt = new Set(vectors.cases.filter((c) => c.familie === 'darf').map((c) => c.input.aktion));
+    for (const a of matrixDatei.aktionen.filter((x) => x.nachtrag !== undefined)) {
+      expect(abschnitte.has(a.nachtrag!), a.kennung).toBe(true);
+      expect(a.herkunft.startsWith(a.nachtrag!), `Herkunft von ${a.kennung}`).toBe(true);
+      expect(neuAngelegt.has(a.kennung), `keine Handlung legt ${a.kennung} an`).toBe(true);
+      expect(gepinnt.has(a.kennung), `kein darf-Fall für ${a.kennung}`).toBe(true);
+      if (a.wie !== undefined) expect(a.zellen, `${a.kennung} wie ${a.wie}`).toEqual(zeilen.get(a.wie)?.zellen);
     }
   });
 
