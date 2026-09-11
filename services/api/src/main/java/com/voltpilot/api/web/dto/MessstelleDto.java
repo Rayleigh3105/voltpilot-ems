@@ -113,10 +113,89 @@ public final class MessstelleDto {
             List<Vergleichsbindung> vergleichsquellen) {}
 
     /**
-     * Die Liste als Objekt, nicht als nacktes Array: das Register (IP-4) ergänzt Filter,
-     * Stichtag und {@code teilansicht} (AP-03), ohne die Form zu brechen.
+     * Die Liste als Objekt, nicht als nacktes Array: das Register (IP-4) ergänzt seine Zeilen,
+     * den Stichtag und {@code teilansicht} (AP-03), ohne die Form zu brechen. {@code messstellen}
+     * (die Vertrags-Form, IP-3) und {@code register} nennen DIESELBEN Messstellen in derselben
+     * Reihenfolge (nach Kennzeichen) — die Filter gelten für beide. {@code stichtag} ist der Tag,
+     * an dem Ort und Stellung gelten; {@code zeitpunkt} der Augenblick, zu dem die Quelle gilt
+     * (ein Tag: sein Beginn, wie {@code …/quellen?stichtag=}; ohne Stichtag: jetzt).
+     * {@code teilansicht} bleibt {@code false}, bis AP-03 Rechte je Standort durchsetzt — bis dahin
+     * sieht jeder den ganzen Kundenbereich (RLS).
      */
-    public record Liste(List<Messstelle> messstellen) {}
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Liste(List<Messstelle> messstellen, List<RegisterZeile> register, LocalDate stichtag,
+            OffsetDateTime zeitpunkt, boolean teilansicht) {}
+
+    /**
+     * Eine Zeile des Registers (AP-04 §5.16) zum Stichtag. {@code ort} ist immer da (mit
+     * {@code grund}, auch „nicht_verortet“), {@code elektrische_stellung} {@code null}, wenn an dem
+     * Tag keine gilt, {@code quelle} immer da (mit {@code stand}). {@code lebenszyklus} und
+     * {@code fehlt} sind die der Messstellen-Antwort — der HEUTIGE Lebenszyklus (gespeichert ist nur
+     * der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
+     * {@code beobachtung} und {@code letzter_wert} sind benannte Platzhalter: IMMER {@code null},
+     * bis IP-15 sie aus den Werten ableitet — nie geraten.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterZeile(
+            UUID id,
+            String kennzeichen,
+            String name,
+            String art,
+            String medium,
+            Groesse hauptgroesse,
+            RegisterOrt ort,
+            RegisterStellung elektrischeStellung,
+            RegisterQuelle quelle,
+            String lebenszyklus,
+            List<String> fehlt,
+            OffsetDateTime angehaltenAb,
+            OffsetDateTime archiviertAm,
+            Object beobachtung,
+            Object letzterWert) {}
+
+    /**
+     * Der Ort am Stichtag und der daraus abgeleitete Standort — die Verortung des
+     * Ortsbaum-Vertrags wie {@link StandortAm} ({@code kennzeichen} = {@code ort} dort, {@code pfad}
+     * vom Ort hinauf bis zum Standort, {@code grund}); dazu die Namen und das Intervall, das an dem
+     * Tag gilt. {@code id} ist die des Standorts, Gebäudes, Bereichs bzw. Unternehmens.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterOrt(UUID id, String kennzeichen, String ortArt, String name, LocalDate gueltigAb,
+            LocalDate gueltigBis, List<String> pfad, String standort, UUID standortId, String standortName,
+            String grund) {}
+
+    /** Die elektrische Stellung am Stichtag; {@code unterzaehler_von} ist das heutige Kennzeichen des Bezugs. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterStellung(UUID anlage, String anlageName, String stellung, String unterzaehlerVon,
+            LocalDate gueltigAb, LocalDate gueltigBis) {}
+
+    /**
+     * Die Quelle der Hauptgröße zum Zeitpunkt. {@code stand}: {@code gebunden} (eine führende Quelle
+     * gilt), {@code berechnet} (eine berechnete Messstelle hat keine Quelle — ihre Formel kommt mit
+     * AP-10) oder {@code keine_datenquelle} (gemessen, aber zu dem Zeitpunkt keine führende Quelle —
+     * nie eine 0). {@code davor}: die führende Quelle, die vor der geltenden (bzw. vor dem Zeitpunkt)
+     * zuletzt endete — „seit 18.11.2026 10:40 · davor Z-5a“. {@code vergleichsquellen}: wie viele
+     * Vergleichsquellen der Hauptgröße zu dem Zeitpunkt laufen.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterQuelle(String stand, RegisterBindung fuehrend, RegisterBindung davor,
+            int vergleichsquellen) {}
+
+    /**
+     * Eine führende Bindung, wie das Register sie nennt: Komponente, Messwert (Kanal und sein
+     * Anzeigename wie im Messkanal-Read-Model), Gerät, seit ({@code gueltig_ab}) und bis.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterBindung(UUID id, UUID komponente, String komponenteName, String kanal, String kanalName,
+            RegisterGeraet geraet, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis) {}
+
+    /**
+     * Das Gerät des Messkanals: {@code geraet} das Kennzeichen (GR-4), {@code einbau} der Einbau, der
+     * die Komponente zu Beginn der Bindung speist (Z-5b), {@code bezeichnung} sein Name — {@code null},
+     * solange niemand einen vergeben hat (der Anlege-Weg vergibt keinen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterGeraet(UUID id, String geraet, String einbau, String bezeichnung) {}
 
     /** Das nächste automatische Kennzeichen — der Zähler bewegt sich erst beim Speichern. */
     public record Vorschlag(String kennzeichen) {}

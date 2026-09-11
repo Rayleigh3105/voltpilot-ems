@@ -109,7 +109,8 @@ public final class MessstelleRegeln {
     public static final List<String> RUECKWIRKUNG_ARTEN = List.of("rueckwirkend", "ab_jetzt", "angekuendigt");
 
     private static final String STROM = "Strom";
-    private static final String BERECHNET = "berechnet";
+    /** Die Art einer Messstelle, die aus anderen gerechnet wird (E9) — sie hat keine Quelle. */
+    public static final String BERECHNET = "berechnet";
     private static final String HAUPTZAEHLER = "Hauptzähler";
     private static final String UNTERZAEHLER = "Unterzähler";
     private static final String KEINE = "keine";

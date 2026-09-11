@@ -128,11 +128,27 @@ public class MesskanalService {
         Semantik s = catalog.semantik(z.pointKey());
         String quantity = s == null ? null : s.quantity();
         String direction = s == null ? null : s.direction();
-        String anzeigename = p == null ? null : p.labelDe() == null ? p.labelSource() : p.labelDe();
-        return new MesskanalDto.Messkanal(z.pointKey(), anzeigename, p == null ? null : p.unit(),
+        return new MesskanalDto.Messkanal(z.pointKey(), katalogName(p), p == null ? null : p.unit(),
                 p == null ? null : MesskanalAbbildung.wertart(p.aggregationKind()),
                 MesskanalAbbildung.groesse(quantity), MesskanalAbbildung.richtung(direction),
                 quantity, direction, z.cadenceS(), z.enabled(), z.deviceId(), geraet, speist);
+    }
+
+    /**
+     * Der Anzeigename eines Kanals, wie ihn jede Zeile dieses Read-Models nennt: aus der eigenen
+     * Definition (Selbstbau, {@code custom_definition} der Mess-Selektion) oder aus dem Katalog;
+     * {@code null}, wenn keine von beiden einen Namen trägt. Auch das Messstellen-Register (IP-4)
+     * nennt die Quelle so.
+     */
+    public String anzeigename(String pointKey, JsonNode eigeneDefinition) {
+        if (eigeneDefinition != null && !eigeneDefinition.isNull()) {
+            return text(eigeneDefinition, "label");
+        }
+        return katalogName(catalog.resolve(pointKey));
+    }
+
+    private static String katalogName(MeasurementCatalog.Point p) {
+        return p == null ? null : p.labelDe() == null ? p.labelSource() : p.labelDe();
     }
 
     /** In der Zeitzone der Messstellen-Schnittstelle (MessstelleService.ZEITZONE). */

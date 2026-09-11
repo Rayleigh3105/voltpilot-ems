@@ -32,7 +32,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -131,23 +130,8 @@ public class MessstelleService {
 
     // ------------------------------------------------------------------ lesen
 
-    /** Alle Messstellen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen. */
-    public MessstelleDto.Liste alle() {
-        Map<UUID, List<Nebengroesse>> neben = messstellen.nebengroessenAlle();
-        Map<UUID, List<OrtZeile>> orte = new HashMap<>();
-        zuordnungen.orteAlle().forEach(z -> orte.computeIfAbsent(z.messstelleId(), k -> new ArrayList<>()).add(z));
-        Map<UUID, List<StellungZeile>> stellungen = new HashMap<>();
-        zuordnungen.stellungenAlle()
-                .forEach(z -> stellungen.computeIfAbsent(z.messstelleId(), k -> new ArrayList<>()).add(z));
-        Map<UUID, List<Quelle>> quellenJe = new HashMap<>();
-        quellen.alle().forEach(q -> quellenJe.computeIfAbsent(q.messstelleId(), k -> new ArrayList<>()).add(q));
-        List<MessstelleDto.Messstelle> liste = new ArrayList<>();
-        for (Messstelle m : messstellen.alle()) {
-            liste.add(darstellung(m, neben.getOrDefault(m.id(), List.of()), orte.getOrDefault(m.id(), List.of()),
-                    stellungen.getOrDefault(m.id(), List.of()), quellenJe.getOrDefault(m.id(), List.of())));
-        }
-        return new MessstelleDto.Liste(List.copyOf(liste));
-    }
+    // Die Liste liest das Register in EINER Abfrage (IP-4, MessstelleRegisterService) und baut
+    // jede Messstelle über dieselbe darstellung(…) wie eine(id).
 
     public MessstelleDto.Messstelle eine(UUID id) {
         return darstellung(finde(id));
@@ -506,7 +490,8 @@ public class MessstelleService {
      * eingeschlossen, nach Beginn. Die Formel (AP-10) gibt es noch nicht — genau so geht sie in
      * {@link MessstelleRegeln#lebenszyklus} ein.
      */
-    private MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
+    /** Die Vertrags-Form aus den gelesenen Zeilen — für {@link #eine} wie für das Register. */
+    MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
             List<StellungZeile> stellungen, List<Quelle> alle) {
         Groesse h = m.hauptgroesse();
         List<QuelleZeitraum> fuehrendHaupt = derGroesse(alle, h, "fuehrend").stream()

@@ -7760,17 +7760,34 @@ paths:
   /api/v1/messstellen:
     get:
       tags: [messstellen]
-      summary: Alle Messstellen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
+      summary: Das Messstellen-Register - je Messstelle Ort, Stellung, Quelle und Zustand zum Stichtag (AP-04 IP-4).
       description: >
-        Recht `messwerte.ansehen`. Die schlichte Liste; das Register mit Filtern
-        (Standort, Ort, Anlage, Zustand, ohne Quelle, Stichtag) und `teilansicht`
-        ergänzt AP-04 IP-4 additiv - deshalb ein Objekt, kein nacktes Array.
+        Recht `messstelle.ansehen`. `messstellen` trägt weiter die Vertrags-Form jeder
+        Messstelle (IP-3), `register` die Zeile zum Stichtag: Ort mit abgeleitetem
+        Standort (dieselbe Ableitung wie `GET /api/v1/messstellen/{id}/standort?am=`),
+        elektrische Stellung, Quelle der Hauptgröße (Gerät, Messwert, seit; bei einem
+        Wechsel `davor`) und der Lebenszyklus. Beide Listen nennen DIESELBEN Messstellen
+        in derselben Reihenfolge (nach Kennzeichen); jeder Filter gilt für beide.
+        `stichtag`: ein Tag (2026-11-20, dann gilt sein Beginn in Europe/Berlin) oder
+        ein Zeitpunkt mit Versatz (das „+“ URL-kodiert); fehlend = jetzt. Ort und
+        Stellung gelten an dessen Tag, die Quelle genau zu ihm. Ein Standort, Ort oder
+        eine Anlage, die es im Kundenbereich nicht gibt (auch eine fremde), findet
+        nichts - leer, nie 403. `beobachtung` und `letzter_wert` sind bis IP-15 immer
+        `null` (nie geraten), `teilansicht` bis AP-03 immer `false`.
+      parameters:
+        - { name: standort, in: query, required: false, description: "Kurzzeichen oder ID des Standorts; die Zeile zählt, wenn ihr abgeleiteter Standort dieser ist.", schema: { type: string } }
+        - { name: ort, in: query, required: false, description: "Kurzzeichen oder ID eines Standorts, Gebäudes oder Bereichs - einschließlich seines Teilbaums am Stichtag; U = direkt am Unternehmen.", schema: { type: string } }
+        - { name: anlage, in: query, required: false, description: "ID der Anlage der elektrischen Stellung am Stichtag.", schema: { type: string, format: uuid } }
+        - { name: zustand, in: query, required: false, description: "Ein Wort des Lebenszyklus.", schema: { type: string, enum: [entwurf, eingerichtet, aktiv, angehalten, archiviert] } }
+        - { name: ohneQuelle, in: query, required: false, description: "true = nur gemessene ohne führende Quelle zum Zeitpunkt (berechnete sind nicht „ohne Quelle“, sie haben keine); fehlend oder false = kein Filter.", schema: { type: boolean } }
+        - { name: stichtag, in: query, required: false, schema: { type: string } }
       responses:
         "200":
-          description: Die Messstellen (leer ohne gewählten Kundenbereich).
+          description: Die Messstellen und ihre Register-Zeilen (leer ohne gewählten Kundenbereich).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MessstelleListe" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [messstellen]
@@ -15554,11 +15571,122 @@ components:
         archiviert_am: { type: string, format: date-time, nullable: true, description: "Auf die Minute, Versatz Europe/Berlin." }
     MessstelleListe:
       type: object
-      required: [messstellen]
+      description: >
+        Die Liste als Objekt: `messstellen` die Vertrags-Form (IP-3), `register` die
+        Zeilen zum Stichtag (IP-4) - dieselben Messstellen, dieselbe Reihenfolge.
+        `stichtag` ist der Tag, an dem Ort und Stellung gelten, `zeitpunkt` der
+        Augenblick, zu dem die Quelle gilt.
+      required: [messstellen, register, stichtag, zeitpunkt, teilansicht]
       properties:
         messstellen:
           type: array
           items: { $ref: "#/components/schemas/Messstelle" }
+        register:
+          type: array
+          items: { $ref: "#/components/schemas/MessstelleRegisterZeile" }
+        stichtag: { type: string, format: date }
+        zeitpunkt: { type: string, format: date-time }
+        teilansicht:
+          type: boolean
+          description: "Ob die Liste nur einen Teil der Messstellen des Unternehmens zeigt (AP-03); bis dahin immer false."
+    MessstelleRegisterZeile:
+      type: object
+      description: >
+        Eine Zeile des Registers (AP-04 §5.16) zum Stichtag. `lebenszyklus` und `fehlt`
+        sind die der Messstellen-Antwort - der HEUTIGE Lebenszyklus (gespeichert ist nur
+        der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
+      required: [id, kennzeichen, name, art, medium, hauptgroesse, ort, elektrische_stellung, quelle,
+        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string, nullable: true }
+        art: { type: string, enum: [gemessen, berechnet] }
+        medium: { type: string }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        ort: { $ref: "#/components/schemas/MessstelleRegisterOrt" }
+        elektrische_stellung:
+          nullable: true
+          description: "Die Stellung, die am Stichtag gilt; null = keine."
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterStellung" }]
+        quelle: { $ref: "#/components/schemas/MessstelleRegisterQuelle" }
+        lebenszyklus: { type: string, enum: [entwurf, eingerichtet, aktiv, angehalten, archiviert] }
+        fehlt: { type: array, items: { type: string } }
+        angehalten_ab: { type: string, format: date-time, nullable: true }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        beobachtung:
+          nullable: true
+          description: "Liefert Daten / seit … / wartet / keine Datenquelle - kommt mit AP-04 IP-15; bis dahin IMMER null, nie geraten."
+        letzter_wert:
+          nullable: true
+          description: "Der letzte Wert mit Einheit und Zeitpunkt - kommt mit AP-04 IP-15; bis dahin IMMER null, nie geraten."
+    MessstelleRegisterOrt:
+      type: object
+      description: >
+        Der Ort am Stichtag und der daraus abgeleitete Standort - die Verortung des
+        Ortsbaum-Vertrags wie MessstelleStandortAm (`kennzeichen` = dessen `ort`).
+        Ohne Ort an dem Tag sind alle Felder null und `grund` ist nicht_verortet.
+      required: [id, kennzeichen, ort_art, name, gueltig_ab, gueltig_bis, pfad, standort, standort_id,
+        standort_name, grund]
+      properties:
+        id: { type: string, format: uuid, nullable: true, description: "Die ID des Standorts, Gebäudes, Bereichs bzw. Unternehmens." }
+        kennzeichen: { type: string, nullable: true, description: "Das Kurzzeichen des Orts; U = das Unternehmen.", example: B-1 }
+        ort_art: { type: string, nullable: true, enum: [unternehmen, standort, gebaeude, bereich, null] }
+        name: { type: string, nullable: true }
+        gueltig_ab: { type: string, format: date, nullable: true, description: "Beginn des Intervalls, das am Stichtag gilt." }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Letzter Tag; null = offen." }
+        pfad: { type: array, items: { type: string }, example: [B-1, G-1, ST-1] }
+        standort: { type: string, nullable: true }
+        standort_id: { type: string, format: uuid, nullable: true }
+        standort_name: { type: string, nullable: true }
+        grund: { type: string, enum: [verortet, am_unternehmen, nicht_verortet, ort_nicht_im_baum] }
+    MessstelleRegisterStellung:
+      type: object
+      required: [anlage, anlage_name, stellung, unterzaehler_von, gueltig_ab, gueltig_bis]
+      properties:
+        anlage: { type: string, format: uuid }
+        anlage_name: { type: string, nullable: true }
+        stellung: { type: string, enum: [Hauptzähler, Unterzähler, Erzeuger, Speicher, Abzweig, keine] }
+        unterzaehler_von: { type: string, nullable: true, description: "Das heutige Kennzeichen der Bezug-Messstelle (nur bei Unterzähler)." }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+    MessstelleRegisterQuelle:
+      type: object
+      description: >
+        Die Quelle der Hauptgröße zum Zeitpunkt. `stand`: gebunden (eine führende Quelle
+        gilt), berechnet (eine berechnete Messstelle hat keine - ihre Formel kommt mit
+        AP-10) oder keine_datenquelle (gemessen, aber keine führende Quelle - nie eine 0).
+      required: [stand, fuehrend, davor, vergleichsquellen]
+      properties:
+        stand: { type: string, enum: [gebunden, berechnet, keine_datenquelle] }
+        fuehrend:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
+        davor:
+          nullable: true
+          description: "Die führende Quelle, die vor der geltenden (bzw. vor dem Zeitpunkt) zuletzt endete - „davor Z-5a“."
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
+        vergleichsquellen: { type: integer, description: "Wie viele Vergleichsquellen der Hauptgröße zu dem Zeitpunkt laufen." }
+    MessstelleRegisterBindung:
+      type: object
+      required: [id, komponente, komponente_name, kanal, kanal_name, geraet, gueltig_ab, gueltig_bis]
+      properties:
+        id: { type: string, format: uuid }
+        komponente: { type: string, format: uuid }
+        komponente_name: { type: string, nullable: true }
+        kanal: { type: string, description: "Der Punkt des Messpunkt-Katalogs (point_key)." }
+        kanal_name: { type: string, nullable: true, description: "Sein Anzeigename - aus der eigenen Definition (Selbstbau) oder dem Katalog." }
+        geraet: { $ref: "#/components/schemas/MessstelleRegisterGeraet" }
+        gueltig_ab: { type: string, format: date-time, description: "Das „seit“ der Zeile." }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+    MessstelleRegisterGeraet:
+      type: object
+      required: [id, geraet, einbau, bezeichnung]
+      properties:
+        id: { type: string, format: uuid, description: "Der Einbau - für GET /api/v1/geraete/{id}." }
+        geraet: { type: string, example: GR-4 }
+        einbau: { type: string, example: Z-5b }
+        bezeichnung: { type: string, nullable: true, description: "Der Name des Geräts; null, solange niemand einen vergeben hat." }
     MesskanalListe:
       type: object
       required: [site_id, komponente, inhaltsstand, messkanaele]

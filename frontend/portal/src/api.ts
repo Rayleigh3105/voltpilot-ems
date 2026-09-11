@@ -2418,6 +2418,106 @@ export interface MessstelleStandortAm {
   elektrische_stellung: MessstelleStellungZuordnung | null;
 }
 
+// ---- Messstellen-Register (UEMS AP-04 IP-4) ---------------------------------
+// Die Formen von GET /api/v1/messstellen?standort=&ort=&anlage=&zustand=&ohneQuelle=&stichtag=
+// (die Liste IP-5 baut daraus die Fläche). `messstellen` trägt weiter die Vertrags-Form
+// jeder Messstelle, `register` die Zeile zum Stichtag. Jede Ableitung macht der Server.
+
+/** Der Ort am Stichtag und der daraus abgeleitete Standort (Ortsbaum-Vertrag, wie `MessstelleStandortAm`). */
+export interface MessstelleRegisterOrt {
+  id: string | null;
+  /** Das Kurzzeichen des Orts; `U` = das Unternehmen; `null` = an dem Tag keiner. */
+  kennzeichen: string | null;
+  ort_art: MessstelleOrtZuordnung['ort_art'] | null;
+  name: string | null;
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  pfad: string[];
+  standort: string | null;
+  standort_id: string | null;
+  standort_name: string | null;
+  grund: MessstelleStandortAm['grund'];
+}
+
+/** Die elektrische Stellung am Stichtag. */
+export interface MessstelleRegisterStellung {
+  anlage: string;
+  anlage_name: string | null;
+  stellung: MessstelleStellung;
+  unterzaehler_von: string | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/** Das Gerät des Messkanals: `geraet` das Kennzeichen (GR-4), `einbau` der Einbau (Z-5b). */
+export interface MessstelleRegisterGeraet {
+  id: string;
+  geraet: string;
+  einbau: string;
+  bezeichnung: string | null;
+}
+
+/** Eine führende Bindung: Komponente, Messwert, Gerät und das „seit“ (`gueltig_ab`). */
+export interface MessstelleRegisterBindung {
+  id: string;
+  komponente: string;
+  komponente_name: string | null;
+  kanal: string;
+  kanal_name: string | null;
+  geraet: MessstelleRegisterGeraet;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/**
+ * Die Quelle der Hauptgröße zum Zeitpunkt. `berechnet` heißt: eine berechnete Messstelle hat
+ * keine Quelle (ihre Formel kommt mit AP-10); `keine_datenquelle`: gemessen, aber keine
+ * führende Quelle — nie eine 0. `davor` ist die führende Quelle, die zuletzt davor endete.
+ */
+export interface MessstelleRegisterQuelle {
+  stand: 'gebunden' | 'berechnet' | 'keine_datenquelle';
+  fuehrend: MessstelleRegisterBindung | null;
+  davor: MessstelleRegisterBindung | null;
+  vergleichsquellen: number;
+}
+
+/**
+ * Eine Zeile des Registers zum Stichtag. `lebenszyklus` ist der HEUTIGE (ein Stichtag verschiebt
+ * Ort, Stellung und Quelle, nicht ihn); `beobachtung` und `letzter_wert` sind bis AP-04 IP-15
+ * IMMER `null` — nie geraten, nie eine 0.
+ */
+export interface MessstelleRegisterZeile {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+  art: 'gemessen' | 'berechnet';
+  medium: string;
+  hauptgroesse: { groesse: string; richtung: string; einheit: string; wertart: string };
+  ort: MessstelleRegisterOrt;
+  elektrische_stellung: MessstelleRegisterStellung | null;
+  quelle: MessstelleRegisterQuelle;
+  lebenszyklus: 'entwurf' | 'eingerichtet' | 'aktiv' | 'angehalten' | 'archiviert';
+  fehlt: string[];
+  angehalten_ab: string | null;
+  archiviert_am: string | null;
+  beobachtung: null;
+  letzter_wert: null;
+}
+
+/**
+ * GET /api/v1/messstellen — `messstellen` und `register` nennen dieselben Messstellen in
+ * derselben Reihenfolge (nach Kennzeichen); `teilansicht` bleibt `false`, bis AP-03 Rechte je
+ * Standort durchsetzt. `stichtag` ist der Tag von Ort und Stellung, `zeitpunkt` der Augenblick
+ * der Quelle.
+ */
+export interface MessstellenRegister {
+  messstellen: unknown[];
+  register: MessstelleRegisterZeile[];
+  stichtag: string;
+  zeitpunkt: string;
+  teilansicht: boolean;
+}
+
 // ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------
 
 /**

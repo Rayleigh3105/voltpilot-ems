@@ -33,6 +33,7 @@ class MessstelleSchnittstelleVertragTest {
     private static final List<String> NUR_SCHNITTSTELLE = List.of("id", "fehlt", "angehalten_ab", "archiviert_am");
 
     private static Map<String, Object> schemas;
+    private static Map<String, Object> pfade;
     private static JsonNode vertrag;
 
     @BeforeAll
@@ -41,6 +42,7 @@ class MessstelleSchnittstelleVertragTest {
         try (InputStream in = Files.newInputStream(CONTRACTS.resolve("openapi.yaml"))) {
             Map<String, Object> openapi = new Yaml().load(in);
             schemas = (Map<String, Object>) ((Map<String, Object>) openapi.get("components")).get("schemas");
+            pfade = (Map<String, Object>) openapi.get("paths");
         }
         vertrag = MAPPER.readTree(CONTRACTS.resolve("v2").resolve("messstelle.schema.json").toFile());
     }
@@ -178,6 +180,41 @@ class MessstelleSchnittstelleVertragTest {
         }
     }
 
+    /**
+     * Das Register (IP-4): jede seiner Formen trägt in Java und OpenAPI genau dieselben Felder, und
+     * {@code quelle.stand} sagt dort dieselben drei Wörter wie {@link MessstelleRegisterService}.
+     */
+    @Test
+    void dasRegisterTraegtGenauDieFelderDerOpenApi() {
+        PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
+        for (Object[] paar : new Object[][] {{"MessstelleListe", MessstelleDto.Liste.class},
+                {"MessstelleRegisterZeile", MessstelleDto.RegisterZeile.class},
+                {"MessstelleRegisterOrt", MessstelleDto.RegisterOrt.class},
+                {"MessstelleRegisterStellung", MessstelleDto.RegisterStellung.class},
+                {"MessstelleRegisterQuelle", MessstelleDto.RegisterQuelle.class},
+                {"MessstelleRegisterBindung", MessstelleDto.RegisterBindung.class},
+                {"MessstelleRegisterGeraet", MessstelleDto.RegisterGeraet.class}}) {
+            List<String> felder = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
+                    .map(c -> snake.translate(c.getName())).toList();
+            assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
+                    .containsExactlyInAnyOrderElementsOf(felder);
+            assertThat(liste(schema((String) paar[0]), "required")).as((String) paar[0])
+                    .containsExactlyInAnyOrderElementsOf(felder);
+        }
+        assertThat(liste(map(map(schema("MessstelleRegisterQuelle"), "properties"), "stand"), "enum"))
+                .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.BERECHNET,
+                        MessstelleRegisterService.KEINE_DATENQUELLE);
+        // Der Grund der Verortung und der Lebenszyklus sind dieselben Vokabulare wie anderswo.
+        assertThat(liste(map(map(schema("MessstelleRegisterOrt"), "properties"), "grund"), "enum"))
+                .containsExactlyElementsOf(liste(map(map(schema("MessstelleStandortAm"), "properties"), "grund"),
+                        "enum"));
+        assertThat(liste(map(map(schema("MessstelleRegisterZeile"), "properties"), "lebenszyklus"), "enum"))
+                .containsExactlyElementsOf(MessstelleRegeln.LEBENSZYKLUS);
+        // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
+        assertThat(parameter("/api/v1/messstellen"))
+                .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle", "stichtag");
+    }
+
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */
     @Test
     void derUrheberKommtAusDerEinenStelle() {
@@ -190,6 +227,13 @@ class MessstelleSchnittstelleVertragTest {
         // Ohne Anzeigenamen trägt der Eintrag das Subject — nie einen leeren Namen.
         assertThat(ProtokollAkteur.fuer("sub-ohne-namen", " ", false).name()).isEqualTo("sub-ohne-namen");
         assertThat(ProtokollAkteur.aus(null)).isEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> parameter(String pfad) {
+        Map<String, Object> route = (Map<String, Object>) ((Map<String, Object>) pfade.get(pfad)).get("get");
+        return ((List<Map<String, Object>>) route.get("parameters")).stream()
+                .map(p -> String.valueOf(p.get("name"))).toList();
     }
 
     @SuppressWarnings("unchecked")

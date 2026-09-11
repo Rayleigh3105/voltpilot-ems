@@ -7,10 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.support.DataAccessUtils;
@@ -205,21 +202,6 @@ public class MessstelleRepository {
                 messstelleId));
     }
 
-    /** Die Nebengrößen ALLER Messstellen des Mandanten in einer Abfrage, je Messstelle in der Reihenfolge des Hinzufügens. */
-    public Map<UUID, List<Nebengroesse>> nebengroessenAlle() {
-        Map<UUID, List<Nebengroesse>> jeMessstelle = new LinkedHashMap<>();
-        jdbc.query("SELECT id, messstelle_id, groesse, richtung, einheit, wertart, archiviert_am "
-                + "FROM messstelle_groesse ORDER BY created_at, id", rs -> {
-                    Nebengroesse n = new Nebengroesse(
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("messstelle_id", UUID.class),
-                            groesse(rs),
-                            instant(rs.getTimestamp("archiviert_am")));
-                    jeMessstelle.computeIfAbsent(n.messstelleId(), k -> new ArrayList<>()).add(n);
-                });
-        return jeMessstelle;
-    }
-
     /** Legt die Zählerzeile des Mandanten an, falls sie fehlt, und sperrt sie bis zum Transaktionsende. */
     private int zaehlerSperren(UUID tenantId) {
         jdbc.update("INSERT INTO messstelle_kennzeichen_seq (tenant_id) VALUES (?) "
@@ -232,7 +214,8 @@ public class MessstelleRepository {
         return jdbc.queryForList("SELECT kennzeichen FROM messstelle_kennzeichen", String.class);
     }
 
-    private static Messstelle map(ResultSet rs, int n) throws SQLException {
+    /** Eine Zeile mit den Spalten von {@code SPALTEN} — auch die des Registers ({@link MessstelleRegisterRepository}). */
+    static Messstelle map(ResultSet rs, int n) throws SQLException {
         return new Messstelle(
                 rs.getObject("id", UUID.class),
                 rs.getString("kennzeichen"),

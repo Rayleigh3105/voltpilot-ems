@@ -603,7 +603,8 @@ public class MessstelleQuelleService {
                 .findFirst().orElseThrow(() -> new IllegalStateException("Quelle des Urteils nicht gefunden"));
     }
 
-    private static boolean gilt(Quelle q, Instant t) {
+    /** Läuft die Bindung zum Zeitpunkt? Beginn eingeschlossen, Ende ausgeschlossen — auch die Regel des Registers. */
+    static boolean gilt(Quelle q, Instant t) {
         return !q.gueltigAb().isAfter(t) && (q.gueltigBis() == null || q.gueltigBis().isAfter(t));
     }
 

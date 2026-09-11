@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.MessstelleQuelleService;
+import com.voltpilot.api.uems.MessstelleRegeln;
+import com.voltpilot.api.uems.MessstelleRegisterService;
 import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.uems.MessstelleZuordnungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
@@ -64,22 +66,88 @@ public class MessstelleController {
     private static final List<String> NIE_AENDERBAR = List.of("art", "medium", "hauptgroesse");
 
     private final MessstelleService messstellen;
+    private final MessstelleRegisterService register;
     private final MessstelleZuordnungService zuordnungen;
     private final MessstelleQuelleService quellen;
     private final ObjectMapper streng;
 
-    public MessstelleController(MessstelleService messstellen, MessstelleZuordnungService zuordnungen,
-            MessstelleQuelleService quellen, ObjectMapper json) {
+    public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
+            MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen, ObjectMapper json) {
         this.messstellen = messstellen;
+        this.register = register;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
-    /** Recht: {@code messstelle.ansehen} (AP-04 §6.7). Das Register mit Filtern und Stichtag bringt IP-4. */
+    /**
+     * Recht: {@code messstelle.ansehen} (AP-04 §6.7). Das Register (IP-4): {@code messstellen} trägt
+     * weiter die Vertrags-Form jeder Messstelle, {@code register} die Zeile zum {@code stichtag}
+     * (Ort mit abgeleitetem Standort, Stellung, Quelle mit „davor“, Zustand). Die Filter gelten für
+     * beide Listen; ein Standort, Ort oder eine Anlage, die es im Kundenbereich nicht gibt, findet
+     * nichts (leer, nie 403) — {@code teilansicht} bleibt {@code false}, bis AP-03 Rechte durchsetzt.
+     * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
+     * Versatz; fehlend = jetzt.
+     */
     @GetMapping
-    public MessstelleDto.Liste alle() {
-        return messstellen.alle();
+    public MessstelleDto.Liste alle(
+            @RequestParam(required = false) String standort,
+            @RequestParam(required = false) String ort,
+            @RequestParam(required = false) String anlage,
+            @RequestParam(required = false) String zustand,
+            @RequestParam(required = false) String ohneQuelle,
+            @RequestParam(required = false) String stichtag) {
+        return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
+                leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
+                anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)));
+    }
+
+    /** Der Stichtag beider Lese-Routen: ein Tag (dann sein Beginn) oder ein Zeitpunkt; fehlend = jetzt. */
+    private static Instant stichtag(String text) {
+        try {
+            return MessstelleQuelleService.stichtag(text, null);
+        } catch (DateTimeParseException e) {
+            throw MessstelleAbgelehnt.anfrage("stichtag",
+                    "Der Stichtag ist ein Zeitpunkt (2026-11-18T10:40:00+01:00) oder ein Tag (2026-11-18).");
+        }
+    }
+
+    private static UUID anlage(String text) {
+        if (leer(text)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(text.strip());
+        } catch (IllegalArgumentException e) {
+            throw MessstelleAbgelehnt.anfrage("anlage", "Die Anlage ist die ID einer Anlage.");
+        }
+    }
+
+    private static String zustand(String text) {
+        if (leer(text)) {
+            return null;
+        }
+        String wert = text.strip();
+        if (!MessstelleRegeln.LEBENSZYKLUS.contains(wert)) {
+            throw MessstelleAbgelehnt.anfrage("zustand",
+                    "Der Zustand ist einer von " + String.join(", ", MessstelleRegeln.LEBENSZYKLUS) + ".");
+        }
+        return wert;
+    }
+
+    private static boolean ohneQuelle(String text) {
+        if (leer(text)) {
+            return false;
+        }
+        String wert = text.strip();
+        if (!"true".equals(wert) && !"false".equals(wert)) {
+            throw MessstelleAbgelehnt.anfrage("ohneQuelle", "„ohne Quelle“ ist true oder false.");
+        }
+        return "true".equals(wert);
+    }
+
+    private static boolean leer(String text) {
+        return text == null || text.isBlank();
     }
 
     /** Recht: {@code messstelle.bearbeiten} — der Vorschlag gehört zum Anlege-Dialog. */
@@ -172,14 +240,7 @@ public class MessstelleController {
     @GetMapping("/{id}/quellen")
     public MessstelleQuelleDto.Liste quellen(@PathVariable UUID id,
             @RequestParam(required = false) String stichtag) {
-        Instant am;
-        try {
-            am = MessstelleQuelleService.stichtag(stichtag, null);
-        } catch (DateTimeParseException e) {
-            throw MessstelleAbgelehnt.anfrage("stichtag",
-                    "Der Stichtag ist ein Zeitpunkt (2026-11-18T10:40:00+01:00) oder ein Tag (2026-11-18).");
-        }
-        return quellen.liste(id, am);
+        return quellen.liste(id, stichtag(stichtag));
     }
 
     /** Recht: {@code messstelle.ansehen}. */
