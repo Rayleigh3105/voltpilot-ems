@@ -572,6 +572,15 @@ class MessstelleRegisterApiTest {
         }
         UUID t = neuerKundenbereich(referenz.at("/unternehmen/name").asText());
         Anrufer wer = new Anrufer("admin", t);
+        // Die Anlagen VOR den Standorten: sie bleiben „noch nicht zugeordnet" wie bisher —
+        // nach zwei Standorten verlangte POST /sites seit AP-02 IP-9 die Wahl (409
+        // standort_waehlen). Das Register liest den Standort einer Messstelle ohnehin aus
+        // ihrem ORT (Ortsbaum), nie aus der Anlage.
+        Map<String, UUID> anlagen = new LinkedHashMap<>();
+        for (JsonNode an : referenz.get("anlagen")) {
+            anlagen.put(an.get("kennzeichen").asText(), UUID.fromString(ok201(rufeApi(HttpMethod.POST,
+                    "/api/v1/sites", wer, Map.of("name", an.get("name").asText()))).get("id").asText()));
+        }
         Map<String, UUID> standorte = new LinkedHashMap<>();
         standortService.uhrStellen(uhr("2024-03-12T09:00:00+01:00"));
         standorte.put("ST-1", UUID.fromString(ok201(rufe(HttpMethod.POST, "/standorte", wer,
@@ -587,11 +596,6 @@ class MessstelleRegisterApiTest {
                 orte.put(kz, neuerOrt(t, kz, standorte.get(z.get("nach").asText()), orte.get(z.get("nach").asText()),
                         z.get("gueltig_ab").asText()));
             }
-        }
-        Map<String, UUID> anlagen = new LinkedHashMap<>();
-        for (JsonNode an : referenz.get("anlagen")) {
-            anlagen.put(an.get("kennzeichen").asText(), UUID.fromString(ok201(rufeApi(HttpMethod.POST,
-                    "/api/v1/sites", wer, Map.of("name", an.get("name").asText()))).get("id").asText()));
         }
         Map<String, UUID> komponenten = new LinkedHashMap<>();
         for (JsonNode k : referenz.get("komponenten")) {
