@@ -233,6 +233,25 @@ tags:
       Zeile dort `geraet.einrichten`; bis AP-03 durchsetzt, gilt authenticated().
       Push an die Box (IP-6), Übergabe zum Zeitpunkt (IP-7), Budget (IP-10) und die
       Bestands-Vorschlagsliste (IP-4) kommen mit ihren Paketen.
+  - name: geraete
+    description: >
+      UEMS-Geräte (AP-04 IP-10): das physische Kästchen hinter der VoltPilot-Box
+      (Wechselrichter, Zähler, Ladestation, Controller mit Energiekarten) -
+      NICHT die Box (`device`). Nur lesend. Eine Zeile ist EIN Einbau: ein
+      Zählerwechsel ist ein neues Gerät an derselben Komponente, `kennzeichen`
+      (GR-4) bleibt, `einbau_kennzeichen` (Z-5a, Z-5b) wechselt - das Paar
+      `geraet`/`einbau` des Herkunfts- und des Messstellen-Vertrags; die
+      früheren Einbauten desselben Geräts sind die `vorgaenger`. Welche
+      Komponente ein Einbau wann speist, steht zeitgültig halboffen auf die
+      Minute in `komponenten`. Wie die übrigen UEMS-Schnittstellen in
+      snake_case. Jede Bestands-Komponente hat nach der Migration V20260911200000
+      genau ein laufendes Gerät (`aus_bestand`: eingebaut_am ist dann der Beginn
+      ihres Verlaufs, nicht der Einbautag); was nicht erhoben ist, ist `null`,
+      nie geraten. Mandanten-Zaun ist die RLS (fremd = 404, nie 403;
+      Plattform-Admins nutzen X-Tenant-Id). Recht `messwerte.ansehen`
+      (docs/contracts/v2/rechte-matrix.json) - die Durchsetzung kommt mit AP-03,
+      bis dahin gilt authenticated(). Zähler- und Controllerwechsel (IP-17/IP-19)
+      kommen additiv mit dem Recht `geraet.einrichten`.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -8009,6 +8028,41 @@ paths:
                     lesende_box: 1c9e3a7b-5d2f-4b60-8e14-7a0b2c3d4e5f
                     geraet: null
                     speist: []
+  /api/v1/sites/{siteId}/geraete:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Alle Geräte der Anlage, ausgebaute eingeschlossen.
+      description: >
+        Recht `messwerte.ansehen`. Je Einbau eine Zeile, nach Gerät (GR-2 vor
+        GR-10) und darin nach Einbau; jede mit ihren Komponenten-Zeiträumen,
+        Karten und Vorgängern. Ein Objekt, kein nacktes Array - erweiterbar,
+        ohne die Form zu brechen.
+      responses:
+        "200":
+          description: Die Geräte der Anlage (leer, wenn es keine gibt).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeraetListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/geraete/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Ein Gerät (ein Einbau) mit Komponenten, Karten und Vorgängern.
+      description: >
+        Recht `messwerte.ansehen`. `vorgaenger` sind die früheren Einbauten
+        desselben Geräts (gleiches `kennzeichen`, früher eingebaut), der jüngste
+        zuerst - Z-5b nennt Z-5a mit `ausgebaut_am`.
+      responses:
+        "200":
+          description: Das Gerät.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geraet" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 components:
@@ -15029,3 +15083,85 @@ components:
         code: steuerquelle
         message: "Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Steuerung wechseln"
         urteil: abgelehnt
+    Geraet:
+      type: object
+      description: >
+        Ein Einbau - das konkret eingebaute Gerät (AP-04 IP-10). Zeitpunkte auf die
+        Minute mit dem Versatz von Europe/Berlin. `null` heißt nicht erhoben - nie
+        geraten; `ausgebaut_am: null` heißt eingebaut.
+      required: [id, site_id, kennzeichen, einbau_kennzeichen, geraeteart, hersteller, typ,
+        seriennummer, bezeichnung, data_source_id, geraete_id, eingebaut_am, ausgebaut_am,
+        aus_bestand, komponenten, teile, vorgaenger]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid, description: "Die Anlage, in der das Gerät verdrahtet ist." }
+        kennzeichen: { type: string, description: "Das Gerät (GR-4) - bleibt über einen Wechsel an derselben Stelle." }
+        einbau_kennzeichen: { type: string, description: "Das konkret eingebaute Gerät (Z-5a); ohne Wechsel = kennzeichen." }
+        geraeteart:
+          type: string
+          enum: [zaehler, wechselrichter, controller, ladestation, speicher, sonstiges]
+          description: "Die Energiekarte ist ein Teil des Controllers (teile), keine Geräteart."
+        hersteller: { type: string, nullable: true }
+        typ: { type: string, nullable: true }
+        seriennummer: { type: string, nullable: true }
+        bezeichnung: { type: string, nullable: true }
+        data_source_id: { type: string, format: uuid, nullable: true, description: "Die Datenquelle, über die das Gerät antwortet (AP-06); null = noch keine angelegt." }
+        geraete_id: { type: integer, minimum: 0, nullable: true, description: "Die Geräte-ID hinter der Quelle (Modbus-Unit-ID)." }
+        eingebaut_am: { type: string, format: date-time }
+        ausgebaut_am: { type: string, format: date-time, nullable: true }
+        aus_bestand: { type: boolean, description: "Aus einer Bestands-Komponente abgeleitet: eingebaut_am ist der Beginn ihres Verlaufs in VoltPilot, nicht der Einbautag." }
+        komponenten:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetKomponente" }
+        teile:
+          type: array
+          items: { $ref: "#/components/schemas/GeraetTeil" }
+        vorgaenger:
+          type: array
+          description: "Die früheren Einbauten desselben Geräts, der jüngste zuerst."
+          items: { $ref: "#/components/schemas/GeraetVorgaenger" }
+    GeraetKomponente:
+      type: object
+      description: >
+        Ein Zeitraum, in dem der Einbau die Komponente speist, halboffen [ab, bis);
+        `gueltig_bis: null` heißt bis auf Weiteres. Über eine Karte (`teil_id`,
+        `steckplatz`) oder direkt (null). Je Komponente und Zeitpunkt EIN Gerät.
+      required: [entity_id, teil_id, steckplatz, gueltig_ab, gueltig_bis]
+      properties:
+        entity_id: { type: string, format: uuid, description: "Die Komponente." }
+        teil_id: { type: string, format: uuid, nullable: true }
+        steckplatz: { type: integer, nullable: true }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+    GeraetTeil:
+      type: object
+      description: "Eine Energiekarte im Steckplatz eines Controllers (AP-05 E4: Identität = Gerät + Steckplatz)."
+      required: [id, teilart, steckplatz, bezeichnung, typ, seriennummer, eingebaut_am, ausgebaut_am]
+      properties:
+        id: { type: string, format: uuid }
+        teilart: { type: string, enum: [energiekarte] }
+        steckplatz: { type: integer, minimum: 0, nullable: true, description: "null = nicht erhoben." }
+        bezeichnung: { type: string, nullable: true }
+        typ: { type: string, nullable: true }
+        seriennummer: { type: string, nullable: true }
+        eingebaut_am: { type: string, format: date-time }
+        ausgebaut_am: { type: string, format: date-time, nullable: true }
+    GeraetVorgaenger:
+      type: object
+      description: "Ein früherer Einbau desselben Geräts."
+      required: [id, einbau_kennzeichen, hersteller, typ, seriennummer, eingebaut_am, ausgebaut_am]
+      properties:
+        id: { type: string, format: uuid }
+        einbau_kennzeichen: { type: string }
+        hersteller: { type: string, nullable: true }
+        typ: { type: string, nullable: true }
+        seriennummer: { type: string, nullable: true }
+        eingebaut_am: { type: string, format: date-time }
+        ausgebaut_am: { type: string, format: date-time, nullable: true }
+    GeraetListe:
+      type: object
+      required: [geraete]
+      properties:
+        geraete:
+          type: array
+          items: { $ref: "#/components/schemas/Geraet" }
