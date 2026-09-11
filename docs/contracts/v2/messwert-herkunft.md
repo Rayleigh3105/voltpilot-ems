@@ -172,7 +172,7 @@ schließt IP-3 — es übernimmt dieses Wort oder ersetzt es zusammen mit dieser
 | `uebergabe-plan-verspaetet-spiegel` | E4, A6 | gespeichert · Spiegel · `unassigned_reader` |
 | `spiegel-bei-gleicher-messzeit-verdraengt-nicht` | E3+E4, A9 | gespeichert · Spiegel · keine Wiederholung, kein Konflikt, kein zweites Ereignis in der Stunde |
 | `beobachtung-kanal-ohne-messstelle` | §4.1 | gespeichert · Beobachtung |
-| `vergleichsquelle-bestaetigt` | E4, AP-04 E3 | gespeichert · Vergleich (Annahme, siehe §7) |
+| `vergleichsquelle-bestaetigt` | E4, AP-04 E3 | gespeichert · Vergleich (Vergleichsquelle der Referenzdatei, §7) |
 | `ohne-einbau-zur-messzeit-abgewiesen` | Invariante 1 | abgewiesen · `rejected` |
 | `uhr-6-minuten-vor-clock-ahead` | E13, A13 | abgewiesen · `clock_ahead` (360 s) |
 | `uhr-genau-5-minuten-vor-angenommen` | E13 (Kante) | gespeichert · direkt −300 s |
@@ -189,21 +189,22 @@ Einheit — kein Ahrenberg-Messkanal hat mehr als 100 s Kadenz.
 Die Fälle folgen dem Wortlaut der Entscheide; wo das Konzept und die Referenzdatei
 auseinanderlaufen, gewinnt für Kennzeichen, Seriennummern und Zeitpunkte die Referenzdatei.
 
-1. **Ausfall Box Halle 2 am 03.11.2026 — zwei Erzählungen.** AP-00 §7.6, AP-06 A2 und AP-07 A3
-   lassen Box Halle 2 um 17:30 zurückkehren und nachliefern; die Zeitachse der Referenzdatei
-   erzählt ab 17:30 den Box-Tausch (Netzteil-Defekt, Box Halle 2 (neu) ab 04.11.2026 09:38) —
-   dort liefert Box Halle 2 nie nach (§4.5 Nachlieferung Regel 6). Die Fälle
-   `nachlieferung-box-halle-2-nach-ausfall`, `umschlag-48213-*` und `sequenz-luecke-188-*`
-   folgen der Rückkehr-Variante der Abnahmefälle A1/A3/A4, die genau diese Regeln belegen; Kennzeichen,
-   Seriennummer, Zuständigkeit und Einbau stammen aus der Datei, und der Box-Tausch bleibt
-   davon unberührt.
+1. **Ausfall Box Halle 2 am 03.11.2026 — aufgelöst (Referenzdatei 1.1).** Die Datei erzählt
+   jetzt EINE Folge, die AP-00 §7.6, AP-06 A2/A5 und AP-07 A3 zugleich trägt: 14:00 Ausfall
+   (die Box liest weiter und puffert) → 17:30 Rückkehr, 17:31–17:34 Nachlieferung 14:00–17:30
+   → Netzteil-Defekt festgestellt, die Box läuft bis zum Tausch weiter → 04.11.2026 09:38 Box
+   Halle 2 (neu). Die Fälle `nachlieferung-box-halle-2-nach-ausfall`, `umschlag-48213-*` und
+   `sequenz-luecke-188-*` stehen damit so in der Datei. Regel 6 (§4.5 „ein Box-Tausch liefert
+   nicht nach“) bleibt wahr: der Puffer war um 17:34 schon geleert; sichtbar bleibt nur die
+   Lücke der Übergabe 09:38–09:40. A5s „Herkunft bis 14:00 E-2“ heißt deshalb „bis 09:38 E-2“.
 2. **Übergabe DQ-3 am 10.04.2027 — an welche Box?** AP-07 §5.2 nennt Box Halle 2
    (VP-BOX-2026-0482); die Referenzdatei nennt Box Halle 2 (neu), E-2′ (VP-BOX-2027-0090) —
    E-2 ist seit 04.11.2026 ausgebaut. Die Fälle folgen der Datei.
-3. **Keine Vergleichsquelle im Referenzunternehmen.** `vergleichsquelle-bestaetigt` nimmt als
-   EINZIGE Annahme an, dass K-1 · Einspeise-/Bezugsleistung am Wechselrichter an MS-01 als
-   Vergleichsquelle gekennzeichnet ist; der Test verlangt für jede Vergleichsbindung eine
-   genannte Annahme.
+3. **Vergleichsquelle im Referenzunternehmen — aufgelöst (Referenzdatei 1.1).** Die Datei führt
+   K-1 · Einspeise-/Bezugsleistung am Wechselrichter an MS-01 als Vergleichsquelle der
+   Wirkleistung ab 20.11.2026 08:30 (AP-04 §4.1, eingetragen von Ines Kaltenbach).
+   `vergleichsquelle-bestaetigt` spielt zu diesem Zeitpunkt und braucht keine Annahme mehr; der
+   Test prüft jede Vergleichsbindung gegen die Datei wie eine führende.
 4. **Idempotenz und Spiegel (E3 × E4).** E3 setzt den Schlüssel auf Reihe + Messzeit, E4
    speichert den Wert einer nicht zuständigen Box „nie in der führenden Reihe“, A9 verlangt
    „kein stilles Verdrängen bei identischen Messzeiten“. Beides zugleich geht nur je Spur (§1);

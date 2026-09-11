@@ -19,9 +19,9 @@
     "wo die Referenz ein Ende nennt, das zum Zeitpunkt `jetzt` noch nicht eingetreten war (der",
     "Wechsel war noch nicht eingetragen). Was ein Fall ERFINDET (eine zusätzliche Box, einen",
     "Testaufbau, eine künftige Fähigkeiten-Tabelle), nennt er in `annahme`.",
-    "Das Protokoll der Referenz wird auf das geschlossene Vokabular abgebildet:",
-    "„Modbus TCP“ → modbus_tcp, „OCPP 1.6J“ → ocpp (die OCPP-Fassung ist Parameter der",
-    "Station); die Adresse ist Host:Port, bei OCPP die Stations-Kennung aus dem Weg.",
+    "Die Referenz führt das Protokoll im geschlossenen Vokabular (modbus_tcp, ocpp — die",
+    "OCPP-Fassung ist Parameter der Station und steht im Weg); die Adresse ist Host:Port",
+    "(Referenz: `adresse` und `port`), bei OCPP die Stations-Kennung (Referenz: `adresse`).",
     "",
     "ZEIT: Zeitpunkte tragen immer ihren Versatz. `effective_from` gehört zum Zeitraum,",
     "`effective_to` nicht (halboffen, auf die volle Minute); `effective_to: null` = offen.",
@@ -1862,7 +1862,7 @@
       "name": "a5-herkunft-bis-zum-umhaengen-die-alte-box",
       "familie": "zustaendig",
       "abnahme": "A5",
-      "why": "A5: der Ausfall ändert keine Zuständigkeit — während der Lücke ab 03.11.2026 14:00 bleibt Box Halle 2 zuständig (die Werte fehlen bei IHR). Erst das Umhängen um 09:38 macht Box Halle 2 (neu) zuständig; ihre erste Lesung um 09:40 liegt schon in ihrem Zeitraum.",
+      "why": "A5: der Ausfall ändert keine Zuständigkeit — während des Ausfalls am 03.11.2026 ab 14:00 bleibt Box Halle 2 zuständig (sie puffert und liefert um 17:31 nach) und danach bis zum Tausch. Erst das Umhängen um 09:38 macht Box Halle 2 (neu) zuständig; ihre erste Lesung um 09:40 liegt schon in ihrem Zeitraum.",
       "input": {
         "quelle": "DQ-4",
         "zeitraeume": [
@@ -2036,7 +2036,7 @@
       "name": "box-tausch-nicht-rueckwirkend",
       "familie": "box_tausch",
       "abnahme": "A5",
-      "why": "A5: die Lücke 03.11.2026 14:00 – 04.11.2026 09:40 bleibt bei der alten Box. Die Nachfolgerin ab dem Ausfall zuständig zu machen, schriebe ihr Werte zu, die nie jemand gelesen hat — falsche Herkunft.",
+      "why": "A5: den Tausch auf den Ausfall am 03.11.2026 14:00 zurückzudatieren, schriebe der Nachfolgerin Werte zu, die sie nie gelesen hat — gelesen und um 17:31 nachgeliefert hat sie die alte Box; falsche Herkunft. Was vor dem Umhängen um 09:38 liegt, bleibt bei der alten Box.",
       "input": {
         "jetzt": "2026-11-04T09:38:00+01:00",
         "zeitzone": "Europe/Berlin",

@@ -91,7 +91,7 @@ class EreignisVokabularVectorsTest {
         JsonNode ref = lies(REFERENZ);
         JsonNode k = v.path("kennungen");
         assertThat(feldnamen(k.path("kundenbereich")))
-                .containsExactly(ref.path("unternehmen").path("kennzeichen").asText());
+                .containsExactly(ref.path("unternehmen").path("kundenbereich").asText());
         assertThat(feldnamen(k.path("boxen"))).containsExactlyInAnyOrderElementsOf(
                 kennzeichen(ref.path("boxen")));
         assertThat(feldnamen(k.path("anlagen"))).containsExactlyInAnyOrderElementsOf(

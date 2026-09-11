@@ -164,8 +164,9 @@ export function lokalerTag(zeitpunkt: string, zone: string): Tag {
 /**
  * 00:00 Uhr eines Tages in einer Zeitzone als Zeitpunkt. Mitternacht liegt in
  * den DACH-Zeitzonen nie in einer Umstellungslücke (die ist um 02:00 Uhr).
+ * Exportiert für die Zwillings-Tests, die einen Tag als Zeitpunkt brauchen.
  */
-function mitternacht(t: Tag, zone: string): { ms: number; iso: string } {
+export function mitternacht(t: Tag, zone: string): { ms: number; iso: string } {
   const naiv = tagZahl(t) * 86_400_000;
   let ms = naiv - (wanduhr(naiv, zone).ms - naiv);
   const versatz = wanduhr(ms, zone).ms - ms;

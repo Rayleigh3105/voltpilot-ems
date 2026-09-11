@@ -41,6 +41,7 @@ import {
   type Stand,
   type StellungEintrag,
 } from './uemsMessstelle';
+import { mitternacht } from './uemsOrtsbaum';
 import { liefertDaten } from './uemsZustand';
 
 /**
@@ -438,18 +439,11 @@ const refEinbau = (einbau: string): Json =>
     anfangsstand_kwh: null,
   };
 
-/**
- * Das Referenzunternehmen schreibt Zuordnungen als Mitternachts-Zeitpunkt mit
- * AUSSCHLIESSLICHEM Ende; dieser Vertrag schreibt sie wie der Ortsbaum als Tag
- * mit dem LETZTEN gültigen Tag. Dieselbe Aussage, umgerechnet.
- */
-const tagAb = (zeitpunkt: string): string => zeitpunkt.slice(0, 10);
-const tagBis = (zeitpunkt: string | null): string | null => {
-  if (zeitpunkt === null) return null;
-  const d = new Date(`${zeitpunkt.slice(0, 10)}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-};
+/** Der Beginn einer Messstelle: Mitternacht des ersten Tages ihres ersten Orts, als Zeitpunkt am Standort (Schema `beginn`). */
+const beginnAus = (orte: string[]): string => mitternacht(orte[0].split('|')[1], 'Europe/Berlin').iso;
+
+/** Eine tagesgenaue Gültigkeit (Stellung, Ort): `gueltig_bis` ist der LETZTE Tag, einschließlich. */
+const giltAm = (o: Json, tag: string): boolean => o.gueltig_ab <= tag && (o.gueltig_bis === null || tag <= o.gueltig_bis);
 
 /** Ein Kalendertag als Zeitpunkt MITTEN in ihm (12:00 UTC liegt immer im Berliner Tag). */
 const mittag = (tag: string): number => Date.parse(`${tag}T12:00:00Z`);
@@ -462,15 +456,19 @@ const gilt = (o: Json, t: number): boolean =>
 const refKomponenteAm = (m: Json, t: number): string | null =>
   m.fuehrende_quelle.filter((q: Json) => gilt(q, t)).map((q: Json) => q.komponente).pop() ?? null;
 
-/** Die führenden Quellen der Haupt- oder Nebengröße mit dieser Größe und Richtung. */
-const refQuellenDerGroesse = (m: Json, g: Json): Json[] | null => {
+/** Die führenden Quellen (oder mit `feld` die Vergleichsquellen) der Haupt- oder Nebengröße mit dieser Größe und Richtung. */
+const refQuellenDerGroesse = (
+  m: Json,
+  g: Json,
+  feld: 'fuehrende_quelle' | 'vergleichsquellen' = 'fuehrende_quelle',
+): Json[] | null => {
   const passt = (n: Json) =>
     n.groesse === g.groesse &&
     n.richtung === g.richtung &&
     (g.einheit === undefined || n.einheit === g.einheit) &&
     (g.wertart === undefined || n.wertart === g.wertart);
-  if (passt(m.hauptgroesse)) return m.fuehrende_quelle;
-  return m.nebengroessen.find(passt)?.fuehrende_quelle ?? null;
+  if (passt(m.hauptgroesse)) return m[feld];
+  return m.nebengroessen.find(passt)?.[feld] ?? null;
 };
 
 /** Eine Quelle steht so im Referenzunternehmen — oder ist noch offen (Stand VOR dem Eintrag) — oder eine Fortschreibung. */
@@ -482,7 +480,8 @@ const pruefeQuelle = (q: Json, liste: Json[], fortschreibung: boolean): void => 
       x.geraet === q.geraet &&
       x.einbau === q.einbau &&
       x.gueltig_ab === q.gueltig_ab &&
-      (q.kanal_wertart === undefined || x.kanal_wertart === q.kanal_wertart),
+      (q.kanal_wertart === undefined || x.kanal_wertart === q.kanal_wertart) &&
+      (q.zweck == null || x.zweck === q.zweck),
   );
   expect(r, `Quelle ${q.einbau} ab ${q.gueltig_ab} steht so im Referenzunternehmen`).toBeDefined();
   const erlaubt =
@@ -516,19 +515,12 @@ describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
       expect(q.anfangsstand === null ? null : q.anfangsstand.wert).toEqual(e.anfangsstand_kwh);
       for (const s of [q.endstand, q.anfangsstand]) if (s !== null) expect(s.einheit).toBe('kWh');
     }
-    expect(d.nebengroessen.map((n: Json) => [groesse(n), ohneStand(n.fuehrende_quelle)])).toEqual(
-      m.nebengroessen.map((n: Json) => [groesse(n), n.fuehrende_quelle]),
+    expect(d.nebengroessen.map((n: Json) => [groesse(n), ohneStand(n.fuehrende_quelle), n.vergleichsquellen])).toEqual(
+      m.nebengroessen.map((n: Json) => [groesse(n), n.fuehrende_quelle, n.vergleichsquellen]),
     );
-    expect(d.vergleichsquellen).toEqual([]);
-    expect(d.elektrische_stellung).toEqual(
-      m.elektrische_stellung.map((st: Json) => ({ ...st, gueltig_ab: tagAb(st.gueltig_ab), gueltig_bis: tagBis(st.gueltig_bis) })),
-    );
-    expect(d.orte.map((o: Json) => `${o.kennzeichen}|${o.gueltig_ab}|${o.gueltig_bis}`)).toEqual(
-      refOrte(d.kennzeichen).map((z) => {
-        const [ort, ab, bis] = z.split('|');
-        return `${ort}|${tagAb(ab)}|${tagBis(bis === 'null' ? null : bis)}`;
-      }),
-    );
+    expect(d.vergleichsquellen).toEqual(m.vergleichsquellen);
+    expect(d.elektrische_stellung).toEqual(m.elektrische_stellung);
+    expect(d.orte.map((o: Json) => `${o.kennzeichen}|${o.gueltig_ab}|${o.gueltig_bis}`)).toEqual(refOrte(d.kennzeichen));
     expect(d.orte[d.orte.length - 1].ort_art).toBe(m.ort.art);
   });
 
@@ -543,24 +535,26 @@ describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
   it.each(faelle('bindung').filter((c) => c.referenz))('Quelle $name', (c) => {
     const m = refMessstelle(c.referenz);
     expect([c.input.messstelle.kennzeichen, c.input.messstelle.medium]).toEqual([m.kennzeichen, m.medium]);
-    expect(c.input.messstelle.beginn).toBe(refOrte(m.kennzeichen)[0].split('|')[1]);
+    expect(c.input.messstelle.beginn).toBe(beginnAus(refOrte(m.kennzeichen)));
     const ziel = refQuellenDerGroesse(m, c.input.ziel);
     expect(ziel, 'die Zielgröße ist eine Größe der Messstelle').not.toBeNull();
     for (const b of c.input.bestehende) {
-      if (b.rolle === 'vergleich') {
-        expect(c.annahme, 'das Referenzunternehmen kennt keine Vergleichsquelle — der Fall muss sie als Annahme nennen').toBeTruthy();
-        continue;
-      }
-      const liste = refQuellenDerGroesse(m, { groesse: b.groesse, richtung: b.richtung });
+      const feld = b.rolle === 'vergleich' ? 'vergleichsquellen' : 'fuehrende_quelle';
+      const liste = refQuellenDerGroesse(m, { groesse: b.groesse, richtung: b.richtung }, feld);
       expect(liste).not.toBeNull();
       pruefeQuelle(b, liste as Json[], Boolean(c.fortschreibung));
+    }
+    // Ein erlaubter Vergleichs-Eintrag an einer Messstelle der Datei ist der der Datei —
+    // es sei denn, der Fall nennt ihn ausdrücklich als Annahme.
+    if (c.input.neu.rolle === 'vergleich' && c.expected.fehler === null && !c.annahme) {
+      pruefeQuelle(c.input.neu, refQuellenDerGroesse(m, c.input.ziel, 'vergleichsquellen') as Json[], false);
     }
     if (c.ergebnis_wie_referenz) pruefeZeitstrahlWieReferenz(c.expected.zeitstrahl, ziel as Json[]);
   });
 
   it.each(faelle('zeitstrahl').filter((c) => c.referenz))('Zeitstrahl $name', (c) => {
     const m = refMessstelle(c.referenz);
-    expect(c.input.beginn).toBe(refOrte(m.kennzeichen)[0].split('|')[1]);
+    expect(c.input.beginn).toBe(beginnAus(refOrte(m.kennzeichen)));
     for (const q of c.input.fuehrende_quelle) pruefeQuelle(q, m.fuehrende_quelle, Boolean(c.fortschreibung));
     if (c.ergebnis_wie_referenz) pruefeZeitstrahlWieReferenz(c.expected.zeitstrahl, m.fuehrende_quelle);
   });
@@ -577,7 +571,7 @@ describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
     ]);
     for (const e of c.input.messstellen) {
       const r = refMessstelle(e.kennzeichen);
-      const st = r.elektrische_stellung.filter((s: Json) => gilt(s, tag)).pop();
+      const st = r.elektrische_stellung.filter((s: Json) => giltAm(s, c.stichtag)).pop();
       expect(st, `${e.kennzeichen} hat am Stichtag eine Stellung`).toBeDefined();
       expect(stellungEintrag(e)).toEqual({
         kennzeichen: r.kennzeichen,

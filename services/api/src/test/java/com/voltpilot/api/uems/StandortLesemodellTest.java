@@ -184,8 +184,10 @@ class StandortLesemodellTest {
             assertThat(a.name()).isEqualTo("Werk Ahrenberg – Halle 1");
             assertThat(a.gueltigAb()).isEqualTo(LocalDate.of(2024, 3, 12));
         });
-        // Ohne Gebäude (die kamen am 01.10.2026) und vor der eigenen Fläche: null, nie 0.
-        assertThat(werk.gebaeudeZahl()).isZero();
+        // Mit den Orten der Bestandsanlage — Halle 1 und Verwaltung bestehen wie im
+        // Referenzunternehmen rückwirkend seit 12.03.2024 —, aber vor jeder Fläche (die
+        // kamen am 01.10.2026): null, nie 0.
+        assertThat(werk.gebaeudeZahl()).isEqualTo(2);
         assertThat(werk.flaecheM2()).isNull();
         assertThat(werk.flaecheQuelle()).isNull();
         // Vor dem 12.03.2024 gab es ihn nicht.

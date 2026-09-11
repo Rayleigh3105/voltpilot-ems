@@ -17,8 +17,8 @@
     "`referenz` benutzt die Quellen dieser Messstelle als Ausgangslage; mit",
     "`ergebnis_wie_referenz` ist sein Zeitstrahl GENAU der des Referenzunternehmens; mit",
     "`fortschreibung` spielt er NACH dessen letztem Ereignis (12.04.2027) und ändert davor",
-    "nichts; `annahme` nennt, was er darüber hinaus annimmt (eine Vergleichsquelle, die die",
-    "Datei nicht kennt). Beide Zwillinge prüfen das gegen die Referenz-Datei. Nur die",
+    "nichts; `annahme` nennt, was er darüber hinaus annimmt (etwas, das die Datei nicht",
+    "kennt). Beide Zwillinge prüfen das gegen die Referenz-Datei — auch Vergleichsquellen. Nur die",
     "Familie `passung` ist eine reine Regeltabelle ohne Anlage: sie kennt nur Merkmale.",
     "",
     "ACHT FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
@@ -1479,10 +1479,10 @@
         "name": "ms-01-vergleichsquelle-mit-zweck",
         "herkunft": "AP-04 E3 · §5.3",
         "referenz": "MS-01",
-        "why": "Neben die führende Wirkleistung des Netzzählers K-3 tritt die Netzleistung am Wechselrichter K-1 als Vergleichsquelle mit Zweck „Plausibilität“ (E3). Sie beendet nichts und hat keinen eigenen Zeitstrahl — gezeigt werden später beide Werte nebeneinander (312,4 kW · 309,8 kW), ohne Bewertung und ohne Ersatz. ⚠ Die Auflösung ist die Minute (E2): der Dialog steht um 10:15:40, die Vorgabe „jetzt“ ist 10:15 — das ist NICHT rückwirkend.",
+        "why": "So steht es im Referenzunternehmen: Ines Kaltenbach stellt am 20.11.2026 neben die führende Wirkleistung des Netzzählers K-3 die Netzleistung am Wechselrichter K-1 als Vergleichsquelle mit Zweck „Plausibilität“ (E3). Sie beendet nichts und hat keinen eigenen Zeitstrahl — gezeigt werden später beide Werte nebeneinander, ohne Bewertung und ohne Ersatz. ⚠ Die Auflösung ist die Minute (E2): der Dialog steht um 08:30:40, die Vorgabe „jetzt“ ist 08:30 — das ist NICHT rückwirkend.",
         "input": {
           "vorgang": "binden",
-          "jetzt": "2026-10-20T10:15:40+02:00",
+          "jetzt": "2026-11-20T08:30:40+01:00",
           "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
           "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
           "bestehende": [
@@ -1500,7 +1500,7 @@
             "kanal_richtung": "Bezug",
             "kanal_einheit": "kW",
             "kanal_wertart": "gauge",
-            "gueltig_ab": "2026-10-20T10:15:00+02:00",
+            "gueltig_ab": "2026-11-20T08:30:00+01:00",
             "gueltig_bis": null,
             "endstand_vorgaenger": null,
             "anfangsstand": null
@@ -1811,11 +1811,10 @@
         "name": "ms-01-vergleich-derselbe-messwert-doppelt",
         "herkunft": "AP-04 §4.3 „Überlappung derselben Rolle verboten“ · E3",
         "referenz": "MS-01",
-        "annahme": "K-1 · Einspeise-/Bezugsleistung am Wechselrichter ist seit der Momentaufnahme Vergleichsquelle der Wirkleistung von MS-01 (Fall ms-01-vergleichsquelle-mit-zweck; dieselbe Annahme wie messwert-herkunft-vectors.json).",
         "why": "Vergleichsquellen gibt es beliebig viele — aber nicht DENSELBEN Messwert zweimal zur selben Zeit. Soll K-1 künftig „Ersatz bei Ausfall“ statt „Plausibilität“ sein, wird die alte Kennzeichnung beendet und eine neue begonnen; ein zweiter, überlappender Eintrag ist 409 und nennt den bestehenden.",
         "input": {
           "vorgang": "binden",
-          "jetzt": "2026-10-21T08:00:00+02:00",
+          "jetzt": "2026-11-21T08:00:00+01:00",
           "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
           "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
           "bestehende": [
@@ -1831,7 +1830,7 @@
               "einbau": "GR-1",
               "kanal_wertart": "gauge",
               "zweck": "Plausibilität",
-              "gueltig_ab": "2026-10-20T10:15:00+02:00",
+              "gueltig_ab": "2026-11-20T08:30:00+01:00",
               "gueltig_bis": null
             }
           ],
@@ -1846,7 +1845,7 @@
             "kanal_richtung": "Bezug",
             "kanal_einheit": "kW",
             "kanal_wertart": "gauge",
-            "gueltig_ab": "2026-10-21T08:00:00+02:00",
+            "gueltig_ab": "2026-11-21T08:00:00+01:00",
             "gueltig_bis": null,
             "endstand_vorgaenger": null,
             "anfangsstand": null
@@ -1856,7 +1855,7 @@
         "expected": {
           "fehler": "bindung_ueberlappt",
           "grund": null,
-          "bestehend": {"komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "gueltig_ab": "2026-10-20T10:15:00+02:00", "gueltig_bis": null},
+          "bestehend": {"komponente": "K-1", "kanal": "Einspeise-/Bezugsleistung am Wechselrichter", "geraet": "GR-1", "einbau": "GR-1", "gueltig_ab": "2026-11-20T08:30:00+01:00", "gueltig_bis": null},
           "messstelle": null,
           "beendet": null,
           "status": null,

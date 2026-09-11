@@ -163,6 +163,20 @@
       "type": ["string", "null"],
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
     },
+    "tag": {
+      "description": "Ein Kalendertag einer tagesgenauen Gültigkeit (AP-02 E9), wirksam 00:00 Uhr am Standort.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "enddatum_oder_null": {
+      "description": "Das ENDDATUM einer Unterstützung: ein Kalendertag, einschließlich — „bis 15.12.2026“ endet am 16.12.2026 00:00 am Standort (AP-03 A4, AP-02 E9). Nur beim Notfall-Zugriff (E8) ein Zeitpunkt: genau 24 h nach „gültig ab“, halboffen. null = kein Ende (Rollen) bzw. im Antrag: fehlt.",
+      "anyOf": [{ "$ref": "#/$defs/tag" }, { "$ref": "#/$defs/zeit" }, { "type": "null" }]
+    },
+    "tag_oder_null": {
+      "description": "Der LETZTE gültige Tag, einschließlich; null = offen.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
     "standort_kennzeichen": { "type": "string", "pattern": "^ST-[0-9]+$" },
     "rolle": {
       "enum": [
@@ -334,7 +348,7 @@
         "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
         "art": { "enum": ["installateur", "voltpilot", "notfall", null] },
         "gueltig_ab": { "$ref": "#/$defs/zeit" },
-        "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+        "gueltig_bis": { "$ref": "#/$defs/enddatum_oder_null" },
         "beendet_am": { "$ref": "#/$defs/zeit_oder_null" }
       },
       "additionalProperties": false
@@ -380,7 +394,7 @@
       "additionalProperties": false
     },
     "anlage": {
-      "description": "Eine Anlage mit ihren zeitgültigen Standort-Zuordnungen [ab, bis) (AP-02 IP-3); null, wenn das Ziel keine Anlage ist.",
+      "description": "Eine Anlage mit ihren tagesgenauen Standort-Zuordnungen (AP-02 E9, wie ortsbaum-vectors.json und die Referenzdatei): `gueltig_ab` ist ein Tag, `gueltig_bis` der LETZTE gültige Tag; der Stichtag gilt an seinem Kalendertag in der Zeitzone des Kundenbereichs. null, wenn das Ziel keine Anlage ist.",
       "type": ["object", "null"],
       "required": ["kennzeichen", "zuordnungen"],
       "properties": {
@@ -392,8 +406,8 @@
             "required": ["standort", "gueltig_ab", "gueltig_bis"],
             "properties": {
               "standort": { "$ref": "#/$defs/standort_kennzeichen" },
-              "gueltig_ab": { "$ref": "#/$defs/zeit" },
-              "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" }
+              "gueltig_ab": { "$ref": "#/$defs/tag" },
+              "gueltig_bis": { "$ref": "#/$defs/tag_oder_null" }
             },
             "additionalProperties": false
           }
@@ -432,7 +446,7 @@
         "standorte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/standort_kennzeichen" } },
         "gewaehrt_am": { "$ref": "#/$defs/zeit_oder_null" },
         "gueltig_ab": { "$ref": "#/$defs/zeit" },
-        "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+        "gueltig_bis": { "$ref": "#/$defs/enddatum_oder_null" },
         "beendet_am": { "$ref": "#/$defs/zeit_oder_null" },
         "beendet_von": { "type": ["string", "null"] },
         "unterstuetzer": {
@@ -558,7 +572,7 @@
             "umfang": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
             "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_kennzeichen" } },
             "gueltig_ab": { "$ref": "#/$defs/zeit" },
-            "gueltig_bis": { "$ref": "#/$defs/zeit_oder_null" },
+            "gueltig_bis": { "$ref": "#/$defs/enddatum_oder_null" },
             "grund": { "type": ["string", "null"], "maxLength": 200 }
           },
           "additionalProperties": false

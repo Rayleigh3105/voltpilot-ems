@@ -4,9 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.Rueckwirkung;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungEingang;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungErgebnis;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -14,6 +20,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -31,6 +39,14 @@ import org.junit.jupiter.api.TestFactory;
  * 5 Gebäude) sind bewusst als Zahl gepinnt — sie sind der Umfang, den AP-00
  * §4.4 zusagt.
  *
+ * <p>Zwei Zeitformen, je nach Entscheid: tagesgenaue Gültigkeiten (AP-02 E9 —
+ * Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile,
+ * Flächen) sind Kalendertage mit dem LETZTEN gültigen Tag als {@code gueltig_bis};
+ * alles auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) ist
+ * halboffen. Jede Prüfung liest die Form, die ihre Daten haben — umgerechnet
+ * wird nichts; „zur Momentaufnahme“ heißt für einen Tag: an deren Kalendertag
+ * in der Zeitzone des Unternehmens.
+ *
  * <p>Rein; läuft immer (kein Docker, keine DB, keine Uhr).
  */
 class UemsReferenzunternehmenVectorsTest {
@@ -45,6 +61,15 @@ class UemsReferenzunternehmenVectorsTest {
 
     /** Ende einer offenen Gültigkeit — „bis auf Weiteres“. */
     private static final OffsetDateTime OFFEN = OffsetDateTime.parse("9999-12-31T00:00:00+00:00");
+
+    /** Die Zuordnungs-Arten, die tagesgenau gelten (AP-02 E9); alle anderen gelten auf die Minute. */
+    private static final Set<String> TAGESGENAU = Set.of("ort_eltern", "anlage_standort", "messstelle_ort");
+
+    /** Das Unternehmen als Ort (Ortsbaum-Vertrag, {@code regeln.unternehmen_kennzeichen}). */
+    private static final String UNTERNEHMEN = "U";
+
+    /** Das Abzeichen eines rückwirkenden Eintrags, wo immer die Datei es nennt. */
+    private static final Pattern ABZEICHEN = Pattern.compile("rückwirkend \\([0-9]+ Tage?\\)");
 
     private static JsonNode daten() throws Exception {
         return MAPPER.readTree(Files.readString(VECTORS));
@@ -92,7 +117,8 @@ class UemsReferenzunternehmenVectorsTest {
                 .as("Boxen zur Momentaufnahme").hasSize(3);
         assertThat(imBetrieb(d.get("komponenten"), jetzt, "in_betrieb_ab", "in_betrieb_bis"))
                 .as("Komponenten zur Momentaufnahme").hasSize(15);
-        assertThat(imBetrieb(d.get("kostenstellen"), jetzt, "gueltig_ab", "gueltig_bis"))
+        LocalDate heute = tagVon(jetzt, zone(d));
+        assertThat(kinder(d.get("kostenstellen")).stream().filter(k -> giltAm(k, heute)).toList())
                 .as("Kostenstellen zur Momentaufnahme").hasSize(5);
 
         long gemessen = kinder(d.get("messstellen")).stream()
@@ -144,10 +170,11 @@ class UemsReferenzunternehmenVectorsTest {
     void genauEinHauptzaehlerJeAnlageUndRichtung() throws Exception {
         JsonNode d = daten();
         OffsetDateTime jetzt = zeit(d.at("/unternehmen/momentaufnahme").asText());
+        LocalDate heute = tagVon(jetzt, zone(d));
         Map<String, List<JsonNode>> haupt = new LinkedHashMap<>();
         for (JsonNode m : kinder(d.get("messstellen"))) {
             for (JsonNode st : kinder(m.get("elektrische_stellung"))) {
-                if ("Hauptzähler".equals(st.get("stellung").asText()) && gilt(st, jetzt)) {
+                if ("Hauptzähler".equals(st.get("stellung").asText()) && giltAm(st, heute)) {
                     haupt.computeIfAbsent(st.get("anlage").asText(), k -> new ArrayList<>()).add(m);
                 }
             }
@@ -176,18 +203,18 @@ class UemsReferenzunternehmenVectorsTest {
         }
     }
 
-    /** AP-00 §4.5 Regel 3: die Anteile eines Zeitpunkts ergeben 100 %. */
+    /** AP-00 §4.5 Regel 3: die Anteile eines Tages ergeben 100 %. */
     @TestFactory
     List<DynamicTest> kostenstellenAnteileErgeben100Prozent() throws Exception {
         JsonNode d = daten();
         List<DynamicTest> tests = new ArrayList<>();
         for (JsonNode m : kinder(d.get("messstellen"))) {
             String kz = m.get("kennzeichen").asText();
-            for (OffsetDateTime t : stichzeitpunkte(m.get("kostenstellen_anteile"))) {
+            for (LocalDate t : stichtage(m.get("kostenstellen_anteile"))) {
                 tests.add(DynamicTest.dynamicTest(kz + " @ " + t, () -> {
                     double summe = 0;
                     for (JsonNode k : kinder(m.get("kostenstellen_anteile"))) {
-                        if (gilt(k, t)) {
+                        if (giltAm(k, t)) {
                             summe += k.get("anteil_prozent").asDouble();
                         }
                     }
@@ -208,7 +235,7 @@ class UemsReferenzunternehmenVectorsTest {
     @TestFactory
     List<DynamicTest> jedeMessstelleHatGenauEinenOrt() throws Exception {
         JsonNode d = daten();
-        OffsetDateTime jetzt = zeit(d.at("/unternehmen/momentaufnahme").asText());
+        LocalDate heute = tagVon(zeit(d.at("/unternehmen/momentaufnahme").asText()), zone(d));
         Map<String, List<JsonNode>> orte = zuordnungenNach(d, "messstelle_ort");
 
         List<DynamicTest> tests = new ArrayList<>();
@@ -216,10 +243,10 @@ class UemsReferenzunternehmenVectorsTest {
             String kz = m.get("kennzeichen").asText();
             tests.add(DynamicTest.dynamicTest(kz, () -> {
                 List<JsonNode> zs = orte.getOrDefault(kz, List.of());
-                assertThat(ueberlappungen(zs)).as(kz + ": Ort-Zeiträume überlappen").isEmpty();
+                assertThat(ueberlappungenTage(zs)).as(kz + ": Ort-Zeiträume überlappen").isEmpty();
 
                 List<JsonNode> jetztGueltig =
-                        zs.stream().filter(z -> gilt(z, jetzt)).toList();
+                        zs.stream().filter(z -> giltAm(z, heute)).toList();
                 if ("gemessen".equals(m.get("art").asText())) {
                     assertThat(jetztGueltig).as(kz + ": Orte zur Momentaufnahme").hasSize(1);
                 } else {
@@ -257,6 +284,45 @@ class UemsReferenzunternehmenVectorsTest {
                     assertThat(ueberlappungen(kinder(qs)))
                             .as(kz + " " + name + ": zwei führende Quellen gleichzeitig").isEmpty())));
         }
+        return tests;
+    }
+
+    /**
+     * AP-04 E3 / §4.3: Vergleichsquellen gibt es beliebig viele — aber nicht DENSELBEN
+     * Messwert zweimal zur selben Zeit, und nie denselben Messwert zugleich als
+     * führende Quelle derselben Größe. Der Zweck ist Pflicht (Schema).
+     */
+    @TestFactory
+    List<DynamicTest> vergleichsquellenUeberlappenNieUndFuehrenNie() throws Exception {
+        JsonNode d = daten();
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode m : kinder(d.get("messstellen"))) {
+            String kz = m.get("kennzeichen").asText();
+            Map<String, JsonNode> gruppen = new LinkedHashMap<>();
+            gruppen.put("Hauptgröße", m);
+            for (JsonNode ng : kinder(m.get("nebengroessen"))) {
+                gruppen.put("Nebengröße " + ng.get("groesse").asText(), ng);
+            }
+            gruppen.forEach((name, g) -> tests.add(DynamicTest.dynamicTest(kz + " · " + name, () -> {
+                List<JsonNode> vergleich = kinder(g.get("vergleichsquellen"));
+                for (JsonNode v : vergleich) {
+                    List<JsonNode> derselbeMesswert = new ArrayList<>();
+                    for (JsonNode x : vergleich) {
+                        if (x.get("komponente").equals(v.get("komponente")) && x.get("kanal").equals(v.get("kanal"))) {
+                            derselbeMesswert.add(x);
+                        }
+                    }
+                    assertThat(ueberlappungen(derselbeMesswert)).as(kz + " " + name + ": derselbe Messwert zweimal").isEmpty();
+                    for (JsonNode f : kinder(g.get("fuehrende_quelle"))) {
+                        if (f.get("komponente").equals(v.get("komponente")) && f.get("kanal").equals(v.get("kanal"))) {
+                            assertThat(ueberlappungen(List.of(f, v))).as(kz + " " + name + ": zugleich führend und Vergleich").isEmpty();
+                        }
+                    }
+                }
+            })));
+        }
+        assertThat(kinder(d.get("messstellen")).stream().mapToInt(m -> alleVergleichsquellen(m).size()).sum())
+                .as("Vergleichsquellen im Referenzunternehmen").isPositive();
         return tests;
     }
 
@@ -339,9 +405,9 @@ class UemsReferenzunternehmenVectorsTest {
                     fehler.add(kz + ": Unterzähler von sich selbst");
                     continue;
                 }
-                OffsetDateTime ab = zeit(st.get("gueltig_ab").asText());
+                LocalDate ab = tag(st.get("gueltig_ab").asText());
                 boolean gleicheAnlage = kinder(ms.get(eltern).get("elektrische_stellung")).stream()
-                        .anyMatch(e -> gilt(e, ab)
+                        .anyMatch(e -> giltAm(e, ab)
                                 && e.get("anlage").asText().equals(st.get("anlage").asText()));
                 if (!gleicheAnlage) {
                     fehler.add(kz + " · " + st.get("anlage").asText()
@@ -371,7 +437,9 @@ class UemsReferenzunternehmenVectorsTest {
         List<String> fehler = new ArrayList<>();
         for (JsonNode m : kinder(d.get("messstellen"))) {
             String kz = m.get("kennzeichen").asText();
-            for (JsonNode q : alleQuellen(m)) {
+            List<JsonNode> quellen = new ArrayList<>(alleQuellen(m));
+            quellen.addAll(alleVergleichsquellen(m));
+            for (JsonNode q : quellen) {
                 String k = q.get("komponente").asText();
                 String g = q.get("geraet").asText();
                 if (!g.equals(komp.get(k).get("geraet").asText())) {
@@ -408,7 +476,8 @@ class UemsReferenzunternehmenVectorsTest {
         }
         List<DynamicTest> tests = new ArrayList<>();
         nachSchluessel.forEach((name, zs) -> tests.add(DynamicTest.dynamicTest(name, () ->
-                assertThat(ueberlappungen(zs)).as(name).isEmpty())));
+                assertThat(TAGESGENAU.contains(zs.get(0).get("art").asText())
+                        ? ueberlappungenTage(zs) : ueberlappungen(zs)).as(name).isEmpty())));
 
         // Auch die Gültigkeiten, die AN einem Objekt hängen, überlappen nie.
         for (JsonNode o : kinder(d.get("standorte"))) {
@@ -427,8 +496,242 @@ class UemsReferenzunternehmenVectorsTest {
         }
         for (JsonNode m : kinder(d.get("messstellen"))) {
             tests.add(DynamicTest.dynamicTest("Stellung " + m.get("kennzeichen").asText(), () ->
-                    assertThat(ueberlappungen(kinder(m.get("elektrische_stellung")))).isEmpty()));
+                    assertThat(ueberlappungenTage(kinder(m.get("elektrische_stellung")))).isEmpty()));
         }
+        return tests;
+    }
+
+    /**
+     * Eine Änderung beendet die alte Gültigkeit und beginnt eine neue (AP-00 §4.5
+     * Regel 4) — ohne Loch und ohne doppelten Tag: tagesgenau beginnt die neue am
+     * Tag NACH dem letzten der alten (Ortsbaum: „neues ab beendet das laufende am
+     * Vortag“), auf die Minute ist Ende der alten = Beginn der neuen. Und ein Tag
+     * „bis“ liegt nie vor seinem „ab“.
+     */
+    @TestFactory
+    List<DynamicTest> jederWechselStoesstAn() throws Exception {
+        JsonNode d = daten();
+        Map<String, List<JsonNode>> tage = new LinkedHashMap<>();
+        Map<String, List<JsonNode>> minuten = new LinkedHashMap<>();
+        for (JsonNode z : kinder(d.get("zuordnungen"))) {
+            String art = z.get("art").asText();
+            (TAGESGENAU.contains(art) ? tage : minuten)
+                    .computeIfAbsent(art + " · " + z.get("von").asText(), k -> new ArrayList<>()).add(z);
+        }
+        for (String liste : List.of("standorte", "gebaeude")) {
+            for (JsonNode o : kinder(d.get(liste))) {
+                tage.put("Flächen " + o.get("kennzeichen").asText(), kinder(o.get("bezugsflaechen")));
+            }
+        }
+        for (JsonNode m : kinder(d.get("messstellen"))) {
+            String kz = m.get("kennzeichen").asText();
+            tage.put("Stellung " + kz, kinder(m.get("elektrische_stellung")));
+            minuten.put("Quelle " + kz, kinder(m.get("fuehrende_quelle")));
+            for (JsonNode ng : kinder(m.get("nebengroessen"))) {
+                minuten.put("Quelle " + kz + " · " + ng.get("groesse").asText(), kinder(ng.get("fuehrende_quelle")));
+            }
+        }
+        for (JsonNode g : kinder(d.get("geraete"))) {
+            minuten.put("Einbauten " + g.get("kennzeichen").asText(), kinder(g.get("einbauten")));
+        }
+        for (JsonNode k : kinder(d.get("komponenten"))) {
+            minuten.put("Wandler " + k.get("kennzeichen").asText(), kinder(k.get("wandler")));
+        }
+
+        List<DynamicTest> tests = new ArrayList<>();
+        tage.forEach((name, kette) -> tests.add(DynamicTest.dynamicTest(name, () -> {
+            for (JsonNode o : kette) {
+                assertThat(letzterTag(o)).as(name + ": „bis“ vor „ab“").isAfterOrEqualTo(tag(o.get("gueltig_ab").asText()));
+            }
+            List<JsonNode> s = new ArrayList<>(kette);
+            s.sort(Comparator.comparing(o -> tag(o.get("gueltig_ab").asText())));
+            for (int i = 0; i < s.size() - 1; i++) {
+                assertThat(letzterTag(s.get(i)).plusDays(1))
+                        .as(name + ": die neue beginnt am Tag nach dem letzten der alten")
+                        .isEqualTo(tag(s.get(i + 1).get("gueltig_ab").asText()));
+            }
+        })));
+        minuten.forEach((name, kette) -> tests.add(DynamicTest.dynamicTest(name, () -> {
+            List<JsonNode> s = new ArrayList<>(kette);
+            s.sort(Comparator.comparing(o -> zeit(o.get("gueltig_ab").asText())));
+            for (int i = 0; i < s.size() - 1; i++) {
+                assertThat(ende(s.get(i))).as(name + ": Ende der alten = Beginn der neuen")
+                        .isEqualTo(zeit(s.get(i + 1).get("gueltig_ab").asText()));
+            }
+        })));
+        return tests;
+    }
+
+    /**
+     * Ortsbaum-Vertrag Regel 1 ({@code ziel_gab_es_noch_nicht}): eine tagesgenaue
+     * Zuordnung hängt an jedem ihrer Tage an einem Ort, den es an diesem Tag gibt.
+     * Ein Ort besteht, solange seine {@code ort_eltern}-Zuordnungen laufen; das
+     * Unternehmen (U) besteht, seit es Kunde ist.
+     */
+    @TestFactory
+    List<DynamicTest> keineZuordnungBeginntVorIhremZiel() throws Exception {
+        JsonNode d = daten();
+        ZoneId zone = zone(d);
+        LocalDate unternehmenSeit = tagVon(zeit(d.at("/unternehmen/kunde_seit").asText()), zone);
+        Map<String, List<JsonNode>> bestehen = zuordnungenNach(d, "ort_eltern");
+
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode z : kinder(d.get("zuordnungen"))) {
+            if (!TAGESGENAU.contains(z.get("art").asText()) || !z.hasNonNull("nach")) {
+                continue;
+            }
+            String ziel = z.get("nach").asText();
+            LocalDate ab = tag(z.get("gueltig_ab").asText());
+            String name = z.get("art").asText() + " · " + z.get("von").asText() + " → " + ziel + " ab " + ab;
+            tests.add(DynamicTest.dynamicTest(name, () -> {
+                if (UNTERNEHMEN.equals(ziel)) {
+                    assertThat(ab).as(name + ": vor dem Unternehmen").isAfterOrEqualTo(unternehmenSeit);
+                } else {
+                    assertThat(ersterFehlenderTag(bestehen.getOrDefault(ziel, List.of()), ab, letzterTag(z)))
+                            .as(name + ": an diesem Tag gab es " + ziel + " noch nicht").isNull();
+                }
+            }));
+        }
+        assertThat(tests).isNotEmpty();
+        return tests;
+    }
+
+    /**
+     * AP-02 E2: ein rückwirkender Eintrag ist erlaubt — aber sichtbar. Wer
+     * {@code eingetragen_am} trägt, liegt vor diesem Tag und trägt GENAU das
+     * Abzeichen, das der Ortsbaum-Vertrag bildet (Tage = Eintragstag − gilt ab,
+     * {@code a3-anbau-14-tage-nicht-15}). Die Zeitachse nennt kein anderes.
+     */
+    @TestFactory
+    List<DynamicTest> jederRueckwirkendeEintragTraegtDasAbzeichenDesOrtsbaumVertrags() throws Exception {
+        JsonNode d = daten();
+        ZoneId zone = zone(d);
+        Map<String, JsonNode> eintraege = new LinkedHashMap<>();
+        for (JsonNode z : kinder(d.get("zuordnungen"))) {
+            if (TAGESGENAU.contains(z.get("art").asText())) {
+                eintraege.put(z.get("art").asText() + " · " + z.get("von").asText() + " ab "
+                        + z.get("gueltig_ab").asText(), z);
+            }
+        }
+        for (String liste : List.of("standorte", "gebaeude")) {
+            for (JsonNode o : kinder(d.get(liste))) {
+                for (JsonNode f : kinder(o.get("bezugsflaechen"))) {
+                    eintraege.put("Fläche " + o.get("kennzeichen").asText() + " ab " + f.get("gueltig_ab").asText(), f);
+                }
+            }
+        }
+        Set<String> abzeichen = new LinkedHashSet<>();
+        List<DynamicTest> tests = new ArrayList<>();
+        eintraege.forEach((name, e) -> {
+            if (!e.has("eingetragen_am") && !e.has("abzeichen")) {
+                return;
+            }
+            abzeichen.add(text(e, "abzeichen"));
+            tests.add(DynamicTest.dynamicTest(name, () -> {
+                assertThat(e.hasNonNull("eingetragen_am") && e.hasNonNull("abzeichen"))
+                        .as(name + ": Eintragstag und Abzeichen gehören zusammen").isTrue();
+                RueckwirkungErgebnis r = OrtsbaumAbleitung.rueckwirkung(new RueckwirkungEingang(
+                        tag(e.get("eingetragen_am").asText()).atStartOfDay(zone).toOffsetDateTime(),
+                        tag(e.get("gueltig_ab").asText()),
+                        e.hasNonNull("gueltig_bis") ? tag(e.get("gueltig_bis").asText()) : null,
+                        zone, null));
+                assertThat(r.art()).as(name + ": rückwirkend eingetragen").isEqualTo(Rueckwirkung.RUECKWIRKEND);
+                assertThat(e.get("abzeichen").asText()).as(name).isEqualTo(r.abzeichen());
+            }));
+        });
+        tests.add(DynamicTest.dynamicTest("Zeitachse nennt nur diese Abzeichen", () -> {
+            for (JsonNode z : kinder(d.get("zeitachse"))) {
+                Matcher m = ABZEICHEN.matcher(z.get("ereignis").asText());
+                while (m.find()) {
+                    assertThat(abzeichen).as(z.get("zeitpunkt").asText()).contains(m.group());
+                }
+            }
+        }));
+        assertThat(abzeichen).as("rückwirkende Einträge").isNotEmpty();
+        return tests;
+    }
+
+    /**
+     * Jeder Ort hängt zeitgültig an seinem Elternknoten (Art {@code ort_eltern}) —
+     * ein Gebäude an einem Standort, ein Bereich an einem Gebäude oder direkt am
+     * Standort, ein Standort an keinem (sein Bestehen). Die festen Felder
+     * {@code gebaeude[].standort} und {@code bereiche[].eltern} sind der Stand zur
+     * Momentaufnahme.
+     */
+    @TestFactory
+    List<DynamicTest> jederOrtHaengtZeitgueltigAnSeinemElternknoten() throws Exception {
+        JsonNode d = daten();
+        LocalDate heute = tagVon(zeit(d.at("/unternehmen/momentaufnahme").asText()), zone(d));
+        Map<String, List<JsonNode>> bestehen = zuordnungenNach(d, "ort_eltern");
+        Map<String, String> fest = new LinkedHashMap<>();
+        Map<String, Set<String>> erlaubt = new LinkedHashMap<>();
+        for (JsonNode s : kinder(d.get("standorte"))) {
+            fest.put(s.get("kennzeichen").asText(), null);
+            erlaubt.put(s.get("kennzeichen").asText(), Set.of());
+        }
+        Set<String> standorte = new LinkedHashSet<>(fest.keySet());
+        for (JsonNode g : kinder(d.get("gebaeude"))) {
+            fest.put(g.get("kennzeichen").asText(), g.get("standort").asText());
+            erlaubt.put(g.get("kennzeichen").asText(), standorte);
+        }
+        Set<String> gebaeudeUndStandorte = new LinkedHashSet<>(standorte);
+        kinder(d.get("gebaeude")).forEach(g -> gebaeudeUndStandorte.add(g.get("kennzeichen").asText()));
+        for (JsonNode b : kinder(d.get("bereiche"))) {
+            fest.put(b.get("kennzeichen").asText(), b.get("eltern").asText());
+            erlaubt.put(b.get("kennzeichen").asText(), gebaeudeUndStandorte);
+        }
+
+        List<DynamicTest> tests = new ArrayList<>();
+        fest.forEach((ort, elternJetzt) -> tests.add(DynamicTest.dynamicTest(ort, () -> {
+            List<JsonNode> zs = bestehen.getOrDefault(ort, List.of());
+            assertThat(zs).as(ort + ": ohne Zuordnung an einen Elternknoten").isNotEmpty();
+            for (JsonNode z : zs) {
+                String nach = text(z, "nach");
+                if (erlaubt.get(ort).isEmpty()) {
+                    assertThat(nach).as(ort + ": ein Standort hängt an keinem Elternknoten").isNull();
+                } else {
+                    assertThat(erlaubt.get(ort)).as(ort + " → " + nach).contains(nach);
+                }
+            }
+            List<JsonNode> jetzt = zs.stream().filter(z -> giltAm(z, heute)).toList();
+            assertThat(jetzt).as(ort + ": zur Momentaufnahme").hasSize(1);
+            assertThat(text(jetzt.get(0), "nach")).as(ort + ": festes Feld gegen die Zuordnung").isEqualTo(elternJetzt);
+        })));
+        return tests;
+    }
+
+    /**
+     * AP-03 E6/A4 (Entscheid firstmate 11.09.2026): das Enddatum einer Unterstützung ist ein
+     * Kalendertag und gilt einschließlich; nur ein Notfall-Zugriff (E8) endet auf die Minute, genau
+     * 24 h nach seinem Beginn. Die Zeitachse nennt den Ablauf zu dem Zeitpunkt, den der
+     * Rechte-Vertrag daraus bildet ({@link RechteAbleitung#bisZeitpunkt(String)}).
+     */
+    @TestFactory
+    List<DynamicTest> jedeUnterstuetzungEndetMitIhremEnddatum() throws Exception {
+        JsonNode d = daten();
+        Set<OffsetDateTime> zeitachse = new LinkedHashSet<>();
+        kinder(d.get("zeitachse")).forEach(z -> zeitachse.add(zeit(z.get("zeitpunkt").asText())));
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode p : kinder(d.get("personen"))) {
+            if (!"unterstuetzer".equals(p.get("art").asText())) {
+                continue;
+            }
+            String kz = p.get("kuerzel").asText();
+            tests.add(DynamicTest.dynamicTest(kz, () -> {
+                String bis = text(p, "gueltig_bis");
+                assertThat(bis).as(kz + ": eine Unterstützung hat immer ein Ende (E6)").isNotNull();
+                boolean notfall = p.at("/unterstuetzung/art").asText().startsWith("Notfall");
+                if (notfall) {
+                    assertThat(zeit(bis)).as(kz + ": Notfall genau 24 h").isEqualTo(zeit(p.get("seit").asText()).plusHours(24));
+                } else {
+                    assertThat(bis).as(kz + ": Enddatum ist ein Kalendertag").matches("[0-9]{4}-[0-9]{2}-[0-9]{2}");
+                }
+                OffsetDateTime ablauf = RechteAbleitung.bisZeitpunkt(bis).atOffset(ZoneOffset.UTC);
+                assertThat(zeitachse.stream().anyMatch(t -> t.isEqual(ablauf)))
+                        .as(kz + ": die Zeitachse nennt den Ablauf " + ablauf).isTrue();
+            }));
+        }
+        assertThat(tests).as("Unterstützungen im Referenzunternehmen").isNotEmpty();
         return tests;
     }
 
@@ -460,7 +763,7 @@ class UemsReferenzunternehmenVectorsTest {
 
     private static DynamicTest flaechenTest(String name, JsonNode objekt) {
         return DynamicTest.dynamicTest("Flächen " + name, () ->
-                assertThat(ueberlappungen(kinder(objekt.get("bezugsflaechen")))).isEmpty());
+                assertThat(ueberlappungenTage(kinder(objekt.get("bezugsflaechen")))).isEmpty());
     }
 
     private static List<JsonNode> kinder(JsonNode array) {
@@ -475,6 +778,14 @@ class UemsReferenzunternehmenVectorsTest {
         List<JsonNode> out = new ArrayList<>(kinder(messstelle.get("fuehrende_quelle")));
         for (JsonNode ng : kinder(messstelle.get("nebengroessen"))) {
             out.addAll(kinder(ng.get("fuehrende_quelle")));
+        }
+        return out;
+    }
+
+    private static List<JsonNode> alleVergleichsquellen(JsonNode messstelle) {
+        List<JsonNode> out = new ArrayList<>(kinder(messstelle.get("vergleichsquellen")));
+        for (JsonNode ng : kinder(messstelle.get("nebengroessen"))) {
+            out.addAll(kinder(ng.get("vergleichsquellen")));
         }
         return out;
     }
@@ -507,13 +818,70 @@ class UemsReferenzunternehmenVectorsTest {
         return kinder(array).stream().filter(o -> laeuft(o, t, abFeld, bisFeld)).toList();
     }
 
-    /** Alle Zeitpunkte, an denen sich in einer Liste von Gültigkeiten etwas ändert. */
-    private static List<OffsetDateTime> stichzeitpunkte(JsonNode array) {
-        Set<OffsetDateTime> out = new LinkedHashSet<>();
+    // Tagesgenau (AP-02 E9): „gueltig_ab“ ist ein Tag, „gueltig_bis“ der LETZTE gültige Tag.
+
+    private static ZoneId zone(JsonNode d) {
+        return ZoneId.of(d.at("/unternehmen/zeitzone").asText());
+    }
+
+    private static LocalDate tag(String s) {
+        return LocalDate.parse(s);
+    }
+
+    /** Der Kalendertag eines Zeitpunkts in der Zeitzone des Unternehmens. */
+    private static LocalDate tagVon(OffsetDateTime t, ZoneId zone) {
+        return t.atZoneSameInstant(zone).toLocalDate();
+    }
+
+    /** Der letzte gültige Tag, einschließlich; offen heißt „bis auf Weiteres“. */
+    private static LocalDate letzterTag(JsonNode o) {
+        return o.hasNonNull("gueltig_bis") ? tag(o.get("gueltig_bis").asText()) : LocalDate.MAX;
+    }
+
+    private static boolean giltAm(JsonNode o, LocalDate t) {
+        return !t.isBefore(tag(o.get("gueltig_ab").asText())) && !t.isAfter(letzterTag(o));
+    }
+
+    /** Alle Tage, an denen sich in einer Liste tagesgenauer Gültigkeiten etwas ändert. */
+    private static List<LocalDate> stichtage(JsonNode array) {
+        Set<LocalDate> out = new LinkedHashSet<>();
         for (JsonNode o : kinder(array)) {
-            out.add(zeit(o.get("gueltig_ab").asText()));
+            out.add(tag(o.get("gueltig_ab").asText()));
         }
         return new ArrayList<>(out);
+    }
+
+    /** Paare tagesgenauer Gültigkeiten, die sich einen Tag teilen. */
+    private static List<String> ueberlappungenTage(List<JsonNode> objekte) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < objekte.size(); i++) {
+            for (int j = i + 1; j < objekte.size(); j++) {
+                JsonNode a = objekte.get(i);
+                JsonNode b = objekte.get(j);
+                if (!tag(a.get("gueltig_ab").asText()).isAfter(letzterTag(b))
+                        && !tag(b.get("gueltig_ab").asText()).isAfter(letzterTag(a))) {
+                    out.add(a.toString() + " ∩ " + b.toString());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Der erste Tag in [von, bis], an dem keine der Gültigkeiten gilt — null, wenn sie ihn durchgehend decken. */
+    private static LocalDate ersterFehlenderTag(List<JsonNode> gueltigkeiten, LocalDate von, LocalDate bis) {
+        LocalDate t = von;
+        while (true) {
+            LocalDate stichtag = t;
+            JsonNode deckt = gueltigkeiten.stream().filter(g -> giltAm(g, stichtag)).findFirst().orElse(null);
+            if (deckt == null) {
+                return t;
+            }
+            LocalDate ende = letzterTag(deckt);
+            if (!ende.isBefore(bis)) {
+                return null;
+            }
+            t = ende.plusDays(1);
+        }
     }
 
     /** Paare von Gültigkeiten, deren Zeiträume sich überschneiden. */
@@ -657,6 +1025,11 @@ class UemsReferenzunternehmenVectorsTest {
                         "komponenten"));
                 out.add(new Verweis(kz + ".quelle.geraet", q.get("geraet").asText(), "geraete"));
             }
+            for (JsonNode q : alleVergleichsquellen(m)) {
+                out.add(new Verweis(kz + ".vergleich.komponente", q.get("komponente").asText(),
+                        "komponenten"));
+                out.add(new Verweis(kz + ".vergleich.geraet", q.get("geraet").asText(), "geraete"));
+            }
         }
         for (JsonNode p : kinder(d.get("personen"))) {
             String kz = p.get("kuerzel").asText();
@@ -674,18 +1047,23 @@ class UemsReferenzunternehmenVectorsTest {
                         b.get("geltung").asText(), "prozesse"));
             }
         }
+        // Welcher Elternknoten wem erlaubt ist, prüft jederOrtHaengtZeitgueltigAnSeinemElternknoten.
         Map<String, String[]> vonGattung = Map.of(
+                "ort_eltern", new String[] {"standorte", "gebaeude", "bereiche"},
                 "anlage_standort", new String[] {"anlagen"},
                 "messstelle_ort", new String[] {"messstellen"},
                 "datenquelle_box", new String[] {"datenquellen"});
         Map<String, String[]> nachGattung = Map.of(
+                "ort_eltern", new String[] {"standorte", "gebaeude"},
                 "anlage_standort", new String[] {"standorte"},
                 "messstelle_ort", new String[] {"standorte", "gebaeude", "bereiche", "unternehmen"},
                 "datenquelle_box", new String[] {"boxen"});
         for (JsonNode z : kinder(d.get("zuordnungen"))) {
             String art = z.get("art").asText();
             out.add(new Verweis(art + ".von", z.get("von").asText(), vonGattung.get(art)));
-            out.add(new Verweis(art + ".nach", z.get("nach").asText(), nachGattung.get(art)));
+            if (z.hasNonNull("nach")) {
+                out.add(new Verweis(art + ".nach", z.get("nach").asText(), nachGattung.get(art)));
+            }
         }
         return out;
     }

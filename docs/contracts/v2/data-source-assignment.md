@@ -261,8 +261,9 @@ künftige Tabelle), nennt er in `annahme` — sonst ist der Test rot.
    Testaufbau als `annahme`; kein Referenzwert ist verändert.
 4. **„(AP-15)“ im Kundensatz** der Steuerquelle ist ein internes Paketkürzel und steht in keinem
    Kundentext; der Satz endet mit „… mit der gemeinsamen Steuerung wechseln“.
-5. **Protokoll-Wörter.** Die Referenz schreibt „OCPP 1.6J“, das Vokabular „OCPP-Station“
-   (`ocpp`); die Fassung ist Parameter der Station.
+5. **Protokoll-Wörter — aufgelöst (Referenzdatei 1.1).** Die Referenz führt das Protokoll jetzt
+   im Vokabular (`modbus_tcp`, `ocpp`; die Fassung 1.6J ist Parameter der Station und steht im
+   Weg) und bei OCPP die Stations-Kennung als `adresse`; die Tests bilden nichts mehr ab.
 6. **Versionen.** Die Referenz nennt für Box Lindach „2.5.0“; echte Stempel heißen
    `edge-JJJJ.MM.N-<sha>`, geordnet über `release_seq`. Die Regel beweist aus einem Stempel ohne
    Release keine Fähigkeit — A7 bleibt so auch dann richtig, wenn `ab_release` gesetzt wird.

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
+import { lokalerTag, mitternacht, plusTage, rueckwirkung } from './uemsOrtsbaum';
+import { bisZeitpunkt } from './rechte';
 
 /**
  * Der Vertrag des UEMS-Referenzunternehmens „Kunststoffwerk Ahrenberg GmbH“
@@ -28,6 +30,49 @@ const OFFEN = Date.parse('9999-12-31T00:00:00+00:00');
 const zeit = (s: string): number => Date.parse(s);
 const jetzt = zeit(daten.unternehmen.momentaufnahme);
 
+/** Die Zuordnungs-Arten, die tagesgenau gelten (AP-02 E9); alle anderen gelten auf die Minute. */
+const TAGESGENAU = new Set(['ort_eltern', 'anlage_standort', 'messstelle_ort']);
+/** Das Unternehmen als Ort (Ortsbaum-Vertrag, `regeln.unternehmen_kennzeichen`). */
+const UNTERNEHMEN = 'U';
+/** Das Abzeichen eines rückwirkenden Eintrags, wo immer die Datei es nennt. */
+const ABZEICHEN = /rückwirkend \([0-9]+ Tage?\)/g;
+
+// Tagesgenau: `gueltig_ab` ist ein Tag, `gueltig_bis` der LETZTE gültige Tag (einschließlich).
+// Tage im Format JJJJ-MM-TT vergleichen sich als Text; umgerechnet wird nichts — „zur
+// Momentaufnahme“ heißt für einen Tag: an deren Kalendertag in der Zeitzone des Unternehmens.
+const ZONE: string = daten.unternehmen.zeitzone;
+const heute = lokalerTag(daten.unternehmen.momentaufnahme, ZONE);
+const OFFENER_TAG = '9999-12-31';
+const letzterTag = (o: any): string => o.gueltig_bis ?? OFFENER_TAG;
+const giltAm = (o: any, tag: string): boolean => o.gueltig_ab <= tag && tag <= letzterTag(o);
+
+/** Paare tagesgenauer Gültigkeiten, die sich einen Tag teilen. */
+const ueberlappungenTage = (objekte: any[]): string[] => {
+  const out: string[] = [];
+  for (let i = 0; i < objekte.length; i += 1) {
+    for (let j = i + 1; j < objekte.length; j += 1) {
+      const a = objekte[i];
+      const b = objekte[j];
+      if (a.gueltig_ab <= letzterTag(b) && b.gueltig_ab <= letzterTag(a)) {
+        out.push(`${a.gueltig_ab}…${a.gueltig_bis} ∩ ${b.gueltig_ab}…${b.gueltig_bis}`);
+      }
+    }
+  }
+  return out;
+};
+
+/** Der erste Tag in [von, bis], an dem keine der Gültigkeiten gilt — null, wenn sie ihn durchgehend decken. */
+const ersterFehlenderTag = (gueltigkeiten: any[], von: string, bis: string): string | null => {
+  let t = von;
+  for (;;) {
+    const deckt = gueltigkeiten.find((g) => giltAm(g, t));
+    if (deckt === undefined) return t;
+    const ende = letzterTag(deckt);
+    if (ende >= bis) return null;
+    t = plusTage(ende, 1);
+  }
+};
+
 const ende = (o: any): number => (o.gueltig_bis ? zeit(o.gueltig_bis) : OFFEN);
 const gilt = (o: any, t: number): boolean => zeit(o.gueltig_ab) <= t && t < ende(o);
 const laeuft = (o: any, t: number, abFeld: string, bisFeld: string): boolean =>
@@ -51,6 +96,11 @@ const ueberlappungen = (objekte: any[]): string[] => {
 const alleQuellen = (m: any): any[] => [
   ...m.fuehrende_quelle,
   ...m.nebengroessen.flatMap((n: any) => n.fuehrende_quelle),
+];
+
+const alleVergleichsquellen = (m: any): any[] => [
+  ...m.vergleichsquellen,
+  ...m.nebengroessen.flatMap((n: any) => n.vergleichsquellen),
 ];
 
 const zuordnungen = (art: string): Map<string, any[]> => {
@@ -132,6 +182,10 @@ const verweise = (): Array<[string, string, string[]]> => {
       out.push([`${m.kennzeichen}.quelle.komponente`, q.komponente, ['komponenten']]);
       out.push([`${m.kennzeichen}.quelle.geraet`, q.geraet, ['geraete']]);
     }
+    for (const q of alleVergleichsquellen(m)) {
+      out.push([`${m.kennzeichen}.vergleich.komponente`, q.komponente, ['komponenten']]);
+      out.push([`${m.kennzeichen}.vergleich.geraet`, q.geraet, ['geraete']]);
+    }
   }
   for (const p of daten.personen as any[]) {
     for (const s of p.standorte as string[]) out.push([`${p.kuerzel}.standort`, s, ['standorte']]);
@@ -144,19 +198,22 @@ const verweise = (): Array<[string, string, string[]]> => {
       out.push([`${b.kennzeichen}.geltung`, b.geltung, ['prozesse']]);
     }
   }
+  // Welcher Elternknoten wem erlaubt ist, prüft „hängt jeden Ort zeitgültig an seinen Elternknoten“.
   const VON: Record<string, string[]> = {
+    ort_eltern: ['standorte', 'gebaeude', 'bereiche'],
     anlage_standort: ['anlagen'],
     messstelle_ort: ['messstellen'],
     datenquelle_box: ['datenquellen'],
   };
   const NACH: Record<string, string[]> = {
+    ort_eltern: ['standorte', 'gebaeude'],
     anlage_standort: ['standorte'],
     messstelle_ort: ['standorte', 'gebaeude', 'bereiche', 'unternehmen'],
     datenquelle_box: ['boxen'],
   };
   for (const z of daten.zuordnungen as any[]) {
     out.push([`${z.art}.von`, z.von, VON[z.art]]);
-    out.push([`${z.art}.nach`, z.nach, NACH[z.art]]);
+    if (z.nach !== null) out.push([`${z.art}.nach`, z.nach, NACH[z.art]]);
   }
   return out;
 };
@@ -187,7 +244,7 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect(
       (daten.komponenten as any[]).filter((k) => laeuft(k, jetzt, 'in_betrieb_ab', 'in_betrieb_bis')),
     ).toHaveLength(15);
-    expect((daten.kostenstellen as any[]).filter((k) => gilt(k, jetzt))).toHaveLength(5);
+    expect((daten.kostenstellen as any[]).filter((k) => giltAm(k, heute))).toHaveLength(5);
 
     const nachArt = (a: string) => (daten.messstellen as any[]).filter((m) => m.art === a).length;
     expect(nachArt('gemessen')).toBe(17);
@@ -223,7 +280,7 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     const haupt = new Map<string, any[]>();
     for (const m of daten.messstellen as any[]) {
       for (const st of m.elektrische_stellung as any[]) {
-        if (st.stellung !== 'Hauptzähler' || !gilt(st, jetzt)) continue;
+        if (st.stellung !== 'Hauptzähler' || !giltAm(st, heute)) continue;
         haupt.set(st.anlage, [...(haupt.get(st.anlage) ?? []), m]);
       }
     }
@@ -239,15 +296,15 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     }
   });
 
-  it('lässt die Kostenstellen-Anteile je Zeitpunkt auf 100 % aufgehen', () => {
+  it('lässt die Kostenstellen-Anteile je Tag auf 100 % aufgehen', () => {
     const fehler: string[] = [];
     for (const m of daten.messstellen as any[]) {
-      const stichzeiten = new Set((m.kostenstellen_anteile as any[]).map((k) => zeit(k.gueltig_ab)));
-      for (const t of stichzeiten) {
+      const stichtage = new Set<string>((m.kostenstellen_anteile as any[]).map((k) => k.gueltig_ab));
+      for (const t of stichtage) {
         const summe = (m.kostenstellen_anteile as any[])
-          .filter((k) => gilt(k, t))
+          .filter((k) => giltAm(k, t))
           .reduce((s, k) => s + k.anteil_prozent, 0);
-        if (summe !== 100) fehler.push(`${m.kennzeichen} @ ${new Date(t).toISOString()}: ${summe} %`);
+        if (summe !== 100) fehler.push(`${m.kennzeichen} @ ${t}: ${summe} %`);
       }
     }
     expect(fehler).toEqual([]);
@@ -263,8 +320,8 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     const fehler: string[] = [];
     for (const m of daten.messstellen as any[]) {
       const zs = orte.get(m.kennzeichen) ?? [];
-      if (ueberlappungen(zs).length) fehler.push(`${m.kennzeichen}: Ort-Zeiträume überlappen`);
-      const jetztGueltig = zs.filter((z) => gilt(z, jetzt));
+      if (ueberlappungenTage(zs).length) fehler.push(`${m.kennzeichen}: Ort-Zeiträume überlappen`);
+      const jetztGueltig = zs.filter((z) => giltAm(z, heute));
       const erwartet = m.art === 'gemessen' ? 1 : jetztGueltig.length;
       if (jetztGueltig.length !== erwartet || jetztGueltig.length > 1) {
         fehler.push(`${m.kennzeichen}: ${jetztGueltig.length} Orte zur Momentaufnahme`);
@@ -292,6 +349,34 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
       }
     }
     expect(fehler).toEqual([]);
+  });
+
+  /**
+   * AP-04 E3 / §4.3: Vergleichsquellen gibt es beliebig viele — aber nicht
+   * DENSELBEN Messwert zweimal zur selben Zeit, und nie denselben Messwert zugleich
+   * als führende Quelle derselben Größe. Der Zweck ist Pflicht (Schema).
+   */
+  it('lässt Vergleichsquellen nie überlappen und nie zugleich führen', () => {
+    const fehler: string[] = [];
+    const derselbe = (a: any, b: any) => a.komponente === b.komponente && a.kanal === b.kanal;
+    for (const m of daten.messstellen as any[]) {
+      const gruppen: Array<[string, any]> = [
+        ['Hauptgröße', m],
+        ...(m.nebengroessen as any[]).map((n): [string, any] => [`Nebengröße ${n.groesse}`, n]),
+      ];
+      for (const [name, g] of gruppen) {
+        for (const v of g.vergleichsquellen as any[]) {
+          if (ueberlappungen((g.vergleichsquellen as any[]).filter((x) => derselbe(x, v))).length) {
+            fehler.push(`${m.kennzeichen} ${name}: derselbe Messwert zweimal`);
+          }
+          for (const f of (g.fuehrende_quelle as any[]).filter((x) => derselbe(x, v))) {
+            if (ueberlappungen([f, v]).length) fehler.push(`${m.kennzeichen} ${name}: zugleich führend und Vergleich`);
+          }
+        }
+      }
+    }
+    expect(fehler).toEqual([]);
+    expect((daten.messstellen as any[]).flatMap(alleVergleichsquellen).length).toBeGreaterThan(0);
   });
 
   /**
@@ -349,9 +434,9 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
           fehler.push(`${m.kennzeichen}: Unterzähler von sich selbst`);
           continue;
         }
-        const ab = zeit(st.gueltig_ab);
+        const ab: string = st.gueltig_ab;
         const gleicheAnlage = (ms.get(st.unterzaehler_von).elektrische_stellung as any[]).some(
-          (e) => gilt(e, ab) && e.anlage === st.anlage,
+          (e) => giltAm(e, ab) && e.anlage === st.anlage,
         );
         if (!gleicheAnlage) {
           fehler.push(`${m.kennzeichen} · ${st.anlage}: ${st.unterzaehler_von} ist zu dieser Zeit eine andere Anlage`);
@@ -368,7 +453,7 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     );
     const fehler: string[] = [];
     for (const m of daten.messstellen as any[]) {
-      for (const q of alleQuellen(m)) {
+      for (const q of [...alleQuellen(m), ...alleVergleichsquellen(m)]) {
         if (komp.get(q.komponente).geraet !== q.geraet) {
           fehler.push(`${m.kennzeichen}: ${q.komponente} hängt an ${komp.get(q.komponente).geraet}, nicht an ${q.geraet}`);
         }
@@ -394,11 +479,11 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
     }
     const fehler: string[] = [];
     for (const [name, zs] of nachSchluessel) {
-      if (ueberlappungen(zs).length) fehler.push(name);
+      if ((TAGESGENAU.has(zs[0].art) ? ueberlappungenTage(zs) : ueberlappungen(zs)).length) fehler.push(name);
     }
     // Auch die Gültigkeiten, die AN einem Objekt hängen, überlappen nie.
     for (const o of [...(daten.standorte as any[]), ...(daten.gebaeude as any[])]) {
-      if (ueberlappungen(o.bezugsflaechen).length) fehler.push(`Flächen ${o.kennzeichen}`);
+      if (ueberlappungenTage(o.bezugsflaechen).length) fehler.push(`Flächen ${o.kennzeichen}`);
     }
     for (const g of daten.geraete as any[]) {
       if (ueberlappungen(g.einbauten).length) fehler.push(`Einbauten ${g.kennzeichen}`);
@@ -407,9 +492,178 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
       if (ueberlappungen(k.wandler).length) fehler.push(`Wandler ${k.kennzeichen}`);
     }
     for (const m of daten.messstellen as any[]) {
-      if (ueberlappungen(m.elektrische_stellung).length) fehler.push(`Stellung ${m.kennzeichen}`);
+      if (ueberlappungenTage(m.elektrische_stellung).length) fehler.push(`Stellung ${m.kennzeichen}`);
     }
     expect(fehler).toEqual([]);
+  });
+
+  /**
+   * Eine Änderung beendet die alte Gültigkeit und beginnt eine neue (AP-00 §4.5
+   * Regel 4) — ohne Loch und ohne doppelten Tag: tagesgenau beginnt die neue am
+   * Tag NACH dem letzten der alten, auf die Minute ist Ende der alten = Beginn
+   * der neuen. Und ein Tag „bis“ liegt nie vor seinem „ab“.
+   */
+  it('lässt jeden Wechsel anstoßen — am Folgetag oder auf die Minute', () => {
+    const tage = new Map<string, any[]>();
+    const minuten = new Map<string, any[]>();
+    const dazu = (ziel: Map<string, any[]>, name: string, o: any) => ziel.set(name, [...(ziel.get(name) ?? []), o]);
+    for (const z of daten.zuordnungen as any[]) {
+      dazu(TAGESGENAU.has(z.art) ? tage : minuten, `${z.art} · ${z.von}`, z);
+    }
+    for (const o of [...(daten.standorte as any[]), ...(daten.gebaeude as any[])]) {
+      tage.set(`Flächen ${o.kennzeichen}`, o.bezugsflaechen);
+    }
+    for (const m of daten.messstellen as any[]) {
+      tage.set(`Stellung ${m.kennzeichen}`, m.elektrische_stellung);
+      minuten.set(`Quelle ${m.kennzeichen}`, m.fuehrende_quelle);
+      for (const n of m.nebengroessen as any[]) minuten.set(`Quelle ${m.kennzeichen} · ${n.groesse}`, n.fuehrende_quelle);
+    }
+    for (const g of daten.geraete as any[]) minuten.set(`Einbauten ${g.kennzeichen}`, g.einbauten);
+    for (const k of daten.komponenten as any[]) minuten.set(`Wandler ${k.kennzeichen}`, k.wandler);
+
+    const fehler: string[] = [];
+    for (const [name, kette] of tage) {
+      for (const o of kette) if (letzterTag(o) < o.gueltig_ab) fehler.push(`${name}: „bis“ ${o.gueltig_bis} vor „ab“ ${o.gueltig_ab}`);
+      const s = [...kette].sort((a, b) => (a.gueltig_ab < b.gueltig_ab ? -1 : 1));
+      for (let i = 0; i < s.length - 1; i += 1) {
+        if (plusTage(letzterTag(s[i]), 1) !== s[i + 1].gueltig_ab) fehler.push(`${name}: ${s[i].gueltig_bis} → ${s[i + 1].gueltig_ab}`);
+      }
+    }
+    for (const [name, kette] of minuten) {
+      const s = [...kette].sort((a, b) => zeit(a.gueltig_ab) - zeit(b.gueltig_ab));
+      for (let i = 0; i < s.length - 1; i += 1) {
+        if (ende(s[i]) !== zeit(s[i + 1].gueltig_ab)) fehler.push(`${name}: ${s[i].gueltig_bis} → ${s[i + 1].gueltig_ab}`);
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  /**
+   * Ortsbaum-Vertrag Regel 1 (`ziel_gab_es_noch_nicht`): eine tagesgenaue
+   * Zuordnung hängt an jedem ihrer Tage an einem Ort, den es an diesem Tag gibt.
+   * Ein Ort besteht, solange seine `ort_eltern`-Zuordnungen laufen; das
+   * Unternehmen (U) besteht, seit es Kunde ist.
+   */
+  it('lässt keine Zuordnung vor ihrem Ziel beginnen', () => {
+    const bestehen = zuordnungen('ort_eltern');
+    const unternehmenSeit = lokalerTag(daten.unternehmen.kunde_seit, ZONE);
+    const fehler: string[] = [];
+    let geprueft = 0;
+    for (const z of daten.zuordnungen as any[]) {
+      if (!TAGESGENAU.has(z.art) || z.nach === null) continue;
+      geprueft += 1;
+      const name = `${z.art} · ${z.von} → ${z.nach} ab ${z.gueltig_ab}`;
+      if (z.nach === UNTERNEHMEN) {
+        if (z.gueltig_ab < unternehmenSeit) fehler.push(`${name}: vor dem Unternehmen`);
+        continue;
+      }
+      const fehlt = ersterFehlenderTag(bestehen.get(z.nach) ?? [], z.gueltig_ab, letzterTag(z));
+      if (fehlt !== null) fehler.push(`${name}: am ${fehlt} gab es ${z.nach} noch nicht`);
+    }
+    expect(fehler).toEqual([]);
+    expect(geprueft).toBeGreaterThan(0);
+  });
+
+  /**
+   * AP-02 E2: ein rückwirkender Eintrag ist erlaubt — aber sichtbar. Wer
+   * `eingetragen_am` trägt, liegt vor diesem Tag und trägt GENAU das Abzeichen,
+   * das der Ortsbaum-Vertrag bildet (Tage = Eintragstag − gilt ab,
+   * `a3-anbau-14-tage-nicht-15`). Die Zeitachse nennt kein anderes.
+   */
+  it('gibt jedem rückwirkenden Eintrag das Abzeichen des Ortsbaum-Vertrags', () => {
+    const eintraege: Array<[string, any]> = [
+      ...(daten.zuordnungen as any[])
+        .filter((z) => TAGESGENAU.has(z.art))
+        .map((z): [string, any] => [`${z.art} · ${z.von} ab ${z.gueltig_ab}`, z]),
+      ...[...(daten.standorte as any[]), ...(daten.gebaeude as any[])].flatMap((o) =>
+        (o.bezugsflaechen as any[]).map((f): [string, any] => [`Fläche ${o.kennzeichen} ab ${f.gueltig_ab}`, f]),
+      ),
+    ];
+    const abzeichen = new Set<string>();
+    const fehler: string[] = [];
+    for (const [name, e] of eintraege) {
+      if (e.eingetragen_am === undefined && e.abzeichen === undefined) continue;
+      abzeichen.add(e.abzeichen);
+      if (!e.eingetragen_am || !e.abzeichen) {
+        fehler.push(`${name}: Eintragstag und Abzeichen gehören zusammen`);
+        continue;
+      }
+      const r = rueckwirkung({
+        eingetragenUm: mitternacht(e.eingetragen_am, ZONE).iso,
+        giltAb: e.gueltig_ab,
+        giltBis: e.gueltig_bis,
+        zeitzone: ZONE,
+      });
+      if (r.art !== 'rueckwirkend') fehler.push(`${name}: nicht rückwirkend (${r.art})`);
+      if (r.abzeichen !== e.abzeichen) fehler.push(`${name}: „${e.abzeichen}“ statt „${r.abzeichen}“`);
+    }
+    for (const z of daten.zeitachse as any[]) {
+      for (const treffer of (z.ereignis as string).match(ABZEICHEN) ?? []) {
+        if (!abzeichen.has(treffer)) fehler.push(`Zeitachse ${z.zeitpunkt}: „${treffer}“ steht an keinem Eintrag`);
+      }
+    }
+    expect(fehler).toEqual([]);
+    expect(abzeichen.size).toBeGreaterThan(0);
+  });
+
+  /**
+   * Jeder Ort hängt zeitgültig an seinem Elternknoten (Art `ort_eltern`) — ein
+   * Gebäude an einem Standort, ein Bereich an einem Gebäude oder direkt am
+   * Standort, ein Standort an keinem (sein Bestehen). Die festen Felder
+   * `gebaeude[].standort` und `bereiche[].eltern` sind der Stand zur Momentaufnahme.
+   */
+  it('hängt jeden Ort zeitgültig an seinen Elternknoten', () => {
+    const bestehen = zuordnungen('ort_eltern');
+    const standorte = (daten.standorte as any[]).map((o) => o.kennzeichen as string);
+    const gebaeude = (daten.gebaeude as any[]).map((o) => o.kennzeichen as string);
+    const orte: Array<[string, string | null, string[]]> = [
+      ...standorte.map((kz): [string, string | null, string[]] => [kz, null, []]),
+      ...(daten.gebaeude as any[]).map((g): [string, string | null, string[]] => [g.kennzeichen, g.standort, standorte]),
+      ...(daten.bereiche as any[]).map((b): [string, string | null, string[]] => [
+        b.kennzeichen,
+        b.eltern,
+        [...gebaeude, ...standorte],
+      ]),
+    ];
+    const fehler: string[] = [];
+    for (const [ort, elternJetzt, erlaubt] of orte) {
+      const zs = bestehen.get(ort) ?? [];
+      if (!zs.length) fehler.push(`${ort}: ohne Zuordnung an einen Elternknoten`);
+      for (const z of zs) {
+        if (erlaubt.length === 0 ? z.nach !== null : !erlaubt.includes(z.nach)) fehler.push(`${ort} → ${z.nach} ist nicht erlaubt`);
+      }
+      const jetztGueltig = zs.filter((z) => giltAm(z, heute));
+      if (jetztGueltig.length !== 1) fehler.push(`${ort}: ${jetztGueltig.length} Zuordnungen zur Momentaufnahme`);
+      else if (jetztGueltig[0].nach !== elternJetzt) fehler.push(`${ort}: festes Feld ${elternJetzt} ≠ Zuordnung ${jetztGueltig[0].nach}`);
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  /**
+   * AP-03 E6/A4 (Entscheid firstmate 11.09.2026): das Enddatum einer Unterstützung ist ein
+   * Kalendertag und gilt einschließlich; nur ein Notfall-Zugriff (E8) endet auf die Minute, genau
+   * 24 h nach seinem Beginn. Die Zeitachse nennt den Ablauf zu dem Zeitpunkt, den der
+   * Rechte-Vertrag daraus bildet (`bisZeitpunkt`).
+   */
+  it('lässt jede Unterstützung mit ihrem Enddatum enden', () => {
+    const zeitachse = new Set((daten.zeitachse as any[]).map((z) => zeit(z.zeitpunkt)));
+    const fehler: string[] = [];
+    const unterstuetzer = (daten.personen as any[]).filter((p) => p.art === 'unterstuetzer');
+    for (const p of unterstuetzer) {
+      if (p.gueltig_bis === null) {
+        fehler.push(`${p.kuerzel}: eine Unterstützung hat immer ein Ende (E6)`);
+        continue;
+      }
+      if (String(p.unterstuetzung?.art ?? '').startsWith('Notfall')) {
+        if (zeit(p.gueltig_bis) !== zeit(p.seit) + 24 * 3600 * 1000) fehler.push(`${p.kuerzel}: Notfall nicht genau 24 h`);
+      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(p.gueltig_bis)) {
+        fehler.push(`${p.kuerzel}: Enddatum ${p.gueltig_bis} ist kein Kalendertag`);
+      }
+      const ablauf = zeit(bisZeitpunkt(p.gueltig_bis) as string);
+      if (!zeitachse.has(ablauf)) fehler.push(`${p.kuerzel}: die Zeitachse nennt den Ablauf ${bisZeitpunkt(p.gueltig_bis)} nicht`);
+    }
+    expect(fehler).toEqual([]);
+    expect(unterstuetzer.length).toBeGreaterThan(0);
   });
 
   /**

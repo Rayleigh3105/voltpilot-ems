@@ -46,6 +46,7 @@ import com.voltpilot.api.uems.RechteAbleitung.Zuweisung;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -362,8 +363,18 @@ class RechteAbleitungVectorsTest {
 
     // ------------------------------------------------------ Eingänge lesen
 
+    /** Ein Enddatum (Tag) oder beim Notfall ein Zeitpunkt — wie die Vektor-Datei es schreibt. */
+    private static String textOderNull(JsonNode n) {
+        return n == null || n.isNull() || n.isMissingNode() ? null : n.asText();
+    }
+
     private static Instant instant(JsonNode n) {
         return n == null || n.isNull() || n.isMissingNode() ? null : OffsetDateTime.parse(n.asText()).toInstant();
+    }
+
+    /** Ein Kalendertag einer tagesgenauen Gültigkeit (Anlage → Standort); {@code null} = offen. */
+    private static LocalDate tag(JsonNode n) {
+        return n == null || n.isNull() || n.isMissingNode() ? null : LocalDate.parse(n.asText());
     }
 
     private static List<String> listeOderNull(JsonNode n) {
@@ -377,7 +388,7 @@ class RechteAbleitungVectorsTest {
                 z.path("umfang").isNull() ? null : Umfang.vonCode(z.path("umfang").asText()),
                 z.path("art").isNull() ? null : Art.vonCode(z.path("art").asText()),
                 instant(z.path("gueltig_ab")),
-                instant(z.path("gueltig_bis")),
+                textOderNull(z.path("gueltig_bis")),
                 instant(z.path("beendet_am")));
     }
 
@@ -405,7 +416,7 @@ class RechteAbleitungVectorsTest {
             JsonNode a = z.path("anlage");
             List<AnlageStandort> zu = new ArrayList<>();
             a.path("zuordnungen").forEach(x -> zu.add(new AnlageStandort(x.path("standort").asText(),
-                    instant(x.path("gueltig_ab")), instant(x.path("gueltig_bis")))));
+                    tag(x.path("gueltig_ab")), tag(x.path("gueltig_bis")))));
             return Ziel.anlage(new Anlage(a.path("kennzeichen").asText(), zu), instant(z.path("stichtag")));
         }
         return z.path("standort").isNull() ? Ziel.unternehmen() : Ziel.standort(z.path("standort").asText());
@@ -426,7 +437,7 @@ class RechteAbleitungVectorsTest {
                 texte(u.path("standorte")),
                 instant(u.path("gewaehrt_am")),
                 instant(u.path("gueltig_ab")),
-                instant(u.path("gueltig_bis")),
+                textOderNull(u.path("gueltig_bis")),
                 instant(u.path("beendet_am")),
                 u.path("beendet_von").isNull() ? null : u.path("beendet_von").asText(),
                 p.isNull() ? null : new Unterstuetzer(p.path("name").asText(), p.path("organisation").asText(),
@@ -440,7 +451,7 @@ class RechteAbleitungVectorsTest {
                 a.path("umfang").isNull() ? null : Umfang.vonCode(a.path("umfang").asText()),
                 texte(a.path("standorte")),
                 instant(a.path("gueltig_ab")),
-                instant(a.path("gueltig_bis")),
+                textOderNull(a.path("gueltig_bis")),
                 a.path("grund").isNull() ? null : a.path("grund").asText());
     }
 

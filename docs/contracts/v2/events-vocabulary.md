@@ -233,8 +233,8 @@ verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
 |---|---|
-| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · geschlossen am 04.11. 09:40 ohne Nachlieferung · Box-Tausch E-2 → E-2′ (A) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen |
-| Rückkehr-Variante A1/A3/A4 (A) | Nachlieferung 3 640 Werte · Lücke MS-10 nachgeliefert 17:31 · 188 Datenpakete fehlen (falsche Anzahl verworfen) · Paketzählung neu · MS-10 nach Abschluss eingegangen (Raster verletzt verworfen) |
+| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) |
+| Rückkehr 17:30 und Nachlieferung, A1/A3/A4 (Referenz) | Nachlieferung 3 640 Werte · Lücke MS-10 nachgeliefert 17:31 · 188 Datenpakete fehlen (falsche Anzahl verworfen) · Paketzählung neu · MS-10 nach Abschluss eingegangen (A: Puffer der reparierten Box; Raster verletzt verworfen) |
 | Zählerwechsel MS-06, 18.11.2026 10:40 (Referenz) | Z-5a → Z-5b mit Ständen · Lücke 10:40–10:47 mit Ursache · gleicher Einbau / nicht auf der Minute / im Voraus / von der Box verworfen · abweichender Wert 10:39 (gleicher Wert verworfen) |
 | Übergabe DQ-3, 10.04.2027 07:30 (Referenz) | offen bis zur Quittung · Quittung schließt · an dieselbe Box / nicht auf der Minute / Ende vor Beginn verworfen · Rückgabe 12.04. (A) · nicht zuständige Box 07:32 (über eine Stunde verworfen) |
 | Kartenzähler-Rücksetzung EK-3 (A) | `counter_reset` 6 184,37 → 0 · bestätigt als Grenze ohne Gerätewechsel · mit Gerätewechsel / steigender Stand verworfen |
@@ -248,11 +248,13 @@ Wo Konzept und Referenzdatei auseinanderlaufen, gewinnt für Kennzeichen, Serien
 Zeitpunkte die Referenzdatei; eine Erfindung steht im Fall als `annahme` (und ein erfundenes
 Kennzeichen oder ein erfundener Messkanal zusätzlich in `erfunden`).
 
-1. **Ausfall Box Halle 2 am 03.11.2026 — zwei Erzählungen** (wie im Herkunftsvertrag §7 Nr. 1).
-   Die Referenz erzählt den Box-Tausch: die Lücke schließt am 04.11.2026 09:40 OHNE
-   `nachgeliefert_am`. Die Nachlieferung (`backfill`, 17:31), die Sequenz-Fälle und
-   `late_arrival` folgen der Rückkehr-Variante der Abnahmefälle bzw. §4.8 („Puffer der
-   reparierten Box“) — als `annahme`, Kennzeichen und Zuständigkeiten aus der Datei.
+1. **Ausfall Box Halle 2 am 03.11.2026 — aufgelöst (Referenzdatei 1.1, wie Herkunftsvertrag §7
+   Nr. 1).** Die Referenz erzählt jetzt EINE Folge: Ausfall 14:00, Rückkehr 17:30 mit
+   Nachlieferung 17:31–17:34, Tausch E-2 → E-2′ am 04.11.2026 09:38. Nachlieferung
+   (`backfill`), Lücke mit `nachgeliefert_am` und die Sequenz-Fälle stehen damit ohne
+   `annahme`. Als `annahme` bleiben die Lücke „bis 04.11. 09:40 ohne Nachlieferung“ (die
+   Variante ohne Rückkehr aus dem Wortlaut von AP-06 A5) und `late_arrival` am 12.11. (§4.8
+   „Puffer der reparierten Box“).
 2. **Übergabe DQ-3 an „Box Halle 2“** — die Referenz nennt E-2′ (E-2 ist seit 04.11.2026
    ausgebaut); die Fälle folgen der Datei. Die Quittungszeiten (09:40 beim Box-Tausch, 16:01 bei
    der Rückgabe) nennt die Referenz nicht; 09:40 ist dort die erste Lesung.

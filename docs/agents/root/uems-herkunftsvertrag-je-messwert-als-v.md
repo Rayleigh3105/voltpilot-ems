@@ -43,9 +43,9 @@ gegen diesen Vertrag.
 5. **„Gleich“ heißt `raw`, `decoded` und Qualität gleich** (Zahlen nach Betrag); gleicher Wert
    = Wiederholung (nur gezählt, kein Ereignis), abweichender = `duplicate_conflict`, der erste
    bleibt.
-6. **Zwei Widersprüche Konzept ⟷ Referenzdatei** stehen im Vertrag §7: der Ausfall Box Halle 2
-   am 03.11.2026 (Rückkehr um 17:30 in AP-00/06/07 vs. Box-Tausch in der Zeitachse der Datei)
-   und das Übergabeziel von DQ-3 am 10.04.2027 (E-2 im Konzept, E-2′ in der Datei — die Datei
+6. **Konzept ⟷ Referenzdatei** stehen im Vertrag §7: der Ausfall Box Halle 2 am 03.11.2026
+   ist seit Referenzdatei 1.1 EINE Folge (Rückkehr 17:30 mit Nachlieferung, Tausch am 04.11.
+   09:38); das Übergabeziel von DQ-3 am 10.04.2027 bleibt E-2′ (E-2 im Konzept — die Datei
    gewinnt).
 
 ## Prüfen

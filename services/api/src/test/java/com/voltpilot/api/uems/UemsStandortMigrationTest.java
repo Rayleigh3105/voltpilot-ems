@@ -21,7 +21,6 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -104,7 +103,6 @@ class UemsStandortMigrationTest {
             "Lager", "Logistik", "Büro", "Technik", "Außenfläche", "Werkstatt", "Labor", "Verkauf",
             "Sozialräume", "Sonstiges");
 
-    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
     /** „Datenstand am 20.02.2027 um 10:10 Uhr" — das Szenario der Ortsbaum-Vektoren. */
     private static final Instant JETZT = Instant.parse("2027-02-20T09:10:00Z");
 
@@ -439,7 +437,8 @@ class UemsStandortMigrationTest {
             }
             JsonNode anlageRef = element(referenz.get("anlagen"), z.get("von").asText());
             UUID anlage = neueAnlage(AHRENBERG, anlageRef.get("name").asText());
-            LocalDate ab = tagInBerlin(z.get("gueltig_ab").asText());
+            // Tagesgenau wie die Spalte: die Referenzdatei schreibt den Tag selbst (AP-02 E9).
+            LocalDate ab = LocalDate.parse(z.get("gueltig_ab").asText());
             alsTue(AHRENBERG, () -> zuordnungen.zuordnen(AHRENBERG, anlage,
                     st.get(z.get("nach").asText()), ab, null, null));
             assertThat(alsIntervalle(anlage))
@@ -914,10 +913,6 @@ class UemsStandortMigrationTest {
                     i.path("aufgehoben").asBoolean(false)));
         }
         return out;
-    }
-
-    private static LocalDate tagInBerlin(String zeitpunkt) {
-        return OffsetDateTime.parse(zeitpunkt).atZoneSameInstant(BERLIN).toLocalDate();
     }
 
     private static String text(JsonNode n) {

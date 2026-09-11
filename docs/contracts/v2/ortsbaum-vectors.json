@@ -328,12 +328,12 @@
       ]
     },
     "ahrenberg-bestand": {
-      "beschreibung": "Wie „ahrenberg“, aber auf dem Bestandskunden-Weg (A5, §4.4-Protokoll): Werk Ahrenberg entstand automatisch aus der Bestandsanlage Werk Ahrenberg – Halle 1 und hat die Anlagen-Zuordnung ab 12.03.2024.",
+      "beschreibung": "Wie „ahrenberg“, aber auf dem Bestandskunden-Weg (A5, §4.4-Protokoll) — der Weg des Referenzunternehmens: Werk Ahrenberg entstand automatisch aus der Bestandsanlage Werk Ahrenberg – Halle 1 und hat die Anlagen-Zuordnung ab 12.03.2024; die Orte dieser Anlage (Halle 1 mit Nord und Süd, Verwaltung) und die Orte ihrer Messstellen MS-01…MS-08 gelten wie in uems-referenzunternehmen.json ebenfalls ab 12.03.2024 (bei der Einführung am 01.10.2026 rückwirkend eingetragen, AP-02 E2/E5).",
       "orte": [
         {"kennzeichen": "ST-1", "art": "standort", "name": "Werk Ahrenberg", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": null}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 8450}]},
         {"kennzeichen": "ST-2", "art": "standort", "name": "Werk Lindach", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": null}], "flaechen": []},
         {"kennzeichen": "ST-3", "art": "standort", "name": "Werk Ahrenberg Nord", "zeitzone": "Europe/Berlin", "intervalle": [{"ab": "2027-02-20", "bis": null, "eltern": null}], "flaechen": []},
-        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
+        {"kennzeichen": "G-1", "art": "gebaeude", "name": "Halle 1", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 4200}]},
         {
           "kennzeichen": "G-2",
           "art": "gebaeude",
@@ -344,11 +344,11 @@
           ],
           "flaechen": [{"ab": "2026-10-01", "bis": "2026-12-31", "m2": 3100}, {"ab": "2027-01-01", "bis": null, "m2": 3400}]
         },
-        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
+        {"kennzeichen": "G-3", "art": "gebaeude", "name": "Verwaltung", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": "ST-1"}], "flaechen": [{"ab": "2026-10-01", "bis": null, "m2": 1150}]},
         {"kennzeichen": "G-4", "art": "gebaeude", "name": "Lagerhalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 1800}]},
         {"kennzeichen": "G-5", "art": "gebaeude", "name": "Montagehalle Lindach", "intervalle": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}], "flaechen": [{"ab": "2026-10-15", "bis": null, "m2": 800}]},
-        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
-        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-1", "art": "bereich", "name": "Halle 1 Nord", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": "G-1"}], "flaechen": []},
+        {"kennzeichen": "B-2", "art": "bereich", "name": "Halle 1 Süd", "intervalle": [{"ab": "2024-03-12", "bis": null, "eltern": "G-1"}], "flaechen": []},
         {"kennzeichen": "B-3", "art": "bereich", "name": "Halle 2 Montage", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
         {"kennzeichen": "B-4", "art": "bereich", "name": "Halle 2 Spritzguss", "intervalle": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
         {"kennzeichen": "B-5", "art": "bereich", "name": "Halle 2 Lager", "intervalle": [{"ab": "2026-10-01", "bis": "2027-06-29", "eltern": "G-2"}, {"ab": "2028-02-01", "bis": null, "eltern": "G-2"}], "flaechen": []},
@@ -361,14 +361,14 @@
         {"kennzeichen": "AN-3", "name": "Werk Lindach", "netzanschluss": "NA-3", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-15", "bis": null, "eltern": "ST-2"}]}
       ],
       "messstellen": [
-        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
-        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "ST-1"}]},
-        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
-        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
-        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-3"}]},
-        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-1"}]},
-        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-2"}]},
-        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
+        {"kennzeichen": "MS-01", "name": "Netzbezug Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-02", "name": "Netzeinspeisung Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "ST-1"}]},
+        {"kennzeichen": "MS-03", "name": "PV-Erzeugung Dach Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "G-1"}]},
+        {"kennzeichen": "MS-04", "name": "Speicher Halle 1", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-05", "name": "Verwaltung gesamt", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "G-3"}]},
+        {"kennzeichen": "MS-06", "name": "Spritzguss SG01–SG06", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "B-1"}]},
+        {"kennzeichen": "MS-07", "name": "Druckluft Kompressoren K1+K2", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": null, "eltern": "B-2"}]},
+        {"kennzeichen": "MS-08", "name": "Kühlung Kaltwassersatz", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2024-03-12", "bis": "2027-02-28", "eltern": "B-2"}, {"ab": "2027-03-01", "bis": null, "eltern": "B-3"}]},
         {"kennzeichen": "MS-09", "name": "Halle 1 + Verwaltung nicht zugeordnet", "anlage": "AN-1", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-1"}]},
         {"kennzeichen": "MS-10", "name": "Netzbezug Halle 2", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "G-2"}]},
         {"kennzeichen": "MS-11", "name": "Spritzguss SG07–SG10", "anlage": "AN-2", "zustand": "aktiv", "zuordnungen": [{"ab": "2026-10-01", "bis": null, "eltern": "B-4"}]},
@@ -535,22 +535,22 @@
       "name": "a5-bestand-standort-besteht-seit-der-anlage",
       "familie": "stand_am",
       "ableitung": "baum",
-      "why": "⚠ WIDERSPRUCH IM REPORT, hier aufgelöst: A12 sagt „Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht“ — das gilt auf dem Neukunden-Weg (A4). Das Referenzunternehmen ist aber Bestandskunde seit 12.03.2024, und das Beispiel-Protokoll in §4.4 (wie A5) sagt: Standort automatisch aus der Bestandsanlage angelegt, „Anlage zugeordnet ab 12.03.2024“. Dann MUSS der Standort ab 12.03.2024 bestehen, sonst hinge die Anlage an einem Standort, den es nicht gibt (Regel 1). Auf diesem Weg zeigt „Stand am 15.09.2026“ also Werk Ahrenberg mit der Anlage — ohne Gebäude (die kamen am 01.10.2026) und ohne Fläche (erst ab 01.10.2026 eingetragen, und ohne Gebäude gibt es keine Summe: null, nie 0). Namen sind keine zeitgültigen Felder dieses Vertrags; der Name zum Stichtag kommt aus dem Änderungsprotokoll (§4.3).",
+      "why": "⚠ WIDERSPRUCH IM REPORT, hier aufgelöst: A12 sagt „Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht“ — das gilt auf dem Neukunden-Weg (A4). Das Referenzunternehmen ist aber Bestandskunde seit 12.03.2024, und das Beispiel-Protokoll in §4.4 (wie A5) sagt: Standort automatisch aus der Bestandsanlage angelegt, „Anlage zugeordnet ab 12.03.2024“. Dann MUSS der Standort ab 12.03.2024 bestehen, sonst hinge die Anlage an einem Standort, den es nicht gibt (Regel 1). Aus demselben Grund bestehen die Orte der Bestandsanlage — Halle 1 mit Nord und Süd und die Verwaltung — ab 12.03.2024: ihre Messstellen MS-01…MS-08 hängen seit dem Beginn des Verlaufs an ihnen (AP-04 E6), eingetragen bei der Einführung am 01.10.2026 und deshalb rückwirkend (E2, wie in uems-referenzunternehmen.json). Auf diesem Weg zeigt „Stand am 15.09.2026“ also Werk Ahrenberg mit der Anlage und diesen Orten — ohne Halle 2 und ohne Werk Lindach (die kamen am 01.10. und 15.10.2026) und ohne jede Fläche: die Flächen sind erst ab 01.10.2026 eingetragen, und die Summe der Gebäude bleibt null, nie 0, weil Halle 1 und Verwaltung an diesem Tag keine Fläche haben. Namen sind keine zeitgültigen Felder dieses Vertrags; der Name zum Stichtag kommt aus dem Änderungsprotokoll (§4.3).",
       "input": {"szenario": "ahrenberg-bestand", "stichtag": "2026-09-15"},
       "expected": {
         "orte": [
-          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null, "summe_gebaeude_m2": null, "gebaeude_ohne_flaeche": []}
+          {"kennzeichen": "ST-1", "eltern": null, "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null, "summe_gebaeude_m2": null, "gebaeude_ohne_flaeche": ["G-1", "G-3"]},
+          {"kennzeichen": "G-1", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "G-3", "eltern": "ST-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-1", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null},
+          {"kennzeichen": "B-2", "eltern": "G-1", "standort": "ST-1", "flaeche_m2": null, "flaeche_quelle": null}
         ],
         "nicht_gezeigt": [
           {"kennzeichen": "ST-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Lindach im Portal noch nicht."},
           {"kennzeichen": "ST-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Werk Ahrenberg Nord im Portal noch nicht."},
-          {"kennzeichen": "G-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 im Portal noch nicht."},
           {"kennzeichen": "G-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 im Portal noch nicht."},
-          {"kennzeichen": "G-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Verwaltung im Portal noch nicht."},
           {"kennzeichen": "G-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Lagerhalle Lindach im Portal noch nicht."},
           {"kennzeichen": "G-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Montagehalle Lindach im Portal noch nicht."},
-          {"kennzeichen": "B-1", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Nord im Portal noch nicht."},
-          {"kennzeichen": "B-2", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 1 Süd im Portal noch nicht."},
           {"kennzeichen": "B-3", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Montage im Portal noch nicht."},
           {"kennzeichen": "B-4", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Spritzguss im Portal noch nicht."},
           {"kennzeichen": "B-5", "grund": "gab_es_noch_nicht", "text": "Am 15.09.2026 gab es Halle 2 Lager im Portal noch nicht."},

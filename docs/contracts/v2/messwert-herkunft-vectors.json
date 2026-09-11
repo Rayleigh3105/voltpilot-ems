@@ -1303,8 +1303,8 @@
     {
       "name": "vergleichsquelle-bestaetigt",
       "bezug": "AP-07 E4, AP-04 E3, AP-06 E10",
-      "why": "Eine bestätigte, gekennzeichnete Vergleichsquelle bekommt die Rolle `vergleich`: angezeigt, nie verrechnet. Die lesende Box ist für die Datenquelle der Komponente zuständig; die Kennzeichnung kommt aus der Quellenbindung. Liest dasselbe Gerät über eine ZWEITE Box (AP-06 E10), ist die Vergleichsquelle eine eigene Komponente an dieser Box — die Regel ist dieselbe. Der Wert 311,9 kW ist ein Beispielwert (MS-01 zeigt in der Momentaufnahme 312,4 kW über K-3 — zwei Abtastungen desselben Anschlusses).",
-      "annahme": "Die Referenzdatei kennt keine Vergleichsquelle. Angenommen: Ines Kaltenbach hat K-1 · Einspeise-/Bezugsleistung am Wechselrichter an der Messstelle MS-01 als Vergleichsquelle gekennzeichnet und bestätigt (AP-04 E3). Alle übrigen Fakten stammen aus der Referenzdatei.",
+      "why": "Eine bestätigte, gekennzeichnete Vergleichsquelle bekommt die Rolle `vergleich`: angezeigt, nie verrechnet. So steht es im Referenzunternehmen: seit 20.11.2026 08:30 ist K-1 · Einspeise-/Bezugsleistung am Wechselrichter an MS-01 Vergleichsquelle der Wirkleistung (Zweck „Plausibilität“, eingetragen von Ines Kaltenbach) — schon der erste Wert ab diesem Zeitpunkt ist `vergleich`. Die lesende Box ist für die Datenquelle der Komponente zuständig; die Kennzeichnung kommt aus der Quellenbindung. Liest dasselbe Gerät über eine ZWEITE Box (AP-06 E10), ist die Vergleichsquelle eine eigene Komponente an dieser Box — die Regel ist dieselbe. Der Wert 311,9 kW, die Sequenz und die Eingangszeit sind Beispielwerte.",
+      "annahme": null,
       "input": {
         "lieferung": {
           "kundenbereich": "KB-AHRENBERG",
@@ -1314,19 +1314,19 @@
           },
           "umschlag": {
             "sequenz": 6429,
-            "messzeit": "2026-10-20T10:15:00+02:00",
+            "messzeit": "2026-11-20T08:30:00+01:00",
             "katalogstand": "2026.08.26.3",
             "angewendete_fassung": 1
           },
           "wert": {
             "komponente": "K-1",
             "messkanal": "Einspeise-/Bezugsleistung am Wechselrichter",
-            "messzeit": "2026-10-20T10:15:00+02:00",
+            "messzeit": "2026-11-20T08:30:00+01:00",
             "raw": 3119,
             "decoded": 311.9,
             "qualitaet": "good"
           },
-          "eingangszeit": "2026-10-20T10:15:03+02:00"
+          "eingangszeit": "2026-11-20T08:30:03+01:00"
         },
         "fakten": {
           "komponente_aus_auswahl": null,
@@ -1359,8 +1359,8 @@
           "kundenbereich": "KB-AHRENBERG",
           "komponente": "K-1",
           "messkanal": "Einspeise-/Bezugsleistung am Wechselrichter",
-          "messzeit": "2026-10-20T08:15:00Z",
-          "eingangszeit": "2026-10-20T08:15:03Z",
+          "messzeit": "2026-11-20T07:30:00Z",
+          "eingangszeit": "2026-11-20T07:30:03Z",
           "wert": {
             "raw": 3119,
             "decoded": 311.9,

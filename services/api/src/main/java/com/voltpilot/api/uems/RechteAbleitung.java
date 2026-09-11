@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -454,8 +456,10 @@ public final class RechteAbleitung {
     /**
      * Benutzer × Rolle × Geltungsbereich × Gültigkeit (§4.1). {@code standorte == null} heißt
      * Unternehmen (alle Standorte, auch künftige); sonst die ausdrückliche Liste (E5). Eine
-     * Unterstützung ist eine Zuweisung der Rolle Unterstützer mit Umfang und Art. Zeit: [ab, bis)
-     * und [ab, beendet_am) — beide Enden ausschließend.
+     * Unterstützung ist eine Zuweisung der Rolle Unterstützer mit Umfang und Art. Zeit: ab
+     * {@code gueltigAb} (Zeitpunkt) bis zum Ende von {@code gueltigBis} und bis {@code beendetAm}
+     * (ausschließend). {@code gueltigBis} ist das ENDDATUM einer Unterstützung — ein Kalendertag,
+     * einschließlich ({@link #bisZeitpunkt(String)}); nur der Notfall-Zugriff trägt einen Zeitpunkt.
      */
     public record Zuweisung(
             Rolle rolle,
@@ -463,7 +467,7 @@ public final class RechteAbleitung {
             Umfang umfang,
             Art art,
             Instant gueltigAb,
-            Instant gueltigBis,
+            String gueltigBis,
             Instant beendetAm) {
 
         public boolean unternehmensweit() {
@@ -475,14 +479,16 @@ public final class RechteAbleitung {
         }
 
         public boolean wirksam(Instant t) {
+            Instant bis = bisZeitpunkt(gueltigBis);
             return !t.isBefore(gueltigAb)
-                    && (gueltigBis == null || t.isBefore(gueltigBis))
+                    && (bis == null || t.isBefore(bis))
                     && (beendetAm == null || t.isBefore(beendetAm));
         }
 
         /** Beendet oder abgelaufen — war also einmal wirksam oder hätte es sein sollen. */
         boolean vorbei(Instant t) {
-            return (gueltigBis != null && !t.isBefore(gueltigBis))
+            Instant bis = bisZeitpunkt(gueltigBis);
+            return (bis != null && !t.isBefore(bis))
                     || (beendetAm != null && !t.isBefore(beendetAm));
         }
 
@@ -492,11 +498,31 @@ public final class RechteAbleitung {
 
         /** Das tatsächliche Ende: das frühere von Enddatum und Beenden. */
         Instant ende() {
-            if (beendetAm != null && (gueltigBis == null || beendetAm.isBefore(gueltigBis))) {
+            Instant bis = bisZeitpunkt(gueltigBis);
+            if (beendetAm != null && (bis == null || beendetAm.isBefore(bis))) {
                 return beendetAm;
             }
-            return gueltigBis;
+            return bis;
         }
+    }
+
+    /**
+     * Das Ende einer Gültigkeit als Zeitpunkt (ausschließend). Ein Enddatum (JJJJ-MM-TT) ist ein
+     * Kalendertag und gilt EINSCHLIESSLICH: „bis 15.12.2026“ endet am 16.12.2026 um 00:00 in der
+     * Zeitzone des Kundenbereichs (AP-03 A4, wie jede tagesgenaue Gültigkeit — AP-02 E9). Nur der
+     * Notfall-Zugriff (E8) trägt einen Zeitpunkt: genau 24 h, halboffen.
+     */
+    public static Instant bisZeitpunkt(String gueltigBis) {
+        if (gueltigBis == null) {
+            return null;
+        }
+        return istTag(gueltigBis)
+                ? LocalDate.parse(gueltigBis).plusDays(1).atStartOfDay(zone(null)).toInstant()
+                : OffsetDateTime.parse(gueltigBis).toInstant();
+    }
+
+    private static boolean istTag(String s) {
+        return s.length() == 10 && s.charAt(4) == '-' && s.charAt(7) == '-';
     }
 
     /** Der Anfragende mit seinen Zuweisungen (wirksame, künftige und beendete). */
@@ -527,15 +553,22 @@ public final class RechteAbleitung {
         }
     }
 
-    /** Die Zuordnung einer Anlage zu einem Standort, zeitgültig [ab, bis) (AP-02 IP-3). */
-    public record AnlageStandort(String standort, Instant gueltigAb, Instant gueltigBis) {}
+    /**
+     * Die Zuordnung einer Anlage zu einem Standort, tagesgenau (AP-02 E9, wie der
+     * Ortsbaum-Vertrag): {@code gueltigAb} ist ein Tag, {@code gueltigBis} der LETZTE
+     * gültige Tag, einschließlich ({@code null} = offen).
+     */
+    public record AnlageStandort(String standort, LocalDate gueltigAb, LocalDate gueltigBis) {}
 
     public record Anlage(String kennzeichen, List<AnlageStandort> zuordnungen) {
-        /** Der Standort zum Stichtag — {@code null}, wenn die Anlage dann keinem gehört. */
+        /**
+         * Der Standort zum Stichtag — an dessen Kalendertag in der Zeitzone des
+         * Kundenbereichs; {@code null}, wenn die Anlage dann keinem gehört.
+         */
         public String standortAm(Instant stichtag) {
+            LocalDate tag = stichtag.atZone(zone(null)).toLocalDate();
             for (AnlageStandort z : zuordnungen) {
-                if (!stichtag.isBefore(z.gueltigAb())
-                        && (z.gueltigBis() == null || stichtag.isBefore(z.gueltigBis()))) {
+                if (!tag.isBefore(z.gueltigAb()) && (z.gueltigBis() == null || !tag.isAfter(z.gueltigBis()))) {
                     return z.standort();
                 }
             }
@@ -944,7 +977,7 @@ public final class RechteAbleitung {
             List<String> standorte,
             Instant gewaehrtAm,
             Instant gueltigAb,
-            Instant gueltigBis,
+            String gueltigBis,
             Instant beendetAm,
             String beendetVon,
             Unterstuetzer unterstuetzer,
@@ -974,9 +1007,13 @@ public final class RechteAbleitung {
             case VOLTPILOT -> TEXTE.get("urheber_voltpilot");
             case NOTFALL -> TEXTE.get("urheber_notfall");
         };
-        boolean vorzeitig = u.beendetAm() != null
-                && (u.gueltigBis() == null || u.beendetAm().isBefore(u.gueltigBis()));
-        Instant endet = vorzeitig ? u.beendetAm() : u.gueltigBis();
+        Instant ablauf = bisZeitpunkt(u.gueltigBis());
+        boolean vorzeitig = u.beendetAm() != null && (ablauf == null || u.beendetAm().isBefore(ablauf));
+        Instant endet = vorzeitig ? u.beendetAm() : ablauf;
+        // In Kundensprache heißt das Ende einer Unterstützung ihr Enddatum („15.12.2026“); nur der
+        // Notfall-Zugriff nennt seinen Zeitpunkt („19.11.2026 22:15“).
+        String enddatum = u.gueltigBis() != null && istTag(u.gueltigBis())
+                ? DATUM.format(LocalDate.parse(u.gueltigBis())) : null;
         if (u.gewaehrtAm() == null) {
             return new UnterstuetzungErgebnis(
                     UnterstuetzungsZustand.ENTWURF, endet, null, null, null, urheber, false, null);
@@ -986,7 +1023,7 @@ public final class RechteAbleitung {
                     ? (u.beendetVon() == null
                             ? text("beendet", "datum", datum(endet, zone))
                             : text("beendet_von", "datum", datum(endet, zone), "name", u.beendetVon()))
-                    : text("endete_zeitablauf", "datum", datum(endet, zone));
+                    : text("endete_zeitablauf", "datum", enddatum != null ? enddatum : datum(endet, zone));
             return new UnterstuetzungErgebnis(
                     UnterstuetzungsZustand.ARCHIVIERT,
                     endet,
@@ -1004,7 +1041,7 @@ public final class RechteAbleitung {
         }
         String standorte = ZustandAbleitung.aufzaehlung(
                 u.standorte().stream().map(k::standortName).toList());
-        String ende = endet == null ? "" : endeText(endet, zone);
+        String ende = endet == null ? "" : enddatum != null ? enddatum : endeText(endet, zone);
         String kunde = switch (u.art()) {
             case INSTALLATEUR -> text("banner_installateur", "anzeigename", anzeigename,
                     "standorte", standorte, "ende", ende, "umfang", u.umfang().kundenwort());
@@ -1024,7 +1061,7 @@ public final class RechteAbleitung {
 
     /** Ein Antrag im Gewähren-Dialog (bzw. der Notfall-Zugriff von VoltPilot). */
     public record Antrag(
-            Art art, Umfang umfang, List<String> standorte, Instant gueltigAb, Instant gueltigBis, String grund) {}
+            Art art, Umfang umfang, List<String> standorte, Instant gueltigAb, String gueltigBis, String grund) {}
 
     public record GewaehrenErgebnis(
             boolean gueltig, int http, Grund grund, String text, Umfang umfang, Instant endet) {}
@@ -1049,11 +1086,12 @@ public final class RechteAbleitung {
             }
             return new GewaehrenErgebnis(true, 201, Grund.ERLAUBT, null, umfang, a.gueltigAb().plus(NOTFALL));
         }
-        Instant grenze = a.gueltigAb().atZone(zone(zone)).plusMonths(HOECHSTENS_MONATE).toInstant();
-        if (a.gueltigBis() == null || a.gueltigBis().isAfter(grenze)) {
+        // Das Enddatum darf höchstens 12 Kalendermonate nach dem Tag von „ab“ liegen (29.02. → 28.02.).
+        LocalDate grenze = a.gueltigAb().atZone(zone(zone)).toLocalDate().plusMonths(HOECHSTENS_MONATE);
+        if (a.gueltigBis() == null || LocalDate.parse(a.gueltigBis()).isAfter(grenze)) {
             return abgelehnt(Grund.HOECHSTENS_12_MONATE);
         }
-        return new GewaehrenErgebnis(true, 201, Grund.ERLAUBT, null, umfang, a.gueltigBis());
+        return new GewaehrenErgebnis(true, 201, Grund.ERLAUBT, null, umfang, bisZeitpunkt(a.gueltigBis()));
     }
 
     private static GewaehrenErgebnis abgelehnt(Grund g) {

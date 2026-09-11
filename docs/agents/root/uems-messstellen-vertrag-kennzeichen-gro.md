@@ -52,7 +52,7 @@ Kennzeichen-Zähler je Mandant), IP-3 (API, Fehler 400/409/422 nach der Tabelle)
    Invarianten-Test des Referenzunternehmens.
 5. **Zwei Zeitformen:** Quellen auf die Minute mit halboffenem Zeitraum; Zuordnungen (Ort,
    Stellung) als Kalendertag mit dem LETZTEN gültigen Tag — die Ortsbaum-Mechanik (AP-02 IP-1).
-   Die Referenzdatei schreibt Mitternacht mit ausschließlichem Ende; die Tests rechnen um.
+   Die Referenzdatei schreibt seit Fassung 1.1 dieselbe Form; die Tests vergleichen direkt.
 6. **E8/E9:** ohne Quelle eingerichtet und aktiv, Beobachtung „Keine Datenquelle“ (die Tests
    prüfen das über `ZustandAbleitung`/`uemsZustand.ts`); berechnet ohne Formel ist bis AP-10
    IMMER Entwurf und braucht keinen Ort (MS-20).

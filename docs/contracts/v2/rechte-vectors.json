@@ -19,9 +19,11 @@
     "",
     "Zuweisung = Rolle × Geltungsbereich × Gültigkeit (§4.1): `standorte` null = Unternehmen (alle",
     "Standorte, auch künftige), sonst die ausdrückliche Liste (E5). Eine Unterstützung ist eine",
-    "Zuweisung der Rolle `unterstuetzer` mit `umfang` und `art`. Zeit: [gueltig_ab, gueltig_bis) und",
-    "[gueltig_ab, beendet_am) — beide Enden ausschließend; ab `beendet_am` ist sie beendet (Entzug,",
-    "Beenden), ab `gueltig_bis` abgelaufen. Nur ein Konto im Zustand `aktiv` hat Rechte (§4.8).",
+    "Zuweisung der Rolle `unterstuetzer` mit `umfang` und `art`. Zeit: ab `gueltig_ab` (Zeitpunkt);",
+    "`gueltig_bis` ist das ENDDATUM — ein Kalendertag, einschließlich: „bis 15.12.2026“ endet am",
+    "16.12.2026 00:00 am Standort (AP-03 A4, AP-02 E9); nur der Notfall-Zugriff (E8) trägt einen",
+    "Zeitpunkt (genau 24 h, halboffen). Ab `beendet_am` ist sie beendet (Entzug, Beenden), nach dem",
+    "Enddatum abgelaufen. Nur ein Konto im Zustand `aktiv` hat Rechte (§4.8).",
     "Konto `benutzer` gehört zum Kundenbereich; `partner` (Installateur, E7) und `plattform`",
     "(VoltPilot) erreichen ihn NUR über eine wirksame Unterstützung.",
     "`jetzt` ist der Anfragezeitpunkt des Falls; nennt ein Abnahmefall nur einen Tag, steht 12:00 Uhr.",
@@ -35,6 +37,8 @@
     "                                                          (Admin-Weg, ohne Unterstützung)",
     "  4. GELTUNGSBEREICH VOR AKTION (Invariante 4, W2):",
     "     · Ziel Anlage → ihr Standort ZUM STICHTAG (`stichtag`, sonst jetzt; Folgepaket-Regel 7).",
+    "       Die Anlagen-Zuordnung ist tagesgenau wie im Ortsbaum und in der Referenzdatei (AP-02 E9):",
+    "       `gueltig_ab` ein Tag, `gueltig_bis` der LETZTE Tag; der Stichtag gilt an seinem Kalendertag.",
     "       Eine Anlage ohne Standort sehen nur unternehmensweite Rollen (IP-5).",
     "     · Standort nicht im Kundenbereich oder von keiner wirksamen Zuweisung gedeckt → 404.",
     "       Hatte der Benutzer ihn über eine beendete/abgelaufene Zuweisung → `zugriff_beendet`",
@@ -93,9 +97,10 @@
     "  · Zustand: Anfrage (nicht gewährt) → entwurf · „gültig ab“ in der Zukunft → eingerichtet",
     "    · gültig → aktiv · beendet oder abgelaufen → archiviert (eine Unterstützung wird beendet,",
     "    nie angehalten). `endet` = das frühere von Enddatum und Beenden.",
-    "  · Banner (nur aktiv) und Urheber im Wortlaut §4.6 / Invariante 11; das Ende heißt",
-    "    „15.12.2026“, trägt es eine Uhrzeit, „19.11.2026 22:15“. Erinnerung 7 Tage vor dem Ende",
-    "    (nicht beim Notfall).",
+    "  · Banner (nur aktiv) und Urheber im Wortlaut §4.6 / Invariante 11; das Ende heißt das",
+    "    Enddatum („bis 15.12.2026“), beim Notfall der Zeitpunkt („19.11.2026 22:15“); ebenso",
+    "    „Endete am 15.12.2026 durch Zeitablauf“. `endet` ist der Zeitpunkt des Ablaufs (16.12.2026",
+    "    00:00). Erinnerung 7 Tage vor dem Ablauf (nicht beim Notfall).",
     "  · gewähren: mindestens ein Standort; Notfall: Grund Pflicht, genau 24 h; sonst Enddatum",
     "    Pflicht und höchstens 12 Kalendermonate; ohne Umfang die Vorgabe je Art (VoltPilot und",
     "    Notfall „Ansehen“, Installateur „Einrichten und Bedienen“).",
@@ -302,11 +307,13 @@
     {
       "kennung": "W-R2",
       "titel": "Ende der Unterstützung Elektro Brunner",
-      "stelle": "A4: „Am 16.12.2026 00:00 beendet der Runner die Unterstützung“ · Referenzdatei: `gueltig_bis` 15.12.2026 00:00 (ausschließend), Zeitachse „endet planmäßig“ am 15.12.2026",
-      "aufloesung": "Die Referenzdatei ist die einzige Quelle für Zeitpunkte: die Unterstützung endet am 15.12.2026 00:00. Der Banner nennt „bis 15.12.2026“ wie §4.6. Soll „bis“ einschließend gelten, ändert sich zuerst die Referenzdatei.",
+      "stelle": "A4: „Am 16.12.2026 00:00 beendet der Runner die Unterstützung“ · §4.6: Banner „bis 15.12.2026“ · Referenzdatei (bis 1.0): `gueltig_bis` 15.12.2026 00:00 (ausschließend)",
+      "aufloesung": "Aufgelöst (Entscheid firstmate 11.09.2026, abgeleitet aus AP-02 E9 und AP-03 A4): das Enddatum einer Unterstützung ist ein Kalendertag und gilt EINSCHLIESSLICH — „bis 15.12.2026“ endet am 16.12.2026 00:00 in der Zeitzone des Standorts. Banner und „Endete am“ nennen das Enddatum; die Referenzdatei (Fassung 1.1) schreibt `gueltig_bis` 2026-12-15. Nur der Notfall-Zugriff (E8) ist ein halboffener Zeitraum von genau 24 h.",
       "faelle": [
         "w2-brunner-endet-mit-der-referenzdatei",
-        "a4-brunner-nach-ablauf-404"
+        "w2-brunner-am-letzten-tag-noch-aktiv",
+        "a4-brunner-nach-ablauf-404",
+        "a4-brunner-am-letzten-tag-darf"
       ]
     },
     {
@@ -480,7 +487,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2024-03-12T00:00:00+01:00",
+                "gueltig_ab": "2024-03-12",
                 "gueltig_bis": null
               }
             ]
@@ -858,7 +865,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -924,7 +931,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -990,7 +997,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1056,7 +1063,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1122,7 +1129,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1188,7 +1195,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1254,7 +1261,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1320,7 +1327,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -1386,7 +1393,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1452,7 +1459,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1518,7 +1525,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1584,7 +1591,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1650,7 +1657,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1716,7 +1723,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -1812,7 +1819,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2024-03-12T00:00:00+01:00",
+                "gueltig_ab": "2024-03-12",
                 "gueltig_bis": null
               }
             ]
@@ -2015,7 +2022,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2026-10-01T00:00:00+02:00",
+                "gueltig_ab": "2026-10-01",
                 "gueltig_bis": null
               }
             ]
@@ -2492,7 +2499,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2024-03-12T00:00:00+01:00",
+                "gueltig_ab": "2024-03-12",
                 "gueltig_bis": null
               }
             ]
@@ -2568,7 +2575,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2024-03-12T00:00:00+01:00",
+                "gueltig_ab": "2024-03-12",
                 "gueltig_bis": null
               }
             ]
@@ -2648,12 +2655,12 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2026-10-01T00:00:00+02:00",
-                "gueltig_bis": "2027-03-01T00:00:00+01:00"
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-02-28"
               },
               {
                 "standort": "ST-3",
-                "gueltig_ab": "2027-03-01T00:00:00+01:00",
+                "gueltig_ab": "2027-03-01",
                 "gueltig_bis": null
               }
             ]
@@ -2733,12 +2740,12 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2026-10-01T00:00:00+02:00",
-                "gueltig_bis": "2027-03-01T00:00:00+01:00"
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-02-28"
               },
               {
                 "standort": "ST-3",
-                "gueltig_ab": "2027-03-01T00:00:00+01:00",
+                "gueltig_ab": "2027-03-01",
                 "gueltig_bis": null
               }
             ]
@@ -2811,7 +2818,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-2",
-                "gueltig_ab": "2026-10-15T00:00:00+02:00",
+                "gueltig_ab": "2026-10-15",
                 "gueltig_bis": null
               }
             ]
@@ -3209,7 +3216,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2026-10-01T00:00:00+02:00",
+                "gueltig_ab": "2026-10-01",
                 "gueltig_bis": null
               }
             ]
@@ -3285,7 +3292,7 @@
             "zuordnungen": [
               {
                 "standort": "ST-1",
-                "gueltig_ab": "2026-10-01T00:00:00+02:00",
+                "gueltig_ab": "2026-10-01",
                 "gueltig_bis": null
               }
             ]
@@ -4226,7 +4233,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -4473,7 +4480,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -5469,7 +5476,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -5524,7 +5531,7 @@
               "umfang": "einrichten",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -5579,7 +5586,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -5617,7 +5624,7 @@
       "familie": "ocpp_stufe",
       "ableitung": "ocpp_stufe",
       "abnahme": null,
-      "why": "Nach dem Ende der Unterstützung (15.12.2026 00:00) hat der Partner keine Stufe — und keinen Standort.",
+      "why": "Nach dem Ende der Unterstützung (Enddatum 15.12.2026 einschließlich, Ablauf 16.12.2026 00:00) hat der Partner keine Stufe — und keinen Standort.",
       "annahme": null,
       "input": {
         "benutzer": {
@@ -5634,7 +5641,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -5659,7 +5666,7 @@
           ]
         },
         "standort": "ST-1",
-        "jetzt": "2026-12-15T00:00:00+01:00"
+        "jetzt": "2026-12-16T00:00:00+01:00"
       },
       "expected": {
         "stufe": "keine",
@@ -5747,7 +5754,7 @@
           ],
           "gewaehrt_am": "2026-11-24T09:40:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -5781,7 +5788,7 @@
       },
       "expected": {
         "zustand": "aktiv",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": "Elektro Brunner (Installateur) hat Zugriff auf Werk Ahrenberg bis 15.12.2026 — Einrichten und Bedienen",
         "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg · bis 15.12.2026",
@@ -5795,7 +5802,7 @@
       "familie": "unterstuetzung",
       "ableitung": "unterstuetzung",
       "abnahme": "A4",
-      "why": "E6: Erinnerung 7 Tage vor Ablauf — ab 08.12.2026 00:00 (genau sieben Tage vor dem Ende).",
+      "why": "E6: Erinnerung 7 Tage vor Ablauf — das Enddatum 15.12.2026 gilt einschließlich, der Ablauf ist 16.12.2026 00:00, die Erinnerung also ab 09.12.2026 00:00.",
       "annahme": null,
       "input": {
         "unterstuetzung": {
@@ -5806,7 +5813,7 @@
           ],
           "gewaehrt_am": "2026-11-24T09:40:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -5836,11 +5843,11 @@
             }
           ]
         },
-        "jetzt": "2026-12-08T00:00:00+01:00"
+        "jetzt": "2026-12-09T00:00:00+01:00"
       },
       "expected": {
         "zustand": "aktiv",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": "Elektro Brunner (Installateur) hat Zugriff auf Werk Ahrenberg bis 15.12.2026 — Einrichten und Bedienen",
         "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg · bis 15.12.2026",
@@ -5865,7 +5872,7 @@
           ],
           "gewaehrt_am": "2026-11-24T09:40:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -5895,11 +5902,11 @@
             }
           ]
         },
-        "jetzt": "2026-12-07T23:59:00+01:00"
+        "jetzt": "2026-12-08T23:59:00+01:00"
       },
       "expected": {
         "zustand": "aktiv",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": "Elektro Brunner (Installateur) hat Zugriff auf Werk Ahrenberg bis 15.12.2026 — Einrichten und Bedienen",
         "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg · bis 15.12.2026",
@@ -5913,7 +5920,7 @@
       "familie": "unterstuetzung",
       "ableitung": "unterstuetzung",
       "abnahme": "A4",
-      "why": "Widerspruch W-R2: A4 lässt den Runner am 16.12.2026 00:00 beenden; die Referenzdatei führt `gueltig_bis` 15.12.2026 00:00 (ausschließend) und „endet planmäßig“ am 15.12.2026. Die Referenzdatei ist die einzige Quelle für Zeitpunkte: ab 15.12.2026 00:00 ist die Unterstützung archiviert — „endete durch Zeitablauf“.",
+      "why": "Widerspruch W-R2, aufgelöst: das Enddatum einer Unterstützung ist ein Kalendertag und gilt EINSCHLIESSLICH (wie jede tagesgenaue Gültigkeit, AP-02 E9) — „bis 15.12.2026“ endet am 16.12.2026 00:00, genau wie A4 den Runner beenden lässt. Das Protokoll nennt das Enddatum: „Endete am 15.12.2026 durch Zeitablauf“. Referenzdatei und Fall stimmen überein.",
       "annahme": null,
       "input": {
         "unterstuetzung": {
@@ -5924,7 +5931,7 @@
           ],
           "gewaehrt_am": "2026-11-24T09:40:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -5954,17 +5961,76 @@
             }
           ]
         },
-        "jetzt": "2026-12-15T00:00:00+01:00"
+        "jetzt": "2026-12-16T00:00:00+01:00"
       },
       "expected": {
         "zustand": "archiviert",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": "zeitablauf",
         "banner_kunde": null,
         "banner_unterstuetzer": null,
         "urheber": "Elektro Brunner (Unterstützung)",
         "erinnerung": false,
         "text": "Endete am 15.12.2026 durch Zeitablauf"
+      }
+    },
+    {
+      "name": "w2-brunner-am-letzten-tag-noch-aktiv",
+      "familie": "unterstuetzung",
+      "ableitung": "unterstuetzung",
+      "abnahme": "A4",
+      "why": "W-R2 aufgelöst — die Gegenprobe: am letzten Tag, 15.12.2026 um 23:59, gilt die Unterstützung noch; der Banner nennt „bis 15.12.2026“, die Erinnerung ist fällig. Eine Minute später beendet sie der Runner (A4).",
+      "annahme": null,
+      "input": {
+        "unterstuetzung": {
+          "art": "installateur",
+          "umfang": "einrichten_und_bedienen",
+          "standorte": [
+            "ST-1"
+          ],
+          "gewaehrt_am": "2026-11-24T09:40:00+01:00",
+          "gueltig_ab": "2026-11-24T09:40:00+01:00",
+          "gueltig_bis": "2026-12-15",
+          "beendet_am": null,
+          "beendet_von": null,
+          "unterstuetzer": {
+            "kennung": "TB",
+            "name": "Thomas Brunner",
+            "organisation": "Elektro Brunner GmbH",
+            "anzeigename": "Elektro Brunner"
+          },
+          "grund": "Ladepunkt Halle 2 einrichten"
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "jetzt": "2026-12-15T23:59:00+01:00"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "endet": "2026-12-16T00:00:00+01:00",
+        "beendet_durch": null,
+        "banner_kunde": "Elektro Brunner (Installateur) hat Zugriff auf Werk Ahrenberg bis 15.12.2026 — Einrichten und Bedienen",
+        "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg · bis 15.12.2026",
+        "urheber": "Elektro Brunner (Unterstützung)",
+        "erinnerung": true,
+        "text": null
       }
     },
     {
@@ -5983,7 +6049,7 @@
           ],
           "gewaehrt_am": "2026-11-20T10:00:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -6017,7 +6083,7 @@
       },
       "expected": {
         "zustand": "eingerichtet",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": null,
         "banner_unterstuetzer": null,
@@ -6031,7 +6097,7 @@
       "familie": "unterstuetzung",
       "ableitung": "unterstuetzung",
       "abnahme": "A5",
-      "why": "A5: „VoltPilot-Support hat Zugriff auf Werk Ahrenberg bis 28.10.2026 — Ansehen“. Eine Unterstützung von sieben Tagen liegt vom ersten Tag an in der Erinnerungs-Frist.",
+      "why": "A5: „VoltPilot-Support hat Zugriff auf Werk Ahrenberg bis 28.10.2026 — Ansehen“. Das Enddatum 28.10.2026 gilt einschließlich (Ablauf 29.10.2026 00:00): am ersten Tag um 12:00 liegen noch mehr als sieben Tage davor — die Erinnerung ist erst ab 22.10.2026 00:00 fällig.",
       "annahme": null,
       "input": {
         "unterstuetzung": {
@@ -6042,7 +6108,7 @@
           ],
           "gewaehrt_am": "2026-10-21T00:00:00+02:00",
           "gueltig_ab": "2026-10-21T00:00:00+02:00",
-          "gueltig_bis": "2026-10-28T00:00:00+01:00",
+          "gueltig_bis": "2026-10-28",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -6076,12 +6142,12 @@
       },
       "expected": {
         "zustand": "aktiv",
-        "endet": "2026-10-28T00:00:00+01:00",
+        "endet": "2026-10-29T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": "VoltPilot-Support hat Zugriff auf Werk Ahrenberg bis 28.10.2026 — Ansehen",
         "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg · bis 28.10.2026",
         "urheber": "VoltPilot-Support (Unterstützung)",
-        "erinnerung": true,
+        "erinnerung": false,
         "text": null
       }
     },
@@ -6101,7 +6167,7 @@
           ],
           "gewaehrt_am": null,
           "gueltig_ab": "2026-10-21T00:00:00+02:00",
-          "gueltig_bis": "2026-10-28T00:00:00+01:00",
+          "gueltig_bis": "2026-10-28",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -6135,7 +6201,7 @@
       },
       "expected": {
         "zustand": "entwurf",
-        "endet": "2026-10-28T00:00:00+01:00",
+        "endet": "2026-10-29T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": null,
         "banner_unterstuetzer": null,
@@ -6160,7 +6226,7 @@
           ],
           "gewaehrt_am": "2026-10-21T00:00:00+02:00",
           "gueltig_ab": "2026-10-21T00:00:00+02:00",
-          "gueltig_bis": "2026-10-28T00:00:00+01:00",
+          "gueltig_bis": "2026-10-28",
           "beendet_am": "2026-10-25T09:00:00+02:00",
           "beendet_von": "Jonas Wendlinger",
           "unterstuetzer": {
@@ -6380,7 +6446,7 @@
             "ST-1"
           ],
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "grund": "Ladepunkt Halle 2 einrichten"
         }
       },
@@ -6390,7 +6456,7 @@
         "grund": "erlaubt",
         "text": null,
         "umfang": "einrichten_und_bedienen",
-        "endet": "2026-12-15T00:00:00+01:00"
+        "endet": "2026-12-16T00:00:00+01:00"
       }
     },
     {
@@ -6436,7 +6502,35 @@
             "ST-1"
           ],
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2027-12-24T09:40:00+01:00",
+          "gueltig_bis": "2027-12-24",
+          "grund": "Ladepunkt Halle 2 einrichten"
+        }
+      },
+      "expected": {
+        "gueltig": false,
+        "http": 422,
+        "grund": "hoechstens_12_monate",
+        "text": "Eine Unterstützung ist höchstens 12 Monate gültig. Sie können sie jederzeit verlängern.",
+        "umfang": null,
+        "endet": null
+      }
+    },
+    {
+      "name": "e6-zwoelf-monate-und-ein-tag-422",
+      "familie": "unterstuetzung",
+      "ableitung": "gewaehren",
+      "abnahme": null,
+      "why": "E6: das Enddatum ist ein Kalendertag — höchstens 12 Kalendermonate nach dem Tag von „gültig ab“ (24.11.2027). Der 25.11.2027 ist einen Tag zu viel.",
+      "annahme": null,
+      "input": {
+        "antrag": {
+          "art": "installateur",
+          "umfang": "einrichten_und_bedienen",
+          "standorte": [
+            "ST-1"
+          ],
+          "gueltig_ab": "2026-11-24T09:40:00+01:00",
+          "gueltig_bis": "2027-11-25",
           "grund": "Ladepunkt Halle 2 einrichten"
         }
       },
@@ -6464,7 +6558,7 @@
             "ST-1"
           ],
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2027-11-24T09:40:00+01:00",
+          "gueltig_bis": "2027-11-24",
           "grund": "Ladepunkt Halle 2 einrichten"
         }
       },
@@ -6474,7 +6568,7 @@
         "grund": "erlaubt",
         "text": null,
         "umfang": "einrichten_und_bedienen",
-        "endet": "2027-11-24T09:40:00+01:00"
+        "endet": "2027-11-25T00:00:00+01:00"
       }
     },
     {
@@ -6490,7 +6584,7 @@
           "umfang": "einrichten_und_bedienen",
           "standorte": [],
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "grund": "Ladepunkt Halle 2 einrichten"
         }
       },
@@ -6518,7 +6612,7 @@
             "ST-1"
           ],
           "gueltig_ab": "2026-10-21T00:00:00+02:00",
-          "gueltig_bis": "2026-10-28T00:00:00+01:00",
+          "gueltig_bis": "2026-10-28",
           "grund": "Speicher-Diagnose"
         }
       },
@@ -6528,7 +6622,7 @@
         "grund": "erlaubt",
         "text": null,
         "umfang": "ansehen",
-        "endet": "2026-10-28T00:00:00+01:00"
+        "endet": "2026-10-29T00:00:00+01:00"
       }
     },
     {
@@ -6546,7 +6640,7 @@
             "ST-1"
           ],
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "grund": "Ladepunkt Halle 2 einrichten"
         }
       },
@@ -6556,7 +6650,7 @@
         "grund": "erlaubt",
         "text": null,
         "umfang": "einrichten_und_bedienen",
-        "endet": "2026-12-15T00:00:00+01:00"
+        "endet": "2026-12-16T00:00:00+01:00"
       }
     },
     {
@@ -6620,7 +6714,7 @@
       "familie": "unterstuetzung",
       "ableitung": "darf",
       "abnahme": "A4",
-      "why": "A4 / §4.7: nach dem Ende „Kundenbereich-Wechsel abgelehnt (404)“ — mit dem Satz aus §4.7. Das Ende steht in der Referenzdatei (W-R2).",
+      "why": "A4 / §4.7: nach dem Ende „Kundenbereich-Wechsel abgelehnt (404)“ — mit dem Satz aus §4.7. Das Enddatum 15.12.2026 gilt einschließlich: am 16.12.2026 00:00 beendet der Runner die Unterstützung (A4, W-R2).",
       "annahme": null,
       "input": {
         "benutzer": {
@@ -6637,7 +6731,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -6667,7 +6761,7 @@
           "anlage": null,
           "stichtag": null
         },
-        "jetzt": "2026-12-15T00:00:00+01:00"
+        "jetzt": "2026-12-16T00:00:00+01:00"
       },
       "expected": {
         "darf": false,
@@ -6703,7 +6797,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             }
           ]
@@ -6733,7 +6827,7 @@
           "anlage": null,
           "stichtag": null
         },
-        "jetzt": "2026-12-15T00:00:00+01:00"
+        "jetzt": "2026-12-16T00:00:00+01:00"
       },
       "expected": {
         "darf": false,
@@ -6745,6 +6839,72 @@
         "rolle_noetig": null,
         "umfang_noetig": null,
         "text": "Ihre Unterstützung für Kunststoffwerk Ahrenberg GmbH ist beendet."
+      }
+    },
+    {
+      "name": "a4-brunner-am-letzten-tag-darf",
+      "familie": "unterstuetzung",
+      "ableitung": "darf",
+      "abnahme": "A4",
+      "why": "A4 / W-R2: das Enddatum 15.12.2026 gilt einschließlich — am Mittag des letzten Tages sieht Elektro Brunner die Messwerte von Werk Ahrenberg noch; erst ab 16.12.2026 00:00 ist es 404.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messwerte.ansehen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-12-15T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "unterstuetzer",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
       }
     },
     {
@@ -7988,7 +8148,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -8390,7 +8550,7 @@
               "umfang": "ansehen",
               "art": "voltpilot",
               "gueltig_ab": "2026-10-21T00:00:00+02:00",
-              "gueltig_bis": "2026-10-28T00:00:00+01:00",
+              "gueltig_bis": "2026-10-28",
               "beendet_am": null
             }
           ]
@@ -8659,7 +8819,7 @@
           ],
           "gewaehrt_am": "2026-11-24T09:40:00+01:00",
           "gueltig_ab": "2026-11-24T09:40:00+01:00",
-          "gueltig_bis": "2026-12-15T00:00:00+01:00",
+          "gueltig_bis": "2026-12-15",
           "beendet_am": null,
           "beendet_von": null,
           "unterstuetzer": {
@@ -8693,7 +8853,7 @@
       },
       "expected": {
         "zustand": "aktiv",
-        "endet": "2026-12-15T00:00:00+01:00",
+        "endet": "2026-12-16T00:00:00+01:00",
         "beendet_durch": null,
         "banner_kunde": "Elektro Brunner (Installateur) hat Zugriff auf Werk Ahrenberg und Werk Lindach bis 15.12.2026 — Einrichten und Bedienen",
         "banner_unterstuetzer": "Sie arbeiten im Kundenbereich Kunststoffwerk Ahrenberg GmbH · Werk Ahrenberg und Werk Lindach · bis 15.12.2026",
@@ -8718,7 +8878,7 @@
           ],
           "gewaehrt_am": "2026-10-21T00:00:00+02:00",
           "gueltig_ab": "2026-10-21T00:00:00+02:00",
-          "gueltig_bis": "2026-10-28T00:00:00+01:00",
+          "gueltig_bis": "2026-10-28",
           "beendet_am": "2026-10-25T09:00:00+02:00",
           "beendet_von": null,
           "unterstuetzer": {
@@ -8838,7 +8998,7 @@
               "umfang": "einrichten_und_bedienen",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": null
             },
             {
@@ -8849,7 +9009,7 @@
               "umfang": "einrichten",
               "art": "installateur",
               "gueltig_ab": "2026-11-24T09:40:00+01:00",
-              "gueltig_bis": "2026-12-15T00:00:00+01:00",
+              "gueltig_bis": "2026-12-15",
               "beendet_am": "2026-11-30T12:00:00+01:00"
             }
           ]

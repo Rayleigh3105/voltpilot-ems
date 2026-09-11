@@ -414,23 +414,14 @@ class MessstelleRegelnVectorsTest {
                     JsonNode rn = m.path("nebengroessen").get(i);
                     assertThat(groesse(n)).isEqualTo(groesse(rn));
                     assertThat(quellenOhneStand(n.path("fuehrende_quelle"))).isEqualTo(rn.path("fuehrende_quelle"));
+                    assertThat(n.path("vergleichsquellen")).isEqualTo(rn.path("vergleichsquellen"));
                 }
-                assertThat(d.path("vergleichsquellen")).as("das Referenzunternehmen kennt keine Vergleichsquelle").isEmpty();
-                ArrayNode stellungen = MAPPER.createArrayNode();
-                for (JsonNode st : m.path("elektrische_stellung")) {
-                    ObjectNode o = st.deepCopy();
-                    o.put("gueltig_ab", tagAb(st.path("gueltig_ab").asText()));
-                    o.put("gueltig_bis", tagBis(text(st.path("gueltig_bis"))));
-                    stellungen.add(o);
-                }
-                assertThat(d.path("elektrische_stellung")).isEqualTo(stellungen);
+                assertThat(d.path("vergleichsquellen")).isEqualTo(m.path("vergleichsquellen"));
+                assertThat(d.path("elektrische_stellung")).isEqualTo(m.path("elektrische_stellung"));
                 List<String> orte = new ArrayList<>();
                 d.path("orte").forEach(o -> orte.add(o.path("kennzeichen").asText() + "|"
                         + o.path("gueltig_ab").asText() + "|" + text(o.path("gueltig_bis"))));
-                assertThat(orte).isEqualTo(refOrte(ref, kz).stream().map(z -> {
-                    String[] t = z.split("\\|");
-                    return t[0] + "|" + tagAb(t[1]) + "|" + tagBis("null".equals(t[2]) ? null : t[2]);
-                }).toList());
+                assertThat(orte).isEqualTo(refOrte(ref, kz));
                 assertThat(d.at("/orte/" + (d.path("orte").size() - 1) + "/ort_art").asText())
                         .isEqualTo(m.at("/ort/art").asText());
             }));
@@ -483,20 +474,23 @@ class MessstelleRegelnVectorsTest {
                 assertThat(in.at("/messstelle/kennzeichen").asText()).isEqualTo(m.path("kennzeichen").asText());
                 assertThat(in.at("/messstelle/medium").asText()).isEqualTo(m.path("medium").asText());
                 List<String> orte = refOrte(ref, m.path("kennzeichen").asText());
-                assertThat(in.at("/messstelle/beginn").asText()).isEqualTo(orte.get(0).split("\\|")[1]);
+                assertThat(in.at("/messstelle/beginn").asText()).isEqualTo(mitternacht(orte.get(0).split("\\|")[1]));
                 JsonNode zielQuellen = refQuellenDerGroesse(m, groesse(in.path("ziel")));
                 assertThat(zielQuellen).as("die Zielgröße ist eine Größe von " + m.path("kennzeichen").asText()).isNotNull();
                 for (JsonNode b : in.path("bestehende")) {
-                    if ("vergleich".equals(b.path("rolle").asText())) {
-                        assertThat(c.hasNonNull("annahme"))
-                                .as("das Referenzunternehmen kennt keine Vergleichsquelle — der Fall muss sie als Annahme nennen")
-                                .isTrue();
-                        continue;
-                    }
-                    JsonNode quellen = refQuellenDerGroesse(m, new Groesse(b.path("groesse").asText(),
-                            b.path("richtung").asText(), null, null));
+                    String feld = "vergleich".equals(b.path("rolle").asText()) ? "vergleichsquellen" : "fuehrende_quelle";
+                    JsonNode quellen = refListeDerGroesse(m, new Groesse(b.path("groesse").asText(),
+                            b.path("richtung").asText(), null, null), feld);
                     assertThat(quellen).as(b.path("groesse").asText() + " · " + b.path("richtung").asText()).isNotNull();
                     pruefeQuelle(b, quellen, c.path("fortschreibung").asBoolean(), ende);
+                }
+                // Ein erlaubter Vergleichs-Eintrag an einer Messstelle der Datei ist der der Datei —
+                // es sei denn, der Fall nennt ihn ausdrücklich als Annahme.
+                JsonNode neu = in.path("neu");
+                if ("vergleich".equals(neu.path("rolle").asText()) && c.at("/expected/fehler").isNull()
+                        && !c.hasNonNull("annahme")) {
+                    pruefeQuelle(neu, refListeDerGroesse(m, groesse(in.path("ziel")), "vergleichsquellen"),
+                            false, ende);
                 }
                 if (c.path("ergebnis_wie_referenz").asBoolean()) {
                     pruefeZeitstrahlWieReferenz(c.at("/expected/zeitstrahl"), zielQuellen);
@@ -510,7 +504,7 @@ class MessstelleRegelnVectorsTest {
             tests.add(DynamicTest.dynamicTest("zeitstrahl/" + c.path("name").asText(), () -> {
                 JsonNode m = refMessstelle(ref, c.path("referenz").asText());
                 assertThat(c.at("/input/beginn").asText())
-                        .isEqualTo(refOrte(ref, m.path("kennzeichen").asText()).get(0).split("\\|")[1]);
+                        .isEqualTo(mitternacht(refOrte(ref, m.path("kennzeichen").asText()).get(0).split("\\|")[1]));
                 for (JsonNode q : c.at("/input/fuehrende_quelle")) {
                     pruefeQuelle(q, m.path("fuehrende_quelle"), c.path("fortschreibung").asBoolean(), ende);
                 }
@@ -522,6 +516,7 @@ class MessstelleRegelnVectorsTest {
         for (JsonNode c : faelle("stellung")) {
             tests.add(DynamicTest.dynamicTest("stellung/" + c.path("name").asText(), () -> {
                 OffsetDateTime tag = mittag(c.path("stichtag").asText());
+                LocalDate stichtag = LocalDate.parse(c.path("stichtag").asText());
                 JsonNode m = c.at("/input/messstelle");
                 JsonNode rm = refMessstelle(ref, m.path("kennzeichen").asText());
                 assertThat(m.path("art").asText()).isEqualTo(rm.path("art").asText());
@@ -532,7 +527,7 @@ class MessstelleRegelnVectorsTest {
                     JsonNode r = refMessstelle(ref, e.path("kennzeichen").asText());
                     JsonNode st = null;
                     for (JsonNode s : r.path("elektrische_stellung")) {
-                        if (gilt(s, tag)) {
+                        if (giltAm(s, stichtag)) {
                             st = s;
                         }
                     }
@@ -587,16 +582,17 @@ class MessstelleRegelnVectorsTest {
     }
 
     /**
-     * Das Referenzunternehmen schreibt Zuordnungen als Mitternachts-Zeitpunkt mit
-     * AUSSCHLIESSLICHEM Ende; dieser Vertrag schreibt sie wie der Ortsbaum als Tag
-     * mit dem LETZTEN gültigen Tag. Dieselbe Aussage, umgerechnet.
+     * Der Beginn einer Messstelle: Mitternacht des ersten Tages ihres ersten Orts,
+     * als Zeitpunkt in der Zeitzone des Standorts (Schema {@code beginn}).
      */
-    private static String tagAb(String zeitpunkt) {
-        return zeitpunkt.substring(0, 10);
+    private static String mitternacht(String tag) {
+        return ZEIT.format(LocalDate.parse(tag).atStartOfDay(ZoneId.of("Europe/Berlin")).toOffsetDateTime());
     }
 
-    private static String tagBis(String zeitpunkt) {
-        return zeitpunkt == null ? null : LocalDate.parse(zeitpunkt.substring(0, 10)).minusDays(1).toString();
+    /** Eine tagesgenaue Gültigkeit (Stellung, Ort): {@code gueltig_bis} ist der LETZTE Tag, einschließlich. */
+    private static boolean giltAm(JsonNode o, LocalDate tag) {
+        return !tag.isBefore(LocalDate.parse(o.path("gueltig_ab").asText()))
+                && (text(o.path("gueltig_bis")) == null || !tag.isAfter(LocalDate.parse(o.path("gueltig_bis").asText())));
     }
 
     private static OffsetDateTime zeit(JsonNode n) {
@@ -804,7 +800,8 @@ class MessstelleRegelnVectorsTest {
                     && r.path("geraet").equals(q.path("geraet"))
                     && r.path("einbau").equals(q.path("einbau"))
                     && r.path("gueltig_ab").equals(q.path("gueltig_ab"))
-                    && (!q.has("kanal_wertart") || r.path("kanal_wertart").equals(q.path("kanal_wertart")));
+                    && (!q.has("kanal_wertart") || r.path("kanal_wertart").equals(q.path("kanal_wertart")))
+                    && (!q.hasNonNull("zweck") || r.path("zweck").equals(q.path("zweck")));
             treffer = gleich ? r : treffer;
         }
         assertThat(treffer).as("Quelle " + q + " steht so im Referenzunternehmen").isNotNull();
@@ -859,16 +856,21 @@ class MessstelleRegelnVectorsTest {
 
     /** Die führenden Quellen der Größe (Hauptgröße oder Nebengröße) mit dieser Größe und Richtung. */
     private static JsonNode refQuellenDerGroesse(JsonNode m, Groesse g) {
+        return refListeDerGroesse(m, g, "fuehrende_quelle");
+    }
+
+    /** Die führenden Quellen ({@code fuehrende_quelle}) oder Vergleichsquellen der Größe. */
+    private static JsonNode refListeDerGroesse(JsonNode m, Groesse g, String feld) {
         Function<JsonNode, Boolean> passt = n -> n.path("groesse").asText().equals(g.groesse())
                 && n.path("richtung").asText().equals(g.richtung())
                 && (g.einheit() == null || n.path("einheit").asText().equals(g.einheit()))
                 && (g.wertart() == null || n.path("wertart").asText().equals(g.wertart()));
         if (passt.apply(m.path("hauptgroesse"))) {
-            return m.path("fuehrende_quelle");
+            return m.path(feld);
         }
         for (JsonNode n : m.path("nebengroessen")) {
             if (passt.apply(n)) {
-                return n.path("fuehrende_quelle");
+                return n.path(feld);
             }
         }
         return null;

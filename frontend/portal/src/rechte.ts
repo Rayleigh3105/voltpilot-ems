@@ -22,6 +22,7 @@
  * Zuweisung, Daten lesen den Stichtag).
  */
 import { datum } from './uemsFunktion';
+import { datumText, mitternacht, plusTage } from './uemsOrtsbaum';
 import { aufzaehlung, VORGABE_ZEITZONE } from './uemsZustand';
 
 // ─────────────────────────────────────────────────────────────── Vokabular
@@ -203,7 +204,10 @@ function aktionAus(m: Matrix, kennung: string): Aktion {
 /**
  * Rolle × Geltungsbereich × Gültigkeit (§4.1). `standorte === null` heißt
  * Unternehmen (alle Standorte, auch künftige); sonst die ausdrückliche Liste
- * (E5). Zeit: [ab, bis) und [ab, beendetAm) — beide Enden ausschließend.
+ * (E5). Zeit: ab `gueltigAb` (Zeitpunkt) bis `gueltigBis` und bis `beendetAm`
+ * (ausschließend). `gueltigBis` ist das ENDDATUM einer Unterstützung — ein
+ * Kalendertag, einschließlich (siehe `bisZeitpunkt`); nur der Notfall-Zugriff
+ * trägt dort einen Zeitpunkt.
  */
 export interface Zuweisung {
   rolle: Rolle;
@@ -240,7 +244,11 @@ export interface Kundenbereich {
   kundenadministratoren: Person[];
 }
 
-/** Die Zuordnung einer Anlage zu einem Standort, zeitgültig [ab, bis) (AP-02 IP-3). */
+/**
+ * Die Zuordnung einer Anlage zu einem Standort, tagesgenau (AP-02 E9, wie der
+ * Ortsbaum-Vertrag): `gueltigAb` ist ein Tag (JJJJ-MM-TT), `gueltigBis` der LETZTE
+ * gültige Tag, einschließlich (`null` = offen).
+ */
 export interface AnlageStandort {
   standort: string;
   gueltigAb: string;
@@ -261,6 +269,20 @@ export interface Ziel {
 
 const ms = (iso: string): number => Date.parse(iso);
 
+const istTag = (s: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+/**
+ * Das Ende einer Gültigkeit als Zeitpunkt (ausschließend). Ein Enddatum
+ * (JJJJ-MM-TT) ist ein Kalendertag und gilt EINSCHLIESSLICH: „bis 15.12.2026"
+ * endet am 16.12.2026 um 00:00 in der Zeitzone des Kundenbereichs (AP-03 A4, wie
+ * jede tagesgenaue Gültigkeit — AP-02 E9). Nur der Notfall-Zugriff (E8) trägt
+ * einen Zeitpunkt: genau 24 h, halboffen.
+ */
+export function bisZeitpunkt(gueltigBis: string | null, zeitzone: string = VORGABE_ZEITZONE): string | null {
+  if (gueltigBis === null) return null;
+  return istTag(gueltigBis) ? mitternacht(plusTage(gueltigBis, 1), zeitzone).iso : gueltigBis;
+}
+
 function unternehmensweit(z: Zuweisung): boolean {
   return z.standorte === null;
 }
@@ -269,19 +291,17 @@ function deckt(z: Zuweisung, standort: string): boolean {
   return z.standorte === null || z.standorte.includes(standort);
 }
 
-/** Wirksam in [ab, bis) und vor dem Beenden. */
+/** Wirksam ab „gültig ab“, bis zum Ende des Enddatums und vor dem Beenden. */
 export function wirksam(z: Zuweisung, jetzt: string): boolean {
   const t = ms(jetzt);
-  return (
-    t >= ms(z.gueltigAb) &&
-    (z.gueltigBis === null || t < ms(z.gueltigBis)) &&
-    (z.beendetAm === null || t < ms(z.beendetAm))
-  );
+  const bis = bisZeitpunkt(z.gueltigBis);
+  return t >= ms(z.gueltigAb) && (bis === null || t < ms(bis)) && (z.beendetAm === null || t < ms(z.beendetAm));
 }
 
 function vorbei(z: Zuweisung, jetzt: string): boolean {
   const t = ms(jetzt);
-  return (z.gueltigBis !== null && t >= ms(z.gueltigBis)) || (z.beendetAm !== null && t >= ms(z.beendetAm));
+  const bis = bisZeitpunkt(z.gueltigBis);
+  return (bis !== null && t >= ms(bis)) || (z.beendetAm !== null && t >= ms(z.beendetAm));
 }
 
 function kuenftig(z: Zuweisung, jetzt: string): boolean {
@@ -290,18 +310,19 @@ function kuenftig(z: Zuweisung, jetzt: string): boolean {
 
 /** Das tatsächliche Ende: das frühere von Enddatum und Beenden. */
 function ende(z: Zuweisung): string | null {
-  if (z.beendetAm !== null && (z.gueltigBis === null || ms(z.beendetAm) < ms(z.gueltigBis))) {
+  const bis = bisZeitpunkt(z.gueltigBis);
+  if (z.beendetAm !== null && (bis === null || ms(z.beendetAm) < ms(bis))) {
     return z.beendetAm;
   }
-  return z.gueltigBis;
+  return bis;
 }
 
 /** Der Standort einer Anlage zum Stichtag — `null`, wenn sie dann keinem gehört. */
 export function standortAm(a: Anlage, stichtag: string): string | null {
-  const t = ms(stichtag);
-  const z = a.zuordnungen.find(
-    (x) => t >= ms(x.gueltigAb) && (x.gueltigBis === null || t < ms(x.gueltigBis)),
-  );
+  // Der Stichtag gilt an seinem Kalendertag in der Zeitzone des Kundenbereichs.
+  const [j, mo, t] = ortszeit(stichtag, VORGABE_ZEITZONE);
+  const tag = `${j}-${zwei(mo)}-${zwei(t)}`;
+  const z = a.zuordnungen.find((x) => x.gueltigAb <= tag && (x.gueltigBis === null || tag <= x.gueltigBis));
   return z === undefined ? null : z.standort;
 }
 
@@ -738,14 +759,18 @@ export function unterstuetzung(
       : u.art === 'voltpilot'
         ? TEXTE.urheber_voltpilot
         : TEXTE.urheber_notfall;
-  const vorzeitig = u.beendetAm !== null && (u.gueltigBis === null || ms(u.beendetAm) < ms(u.gueltigBis));
-  const endet = vorzeitig ? u.beendetAm : u.gueltigBis;
+  const ablauf = bisZeitpunkt(u.gueltigBis, zeitzone);
+  const vorzeitig = u.beendetAm !== null && (ablauf === null || ms(u.beendetAm) < ms(ablauf));
+  const endet = vorzeitig ? u.beendetAm : ablauf;
+  // In Kundensprache heißt das Ende einer Unterstützung ihr Enddatum („15.12.2026“);
+  // nur der Notfall-Zugriff nennt seinen Zeitpunkt („19.11.2026 22:15“).
+  const enddatum = u.gueltigBis !== null && istTag(u.gueltigBis) ? datumText(u.gueltigBis) : null;
   const ohneBanner = { bannerKunde: null, bannerUnterstuetzer: null, urheber, erinnerung: false };
   if (u.gewaehrtAm === null) {
     return { zustand: 'entwurf', endet, beendetDurch: null, ...ohneBanner, text: null };
   }
   if (endet !== null && ms(jetzt) >= ms(endet)) {
-    const tag = datum(endet, zeitzone);
+    const tag = !vorzeitig && enddatum !== null ? enddatum : datum(endet, zeitzone);
     const satz = !vorzeitig
       ? text('endete_zeitablauf', { datum: tag })
       : u.beendetVon === null
@@ -769,7 +794,7 @@ export function unterstuetzung(
     };
   }
   const standorte = aufzaehlung(u.standorte.map((s) => standortName(k, s)));
-  const bis = endet === null ? '' : endeText(endet, zeitzone);
+  const bis = endet === null ? '' : (enddatum ?? endeText(endet, zeitzone));
   const umfang = UMFANG_KUNDENWORT[u.umfang];
   const kunde =
     u.art === 'installateur'
@@ -835,20 +860,15 @@ export function gewaehren(a: Antrag, zeitzone: string = VORGABE_ZEITZONE): Gewae
   if (a.gueltigBis === null || !hoechstensZwoelfMonate(a.gueltigAb, a.gueltigBis, zeitzone)) {
     return abgelehnt('hoechstens_12_monate');
   }
-  return { gueltig: true, http: 201, grund: 'erlaubt', text: null, umfang, endet: a.gueltigBis };
+  return { gueltig: true, http: 201, grund: 'erlaubt', text: null, umfang, endet: bisZeitpunkt(a.gueltigBis, zeitzone) };
 }
 
-/** bis ≤ ab + 12 Kalendermonate, verglichen als Ortszeit (29.02. → 28.02.). */
-function hoechstensZwoelfMonate(ab: string, bis: string, zone: string): boolean {
-  const a = ortszeit(ab, zone);
-  const b = ortszeit(bis, zone);
-  const jahr = a[0] + HOECHSTENS_MONATE / 12;
-  const letzterTag = new Date(Date.UTC(jahr, a[1], 0)).getUTCDate();
-  const grenze = [jahr, a[1], Math.min(a[2], letzterTag), a[3], a[4], a[5]];
-  for (let i = 0; i < grenze.length; i++) {
-    if (b[i] !== grenze[i]) return b[i] < grenze[i];
-  }
-  return true;
+/** Enddatum ≤ der Tag von „ab“ + 12 Kalendermonate, am Standort (29.02. → 28.02.). */
+function hoechstensZwoelfMonate(ab: string, enddatum: string, zone: string): boolean {
+  const [j, mo, t] = ortszeit(ab, zone);
+  const jahr = j + HOECHSTENS_MONATE / 12;
+  const letzterTag = new Date(Date.UTC(jahr, mo, 0)).getUTCDate();
+  return enddatum <= `${jahr}-${zwei(mo)}-${zwei(Math.min(t, letzterTag))}`;
 }
 
 // ─────────────────────────────────────────────────────────────────── Entzug

@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/uems-referenzunternehmen.schema.json",
   "title": "UEMS-Referenzunternehmen (Kunststoffwerk Ahrenberg GmbH)",
-  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 21 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben tragen „gültig ab“ (einschließend) und „gültig bis“ (ausschließend); eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, eine zuständige Box je Datenquelle und Zeitpunkt — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
+  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 21 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "zuordnungen", "zeitachse"],
   "properties": {
-    "version": { "type": "string", "const": "1.0", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert." },
+    "version": { "type": "string", "const": "1.1", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen)." },
     "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
     "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
     "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
@@ -16,9 +16,10 @@
     "unternehmen": {
       "type": "object", "additionalProperties": false,
       "description": "Das Unternehmen, dem alles darunter gehört. Genau eines je Kundenbereich.",
-      "required": ["kennzeichen", "name", "zeitzone", "kunde_seit", "ems_seit", "momentaufnahme"],
+      "required": ["kennzeichen", "kundenbereich", "name", "zeitzone", "kunde_seit", "ems_seit", "momentaufnahme"],
       "properties": {
-        "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kennzeichen des Kundenbereichs." },
+        "kennzeichen": { "type": "string", "const": "U", "description": "Das Unternehmen als Ort: dasselbe Kennzeichen wie im Ortsbaum-Vertrag (ortsbaum-vectors.json `regeln.unternehmen_kennzeichen`). Eine unternehmensweite Messstelle hängt an U; ein Standort hängt an keinem Elternknoten." },
+        "kundenbereich": { "$ref": "#/$defs/kennzeichen", "description": "Kennzeichen des Kundenbereichs, zu dem genau dieses eine Unternehmen gehört." },
         "name": { "type": "string", "description": "Vollständiger Firmenname; steht im Berichtskopf." },
         "kurzname": { "type": ["string", "null"], "description": "Kurzform für Pfad und Kopfzeile; leer heißt „Name gekürzt“." },
         "rechtsform": { "type": ["string", "null"], "description": "Nur für den Berichtskopf." },
@@ -48,11 +49,12 @@
           "zeitzone": { "type": "string", "description": "Zeitzone des Standorts; Gebäude und Bereiche erben sie." },
           "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu der Standort dient; die erste Auswahl ist die Hauptnutzung." },
           "nutzung_beschreibung": { "type": ["string", "null"], "description": "Die Nutzung, wie das Fachmodell sie in Prosa nennt." },
-          "bezugsflaechen": { "type": "array", "items": { "$ref": "#/$defs/flaeche" }, "description": "Bezugsfläche mit Gültigkeit; Kennzahlen je Quadratmeter rechnen mit der Fläche, die im Berichtszeitraum galt." },
+          "bezugsflaechen": { "type": "array", "items": { "$ref": "#/$defs/flaeche" }, "description": "Eigene Bezugsfläche mit Gültigkeit; Kennzahlen je Quadratmeter rechnen mit der Fläche, die im Berichtszeitraum galt. Leer heißt: keine eigene — Kennzahlen nehmen die Summe der Gebäude (AP-02 E3)." },
+          "bezugsflaechen_beschreibung": { "type": ["string", "null"], "description": "Die Fläche in Prosa, wo der Standort keine eigene trägt." },
           "lage": { "$ref": "#/$defs/lage", "description": "Punkt auf der Karte; belegt beim Zuordnen einer Anlage ohne eigenen Punkt deren Feld vor." },
           "notiz": { "type": ["string", "null"], "description": "Freie Bemerkung des Kunden." },
           "gebaeudeebene": { "type": "boolean", "description": "Ob dieser Standort die Gebäudeebene nutzt; ohne sie hängen Bereiche direkt am Standort." },
-          "aktiv_seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann der Standort eingerichtet ist." }
+          "aktiv_seit": { "$ref": "#/$defs/zeitpunkt", "description": "Seit wann der Standort eingerichtet ist (Zustand). Sein Bestehen im Ortsbaum steht in `zuordnungen` (Art `ort_eltern`)." }
         }
       }
     },
@@ -65,7 +67,7 @@
         "required": ["kennzeichen", "standort", "name", "nutzung", "bezugsflaechen"],
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Automatisches Kurzzeichen (G-1, G-2 …)." },
-          "standort": { "$ref": "#/$defs/kennzeichen", "description": "Standort, an dem das Gebäude steht." },
+          "standort": { "$ref": "#/$defs/kennzeichen", "description": "Standort, an dem das Gebäude zur Momentaufnahme steht; zeitgültig in `zuordnungen` (Art `ort_eltern`)." },
           "name": { "type": "string", "description": "Name des Gebäudes, eindeutig je Standort." },
           "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu das Gebäude dient." },
           "nutzung_beschreibung": { "type": ["string", "null"], "description": "Die Nutzung in Prosa." },
@@ -84,7 +86,7 @@
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Automatisches Kurzzeichen (B-1, B-2 …)." },
           "eltern_art": { "type": "string", "enum": ["gebaeude", "standort"], "description": "Ob der Bereich an einem Gebäude oder direkt am Standort hängt." },
-          "eltern": { "$ref": "#/$defs/kennzeichen", "description": "Gebäude oder Standort, zu dem der Bereich gehört." },
+          "eltern": { "$ref": "#/$defs/kennzeichen", "description": "Gebäude oder Standort, zu dem der Bereich zur Momentaufnahme gehört; zeitgültig in `zuordnungen` (Art `ort_eltern`)." },
           "name": { "type": "string", "description": "Name des Bereichs." },
           "beschreibung": { "type": ["string", "null"], "description": "Was in diesem Bereich steht." },
           "nutzung": { "$ref": "#/$defs/nutzung", "description": "Wozu der Bereich dient." }
@@ -116,8 +118,8 @@
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Nummer der Kostenstelle, wie der Kunde sie führt." },
           "name": { "type": "string", "description": "Name der Kostenstelle." },
-          "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann es diese Kostenstelle gibt." },
-          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+          "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag es diese Kostenstelle gibt." },
+          "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der letzte Tag, an dem es sie gibt (einschließlich); leer heißt „bis auf Weiteres“." },
           "hinweis": { "type": ["string", "null"], "description": "Was mit der Kostenstelle geschehen ist." }
         }
       }
@@ -215,8 +217,8 @@
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Datenquelle (DQ-1 …)." },
           "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Anlage, in der die Geräte hinter dieser Quelle hängen — die Verdrahtung, nicht die Box." },
-          "protokoll": { "type": "string", "description": "Wie gesprochen wird." },
-          "adresse": { "type": ["string", "null"], "description": "Netzadresse; leer, wenn sich das Gerät selbst meldet." },
+          "protokoll": { "type": "string", "enum": ["modbus_tcp", "sunspec_modbus", "mqtt", "http", "ocpp"], "description": "Wie gesprochen wird — das geschlossene Vokabular des Datenquellen-Vertrags (data-source-vectors.json `protokolle`); die OCPP-Fassung ist ein Parameter der Station und steht im Weg." },
+          "adresse": { "type": ["string", "null"], "description": "Die Adresse, wie der Datenquellen-Vertrag sie führt: der Host (der Port steht daneben), bei OCPP die Stations-Kennung, unter der sich die Station selbst meldet." },
           "port": { "type": ["integer", "null"], "description": "Anschlussnummer im Netz." },
           "geraete_ids": { "type": "array", "items": { "type": "integer" }, "description": "Gerätenummern hinter dieser einen Adresse." },
           "weg": { "type": "string", "description": "Der ganze Erfassungsweg in einem Satz, so wie ihn der Installateur liest." },
@@ -311,7 +313,7 @@
       "description": "Die fachliche Identität einer Messung. Eine Messstelle überlebt jeden Gerätewechsel, jede Box und jeden Erfassungsweg; sie hat genau eine Hauptgröße und beliebig viele Nebengrößen desselben Messortes.",
       "items": {
         "type": "object", "additionalProperties": false,
-        "required": ["kennzeichen", "name", "art", "medium", "hauptgroesse", "nebengroessen", "ort", "elektrische_stellung", "prozesse", "kostenstellen_anteile", "fuehrende_quelle", "beispielwerte", "zustand"],
+        "required": ["kennzeichen", "name", "art", "medium", "hauptgroesse", "nebengroessen", "ort", "elektrische_stellung", "prozesse", "kostenstellen_anteile", "fuehrende_quelle", "vergleichsquellen", "beispielwerte", "zustand"],
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Stabiler Schlüssel der Messstelle. Automatisch vergeben (MS-0001 …), vom Kunden auf ein eigenes Kurzzeichen änderbar, eindeutig je Kundenbereich — und nie durch Technik verändert." },
           "name": { "type": "string", "description": "Name in Kundensprache." },
@@ -324,13 +326,14 @@
             "description": "Weitere Größen desselben Messortes, jede mit eigener führender Quelle. Sie erscheinen in Kennzahlen und Anzeigen, nie in einer Bilanz.",
             "items": {
               "type": "object", "additionalProperties": false,
-              "required": ["groesse", "richtung", "einheit", "wertart", "fuehrende_quelle"],
+              "required": ["groesse", "richtung", "einheit", "wertart", "fuehrende_quelle", "vergleichsquellen"],
               "properties": {
                 "groesse": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"], "description": "Was gemessen wird." },
                 "richtung": { "$ref": "#/$defs/richtung", "description": "In welche Richtung." },
                 "einheit": { "$ref": "#/$defs/einheit", "description": "Einheit des Werts." },
                 "wertart": { "$ref": "#/$defs/wertart", "description": "Wie der Wert zu lesen ist." },
-                "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher diese Nebengröße kommt, mit Gültigkeit." }
+                "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher diese Nebengröße kommt, mit Gültigkeit." },
+                "vergleichsquellen": { "type": "array", "items": { "$ref": "#/$defs/vergleichsbindung" }, "description": "Vergleichsquellen dieser Größe, jede mit Zweck (AP-04 E3) — leer heißt „keine“." }
               }
             }
           },
@@ -354,28 +357,29 @@
                 "anlage": { "$ref": "#/$defs/kennzeichen", "description": "Elektrisches System." },
                 "stellung": { "type": "string", "enum": ["Hauptzähler", "Unterzähler", "Erzeuger", "Speicher", "Abzweig", "keine"], "description": "Die Rolle im Baum." },
                 "unterzaehler_von": { "type": ["string", "null"], "description": "Übergeordnete Messstelle; nur bei „Unterzähler“ gesetzt." },
-                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Stellung gilt." },
-                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+                "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag diese Stellung gilt." },
+                "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der letzte Tag dieser Stellung (einschließlich); leer heißt „bis auf Weiteres“." }
               }
             }
           },
           "prozesse": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Wofür die gemessene Energie eingesetzt wird." },
           "kostenstellen_anteile": {
             "type": "array",
-            "description": "Wem der Verbrauch zugerechnet wird. Die Anteile eines Zeitpunkts ergeben zusammen 100 %; eine leere Liste heißt „nicht zugerechnet“, nie „0 %“.",
+            "description": "Wem der Verbrauch zugerechnet wird. Die Anteile eines Tages ergeben zusammen 100 %; eine leere Liste heißt „nicht zugerechnet“, nie „0 %“.",
             "items": {
               "type": "object", "additionalProperties": false,
               "required": ["kostenstelle", "anteil_prozent", "gueltig_ab"],
               "properties": {
                 "kostenstelle": { "$ref": "#/$defs/kennzeichen", "description": "Kostenstelle." },
                 "anteil_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "Anteil in Prozent." },
-                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Anteil gilt." },
-                "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+                "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag dieser Anteil gilt." },
+                "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der letzte Tag dieses Anteils (einschließlich); leer heißt „bis auf Weiteres“." }
               }
             }
           },
           "kostenstellen_beschreibung": { "type": ["string", "null"], "description": "Die Zurechnung so, wie das Fachmodell sie in Prosa schreibt — auch dann, wenn sie über eine Umlage läuft." },
           "fuehrende_quelle": { "type": "array", "items": { "$ref": "#/$defs/quellenbindung" }, "description": "Woher die Hauptgröße kommt, mit Gültigkeit. Je Zeitpunkt höchstens eine; eine leere Liste heißt „keine Datenquelle“ und ist erlaubt." },
+          "vergleichsquellen": { "type": "array", "items": { "$ref": "#/$defs/vergleichsbindung" }, "description": "Weitere Messwerte der Hauptgröße, die zum Vergleich daneben stehen — jeder mit Zweck; gezeigt, nie bewertet, nie Ersatz (AP-04 E3). Leer heißt „keine“." },
           "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden; Grundlage der Abdeckung („85 von 90“) und der Beobachtung „liefert Daten“." },
           "kadenz_beschreibung": { "type": ["string", "null"], "description": "Die Erwartung in Kundensprache, wenn eine Zahl in Sekunden sie nicht trifft." },
           "formel": { "type": ["string", "null"], "description": "Bei einer berechneten Messstelle: wie sie gerechnet wird." },
@@ -415,7 +419,7 @@
           "geltungsbereich_art": { "type": "string", "enum": ["unternehmen", "standorte"], "description": "Ob die Rolle für alle Standorte gilt oder für eine ausdrückliche Liste." },
           "standorte": { "type": "array", "items": { "$ref": "#/$defs/kennzeichen" }, "description": "Die zugewiesenen Standorte; leer bei unternehmensweitem Geltungsbereich." },
           "seit": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Zuweisung gilt." },
-          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+          "gueltig_bis": { "anyOf": [ { "$ref": "#/$defs/tag_offen" }, { "$ref": "#/$defs/zeitpunkt" } ], "description": "Das ENDDATUM einer Unterstützung: ein Kalendertag, einschließlich — „bis 15.12.2026“ endet am 16.12.2026 00:00 am Standort (AP-03 E6/A4). Nur ein Notfall-Zugriff (E8) endet auf die Minute, genau 24 h nach „seit“ (halboffen). Leer heißt „bis auf Weiteres“ (Benutzer)." },
           "unterstuetzung": {
             "type": ["object", "null"], "additionalProperties": false,
             "description": "Nur bei einem Unterstützer: wer ihn womit und wozu betraut hat.",
@@ -468,19 +472,8 @@
 
     "zuordnungen": {
       "type": "array",
-      "description": "Die zeitgültigen Beziehungen, die sich im Lauf der Beispielwelt ändern. Eine Zuordnung wird nie überschrieben: die alte endet, die neue beginnt — Ende der alten ist Beginn der neuen.",
-      "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["art", "von", "nach", "gueltig_ab"],
-        "properties": {
-          "art": { "type": "string", "enum": ["anlage_standort", "messstelle_ort", "datenquelle_box"], "description": "Welche Beziehung: eine Anlage liegt an einem Standort, eine Messstelle misst an einem Ort, eine Box ist für eine Datenquelle zuständig." },
-          "von": { "$ref": "#/$defs/kennzeichen", "description": "Das zugeordnete Objekt." },
-          "nach": { "$ref": "#/$defs/kennzeichen", "description": "Das Ziel der Zuordnung." },
-          "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Zuordnung gilt (einschließend)." },
-          "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann (ausschließend); leer heißt „bis auf Weiteres“." },
-          "hinweis": { "type": ["string", "null"], "description": "Warum die Zuordnung so ist." }
-        }
-      }
+      "description": "Die zeitgültigen Beziehungen der Beispielwelt. Eine Zuordnung wird nie überschrieben: die alte endet, die neue beginnt. Die Art bestimmt die Zeitform — tagesgenau (Ort → Elternknoten, Anlage → Standort, Messstelle → Ort) oder auf die Minute (Datenquelle → Box).",
+      "items": { "anyOf": [ { "$ref": "#/$defs/zuordnung_tag" }, { "$ref": "#/$defs/zuordnung_zeitpunkt" } ] }
     },
 
     "zeitachse": {
@@ -515,6 +508,49 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
       "description": "Wie ein Zeitpunkt, aber leer erlaubt: leer heißt „bis auf Weiteres“, nie „gerade eben beendet“."
     },
+    "tag": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Ein Kalendertag (JJJJ-MM-TT) einer tagesgenauen Gültigkeit, wirksam 00:00 Uhr in der Zeitzone des Standorts (AP-02 E9)."
+    },
+    "tag_offen": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Der LETZTE gültige Tag einer tagesgenauen Gültigkeit, einschließlich; leer heißt „bis auf Weiteres“."
+    },
+    "abzeichen": {
+      "type": "string",
+      "pattern": "^rückwirkend \\([0-9]+ Tage?\\)$",
+      "description": "Das Kennzeichen eines rückwirkenden Eintrags, wie der Ortsbaum-Vertrag es bildet: „rückwirkend (14 Tage)“ — Tage = Eintragstag − gilt ab."
+    },
+    "zuordnung_tag": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine tagesgenaue Zuordnung (AP-02 E9): „gültig ab“ ist ein Tag, „bis“ der letzte gültige Tag. Wurde sie nach ihrem „gültig ab“ eingetragen, trägt sie Eintragstag und Abzeichen (AP-02 E2).",
+      "required": ["art", "von", "nach", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "art": { "type": "string", "enum": ["ort_eltern", "anlage_standort", "messstelle_ort"], "description": "Ein Ort hängt an seinem Elternknoten (beim Standort: sein Bestehen), eine Anlage liegt an einem Standort, eine Messstelle misst an einem Ort." },
+        "von": { "$ref": "#/$defs/kennzeichen", "description": "Das zugeordnete Objekt." },
+        "nach": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9._/′-]*$", "description": "Das Ziel der Zuordnung; leer nur beim Bestehen eines Standorts, der an keinem Elternknoten hängt. „U“ ist das Unternehmen." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag die Zuordnung gilt." },
+        "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der letzte Tag der Zuordnung (einschließlich); leer heißt „bis auf Weiteres“." },
+        "eingetragen_am": { "$ref": "#/$defs/tag", "description": "Der Eintragstag am Standort — nur bei einem rückwirkenden Eintrag." },
+        "abzeichen": { "$ref": "#/$defs/abzeichen", "description": "Das Abzeichen des rückwirkenden Eintrags." },
+        "hinweis": { "type": ["string", "null"], "description": "Warum die Zuordnung so ist." }
+      }
+    },
+    "zuordnung_zeitpunkt": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Zuordnung auf die Minute (AP-06 E1): halboffen [ab, bis) — Ende der alten ist Beginn der neuen.",
+      "required": ["art", "von", "nach", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "art": { "type": "string", "const": "datenquelle_box", "description": "Eine Box ist für eine Datenquelle zuständig." },
+        "von": { "$ref": "#/$defs/kennzeichen", "description": "Die Datenquelle." },
+        "nach": { "$ref": "#/$defs/kennzeichen", "description": "Die zuständige Box." },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann die Box zuständig ist (einschließend)." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann (ausschließend); leer heißt „bis auf Weiteres“." },
+        "hinweis": { "type": ["string", "null"], "description": "Warum die Zuordnung so ist." }
+      }
+    },
     "adresse": {
       "type": ["object", "null"], "additionalProperties": false,
       "description": "Eine Anschrift. Die Postleitzahl bleibt leer, weil das Referenzunternehmen erfunden ist und keine echte Postleitzahl tragen darf.",
@@ -537,12 +573,14 @@
     },
     "flaeche": {
       "type": "object", "additionalProperties": false,
-      "description": "Eine Bezugsfläche mit Gültigkeit. Flächen werden nie saldiert und nie erfunden.",
+      "description": "Eine Bezugsfläche mit tagesgenauer Gültigkeit (AP-02 E3/E9). Flächen werden nie saldiert und nie erfunden.",
       "required": ["flaeche_m2", "gueltig_ab"],
       "properties": {
         "flaeche_m2": { "type": "number", "minimum": 1, "description": "Fläche in Quadratmetern." },
-        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Fläche gilt." },
-        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "Ab welchem Tag diese Fläche gilt." },
+        "gueltig_bis": { "$ref": "#/$defs/tag_offen", "description": "Der letzte Tag dieser Fläche (einschließlich); leer heißt „bis auf Weiteres“." },
+        "eingetragen_am": { "$ref": "#/$defs/tag", "description": "Der Eintragstag am Standort — nur bei einer rückwirkend eingetragenen Fläche." },
+        "abzeichen": { "$ref": "#/$defs/abzeichen", "description": "Das Abzeichen der rückwirkend eingetragenen Fläche." },
         "hinweis": { "type": ["string", "null"], "description": "Woher die Fläche kommt oder warum sie sich geändert hat." }
       }
     },
@@ -589,6 +627,21 @@
         "einbau": { "$ref": "#/$defs/kennzeichen", "description": "Das konkret eingebaute Gerät zu dieser Zeit — bei einem Zählerwechsel wechselt es, die Messstelle bleibt." },
         "kanal_wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Kanal am Draht zu lesen ist: fortlaufender Zähler, Momentanwert, Zustand, Bitfeld oder Text." },
         "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Bindung gilt (auf die Minute)." },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
+      }
+    },
+    "vergleichsbindung": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Vergleichsquelle wie im Messstellen-Vertrag (messstelle.schema.json `$defs/vergleichsbindung`): ein weiterer Messwert derselben Größe, der mit Zweck danebensteht. Beide Werte werden gezeigt, keiner bewertet, keiner ersetzt den führenden.",
+      "required": ["komponente", "kanal", "geraet", "einbau", "kanal_wertart", "zweck", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "komponente": { "$ref": "#/$defs/kennzeichen", "description": "Die Komponente, die den Wert liefert." },
+        "kanal": { "type": "string", "minLength": 1, "description": "Der eine gelesene Messwert dieser Komponente." },
+        "geraet": { "$ref": "#/$defs/kennzeichen", "description": "Das Gerät hinter der Komponente." },
+        "einbau": { "$ref": "#/$defs/kennzeichen", "description": "Das konkret eingebaute Gerät in diesem Zeitraum." },
+        "kanal_wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Kanal am Draht zu lesen ist." },
+        "zweck": { "type": "string", "enum": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"], "description": "Wozu der Vergleich dient (AP-04 E3) — nie ohne Zweck." },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann dieser Vergleich gilt, auf die Minute." },
         "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“." }
       }
     }

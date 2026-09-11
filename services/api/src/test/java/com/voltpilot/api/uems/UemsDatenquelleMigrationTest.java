@@ -31,8 +31,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -98,10 +96,6 @@ class UemsDatenquelleMigrationTest {
 
     private static final List<String> TABELLEN =
             List.of("data_source", "data_source_assignment", "data_source_kennzeichen_seq");
-
-    /** Die Protokoll-Wörter der Referenzdatei → Code (Vertrag §11 Nr. 5). */
-    private static final Map<String, String> PROTOKOLL_AUS_REFERENZ =
-            Map.of("Modbus TCP", "modbus_tcp", "OCPP 1.6J", "ocpp");
 
     /** Welcher Constraint welchen Grund des Vertrags trägt. */
     private static final Map<String, String> GRUND_DES_CONSTRAINTS = Map.of(
@@ -329,8 +323,8 @@ class UemsDatenquelleMigrationTest {
 
                     Probe p = new Probe(in.get("boxen"));
                     JsonNode rq = element(referenz.get("datenquellen"), in.get("quelle").asText());
-                    UUID quelle = als(p.tenant, () -> p.quelle(PROTOKOLL_AUS_REFERENZ.get(
-                            rq.get("protokoll").asText()), adresseAusReferenz(rq)));
+                    UUID quelle = als(p.tenant, () -> p.quelle(rq.get("protokoll").asText(),
+                            adresseAusReferenz(rq)));
                     String grund = als(p.tenant, () -> {
                         bestehend.forEach(z -> p.eintragen(quelle, z));
                         PSQLException e = ablehnung(() -> p.eintragen(quelle, neu));
@@ -441,7 +435,7 @@ class UemsDatenquelleMigrationTest {
                 assertThat(q.kennzeichen()).isEqualTo(kz);
                 assertThat(q.siteId()).as(kz).isEqualTo(ANLAGEN.get(rq.get("anlage").asText()));
                 assertThat(q.protokoll()).as(kz)
-                        .isEqualTo(PROTOKOLL_AUS_REFERENZ.get(rq.get("protokoll").asText()));
+                        .isEqualTo(rq.get("protokoll").asText());
                 assertThat(q.adresse()).as(kz).isEqualTo(adresseAusReferenz(rq));
                 assertThat(q.geraeteIds()).as(kz).containsExactlyElementsOf(ganzzahlen(rq.get("geraete_ids")));
                 assertThat(q.netz()).as(kz).isEqualTo(text(rq.get("netz")));
@@ -774,7 +768,7 @@ class UemsDatenquelleMigrationTest {
                 for (JsonNode rq : referenz.get("datenquellen")) {
                     Datenquelle q = quellen.anlegen(new NeueDatenquelle(AHRENBERG,
                             ANLAGEN.get(rq.get("anlage").asText()), null,
-                            PROTOKOLL_AUS_REFERENZ.get(rq.get("protokoll").asText()),
+                            rq.get("protokoll").asText(),
                             adresseAusReferenz(rq), ganzzahlen(rq.get("geraete_ids")),
                             text(rq.get("netz")), false, rq.get("steuerquelle").asBoolean(),
                             rq.get("kadenz_s").asInt(), null));
@@ -821,12 +815,10 @@ class UemsDatenquelleMigrationTest {
                 .toList();
     }
 
-    /** Wie {@code DatenquelleRegelnVectorsTest}: Host:Port, bei OCPP die Stations-Kennung. */
+    /** Wie {@code DatenquelleRegelnVectorsTest}: Host:Port, bei OCPP die Stations-Kennung selbst. */
     private static String adresseAusReferenz(JsonNode q) {
-        if ("OCPP 1.6J".equals(q.get("protokoll").asText())) {
-            Matcher m = Pattern.compile("„([^“]+)“").matcher(q.get("weg").asText());
-            assertThat(m.find()).as(q.get("kennzeichen").asText()).isTrue();
-            return m.group(1);
+        if ("ocpp".equals(q.get("protokoll").asText())) {
+            return q.get("adresse").asText();
         }
         return q.get("adresse").asText() + ":" + q.get("port").asInt();
     }

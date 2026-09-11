@@ -179,8 +179,8 @@ class MesswertHerkunftVectorsTest {
     /**
      * Jede Tatsache eines Falls steht so im Referenzunternehmen: Box und Seriennummer, Box im
      * Betrieb, Komponente und Messkanal, Einbau zur Messzeit, Datenquelle, Kadenz, zuständige
-     * Box zur Messzeit und Quellenbindung zur Messzeit (samt Wertart und Einheit). Eine
-     * Vergleichsquelle kennt die Datei nicht — ein solcher Fall muss seine Annahme nennen.
+     * Box zur Messzeit und Quellenbindung zur Messzeit (samt Wertart und Einheit) — führend
+     * oder als Vergleichsquelle (seit Fassung 1.1 führt die Datei die Vergleichsquelle an MS-01).
      */
     @TestFactory
     List<DynamicTest> jederFallStehtImReferenzunternehmen() throws Exception {
@@ -463,7 +463,7 @@ class MesswertHerkunftVectorsTest {
             }
         }
         gleich(fehler, "Kundenbereich",
-                ref.path("unternehmen").path("kennzeichen").asText(), kundenbereich);
+                ref.path("unternehmen").path("kundenbereich").asText(), kundenbereich);
 
         JsonNode k = komponenten.get(komponente);
         if (k == null) {
@@ -515,14 +515,20 @@ class MesswertHerkunftVectorsTest {
         gleich(fehler, "zuständige Box zur Messzeit", zustaendig,
                 text(f.path("zustaendige_box")));
 
-        // Quellenbindung zur Messzeit: welche Messstelle führt diesen Messkanal?
+        // Quellenbindung zur Messzeit: welche Messstelle führt diesen Messkanal — und an welcher
+        // steht er als Vergleichsquelle?
         List<String[]> fuehrend = new ArrayList<>();
+        List<String[]> vergleich = new ArrayList<>();
         for (JsonNode ms : messstellen.values()) {
             sammleFuehrend(ms, ms.path("fuehrende_quelle"), ms.path("hauptgroesse"),
                     komponente, kanal, messzeit, fuehrend);
+            sammleFuehrend(ms, ms.path("vergleichsquellen"), ms.path("hauptgroesse"),
+                    komponente, kanal, messzeit, vergleich);
             for (JsonNode n : ms.path("nebengroessen")) {
                 sammleFuehrend(ms, n.path("fuehrende_quelle"), n, komponente, kanal, messzeit,
                         fuehrend);
+                sammleFuehrend(ms, n.path("vergleichsquellen"), n, komponente, kanal, messzeit,
+                        vergleich);
             }
         }
         String art = f.path("bindung").path("art").asText();
@@ -545,13 +551,16 @@ class MesswertHerkunftVectorsTest {
                 }
             }
             case "vergleich" -> {
-                if (c.path("annahme").isNull()) {
-                    fehler.add("die Datei kennt keine Vergleichsquelle — der Fall muss sie "
-                            + "annehmen");
+                if (!fuehrend.isEmpty() || vergleich.size() != 1) {
+                    fehler.add("Vergleich: " + fuehrend.size() + " führende und " + vergleich.size()
+                            + " Vergleichs-Bindungen zur Messzeit");
+                    return;
                 }
-                if (!fuehrend.isEmpty() || !messstellen.containsKey(messstelle)) {
-                    fehler.add("Vergleich an " + messstelle + " passt nicht zur Datei");
-                }
+                String[] b = vergleich.get(0);
+                gleich(fehler, "Messstelle des Vergleichs", b[0], messstelle);
+                gleich(fehler, "Einbau des Vergleichs", b[1], einbau.path("einbau").asText());
+                gleich(fehler, "Wertart", b[2], f.path("wertart").asText());
+                gleich(fehler, "Einheit", b[3], f.path("einheit").asText());
             }
             default -> fehler.add("unbekannte Bindung " + art);
         }

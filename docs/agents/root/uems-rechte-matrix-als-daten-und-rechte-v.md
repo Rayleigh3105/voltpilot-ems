@@ -54,8 +54,13 @@ und ruft `rechte.ts`). `TenantFilter`, `SecurityConfig`, `OcppActionPolicy` und 
    `SITE_ADMIN`, Unterstützer „Einrichten und Bedienen“ `CUSTOMER` (W-R1 — die Matrix-Zeile
    `ladepunkt.betrieb` gibt ihm B, der Entscheid-Wortlaut gilt), VoltPilot `PLATFORM`, alle
    anderen `keine`.
-6. **Zeit:** alle Enden ausschließend; die Unterstützung Elektro Brunner endet am 15.12.2026 00:00
-   (Referenzdatei, W-R2 — A4 sagt 16.12.). Ein Entzug schaltet nie: ein Handeingriff wirkt bis zu
+6. **Zeit:** „gültig ab“ ist ein Zeitpunkt; das ENDDATUM einer Unterstützung ist ein Kalendertag
+   und gilt einschließlich — „bis 15.12.2026“ endet am 16.12.2026 00:00 (W-R2 aufgelöst,
+   Entscheid firstmate 11.09.2026, wie AP-03 A4). Banner und „Endete am“ nennen das Enddatum,
+   `endet` ist der Ablauf-Zeitpunkt, die Erinnerung läuft 7 Tage vor dem Ablauf. Nur der
+   Notfall-Zugriff ist ein Zeitpunkt-Zeitraum von genau 24 h (`bisZeitpunkt` in beiden
+   Zwillingen). Die Anlagen-Zuordnung ist tagesgenau wie im Ortsbaum und in der Referenzdatei
+   (letzter Tag einschließlich); der Stichtag gilt an seinem Kalendertag. Ein Entzug schaltet nie: ein Handeingriff wirkt bis zu
    seinem Ablauf, nur das Etikett nennt „(Bedienrecht beendet am …)“ (E15).
 
 ## Prüfen

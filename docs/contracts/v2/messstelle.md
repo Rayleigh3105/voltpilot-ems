@@ -253,20 +253,22 @@ die Referenzdatei, für Regeln der Entscheid-Wortlaut.
    `binden` → Überlappung.
 10. **„Überlappung derselben Rolle“ beim Vergleich** heißt „desselben Messwerts“ — sonst gäbe es
     keine 0..n Vergleichsquellen nebeneinander.
-11. **Keine Vergleichsquelle und keine Bindungslücke in der Referenzdatei.** Die Vergleichs-Fälle
-    fügen die Netzleistung am Wechselrichter K-1 an MS-01 hinzu (E3, §5.3) — als VORGANG; nur
-    `ms-01-vergleich-derselbe-messwert-doppelt` setzt sie als BESTAND voraus und nennt das als
-    `annahme` (dieselbe Annahme wie `messwert-herkunft-vectors.json`). Die Lücke spielt als
+11. **Die Vergleichsquelle der Referenzdatei (seit Fassung 1.1), keine Bindungslücke.** Die Datei
+    führt die Netzleistung am Wechselrichter K-1 an MS-01 als Vergleichsquelle der Wirkleistung ab
+    20.11.2026 08:30 (AP-04 §4.1, E3). `ms-01-vergleichsquelle-mit-zweck` ist genau dieser
+    Eintrag, `ms-01-vergleich-derselbe-messwert-doppelt` setzt ihn als BESTAND voraus — beide
+    prüfen die Zwillinge gegen die Datei, keine `annahme` mehr. Die Lücke spielt als
     Fortschreibung an MS-07 am 03.05.2027. Zwei Vergleichs-Messwerte für EINE Größe und zwei
     Messstellen, die einen Zähler in derselben Richtung lesen, kennt die Datei nicht — diese
     beiden Zweige prüfen die Zwillinge als Einheit mit neutralen Platzhaltern.
 12. **A3** kündigt 10:00 an und korrigiert auf 10:40; der Fall nimmt gleich 10:40. **§5.4** lässt
     MS-08 die Quelle um 06:00 wechseln, die Referenzdatei um 00:00; der Fall folgt der Datei.
     Der Vertipper `1 083 500 kWh` (Fälle zum Ablesestand) ist der Wortlaut-Wert aus §5.12.
-13. **Zwei Schreibweisen desselben Tages.** Die Referenzdatei schreibt Zuordnungen als
-    Mitternachts-Zeitpunkt mit AUSSCHLIESSLICHEM Ende (MS-08: AN-1 „bis 2027-03-01T00:00“), der
-    Ortsbaum-Vertrag (AP-02 IP-1) als Tag mit dem LETZTEN gültigen Tag („bis 2027-02-28“). Dieser
-    Vertrag folgt dem Ortsbaum; beide Zwillinge rechnen beim Vergleich mit der Referenzdatei um.
+13. **Eine Schreibweise desselben Tages (aufgelöst, Referenzdatei 1.1).** Die Referenzdatei
+    schreibt Ort und Stellung jetzt wie dieser Vertrag und der Ortsbaum als Tag mit dem LETZTEN
+    gültigen Tag (MS-08: AN-1 „bis 2027-02-28“); die Zwillinge vergleichen ohne Umrechnung. Der
+    `beginn` einer Messstelle bleibt ein Zeitpunkt: Mitternacht des ersten Tages ihres ersten
+    Orts am Standort.
 
 ## 10. Was dieser Vertrag nicht regelt
 

@@ -293,14 +293,16 @@ class UemsOrteMigrationTest {
      * Flächen, dazu die Flächen der Standorte — so, wie die Datei sie nennt. Die
      * Notiz eines Bereichs ist in der Referenz seine {@code beschreibung} (§4.1 B:
      * Notiz von Halle 2 Montage = „Montagelinie M1"); ein Gebäude hat dort keine.
-     * Ein Intervall beginnt am ersten Tag seines Standorts (Zeitachse: angelegt
-     * 01.10./15.10.2026); dieselben Intervalle stehen im Szenario
-     * {@code ahrenberg-vor-dem-umzug} der Ortsbaum-Vektoren.
+     * Die Intervalle sind die {@code ort_eltern}-Zuordnungen der Datei — die Orte der
+     * Bestandsanlage AN-1 ab 12.03.2024, alle anderen ab dem ersten Tag ihres
+     * Standorts. Denselben Anfang (Tag und Elternknoten) hat das Szenario
+     * {@code ahrenberg-bestand} der Ortsbaum-Vektoren; dessen spätere Umzüge nach
+     * Werk Ahrenberg Nord lässt die Datei aus.
      */
     @Test
     void dieReferenzOrteUndFlaechenPassenUnverfaelschtInsSchema() {
         Map<String, UUID> o = referenzOrte();
-        JsonNode szenario = ortsbaum.at("/szenarien/ahrenberg-vor-dem-umzug/orte");
+        JsonNode szenario = ortsbaum.at("/szenarien/ahrenberg-bestand/orte");
         List<String> kennzeichen = new ArrayList<>();
 
         alsTue(AHRENBERG, () -> {
@@ -310,10 +312,10 @@ class UemsOrteMigrationTest {
                 assertThat(orte.finde(o.get(kz))).contains(new Ort(o.get(kz), "gebaeude",
                         g.get("name").asText(), kz, nutzungscodes(g), g.get("baujahr").asInt(),
                         null, "aktiv", null));
-                String standort = g.get("standort").asText();
-                assertThat(alsIntervalle(o.get(kz)))
-                        .containsExactly(new Intervall(ersterTagVon(standort), null, standort))
-                        .containsExactlyElementsOf(intervalle(element(szenario, kz).get("intervalle")));
+                assertThat(alsIntervalle(o.get(kz))).isNotEmpty()
+                        .containsExactlyElementsOf(ortIntervalleDerReferenz(kz));
+                assertThat(anfang(ortIntervalleDerReferenz(kz)))
+                        .isEqualTo(anfang(intervalle(element(szenario, kz).get("intervalle"))));
                 assertThat(alsFlaechen(flaechen.fuerOrt(o.get(kz))))
                         .containsExactlyElementsOf(flaechenDerReferenz(g))
                         .containsExactlyElementsOf(flaechenIntervalle(element(szenario, kz)));
@@ -324,25 +326,27 @@ class UemsOrteMigrationTest {
                 assertThat(orte.finde(o.get(kz))).contains(new Ort(o.get(kz), "bereich",
                         b.get("name").asText(), kz, nutzungscodes(b), null,
                         b.get("beschreibung").asText(), "aktiv", null));
-                String eltern = b.get("eltern").asText();
-                String standort = element(referenz.get("gebaeude"), eltern).get("standort").asText();
-                assertThat(alsIntervalle(o.get(kz)))
-                        .containsExactly(new Intervall(ersterTagVon(standort), null, eltern))
-                        .containsExactlyElementsOf(intervalle(element(szenario, kz).get("intervalle")));
+                assertThat(alsIntervalle(o.get(kz))).isNotEmpty()
+                        .containsExactlyElementsOf(ortIntervalleDerReferenz(kz));
+                assertThat(anfang(ortIntervalleDerReferenz(kz)))
+                        .isEqualTo(anfang(intervalle(element(szenario, kz).get("intervalle"))));
                 // Kein Bereich der Referenz hat eine Fläche — also keine Zeile, nie eine 0.
                 assertThat(flaechen.fuerOrt(o.get(kz))).isEmpty();
             }
+            // Werk Ahrenberg trägt eine eigene Fläche; Werk Lindach keine (AP-02 A4) —
+            // also keine Zeile, nie eine 0: Kennzahlen summieren dort die Gebäude.
+            assertThat(flaechenDerReferenz(element(referenz.get("standorte"), "ST-1"))).isNotEmpty();
             for (JsonNode s : referenz.get("standorte")) {
                 assertThat(alsFlaechen(flaechen.fuerStandort(
                         REFERENZ_STANDORTE.get(s.get("kennzeichen").asText()))))
-                        .isNotEmpty().containsExactlyElementsOf(flaechenDerReferenz(s));
+                        .containsExactlyElementsOf(flaechenDerReferenz(s));
             }
             assertThat(orte.alle()).extracting(Ort::kurzzeichen).containsAll(kennzeichen);
         });
         assertThat(kennzeichen).isNotEmpty().containsExactlyInAnyOrderElementsOf(o.keySet());
 
-        // A3: der Anbau von Halle 2 — [ab, bis) der Referenz wird „bis = letzter
-        // Tag", genau wie im Vertrag: 3 100 m² bis 31.12.2026, 3 400 m² ab 01.01.2027.
+        // A3: der Anbau von Halle 2 — die Referenz schreibt „bis = letzter Tag" wie
+        // der Vertrag: 3 100 m² bis 31.12.2026, 3 400 m² ab 01.01.2027.
         assertThat(alsFlaechen(als(AHRENBERG, () -> flaechen.fuerOrt(o.get("G-2")))))
                 .containsExactlyElementsOf(flaechenIntervalle(
                         element(ortsbaum.at("/szenarien/ahrenberg/orte"), "G-2")));
@@ -844,12 +848,13 @@ class UemsOrteMigrationTest {
             alsTue(AHRENBERG, () -> {
                 for (JsonNode g : referenz.get("gebaeude")) {
                     String kz = g.get("kennzeichen").asText();
-                    String standort = g.get("standort").asText();
                     UUID id = orte.anlegen(new NeuerOrt(AHRENBERG, "gebaeude",
                             g.get("name").asText(), kz, nutzungscodes(g),
                             g.get("baujahr").asInt(), null, "aktiv", null));
-                    zuordnungen.zuordnen(AHRENBERG, id, REFERENZ_STANDORTE.get(standort), null,
-                            ersterTagVon(standort), null, null);
+                    for (Intervall i : ortIntervalleDerReferenz(kz)) {
+                        zuordnungen.zuordnen(AHRENBERG, id, REFERENZ_STANDORTE.get(i.eltern()), null,
+                                i.ab(), i.bis(), null);
+                    }
                     for (FlaechenIntervall f : flaechenDerReferenz(g)) {
                         flaechen.eintragen(AHRENBERG, null, id, f.m2(), f.ab(), f.bis(), null);
                     }
@@ -857,15 +862,13 @@ class UemsOrteMigrationTest {
                 }
                 for (JsonNode b : referenz.get("bereiche")) {
                     String kz = b.get("kennzeichen").asText();
-                    String eltern = b.get("eltern").asText();
-                    String standort = element(referenz.get("gebaeude"), eltern)
-                            .get("standort").asText();
                     assertThat(b.get("eltern_art").asText()).isEqualTo("gebaeude");
                     UUID id = orte.anlegen(new NeuerOrt(AHRENBERG, "bereich",
                             b.get("name").asText(), kz, nutzungscodes(b), null,
                             b.get("beschreibung").asText(), "aktiv", null));
-                    zuordnungen.zuordnen(AHRENBERG, id, null, m.get(eltern),
-                            ersterTagVon(standort), null, null);
+                    for (Intervall i : ortIntervalleDerReferenz(kz)) {
+                        zuordnungen.zuordnen(AHRENBERG, id, null, m.get(i.eltern()), i.ab(), i.bis(), null);
+                    }
                     m.put(kz, id);
                 }
                 for (JsonNode s : referenz.get("standorte")) {
@@ -880,6 +883,24 @@ class UemsOrteMigrationTest {
         return referenzOrte;
     }
 
+    /** Der Anfang einer Intervall-Liste: erster Tag und erster Elternknoten. */
+    private static List<Object> anfang(List<Intervall> liste) {
+        return List.of(liste.get(0).ab(), liste.get(0).eltern());
+    }
+
+    /** Die Intervalle eines Referenz-Orts, wie die Datei sie nennt ({@code ort_eltern}, tagesgenau). */
+    private static List<Intervall> ortIntervalleDerReferenz(String kennzeichen) {
+        List<Intervall> out = new ArrayList<>();
+        for (JsonNode z : referenz.get("zuordnungen")) {
+            if ("ort_eltern".equals(z.get("art").asText()) && kennzeichen.equals(z.get("von").asText())) {
+                String bis = text(z.get("gueltig_bis"));
+                out.add(new Intervall(LocalDate.parse(z.get("gueltig_ab").asText()),
+                        bis == null ? null : LocalDate.parse(bis), text(z.get("nach"))));
+            }
+        }
+        return out;
+    }
+
     /** Der erste Tag eines Referenz-Standorts (Zeitachse: angelegt am …). */
     private static LocalDate ersterTagVon(String standort) {
         return tagInBerlin(element(referenz.get("standorte"), standort).get("aktiv_seit").asText());
@@ -887,8 +908,8 @@ class UemsOrteMigrationTest {
 
     /**
      * Die Flächen eines Referenz-Objekts, wie die Datenbank sie hält: die Datei
-     * schreibt [ab, bis) als Zeitpunkte, die Datenbank den LETZTEN Tag
-     * (Vertrag). Eine Fläche ohne Zahl wäre „nicht erhoben" — keine Zeile.
+     * schreibt sie wie der Vertrag (Tag, LETZTER Tag einschließlich). Eine Fläche
+     * ohne Zahl wäre „nicht erhoben" — keine Zeile.
      */
     private static List<FlaechenIntervall> flaechenDerReferenz(JsonNode objekt) {
         List<FlaechenIntervall> out = new ArrayList<>();
@@ -897,9 +918,8 @@ class UemsOrteMigrationTest {
                 continue;
             }
             String bis = text(f.get("gueltig_bis"));
-            out.add(new FlaechenIntervall(tagInBerlin(f.get("gueltig_ab").asText()),
-                    bis == null ? null : tagInBerlin(bis).minusDays(1),
-                    f.get("flaeche_m2").asInt()));
+            out.add(new FlaechenIntervall(LocalDate.parse(f.get("gueltig_ab").asText()),
+                    bis == null ? null : LocalDate.parse(bis), f.get("flaeche_m2").asInt()));
         }
         return out;
     }
@@ -1118,7 +1138,7 @@ class UemsOrteMigrationTest {
                 if ("anlage_standort".equals(z.get("art").asText())) {
                     anlagenZuordnungen.zuordnen(AHRENBERG, anlagen.get(z.get("von").asText()),
                             REFERENZ_STANDORTE.get(z.get("nach").asText()),
-                            tagInBerlin(z.get("gueltig_ab").asText()), null, null);
+                            LocalDate.parse(z.get("gueltig_ab").asText()), null, null);
                 }
             }
         });

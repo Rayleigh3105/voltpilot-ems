@@ -1566,7 +1566,7 @@
       "pruefung": "fortschreibung",
       "bezug": "AP-07 §4.5 Nachlieferung Nr. 6, E7; Referenz-Zeitachse 04.11.2026 09:38/09:40",
       "why": "Box Halle 2 (neu) liest ab 09:40 — die Lücke von DQ-4 schließt dort und bleibt für immer sichtbar: der Puffer der ausgebauten Box ist mit ihr weg, `nachgeliefert_am` bleibt leer.",
-      "annahme": null,
+      "annahme": "Variante OHNE Rückkehr, der Wortlaut von AP-06 A5 („Lücke 03.11. 14:00 – 04.11. 09:40“): wäre Box Halle 2 nicht zurückgekehrt, schlösse erst der Tausch die Lücke — ohne Nachlieferung (§4.5 Nachlieferung Nr. 6). Die Referenzdatei erzählt die Rückkehr um 17:30 mit Nachlieferung; Kennzeichen und Zuständigkeiten stammen aus ihr.",
       "input": {
         "urheber": "cloud",
         "alt": {
@@ -1661,7 +1661,7 @@
       "pruefung": "ereignis",
       "bezug": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8 backfill, A3",
       "why": "3 640 Werte mit Messzeit 14:00–17:30 gehen 17:31–17:34 ein: EIN backfill je Box und Quelle, mit Original-Messzeiten und Eingangszeiten.",
-      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "annahme": null,
       "input": {
         "urheber": "writer",
         "ereignis": {
@@ -1690,7 +1690,7 @@
       "pruefung": "fortschreibung",
       "bezug": "AP-07 §4.8 data_gap (MS-10 14:00–17:30, nachgeliefert 17:31), §4.9 Nr. 5",
       "why": "Die Lücke der Reihe schließt um 17:30 und bekommt `nachgeliefert_am` 17:31 — sie bleibt als Ereignis stehen, auch wenn die Werte nun da sind.",
-      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "annahme": null,
       "input": {
         "urheber": "writer",
         "alt": {
@@ -1750,7 +1750,7 @@
           "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
           "art": "data_gap",
           "von": "2026-11-03T13:05:00Z",
-          "bis": "2026-11-04T08:40:00Z",
+          "bis": "2026-11-03T16:30:00Z",
           "box": "E-2",
           "datenquelle": "DQ-4",
           "erkannt_aus": "herzschlag",
@@ -1776,7 +1776,7 @@
           "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
           "art": "data_gap",
           "von": "2026-11-03T13:00:00Z",
-          "bis": "2026-11-04T08:40:00Z",
+          "bis": "2026-11-03T16:30:00Z",
           "box": "E-2",
           "datenquelle": "DQ-4",
           "erkannt_aus": "herzschlag",
@@ -1786,7 +1786,7 @@
           "ereignis_id": "e7e00000-0000-4000-8000-000000000002",
           "art": "data_gap",
           "von": "2026-11-03T13:00:00Z",
-          "bis": "2026-11-04T09:00:00Z",
+          "bis": "2026-11-03T16:50:00Z",
           "box": "E-2",
           "datenquelle": "DQ-4",
           "erkannt_aus": "herzschlag",
@@ -1805,7 +1805,7 @@
       "pruefung": "ereignis",
       "bezug": "AP-07 §4.5 Duplikate Nr. 5, §4.8, A4; Herkunftsvertrag sequenz-luecke-188-umschlaege",
       "why": "Nach 48 213 kommt 48 402: 188 Datenpakete fehlen — der Writer zählt sie, die Werte darin bleiben Lücke.",
-      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "annahme": null,
       "input": {
         "urheber": "writer",
         "ereignis": {
@@ -1833,7 +1833,7 @@
       "pruefung": "ereignis",
       "bezug": "AP-07 §4.5 Duplikate Nr. 5",
       "why": "Die Anzahl folgt aus den Sequenzen — 187 statt 188 wäre eine erfundene Zahl.",
-      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "annahme": null,
       "input": {
         "urheber": "writer",
         "ereignis": {
@@ -1859,7 +1859,7 @@
       "pruefung": "ereignis",
       "bezug": "AP-07 §4.5 Duplikate Nr. 2, §5.2 Variante; Herkunftsvertrag umschlag-48213-sequenz-zurueckgesetzt",
       "why": "Nach einer Neuinstallation zählt die Box ab 1: ein Ereignis je Box — die Werte selbst sind Wiederholungen (Reihe + Messzeit).",
-      "annahme": "Rückkehr-Variante der Abnahmefälle AP-07 A1/A3/A4 (AP-00 §7.6, AP-06 A2): Box Halle 2 kehrt um 17:30 zurück und liefert nach. Die Zeitachse der Referenzdatei erzählt ab 17:30 den Box-Tausch (dort liefert E-2 nie nach); Kennzeichen, Zuständigkeit und Messstellen stammen aus der Datei — wie im Herkunftsvertrag §7 Nr. 1.",
+      "annahme": null,
       "input": {
         "urheber": "writer",
         "ereignis": {

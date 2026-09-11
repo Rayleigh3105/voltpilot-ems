@@ -41,8 +41,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -69,9 +67,6 @@ class DatenquelleRegelnVectorsTest {
     private static final Path TABELLE_SCHEMA = V2.resolve("edge-capabilities.schema.json");
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
 
-    /** Die Abbildung des Referenz-Protokolls auf das geschlossene Vokabular (Kopf der Vektor-Datei). */
-    private static final Map<String, String> PROTOKOLL_AUS_REFERENZ =
-            Map.of("Modbus TCP", "modbus_tcp", "OCPP 1.6J", "ocpp");
 
     private static JsonNode lies(Path p) throws Exception {
         return MAPPER.readTree(Files.readString(p));
@@ -563,8 +558,7 @@ class DatenquelleRegelnVectorsTest {
             return true;
         }
         gleich(fehler, dq + " Anlage", rq.path("anlage").asText(), q.path("anlage").asText());
-        gleich(fehler, dq + " Protokoll", PROTOKOLL_AUS_REFERENZ.get(rq.path("protokoll").asText()),
-                q.path("protokoll").asText());
+        gleich(fehler, dq + " Protokoll", rq.path("protokoll").asText(), q.path("protokoll").asText());
         gleich(fehler, dq + " Adresse", adresseAusReferenz(rq), q.path("adresse").asText());
         gleich(fehler, dq + " Netz", text(rq.get("netz")), text(q.get("netz")));
         gleich(fehler, dq + " Steuerquelle", rq.path("steuerquelle").asText(), q.path("steuerquelle").asText());
@@ -651,8 +645,7 @@ class DatenquelleRegelnVectorsTest {
         Instant ab = instant(k.get("in_betrieb_ab"));
         gleich(fehler, kz + " Anlage", rk.path("anlage").asText(), k.path("anlage").asText());
         gleich(fehler, kz + " in Betrieb", instant(rk.get("in_betrieb_ab")).toString(), ab.toString());
-        gleich(fehler, kz + " Protokoll", PROTOKOLL_AUS_REFERENZ.get(q.path("protokoll").asText()),
-                k.path("protokoll").asText());
+        gleich(fehler, kz + " Protokoll", q.path("protokoll").asText(), k.path("protokoll").asText());
         gleich(fehler, kz + " Adresse", adresseAusReferenz(q), k.path("adresse").asText());
         gleich(fehler, kz + " Geräte-ID", text(g.get("modbus_geraete_id")), text(k.get("geraete_id")));
         gleich(fehler, kz + " Box", DatenquelleRegeln.zustaendigeBox(r.perioden().get(q.path("kennzeichen").asText()), ab),
@@ -660,10 +653,10 @@ class DatenquelleRegelnVectorsTest {
         return false;
     }
 
+    /** Die Adresse, wie der Vertrag sie führt: Host:Port — bei OCPP die Stations-Kennung selbst. */
     private static String adresseAusReferenz(JsonNode q) {
-        if ("OCPP 1.6J".equals(q.path("protokoll").asText())) {
-            Matcher m = Pattern.compile("„([^“]+)“").matcher(q.path("weg").asText());
-            return m.find() ? m.group(1) : null;
+        if ("ocpp".equals(q.path("protokoll").asText())) {
+            return q.path("adresse").asText();
         }
         return q.path("adresse").asText() + ":" + q.path("port").asInt();
     }

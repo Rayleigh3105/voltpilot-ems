@@ -35,9 +35,9 @@ gegen die Datenbank). Prosa-Wahrheit: AP-02-Konzept §4.1 (G, B), §4.3, §4.5.
   `aufgehobene-zaehlen-nicht` für Flächen nicht darstellbar und eine Korrektur müsste `m2`
   umschreiben.
 - **Nicht in der Datenbank, bewusst** (Kopf der Migration): „das Ziel besteht an jedem Tag des
-  Intervalls“ — das Bestehen eines Standorts ist in keiner Tabelle ein Intervall, und die
-  Referenz selbst ordnet AN-1 ab 12.03.2024 einem Standort zu, der erst seit 01.10.2026 im
-  Portal ist; der Name eindeutig je Elternknoten (Elternknoten ist zeitgültig); ein
+  Intervalls“ — das Bestehen eines Standorts ist in keiner Tabelle ein Intervall (die
+  Referenzdatei führt es seit Fassung 1.1 als `ort_eltern` ohne Elternknoten: Werk Ahrenberg
+  besteht rückwirkend seit 12.03.2024, eingetragen am 01.10.2026); der Name eindeutig je Elternknoten (Elternknoten ist zeitgültig); ein
   Kurzzeichen, das zwischen `standort` und `ort` kollidiert; das Baujahr bis zum laufenden
   Jahr (ein CHECK muss zeitlos sein). All das prüft der Schreibweg mit `OrtsbaumAbleitung`.
 - **Offboarding:** `TenantRepository.offboard` löscht `flaeche_gueltigkeit`, `ort_zuordnung`,

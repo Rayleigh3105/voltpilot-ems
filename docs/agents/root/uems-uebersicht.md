@@ -31,6 +31,7 @@ Die Dateinamen am Zeilenende sind relativ zu diesem Ordner (`docs/agents/root/`)
 ## Fachmodell
 
 - **UEMS-Fachmodell: das EINE Glossar für alle Pakete des Unternehmens-Energiemanagements** — Standort · Anlage · Netzanschluss · Messstelle · Messkanal · Datenquelle mit Kardinalität, Zeitgültigkeit und Zustandsvokabular; `docs/fachmodell/` ist die Referenz, die Auswirkungs-Karte sagt je heutiger Tabelle, was aus ihr wird · `uems-fachmodell-das-eine-glossar-fuer-al.md`
+- **UEMS-Referenzunternehmen Ahrenberg: die EINE Beispielquelle aller Pakete** — Kennzeichen, Werte und Zeitpunkte nur aus `docs/contracts/v2/uems-referenzunternehmen.json`; tagesgenau = Tag + LETZTER Tag, minutengenau = halboffen, `U` = Unternehmen als Ort, rückwirkend mit `eingetragen_am` + Ortsbaum-Abzeichen, Enddatum einer Unterstützung einschließlich; die Zwillinge prüfen „kein Ziel vor seinem Bestehen“ — wer die Datei ändert, fährt alle UEMS-Tests · `uems-referenzunternehmen-die-eine-beispi.md`
 
 ## Pflegeregel
 
