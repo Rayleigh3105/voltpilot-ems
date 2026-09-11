@@ -70,6 +70,7 @@ geraet_komponente
 geraet_kennzeichen_seq
 messreihe_ereignis
 messstelle_quelle
+quelle_einstellung
 "
 
 # Portal- und Vertrags-Dateien, die die Karte namentlich anführt.

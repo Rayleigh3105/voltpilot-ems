@@ -78,7 +78,7 @@ class ComponentActivationOutboxWiringTest {
 
     private final ComponentService service = new ComponentService(sites, points, entityRepo,
             registry, definitions, applyState, templates, receipts, assets, observed, outbox,
-            devices, entityTypes);
+            devices, entityTypes, mock(com.voltpilot.api.uems.QuelleEinstellungService.class));
 
     @AfterEach
     void clearTenant() {

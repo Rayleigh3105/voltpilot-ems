@@ -16,6 +16,7 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.QuelleEinstellungService;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -107,6 +108,7 @@ public class ComponentService {
     private final ComponentActivationOutboxService activationOutbox;
     private final DeviceRepository deviceTopology;
     private final EntityTypeCatalog entityTypes;
+    private final QuelleEinstellungService einstellungen;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ComponentService(SiteRepository sites, MeasurementPointRepository points,
@@ -115,7 +117,7 @@ public class ComponentService {
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
             AssetRepository assets, EntityObservedRepository observed,
             ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology,
-            EntityTypeCatalog entityTypes) {
+            EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen) {
         this.sites = sites;
         this.points = points;
         this.entityRepo = entityRepo;
@@ -129,6 +131,7 @@ public class ComponentService {
         this.activationOutbox = activationOutbox;
         this.deviceTopology = deviceTopology;
         this.entityTypes = entityTypes;
+        this.einstellungen = einstellungen;
     }
 
     // ---- Lesen ------------------------------------------------------------
@@ -322,6 +325,20 @@ public class ComponentService {
         }
         BigDecimal capacity = ROLE_ERZEUGER.equals(role) ? req.capacityKwp() : null;
         String dbRole = sameRole(role, existing) ? existing.role() : role;
+        // UEMS AP-04 IP-11 (W5): ändert die Verbindung eine Einstellung (der Hebel „Auf ×10
+        // stellen" setzt power_scale), steht danach auch eine Einstellungs-Fassung „angewendet,
+        // gültig ab jetzt" da - VOR dem Schreiben, damit die Fassung 1 aus der bisherigen
+        // Verbindung kommt. Sonst ändert sich hier nichts: der Wert gilt sofort, die Testpflicht
+        // bleibt, wie sie ist. ⚠ Der Einstellungs-Weg läuft in einem EIGENEN Savepoint (NESTED):
+        // scheitert er, ist nur er zurückgerollt - gefangen, gemeldet (Log + Zähler), und die
+        // Komponente wird genau wie vorher geschrieben.
+        try {
+            einstellungen.verbindungGeaendert(entityId, template.communication(), existing.connectionJson(),
+                    connJson, subject);
+        } catch (RuntimeException e) {
+            einstellungen.fehlgeschlagen(entityId, template.communication(), existing.connectionJson(),
+                    connJson, e);
+        }
         ComponentDefinitionRepository.Applied applied = definitions.applyEditDefinition(siteId,
                 entityId, req.expectedRevision(), dbRole, ROLE_ENTITY_TYPE.get(role),
                 normalizeLabel(req.label()), capacity, template.brand(), template.model(),

@@ -44,12 +44,12 @@ class RechteKennungenDerRoutenTest {
     private static final Path WEB = Path.of("src", "main", "java", "com", "voltpilot", "api", "web");
 
     /**
-     * Die UEMS-Controller von heute: Messstellen, Messkanäle, Geräte (AP-04), Datenquellen (AP-06),
-     * Standorte, Unternehmen, Gebäude und Bereiche (AP-02).
+     * Die UEMS-Controller von heute: Messstellen, Messkanäle, Geräte und ihre Einstellungen (AP-04),
+     * Datenquellen (AP-06), Standorte, Unternehmen, Gebäude und Bereiche (AP-02).
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
-            "GeraetController", "DatenquelleController", "StandortController", "UnternehmenController",
-            "OrtController");
+            "GeraetController", "GeraetEinstellungController", "DatenquelleController", "StandortController",
+            "UnternehmenController", "OrtController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");

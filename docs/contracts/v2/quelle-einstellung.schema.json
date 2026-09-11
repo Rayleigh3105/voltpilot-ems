@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/quelle-einstellung.schema.json",
+  "title": "Einstellungs-Fassungen je Quelle: Arten, Werte, Zeitregeln, Folgen-Sätze",
+  "description": "Die Vektor-Datei quelle-einstellung-vectors.json (UEMS AP-04 IP-11, E4 = A, E5 = A; Prosa in quelle-einstellung.md). Sie pinnt die Java-Regeln services/api .../uems/QuelleEinstellungRegeln, den TS-Zwilling frontend/portal src/uemsEinstellung.ts und die SQL-Seite der Migration V20260911280000 (CHECK uems_einstellung_wert_gueltig, Ableitung uems_einstellungen_aus_verbindung). Die Datei ist zugleich ihre eigene Fixture. Wie ein einzelner Wert je Art aussieht, sagt $defs/wert; die Form prüfen die Regeln, nicht dieses Schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "referenzunternehmen",
+    "zeitzone",
+    "arten",
+    "wandler_arten",
+    "zahl_grenze",
+    "einheit_max_zeichen",
+    "anwendungen",
+    "herkuenfte",
+    "zustellungen",
+    "status",
+    "verbindungs_kanaele",
+    "selbstbau_kommunikation",
+    "leistungsskalierung_stufen",
+    "fehler",
+    "texte",
+    "cases"
+  ],
+  "properties": {
+    "_comment": { "type": "array", "items": { "type": "string" } },
+    "schema_version": { "description": "Fassung dieser Vektoren. Bleibt; Erweiterungen sind additiv.", "const": "1.0" },
+    "$schema_datei": { "type": "string" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "referenzunternehmen": { "const": "./uems-referenzunternehmen.json" },
+    "zeitzone": { "description": "In ihr stehen die Zeitpunkte der Folgen-Sätze.", "const": "Europe/Berlin" },
+    "arten": {
+      "description": "Das geschlossene Vokabular der Arten (AP-04 §4.4) in dieser Reihenfolge, je mit Kundenwort, den Feldern des Werts und der Vorlage seines Texts.",
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["art", "kundenwort", "felder", "text"],
+        "properties": {
+          "art": { "$ref": "#/$defs/art" },
+          "kundenwort": { "type": "string", "minLength": 1 },
+          "felder": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z_]+$" } },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "wandler_arten": { "description": "Die Arten, deren Folgen-Satz vom Tausch des Wandlers spricht.", "type": "array", "items": { "$ref": "#/$defs/art" } },
+    "zahl_grenze": { "description": "Betragsgrenze jeder Zahl eines Werts (einschließlich).", "type": "number", "minimum": 1 },
+    "einheit_max_zeichen": { "type": "integer", "minimum": 1 },
+    "anwendungen": { "type": "array", "items": { "$ref": "#/$defs/anwendung" } },
+    "herkuenfte": {
+      "description": "bestand = aus der heutigen Verbindung abgeleitet (Fassung 1, gilt seit Beginn der Speisung); verbindung = mit einer Änderung der Verbindung geschrieben (der Hebel „Auf ×10 stellen“); eintrag = über die Einstellungs-Schnittstelle eingetragen.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/herkunft" }
+    },
+    "zustellungen": {
+      "description": "Abgeleitet, nie gespeichert: verbindung = die Box wendet die Fassung heute mit der Verbindung an (bestand, verbindung); ausstehend = angewendet eingetragen, die Zustellung (AP-06) steht aus; null = dokumentiert.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/zustellung" }
+    },
+    "status": { "type": "array", "items": { "$ref": "#/$defs/status" } },
+    "verbindungs_kanaele": {
+      "description": "Die Kanäle der Verbindungs-Vorzeichen: das Vorzeichen des Netzes und das der Batterie stehen je an ihrem Kanal der Lesung, damit zwei Fassungen derselben Art nicht auf dieselbe Quelle fallen.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invert_grid_sign", "invert_batt_sign"],
+      "properties": {
+        "invert_grid_sign": { "const": "power_kw" },
+        "invert_batt_sign": { "const": "battery_power_kw" }
+      }
+    },
+    "selbstbau_kommunikation": { "const": "modbus_baukasten" },
+    "leistungsskalierung_stufen": { "description": "Die Auswahl des Verbindungsfelds power_scale; 0 heißt automatisch.", "type": "array", "items": { "type": "integer" } },
+    "fehler": {
+      "description": "Die Codes der Regeln mit ihrem HTTP-Status, in Prüfreihenfolge.",
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "status"],
+        "properties": {
+          "code": { "$ref": "#/$defs/fehlerCode" },
+          "status": { "enum": [400, 409, 422] }
+        }
+      }
+    },
+    "texte": {
+      "description": "Die Kundensätze mit ihren Platzhaltern — dieselben Zeichen in Java und TS.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "cases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wert", "fassung", "folgen", "anzeige", "verbindung", "aenderung"],
+      "properties": {
+        "wert": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/wertFall" } },
+        "fassung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fassungFall" } },
+        "folgen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/folgenFall" } },
+        "anzeige": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/anzeigeFall" } },
+        "verbindung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/verbindungFall" } },
+        "aenderung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/aenderungFall" } }
+      }
+    }
+  },
+  "$defs": {
+    "art": {
+      "enum": ["wandler_strom", "wandler_spannung", "skalierung", "offset", "vorzeichen_umgekehrt", "impulswertigkeit", "zaehlerkonstante"]
+    },
+    "anwendung": { "enum": ["angewendet", "dokumentiert"] },
+    "herkunft": { "enum": ["bestand", "verbindung", "eintrag"] },
+    "zustellung": { "enum": ["verbindung", "ausstehend"] },
+    "status": { "enum": ["geplant", "gueltig", "beendet"] },
+    "fehlerCode": {
+      "enum": ["wert_ungueltig", "zeitpunkt_ungueltig", "vor_beginn", "nach_ende", "tatsaechlich_ungueltig", "beginn_belegt", "unveraendert"]
+    },
+    "zeitpunkt": {
+      "description": "ISO 8601 mit Versatz (oder Z).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "zeitpunktOderNull": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }] },
+    "wert": {
+      "description": "Der Wert einer Fassung, je Art mit genau den Feldern aus `arten[].felder` (skalierung: `faktor` ODER `automatisch: true`). In den Fällen der Familie `wert` darf er absichtlich falsch sein.",
+      "type": ["object", "number", "string", "boolean", "null"]
+    },
+    "bestehende": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "wert", "anwendung", "gueltig_ab", "gueltig_bis"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "wert": { "type": "object" },
+        "anwendung": { "$ref": "#/$defs/anwendung" },
+        "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+        "gueltig_bis": { "$ref": "#/$defs/zeitpunktOderNull" }
+      }
+    },
+    "referenz": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["geraet", "einbau", "komponente"],
+          "properties": {
+            "geraet": { "type": "string", "minLength": 1 },
+            "einbau": { "type": "string", "minLength": 1 },
+            "komponente": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "wertFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["art", "wert"],
+          "properties": { "art": { "type": "string" }, "wert": { "$ref": "#/$defs/wert" } }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["gueltig", "text"],
+          "properties": { "gueltig": { "type": "boolean" }, "text": { "type": ["string", "null"] } }
+        }
+      }
+    },
+    "fassungFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "referenz", "annahme", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "referenz": { "$ref": "#/$defs/referenz" },
+        "annahme": { "type": ["string", "null"] },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["beginn", "ende", "bestehende", "neu", "jetzt"],
+          "properties": {
+            "beginn": { "$ref": "#/$defs/zeitpunkt" },
+            "ende": { "$ref": "#/$defs/zeitpunktOderNull" },
+            "bestehende": { "type": "array", "items": { "$ref": "#/$defs/bestehende" } },
+            "neu": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["art", "wert", "anwendung", "gueltig_ab", "tatsaechlich_ab"],
+              "properties": {
+                "art": { "$ref": "#/$defs/art" },
+                "wert": { "$ref": "#/$defs/wert" },
+                "anwendung": { "$ref": "#/$defs/anwendung" },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+                "tatsaechlich_ab": { "$ref": "#/$defs/zeitpunktOderNull" }
+              }
+            },
+            "jetzt": { "$ref": "#/$defs/zeitpunkt" }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "beendet", "gueltig_ab", "gueltig_bis", "rueckwirkend"],
+          "properties": {
+            "code": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "beendet": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "gueltig_bis"],
+                  "properties": { "id": { "type": "string" }, "gueltig_bis": { "$ref": "#/$defs/zeitpunkt" } }
+                }
+              ]
+            },
+            "gueltig_ab": { "$ref": "#/$defs/zeitpunktOderNull" },
+            "gueltig_bis": { "$ref": "#/$defs/zeitpunktOderNull" },
+            "rueckwirkend": { "type": ["boolean", "null"] }
+          }
+        }
+      }
+    },
+    "folgenFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["art", "herkunft", "neu", "vorgaenger"],
+          "properties": {
+            "art": { "$ref": "#/$defs/art" },
+            "herkunft": { "$ref": "#/$defs/herkunft" },
+            "neu": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["wert", "anwendung", "gueltig_ab", "tatsaechlich_ab"],
+              "properties": {
+                "wert": { "type": "object" },
+                "anwendung": { "$ref": "#/$defs/anwendung" },
+                "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+                "tatsaechlich_ab": { "$ref": "#/$defs/zeitpunktOderNull" }
+              }
+            },
+            "vorgaenger": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["wert", "anwendung"],
+                  "properties": { "wert": { "type": "object" }, "anwendung": { "$ref": "#/$defs/anwendung" } }
+                }
+              ]
+            }
+          }
+        },
+        "expected": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "anzeigeFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anwendung", "herkunft", "gueltig_ab", "gueltig_bis", "jetzt"],
+          "properties": {
+            "anwendung": { "$ref": "#/$defs/anwendung" },
+            "herkunft": { "$ref": "#/$defs/herkunft" },
+            "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
+            "gueltig_bis": { "$ref": "#/$defs/zeitpunktOderNull" },
+            "jetzt": { "$ref": "#/$defs/zeitpunkt" }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "zustellung", "anwendung_text"],
+          "properties": {
+            "status": { "$ref": "#/$defs/status" },
+            "zustellung": { "anyOf": [{ "$ref": "#/$defs/zustellung" }, { "type": "null" }] },
+            "anwendung_text": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "abgeleitet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kanal", "art", "wert"],
+      "properties": {
+        "kanal": { "type": ["string", "null"] },
+        "art": { "$ref": "#/$defs/art" },
+        "wert": { "type": "object" }
+      }
+    },
+    "verbindungFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kommunikation", "verbindung"],
+          "properties": {
+            "kommunikation": { "type": ["string", "null"] },
+            "verbindung": { "type": ["object", "null"] }
+          }
+        },
+        "expected": { "type": "array", "items": { "$ref": "#/$defs/abgeleitet" } }
+      }
+    },
+    "aenderungFall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kommunikation", "alt", "neu"],
+          "properties": {
+            "kommunikation": { "type": ["string", "null"] },
+            "alt": { "type": ["object", "null"] },
+            "neu": { "type": ["object", "null"] }
+          }
+        },
+        "expected": { "type": "array", "items": { "$ref": "#/$defs/abgeleitet" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,536 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der EINSTELLUNGS-FASSUNGEN je Quelle (UEMS AP-04 IP-11, E4 = A, E5 = A).",
+    "Die Prosa-Wahrheit steht in quelle-einstellung.md; hier steht, wie eine Fassung geprüft,",
+    "eingeordnet, angezeigt und aus der heutigen Verbindung abgeleitet wird.",
+    "",
+    "Sie pinnen:",
+    "  Java  services/api .../uems/QuelleEinstellungRegeln (gerufen von uems/QuelleEinstellungService:",
+    "        GET/POST /api/v1/geraete/{id}/einstellungen und der Hebel-Weg im PUT der Komponente),",
+    "  TS    frontend/portal src/uemsEinstellung.ts (die Geräteseite IP-12),",
+    "  SQL   uems_einstellung_wert_gueltig (CHECK der Tabelle quelle_einstellung) und",
+    "        uems_einstellungen_aus_verbindung (die Ableitung der Fassung 1, V20260911280000).",
+    "Die Familien `verbindung` und `aenderung` kennen nur Java und SQL: die Verbindung einer",
+    "Komponente ist Server-Wissen, das Portal leitet daraus keine Fassung ab. Wer eine Regel",
+    "ändert, ändert jede Seite UND diese Datei.",
+    "",
+    "DIE QUELLE (E4): ein Einbau (`geraet`), optional eine Komponente, die er speist, und",
+    "optional ein Kanal dieser Komponente. Zwei Messstellen an EINEM Gerät teilen dessen",
+    "Fassung (MS-01/MS-02 an GR-2). Je Quelle und Art gilt zu jedem Zeitpunkt höchstens EINE",
+    "Fassung, halboffen auf die Minute [ab, bis).",
+    "",
+    "DIE WIRKUNG (E5): nur ab `gueltig_ab`, nie rückwärts. Kein gespeicherter Wert ändert sich,",
+    "keine Fassung löst eine Neuberechnung aus; ein falsch erfasster Zeitraum wird über eine",
+    "Korrektur (AP-08) berichtigt. Eine NEUE Fassung ab t beendet die zu t gültige derselben",
+    "Quelle und Art genau bei t und gilt bis zum Beginn der nächsten späteren (oder offen).",
+    "",
+    "PRÜFREIHENFOLGE: Wert → Zeitpunkt auf der Minute → vor Beginn der Quelle → am oder nach",
+    "ihrem Ende → tatsächlich-Zeitpunkt → Beginn schon belegt → unverändert (gleicher Wert UND",
+    "gleiche Anwendung wie die zu t gültige Fassung). `rueckwirkend` heißt: `gueltig_ab` liegt",
+    "vor der Minute von `jetzt`.",
+    "",
+    "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json): Kennzeichen,",
+    "Beginn und Ende von Einbau und Speisung und die Wandler der Energiekarten kommen von dort.",
+    "Was ein Fall ERFINDET (etwa das Wandlerverhältnis von GR-2, das die Referenz nicht führt),",
+    "nennt er in `annahme`. Fälle ohne `referenz` spielen in einem neutralen Probe-Bereich."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./quelle-einstellung.schema.json",
+  "herkunft": "UEMS AP-04 §4.2 „Einstellungen je Quelle“, §4.4, §5.7, §6.2, W5; Entscheide E4 = A und E5 = A (Captain, 10.09.2026); Abnahmefälle A4, A5.",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "zeitzone": "Europe/Berlin",
+  "arten": [
+    { "art": "wandler_strom", "kundenwort": "Wandlerverhältnis Strom", "felder": ["primaer_a", "sekundaer_a"], "text": "{primaer_a}/{sekundaer_a} A" },
+    { "art": "wandler_spannung", "kundenwort": "Spannungswandler", "felder": ["primaer_v", "sekundaer_v"], "text": "{primaer_v}/{sekundaer_v} V" },
+    { "art": "skalierung", "kundenwort": "Skalierung", "felder": ["faktor"], "text": "×{faktor}" },
+    { "art": "offset", "kundenwort": "Offset", "felder": ["wert", "einheit"], "text": "{wert} {einheit}" },
+    { "art": "vorzeichen_umgekehrt", "kundenwort": "Vorzeichen umgekehrt", "felder": ["umgekehrt"], "text": "{umgekehrt}" },
+    { "art": "impulswertigkeit", "kundenwort": "Impulswertigkeit", "felder": ["impulse_je_kwh"], "text": "{impulse_je_kwh} Impulse je kWh" },
+    { "art": "zaehlerkonstante", "kundenwort": "Zählerkonstante", "felder": ["je_kwh"], "text": "{je_kwh} je kWh" }
+  ],
+  "wandler_arten": ["wandler_strom", "wandler_spannung"],
+  "zahl_grenze": 1000000000,
+  "einheit_max_zeichen": 32,
+  "anwendungen": ["angewendet", "dokumentiert"],
+  "herkuenfte": ["bestand", "verbindung", "eintrag"],
+  "zustellungen": ["verbindung", "ausstehend"],
+  "status": ["geplant", "gueltig", "beendet"],
+  "verbindungs_kanaele": { "invert_grid_sign": "power_kw", "invert_batt_sign": "battery_power_kw" },
+  "selbstbau_kommunikation": "modbus_baukasten",
+  "leistungsskalierung_stufen": [0, 1, 10],
+  "fehler": [
+    { "code": "wert_ungueltig", "status": 400 },
+    { "code": "zeitpunkt_ungueltig", "status": 400 },
+    { "code": "vor_beginn", "status": 422 },
+    { "code": "nach_ende", "status": 422 },
+    { "code": "tatsaechlich_ungueltig", "status": 422 },
+    { "code": "beginn_belegt", "status": 409 },
+    { "code": "unveraendert", "status": 400 }
+  ],
+  "texte": {
+    "werte_bleiben": "Werte vor dem {ab} bleiben unverändert.",
+    "zeitraum_mit": "Der Zeitraum vom {von} bis {bis} ist mit {wert} erfasst. Berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+    "zeitraum_ohne": "Der Zeitraum vom {von} bis {bis} ist ohne diese Einstellung erfasst. Berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+    "frueher_wandler": "Wenn der Wandler schon früher getauscht wurde, ist der Zeitraum dazwischen falsch erfasst — berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+    "frueher_einstellung": "Wenn die Einstellung schon früher geändert wurde, ist der Zeitraum dazwischen falsch erfasst — berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+    "dokumentiert": "VoltPilot rechnet nichts um — das Gerät wendet die Einstellung selbst an.",
+    "zustellung_ausstehend": "Die Zustellung an die VoltPilot-Box steht noch aus; bis dahin erfasst sie wie bisher. Bereits erfasste Werte berechnet VoltPilot nie neu.",
+    "mit_verbindung": "Die VoltPilot-Box wendet die Einstellung mit der Verbindung der Komponente an. Bereits erfasste Werte berechnet VoltPilot nie neu.",
+    "anwendung_dokumentiert": "im Gerät eingestellt — dokumentiert",
+    "anwendung_ausstehend": "angewendet — Zustellung ausstehend",
+    "anwendung_verbindung": "angewendet — mit der Verbindung zugestellt",
+    "automatisch": "automatisch",
+    "ja": "ja",
+    "nein": "nein",
+    "zeitpunkt_tag": "{tag}",
+    "zeitpunkt_minute": "{tag}, {stunde}:{minute} Uhr"
+  },
+  "cases": {
+    "wert": [
+      { "name": "Wandler 600/5 A", "input": { "art": "wandler_strom", "wert": { "primaer_a": 600, "sekundaer_a": 5 } }, "expected": { "gueltig": true, "text": "600/5 A" } },
+      { "name": "Wandler 1000/5 A mit Tausenderpunkt", "input": { "art": "wandler_strom", "wert": { "primaer_a": 1000, "sekundaer_a": 5 } }, "expected": { "gueltig": true, "text": "1.000/5 A" } },
+      { "name": "Wandler mit Nachkommastelle", "input": { "art": "wandler_strom", "wert": { "primaer_a": 12.5, "sekundaer_a": 1 } }, "expected": { "gueltig": true, "text": "12,5/1 A" } },
+      { "name": "Wandler primär 0: abgelehnt", "input": { "art": "wandler_strom", "wert": { "primaer_a": 0, "sekundaer_a": 5 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Wandler ohne Sekundärseite: abgelehnt", "input": { "art": "wandler_strom", "wert": { "primaer_a": 600 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Wandler mit fremdem Feld: abgelehnt", "input": { "art": "wandler_strom", "wert": { "primaer_a": 600, "sekundaer_a": 5, "einheit": "A" } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Wandler als Text: abgelehnt, nie gelesen", "input": { "art": "wandler_strom", "wert": { "primaer_a": "600", "sekundaer_a": 5 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Spannungswandler 20000/100 V", "input": { "art": "wandler_spannung", "wert": { "primaer_v": 20000, "sekundaer_v": 100 } }, "expected": { "gueltig": true, "text": "20.000/100 V" } },
+      { "name": "Spannungswandler mit Strom-Feldern: abgelehnt", "input": { "art": "wandler_spannung", "wert": { "primaer_a": 20000, "sekundaer_a": 100 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Skalierung ×10", "input": { "art": "skalierung", "wert": { "faktor": 10 } }, "expected": { "gueltig": true, "text": "×10" } },
+      { "name": "Skalierung ×0,1", "input": { "art": "skalierung", "wert": { "faktor": 0.1 } }, "expected": { "gueltig": true, "text": "×0,1" } },
+      { "name": "Skalierung negativ", "input": { "art": "skalierung", "wert": { "faktor": -1 } }, "expected": { "gueltig": true, "text": "×-1" } },
+      { "name": "Skalierung automatisch", "input": { "art": "skalierung", "wert": { "automatisch": true } }, "expected": { "gueltig": true, "text": "automatisch" } },
+      { "name": "Skalierung 0: abgelehnt", "input": { "art": "skalierung", "wert": { "faktor": 0 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Skalierung über der Grenze: abgelehnt", "input": { "art": "skalierung", "wert": { "faktor": 2000000000 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Skalierung automatisch = false: abgelehnt", "input": { "art": "skalierung", "wert": { "automatisch": false } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Skalierung Faktor UND automatisch: abgelehnt", "input": { "art": "skalierung", "wert": { "faktor": 10, "automatisch": true } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Offset 0,5 kW", "input": { "art": "offset", "wert": { "wert": 0.5, "einheit": "kW" } }, "expected": { "gueltig": true, "text": "0,5 kW" } },
+      { "name": "Offset −2 °C", "input": { "art": "offset", "wert": { "wert": -2, "einheit": "°C" } }, "expected": { "gueltig": true, "text": "-2 °C" } },
+      { "name": "Offset ohne Einheit", "input": { "art": "offset", "wert": { "wert": 0, "einheit": "" } }, "expected": { "gueltig": true, "text": "0" } },
+      { "name": "Offset ohne Einheitsfeld: abgelehnt", "input": { "art": "offset", "wert": { "wert": 1 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Offset mit überlanger Einheit: abgelehnt", "input": { "art": "offset", "wert": { "wert": 1, "einheit": "Kilowattstunden je Viertelstunde und Phase" } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Vorzeichen umgekehrt: ja", "input": { "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": true } }, "expected": { "gueltig": true, "text": "ja" } },
+      { "name": "Vorzeichen umgekehrt: nein", "input": { "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": false } }, "expected": { "gueltig": true, "text": "nein" } },
+      { "name": "Vorzeichen als Text: abgelehnt, nie geraten", "input": { "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": "true" } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Impulswertigkeit 1000 je kWh", "input": { "art": "impulswertigkeit", "wert": { "impulse_je_kwh": 1000 } }, "expected": { "gueltig": true, "text": "1.000 Impulse je kWh" } },
+      { "name": "Impulswertigkeit 0: abgelehnt", "input": { "art": "impulswertigkeit", "wert": { "impulse_je_kwh": 0 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Zählerkonstante 375 je kWh", "input": { "art": "zaehlerkonstante", "wert": { "je_kwh": 375 } }, "expected": { "gueltig": true, "text": "375 je kWh" } },
+      { "name": "Zählerkonstante negativ: abgelehnt", "input": { "art": "zaehlerkonstante", "wert": { "je_kwh": -375 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Unbekannte Art: abgelehnt", "input": { "art": "phasenlage", "wert": { "grad": 120 } }, "expected": { "gueltig": false, "text": null } },
+      { "name": "Kein Objekt: abgelehnt", "input": { "art": "skalierung", "wert": 10 }, "expected": { "gueltig": false, "text": null } }
+    ],
+    "fassung": [
+      {
+        "name": "A4: GR-2 Wandler 600/5 → 1000/5 A, im Gerät eingestellt, ab 15.01.2027 09:00",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Das Wandlerverhältnis von GR-2 führt die Referenz nicht (K-3: keine Wandler) — 600/5 A seit dem Einbau und 1000/5 A ab 15.01.2027 09:00 sind die Werte von AP-04 A4.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 1000, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2027-01-15T09:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2027-01-15T09:00:00+01:00" }, "gueltig_ab": "2027-01-15T09:00:00+01:00", "gueltig_bis": null, "rueckwirkend": false }
+      },
+      {
+        "name": "A5: EK-2 Wandler 250/5 → 400/5 A, von VoltPilot angewendet, angekündigt",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": "Die Anwendung „von VoltPilot angewendet“ und der tatsächliche Tausch am 20.01.2027 kommen aus AP-04 A5. A5 nennt 08:00 — die Referenz führt den Tausch tagesgenau am 01.02.2027, der Fall nimmt ihren Zeitpunkt.",
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 400, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2027-02-01T00:00:00+01:00", "tatsaechlich_ab": "2027-01-20T00:00:00+01:00" },
+          "jetzt": "2027-01-25T10:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2027-02-01T00:00:00+01:00" }, "gueltig_ab": "2027-02-01T00:00:00+01:00", "gueltig_bis": null, "rueckwirkend": false }
+      },
+      {
+        "name": "Rückwirkend zwischen zwei Fassungen nachgetragen: gilt bis zur nächsten",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Wie A4; die Zwischenfassung 800/5 A ab 01.06.2026 ist erfunden.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2027-01-15T09:00:00+01:00" },
+            { "id": "F2", "wert": { "primaer_a": 1000, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 800, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2026-06-01T00:00:00+02:00", "tatsaechlich_ab": null },
+          "jetzt": "2027-01-20T10:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2026-06-01T00:00:00+02:00" }, "gueltig_ab": "2026-06-01T00:00:00+02:00", "gueltig_bis": "2027-01-15T09:00:00+01:00", "rueckwirkend": true }
+      },
+      {
+        "name": "Vor einer angekündigten Fassung eingetragen: gilt bis zu ihr",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": "Wie A5; die Zwischenfassung 300/5 A ab 01.12.2026 ist erfunden.",
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": "2027-02-01T00:00:00+01:00" },
+            { "id": "F2", "wert": { "primaer_a": 400, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2027-02-01T00:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 300, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-12-01T00:00:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-11-02T08:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2026-12-01T00:00:00+01:00" }, "gueltig_ab": "2026-12-01T00:00:00+01:00", "gueltig_bis": "2027-02-01T00:00:00+01:00", "rueckwirkend": false }
+      },
+      {
+        "name": "Erste Fassung genau am Beginn der Speisung",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": "Die Anwendung „von VoltPilot angewendet“ kommt aus AP-04 A5.",
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-10-01T00:00:00+02:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-10-01T09:12:00+02:00"
+        },
+        "expected": { "code": null, "beendet": null, "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": null, "rueckwirkend": true }
+      },
+      {
+        "name": "Vor dem Beginn der Speisung: 422",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": null,
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-09-30T23:59:00+02:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-10-01T09:12:00+02:00"
+        },
+        "expected": { "code": "vor_beginn", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Am Ausbau des Einbaus: 422",
+        "referenz": { "geraet": "GR-4", "einbau": "Z-5a", "komponente": null },
+        "annahme": "Die Impulswertigkeit von Z-5a ist erfunden.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": "2026-11-18T10:40:00+01:00",
+          "bestehende": [],
+          "neu": { "art": "impulswertigkeit", "wert": { "impulse_je_kwh": 1000 }, "anwendung": "dokumentiert", "gueltig_ab": "2026-11-18T10:40:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-11-20T09:00:00+01:00"
+        },
+        "expected": { "code": "nach_ende", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Eine Minute vor dem Ausbau: angenommen, und sie endet mit dem Einbau",
+        "referenz": { "geraet": "GR-4", "einbau": "Z-5a", "komponente": null },
+        "annahme": "Die Impulswertigkeit von Z-5a ist erfunden.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": "2026-11-18T10:40:00+01:00",
+          "bestehende": [],
+          "neu": { "art": "impulswertigkeit", "wert": { "impulse_je_kwh": 1000 }, "anwendung": "dokumentiert", "gueltig_ab": "2026-11-18T10:39:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-11-20T09:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": null, "gueltig_ab": "2026-11-18T10:39:00+01:00", "gueltig_bis": "2026-11-18T10:40:00+01:00", "rueckwirkend": true }
+      },
+      {
+        "name": "Derselbe Beginn wie eine bestehende Fassung: 409",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Wie A4; 1200/5 A ist erfunden.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": "2027-01-15T09:00:00+01:00" },
+            { "id": "F2", "wert": { "primaer_a": 1000, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 1200, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2027-01-20T10:00:00+01:00"
+        },
+        "expected": { "code": "beginn_belegt", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Gleicher Wert und gleiche Anwendung wie die gültige Fassung: 400",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Wie A4.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 600.0, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2026-12-01T00:00:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-11-02T08:00:00+01:00"
+        },
+        "expected": { "code": "unveraendert", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Gleicher Wert, andere Anwendung: eine neue Fassung",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Wie A4.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-12-01T00:00:00+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2026-11-02T08:00:00+01:00"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2026-12-01T00:00:00+01:00" }, "gueltig_ab": "2026-12-01T00:00:00+01:00", "gueltig_bis": null, "rueckwirkend": false }
+      },
+      {
+        "name": "Tatsächlich-Zeitpunkt nicht vor dem Gültigkeitsbeginn: 422",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": "Wie A5.",
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 400, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2027-02-01T00:00:00+01:00", "tatsaechlich_ab": "2027-02-01T00:00:00+01:00" },
+          "jetzt": "2027-01-25T10:00:00+01:00"
+        },
+        "expected": { "code": "tatsaechlich_ungueltig", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Tatsächlich-Zeitpunkt vor dem Beginn der Speisung: 422",
+        "referenz": { "geraet": "GR-7", "einbau": "C-1", "komponente": "K-8.2" },
+        "annahme": "Wie A5.",
+        "input": {
+          "beginn": "2026-10-01T00:00:00+02:00", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2026-10-01T00:00:00+02:00", "gueltig_bis": null }
+          ],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 400, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2027-02-01T00:00:00+01:00", "tatsaechlich_ab": "2026-09-01T00:00:00+02:00" },
+          "jetzt": "2027-01-25T10:00:00+01:00"
+        },
+        "expected": { "code": "tatsaechlich_ungueltig", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Zeitpunkt nicht auf der vollen Minute: 400, nie gerundet",
+        "referenz": { "geraet": "GR-2", "einbau": "GR-2", "komponente": null },
+        "annahme": "Wie A4.",
+        "input": {
+          "beginn": "2024-03-12T00:00:00+01:00", "ende": null,
+          "bestehende": [],
+          "neu": { "art": "wandler_strom", "wert": { "primaer_a": 1000, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:30+01:00", "tatsaechlich_ab": null },
+          "jetzt": "2027-01-15T09:00:00+01:00"
+        },
+        "expected": { "code": "zeitpunkt_ungueltig", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Ungültiger Wert: 400 vor jeder Zeitprüfung",
+        "referenz": null,
+        "annahme": null,
+        "input": {
+          "beginn": "2026-07-20T14:23:00Z", "ende": null,
+          "bestehende": [],
+          "neu": { "art": "skalierung", "wert": { "faktor": 0 }, "anwendung": "angewendet", "gueltig_ab": "2026-01-01T00:00:30Z", "tatsaechlich_ab": null },
+          "jetzt": "2026-09-11T08:15:42Z"
+        },
+        "expected": { "code": "wert_ungueltig", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      },
+      {
+        "name": "Hebel „Auf ×10 stellen“: automatisch → ×10 ab der laufenden Minute",
+        "referenz": null,
+        "annahme": null,
+        "input": {
+          "beginn": "2026-07-20T14:23:00Z", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "automatisch": true }, "anwendung": "angewendet", "gueltig_ab": "2026-07-20T14:23:00Z", "gueltig_bis": null }
+          ],
+          "neu": { "art": "skalierung", "wert": { "faktor": 10 }, "anwendung": "angewendet", "gueltig_ab": "2026-09-11T08:15:00Z", "tatsaechlich_ab": null },
+          "jetzt": "2026-09-11T08:15:42Z"
+        },
+        "expected": { "code": null, "beendet": { "id": "F1", "gueltig_bis": "2026-09-11T08:15:00Z" }, "gueltig_ab": "2026-09-11T08:15:00Z", "gueltig_bis": null, "rueckwirkend": false }
+      },
+      {
+        "name": "Hebel zweimal in derselben Minute: der Beginn ist belegt",
+        "referenz": null,
+        "annahme": null,
+        "input": {
+          "beginn": "2026-07-20T14:23:00Z", "ende": null,
+          "bestehende": [
+            { "id": "F1", "wert": { "automatisch": true }, "anwendung": "angewendet", "gueltig_ab": "2026-07-20T14:23:00Z", "gueltig_bis": "2026-09-11T08:15:00Z" },
+            { "id": "F2", "wert": { "faktor": 10 }, "anwendung": "angewendet", "gueltig_ab": "2026-09-11T08:15:00Z", "gueltig_bis": null }
+          ],
+          "neu": { "art": "skalierung", "wert": { "automatisch": true }, "anwendung": "angewendet", "gueltig_ab": "2026-09-11T08:15:00Z", "tatsaechlich_ab": null },
+          "jetzt": "2026-09-11T08:15:58Z"
+        },
+        "expected": { "code": "beginn_belegt", "beendet": null, "gueltig_ab": null, "gueltig_bis": null, "rueckwirkend": null }
+      }
+    ],
+    "folgen": [
+      {
+        "name": "A4: dokumentiert, ohne tatsächlichen Zeitpunkt",
+        "input": {
+          "art": "wandler_strom", "herkunft": "eintrag",
+          "neu": { "wert": { "primaer_a": 1000, "sekundaer_a": 5 }, "anwendung": "dokumentiert", "gueltig_ab": "2027-01-15T09:00:00+01:00", "tatsaechlich_ab": null },
+          "vorgaenger": { "wert": { "primaer_a": 600, "sekundaer_a": 5 }, "anwendung": "dokumentiert" }
+        },
+        "expected": [
+          "Werte vor dem 15.01.2027, 09:00 Uhr bleiben unverändert.",
+          "Wenn der Wandler schon früher getauscht wurde, ist der Zeitraum dazwischen falsch erfasst — berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+          "VoltPilot rechnet nichts um — das Gerät wendet die Einstellung selbst an."
+        ]
+      },
+      {
+        "name": "A5: angewendet, tatsächlich schon am 20.01.2027 getauscht",
+        "input": {
+          "art": "wandler_strom", "herkunft": "eintrag",
+          "neu": { "wert": { "primaer_a": 400, "sekundaer_a": 5 }, "anwendung": "angewendet", "gueltig_ab": "2027-02-01T00:00:00+01:00", "tatsaechlich_ab": "2027-01-20T00:00:00+01:00" },
+          "vorgaenger": { "wert": { "primaer_a": 250, "sekundaer_a": 5 }, "anwendung": "angewendet" }
+        },
+        "expected": [
+          "Werte vor dem 01.02.2027 bleiben unverändert.",
+          "Der Zeitraum vom 20.01.2027 bis 01.02.2027 ist mit 250/5 A erfasst. Berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+          "Die Zustellung an die VoltPilot-Box steht noch aus; bis dahin erfasst sie wie bisher. Bereits erfasste Werte berechnet VoltPilot nie neu."
+        ]
+      },
+      {
+        "name": "Skalierung eingetragen, ohne Vorgänger, tatsächlich schon früher",
+        "input": {
+          "art": "skalierung", "herkunft": "eintrag",
+          "neu": { "wert": { "faktor": 10 }, "anwendung": "angewendet", "gueltig_ab": "2026-09-11T10:15:00+02:00", "tatsaechlich_ab": "2026-09-01T08:30:00+02:00" },
+          "vorgaenger": null
+        },
+        "expected": [
+          "Werte vor dem 11.09.2026, 10:15 Uhr bleiben unverändert.",
+          "Der Zeitraum vom 01.09.2026, 08:30 Uhr bis 11.09.2026, 10:15 Uhr ist ohne diese Einstellung erfasst. Berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+          "Die Zustellung an die VoltPilot-Box steht noch aus; bis dahin erfasst sie wie bisher. Bereits erfasste Werte berechnet VoltPilot nie neu."
+        ]
+      },
+      {
+        "name": "Hebel: Skalierung über die Verbindung, automatisch → ×10",
+        "input": {
+          "art": "skalierung", "herkunft": "verbindung",
+          "neu": { "wert": { "faktor": 10 }, "anwendung": "angewendet", "gueltig_ab": "2026-09-11T08:15:00Z", "tatsaechlich_ab": null },
+          "vorgaenger": { "wert": { "automatisch": true }, "anwendung": "angewendet" }
+        },
+        "expected": [
+          "Werte vor dem 11.09.2026, 10:15 Uhr bleiben unverändert.",
+          "Wenn die Einstellung schon früher geändert wurde, ist der Zeitraum dazwischen falsch erfasst — berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+          "Die VoltPilot-Box wendet die Einstellung mit der Verbindung der Komponente an. Bereits erfasste Werte berechnet VoltPilot nie neu."
+        ]
+      },
+      {
+        "name": "Spannungswandler: der Wandler-Satz",
+        "input": {
+          "art": "wandler_spannung", "herkunft": "eintrag",
+          "neu": { "wert": { "primaer_v": 20000, "sekundaer_v": 100 }, "anwendung": "dokumentiert", "gueltig_ab": "2026-12-31T23:00:00Z", "tatsaechlich_ab": null },
+          "vorgaenger": null
+        },
+        "expected": [
+          "Werte vor dem 01.01.2027 bleiben unverändert.",
+          "Wenn der Wandler schon früher getauscht wurde, ist der Zeitraum dazwischen falsch erfasst — berichtigen Sie ihn über eine Korrektur, sobald Korrekturen verfügbar sind.",
+          "VoltPilot rechnet nichts um — das Gerät wendet die Einstellung selbst an."
+        ]
+      }
+    ],
+    "anzeige": [
+      { "name": "dokumentiert und gültig", "input": { "anwendung": "dokumentiert", "herkunft": "eintrag", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "jetzt": "2026-10-20T10:00:00+02:00" }, "expected": { "status": "gueltig", "zustellung": null, "anwendung_text": "im Gerät eingestellt — dokumentiert" } },
+      { "name": "angewendet eingetragen, in der Zukunft: angekündigt, Zustellung ausstehend", "input": { "anwendung": "angewendet", "herkunft": "eintrag", "gueltig_ab": "2027-02-01T00:00:00+01:00", "gueltig_bis": null, "jetzt": "2027-01-25T10:00:00+01:00" }, "expected": { "status": "geplant", "zustellung": "ausstehend", "anwendung_text": "angewendet — Zustellung ausstehend" } },
+      { "name": "angewendet eingetragen und gültig: die Zustellung steht weiter aus", "input": { "anwendung": "angewendet", "herkunft": "eintrag", "gueltig_ab": "2027-02-01T00:00:00+01:00", "gueltig_bis": null, "jetzt": "2027-02-01T00:00:00+01:00" }, "expected": { "status": "gueltig", "zustellung": "ausstehend", "anwendung_text": "angewendet — Zustellung ausstehend" } },
+      { "name": "aus dem Bestand, beendet genau jetzt", "input": { "anwendung": "angewendet", "herkunft": "bestand", "gueltig_ab": "2026-07-20T14:23:00Z", "gueltig_bis": "2026-09-11T08:15:00Z", "jetzt": "2026-09-11T08:15:00Z" }, "expected": { "status": "beendet", "zustellung": "verbindung", "anwendung_text": "angewendet — mit der Verbindung zugestellt" } },
+      { "name": "über die Verbindung (Hebel), gültig", "input": { "anwendung": "angewendet", "herkunft": "verbindung", "gueltig_ab": "2026-09-11T08:15:00Z", "gueltig_bis": null, "jetzt": "2026-09-11T08:15:42Z" }, "expected": { "status": "gueltig", "zustellung": "verbindung", "anwendung_text": "angewendet — mit der Verbindung zugestellt" } }
+    ],
+    "verbindung": [
+      {
+        "name": "Deye über Solarman: Leistungsskalierung als Text (wie der Hebel sie schickt) und beide Vorzeichen",
+        "input": { "kommunikation": "solarman_v5", "verbindung": { "ip": "192.168.178.40", "port": 8899, "serial": "2712345678", "mb_slave_id": 1, "power_scale": "10", "invert_grid_sign": false, "invert_batt_sign": true } },
+        "expected": [
+          { "kanal": null, "art": "skalierung", "wert": { "faktor": 10 } },
+          { "kanal": "power_kw", "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": false } },
+          { "kanal": "battery_power_kw", "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": true } }
+        ]
+      },
+      {
+        "name": "Leistungsskalierung 0 heißt automatisch",
+        "input": { "kommunikation": "solarman_v5", "verbindung": { "ip": "192.168.178.40", "power_scale": 0 } },
+        "expected": [ { "kanal": null, "art": "skalierung", "wert": { "automatisch": true } } ]
+      },
+      {
+        "name": "Leistungsskalierung ×1 als Zahl",
+        "input": { "kommunikation": "solarman_v5", "verbindung": { "power_scale": 1 } },
+        "expected": [ { "kanal": null, "art": "skalierung", "wert": { "faktor": 1 } } ]
+      },
+      {
+        "name": "Eine Stufe außerhalb der Auswahl wird nie geraten",
+        "input": { "kommunikation": "solarman_v5", "verbindung": { "power_scale": 5, "invert_grid_sign": "true" } },
+        "expected": []
+      },
+      {
+        "name": "Fronius: nur das Netz-Vorzeichen",
+        "input": { "kommunikation": "fronius_solar_api", "verbindung": { "ip": "192.168.178.41", "invert_grid_sign": true } },
+        "expected": [ { "kanal": "power_kw", "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": true } } ]
+      },
+      {
+        "name": "Eine Verbindung ohne Einstellungs-Felder hat keine Fassung",
+        "input": { "kommunikation": "modbus_tcp", "verbindung": { "ip": "192.168.178.50", "port": 502, "unit_id": 2 } },
+        "expected": []
+      },
+      {
+        "name": "Keine Verbindung: keine Fassung",
+        "input": { "kommunikation": null, "verbindung": null },
+        "expected": []
+      },
+      {
+        "name": "Selbstbau: Skalierung und Offset je Kanal, in der Reihenfolge der Kanäle",
+        "input": { "kommunikation": "modbus_baukasten", "verbindung": {
+          "transport": { "host": "192.168.178.90", "port": 502, "unit_id": 3 },
+          "channels": [
+            { "slug": "wirkleistung", "label": "Wirkleistung", "unit": "kW", "register": { "kind": "holding", "address": 40083, "data_type": "s16", "word_order": "big" }, "scale": 0.001, "offset": 0, "min_read_interval_s": 10 },
+            { "slug": "temperatur", "label": "Temperatur", "unit": "°C", "register": { "kind": "input", "address": 30001, "data_type": "s16", "word_order": "big" }, "scale": 0.1, "offset": -40, "min_read_interval_s": 60 }
+          ] } },
+        "expected": [
+          { "kanal": "wirkleistung", "art": "skalierung", "wert": { "faktor": 0.001 } },
+          { "kanal": "wirkleistung", "art": "offset", "wert": { "wert": 0, "einheit": "kW" } },
+          { "kanal": "temperatur", "art": "skalierung", "wert": { "faktor": 0.1 } },
+          { "kanal": "temperatur", "art": "offset", "wert": { "wert": -40, "einheit": "°C" } }
+        ]
+      },
+      {
+        "name": "Selbstbau: ein Kanal ohne Namen oder mit Skalierung 0 trägt nichts",
+        "input": { "kommunikation": "modbus_baukasten", "verbindung": {
+          "channels": [
+            { "slug": "", "unit": "kW", "scale": 1, "offset": 0 },
+            { "slug": "zaehler", "unit": "kWh", "scale": 0, "offset": 5 }
+          ] } },
+        "expected": [ { "kanal": "zaehler", "art": "offset", "wert": { "wert": 5, "einheit": "kWh" } } ]
+      },
+      {
+        "name": "Die Vorlagen-Felder zählen beim Selbstbau nicht",
+        "input": { "kommunikation": "modbus_baukasten", "verbindung": { "power_scale": 10, "channels": [] } },
+        "expected": []
+      }
+    ],
+    "aenderung": [
+      {
+        "name": "Hebel „Auf ×10 stellen“: nur die Skalierung ändert sich",
+        "input": { "kommunikation": "solarman_v5",
+          "alt": { "ip": "192.168.178.40", "power_scale": 0, "invert_grid_sign": false, "invert_batt_sign": false },
+          "neu": { "ip": "192.168.178.40", "power_scale": "10", "invert_grid_sign": false, "invert_batt_sign": false } },
+        "expected": [ { "kanal": null, "art": "skalierung", "wert": { "faktor": 10 } } ]
+      },
+      {
+        "name": "Eine geänderte Adresse ändert keine Einstellung",
+        "input": { "kommunikation": "solarman_v5",
+          "alt": { "ip": "192.168.178.40", "power_scale": 10 },
+          "neu": { "ip": "192.168.178.44", "power_scale": 10 } },
+        "expected": []
+      },
+      {
+        "name": "Ein neu gesetztes Feld ist eine Änderung",
+        "input": { "kommunikation": "solarman_v5",
+          "alt": { "ip": "192.168.178.40" },
+          "neu": { "ip": "192.168.178.40", "invert_batt_sign": true } },
+        "expected": [ { "kanal": "battery_power_kw", "art": "vorzeichen_umgekehrt", "wert": { "umgekehrt": true } } ]
+      },
+      {
+        "name": "Ein entferntes Feld schreibt keine Fassung",
+        "input": { "kommunikation": "solarman_v5",
+          "alt": { "ip": "192.168.178.40", "invert_grid_sign": true },
+          "neu": { "ip": "192.168.178.40" } },
+        "expected": []
+      },
+      {
+        "name": "Zahl und Text derselben Stufe sind dieselbe Einstellung",
+        "input": { "kommunikation": "solarman_v5",
+          "alt": { "power_scale": 10 },
+          "neu": { "power_scale": "10" } },
+        "expected": []
+      }
+    ]
+  }
+}

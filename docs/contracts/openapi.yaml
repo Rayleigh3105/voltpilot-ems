@@ -8513,6 +8513,74 @@ paths:
               schema: { $ref: "#/components/schemas/Geraet" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/geraete/{id}/einstellungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Die Einstellungs-Fassungen eines Geräts (Einbaus) - Historie und gültig zum Stichtag.
+      description: >
+        Recht `messwerte.ansehen`; ein Stichtag in der Vergangenheit („Stand
+        am") zusätzlich `aenderungsprotokoll.lesen`. Wandlerverhältnis,
+        Spannungswandler, Skalierung, Offset, Vorzeichen, Impulswertigkeit und
+        Zählerkonstante als zeitgültige Fassungen AN DER QUELLE (UEMS AP-04
+        IP-11, E4): am Einbau selbst, an einer Komponente, die er speist, oder
+        an einem Kanal dieser Komponente (Vertrag
+        docs/contracts/v2/quelle-einstellung.md). `gueltig` nennt je Quelle und
+        Art die zum Stichtag gültige Fassung, `historie` alle - nach Quelle,
+        Art und Beginn. Die Fassung 1 der Bestands-Komponenten ist aus ihrer
+        heutigen Verbindung abgeleitet (`herkunft: bestand`, „gilt seit
+        Beginn" der Speisung).
+      parameters:
+        - name: stichtag
+          in: query
+          required: false
+          description: >
+            Zeitpunkt nach ISO 8601 mit Versatz; ohne = jetzt. Das `+` eines
+            Versatzes ist in der Adresse als `%2B` zu schreiben.
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Die Einstellungen des Einbaus (leer, wenn keine erfasst ist).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Einstellungen" }
+        "400": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [geraete]
+      summary: Eine neue Einstellungs-Fassung eintragen - Wirkung nur ab „gültig ab".
+      description: >
+        Recht `messstelle.quelle` („Führende Quelle binden · Zählerwechsel ·
+        Wandlerfaktoren"); mit „gültig ab" vor jetzt zusätzlich
+        `aenderung.rueckwirkend`. Die neue Fassung beendet die zu ihrem Beginn
+        gültige derselben Quelle und Art genau dort und gilt bis zum Beginn der
+        nächsten späteren (höchstens bis zum Ende der Quelle). KEIN
+        gespeicherter Wert ändert sich (E5): keine Messreihe, keine Verbindung,
+        keine Komponenten-Fassung, nichts an der Box - eine angewendete Fassung
+        steht als „Zustellung ausstehend", bis AP-06 zustellt; einen falsch
+        erfassten Zeitraum berichtigt eine Korrektur (AP-08). Protokoll an der
+        Quelle (die Fassung mit Urheber, Zeit, rückwirkend, Begründung) und an
+        jeder Messstelle, deren Quellenbindung (führend oder Vergleich) zum
+        Beginn der Fassung aus der Quelle liest - je ein Eintrag
+        `einstellung_geaendert` in ihrem Protokoll; `messstellen` nennt sie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EinstellungNeu" }
+      responses:
+        "201":
+          description: Eingetragen - die neue Fassung, die beendete, die Folgen-Sätze.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EinstellungEingetragen" }
+        "400": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+        "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -8567,6 +8635,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/OrtFehler" }
+    EinstellungAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben (auch kein Protokolleintrag). Der Körper
+        trägt `code`, einen deutschen `message`-Satz und die Fakten des Urteils
+        (siehe EinstellungFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
     OcppConnectorState:
       type: object
@@ -16163,3 +16239,142 @@ components:
         geraete:
           type: array
           items: { $ref: "#/components/schemas/Geraet" }
+    Einstellungen:
+      type: object
+      description: >
+        Die Einstellungen eines Einbaus (UEMS AP-04 IP-11). `geraet`/`einbau`
+        sind die Kennzeichen des Geräts und des konkret eingebauten (GR-4 /
+        Z-5b); `gueltig` je Quelle und Art die zum `stichtag` gültige Fassung.
+      required: [geraet_id, geraet, einbau, stichtag, gueltig, historie]
+      properties:
+        geraet_id: { type: string, format: uuid }
+        geraet: { type: string }
+        einbau: { type: string }
+        stichtag: { type: string, format: date-time }
+        gueltig:
+          type: array
+          items: { $ref: "#/components/schemas/EinstellungFassung" }
+        historie:
+          type: array
+          items: { $ref: "#/components/schemas/EinstellungFassung" }
+    EinstellungFassung:
+      type: object
+      description: >
+        Eine Fassung, halboffen [gueltig_ab, gueltig_bis) auf die Minute;
+        `gueltig_bis` null = bis auf Weiteres. Quelle = der Einbau
+        (`entity_id` null), eine Komponente, die er speist, oder ein Kanal dieser
+        Komponente. `wert` je Art (quelle-einstellung.md §2): wandler_strom
+        {primaer_a, sekundaer_a} · wandler_spannung {primaer_v, sekundaer_v} ·
+        skalierung {faktor} oder {automatisch: true} · offset {wert, einheit} ·
+        vorzeichen_umgekehrt {umgekehrt} · impulswertigkeit {impulse_je_kwh} ·
+        zaehlerkonstante {je_kwh}. `zustellung`: verbindung (die Box wendet sie
+        mit der Verbindung der Komponente an - Bestand und Hebel), ausstehend
+        (angewendet eingetragen, Zustellung AP-06) oder null (im Gerät
+        eingestellt, nur dokumentiert). `wert_text`/`anwendung_text` sind die
+        Kundensätze des Vertrags („1.000/5 A", „angewendet - Zustellung
+        ausstehend").
+      required: [id, entity_id, kanal, art, art_kundenwort, wert, wert_text, anwendung, anwendung_text,
+        zustellung, herkunft, gueltig_ab, gueltig_bis, status, tatsaechlich_ab, rueckwirkend,
+        begruendung, eingetragen]
+      properties:
+        id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid, nullable: true }
+        kanal: { type: string, nullable: true }
+        art:
+          type: string
+          enum: [wandler_strom, wandler_spannung, skalierung, offset, vorzeichen_umgekehrt,
+            impulswertigkeit, zaehlerkonstante]
+        art_kundenwort: { type: string }
+        wert: { type: object, additionalProperties: true }
+        wert_text: { type: string }
+        anwendung: { type: string, enum: [angewendet, dokumentiert] }
+        anwendung_text: { type: string }
+        zustellung: { type: string, enum: [verbindung, ausstehend], nullable: true }
+        herkunft: { type: string, enum: [bestand, verbindung, eintrag] }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [geplant, gueltig, beendet] }
+        tatsaechlich_ab: { type: string, format: date-time, nullable: true }
+        rueckwirkend: { type: boolean }
+        begruendung: { type: string, nullable: true }
+        eingetragen: { $ref: "#/components/schemas/EinstellungEintrag" }
+    EinstellungEintrag:
+      type: object
+      description: >
+        Das Protokoll an der Quelle: wann, von wem (Anzeigename), mit welcher
+        Rolle und welcher Art Urheber (AP-03: kunde · unterstuetzung ·
+        voltpilot · notfall). Der Bestand ist VoltPilot selbst.
+      required: [am, von, rolle, art]
+      properties:
+        am: { type: string, format: date-time }
+        von: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    EinstellungNeu:
+      type: object
+      description: >
+        Eine neue Fassung. Ohne `entity_id` gilt sie für den Einbau; `kanal` nur
+        mit `entity_id`. `gueltig_ab` auf der vollen Minute (Sekunden werden nie
+        gerundet). `tatsaechlich_ab`: wann die Änderung wirklich geschah, wenn
+        früher - der Zeitraum dazwischen ist mit der vorigen Fassung erfasst
+        (Folgen-Satz, Korrektur AP-08). Ein Feld, das es hier nicht gibt, ist 400.
+      required: [art, wert, anwendung, gueltig_ab]
+      additionalProperties: false
+      properties:
+        entity_id: { type: string, format: uuid, nullable: true }
+        kanal: { type: string, nullable: true, maxLength: 240 }
+        art:
+          type: string
+          enum: [wandler_strom, wandler_spannung, skalierung, offset, vorzeichen_umgekehrt,
+            impulswertigkeit, zaehlerkonstante]
+        wert: { type: object, additionalProperties: true }
+        anwendung: { type: string, enum: [angewendet, dokumentiert] }
+        gueltig_ab: { type: string, format: date-time }
+        tatsaechlich_ab: { type: string, format: date-time, nullable: true }
+        begruendung: { type: string, nullable: true, maxLength: 500 }
+    EinstellungEingetragen:
+      type: object
+      description: >
+        Die eingetragene Fassung, die Fassung, die sie beendet hat (null ohne
+        Vorgänger), die Folgen-Sätze (AP-04 §5.7, A5) und die Kennzeichen der
+        Messstellen, an denen sie protokolliert ist.
+      required: [fassung, beendet, folgen, messstellen]
+      properties:
+        fassung: { $ref: "#/components/schemas/EinstellungFassung" }
+        beendet:
+          allOf: [{ $ref: "#/components/schemas/EinstellungFassung" }]
+          nullable: true
+        folgen:
+          type: array
+          items: { type: string }
+        messstellen:
+          type: array
+          items: { type: string }
+    EinstellungFehler:
+      type: object
+      description: >
+        Die Ablehnung der Einstellungs-Schnittstelle. Die Codes des Vertrags
+        (quelle-einstellung.md §4) mit ihrem Status: `wert_ungueltig` 400
+        (`art`, `felder`), `zeitpunkt_ungueltig` 400, `vor_beginn` 422
+        (`beginn`), `nach_ende` 422 (`ende`), `tatsaechlich_ungueltig` 422,
+        `beginn_belegt` 409 (`bestehend`), `unveraendert` 400. Dazu die der
+        Schnittstelle: `anfrage_ungueltig` 400 (`feld`) und `keine_speisung` 422
+        (`entity_id` - die Komponente wird von diesem Einbau nie gespeist).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [wert_ungueltig, zeitpunkt_ungueltig, vor_beginn, nach_ende, tatsaechlich_ungueltig,
+            beginn_belegt, unveraendert, anfrage_ungueltig, keine_speisung]
+        message: { type: string }
+        feld: { type: string }
+        art: { type: string }
+        felder: { type: array, items: { type: string } }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        entity_id: { type: string, format: uuid }
+        bestehend:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            wert_text: { type: string }
