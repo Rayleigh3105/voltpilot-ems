@@ -22,13 +22,46 @@ public final class MessstelleDto {
     /** Eine Messgröße wie {@code $defs/groesse} des Vertrags. */
     public record Groesse(String groesse, String richtung, String einheit, String wertart) {}
 
+    /** Ein abgelesener Zählerstand wie {@code $defs/stand}; {@code einheit} darf fehlen. */
+    public record Stand(double wert, String einheit) {}
+
+    /**
+     * Eine führende Quelle wie {@code $defs/quellenbindung} (IP-13): {@code komponente} ist die
+     * Kennung der Komponente, {@code kanal} ihr Kanalname (point_key), {@code geraet}/{@code einbau}
+     * das Gerät und der Einbau, der sie zu Beginn speist.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Quellenbindung(
+            String komponente,
+            String kanal,
+            String geraet,
+            String einbau,
+            String kanalWertart,
+            OffsetDateTime gueltigAb,
+            OffsetDateTime gueltigBis,
+            Stand anfangsstand,
+            Stand endstand) {}
+
+    /** Eine Vergleichsquelle wie {@code $defs/vergleichsbindung} (IP-13), mit Zweck. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vergleichsbindung(
+            String komponente,
+            String kanal,
+            String geraet,
+            String einbau,
+            String kanalWertart,
+            String zweck,
+            OffsetDateTime gueltigAb,
+            OffsetDateTime gueltigBis) {}
+
     /**
      * Eine Messstelle. {@code orte} und {@code elektrische_stellung} tragen ihre Zuordnungen
-     * (AP-04 IP-7) — alle wirksamen Intervalle nach Beginn, aufgehobene nicht. Bis IP-13 (Quellen)
-     * sind {@code fuehrende_quelle} und {@code vergleichsquellen} immer leer und {@code kadenz_s}
-     * leer. Eine gemessene Messstelle ohne Ort ist ehrlich ein Entwurf mit {@code fehlt: ["ort"]}.
-     * {@code lebenszyklus} und {@code fehlt} leitet {@code MessstelleRegeln.lebenszyklus} aus den
-     * gespeicherten Eingängen ab.
+     * (AP-04 IP-7) — alle wirksamen Intervalle nach Beginn, aufgehobene nicht;
+     * {@code fuehrende_quelle} und {@code vergleichsquellen} (auch je Nebengröße) ihre
+     * Quellenbindungen (IP-13), beendete eingeschlossen. {@code kadenz_s} bleibt leer (die Kadenz
+     * an der Quelle kommt mit AP-07). Eine gemessene Messstelle ohne Ort ist ehrlich ein Entwurf
+     * mit {@code fehlt: ["ort"]}. {@code lebenszyklus} und {@code fehlt} leitet
+     * {@code MessstelleRegeln.lebenszyklus} aus den gespeicherten Eingängen ab.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Messstelle(
@@ -39,8 +72,8 @@ public final class MessstelleDto {
             String art,
             String medium,
             Groesse hauptgroesse,
-            List<Object> fuehrendeQuelle,
-            List<Object> vergleichsquellen,
+            List<Quellenbindung> fuehrendeQuelle,
+            List<Vergleichsbindung> vergleichsquellen,
             List<Nebengroesse> nebengroessen,
             List<OrtZuordnung> orte,
             List<StellungZuordnung> elektrischeStellung,
@@ -76,8 +109,8 @@ public final class MessstelleDto {
             String einheit,
             String wertart,
             String lebenszyklus,
-            List<Object> fuehrendeQuelle,
-            List<Object> vergleichsquellen) {}
+            List<Quellenbindung> fuehrendeQuelle,
+            List<Vergleichsbindung> vergleichsquellen) {}
 
     /**
      * Die Liste als Objekt, nicht als nacktes Array: das Register (IP-4) ergänzt Filter,

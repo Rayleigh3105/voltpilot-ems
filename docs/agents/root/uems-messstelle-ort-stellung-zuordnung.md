@@ -25,10 +25,12 @@ warten auf die Prozess-/Kostenstellen-OBJEKTE — kein Freitext-Provisorium.
   (`gleicher_tag` — der Weg ist `korrektur: true`), `zuordnung_unveraendert` 400, `zuordnung_ungueltig`
   422, `stellung_ungueltig` 422 / `hauptzaehler_vorhanden` 409 mit `tag`. Unbekannte Anlage: 400
   `anfrage_ungueltig` `feld: anlage` (auch eine fremde — nie verraten).
-- **Der Hauptzähler bis IP-13.** Die Komponente der führenden Quelle ist unbekannt
-  (`MessstelleZuordnungService.komponente` → `null`), der Zwilling urteilt dann nie „derselbe
-  Zähler“: auch ein zweiter Hauptzähler in ANDERER Richtung ist 409 — MS-02 (Abgabe) neben MS-01
-  (Bezug) des Referenzunternehmens geht erst mit ihren Quellen. IP-13 füllt `komponente` an EINER Stelle.
+- **Der Hauptzähler und seine Quelle (IP-13).** `MessstelleZuordnungService.komponente` liest die
+  Komponente der führenden Quelle der Hauptgröße an dem Tag aus `messstelle_quelle` (zu Beginn des
+  Tages, sonst die erste, die an ihm beginnt). Ohne Quelle an dem Tag ist sie unbekannt, und der
+  Zwilling urteilt nie „derselbe Zähler“: dann ist auch ein zweiter Hauptzähler in ANDERER Richtung
+  409 — MS-02 (Abgabe) neben MS-01 (Bezug) geht mit ihren Quellen an K-3
+  (`uems-quellenbindung-messstelle-messkanal.md`).
 - **„Ort vorhanden“ (Lebenszyklus) = ein wirksames Ort-Intervall, gleich ab wann** — auch ein
   geplantes; WO sie an einem Tag sitzt, sagt nur `…/standort?am=` (Verortung des Ortsbaums).
 - **Archivieren einer Messstelle** beendet Ort und Stellung am Vortag des Archivtags, ein erst an

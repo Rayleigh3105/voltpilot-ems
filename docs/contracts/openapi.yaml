@@ -7916,8 +7916,9 @@ paths:
         Ihre Nebengrößen gelten mit ihr als archiviert. Ihre Zuordnungen (Ort,
         Stellung) enden am Vortag des Archivtags, eine erst an ihm oder später
         beginnende wird aufgehoben (A13); der Protokolleintrag nennt den letzten Tag
-        (`zuordnungen_bis`). Das Beenden der Quellen zum Archivzeitpunkt kommt mit
-        IP-13.
+        (`zuordnungen_bis`). Jede offene Quelle endet zum Archivzeitpunkt (IP-13,
+        `quellen_beendet` im Protokoll); eine angekündigte oder mit späterem Ende ließe
+        sich dort nur umschreiben - dann 409 `zustand_passt_nicht`.
       requestBody:
         required: false
         content:
@@ -8039,6 +8040,118 @@ paths:
         "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/messstellen/{id}/quellen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Die Quellen der Messstelle - je Größe die führende zum Stichtag, Vergleichsquellen, Zeitstrahl, Historie (AP-04 IP-13).
+      description: >
+        Recht `messstelle.ansehen`. `stichtag`: ein Zeitpunkt mit Versatz
+        (2026-11-18T10:40:00+01:00, das „+“ URL-kodiert) oder ein Tag (dann dessen
+        Beginn in Europe/Berlin); fehlend = jetzt. Je Größe (Hauptgröße zuerst) die
+        führende Quelle zum Stichtag - `null` heißt keine Quelle, nie 0 -, die
+        laufenden Vergleichsquellen und der Zeitstrahl der führenden Quellen ab Beginn
+        der Messstelle (Mitternacht ihres ersten Orts; ohne Ort ab der ersten Quelle)
+        mit jeder Lücke als eigenem Abschnitt. Eine fremde Messstelle ist 404, nie 403.
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Die Quellen der Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleQuellenListe" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [messstellen]
+      summary: Bindet eine Größe der Messstelle an einen Messkanal - führend oder zum Vergleich, zeitgültig auf die Minute.
+      description: >
+        Recht `messstelle.quelle`; mit einem „gültig ab“ vor jetzt zusätzlich
+        `aenderung.rueckwirkend`. Der Messkanal ist Komponente + Gerät + Kanalname; das
+        Gerät ist der Einbau, der die Komponente zu `gueltig_ab` speist, und die Quelle
+        liegt ganz in dieser Speisung (sonst 422 `kein_geraet_zum_zeitpunkt`). Geprüft
+        wird in der Reihenfolge des Vertrags (docs/contracts/v2/messstelle.md §5):
+        Medium (422 `medium_ohne_quelle`) → Zweck (400 `vergleich_ohne_zweck`) →
+        Passung Regel 7 (422 `quelle_passt_nicht` mit `grund` wertart · groesse ·
+        einheit · richtung; ein Vorzeichen-Wert wie die Wirkleistung am
+        Zweirichtungszähler hat keine Richtung und wartet auf AP-08) → Zeitraum (400
+        `zeitraum_ungueltig`) → Gerät zum Zeitpunkt → Messwert führt schon eine andere
+        Messstelle (409 `kanal_bereits_fuehrend`) → vor dem Beginn der Messstelle (422
+        `zeitpunkt_vor_vorgaenger`) → Überlappung derselben Größe und Rolle, beim
+        Vergleich desselben Messwerts (409 `bindung_ueberlappt`). Vergleichsquellen
+        stehen überlappend nebeneinander; Lücken sind erlaubt. Eine neue offene
+        führende Quelle beendet die laufende genau zu ihrem Beginn (Regel 2) - in
+        derselben Transaktion, mit `endstand_vorgaenger`, und EINEM Protokolleintrag
+        `quelle_gebunden`. Eine archivierte Messstelle oder Nebengröße bekommt keine
+        Quelle (409 `zustand_passt_nicht`); eine fremde Messstelle oder Komponente ist
+        404, nie 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleQuelleBinden" }
+      responses:
+        "201":
+          description: Gebunden; `Location` nennt die neue Quelle.
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleQuelleVorgang" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/quellen/{quelleId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: quelleId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Eine Quelle der Messstelle.
+      description: Recht `messstelle.ansehen`. Eine Quelle einer anderen oder fremden Messstelle ist 404.
+      responses:
+        "200":
+          description: Die Quelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleQuelle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/messstellen/{id}/quellen/{quelleId}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: quelleId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [messstellen]
+      summary: Beendet eine Quelle - genau einmal, nie gelöscht, nie überschrieben.
+      description: >
+        Recht `messstelle.quelle`; mit einem Ende vor jetzt zusätzlich
+        `aenderung.rueckwirkend`. `gueltig_bis` auf die Minute (fehlend = jetzt; die
+        Zukunft ist angekündigt), optional der Endstand (ohne Einheit: Hinweis
+        `ablesestand_pruefen`). Das Ende liegt nach dem Beginn (400
+        `zeitraum_ungueltig`); eine beendete Quelle wird nie erneut beendet (409
+        `bindung_bereits_beendet`). Bis eine neue Quelle beginnt, bleibt eine sichtbare
+        Lücke. Ein Protokolleintrag `quelle_beendet`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleQuelleBeenden" }
+      responses:
+        "200":
+          description: Die beendete Quelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleQuelleVorgang" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
   /api/v1/sites/{siteId}/data-sources:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8248,13 +8361,15 @@ paths:
         Selbstbau trägt Name und Einheit, aber (noch) keine Wertart, Größe oder
         Richtung. `geraet` ist das Gerät, das die Komponente JETZT speist (AP-04
         IP-10: die Speisung, deren halboffener Zeitraum jetzt enthält) - für jeden
-        Kanal dasselbe, `null` ohne laufende Speisung, nie geraten. `speist` kommt
-        mit IP-13 - bis dahin leer. Mandanten-Zaun ist die RLS: eine fremde Komponente, eine
-        Komponente einer anderen Anlage und eine unbekannte sind 404, nie 403;
-        Plattform-Admins nutzen X-Tenant-Id.
+        Kanal dasselbe, `null` ohne laufende Speisung, nie geraten. `speist` nennt je
+        Kanal die Quellenbindungen, die zum `stichtag` laufen (AP-04 IP-13: Messstelle,
+        Größe, Rolle, Zweck) - leer ohne laufende Bindung. Mandanten-Zaun ist die RLS:
+        eine fremde Komponente, eine Komponente einer anderen Anlage und eine unbekannte
+        sind 404, nie 403; Plattform-Admins nutzen X-Tenant-Id.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: stichtag, in: query, required: false, schema: { type: string }, description: "Wann `speist` gilt: ein Zeitpunkt mit Versatz oder ein Tag (dessen Beginn in Europe/Berlin); fehlend = jetzt." }
       responses:
         "200":
           description: Die Kanäle der Komponente (leer ohne Mess-Selektion).
@@ -8282,7 +8397,18 @@ paths:
                       geraet: GR-2
                       einbau: GR-2
                       seriennummer: null
-                    speist: []
+                    speist:
+                      - messstelle_id: 3e8a1c52-6d0f-4b27-9a13-5c2e7d4f8b90
+                        messstelle: MS-01
+                        groesse: Wirkenergie
+                        richtung: Bezug
+                        rolle: fuehrend
+                        zweck: null
+                        gueltig_ab: "2024-03-12T00:00:00+01:00"
+                        gueltig_bis: null
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/geraete:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -15172,8 +15298,9 @@ components:
         Eine Messstelle nach docs/contracts/v2/messstelle.schema.json (dieselben
         Feldnamen in snake_case) plus die vier Felder der Schnittstelle `id`, `fehlt`,
         `angehalten_ab`, `archiviert_am`. `orte` und `elektrische_stellung` tragen die
-        wirksamen Zuordnungen nach Beginn (IP-7); bis IP-13 sind `fuehrende_quelle` und
-        `vergleichsquellen` leer und `kadenz_s` null. `lebenszyklus` und `fehlt`
+        wirksamen Zuordnungen nach Beginn (IP-7), `fuehrende_quelle` und
+        `vergleichsquellen` (auch je Nebengröße) die Quellenbindungen nach Beginn,
+        beendete eingeschlossen (IP-13); `kadenz_s` bleibt null (AP-07). `lebenszyklus` und `fehlt`
         leitet MessstelleRegeln.lebenszyklus aus den gespeicherten Eingängen ab (ohne
         Ort ist eine gemessene Messstelle ein Entwurf, eine berechnete ohne Formel
         ebenso; ein Ort, gleich ab wann, zählt als vorhanden); gespeichert ist nie
@@ -15189,8 +15316,14 @@ components:
         art: { type: string, enum: [gemessen, berechnet] }
         medium: { type: string, enum: [Strom, Gas, Wärme, Kälte, Wasser, Druckluft] }
         hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
-        fuehrende_quelle: { type: array, items: { type: object }, description: "Bis IP-13 leer." }
-        vergleichsquellen: { type: array, items: { type: object }, description: "Bis IP-13 leer." }
+        fuehrende_quelle:
+          type: array
+          description: "Woher die Hauptgröße kommt, mit Gültigkeit (IP-13); leer = keine Datenquelle, nie 0."
+          items: { $ref: "#/components/schemas/MessstelleQuellenbindung" }
+        vergleichsquellen:
+          type: array
+          description: "Vergleichsquellen der Hauptgröße, jede mit Zweck (IP-13)."
+          items: { $ref: "#/components/schemas/MessstelleVergleichsbindung" }
         nebengroessen:
           type: array
           items:
@@ -15202,8 +15335,8 @@ components:
               einheit: { type: string }
               wertart: { type: string }
               lebenszyklus: { type: string, enum: [aktiv, archiviert], description: "archiviert auch mit der Messstelle." }
-              fuehrende_quelle: { type: array, items: { type: object } }
-              vergleichsquellen: { type: array, items: { type: object } }
+              fuehrende_quelle: { type: array, items: { $ref: "#/components/schemas/MessstelleQuellenbindung" } }
+              vergleichsquellen: { type: array, items: { $ref: "#/components/schemas/MessstelleVergleichsbindung" } }
         orte:
           type: array
           description: "Wo die Messstelle sitzt, tagesgenau gültig - je Tag genau einer."
@@ -15256,7 +15389,25 @@ components:
           nullable: true
           description: "Das Gerät, das die Komponente jetzt speist (AP-04 IP-10); null ohne laufende Speisung - nie geraten."
           allOf: [{ $ref: "#/components/schemas/MesskanalGeraet" }]
-        speist: { type: array, items: { type: object }, description: "Welche Messstellen der Kanal speist - kommt mit AP-04 IP-13, bis dahin leer." }
+        speist:
+          type: array
+          description: "Welche Messstellen der Kanal zum Stichtag (sonst jetzt) speist (AP-04 IP-13) - leer, wenn keine Quellenbindung läuft."
+          items: { $ref: "#/components/schemas/MesskanalSpeist" }
+    MesskanalSpeist:
+      type: object
+      description: >
+        Eine Quellenbindung, die den Kanal zum Stichtag liest - genug für „speist
+        MS-06 (führend)“: die Messstelle, die Größe, an der die Quelle hängt, und die Rolle.
+      required: [messstelle_id, messstelle, groesse, richtung, rolle, zweck, gueltig_ab, gueltig_bis]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        messstelle: { type: string, description: "Das Kennzeichen der Messstelle (MS-06)." }
+        groesse: { type: string }
+        richtung: { type: string }
+        rolle: { type: string, enum: [fuehrend, vergleich] }
+        zweck: { type: string, nullable: true, enum: [Plausibilität, Ersatz bei Ausfall, Abrechnungszähler, null] }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
     MesskanalGeraet:
       type: object
       description: >
@@ -15269,6 +15420,159 @@ components:
         geraet: { type: string, description: "Das Gerät (GR-4), das über einen Wechsel an seiner Stelle bleibt." }
         einbau: { type: string, nullable: true, description: "Das konkret eingebaute Gerät (Z-5a); ohne Wechsel dasselbe wie `geraet`. Die Tabelle hält es NOT NULL; fehlte es, stünde hier null, nie ein geratenes." }
         seriennummer: { type: string, nullable: true, description: "Die Seriennummer des Einbaus; null = nicht erhoben." }
+    MessstelleStand:
+      type: object
+      description: "Ein abgelesener Zählerstand (E2); `einheit` darf fehlen - dann gibt es den Hinweis ablesestand_pruefen."
+      required: [wert]
+      properties:
+        wert: { type: number }
+        einheit: { type: string, nullable: true }
+    MessstelleQuellenbindung:
+      type: object
+      description: "Eine führende Quelle in der Form von $defs/quellenbindung des Messstellen-Vertrags."
+      required: [komponente, kanal, geraet, einbau, kanal_wertart, gueltig_ab, gueltig_bis, anfangsstand, endstand]
+      properties:
+        komponente: { type: string, description: "Die Kennung der Komponente." }
+        kanal: { type: string, description: "Der Kanalname (point_key)." }
+        geraet: { type: string, description: "Das Gerät (GR-4)." }
+        einbau: { type: string, description: "Der Einbau, der die Komponente in diesem Zeitraum speist (Z-5a)." }
+        kanal_wertart: { type: string, enum: [counter, gauge] }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+    MessstelleVergleichsbindung:
+      type: object
+      description: "Eine Vergleichsquelle in der Form von $defs/vergleichsbindung des Messstellen-Vertrags."
+      required: [komponente, kanal, geraet, einbau, kanal_wertart, zweck, gueltig_ab, gueltig_bis]
+      properties:
+        komponente: { type: string }
+        kanal: { type: string }
+        geraet: { type: string }
+        einbau: { type: string }
+        kanal_wertart: { type: string, enum: [counter, gauge] }
+        zweck: { type: string, enum: [Plausibilität, Ersatz bei Ausfall, Abrechnungszähler] }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+    MessstelleQuelleBinden:
+      type: object
+      additionalProperties: false
+      description: >
+        Eine Quelle binden (AP-04 IP-13). Das Gerät wählt nie der Kunde: es ist der
+        Einbau, der die Komponente zu `gueltig_ab` speist.
+      required: [komponente, kanal, rolle]
+      properties:
+        groesse:
+          type: object
+          nullable: true
+          description: "Fehlend = die Hauptgröße; sonst Größe + Richtung einer Nebengröße."
+          required: [groesse, richtung]
+          properties:
+            groesse: { type: string }
+            richtung: { type: string }
+        komponente: { type: string, format: uuid }
+        kanal: { type: string, description: "Der Kanalname (point_key) - eine Zeile der Mess-Selektion der Komponente." }
+        rolle: { type: string, enum: [fuehrend, vergleich] }
+        zweck: { type: string, nullable: true, description: "Nur und immer bei vergleich: Plausibilität · Ersatz bei Ausfall · Abrechnungszähler." }
+        gueltig_ab: { type: string, format: date-time, nullable: true, description: "Auf die Minute mit Versatz; fehlend = jetzt. Vergangenheit = rückwirkend, Zukunft = angekündigt." }
+        gueltig_bis: { type: string, format: date-time, nullable: true, description: "Fehlend = bis auf Weiteres." }
+        anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        endstand_vorgaenger: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }], description: "Nur, wenn die neue offene führende Quelle die laufende beendet (Regel 2)." }
+        grund: { type: string, nullable: true, description: "Frei; steht im Änderungsprotokoll." }
+    MessstelleQuelleBeenden:
+      type: object
+      additionalProperties: false
+      properties:
+        gueltig_bis: { type: string, format: date-time, nullable: true, description: "Auf die Minute; fehlend = jetzt." }
+        endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        grund: { type: string, nullable: true }
+    MessstelleQuelleGeraet:
+      type: object
+      required: [id, geraet, einbau]
+      properties:
+        id: { type: string, format: uuid, description: "Der Einbau - für GET /api/v1/geraete/{id}." }
+        geraet: { type: string }
+        einbau: { type: string }
+    MessstelleQuelle:
+      type: object
+      description: "Eine Quellenbindung, wie sie gespeichert ist; `status` gegen jetzt."
+      required: [id, messstelle_id, groesse, richtung, rolle, zweck, komponente, komponente_name, anlage, kanal,
+        kanal_wertart, herleitung, geraet, gueltig_ab, gueltig_bis, status, anfangsstand, endstand, rueckwirkend,
+        eingetragen_am, eingetragen_von]
+      properties:
+        id: { type: string, format: uuid }
+        messstelle_id: { type: string, format: uuid }
+        groesse: { type: string }
+        richtung: { type: string }
+        rolle: { type: string, enum: [fuehrend, vergleich] }
+        zweck: { type: string, nullable: true }
+        komponente: { type: string, format: uuid }
+        komponente_name: { type: string, nullable: true }
+        anlage: { type: string, format: uuid }
+        kanal: { type: string }
+        kanal_wertart: { type: string, enum: [counter, gauge] }
+        herleitung: { type: string, enum: [zaehlerstand, differenzen, integration, momentanwert], description: "integration ist für AP-08 gekennzeichnet (Menge aus einer Leistung)." }
+        geraet: { $ref: "#/components/schemas/MessstelleQuelleGeraet" }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [geplant, gilt, beendet] }
+        anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        rueckwirkend: { type: boolean, description: "Lag der Beginn beim Eintragen schon zurück (E2)?" }
+        eingetragen_am: { type: string, format: date-time }
+        eingetragen_von: { type: string }
+    MessstelleQuelleRueckwirkung:
+      type: object
+      description: "Wie weit das eingetragene „gültig ab“ bzw. „gültig bis“ von jetzt entfernt ist, auf die Minute (E2)."
+      required: [art, minuten, abzeichen]
+      properties:
+        art: { type: string, enum: [rueckwirkend, ab_jetzt, angekuendigt] }
+        minuten: { type: integer }
+        abzeichen: { type: string, nullable: true, description: "Nur rückwirkend: „rückwirkend (25 min)“, „rückwirkend (2 h 5 min)“, „rückwirkend (933 Tage)“." }
+    MessstelleQuelleVorgang:
+      type: object
+      description: "Die Antwort auf Binden und Beenden."
+      required: [quelle, beendet, rueckwirkung, hinweise]
+      properties:
+        quelle: { $ref: "#/components/schemas/MessstelleQuelle" }
+        beendet:
+          nullable: true
+          description: "Beim Binden: die laufende führende Quelle, die die neue genau zu ihrem Beginn beendet hat (Regel 2)."
+          allOf: [{ $ref: "#/components/schemas/MessstelleQuelle" }]
+        rueckwirkung: { $ref: "#/components/schemas/MessstelleQuelleRueckwirkung" }
+        hinweise: { type: array, items: { type: string, enum: [ablesestand_pruefen] } }
+    MessstelleQuelleAbschnitt:
+      type: object
+      required: [von, bis, quelle]
+      properties:
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time, nullable: true }
+        quelle: { type: string, format: uuid, nullable: true, description: "null = eine sichtbare Lücke, nie aufgefüllt." }
+    MessstelleQuelleGroesse:
+      type: object
+      required: [groesse, richtung, einheit, wertart, hauptgroesse, lebenszyklus, fuehrend, vergleich, zeitstrahl]
+      properties:
+        groesse: { type: string }
+        richtung: { type: string }
+        einheit: { type: string }
+        wertart: { type: string }
+        hauptgroesse: { type: boolean }
+        lebenszyklus: { type: string, enum: [aktiv, archiviert] }
+        fuehrend:
+          nullable: true
+          description: "Die führende Quelle zum Stichtag; null = keine Quelle, nie 0."
+          allOf: [{ $ref: "#/components/schemas/MessstelleQuelle" }]
+        vergleich: { type: array, items: { $ref: "#/components/schemas/MessstelleQuelle" } }
+        zeitstrahl: { type: array, items: { $ref: "#/components/schemas/MessstelleQuelleAbschnitt" } }
+    MessstelleQuellenListe:
+      type: object
+      required: [messstelle_id, kennzeichen, stichtag, groessen, quellen]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        stichtag: { type: string, format: date-time }
+        groessen: { type: array, items: { $ref: "#/components/schemas/MessstelleQuelleGroesse" }, description: "Hauptgröße zuerst, dann die Nebengrößen." }
+        quellen: { type: array, items: { $ref: "#/components/schemas/MessstelleQuelle" }, description: "Die ganze Historie, beendete eingeschlossen." }
     MessstelleAnlegen:
       type: object
       additionalProperties: false
@@ -15374,8 +15678,13 @@ components:
         `zeitpunkt_vor_vorgaenger` 422 (`vorgaenger` oder `beginn`); aus den
         Zuordnungs-Routen (IP-7) `ort_ungueltig` 422 (`grund`, `gueltig_ab`),
         `stellung_ungueltig` 422 (`grund`, `tag`, `bestehend`, `kette` oder
-        `betroffen`) und `hauptzaehler_vorhanden` 409 (`bestehend`, `tag`); die
-        übrigen antworten die Routen von IP-13 und die Kostenstellen-Anteile.
+        `betroffen`) und `hauptzaehler_vorhanden` 409 (`bestehend`, `tag`); aus der
+        Quellenbindung (IP-13) `medium_ohne_quelle` 422, `vergleich_ohne_zweck` 400,
+        `quelle_passt_nicht` 422 (`grund` wertart · groesse · einheit · richtung, `kanal`),
+        `zeitraum_ungueltig` 400, `kein_geraet_zum_zeitpunkt` 422 (`zeitpunkt`,
+        `komponente`), `kanal_bereits_fuehrend` 409 (`bestehende_messstelle`),
+        `bindung_ueberlappt` 409 (`bestehend`) und `bindung_bereits_beendet` 409
+        (`gueltig_ab`, `gueltig_bis`); `anteile_summe` antworten die Kostenstellen-Anteile.
         Dazu die Codes der Schnittstelle: `anfrage_ungueltig` 400 (`feld` - fehlt,
         falsche Form, gibt es hier nicht), `zustand_passt_nicht` 409
         (`angehalten_ab`, `archiviert_am`), `zeitpunkt_in_zukunft` 422
@@ -15393,7 +15702,8 @@ components:
           enum: [kennzeichen_format, kennzeichen_belegt, groesse_ungueltig, medium_ohne_quelle,
             vergleich_ohne_zweck, quelle_passt_nicht, kanal_bereits_fuehrend, zeitraum_ungueltig,
             zeitpunkt_vor_vorgaenger, bindung_ueberlappt, hauptzaehler_vorhanden, stellung_ungueltig,
-            anteile_summe, ort_ungueltig, anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft,
+            anteile_summe, ort_ungueltig, kein_geraet_zum_zeitpunkt, bindung_bereits_beendet,
+            anfrage_ungueltig, zustand_passt_nicht, zeitpunkt_in_zukunft,
             zuordnung_ueberlappt, zuordnung_ungueltig, zuordnung_unveraendert]
         message: { type: string }
         feld: { type: string, description: "anfrage_ungueltig, groesse_ungueltig: hauptgroesse, nebengroessen[1], zeitpunkt, gueltig_ab, anlage, stellung …" }

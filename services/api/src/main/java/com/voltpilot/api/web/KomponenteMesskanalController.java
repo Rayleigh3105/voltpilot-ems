@@ -1,14 +1,19 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.measurement.MesskanalService;
+import com.voltpilot.api.uems.MessstelleQuelleService;
 import com.voltpilot.api.web.dto.MesskanalDto;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,10 +34,22 @@ public class KomponenteMesskanalController {
         this.messkanaele = messkanaele;
     }
 
-    /** Recht: {@code messwerte.ansehen}. */
+    /**
+     * Recht: {@code messwerte.ansehen}. {@code stichtag} (optional, IP-13): der Zeitpunkt, zu dem
+     * {@code speist} die laufenden Quellenbindungen nennt — ein Zeitpunkt mit Versatz oder ein Tag
+     * (dann dessen Beginn in Europe/Berlin); fehlend = jetzt.
+     */
     @GetMapping
-    public MesskanalDto.Liste alle(@PathVariable UUID siteId, @PathVariable UUID entityId) {
-        return messkanaele.messkanaele(siteId, entityId);
+    public MesskanalDto.Liste alle(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestParam(required = false) String stichtag) {
+        Instant am;
+        try {
+            am = MessstelleQuelleService.stichtag(stichtag, Instant.now());
+        } catch (DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Der Stichtag ist ein Zeitpunkt (2026-11-18T10:40:00+01:00) oder ein Tag (2026-11-18).");
+        }
+        return messkanaele.messkanaele(siteId, entityId, am);
     }
 
     /** 404: ein deutscher {@code {message}}-Körper wie überall in der API. */

@@ -96,6 +96,24 @@ public class GeraetRepository {
         return speisungen("g.site_id = ?", siteId);
     }
 
+    /** Der Einbau, der die Komponente zu einem Zeitpunkt speist, mit dem Zeitraum dieser Speisung. */
+    public record SpeisungAm(Einbau einbau, Instant gueltigAb, Instant gueltigBis) {}
+
+    /**
+     * Welcher Einbau speist die Komponente zum Zeitpunkt? Die Speisung, deren halboffener
+     * Zeitraum ihn enthält (je Komponente und Zeitpunkt höchstens eine). Leer ohne Speisung —
+     * vor dem Einbau oder nach einem Ausbau ohne Nachfolger; nie geraten. Die Quellenbindung
+     * (IP-13) speichert genau diesen Einbau als Gerät ihres Messkanals.
+     */
+    public Optional<SpeisungAm> speisungAm(UUID entityId, Instant zeitpunkt) {
+        Timestamp t = Timestamp.from(zeitpunkt);
+        return jdbc.query("SELECT " + SPALTEN + ", v.gueltig_ab AS speisung_ab, v.gueltig_bis AS speisung_bis "
+                + "FROM geraet_komponente v JOIN geraet g ON g.id = v.geraet_id "
+                + "WHERE v.entity_id = ? AND v.gueltig_ab <= ? AND (v.gueltig_bis IS NULL OR v.gueltig_bis > ?)",
+                (rs, n) -> new SpeisungAm(einbau(rs, n), zeit(rs, "speisung_ab"), zeit(rs, "speisung_bis")),
+                entityId, t, t).stream().findFirst();
+    }
+
     public List<Teil> teileDes(UUID geraetId) {
         return teile("t.geraet_id = ?", geraetId);
     }

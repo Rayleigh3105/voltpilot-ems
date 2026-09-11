@@ -7,12 +7,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
+import com.voltpilot.api.uems.MessstelleQuelleService;
 import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.uems.MessstelleZuordnungService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import java.net.URI;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +40,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Die Messstellen des Kundenbereichs (UEMS AP-04 IP-3, Vertrag
- * {@code docs/contracts/v2/messstelle.md}). Die Arbeit macht {@link MessstelleService}.
+ * {@code docs/contracts/v2/messstelle.md}) und ihre Quellenbindungen (IP-13,
+ * {@code …/{id}/quellen}). Die Arbeit machen {@link MessstelleService} und
+ * {@link MessstelleQuelleService}.
  *
  * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus
  * die Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Messstelle ist 404, nie
@@ -59,12 +65,14 @@ public class MessstelleController {
 
     private final MessstelleService messstellen;
     private final MessstelleZuordnungService zuordnungen;
+    private final MessstelleQuelleService quellen;
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleZuordnungService zuordnungen,
-            ObjectMapper json) {
+            MessstelleQuelleService quellen, ObjectMapper json) {
         this.messstellen = messstellen;
         this.zuordnungen = zuordnungen;
+        this.quellen = quellen;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -152,6 +160,57 @@ public class MessstelleController {
     public MessstelleDto.StandortAm standort(@PathVariable UUID id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
         return zuordnungen.standortAm(id, am);
+    }
+
+    // ---------------------------------------------------------- Quellenbindung (IP-13)
+
+    /**
+     * Recht: {@code messstelle.ansehen}. Je Größe die führende Quelle und die Vergleichsquellen zum
+     * {@code stichtag} (Zeitpunkt mit Versatz oder Tag; fehlend = jetzt), der Zeitstrahl der
+     * führenden Quellen mit jeder Lücke, dazu die ganze Historie.
+     */
+    @GetMapping("/{id}/quellen")
+    public MessstelleQuelleDto.Liste quellen(@PathVariable UUID id,
+            @RequestParam(required = false) String stichtag) {
+        Instant am;
+        try {
+            am = MessstelleQuelleService.stichtag(stichtag, null);
+        } catch (DateTimeParseException e) {
+            throw MessstelleAbgelehnt.anfrage("stichtag",
+                    "Der Stichtag ist ein Zeitpunkt (2026-11-18T10:40:00+01:00) oder ein Tag (2026-11-18).");
+        }
+        return quellen.liste(id, am);
+    }
+
+    /** Recht: {@code messstelle.ansehen}. */
+    @GetMapping("/{id}/quellen/{quelleId}")
+    public MessstelleQuelleDto.Quelle quelle(@PathVariable UUID id, @PathVariable UUID quelleId) {
+        return quellen.eine(id, quelleId);
+    }
+
+    /**
+     * Recht: {@code messstelle.quelle}; mit einem „gültig ab“ vor jetzt zusätzlich
+     * {@code aenderung.rueckwirkend}. 201 mit {@code Location} der neuen Quelle; die Antwort nennt die
+     * laufende Quelle, die die neue beendet hat, und die Rückwirkung.
+     */
+    @PostMapping("/{id}/quellen")
+    public ResponseEntity<MessstelleQuelleDto.Vorgang> binden(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        MessstelleQuelleDto.Vorgang v = quellen.binden(id, lies(body, MessstelleQuelleDto.Binden.class), akteur(auth));
+        return ResponseEntity.created(URI.create("/api/v1/messstellen/" + id + "/quellen/" + v.quelle().id()))
+                .body(v);
+    }
+
+    /**
+     * Recht: {@code messstelle.quelle}; mit einem Ende vor jetzt zusätzlich {@code aenderung.rueckwirkend}.
+     * Ohne Inhalt endet die Quelle jetzt. Eine Quelle wird nie gelöscht — sie endet.
+     */
+    @PutMapping("/{id}/quellen/{quelleId}/beenden")
+    public MessstelleQuelleDto.Vorgang beenden(@PathVariable UUID id, @PathVariable UUID quelleId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        MessstelleQuelleDto.Beenden b = body == null || body.isNull() ? null
+                : lies(body, MessstelleQuelleDto.Beenden.class);
+        return quellen.beenden(id, quelleId, b, akteur(auth));
     }
 
     // ---------------------------------------------------------------- Gerüst

@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,7 +40,8 @@ public final class MesskanalDto {
      * @param lesendeBox  die Box, die ihn liest
      * @param geraet      das Gerät, das die Komponente JETZT speist ({@link GeraetEinbau});
      *                    {@code null} ohne laufende Speisung — nie geraten
-     * @param speist      welche Messstellen er speist — kommt mit IP-13, bis dahin leer
+     * @param speist      welche Messstellen er zum Stichtag (sonst jetzt) speist ({@link Speist},
+     *                    IP-13) — leer, wenn keine Quellenbindung läuft
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Messkanal(
@@ -55,7 +57,26 @@ public final class MesskanalDto {
             boolean aktiv,
             UUID lesendeBox,
             GeraetEinbau geraet,
-            List<Object> speist) {}
+            List<Speist> speist) {}
+
+    /**
+     * Eine Quellenbindung, die den Kanal zum Stichtag liest (UEMS AP-04 IP-13) — genug für
+     * „speist MS-06 (führend)“: die Messstelle, die Größe, an der die Quelle hängt, und die Rolle.
+     *
+     * @param messstelle das Kennzeichen der Messstelle (MS-06)
+     * @param rolle      {@code fuehrend} oder {@code vergleich}
+     * @param zweck      nur bei {@code vergleich} (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler)
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Speist(
+            UUID messstelleId,
+            String messstelle,
+            String groesse,
+            String richtung,
+            String rolle,
+            String zweck,
+            OffsetDateTime gueltigAb,
+            OffsetDateTime gueltigBis) {}
 
     /**
      * Das eingebaute Gerät eines Messkanals (UEMS AP-04 IP-10) — in der Form von

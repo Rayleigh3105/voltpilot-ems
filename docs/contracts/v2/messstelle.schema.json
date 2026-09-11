@@ -176,7 +176,7 @@
       "type": "object",
       "additionalProperties": false,
       "description": "Die geteilte Vektor-Datei messstelle-vectors.json: Vokabular, Größen-Katalog, Fehlertabelle und die Fälle, gegen die beide Zwillinge laufen.",
-      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "cases"],
+      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "rueckwirkung_arten", "cases"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" }, "description": "Die Regeln in Prosa — dieselben wie in messstelle.md." },
         "schema_version": { "type": "string", "const": "1.0", "description": "Fassung der Vektor-Datei." },
@@ -214,11 +214,12 @@
         "passung_gruende": { "type": "array", "items": { "$ref": "#/$defs/passungGrund" }, "description": "Warum ein Messwert nicht zur Größe passt, in der Reihenfolge der Prüfung." },
         "fehler": { "type": "array", "items": { "$ref": "#/$defs/fehlerEintrag" }, "description": "Die Fehlertabelle: Code, Status und wer prüft." },
         "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" }, "description": "Hinweise, die das Speichern nicht verhindern." },
+        "rueckwirkung_arten": { "type": "array", "items": { "$ref": "#/$defs/rueckwirkungArt" }, "description": "Wo ein Zeitpunkt gegen „jetzt“ steht, in dieser Reihenfolge (E2)." },
         "cases": {
           "type": "object",
           "additionalProperties": false,
           "description": "Die Fälle, nach Regel geordnet.",
-          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung"],
+          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung", "beenden", "rueckwirkung"],
           "properties": {
             "kennzeichen_vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenVorschlag" } },
             "kennzeichen_pruefen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenPruefen" } },
@@ -227,7 +228,9 @@
             "passung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallPassung" } },
             "bindung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBindung" } },
             "zeitstrahl": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallZeitstrahl" } },
-            "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } }
+            "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } },
+            "beenden": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBeenden" } },
+            "rueckwirkung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallRueckwirkung" } }
           }
         }
       }
@@ -266,8 +269,9 @@
     "stellungGrund": { "type": "string", "enum": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"], "description": "Warum eine Stellung abgelehnt wird." },
     "passungGrund": { "type": "string", "enum": ["wertart", "groesse", "einheit", "richtung"], "description": "Woran ein Messwert an der Größe scheitert." },
     "groesseGrund": { "type": "string", "enum": ["groesse", "medium", "einheit", "richtung", "wertart"], "description": "Woran eine Größe am Katalog scheitert." },
-    "fehlerCode": { "type": "string", "enum": ["kennzeichen_format", "kennzeichen_belegt", "groesse_ungueltig", "medium_ohne_quelle", "vergleich_ohne_zweck", "quelle_passt_nicht", "kanal_bereits_fuehrend", "zeitraum_ungueltig", "zeitpunkt_vor_vorgaenger", "bindung_ueberlappt", "hauptzaehler_vorhanden", "stellung_ungueltig", "anteile_summe", "ort_ungueltig"], "description": "Ein Fehler-Code." },
+    "fehlerCode": { "type": "string", "enum": ["kennzeichen_format", "kennzeichen_belegt", "groesse_ungueltig", "medium_ohne_quelle", "vergleich_ohne_zweck", "quelle_passt_nicht", "kanal_bereits_fuehrend", "zeitraum_ungueltig", "zeitpunkt_vor_vorgaenger", "bindung_ueberlappt", "hauptzaehler_vorhanden", "stellung_ungueltig", "anteile_summe", "ort_ungueltig", "kein_geraet_zum_zeitpunkt", "bindung_bereits_beendet"], "description": "Ein Fehler-Code." },
     "hinweisCode": { "type": "string", "enum": ["ablesestand_pruefen"], "description": "Ein Hinweis-Code." },
+    "rueckwirkungArt": { "type": "string", "enum": ["rueckwirkend", "ab_jetzt", "angekuendigt"], "description": "Vor der Minute von „jetzt“ (rückwirkend, markiert), genau in ihr, oder danach (angekündigt)." },
     "fehlerEintrag": {
       "type": "object",
       "additionalProperties": false,
@@ -480,16 +484,17 @@
                 "zweck": { "type": ["string", "null"], "description": "Nur Vergleich — hier ohne Vokabular, weil ein fehlender Zweck geprüft wird." },
                 "komponente": { "$ref": "#/$defs/verweis" },
                 "kanal": { "type": "string", "minLength": 1 },
-                "geraet": { "$ref": "#/$defs/verweis" },
-                "einbau": { "$ref": "#/$defs/verweis" },
+                "geraet": { "anyOf": [{ "$ref": "#/$defs/verweis" }, { "type": "null" }], "description": "Das Gerät, dessen Einbau die Komponente zu Beginn speist; leer (mit dem Einbau): keine Speisung zu diesem Zeitpunkt." },
+                "einbau": { "anyOf": [{ "$ref": "#/$defs/verweis" }, { "type": "null" }] },
                 "kanal_groesse": { "type": "string", "description": "Was der Messwert misst — aus dem Messwert-Katalog." },
-                "kanal_richtung": { "$ref": "#/$defs/richtung" },
+                "kanal_richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "type": "null" }], "description": "Leer, wenn der Katalog keine EINE Richtung kennt — der Vorzeichen-Wert eines Zweirichtungszählers (import_export); seine Aufteilung ist Sache von AP-08." },
                 "kanal_einheit": { "type": "string" },
                 "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
                 "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
                 "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" },
                 "endstand_vorgaenger": { "$ref": "#/$defs/stand" },
-                "anfangsstand": { "$ref": "#/$defs/stand" }
+                "anfangsstand": { "$ref": "#/$defs/stand" },
+                "geraet_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann dieser Einbau die Komponente speist; fehlt oder leer heißt „bis auf Weiteres“." }
               }
             },
             "kanal_fuehrend_anderswo": {
@@ -508,7 +513,7 @@
         },
         "expected": {
           "type": "object", "additionalProperties": false,
-          "required": ["fehler", "grund", "bestehend", "messstelle", "beendet", "status", "rueckwirkend", "angekuendigt", "herleitung", "hinweise", "zeitstrahl"],
+          "required": ["fehler", "grund", "bestehend", "messstelle", "beendet", "status", "rueckwirkend", "angekuendigt", "herleitung", "hinweise", "zeitstrahl", "ohne_geraet_ab"],
           "properties": {
             "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
             "grund": { "anyOf": [{ "$ref": "#/$defs/passungGrund" }, { "type": "null" }] },
@@ -544,7 +549,65 @@
                   "quelle": { "anyOf": [{ "$ref": "#/$defs/quelleKurz" }, { "type": "null" }] }
                 }
               }
-            }
+            },
+            "ohne_geraet_ab": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bei kein_geraet_zum_zeitpunkt: der erste Zeitpunkt der Quelle, zu dem kein Gerät die Komponente speist — ihr Beginn oder das Ende der Speisung." }
+          }
+        }
+      }
+    },
+    "fallBeenden": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Messstelle des Referenzunternehmens, deren Quelle beendet wird." },
+        "ergebnis_wie_referenz": { "type": "boolean", "description": "Das Ende ist genau das der Quelle im Referenzunternehmen." },
+        "fortschreibung": { "type": "boolean", "description": "Der Fall schreibt das Referenzunternehmen NACH seinem letzten Ereignis fort; davor ändert er nichts." },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["jetzt", "bindung", "gueltig_bis", "endstand"],
+          "properties": {
+            "jetzt": { "$ref": "#/$defs/jetzt" },
+            "bindung": { "$ref": "#/$defs/bindungKurz", "description": "Die Quelle, wie sie gespeichert ist." },
+            "gueltig_bis": { "$ref": "#/$defs/zeitpunkt", "description": "Das neue Ende — auch in der Zukunft (angekündigt)." },
+            "endstand": { "$ref": "#/$defs/stand", "description": "Der abgelesene Endstand, wenn es einen gibt." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "status", "rueckwirkend", "angekuendigt", "hinweise"],
+          "properties": {
+            "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "status": { "anyOf": [{ "$ref": "#/$defs/bindungStatus" }, { "type": "null" }], "description": "Wo die Quelle nach dem Beenden steht." },
+            "rueckwirkend": { "type": "boolean", "description": "Das Ende liegt vor der Minute von „jetzt“." },
+            "angekuendigt": { "type": "boolean", "description": "Das Ende liegt nach der Minute von „jetzt“." },
+            "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" } }
+          }
+        }
+      }
+    },
+    "fallRueckwirkung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["jetzt", "zeitpunkt"],
+          "properties": {
+            "jetzt": { "$ref": "#/$defs/jetzt" },
+            "zeitpunkt": { "$ref": "#/$defs/zeitpunkt", "description": "Der eingetragene Zeitpunkt (gültig ab oder bis)." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["art", "minuten", "abzeichen"],
+          "properties": {
+            "art": { "$ref": "#/$defs/rueckwirkungArt" },
+            "minuten": { "type": "integer", "minimum": 0, "description": "Wie viele volle Minuten zwischen Zeitpunkt und der Minute von „jetzt“ liegen." },
+            "abzeichen": { "type": ["string", "null"], "description": "Nur bei rückwirkend: „rückwirkend (25 min)“, „rückwirkend (2 h 5 min)“, „rückwirkend (933 Tage)“." }
           }
         }
       }

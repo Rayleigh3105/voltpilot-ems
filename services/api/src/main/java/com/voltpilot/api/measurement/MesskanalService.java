@@ -5,8 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.uems.GeraetRepository;
+import com.voltpilot.api.uems.MessstelleQuelleRepository;
+import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.web.dto.MesskanalDto;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,7 +27,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Einheit, Wertart, Größe und Richtung ({@link MesskanalAbbildung}), aus der Selektion Kadenz,
  * Zustand und lesende Box, aus der Geräte-Historie das Gerät, das die Komponente gerade speist
  * (IP-10, {@link GeraetRepository#laufenderDerKomponente}) — für jeden Kanal dasselbe, denn
- * der Einbau hängt an der Komponente, nicht am Kanal.
+ * der Einbau hängt an der Komponente, nicht am Kanal —, und aus den Quellenbindungen (IP-13,
+ * {@link MessstelleQuelleRepository#derKomponenteAm}) je Kanal, welche Messstellen er zum
+ * Stichtag speist.
  *
  * <p>Der Mandant ist die RLS: die App-Rolle sieht nur die eigenen Standorte, Komponenten und
  * Selektionen, eine fremde Komponente ist 404, nie 403 — und eine Komponente eines ANDEREN
@@ -35,20 +45,30 @@ public class MesskanalService {
     private final MeasurementCatalog catalog;
     private final ObjectMapper json;
     private final GeraetRepository geraete;
+    private final MessstelleQuelleRepository quellen;
 
     public MesskanalService(JdbcTemplate jdbc, SiteRepository sites, MeasurementCatalog catalog,
-            ObjectMapper json, GeraetRepository geraete) {
+            ObjectMapper json, GeraetRepository geraete, MessstelleQuelleRepository quellen) {
         this.jdbc = jdbc;
         this.sites = sites;
         this.catalog = catalog;
         this.json = json;
         this.geraete = geraete;
+        this.quellen = quellen;
     }
 
     private record Zeile(UUID deviceId, String pointKey, boolean enabled, Integer cadenceS,
             String customDefinition) {}
 
     public MesskanalDto.Liste messkanaele(UUID siteId, UUID komponente) {
+        return messkanaele(siteId, komponente, Instant.now());
+    }
+
+    /**
+     * Die Kanäle der Komponente; {@code speist} nennt je Kanal die Quellenbindungen, die zum
+     * {@code stichtag} laufen (IP-13) — „speist MS-06 (führend)“.
+     */
+    public MesskanalDto.Liste messkanaele(UUID siteId, UUID komponente, Instant stichtag) {
         List<UUID> standort = jdbc.query("SELECT site_id FROM measurement_point WHERE id = ?",
                 (rs, n) -> rs.getObject(1, UUID.class), komponente);
         if (!sites.existsForCurrentTenant(siteId) || standort.isEmpty() || !siteId.equals(standort.get(0))) {
@@ -66,17 +86,43 @@ public class MesskanalService {
                 .map(e -> new MesskanalDto.GeraetEinbau(e.id(), e.kennzeichen(), e.einbauKennzeichen(),
                         e.seriennummer()))
                 .orElse(null);
+        Map<String, List<MesskanalDto.Speist>> speist = new LinkedHashMap<>();
+        for (MessstelleQuelleRepository.Quelle q : quellen.derKomponenteAm(komponente, stichtag)) {
+            speist.computeIfAbsent(q.kanal(), k -> new ArrayList<>()).add(new MesskanalDto.Speist(
+                    q.messstelleId(), q.messstelle(), q.groesse(), q.richtung(), q.rolle(), q.zweck(),
+                    zeit(q.gueltigAb()), zeit(q.gueltigBis())));
+        }
         return new MesskanalDto.Liste(siteId, komponente, catalog.inhaltsstand(),
-                zeilen.stream().map(z -> kanal(z, geraet)).toList());
+                zeilen.stream().map(z -> kanal(z, geraet, speist.getOrDefault(z.pointKey(), List.of()))).toList());
     }
 
-    private MesskanalDto.Messkanal kanal(Zeile z, MesskanalDto.GeraetEinbau geraet) {
+    /**
+     * EIN Kanal der Komponente — was die Quellenbindung (IP-13) über den Messwert wissen muss:
+     * Größe, Richtung, Einheit und Wertart in den Wörtern des Vertrags. Leer, wenn die Komponente
+     * diesen Kanal nicht hat (keine Zeile der Mess-Selektion); unter RLS ist eine fremde Komponente
+     * ohnehin leer. Liest eine zweite Box denselben Kanal, sagt der Katalog für beide dasselbe.
+     */
+    public Optional<MesskanalDto.Messkanal> kanal(UUID komponente, String pointKey) {
+        return jdbc.query("""
+                SELECT device_id, point_key, enabled, cadence_s, custom_definition::text AS custom
+                  FROM device_measurement_selection
+                 WHERE entity_id = ? AND point_key = ?
+                 ORDER BY device_id
+                 LIMIT 1
+                """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
+                        rs.getString("point_key"), rs.getBoolean("enabled"),
+                        (Integer) rs.getObject("cadence_s"), rs.getString("custom")), komponente, pointKey)
+                .stream().findFirst().map(z -> kanal(z, null, List.of()));
+    }
+
+    private MesskanalDto.Messkanal kanal(Zeile z, MesskanalDto.GeraetEinbau geraet,
+            List<MesskanalDto.Speist> speist) {
         if (z.customDefinition() != null) {
             // Selbstbau: Name und Einheit aus der eigenen Definition; eine Wertart, Größe oder
             // Richtung trägt sie (noch) nicht — also keine.
             JsonNode d = lesen(z.customDefinition());
             return new MesskanalDto.Messkanal(z.pointKey(), text(d, "label"), text(d, "unit"),
-                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), geraet, List.of());
+                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), geraet, speist);
         }
         MeasurementCatalog.Point p = catalog.resolve(z.pointKey());
         Semantik s = catalog.semantik(z.pointKey());
@@ -86,7 +132,12 @@ public class MesskanalService {
         return new MesskanalDto.Messkanal(z.pointKey(), anzeigename, p == null ? null : p.unit(),
                 p == null ? null : MesskanalAbbildung.wertart(p.aggregationKind()),
                 MesskanalAbbildung.groesse(quantity), MesskanalAbbildung.richtung(direction),
-                quantity, direction, z.cadenceS(), z.enabled(), z.deviceId(), geraet, List.of());
+                quantity, direction, z.cadenceS(), z.enabled(), z.deviceId(), geraet, speist);
+    }
+
+    /** In der Zeitzone der Messstellen-Schnittstelle (MessstelleService.ZEITZONE). */
+    private static OffsetDateTime zeit(Instant t) {
+        return t == null ? null : OffsetDateTime.ofInstant(t, MessstelleService.ZEITZONE);
     }
 
     private JsonNode lesen(String text) {

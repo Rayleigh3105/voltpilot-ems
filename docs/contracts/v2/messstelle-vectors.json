@@ -8,9 +8,9 @@
     "  TS    frontend/portal/src/uemsMessstelle.ts",
     "Wer eine Regel ändert, ändert BEIDE Seiten UND diese Datei.",
     "",
-    "⚠ NOCH RUFT NIEMAND AN. Es gibt noch keine Tabelle `messstelle` (IP-2), keinen",
-    "Endpunkt (IP-3) und keine Fläche (IP-5/IP-6). Diese Datei ist der Vertrag, gegen",
-    "den sie gebaut werden.",
+    "Wer anruft: die Messstellen-Schnittstelle (IP-3) und die Quellenbindung (IP-13,",
+    "Tabelle messstelle_quelle); die Tabellen sagen dasselbe an der Datenbankgrenze. Eine",
+    "Fläche (IP-5/IP-6) ruft noch nicht an.",
     "",
     "Alle Beispiele stammen aus dem Referenzunternehmen (uems-referenzunternehmen.json)",
     "und übernehmen dessen Kennzeichen, Werte und Zeitpunkte unverändert. Ein Fall mit",
@@ -21,8 +21,9 @@
     "kennt). Beide Zwillinge prüfen das gegen die Referenz-Datei — auch Vergleichsquellen. Nur die",
     "Familie `passung` ist eine reine Regeltabelle ohne Anlage: sie kennt nur Merkmale.",
     "",
-    "ACHT FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
-    "passung (Regel 7 als Tabelle) · bindung · zeitstrahl (wie Lücken aussehen) · stellung.",
+    "ZEHN FAMILIEN: kennzeichen_vorschlag · kennzeichen_pruefen · groesse · lebenszyklus ·",
+    "passung (Regel 7 als Tabelle) · bindung · zeitstrahl (wie Lücken aussehen) · stellung ·",
+    "beenden (eine Quelle endet genau einmal) · rueckwirkung (das Abzeichen „rückwirkend“).",
     "",
     "═══ KENNZEICHEN (E7) ═══",
     "  · automatisch „MS-“ + laufende Nummer, mindestens vierstellig („MS-0022“),",
@@ -70,14 +71,21 @@
     "         einheit:  die Einheit lässt sich nicht umrechnen",
     "         richtung: Bezug ist nicht Abgabe",
     "    4. Ende nicht nach Beginn                 → 400 zeitraum_ungueltig",
-    "    5. Führend, und derselbe Messwert speist im Zeitraum schon eine ANDERE",
+    "    5. Kein Gerät zum Zeitpunkt: kein Einbau speist die Komponente zu Beginn, oder",
+    "       die Quelle reicht über das Ende dieser Speisung hinaus (ein Messkanal gehört",
+    "       genau einem Gerät, Regel 6, W2)      → 422 kein_geraet_zum_zeitpunkt (nennt",
+    "                                                den ersten Zeitpunkt ohne Gerät)",
+    "    6. Führend, und derselbe Messwert speist im Zeitraum schon eine ANDERE",
     "       Messstelle führend                     → 409 kanal_bereits_fuehrend",
-    "    6. Wechsel, dessen Zeitpunkt nicht nach dem Beginn der laufenden Quelle liegt,",
+    "    7. Wechsel, dessen Zeitpunkt nicht nach dem Beginn der laufenden Quelle liegt,",
     "       oder ein Zeitpunkt vor dem Beginn der Messstelle",
     "                                              → 422 zeitpunkt_vor_vorgaenger",
-    "    7. Überlappung mit einer Quelle derselben Größe und Rolle (beim Vergleich:",
+    "    8. Überlappung mit einer Quelle derselben Größe und Rolle (beim Vergleich:",
     "       desselben Messwerts)                   → 409 bindung_ueberlappt (nennt die",
     "                                                früheste berührte Quelle)",
+    "  ⚠ Ein Vorzeichen-Wert (Katalog import_export, etwa die Wirkleistung am Netzzähler)",
+    "  hat KEINE Vertrags-Richtung: er passt streng nach Regel 7 nicht (Grund richtung),",
+    "  bis AP-08 die Aufteilung in Bezug und Abgabe als Rechenregel entscheidet.",
     "  Die EINZIGE Änderung an Bestehendem: eine neue, offene führende Quelle beendet die",
     "  laufende genau zu ihrem Beginn (Regel 2), wenn sie nach deren Beginn liegt.",
     "  Bereits beendete Quellen werden nie verschoben; eine begrenzte Quelle passt nur in",
@@ -90,6 +98,18 @@
     "  DESSELBEN Geräts) und der Zeitstrahl der führenden Quellen ab Beginn der",
     "  Messstelle.",
     "",
+    "═══ BEENDEN UND RÜCKWIRKUNG (Regeln 2, 5; E2) ═══",
+    "  Eine Quelle wird genau EINMAL beendet: eine beendete nie verschoben (409",
+    "  bindung_bereits_beendet), das Ende liegt nach dem Beginn (400 zeitraum_ungueltig).",
+    "  Das Ende darf in der Vergangenheit (rückwirkend) oder Zukunft (angekündigt) liegen;",
+    "  ein Endstand ohne Einheit ist ein Hinweis (ablesestand_pruefen). Beenden lässt eine",
+    "  Lücke, bis eine neue Quelle beginnt — nie aufgefüllt.",
+    "  Das Abzeichen „rückwirkend“ misst auf die Minute gegen „jetzt“ (Sekunden zählen",
+    "  nicht): unter einer Stunde in Minuten („rückwirkend (25 min)“), unter einem Tag in",
+    "  Stunden und Minuten („rückwirkend (2 h 5 min)“), sonst in ganzen Tagen",
+    "  („rückwirkend (933 Tage)“). Ein Zeitpunkt in der Minute von „jetzt“ ist ab_jetzt,",
+    "  danach angekündigt — beide ohne Abzeichen.",
+    "",
     "═══ ELEKTRISCHE STELLUNG (Regel 8, E12) ═══",
     "  Reihenfolge: berechnet oder Medium ≠ Strom nur „keine“ → Bezug nur bei",
     "  Unterzähler → Unterzähler braucht Bezug → nie auf sich selbst → nur auf eine",
@@ -101,7 +121,7 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./messstelle.schema.json#/$defs/vektorDatei",
-  "herkunft": "UEMS AP-04 §4.1–§4.6, §5.12–§5.14, §7 (A1, A3, A10–A13, A15); Entscheide E1, E2, E3, E7, E8, E9, E12 vom 10.09.2026; Beispielwerte aus uems-referenzunternehmen.json.",
+  "herkunft": "UEMS AP-04 §4.1–§4.6, §5.12–§5.14, §7 (A1, A3, A10–A13, A15); Entscheide E1, E2, E3, E7, E8, E9, E12 vom 10.09.2026; Bau-Paket IP-13 (Quellenbindung: Gerät zum Zeitpunkt, Beenden, Rückwirkung); Beispielwerte aus uems-referenzunternehmen.json.",
   "zeitzone": "Europe/Berlin",
   "kennzeichen_regel": {"praefix": "MS-", "stellen": 4, "muster": "^[A-Z0-9./-]{2,16}$", "min_zeichen": 2, "max_zeichen": 16},
   "medien": ["Strom", "Gas", "Wärme", "Kälte", "Wasser", "Druckluft"],
@@ -196,9 +216,12 @@
     {"code": "hauptzaehler_vorhanden", "status": 409, "geprueft_von": "MessstelleRegeln"},
     {"code": "stellung_ungueltig", "status": 422, "geprueft_von": "MessstelleRegeln"},
     {"code": "anteile_summe", "status": 422, "geprueft_von": "IP-7"},
-    {"code": "ort_ungueltig", "status": 422, "geprueft_von": "IP-7"}
+    {"code": "ort_ungueltig", "status": 422, "geprueft_von": "IP-7"},
+    {"code": "kein_geraet_zum_zeitpunkt", "status": 422, "geprueft_von": "MessstelleRegeln"},
+    {"code": "bindung_bereits_beendet", "status": 409, "geprueft_von": "MessstelleRegeln"}
   ],
   "hinweise": ["ablesestand_pruefen"],
+  "rueckwirkung_arten": ["rueckwirkend", "ab_jetzt", "angekuendigt"],
   "cases": {
     "kennzeichen_vorschlag": [
       {
@@ -940,7 +963,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -998,7 +1022,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1069,7 +1094,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkleistung", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1127,7 +1153,8 @@
           "angekuendigt": false,
           "herleitung": null,
           "hinweise": [],
-          "zeitstrahl": null
+          "zeitstrahl": null,
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1172,7 +1199,8 @@
           "angekuendigt": false,
           "herleitung": null,
           "hinweise": [],
-          "zeitstrahl": null
+          "zeitstrahl": null,
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1242,7 +1270,8 @@
               "bis": null,
               "quelle": {"komponente": "K-6", "kanal": "Wirkenergie Bezug", "geraet": "GR-5", "einbau": "GR-5"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1292,7 +1321,8 @@
               "bis": null,
               "quelle": {"komponente": "K-1", "kanal": "PV-Leistung", "geraet": "GR-1", "einbau": "GR-1"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1339,7 +1369,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-06-momentanwert-nie-aus-zaehlerstand",
@@ -1373,7 +1403,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "wertart", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-01-bezug-nie-aus-abgabe",
@@ -1407,7 +1437,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-21-gas-bindet-keine-katalogquelle",
@@ -1438,7 +1468,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "medium_ohne_quelle", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "medium_ohne_quelle", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-07-kanal-speist-schon-ms-06",
@@ -1473,7 +1503,7 @@
             {"messstelle": "MS-06", "gueltig_ab": "2026-11-18T10:40:00+01:00", "gueltig_bis": null}
           ]
         },
-        "expected": {"fehler": "kanal_bereits_fuehrend", "grund": null, "bestehend": null, "messstelle": "MS-06", "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "kanal_bereits_fuehrend", "grund": null, "bestehend": null, "messstelle": "MS-06", "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-01-vergleichsquelle-mit-zweck",
@@ -1507,7 +1537,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": null, "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": "gilt", "rueckwirkend": false, "angekuendigt": false, "herleitung": "momentanwert", "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": null, "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": "gilt", "rueckwirkend": false, "angekuendigt": false, "herleitung": "momentanwert", "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-01-vergleich-ohne-zweck",
@@ -1541,7 +1571,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "vergleich_ohne_zweck", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "vergleich_ohne_zweck", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-06-gleicher-zaehler-anfangsstand-ueber-endstand",
@@ -1604,7 +1634,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5a"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1638,7 +1669,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-06-wechsel-genau-beim-einbau",
@@ -1682,7 +1713,8 @@
           "angekuendigt": false,
           "herleitung": null,
           "hinweise": [],
-          "zeitstrahl": null
+          "zeitstrahl": null,
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1747,7 +1779,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1804,7 +1837,8 @@
               "bis": null,
               "quelle": {"komponente": "K-8.7", "kanal": "Wirkenergie Bezug", "geraet": "GR-7", "einbau": "C-1"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1863,7 +1897,8 @@
           "angekuendigt": false,
           "herleitung": null,
           "hinweise": [],
-          "zeitstrahl": null
+          "zeitstrahl": null,
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1928,7 +1963,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -1993,7 +2029,8 @@
               "bis": null,
               "quelle": {"komponente": "K-5", "kanal": "Wirkenergie Bezug", "geraet": "GR-4", "einbau": "Z-5b"}
             }
-          ]
+          ],
+          "ohne_geraet_ab": null
         }
       },
       {
@@ -2027,7 +2064,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "quelle_passt_nicht", "grund": "einheit", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "einheit", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-07-zeitraum-null-minuten",
@@ -2060,7 +2097,7 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "zeitraum_ungueltig", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       },
       {
         "name": "ms-07-vor-beginn-der-messstelle",
@@ -2093,7 +2130,266 @@
           },
           "kanal_fuehrend_anderswo": []
         },
-        "expected": {"fehler": "zeitpunkt_vor_vorgaenger", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null}
+        "expected": {"fehler": "zeitpunkt_vor_vorgaenger", "grund": null, "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
+      },
+      {
+        "name": "ms-08-ek7-steckt-noch-nicht",
+        "herkunft": "Referenzunternehmen MS-08 · GR-7 (EK-7 ab 01.03.2027) · AP-04 Regel 6 · W2 · IP-13",
+        "referenz": "MS-08",
+        "why": "Die Energiekarte EK-7 steckt erst ab 01.03.2027 im Controller C-1 — vorher speist kein Gerät die Komponente K-8.7, und ihren Messwert „Wirkenergie Bezug“ gibt es noch nicht (ein Messkanal gehört genau einem Gerät, Regel 6). Eine Quelle ab 15.02.2027 ist deshalb abgelehnt: 422 kein_geraet_zum_zeitpunkt, und die Antwort nennt den ersten Zeitpunkt ohne Gerät — hier den Beginn der Quelle. Nie ein geratenes Gerät; mit Beginn 01.03.2027 ist es der Wechsel des Referenzunternehmens.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2027-02-15T09:00:00+01:00",
+          "messstelle": {
+            "kennzeichen": "MS-08",
+            "medium": "Strom",
+            "beginn": "2024-03-12T00:00:00+01:00"
+          },
+          "ziel": {
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "einheit": "kWh",
+            "wertart": "Zählerstand"
+          },
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-7",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-6",
+              "einbau": "GR-6",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null
+            }
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-8.7",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": null,
+            "einbau": null,
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2027-02-15T09:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null,
+            "geraet_bis": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "kein_geraet_zum_zeitpunkt",
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null,
+          "ohne_geraet_ab": "2027-02-15T09:00:00+01:00"
+        }
+      },
+      {
+        "name": "ms-06-z5a-offen-ueber-den-wechsel",
+        "herkunft": "Referenzunternehmen MS-06 · GR-4 (Z-5a bis 18.11.2026 10:40) · AP-04 Regel 6 · W2 · IP-13",
+        "referenz": "MS-06",
+        "why": "Die Bestandsquelle von MS-06 an Z-5a wird erst NACH dem Zählerwechsel nachgetragen — offen, „bis auf Weiteres“. Z-5a speist K-5 aber nur bis 18.11.2026 10:40; ab dann ist „Wirkenergie Bezug“ ein Messwert von Z-5b (W2). Die offene Quelle behauptete Werte, die Z-5a nie geliefert hat: 422 kein_geraet_zum_zeitpunkt mit dem ersten Zeitpunkt ohne dieses Gerät, 10:40. Mit Ende 10:40 ist sie erlaubt (nächster Fall).",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {
+            "kennzeichen": "MS-06",
+            "medium": "Strom",
+            "beginn": "2024-03-12T00:00:00+01:00"
+          },
+          "ziel": {
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "einheit": "kWh",
+            "wertart": "Zählerstand"
+          },
+          "bestehende": [],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null,
+            "geraet_bis": "2026-11-18T10:40:00+01:00"
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "kein_geraet_zum_zeitpunkt",
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null,
+          "ohne_geraet_ab": "2026-11-18T10:40:00+01:00"
+        }
+      },
+      {
+        "name": "ms-06-z5a-bis-zum-wechsel-passt",
+        "herkunft": "Referenzunternehmen MS-06 · GR-4 · halboffen [ab, bis) · IP-13",
+        "referenz": "MS-06",
+        "why": "Dieselbe Bestandsquelle mit Ende 18.11.2026 10:40 liegt ganz in der Speisung durch Z-5a — die Zeiträume sind halboffen, das Ende gehört nicht mehr dazu. Erlaubt, rückwirkend, und bis Z-5b gebunden ist, zeigt der Zeitstrahl ab 10:40 ehrlich „keine Quelle seit …“.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "messstelle": {
+            "kennzeichen": "MS-06",
+            "medium": "Strom",
+            "beginn": "2024-03-12T00:00:00+01:00"
+          },
+          "ziel": {
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "einheit": "kWh",
+            "wertart": "Zählerstand"
+          },
+          "bestehende": [],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_groesse": "Wirkenergie",
+            "kanal_richtung": "Bezug",
+            "kanal_einheit": "kWh",
+            "kanal_wertart": "counter",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00",
+            "endstand_vorgaenger": null,
+            "anfangsstand": null,
+            "geraet_bis": "2026-11-18T10:40:00+01:00"
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": "beendet",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "zaehlerstand",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": "2026-11-18T10:40:00+01:00",
+              "quelle": {
+                "komponente": "K-5",
+                "kanal": "Wirkenergie Bezug",
+                "geraet": "GR-4",
+                "einbau": "Z-5a"
+              }
+            },
+            {
+              "von": "2026-11-18T10:40:00+01:00",
+              "bis": null,
+              "quelle": null
+            }
+          ],
+          "ohne_geraet_ab": null
+        }
+      },
+      {
+        "name": "ms-01-nebengroesse-vorzeichen-wartet-auf-ap08",
+        "herkunft": "Befund AP-04 IP-9 (Katalog 2026.09.11.1: sunspec.model_203.w trägt direction import_export) · Regel 7 · E1 · wartet auf AP-08 (Vorzeichen-Aufteilung)",
+        "referenz": "MS-01",
+        "why": "Das Referenzunternehmen speist die Nebengröße „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung des Netzzählers K-3. Dieser Messwert ist ein Vorzeichen-Wert am Zählpunkt: der Katalog nennt nur „Leistung am Netzpunkt“ (import_export) und damit KEINE Vertrags-Richtung — Bezug und Abgabe sind zwei Messstellen (E1), nicht eine mit Vorzeichen. Streng nach Regel 7 passt er deshalb nicht: 422 quelle_passt_nicht, Grund „richtung“. Die Aufteilung eines Vorzeichen-Werts in Bezug und Abgabe ist eine Rechenregel; sie wird in AP-08 (Verbrauchsbildung) entschieden. Bis dahin ist diese Bindung nicht möglich — kein neues Feld, keine erfundene Aufteilung.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {
+            "kennzeichen": "MS-01",
+            "medium": "Strom",
+            "beginn": "2024-03-12T00:00:00+01:00"
+          },
+          "ziel": {
+            "groesse": "Wirkleistung",
+            "richtung": "Bezug",
+            "einheit": "kW",
+            "wertart": "Momentanwert"
+          },
+          "bestehende": [
+            {
+              "rolle": "fuehrend",
+              "groesse": "Wirkenergie",
+              "richtung": "Bezug",
+              "komponente": "K-3",
+              "kanal": "Wirkenergie Bezug",
+              "geraet": "GR-2",
+              "einbau": "GR-2",
+              "kanal_wertart": "counter",
+              "zweck": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null
+            }
+          ],
+          "neu": {
+            "rolle": "fuehrend",
+            "zweck": null,
+            "komponente": "K-3",
+            "kanal": "Wirkleistung",
+            "geraet": "GR-2",
+            "einbau": "GR-2",
+            "kanal_groesse": "Wirkleistung",
+            "kanal_richtung": null,
+            "kanal_einheit": "W",
+            "kanal_wertart": "gauge",
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null,
+            "endstand_vorgaenger": null,
+            "anfangsstand": null
+          },
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": "quelle_passt_nicht",
+          "grund": "richtung",
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "herleitung": null,
+          "hinweise": [],
+          "zeitstrahl": null,
+          "ohne_geraet_ab": null
+        }
       }
     ],
     "zeitstrahl": [
@@ -2431,6 +2727,382 @@
           ]
         },
         "expected": {"fehler": "stellung_ungueltig", "grund": "bezug_nur_bei_unterzaehler", "bestehend": null, "kette": []}
+      }
+    ],
+    "beenden": [
+      {
+        "name": "ms-06-z5a-endet-mit-endstand",
+        "herkunft": "AP-04 §5.13/§5.14 · E2 · Regel 2 · Referenzunternehmen GR-4 (Z-5a Endstand 1 083 415,2 kWh)",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Ines Kaltenbach beendet um 11:05 die Quelle Z-5a von MS-06 zum Ausbau um 10:40 und trägt den abgelesenen Endstand 1 083 415,2 kWh ein. Erlaubt, rückwirkend (25 min) — und damit beendet, bis die nächste Quelle beginnt.",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2026-11-18T10:40:00+01:00",
+          "endstand": {
+            "wert": 1083415.2,
+            "einheit": "kWh"
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "status": "beendet",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-06-z5a-ende-angekuendigt",
+        "herkunft": "AP-04 E2 („Zukunft = angekündigt“) · A3",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Am Vortag steht der Wechsel schon fest: das Ende von Z-5a am 18.11.2026 10:40 wird am 17.11. um 16:00 eingetragen. Angekündigt — die Quelle gilt bis dahin weiter.",
+        "input": {
+          "jetzt": "2026-11-17T16:00:00+01:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2026-11-18T10:40:00+01:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": null,
+          "status": "gilt",
+          "rueckwirkend": false,
+          "angekuendigt": true,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-06-beendete-quelle-nie-erneut",
+        "herkunft": "AP-04 Regel 2 („nie überschrieben, sondern beendet“)",
+        "referenz": "MS-06",
+        "why": "Z-5a ist seit 10:40 beendet. Wer das Ende auf 10:47 „korrigieren“ will, schriebe die Vergangenheit um: eine Quelle wird genau EINMAL beendet — 409 bindung_bereits_beendet. Eine Lücke bis zur nächsten Quelle bleibt sichtbar, sie wird nie durch Verschieben geschlossen.",
+        "input": {
+          "jetzt": "2026-11-18T11:10:00+01:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": "2026-11-18T10:40:00+01:00"
+          },
+          "gueltig_bis": "2026-11-18T10:47:00+01:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": "bindung_bereits_beendet",
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-07-beenden-vor-beginn",
+        "herkunft": "AP-04 §5.12 · Regel 2",
+        "referenz": "MS-07",
+        "why": "Ein Ende vor dem Beginn (11.03.2024 23:00 vor 12.03.2024 00:00) ist kein Zeitraum: 400 zeitraum_ungueltig.",
+        "input": {
+          "jetzt": "2026-10-20T10:15:00+02:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2024-03-11T23:00:00+01:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": "zeitraum_ungueltig",
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-07-ende-genau-am-beginn",
+        "herkunft": "AP-04 Regel 2 · halboffen [ab, bis)",
+        "referenz": "MS-07",
+        "why": "Ende = Beginn ist ein leerer Zeitraum — halboffen gehört das Ende nicht mehr dazu. Auch das ist 400 zeitraum_ungueltig; eine Quelle wird nie „auf null Minuten“ beendet.",
+        "input": {
+          "jetzt": "2026-10-20T10:15:00+02:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2024-03-12T00:00:00+01:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": "zeitraum_ungueltig",
+          "status": null,
+          "rueckwirkend": false,
+          "angekuendigt": false,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-06-ende-mit-endstand-ohne-einheit",
+        "herkunft": "AP-04 §5.12 („Ablesestand … Einheit fehlt“ — Warnung, kein Verbot)",
+        "referenz": "MS-06",
+        "ergebnis_wie_referenz": true,
+        "why": "Der Endstand kommt ohne Einheit an. Speichern bleibt erlaubt — der Stand ist ein Geschenk an AP-08, keine Bedingung (E2) —, aber es gibt den Hinweis ablesestand_pruefen.",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-5",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2026-11-18T10:40:00+01:00",
+          "endstand": {
+            "wert": 1083415.2,
+            "einheit": null
+          }
+        },
+        "expected": {
+          "fehler": null,
+          "status": "beendet",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "hinweise": [
+            "ablesestand_pruefen"
+          ]
+        }
+      },
+      {
+        "name": "ms-07-zur-pruefung-abgeklemmt",
+        "herkunft": "AP-04 Regel 2 · E2 · Fortschreibung wie ms-07-luecke-bleibt-sichtbar",
+        "referenz": "MS-07",
+        "fortschreibung": true,
+        "why": "Der Unterzähler Druckluft wird am 03.05.2027 um 07:00 zur Prüfung abgeklemmt; um 07:05 beendet der Kunde die Quelle zu 07:00. Erlaubt, rückwirkend (5 min) — ab jetzt zeigt der Zeitstrahl „keine Quelle seit 07:00“, bis eine neue beginnt. (Fortschreibung: das Referenzunternehmen endet am 12.04.2027.)",
+        "input": {
+          "jetzt": "2027-05-03T07:05:00+02:00",
+          "bindung": {
+            "rolle": "fuehrend",
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "komponente": "K-6",
+            "kanal": "Wirkenergie Bezug",
+            "geraet": "GR-5",
+            "einbau": "GR-5",
+            "kanal_wertart": "counter",
+            "zweck": null,
+            "gueltig_ab": "2024-03-12T00:00:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2027-05-03T07:00:00+02:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": null,
+          "status": "beendet",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "hinweise": []
+        }
+      },
+      {
+        "name": "ms-01-vergleich-vor-beginn-begrenzt",
+        "herkunft": "AP-04 E3 · §4.5 Bindung „geplant“",
+        "referenz": "MS-01",
+        "why": "Die Vergleichsquelle K-1 (Plausibilität) ist für den 20.11.2026 08:30 eingetragen. Am 19.11. wird sie schon begrenzt — auf einen Monat. Sie bleibt geplant, bis sie beginnt; das Ende ist angekündigt.",
+        "input": {
+          "jetzt": "2026-11-19T10:00:00+01:00",
+          "bindung": {
+            "rolle": "vergleich",
+            "groesse": "Wirkleistung",
+            "richtung": "Bezug",
+            "komponente": "K-1",
+            "kanal": "Einspeise-/Bezugsleistung am Wechselrichter",
+            "geraet": "GR-1",
+            "einbau": "GR-1",
+            "kanal_wertart": "gauge",
+            "zweck": "Plausibilität",
+            "gueltig_ab": "2026-11-20T08:30:00+01:00",
+            "gueltig_bis": null
+          },
+          "gueltig_bis": "2026-12-20T08:30:00+01:00",
+          "endstand": null
+        },
+        "expected": {
+          "fehler": null,
+          "status": "geplant",
+          "rueckwirkend": false,
+          "angekuendigt": true,
+          "hinweise": []
+        }
+      }
+    ],
+    "rueckwirkung": [
+      {
+        "name": "ms-06-wechsel-25-minuten",
+        "herkunft": "AP-04 §5.14 („rückwirkend (25 min)“) · E2",
+        "why": "Der Zählerwechsel gilt ab 10:40 und wird um 11:05 eingetragen: 25 Minuten rückwirkend — das Abzeichen des Protokolls.",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 25,
+          "abzeichen": "rückwirkend (25 min)"
+        }
+      },
+      {
+        "name": "ms-06-bestandsuebernahme-in-tagen",
+        "herkunft": "AP-04 §5.14 (Bestandsübernahme, gilt ab 12.03.2024) · E2",
+        "why": "Die Bestandsübernahme am 01.10.2026 09:14 bindet rückwirkend ab Beginn des Verlaufs, 12.03.2024 00:00. Ab einem Tag zählt das Abzeichen ganze Tage: 933.",
+        "input": {
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "zeitpunkt": "2024-03-12T00:00:00+01:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 1344014,
+          "abzeichen": "rückwirkend (933 Tage)"
+        }
+      },
+      {
+        "name": "ms-01-sekunden-zaehlen-nicht",
+        "herkunft": "AP-04 E2 (Auflösung Minute) · ms-01-vergleichsquelle-mit-zweck",
+        "why": "Der Dialog steht um 08:30:40, die Vorgabe „jetzt“ ist 08:30 — auf die Minute ist das kein Rückwirken: ab_jetzt, kein Abzeichen.",
+        "input": {
+          "jetzt": "2026-11-20T08:30:40+01:00",
+          "zeitpunkt": "2026-11-20T08:30:00+01:00"
+        },
+        "expected": {
+          "art": "ab_jetzt",
+          "minuten": 0,
+          "abzeichen": null
+        }
+      },
+      {
+        "name": "ms-06-wechsel-am-vortag-angekuendigt",
+        "herkunft": "AP-04 E2 („Zukunft = angekündigt“) · A3",
+        "why": "Am Vortag um 16:00 eingetragen, gilt der Wechsel erst am 18.11. um 10:40: angekündigt, 1 120 Minuten voraus, ohne Abzeichen.",
+        "input": {
+          "jetzt": "2026-11-17T16:00:00+01:00",
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "art": "angekuendigt",
+          "minuten": 1120,
+          "abzeichen": null
+        }
+      },
+      {
+        "name": "ms-06-stunden-und-minuten",
+        "herkunft": "AP-04 E2",
+        "why": "Um 12:45 eingetragen, gilt ab 10:40: zwei Stunden und fünf Minuten rückwirkend.",
+        "input": {
+          "jetzt": "2026-11-18T12:45:00+01:00",
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 125,
+          "abzeichen": "rückwirkend (2 h 5 min)"
+        }
+      },
+      {
+        "name": "ms-06-volle-stunden",
+        "herkunft": "AP-04 E2",
+        "why": "Um 12:40 eingetragen, gilt ab 10:40: volle zwei Stunden — ohne „0 min“.",
+        "input": {
+          "jetzt": "2026-11-18T12:40:00+01:00",
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 120,
+          "abzeichen": "rückwirkend (2 h)"
+        }
+      },
+      {
+        "name": "ms-06-genau-ein-tag",
+        "herkunft": "AP-04 E2",
+        "why": "Einen Tag später zur selben Minute eingetragen: „1 Tag“, Einzahl.",
+        "input": {
+          "jetzt": "2026-11-19T10:40:00+01:00",
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 1440,
+          "abzeichen": "rückwirkend (1 Tag)"
+        }
+      },
+      {
+        "name": "ms-07-wieder-gebunden",
+        "herkunft": "AP-04 Regel 2 · Fortschreibung wie ms-07-luecke-bleibt-sichtbar",
+        "why": "Der Unterzähler Druckluft wird ab 15:30 wieder gebunden, eingetragen um 15:45 (Sommerzeit): 15 Minuten rückwirkend.",
+        "input": {
+          "jetzt": "2027-05-03T15:45:00+02:00",
+          "zeitpunkt": "2027-05-03T15:30:00+02:00"
+        },
+        "expected": {
+          "art": "rueckwirkend",
+          "minuten": 15,
+          "abzeichen": "rückwirkend (15 min)"
+        }
       }
     ]
   }

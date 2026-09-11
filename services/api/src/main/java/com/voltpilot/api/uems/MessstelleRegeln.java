@@ -25,10 +25,12 @@ import java.util.regex.Pattern;
  * Vektoren ({@code docs/contracts/v2/messstelle-vectors.json}).
  * <b>Wer eine Regel ändert, ändert beide Seiten und die Vektor-Datei.</b>
  *
- * <h2>⚠ Noch ruft niemand an</h2>
+ * <h2>Wer anruft</h2>
  *
- * Es gibt noch keine Tabelle {@code messstelle} (IP-2), keinen Endpunkt (IP-3)
- * und keine Fläche. Diese Klasse ist der Vertrag, gegen den sie gebaut werden.
+ * {@link MessstelleService} (Kennzeichen, Größen, Lebenszyklus, IP-3) und
+ * {@link MessstelleQuelleService} (Quellenbindung, Beenden, Rückwirkung, IP-13); die
+ * Tabellen {@code messstelle*} und {@code messstelle_quelle} sagen dasselbe an der
+ * Datenbankgrenze. Ort und Stellung (IP-7) rufen noch nicht an.
  *
  * <h2>Die Regeln, die man ohne Nachlesen braucht</h2>
  *
@@ -103,6 +105,9 @@ public final class MessstelleRegeln {
 
     public static final List<String> HINWEISE = List.of("ablesestand_pruefen");
 
+    /** Wo ein Zeitpunkt gegen „jetzt“ steht (E2): rückwirkend markiert, angekündigt in der Zukunft. */
+    public static final List<String> RUECKWIRKUNG_ARTEN = List.of("rueckwirkend", "ab_jetzt", "angekuendigt");
+
     private static final String STROM = "Strom";
     private static final String BERECHNET = "berechnet";
     private static final String HAUPTZAEHLER = "Hauptzähler";
@@ -136,7 +141,11 @@ public final class MessstelleRegeln {
         /** Kostenstellen-Anteile — prüft erst IP-7 (Zuordnungen), nicht diese Klasse. */
         ANTEILE_SUMME("anteile_summe", 422, "IP-7"),
         /** Ort archiviert oder außerhalb des Geltungsbereichs — prüft erst IP-7. */
-        ORT_UNGUELTIG("ort_ungueltig", 422, "IP-7");
+        ORT_UNGUELTIG("ort_ungueltig", 422, "IP-7"),
+        /** Die Komponente wird zu Beginn (oder bis zum Ende) der Quelle von keinem Gerät gespeist (IP-13). */
+        KEIN_GERAET_ZUM_ZEITPUNKT("kein_geraet_zum_zeitpunkt", 422),
+        /** Eine Quelle wird nur EINMAL beendet — nie überschrieben (Regel 2, IP-13). */
+        BINDUNG_BEREITS_BEENDET("bindung_bereits_beendet", 409);
 
         private final String code;
         private final int status;
@@ -414,7 +423,15 @@ public final class MessstelleRegeln {
         }
     }
 
-    /** Die Quelle, die gebunden werden soll, samt dem, was der Messwert-Katalog über sie weiß. */
+    /**
+     * Die Quelle, die gebunden werden soll, samt dem, was der Messwert-Katalog über sie weiß.
+     *
+     * @param geraet das Gerät, dessen Einbau die Komponente zu {@code gueltigAb} speist;
+     *     {@code null} mit {@code einbau == null}: keine Speisung zu diesem Zeitpunkt
+     * @param kanalRichtung {@code null}, wenn der Katalog keine EINE Vertrags-Richtung kennt
+     *     (der Vorzeichen-Wert {@code import_export} — die Aufteilung ist Sache von AP-08)
+     * @param geraetBis bis wann dieser Einbau die Komponente speist; {@code null} = bis auf Weiteres
+     */
     public record NeueBindung(
             String rolle,
             String zweck,
@@ -429,7 +446,8 @@ public final class MessstelleRegeln {
             OffsetDateTime gueltigAb,
             OffsetDateTime gueltigBis,
             Stand endstandVorgaenger,
-            Stand anfangsstand) {}
+            Stand anfangsstand,
+            OffsetDateTime geraetBis) {}
 
     /** Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend. */
     public record FremdeFuehrung(String messstelle, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis) {}
@@ -456,6 +474,10 @@ public final class MessstelleRegeln {
     /** Ein Abschnitt des Zeitstrahls; {@code quelle == null} ist eine sichtbare Lücke. */
     public record Abschnitt(OffsetDateTime von, OffsetDateTime bis, QuelleZeitraum quelle) {}
 
+    /**
+     * @param ohneGeraetAb bei {@code kein_geraet_zum_zeitpunkt}: der erste Zeitpunkt der Quelle,
+     *     zu dem kein Gerät die Komponente speist — ihr Beginn oder das Ende der Speisung
+     */
     public record BindungUrteil(
             Fehler fehler,
             String grund,
@@ -467,7 +489,8 @@ public final class MessstelleRegeln {
             boolean angekuendigt,
             String herleitung,
             List<String> hinweise,
-            List<Abschnitt> zeitstrahl) {}
+            List<Abschnitt> zeitstrahl,
+            OffsetDateTime ohneGeraetAb) {}
 
     /** Das Urteil der Passung Messwert → Größe (Regel 7). */
     public record Passung(Fehler fehler, String grund, String herleitung) {}
@@ -524,8 +547,8 @@ public final class MessstelleRegeln {
     /**
      * Darf die neue Quelle gebunden werden — und wie sieht der Zeitstrahl danach
      * aus? Die Prüfreihenfolge ist Teil des Vertrags (der erste Treffer gewinnt):
-     * Medium → Zweck → Passung → Zeitraum → Messwert führt schon anderswo →
-     * Zeitpunkt vor Vorgänger/Beginn → Überlappung.
+     * Medium → Zweck → Passung → Zeitraum → Gerät zum Zeitpunkt → Messwert führt
+     * schon anderswo → Zeitpunkt vor Vorgänger/Beginn → Überlappung.
      */
     public static BindungUrteil bindungPruefen(BindungEingang e) {
         NeueBindung n = e.neu();
@@ -545,6 +568,15 @@ public final class MessstelleRegeln {
         OffsetDateTime bis = n.gueltigBis();
         if (bis != null && !bis.isAfter(ab)) {
             return abgelehnt(Fehler.ZEITRAUM_UNGUELTIG, null, null, null);
+        }
+        // Ein Messkanal gehört genau einem Gerät (Regel 6, W2): ohne Speisung zu Beginn gibt es
+        // ihn nicht, und über das Ende der Speisung hinaus ist er ein anderer (Zählerwechsel).
+        OffsetDateTime ohneGeraet = n.einbau() == null ? ab
+                : n.geraetBis() != null && (bis == null || bis.isAfter(n.geraetBis())) ? n.geraetBis()
+                : null;
+        if (ohneGeraet != null) {
+            return new BindungUrteil(Fehler.KEIN_GERAET_ZUM_ZEITPUNKT, null, null, null, null, null,
+                    false, false, null, List.of(), null, ohneGeraet);
         }
         if (!vergleich) {
             for (FremdeFuehrung f : e.kanalFuehrendAnderswo()) {
@@ -605,7 +637,71 @@ public final class MessstelleRegeln {
         }
         return new BindungUrteil(null, null, null, null, beendet, status,
                 ab.isBefore(jetzt), ab.isAfter(jetzt), p.herleitung(),
-                ablesestandHinweise(zuBeenden, n), zeitstrahl);
+                ablesestandHinweise(zuBeenden, n), zeitstrahl, null);
+    }
+
+    /**
+     * Eine bestehende Quelle beenden: {@code gueltigBis} setzen, optional mit dem Endstand.
+     *
+     * @param bindung die Quelle, wie sie gespeichert ist
+     * @param gueltigBis das neue Ende auf die Minute — auch in der Zukunft (angekündigt)
+     */
+    public record BeendenEingang(OffsetDateTime jetzt, Bindung bindung, OffsetDateTime gueltigBis, Stand endstand) {}
+
+    public record BeendenUrteil(Fehler fehler, String status, boolean rueckwirkend, boolean angekuendigt,
+            List<String> hinweise) {}
+
+    /**
+     * Darf die Quelle zu {@code gueltigBis} beendet werden (Regel 2)? Eine Quelle wird genau
+     * EINMAL beendet — eine beendete nie verschoben (409 {@code bindung_bereits_beendet}); das
+     * Ende liegt nach dem Beginn (400 {@code zeitraum_ungueltig}). Beenden hinterlässt eine
+     * Lücke, bis eine neue Quelle beginnt — nie aufgefüllt. Ein Endstand ohne Einheit ist ein
+     * Hinweis, kein Verbot.
+     */
+    public static BeendenUrteil beendenPruefen(BeendenEingang e) {
+        Bindung b = e.bindung();
+        if (b.gueltigBis() != null) {
+            return new BeendenUrteil(Fehler.BINDUNG_BEREITS_BEENDET, null, false, false, List.of());
+        }
+        OffsetDateTime bis = e.gueltigBis();
+        if (!bis.isAfter(b.gueltigAb())) {
+            return new BeendenUrteil(Fehler.ZEITRAUM_UNGUELTIG, null, false, false, List.of());
+        }
+        OffsetDateTime jetzt = minute(e.jetzt());
+        String status = b.gueltigAb().isAfter(jetzt) ? "geplant" : bis.isAfter(jetzt) ? "gilt" : "beendet";
+        List<String> hinweise = e.endstand() != null && e.endstand().einheit() == null
+                ? List.of("ablesestand_pruefen") : List.of();
+        return new BeendenUrteil(null, status, bis.isBefore(jetzt), bis.isAfter(jetzt), hinweise);
+    }
+
+    /** Wie weit ein Zeitpunkt von „jetzt“ entfernt ist, auf die Minute (E2). */
+    public record Rueckwirkung(String art, long minuten, String abzeichen) {}
+
+    /**
+     * Rückwirkend ist erlaubt, aber immer sichtbar (E2, Regel 5): {@code rueckwirkend} vor der
+     * Minute von „jetzt“, {@code ab_jetzt} genau in ihr, {@code angekuendigt} danach. Das
+     * Abzeichen trägt nur die Rückwirkung, mit ihrer Dauer: „rückwirkend (25 min)“,
+     * „rückwirkend (2 h 5 min)“, ab einem Tag in ganzen Tagen „rückwirkend (933 Tage)“.
+     */
+    public static Rueckwirkung rueckwirkung(OffsetDateTime jetzt, OffsetDateTime zeitpunkt) {
+        OffsetDateTime minuteJetzt = minute(jetzt);
+        long minuten = Math.abs(ChronoUnit.MINUTES.between(zeitpunkt, minuteJetzt));
+        String art = zeitpunkt.isBefore(minuteJetzt) ? "rueckwirkend"
+                : zeitpunkt.isAfter(minuteJetzt) ? "angekuendigt" : "ab_jetzt";
+        return new Rueckwirkung(art, minuten,
+                "rueckwirkend".equals(art) ? "rückwirkend (" + dauer(minuten) + ")" : null);
+    }
+
+    private static String dauer(long minuten) {
+        if (minuten < 60) {
+            return minuten + " min";
+        }
+        if (minuten < 24 * 60) {
+            long rest = minuten % 60;
+            return minuten / 60 + " h" + (rest == 0 ? "" : " " + rest + " min");
+        }
+        long tage = minuten / (24 * 60);
+        return tage + (tage == 1 ? " Tag" : " Tage");
     }
 
     /**
@@ -653,7 +749,7 @@ public final class MessstelleRegeln {
 
     private static BindungUrteil abgelehnt(Fehler f, String grund, Bindung bestehend, String messstelle) {
         return new BindungUrteil(f, grund, bestehend, messstelle, null, null, false, false, null,
-                List.of(), null);
+                List.of(), null, null);
     }
 
     private static boolean gleicheQuelle(Bindung b, NeueBindung n) {

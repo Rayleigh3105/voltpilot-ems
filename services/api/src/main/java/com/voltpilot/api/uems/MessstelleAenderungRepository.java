@@ -45,6 +45,21 @@ public class MessstelleAenderungRepository {
                 e.actorName(), e.actorRolle(), e.actorArt());
     }
 
+    /**
+     * Wie {@link #eintragen(NeuerEintrag)}, aber mit dem „jetzt“ des Schreibwegs als Eintragszeit —
+     * derselben Minute, gegen die er „rückwirkend“ gerechnet hat (die Quellenbindung, IP-13). So
+     * sagen {@code gilt_ab < created_at} (CHECK der Migration) und das Urteil des Schreibwegs
+     * immer dasselbe.
+     */
+    public long eintragen(NeuerEintrag e, Instant eingetragenAm) {
+        return jdbc.queryForObject("INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, art, "
+                + "alt, neu, gilt_ab, rueckwirkend, grund, actor_sub, actor_name, actor_rolle, "
+                + "actor_art, created_at) VALUES (?,?,?,?::jsonb,?::jsonb,?,?,?,?,?,?,?,?) RETURNING id",
+                Long.class, e.tenantId(), e.messstelleId(), e.art(), e.altJson(), e.neuJson(),
+                Timestamp.from(e.giltAb()), e.rueckwirkend(), e.grund(), e.actorSub(),
+                e.actorName(), e.actorRolle(), e.actorArt(), Timestamp.from(eingetragenAm));
+    }
+
     /** Ein Übergang des Lebenszyklus: {@code art} „angehalten“ oder „fortgesetzt“, ab wann er gilt. */
     public record Uebergang(String art, Instant giltAb) {}
 

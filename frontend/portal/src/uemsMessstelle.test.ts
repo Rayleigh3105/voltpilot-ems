@@ -19,9 +19,11 @@ import {
   MEDIEN,
   MEDIEN_WAEHLBAR,
   PASSUNG_GRUENDE,
+  RUECKWIRKUNG_ARTEN,
   STELLUNGEN,
   STELLUNG_GRUENDE,
   VERGLEICH_ZWECKE,
+  beendenPruefen,
   bindungPruefen,
   groessePruefen,
   kennzeichenFormatGueltig,
@@ -29,6 +31,7 @@ import {
   kennzeichenVorschlag,
   lebenszyklus,
   passung,
+  rueckwirkung,
   stellungPruefen,
   zeitstrahlAus,
   type Abschnitt,
@@ -101,27 +104,27 @@ const lebenszyklusEingang = (i: Json): LebenszyklusEingang => ({
   jetzt: i.jetzt,
 });
 
+const bindung = (b: Json): Bindung => ({
+  rolle: b.rolle,
+  groesse: b.groesse,
+  richtung: b.richtung,
+  komponente: b.komponente,
+  kanal: b.kanal,
+  geraet: b.geraet,
+  einbau: b.einbau,
+  kanalWertart: b.kanal_wertart,
+  zweck: b.zweck,
+  gueltigAb: b.gueltig_ab,
+  gueltigBis: b.gueltig_bis,
+});
+
 const bindungEingang = (i: Json): BindungEingang => ({
   vorgang: i.vorgang,
   jetzt: i.jetzt,
   medium: i.messstelle.medium,
   messstelleBeginn: i.messstelle.beginn,
   ziel: groesse(i.ziel) as Groesse,
-  bestehende: i.bestehende.map(
-    (b: Json): Bindung => ({
-      rolle: b.rolle,
-      groesse: b.groesse,
-      richtung: b.richtung,
-      komponente: b.komponente,
-      kanal: b.kanal,
-      geraet: b.geraet,
-      einbau: b.einbau,
-      kanalWertart: b.kanal_wertart,
-      zweck: b.zweck,
-      gueltigAb: b.gueltig_ab,
-      gueltigBis: b.gueltig_bis,
-    }),
-  ),
+  bestehende: i.bestehende.map(bindung),
   neu: {
     rolle: i.neu.rolle,
     zweck: i.neu.zweck,
@@ -137,6 +140,8 @@ const bindungEingang = (i: Json): BindungEingang => ({
     gueltigBis: i.neu.gueltig_bis,
     endstandVorgaenger: stand(i.neu.endstand_vorgaenger),
     anfangsstand: stand(i.neu.anfangsstand),
+    // Fehlt das Feld, speist der Einbau bis auf Weiteres (der Stand vor IP-13).
+    geraetBis: i.neu.geraet_bis ?? null,
   },
   kanalFuehrendAnderswo: i.kanal_fuehrend_anderswo.map((f: Json) => ({
     messstelle: f.messstelle,
@@ -182,6 +187,7 @@ const urteilAlsJson = (u: BindungUrteil): Json => ({
   herleitung: u.herleitung,
   hinweise: u.hinweise,
   zeitstrahl: u.zeitstrahl ? zeitstrahlAlsJson(u.zeitstrahl) : null,
+  ohne_geraet_ab: u.ohneGeraetAb,
 });
 
 // ------------------------------------------------------------------- Form
@@ -228,6 +234,7 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
     expect(vectors.stellung_gruende).toEqual([...STELLUNG_GRUENDE]);
     expect(vectors.passung_gruende).toEqual([...PASSUNG_GRUENDE]);
     expect(vectors.hinweise).toEqual([...HINWEISE]);
+    expect(vectors.rueckwirkung_arten).toEqual([...RUECKWIRKUNG_ARTEN]);
     expect(vectors.fehler).toEqual(
       FEHLER.map((f) => ({ code: f.code, status: f.status, geprueft_von: f.geprueftVon })),
     );
@@ -286,6 +293,21 @@ describe('Messstellen-Vertrag — die Fälle', () => {
     expect(urteilAlsJson(bindungPruefen(bindungEingang(c.input)))).toEqual(c.expected);
   });
 
+  it.each(faelle('beenden'))('Beenden: $name', (c) => {
+    expect(
+      beendenPruefen({
+        jetzt: c.input.jetzt,
+        bindung: bindung(c.input.bindung),
+        gueltigBis: c.input.gueltig_bis,
+        endstand: stand(c.input.endstand),
+      }),
+    ).toEqual(c.expected);
+  });
+
+  it.each(faelle('rueckwirkung'))('Rückwirkung: $name', (c) => {
+    expect(rueckwirkung(c.input.jetzt, c.input.zeitpunkt)).toEqual(c.expected);
+  });
+
   it.each(faelle('zeitstrahl'))('Zeitstrahl: $name', (c) => {
     expect({
       zeitstrahl: zeitstrahlAlsJson(zeitstrahlAus(c.input.beginn, c.input.fuehrende_quelle.map(quelleZeitraum))),
@@ -336,6 +358,7 @@ describe('Messstellen-Vertrag — die Fälle', () => {
         gueltigBis: null,
         endstandVorgaenger: null,
         anfangsstand: null,
+        geraetBis: null,
       },
       kanalFuehrendAnderswo: [],
     });
@@ -550,6 +573,18 @@ describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
       pruefeQuelle(c.input.neu, refQuellenDerGroesse(m, c.input.ziel, 'vergleichsquellen') as Json[], false);
     }
     if (c.ergebnis_wie_referenz) pruefeZeitstrahlWieReferenz(c.expected.zeitstrahl, ziel as Json[]);
+  });
+
+  // Beenden: die Quelle steht so im Referenzunternehmen; mit ergebnis_wie_referenz endet sie
+  // genau dort, wo sie dort endet.
+  it.each(faelle('beenden').filter((c) => c.referenz))('Beenden $name', (c) => {
+    const m = refMessstelle(c.referenz);
+    const b = c.input.bindung;
+    const feld = b.rolle === 'vergleich' ? 'vergleichsquellen' : 'fuehrende_quelle';
+    const liste = refQuellenDerGroesse(m, { groesse: b.groesse, richtung: b.richtung }, feld);
+    expect(liste).not.toBeNull();
+    pruefeQuelle(b, liste as Json[], Boolean(c.fortschreibung));
+    if (c.ergebnis_wie_referenz) pruefeQuelle({ ...b, gueltig_bis: c.input.gueltig_bis }, liste as Json[], false);
   });
 
   it.each(faelle('zeitstrahl').filter((c) => c.referenz))('Zeitstrahl $name', (c) => {

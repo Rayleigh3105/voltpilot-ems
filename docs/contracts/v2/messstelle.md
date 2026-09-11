@@ -1,7 +1,8 @@
 # Messstellen-Vertrag (UEMS AP-04 IP-1)
 
-Stand 11.09.2026 · Vertrag 1.0 · Bezug: AP-04 §4.1–§4.6, §5.12–§5.14, §7 und die
-Captain-Entscheide **E1, E2, E3, E7, E8, E9, E12** vom 10.09.2026 (alle Option A).
+Stand 11.09.2026 · Vertrag 1.0 (additiv ergänzt mit IP-13: Gerät zum Zeitpunkt, Beenden,
+Rückwirkung) · Bezug: AP-04 §4.1–§4.6, §5.12–§5.14, §7 und die Captain-Entscheide **E1, E2,
+E3, E7, E8, E9, E12** vom 10.09.2026 (alle Option A).
 
 Dieser Vertrag sagt, **was eine logische Messstelle ist** — Kennzeichen, Größen, Quellen,
 elektrische Stellung, Lebenszyklus — und **welche Regeln jede Änderung daran hält**: wie ein
@@ -13,18 +14,18 @@ eingerichtet ist, wie eine Quelle gebunden, gewechselt und abgelehnt wird und wo
 |---|---|
 | [`messstelle.schema.json`](./messstelle.schema.json) | JSON Schema 2020-12: die Wurzel ist EINE Messstelle, `$defs/vektorDatei` die Form der Vektor-Datei |
 | [`fixtures/messstelle/`](./fixtures/messstelle/) | MS-06 und MS-21 aus dem Referenzunternehmen (gültig) und zwei ungültige Gegenbeispiele ([README](./fixtures/messstelle/README.md)) |
-| [`messstelle-vectors.json`](./messstelle-vectors.json) | 87 Fälle in acht Familien, dazu Vokabular, Größen-Katalog und Fehlertabelle |
+| [`messstelle-vectors.json`](./messstelle-vectors.json) | 107 Fälle in zehn Familien, dazu Vokabular, Größen-Katalog und Fehlertabelle |
 | `services/api/.../uems/MessstelleRegeln.java` | der Java-Zwilling (rein: ohne Spring, ohne Datenbank, ohne Uhr) |
 | `frontend/portal/src/uemsMessstelle.ts` | der TS-Zwilling |
 | `…/uems/MessstelleRegelnVectorsTest.java` · `src/uemsMessstelle.test.ts` | beide fahren DIESELBE Datei — plus Schema, Beispiele, Regel-Konstanten und jeden Fall gegen [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json); zwei Zweige, die die Referenzdatei nicht erreicht, prüfen beide als Einheit (zwei verschiedene Vergleichsquellen nebeneinander; zwei Hauptzähler gleicher Richtung am selben Zähler) |
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> **Wer anruft (Stand IP-7):** die Tabellen `messstelle` … (IP-2, `V20260911140000`) und
-> `messstelle_ort`/`messstelle_stellung` (IP-7, `V20260911230000`), die Schnittstelle
-> `/api/v1/messstellen` (IP-3) mit `PUT …/{id}/ort`, `…/stellung` und `GET …/{id}/standort?am=`
-> (IP-7). Noch ohne Fläche (IP-5/IP-6/IP-8) und ohne Quellenbindung (IP-13). Die Box kennt keine
-> Messstellen; der Edge-Vertrag bleibt unverändert.
+> **Wer anruft (Stand IP-13):** die Tabellen `messstelle` … (IP-2, `V20260911140000`),
+> `messstelle_ort`/`messstelle_stellung` (IP-7, `V20260911230000`) und `messstelle_quelle`
+> (IP-13, `V20260911250000`), die Schnittstelle `/api/v1/messstellen` (IP-3) mit `PUT …/{id}/ort`,
+> `…/stellung` und `GET …/{id}/standort?am=` (IP-7) und `…/{id}/quellen` (IP-13). Noch ohne Fläche
+> (IP-5/IP-6/IP-8). Die Box kennt keine Messstellen; der Edge-Vertrag bleibt unverändert.
 
 ## 1. Die Messstelle
 
@@ -136,14 +137,27 @@ gewinnt:
    - `einheit`: die Einheit lässt sich nicht umrechnen
    - `richtung`: Bezug ist nicht Abgabe
 4. Ende nicht nach Beginn → 400 `zeitraum_ungueltig`
-5. Führend, und derselbe Messwert speist im Zeitraum eine ANDERE Messstelle führend →
+5. Kein Gerät zum Zeitpunkt (Regel 6, W2 — ein Messkanal gehört genau einem Gerät): kein
+   Einbau speist die Komponente zu Beginn der Quelle, oder die Quelle reicht über das Ende
+   dieser Speisung hinaus → 422 `kein_geraet_zum_zeitpunkt` (nennt den ersten Zeitpunkt ohne
+   Gerät: den Beginn oder das Ende der Speisung). Das Gerät wird nie geraten; welcher Einbau
+   zu Beginn speist, sagt `geraet_komponente` (IP-10).
+6. Führend, und derselbe Messwert speist im Zeitraum eine ANDERE Messstelle führend →
    409 `kanal_bereits_fuehrend` (nennt sie)
-6. `wechsel` mit einem Zeitpunkt nicht nach dem Beginn der laufenden Quelle, oder ein
+7. `wechsel` mit einem Zeitpunkt nicht nach dem Beginn der laufenden Quelle, oder ein
    Zeitpunkt vor dem Beginn der Messstelle (Beginn ihres ersten Orts) → 422
    `zeitpunkt_vor_vorgaenger` (Regel 5; nennt die laufende Quelle). Der Beginn ist
    Mitternacht des ersten Ort-Tages in der Zeitzone des Standorts.
-7. Überlappung mit einer Quelle derselben Größe und Rolle — beim Vergleich: desselben
+8. Überlappung mit einer Quelle derselben Größe und Rolle — beim Vergleich: desselben
    Messwerts — → 409 `bindung_ueberlappt` (nennt die früheste berührte Quelle)
+
+⚠ **Ein Vorzeichen-Wert hat keine Richtung.** Die Wirkleistung am Zweirichtungszähler (Katalog
+`import_export`) nennt nur „Leistung am Netzpunkt“; Bezug und Abgabe sind zwei Messstellen
+(E1). Streng nach Regel 7 passt sie deshalb an keine Größe mit Richtung (Grund `richtung`) —
+auch nicht an die Nebengröße „Wirkleistung · Bezug“ von MS-01, die die Referenzdatei aus K-3
+speist. Die Aufteilung ist eine Rechenregel und wird in AP-08 (Verbrauchsbildung) entschieden;
+bis dahin gibt es dafür weder ein Feld noch eine Aufteilung. Fall
+`ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`.
 
 **Die einzige Änderung an Bestehendem** (Regel 2): eine neue, offene führende Quelle beendet
 die laufende genau zu ihrem Beginn, wenn sie nach deren Beginn liegt. Bereits beendete Quellen
@@ -159,6 +173,19 @@ DESSELBEN Geräts — speichern bleibt erlaubt) und den **Zeitstrahl** der führ
 Beginn der Messstelle. Den Zeitstrahl gibt es auch für sich (`zeitstrahl` in beiden Zwillingen):
 ohne jede Quelle ist er EIN offener Abschnitt ohne Quelle („keine Datenquelle seit …“), nach
 einer ausdrücklich beendeten Quelle endet er mit „keine Quelle seit …“ — nie still.
+
+**Beenden** (`beendenPruefen`, IP-13): eine Quelle wird genau EINMAL beendet — `gueltig_bis`
+geht von offen auf einen Zeitpunkt, der Endstand darf mitkommen. Eine beendete nie erneut
+(409 `bindung_bereits_beendet`, Regel 2 „nie überschrieben“); das Ende liegt nach dem Beginn
+(400 `zeitraum_ungueltig`). Das Ende darf rückwirkend oder angekündigt sein; ein Endstand ohne
+Einheit ist der Hinweis `ablesestand_pruefen`. Beenden lässt eine Lücke, bis eine neue Quelle
+beginnt.
+
+**Rückwirkung** (`rueckwirkung`, E2): ein Zeitpunkt steht auf die Minute gegen „jetzt“ —
+`rueckwirkend` (davor), `ab_jetzt` (in derselben Minute), `angekuendigt` (danach). Nur die
+Rückwirkung trägt ein Abzeichen, mit ihrer Dauer: unter einer Stunde in Minuten („rückwirkend
+(25 min)“, §5.14), unter einem Tag in Stunden und Minuten („rückwirkend (2 h 5 min)“), sonst in
+ganzen Tagen („rückwirkend (933 Tage)“).
 
 ## 6. Elektrische Stellung (Regel 8, E12)
 
@@ -200,6 +227,8 @@ Gepinnt werden sie mit dem Dialog (IP-6), nicht hier.
 | `stellung_ungueltig` | 422 | Grund, Ziel oder Kreis | „MS-11 gehört zu Halle 2. Ein Unterzähler kann nur auf eine Messstelle derselben Anlage zeigen.“ / „Eine Messstelle kann nicht ihr eigener Unterzähler sein.“ |
 | `anteile_summe` | 422 | — (prüft IP-7) | „Die Anteile ergeben 90 %. Sie müssen 100 % ergeben.“ |
 | `ort_ungueltig` | 422 | — (prüft IP-7) | „Halle 2 Lager ist seit 30.06.2027 archiviert. Wählen Sie einen aktiven Ort.“ |
+| `kein_geraet_zum_zeitpunkt` | 422 | der erste Zeitpunkt ohne Gerät | *(Ergänzung IP-13)* „Unterzähler Spritzguss wird ab 18.11.2026 10:40 nicht mehr von Z-5a gespeist. Beenden Sie die Quelle spätestens dann oder wählen Sie einen anderen Zeitpunkt.“ |
+| `bindung_bereits_beendet` | 409 | das bestehende Ende | *(Ergänzung IP-13)* „Diese Quelle ist seit 18.11.2026 10:40 beendet. Eine Quelle wird nur einmal beendet — binden Sie für die Zeit danach eine neue.“ |
 | Hinweis `ablesestand_pruefen` | — | — | „Der Anfangsstand 1 083 500 kWh liegt über dem Endstand 1 083 415,2 kWh desselben Zählers. Prüfen Sie die Werte.“ |
 
 Eine fremde Messstelle ist 404, nie 403 (AP-03); das ist Sache der Schnittstelle, nicht dieser
@@ -214,8 +243,10 @@ Regeln.
 | `groesse` | 9 — MS-06, MS-21 Gas, MS-04 „Laden / Entladen“, Ladestand; vier Merkmale abgelehnt, Wasser noch ohne Größe | §4.1, E1, AP-00 E11 |
 | `lebenszyklus` | 8 — MS-06 aktiv, MS-21 ohne Quelle, neuer Entwurf, MS-20 ohne Formel, MS-19 mit Formel und ohne Eingang, angehalten, MS-13 archiviert | §4.5, E8, E9, A10, A13 |
 | `passung` | 13 — Regel 7 als Tabelle ohne Anlage: vier erlaubte Herleitungen, Wh umrechenbar, Gas, Zustand, Momentanwert aus Zählerstand, Zählerstand aus Leistung, Energie als Momentanwert, Ladestand speist keine Energie, kW statt kWh, Abgabe statt Bezug | Regel 7, Regel 11 |
-| `bindung` | 25 — **MS-06-Zeitstrahl** (A1), angekündigt (A3), Nebengröße mit eigener Quelle, **Überlappung**, Wechsel vor und genau beim Einbau (A15), **Lücke** (MS-07), MS-08-Umzug K-7 → K-8.7, Leistung integriert (MS-03), vier Passungsgründe, Gas ohne Quelle, Messwert speist schon MS-06, Vergleich mit/ohne Zweck und derselbe Messwert doppelt, Ablesestand-Hinweise (gleiches Gerät, ohne Einheit) und die Gegenprobe (anderes Gerät), Zeitraum verkehrt und null Minuten, vor Beginn der Messstelle; „jetzt“ auf die Minute | Regeln 1, 2, 5–7, E1–E3 |
+| `bindung` | 29 — **MS-06-Zeitstrahl** (A1), angekündigt (A3), Nebengröße mit eigener Quelle, **Überlappung**, Wechsel vor und genau beim Einbau (A15), **Lücke** (MS-07), MS-08-Umzug K-7 → K-8.7, Leistung integriert (MS-03), vier Passungsgründe, Gas ohne Quelle, Messwert speist schon MS-06, Vergleich mit/ohne Zweck und derselbe Messwert doppelt, Ablesestand-Hinweise (gleiches Gerät, ohne Einheit) und die Gegenprobe (anderes Gerät), Zeitraum verkehrt und null Minuten, vor Beginn der Messstelle; „jetzt“ auf die Minute; **kein Gerät zum Zeitpunkt** (EK-7 steckt noch nicht, Z-5a offen über den Wechsel) und die Gegenprobe bis genau zum Ausbau; **Vorzeichen-Wert wartet auf AP-08** (MS-01) | Regeln 1, 2, 5–7, E1–E3 |
 | `zeitstrahl` | 3 — MS-06 ohne Fuge, MS-21 ein offener Abschnitt ohne Quelle, MS-07 „keine Quelle seit 07:00“ | Regel 2, E8 |
+| `beenden` | 8 — Z-5a endet mit Endstand 1 083 415,2 kWh (A1), angekündigt am Vortag, beendete Quelle nie erneut, Ende vor und genau am Beginn, Endstand ohne Einheit, MS-07 zur Prüfung abgeklemmt, Vergleichsquelle vor Beginn begrenzt | Regel 2, E2, E3 |
+| `rueckwirkung` | 8 — 25 min (§5.14), 933 Tage (Bestandsübernahme), Sekunden zählen nicht, angekündigt, 2 h 5 min, volle Stunden, ein Tag, Sommerzeit | E2, Regel 5 |
 | `stellung` | 13 — Bezug + Abgabe desselben Zählers, **zweiter Hauptzähler** (A11) und gleiche Richtung, **Fremdanlage** (MS-08-Umzug, MS-11), Umzug erlaubt, sich selbst, **Zyklus**, berechnet und Gas nur „keine“, Bezug fehlt, Bezug ohne Unterzähler | Regel 8, E12 |
 
 Jeder Fall mit `referenz` übernimmt die Quellen der genannten Messstelle unverändert (oder
@@ -278,10 +309,16 @@ die Referenzdatei, für Regeln der Entscheid-Wortlaut.
     gültigen Tag (MS-08: AN-1 „bis 2027-02-28“); die Zwillinge vergleichen ohne Umrechnung. Der
     `beginn` einer Messstelle bleibt ein Zeitpunkt: Mitternacht des ersten Tages ihres ersten
     Orts am Standort.
+14. **Die Vorzeichen-Wirkleistung der Referenzdatei (IP-13).** Die Datei speist die Nebengröße
+    „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung von K-3; der Katalog (2026.09.11.1,
+    IP-9) führt diesen Messwert als Vorzeichen-Wert `import_export`. Der Vertrag bleibt streng:
+    422 `quelle_passt_nicht`, Grund `richtung`, bis AP-08 die Aufteilung entscheidet. Fall
+    `ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`.
 
 ## 10. Was dieser Vertrag nicht regelt
 
-Die Tabelle `messstelle` samt Kennzeichen-Zähler (IP-2), Endpunkte und Rechte (IP-3, AP-03),
+Die Tabellen `messstelle` samt Kennzeichen-Zähler (IP-2) und `messstelle_quelle` (IP-13),
+Endpunkte und Rechte (IP-3, IP-13, AP-03),
 Register und Dialog samt Wortlaut (IP-4 bis IP-6), Zuordnungen mit Tages-Mechanik, Prozessen,
 Kostenstellen-Anteilen und Ort-Prüfung (IP-7), Gerät, Messkanal-Katalog und
 Einstellungs-Fassungen (IP-9 bis IP-11), die Beobachtung „liefert Daten“ selbst

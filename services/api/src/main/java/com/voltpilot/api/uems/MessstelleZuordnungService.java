@@ -30,6 +30,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -79,11 +80,12 @@ import org.springframework.web.server.ResponseStatusException;
  *       Gründen ({@link EintragGrund}).</li>
  * </ul>
  *
- * <p><b>Der Hauptzähler bis IP-13.</b> „Alle Hauptzähler einer Anlage lesen denselben Zähler“
- * vergleicht die Komponente der führenden Quelle — die Quellenbindung kommt erst mit IP-13. Bis
- * dahin ist sie unbekannt ({@link #komponente}), und die Regel urteilt, wie ihr Zwilling es
- * vorschreibt: ein zweiter Hauptzähler derselben Anlage ist 409 {@code hauptzaehler_vorhanden},
- * auch in anderer Richtung (Bezug und Abgabe desselben Netzzählers erst mit ihren Quellen).
+ * <p><b>Der Hauptzähler und seine Quelle (IP-13).</b> „Alle Hauptzähler einer Anlage lesen
+ * denselben Zähler“ vergleicht die Komponente der führenden Quelle der Hauptgröße an dem Tag
+ * ({@link #komponente}, aus {@code messstelle_quelle}). So sind MS-01 (Bezug) und MS-02 (Abgabe)
+ * am Netzzähler K-3 zusammen Hauptzähler; hat eine der beiden an dem Tag keine Quelle, ist ihr
+ * Zähler unbekannt, und die Regel urteilt, wie ihr Zwilling es vorschreibt: ein zweiter
+ * Hauptzähler derselben Anlage ist 409 {@code hauptzaehler_vorhanden}, auch in anderer Richtung.
  *
  * <p>Alle Zuordnungs-Schreibvorgänge eines Kundenbereichs laufen nacheinander — dieselbe
  * Zeilensperre auf seinem Unternehmen wie {@link OrtService}: die Regeln über mehrere Messstellen
@@ -101,6 +103,7 @@ public class MessstelleZuordnungService {
     private final MessstelleRepository messstellen;
     private final MessstelleZuordnungRepository zuordnungen;
     private final MessstelleAenderungRepository aenderungen;
+    private final MessstelleQuelleRepository quellen;
     private final MessstelleOrtsbaumMessstellen ortsbaumMessstellen;
     private final StandortService standorte;
     private final UnternehmenRepository unternehmen;
@@ -110,12 +113,14 @@ public class MessstelleZuordnungService {
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleZuordnungService(MessstelleRepository messstellen, MessstelleZuordnungRepository zuordnungen,
-            MessstelleAenderungRepository aenderungen, MessstelleOrtsbaumMessstellen ortsbaumMessstellen,
-            StandortService standorte, UnternehmenRepository unternehmen, JdbcTemplate jdbc, ObjectMapper json,
+            MessstelleAenderungRepository aenderungen, MessstelleQuelleRepository quellen,
+            MessstelleOrtsbaumMessstellen ortsbaumMessstellen, StandortService standorte,
+            UnternehmenRepository unternehmen, JdbcTemplate jdbc, ObjectMapper json,
             PlatformTransactionManager transactionManager) {
         this.messstellen = messstellen;
         this.zuordnungen = zuordnungen;
         this.aenderungen = aenderungen;
+        this.quellen = quellen;
         this.ortsbaumMessstellen = ortsbaumMessstellen;
         this.standorte = standorte;
         this.unternehmen = unternehmen;
@@ -281,9 +286,12 @@ public class MessstelleZuordnungService {
         }
     }
 
-    /** Die Messstellen des Kundenbereichs, einmal gelesen — für die Liste je Tag und die Sätze. */
+    /**
+     * Die Messstellen des Kundenbereichs, einmal gelesen — für die Liste je Tag und die Sätze;
+     * {@code fuehrend}: je Messstelle die führenden Quellen ihrer HAUPTGRÖSSE (IP-13).
+     */
     private record Stand(List<Messstelle> alle, Map<UUID, Messstelle> jeId, Map<String, Messstelle> jeKennzeichen,
-            Map<UUID, String> anlagen) {}
+            Map<UUID, String> anlagen, Map<UUID, List<MessstelleQuelleRepository.Quelle>> fuehrend) {}
 
     private Stand stand(Map<UUID, String> anlagen) {
         List<Messstelle> alle = messstellen.alle();
@@ -293,7 +301,15 @@ public class MessstelleZuordnungService {
             jeId.put(x.id(), x);
             jeKz.put(x.kennzeichen(), x);
         });
-        return new Stand(alle, jeId, jeKz, anlagen);
+        Map<UUID, List<MessstelleQuelleRepository.Quelle>> fuehrend = new HashMap<>();
+        for (MessstelleQuelleRepository.Quelle q : quellen.alle()) {
+            Messstelle x = jeId.get(q.messstelleId());
+            if (x != null && "fuehrend".equals(q.rolle()) && x.hauptgroesse().groesse().equals(q.groesse())
+                    && x.hauptgroesse().richtung().equals(q.richtung())) {
+                fuehrend.computeIfAbsent(x.id(), k -> new ArrayList<>()).add(q);
+            }
+        }
+        return new Stand(alle, jeId, jeKz, anlagen, fuehrend);
     }
 
     /** Ein Stellungs-Intervall im Stand NACH dem Schritt. */
@@ -338,7 +354,7 @@ public class MessstelleZuordnungService {
                 nachher.stream().filter(iv -> iv.messstelle().equals(x.id()) && iv.deckt(tag)).findFirst()
                         .ifPresent(iv -> liste.add(eintrag(x, iv, stand, tag)));
             }
-            StellungUrteil u = MessstelleRegeln.stellungPruefen(kandidat(m, tag),
+            StellungUrteil u = MessstelleRegeln.stellungPruefen(kandidat(m, tag, stand),
                     new Stellung(neu.anlage().toString(), neu.stellung(), neu.bezugKennzeichen()), liste);
             if (u.fehler() != null) {
                 throw stellungAbgelehnt(u, m, neu, tag, stand);
@@ -348,7 +364,7 @@ public class MessstelleZuordnungService {
                     continue;
                 }
                 Messstelle d = stand.jeKennzeichen().get(e.kennzeichen());
-                StellungUrteil ud = MessstelleRegeln.stellungPruefen(kandidat(d, tag),
+                StellungUrteil ud = MessstelleRegeln.stellungPruefen(kandidat(d, tag, stand),
                         new Stellung(e.anlage(), e.stellung(), e.unterzaehlerVon()), liste);
                 if (ud.fehler() != null) {
                     throw betroffenAbgelehnt(ud, m, e, tag, stand);
@@ -360,21 +376,29 @@ public class MessstelleZuordnungService {
     private static StellungEintrag eintrag(Messstelle x, Iv iv, Stand stand, LocalDate tag) {
         Messstelle bezug = iv.bezug() == null ? null : stand.jeId().get(iv.bezug());
         return new StellungEintrag(x.kennzeichen(), x.name(), iv.anlage().toString(), iv.stellung(),
-                bezug == null ? null : bezug.kennzeichen(), x.hauptgroesse().richtung(), komponente(x, tag));
+                bezug == null ? null : bezug.kennzeichen(), x.hauptgroesse().richtung(), komponente(x, tag, stand));
     }
 
-    private static StellungKandidat kandidat(Messstelle m, LocalDate tag) {
+    private static StellungKandidat kandidat(Messstelle m, LocalDate tag, Stand stand) {
         return new StellungKandidat(m.kennzeichen(), m.art(), m.medium(), m.hauptgroesse().richtung(),
-                komponente(m, tag));
+                komponente(m, tag, stand));
     }
 
     /**
-     * Der Zähler, den die Messstelle an dem Tag liest: die Komponente ihrer führenden Quelle.
-     * Die Quellenbindung bringt IP-13 — bis dahin unbekannt, und Regel 8 behandelt zwei
-     * Hauptzähler dann nie als „derselbe Zähler“ (siehe Klassenkommentar).
+     * Der Zähler, den die Messstelle an dem Tag liest: die Komponente der führenden Quelle ihrer
+     * Hauptgröße (IP-13, {@code messstelle_quelle}) — die zu Beginn des Tages gilt, sonst die erste,
+     * die an ihm beginnt (Zuordnungen gelten tagesgenau, Quellen auf die Minute). Ohne Quelle an
+     * dem Tag unbekannt ({@code null}), und Regel 8 behandelt zwei Hauptzähler dann nie als
+     * „derselbe Zähler“ (siehe Klassenkommentar).
      */
-    private static String komponente(Messstelle m, LocalDate tag) {
-        return null;
+    private static String komponente(Messstelle m, LocalDate tag, Stand stand) {
+        Instant beginn = tag.atStartOfDay(MessstelleService.ZEITZONE).toInstant();
+        Instant ende = tag.plusDays(1).atStartOfDay(MessstelleService.ZEITZONE).toInstant();
+        return stand.fuehrend().getOrDefault(m.id(), List.of()).stream()
+                .filter(q -> q.gueltigAb().isBefore(ende) && (q.gueltigBis() == null || q.gueltigBis().isAfter(beginn)))
+                .min(Comparator.comparing(MessstelleQuelleRepository.Quelle::gueltigAb))
+                .map(q -> q.entityId().toString())
+                .orElse(null);
     }
 
     // --------------------------------------------------------------- Stand am
@@ -515,7 +539,7 @@ public class MessstelleZuordnungService {
             String satz = anlageName(e.anlage(), stand) + " hat bereits einen Hauptzähler: " + nennung(e) + ". Wählen Sie "
                     + "„Unterzähler von " + e.kennzeichen() + "“ oder ändern Sie " + e.kennzeichen() + ".";
             if (!e.richtung().equals(m.hauptgroesse().richtung())
-                    && (e.komponente() == null || komponente(m, tag) == null)) {
+                    && (e.komponente() == null || komponente(m, tag, stand) == null)) {
                 satz += " Ein zweiter Hauptzähler in anderer Richtung (" + m.hauptgroesse().richtung() + " neben "
                         + e.richtung() + ") ist nur erlaubt, wenn beide denselben Zähler lesen — das zeigt erst "
                         + "ihre führende Quelle.";

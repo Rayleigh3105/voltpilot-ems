@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.uems.MessstelleRegeln.Abschnitt;
+import com.voltpilot.api.uems.MessstelleRegeln.BeendenEingang;
+import com.voltpilot.api.uems.MessstelleRegeln.BeendenUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.Bindung;
 import com.voltpilot.api.uems.MessstelleRegeln.BindungEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.BindungUrteil;
@@ -19,6 +21,7 @@ import com.voltpilot.api.uems.MessstelleRegeln.LebenszyklusEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.LebenszyklusErgebnis;
 import com.voltpilot.api.uems.MessstelleRegeln.NeueBindung;
 import com.voltpilot.api.uems.MessstelleRegeln.QuelleZeitraum;
+import com.voltpilot.api.uems.MessstelleRegeln.Rueckwirkung;
 import com.voltpilot.api.uems.MessstelleRegeln.Stand;
 import com.voltpilot.api.uems.MessstelleRegeln.Stellung;
 import com.voltpilot.api.uems.MessstelleRegeln.StellungEintrag;
@@ -146,6 +149,7 @@ class MessstelleRegelnVectorsTest {
         assertThat(texte(v.path("stellung_gruende"))).isEqualTo(MessstelleRegeln.STELLUNG_GRUENDE);
         assertThat(texte(v.path("passung_gruende"))).isEqualTo(MessstelleRegeln.PASSUNG_GRUENDE);
         assertThat(texte(v.path("hinweise"))).isEqualTo(MessstelleRegeln.HINWEISE);
+        assertThat(texte(v.path("rueckwirkung_arten"))).isEqualTo(MessstelleRegeln.RUECKWIRKUNG_ARTEN);
 
         List<String> fehlerDatei = new ArrayList<>();
         v.path("fehler").forEach(f -> fehlerDatei.add(
@@ -258,6 +262,35 @@ class MessstelleRegelnVectorsTest {
     }
 
     @TestFactory
+    List<DynamicTest> beenden() throws Exception {
+        return fuerJedenFall("beenden", c -> {
+            JsonNode in = c.path("input");
+            BeendenUrteil u = MessstelleRegeln.beendenPruefen(new BeendenEingang(zeit(in.path("jetzt")),
+                    bindung(in.path("bindung")), zeit(in.path("gueltig_bis")), stand(in.path("endstand"))));
+            ObjectNode out = MAPPER.createObjectNode();
+            out.put("fehler", u.fehler() == null ? null : u.fehler().code());
+            out.put("status", u.status());
+            out.put("rueckwirkend", u.rueckwirkend());
+            out.put("angekuendigt", u.angekuendigt());
+            ArrayNode hinweise = out.putArray("hinweise");
+            u.hinweise().forEach(hinweise::add);
+            return out;
+        });
+    }
+
+    @TestFactory
+    List<DynamicTest> rueckwirkung() throws Exception {
+        return fuerJedenFall("rueckwirkung", c -> {
+            Rueckwirkung r = MessstelleRegeln.rueckwirkung(zeit(c.at("/input/jetzt")), zeit(c.at("/input/zeitpunkt")));
+            ObjectNode out = MAPPER.createObjectNode();
+            out.put("art", r.art());
+            out.put("minuten", Math.toIntExact(r.minuten()));
+            out.put("abzeichen", r.abzeichen());
+            return out;
+        });
+    }
+
+    @TestFactory
     List<DynamicTest> zeitstrahl() throws Exception {
         return fuerJedenFall("zeitstrahl", c -> {
             List<QuelleZeitraum> quellen = new ArrayList<>();
@@ -281,7 +314,7 @@ class MessstelleRegelnVectorsTest {
         Bindung erste = new Bindung("vergleich", "Wirkleistung", "Bezug", "K-A", "Leistung A", "GR-A", "GR-A",
                 "gauge", "Plausibilität", ab, null);
         NeueBindung zweite = new NeueBindung("vergleich", "Abrechnungszähler", "K-B", "Leistung B", "GR-B", "GR-B",
-                "Wirkleistung", "Bezug", "kW", "gauge", ab, null, null, null);
+                "Wirkleistung", "Bezug", "kW", "gauge", ab, null, null, null, null);
         BindungUrteil u = MessstelleRegeln.bindungPruefen(
                 new BindungEingang("binden", ab, "Strom", ab, ziel, List.of(erste), zweite, List.of()));
         assertThat(u.fehler()).isNull();
@@ -497,6 +530,27 @@ class MessstelleRegelnVectorsTest {
                 }
             }));
         }
+        // Beenden: die Quelle steht so im Referenzunternehmen; mit ergebnis_wie_referenz endet
+        // sie genau dort, wo sie dort endet.
+        for (JsonNode c : faelle("beenden")) {
+            if (!c.hasNonNull("referenz")) {
+                continue;
+            }
+            tests.add(DynamicTest.dynamicTest("beenden/" + c.path("name").asText(), () -> {
+                JsonNode b = c.at("/input/bindung");
+                JsonNode m = refMessstelle(ref, c.path("referenz").asText());
+                String feld = "vergleich".equals(b.path("rolle").asText()) ? "vergleichsquellen" : "fuehrende_quelle";
+                JsonNode quellen = refListeDerGroesse(m, new Groesse(b.path("groesse").asText(),
+                        b.path("richtung").asText(), null, null), feld);
+                assertThat(quellen).as(b.path("groesse").asText() + " · " + b.path("richtung").asText()).isNotNull();
+                pruefeQuelle(b, quellen, c.path("fortschreibung").asBoolean(), ende);
+                if (c.path("ergebnis_wie_referenz").asBoolean()) {
+                    ObjectNode beendet = b.deepCopy();
+                    beendet.set("gueltig_bis", c.at("/input/gueltig_bis"));
+                    pruefeQuelle(beendet, quellen, false, ende);
+                }
+            }));
+        }
         for (JsonNode c : faelle("zeitstrahl")) {
             if (!c.hasNonNull("referenz")) {
                 continue;
@@ -638,20 +692,25 @@ class MessstelleRegelnVectorsTest {
                 in.path("archiviert").asBoolean(), quellen, zeit(in.path("jetzt")));
     }
 
-    private static BindungEingang bindungEingang(JsonNode in) {
-        List<Bindung> bestehende = new ArrayList<>();
-        in.path("bestehende").forEach(b -> bestehende.add(new Bindung(b.path("rolle").asText(),
+    private static Bindung bindung(JsonNode b) {
+        return new Bindung(b.path("rolle").asText(),
                 b.path("groesse").asText(), b.path("richtung").asText(), b.path("komponente").asText(),
                 b.path("kanal").asText(), b.path("geraet").asText(), b.path("einbau").asText(),
                 b.path("kanal_wertart").asText(), text(b.path("zweck")),
-                zeit(b.path("gueltig_ab")), zeit(b.path("gueltig_bis")))));
+                zeit(b.path("gueltig_ab")), zeit(b.path("gueltig_bis")));
+    }
+
+    private static BindungEingang bindungEingang(JsonNode in) {
+        List<Bindung> bestehende = new ArrayList<>();
+        in.path("bestehende").forEach(b -> bestehende.add(bindung(b)));
         JsonNode n = in.path("neu");
+        // Gerät, Einbau und Richtung dürfen leer sein (keine Speisung · Vorzeichen-Wert) — nie „null“ als Wort.
         NeueBindung neu = new NeueBindung(n.path("rolle").asText(), text(n.path("zweck")),
-                n.path("komponente").asText(), n.path("kanal").asText(), n.path("geraet").asText(),
-                n.path("einbau").asText(), n.path("kanal_groesse").asText(), n.path("kanal_richtung").asText(),
-                n.path("kanal_einheit").asText(), n.path("kanal_wertart").asText(),
+                n.path("komponente").asText(), n.path("kanal").asText(), text(n.path("geraet")),
+                text(n.path("einbau")), text(n.path("kanal_groesse")), text(n.path("kanal_richtung")),
+                text(n.path("kanal_einheit")), text(n.path("kanal_wertart")),
                 zeit(n.path("gueltig_ab")), zeit(n.path("gueltig_bis")),
-                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")));
+                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")), zeit(n.path("geraet_bis")));
         List<FremdeFuehrung> anderswo = new ArrayList<>();
         in.path("kanal_fuehrend_anderswo").forEach(f -> anderswo.add(new FremdeFuehrung(
                 f.path("messstelle").asText(), zeit(f.path("gueltig_ab")), zeit(f.path("gueltig_bis")))));
@@ -694,6 +753,7 @@ class MessstelleRegelnVectorsTest {
         } else {
             out.set("zeitstrahl", zeitstrahlAlsJson(u.zeitstrahl()));
         }
+        out.put("ohne_geraet_ab", zeitText(u.ohneGeraetAb()));
         return out;
     }
 

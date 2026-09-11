@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -151,6 +152,30 @@ class MessstelleSchnittstelleVertragTest {
         assertThat(liste(map(map(schema("MessstelleStandortAm"), "properties"), "grund"), "enum"))
                 .containsExactlyElementsOf(Arrays.stream(OrtsbaumAbleitung.VerortungGrund.values())
                         .map(g -> g.name().toLowerCase(java.util.Locale.ROOT)).toList());
+    }
+
+    /**
+     * Die Quellenbindung (IP-13): die Anfragen tragen genau die Felder der OpenAPI, und die Quellen
+     * einer Messstelle haben genau die Felder von {@code $defs/quellenbindung} bzw.
+     * {@code $defs/vergleichsbindung} des Vertrags.
+     */
+    @Test
+    void dieQuellenbindungTraegtDieFelderDerOpenApiUndDesVertrags() {
+        PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
+        for (Object[] paar : new Object[][] {{"MessstelleQuelleBinden", MessstelleQuelleDto.Binden.class},
+                {"MessstelleQuelleBeenden", MessstelleQuelleDto.Beenden.class},
+                {"MessstelleQuellenbindung", MessstelleDto.Quellenbindung.class},
+                {"MessstelleVergleichsbindung", MessstelleDto.Vergleichsbindung.class}}) {
+            assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
+                    .containsExactlyInAnyOrderElementsOf(Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
+                            .map(c -> snake.translate(c.getName())).toList());
+        }
+        for (String[] paar : new String[][] {{"quellenbindung", "MessstelleQuellenbindung"},
+                {"vergleichsbindung", "MessstelleVergleichsbindung"}}) {
+            Set<String> soll = new LinkedHashSet<>();
+            vertrag.at("/$defs/" + paar[0] + "/required").forEach(n -> soll.add(n.asText()));
+            assertThat(liste(schema(paar[1]), "required")).as(paar[1]).containsExactlyInAnyOrderElementsOf(soll);
+        }
     }
 
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */

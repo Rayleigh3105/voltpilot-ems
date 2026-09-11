@@ -67,10 +67,10 @@ import org.testcontainers.utility.DockerImageName;
  *
  * <p>Die einzige Beispielquelle ist das Referenzunternehmen ({@code uems-referenzunternehmen.json},
  * Fassung 1.1): Standorte, Gebäude, Bereiche, Anlagen und Messstellen mit ihren Kennzeichen, und
- * jede Ort- und Stellungs-Zuordnung wird über die Schnittstelle eingetragen — mit Ausnahme des
- * zweiten Hauptzählers MS-02, den Regel 8 ohne Quelle (IP-13) nicht als „derselbe Zähler“ belegen
- * kann. Die Fälle der Familie {@code stellung} (messstelle-vectors.json) laufen über die
- * Schnittstelle, soweit ihr Urteil nicht an der Komponente der Quelle hängt.
+ * jede Ort- und Stellungs-Zuordnung wird über die Schnittstelle eingetragen — auch der zweite
+ * Hauptzähler MS-02 (Abgabe) neben MS-01 (Bezug): beide lesen mit ihrer führenden Quelle (IP-13)
+ * denselben Netzzähler K-3. Die Fälle der Familie {@code stellung} (messstelle-vectors.json)
+ * laufen alle über die Schnittstelle, mit den führenden Quellen ihres Stands.
  *
  * <p>Bewiesen wird der Prüfnachweis von IP-7: Überlappung 409, zweiter Hauptzähler 409, Zyklus
  * 422, Unterzähler auf eine Fremdanlage 422, das Ziel bestand am Tag nicht (Vertragsgrund),
@@ -183,14 +183,17 @@ class MessstelleZuordnungApiTest {
      * sie zeichengleich in der Form des Vertrags ({@code messstelle.schema.json}), der
      * Lebenszyklus sieht den Ort, und jeder Schreibvorgang schreibt genau einen Eintrag — die vom
      * 12.03.2024 rückwirkend, die vom 01.10.2026 ab heute, der Umzug von MS-08 geplant. MS-02
-     * (Abgabe) neben MS-01 (Bezug) ist bis IP-13 409: ohne Quelle belegt nichts „derselbe Zähler“.
+     * (Abgabe) ist neben MS-01 (Bezug) Hauptzähler von AN-1: ihre führenden Quellen (IP-13) lesen
+     * beide den Netzzähler K-3.
      */
     @Test
     void ahrenbergsOrteUndStellungenUeberDieSchnittstelle() {
         Ahrenberg ah = ahrenberg();
-        assertThat(ah.ms02Abgelehnt().getStatusCode().value()).isEqualTo(409);
-        assertThat(ah.ms02Abgelehnt().getBody().get("code").asText()).isEqualTo("hauptzaehler_vorhanden");
-        assertThat(ah.ms02Abgelehnt().getBody().at("/bestehend/kennzeichen").asText()).isEqualTo("MS-01");
+        for (String kz : List.of("MS-01", "MS-02")) {
+            JsonNode m = ok(rufe(HttpMethod.GET, "/messstellen/" + ah.messstelle(kz), ah.wer(), null));
+            assertThat(m.at("/elektrische_stellung/0/stellung").asText()).as(kz).isEqualTo("Hauptzähler");
+            assertThat(m.at("/fuehrende_quelle/0/komponente").asText()).as(kz).isEqualTo(ah.k3().toString());
+        }
 
         Map<String, JsonNode> liste = new LinkedHashMap<>();
         rufe(HttpMethod.GET, "/messstellen", ah.wer(), null).getBody().get("messstellen")
@@ -200,7 +203,7 @@ class MessstelleZuordnungApiTest {
             JsonNode m = ok(rufe(HttpMethod.GET, "/messstellen/" + ah.messstelle(kz), ah.wer(), null));
             assertThat(liste.get(kz)).as("Liste und Einzelabruf sagen dasselbe: " + kz).isEqualTo(m);
             assertThat(m.get("orte")).as("Orte " + kz).isEqualTo(orteDerReferenz(kz));
-            JsonNode stellung = "MS-02".equals(kz) ? MAPPER.createArrayNode() : stellungenDerReferenz(ms, ah);
+            JsonNode stellung = stellungenDerReferenz(ms, ah);
             assertThat(m.get("elektrische_stellung")).as("Stellung " + kz).isEqualTo(stellung);
             ObjectNode vertrag = m.deepCopy();
             NUR_SCHNITTSTELLE.forEach(vertrag::remove);
@@ -216,23 +219,26 @@ class MessstelleZuordnungApiTest {
             }
         }
 
-        // Je Schreibvorgang genau ein Eintrag; die abgelehnte Stellung von MS-02 schrieb keinen.
+        // Je Schreibvorgang genau ein Eintrag — auch je Quelle von MS-01 und MS-02.
         JsonNode admin = anspruch("admin");
         for (JsonNode ms : referenz.get("messstellen")) {
             String kz = ms.get("kennzeichen").asText();
             long orte = zuordnungenDerReferenz("messstelle_ort", kz).size();
-            long stellungen = "MS-02".equals(kz) ? 0 : ms.get("elektrische_stellung").size();
+            long stellungen = ms.get("elektrische_stellung").size();
+            long quellen = HAUPTZAEHLER_AN1.contains(kz) ? 1 : 0;
             List<Map<String, Object>> eintraege = protokoll(ah.messstelle(kz));
-            assertThat(eintraege).as("Protokoll " + kz).hasSize((int) (1 + orte + stellungen));
+            assertThat(eintraege).as("Protokoll " + kz).hasSize((int) (1 + orte + stellungen + quellen));
             for (Map<String, Object> e : eintraege.subList(1, eintraege.size())) {
-                assertThat(e.get("art")).isIn("ort_zugeordnet", "stellung_zugeordnet");
+                assertThat(e.get("art")).isIn("ort_zugeordnet", "stellung_zugeordnet", "quelle_gebunden");
                 assertThat(e.get("actor_sub")).isEqualTo(admin.get("sub").asText());
                 assertThat(e.get("actor_art")).isEqualTo("voltpilot");
             }
         }
         // Rückwirkend ab 12.03.2024 — derselbe Tageszähler wie das Abzeichen der Referenz.
         JsonNode ms01Ort = zuordnungenDerReferenz("messstelle_ort", "MS-01").get(0);
-        Map<String, Object> ms01 = protokoll(ah.messstelle("MS-01")).get(1);
+        // (Vor dem Ort steht bei MS-01 ihre Quelle im Protokoll — IP-13.)
+        Map<String, Object> ms01 = protokoll(ah.messstelle("MS-01")).stream()
+                .filter(e -> !"quelle_gebunden".equals(e.get("art"))).skip(1).findFirst().orElseThrow();
         assertThat(ms01.get("art")).isEqualTo("ort_zugeordnet");
         assertThat(ms01.get("rueckwirkend")).isEqualTo(true);
         assertThat(ms01.get("gilt_ab").toString()).startsWith("2024-03-12 00:00:00");
@@ -342,23 +348,23 @@ class MessstelleZuordnungApiTest {
     // ---- Regel 8: die Stellung ------------------------------------------------
 
     /**
-     * Jeder Fall der Familie {@code stellung}, dessen Urteil nicht an der Komponente der Quelle
-     * hängt, über die Schnittstelle: der Stand des Falls am Stichtag als Bestand, dann
+     * Jeder Fall der Familie {@code stellung} über die Schnittstelle: der Stand des Falls am
+     * Stichtag als Bestand — Stellungen UND die führenden Quellen seiner Messstellen (IP-13) —, dann
      * {@code PUT …/stellung} der Messstelle des Falls — Status und Code aus der Fehlertabelle, Grund,
      * Bestehende (mit ihrer Anlage) und Kette zeichengleich wie in der Datei.
      */
     @TestFactory
     Stream<DynamicTest> regel8DieFaelleDerFamilieStellungUeberDieSchnittstelle() {
-        return faelle("stellung").filter(f -> !brauchtDieQuelle(f)).map(fall -> DynamicTest.dynamicTest(
+        return faelle("stellung").map(fall -> DynamicTest.dynamicTest(
                 fall.get("name").asText(), () -> {
-                    Einzelfall e = einzelfall(fall);
+                    Einzelfall e = einzelfall(fall, true);
                     JsonNode soll = fall.get("expected");
                     ResponseEntity<JsonNode> r = e.antwort();
                     if (soll.get("fehler").isNull()) {
                         JsonNode m = ok(r);
                         JsonNode letzte = m.get("elektrische_stellung").get(m.get("elektrische_stellung").size() - 1);
                         assertThat(letzte.get("stellung").asText()).isEqualTo(fall.at("/input/stellung/stellung").asText());
-                        assertThat(protokoll(e.kandidat())).hasSize(2);
+                        assertThat(protokoll(e.kandidat())).hasSize(2 + e.quellen(e.kandidat()));
                         return;
                     }
                     MessstelleRegeln.Fehler f = fehler(soll.get("fehler").asText());
@@ -377,24 +383,35 @@ class MessstelleZuordnungApiTest {
                     List<String> kette = texte(soll.get("kette"));
                     assertThat(r.getBody().has("kette") ? texte(r.getBody().get("kette")) : List.of())
                             .isEqualTo(kette);
-                    assertThat(protokoll(e.kandidat())).as("abgelehnt schreibt nichts").hasSize(1);
+                    assertThat(protokoll(e.kandidat())).as("abgelehnt schreibt nichts")
+                            .hasSize(1 + e.quellen(e.kandidat()));
                 }));
     }
 
     /**
      * Genau ein Fall der Familie hängt an der Komponente: MS-02 (Abgabe) neben MS-01 (Bezug)
-     * desselben Zählers K-3. Ohne Quelle (IP-13) ist der Zähler unbekannt — die Schnittstelle
-     * urteilt, wie der Zwilling es ohne Komponente tut: 409, bis die Quellen es belegen.
+     * desselben Zählers K-3. MIT den führenden Quellen des Falls (IP-13) urteilt die Schnittstelle
+     * wie die Datei — erlaubt; OHNE sie ist der Zähler unbekannt, und sie urteilt, wie der Zwilling
+     * es ohne Komponente tut: 409, mit dem Hinweis, dass erst die Quelle es belegt.
      */
     @Test
-    void nurDerZweiteHauptzaehlerDesselbenZaehlersWartetAufDieQuelle() {
-        List<String> warten = faelle("stellung").filter(MessstelleZuordnungApiTest::brauchtDieQuelle)
+    void derZweiteHauptzaehlerDesselbenZaehlersIstMitSeinerQuelleErlaubt() {
+        List<String> brauchen = faelle("stellung").filter(MessstelleZuordnungApiTest::brauchtDieQuelle)
                 .map(f -> f.get("name").asText()).toList();
-        assertThat(warten).containsExactly("ms-02-abgabe-neben-bezug-desselben-zaehlers");
-        Einzelfall e = einzelfall(fall("stellung", warten.get(0)));
-        abgelehnt(e.antwort(), 409, "hauptzaehler_vorhanden", null, null);
-        assertThat(e.antwort().getBody().get("message").asText())
+        assertThat(brauchen).containsExactly("ms-02-abgabe-neben-bezug-desselben-zaehlers");
+        JsonNode fall = fall("stellung", brauchen.get(0));
+        assertThat(fall.at("/expected/fehler").isNull()).isTrue();
+
+        Einzelfall mit = einzelfall(fall, true);
+        JsonNode m = ok(mit.antwort());
+        assertThat(m.at("/elektrische_stellung/0/stellung").asText()).isEqualTo("Hauptzähler");
+        assertThat(m.at("/fuehrende_quelle/0/kanal").asText()).isEqualTo("sunspec.model_203.totwhexp");
+
+        Einzelfall ohne = einzelfall(fall, false);
+        abgelehnt(ohne.antwort(), 409, "hauptzaehler_vorhanden", null, null);
+        assertThat(ohne.antwort().getBody().get("message").asText())
                 .contains("nur erlaubt, wenn beide denselben Zähler lesen");
+        assertThat(protokoll(ohne.kandidat())).as("abgelehnt schreibt nichts").hasSize(1);
     }
 
     /**
@@ -690,9 +707,12 @@ class MessstelleZuordnungApiTest {
 
     // ---- Gerüst: das Referenzunternehmen ----------------------------------------
 
-    /** Das gebaute Referenzunternehmen: Kundenbereich, IDs je Kennzeichen, die Ablehnung von MS-02. */
+    /** Die Hauptzähler von AN-1 an EINEM Zähler (K-3): Bezug und Abgabe. */
+    private static final List<String> HAUPTZAEHLER_AN1 = List.of("MS-01", "MS-02");
+
+    /** Das gebaute Referenzunternehmen: Kundenbereich, IDs je Kennzeichen, der Netzzähler K-3. */
     private record Ahrenberg(UUID tenant, Map<String, UUID> standorte, Map<String, UUID> anlagen,
-            Map<String, String> messstellen, ResponseEntity<JsonNode> ms02Abgelehnt) {
+            Map<String, String> messstellen, UUID k3) {
 
         Anrufer wer() {
             return new Anrufer("admin", tenant);
@@ -736,8 +756,16 @@ class MessstelleZuordnungApiTest {
         for (JsonNode m : referenz.get("messstellen")) {
             ms.put(m.get("kennzeichen").asText(), anlegen(wer, m.get("kennzeichen").asText()));
         }
+        // Die führenden Quellen der beiden Hauptzähler von AN-1 (IP-13): Bezug und Abgabe des
+        // Netzzählers K-3, ab Beginn seines Verlaufs — erst sie belegen „derselbe Zähler“.
+        UUID k3 = komponente(t, anlagen.get("AN-1"), "K-3");
+        for (String kz : HAUPTZAEHLER_AN1) {
+            JsonNode q = referenzMessstelle(kz).at("/fuehrende_quelle/0");
+            quelleBinden(wer, anlagen.get("AN-1"), ms.get(kz), k3, kanalFuer(referenzMessstelle(kz)),
+                    q.get("gueltig_ab").asText());
+        }
         zuordnungService.uhrStellen(uhr(EINFUEHRUNG));
-        Ahrenberg ah = new Ahrenberg(t, standorte, anlagen, ms, null);
+        Ahrenberg ah = new Ahrenberg(t, standorte, anlagen, ms, k3);
         for (JsonNode z : referenz.get("zuordnungen")) {
             if ("messstelle_ort".equals(z.get("art").asText())) {
                 ok(ort(ah, z.get("von").asText(), z.get("nach").asText(), z.get("gueltig_ab").asText(), false));
@@ -755,21 +783,15 @@ class MessstelleZuordnungApiTest {
                 reihenfolge.add(m);
             }
         });
-        ResponseEntity<JsonNode> ms02 = null;
         for (JsonNode m : reihenfolge) {
             String kz = m.get("kennzeichen").asText();
             for (JsonNode s : m.get("elektrische_stellung")) {
-                ResponseEntity<JsonNode> r = stellung(ah, kz, s.get("anlage").asText(), s.get("stellung").asText(),
-                        text(s.get("unterzaehler_von")), s.get("gueltig_ab").asText(), false);
-                if ("MS-02".equals(kz)) {
-                    ms02 = r;
-                } else {
-                    ok(r);
-                }
+                ok(stellung(ah, kz, s.get("anlage").asText(), s.get("stellung").asText(),
+                        text(s.get("unterzaehler_von")), s.get("gueltig_ab").asText(), false));
             }
         }
         zuordnungService.uhrStellen(Clock.systemUTC());
-        ahrenberg = new Ahrenberg(t, standorte, anlagen, ms, ms02);
+        ahrenberg = ah;
         return ahrenberg;
     }
 
@@ -837,14 +859,24 @@ class MessstelleZuordnungApiTest {
 
     // ---- Gerüst: ein Fall der Familie stellung als Bestand -----------------------
 
-    /** Ein Fall als Kundenbereich: seine Anlagen, der Kandidat und die Antwort auf seine Stellung. */
-    private record Einzelfall(Map<String, UUID> anlagen, String kandidat, ResponseEntity<JsonNode> antwort) {}
+    /**
+     * Ein Fall als Kundenbereich: seine Anlagen, der Kandidat, die Antwort auf seine Stellung und
+     * je Messstelle, wie viele Quellen der Bestand ihr gebunden hat.
+     */
+    private record Einzelfall(Map<String, UUID> anlagen, String kandidat, ResponseEntity<JsonNode> antwort,
+            Map<String, Integer> quellenJe) {
+        int quellen(String messstelle) {
+            return quellenJe.getOrDefault(messstelle, 0);
+        }
+    }
 
     /**
      * Der Stand des Falls am Stichtag als Bestand (die Liste in {@code messstelle_stellung}, ohne den
-     * Kandidaten — die Regel sieht von ihm nur die neue Stellung), dann {@code PUT …/stellung}.
+     * Kandidaten — die Regel sieht von ihm nur die neue Stellung; mit {@code mitQuellen} dazu je
+     * Messstelle mit Komponente die führende Quelle ihrer Hauptgröße ab dem Stichtag, IP-13 — je
+     * Komponente EIN Zähler), dann {@code PUT …/stellung}.
      */
-    private Einzelfall einzelfall(JsonNode fall) {
+    private Einzelfall einzelfall(JsonNode fall, boolean mitQuellen) {
         JsonNode in = fall.get("input");
         UUID t = neuerKundenbereich();
         Anrufer wer = admin(t);
@@ -867,6 +899,26 @@ class MessstelleZuordnungApiTest {
             ids.put(kz, anlegen(wer, kz));
         }
         String kandidat = in.at("/messstelle/kennzeichen").asText();
+        Map<String, Integer> quellenJe = new LinkedHashMap<>();
+        if (mitQuellen) {
+            Map<String, UUID> komponenten = new LinkedHashMap<>();
+            Map<String, String> anlageJe = new LinkedHashMap<>();
+            in.get("messstellen").forEach(e -> anlageJe.put(e.get("kennzeichen").asText(), e.get("anlage").asText()));
+            anlageJe.putIfAbsent(kandidat, in.at("/stellung/anlage").asText());
+            Map<String, String> komponenteJe = new LinkedHashMap<>();
+            in.get("messstellen").forEach(e -> komponenteJe.put(e.get("kennzeichen").asText(), text(e.get("komponente"))));
+            komponenteJe.put(kandidat, text(in.at("/messstelle/komponente")));
+            String ab = LocalDate.parse(stichtag).atStartOfDay(BERLIN).toOffsetDateTime().toString();
+            komponenteJe.forEach((kz, k) -> {
+                if (k == null) {
+                    return;
+                }
+                UUID anlage = anlagen.get(anlageJe.get(kz));
+                UUID id = komponenten.computeIfAbsent(k, x -> komponente(t, anlage, x, ab));
+                quelleBinden(wer, anlage, ids.get(kz), id, kanalFuer(referenzMessstelle(kz)), ab);
+                quellenJe.put(ids.get(kz), 1);
+            });
+        }
         for (JsonNode e : in.get("messstellen")) {
             if (e.get("kennzeichen").asText().equals(kandidat)) {
                 continue;
@@ -883,7 +935,56 @@ class MessstelleZuordnungApiTest {
         body.put("unterzaehler_von", text(in.at("/stellung/unterzaehler_von")));
         body.put("gueltig_ab", stichtag);
         return new Einzelfall(anlagen, ids.get(kandidat),
-                rufe(HttpMethod.PUT, "/messstellen/" + ids.get(kandidat) + "/stellung", wer, body));
+                rufe(HttpMethod.PUT, "/messstellen/" + ids.get(kandidat) + "/stellung", wer, body), quellenJe);
+    }
+
+    // ---- Gerüst: Komponenten und Quellen (IP-13) --------------------------------
+
+    /** Eine Komponente der Referenz ab Beginn ihres Verlaufs; ihr Gerät legt der Anlege-Weg an. */
+    private static UUID komponente(UUID tenant, UUID anlage, String kennzeichen) {
+        return komponente(tenant, anlage, kennzeichen,
+                element(referenz.get("komponenten"), kennzeichen).get("in_betrieb_ab").asText());
+    }
+
+    private static UUID komponente(UUID tenant, UUID anlage, String kennzeichen, String ab) {
+        return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, "
+                + "connection_json, created_at) VALUES (?, ?, 'modbus-generic', ?, 'modbus-generic', ?::jsonb, ?) "
+                + "RETURNING id", UUID.class, tenant, anlage,
+                element(referenz.get("komponenten"), kennzeichen).get("name").asText(),
+                "{\"unit_id\":" + Math.abs(kennzeichen.hashCode() % 240) + "}",
+                java.sql.Timestamp.from(OffsetDateTime.parse(ab).toInstant()));
+    }
+
+    /** Der Messwert, aus dem die Hauptgröße der Messstelle gelesen wird (Katalog-Punkt, Regel 7). */
+    private static String kanalFuer(JsonNode messstelle) {
+        return switch (messstelle.at("/hauptgroesse/richtung").asText()) {
+            case "Abgabe" -> "sunspec.model_203.totwhexp";
+            case "Erzeugung" -> "sunspec.model_103.wh";
+            default -> "sunspec.model_203.totwhimp";
+        };
+    }
+
+    /** Die Box der Anlage, die die Kanäle liest — eine je Anlage. */
+    private static final Map<UUID, UUID> BOXEN = new ConcurrentHashMap<>();
+
+    private static UUID box(UUID tenant, UUID anlage) {
+        return BOXEN.computeIfAbsent(anlage, a -> root.queryForObject("INSERT INTO device (tenant_id, site_id, "
+                + "external_ref) VALUES (?, ?, ?) RETURNING id", UUID.class, tenant, a, "VP-BOX-" + a));
+    }
+
+    /** Die Mess-Selektion des Kanals und die führende Quelle der Hauptgröße über {@code POST …/quellen}. */
+    private void quelleBinden(Anrufer wer, UUID anlage, String messstelle, UUID komponente, String kanal, String ab) {
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, 60, 1, now(), '2026.08.26.3', "
+                + "'test', 'pending_edge', 'energy_counter', 'fifteen_minute') ON CONFLICT DO NOTHING",
+                wer.kundenbereich(), anlage, box(wer.kundenbereich(), anlage), komponente, kanal);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("komponente", komponente.toString());
+        body.put("kanal", kanal);
+        body.put("rolle", "fuehrend");
+        body.put("gueltig_ab", ab);
+        ok201(rufe(HttpMethod.POST, "/messstellen/" + messstelle + "/quellen", wer, body));
     }
 
     /**

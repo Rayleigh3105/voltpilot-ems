@@ -12,7 +12,9 @@ import com.voltpilot.api.uems.MessstelleRegeln.GroesseUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.KennzeichenUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.LebenszyklusEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.LebenszyklusErgebnis;
+import com.voltpilot.api.uems.MessstelleRegeln.QuelleZeitraum;
 import com.voltpilot.api.uems.MessstelleRegeln.Vergeben;
+import com.voltpilot.api.uems.MessstelleQuelleRepository.Quelle;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.uems.MessstelleRepository.Nebengroesse;
 import com.voltpilot.api.uems.MessstelleRepository.NeueMessstelle;
@@ -91,9 +93,10 @@ public class MessstelleService {
     /**
      * Die Zeitzone der Zeitpunkte (die der Vektor-Datei). Alle zulässigen Zeitzonen von
      * Unternehmen und Standort (Berlin, Wien, Zürich — {@code standort_zeitzone_chk}) haben
-     * dieselben Regeln; Tage und Versätze sind in jeder dieselben.
+     * dieselben Regeln; Tage und Versätze sind in jeder dieselben. Auch die der Quellenbindung
+     * und des Messkanal-Read-Models (IP-13).
      */
-    static final ZoneId ZEITZONE = ZoneId.of("Europe/Berlin");
+    public static final ZoneId ZEITZONE = ZoneId.of("Europe/Berlin");
 
     private static final String SCHEMA_VERSION = "1.0";
     private static final List<String> ARTEN = List.of("gemessen", "berechnet");
@@ -102,16 +105,21 @@ public class MessstelleService {
     private final MessstelleRepository messstellen;
     private final MessstelleAenderungRepository aenderungen;
     private final MessstelleZuordnungRepository zuordnungen;
+    private final MessstelleQuelleRepository quellen;
+    private final MessstelleQuelleService quellenDienst;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleService(MessstelleRepository messstellen, MessstelleAenderungRepository aenderungen,
-            MessstelleZuordnungRepository zuordnungen, PlatformTransactionManager transactionManager,
+            MessstelleZuordnungRepository zuordnungen, MessstelleQuelleRepository quellen,
+            MessstelleQuelleService quellenDienst, PlatformTransactionManager transactionManager,
             ObjectMapper json) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.zuordnungen = zuordnungen;
+        this.quellen = quellen;
+        this.quellenDienst = quellenDienst;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
@@ -131,10 +139,12 @@ public class MessstelleService {
         Map<UUID, List<StellungZeile>> stellungen = new HashMap<>();
         zuordnungen.stellungenAlle()
                 .forEach(z -> stellungen.computeIfAbsent(z.messstelleId(), k -> new ArrayList<>()).add(z));
+        Map<UUID, List<Quelle>> quellenJe = new HashMap<>();
+        quellen.alle().forEach(q -> quellenJe.computeIfAbsent(q.messstelleId(), k -> new ArrayList<>()).add(q));
         List<MessstelleDto.Messstelle> liste = new ArrayList<>();
         for (Messstelle m : messstellen.alle()) {
             liste.add(darstellung(m, neben.getOrDefault(m.id(), List.of()), orte.getOrDefault(m.id(), List.of()),
-                    stellungen.getOrDefault(m.id(), List.of())));
+                    stellungen.getOrDefault(m.id(), List.of()), quellenJe.getOrDefault(m.id(), List.of())));
         }
         return new MessstelleDto.Liste(List.copyOf(liste));
     }
@@ -302,7 +312,11 @@ public class MessstelleService {
      * Archiviert die Messstelle: das Kennzeichen bleibt belegt, alles Lesbare bleibt stehen, kein
      * Wiederbeleben. Ihre Zuordnungen (Ort, Stellung) enden am Vortag des Archivtags — eine, die
      * erst an ihm oder später beginnt, wird aufgehoben (A13: archiviert am 30.06.2027 16:30, der
-     * Ort endet am 29.06.2027). Das Beenden der Quellen zum Archivzeitpunkt kommt mit IP-13.
+     * Ort endet am 29.06.2027). Jede offene Quelle endet zum Archivzeitpunkt (AP-04 §4.5, IP-13) —
+     * in DERSELBEN Transaktion, genannt im EINEN Protokolleintrag „archiviert“
+     * ({@code quellen_beendet}); eine Quelle, die sich dort nicht beenden lässt, ohne sie
+     * umzuschreiben (angekündigt oder mit späterem Ende), lehnt das Archivieren zu diesem
+     * Zeitpunkt ab ({@link MessstelleQuelleService#archivierbar}) — eine Quelle wird nie aufgehoben.
      */
     public MessstelleDto.Messstelle archivieren(UUID id, MessstelleDto.Uebergang u, ProtokollAkteur wer) {
         Messstelle m = finde(id);
@@ -312,6 +326,7 @@ public class MessstelleService {
         nichtInDerZukunft(am, jetzt, "Archivieren");
         nachDemVorgaenger(m, am);
         LocalDate archivtag = zeit(am).toLocalDate();
+        quellenDienst.archivierbar(m, am);
         transaktion.execute(s -> {
             if (!messstellen.archivieren(id, am)) {
                 throw zustandPasstNicht(finde(id), "wurde soeben archiviert.");
@@ -323,9 +338,13 @@ public class MessstelleService {
             for (StellungZeile z : zuordnungen.stellungen(id)) {
                 beendet |= beendeAm(z, archivtag, jetzt, zuordnungen::stellungBeenden, zuordnungen::stellungAufheben);
             }
+            List<UUID> quellenBeendet = quellenDienst.zumArchivBeenden(m, am);
             Map<String, Object> neu = eintrag("archiviert_am", am);
             if (beendet) {
                 neu.put("zuordnungen_bis", archivtag.minusDays(1).toString());
+            }
+            if (!quellenBeendet.isEmpty()) {
+                neu.put("quellen_beendet", quellenBeendet.stream().map(UUID::toString).toList());
             }
             protokoll(id, "archiviert", eintrag("archiviert_am", null), neu,
                     am, am.isBefore(jetzt), text(grund(u)), wer);
@@ -477,28 +496,58 @@ public class MessstelleService {
 
     private MessstelleDto.Messstelle darstellung(Messstelle m) {
         return darstellung(m, messstellen.nebengroessen(m.id()), zuordnungen.orte(m.id()),
-                zuordnungen.stellungen(m.id()));
+                zuordnungen.stellungen(m.id()), quellen.derMessstelle(m.id()));
     }
 
     /**
      * Die Messstelle in der Form des Vertrags, mit ihren Zuordnungen (IP-7): alle wirksamen
-     * Intervalle nach Beginn. Formel (AP-10) und Quellen (IP-13) gibt es noch nicht — genau so
-     * gehen sie in {@link MessstelleRegeln#lebenszyklus} ein.
+     * Intervalle nach Beginn, und ihren Quellen (IP-13) je Größe: führend als
+     * {@code quellenbindung}, zum Vergleich als {@code vergleichsbindung} — beendete
+     * eingeschlossen, nach Beginn. Die Formel (AP-10) gibt es noch nicht — genau so geht sie in
+     * {@link MessstelleRegeln#lebenszyklus} ein.
      */
     private MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
-            List<StellungZeile> stellungen) {
-        LebenszyklusErgebnis z = lebenszyklus(m, ortVorhanden(orte), OffsetDateTime.ofInstant(uhr.instant(), ZEITZONE));
+            List<StellungZeile> stellungen, List<Quelle> alle) {
+        Groesse h = m.hauptgroesse();
+        List<QuelleZeitraum> fuehrendHaupt = derGroesse(alle, h, "fuehrend").stream()
+                .map(q -> new QuelleZeitraum(q.entityId().toString(), q.kanal(), q.geraet(), q.einbau(),
+                        zeit(q.gueltigAb()), zeit(q.gueltigBis()))).toList();
+        LebenszyklusErgebnis z = lebenszyklus(m, ortVorhanden(orte), fuehrendHaupt,
+                OffsetDateTime.ofInstant(uhr.instant(), ZEITZONE));
         List<MessstelleDto.Nebengroesse> nebengroessen = neben.stream().map(n -> new MessstelleDto.Nebengroesse(
                 n.groesse().groesse(), n.groesse().richtung(), n.groesse().einheit(), n.groesse().wertart(),
                 n.archiviertAm() != null || m.archiviertAm() != null ? "archiviert" : "aktiv",
-                List.of(), List.of())).toList();
-        Groesse h = m.hauptgroesse();
+                fuehrend(alle, n.groesse()), vergleich(alle, n.groesse()))).toList();
         return new MessstelleDto.Messstelle(m.id(), SCHEMA_VERSION, m.kennzeichen(), m.name(), m.art(),
                 m.medium(), new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                List.of(), List.of(), nebengroessen,
+                fuehrend(alle, h), vergleich(alle, h), nebengroessen,
                 wirksam(orte).stream().map(MessstelleService::ortZuordnung).toList(),
                 wirksam(stellungen).stream().map(MessstelleService::stellungZuordnung).toList(), null,
                 z.lebenszyklus(), z.fehlt(), m.notiz(), zeit(m.angehaltenAb()), zeit(m.archiviertAm()));
+    }
+
+    private static List<Quelle> derGroesse(List<Quelle> alle, Groesse g, String rolle) {
+        return alle.stream().filter(q -> q.rolle().equals(rolle) && q.groesse().equals(g.groesse())
+                && q.richtung().equals(g.richtung()))
+                .sorted(Comparator.comparing(Quelle::gueltigAb)).toList();
+    }
+
+    /** Die führenden Quellen einer Größe in der Form von {@code $defs/quellenbindung}. */
+    private static List<MessstelleDto.Quellenbindung> fuehrend(List<Quelle> alle, Groesse g) {
+        return derGroesse(alle, g, "fuehrend").stream().map(q -> new MessstelleDto.Quellenbindung(
+                q.entityId().toString(), q.kanal(), q.geraet(), q.einbau(), q.kanalWertart(),
+                zeit(q.gueltigAb()), zeit(q.gueltigBis()), stand(q.anfangsstand()), stand(q.endstand()))).toList();
+    }
+
+    /** Die Vergleichsquellen einer Größe in der Form von {@code $defs/vergleichsbindung}. */
+    private static List<MessstelleDto.Vergleichsbindung> vergleich(List<Quelle> alle, Groesse g) {
+        return derGroesse(alle, g, "vergleich").stream().map(q -> new MessstelleDto.Vergleichsbindung(
+                q.entityId().toString(), q.kanal(), q.geraet(), q.einbau(), q.kanalWertart(), q.zweck(),
+                zeit(q.gueltigAb()), zeit(q.gueltigBis()))).toList();
+    }
+
+    private static MessstelleDto.Stand stand(MessstelleQuelleRepository.Stand s) {
+        return s == null ? null : new MessstelleDto.Stand(s.wert(), s.einheit());
     }
 
     /**
@@ -507,11 +556,17 @@ public class MessstelleService {
      * {@link MessstelleOrtsbaumMessstellen}).
      */
     static LebenszyklusErgebnis lebenszyklus(Messstelle m, boolean ortVorhanden, OffsetDateTime jetzt) {
+        return lebenszyklus(m, ortVorhanden, List.of(), jetzt);
+    }
+
+    /** Mit den führenden Quellen der Hauptgröße (IP-13) — der Eingang von {@code quelleVorhanden}. */
+    static LebenszyklusErgebnis lebenszyklus(Messstelle m, boolean ortVorhanden, List<QuelleZeitraum> fuehrend,
+            OffsetDateTime jetzt) {
         return MessstelleRegeln.lebenszyklus(new LebenszyklusEingang(
                 m.art(), m.medium(), m.kennzeichen(), m.name(), m.hauptgroesse(),
                 ortVorhanden, false, false,
                 m.angehaltenAb() != null, m.archiviertAm() != null,
-                List.of(), jetzt));
+                fuehrend, jetzt));
     }
 
     /**

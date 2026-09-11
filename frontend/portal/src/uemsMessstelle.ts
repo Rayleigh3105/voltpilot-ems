@@ -7,9 +7,8 @@
  * fahren dieselben Vektoren (`docs/contracts/v2/messstelle-vectors.json`).
  * **Wer eine Regel ändert, ändert beide Seiten und die Vektor-Datei.**
  *
- * ⚠ **Noch ruft niemand an.** Es gibt noch keine Tabelle (IP-2), keinen
- * Endpunkt (IP-3) und keine Fläche (IP-5/IP-6). Dieses Modul ist der Vertrag,
- * gegen den sie gebaut werden.
+ * Der Server urteilt mit dem Zwilling (Messstellen-Schnittstelle IP-3,
+ * Quellenbindung IP-13); eine Fläche (IP-5/IP-6) ruft dieses Modul noch nicht an.
  *
  * - **Kennzeichen (E7):** automatisch `MS-0001` … fortlaufend je Kundenbereich,
  *   änderbar auf 2–16 Zeichen aus `A–Z 0–9 - . /`. Nichts wird umgewandelt —
@@ -85,6 +84,10 @@ export type GroesseGrund = 'groesse' | 'medium' | 'einheit' | 'richtung' | 'wert
 export const HINWEISE = ['ablesestand_pruefen'] as const;
 export type Hinweis = (typeof HINWEISE)[number];
 
+/** Wo ein Zeitpunkt gegen „jetzt" steht (E2): rückwirkend markiert, angekündigt in der Zukunft. */
+export const RUECKWIRKUNG_ARTEN = ['rueckwirkend', 'ab_jetzt', 'angekuendigt'] as const;
+export type RueckwirkungArt = (typeof RUECKWIRKUNG_ARTEN)[number];
+
 /** Die Fehlertabelle: Code, Status der Schnittstelle und wer ihn feststellt. */
 export const FEHLER = [
   { code: 'kennzeichen_format', status: 400, geprueftVon: 'MessstelleRegeln' },
@@ -102,6 +105,9 @@ export const FEHLER = [
   // Diese beiden prüft erst IP-7 (Zuordnungen), nicht dieses Modul.
   { code: 'anteile_summe', status: 422, geprueftVon: 'IP-7' },
   { code: 'ort_ungueltig', status: 422, geprueftVon: 'IP-7' },
+  // Die Quellenbindung (IP-13): ohne Gerät zum Zeitpunkt; eine beendete Quelle nie erneut.
+  { code: 'kein_geraet_zum_zeitpunkt', status: 422, geprueftVon: 'MessstelleRegeln' },
+  { code: 'bindung_bereits_beendet', status: 409, geprueftVon: 'MessstelleRegeln' },
 ] as const;
 export type FehlerCode = (typeof FEHLER)[number]['code'];
 
@@ -392,16 +398,20 @@ export interface NeueBindung {
   zweck: string | null;
   komponente: string;
   kanal: string;
-  geraet: string;
-  einbau: string;
-  kanalGroesse: string;
-  kanalRichtung: string;
-  kanalEinheit: string;
-  kanalWertart: string;
+  /** Das Gerät, dessen Einbau die Komponente zu `gueltigAb` speist; `null` (mit `einbau`): keine Speisung. */
+  geraet: string | null;
+  einbau: string | null;
+  kanalGroesse: string | null;
+  /** `null`, wenn der Katalog keine EINE Vertrags-Richtung kennt (Vorzeichen-Wert `import_export` — AP-08). */
+  kanalRichtung: string | null;
+  kanalEinheit: string | null;
+  kanalWertart: string | null;
   gueltigAb: string;
   gueltigBis: string | null;
   endstandVorgaenger: Stand | null;
   anfangsstand: Stand | null;
+  /** Bis wann dieser Einbau die Komponente speist; `null` = bis auf Weiteres. */
+  geraetBis: string | null;
 }
 
 /** Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend. */
@@ -448,6 +458,8 @@ export interface BindungUrteil {
   herleitung: Herleitung | null;
   hinweise: Hinweis[];
   zeitstrahl: Abschnitt[] | null;
+  /** Bei `kein_geraet_zum_zeitpunkt`: der erste Zeitpunkt der Quelle ohne speisendes Gerät. */
+  ohneGeraetAb: string | null;
 }
 
 export interface Passung {
@@ -471,10 +483,10 @@ const passtNicht = (grund: PassungGrund): Passung => ({
 export function passung(
   medium: string,
   ziel: Groesse,
-  kanalGroesse: string,
-  kanalRichtung: string,
-  kanalEinheit: string,
-  kanalWertart: string,
+  kanalGroesse: string | null,
+  kanalRichtung: string | null,
+  kanalEinheit: string | null,
+  kanalWertart: string | null,
 ): Passung {
   if (medium !== STROM) return { fehler: 'medium_ohne_quelle', grund: null, herleitung: null };
   if (kanalWertart !== 'counter' && kanalWertart !== 'gauge') return passtNicht('wertart');
@@ -486,7 +498,7 @@ export function passung(
     (q) => q.kanalWertart === kanalWertart && (q.nurWertart === null || q.nurWertart === ziel.wertart),
   );
   if (!wertartPasst) return passtNicht('wertart');
-  if (!(KANAL_EINHEITEN[kanalGroesse] ?? []).includes(kanalEinheit)) return passtNicht('einheit');
+  if (!(KANAL_EINHEITEN[kanalGroesse ?? ''] ?? []).includes(kanalEinheit ?? '')) return passtNicht('einheit');
   if (ziel.richtung !== kanalRichtung) return passtNicht('richtung');
   const herleitung: Herleitung =
     kanalWertart === 'counter'
@@ -516,6 +528,7 @@ const abgelehnt = (
   herleitung: null,
   hinweise: [],
   zeitstrahl: null,
+  ohneGeraetAb: null,
 });
 
 const gleicheQuelle = (b: Bindung, n: NeueBindung): boolean =>
@@ -524,8 +537,8 @@ const gleicheQuelle = (b: Bindung, n: NeueBindung): boolean =>
 /**
  * Darf die neue Quelle gebunden werden — und wie sieht der Zeitstrahl danach
  * aus? Die Prüfreihenfolge ist Teil des Vertrags (der erste Treffer gewinnt):
- * Medium → Zweck → Passung → Zeitraum → Messwert führt schon anderswo →
- * Zeitpunkt vor Vorgänger/Beginn → Überlappung.
+ * Medium → Zweck → Passung → Zeitraum → Gerät zum Zeitpunkt → Messwert führt
+ * schon anderswo → Zeitpunkt vor Vorgänger/Beginn → Überlappung.
  */
 export function bindungPruefen(e: BindungEingang): BindungUrteil {
   const n = e.neu;
@@ -539,6 +552,15 @@ export function bindungPruefen(e: BindungEingang): BindungUrteil {
   const ab = zeit(n.gueltigAb);
   const bis = n.gueltigBis === null ? null : zeit(n.gueltigBis);
   if (bis !== null && bis <= ab) return abgelehnt('zeitraum_ungueltig');
+  // Ein Messkanal gehört genau einem Gerät (Regel 6, W2): ohne Speisung zu Beginn gibt es
+  // ihn nicht, und über das Ende der Speisung hinaus ist er ein anderer (Zählerwechsel).
+  const ohneGeraet =
+    n.einbau === null
+      ? n.gueltigAb
+      : n.geraetBis !== null && (bis === null || bis > zeit(n.geraetBis))
+        ? n.geraetBis
+        : null;
+  if (ohneGeraet !== null) return { ...abgelehnt('kein_geraet_zum_zeitpunkt'), ohneGeraetAb: ohneGeraet };
   if (!vergleich) {
     const f = e.kanalFuehrendAnderswo.find((x) => ueberschneiden(ab, bis, zeit(x.gueltigAb), ende(x.gueltigBis)));
     if (f) return abgelehnt('kanal_bereits_fuehrend', null, null, f.messstelle);
@@ -590,8 +612,9 @@ export function bindungPruefen(e: BindungEingang): BindungUrteil {
         {
           komponente: n.komponente,
           kanal: n.kanal,
-          geraet: n.geraet,
-          einbau: n.einbau,
+          // Beide gesetzt: ohne Einbau hat die Prüfung oben schon abgelehnt.
+          geraet: n.geraet as string,
+          einbau: n.einbau as string,
           gueltigAb: n.gueltigAb,
           gueltigBis: n.gueltigBis,
         },
@@ -610,7 +633,85 @@ export function bindungPruefen(e: BindungEingang): BindungUrteil {
     herleitung: p.herleitung,
     hinweise: ablesestandHinweise(zuBeenden, n),
     zeitstrahl,
+    ohneGeraetAb: null,
   };
+}
+
+/** Eine bestehende Quelle beenden: `gueltigBis` setzen (auch in der Zukunft — angekündigt), optional mit Endstand. */
+export interface BeendenEingang {
+  jetzt: string;
+  bindung: Bindung;
+  gueltigBis: string;
+  endstand: Stand | null;
+}
+
+export interface BeendenUrteil {
+  fehler: FehlerCode | null;
+  status: BindungStatus | null;
+  rueckwirkend: boolean;
+  angekuendigt: boolean;
+  hinweise: Hinweis[];
+}
+
+/**
+ * Darf die Quelle zu `gueltigBis` beendet werden (Regel 2)? Eine Quelle wird genau
+ * EINMAL beendet — eine beendete nie verschoben (409 `bindung_bereits_beendet`); das
+ * Ende liegt nach dem Beginn (400 `zeitraum_ungueltig`). Beenden hinterlässt eine
+ * Lücke, bis eine neue Quelle beginnt — nie aufgefüllt. Ein Endstand ohne Einheit ist
+ * ein Hinweis, kein Verbot.
+ */
+export function beendenPruefen(e: BeendenEingang): BeendenUrteil {
+  const nein = (fehler: FehlerCode): BeendenUrteil => ({
+    fehler,
+    status: null,
+    rueckwirkend: false,
+    angekuendigt: false,
+    hinweise: [],
+  });
+  if (e.bindung.gueltigBis !== null) return nein('bindung_bereits_beendet');
+  const bis = zeit(e.gueltigBis);
+  const ab = zeit(e.bindung.gueltigAb);
+  if (bis <= ab) return nein('zeitraum_ungueltig');
+  const jetzt = minute(e.jetzt);
+  const status: BindungStatus = ab > jetzt ? 'geplant' : bis > jetzt ? 'gilt' : 'beendet';
+  return {
+    fehler: null,
+    status,
+    rueckwirkend: bis < jetzt,
+    angekuendigt: bis > jetzt,
+    hinweise: e.endstand !== null && e.endstand.einheit === null ? ['ablesestand_pruefen'] : [],
+  };
+}
+
+/** Wie weit ein Zeitpunkt von „jetzt" entfernt ist, auf die Minute (E2). */
+export interface Rueckwirkung {
+  art: RueckwirkungArt;
+  minuten: number;
+  abzeichen: string | null;
+}
+
+/**
+ * Rückwirkend ist erlaubt, aber immer sichtbar (E2, Regel 5): `rueckwirkend` vor der
+ * Minute von „jetzt", `ab_jetzt` genau in ihr, `angekuendigt` danach. Das Abzeichen
+ * trägt nur die Rückwirkung, mit ihrer Dauer: „rückwirkend (25 min)", „rückwirkend
+ * (2 h 5 min)", ab einem Tag in ganzen Tagen „rückwirkend (933 Tage)".
+ */
+export function rueckwirkung(jetzt: string, zeitpunkt: string): Rueckwirkung {
+  const t = zeit(zeitpunkt);
+  const j = minute(jetzt);
+  const minuten = Math.floor(Math.abs(j - t) / 60_000);
+  const art: RueckwirkungArt = t < j ? 'rueckwirkend' : t > j ? 'angekuendigt' : 'ab_jetzt';
+  return { art, minuten, abzeichen: art === 'rueckwirkend' ? `rückwirkend (${dauer(minuten)})` : null };
+}
+
+function dauer(minuten: number): string {
+  if (minuten < 60) return `${minuten} min`;
+  if (minuten < 24 * 60) {
+    const rest = minuten % 60;
+    return `${Math.floor(minuten / 60)} h${rest === 0 ? '' : ` ${rest} min`}`;
+  }
+  const tage = Math.floor(minuten / (24 * 60));
+  return `${tage} ${tage === 1 ? 'Tag' : 'Tage'}`;
 }
 
 /**
