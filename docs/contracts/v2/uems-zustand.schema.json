@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/uems-zustand.schema.json",
+  "title": "UEMS-Zustandsvokabular: liefert Daten · steuert",
+  "description": "Der Vertrag der ZWEI beobachteten Zustände des Unternehmens-Energiemanagements (UEMS AP-00 §4.3, Prosa: docs/fachmodell/zustaende.md). Er beschreibt (a) den Eingang, aus dem ein Zustand entsteht, (b) das Ergebnis samt Kundensatz und (c) die Vektor-Datei uems-zustand-vectors.json, die beide Zwillinge (Java services/api .../uems/ZustandAbleitung, TS frontend/portal/src/uemsZustand.ts) gegeneinander pinnt. Niemand SETZT diese Zustände — sie werden bei jedem Lesen aus Fakten abgeleitet.",
+  "type": "object",
+  "required": ["schema_version", "zeitzone", "toleranz", "einheiten", "cases"],
+  "properties": {
+    "_comment": {
+      "description": "Die Regel in Prosa — dieselbe, die im Kopf der Vektor-Datei steht.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "schema_version": {
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv.",
+      "type": "string"
+    },
+    "$schema_datei": { "type": "string" },
+    "herkunft": {
+      "description": "Woher die Regel stammt: Konzeptpaket und Entscheid.",
+      "type": "string"
+    },
+    "zeitzone": {
+      "description": "Die Zeitzone, in der die Kundensätze ihre Uhrzeit nennen (Zeitzone des Standorts, Vorgabe Europe/Berlin).",
+      "type": "string"
+    },
+    "toleranz": {
+      "description": "Wie lange ein guter Wert zählt, bevor „liefert Daten“ endet (AP-07 E9).",
+      "type": "object",
+      "required": ["faktor", "mindestens_s", "hoechstens_s", "kante_gehoert_zu_liefert", "luecke_faktor"],
+      "properties": {
+        "faktor": {
+          "description": "Vielfaches der erwarteten Häufigkeit (Kadenz), das ein guter Wert gilt.",
+          "type": "integer",
+          "const": 3
+        },
+        "mindestens_s": {
+          "description": "Der Boden der Toleranz in Sekunden — das heutige 5-Minuten-Fenster. Eine schnelle Reihe soll ihr Abzeichen nicht im Sekundentakt umschlagen.",
+          "type": "integer",
+          "const": 300
+        },
+        "hoechstens_s": {
+          "description": "Der Deckel der Toleranz in Sekunden — ein Tag. Nach einem Tag Schweigen sagt jede Reihe ehrlich „Liefert keine Daten seit …“.",
+          "type": "integer",
+          "const": 86400
+        },
+        "kante_gehoert_zu_liefert": {
+          "description": "Genau auf der Kante gilt noch „liefert“ (das heutige <= aus api.ts deviceLiveStatus).",
+          "type": "boolean",
+          "const": true
+        },
+        "luecke_faktor": {
+          "description": "Ab diesem Vielfachen der Kadenz OHNE guten Wert ist eine Lücke der Reihe offen — ohne Boden und ohne Deckel. Das ist eine ANDERE Aussage als das Abzeichen: sie zählt fehlende Werte.",
+          "type": "integer",
+          "const": 2
+        }
+      }
+    },
+    "zustaende_liefert_daten": {
+      "description": "Das geschlossene Vokabular der Familie „liefert Daten“.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/liefertDatenZustand" }
+    },
+    "gruende_anlage": {
+      "description": "Das geschlossene Vokabular der Gründe einer Anlage, die keine Daten liefert.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/anlageGrund" }
+    },
+    "gruende_steuert": {
+      "description": "Das geschlossene Vokabular der Gründe, warum etwas NICHT steuert — in der Reihenfolge, in der sie gelten.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/steuertGrund" }
+    },
+    "einheiten": {
+      "description": "Die gezählten Dinge eines Aggregats, je mit Ein- und Mehrzahl. Beide Zwillinge tragen dieselbe Tabelle; die Tests prüfen das.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["singular", "plural"],
+        "properties": {
+          "singular": { "type": "string" },
+          "plural": { "type": "string" }
+        }
+      }
+    },
+    "cases": {
+      "description": "Die Fälle. Jeder Fall ist ein Eingang und das GENAU EINE Ergebnis, das beide Zwillinge daraus ziehen müssen.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+  "$defs": {
+    "zeitpunkt": {
+      "description": "Ein Zeitpunkt mit Zeitzonen-Versatz (ISO 8601). Nie eine nackte Ortszeit.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "liefertDatenZustand": {
+      "description": "liefert = ein guter Wert kam innerhalb der Toleranz an · liefert_nicht_seit = seit dem genannten Zeitpunkt nicht mehr · wartet_auf_erste_daten = noch nie ein GUTER Wert · keine_datenquelle = es ist gar keine Quelle gebunden (eingerichtet und aktiv, aber nie eine 0).",
+      "enum": ["liefert", "liefert_nicht_seit", "wartet_auf_erste_daten", "keine_datenquelle"]
+    },
+    "anlageGrund": {
+      "description": "Warum eine Anlage keine Daten liefert — in der Reihenfolge, in der sie gelten: keine Box → stumme Box → kein Hauptzähler → der Zustand des Hauptzählers.",
+      "enum": [
+        "keine_box",
+        "box_meldet_sich_nicht",
+        "kein_hauptzaehler",
+        "keine_datenquelle",
+        "wartet_auf_erste_daten",
+        "hauptzaehler_liefert_nicht"
+      ]
+    },
+    "steuertGrund": {
+      "description": "Warum nicht gesteuert wird — genau einer, nie zwei, nie ein geratener. Reihenfolge: angehalten (der Kunde selbst) → nicht_freigegeben → funktion_nicht_gestartet → kein_betriebsmodell → box_meldet_sich_nicht → box_bestaetigt_nicht.",
+      "enum": [
+        "angehalten",
+        "nicht_freigegeben",
+        "funktion_nicht_gestartet",
+        "kein_betriebsmodell",
+        "box_meldet_sich_nicht",
+        "box_bestaetigt_nicht"
+      ]
+    },
+    "liefertDatenEingang": {
+      "description": "Was über EINE Reihe bekannt ist: die Quelle, der letzte gute Wert, die erwartete Häufigkeit und der Zeitpunkt der Frage.",
+      "type": "object",
+      "required": ["quelle_vorhanden", "letzter_guter_wert", "je_ein_wert", "kadenz_s", "jetzt"],
+      "properties": {
+        "quelle_vorhanden": {
+          "description": "Ob überhaupt eine Datenquelle gebunden ist. Ohne Quelle gibt es keine Störung, nur „Keine Datenquelle“.",
+          "type": "boolean"
+        },
+        "letzter_guter_wert": {
+          "description": "Eingangszeit des letzten Wertes mit Qualität „gut“; null, wenn noch nie einer ankam.",
+          "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+        },
+        "je_ein_wert": {
+          "description": "Ob je ein Wert ankam — auch ein schlechter. Ändert das Ergebnis NICHT: gezählt werden nur gute Werte, also bleibt es bis zum ersten guten Wert bei „Wartet auf erste Daten“.",
+          "type": "boolean"
+        },
+        "kadenz_s": {
+          "description": "Die erwartete Häufigkeit in Sekunden — ein zeitgültiger Fakt der Quellenbindung, kein fester Deckel.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "liefertDatenErgebnis": {
+      "type": "object",
+      "required": ["zustand", "seit", "toleranz_s", "luecke_offen", "text"],
+      "properties": {
+        "zustand": { "$ref": "#/$defs/liefertDatenZustand" },
+        "seit": {
+          "description": "Seit wann keine Daten mehr kommen — nur bei liefert_nicht_seit gesetzt. Ein Text ohne Zeitpunkt wäre eine halbe Aussage.",
+          "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+        },
+        "toleranz_s": {
+          "description": "Das tatsächlich angewandte Fenster in Sekunden (zur Nachvollziehbarkeit mitgeführt).",
+          "type": "integer"
+        },
+        "luecke_offen": {
+          "description": "Ob die REIHE gerade eine Lücke hat (ab 2 × Kadenz ohne guten Wert). Darf zugleich mit „liefert“ wahr sein.",
+          "type": "boolean"
+        },
+        "text": {
+          "description": "Der Satz, den der Kunde liest.",
+          "type": "string"
+        }
+      }
+    },
+    "anlageEingang": {
+      "description": "Eine Anlage liefert Daten, wenn ALLE ihre Boxen verbunden sind UND der Hauptzähler liefert.",
+      "type": "object",
+      "required": ["boxen", "hauptzaehler", "jetzt"],
+      "properties": {
+        "boxen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "verbunden"],
+            "properties": {
+              "name": {
+                "description": "Der Name, den der Kunde für diese Box liest — eine Ursache darf nur behaupten, wer sie benennen kann.",
+                "type": "string"
+              },
+              "verbunden": {
+                "description": "Ob der Herzschlag der Box in ihrer Kadenz ankommt.",
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "hauptzaehler": {
+          "description": "Der bereits abgeleitete Zustand des Hauptzählers; null, wenn keiner gebunden ist.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["zustand", "seit"],
+              "properties": {
+                "zustand": { "$ref": "#/$defs/liefertDatenZustand" },
+                "seit": {
+                  "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "anlageErgebnis": {
+      "type": "object",
+      "required": ["zustand", "grund", "seit", "text"],
+      "properties": {
+        "zustand": { "enum": ["liefert", "liefert_nicht"] },
+        "grund": {
+          "oneOf": [{ "$ref": "#/$defs/anlageGrund" }, { "type": "null" }]
+        },
+        "seit": {
+          "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "aggregatEingang": {
+      "description": "Die bereits abgeleiteten Einzelurteile, die ein Standort oder ein Unternehmen zusammenzählt.",
+      "type": "object",
+      "required": ["einheit", "einzel"],
+      "properties": {
+        "einheit": {
+          "description": "Was gezählt wird — der Schlüssel in die Tabelle `einheiten`.",
+          "type": "string"
+        },
+        "einzel": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "aggregatLiefertErgebnis": {
+      "type": "object",
+      "required": ["liefernd", "gesamt", "text"],
+      "properties": {
+        "liefernd": {
+          "description": "Wie viele liefern. Nur `liefert` zählt hier; „keine Datenquelle“ steht im Nenner, nie im Zähler.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "gesamt": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" }
+      }
+    },
+    "aggregatSteuertErgebnis": {
+      "type": "object",
+      "required": ["steuernd", "gesamt", "text"],
+      "properties": {
+        "steuernd": { "type": "integer", "minimum": 0 },
+        "gesamt": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" }
+      }
+    },
+    "berechnetEingang": {
+      "description": "Eine berechnete Messstelle ist „vollständig“ nur, wenn ALLE ihre Eingänge liefern.",
+      "type": "object",
+      "required": ["eingaenge", "jetzt"],
+      "properties": {
+        "eingaenge": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["kennzeichen", "zustand", "seit"],
+            "properties": {
+              "kennzeichen": {
+                "description": "Das Kennzeichen, unter dem der Kunde die Messstelle kennt (MS-12).",
+                "type": "string"
+              },
+              "zustand": { "$ref": "#/$defs/liefertDatenZustand" },
+              "seit": {
+                "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+              }
+            }
+          }
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" }
+      }
+    },
+    "berechnetErgebnis": {
+      "type": "object",
+      "required": ["zustand", "fehlend", "seit", "text"],
+      "properties": {
+        "zustand": { "enum": ["vollstaendig", "unvollstaendig"] },
+        "fehlend": {
+          "description": "Die Kennzeichen der Eingänge, die nicht liefern — in der Reihenfolge der Eingänge.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "seit": {
+          "description": "Der FRÜHESTE Zeitpunkt der fehlenden Eingänge; null, wenn keiner einen hat (ein erfundenes „seit“ wäre eine Behauptung).",
+          "oneOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }]
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "steuertEingang": {
+      "description": "Was über die Steuerung EINER Komponente oder Anlage bekannt ist.",
+      "type": "object",
+      "required": [
+        "freigabe_erteilt",
+        "funktion_gestartet",
+        "laeuft",
+        "laeuft_art",
+        "laeuft_name",
+        "box_verbunden",
+        "box_bestaetigt",
+        "ruhe_eintrag"
+      ],
+      "properties": {
+        "freigabe_erteilt": {
+          "description": "Ob „Steuern freigeben“ erteilt ist. Ohne Freigabe ist alles Weitere nicht gefragt.",
+          "type": "boolean"
+        },
+        "funktion_gestartet": {
+          "description": "Ob die Funktion des Standorts ausdrücklich gestartet wurde (AP-01 E6/E8). Freigegeben heißt noch nicht gestartet.",
+          "type": "boolean"
+        },
+        "laeuft": {
+          "description": "Ob gerade ein Betriebsmodell oder eine Regel läuft.",
+          "type": "boolean"
+        },
+        "laeuft_art": {
+          "description": "Was läuft — ein Betriebsmodell oder eine Regel.",
+          "oneOf": [{ "enum": ["betriebsmodell", "regel"] }, { "type": "null" }]
+        },
+        "laeuft_name": {
+          "description": "Sein Name, wie der Kunde ihn kennt; null, wenn keiner bekannt ist — dann steht auch keiner im Satz.",
+          "oneOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "box_verbunden": {
+          "description": "Ob der Herzschlag der zuständigen Box in ihrer Kadenz ankommt (AP-06 E3/E5).",
+          "type": "boolean"
+        },
+        "box_bestaetigt": {
+          "description": "Ob die Box die AUSFÜHRUNG bestätigt. Antwort ist nicht Wirkung: ohne Bestätigung wird nicht gesteuert.",
+          "type": "boolean"
+        },
+        "ruhe_eintrag": {
+          "description": "Ob ein Ruhe-Eintrag ohne Enddatum steht (AP-01 E7/E8) — der Kunde hat selbst angehalten.",
+          "type": "boolean"
+        }
+      }
+    },
+    "steuertErgebnis": {
+      "type": "object",
+      "required": ["zustand", "grund", "text"],
+      "properties": {
+        "zustand": { "enum": ["steuert", "steuert_nicht"] },
+        "grund": {
+          "oneOf": [{ "$ref": "#/$defs/steuertGrund" }, { "type": "null" }]
+        },
+        "text": { "type": "string" }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "required": ["name", "familie", "ableitung", "input", "expected"],
+      "properties": {
+        "name": { "type": "string" },
+        "familie": {
+          "description": "Welcher der zwei beobachteten Zustände geprüft wird.",
+          "enum": ["liefert_daten", "steuert"]
+        },
+        "ableitung": {
+          "description": "Welche Ableitung dieser Familie: einzel (eine Reihe bzw. eine Komponente), anlage, aggregat („x von y“) oder berechnet (eine berechnete Messstelle).",
+          "enum": ["einzel", "anlage", "aggregat", "berechnet"]
+        },
+        "why": {
+          "description": "Warum dieser Fall in der Datei steht — was er beweist.",
+          "type": "string"
+        },
+        "input": { "type": "object" },
+        "expected": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "liefert_daten" },
+              "ableitung": { "const": "einzel" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/liefertDatenEingang" },
+              "expected": { "$ref": "#/$defs/liefertDatenErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "liefert_daten" },
+              "ableitung": { "const": "anlage" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/anlageEingang" },
+              "expected": { "$ref": "#/$defs/anlageErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "liefert_daten" },
+              "ableitung": { "const": "aggregat" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/aggregatEingang" },
+              "expected": { "$ref": "#/$defs/aggregatLiefertErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "liefert_daten" },
+              "ableitung": { "const": "berechnet" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/berechnetEingang" },
+              "expected": { "$ref": "#/$defs/berechnetErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "steuert" },
+              "ableitung": { "const": "einzel" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/steuertEingang" },
+              "expected": { "$ref": "#/$defs/steuertErgebnis" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "familie": { "const": "steuert" },
+              "ableitung": { "const": "aggregat" }
+            },
+            "required": ["familie", "ableitung"]
+          },
+          "then": {
+            "properties": {
+              "input": { "$ref": "#/$defs/aggregatEingang" },
+              "expected": { "$ref": "#/$defs/aggregatSteuertErgebnis" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -46,7 +46,7 @@ AP-01 E8 bildet die drei Wörter des Programm-Plans darauf ab: **sichtbar** = ke
 | eingerichtet → aktiv | Automatisch für Struktur- und Messobjekte; ausdrücklicher Start für Betriebsmodelle und Steuerung („nach technischen Prüfungen starten“). | Das Hinzufügen einer Funktion löst keine Steuerung aus (AP-01-Grenze): „Steuern freigeben“ bleibt ein eigener Schritt. |
 | aktiv → angehalten → aktiv | Kunde hält an (Anlage in Ruhe, Messstelle stillgelegt für Umbau) und setzt fort. | Zuordnungen und Daten bleiben; die Lücke bleibt sichtbar, nie aufgefüllt. |
 | aktiv → archiviert | Kunde beendet; bei einer Anlage muss das Betriebsmodell aus sein, bei einem Standort dürfen keine aktiven Anlagen bleiben. | Alte Berichte bleiben unverändert; das Objekt bleibt lesbar; ein Wiederbeleben ist ein neues Objekt (Ausnahme: Standort/Gebäude dürfen reaktiviert werden). |
-| liefert Daten ↔ liefert keine Daten | Beobachtung je Kadenz; Toleranz = 2 × Kadenz, mindestens 5 Minuten (heutiges Fenster), höchstens 1 Tag (Zähler mit Tageswerten). | Text nennt immer den Zeitpunkt: „seit 14:00 Uhr“; Schweigen ist nie ein bewiesener Fehlschlag. |
+| liefert Daten ↔ liefert keine Daten | Beobachtung je Kadenz; Toleranz = 3 × Kadenz (AP-07 E9), mindestens 5 Minuten (heutiges Fenster), höchstens 1 Tag (Zähler mit Tageswerten). | Text nennt immer den Zeitpunkt: „seit 14:00 Uhr“; Schweigen ist nie ein bewiesener Fehlschlag. |
 | steuert ↔ steuert nicht | Beobachtung: Freigabe UND laufendes Betriebsmodell/Regel UND Box-Bestätigung; fehlt eines, „steuert nicht — Grund“. | Der Grund ist einer der bekannten Wächter-/Wartegründe (Steuerung Stufe 5), nie geraten. |
 
 ## Verfeinerungen der Nachbarpakete
@@ -54,11 +54,11 @@ AP-01 E8 bildet die drei Wörter des Programm-Plans darauf ab: **sichtbar** = ke
 - **AP-01 E8:** Die drei Wörter des Plans werden auf dieses Vokabular abgebildet: sichtbar = kein Objekt (Angebot auf der Karte), begonnen = Entwurf (bei „Steuern“ auch eingerichtet, noch nicht gestartet), aktiv = aktiv.
 - **AP-01 E7/E8:** „angehalten“ heißt bei einer Anlage: Ruhe OHNE Enddatum; alles bleibt gespeichert, nur Fahrplan, Regeln und Steuerarten wirken nicht.
 - **AP-01 E9:** Beim Fortsetzen läuft die Prüfliste erneut, dann zeigt eine Folgen-Karte, was passiert — und dann genügt ein Klick.
-- **AP-07 E9:** „liefert Daten“ ist geschärft: letzter guter Wert jünger als 2 × Kadenz; die Kadenz ist ein zeitgültiges Feld der Quellenbindung, kein fester 5-Minuten-Deckel.
+- **AP-07 E9:** „liefert Daten“ ist geschärft: letzter guter Wert jünger als 3 × Kadenz nach Eingangszeit, mindestens 5 Minuten und höchstens 1 Tag; eine Lücke der Reihe beginnt schon ab 2 × Kadenz. Die Kadenz ist ein zeitgültiges Feld der Quellenbindung, kein fester 5-Minuten-Deckel.
 - **AP-04 E8:** Eine Messstelle ohne Quelle hat die Beobachtung „keine Datenquelle“ — sie ist eingerichtet und aktiv, zeigt aber nie eine 0.
 - **AP-07 E11:** Ereignisse (Lücke, Nachlieferung, Gerätegrenze, Zeitfehler, Konflikt) reisen über einen additiven Vertrag `…/v2/events` in eine Ereignis-Tabelle je Mandant, append-only und NIE gelöscht — sie sind der Beweis hinter jeder Zustandsaussage.
 
-⚠ Die Ableitung von „liefert Daten“ und „steuert“ wird als Vertrag mit geteilten Vektoren gebaut (AP-00 IP-3, `docs/contracts/v2/uems-zustand-vectors.json`) — bis dahin lebt in `services/api` und im Portal noch das harte 5-Minuten-Fenster.
+⚠ **Ableitungsregel als Vertrag:** `docs/contracts/v2/uems-zustand-vectors.json` (Schema `uems-zustand.schema.json`, AP-00 IP-3). Dort stehen die Toleranz (3 × Kadenz, mindestens 5 Minuten, höchstens 1 Tag), die Lücke ab 2 × Kadenz und die Reihenfolge der „steuert nicht“-Gründe (angehalten → nicht freigegeben → Funktion nicht gestartet → kein Betriebsmodell → Box meldet sich nicht → Box bestätigt nicht); die Zwillinge sind `services/api .../uems/ZustandAbleitung` und `frontend/portal/src/uemsZustand.ts`. Noch ruft niemand an: in `services/api` und im Portal lebt weiterhin das harte 5-Minuten-Fenster.
 
 ## Entscheidungslog
 

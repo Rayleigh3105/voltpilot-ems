@@ -16,6 +16,7 @@ platform (E0 "Contract-Artefakte"). Everything under `docs/contracts/` (the 1.0 
 | [`edge-entity-config.md`](./edge-entity-config.md) + [`edge-entity.schema.json`](./edge-entity.schema.json) | The E1a half of the entity topic family: retained per-entity config, local per-entity telemetry, core-owned retained command, and the cloud → edge entity-registry push on `…/v2/entities`. |
 | [`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) | Redpanda `telemetry-v2.raw` event (Ingest → Writer, next to the untouched v1 `telemetry.raw`). |
 | [`anwendung-vectors.json`](./anwendung-vectors.json) | Geteilte Vektoren der ANWENDUNGS-Ableitung (Anwendungs-Programm Stufe 1): welche Anwendung eine Anlage von selbst aktiviert und welche Voraussetzung erfüllt ist. Kein Draht-Vertrag — sie pinnen die Zwillinge Java `profile/AnwendungDerivation` ⟷ TS `src/anwendungen.ts` (und, für die vier Modus-Arten, `surface.ts activeModes`) gegeneinander, das `usage-profile-vectors.json`-Muster. Der BESCHREIBENDE Teil einer Anwendung lebt im Katalog `anwendungen/catalog.json` (Server + byte-gleiche Portal-Kopie), nicht hier. |
+| [`uems-zustand-vectors.json`](./uems-zustand-vectors.json) + [`uems-zustand.schema.json`](./uems-zustand.schema.json) | Geteilte Vektoren des UEMS-ZUSTANDSVOKABULARS „liefert Daten“ und „steuert“ (AP-00 IP-3). Die Prosa-Wahrheit steht in [`docs/fachmodell/zustaende.md`](../../fachmodell/zustaende.md); hier steht, wie aus Fakten GENAU EIN Zustand und GENAU EIN Kundensatz wird: Toleranz = `min(max(3 × Kadenz, 300 s), 86 400 s)` (AP-07 E9), Lücke der Reihe ab 2 × Kadenz, und die Reihenfolge der „steuert nicht“-Gründe (angehalten → nicht freigegeben → Funktion nicht gestartet → kein Betriebsmodell → Box meldet sich nicht → Box bestätigt nicht). Kein Draht-Vertrag — sie pinnen die Zwillinge Java `uems/ZustandAbleitung` ⟷ TS `src/uemsZustand.ts` gegeneinander, das `usage-profile-vectors.json`-Muster. ⚠ Noch ruft niemand an: in `services/api` und im Portal lebt weiterhin das harte 5-Minuten-Fenster. |
 | [`examples/`](./examples/) | ajv-validated fixtures: ≥ 2 valid + 1 invalid per schema ([`examples/README.md`](./examples/README.md)). |
 
 ## v1 / v2 coexistence philosophy
@@ -91,9 +92,13 @@ platform (E0 "Contract-Artefakte"). Everything under `docs/contracts/` (the 1.0 
 
 ## Validating the schemas
 
-All four schemas are JSON Schema 2020-12 and ajv-compatible (like the 1.0 contracts, they use
+All schemas here are JSON Schema 2020-12 and ajv-compatible (like the 1.0 contracts, they use
 `x-*` annotation keywords — compile with `strict: false` or declare the keywords). Fixture
-expectations are pinned in [`examples/README.md`](./examples/README.md).
+expectations for the WIRE schemas are pinned in [`examples/README.md`](./examples/README.md).
+`uems-zustand.schema.json` needs no fixture directory: it describes a vector file, and its
+fixture IS [`uems-zustand-vectors.json`](./uems-zustand-vectors.json) — every case in that
+file validates against it, and the twins' tests assert the vocabulary, the unit table and the
+rule constants back against it.
 
 ## Versioning
 

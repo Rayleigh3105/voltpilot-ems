@@ -470,7 +470,7 @@ Zeitgültig sind: Messstelle → Ort, Messstelle → Anlage/elektrische Stellung
 
 > **Verfeinert durch AP-01 E9:** Beim Fortsetzen läuft die Prüfliste erneut, dann zeigt eine Folgen-Karte, was passiert — und dann genügt ein Klick.
 
-> **Verfeinert durch AP-07 E9:** „liefert Daten“ ist geschärft: letzter guter Wert jünger als 2 × Kadenz; die Kadenz ist ein zeitgültiges Feld der Quellenbindung, kein fester 5-Minuten-Deckel.
+> **Verfeinert durch AP-07 E9:** „liefert Daten“ ist geschärft: letzter guter Wert jünger als 3 × Kadenz nach Eingangszeit, mindestens 5 Minuten und höchstens 1 Tag; eine Lücke der Reihe beginnt schon ab 2 × Kadenz. Die Kadenz ist ein zeitgültiges Feld der Quellenbindung, kein fester 5-Minuten-Deckel.
 
 > **Verfeinert durch AP-04 E8:** Eine Messstelle ohne Quelle hat die Beobachtung „keine Datenquelle“ — sie ist eingerichtet und aktiv, zeigt aber nie eine 0.
 

@@ -155,9 +155,14 @@ def zustaende_md():
     for ref, text in F.VERFEINERUNGEN["zustaende"]:
         p.append(f"- **{ref}:** {text}")
     p.append(
-        "\n⚠ Die Ableitung von „liefert Daten“ und „steuert“ wird als Vertrag mit geteilten "
-        "Vektoren gebaut (AP-00 IP-3, `docs/contracts/v2/uems-zustand-vectors.json`) — bis "
-        "dahin lebt in `services/api` und im Portal noch das harte 5-Minuten-Fenster.\n"
+        "\n⚠ **Ableitungsregel als Vertrag:** `docs/contracts/v2/uems-zustand-vectors.json` "
+        "(Schema `uems-zustand.schema.json`, AP-00 IP-3). Dort stehen die Toleranz "
+        "(3 × Kadenz, mindestens 5 Minuten, höchstens 1 Tag), die Lücke ab 2 × Kadenz und "
+        "die Reihenfolge der „steuert nicht“-Gründe (angehalten → nicht freigegeben → "
+        "Funktion nicht gestartet → kein Betriebsmodell → Box meldet sich nicht → Box "
+        "bestätigt nicht); die Zwillinge sind `services/api .../uems/ZustandAbleitung` und "
+        "`frontend/portal/src/uemsZustand.ts`. Noch ruft niemand an: in `services/api` und "
+        "im Portal lebt weiterhin das harte 5-Minuten-Fenster.\n"
     )
     p.append("## Entscheidungslog\n")
     p.append("### AP-00 (Fachmodell)\n")

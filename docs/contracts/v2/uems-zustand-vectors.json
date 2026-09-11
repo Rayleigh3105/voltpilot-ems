@@ -1,0 +1,1414 @@
+{
+  "_comment": [
+    "Geteilte Vektoren des ZUSTANDSVOKABULARS „liefert Daten“ und „steuert“",
+    "(UEMS AP-00 IP-3). Die Prosa-Wahrheit steht in docs/fachmodell/zustaende.md;",
+    "hier steht, wie aus Fakten GENAU EIN Zustand und GENAU EIN Kundensatz wird.",
+    "",
+    "Sie pinnen die zwei Zwillinge gegeneinander:",
+    "  Java  services/api .../uems/ZustandAbleitung",
+    "  TS    frontend/portal/src/uemsZustand.ts",
+    "Wer die Regel ändert, ändert BEIDE Seiten UND diese Datei.",
+    "",
+    "⚠ NOCH RUFT NIEMAND AN. Keine Fläche, kein Endpunkt, kein Repository ist",
+    "umgestellt: in services/api und im Portal lebt weiterhin das harte",
+    "5-Minuten-Fenster (api.ts ONLINE_WINDOW_MS, OverviewRepository,",
+    "AdminFleetRepository), und die Komponentenkarte behält ihre heutigen Wörter",
+    "(„Meldet sich gerade nicht“, „Wartet auf die ersten Daten“,",
+    "komponenten.ts deviceState). Diese Datei ist der Vertrag, gegen den die",
+    "Umstellung später gebaut wird.",
+    "",
+    "═══ FAMILIE 1: liefert Daten ═══",
+    "",
+    "DIE TOLERANZ (AP-07 E9, geschärft am 10.09.2026):",
+    "    toleranz_s = min( max( 3 × kadenz_s , 300 ) , 86400 )",
+    "  · Faktor 3 auf die Kadenz — die Kadenz ist ein zeitgültiger Fakt der",
+    "    Quellenbindung (AP-04/AP-07 IP-10), kein fester Deckel.",
+    "  · MINDESTENS 5 Minuten: das heutige Fenster bleibt der Boden. Eine 10-s-Reihe",
+    "    hätte sonst 30 s Toleranz und ihr Abzeichen blinkte im Sekundentakt.",
+    "  · HÖCHSTENS 1 Tag (AP-00 §4.3, Übergänge „Zähler mit Tageswerten“). Deshalb",
+    "    sagt eine Monatsablesung zwischen zwei Ablesungen ehrlich „Liefert keine",
+    "    Daten seit …“ — sie ist keine lebende Reihe, und so zu tun, als wäre sie",
+    "    eine, wäre die Erfindung.",
+    "  · Die KANTE gehört zu „liefert“ (<=, wie api.ts deviceLiveStatus heute).",
+    "",
+    "⚠ DER FALL, DEN MAN FALSCH ERWARTET: bei 60 s Kadenz und 190 s Alter wäre",
+    "3 × Kadenz = 180 s überschritten — es gilt trotzdem „Liefert Daten“, weil das",
+    "Mindestfenster von 5 Minuten größer ist. Der Fall",
+    "`mindestfenster-schlaegt-drei-kadenzen` pinnt ihn ausdrücklich.",
+    "",
+    "DIE LÜCKE ist eine ANDERE Aussage (AP-07 E9/IP-9): ab 2 × Kadenz OHNE guten",
+    "Wert ist eine Lücke der Reihe offen — ohne Boden und ohne Deckel, denn sie",
+    "zählt fehlende Werte, sie zeigt kein Abzeichen. Eine Reihe darf „Liefert",
+    "Daten“ tragen und trotzdem eine offene Lücke haben.",
+    "",
+    "VIER ZUSTÄNDE, geschlossenes Vokabular:",
+    "  liefert               → „Liefert Daten“",
+    "  liefert_nicht_seit    → „Liefert keine Daten seit 14:00 Uhr“ (immer MIT",
+    "                          Zeitpunkt; mit Datum, sobald er nicht mehr am",
+    "                          heutigen Tag des Standorts liegt)",
+    "  wartet_auf_erste_daten→ „Wartet auf erste Daten“ (auch dann, wenn Werte",
+    "                          ankamen, aber keiner mit Qualität „gut“ — E9 zählt",
+    "                          nur gute Werte)",
+    "  keine_datenquelle     → „Keine Datenquelle“ (AP-04 E8: eingerichtet und",
+    "                          aktiv, aber nie eine 0). Sie schlägt jeden Wert aus",
+    "                          der Vergangenheit: ein bekannter Grund wird nie als",
+    "                          Störung ausgegeben.",
+    "",
+    "DREI ABLEITUNGEN ÜBER DIESEN VIER (Objekt-Tabelle in zustaende.md):",
+    "  anlage    – alle Boxen verbunden UND der Hauptzähler liefert. Reihenfolge",
+    "              der Gründe: keine Box → stumme Box → kein Hauptzähler → Zustand",
+    "              des Hauptzählers. Eine stumme Box erklärt den stillen Zähler;",
+    "              den engeren Grund zuerst zu nennen, wäre geraten.",
+    "  aggregat  – „x von y“ für Standort und Unternehmen. Nur `liefert` zählt im",
+    "              Zähler; „keine Datenquelle“ steht im Nenner, nie im Zähler.",
+    "  berechnet – „Vollständig“ nur, wenn ALLE Eingänge liefern; sonst",
+    "              „Unvollständig seit … (fehlt: MS-12)“ mit dem FRÜHESTEN",
+    "              Zeitpunkt der fehlenden Eingänge.",
+    "",
+    "═══ FAMILIE 2: steuert ═══",
+    "",
+    "„steuert“ = Freigabe erteilt UND ein Betriebsmodell oder eine Regel läuft UND",
+    "die Box bestätigt die Ausführung. Fehlt eines, steht GENAU EIN Grund aus dem",
+    "geschlossenen Vokabular da — nie zwei, nie ein geratener.",
+    "",
+    "DIE REIHENFOLGE DER GRÜNDE (hier festgelegt, IP-3), von der eigenen",
+    "Entscheidung des Kunden nach außen zur Maschine:",
+    "  1. angehalten               – der Kunde hat selbst angehalten (AP-01 E7/E8).",
+    "                                Wer das nicht zuerst liest, sucht einen Fehler,",
+    "                                den er selbst gesetzt hat.",
+    "  2. nicht_freigegeben        – ohne Freigabe ist alles Weitere gar nicht",
+    "                                gefragt; für einen Messkunden der Normalfall.",
+    "  3. funktion_nicht_gestartet – freigegeben ≠ gestartet (AP-01 E6/E8: die",
+    "                                Funktion gilt je Standort und wird",
+    "                                ausdrücklich gestartet).",
+    "  4. kein_betriebsmodell      – gestartet, aber nichts gewählt.",
+    "  5. box_meldet_sich_nicht    – alles bestellt, die Box schweigt.",
+    "  6. box_bestaetigt_nicht     – die Box ist da und schweigt zur AUSFÜHRUNG.",
+    "                                Der engste Grund steht zuletzt: eine abwesende",
+    "                                Box erklärt die fehlende Bestätigung, die",
+    "                                fehlende Bestätigung erklärt nichts.",
+    "",
+    "Das Aggregat „x von y Anlagen steuern“ zählt dieselben Einzelurteile.",
+    "",
+    "EINHEITEN: Nomen im Singular, sobald y = 1; Verb im Singular, sobald x = 1.",
+    "Die Tabelle `einheiten` unten ist dieselbe, die beide Zwillinge tragen — die",
+    "Tests prüfen das, statt es zu glauben.",
+    "",
+    "ZEIT: Zeitpunkte reisen als Instant mit Zeitzonen-Versatz; der Kundentext",
+    "steht in der Zeitzone des Standorts (`zeitzone`, Vorgabe Europe/Berlin) —",
+    "Sommer- und Winterzeit sind je ein Fall."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./uems-zustand.schema.json",
+  "herkunft": "UEMS AP-00 §4.3 (docs/fachmodell/zustaende.md), geschärft durch AP-07 E9; Gründe aus AP-01 E6/E7/E8 und AP-06 E3/E5.",
+  "zeitzone": "Europe/Berlin",
+  "toleranz": {
+    "faktor": 3,
+    "mindestens_s": 300,
+    "hoechstens_s": 86400,
+    "kante_gehoert_zu_liefert": true,
+    "luecke_faktor": 2
+  },
+  "zustaende_liefert_daten": [
+    "liefert",
+    "liefert_nicht_seit",
+    "wartet_auf_erste_daten",
+    "keine_datenquelle"
+  ],
+  "gruende_anlage": [
+    "keine_box",
+    "box_meldet_sich_nicht",
+    "kein_hauptzaehler",
+    "keine_datenquelle",
+    "wartet_auf_erste_daten",
+    "hauptzaehler_liefert_nicht"
+  ],
+  "gruende_steuert": [
+    "angehalten",
+    "nicht_freigegeben",
+    "funktion_nicht_gestartet",
+    "kein_betriebsmodell",
+    "box_meldet_sich_nicht",
+    "box_bestaetigt_nicht"
+  ],
+  "einheiten": {
+    "messstelle": {
+      "singular": "Messstelle",
+      "plural": "Messstellen"
+    },
+    "anlage": {
+      "singular": "Anlage",
+      "plural": "Anlagen"
+    },
+    "komponente": {
+      "singular": "Komponente",
+      "plural": "Komponenten"
+    },
+    "box": {
+      "singular": "Box",
+      "plural": "Boxen"
+    }
+  },
+  "cases": [
+    {
+      "name": "frisch-kadenz-60s",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Der Normalfall einer Sekundenreihe: 90 s alt bei 60 s Kadenz — weit innerhalb des Fensters, und noch nicht einmal eine Lücke (die beginnt erst ab 2 × Kadenz).",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:03:30+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": false,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "mindestfenster-schlaegt-drei-kadenzen",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "⚠ DER Fall, der die Regel erklärt: 190 s sind mehr als 3 × 60 s = 180 s — aber das Mindestfenster von 5 Minuten (das heutige Fenster, api.ts ONLINE_WINDOW_MS) hebt die Toleranz auf 300 s. Der Kunde liest „Liefert Daten“. Die LÜCKE in der Reihe ist trotzdem offen (190 s > 2 × 60 s) — das ist ein Fakt über die Reihe, kein Abzeichen.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:01:50+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "kante-genau-das-mindestfenster",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Genau 300 s: die Kante gehört zu „liefert“ (das heutige <= aus api.ts deviceLiveStatus bleibt), damit die Umstellung später kein Abzeichen umschlägt.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:00:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "kante-eine-sekunde-darueber",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Eine Sekunde später kippt es — und der Text nennt IMMER den Zeitpunkt, auf die Minute genau (13:59:59 liest der Kunde als „13:59 Uhr“; Sekunden sind Lärm).",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T13:59:59+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-10T13:59:59+02:00",
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 13:59 Uhr"
+      }
+    },
+    {
+      "name": "der-satz-aus-dem-glossar",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Der wörtliche Kundensatz aus docs/fachmodell/zustaende.md: „Liefert keine Daten seit 14:00 Uhr“ — 12 Minuten nach dem letzten guten Wert.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:00:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:12:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-10T14:00:00+02:00",
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 14:00 Uhr"
+      }
+    },
+    {
+      "name": "mindestfenster-schnelle-kadenz",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Eine 10-s-Reihe (Hauptzuleitung, AP-05 E9) 4 Minuten alt: 3 × 10 s wären 30 s, das Mindestfenster hält sie bei „Liefert Daten“ — eine Fläche, die im Sekundentakt zwischen „liefert“ und „liefert nicht“ blinkt, wäre keine Aussage.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:01:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 10,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "luecke-offen-obwohl-sie-liefert",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Dieselbe 10-s-Reihe 200 s alt: Abzeichen „Liefert Daten“ UND offene Lücke. Die zwei Aussagen sind verschieden — die Lücke (ab 2 × Kadenz, AP-07 E9/IP-9) zählt fehlende Werte der Reihe, das Abzeichen sagt, ob die Quelle noch spricht.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T14:01:40+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 10,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "viertelstundenwerte-frisch",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "15-Minuten-Kadenz, 40 Minuten alt: 3 × 900 s = 45 Minuten — sie liefert noch.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T13:25:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 900,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 2700,
+        "luecke_offen": true,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "viertelstundenwerte-knapp-darueber",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Dieselbe Reihe 46 Minuten alt: hier bindet der Faktor 3 aus AP-07 E9, nicht das Mindestfenster.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T13:19:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 900,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-10T13:19:00+02:00",
+        "toleranz_s": 2700,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 13:19 Uhr"
+      }
+    },
+    {
+      "name": "tageszaehler-frisch",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Ein Zähler mit Tageswerten, 20 Stunden alt: innerhalb des Deckels von einem Tag.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-09T18:05:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 86400,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "seit": null,
+        "toleranz_s": 86400,
+        "luecke_offen": false,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "tageszaehler-deckel-bindet",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Derselbe Zähler 30 Stunden alt: 3 × 1 Tag wären 3 Tage — der Deckel von einem Tag (AP-00 §4.3 Übergänge) sagt nach einem Tag ehrlich „liefert keine Daten“. Der Text trägt das Datum, weil der Zeitpunkt nicht mehr heute liegt. Beachte: die LÜCKE ist hier NICHT offen (2 × 1 Tag sind mehr als der Deckel) — die zwei Aussagen dürfen auseinanderlaufen, und genau deshalb stehen sie nebeneinander.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-09T08:05:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 86400,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-09T08:05:00+02:00",
+        "toleranz_s": 86400,
+        "luecke_offen": false,
+        "text": "Liefert keine Daten seit 09.09.2026 08:05 Uhr"
+      }
+    },
+    {
+      "name": "monatliche-ablesung",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Die manuelle Monatsablesung (AP-09), 40 Tage alt: der Deckel bindet, und das ist die ehrliche Aussage — zwischen zwei Ablesungen liefert nichts, und der Kunde sieht den Tag, an dem zuletzt etwas ankam. Eine Lücke der REIHE ist noch keine (2 × 30 Tage sind nicht vorbei): fehlende Werte hat sie erst nach dem Monat.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-08-01T14:05:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 2592000,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-08-01T14:05:00+02:00",
+        "toleranz_s": 86400,
+        "luecke_offen": false,
+        "text": "Liefert keine Daten seit 01.08.2026 14:05 Uhr"
+      }
+    },
+    {
+      "name": "nie-ein-wert",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Eingerichtet, Quelle gebunden, noch nichts angekommen: „Wartet auf erste Daten“ — Schweigen ist nie ein bewiesener Fehlschlag (Hausregel „Ehrlichkeit der Zahlen“).",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": null,
+        "je_ein_wert": false,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "wartet_auf_erste_daten",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": false,
+        "text": "Wartet auf erste Daten"
+      }
+    },
+    {
+      "name": "nur-schlechte-werte-bleibt-wartet",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Werte kamen an, aber keiner mit Qualität „gut“ (je_ein_wert = true, letzter guter Wert = null). E9 zählt nur GUTE Werte, also bleibt es „Wartet auf erste Daten“ — ein eigenes Wort dafür zu erfinden wäre ein geratener Zustand.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": null,
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "wartet_auf_erste_daten",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": false,
+        "text": "Wartet auf erste Daten"
+      }
+    },
+    {
+      "name": "keine-datenquelle",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Eine Messstelle ohne führende Quelle (AP-04 E8): sie ist eingerichtet und aktiv, zeigt aber nie eine 0 — und sie wartet auch nicht, sie hat schlicht keine Quelle.",
+      "input": {
+        "quelle_vorhanden": false,
+        "letzter_guter_wert": null,
+        "je_ein_wert": false,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "keine_datenquelle",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": false,
+        "text": "Keine Datenquelle"
+      }
+    },
+    {
+      "name": "keine-datenquelle-schlaegt-alten-wert",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Die Quelle wurde entfernt, alte Werte stehen weiter in der Historie. Die Beobachtung sagt „Keine Datenquelle“, nicht „liefert keine Daten seit …“ — der Grund ist bekannt, und ein bekannter Grund wird nie als Störung ausgegeben.",
+      "input": {
+        "quelle_vorhanden": false,
+        "letzter_guter_wert": "2026-09-07T14:05:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "keine_datenquelle",
+        "seit": null,
+        "toleranz_s": 300,
+        "luecke_offen": false,
+        "text": "Keine Datenquelle"
+      }
+    },
+    {
+      "name": "zeitzone-sommerzeit",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Der Zeitpunkt reist als Instant, der Text steht in der Zeitzone des Standorts: 12:00 UTC sind im Sommer 14:00 Uhr in Europe/Berlin.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-10T12:00:00Z",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T12:20:00Z",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-10T12:00:00Z",
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 14:00 Uhr"
+      }
+    },
+    {
+      "name": "zeitzone-winterzeit",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Derselbe Text im Winter aus 13:00 UTC — der Zwilling, der mit festem +02:00 rechnet, fällt hier durch.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-12-01T13:00:00Z",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-12-01T13:20:00Z",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-12-01T13:00:00Z",
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 14:00 Uhr"
+      }
+    },
+    {
+      "name": "gestern-um-kurz-vor-mitternacht",
+      "familie": "liefert_daten",
+      "ableitung": "einzel",
+      "why": "Liegt der Zeitpunkt nicht mehr am heutigen Tag des Standorts, nennt der Text auch das Datum — „seit 23:50 Uhr“ wäre sonst die falsche Nacht.",
+      "input": {
+        "quelle_vorhanden": true,
+        "letzter_guter_wert": "2026-09-09T23:50:00+02:00",
+        "je_ein_wert": true,
+        "kadenz_s": 60,
+        "jetzt": "2026-09-10T00:10:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht_seit",
+        "seit": "2026-09-09T23:50:00+02:00",
+        "toleranz_s": 300,
+        "luecke_offen": true,
+        "text": "Liefert keine Daten seit 09.09.2026 23:50 Uhr"
+      }
+    },
+    {
+      "name": "anlage-alles-verbunden",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Die Regel der Objekt-Tabelle: eine Anlage liefert Daten, wenn ALLE ihre Boxen verbunden sind UND der Hauptzähler liefert.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "liefert",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert",
+        "grund": null,
+        "seit": null,
+        "text": "Liefert Daten"
+      }
+    },
+    {
+      "name": "anlage-eine-box-stumm",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Eine von zwei Boxen meldet sich nicht: die Anlage liefert nicht, und der Satz nennt die Box beim Namen — eine Ursache darf nur behaupten, wer sie benennen kann.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          },
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "liefert",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "box_meldet_sich_nicht",
+        "seit": null,
+        "text": "Liefert keine Daten — Box Halle 2 meldet sich nicht"
+      }
+    },
+    {
+      "name": "anlage-zwei-boxen-stumm",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Zwei stumme Boxen: Aufzählung und Mehrzahl-Verb.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": false
+          },
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "liefert",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "box_meldet_sich_nicht",
+        "seit": null,
+        "text": "Liefert keine Daten — Box Halle 1 und Box Halle 2 melden sich nicht"
+      }
+    },
+    {
+      "name": "anlage-box-schlaegt-hauptzaehler",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Box stumm UND Hauptzähler still: genannt wird die Box. Eine stumme Box erklärt den stillen Zähler — den engeren Grund zuerst zu nennen, wäre geraten.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": false
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "liefert_nicht_seit",
+          "seit": "2026-09-10T14:00:00+02:00"
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "box_meldet_sich_nicht",
+        "seit": null,
+        "text": "Liefert keine Daten — Box Halle 2 meldet sich nicht"
+      }
+    },
+    {
+      "name": "anlage-hauptzaehler-still",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Boxen verbunden, Hauptzähler still: der Zeitpunkt des Zählers wird durchgereicht.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "liefert_nicht_seit",
+          "seit": "2026-09-10T14:00:00+02:00"
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "hauptzaehler_liefert_nicht",
+        "seit": "2026-09-10T14:00:00+02:00",
+        "text": "Liefert keine Daten seit 14:00 Uhr"
+      }
+    },
+    {
+      "name": "anlage-hauptzaehler-wartet",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Frisch eingerichtet: der Hauptzähler wartet auf seine ersten Werte.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "wartet_auf_erste_daten",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "wartet_auf_erste_daten",
+        "seit": null,
+        "text": "Wartet auf erste Daten"
+      }
+    },
+    {
+      "name": "anlage-hauptzaehler-ohne-quelle",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Der Hauptzähler hat keine Quelle — die Anlage übernimmt das Wort, statt eine Störung zu behaupten.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": {
+          "zustand": "keine_datenquelle",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "keine_datenquelle",
+        "seit": null,
+        "text": "Keine Datenquelle"
+      }
+    },
+    {
+      "name": "anlage-ohne-hauptzaehler",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Netzanschluss ohne gebundenen Hauptzähler: kein Zähler ist kein Fehler der Box.",
+      "input": {
+        "boxen": [
+          {
+            "name": "Box Halle 1",
+            "verbunden": true
+          }
+        ],
+        "hauptzaehler": null,
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "kein_hauptzaehler",
+        "seit": null,
+        "text": "Liefert keine Daten — kein Hauptzähler"
+      }
+    },
+    {
+      "name": "anlage-ohne-box",
+      "familie": "liefert_daten",
+      "ableitung": "anlage",
+      "why": "Eine Anlage, an der noch keine Box angemeldet ist.",
+      "input": {
+        "boxen": [],
+        "hauptzaehler": {
+          "zustand": "liefert",
+          "seit": null
+        },
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "liefert_nicht",
+        "grund": "keine_box",
+        "seit": null,
+        "text": "Liefert keine Daten — keine Box angemeldet"
+      }
+    },
+    {
+      "name": "aggregat-vierzehn-von-vierzehn",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "Der Satz der Standortkarte aus dem Glossar: „14 von 14 Messstellen liefern Daten“.",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert"
+        ]
+      },
+      "expected": {
+        "liefernd": 14,
+        "gesamt": 14,
+        "text": "14 von 14 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "aggregat-zwoelf-von-vierzehn",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "Zwei stille Messstellen: die Zahl wird nie aufgerundet (AP-07 „Abdeckung“).",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert_nicht_seit",
+          "wartet_auf_erste_daten"
+        ]
+      },
+      "expected": {
+        "liefernd": 12,
+        "gesamt": 14,
+        "text": "12 von 14 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "aggregat-ohne-quelle-zaehlt-nicht-mit",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "„Keine Datenquelle“ ist kein Liefern — und auch kein Ausfall; sie zählt im Nenner, nie im Zähler.",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": [
+          "liefert",
+          "liefert",
+          "keine_datenquelle"
+        ]
+      },
+      "expected": {
+        "liefernd": 2,
+        "gesamt": 3,
+        "text": "2 von 3 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "aggregat-null-von-vierzehn",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "Alle still — „0 von 14“, nie „keine Daten“ ohne Zahl.",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": [
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit"
+        ]
+      },
+      "expected": {
+        "liefernd": 0,
+        "gesamt": 14,
+        "text": "0 von 14 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "aggregat-eine-einzige",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "Einzahl in Nomen UND Verb: „1 von 1 Messstelle liefert Daten“.",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": [
+          "liefert"
+        ]
+      },
+      "expected": {
+        "liefernd": 1,
+        "gesamt": 1,
+        "text": "1 von 1 Messstelle liefert Daten"
+      }
+    },
+    {
+      "name": "aggregat-leer",
+      "familie": "liefert_daten",
+      "ableitung": "aggregat",
+      "why": "Ein Standort ohne Messstellen sagt das, statt „0 von 0“ zu rechnen.",
+      "input": {
+        "einheit": "messstelle",
+        "einzel": []
+      },
+      "expected": {
+        "liefernd": 0,
+        "gesamt": 0,
+        "text": "Noch keine Messstellen"
+      }
+    },
+    {
+      "name": "berechnet-vollstaendig",
+      "familie": "liefert_daten",
+      "ableitung": "berechnet",
+      "why": "Eine berechnete Messstelle ist „vollständig“ nur, wenn ALLE Eingänge liefern.",
+      "input": {
+        "eingaenge": [
+          {
+            "kennzeichen": "MS-10",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-11",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-12",
+            "zustand": "liefert",
+            "seit": null
+          }
+        ],
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "vollstaendig",
+        "fehlend": [],
+        "seit": null,
+        "text": "Vollständig"
+      }
+    },
+    {
+      "name": "berechnet-ein-eingang-fehlt",
+      "familie": "liefert_daten",
+      "ableitung": "berechnet",
+      "why": "Der Satz aus dem Glossar: „unvollständig (fehlt: MS-12)“ — mit dem Zeitpunkt, seit dem der Eingang schweigt.",
+      "input": {
+        "eingaenge": [
+          {
+            "kennzeichen": "MS-10",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-11",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-12",
+            "zustand": "liefert_nicht_seit",
+            "seit": "2026-09-10T14:00:00+02:00"
+          }
+        ],
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "unvollstaendig",
+        "fehlend": [
+          "MS-12"
+        ],
+        "seit": "2026-09-10T14:00:00+02:00",
+        "text": "Unvollständig seit 14:00 Uhr (fehlt: MS-12)"
+      }
+    },
+    {
+      "name": "berechnet-zwei-eingaenge-fehlen",
+      "familie": "liefert_daten",
+      "ableitung": "berechnet",
+      "why": "Zwei Eingänge fehlen: es gilt der FRÜHESTE Zeitpunkt — seit da ist die Rechnung unvollständig, nicht erst seit dem zweiten Ausfall.",
+      "input": {
+        "eingaenge": [
+          {
+            "kennzeichen": "MS-10",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-11",
+            "zustand": "liefert_nicht_seit",
+            "seit": "2026-09-10T14:00:00+02:00"
+          },
+          {
+            "kennzeichen": "MS-12",
+            "zustand": "liefert_nicht_seit",
+            "seit": "2026-09-10T13:30:00+02:00"
+          }
+        ],
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "unvollstaendig",
+        "fehlend": [
+          "MS-11",
+          "MS-12"
+        ],
+        "seit": "2026-09-10T13:30:00+02:00",
+        "text": "Unvollständig seit 13:30 Uhr (fehlt: MS-11, MS-12)"
+      }
+    },
+    {
+      "name": "berechnet-eingang-ohne-zeitpunkt",
+      "familie": "liefert_daten",
+      "ableitung": "berechnet",
+      "why": "Ein Eingang, der noch nie geliefert hat, hat keinen Zeitpunkt — dann steht auch keiner im Satz. Ein erfundenes „seit“ wäre eine Behauptung.",
+      "input": {
+        "eingaenge": [
+          {
+            "kennzeichen": "MS-10",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-12",
+            "zustand": "wartet_auf_erste_daten",
+            "seit": null
+          }
+        ],
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "unvollstaendig",
+        "fehlend": [
+          "MS-12"
+        ],
+        "seit": null,
+        "text": "Unvollständig (fehlt: MS-12)"
+      }
+    },
+    {
+      "name": "berechnet-eingang-ohne-quelle",
+      "familie": "liefert_daten",
+      "ableitung": "berechnet",
+      "why": "Auch ein Eingang ohne Datenquelle macht die Rechnung unvollständig.",
+      "input": {
+        "eingaenge": [
+          {
+            "kennzeichen": "MS-10",
+            "zustand": "liefert",
+            "seit": null
+          },
+          {
+            "kennzeichen": "MS-21",
+            "zustand": "keine_datenquelle",
+            "seit": null
+          }
+        ],
+        "jetzt": "2026-09-10T14:05:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "unvollstaendig",
+        "fehlend": [
+          "MS-21"
+        ],
+        "seit": null,
+        "text": "Unvollständig (fehlt: MS-21)"
+      }
+    },
+    {
+      "name": "steuert-betriebsmodell",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Alle drei Bedingungen erfüllt (Freigabe UND laufendes Betriebsmodell UND Bestätigung der Box) — der einzige Weg zu „steuert“.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert",
+        "grund": null,
+        "text": "Wird von VoltPilot gesteuert · Lastspitzenkappung"
+      }
+    },
+    {
+      "name": "steuert-regel",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Eine laufende Regel zählt wie ein Betriebsmodell; der Satz sagt, WAS steuert.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "regel",
+        "laeuft_name": "Wärmepumpe nachts",
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert",
+        "grund": null,
+        "text": "Wird von VoltPilot gesteuert · Regel „Wärmepumpe nachts“"
+      }
+    },
+    {
+      "name": "steuert-ohne-namen",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Ohne Namen bleibt der nackte Satz stehen — nie ein geratener Name.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": null,
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert",
+        "grund": null,
+        "text": "Wird von VoltPilot gesteuert"
+      }
+    },
+    {
+      "name": "angehalten-schlaegt-alles",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Ruhe-Eintrag ohne Enddatum (AP-01 E7/E8): der Kunde hat die Anlage selbst angehalten. Das ist der lauteste Grund — sonst suchte jemand einen Fehler, den er selbst gesetzt hat.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": true
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "angehalten",
+        "text": "Steuert nicht — angehalten"
+      }
+    },
+    {
+      "name": "angehalten-trotz-technischer-maengel",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Angehalten UND nicht freigegeben UND Box weg: es bleibt „angehalten“. Die Reihenfolge ist eindeutig, damit zwei Flächen nie zwei Gründe für dieselbe Lage nennen.",
+      "input": {
+        "freigabe_erteilt": false,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": false,
+        "box_bestaetigt": false,
+        "ruhe_eintrag": true
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "angehalten",
+        "text": "Steuert nicht — angehalten"
+      }
+    },
+    {
+      "name": "nicht-freigegeben",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Die reine Messanlage: nichts ist freigegeben. Das ist kein Fehler, sondern der Normalzustand eines Messkunden (AP-00 Referenzfall AN-3).",
+      "input": {
+        "freigabe_erteilt": false,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "nicht_freigegeben",
+        "text": "Steuert nicht — nicht freigegeben"
+      }
+    },
+    {
+      "name": "nicht-freigegeben-schlaegt-technik",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Keine Freigabe, nichts läuft, Box weg: genannt wird die fehlende Freigabe — sie ist die Bedingung, ohne die alles Weitere gar nicht gefragt ist.",
+      "input": {
+        "freigabe_erteilt": false,
+        "funktion_gestartet": true,
+        "laeuft": false,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": null,
+        "box_verbunden": false,
+        "box_bestaetigt": false,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "nicht_freigegeben",
+        "text": "Steuert nicht — nicht freigegeben"
+      }
+    },
+    {
+      "name": "funktion-nicht-gestartet",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "AP-01 E6/E8: die Funktion gilt je Standort und wird AUSDRÜCKLICH gestartet. Freigegeben zu sein heißt noch nicht, gestartet zu sein.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": false,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "funktion_nicht_gestartet",
+        "text": "Steuert nicht — noch nicht gestartet"
+      }
+    },
+    {
+      "name": "kein-betriebsmodell",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Freigegeben und gestartet, aber nichts gewählt: der Kunde muss wählen, nicht suchen.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": false,
+        "laeuft_art": null,
+        "laeuft_name": null,
+        "box_verbunden": true,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "kein_betriebsmodell",
+        "text": "Steuert nicht — kein Betriebsmodell gewählt"
+      }
+    },
+    {
+      "name": "box-meldet-sich-nicht",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Der Satz aus dem Glossar. Die letzte Bestätigung steht noch — aber die Box ist weg, und eine alte Quittung ist kein Beweis, dass gerade gesteuert wird.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": false,
+        "box_bestaetigt": true,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "box_meldet_sich_nicht",
+        "text": "Steuert nicht — Box meldet sich nicht"
+      }
+    },
+    {
+      "name": "box-bestaetigt-nicht",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Die Box ist da und schweigt zur Ausführung — der ENGSTE Grund, und nur er bleibt übrig, wenn sonst alles stimmt. Antwort ist nicht Wirkung.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": true,
+        "box_bestaetigt": false,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "box_bestaetigt_nicht",
+        "text": "Steuert nicht — Box bestätigt die Ausführung nicht"
+      }
+    },
+    {
+      "name": "box-weg-schlaegt-fehlende-bestaetigung",
+      "familie": "steuert",
+      "ableitung": "einzel",
+      "why": "Eine abwesende Box erklärt die fehlende Bestätigung; die fehlende Bestätigung erklärt nichts. Deshalb steht „Box meldet sich nicht“ davor.",
+      "input": {
+        "freigabe_erteilt": true,
+        "funktion_gestartet": true,
+        "laeuft": true,
+        "laeuft_art": "betriebsmodell",
+        "laeuft_name": "Lastspitzenkappung",
+        "box_verbunden": false,
+        "box_bestaetigt": false,
+        "ruhe_eintrag": false
+      },
+      "expected": {
+        "zustand": "steuert_nicht",
+        "grund": "box_meldet_sich_nicht",
+        "text": "Steuert nicht — Box meldet sich nicht"
+      }
+    },
+    {
+      "name": "steuert-aggregat-eine-von-zwei",
+      "familie": "steuert",
+      "ableitung": "aggregat",
+      "why": "Der Satz der Standortkarte: „1 von 2 Anlagen steuert“ (AP-00 Referenzfall ST-1 vor der Ladepunkt-Steuerung).",
+      "input": {
+        "einheit": "anlage",
+        "einzel": [
+          "steuert",
+          "steuert_nicht"
+        ]
+      },
+      "expected": {
+        "steuernd": 1,
+        "gesamt": 2,
+        "text": "1 von 2 Anlagen steuert"
+      }
+    },
+    {
+      "name": "steuert-aggregat-zwei-von-zwei",
+      "familie": "steuert",
+      "ableitung": "aggregat",
+      "why": "Nach dem 01.12.2026 steuern beide Anlagen — Mehrzahl-Verb.",
+      "input": {
+        "einheit": "anlage",
+        "einzel": [
+          "steuert",
+          "steuert"
+        ]
+      },
+      "expected": {
+        "steuernd": 2,
+        "gesamt": 2,
+        "text": "2 von 2 Anlagen steuern"
+      }
+    },
+    {
+      "name": "steuert-aggregat-keine",
+      "familie": "steuert",
+      "ableitung": "aggregat",
+      "why": "Ein reiner Messkunde: „0 von 3 Anlagen steuern“ — eine ehrliche Null, kein Alarm.",
+      "input": {
+        "einheit": "anlage",
+        "einzel": [
+          "steuert_nicht",
+          "steuert_nicht",
+          "steuert_nicht"
+        ]
+      },
+      "expected": {
+        "steuernd": 0,
+        "gesamt": 3,
+        "text": "0 von 3 Anlagen steuern"
+      }
+    },
+    {
+      "name": "steuert-aggregat-leer",
+      "familie": "steuert",
+      "ableitung": "aggregat",
+      "why": "Ein Standort ohne Anlagen.",
+      "input": {
+        "einheit": "anlage",
+        "einzel": []
+      },
+      "expected": {
+        "steuernd": 0,
+        "gesamt": 0,
+        "text": "Noch keine Anlagen"
+      }
+    }
+  ]
+}

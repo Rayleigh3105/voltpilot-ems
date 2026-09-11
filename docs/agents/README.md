@@ -169,6 +169,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [v2 entity model - pilot minimum (E1a)](root/v2-entity-model-pilot-minimum-e1a.md)
 - [Verbrauchsmanagement v1 / P8: die SG-Ready-Wärmepumpe ist ein eigener Typ](root/verbrauchsmanagement-v1-p8-die-sg-ready.md)
 - [UEMS-Fachmodell: das EINE Glossar für alle Pakete des Unternehmens-Energiemanagements](root/uems-fachmodell-das-eine-glossar-fuer-al.md)
+- [UEMS-Zustandsvokabular „liefert Daten“ / „steuert“ als Vertrag mit Vektoren](root/uems-zustandsvokabular-liefert-daten-st.md)
 - [Verbrauchsmanagement v1 — Paket 1: die Verbraucher-Zone LESEND](root/verbrauchsmanagement-v1-paket-1-die-verb.md)
 - [Verbrauchsmanagement v1 — Paket 2: die Steuerart SCHREIBEN](root/verbrauchsmanagement-v1-paket-2-die-steu.md)
 - [Verbrauchsmanagement v1 — Paket 3b: „Laden pausieren" als Geschwister des Boosts](root/verbrauchsmanagement-v1-paket-3b-laden-p.md)
