@@ -19,7 +19,9 @@
 --     Rohwert-Vokabular (value_kind: counter, gauge, state, bitfield, text) hat
 --     heute KEIN Wort dafür (Befund aus AP-07 IP-12, ViertelstundeRegeln.
 --     regelWort). Die Intervallmenge einer MESSSTELLE entsteht aus einem Zähler
---     (Herleitung `differenzen`) oder aus einer Leistung (`integration`).
+--     (Herleitung `differenzen`) oder aus einer Leistung (`integration`). Bekommt
+--     das Vokabular das Wort, müssen die wertart-CHECKs UND `…_summe_chk` am Tag
+--     und am Monat/Jahr gemeinsam wachsen.
 --
 -- Gerechnet wird hier NICHTS. Die Regeln sind `VerbrauchRegeln.momentanwertTeil`
 -- / `momentanwertAusTeilperioden` (Vertrag verbrauch-vectors.json,
@@ -111,7 +113,12 @@ ALTER TABLE messreihe_tag
     ADD CONSTRAINT messreihe_tag_keine_werte_energie_chk
         CHECK (menge_zustand IS DISTINCT FROM 'keine Werte' OR (energie IS NULL AND summe IS NULL)),
     ADD CONSTRAINT messreihe_tag_gemessen_chk
-        CHECK (gemessen_s IS NULL OR gemessen_s >= 0);
+        CHECK (gemessen_s IS NULL OR gemessen_s >= 0),
+    -- Die Summe der GUTEN WERTE gibt es nur am Momentanwert. Eine Summe von
+    -- Viertelstunden-MENGEN gibt es nie (IP-5: die Menge kommt aus den
+    -- Periodenständen) — an einer Zählerreihe bleibt die Spalte leer.
+    ADD CONSTRAINT messreihe_tag_summe_chk
+        CHECK (summe IS NULL OR wertart = 'gauge');
 
 -- -----------------------------------------------------------------------------
 -- 4. Monat und Jahr — die Klasse hatte bisher gar kein Mittel
@@ -134,7 +141,12 @@ ALTER TABLE messreihe_periode
     ADD CONSTRAINT messreihe_periode_keine_werte_energie_chk
         CHECK (menge_zustand IS DISTINCT FROM 'keine Werte' OR (energie IS NULL AND summe IS NULL)),
     ADD CONSTRAINT messreihe_periode_gemessen_chk
-        CHECK (gemessen_s IS NULL OR gemessen_s >= 0);
+        CHECK (gemessen_s IS NULL OR gemessen_s >= 0),
+    -- Die Summe der GUTEN WERTE gibt es nur am Momentanwert. Eine Summe von
+    -- Viertelstunden-MENGEN gibt es nie (IP-5: die Menge kommt aus den
+    -- Periodenständen) — an einer Zählerreihe bleibt die Spalte leer.
+    ADD CONSTRAINT messreihe_periode_summe_chk
+        CHECK (summe IS NULL OR wertart = 'gauge');
 
 -- -----------------------------------------------------------------------------
 -- 5. Rechte
