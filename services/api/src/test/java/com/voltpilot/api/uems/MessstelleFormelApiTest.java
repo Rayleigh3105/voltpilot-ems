@@ -229,6 +229,80 @@ class MessstelleFormelApiTest {
                 .get("terme")).hasSize(1);
     }
 
+    // ================================================================ Bausteine
+
+    @Test
+    void einBausteinVerkettetEineAndereMessstelleUndRechnetRichtig() throws Exception {
+        Welt w = welt();
+        probe(w, PV1, 12400);
+        probe(w, PV2, 8000);
+        probe(w, PV3, 3100);
+        // B = PV1 + PV2 = 20,4 kW.
+        UUID b = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Teil-PV", term(w, PV1), term(w, PV2))), 201).get("id").asText());
+        assertThat(ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + b + "/wert", null), 200)
+                .get("wert").asDouble()).isEqualTo(20.4);
+
+        // A = Baustein(B) + PV3 = 20,4 + 3,1 = 23,5 kW.
+        JsonNode msA = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Gesamt-PV", mterm(b), term(w, PV3))), 201);
+        assertThat(msA.at("/hauptgroesse/groesse").asText()).isEqualTo("Wirkleistung");
+        assertThat(msA.get("lebenszyklus").asText()).isEqualTo("aktiv");
+        UUID a = UUID.fromString(msA.get("id").asText());
+
+        JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + a + "/wert", null), 200);
+        assertThat(wert.get("wert").asDouble()).isEqualTo(23.5);
+        assertThat(wert.get("unvollstaendig").asBoolean()).isFalse();
+
+        JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + a + "/formel", null), 200);
+        assertThat(formel.get("eingaenge_eingerichtet").asBoolean()).isTrue();
+        assertThat(formel.at("/terme/0/eingang_art").asText()).isEqualTo("messstelle");
+        assertThat(formel.at("/terme/0/quell_messstelle_id").asText()).isEqualTo(b.toString());
+        assertThat(formel.at("/terme/0/groesse/groesse").asText()).isEqualTo("Wirkleistung");
+
+        // Ein fehlender Eingang IM Baustein macht auch den verketteten Wert null (nie Teilsumme).
+        Welt w2 = welt();
+        probe(w2, PV1, 12400); // PV2 fehlt -> B unvollständig -> A null
+        UUID b2 = UUID.fromString(ok(ruf(w2, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Teil-PV", term(w2, PV1), term(w2, PV2))), 201).get("id").asText());
+        probe(w2, PV3, 3100);
+        UUID a2 = UUID.fromString(ok(ruf(w2, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Gesamt-PV", mterm(b2), term(w2, PV3))), 201).get("id").asText());
+        JsonNode wert2 = ok(ruf(w2, HttpMethod.GET, "/api/v1/messstellen/" + a2 + "/wert", null), 200);
+        assertThat(wert2.get("wert").isNull()).as("Baustein unvollständig -> null, nicht 3,1 kW").isTrue();
+        assertThat(wert2.get("unvollstaendig").asBoolean()).isTrue();
+    }
+
+    @Test
+    void einZyklusInDerVerkettungLiefertNullUndHaengtNichtAuf() throws Exception {
+        Welt w = welt();
+        probe(w, PV1, 12400);
+        // B = PV1, A = Baustein(B) — bis hierher keine Kette im Kreis: A = 12,4 kW.
+        UUID b = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Teil-PV", term(w, PV1))), 201).get("id").asText());
+        UUID a = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Gesamt-PV", mterm(b))), 201).get("id").asText());
+        assertThat(ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + a + "/wert", null), 200)
+                .get("wert").asDouble()).isEqualTo(12.4);
+
+        // Den Kreis kann die Anlege-Schnittstelle nicht bilden (der neue Knoten existiert noch
+        // nicht, wenn er referenziert würde) — er entstünde erst über einen künftigen Bearbeiten-
+        // Weg. Wir erzeugen den DB-Zustand direkt und beweisen: die Rechnung hält NICHT auf,
+        // sondern liefert ehrlich null (die Frische-Grenze der Kette greift über den Besucht-Riegel).
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, eingang_art, "
+                + "quell_messstelle_id, vorzeichen, faktor) VALUES (?, ?, 1, 'messstelle', ?, '+', 1)",
+                w.mandant(), b, a);
+
+        JsonNode wertA = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + a + "/wert", null), 200);
+        assertThat(wertA.get("wert").isNull()).as("der Kreis A->B->A liefert null, nicht eine Endlosschleife").isTrue();
+        assertThat(wertA.get("unvollstaendig").asBoolean()).isTrue();
+        // Auch der Verlauf terminiert und bleibt leer/ehrlich (kein Bucket ist vollständig).
+        JsonNode verlaufA = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + a + "/verlauf", null), 200);
+        for (JsonNode p : verlaufA.get("punkte")) {
+            assertThat(p.get("wert").isNull()).isTrue();
+        }
+    }
+
     // ================================================================ die Welt
 
     private record Welt(UUID mandant, UUID anlage, UUID box, UUID komponente) {}
@@ -283,6 +357,15 @@ class MessstelleFormelApiTest {
         t.put("eingang_art", "messkanal");
         t.put("entity_id", w.komponente().toString());
         t.put("point_key", pointKey);
+        t.put("vorzeichen", "+");
+        return t;
+    }
+
+    /** Ein Baustein-Term: eine andere Messstelle als Eingang. */
+    private static Map<String, Object> mterm(UUID quellMessstelle) {
+        Map<String, Object> t = new LinkedHashMap<>();
+        t.put("eingang_art", "messstelle");
+        t.put("quell_messstelle_id", quellMessstelle.toString());
         t.put("vorzeichen", "+");
         return t;
     }
