@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/uems-referenzunternehmen.schema.json",
   "title": "UEMS-Referenzunternehmen (Kunststoffwerk Ahrenberg GmbH)",
-  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 21 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
+  "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 22 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "zuordnungen", "zeitachse"],
   "properties": {
-    "version": { "type": "string", "const": "1.1", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen)." },
+    "version": { "type": "string", "const": "1.2", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen · 1.2: Bezugsgrößen-Kennungen und BZ-5, Ablesungen an MS-21, MS-22 als Rest von AN-3, Tageswerte des 18.10.2026, `formel_typ` — sowie die beiden entschiedenen Berichtigungen MS-09 und Ende der 9000-Anteile)." },
     "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
     "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
     "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
@@ -383,6 +383,23 @@
           "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden; Grundlage der Abdeckung („85 von 90“) und der Beobachtung „liefert Daten“." },
           "kadenz_beschreibung": { "type": ["string", "null"], "description": "Die Erwartung in Kundensprache, wenn eine Zahl in Sekunden sie nicht trifft." },
           "formel": { "type": ["string", "null"], "description": "Bei einer berechneten Messstelle: wie sie gerechnet wird." },
+          "formel_typ": { "type": ["string", "null"], "enum": ["gewichtete_summe", "rest", "saldo", null], "description": "Fassung 1.2 (AP-10 E19): welcher der drei Formel-Typen aus `messstelle-formel.md` §0 gerechnet wird. Nur eine berechnete Messstelle trägt einen; ein `rest` speichert keine Terme, er folgt je Tag der elektrischen Stellung." },
+          "ablesungen": {
+            "type": "array",
+            "description": "Fassung 1.2 (AP-09 W5): die manuellen Ablesungen einer Messstelle ohne Datenquelle. Eine Ablesung ist ein STAND zu einem Zeitpunkt; zwei aufeinanderfolgende Ablesungen schließen einen Ablesezeitraum. Nichts wird zwischen ihnen interpoliert.",
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["zeitpunkt", "stand", "einheit", "abgelesen_von"],
+              "properties": {
+                "zeitpunkt": { "$ref": "#/$defs/zeitpunkt", "description": "Wann abgelesen wurde." },
+                "stand": { "type": "number", "description": "Der abgelesene Zählerstand." },
+                "einheit": { "$ref": "#/$defs/einheit", "description": "Einheit des Stands." },
+                "abgelesen_von": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Person, die abgelesen hat." },
+                "zuordnung_monat": { "type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}$", "description": "Der Kalendermonat, dem der SCHLIESSENDE Ablesezeitraum zugerechnet wird (AP-09 Z6/E5) — vom Kunden gewählt, nie maschinell gesetzt; leer heißt „keinem Monat zugeordnet“." },
+                "hinweis": { "type": ["string", "null"], "description": "Was zu dieser Ablesung zu wissen ist." }
+              }
+            }
+          },
           "quelle_hinweis": { "type": ["string", "null"], "description": "Was zur Herkunft dieser Messstelle zu wissen ist." },
           "beispielwerte": {
             "type": "object", "additionalProperties": false,
@@ -394,6 +411,9 @@
               "oktober_2026_kwh": { "type": ["number", "null"], "description": "Menge im Oktober 2026 in Kilowattstunden." },
               "oktober_2026_m3": { "type": ["number", "null"], "description": "Menge im Oktober 2026 in Kubikmetern (nur beim Medium Gas)." },
               "oktober_2026_beschreibung": { "type": ["string", "null"], "description": "Die Monatsmenge in Worten, etwa wenn der Monat angebrochen war." },
+              "oktober_2026_laden_kwh": { "type": ["number", "null"], "description": "Fassung 1.2: geladene Menge im Oktober 2026 in Kilowattstunden (nur beim Speicher) — Laden und Entladen gehen je EINZELN in eine Bilanz ein, nie als Saldo." },
+              "oktober_2026_entladen_kwh": { "type": ["number", "null"], "description": "Fassung 1.2: entladene Menge im Oktober 2026 in Kilowattstunden (nur beim Speicher)." },
+              "tag_2026_10_18_kwh": { "type": ["number", "null"], "description": "Fassung 1.2 (AP-10 E19): Tagesmenge am 18.10.2026 in Kilowattstunden — der Tag der Plan-Abnahme am Werk Lindach (100 / 60 / 30 / 10)." },
               "momentanleistung_kw": { "type": ["number", "null"], "description": "Leistung zur Momentaufnahme in Kilowatt; ein Minus heißt Entladen." },
               "momentanwert_beschreibung": { "type": ["string", "null"], "description": "Die Momentaufnahme in Worten." },
               "ladestand_prozent": { "type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Ladestand des Speichers zur Momentaufnahme." }
@@ -447,11 +467,15 @@
         "properties": {
           "kennzeichen": { "$ref": "#/$defs/kennzeichen", "description": "Kurzzeichen der Bezugsgröße (BZ-1 …)." },
           "name": { "type": "string", "description": "Name in Kundensprache." },
-          "einheit": { "type": "string", "description": "Einheit des Werts." },
-          "periode": { "type": "string", "description": "Wie oft der Wert erfasst wird." },
+          "einheit": { "type": "string", "description": "Einheit des Werts, so wie der Kunde sie nennt („kg Granulat“)." },
+          "einheit_code": { "type": ["string", "null"], "enum": ["kg", "t", "Stück", "h", "min", "m²", "m³", "l", "Personen", "Schichten", "Kd", "°C", null], "description": "Fassung 1.2 (AP-09 E4/W5): dieselbe Einheit im GESCHLOSSENEN Vokabular des Bezugsdaten-Vertrags (`bezugsdaten-vectors.json` `einheiten`). Gerechnet wird nur innerhalb derselben Größe und nur mit einem festen Faktor; ein Wort außerhalb des Vokabulars wird verworfen, nie geraten." },
+          "periode": { "type": "string", "description": "Wie oft der Wert erfasst wird, in Kundensprache." },
+          "periode_code": { "type": ["string", "null"], "enum": ["tag", "woche", "monat", "jahr", null], "description": "Fassung 1.2 (AP-09 E7/W5): dieselbe Periode im geschlossenen Vokabular (`bezugsdaten-vectors.json` `vokabulare.periode_art`). Leer heißt „keine Periode“ — ein Stammdatum gilt zeitlich, es wird nicht erhoben." },
+          "wertart": { "type": ["string", "null"], "enum": ["periodenwert", "stand", "stammdatum", null], "description": "Fassung 1.2 (AP-09 W6): wie der Wert zu lesen ist. Der Schlüssel der Idempotenz hängt daran — Periodenwert = Bezugsgröße + Periode, Stand = Reihe + Zeitpunkt." },
           "herkunft": { "type": ["string", "null"], "description": "Woher der Wert kommt." },
-          "geltung_art": { "type": "string", "enum": ["prozess", "ort"], "description": "Ob die Größe für einen Prozess oder für einen Ort gilt." },
+          "geltung_art": { "type": "string", "enum": ["prozess", "ort", "unternehmen", "standort", "gebaeude", "bereich", "kostenstelle", "messstelle"], "description": "Für welches Objekt die Größe gilt. Die Fassung 1.1 kannte „prozess“ und „ort“; Fassung 1.2 nimmt zusätzlich die übrigen Geltungsbereiche des Entscheids AP-09 E1 an — die 1.1-Werte bleiben unverändert." },
           "geltung": { "type": ["string", "null"], "description": "Prozess, für den sie gilt; leer bei einer Größe, die an vielen Orten hängt." },
+          "messstelle": { "type": ["string", "null"], "description": "Fassung 1.2 (AP-09 E1/W5): die Messstelle, für die die Größe gilt — nur bei `geltung_art = messstelle`, sonst leer." },
           "oktober_2026_wert": { "type": ["number", "null"], "description": "Wert im Oktober 2026; leer heißt „nicht als eine Zahl erfassbar“." },
           "oktober_2026_beschreibung": { "type": ["string", "null"], "description": "Der Wert in Worten, wenn eine Zahl ihn nicht trägt." }
         }

@@ -23,7 +23,7 @@
   "herkunft": "UEMS AP-09 §4 (U1–U6, Z1–Z7, F1–F6, C1–C9, K1–K7, Invarianten 1–12), Entscheide E1–E17 vom 12.09.2026",
   "zeitzone": "Europe/Berlin",
   "referenzunternehmen": "./uems-referenzunternehmen.json",
-  "referenz_stand": "Fassung vom 11.09.2026. BZ-5 „Ladezeit Ladepunkt Halle 2“, die Ablesungen an MS-21 und die Einheiten-Kennungen trägt AP-09 IP-2 dort nach; bis dahin stehen sie NUR hier und sind je Fall unter „annahmen“ als Annahme gekennzeichnet.",
+  "referenz_stand": "Fassung 1.2 vom 12.09.2026. BZ-5 „Ladezeit Ladepunkt Halle 2“, die Ablesungen an MS-21 und die Einheiten-Kennungen (`einheit_code`, `periode_code`, `wertart`, `messstelle`) sind mit AP-09 IP-2 in der Referenzdatei nachgetragen. Die Fälle rechnen unverändert weiter; ihre „annahmen“ bleiben stehen und sagen nun, WOHER die Angabe kommt.",
   "regeln_kurz": [
     "Eine Bezugsgröße hat genau EINEN Geltungsbereich (Unternehmen · Standort · Gebäude · Bereich · Prozess · Kostenstelle · Messstelle) und genau EINE Wertart (Periodenwert · Stand · Stammdatum mit Gültigkeit).",
     "Idempotenz: Periodenwert = Bezugsgröße + Periode; Stand = Reihe + Zeitpunkt. Gleicher Wert (nach Umrechnung) = Wiederholung (0 Änderungen); anderer Wert = Konflikt, nie still ersetzt.",

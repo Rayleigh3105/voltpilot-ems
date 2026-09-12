@@ -186,6 +186,10 @@ const verweise = (): Array<[string, string, string[]]> => {
       out.push([`${m.kennzeichen}.vergleich.komponente`, q.komponente, ['komponenten']]);
       out.push([`${m.kennzeichen}.vergleich.geraet`, q.geraet, ['geraete']]);
     }
+    // Fassung 1.2 (AP-09 W5): wer abgelesen hat, ist eine Person dieser Datei.
+    for (const a of (m.ablesungen ?? []) as any[]) {
+      out.push([`${m.kennzeichen}.ablesung.abgelesen_von`, a.abgelesen_von, ['personen']]);
+    }
   }
   for (const p of daten.personen as any[]) {
     for (const s of p.standorte as string[]) out.push([`${p.kuerzel}.standort`, s, ['standorte']]);
@@ -197,6 +201,8 @@ const verweise = (): Array<[string, string, string[]]> => {
     if (b.geltung_art === 'prozess' && b.geltung) {
       out.push([`${b.kennzeichen}.geltung`, b.geltung, ['prozesse']]);
     }
+    // Fassung 1.2 (AP-09 E1/W5): eine Bezugsgröße kann an einer Messstelle hängen.
+    if (b.messstelle) out.push([`${b.kennzeichen}.messstelle`, b.messstelle, ['messstellen']]);
   }
   // Welcher Elternknoten wem erlaubt ist, prüft „hängt jeden Ort zeitgültig an seinen Elternknoten“.
   const VON: Record<string, string[]> = {
@@ -232,7 +238,7 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect(daten.anlagen).toHaveLength(3);
     expect(daten.datenquellen).toHaveLength(7);
     expect(daten.geraete).toHaveLength(10);
-    expect(daten.messstellen).toHaveLength(21);
+    expect(daten.messstellen).toHaveLength(22);
 
     // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst NACH
     // der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte EK-7, die
@@ -248,7 +254,9 @@ describe('UEMS-Referenzunternehmen — Form', () => {
 
     const nachArt = (a: string) => (daten.messstellen as any[]).filter((m) => m.art === a).length;
     expect(nachArt('gemessen')).toBe(17);
-    expect(nachArt('berechnet')).toBe(4);
+    // Fassung 1.2 (AP-10 E19): MS-22 „Lindach nicht zugeordnet“ ist der Rest der
+    // Bilanz von AN-3 — ohne ihn hätte Lindach eine unsichtbare Bilanzdifferenz.
+    expect(nachArt('berechnet')).toBe(5);
   });
 });
 
@@ -678,6 +686,212 @@ describe('UEMS-Referenzunternehmen — Invarianten des Fachmodells', () => {
       if (!hatQuelle && hatKadenz) fehler.push(`${m.kennzeichen}: Kadenz ohne führende Quelle`);
       if (hatQuelle && !hatKadenz) fehler.push(`${m.kennzeichen}: führende Quelle ohne Kadenz`);
       if (m.art === 'berechnet' && !m.formel) fehler.push(`${m.kennzeichen}: berechnet ohne Formel`);
+    }
+    expect(fehler).toEqual([]);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.2', () => {
+  const messstelle = (kz: string): any =>
+    (daten.messstellen as any[]).find((m) => m.kennzeichen === kz);
+
+  /**
+   * AP-10 E19: jede BERECHNETE Messstelle nennt ihren Formel-Typ aus dem
+   * geschlossenen Vokabular von `messstelle-formel.md` §0, jede gemessene nennt
+   * keinen. Der Typ entscheidet die Richtungsregel — er darf nicht fehlen und
+   * nicht geraten werden.
+   */
+  it('nennt je berechneter Messstelle ihren Formel-Typ', () => {
+    const vokabular = new Set(['gewichtete_summe', 'rest', 'saldo']);
+    const fehler: string[] = [];
+    for (const m of daten.messstellen as any[]) {
+      const berechnet = m.art === 'berechnet';
+      if (berechnet && m.formel_typ == null) fehler.push(`${m.kennzeichen}: berechnet ohne formel_typ`);
+      else if (berechnet && !vokabular.has(m.formel_typ)) {
+        fehler.push(`${m.kennzeichen}: formel_typ außerhalb des Vokabulars: ${m.formel_typ}`);
+      } else if (!berechnet && m.formel_typ != null) {
+        fehler.push(`${m.kennzeichen}: gemessen, trägt aber einen formel_typ`);
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  /**
+   * AP-10 §4 (E1/E3): jede berechnete Messstelle rechnet aus den Beispielwerten
+   * ihrer EIGENEN Eingänge genau ihren eigenen Beispielwert. Das ist der Nachweis
+   * der Berichtigung W10: MS-09 ist 54 580 kWh, weil ihre Formel aus ihren
+   * Eingängen 54 580 ergibt — die 52 600 der Fassung 1.1 folgten aus keiner
+   * Rechnung. Der Speicher geht mit ZWEI Anteilen ein (Laden als Abfluss,
+   * Entladen als Zufluss), nie als Saldo (E4).
+   */
+  it.each([
+    ['MS-09', [['MS-01', 1, 'oktober_2026_kwh'], ['MS-03', 1, 'oktober_2026_kwh'],
+      ['MS-04', 1, 'oktober_2026_entladen_kwh'], ['MS-02', -1, 'oktober_2026_kwh'],
+      ['MS-04', -1, 'oktober_2026_laden_kwh'], ['MS-05', -1, 'oktober_2026_kwh'],
+      ['MS-06', -1, 'oktober_2026_kwh'], ['MS-07', -1, 'oktober_2026_kwh'],
+      ['MS-08', -1, 'oktober_2026_kwh']]],
+    ['MS-15', [['MS-10', 1, 'oktober_2026_kwh'], ['MS-11', -1, 'oktober_2026_kwh'],
+      ['MS-12', -1, 'oktober_2026_kwh'], ['MS-13', -1, 'oktober_2026_kwh'],
+      ['MS-14', -1, 'oktober_2026_kwh']]],
+    ['MS-19', [['MS-01', 1, 'oktober_2026_kwh'], ['MS-10', 1, 'oktober_2026_kwh'],
+      ['MS-16', 1, 'oktober_2026_kwh']]],
+    ['MS-20', [['MS-06', 1, 'oktober_2026_kwh'], ['MS-11', 1, 'oktober_2026_kwh'],
+      ['MS-07', 0.7, 'oktober_2026_kwh']]],
+    ['MS-22', [['MS-16', 1, 'oktober_2026_kwh'], ['MS-17', -1, 'oktober_2026_kwh'],
+      ['MS-18', -1, 'oktober_2026_kwh']]],
+  ] as [string, [string, number, string][]][])(
+    'rechnet %s aus den Beispielwerten seiner eigenen Eingänge',
+    (kz, summanden) => {
+      let summe = 0;
+      for (const [quelle, faktor, feld] of summanden) {
+        const wert = messstelle(quelle).beispielwerte[feld];
+        // „keine Werte“ ist nie 0 — ein fehlender Eingang wäre kein Summand.
+        expect(wert, `${kz}: Eingang ${quelle}.${feld}`).not.toBeNull();
+        expect(wert, `${kz}: Eingang ${quelle}.${feld}`).not.toBeUndefined();
+        summe += faktor * wert;
+      }
+      expect(Math.round(summe * 1e6) / 1e6).toBe(messstelle(kz).beispielwerte.oktober_2026_kwh);
+    },
+  );
+
+  /**
+   * Die PLAN-ABNAHME des Captains (AP-10 F1), an der Datei nachgerechnet:
+   * 100 kWh am Hauptzähler, 60 und 30 kWh an den beiden Unterzählern — also
+   * 100 kWh Gesamtverbrauch des Systems und 10 kWh Bilanzdifferenz.
+   */
+  it('rechnet die Plan-Abnahme des Werks Lindach am 18.10.2026', () => {
+    const tag = (kz: string): number => messstelle(kz).beispielwerte.tag_2026_10_18_kwh;
+    expect(tag('MS-16') - tag('MS-17') - tag('MS-18')).toBe(tag('MS-22'));
+    expect(tag('MS-16')).toBe(tag('MS-17') + tag('MS-18') + tag('MS-22'));
+    expect(messstelle('MS-22').hauptgroesse.richtung).toBe('Bezug');
+    expect(messstelle('MS-22').ort.art).toBe('keiner');
+    expect(messstelle('MS-22').fuehrende_quelle).toEqual([]);
+
+    expect(messstelle('MS-16').elektrische_stellung[0].stellung).toBe('Hauptzähler');
+    for (const kz of ['MS-17', 'MS-18']) {
+      expect(messstelle(kz).elektrische_stellung[0].stellung).toBe('Unterzähler');
+      expect(messstelle(kz).elektrische_stellung[0].unterzaehler_von).toBe('MS-16');
+    }
+  });
+
+  /**
+   * AP-10 W8: ein Kostenstellen-Anteil gilt nie über das Bestehen seiner
+   * Kostenstelle hinaus. Läuft die Kostenstelle aus, endet der Anteil mit ihr —
+   * danach ist die Messstelle ehrlich „nicht verteilt“, nie still umgehängt.
+   */
+  it('lässt keinen Anteil länger gelten als seine Kostenstelle', () => {
+    const kostenstellen = new Map<string, any>(
+      (daten.kostenstellen as any[]).map((k) => [k.kennzeichen, k]),
+    );
+    const fehler: string[] = [];
+    for (const m of daten.messstellen as any[]) {
+      for (const a of m.kostenstellen_anteile as any[]) {
+        const k = kostenstellen.get(a.kostenstelle);
+        if (!k) {
+          fehler.push(`${m.kennzeichen}: Kostenstelle ${a.kostenstelle} fehlt`);
+          continue;
+        }
+        if (a.gueltig_ab < k.gueltig_ab) {
+          fehler.push(`${m.kennzeichen} -> ${a.kostenstelle}: beginnt vor der Kostenstelle`);
+        }
+        if (letzterTag(a) > letzterTag(k)) {
+          fehler.push(`${m.kennzeichen} -> ${a.kostenstelle}: gilt länger als die Kostenstelle`);
+        }
+      }
+    }
+    expect(fehler).toEqual([]);
+  });
+
+  /**
+   * AP-09 W5: eine Ablesung ist ein STAND zu einem Zeitpunkt. Die Stände steigen
+   * (ein Rücksprung wäre ein Zählerwechsel, nie eine negative Menge), die ERSTE
+   * Ablesung schließt keinen Zeitraum und trägt deshalb keine Monatszuordnung, und
+   * ein zugeordneter Monat wird von seinem Ablesezeitraum tatsächlich berührt —
+   * zwischen zwei Ablesungen wird nichts interpoliert.
+   */
+  it('führt die Ablesungen als lückenlose Kette von Ständen', () => {
+    const fehler: string[] = [];
+    let geprueft = 0;
+    for (const m of daten.messstellen as any[]) {
+      const ablesungen = (m.ablesungen ?? []) as any[];
+      if (ablesungen.length === 0) continue;
+      geprueft += 1;
+      if (m.fuehrende_quelle.length > 0) {
+        fehler.push(`${m.kennzeichen}: eine abgelesene Messstelle hat keinen Kanal`);
+      }
+      ablesungen.forEach((a, i) => {
+        if (a.einheit !== m.hauptgroesse.einheit) {
+          fehler.push(`${m.kennzeichen}: die Ablesung misst nicht die Hauptgröße`);
+        }
+        if (i === 0) {
+          if (a.zuordnung_monat !== null) {
+            fehler.push(`${m.kennzeichen}: die erste Ablesung ordnet keinen Monat zu`);
+          }
+          return;
+        }
+        const vor = ablesungen[i - 1];
+        if (zeit(a.zeitpunkt) <= zeit(vor.zeitpunkt)) {
+          fehler.push(`${m.kennzeichen}: die Ablesungen stehen nicht in der Reihenfolge ihrer Zeitpunkte`);
+        }
+        if (a.stand < vor.stand) {
+          fehler.push(`${m.kennzeichen}: ein kleinerer Stand ist ein Zählerwechsel, nie eine negative Menge`);
+        }
+        if (a.zuordnung_monat != null) {
+          const von = lokalerTag(vor.zeitpunkt, ZONE).slice(0, 7);
+          const bis = lokalerTag(a.zeitpunkt, ZONE).slice(0, 7);
+          if (a.zuordnung_monat < von || a.zuordnung_monat > bis) {
+            fehler.push(`${m.kennzeichen}: der Monat ${a.zuordnung_monat} liegt außerhalb des Ablesezeitraums`);
+          }
+        }
+      });
+    }
+    expect(fehler).toEqual([]);
+    expect(geprueft).toBeGreaterThan(0);
+  });
+
+  /**
+   * AP-09 E1/E4/E7 (W5): die Kennungen einer Bezugsgröße stehen im GESCHLOSSENEN
+   * Vokabular des Bezugsdaten-Vertrags, nicht in einer eigenen Schreibweise. Der
+   * freie Text der Fassung 1.1 („kg Granulat“) bleibt daneben stehen; der Stoff
+   * wandert nicht in die Einheit. Und eine Größe, die an einer Messstelle hängt,
+   * nennt genau eine — keine andere trägt das Feld.
+   */
+  it('nutzt je Bezugsgröße das geschlossene Vokabular des Bezugsdaten-Vertrags', () => {
+    const vertrag = JSON.parse(
+      readFileSync(resolve(WURZEL, 'bezugsdaten-vectors.json'), 'utf8'),
+    ) as Record<string, any>;
+    const einheiten = new Set<string>(Object.values(vertrag.einheiten as Record<string, string[]>).flat());
+    const perioden = new Set<string>(vertrag.vokabulare.periode_art);
+    const wertarten = new Set<string>(vertrag.vokabulare.wertart);
+    // Die Fassung 1.1 kennt zusätzlich „ort“ für eine Größe, die an vielen Orten
+    // hängt (BZ-4 Bezugsfläche) — sie bleibt unverändert gültig.
+    const geltungsarten = new Set<string>([...(vertrag.vokabulare.geltung_art as string[]), 'ort']);
+
+    const fehler: string[] = [];
+    for (const b of daten.bezugsgroessen as any[]) {
+      if (b.einheit_code == null) fehler.push(`${b.kennzeichen}: ohne einheit_code`);
+      else if (!einheiten.has(b.einheit_code)) {
+        fehler.push(`${b.kennzeichen}: einheit_code außerhalb des Vokabulars: ${b.einheit_code}`);
+      } else if (!String(b.einheit).startsWith(b.einheit_code)) {
+        fehler.push(`${b.kennzeichen}: einheit_code passt nicht zum Text „${b.einheit}“`);
+      }
+      if (b.periode_code != null && !perioden.has(b.periode_code)) {
+        fehler.push(`${b.kennzeichen}: periode_code außerhalb des Vokabulars: ${b.periode_code}`);
+      }
+      if (b.wertart == null || !wertarten.has(b.wertart)) {
+        fehler.push(`${b.kennzeichen}: wertart fehlt oder steht außerhalb des Vokabulars`);
+      }
+      // Ein Stammdatum gilt zeitlich; es hat keine Periode, und ein Periodenwert
+      // hat immer eine — „null“ heißt hier „keine“, nie „unbekannt“.
+      if ((b.wertart === 'stammdatum') === (b.periode_code != null)) {
+        fehler.push(`${b.kennzeichen}: Wertart und periode_code passen nicht zusammen`);
+      }
+      if (!geltungsarten.has(b.geltung_art)) {
+        fehler.push(`${b.kennzeichen}: geltung_art außerhalb des Vokabulars: ${b.geltung_art}`);
+      }
+      if ((b.geltung_art === 'messstelle') !== (b.messstelle != null)) {
+        fehler.push(`${b.kennzeichen}: das Feld \`messstelle\` gehört genau zur geltung_art „messstelle“`);
+      }
     }
     expect(fehler).toEqual([]);
   });

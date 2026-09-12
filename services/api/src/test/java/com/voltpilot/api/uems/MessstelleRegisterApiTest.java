@@ -506,19 +506,19 @@ class MessstelleRegisterApiTest {
 
         // Anlage: die elektrische Stellung am Stichtag.
         assertThat(kennzeichen(register(ah.wer(), am + "&anlage=" + ah.anlagen().get("AN-3"))))
-                .containsExactly("MS-16", "MS-17", "MS-18");
+                .containsExactly("MS-16", "MS-17", "MS-18", "MS-22");
         assertThat(kennzeichen(register(ah.wer(), am + "&anlage=" + ah.anlagen().get("AN-2"))))
                 .containsExactly("MS-10", "MS-11", "MS-12", "MS-13", "MS-14", "MS-15");
 
         // Zustand: die berechneten sind bis AP-10 Entwürfe (ihre Formel fehlt), die anderen aktiv.
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=entwurf")))
-                .containsExactly("MS-09", "MS-15", "MS-19", "MS-20");
+                .containsExactly("MS-09", "MS-15", "MS-19", "MS-20", "MS-22");
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=aktiv"))).hasSize(17).contains("MS-21");
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=archiviert"))).isEmpty();
 
         // Ohne Quelle: MS-21 (Gas, manuelle Ablesung) — keine berechnete.
         assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=true"))).containsExactly("MS-21");
-        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false"))).hasSize(21);
+        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false"))).hasSize(22);
         // Vor dem 01.10.2026 hatte MS-10 seine Quelle noch nicht — dann sagt das Register das.
         assertThat(kennzeichen(register(ah.wer(), "?stichtag=2026-09-30&ohneQuelle=true")))
                 .contains("MS-10", "MS-21");

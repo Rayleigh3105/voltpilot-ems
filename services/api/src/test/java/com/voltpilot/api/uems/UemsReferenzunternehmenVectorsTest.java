@@ -107,7 +107,7 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(d.get("anlagen")).as("Anlagen").hasSize(3);
         assertThat(d.get("datenquellen")).as("Datenquellen").hasSize(7);
         assertThat(d.get("geraete")).as("Geräte").hasSize(10);
-        assertThat(d.get("messstellen")).as("Messstellen").hasSize(21);
+        assertThat(d.get("messstellen")).as("Messstellen").hasSize(22);
 
         // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst
         // NACH der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte
@@ -126,7 +126,9 @@ class UemsReferenzunternehmenVectorsTest {
         long berechnet = kinder(d.get("messstellen")).stream()
                 .filter(m -> "berechnet".equals(m.get("art").asText())).count();
         assertThat(gemessen).as("gemessene Messstellen (16 elektrisch + MS-21 Gas)").isEqualTo(17);
-        assertThat(berechnet).as("berechnete Messstellen").isEqualTo(4);
+        // Fassung 1.2 (AP-10 E19): MS-22 „Lindach nicht zugeordnet“ ist der Rest der
+        // Bilanz von AN-3 — ohne ihn hätte Lindach eine unsichtbare Bilanzdifferenz.
+        assertThat(berechnet).as("berechnete Messstellen").isEqualTo(5);
     }
 
     // --------------------------------------------------------- Kennzeichen
@@ -759,6 +761,270 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(fehler).as("Ehrlichkeit der Kadenz").isEmpty();
     }
 
+    // ------------------------------------------------------- Fassung 1.2
+
+    /**
+     * AP-10 E19: jede BERECHNETE Messstelle nennt ihren Formel-Typ aus dem
+     * geschlossenen Vokabular von {@code messstelle-formel.md} §0, jede gemessene
+     * nennt keinen. Der Typ entscheidet die Richtungsregel — er darf deshalb nicht
+     * fehlen und nicht geraten werden.
+     */
+    @Test
+    void jedeBerechneteMessstelleNenntIhrenFormelTyp() throws Exception {
+        Set<String> vokabular = Set.of("gewichtete_summe", "rest", "saldo");
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode m : kinder(daten().get("messstellen"))) {
+            String kz = m.get("kennzeichen").asText();
+            boolean berechnet = "berechnet".equals(m.get("art").asText());
+            if (berechnet && !m.hasNonNull("formel_typ")) {
+                fehler.add(kz + ": berechnet ohne formel_typ");
+            } else if (berechnet && !vokabular.contains(m.get("formel_typ").asText())) {
+                fehler.add(kz + ": formel_typ außerhalb des Vokabulars: " + m.get("formel_typ").asText());
+            } else if (!berechnet && m.hasNonNull("formel_typ")) {
+                fehler.add(kz + ": gemessen, trägt aber einen formel_typ");
+            }
+        }
+        assertThat(fehler).as("Formel-Typ je berechneter Messstelle").isEmpty();
+    }
+
+    /**
+     * AP-10 §4 (E1/E3): jede berechnete Messstelle der Datei rechnet aus den
+     * Beispielwerten ihrer EIGENEN Eingänge genau ihren eigenen Beispielwert.
+     * Diese Prüfung ist der Nachweis der Berichtigung W10: MS-09 ist 54 580 kWh,
+     * weil ihre Formel aus ihren Eingängen 54 580 ergibt — die 52 600 der Fassung
+     * 1.1 folgten aus keiner Rechnung. Der Speicher geht mit ZWEI Anteilen ein
+     * (Laden als Abfluss, Entladen als Zufluss), nie als Saldo (E4).
+     */
+    @TestFactory
+    List<DynamicTest> jedeBerechneteMessstelleRechnetIhrenOktoberWert() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> ms = new LinkedHashMap<>();
+        kinder(d.get("messstellen")).forEach(m -> ms.put(m.get("kennzeichen").asText(), m));
+
+        // Je berechneter Messstelle: die Summanden ihrer Formel mit Vorzeichen und
+        // Faktor, wörtlich abgelesen aus dem Feld `formel` der Datei selbst.
+        Map<String, List<Summand>> rechnungen = new LinkedHashMap<>();
+        rechnungen.put("MS-09", List.of(
+                new Summand("MS-01", 1, "oktober_2026_kwh"), new Summand("MS-03", 1, "oktober_2026_kwh"),
+                new Summand("MS-04", 1, "oktober_2026_entladen_kwh"), new Summand("MS-02", -1, "oktober_2026_kwh"),
+                new Summand("MS-04", -1, "oktober_2026_laden_kwh"), new Summand("MS-05", -1, "oktober_2026_kwh"),
+                new Summand("MS-06", -1, "oktober_2026_kwh"), new Summand("MS-07", -1, "oktober_2026_kwh"),
+                new Summand("MS-08", -1, "oktober_2026_kwh")));
+        rechnungen.put("MS-15", List.of(
+                new Summand("MS-10", 1, "oktober_2026_kwh"), new Summand("MS-11", -1, "oktober_2026_kwh"),
+                new Summand("MS-12", -1, "oktober_2026_kwh"), new Summand("MS-13", -1, "oktober_2026_kwh"),
+                new Summand("MS-14", -1, "oktober_2026_kwh")));
+        rechnungen.put("MS-19", List.of(
+                new Summand("MS-01", 1, "oktober_2026_kwh"), new Summand("MS-10", 1, "oktober_2026_kwh"),
+                new Summand("MS-16", 1, "oktober_2026_kwh")));
+        rechnungen.put("MS-20", List.of(
+                new Summand("MS-06", 1, "oktober_2026_kwh"), new Summand("MS-11", 1, "oktober_2026_kwh"),
+                new Summand("MS-07", 0.7, "oktober_2026_kwh")));
+        rechnungen.put("MS-22", List.of(
+                new Summand("MS-16", 1, "oktober_2026_kwh"), new Summand("MS-17", -1, "oktober_2026_kwh"),
+                new Summand("MS-18", -1, "oktober_2026_kwh")));
+
+        List<DynamicTest> tests = new ArrayList<>();
+        rechnungen.forEach((kz, summanden) -> tests.add(DynamicTest.dynamicTest(
+                kz + " · Oktober 2026", () -> {
+            assertThat(ms).as("die berechnete Messstelle steht in der Datei").containsKey(kz);
+            double summe = 0;
+            for (Summand t : summanden) {
+                JsonNode quelle = ms.get(t.messstelle()).get("beispielwerte").get(t.feld());
+                assertThat(quelle).as(kz + ": Eingang " + t.messstelle() + "." + t.feld())
+                        .isNotNull();
+                assertThat(quelle.isNull()).as(kz + ": Eingang " + t.messstelle() + "." + t.feld()
+                        + " ist leer — eine Bilanz ohne Eingang ist „keine Werte“, nie 0").isFalse();
+                summe += t.faktor() * quelle.asDouble();
+            }
+            assertThat(summe).as(kz + ": die Formel rechnet ihren eigenen Beispielwert")
+                    .isEqualTo(ms.get(kz).at("/beispielwerte/oktober_2026_kwh").asDouble());
+        })));
+        return tests;
+    }
+
+    /**
+     * Die PLAN-ABNAHME des Captains (AP-10 F1), an der Datei nachgerechnet:
+     * 100 kWh am Hauptzähler, 60 und 30 kWh an den beiden Unterzählern — also
+     * 100 kWh Gesamtverbrauch des Systems und 10 kWh Bilanzdifferenz. Die Richtung
+     * bleibt „Bezug“ (Bezug − Bezug), der Rest hat keinen Ort und kein Gerät.
+     */
+    @Test
+    void diePlanAbnahmeDesWerksLindachRechnetAmTagDerAbnahme() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> ms = new LinkedHashMap<>();
+        kinder(d.get("messstellen")).forEach(m -> ms.put(m.get("kennzeichen").asText(), m));
+        String feld = "/beispielwerte/tag_2026_10_18_kwh";
+
+        double haupt = ms.get("MS-16").at(feld).asDouble();
+        double u1 = ms.get("MS-17").at(feld).asDouble();
+        double u2 = ms.get("MS-18").at(feld).asDouble();
+        double rest = ms.get("MS-22").at(feld).asDouble();
+
+        assertThat(haupt - u1 - u2).as("Bilanzdifferenz am 18.10.2026").isEqualTo(rest);
+        assertThat(haupt).as("Gesamtverbrauch des Systems = Zufluss am Hauptzähler")
+                .isEqualTo(u1 + u2 + rest);
+        assertThat(ms.get("MS-22").at("/hauptgroesse/richtung").asText())
+                .as("Bezug − Bezug bleibt Bezug (AP-10 E1)").isEqualTo("Bezug");
+        assertThat(ms.get("MS-22").at("/ort/art").asText())
+                .as("ein Rest über zwei Gebäude trägt keinen Ort").isEqualTo("keiner");
+        assertThat(kinder(ms.get("MS-22").get("fuehrende_quelle")))
+                .as("ein Rest hat kein Gerät").isEmpty();
+
+        // Die drei Eingänge sind genau die Stellung, aus der der Rest abgeleitet wird.
+        assertThat(ms.get("MS-16").at("/elektrische_stellung/0/stellung").asText()).isEqualTo("Hauptzähler");
+        for (String kz : List.of("MS-17", "MS-18")) {
+            assertThat(ms.get(kz).at("/elektrische_stellung/0/stellung").asText()).isEqualTo("Unterzähler");
+            assertThat(ms.get(kz).at("/elektrische_stellung/0/unterzaehler_von").asText()).isEqualTo("MS-16");
+        }
+    }
+
+    /**
+     * AP-10 W8: ein Kostenstellen-Anteil gilt nie über das Bestehen seiner
+     * Kostenstelle hinaus. Läuft die Kostenstelle aus, endet der Anteil mit ihr —
+     * danach ist die Messstelle ehrlich „nicht verteilt“, nie still umgehängt.
+     */
+    @TestFactory
+    List<DynamicTest> keinAnteilGiltLaengerAlsSeineKostenstelle() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> kostenstellen = new LinkedHashMap<>();
+        kinder(d.get("kostenstellen")).forEach(k -> kostenstellen.put(k.get("kennzeichen").asText(), k));
+
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode m : kinder(d.get("messstellen"))) {
+            String kz = m.get("kennzeichen").asText();
+            for (JsonNode a : kinder(m.get("kostenstellen_anteile"))) {
+                String ziel = a.get("kostenstelle").asText();
+                tests.add(DynamicTest.dynamicTest(kz + " -> " + ziel, () -> {
+                    JsonNode k = kostenstellen.get(ziel);
+                    assertThat(k).as(kz + ": Kostenstelle " + ziel).isNotNull();
+                    assertThat(tag(a.get("gueltig_ab").asText()))
+                            .as(kz + " -> " + ziel + ": der Anteil beginnt vor der Kostenstelle")
+                            .isAfterOrEqualTo(tag(k.get("gueltig_ab").asText()));
+                    assertThat(letzterTag(a))
+                            .as(kz + " -> " + ziel + ": der Anteil gilt länger als die Kostenstelle")
+                            .isBeforeOrEqualTo(letzterTag(k));
+                }));
+            }
+        }
+        assertThat(tests).isNotEmpty();
+        return tests;
+    }
+
+    /**
+     * AP-09 W5: eine Ablesung ist ein STAND zu einem Zeitpunkt. Die Stände steigen
+     * (ein Rücksprung wäre ein Zählerwechsel, nie eine negative Menge), die ERSTE
+     * Ablesung schließt keinen Zeitraum und trägt deshalb keine Monatszuordnung,
+     * und ein zugeordneter Monat wird von seinem Ablesezeitraum tatsächlich berührt —
+     * zwischen zwei Ablesungen wird nichts interpoliert.
+     */
+    @TestFactory
+    List<DynamicTest> dieAblesungenSindEineLueckenloseKetteVonStaenden() throws Exception {
+        JsonNode d = daten();
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode m : kinder(d.get("messstellen"))) {
+            String kz = m.get("kennzeichen").asText();
+            List<JsonNode> ablesungen = kinder(m.get("ablesungen"));
+            if (ablesungen.isEmpty()) {
+                continue;
+            }
+            tests.add(DynamicTest.dynamicTest("Ablesungen " + kz, () -> {
+                assertThat(kinder(m.get("fuehrende_quelle")))
+                        .as(kz + ": eine abgelesene Messstelle hat keinen Kanal").isEmpty();
+                for (int i = 0; i < ablesungen.size(); i++) {
+                    JsonNode a = ablesungen.get(i);
+                    assertThat(a.get("einheit").asText())
+                            .as(kz + ": die Ablesung misst die Hauptgröße")
+                            .isEqualTo(m.at("/hauptgroesse/einheit").asText());
+                    if (i == 0) {
+                        assertThat(a.get("zuordnung_monat").isNull())
+                                .as(kz + ": die erste Ablesung schließt keinen Zeitraum und ordnet keinen Monat zu")
+                                .isTrue();
+                        continue;
+                    }
+                    JsonNode vor = ablesungen.get(i - 1);
+                    assertThat(zeit(a.get("zeitpunkt").asText()))
+                            .as(kz + ": die Ablesungen stehen in der Reihenfolge ihrer Zeitpunkte")
+                            .isAfter(zeit(vor.get("zeitpunkt").asText()));
+                    assertThat(a.get("stand").asDouble())
+                            .as(kz + ": ein kleinerer Stand ist ein Zählerwechsel, nie eine negative Menge")
+                            .isGreaterThanOrEqualTo(vor.get("stand").asDouble());
+                    if (a.hasNonNull("zuordnung_monat")) {
+                        ZoneId zone = zone(d);
+                        LocalDate von = tagVon(zeit(vor.get("zeitpunkt").asText()), zone);
+                        LocalDate bis = tagVon(zeit(a.get("zeitpunkt").asText()), zone);
+                        String monat = a.get("zuordnung_monat").asText();
+                        assertThat(monat.compareTo(von.toString().substring(0, 7)) >= 0
+                                        && monat.compareTo(bis.toString().substring(0, 7)) <= 0)
+                                .as(kz + ": der zugeordnete Monat " + monat
+                                        + " wird vom Ablesezeitraum berührt").isTrue();
+                    }
+                }
+            }));
+        }
+        assertThat(tests).isNotEmpty();
+        return tests;
+    }
+
+    /**
+     * AP-09 E1/E4/E7 (W5): die Kennungen einer Bezugsgröße stehen im GESCHLOSSENEN
+     * Vokabular des Bezugsdaten-Vertrags, nicht in einer eigenen Schreibweise. Der
+     * freie Text der Fassung 1.1 („kg Granulat“) bleibt daneben stehen; der Stoff
+     * wandert nicht in die Einheit. Und eine Größe, die an einer Messstelle hängt,
+     * nennt genau eine — keine andere trägt das Feld.
+     */
+    @Test
+    void jedeBezugsgroesseNutztDasGeschlosseneVokabularDesBezugsdatenVertrags() throws Exception {
+        JsonNode vertrag = MAPPER.readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "v2", "bezugsdaten-vectors.json")));
+        Set<String> einheiten = new LinkedHashSet<>();
+        vertrag.get("einheiten").forEach(g -> g.forEach(e -> einheiten.add(e.asText())));
+        Set<String> perioden = new LinkedHashSet<>();
+        vertrag.at("/vokabulare/periode_art").forEach(e -> perioden.add(e.asText()));
+        Set<String> wertarten = new LinkedHashSet<>();
+        vertrag.at("/vokabulare/wertart").forEach(e -> wertarten.add(e.asText()));
+        Set<String> geltungsarten = new LinkedHashSet<>();
+        vertrag.at("/vokabulare/geltung_art").forEach(e -> geltungsarten.add(e.asText()));
+        // Die Fassung 1.1 kennt zusätzlich „ort“ für eine Größe, die an vielen Orten
+        // hängt (BZ-4 Bezugsfläche) — sie bleibt unverändert gültig.
+        geltungsarten.add("ort");
+
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode b : kinder(daten().get("bezugsgroessen"))) {
+            String kz = b.get("kennzeichen").asText();
+            if (b.hasNonNull("einheit_code") && !einheiten.contains(b.get("einheit_code").asText())) {
+                fehler.add(kz + ": einheit_code außerhalb des Vokabulars: " + b.get("einheit_code").asText());
+            }
+            if (!b.hasNonNull("einheit_code")) {
+                fehler.add(kz + ": ohne einheit_code");
+            } else if (!b.get("einheit").asText().startsWith(b.get("einheit_code").asText())) {
+                fehler.add(kz + ": einheit_code passt nicht zum Text „" + b.get("einheit").asText() + "“");
+            }
+            if (b.hasNonNull("periode_code") && !perioden.contains(b.get("periode_code").asText())) {
+                fehler.add(kz + ": periode_code außerhalb des Vokabulars: " + b.get("periode_code").asText());
+            }
+            if (!b.hasNonNull("wertart") || !wertarten.contains(b.get("wertart").asText())) {
+                fehler.add(kz + ": wertart fehlt oder steht außerhalb des Vokabulars");
+            }
+            // Ein Stammdatum gilt zeitlich; es hat keine Periode, und ein Periodenwert
+            // hat immer eine — „null“ heißt hier „keine“, nie „unbekannt“.
+            boolean stammdatum = "stammdatum".equals(b.path("wertart").asText());
+            if (stammdatum == b.hasNonNull("periode_code")) {
+                fehler.add(kz + ": Wertart und periode_code passen nicht zusammen");
+            }
+            if (!geltungsarten.contains(b.get("geltung_art").asText())) {
+                fehler.add(kz + ": geltung_art außerhalb des Vokabulars: " + b.get("geltung_art").asText());
+            }
+            if ("messstelle".equals(b.get("geltung_art").asText()) != b.hasNonNull("messstelle")) {
+                fehler.add(kz + ": das Feld `messstelle` gehört genau zur geltung_art „messstelle“");
+            }
+        }
+        assertThat(fehler).as("Bezugsgrößen gegen das Vokabular des Bezugsdaten-Vertrags").isEmpty();
+    }
+
+    /** Ein Summand einer Formel: welche Messstelle, mit welchem Faktor, aus welchem Beispielwert. */
+    private record Summand(String messstelle, double faktor, String feld) {}
+
     // ------------------------------------------------------------- Helfer
 
     private static DynamicTest flaechenTest(String name, JsonNode objekt) {
@@ -1030,6 +1296,11 @@ class UemsReferenzunternehmenVectorsTest {
                         "komponenten"));
                 out.add(new Verweis(kz + ".vergleich.geraet", q.get("geraet").asText(), "geraete"));
             }
+            // Fassung 1.2 (AP-09 W5): wer abgelesen hat, ist eine Person dieser Datei.
+            for (JsonNode a : kinder(m.get("ablesungen"))) {
+                out.add(new Verweis(kz + ".ablesung.abgelesen_von",
+                        a.get("abgelesen_von").asText(), "personen"));
+            }
         }
         for (JsonNode p : kinder(d.get("personen"))) {
             String kz = p.get("kuerzel").asText();
@@ -1045,6 +1316,11 @@ class UemsReferenzunternehmenVectorsTest {
             if ("prozess".equals(b.get("geltung_art").asText()) && b.hasNonNull("geltung")) {
                 out.add(new Verweis(b.get("kennzeichen").asText() + ".geltung",
                         b.get("geltung").asText(), "prozesse"));
+            }
+            // Fassung 1.2 (AP-09 E1/W5): eine Bezugsgröße kann an einer Messstelle hängen.
+            if (b.hasNonNull("messstelle")) {
+                out.add(new Verweis(b.get("kennzeichen").asText() + ".messstelle",
+                        b.get("messstelle").asText(), "messstellen"));
             }
         }
         // Welcher Elternknoten wem erlaubt ist, prüft jederOrtHaengtZeitgueltigAnSeinemElternknoten.
