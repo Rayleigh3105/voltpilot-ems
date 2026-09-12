@@ -611,3 +611,76 @@ describe('firstTarget — landet nie auf einem stillen Erzeuger', () => {
     expect(firstTarget(groups)).toEqual({ entityId: 'pv2', channel: 'pv_power_kw' });
   });
 });
+
+// --- Berechnete Werte (Gesamtwert, AP-10): der eigene Ast ---------------------
+
+import {
+  BERECHNET_CHANNEL,
+  BERECHNET_PREFIX,
+  berechneteGruppe,
+  berechneteMessstelleId,
+  istBerechnet,
+  seriesFromMessstelleVerlauf,
+} from './verlauf';
+import type { MessstelleVerlauf } from './api';
+
+describe('verlauf · berechneter Ast', () => {
+  it('erkennt eine synthetische berechnete entityId und trennt sie sauber (kein Doppelpunkt)', () => {
+    const id = '11111111-2222-3333-4444-555555555555';
+    const eid = BERECHNET_PREFIX + id;
+    expect(istBerechnet(eid)).toBe(true);
+    expect(istBerechnet('e-normal')).toBe(false);
+    expect(berechneteMessstelleId(eid)).toBe(id);
+    // Der Deep-Link m={entityId}:{channel} trennt am ERSTEN Doppelpunkt — die
+    // synthetische entityId darf deshalb keinen tragen.
+    expect(eid.includes(':')).toBe(false);
+    expect(`${eid}:${BERECHNET_CHANNEL}`.split(':')).toEqual([eid, 'wert']);
+  });
+
+  it('baut einen Ast „Berechnete Werte" mit je einem Messwert', () => {
+    const g = berechneteGruppe([
+      { id: 'a', name: 'Gesamt-PV', einheit: 'kW', role: 'pv' },
+      { id: 'b', name: 'Netto-Netz', einheit: 'kW', role: 'consumer' },
+    ]);
+    expect(g).not.toBeNull();
+    expect(g!.label).toBe('Berechnete Werte');
+    expect(g!.items).toHaveLength(2);
+    expect(g!.items[0]).toMatchObject({
+      entityId: BERECHNET_PREFIX + 'a',
+      channel: 'wert',
+      label: 'Gesamt-PV',
+      unit: 'kW',
+      role: 'pv',
+    });
+  });
+
+  it('ohne berechneten Wert gibt es keinen Ast', () => {
+    expect(berechneteGruppe([])).toBeNull();
+  });
+
+  it('baut die Chart-Reihe aus dem Server-Verlauf — null bleibt null, nie 0', () => {
+    const v: MessstelleVerlauf = {
+      messstelleId: 'a',
+      einheit: 'kW',
+      punkte: [
+        { zeit: '2026-09-12T08:00:00Z', wert: 12.4 },
+        { zeit: '2026-09-12T08:15:00Z', wert: null },
+        { zeit: '2026-09-12T08:30:00Z', wert: 15.5 },
+      ],
+    };
+    const s = seriesFromMessstelleVerlauf(v, 'day');
+    expect(s.unit).toBe('kW');
+    expect(s.hasBand).toBe(false);
+    expect(s.empty).toBe(false);
+    expect(s.points.map((p) => p.avg)).toEqual([12.4, null, 15.5]);
+  });
+
+  it('ein Verlauf ohne einen einzigen Wert ist ehrlich leer', () => {
+    const v: MessstelleVerlauf = {
+      messstelleId: 'a',
+      einheit: 'kW',
+      punkte: [{ zeit: '2026-09-12T08:00:00Z', wert: null }],
+    };
+    expect(seriesFromMessstelleVerlauf(v, 'day').empty).toBe(true);
+  });
+});

@@ -21,6 +21,7 @@ import type {
   History,
   HistoryBucket,
   HistoryRange,
+  MessstelleVerlauf,
   SiteEntities,
   SiteEntity,
   SiteTopology,
@@ -303,6 +304,92 @@ export function v1FallbackTree(): VerlaufGroup[] {
       },
     ],
   }));
+}
+
+// --- Berechnete Werte (Gesamtwert, AP-10): ein eigener Ast --------------------
+
+/**
+ * Das Präfix der synthetischen `entityId` eines berechneten Werts. Es trägt
+ * KEINEN Doppelpunkt, damit der Deep-Link `m={entityId}:{channel}` weiter sauber
+ * am ersten Doppelpunkt trennt (die Messstellen-Id ist eine UUID ohne `:`).
+ */
+export const BERECHNET_PREFIX = 'berechnet-';
+
+/** Der EINE Kanalname eines berechneten Werts (er hat genau eine Größe). */
+export const BERECHNET_CHANNEL = 'wert';
+
+export function istBerechnet(entityId: string): boolean {
+  return entityId.startsWith(BERECHNET_PREFIX);
+}
+
+/** Die Messstellen-Id aus einer synthetischen `entityId` eines berechneten Werts. */
+export function berechneteMessstelleId(entityId: string): string {
+  return entityId.slice(BERECHNET_PREFIX.length);
+}
+
+/** Ein berechneter Wert, so wie der Verlauf-Ast ihn braucht (aus der Messstelle). */
+export interface BerechneterMesswert {
+  id: string;
+  name: string;
+  einheit: string;
+  role: ComponentRole;
+}
+
+/**
+ * Der Ast „Berechnete Werte" für den Verlauf-Explorer — ein eigener Ast neben
+ * den gemessenen Komponenten, damit ein Gesamtwert wie ein nativer Messwert
+ * wählbar ist. Ohne einen einzigen berechneten Wert gibt es keinen Ast (null).
+ */
+export function berechneteGruppe(werte: BerechneterMesswert[]): VerlaufGroup | null {
+  if (werte.length === 0) return null;
+  return {
+    entityId: 'berechnet',
+    label: 'Berechnete Werte',
+    rawLabel: 'Berechnete Werte',
+    role: 'pv',
+    icon: 'sliders',
+    deviceLine: null,
+    health: 'ok' as ComponentHealth,
+    measuredVia: null,
+    items: werte.map((w) => ({
+      entityId: BERECHNET_PREFIX + w.id,
+      channel: BERECHNET_CHANNEL,
+      label: w.name,
+      unit: w.einheit,
+      role: w.role,
+      raw: w.name,
+      producer: false,
+    })),
+  };
+}
+
+/**
+ * Die Chart-Reihe eines berechneten Werts aus seinem Server-Verlauf
+ * (`GET …/verlauf`): je 15-min-Punkt die Summe, oder `null` (unvollständig — nie
+ * eine erfundene 0). Kein Schwankungsband (der Wert ist eine Summe, kein
+ * Mittel).
+ */
+export function seriesFromMessstelleVerlauf(
+  verlauf: MessstelleVerlauf,
+  range: HistoryRange,
+): VerlaufSeries {
+  const isDay = range === 'day';
+  const points: VerlaufPoint[] = verlauf.punkte.map((p) => ({
+    t: p.zeit,
+    avg: num(p.wert),
+    min: null,
+    max: null,
+    n: 1,
+  }));
+  return {
+    points,
+    unit: verlauf.einheit ?? '',
+    hasBand: false,
+    isDay,
+    bars: false,
+    bucketMinutes: 15,
+    empty: !points.some((p) => p.avg != null),
+  };
 }
 
 // --- Tree helpers ------------------------------------------------------------

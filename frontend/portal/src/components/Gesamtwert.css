@@ -1,0 +1,542 @@
+/*
+ * Der Gesamtwert-Assistent (Konzept vp-helfer-konzept-h1, Mockup konzept.html).
+ * Optik = Portal „Variante C" (--vp-c-*). Der Stepper ist der geteilte
+ * `.vp-steps` (index.css); hier wohnt nur, was diese Fläche eigen hat.
+ * Der Rahmen ist das zentrierte `Modal` (am Telefon Vollbild) — kein eigener.
+ */
+
+.vp-gw {
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-gw-eyebrow {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-primary);
+  margin: 0;
+}
+.vp-gw-title {
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-800);
+  letter-spacing: -0.01em;
+  margin: 4px 0 0;
+  line-height: var(--vp-c-lh-title);
+}
+.vp-gw-sub {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  margin: 6px 0 0;
+  line-height: var(--vp-c-lh-text);
+}
+.vp-gw-step-body {
+  margin-top: var(--vp-c-space-4);
+}
+
+/* --- Chips --- */
+.vp-gw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+  white-space: nowrap;
+}
+.vp-gw-chip.calc {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+/* --- Status-Punkt --- */
+.vp-gw-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.vp-gw-dot.ok {
+  background: #16a34a;
+}
+.vp-gw-dot.warn {
+  background: #f59e0b;
+}
+.vp-gw-dot.off {
+  background: #cbd5e1;
+}
+
+/* --- Schritt 1: gewählte Werte als Zusammenfassung unter dem Picker --- */
+.vp-gw-chosen {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+}
+.vp-gw-crow {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  padding: 11px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: #fff;
+  min-width: 0;
+}
+.vp-gw-sq {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: var(--vp-c-fw-800);
+  font-size: var(--vp-c-fs-12);
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--vp-solar, #ff9800), var(--vp-solar-end, #f57c00));
+}
+.vp-gw-crow-name {
+  min-width: 0;
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-14);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-gw-crow-name small {
+  display: block;
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-400);
+  font-size: var(--vp-c-fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-gw-crow-val {
+  margin-left: auto;
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+.vp-gw-remove {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  display: inline-flex;
+}
+.vp-gw-remove:hover {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-destructive);
+}
+
+/* --- Schritt 2: Rechnen (Vorzeichen + Feineinstellung) --- */
+.vp-gw-terms {
+  display: grid;
+  gap: var(--vp-c-space-2);
+}
+.vp-gw-term {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.vp-gw-term-name {
+  min-width: 0;
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-14);
+  flex: 1 1 40%;
+}
+.vp-gw-term-name small {
+  display: block;
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-400);
+  font-size: var(--vp-c-fs-12);
+}
+.vp-gw-seg {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 9px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.vp-gw-seg button {
+  padding: 6px 14px;
+  font-weight: var(--vp-c-fw-800);
+  font-size: var(--vp-c-fs-16);
+  color: var(--vp-c-muted-fg);
+  background: #fff;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--vp-c-font);
+  line-height: 1;
+}
+.vp-gw-seg button + button {
+  border-left: 1px solid var(--vp-c-border);
+}
+.vp-gw-seg button.on {
+  background: var(--vp-c-primary);
+  color: #fff;
+}
+.vp-gw-factor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+  flex: 1 1 100%;
+  margin-top: var(--vp-c-space-1);
+}
+.vp-gw-factor input {
+  width: 88px;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-fg);
+  background: #fff;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-14);
+}
+.vp-gw-fine {
+  margin-top: var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-700);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 0;
+  font-family: var(--vp-c-font);
+}
+
+/* --- Schritt 3: Name --- */
+.vp-gw-field {
+  margin-bottom: var(--vp-c-space-4);
+}
+.vp-gw-field > label {
+  display: block;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  margin-bottom: 6px;
+}
+.vp-gw-name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+}
+.vp-gw-name-line input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+  background: #fff;
+}
+.vp-gw-kz {
+  flex: 0 0 auto;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+  background: #f1f5f9;
+  padding: 5px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* --- Schritt 4: Vorschau --- */
+.vp-gw-preview {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: 16px;
+  background: linear-gradient(180deg, #f7faff, #fff);
+}
+.vp-gw-preview-top {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.vp-gw-big {
+  font-size: 44px;
+  font-weight: var(--vp-c-fw-800);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.vp-gw-big.leer {
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-24);
+}
+.vp-gw-unit {
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+  margin-top: 4px;
+}
+.vp-gw-calc {
+  font-size: var(--vp-c-fs-14);
+  color: #334155;
+  margin: 12px 0 4px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.vp-gw-calc b {
+  color: var(--vp-c-fg);
+}
+.vp-gw-spark {
+  width: 100%;
+  height: 64px;
+  display: block;
+  margin-top: var(--vp-c-space-2);
+}
+.vp-gw-spark-leer {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  margin-top: var(--vp-c-space-2);
+}
+
+/* --- Schritt 5: Fertig --- */
+.vp-gw-done {
+  text-align: center;
+  padding: 14px 6px 4px;
+}
+.vp-gw-done-circle {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  background: var(--vp-mint-start, #e8f5e9);
+  color: var(--vp-ok-ink, #2e7d32);
+  display: grid;
+  place-items: center;
+}
+.vp-gw-done h3 {
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-800);
+  margin: 0;
+}
+.vp-gw-done p {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  margin: 6px 0 0;
+}
+.vp-gw-appears {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-4);
+  text-align: left;
+}
+.vp-gw-appears .a {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: var(--vp-c-fs-14);
+  padding: 9px 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 10px;
+  background: #fff;
+}
+.vp-gw-appears .a svg {
+  color: var(--vp-c-primary);
+  flex: 0 0 auto;
+}
+
+/* --- gemeinsame Hinweise / Fehler --- */
+.vp-gw-hint {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  margin: var(--vp-c-space-3) 0 0;
+}
+.vp-gw-error {
+  color: var(--vp-c-destructive);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  margin: var(--vp-c-space-3) 0 0;
+}
+.vp-gw-warn {
+  border-left: 3px solid #f59e0b;
+  background: var(--vp-c-warn-bg);
+  color: var(--vp-c-warn-fg);
+  padding: 12px 14px;
+  border-radius: 0 12px 12px 0;
+  font-size: var(--vp-c-fs-14);
+  margin-top: var(--vp-c-space-3);
+}
+
+/* --- Fuß des Assistenten: zwei Wege, sonst nichts --- */
+.vp-gw-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  width: 100%;
+}
+.vp-gw-foot .spacer {
+  flex: 1 1 auto;
+}
+
+/* ==========================================================================
+ * Cockpit-Fläche: die zusammengestellten Werte (GesamtwertKarten)
+ * ======================================================================== */
+.vp-gwk {
+  margin-top: var(--vp-space-4, 16px);
+}
+.vp-gwk-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  margin-bottom: var(--vp-space-3, 12px);
+}
+.vp-gwk-head h3 {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  margin: 0;
+  color: var(--vp-c-fg);
+}
+.vp-gwk-neu {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--vp-c-border);
+  background: #fff;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+  border-radius: 10px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-family: var(--vp-c-font);
+}
+.vp-gwk-neu:hover {
+  background: var(--vp-c-muted);
+}
+.vp-gwk-grid {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}
+.vp-gwk-card {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  min-width: 0;
+}
+.vp-gwk-card.is-angehalten {
+  opacity: 0.72;
+}
+.vp-gwk-card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.vp-gwk-ic {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--vp-solar, #ff9800), var(--vp-solar-end, #f57c00));
+}
+.vp-gwk-name {
+  min-width: 0;
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-gwk-chip {
+  flex: 0 0 auto;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  white-space: nowrap;
+}
+.vp-gwk-menu {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.vp-gwk-value {
+  margin-top: 8px;
+}
+.vp-gwk-big {
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.vp-gwk-incomplete,
+.vp-gwk-paused {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-warn-fg);
+}
+.vp-gwk-unknown {
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-muted-fg);
+}
+.vp-gwk-note {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  margin: 6px 0 0;
+}
+.vp-gwk-rename {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.vp-gwk-rename input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--vp-field-border, #858d96);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-family: var(--vp-c-font);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+.vp-gwk-rename button {
+  flex: 0 0 auto;
+  border: 1px solid var(--vp-c-border);
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  color: var(--vp-c-fg);
+}
+.vp-gwk-rename button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

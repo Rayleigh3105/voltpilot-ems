@@ -49,6 +49,9 @@ const EXCLUDED = [
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
   '/adminGeraet.ts',
+  // Die reine Schicht der Admin-Seite „Geräte & Updates" (`pages/admin/BoxVersions`,
+  // einziger Importeur) — sie spricht legitim Betreiber-Vokabular (Release, Version).
+  '/boxVersions.ts',
   // Anlagen-Zentrale Stufe 3 (PR 3a): der Nachfolger der aufgelösten
   // Installateur-Ansicht. Er spricht legitim Betreiber-Vokabular („Entität",
   // „Messpunkt") und wird - wie die Plattform-Sicht - NUR hinter dem EINEN Tor
@@ -566,6 +569,10 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'adminVorlagen',
       'adminKomponentenFlotte',
       'adminGeraet',
+      // `boxVersions` ist die reine Schicht der Admin-Seite „Geräte & Updates";
+      // sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
+      // rendert sie), war aber bei ihrer Einführung nicht mit aufgeführt.
+      'boxVersions',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor

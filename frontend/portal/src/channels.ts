@@ -18,6 +18,13 @@
 const CHANNEL_LABELS: Record<string, string> = {
   // Pilot + E1b measure channels.
   pv_power_kw: 'PV-Leistung',
+  // Einzelne MPPT-Stränge + Gen-Port eines Hybrid-Wechselrichters (Ankerfall
+  // Deye SUN-30K): der Wechselrichter zählt den Mikrowechselrichter am Gen-Port
+  // NICHT in seine PV-Summe — der Kunde liest die Stränge deshalb als eigene Werte.
+  pv1_power_kw: 'PV 1',
+  pv2_power_kw: 'PV 2',
+  pv3_power_kw: 'PV 3',
+  microinverter_power_kw: 'Mikrowechselrichter',
   soc_pct: 'Ladestand',
   battery_power_kw: 'Batterieleistung',
   power_kw: 'Leistung',
