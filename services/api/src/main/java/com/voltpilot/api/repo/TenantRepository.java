@@ -169,6 +169,11 @@ public class TenantRepository {
                 // offboarding is its ONE deletion path (tenant FK RESTRICT; the admin
                 // role holds DELETE only for this).
                 deleteByTenant(con, "messreihe_ereignis", tenantId);
+                // The quarter-hour storage class (AP-07 IP-12) and its work list carry no FK
+                // either (hypertable + operational queue); offboarding is the ONE way out, like
+                // every other series table above. The run-state row is not tenant-bound and stays.
+                deleteByTenant(con, "messreihe_viertelstunde", tenantId);
+                deleteByTenant(con, "messreihe_viertelstunde_arbeit", tenantId);
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

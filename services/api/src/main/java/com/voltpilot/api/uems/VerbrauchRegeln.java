@@ -220,7 +220,14 @@ public final class VerbrauchRegeln {
         return x.setScale(stellen, RoundingMode.HALF_UP);
     }
 
-    private static int erwarteteWerte(Instant von, Instant bis, Duration kadenz) {
+    /**
+     * P4 — die erwartete Anzahl Werte einer Periode: Periodenlänge ÷ Kadenz, abgeschnitten.
+     *
+     * <p>Paket-sichtbar statt privat, seit der Verdichtungs-Lauf (AP-07 IP-12) sie für eine Reihe
+     * braucht, die gar keine Regel von AP-08 hat (Zustands-, Bitfeld- und Textreihen): er soll die
+     * Erwartung AUFRUFEN statt sie ein zweites Mal zu rechnen. Das Verhalten ist unverändert.
+     */
+    static int erwarteteWerte(Instant von, Instant bis, Duration kadenz) {
         return (int) (Duration.between(von, bis).toNanos() / kadenz.toNanos());
     }
 

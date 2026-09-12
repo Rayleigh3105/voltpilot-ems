@@ -382,6 +382,21 @@ voltpilot:
   uems:
     bestandsuebernahme:
       enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
+    # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
+    # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
+    # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt
+    # nebenher die einmalige Rueckrechnung der letzten 90 Tage in Tagesscheiben.
+    # Vorgabe AN (die Hausregel "ein Flag hat die Vorgabe AN"), im Testlauf AUS
+    # (surefire); wer ihn prueft, ruft ViertelstundeVerdichter.lauf() selbst.
+    # `stapel` = Intervalle je Transaktion, `stapel-je-lauf` = Transaktionen je
+    # Takt, `arbeit-hochwasser` = ab so vielen offenen Eintraegen pausiert die
+    # Rueckrechnung, damit die Arbeitsliste nie unbegrenzt waechst.
+    viertelstunde:
+      enabled: ${VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_VIERTELSTUNDE_INTERVAL_MS:300000}
+      stapel: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL:500}
+      stapel-je-lauf: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL_JE_LAUF:40}
+      arbeit-hochwasser: ${VOLTPILOT_UEMS_VIERTELSTUNDE_ARBEIT_HOCHWASSER:200000}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

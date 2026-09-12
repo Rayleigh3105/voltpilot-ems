@@ -241,6 +241,17 @@
                              BestandsuebernahmeWiringTest an der echten
                              application.yml. -->
                         <voltpilot.uems.bestandsuebernahme.enabled>false</voltpilot.uems.bestandsuebernahme.enabled>
+                        <!-- Der Verdichtungs-Takt der Viertelstundenwerte (UEMS
+                             AP-07 IP-12) ist dieselbe @Scheduled-Falle - im
+                             Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Er schriebe sonst in jedem
+                             gecachten Testkontext gegen eine gestoppte
+                             Datenbank weiter. Wer ihn prueft, ruft
+                             ViertelstundeVerdichter.lauf() selbst. Dass die
+                             AUSGELIEFERTE Vorgabe AN ist, prueft
+                             ViertelstundeWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.uems.viertelstunde.enabled>false</voltpilot.uems.viertelstunde.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
