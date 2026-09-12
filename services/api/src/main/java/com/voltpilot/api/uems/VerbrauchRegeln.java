@@ -710,10 +710,7 @@ public final class VerbrauchRegeln {
         }
         BigDecimal summe = treffer.stream().map(Rohwert::wert).reduce(BigDecimal.ZERO, BigDecimal::add).multiply(faktor);
         int fehlend = erwartet - treffer.size();
-        List<String> kennzeichen = fehlend == 0
-                ? List.of()
-                : List.of(fehlend + " von " + erwartet + " Intervallmengen "
-                        + (fehlend == 1 ? "fehlt" : "fehlen") + " — Menge ist die Summe der gemessenen");
+        List<String> kennzeichen = fehlendeIntervallmengen(fehlend, erwartet);
         return new Ergebnis(
                 runde(summe, NACHKOMMASTELLEN),
                 null,
@@ -756,18 +753,12 @@ public final class VerbrauchRegeln {
 
         List<String> kennzeichen = new ArrayList<>();
         if (!vollstaendig) {
-            long gemessenS = (long) treffer.size() * kadenz.toSeconds();
-            kennzeichen.add(String.format(
-                    Locale.ROOT,
-                    "gemessene Zeit %d:%02d min von %d min",
-                    gemessenS / 60,
-                    gemessenS % 60,
-                    Duration.between(von, bis).toMinutes()));
+            kennzeichen.add(gemesseneZeit((long) treffer.size() * kadenz.toSeconds(), von, bis));
         }
         BigDecimal energie = null;
         if (integrieren) {
-            energie = runde(integriere(werte, von, bis, kadenz), NACHKOMMASTELLEN);
-            kennzeichen.add("aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)");
+            energie = rundeEnergie(integriere(werte, von, bis, kadenz));
+            kennzeichen.add(AUS_LEISTUNG_INTEGRIERT);
         }
 
         return new Ergebnis(
@@ -787,16 +778,25 @@ public final class VerbrauchRegeln {
     /**
      * M4 — Rechteck-Halten: jeder Wert gilt bis zum nächsten guten Wert, höchstens
      * {@code HALTEN_FAKTOR × Kadenz}, geschnitten auf die Periode.
+     *
+     * <p>Der nächste gute Wert darf HINTER {@code bis} liegen und der haltende VOR {@code von}
+     * (höchstens {@code HALTEN_FAKTOR × Kadenz} weit): nur so ergeben die Energien benachbarter
+     * Perioden zusammen genau die Energie der gröberen Periode (AP-08 IP-3, F24 Viertelstunde
+     * 10:15).
      */
-    private static BigDecimal integriere(List<Rohwert> werte, Instant von, Instant bis, Duration kadenz) {
+    static BigDecimal integriere(List<Rohwert> werte, Instant von, Instant bis, Duration kadenz) {
+        Duration reichweite = kadenz.multipliedBy(HALTEN_FAKTOR);
         List<Rohwert> folge = werte.stream()
                 .filter(Rohwert::gut)
-                .filter(r -> r.zeit().isAfter(von.minus(kadenz)) && r.zeit().isBefore(bis))
+                .filter(r -> r.zeit().isAfter(von.minus(reichweite)) && !r.zeit().isAfter(bis.plus(reichweite)))
                 .sorted(Comparator.comparing(Rohwert::zeit))
                 .toList();
         BigDecimal energie = BigDecimal.ZERO;
         for (int i = 0; i < folge.size(); i++) {
             Rohwert vorher = folge.get(i);
+            if (!vorher.zeit().isBefore(bis)) {
+                break;
+            }
             Rohwert nachher = i + 1 < folge.size() ? folge.get(i + 1) : null;
             boolean haelt = nachher != null
                     && Duration.between(vorher.zeit(), nachher.zeit()).compareTo(kadenz.multipliedBy(HALTEN_FAKTOR))
@@ -811,6 +811,298 @@ public final class VerbrauchRegeln {
             }
         }
         return energie;
+    }
+
+    /**
+     * E5/M4 — eine Energie aus Leistung steht NIE ohne dieses Kennzeichen. Der Wortlaut ist Vertrag;
+     * {@code kennzeichen} der Vektor-Datei nennt seinen Anfang {@link #AUS_LEISTUNG_INTEGRIERT_WORT}.
+     */
+    public static final String AUS_LEISTUNG_INTEGRIERT =
+            "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)";
+
+    /** Das Wort des Kennzeichen-Vokabulars, mit dem {@link #AUS_LEISTUNG_INTEGRIERT} beginnt. */
+    public static final String AUS_LEISTUNG_INTEGRIERT_WORT = "aus Leistung integriert";
+
+    /**
+     * Die Stellen, unter denen eine ungerundete Energie nur Rechenrauschen trägt: jede Teil-Energie ist
+     * eine 28-stellige Division durch 3 600, ihre Summe weicht darum im Bereich 10⁻²⁰ vom wahren Wert
+     * ab. Vor der Rundung auf {@link #NACHKOMMASTELLEN} wird dieses Rauschen entfernt — sonst kippte
+     * eine Summe genau auf der Rundungsgrenze (F3: 24,1125 kWh) als 24,11249…9 auf 24,112.
+     */
+    static final int ENERGIE_RAUSCHEN_STELLEN = 15;
+
+    static BigDecimal rundeEnergie(BigDecimal energie) {
+        return runde(energie.setScale(ENERGIE_RAUSCHEN_STELLEN, RoundingMode.HALF_EVEN), NACHKOMMASTELLEN);
+    }
+
+    /** I2 — das Kennzeichen einer Periode, der Intervallmengen fehlen (leer, wenn keine fehlt). */
+    private static List<String> fehlendeIntervallmengen(int fehlend, int erwartet) {
+        return fehlend == 0
+                ? List.of()
+                : List.of(fehlend + " von " + erwartet + " Intervallmengen "
+                        + (fehlend == 1 ? "fehlt" : "fehlen") + " — Menge ist die Summe der gemessenen");
+    }
+
+    /** M3 — das Kennzeichen einer unvollständigen Momentanwert-Periode. */
+    private static String gemesseneZeit(long gemessenS, Instant von, Instant bis) {
+        return String.format(Locale.ROOT, "gemessene Zeit %d:%02d min von %d min",
+                gemessenS / 60, gemessenS % 60, Duration.between(von, bis).toMinutes());
+    }
+
+    // ------------------ Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
+
+    /**
+     * Eine gebildete Periode einer Momentanwert- oder Intervallmengen-Reihe, wie eine GRÖBERE sie
+     * braucht. Genau das trägt eine gespeicherte Viertelstunde, ein Tag, ein Monat (AP-08 IP-3).
+     *
+     * @param teil Periode, erster/letzter guter Wert und das (gerundete) Ergebnis; die Stände bleiben
+     *     {@code null} — ein Momentanwert hat keinen Periodenstand
+     * @param summe die Summe der guten Werte, UNGERUNDET: beim Momentanwert der Werte in
+     *     {@code [von, bis)} (daraus das Mittel ohne Mittel von Mitteln), bei der Intervallmenge der
+     *     Mengen mit Ende in {@code (von, bis]} mal Faktor; {@code null} ohne guten Wert
+     * @param energie nur Momentanwert mit Integration (E5): die Energie UNGERUNDET, sonst {@code null}
+     * @param gemessenS Momentanwert: die gemessene Zeit, erhalten × Kadenz (M2)
+     * @param lueckeInnen Momentanwert: zwischen zwei guten Werten DIESER Periode liegt eine Lücke
+     *     (über {@code LUECKE_FAKTOR × Kadenz})
+     */
+    public record Werteteil(
+            Teilperiode teil, BigDecimal summe, BigDecimal energie, long gemessenS, boolean lueckeInnen) {}
+
+    private static boolean lueckeZwischen(List<Rohwert> gute, Duration kadenz) {
+        for (int i = 0; i + 1 < gute.size(); i++) {
+            if (istLuecke(gute.get(i).zeit(), gute.get(i + 1).zeit(), kadenz)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Eine Momentanwert-Periode aus Rohwerten als {@link Werteteil} — die Form, in der sie
+     * gespeichert wird. {@code werte} muss die Nachbarn bis {@code HALTEN_FAKTOR × Kadenz} vor
+     * {@code von} und hinter {@code bis} enthalten, sonst fehlt der Energie das Halten über die
+     * Grenze (M4).
+     */
+    public static Werteteil momentanwertTeil(
+            List<Rohwert> werte, Instant von, Instant bis, Duration kadenz, boolean integrieren) {
+        Ergebnis e = momentanwerte(werte, von, bis, kadenz, integrieren);
+        List<Rohwert> gute = guteIn(werte, von, bis);
+        return new Werteteil(
+                new Teilperiode(von, bis, null, null, gute.isEmpty() ? null : gute.get(0),
+                        gute.isEmpty() ? null : gute.get(gute.size() - 1), e),
+                gute.isEmpty() ? null : gute.stream().map(Rohwert::wert).reduce(BigDecimal.ZERO, BigDecimal::add),
+                integrieren && !gute.isEmpty() ? integriere(werte, von, bis, kadenz) : null,
+                (long) gute.size() * kadenz.toSeconds(),
+                lueckeZwischen(gute, kadenz));
+    }
+
+    /** Eine Intervallmengen-Periode aus Rohwerten als {@link Werteteil} (I1: Ende in {@code (von, bis]}). */
+    public static Werteteil intervallmengeTeil(
+            List<Rohwert> werte, Instant von, Instant bis, Duration kadenz, BigDecimal faktor) {
+        Ergebnis e = mengeIntervall(werte, von, bis, kadenz, faktor);
+        List<Rohwert> treffer = werte.stream()
+                .filter(Rohwert::gut)
+                .filter(r -> r.zeit().isAfter(von) && !r.zeit().isAfter(bis))
+                .sorted(Comparator.comparing(Rohwert::zeit))
+                .toList();
+        return new Werteteil(
+                new Teilperiode(von, bis, null, null, treffer.isEmpty() ? null : treffer.get(0),
+                        treffer.isEmpty() ? null : treffer.get(treffer.size() - 1), e),
+                treffer.isEmpty() ? null
+                        : treffer.stream().map(Rohwert::wert).reduce(BigDecimal.ZERO, BigDecimal::add).multiply(faktor),
+                null,
+                0,
+                false);
+    }
+
+    /** Die Teile IN {@code [von, bis)}, der letzte gute Wert davor und der erste gute Wert danach. */
+    private record Geordnet(List<Werteteil> innen, Rohwert vorher, Rohwert danach) {}
+
+    private static Geordnet ordnen(List<Werteteil> teile, Instant von, Instant bis) {
+        List<Werteteil> innen = new ArrayList<>();
+        Rohwert vorher = null;
+        Rohwert danach = null;
+        for (Werteteil w : teile.stream().sorted(Comparator.comparing(x -> x.teil().von())).toList()) {
+            Teilperiode t = w.teil();
+            if (!t.von().isBefore(von) && !t.bis().isAfter(bis)) {
+                innen.add(w);
+            } else if (!t.bis().isAfter(von)) {
+                if (t.letzter() != null && (vorher == null || t.letzter().zeit().isAfter(vorher.zeit()))) {
+                    vorher = t.letzter();
+                }
+            } else if (!t.von().isBefore(bis)) {
+                if (t.erster() != null && (danach == null || t.erster().zeit().isBefore(danach.zeit()))) {
+                    danach = t.erster();
+                }
+            } else {
+                throw new IllegalArgumentException("Teilperiode " + t.von() + "–" + t.bis()
+                        + " ragt über die Grenze von " + von + "–" + bis);
+            }
+        }
+        return new Geordnet(innen, vorher, danach);
+    }
+
+    private static int erwartetAusWerteteilen(List<Werteteil> innen, Instant von, Instant bis, Duration kadenz) {
+        return erwartetAusTeilperioden(innen.stream().map(Werteteil::teil).toList(), von, bis, kadenz);
+    }
+
+    /** M4 über eine Strecke {@code [a, b)} OHNE eigenen guten Wert: nur, was der Wert davor hält. */
+    private static BigDecimal gehalten(Rohwert p, Rohwert n, Instant a, Instant b, Duration kadenz) {
+        if (p == null) {
+            return BigDecimal.ZERO;
+        }
+        boolean haelt = n != null
+                && Duration.between(p.zeit(), n.zeit()).compareTo(kadenz.multipliedBy(HALTEN_FAKTOR)) <= 0;
+        Instant haeltBis = haelt ? n.zeit() : p.zeit().plus(kadenz);
+        Instant start = p.zeit().isAfter(a) ? p.zeit() : a;
+        Instant ende = haeltBis.isBefore(b) ? haeltBis : b;
+        if (!ende.isAfter(start)) {
+            return BigDecimal.ZERO;
+        }
+        return p.wert()
+                .multiply(BigDecimal.valueOf(Duration.between(start, ende).toSeconds()))
+                .divide(BigDecimal.valueOf(3600), RECHNUNG);
+    }
+
+    /**
+     * M1–M4 über eine GRÖBERE Periode aus ihren gespeicherten Teilperioden (AP-08 IP-3, §4.5).
+     *
+     * <p>Dasselbe Ergebnis wie {@link #momentanwerte} über alle Rohwerte der Periode
+     * ({@code VerbrauchWerteteileTest} hält das an jeder Momentanwert-Erwartung der Vektor-Datei
+     * fest), gebildet nur aus dem, was die Teile tragen:
+     *
+     * <ul>
+     *   <li><b>Mittel</b> = Summe der Teilsummen ÷ Summe erhalten — nie ein Mittel von Mitteln. Ein
+     *       Teil ohne {@code summe} (gebildet vor IP-3) trägt {@code Mittel × erhalten}, genau auf
+     *       die Rundung seines Mittels. Min/Max über die Teile.
+     *   <li><b>Vollständig</b> nur ohne Lücke zwischen zwei guten Werten — in einem Teil, zwischen
+     *       zwei Teilen, zum letzten Wert davor und zum ersten danach — und mit beiden Rändern
+     *       innerhalb einer Kadenz (M3). Ein unvollständiger Rand eines Teils ist an einer INNEREN
+     *       Grenze kein Rand mehr.
+     *   <li><b>Gemessene Zeit</b> = Summe der gemessenen Zeiten; Abdeckung aus erhalten ÷ erwartet,
+     *       ein Teil ohne Zeile zählt mit {@code Länge ÷ Kadenz}.
+     *   <li><b>Energie</b> (nur {@code integrieren}, dann trägt jeder Teil mit Werten seine) = Summe
+     *       der ungerundeten Teil-Energien plus je Strecke ohne Teil mit Werten das Halten des Werts
+     *       davor — nie Mittel × Länge. Ohne einen guten Wert gibt es keine Zahl.
+     * </ul>
+     *
+     * @param teile die Teile IN {@code [von, bis)}, dazu höchstens je einer davor und danach mit
+     *     gutem Wert (für Lücke und Halten über die Grenze); einer, der über eine Grenze ragt, ist
+     *     ein Fehler
+     */
+    public static Werteteil momentanwertAusTeilperioden(
+            List<Werteteil> teile, Instant von, Instant bis, Duration kadenz, boolean integrieren) {
+        Geordnet g = ordnen(teile, von, bis);
+        int erwartet = erwartetAusWerteteilen(g.innen(), von, bis, kadenz);
+        List<Werteteil> gut = g.innen().stream().filter(w -> w.teil().erster() != null).toList();
+        if (gut.isEmpty()) {
+            Ergebnis leer = leer(KEINE_WERTE, 0, List.of()).mitAbdeckung(erwartet);
+            return new Werteteil(new Teilperiode(von, bis, null, null, null, null, leer), null, null, 0, false);
+        }
+        if (integrieren && gut.stream().anyMatch(w -> w.energie() == null)) {
+            throw new IllegalArgumentException("integrieren verlangt die Energie jeder Teilperiode mit Werten");
+        }
+
+        int erhalten = 0;
+        long gemessenS = 0;
+        BigDecimal summe = BigDecimal.ZERO;
+        BigDecimal min = null;
+        BigDecimal max = null;
+        boolean lueckeInnen = false;
+        Rohwert letzterBisher = null;
+        for (Werteteil w : gut) {
+            Ergebnis e = w.teil().ergebnis();
+            erhalten += e.erhalten();
+            gemessenS += w.gemessenS();
+            summe = summe.add(w.summe() != null ? w.summe() : e.mittel().multiply(BigDecimal.valueOf(e.erhalten())));
+            min = min == null || e.min().compareTo(min) < 0 ? e.min() : min;
+            max = max == null || e.max().compareTo(max) > 0 ? e.max() : max;
+            lueckeInnen |= w.lueckeInnen()
+                    || (letzterBisher != null && istLuecke(letzterBisher.zeit(), w.teil().erster().zeit(), kadenz));
+            letzterBisher = w.teil().letzter();
+        }
+        Rohwert erster = gut.get(0).teil().erster();
+        Rohwert letzter = gut.get(gut.size() - 1).teil().letzter();
+        boolean lueckeRand = (g.vorher() != null && erster.zeit().isAfter(von)
+                        && istLuecke(g.vorher().zeit(), erster.zeit(), kadenz))
+                || (g.danach() != null && istLuecke(letzter.zeit(), g.danach().zeit(), kadenz));
+        boolean vollstaendig = !lueckeInnen
+                && !lueckeRand
+                && Duration.between(von, erster.zeit()).compareTo(kadenz) <= 0
+                && Duration.between(letzter.zeit(), bis).compareTo(kadenz) <= 0;
+
+        List<String> kennzeichen = new ArrayList<>();
+        if (!vollstaendig) {
+            kennzeichen.add(gemesseneZeit(gemessenS, von, bis));
+        }
+        BigDecimal energie = null;
+        if (integrieren) {
+            energie = BigDecimal.ZERO;
+            Instant stelle = von;
+            Rohwert wertDavor = g.vorher();
+            for (Werteteil w : gut) {
+                energie = energie.add(w.energie())
+                        .add(gehalten(wertDavor, w.teil().erster(), stelle, w.teil().von(), kadenz));
+                stelle = w.teil().bis();
+                wertDavor = w.teil().letzter();
+            }
+            energie = energie.add(gehalten(wertDavor, g.danach(), stelle, bis, kadenz));
+            kennzeichen.add(AUS_LEISTUNG_INTEGRIERT);
+        }
+
+        Ergebnis ergebnis = new Ergebnis(
+                null,
+                runde(summe.divide(BigDecimal.valueOf(erhalten), RECHNUNG), 1),
+                min,
+                max,
+                energie == null ? null : rundeEnergie(energie),
+                vollstaendig ? VOLLSTAENDIG : UNVOLLSTAENDIG,
+                erhalten,
+                0,
+                null,
+                List.copyOf(kennzeichen))
+                .mitAbdeckung(erwartet);
+        return new Werteteil(new Teilperiode(von, bis, null, null, erster, letzter, ergebnis),
+                summe, energie, gemessenS, lueckeInnen);
+    }
+
+    /**
+     * I1–I2 über eine GRÖBERE Periode aus ihren gespeicherten Teilperioden (AP-08 IP-3, §4.5).
+     *
+     * <p>Menge = Summe der UNGERUNDETEN Teilsummen, einmal gerundet — die Summe gerundeter
+     * Teilmengen wäre schon ohne Lücke falsch. Jede fehlende Intervallmenge, auch die eines Teils
+     * ohne Zeile ({@code Länge ÷ Kadenz}), macht die Periode unvollständig (I2).
+     */
+    public static Werteteil intervallmengeAusTeilperioden(
+            List<Werteteil> teile, Instant von, Instant bis, Duration kadenz) {
+        Geordnet g = ordnen(teile, von, bis);
+        int erwartet = erwartetAusWerteteilen(g.innen(), von, bis, kadenz);
+        List<Werteteil> gut = g.innen().stream().filter(w -> w.teil().ergebnis().erhalten() > 0).toList();
+        if (gut.isEmpty()) {
+            Ergebnis leer = leer(KEINE_WERTE, 0, List.of()).mitAbdeckung(erwartet);
+            return new Werteteil(new Teilperiode(von, bis, null, null, null, null, leer), null, null, 0, false);
+        }
+        int erhalten = 0;
+        BigDecimal summe = BigDecimal.ZERO;
+        for (Werteteil w : gut) {
+            erhalten += w.teil().ergebnis().erhalten();
+            summe = summe.add(w.summe() != null ? w.summe() : w.teil().ergebnis().menge());
+        }
+        int fehlend = erwartet - erhalten;
+        Ergebnis ergebnis = new Ergebnis(
+                runde(summe, NACHKOMMASTELLEN),
+                null,
+                null,
+                null,
+                null,
+                fehlend == 0 ? VOLLSTAENDIG : UNVOLLSTAENDIG,
+                erhalten,
+                0,
+                null,
+                fehlendeIntervallmengen(fehlend, erwartet))
+                .mitAbdeckung(erwartet);
+        return new Werteteil(new Teilperiode(von, bis, null, null, gut.get(0).teil().erster(),
+                gut.get(gut.size() - 1).teil().letzter(), ergebnis), summe, null, 0, false);
     }
 
     // ---------------------------------------------------------------------- Der Eingang

@@ -296,16 +296,20 @@ class UemsEndgueltigkeitTagesklasseTest {
     }
 
     /**
-     * Die Tagesklasse trägt KEINE Summe — und ihre Menge kam nicht mit dieser Migration, sondern mit
-     * AP-08 IP-5 ({@code V20260912205000}), aus den Periodenständen gebildet.
+     * Die Tagesklasse trägt KEINE Summe der Viertelstunden-Mengen — und ihre Menge kam nicht mit dieser
+     * Migration, sondern mit AP-08 IP-5 ({@code V20260912205000}), aus den Periodenständen gebildet. Die
+     * Spalte {@code summe} (AP-08 IP-3) ist die Summe der guten MOMENTANWERTE; an einer Zählerreihe
+     * weist die Datenbank sie ab.
      */
     @Test
     void dieTagesklasseTraegtKeineSummeUndIhreMengeKommtAusIp5() {
         List<String> spalten = root.queryForList("SELECT column_name FROM information_schema.columns "
                 + "WHERE table_name = 'messreihe_tag' ORDER BY column_name", String.class);
+        assertThatThrownBy(() -> root.update("UPDATE messreihe_tag SET summe = 1 WHERE wertart = 'counter'"))
+                .as("eine Summe der Viertelstunden-Mengen gibt es nie").hasMessageContaining("summe_chk");
         assertThat(spalten)
-                .as("eine Summe der Viertelstunden gibt es nie, einen Faktor nur an der Viertelstunde")
-                .doesNotContain("summe", "faktor")
+                .as("einen Faktor gibt es nur an der Viertelstunde")
+                .doesNotContain("faktor")
                 .as("die Menge bildet AP-08 IP-5 aus den Periodenständen")
                 .contains("menge", "menge_zustand", "kennzeichen", "kadenz_s")
                 .as("die FAKTEN, aus denen IP-5 sie bildet, stehen da")

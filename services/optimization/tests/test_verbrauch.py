@@ -62,9 +62,10 @@ def _reihe(case: dict, erwartung: dict) -> dict:
 # --------------------------------------------------------------------- Form der Datei
 
 
-def test_die_datei_traegt_die_dreiundzwanzig_faelle():
-    """23 Fälle, jeder mit Namen, Familie, Begründung und mindestens einer Erwartung."""
-    assert len(CASES) == 23
+def test_die_datei_traegt_die_dreiundzwanzig_faelle_und_f24():
+    """23 Fälle der Vorlage plus F24 (AP-08 IP-3), jeder mit Namen, Familie, Begründung und Erwartung."""
+    assert len(CASES) == 24
+    assert CASES[-1]["name"].startswith("f24-")
     assert DOC["schema_version"] == "1.0"
     assert DOC["zeitzone"] == "Europe/Berlin"
     namen = [c["name"] for c in CASES]
@@ -356,3 +357,128 @@ def test_eine_ueberstehende_teilperiode_wird_abgewiesen():
     )
     with pytest.raises(ValueError, match="ragt"):
         verbrauch.zaehlerstand_aus_teilperioden([schief], von, von + timedelta(hours=1), kadenz)
+
+
+# ------------------- Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
+
+_WERTE_LOCKSTEP = [
+    pytest.param(case, erwartung, id=f"{case['name']}::{erwartung['name']}")
+    for case in CASES
+    for erwartung in case["expected"]
+    if _reihe(case, erwartung)["wertart"] in ("momentanwert", "intervallmenge")
+    for von, bis in [(verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"]))]
+    if bis - von >= 2 * _VIERTELSTUNDE and _im_raster(von) and _im_raster(bis)
+]
+
+
+def _werteteile(reihe: dict, von: datetime, bis: datetime) -> list:
+    """Die Viertelstunden als :class:`verbrauch.Werteteil` - wie in der Datenbank nur die mit Rohwert,
+    dazu je eine davor und danach (die Nachbarn der Lücke und des Haltens)."""
+    werte = verbrauch.rohwerte(reihe)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    reichweite = verbrauch.HALTEN_FAKTOR * kadenz
+    teile = []
+    q = von - timedelta(hours=1)
+    while q < bis + timedelta(hours=1):
+        q_bis = q + _VIERTELSTUNDE
+        fenster = _fenster(werte, q - reichweite, q_bis + reichweite)
+        if reihe["wertart"] == "intervallmenge":
+            if any(q < r.zeit <= q_bis for r in fenster):
+                teile.append(verbrauch.intervallmenge_teil(fenster, q, q_bis, kadenz, verbrauch._dez(reihe.get("faktor", 1))))
+        elif any(q <= r.zeit < q_bis for r in fenster):
+            teile.append(verbrauch.momentanwert_teil(fenster, q, q_bis, kadenz, reihe.get("integrieren", False)))
+        q = q_bis
+    return teile
+
+
+def test_der_werte_lockstep_traegt_die_abnahme_von_ip3():
+    """F2 (halbe Stunde) und F24 (halbe Stunde, Stunde) müssen unter den zusammengesetzten Erwartungen sein."""
+    assert "nie Mittel von Mitteln" in DOC["regeln"]["werte_teilperioden"]
+    namen = {p.id for p in _WERTE_LOCKSTEP}
+    for teil in ("f2-intervallmenge::Halbe Stunde", "f24-momentanwert-ueber-die-viertelstundengrenze::Stunde"):
+        assert any(teil in n for n in namen), teil
+
+
+@pytest.mark.parametrize("case,erwartung", _WERTE_LOCKSTEP)
+def test_werte_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict):
+    """Lockstep: aus den gespeicherten Viertelstunden ergibt sich GENAU die Erwartung der Datei."""
+    reihe = _reihe(case, erwartung)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    von, bis = verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"])
+    teile = _werteteile(reihe, von, bis)
+    if reihe["wertart"] == "intervallmenge":
+        ist = verbrauch.intervallmenge_aus_teilperioden(teile, von, bis, kadenz).teil.ergebnis
+    else:
+        ist = verbrauch.momentanwert_aus_teilperioden(teile, von, bis, kadenz, reihe.get("integrieren", False)).teil.ergebnis
+    for feld in GERECHNET:
+        if feld not in erwartung or feld == "stunden":
+            continue
+        soll = erwartung[feld]
+        if feld in ("menge", "mittel", "min", "max", "energie_kwh") and soll is not None:
+            assert ist[feld] is not None and Decimal(str(soll)) == ist[feld], f"{feld}: {case['why']}"
+        else:
+            assert ist[feld] == soll, f"{feld}: {case['why']}"
+
+
+def test_die_viertelstunden_energien_ergeben_die_der_stunde():
+    """F24: die ungerundeten Energien der vier Viertelstunden sind zusammen GENAU die der Stunde -
+    weil jeder Wert bis zum nächsten guten Wert hält, auch hinter der Grenze (M4)."""
+    (case,) = [c for c in CASES if c["name"].startswith("f24-")]
+    reihe = case["input"]["reihe"]
+    von, bis = verbrauch._zeit("2026-10-20T10:00:00+02:00"), verbrauch._zeit("2026-10-20T11:00:00+02:00")
+    teile = [t for t in _werteteile(reihe, von, bis) if von <= t.teil.von and t.teil.bis <= bis]
+    werte = verbrauch.rohwerte(reihe)
+    assert len(teile) == 4
+    stunde = verbrauch._integriere(werte, von, bis, timedelta(seconds=10))
+    # Gleich bis auf die 28. Stelle des Dezimal-Kontexts (jeder Teil teilt für sich durch 3600).
+    assert abs(sum(t.energie for t in teile) - stunde) < Decimal("1e-20")
+    assert verbrauch._runde(verbrauch._D(386309) / verbrauch._D(3600)) == Decimal("107.308")
+
+
+def test_ein_mittel_von_mitteln_waere_falsch():
+    """Zwei Viertelstunden mit dem wahren Mittel 10,05 und 10,04: gerundet 10,1 und 10,0, deren Mittel
+    10,05 ergäbe 10,1 - die halbe Stunde hat 10,045, also 10,0. Gerechnet wird aus den Summen."""
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=450)
+
+    def werte(t0: datetime, a: str, b: str) -> list:
+        return [verbrauch.Rohwert(t0, Decimal(a)), verbrauch.Rohwert(t0 + kadenz, Decimal(b))]
+
+    roh = werte(von, "10.00", "10.10") + werte(von + _VIERTELSTUNDE, "10.00", "10.08")
+    teile = [
+        verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz),
+        verbrauch.momentanwert_teil(roh, von + _VIERTELSTUNDE, von + 2 * _VIERTELSTUNDE, kadenz),
+    ]
+    assert [t.teil.ergebnis["mittel"] for t in teile] == [Decimal("10.1"), Decimal("10.0")]
+    halb = verbrauch.momentanwert_aus_teilperioden(teile, von, von + 2 * _VIERTELSTUNDE, kadenz)
+    assert halb.teil.ergebnis["mittel"] == Decimal("10.0")
+    assert halb.teil.ergebnis["mittel"] == verbrauch.momentanwerte(roh, von, von + 2 * _VIERTELSTUNDE, kadenz)["mittel"]
+
+
+def test_ohne_einen_guten_wert_gibt_es_keine_energie():
+    """Eine Stunde, deren Viertelstunden keinen guten Wert tragen, hat keine Zahl - nie 0, nie Mittel × Länge."""
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=10)
+    schlecht = [verbrauch.Rohwert(von + timedelta(seconds=10 * i), Decimal(96), "bad") for i in range(90)]
+    teil = verbrauch.momentanwert_teil(schlecht, von, von + _VIERTELSTUNDE, kadenz, True)
+    assert teil.energie is None and teil.teil.ergebnis["zustand"] == verbrauch.KEINE_WERTE
+    stunde = verbrauch.momentanwert_aus_teilperioden([teil], von, von + timedelta(hours=1), kadenz, True)
+    assert stunde.energie is None
+    assert stunde.teil.ergebnis["energie_kwh"] is None and stunde.teil.ergebnis["kennzeichen"] == []
+    assert stunde.teil.ergebnis["erwartet"] == 360
+
+
+def test_integrieren_verlangt_die_energie_jedes_teils():
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=10)
+    roh = [verbrauch.Rohwert(von + timedelta(seconds=10 * i), Decimal(96)) for i in range(90)]
+    ohne = verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz, False)
+    with pytest.raises(ValueError, match="Energie"):
+        verbrauch.momentanwert_aus_teilperioden([ohne], von, von + timedelta(hours=1), kadenz, True)
+
+
+def test_rechenrauschen_kippt_keine_rundungsgrenze():
+    """Die Summe 28-stelliger Teil-Energien trägt Rauschen: 24,11249…9 darf nicht auf 24,112 kippen (F3)."""
+    assert verbrauch._runde_energie(Decimal("24.11249999999999999999999999")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11250000000000000000000001")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11244444444444444444444444")) == Decimal("24.112")

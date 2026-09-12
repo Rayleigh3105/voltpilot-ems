@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP
 from typing import Iterable, Sequence
 from zoneinfo import ZoneInfo
 
@@ -70,6 +70,9 @@ NUR_EIN_STAND = "nur ein Stand in der Periode — keine Menge bildbar"
 ZUWACHS_NICHT_MESSBAR = "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)"
 RUECKSETZUNG = "Rücksetzung "
 NEUSTART = "Neustart "
+#: E5/M4: eine Energie aus Leistung steht NIE ohne dieses Kennzeichen. Der Wortlaut ist Vertrag;
+#: ``kennzeichen`` der Vektor-Datei nennt seinen Anfang „aus Leistung integriert".
+AUS_LEISTUNG_INTEGRIERT = "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
 
 _D = Decimal
 
@@ -560,13 +563,7 @@ def menge_intervall(
     summe = sum((r.wert for r in treffer), _D(0)) * faktor
     fehlend = erwartet - len(treffer)
     zustand = VOLLSTAENDIG if fehlend == 0 else UNVOLLSTAENDIG
-    kennzeichen = []
-    if fehlend:
-        kennzeichen.append(
-            f"{fehlend} von {erwartet} Intervallmengen "
-            + ("fehlt" if fehlend == 1 else "fehlen")
-            + " — Menge ist die Summe der gemessenen"
-        )
+    kennzeichen = _fehlende_intervallmengen(fehlend, erwartet)
     return {
         "menge": _runde(summe),
         "zustand": zustand,
@@ -616,11 +613,7 @@ def momentanwerte(
     mittel = sum((r.wert for r in treffer), _D(0)) / len(treffer)
     kennzeichen: list[str] = []
     if not vollstaendig:
-        gemessen_s = len(treffer) * int(kadenz.total_seconds())
-        kennzeichen.append(
-            f"gemessene Zeit {gemessen_s // 60}:{gemessen_s % 60:02d} min"
-            f" von {int((bis - von).total_seconds()) // 60} min"
-        )
+        kennzeichen.append(_gemessene_zeit(len(treffer) * int(kadenz.total_seconds()), von, bis))
 
     ergebnis = {
         "mittel": _runde(mittel, 1),
@@ -633,17 +626,25 @@ def momentanwerte(
         "kennzeichen": kennzeichen,
     }
     if integrieren:
-        ergebnis["energie_kwh"] = _runde(_integriere(werte, von, bis, kadenz))
-        kennzeichen.append("aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)")
+        ergebnis["energie_kwh"] = _runde_energie(_integriere(werte, von, bis, kadenz))
+        kennzeichen.append(AUS_LEISTUNG_INTEGRIERT)
     return ergebnis
 
 
 def _integriere(werte: Sequence[Rohwert], von: datetime, bis: datetime, kadenz: timedelta) -> Decimal:
     """M4 — Rechteck-Halten: jeder Wert gilt bis zum nächsten guten Wert, höchstens
-    ``HALTEN_FAKTOR × Kadenz``, geschnitten auf die Periode."""
+    ``HALTEN_FAKTOR × Kadenz``, geschnitten auf die Periode.
+
+    Der nächste gute Wert darf HINTER ``bis`` liegen und der haltende VOR ``von`` (höchstens
+    ``HALTEN_FAKTOR × Kadenz`` weit): nur so ergeben die Energien benachbarter Perioden
+    zusammen genau die Energie der gröberen Periode (AP-08 IP-3, F24 Viertelstunde 10:15).
+    """
     energie = _D(0)
-    folge = [r for r in werte if r.gut and von - kadenz < r.zeit < bis]
+    reichweite = HALTEN_FAKTOR * kadenz
+    folge = [r for r in werte if r.gut and von - reichweite < r.zeit <= bis + reichweite]
     for vorher, nachher in zip(folge, folge[1:] + [None]):
+        if vorher.zeit >= bis:
+            break
         haelt_bis = (
             nachher.zeit
             if nachher is not None and nachher.zeit - vorher.zeit <= HALTEN_FAKTOR * kadenz
@@ -653,6 +654,255 @@ def _integriere(werte: Sequence[Rohwert], von: datetime, bis: datetime, kadenz: 
         if ende > start:
             energie += vorher.wert * _dez((ende - start).total_seconds()) / _D(3600)
     return energie
+
+
+#: Unter so vielen Stellen trägt eine ungerundete Energie nur Rechenrauschen (28-stellige Divisionen
+#: durch 3 600); es wird vor der Rundung entfernt, sonst kippte F3 (24,1125) als 24,11249…9 auf 24,112.
+ENERGIE_RAUSCHEN_STELLEN = 15
+
+
+def _runde_energie(energie: Decimal) -> Decimal:
+    return _runde(energie.quantize(_D(1).scaleb(-ENERGIE_RAUSCHEN_STELLEN), rounding=ROUND_HALF_EVEN))
+
+
+def _fehlende_intervallmengen(fehlend: int, erwartet: int) -> list[str]:
+    """I2 — das Kennzeichen einer Periode, der Intervallmengen fehlen (leer, wenn keine fehlt)."""
+    if not fehlend:
+        return []
+    return [
+        f"{fehlend} von {erwartet} Intervallmengen "
+        + ("fehlt" if fehlend == 1 else "fehlen")
+        + " — Menge ist die Summe der gemessenen"
+    ]
+
+
+def _gemessene_zeit(gemessen_s: int, von: datetime, bis: datetime) -> str:
+    """M3 — das Kennzeichen einer unvollständigen Momentanwert-Periode."""
+    return (
+        f"gemessene Zeit {gemessen_s // 60}:{gemessen_s % 60:02d} min"
+        f" von {int((bis - von).total_seconds()) // 60} min"
+    )
+
+
+# ----------------------- Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
+
+
+@dataclass(frozen=True)
+class Werteteil:
+    """Eine gebildete Periode einer Momentanwert- oder Intervallmengen-Reihe, wie eine GRÖBERE sie braucht.
+
+    Genau das trägt eine gespeicherte Viertelstunde, ein Tag, ein Monat (AP-08 IP-3):
+
+    * ``teil`` — Periode, erster/letzter guter Wert und das (gerundete) Ergebnis; die Stände
+      bleiben ``None``, ein Momentanwert hat keinen Periodenstand.
+    * ``summe`` — die Summe der guten Werte, UNGERUNDET: beim Momentanwert der Werte in
+      ``[von, bis)`` (daraus das Mittel ohne Mittel von Mitteln), bei der Intervallmenge der Mengen
+      mit Ende in ``(von, bis]`` mal Faktor. ``None`` ohne guten Wert.
+    * ``energie`` — nur Momentanwert mit Integration (E5): die Energie UNGERUNDET, sonst ``None``.
+    * ``gemessen_s`` — Momentanwert: die gemessene Zeit, erhalten × Kadenz (M2).
+    * ``luecke_innen`` — Momentanwert: zwischen zwei guten Werten DIESER Periode liegt eine Lücke
+      (über ``LUECKE_FAKTOR × Kadenz``).
+    """
+
+    teil: Teilperiode
+    summe: Decimal | None
+    energie: Decimal | None
+    gemessen_s: int
+    luecke_innen: bool
+
+
+def _luecke_zwischen(gute: Sequence[Rohwert], kadenz: timedelta) -> bool:
+    return any(b.zeit - a.zeit > LUECKE_FAKTOR * kadenz for a, b in zip(gute, gute[1:]))
+
+
+def momentanwert_teil(
+    werte: Sequence[Rohwert], von: datetime, bis: datetime, kadenz: timedelta, integrieren: bool = False
+) -> Werteteil:
+    """Eine Momentanwert-Periode aus Rohwerten als :class:`Werteteil` — die Form, in der sie gespeichert wird.
+
+    ``werte`` muss die Nachbarn bis ``HALTEN_FAKTOR × Kadenz`` vor ``von`` und hinter ``bis``
+    enthalten, sonst fehlt der Energie das Halten über die Grenze (M4).
+    """
+    out = momentanwerte(werte, von, bis, kadenz, integrieren)
+    gute = _gute_in(werte, von, bis)
+    return Werteteil(
+        Teilperiode(
+            von, bis, None, None, gute[0] if gute else None, gute[-1] if gute else None,
+            _mit_abdeckung(out, out["erwartet"]),
+        ),
+        sum((r.wert for r in gute), _D(0)) if gute else None,
+        _integriere(werte, von, bis, kadenz) if integrieren and gute else None,
+        len(gute) * int(kadenz.total_seconds()),
+        _luecke_zwischen(gute, kadenz),
+    )
+
+
+def intervallmenge_teil(
+    werte: Sequence[Rohwert], von: datetime, bis: datetime, kadenz: timedelta, faktor: Decimal = _D(1)
+) -> Werteteil:
+    """Eine Intervallmengen-Periode aus Rohwerten als :class:`Werteteil` (I1: Ende in ``(von, bis]``)."""
+    out = menge_intervall(werte, von, bis, kadenz, faktor)
+    treffer = [r for r in werte if r.gut and von < r.zeit <= bis]
+    return Werteteil(
+        Teilperiode(
+            von, bis, None, None, treffer[0] if treffer else None, treffer[-1] if treffer else None,
+            _mit_abdeckung(out, out["erwartet"]),
+        ),
+        sum((r.wert for r in treffer), _D(0)) * faktor if treffer else None,
+        None,
+        0,
+        False,
+    )
+
+
+def _werteteile_ordnen(
+    teile: Sequence[Werteteil], von: datetime, bis: datetime
+) -> tuple[list[Werteteil], Rohwert | None, Rohwert | None]:
+    """Die Teile IN ``[von, bis)``, der letzte gute Wert davor und der erste gute Wert danach."""
+    innen: list[Werteteil] = []
+    vorher: Rohwert | None = None
+    danach: Rohwert | None = None
+    for w in sorted(teile, key=lambda x: x.teil.von):
+        t = w.teil
+        if t.von >= von and t.bis <= bis:
+            innen.append(w)
+        elif t.bis <= von:
+            if t.letzter is not None and (vorher is None or t.letzter.zeit > vorher.zeit):
+                vorher = t.letzter
+        elif t.von >= bis:
+            if t.erster is not None and (danach is None or t.erster.zeit < danach.zeit):
+                danach = t.erster
+        else:
+            raise ValueError(f"Teilperiode {t.von}–{t.bis} ragt über die Grenze von {von}–{bis}")
+    return innen, vorher, danach
+
+
+def _gehalten(p: Rohwert | None, n: Rohwert | None, a: datetime, b: datetime, kadenz: timedelta) -> Decimal:
+    """M4 über eine Strecke ``[a, b)`` OHNE eigenen guten Wert: nur, was der Wert davor hält."""
+    if p is None:
+        return _D(0)
+    haelt_bis = n.zeit if n is not None and n.zeit - p.zeit <= HALTEN_FAKTOR * kadenz else p.zeit + kadenz
+    start, ende = max(p.zeit, a), min(haelt_bis, b)
+    return p.wert * _dez((ende - start).total_seconds()) / _D(3600) if ende > start else _D(0)
+
+
+def momentanwert_aus_teilperioden(
+    teile: Sequence[Werteteil],
+    von: datetime,
+    bis: datetime,
+    kadenz: timedelta,
+    integrieren: bool = False,
+) -> Werteteil:
+    """M1–M4 über eine GRÖBERE Periode aus ihren gespeicherten Teilperioden (AP-08 IP-3, §4.5).
+
+    Dasselbe Ergebnis wie :func:`momentanwerte` über alle Rohwerte der Periode, gebildet nur aus
+    dem, was die Teile tragen:
+
+    * **Mittel** = Summe der Teilsummen ÷ Summe erhalten — nie ein Mittel von Mitteln. Ein Teil
+      ohne ``summe`` (gebildet vor IP-3) trägt ``Mittel × erhalten``, genau auf die Rundung seines
+      Mittels. Min/Max über die Teile.
+    * **Vollständig** nur ohne Lücke zwischen zwei guten Werten — in einem Teil, zwischen zwei
+      Teilen, zum letzten Wert davor und zum ersten danach — und mit beiden Rändern innerhalb einer
+      Kadenz (M3). Ein unvollständiger Rand eines Teils ist an einer INNEREN Grenze kein Rand mehr.
+    * **Gemessene Zeit** = Summe der gemessenen Zeiten; Abdeckung aus erhalten ÷ erwartet, ein Teil
+      ohne Zeile zählt mit ``Länge ÷ Kadenz``.
+    * **Energie** (nur ``integrieren``, dann trägt jeder Teil mit Werten seine) = Summe der
+      ungerundeten Teil-Energien plus je Strecke ohne Teil mit Werten das Halten des Werts davor —
+      nie Mittel × Länge. Ohne einen guten Wert gibt es keine Zahl.
+
+    ``teile`` sind die Teile IN ``[von, bis)``, dazu höchstens je einer davor und danach mit gutem
+    Wert (für Lücke und Halten über die Grenze); einer, der über eine Grenze ragt, ist ein Fehler.
+    """
+    innen, vorher, danach = _werteteile_ordnen(teile, von, bis)
+    erwartet = erwartet_aus_teilperioden([w.teil for w in innen], von, bis, kadenz)
+    gut = [w for w in innen if w.teil.erster is not None]
+    if not gut:
+        leer = {"mittel": None, "min": None, "max": None, "energie_kwh": None, "zustand": KEINE_WERTE,
+                "erhalten": 0, "kennzeichen": []}
+        return Werteteil(Teilperiode(von, bis, None, None, None, None, _mit_abdeckung(leer, erwartet)),
+                         None, None, 0, False)
+    if integrieren and any(w.energie is None for w in gut):
+        raise ValueError("integrieren verlangt die Energie jeder Teilperiode mit Werten")
+
+    erhalten = sum(w.teil.ergebnis["erhalten"] for w in gut)
+    summe = sum(
+        (w.summe if w.summe is not None else w.teil.ergebnis["mittel"] * w.teil.ergebnis["erhalten"] for w in gut),
+        _D(0),
+    )
+    erster, letzter = gut[0].teil.erster, gut[-1].teil.letzter
+    schwelle = LUECKE_FAKTOR * kadenz
+    luecke_innen = any(w.luecke_innen for w in gut) or any(
+        b.teil.erster.zeit - a.teil.letzter.zeit > schwelle for a, b in zip(gut, gut[1:])
+    )
+    luecke_rand = (vorher is not None and erster.zeit > von and erster.zeit - vorher.zeit > schwelle) or (
+        danach is not None and danach.zeit - letzter.zeit > schwelle
+    )
+    vollstaendig = (
+        not luecke_innen and not luecke_rand and erster.zeit - von <= kadenz and bis - letzter.zeit <= kadenz
+    )
+    gemessen_s = sum(w.gemessen_s for w in gut)
+    kennzeichen = [] if vollstaendig else [_gemessene_zeit(gemessen_s, von, bis)]
+
+    energie = None
+    if integrieren:
+        energie = sum((w.energie for w in gut), _D(0))
+        stelle, wert_davor = von, vorher
+        for w in gut:
+            energie += _gehalten(wert_davor, w.teil.erster, stelle, w.teil.von, kadenz)
+            stelle, wert_davor = w.teil.bis, w.teil.letzter
+        energie += _gehalten(wert_davor, danach, stelle, bis, kadenz)
+        kennzeichen.append(AUS_LEISTUNG_INTEGRIERT)
+
+    ergebnis = {
+        "mittel": _runde(summe / erhalten, 1),
+        "min": min(w.teil.ergebnis["min"] for w in gut),
+        "max": max(w.teil.ergebnis["max"] for w in gut),
+        "energie_kwh": _runde_energie(energie) if energie is not None else None,
+        "zustand": VOLLSTAENDIG if vollstaendig else UNVOLLSTAENDIG,
+        "erhalten": erhalten,
+        "kennzeichen": kennzeichen,
+    }
+    return Werteteil(
+        Teilperiode(von, bis, None, None, erster, letzter, _mit_abdeckung(ergebnis, erwartet)),
+        summe,
+        energie,
+        gemessen_s,
+        luecke_innen,
+    )
+
+
+def intervallmenge_aus_teilperioden(
+    teile: Sequence[Werteteil], von: datetime, bis: datetime, kadenz: timedelta
+) -> Werteteil:
+    """I1–I2 über eine GRÖBERE Periode aus ihren gespeicherten Teilperioden (AP-08 IP-3, §4.5).
+
+    Menge = Summe der UNGERUNDETEN Teilsummen, einmal gerundet — die Summe gerundeter Teilmengen
+    wäre schon ohne Lücke falsch. Jede fehlende Intervallmenge, auch die eines Teils ohne Zeile
+    (``Länge ÷ Kadenz``), macht die Periode unvollständig (I2).
+    """
+    innen, _, _ = _werteteile_ordnen(teile, von, bis)
+    erwartet = erwartet_aus_teilperioden([w.teil for w in innen], von, bis, kadenz)
+    gut = [w for w in innen if w.teil.ergebnis["erhalten"] > 0]
+    if not gut:
+        leer = {"menge": None, "zustand": KEINE_WERTE, "erhalten": 0, "kennzeichen": []}
+        return Werteteil(Teilperiode(von, bis, None, None, None, None, _mit_abdeckung(leer, erwartet)),
+                         None, None, 0, False)
+    erhalten = sum(w.teil.ergebnis["erhalten"] for w in gut)
+    summe = sum((w.summe if w.summe is not None else w.teil.ergebnis["menge"] for w in gut), _D(0))
+    fehlend = erwartet - erhalten
+    ergebnis = {
+        "menge": _runde(summe),
+        "zustand": VOLLSTAENDIG if fehlend == 0 else UNVOLLSTAENDIG,
+        "erhalten": erhalten,
+        "kennzeichen": _fehlende_intervallmengen(fehlend, erwartet),
+    }
+    return Werteteil(
+        Teilperiode(von, bis, None, None, gut[0].teil.erster, gut[-1].teil.letzter, _mit_abdeckung(ergebnis, erwartet)),
+        summe,
+        None,
+        0,
+        False,
+    )
 
 
 # ------------------------------------------------------------------------ Der Eingang

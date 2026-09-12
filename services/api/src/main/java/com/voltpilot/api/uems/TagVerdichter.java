@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -112,7 +111,8 @@ public class TagVerdichter {
         "box", "box_2", "box_weitere", "fassung", "katalog", "rolle",
         "zustand", "endgueltig_ab", "berechnet_am", "version",
         "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse",
-        "menge", "menge_zustand", "kennzeichen", "kadenz_s"};
+        "menge", "menge_zustand", "kennzeichen", "kadenz_s",
+        "summe", "energie", "gemessen_s", "luecke_innen"};
 
     private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
 
@@ -585,10 +585,6 @@ public class TagVerdichter {
         int nStale = 0;
         int nDeviceError = 0;
         int nNachgeliefert = 0;
-        BigDecimal min = null;
-        BigDecimal max = null;
-        BigDecimal mittelSumme = BigDecimal.ZERO;
-        int mittelGewicht = 0;
         Slot erster = null;
         Slot letzter = null;
         Slot letzterMitAnker = null;
@@ -613,13 +609,6 @@ public class TagVerdichter {
             nStale += s.nStale();
             nDeviceError += s.nDeviceError();
             nNachgeliefert += s.nNachgeliefert();
-            min = kleiner(min, s.minWert());
-            max = groesser(max, s.maxWert());
-            if (s.mittel() != null && s.erhalten() > 0) {
-                mittelSumme = mittelSumme.add(
-                        s.mittel().multiply(BigDecimal.valueOf(s.erhalten())));
-                mittelGewicht += s.erhalten();
-            }
             if (s.ersterZeit() != null && erster == null) {
                 erster = s;
             }
@@ -680,8 +669,15 @@ public class TagVerdichter {
         }
         // Die Abdeckung wird ABGESCHNITTEN, nie auf 100 % gerundet (§4.9 Nr. 6).
         Integer abdeckung = erwartet == 0 ? null : Math.min(100, (int) (100L * erhalten / erwartet));
-        BigDecimal mittel = mittelGewicht == 0 ? null
-                : mittelSumme.divide(BigDecimal.valueOf(mittelGewicht), MathContext.DECIMAL64);
+        // AP-08 IP-3 — Momentanwert (und Intervallmenge) des Tages aus den Viertelstunden: Mittel aus
+        // der Summe der guten Werte ÷ erhalten (nie ein Mittel von Mitteln), Vollständigkeit aus den
+        // Lücken und Rändern (M3), gemessene Zeit, Energie nur gekennzeichnet — gerechnet von
+        // VerbrauchRegeln, hier nur angerufen. Vor IP-3 bildete dieser Lauf das Mittel selbst aus
+        // den gerundeten Viertelstunden-Mitteln.
+        VerbrauchRegeln.Werteteil werteteil = ViertelstundenTeile.werte(teile.werteteile(), wertart,
+                teile.kadenzS(), beginn, ende);
+        VerbrauchRegeln.Ergebnis werteErgebnis = werteteil == null ? null : werteteil.teil().ergebnis();
+        boolean momentan = "momentanwert".equals(ViertelstundeRegeln.regelWort(wertart));
 
         Map<String, Object> z = new LinkedHashMap<>();
         z.put("tag", Date.valueOf(t.tag()));
@@ -706,9 +702,9 @@ public class TagVerdichter {
         z.put("stand_anfang_zeit", ts(sA == null ? null : sA.zeit()));
         z.put("stand_ende", sE == null ? null : sE.wert());
         z.put("stand_ende_zeit", ts(sE == null ? null : sE.zeit()));
-        z.put("mittel", mittel);
-        z.put("min_wert", min);
-        z.put("max_wert", max);
+        z.put("mittel", werteErgebnis == null ? null : werteErgebnis.mittel());
+        z.put("min_wert", werteErgebnis == null ? null : werteErgebnis.min());
+        z.put("max_wert", werteErgebnis == null ? null : werteErgebnis.max());
         z.put("erster_wert", erster == null ? null : erster.ersterWert());
         z.put("erster_text", erster == null ? null : erster.ersterText());
         z.put("erster_zeit", ts(erster == null ? null : erster.ersterZeit()));
@@ -740,11 +736,18 @@ public class TagVerdichter {
         z.put("letzte_eingangszeit", ts(letzteEingangszeit));
         z.put("zustellart", ViertelstundeRegeln.zustellart(zustellarten));
         z.put("ereignisse", ereignisJson(ereignisse));
-        z.put("menge", menge == null ? null : menge.ergebnis().menge());
-        z.put("menge_zustand", menge == null ? null : menge.ergebnis().zustand());
+        // Zählerstand: aus den Periodenständen (IP-5). Momentanwert/Intervallmenge: aus der Regel
+        // von IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.
+        VerbrauchRegeln.Ergebnis mengeErgebnis = menge != null ? menge.ergebnis() : werteErgebnis;
+        z.put("menge", mengeErgebnis == null ? null : mengeErgebnis.menge());
+        z.put("menge_zustand", mengeErgebnis == null ? null : mengeErgebnis.zustand());
         z.put("kennzeichen", ViertelstundeRegeln.kennzeichenJson(
-                menge == null ? List.of() : menge.ergebnis().kennzeichen()));
+                mengeErgebnis == null ? List.of() : mengeErgebnis.kennzeichen()));
         z.put("kadenz_s", teile.kadenzS());
+        z.put("summe", werteteil == null ? null : werteteil.summe());
+        z.put("energie", werteteil == null ? null : werteteil.energie());
+        z.put("gemessen_s", momentan && werteteil != null ? (int) werteteil.gemessenS() : null);
+        z.put("luecke_innen", momentan && werteteil != null ? werteteil.lueckeInnen() : null);
 
         Object[] werte = new Object[SPALTEN.length];
         for (int i = 0; i < SPALTEN.length; i++) {
@@ -755,14 +758,6 @@ public class TagVerdichter {
 
     private static Timestamp ts(Instant t) {
         return t == null ? null : Timestamp.from(t);
-    }
-
-    private static BigDecimal kleiner(BigDecimal a, BigDecimal b) {
-        return b == null ? a : a == null ? b : a.min(b);
-    }
-
-    private static BigDecimal groesser(BigDecimal a, BigDecimal b) {
-        return b == null ? a : a == null ? b : a.max(b);
     }
 
     /** Die Zählung je Ereignisart summiert sich über die Viertelstunden; eine 0 steht nie da. */

@@ -78,14 +78,16 @@ class VerbrauchVectorsTest {
     }
 
     /**
-     * 23 Fälle — der vollständige Referenzfallkatalog AP-08 §7. {@code minItems} prüft der
-     * Läufer, die genaue Zahl steht hier.
+     * 23 Fälle — der vollständige Referenzfallkatalog AP-08 §7 — plus F24, den AP-08 IP-3 für die
+     * Zusammensetzung von Momentanwerten handgerechnet hat. {@code minItems} prüft der Läufer, die
+     * genaue Zahl steht hier.
      */
     @Test
-    void dreiundzwanzigFaelleMitEindeutigenNamen() throws Exception {
+    void dreiundzwanzigFaelleUndF24MitEindeutigenNamen() throws Exception {
         List<String> namen = new ArrayList<>();
         lies(VECTORS).path("cases").forEach(c -> namen.add(c.path("name").asText()));
-        assertThat(namen).hasSize(23).doesNotHaveDuplicates();
+        assertThat(namen).hasSize(24).doesNotHaveDuplicates();
+        assertThat(namen.get(23)).startsWith("f24-");
     }
 
     /** Die Schwellen stehen in der Datei; die Klasse schreibt sie nicht für sich allein fest. */

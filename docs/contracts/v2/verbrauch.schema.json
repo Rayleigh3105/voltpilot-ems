@@ -65,6 +65,11 @@
           "type": "string",
           "const": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
           "description": "P7/§4.5 (AP-08 IP-5). Additiv: eine gröbere Periode wird aus den Periodenständen ihrer gespeicherten Teilperioden gebildet, nie als Summe ihrer (gerundeten) Teilmengen. Randkennzeichen an inneren Grenzen entfallen, Abdeckung = Summe erhalten ÷ Summe erwartet."
+        },
+        "werte_teilperioden": {
+          "type": "string",
+          "const": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge",
+          "description": "M1–M4, I1–I2 über Perioden (AP-08 IP-3, §4.5). Additiv: Momentanwert- und Intervallmengen-Reihen einer gröberen Periode aus den gespeicherten Teilperioden (Summe, Energie, gemessene Zeit, Lücke im Teil). Die Energie aus Leistung steht nie ohne das Kennzeichen „aus Leistung integriert“ (E5)."
         }
       }
     },
