@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/verbrauch.schema.json",
+  "title": "Verbrauchsbildung: Eingang, Ergebnis und die Vektor-Datei",
+  "description": "Der Vertrag, wie aus den Rohwerten EINER Messreihe die Menge (oder Mittel/Min/Max) einer Periode wird (UEMS AP-08 §4, Prosa: verbrauch.md). Er beschreibt die Vektor-Datei verbrauch-vectors.json, gegen die BEIDE Umsetzungen gefahren werden: Python services/optimization/voltpilot_optimization/verbrauch.py und Java services/api .../uems/VerbrauchRegeln. Eingang ist ein Fall aus input (eine Reihe oder mehrere benannte Reihen), Ergebnis ist ein Eintrag aus expected. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "regeln", "zustaende", "kennzeichen", "cases"],
+  "properties": {
+    "_comment": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "Die Regel in Prosa — dieselbe wie in verbrauch.md."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv."
+    },
+    "$schema_datei": { "type": "string", "description": "Verweis auf dieses Schema." },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Woher die Regel stammt: Konzeptpaket und Regelnummern."
+    },
+    "zeitzone": {
+      "type": "string",
+      "const": "Europe/Berlin",
+      "description": "Die Zeitzone, in der Tag und Monat liegen und in der die Kennzeichen ihre Uhrzeiten nennen. Viertelstunde und Stunde laufen im UTC-Raster (P1)."
+    },
+    "referenzunternehmen": {
+      "type": "string",
+      "const": "./uems-referenzunternehmen.json",
+      "description": "Die EINE Beispielwelt. Messstellen, Kadenzen und Zählerstände der Fälle stammen von dort (Kunststoffwerk Ahrenberg GmbH)."
+    },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["periodenstand", "luecke_faktor", "integration_halten_faktor", "vergleich_nachkommastellen"],
+      "description": "Die Schwellen der Regel als Daten — die Zwillinge lesen sie hier, statt sie je für sich festzuschreiben.",
+      "properties": {
+        "periodenstand": {
+          "type": "string",
+          "const": "letzter guter Wert in (t − kadenz_s, t]",
+          "description": "Z1. Kein Wert im Fenster heißt: an dieser Periodengrenze wurde nicht gemessen — der Stand wird NICHT aus einem älteren Wert fortgeschrieben."
+        },
+        "luecke_faktor": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Z2. Ein Loch ÜBER diesem Vielfachen der Kadenz ist eine Lücke — strikt größer, dieselbe Schwelle wie ZustandAbleitung.LUECKE_FAKTOR. Genau zwei Kadenzen sind noch keine Lücke."
+        },
+        "integration_halten_faktor": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "M4. Beim Rechteck-Halten gilt ein Momentanwert höchstens so viele Kadenzen lang weiter."
+        },
+        "vergleich_nachkommastellen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Auf so viele Stellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12)."
+        }
+      }
+    },
+    "zustaende": {
+      "type": "array",
+      "minItems": 4,
+      "description": "Das geschlossene Vokabular der Ergebnis-Zustände (§4.5). „mit Ersatzwert“ entsteht erst mit AP-08 IP-13.",
+      "items": { "$ref": "#/$defs/zustand_wort" }
+    },
+    "kennzeichen": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Die Kennzeichen-Arten, die ein Ergebnis tragen kann. Der Text eines Kennzeichens nennt zusätzlich Zeitpunkt und Menge und steht je Fall in expected.kennzeichen."
+    },
+    "_abweichungen": {
+      "type": "array",
+      "description": "Jede Stelle, an der diese Datei bewusst von der Vorlage data/vp-uems-ap08-verbrauch/referenzfaelle.json abweicht. Leer heißt: nichts wurde stillschweigend geändert.",
+      "items": { "$ref": "#/$defs/abweichung" }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 23,
+      "description": "Die handgerechneten Referenzfälle. Ein Fall gibt eine Reihe (oder mehrere benannte) und erwartet je Periode ein Ergebnis.",
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+
+  "$defs": {
+    "zeitpunkt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      "description": "ISO-8601 mit Offset. Gerechnet wird in UTC; der Offset trägt die Ortszeit, die die Kennzeichen nennen."
+    },
+
+    "zustand_wort": {
+      "type": "string",
+      "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"],
+      "description": "§4.5. „vollständig“ heißt: jede Kilowattstunde der Periode ist gezählt und zugeordnet — nicht: alle Werte kamen an (das sagt die Abdeckung)."
+    },
+
+    "wertart": {
+      "type": "string",
+      "enum": ["zaehlerstand", "intervallmenge", "momentanwert"],
+      "description": "AP-07 E12. Je Wertart eine eigene Rechenregel: Z1–Z9, I1–I5, M1–M6."
+    },
+
+    "abweichung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fall", "feld", "vorlage", "statt", "grund"],
+      "properties": {
+        "fall": { "type": "string", "minLength": 1, "description": "Fall und Erwartung, an der abgewichen wird." },
+        "feld": { "type": "string", "minLength": 1, "description": "Das Feld der Erwartung." },
+        "vorlage": { "description": "Was in referenzfaelle.json steht." },
+        "statt": { "description": "Was hier steht." },
+        "grund": { "type": "string", "minLength": 1, "description": "Warum — und ob das Ergebnis (Menge, Zustand, Abdeckung) davon berührt ist." }
+      }
+    },
+
+    "abschnitt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["von", "bis", "kadenz_s", "stand_von"],
+      "description": "Ein Abschnitt gleichmäßiger Rohwerte: von ... bis (BEIDE Grenzen inklusive), je Kadenz ein Wert, beginnend bei stand_von und je Schritt um zuwachs_je_kadenz höher.",
+      "properties": {
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" },
+        "kadenz_s": { "type": "integer", "minimum": 1, "description": "Abstand der Werte in Sekunden." },
+        "stand_von": { "type": "number", "description": "Der Wert am Anfang des Abschnitts — beim Zählerstand der Zählerstand, sonst die Menge bzw. die Leistung." },
+        "zuwachs_je_kadenz": {
+          "type": ["number", "string"],
+          "pattern": "^-?[0-9]+([.][0-9]+)?$",
+          "description": "Der Zuwachs je Schritt. Fehlt er, bleibt der Wert konstant. Als TEXT geschrieben, wo die Zahl mehr Stellen hat, als ein Gleitkommawert exakt trägt (F16: 1.232662192394) — beide Zwillinge lesen jede Zahl über ihre Textform in eine Dezimalzahl."
+        },
+        "q": { "type": "string", "enum": ["good", "bad"], "description": "Güte. Vorgabe „good“; ein nicht guter Wert zählt nirgends mit." },
+        "eingang": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+
+    "einzelwert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "v"],
+      "description": "Ein einzeln genannter Rohwert.",
+      "properties": {
+        "t": { "$ref": "#/$defs/zeitpunkt" },
+        "v": { "type": "number" },
+        "q": { "type": "string", "enum": ["good", "bad"] },
+        "eingang": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+
+    "luecke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["von", "bis"],
+      "description": "Entfernt die erzeugten Werte in [von, bis) — so beschreibt ein Fall einen Box-Ausfall, ohne die Abschnitte zu zerschneiden. Eine entfernte Strecke ist NICHT dasselbe wie ein gemessener Stillstand.",
+      "properties": {
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+
+    "ereignis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "t"],
+      "description": "Ein Ereignis der Reihe (AP-07 IP-3). Es wirkt auf die Rechnung, wenn seine Zeit in (von, bis] der Periode liegt.",
+      "properties": {
+        "art": {
+          "type": "string",
+          "enum": ["device_boundary", "device_restart"],
+          "description": "device_boundary = Gerätegrenze (Zählerwechsel, Z4). device_restart = Neustart mit bekanntem Zählverlust (Z7). Rücksetzung und Überlauf werden aus den WERTEN erkannt (Z5/Z6), nicht gemeldet."
+        },
+        "t": { "$ref": "#/$defs/zeitpunkt" },
+        "endstand": { "type": ["number", "null"], "description": "Ablesestand des ALTEN Zählers. Fehlt er, ist der Zuwachs am Wechsel nicht messbar — der Beitrag ist 0 und die Periode unvollständig, nie „neuer Stand − alter Stand“." },
+        "anfangsstand": { "type": ["number", "null"], "description": "Ablesestand des NEUEN Zählers." },
+        "geraet_alt": { "type": "string", "description": "Einbau-Kennzeichen des alten Zählers (beschreibend)." },
+        "geraet_neu": { "type": "string", "description": "Einbau-Kennzeichen des neuen Zählers (beschreibend)." },
+        "verlust_s": { "type": "integer", "minimum": 0, "description": "Z7: so viele Sekunden Zählung können verloren sein. Die Zahl wird nie hochgerechnet, sie wird genannt." }
+      }
+    },
+
+    "reihe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wertart", "einheit", "kadenz_s", "rohwerte"],
+      "description": "Die Messreihe als Eingang der Rechnung.",
+      "properties": {
+        "wertart": { "$ref": "#/$defs/wertart" },
+        "einheit": { "type": "string", "minLength": 1, "description": "Einheit der Reihe NACH faktor (kWh, m³, kW …)." },
+        "kadenz_s": { "type": "integer", "minimum": 1, "description": "Erwarteter Abstand der Werte. Er bestimmt Periodenstand-Fenster, Lückenschwelle und erwartete Anzahl — nie das Raster der Periode (P4)." },
+        "zeitzone": { "type": "string", "description": "Zeitzone des Standorts (P1). Vorgabe Europe/Berlin." },
+        "faktor": { "type": "number", "description": "Z8: Rohwert × faktor ergibt die Einheit der Reihe. Er kommt aus der Einstellungs-Fassung zur Messzeit (AP-04 E5), nie aus der Rechnung." },
+        "rohwerte": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/rohwert" }
+        },
+        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" } },
+        "ereignisse": { "type": "array", "items": { "$ref": "#/$defs/ereignis" } },
+        "wertebereich_modul": { "type": "number", "description": "Z6: der deklarierte Wertebereich eines überlaufenden Zählers (etwa 65536 bei 16 bit). Ohne ihn ist ein fallender Stand IMMER eine Rücksetzung." },
+        "hoechstzuwachs_je_kadenz": { "type": "number", "description": "Z6: der größte plausible Zuwachs je Kadenz. Erst er trennt den Überlauf von der Rücksetzung." },
+        "integrieren": { "type": "boolean", "description": "M4: zusätzlich die Energie aus der Leistung bilden. Sie trägt dann immer das Kennzeichen „aus Leistung integriert“." }
+      }
+    },
+
+    "rohwert": {
+      "anyOf": [
+        { "$ref": "#/$defs/abschnitt" },
+        { "$ref": "#/$defs/einzelwert" }
+      ],
+      "description": "Entweder ein Abschnitt gleichmäßiger Werte oder ein einzelner Wert."
+    },
+
+    "erwartung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "von", "bis", "zustand"],
+      "description": "Das Ergebnis EINER Periode. Gerechnet werden menge bzw. mittel/min/max/energie_kwh, zustand, erhalten, erwartet, abdeckung_prozent, kennzeichen und stunden; name, reihe, version und ereignisse_zusatz beschreiben den Fall.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Die Periode, wie ein Mensch sie nennt („Viertelstunde 10:00–10:15“)." },
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" },
+        "reihe": { "type": "string", "minLength": 1, "description": "Nur bei mehreren Reihen: welche gemeint ist." },
+        "menge": { "type": ["number", "null"], "description": "Die Menge der Periode in der Einheit der Reihe. null heißt „keine Menge bildbar“ — nie 0." },
+        "mittel": { "type": ["number", "null"], "description": "Momentanwert: arithmetisches Mittel der guten Werte (M2)." },
+        "min": { "type": ["number", "null"] },
+        "max": { "type": ["number", "null"] },
+        "energie_kwh": { "type": ["number", "null"], "description": "Nur mit integrieren: die Energie aus der Leistung, immer gekennzeichnet (M4)." },
+        "zustand": { "$ref": "#/$defs/zustand_wort" },
+        "erhalten": { "type": "integer", "minimum": 0, "description": "Gute Werte im Fenster der Periode (Z9)." },
+        "erwartet": { "type": "integer", "minimum": 0, "description": "Periodenlänge ÷ Kadenz (P4)." },
+        "abdeckung_prozent": { "type": ["integer", "null"], "minimum": 0, "maximum": 100, "description": "Z9: erhalten ÷ erwartet, abgeschnitten. Sie sagt, wie viele Werte ankamen — NICHT, ob die Menge stimmt; ein vollständiger Tag darf 85 % haben (F8). Sie wird nie auf 100 % gerundet." },
+        "kennzeichen": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Was an dieser Periode zu sagen ist, in der Reihenfolge, in der die Regel es feststellt: erst die nicht gemessenen Ränder, dann je Nachbarschaft Gerätegrenze/Überlauf/Rücksetzung/Lücke, zuletzt die Neustarts."
+        },
+        "version": { "type": "integer", "minimum": 1, "description": "Beschreibend: die Fassung des Werts (AP-08 §4.6). Die Regel bildet sie nicht." },
+        "ereignisse_zusatz": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ereignis" },
+          "description": "Ereignisse einer Fall-VARIANTE (etwa ein nachgetragener Ablesestand, der aus der Rücksetzung eine Gerätegrenze macht). Sie treten zu den Ereignissen der Reihe hinzu."
+        },
+        "stunden": { "type": "integer", "minimum": 0, "description": "P3: die Länge der Periode in Stunden — am Umstellungstag 23 oder 25." }
+      }
+    },
+
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "ableitung", "why", "abnahme", "messstelle", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^f[0-9]+-[a-z0-9-]+$", "description": "Kennung des Falls aus dem Referenzfallkatalog (F1 … F23) plus Kurztitel." },
+        "familie": {
+          "type": "string",
+          "enum": ["zaehlerstand", "intervallmenge", "momentanwert", "mehrere-reihen"],
+          "description": "Die Wertart des Falls; „mehrere-reihen“, wenn der Fall zwei Reihen gegeneinander stellt."
+        },
+        "ableitung": { "type": "string", "enum": ["einzel", "reihen"], "description": "„einzel“ = eine Reihe unter input.reihe, „reihen“ = benannte Reihen unter input.reihen." },
+        "why": { "type": "string", "minLength": 1, "description": "Wozu der Fall da ist — er steht in der Meldung, wenn er bricht." },
+        "abnahme": { "type": ["string", "null"], "enum": ["1", "2", null], "description": "Bezug auf eine Plan-Abnahme des Programms, sonst null." },
+        "messstelle": { "type": "string", "minLength": 1, "description": "Die Messstelle des Referenzunternehmens, in der der Fall spielt." },
+        "input": { "$ref": "#/$defs/eingang" },
+        "expected": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/erwartung" }
+        }
+      }
+    },
+
+    "eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Entweder EINE Reihe (reihe) oder mehrere benannte (reihen). Nie beides.",
+      "properties": {
+        "reihe": { "$ref": "#/$defs/reihe" },
+        "reihen": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/reihe" },
+          "description": "Benannte Reihen; eine Erwartung nennt dann ihre Reihe."
+        }
+      }
+    }
+  }
+}
