@@ -101,6 +101,14 @@ class UemsViertelstundeMengeTest {
             "site_supply_price", "monthly_market_value", "entity_registry_state",
             "device_command_log", "site_plan_run");
 
+    /**
+     * Nicht Teil des Bestands-Fingerabdrucks: die Tabellen, die dieses Paket bearbeitet, und der
+     * Laufzustand der Tagesklasse — {@code V20260912190000} (AP-07 IP-13) legt ihn MIT seiner
+     * Startzeile an; das ist neuer Inhalt einer späteren Migration, kein Bestand. Alle anderen
+     * später angelegten Tabellen misst {@link Bestandsschutz} mit: sie müssen leer bleiben.
+     */
+    private static final List<String> AUSNAHMEN = List.of("messreihe_viertelstunde%", "messreihe_tag_lauf");
+
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
@@ -215,11 +223,20 @@ class UemsViertelstundeMengeTest {
 
     @Test
     void dieMigrationLegtNurDanebenUndDerGanzeLaufLaesstDenBestandZeichengleich() {
-        assertThat(fingerNachMigration).as("nach der Migration").isEqualTo(fingerVorher);
-        assertThat(fingerNachLauf).as("nach dem ganzen Lauf").isEqualTo(fingerVorher);
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachMigration)).as("nach der Migration")
+                .isEmpty();
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachLauf)).as("nach dem ganzen Lauf")
+                .isEmpty();
         assertThat(fingerVorher).as("gemessen wird jede Tabelle des Schemas")
                 .hasSizeGreaterThan(100)
                 .containsKeys(BESTAND.toArray(String[]::new));
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Bestandszeile und eine neue Tabelle mit Inhalt fallen auf. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
     }
 
     /** Was PR 698 schon anlegte, wird NICHT doppelt angelegt; ergänzt sind genau vier Spalten. */
@@ -828,31 +845,11 @@ class UemsViertelstundeMengeTest {
 
     /**
      * Der Inhalt JEDER Tabelle des Schemas als ein Wert — ändert sich irgendwo eine Zeile, ändert
-     * er sich. Ausgenommen sind nur die drei Tabellen, die dieses Paket bearbeitet, und das
-     * Migrations-Protokoll.
+     * er sich. Ausgenommen ist nur {@link #AUSNAHMEN}; was eine SPÄTERE Migration anlegt, misst
+     * {@link Bestandsschutz} mit (leer oder Abweichung).
      */
     private static Map<String, String> fingerabdruck() {
-        List<String> tabellen = root.queryForList(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-                        + "AND table_type = 'BASE TABLE' "
-                        + "AND table_name NOT LIKE 'messreihe_viertelstunde%' "
-                        // Und was eine SPAETERE Migration anlegt, gehoert nicht in diese
-                        // Messung: AP-07 IP-13 bringt die Tagesklasse und die Korrektur-Liste
-                        // (V20260912190000), die es zum Zeitpunkt der ersten Messung noch gar
-                        // nicht gab.
-                        + "AND table_name NOT LIKE 'messreihe_tag%' "
-                        // … ebenso Monat und Jahr aus AP-08 IP-5 (V20260912205000).
-                        + "AND table_name NOT LIKE 'messreihe_periode%' "
-                        + "AND table_name <> 'messreihe_korrektur_vorschlag' "
-                        + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
-                String.class);
-        Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : tabellen) {
-            aus.put(tabelle, root.queryForObject(
-                    "SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                            + tabelle + " t", String.class));
-        }
-        return aus;
+        return Bestandsschutz.fingerabdruck(root, AUSNAHMEN);
     }
 
     private static String letzteFassungVorDieser() {

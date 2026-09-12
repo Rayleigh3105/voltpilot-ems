@@ -76,6 +76,13 @@ class UemsPeriodenmengeTest {
             "unternehmen", "anlage_standort", "telemetry", "telemetry_v2", "schedule",
             "site_supply_price", "entity_registry_state", "device_command_log");
 
+    /**
+     * Die Tabellen, die dieses Paket bearbeitet, und die Rohtabelle — nicht Teil des
+     * Bestands-Fingerabdrucks. Die Rohtabelle wächst in diesem Test selbst; dass keine BESTEHENDE
+     * Rohzeile sich ändert, prüft {@link #rohwerteFinger()} eigens.
+     */
+    private static final List<String> AUSNAHMEN = List.of("messreihe_%", "device_measurement_sample");
+
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
@@ -412,10 +419,19 @@ class UemsPeriodenmengeTest {
 
     @Test
     void dieMigrationLegtNurDanebenUndDerGanzeLaufLaesstDenBestandZeichengleich() {
-        assertThat(fingerNachMigration).as("nach der Migration").isEqualTo(fingerVorher);
-        assertThat(fingerNachAllem).as("nach allen Läufen").isEqualTo(fingerVorher);
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachMigration)).as("nach der Migration")
+                .isEmpty();
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachAllem)).as("nach allen Läufen")
+                .isEmpty();
         assertThat(fingerVorher).hasSizeGreaterThan(100).containsKeys(BESTAND.toArray(String[]::new));
         assertThat(rohNachAllem).as("keine bestehende Rohzeile ändert sich").isEqualTo(rohVorher);
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Bestandszeile und eine neue Tabelle mit Inhalt fallen auf. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
     }
 
     @Test
@@ -695,18 +711,7 @@ class UemsPeriodenmengeTest {
     }
 
     private static Map<String, String> fingerabdruck() {
-        List<String> tabellen = root.queryForList(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-                        + "AND table_type = 'BASE TABLE' AND table_name NOT LIKE 'messreihe_%' "
-                        + "AND table_name <> 'device_measurement_sample' "
-                        + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
-                String.class);
-        Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : tabellen) {
-            aus.put(tabelle, root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), "
-                    + "'leer') FROM " + tabelle + " t", String.class));
-        }
-        return aus;
+        return Bestandsschutz.fingerabdruck(root, AUSNAHMEN);
     }
 
     /** Die pünktlichen Rohwerte — der Nachzügler vom April kommt dazu, keine bestehende Zeile ändert sich. */
