@@ -158,6 +158,36 @@ class BezugsdatenVectorsTest {
     }
 
     /**
+     * AP-09 IP-5: der GESCHLOSSENE Satz der Ablehnungen steht in der Datei — Code, Status und Kundensatz
+     * — und {@link BezugsgroesseRegeln.Ablehnung} ist Zeile für Zeile derselbe. Die Konstanten des
+     * Verwaltens (Kennzeichen, M1, Lesarten) ebenso; {@code einheit_unbekannt} spricht denselben Satz
+     * wie der Befund.
+     */
+    @Test
+    void dieAblehnungenDesVerwaltensSindDieDerDatei() throws Exception {
+        JsonNode vw = vektoren().path("verwalten");
+        List<String> datei = new ArrayList<>();
+        vw.path("ablehnungen").forEach(a -> datei.add(a.path("code").asText() + " · " + a.path("status").asInt()
+                + " · " + a.path("satz").asText()));
+        List<String> klasse = new ArrayList<>();
+        for (BezugsgroesseRegeln.Ablehnung a : BezugsgroesseRegeln.Ablehnung.values()) {
+            klasse.add(a.code() + " · " + a.status() + " · " + a.satz());
+        }
+        assertThat(klasse).as("Ablehnungen in Reihenfolge").containsExactlyElementsOf(datei);
+        assertThat(vw.path("ablehnungen").findValuesAsText("code")).doesNotHaveDuplicates();
+        assertThat(BezugsgroesseRegeln.Ablehnung.EINHEIT_UNBEKANNT.satz())
+                .isEqualTo(vektoren().path("befund_saetze").path("einheit_unbekannt").asText());
+        assertThat(vw.path("kennzeichen").path("praefix").asText()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_PRAEFIX);
+        assertThat(vw.path("kennzeichen").path("stellen").asInt()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_STELLEN);
+        assertThat(vw.path("kennzeichen").path("muster").asText()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_MUSTER);
+        assertThat(texte(vw.path("fest_nach_erstem_wert"))).isEqualTo(BezugsgroesseRegeln.FEST_NACH_ERSTEM_WERT);
+        assertThat(texte(vw.path("immer_aenderbar"))).isEqualTo(BezugsgroesseRegeln.IMMER_AENDERBAR);
+        assertThat(texte(vw.path("lesarten"))).isEqualTo(BezugsgroesseRegeln.LESARTEN);
+        assertThat(texte(vektoren().path("vokabulare").path("geltung_art")))
+                .as("wählbar ist eine Teilmenge des Vokabulars").containsAll(BezugsgroesseRegeln.GELTUNG_WAEHLBAR);
+    }
+
+    /**
      * Die Zustandswörter sind DIESELBEN wie im schon gemergten Verbrauchsvertrag — zwei Wortlaute
      * für dieselbe Aussage wären genau die Drift, die diese Dateien verhindern sollen.
      */
@@ -489,8 +519,45 @@ class BezugsdatenVectorsTest {
                 betrag(why + " · gemessene_stunden", soll.path("gemessene_stunden"), ist.gemesseneStunden());
                 assertThat(ist.kennzeichen()).as(why + " · kennzeichen").isEqualTo(texte(soll.path("kennzeichen")));
             }
+            case "verwalten" -> {
+                JsonNode vw = ein.path("verwaltung");
+                BezugsgroesseRegeln.Urteil ist = verwalten(wurzel, vw);
+                wort(why + " · ablehnung", soll.path("ablehnung"), ist.erlaubt() ? null : ist.ablehnung().code());
+                if (soll.has("ablehnung_felder")) {
+                    assertThat(ist.fakten().get("felder")).as(why + " · ablehnung_felder")
+                            .isEqualTo(texte(soll.path("ablehnung_felder")));
+                }
+                if (soll.has("kennzeichen_vorschlag")) {
+                    assertThat(BezugsgroesseRegeln.kennzeichenVorschlag(texte(vw.path("belegt"))))
+                            .as(why + " · kennzeichen_vorschlag")
+                            .isEqualTo(soll.path("kennzeichen_vorschlag").asText());
+                }
+            }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    /** AP-09 IP-5: ein Vorgang der Regel {@code verwalten} gegen {@link BezugsgroesseRegeln}. */
+    private static BezugsgroesseRegeln.Urteil verwalten(JsonNode wurzel, JsonNode vw) {
+        JsonNode vok = wurzel.path("vokabulare");
+        BezugsgroesseRegeln.Vokabular v = new BezugsgroesseRegeln.Vokabular(texte(vok.path("wertart")),
+                texte(vok.path("geltung_art")), texte(vok.path("periode_art")), einheiten(wurzel));
+        return switch (vw.path("vorgang").asText()) {
+            case "anlegen" -> BezugsgroesseRegeln.anlegen(entwurf(vw.path("entwurf")), v, texte(vw.path("waehlbar")),
+                    texte(vw.path("belegt")));
+            case "aendern" -> BezugsgroesseRegeln.aendern(entwurf(vw.path("bestand")), entwurf(vw.path("entwurf")),
+                    vw.path("archiviert").asBoolean(), vw.path("werte").asLong(), v, texte(vw.path("waehlbar")),
+                    texte(vw.path("belegt")));
+            case "archivieren" -> BezugsgroesseRegeln.archivieren(vw.path("archiviert").asBoolean());
+            case "loeschen" -> BezugsgroesseRegeln.loeschen(vw.path("werte").asLong());
+            default -> throw new IllegalStateException("unbekannter Vorgang " + vw.path("vorgang").asText());
+        };
+    }
+
+    private static BezugsgroesseRegeln.Entwurf entwurf(JsonNode e) {
+        return new BezugsgroesseRegeln.Entwurf(text(e.path("kennzeichen")), text(e.path("name")),
+                text(e.path("wertart")), text(e.path("einheit")), text(e.path("periode_art")),
+                text(e.path("geltung_art")), text(e.path("geltung_id")));
     }
 
     // ------------------------------------------------------------ Die Vektor-Form lesen

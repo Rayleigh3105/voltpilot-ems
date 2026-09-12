@@ -247,6 +247,61 @@
         }
       }
     },
+    "verwalten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "kennzeichen", "fest_nach_erstem_wert", "immer_aenderbar", "pruefreihenfolge", "lesarten", "ablehnungen"],
+      "description": "AP-09 IP-5: das Verwalten einer Bezugsgröße (M1–M6) — Kennzeichen-Vergabe, was nach dem ersten Wert fest bleibt, die Prüfreihenfolge je Vorgang, die Lesarten des Lesemodells und der GESCHLOSSENE Satz der Ablehnungen mit Status und Kundensatz. Die Regel `verwalten` der Fälle prüft ihn.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "kennzeichen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["praefix", "stellen", "muster", "regel"],
+          "properties": {
+            "praefix": { "type": "string", "const": "BZ-" },
+            "stellen": { "type": "integer", "minimum": 1 },
+            "muster": { "type": "string", "minLength": 1 },
+            "regel": { "type": "string", "minLength": 1 }
+          }
+        },
+        "fest_nach_erstem_wert": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/bezugsgroesse_feld" },
+          "description": "M1: was nach dem ersten Wert nicht mehr geändert wird."
+        },
+        "immer_aenderbar": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["kennzeichen", "name"] },
+          "description": "M1: was immer änderbar bleibt (außer an einer archivierten Bezugsgröße, M6)."
+        },
+        "pruefreihenfolge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anlegen", "aendern", "archivieren", "loeschen"],
+          "description": "Je Vorgang die Reihenfolge der Prüfungen — die ERSTE, die nicht besteht, ist die Ablehnung.",
+          "properties": {
+            "anlegen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "aendern": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "archivieren": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "loeschen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "lesarten": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["wirksam", "alle"] },
+          "description": "`GET …/{id}/werte?fassungen=` — die erste ist die Vorgabe."
+        },
+        "ablehnungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ablehnung" } },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "zwillinge": {
       "type": "object",
       "minProperties": 1,
@@ -320,6 +375,77 @@
         "kodierung_unlesbar"
       ],
       "description": "C8: das geschlossene Befund-Vokabular."
+    },
+
+    "ablehnung_code": {
+      "type": "string",
+      "enum": [
+        "anfrage_ungueltig",
+        "wort_unbekannt",
+        "einheit_unbekannt",
+        "kennzeichen_format",
+        "zeitraum_ungueltig",
+        "periode_passt_nicht_zur_wertart",
+        "flaeche_aus_struktur",
+        "geltung_nicht_waehlbar",
+        "geltung_unbekannt",
+        "bedeutung_fest",
+        "kennzeichen_belegt",
+        "archiviert",
+        "hat_werte",
+        "nicht_gefunden"
+      ],
+      "description": "AP-09 IP-5: der geschlossene Satz der Ablehnungen der Bezugsgrößen-Schnittstelle."
+    },
+
+    "ablehnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "status", "regel", "satz"],
+      "properties": {
+        "code": { "$ref": "#/$defs/ablehnung_code" },
+        "status": { "type": "integer", "enum": [400, 404, 409, 422], "description": "400 Form · 404 nicht da (auch fremd, nie 403) · 409 Zustand · 422 Regel." },
+        "regel": { "type": "string", "minLength": 1, "description": "Die Regel des Konzepts, aus der die Ablehnung folgt." },
+        "satz": { "type": "string", "minLength": 1, "description": "Der Kundensatz — die EINE Formulierung." }
+      }
+    },
+
+    "bezugsgroesse_feld": {
+      "type": "string",
+      "enum": ["wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
+      "description": "verwalten (M1): ein Feld, das die Bedeutung eines Betrags trägt."
+    },
+
+    "bezugsgroesse_entwurf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennzeichen", "name", "wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
+      "description": "verwalten: die Felder einer Bezugsgröße, wie die Schnittstelle sie liest. `geltung_id` ist hier das Kennzeichen des Objekts im Referenzunternehmen; die Schnittstelle nimmt dessen ID.",
+      "properties": {
+        "kennzeichen": { "type": ["string", "null"], "description": "null heißt: der Server vergibt es (M2)." },
+        "name": { "type": ["string", "null"] },
+        "wertart": { "type": ["string", "null"] },
+        "einheit": { "type": ["string", "null"] },
+        "periode_art": { "type": ["string", "null"] },
+        "geltung_art": { "type": ["string", "null"] },
+        "geltung_id": { "type": ["string", "null"] }
+      }
+    },
+
+    "verwaltung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vorgang"],
+      "description": "verwalten (M1–M6): der Eingang eines Vorgangs an einer Bezugsgröße.",
+      "properties": {
+        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen"] },
+        "entwurf": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
+        "bestand": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
+        "archiviert": { "type": "boolean" },
+        "werte": { "type": "integer", "minimum": 0, "description": "Wie viele Wert-Zeilen (alle Fassungen) die Bezugsgröße trägt." },
+        "waehlbar": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Die Geltungsbereich-Arten, deren Objekte gebaut sind (E1: „wählbar, sobald gebaut“)." },
+        "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." }
+      }
     },
 
     "urteil_wort": {
@@ -569,7 +695,8 @@
         "zustand_gewaehlt": { "type": "string", "minLength": 1, "description": "kanal (K): der Zustand, dessen Dauer gezählt wird." },
         "zustand_am_anfang": { "type": ["string", "null"], "description": "kanal: der Zustand am Periodenanfang = letzter Wechsel davor; null heißt „vor dem ersten Wechsel wurde nicht gemessen“." },
         "wechsel": { "type": "array", "items": { "$ref": "#/$defs/zustandswechsel" }, "description": "kanal: die Statuswechsel innerhalb der Periode." },
-        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." }
+        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." },
+        "verwaltung": { "$ref": "#/$defs/verwaltung" }
       }
     },
 
@@ -630,7 +757,10 @@
         "minuten_im_zustand": { "type": "integer", "minimum": 0, "description": "kanal: die gemessene Zeit im gewählten Zustand." },
         "abdeckung_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "kanal: gemessene Zeit ÷ Periodenlänge. ⚠ Zeitbasiert — nicht die wertbasierte Abdeckung der Verbrauchsregel." },
         "gemessene_stunden": { "$ref": "#/$defs/betrag", "description": "kanal: wie viele Stunden der Periode überhaupt gemessen wurden." },
-        "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." }
+        "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." },
+        "ablehnung": { "anyOf": [{ "$ref": "#/$defs/ablehnung_code" }, { "type": "null" }], "description": "verwalten: die Ablehnung, oder null — der Vorgang ist erlaubt." },
+        "ablehnung_felder": { "type": "array", "items": { "$ref": "#/$defs/bezugsgroesse_feld" }, "description": "verwalten (`bedeutung_fest`): die Felder, die nach dem ersten Wert nicht geändert werden." },
+        "kennzeichen_vorschlag": { "type": "string", "minLength": 1, "description": "verwalten (M2): das Kennzeichen, das der Server ohne Angabe vergibt." }
       }
     },
 
@@ -641,7 +771,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal", "verwalten"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

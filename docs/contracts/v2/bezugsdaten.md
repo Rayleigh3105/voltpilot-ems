@@ -28,9 +28,11 @@ widersprechen, gilt die Datei.
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> **Wer anruft (Stand AP-09 IP-3): niemand.** Dieses Paket legt die Wahrheit fest, gegen die
-> IP-4 … IP-19 gebaut werden. Es gibt keine Tabelle, keine Route, keine Portal-Fläche und
-> keinen CSV-Leser; die Kern-Telemetrie, ihre Verdichtungen, das Cockpit, die Erlöse und der
+> **Wer anruft (Stand AP-09 IP-5):** die Bezugsgrößen-Schnittstelle `/api/v1/bezugsgroessen`
+> — sie urteilt über Anlegen, Ändern, Archivieren und Löschen mit `uems/BezugsgroesseRegeln`
+> (Block `verwalten`, §7) und liest den Stand einer Fassungskette mit
+> `BezugsdatenRegeln.fassungen`. Werte schreibt noch niemand (IP-7), es gibt keine
+> Portal-Fläche und keinen CSV-Leser; die Kern-Telemetrie, ihre Verdichtungen, das Cockpit, die Erlöse und der
 > Messwert-Export sind unberührt. Der **Messwert-Herkunftsvertrag**
 > ([`messwert-herkunft.md`](./messwert-herkunft.md)) ist ausdrücklich NICHT angefasst: E3
 > entscheidet, dass die Bezugsdaten ihren **eigenen** Vertrag bekommen.
@@ -158,7 +160,7 @@ verlangt E10 eine ausdrückliche Bestätigung mit der Zahl: „1 von 3 Zeilen ü
 
 Die Datei trennt drei Dinge sauber:
 
-- **`pruefungen`** — was ein Zwilling nachrechnet. 78 Prüfungen über 14 Fälle.
+- **`pruefungen`** — was ein Zwilling nachrechnet. 91 Prüfungen über 14 Fälle (78 aus der Vorlage, seit IP-5 dazu 13 der Regel `verwalten`).
 - **`beschreibend`** — was die Vorlage erwartet, aber keine reine Regel dieses Pakets bildet:
   Anzeigesätze, die Herkunfts-Angaben je Wert (Spalten der Tabelle aus IP-4), die
   Kennzahlen (AP-11 bildet sie, nicht dieser Vertrag) und die Lesemodell-Aussagen aus IP-8.
@@ -172,7 +174,7 @@ unveränderte Betrag 312 400 kg samt `aenderungen: 0`, bei B6 der **Nenner** 3 1
 
 Ebenfalls nicht hier: der CSV-Leser (C1: Kodierung, Trennzeichen, RFC 4180, SHA-256 — IP-11),
 die Tabellen (IP-4), die Routen (IP-5 ff.), die Portal-Flächen (IP-9 ff.) und die
-Rechte-Zeilen (W8, IP-5). Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei
+Rechte-Zeilen (W8, `rechte-matrix.json` seit IP-5). Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei
 bekannt ist, bekommt die Regel `urteil` als Eingang.
 
 ## 6. Herkunft der Zahlen
@@ -189,3 +191,29 @@ Vorlage.
 
 `referenz_stand` sagt, was das Referenzunternehmen noch nicht kennt: BZ-5 „Ladezeit Ladepunkt
 Halle 2“, die Ablesungen an MS-21 und die Einheiten-Kennungen trägt **IP-2** dort nach.
+
+## 7. Verwalten einer Bezugsgröße (seit AP-09 IP-5)
+
+Der Block **`verwalten`** trägt, was §4.2 des Konzepts als M1–M6 nennt und die Schnittstelle
+`/api/v1/bezugsgroessen` braucht — nachgetragen, weil die Vorlage nur Werte rechnet:
+
+- **`ablehnungen`** — der GESCHLOSSENE Satz der Ablehnungen mit Status (400 Form · 404 nicht da,
+  auch fremd · 409 Zustand · 422 Regel) und **Kundensatz**. Keine Umsetzung schreibt einen
+  eigenen Fehlertext; eine Ablehnung schreibt nichts. `einheit_unbekannt` ist dasselbe Wort
+  mit demselben Satz wie der Befund.
+- **`pruefreihenfolge`** je Vorgang (`anlegen` · `aendern` · `archivieren` · `loeschen`) — die
+  erste nicht bestandene Prüfung ist die Antwort. Danach prüft der Schreibweg, ob das Objekt
+  des Geltungsbereichs im Kundenbereich da ist (`geltung_unbekannt`).
+- **`kennzeichen`** (M2) — `BZ-` und die Nummer nach der HÖCHSTEN je belegten, vierstellig;
+  nie an eine andere Bezugsgröße weitergegeben, auch nicht das einer gelöschten.
+- **`fest_nach_erstem_wert`** (M1) — Wertart, Einheit, Periodenart, Geltungsbereich; Name und
+  Kennzeichen bleiben änderbar.
+- **`lesarten`** — `GET …/{id}/werte?fassungen=wirksam|alle`.
+
+Die Regel **`verwalten`** in den Fällen B4, B5, B6, B7, B8, B13 und B14 prüft das mit dem
+Java-Zwilling `uems/BezugsgroesseRegeln`; das Portal hat dafür keinen Zwilling
+(`zwillinge_grund`), aber `frontend/portal/src/bezugsgroesse.ts` spricht den Satz der
+Ablehnungen und wird gegen diese Datei geprüft. ⚠ Welche Geltungsbereiche **wählbar** sind,
+ist ein Eingang (`waehlbar`), kein Vokabular: Prozess und Kostenstelle stehen im Vokabular,
+haben aber noch kein Objekt (E1 „wählbar, sobald gebaut“). ⚠ Es gibt **keine Art**
+(„Produktionsmenge“, „Gutteile“) — das Vokabular dafür fehlt diesem Vertrag.
