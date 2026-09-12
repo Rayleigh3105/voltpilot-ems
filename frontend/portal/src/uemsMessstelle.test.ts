@@ -41,6 +41,7 @@ import {
   rueckwirkung,
   stellungPruefen,
   vorschlagsliste,
+  wechselPruefen,
   zeitstrahlAus,
   type Abschnitt,
   type Bindung,
@@ -376,6 +377,27 @@ describe('Messstellen-Vertrag — die Fälle', () => {
         endstand: stand(c.input.endstand),
       }),
     ).toEqual(c.expected);
+  });
+
+  it.each(faelle('wechsel'))('Zählerwechsel: $name', (c) => {
+    const a = c.input.alt;
+    expect(
+      wechselPruefen({
+        jetzt: c.input.jetzt,
+        alt: {
+          geraet: a.geraet,
+          einbau: a.einbau,
+          eingebautAm: a.eingebaut_am,
+          ausgebautAm: a.ausgebaut_am,
+        },
+        zeitpunkt: c.input.zeitpunkt,
+      }),
+    ).toEqual({
+      fehler: c.expected.fehler,
+      ohneGeraetAb: c.expected.ohne_geraet_ab,
+      rueckwirkend: c.expected.rueckwirkend,
+      angekuendigt: c.expected.angekuendigt,
+    });
   });
 
   it.each(faelle('rueckwirkung'))('Rückwirkung: $name', (c) => {

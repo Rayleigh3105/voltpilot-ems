@@ -2583,6 +2583,102 @@ export interface MessstellenRegister {
   aggregat: MessstelleRegisterAggregat;
 }
 
+// ---- Zählerwechsel (UEMS AP-04 IP-17) ---------------------------------------
+// Die Formen von POST /api/v1/messstellen/{id}/quellen/wechsel und
+// POST /api/v1/geraete/{id}/austausch — EIN Vorgang, zwei Einstiege, dieselbe
+// Anfrage und dieselbe Antwort. Die Fläche dazu baut IP-18; hier stehen nur die
+// Typen. Entweder alle Wirkungen landen oder keine.
+
+/** Ein abgelesener Zählerstand; `einheit` darf fehlen — dann gibt es den Hinweis `ablesestand_pruefen`. */
+export interface MessstelleStand {
+  wert: number;
+  einheit: string | null;
+}
+
+/**
+ * Das Kästchen, das kommt. Jedes Feld darf fehlen: `einbau_kennzeichen` vergibt dann der
+ * Server (GR-4.2 …), Hersteller, Typ und Bezeichnung übernimmt er vom Vorgänger — die
+ * `seriennummer` NIE: sie ist die des alten Kästchens (null = nicht erhoben).
+ */
+export interface ZaehlerwechselNeuesGeraet {
+  einbau_kennzeichen?: string | null;
+  hersteller?: string | null;
+  typ?: string | null;
+  seriennummer?: string | null;
+  bezeichnung?: string | null;
+}
+
+/**
+ * Wie das neue Gerät antwortet. Fehlt das Feld GANZ, bleibt die Verbindung des Vorgängers —
+ * „gleiche Datenquelle und Geräte-ID", und dann entsteht auch keine neue Komponenten-Fassung.
+ */
+export interface ZaehlerwechselVerbindung {
+  datenquelle?: string | null;
+  geraete_id?: number | null;
+}
+
+/** Die Anfrage beider Einstiege. `zeitpunkt` fehlend = jetzt (Vergangenheit = rückwirkend). */
+export interface Zaehlerwechsel {
+  zeitpunkt?: string | null;
+  neues_geraet?: ZaehlerwechselNeuesGeraet | null;
+  verbindung?: ZaehlerwechselVerbindung | null;
+  endstand_vorgaenger?: MessstelleStand | null;
+  anfangsstand?: MessstelleStand | null;
+  einstellungen_uebernehmen?: boolean | null;
+  grund?: string | null;
+}
+
+/** Ein Einbau der Antwort: `geraet` ist die Stelle (GR-4), `einbau` das Kästchen (Z-5a). */
+export interface ZaehlerwechselEinbau {
+  id: string;
+  geraet: string;
+  einbau: string;
+  seriennummer: string | null;
+  eingebaut_am: string;
+  ausgebaut_am: string | null;
+}
+
+export interface ZaehlerwechselGeraet {
+  alt: ZaehlerwechselEinbau;
+  neu: ZaehlerwechselEinbau;
+  verbindung_neu: boolean;
+}
+
+/** Eine Größe einer Messstelle, die auf das neue Gerät umgezogen ist. */
+export interface ZaehlerwechselBindung {
+  messstelle: string;
+  kennzeichen: string;
+  groesse: string;
+  richtung: string;
+  rolle: 'fuehrend' | 'vergleich';
+  beendet: unknown;
+  neu: unknown;
+}
+
+/** Eine Einstellungs-Fassung, die auf den neuen Einbau übernommen wurde. */
+export interface ZaehlerwechselEinstellung {
+  id: string;
+  art: string;
+  komponente: string | null;
+  kanal: string | null;
+  anwendung: 'angewendet' | 'dokumentiert';
+}
+
+/**
+ * Die Antwort beider Einstiege (201). `marken` zählt, in wie vielen Komponenten-Verläufen die
+ * Marke „Zähler gewechselt" steht — sie ist ein isolierter Zusatz und lässt den Wechsel nie
+ * scheitern, eine kleinere Zahl als `komponenten` ist also ehrlich, kein Fehler des Vorgangs.
+ */
+export interface ZaehlerwechselVorgang {
+  geraet: ZaehlerwechselGeraet;
+  komponenten: string[];
+  bindungen: ZaehlerwechselBindung[];
+  einstellungen: ZaehlerwechselEinstellung[];
+  marken: number;
+  rueckwirkung: { art: 'rueckwirkend' | 'ab_jetzt' | 'angekuendigt'; minuten: number; abzeichen: string | null };
+  hinweise: 'ablesestand_pruefen'[];
+}
+
 // ---- Vorschlagsliste der Bestandsübernahme (UEMS AP-04 IP-16) ---------------
 // Die Formen von GET /api/v1/standorte/{id}/messstellen-vorschlag und
 // POST …/uebernehmen; die Fläche dazu baut AP-01 IP-9b. Nichts entsteht

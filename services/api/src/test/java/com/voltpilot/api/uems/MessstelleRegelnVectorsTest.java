@@ -10,6 +10,7 @@ import com.voltpilot.api.uems.MessstelleRegeln.Abschnitt;
 import com.voltpilot.api.uems.MessstelleRegeln.BeendenEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.BeendenUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.Bindung;
+import com.voltpilot.api.uems.MessstelleRegeln.EinbauStand;
 import com.voltpilot.api.uems.MessstelleRegeln.BindungEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.BindungUrteil;
 import com.voltpilot.api.uems.MessstelleRegeln.FremdeFuehrung;
@@ -38,6 +39,8 @@ import com.voltpilot.api.uems.MessstelleRegeln.VorschlagNebengroesse;
 import com.voltpilot.api.uems.MessstelleRegeln.VorschlagQuelle;
 import com.voltpilot.api.uems.MessstelleRegeln.VorschlagStandort;
 import com.voltpilot.api.uems.MessstelleRegeln.VorschlagZeile;
+import com.voltpilot.api.uems.MessstelleRegeln.WechselEingang;
+import com.voltpilot.api.uems.MessstelleRegeln.WechselUrteil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -291,6 +294,25 @@ class MessstelleRegelnVectorsTest {
             out.put("angekuendigt", u.angekuendigt());
             ArrayNode hinweise = out.putArray("hinweise");
             u.hinweise().forEach(hinweise::add);
+            return out;
+        });
+    }
+
+    /** Der Zählerwechsel am Gerät (IP-17): liegt der Zeitpunkt im laufenden Einbau des Vorgängers? */
+    @TestFactory
+    List<DynamicTest> wechsel() throws Exception {
+        return fuerJedenFall("wechsel", c -> {
+            JsonNode in = c.path("input");
+            JsonNode alt = in.path("alt");
+            WechselUrteil u = MessstelleRegeln.wechselPruefen(new WechselEingang(zeit(in.path("jetzt")),
+                    new EinbauStand(alt.path("geraet").asText(), alt.path("einbau").asText(),
+                            zeit(alt.path("eingebaut_am")), zeit(alt.path("ausgebaut_am"))),
+                    zeit(in.path("zeitpunkt"))));
+            ObjectNode out = MAPPER.createObjectNode();
+            out.put("fehler", u.fehler() == null ? null : u.fehler().code());
+            out.put("ohne_geraet_ab", zeitText(u.ohneGeraetAb()));
+            out.put("rueckwirkend", u.rueckwirkend());
+            out.put("angekuendigt", u.angekuendigt());
             return out;
         });
     }

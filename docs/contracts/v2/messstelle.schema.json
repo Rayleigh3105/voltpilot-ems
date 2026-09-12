@@ -226,7 +226,7 @@
           "type": "object",
           "additionalProperties": false,
           "description": "Die Fälle, nach Regel geordnet.",
-          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung", "beenden", "rueckwirkung", "vorschlag"],
+          "required": ["kennzeichen_vorschlag", "kennzeichen_pruefen", "groesse", "lebenszyklus", "passung", "bindung", "zeitstrahl", "stellung", "beenden", "wechsel", "rueckwirkung", "vorschlag"],
           "properties": {
             "kennzeichen_vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenVorschlag" } },
             "kennzeichen_pruefen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallKennzeichenPruefen" } },
@@ -237,6 +237,7 @@
             "zeitstrahl": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallZeitstrahl" } },
             "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } },
             "beenden": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBeenden" } },
+            "wechsel": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallWechsel" } },
             "rueckwirkung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallRueckwirkung" } },
             "vorschlag": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallVorschlag" } }
           }
@@ -597,6 +598,47 @@
             "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" } }
           }
         }
+      }
+    },
+    "fallWechsel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "referenz": { "type": ["string", "null"], "description": "Die Messstelle des Referenzunternehmens, an deren Gerät gewechselt wird." },
+        "fortschreibung": { "type": "boolean", "description": "Der Fall schreibt das Referenzunternehmen NACH seinem letzten Ereignis fort; davor ändert er nichts." },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["jetzt", "alt", "zeitpunkt"],
+          "properties": {
+            "jetzt": { "$ref": "#/$defs/jetzt" },
+            "alt": { "$ref": "#/$defs/einbauStand", "description": "Der Einbau, der geht — so, wie er gespeichert ist." },
+            "zeitpunkt": { "$ref": "#/$defs/zeitpunkt", "description": "Wann getauscht wird, auf die Minute — Vergangenheit und Zukunft erlaubt (E2)." }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["fehler", "ohne_geraet_ab", "rueckwirkend", "angekuendigt"],
+          "properties": {
+            "fehler": { "anyOf": [{ "$ref": "#/$defs/fehlerCode" }, { "type": "null" }] },
+            "ohne_geraet_ab": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bei kein_geraet_zum_zeitpunkt: ab wann der Vorgänger nicht mehr steckt (ausgebaut_am)." },
+            "rueckwirkend": { "type": "boolean", "description": "Der Wechselzeitpunkt liegt vor der Minute von „jetzt“." },
+            "angekuendigt": { "type": "boolean", "description": "Der Wechselzeitpunkt liegt nach der Minute von „jetzt“." }
+          }
+        }
+      }
+    },
+    "einbauStand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geraet", "einbau", "eingebaut_am", "ausgebaut_am"],
+      "description": "Ein Einbau (eine Zeile `geraet`): das Gerät an der Stelle, das konkrete Kästchen und sein Zeitraum.",
+      "properties": {
+        "geraet": { "$ref": "#/$defs/verweis", "description": "Das Gerät an der Stelle (GR-4) — es bleibt über den Wechsel." },
+        "einbau": { "$ref": "#/$defs/verweis", "description": "Das konkret eingebaute Kästchen (Z-5a)." },
+        "eingebaut_am": { "$ref": "#/$defs/zeitpunkt" },
+        "ausgebaut_am": { "$ref": "#/$defs/zeitpunkt_offen", "description": "null = steckt noch." }
       }
     },
     "fallRueckwirkung": {

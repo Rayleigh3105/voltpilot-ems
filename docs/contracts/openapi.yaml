@@ -8239,6 +8239,38 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/quellen/wechsel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Zähler wechseln - derselbe Vorgang wie POST /api/v1/geraete/{id}/austausch, aus der Sicht der Messstelle.
+      description: >
+        Recht `messstelle.quelle` („Führende Quelle binden · Zählerwechsel ·
+        Wandlerfaktoren"); mit einem Zeitpunkt vor jetzt zusätzlich
+        `aenderung.rueckwirkend`. Das Gerät wählt nie der Kunde: es ist das, aus dem die
+        Messstelle zum Wechselzeitpunkt liest. Liest sie dann aus keinem (409
+        `zustand_passt_nicht`: erst eine Quelle binden) oder aus mehreren (409
+        `zustand_passt_nicht`: dann auf der Geräteseite wechseln), lehnt der Vorgang ab.
+        Alles Weitere - Wirkungen, Prüfreihenfolge, Ablehnungen - steht bei
+        `POST /api/v1/geraete/{id}/austausch`; es ist derselbe Vorgang in derselben
+        Transaktion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zaehlerwechsel" }
+      responses:
+        "201":
+          description: Gewechselt - beide Einbauten, die umgezogenen Bindungen, die übernommenen Einstellungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZaehlerwechselVorgang" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
   /api/v1/messstellen/{id}/quellen/{quelleId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8714,6 +8746,54 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/geraete/{id}/austausch:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [geraete]
+      summary: Gerät austauschen - der Zählerwechsel als EIN Vorgang (AP-04 IP-17).
+      description: >
+        Recht `geraet.einrichten`; die Quellenbindungen, die dabei umziehen, tragen
+        zusätzlich `messstelle.quelle`, ein Zeitpunkt vor jetzt außerdem
+        `aenderung.rueckwirkend`. DERSELBE Vorgang wie
+        `POST /api/v1/messstellen/{id}/quellen/wechsel`, nur vom anderen Einstieg aus:
+        entweder alle Wirkungen landen oder keine. In EINER Transaktion bekommt das alte
+        Gerät seinen Ausbau, das neue seinen Einbau (dasselbe Gerät-Kennzeichen GR-4, ein
+        neues Einbau-Kennzeichen), jede laufende Speisung wandert mit, jede laufende
+        Quellenbindung endet GENAU zum Wechselzeitpunkt und beginnt dort neu am neuen
+        Einbau, die Ablesestände landen als Endstand des Vorgängers und Anfangsstand des
+        Nachfolgers, die Einstellungs-Fassungen werden übernommen, und je betroffener
+        Messstelle hält EIN Protokolleintrag `zaehler_gewechselt` den Vorgang mit Urheber
+        und Rückwirkend-Marker fest. Additiv steht die Marke „Zähler gewechselt" im
+        Komponenten-Verlauf (`component_change_event`, `device_replaced`) - ein Zusatz, der
+        den Wechsel nie scheitern lässt. Geprüft wird in dieser Reihenfolge: Zeitpunkt im
+        laufenden Einbau des Vorgängers (422 `zeitpunkt_vor_vorgaenger` davor, 422
+        `kein_geraet_zum_zeitpunkt` an einem schon ausgebauten) → Energiekarten (409
+        `zustand_passt_nicht`: über sie entscheidet der Controllerwechsel, IP-19) → speist
+        er überhaupt etwas (422 `kein_geraet_zum_zeitpunkt`) → angekündigte Quelle am alten
+        Einbau (409 `zustand_passt_nicht`) → eine Bindung, die zum Zeitpunkt schon beendet
+        ist (409 `bindung_bereits_beendet`) → freies Einbau-Kennzeichen (409
+        `kennzeichen_belegt`) → je Bindung die Regeln der Quellenbindung (Vorgang
+        `wechsel`). Eine archivierte Messstelle lehnt ab (409 `zustand_passt_nicht`); ein
+        fremdes Gerät ist 404, nie 403. Der Wechsel ändert KEINEN gespeicherten Messwert:
+        die Werte vor dem Zeitpunkt bleiben dem alten Einbau zugeordnet, die Lücke bis zum
+        ersten Wert des neuen bleibt sichtbar und wird nie aufgefüllt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Zaehlerwechsel" }
+      responses:
+        "201":
+          description: Gewechselt - beide Einbauten, die umgezogenen Bindungen, die übernommenen Einstellungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ZaehlerwechselVorgang" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -16033,6 +16113,93 @@ components:
           nullable: true
           description: "Beim Binden: die laufende führende Quelle, die die neue genau zu ihrem Beginn beendet hat (Regel 2)."
           allOf: [{ $ref: "#/components/schemas/MessstelleQuelle" }]
+        rueckwirkung: { $ref: "#/components/schemas/MessstelleQuelleRueckwirkung" }
+        hinweise: { type: array, items: { type: string, enum: [ablesestand_pruefen] } }
+    ZaehlerwechselNeuesGeraet:
+      type: object
+      additionalProperties: false
+      description: >
+        Das Kästchen, das kommt. Jedes Feld darf fehlen: `einbau_kennzeichen` vergibt dann
+        der Server (GR-4.2, GR-4.3 …), Hersteller, Typ und Bezeichnung übernimmt er vom
+        Vorgänger - die `seriennummer` NIE: sie ist die des alten Kästchens und wird nie
+        erfunden (null heißt „nicht erhoben").
+      properties:
+        einbau_kennzeichen: { type: string, nullable: true, description: "1-32 Zeichen: Buchstaben, Ziffern, „-“, „.“, „/“, „′“. Belegt = 409 `kennzeichen_belegt`." }
+        hersteller: { type: string, nullable: true }
+        typ: { type: string, nullable: true }
+        seriennummer: { type: string, nullable: true }
+        bezeichnung: { type: string, nullable: true }
+    ZaehlerwechselVerbindung:
+      type: object
+      additionalProperties: false
+      description: >
+        Wie das neue Gerät antwortet. Fehlt das Feld GANZ, bleibt die Verbindung des
+        Vorgängers - „gleiche Datenquelle und Geräte-ID" (§5.5), und dann entsteht auch
+        keine neue Komponenten-Fassung.
+      properties:
+        datenquelle: { type: string, format: uuid, nullable: true, description: "Die Datenquelle des neuen Geräts (AP-06); fehlend = die des Vorgängers." }
+        geraete_id: { type: integer, nullable: true, description: "Die Geräte-ID hinter dem Weg (Modbus-Unit-ID); fehlend = die des Vorgängers. Eine geänderte schreibt eine neue Komponenten-Fassung." }
+    Zaehlerwechsel:
+      type: object
+      additionalProperties: false
+      description: >
+        Der Zählerwechsel als EIN Vorgang (AP-04 IP-17) - dieselbe Anfrage an beiden
+        Einstiegen.
+      properties:
+        zeitpunkt: { type: string, format: date-time, nullable: true, description: "Auf die Minute mit Versatz; fehlend = jetzt. Vergangenheit = rückwirkend, Zukunft = angekündigt (E2)." }
+        neues_geraet: { nullable: true, allOf: [{ $ref: "#/components/schemas/ZaehlerwechselNeuesGeraet" }] }
+        verbindung: { nullable: true, allOf: [{ $ref: "#/components/schemas/ZaehlerwechselVerbindung" }] }
+        endstand_vorgaenger: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }], description: "Der abgelesene Endstand des alten Zählers; er landet an der Bindung, die endet." }
+        anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }], description: "Der Anfangsstand des neuen Zählers; er landet an der Bindung, die beginnt." }
+        einstellungen_uebernehmen: { type: boolean, nullable: true, description: "Fehlend = true: jede Fassung, die am alten Einbau zum Wechselzeitpunkt gilt, steht danach auch am neuen." }
+        grund: { type: string, nullable: true, description: "Frei; steht im Änderungsprotokoll." }
+    ZaehlerwechselEinbau:
+      type: object
+      required: [id, geraet, einbau, seriennummer, eingebaut_am, ausgebaut_am]
+      properties:
+        id: { type: string, format: uuid, description: "Der Einbau - für GET /api/v1/geraete/{id}." }
+        geraet: { type: string, description: "Das Gerät an der Stelle (GR-4) - es bleibt über den Wechsel." }
+        einbau: { type: string, description: "Das konkrete Kästchen (Z-5a bzw. Z-5b)." }
+        seriennummer: { type: string, nullable: true, description: "null = nicht erhoben, nie erfunden." }
+        eingebaut_am: { type: string, format: date-time }
+        ausgebaut_am: { type: string, format: date-time, nullable: true }
+    ZaehlerwechselGeraet:
+      type: object
+      required: [alt, neu, verbindung_neu]
+      properties:
+        alt: { $ref: "#/components/schemas/ZaehlerwechselEinbau" }
+        neu: { $ref: "#/components/schemas/ZaehlerwechselEinbau" }
+        verbindung_neu: { type: boolean, description: "Datenquelle oder Geräte-ID haben sich geändert - nur dann bekommt die Komponente eine neue Fassung." }
+    ZaehlerwechselBindung:
+      type: object
+      required: [messstelle, kennzeichen, groesse, richtung, rolle, beendet, neu]
+      properties:
+        messstelle: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        groesse: { type: string }
+        richtung: { type: string }
+        rolle: { type: string, enum: [fuehrend, vergleich] }
+        beendet: { $ref: "#/components/schemas/MessstelleQuelle" }
+        neu: { $ref: "#/components/schemas/MessstelleQuelle" }
+    ZaehlerwechselEinstellung:
+      type: object
+      required: [id, art, komponente, kanal, anwendung]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string }
+        komponente: { type: string, format: uuid, nullable: true }
+        kanal: { type: string, nullable: true }
+        anwendung: { type: string, enum: [angewendet, dokumentiert] }
+    ZaehlerwechselVorgang:
+      type: object
+      description: "Die Antwort beider Einstiege (201)."
+      required: [geraet, komponenten, bindungen, einstellungen, marken, rueckwirkung, hinweise]
+      properties:
+        geraet: { $ref: "#/components/schemas/ZaehlerwechselGeraet" }
+        komponenten: { type: array, items: { type: string, format: uuid }, description: "Die Komponenten, deren Speisung mitgewandert ist." }
+        bindungen: { type: array, items: { $ref: "#/components/schemas/ZaehlerwechselBindung" } }
+        einstellungen: { type: array, items: { $ref: "#/components/schemas/ZaehlerwechselEinstellung" }, description: "Die Fassungen, die auf den neuen Einbau übernommen wurden." }
+        marken: { type: integer, description: "In wie vielen Komponenten-Verläufen die Marke „Zähler gewechselt“ steht. Sie ist ein isolierter Zusatz und lässt den Wechsel nie scheitern - eine kleinere Zahl als `komponenten` ist ehrlich, kein Fehler des Vorgangs." }
         rueckwirkung: { $ref: "#/components/schemas/MessstelleQuelleRueckwirkung" }
         hinweise: { type: array, items: { type: string, enum: [ablesestand_pruefen] } }
     MessstelleQuelleAbschnitt:

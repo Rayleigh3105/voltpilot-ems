@@ -41,7 +41,10 @@ public class MessstelleFormelController {
         this.formeln = formeln;
     }
 
-    /** Legt eine berechnete Messstelle mit ihrer Formel an; die Hauptgröße wird abgeleitet. */
+    /**
+     * Recht: {@code messstelle.bearbeiten} (AP-04 §6.7). Legt eine berechnete Messstelle mit ihrer
+     * Formel an; die Hauptgröße wird abgeleitet.
+     */
     @PostMapping("/berechnet")
     public ResponseEntity<MessstelleDto.Messstelle> anlegen(
             @RequestBody(required = false) MessstelleFormelDto.Anlegen body, Authentication auth) {
@@ -49,19 +52,28 @@ public class MessstelleFormelController {
         return ResponseEntity.created(URI.create("/api/v1/messstellen/" + neu.id())).body(neu);
     }
 
-    /** Die Formel einer berechneten Messstelle: ihre Terme in Reihenfolge und ihr Stand. */
+    /**
+     * Recht: {@code messstelle.ansehen}. Die Formel einer berechneten Messstelle: ihre Terme in
+     * Reihenfolge und ihr Stand.
+     */
     @GetMapping("/{id}/formel")
     public MessstelleFormelDto.Formel formel(@PathVariable UUID id) {
         return formeln.formel(id);
     }
 
-    /** Der Live-Wert: gewichtete Summe der frischesten Eingänge; {@code null}, wenn unvollständig. */
+    /**
+     * Recht: {@code messwerte.ansehen}. Der Live-Wert: gewichtete Summe der frischesten Eingänge;
+     * {@code null}, wenn unvollständig.
+     */
     @GetMapping("/{id}/wert")
     public MessstelleFormelDto.Wert wert(@PathVariable UUID id) {
         return formeln.wert(id);
     }
 
-    /** Der Verlauf: je 15-min-Bucket die Summe, wenn alle Terme einen Wert haben, sonst {@code null}. */
+    /**
+     * Recht: {@code messwerte.ansehen}. Der Verlauf: je 15-min-Bucket die Summe, wenn alle Terme
+     * einen Wert haben, sonst {@code null}.
+     */
     @GetMapping("/{id}/verlauf")
     public MessstelleFormelDto.Verlauf verlauf(@PathVariable UUID id,
             @RequestParam(name = "range", required = false) String range) {

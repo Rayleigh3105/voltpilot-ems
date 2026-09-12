@@ -724,6 +724,57 @@ public final class MessstelleRegeln {
         return new BeendenUrteil(null, status, bis.isBefore(jetzt), bis.isAfter(jetzt), hinweise);
     }
 
+    // ------------------------------------------------------------ Zählerwechsel
+
+    /**
+     * Der Einbau, der beim Zählerwechsel geht (IP-17) — so, wie er gespeichert ist
+     * ({@code geraet}, eine Zeile = EIN Einbau).
+     *
+     * @param geraet das Gerät an der Stelle (GR-4) — es bleibt über den Wechsel
+     * @param einbau das konkrete Kästchen (Z-5a)
+     * @param ausgebautAm {@code null} = steckt noch
+     */
+    public record EinbauStand(String geraet, String einbau, OffsetDateTime eingebautAm,
+            OffsetDateTime ausgebautAm) {}
+
+    /** @param zeitpunkt wann getauscht wird, auf die Minute (E2) — Vergangenheit und Zukunft erlaubt */
+    public record WechselEingang(OffsetDateTime jetzt, EinbauStand alt, OffsetDateTime zeitpunkt) {}
+
+    /**
+     * @param ohneGeraetAb bei {@code kein_geraet_zum_zeitpunkt}: ab wann der Vorgänger nicht mehr
+     *     steckt ({@code ausgebaut_am})
+     */
+    public record WechselUrteil(Fehler fehler, OffsetDateTime ohneGeraetAb, boolean rueckwirkend,
+            boolean angekuendigt) {}
+
+    /**
+     * Darf zu diesem Zeitpunkt gewechselt werden (Regel 5)? Der Wechsel liegt IM laufenden Einbau
+     * des Vorgängers:
+     * <ul>
+     *   <li>NACH seinem Einbau — genau auf ihm zählt als davor, denn ein Einbau von null Minuten
+     *       ist keiner (422 {@code zeitpunkt_vor_vorgaenger}, A15 und seine Kante);</li>
+     *   <li>VOR seinem Ausbau — ein ausgebauter Einbau steckt nicht mehr und wird kein zweites Mal
+     *       getauscht; sein Zeitraum ist geschlossen und wird nie nachträglich geteilt (422
+     *       {@code kein_geraet_zum_zeitpunkt} mit {@code ausgebaut_am}).</li>
+     * </ul>
+     * Rückwirkend ist erlaubt und immer sichtbar (E2); in der Zukunft heißt der Wechsel
+     * „angekündigt“. Was danach mit den Quellen geschieht, urteilt {@link #beendenPruefen} (die
+     * laufende endet) und {@link #bindungPruefen} mit dem Vorgang {@code wechsel} (die neue
+     * beginnt) — hier steht NUR das Gerät.
+     */
+    public static WechselUrteil wechselPruefen(WechselEingang e) {
+        EinbauStand alt = e.alt();
+        OffsetDateTime t = e.zeitpunkt();
+        if (!t.isAfter(alt.eingebautAm())) {
+            return new WechselUrteil(Fehler.ZEITPUNKT_VOR_VORGAENGER, null, false, false);
+        }
+        if (alt.ausgebautAm() != null) {
+            return new WechselUrteil(Fehler.KEIN_GERAET_ZUM_ZEITPUNKT, alt.ausgebautAm(), false, false);
+        }
+        OffsetDateTime jetzt = minute(e.jetzt());
+        return new WechselUrteil(null, null, t.isBefore(jetzt), t.isAfter(jetzt));
+    }
+
     /** Wie weit ein Zeitpunkt von „jetzt“ entfernt ist, auf die Minute (E2). */
     public record Rueckwirkung(String art, long minuten, String abzeichen) {}
 
