@@ -1018,15 +1018,41 @@ export interface MeasurementSelectionState {
 }
 
 export type MeasurementRange = '24h' | '7d' | '30d' | '90d' | 'year' | 'free';
+
+/** Woraus eine Verlaufs-Antwort gebildet ist (UEMS AP-07 IP-14). */
+export type MeasurementQuelle = 'roh' | 'rollup_5m' | 'rollup_15m' | 'viertelstunde' | 'tag';
+
+/**
+ * Die Herkunft je Wert bzw. Intervall (UEMS AP-07 §4.2/§4.4). `null` heißt: für diese Quelle
+ * gibt es sie nicht (die bestehenden Verdichtungen der Box tragen keine); ein `null` INNERHALB
+ * heißt: für diesen Schritt nicht eindeutig oder nicht erhoben — nie ein geratener Wert.
+ */
+export interface MeasurementHerkunft {
+  quelle: MeasurementQuelle;
+  wertart: string | null;
+  abdeckungProzent: number | null; erhalten: number | null; erwartet: number | null;
+  nGood: number | null; nUncertain: number | null; nInvalid: number | null;
+  nStale: number | null; nDeviceError: number | null;
+  zustand: 'vorlaeufig' | 'endgueltig' | null; endgueltigAb: string | null; version: number | null;
+  nachgeliefert: number | null; zustellart: string | null; letzteEingangszeit: string | null;
+  geraetEinbau: string | null; geraetEinbauZwei: string | null;
+  box: string | null; boxZwei: string | null;
+  fassung: number | null; katalogVersion: string | null; rolle: string | null;
+  standAnfang: number | null; standEnde: number | null;
+}
+
 export interface MeasurementHistory {
   meta: {
     pointKey: string; label: string; sourceLabel: string | null; unit: string | null;
     aggregationKind: string; semanticStatus: string; catalogVersion: string | null;
     representation: 'raw' | 'decoded'; rawAvailable: boolean; from: string; to: string;
     bucketSeconds: number; aggregationExplanation: string; siteId: string; entityId?: string | null;
+    /** AP-07 IP-14, additiv: woraus die Antwort gebildet ist und bis wann Rohwerte reichen. */
+    quelle?: MeasurementQuelle | null; quelleErklaerung?: string | null;
+    rohGrenze?: string | null; katalogVersionenGespeichert?: string[];
   };
-  data: Array<{ time: string; value: number | null; minimum: number | null; maximum: number | null; text: string | null; sampleCount: number; gap: boolean }>;
-  markers: Array<{ time: string; kind: string; label: string }>;
+  data: Array<{ time: string; value: number | null; minimum: number | null; maximum: number | null; text: string | null; sampleCount: number; gap: boolean; herkunft?: MeasurementHerkunft | null }>;
+  markers: Array<{ time: string; kind: string; label: string; until?: string | null; count?: number }>;
 }
 
 export interface MeasurementComparisonOption {

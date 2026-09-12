@@ -1,15 +1,18 @@
 package com.voltpilot.api.measurement;
 
 import com.voltpilot.api.measurement.MeasurementCatalog.Point;
+import com.voltpilot.api.uems.LesepfadQuelle;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,13 +22,63 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MeasurementHistoryService {
 
+    /**
+     * Die HERKUNFT je Wert bzw. Intervall (UEMS AP-07 §4.2/§4.4, IP-14) — rein ADDITIV: sie
+     * hängt als EIN neues Feld an {@link Datum}, kein bestehendes Feld verschwindet oder
+     * ändert seine Bedeutung.
+     *
+     * <p><b>Nichts darin ist geraten.</b> Jede Angabe kommt aus einer Spalte, die der Writer
+     * (IP-6/IP-7) oder die Verdichtung (IP-12/IP-13, AP-08 IP-2) gefüllt hat. Wo eine Angabe
+     * für den gezeichneten Schritt nicht EINDEUTIG ist — zwei Geräte, zwei Boxen, zwei
+     * Fassungen im selben Raster-Schritt —, bleibt sie LEER statt sich auf einen der beiden
+     * Werte festzulegen; der Wechsel selbst steht als Marker im Verlauf.
+     *
+     * <p>Der Rohwert-Weg füllt, was am Rohwert steht (Gerät-Einbau, Fassung, Katalogstand,
+     * Rolle, Wertart, Zustellart); Abdeckung, Qualitätszähler und Zustand entstehen erst in der
+     * Viertelstunde und bleiben dort leer. Die bestehenden Verdichtungen der Box tragen
+     * überhaupt keine Herkunft — dort ist das Feld {@code null}, nicht erfunden.
+     */
+    public record Herkunft(String quelle, String wertart, Integer abdeckungProzent,
+            Integer erhalten, Integer erwartet, Integer nGood, Integer nUncertain,
+            Integer nInvalid, Integer nStale, Integer nDeviceError, String zustand,
+            Instant endgueltigAb, Integer version, Integer nachgeliefert, String zustellart,
+            Instant letzteEingangszeit, UUID geraetEinbau, UUID geraetEinbauZwei, UUID box,
+            UUID boxZwei, Long fassung, String katalogVersion, String rolle,
+            BigDecimal standAnfang, BigDecimal standEnde) {}
+
     public record Datum(Instant time, BigDecimal value, BigDecimal minimum, BigDecimal maximum,
-            String text, long sampleCount, boolean gap) {}
-    public record Marker(Instant time, String kind, String label) {}
+            String text, long sampleCount, boolean gap, Herkunft herkunft) {
+        /** Die Form von VOR IP-14 — sie hält jeden bestehenden Aufrufer am Laufen. */
+        public Datum(Instant time, BigDecimal value, BigDecimal minimum, BigDecimal maximum,
+                String text, long sampleCount, boolean gap) {
+            this(time, value, minimum, maximum, text, sampleCount, gap, null);
+        }
+    }
+
+    public record Marker(Instant time, String kind, String label, Instant until, int count) {
+        /** Die Form von VOR IP-14: ein Zeitpunkt-Marker, der genau einmal vorkommt. */
+        public Marker(Instant time, String kind, String label) {
+            this(time, kind, label, null, 1);
+        }
+    }
+
     public record Meta(String pointKey, String label, String sourceLabel, String unit,
             String aggregationKind, String semanticStatus, String catalogVersion,
             String representation, boolean rawAvailable, Instant from, Instant to,
-            int bucketSeconds, String aggregationExplanation, UUID siteId, UUID entityId) {}
+            int bucketSeconds, String aggregationExplanation, UUID siteId, UUID entityId,
+            String quelle, String quelleErklaerung, Instant rohGrenze,
+            List<String> katalogVersionenGespeichert) {
+        /** Die Form von VOR IP-14 — die neuen Felder bleiben leer statt geraten zu werden. */
+        public Meta(String pointKey, String label, String sourceLabel, String unit,
+                String aggregationKind, String semanticStatus, String catalogVersion,
+                String representation, boolean rawAvailable, Instant from, Instant to,
+                int bucketSeconds, String aggregationExplanation, UUID siteId, UUID entityId) {
+            this(pointKey, label, sourceLabel, unit, aggregationKind, semanticStatus,
+                    catalogVersion, representation, rawAvailable, from, to, bucketSeconds,
+                    aggregationExplanation, siteId, entityId, null, null, null, List.of());
+        }
+    }
+
     public record History(Meta meta, List<Datum> data, List<Marker> markers) {}
     public record ComparisonOption(UUID deviceId, String deviceLabel, String pointKey,
             String label, String unit, String aggregationKind, String compatibilityKey,
@@ -34,12 +87,30 @@ public class MeasurementHistoryService {
     private final JdbcTemplate jdbc;
     private final MeasurementCatalog catalog;
     private final MeasurementSelectionRepository selections;
+    private final SpeicherklasseHistorie speicherklassen;
+    private final Clock uhr;
 
+    /** Die Form von VOR IP-14 (ohne Rückfall) — sie hält bestehende Aufrufer am Laufen. */
     public MeasurementHistoryService(JdbcTemplate jdbc, MeasurementCatalog catalog,
             MeasurementSelectionRepository selections) {
+        this(jdbc, catalog, selections, null, Clock.systemUTC());
+    }
+
+    @Autowired
+    public MeasurementHistoryService(JdbcTemplate jdbc, MeasurementCatalog catalog,
+            MeasurementSelectionRepository selections, SpeicherklasseHistorie speicherklassen) {
+        this(jdbc, catalog, selections, speicherklassen, Clock.systemUTC());
+    }
+
+    /** Mit Rückfall auf die Speicherklassen und einer gestellten Uhr (UEMS AP-07 IP-14). */
+    public MeasurementHistoryService(JdbcTemplate jdbc, MeasurementCatalog catalog,
+            MeasurementSelectionRepository selections, SpeicherklasseHistorie speicherklassen,
+            Clock uhr) {
         this.jdbc = jdbc;
         this.catalog = catalog;
         this.selections = selections;
+        this.speicherklassen = speicherklassen;
+        this.uhr = uhr;
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
@@ -94,11 +165,57 @@ public class MeasurementHistoryService {
                 Boolean.class, scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
                 Timestamp.from(window.from()),
                 Timestamp.from(window.to())));
-        if (selectedRepresentation.equals("raw") && !rawAvailable) {
+
+        // ---- UEMS AP-07 IP-14: der Rückfall auf die Speicherklassen ---------------------
+        // Er greift NUR, wenn der Zeitraum über die Rohdaten-Frist hinausreicht UND der
+        // bestehende Weg für ihn nichts hergibt. Innerhalb der Frist bleibt jede Antwort —
+        // auch der Fehler „keine echten Rohdaten" — Zeichen für Zeichen die von vorher.
+        Instant rohGrenze = LesepfadQuelle.rohGrenze(uhr.instant(), MeasurementRetention.RAW_DAYS);
+        boolean jenseits = LesepfadQuelle.jenseitsDerFrist(window.from(), rohGrenze);
+        LesepfadQuelle.Quelle quelle = rollup
+                ? window.duration().compareTo(Duration.ofDays(31)) <= 0
+                        ? LesepfadQuelle.Quelle.ROLLUP_5M : LesepfadQuelle.Quelle.ROLLUP_15M
+                : LesepfadQuelle.Quelle.ROH;
+        List<String> katalogfassungen = List.of();
+        int bucketSeconds = window.bucketSeconds();
+        UUID reihe = speicherklassen == null ? null
+                : speicherklassen.komponente(scope.tenantId(), deviceId, pointKey, entityId);
+        if (jenseits && data.isEmpty() && reihe != null) {
+            LesepfadQuelle.Quelle klasse =
+                    LesepfadQuelle.speicherklasse(window.duration(), MeasurementRetention.RAW_DAYS);
+            int raster = klasse == LesepfadQuelle.Quelle.VIERTELSTUNDE
+                    ? LesepfadQuelle.raster(window.duration(), 900,
+                            SpeicherklasseHistorie.HOECHSTENS_ZEILEN)
+                    : 86400;
+            List<SpeicherklasseHistorie.Zeile> zeilen =
+                    klasse == LesepfadQuelle.Quelle.VIERTELSTUNDE
+                            ? speicherklassen.viertelstunden(scope.tenantId(), reihe, pointKey,
+                                    window.from(), window.to(), raster)
+                            : speicherklassen.tage(scope.tenantId(), reihe, pointKey,
+                                    window.from(), window.to());
+            if (!zeilen.isEmpty()) {
+                data = zeilen.stream().map(MeasurementHistoryService::datum).toList();
+                katalogfassungen = speicherklassen.katalogfassungen(zeilen);
+                quelle = klasse;
+                bucketSeconds = raster;
+            }
+        }
+        // Die Marken der Reihe treten ADDITIV zu den bestehenden — auf JEDEM Weg, nicht nur im
+        // Rückfall: ein Gerätewechsel von gestern ist genau der Sprung, der eine Erklärung
+        // braucht. Sie sind die EINE Stelle, an der dieses Paket ein bestehendes Feld
+        // anreichert; ohne Ereignis zur Reihe ist die Antwort unverändert.
+        List<Marker> markers = markers(scope, siteId, deviceId, entityId, pointKey, window);
+        if (reihe != null) {
+            markers = mitEreignissen(markers, speicherklassen.ereignisse(scope.tenantId(), reihe,
+                    pointKey, window.from(), window.to(), bucketSeconds));
+        }
+        if (selectedRepresentation.equals("raw") && !rawAvailable && !jenseits) {
+            // Innerhalb der Frist sagt der Fehler etwas Wahres: Rohwerte werden noch
+            // aufbewahrt, es sind hier keine. Jenseits der Frist wäre er eine Lüge über eine
+            // Frage, die wir beantworten können — und fällt darum weg.
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Für diesen Zeitraum sind keine echten Rohdaten vorhanden.");
         }
-        List<Marker> markers = markers(scope, siteId, deviceId, entityId, pointKey, window);
         String explanation = switch (aggregation) {
             case "counter" -> "Zähler: positive Differenzen je Zeitfenster; Resets werden nicht als Verbrauch gezählt.";
             case "gauge" -> "Messwert: Mittelwert je Zeitfenster; Minimum und Maximum bleiben sichtbar.";
@@ -111,8 +228,50 @@ public class MeasurementHistoryService {
                 aggregation, point == null ? "unknown" : point.semanticStatus(),
                 point == null ? custom == null ? null : custom.catalogVersion() : catalog.version(),
                 selectedRepresentation, rawAvailable,
-                window.from(), window.to(), window.bucketSeconds(), explanation, siteId, entityId);
+                window.from(), window.to(), bucketSeconds, explanation, siteId, entityId,
+                quelle.wort(), LesepfadQuelle.erklaerung(quelle, rohGrenze), rohGrenze,
+                katalogfassungen);
         return new History(meta, data, markers);
+    }
+
+    /** Eine Zeile einer Speicherklasse wird ein {@link Datum} mit seiner {@link Herkunft}. */
+    private static Datum datum(SpeicherklasseHistorie.Zeile z) {
+        return new Datum(z.zeit(), z.wert(), z.minimum(), z.maximum(), z.text(), z.anzahl(),
+                z.luecke(), new Herkunft(z.quelle().wort(), z.wertart(), z.abdeckungProzent(),
+                        z.erhalten(), z.erwartet(), z.nGood(), z.nUncertain(), z.nInvalid(),
+                        z.nStale(), z.nDeviceError(), z.zustand(), z.endgueltigAb(), z.version(),
+                        z.nachgeliefert(), z.zustellart(), z.letzteEingangszeit(),
+                        z.geraetEinbau(), z.geraetEinbauZwei(), z.box(), z.boxZwei(), z.fassung(),
+                        z.katalogVersion(), z.rolle(), z.standAnfang(), z.standEnde()));
+    }
+
+    /**
+     * Die Ereignisse der Reihe treten zu den bestehenden Markern — als GEBÜNDELTE Marken mit
+     * ihrer Anzahl, damit ein Sprung erklärbar wird, ohne die Kurve zuzudecken.
+     */
+    private static List<Marker> mitEreignissen(List<Marker> bestehende,
+            List<SpeicherklasseHistorie.Ereignis> ereignisse) {
+        List<Marker> out = new ArrayList<>(bestehende);
+        for (SpeicherklasseHistorie.Ereignis e : ereignisse) {
+            out.add(new Marker(e.von(), e.art(), ereignisWort(e.art(), e.anzahl()),
+                    e.bis() == null || e.bis().equals(e.von()) ? null : e.bis(), e.anzahl()));
+        }
+        out.sort(java.util.Comparator.comparing(Marker::time));
+        return List.copyOf(out);
+    }
+
+    /** Kundensprache für die sechs Ereignisarten, die der Verlauf zeigt (§4.8). */
+    private static String ereignisWort(String art, int anzahl) {
+        String wort = switch (art) {
+            case "data_gap" -> "Datenlücke";
+            case "counter_reset" -> "Zählerneustart";
+            case "device_boundary" -> "Gerät gewechselt";
+            case "handover" -> "Messung von einer anderen Box übernommen";
+            case "duplicate_conflict" -> "Doppelte Zustellung mit abweichendem Wert";
+            case "late_arrival" -> "Nachträglich eingetroffene Werte";
+            default -> art;
+        };
+        return anzahl > 1 ? wort + " (" + anzahl + "×)" : wort;
     }
 
     public History history(UUID deviceId, String pointKey, String range, Instant freeFrom,
@@ -133,8 +292,12 @@ public class MeasurementHistoryService {
                 : "COALESCE(decoded_numeric,raw_numeric)";
         String text = representation.equals("raw") ? "raw_text"
                 : "COALESCE(decoded_text,raw_text)";
+        // Die Herkunfts-Spalten (UEMS AP-07 IP-6/IP-7) kommen ADDITIV mit: sie treten als
+        // weitere Aggregate in dieselbe Gruppierung ein. Kein bestehender Ausdruck und keine
+        // GROUP-BY-Spalte ändert sich — die gezeichneten Werte bleiben Zeichen für Zeichen.
         String sql = "WITH ordered AS (SELECT time,aggregation_kind,gap," + numeric
-                + " value_numeric," + text + " value_text,lag(" + numeric + ") OVER "
+                + " value_numeric," + text + " value_text,device_install_id,applied_revision,"
+                + "catalog_version,role,value_kind,delivery,received_at,lag(" + numeric + ") OVER "
                 + "(PARTITION BY tenant_id,site_id,device_id,point_key ORDER BY time,edge_sequence) "
                 + "previous_numeric FROM device_measurement_sample WHERE tenant_id=? AND site_id=? "
                 + "AND device_id=? AND " + pointKeyPredicate("point_key", pointKey)
@@ -144,11 +307,21 @@ public class MeasurementHistoryService {
                 + "sum(CASE WHEN previous_numeric IS NOT NULL AND value_numeric>=previous_numeric "
                 + "THEN value_numeric-previous_numeric ELSE 0 END) positive_delta,"
                 + "last(value_numeric,time) last_numeric,last(value_text,time) last_text,count(*) samples,"
-                + "bool_or(gap) has_gap FROM ordered GROUP BY 1,2) SELECT *,CASE "
+                + "bool_or(gap) has_gap,"
+                + "(CASE WHEN count(DISTINCT device_install_id)=1 THEN max(device_install_id::text) "
+                + "END)::uuid h_geraet,NULL::uuid h_geraet_2,"
+                + "CASE WHEN count(DISTINCT applied_revision)=1 THEN max(applied_revision) END h_fassung,"
+                + "CASE WHEN count(DISTINCT catalog_version)=1 THEN max(catalog_version) END h_katalog,"
+                + "CASE WHEN count(DISTINCT role)=1 THEN max(role) END h_rolle,"
+                + "CASE WHEN count(DISTINCT value_kind)=1 THEN max(value_kind) END h_wertart,"
+                + "CASE WHEN count(DISTINCT delivery)=1 THEN max(delivery) END h_zustellart,"
+                + "count(*) FILTER (WHERE delivery='nachgeliefert')::int h_nachgeliefert,"
+                + "max(received_at) h_eingang FROM ordered GROUP BY 1,2) SELECT *,CASE "
                 + "WHEN aggregation_kind='counter' THEN positive_delta "
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM bucketed ORDER BY bucket LIMIT 2200";
-        List<Datum> data = new ArrayList<>(jdbc.query(sql, MeasurementHistoryService::mapDatum,
+        List<Datum> data = new ArrayList<>(jdbc.query(sql,
+                (rs, n) -> mapRohDatum(rs, deviceId),
                 scope.tenantId(), siteId, deviceId, pointKeyValue(pointKey),
                 Timestamp.from(window.from()),
                 Timestamp.from(window.to()), window.bucket()));
@@ -230,6 +403,56 @@ public class MeasurementHistoryService {
                 rs.getString("last_text"), rs.getLong("samples"), rs.getBoolean("has_gap"));
     }
 
+    /**
+     * Derselbe Datenpunkt wie {@link #mapDatum}, dazu die Herkunft, die am ROHWERT steht
+     * (UEMS AP-07 IP-14). Was es dort nicht gibt, bleibt leer: Abdeckung, Qualitätszähler und
+     * Zustand entstehen erst in der Viertelstunde — der Rohwert-Weg sieht nur gute Werte und
+     * kennt die erwartete Häufigkeit nicht, also wird hier nichts davon behauptet.
+     */
+    private static Datum mapRohDatum(java.sql.ResultSet rs, UUID deviceId)
+            throws java.sql.SQLException {
+        long samples = rs.getLong("samples");
+        Herkunft herkunft = new Herkunft(LesepfadQuelle.Quelle.ROH.wort(),
+                rs.getString("h_wertart"), null, (int) samples, null, (int) samples, null, null,
+                null, null, null, null, null, nullableInt(rs, "h_nachgeliefert"),
+                rs.getString("h_zustellart"), instant(rs, "h_eingang"),
+                rs.getObject("h_geraet", UUID.class), rs.getObject("h_geraet_2", UUID.class),
+                deviceId, null, nullableLong(rs, "h_fassung"), rs.getString("h_katalog"),
+                rs.getString("h_rolle"), null, null);
+        return new Datum(rs.getTimestamp("bucket").toInstant(), nullableDecimal(rs, "chart_value"),
+                nullableDecimal(rs, "min_value"), nullableDecimal(rs, "max_value"),
+                rs.getString("last_text"), samples, rs.getBoolean("has_gap"), herkunft);
+    }
+
+    private static Integer nullableInt(java.sql.ResultSet rs, String name)
+            throws java.sql.SQLException {
+        int wert = rs.getInt(name);
+        return rs.wasNull() ? null : wert;
+    }
+
+    private static Long nullableLong(java.sql.ResultSet rs, String name)
+            throws java.sql.SQLException {
+        long wert = rs.getLong(name);
+        return rs.wasNull() ? null : wert;
+    }
+
+    private static Instant instant(java.sql.ResultSet rs, String name)
+            throws java.sql.SQLException {
+        Timestamp t = rs.getTimestamp(name);
+        return t == null ? null : t.toInstant();
+    }
+
+    /**
+     * Der Export — ADDITIV erweitert (UEMS AP-07 IP-14).
+     *
+     * <p>Die zehn Kopfzeilen und die sieben Spalten von vorher stehen unverändert an
+     * derselben Stelle; ein bestehender Empfänger liest weiter. NEU dahinter: die
+     * Herkunfts-Spalten und — die eigentliche Pointe — die je Wert GESPEICHERTE
+     * Katalogfassung. Der Kopf {@code # catalog_version=} nennt weiter den HEUTIGEN Stand des
+     * Katalogs; ein Export, der eine alte Messung mit heutigen Stammdaten beschreibt, ist
+     * falsch, darum steht die Fassung des Werts in seiner eigenen Spalte und der Kopf
+     * {@code # catalog_version_gespeichert=} nennt die im Zeitraum vorkommenden.
+     */
     public byte[] csv(History history) {
         StringBuilder out = new StringBuilder();
         Meta m = history.meta();
@@ -244,12 +467,51 @@ public class MeasurementHistoryService {
                 .append("# site_id=").append(csv(m.siteId().toString())).append('\n')
                 .append("# entity_id=").append(csv(m.entityId() == null ? null
                         : m.entityId().toString())).append('\n')
-                .append("time,value,min,max,text,sample_count,gap\n");
+                .append("# quelle=").append(csv(m.quelle())).append('\n')
+                .append("# quelle_erklaerung=").append(csv(m.quelleErklaerung())).append('\n')
+                .append("# raw_available=").append(m.rawAvailable()).append('\n')
+                .append("# roh_grenze=").append(csv(m.rohGrenze() == null ? null
+                        : m.rohGrenze().toString())).append('\n')
+                .append("# catalog_version_gespeichert=")
+                .append(csv(String.join(" ", m.katalogVersionenGespeichert()))).append('\n')
+                .append("time,value,min,max,text,sample_count,gap")
+                .append(",quelle,wertart,abdeckung_prozent,erhalten,erwartet,n_good,n_uncertain,")
+                .append("n_invalid,n_stale,n_device_error,zustand,endgueltig_ab,version,")
+                .append("nachgeliefert,zustellart,letzte_eingangszeit,geraet_einbau,")
+                .append("geraet_einbau_2,box,box_2,fassung,katalog_version,rolle,stand_anfang,")
+                .append("stand_ende\n");
         for (Datum d : history.data()) {
             out.append(d.time()).append(',').append(value(d.value())).append(',')
                     .append(value(d.minimum())).append(',').append(value(d.maximum())).append(',')
                     .append(csv(d.text())).append(',').append(d.sampleCount()).append(',')
-                    .append(d.gap()).append('\n');
+                    .append(d.gap());
+            Herkunft h = d.herkunft();
+            out.append(',').append(csv(h == null ? null : h.quelle()))
+                    .append(',').append(csv(h == null ? null : h.wertart()))
+                    .append(',').append(zahl(h == null ? null : h.abdeckungProzent()))
+                    .append(',').append(zahl(h == null ? null : h.erhalten()))
+                    .append(',').append(zahl(h == null ? null : h.erwartet()))
+                    .append(',').append(zahl(h == null ? null : h.nGood()))
+                    .append(',').append(zahl(h == null ? null : h.nUncertain()))
+                    .append(',').append(zahl(h == null ? null : h.nInvalid()))
+                    .append(',').append(zahl(h == null ? null : h.nStale()))
+                    .append(',').append(zahl(h == null ? null : h.nDeviceError()))
+                    .append(',').append(csv(h == null ? null : h.zustand()))
+                    .append(',').append(zeit(h == null ? null : h.endgueltigAb()))
+                    .append(',').append(zahl(h == null ? null : h.version()))
+                    .append(',').append(zahl(h == null ? null : h.nachgeliefert()))
+                    .append(',').append(csv(h == null ? null : h.zustellart()))
+                    .append(',').append(zeit(h == null ? null : h.letzteEingangszeit()))
+                    .append(',').append(kennung(h == null ? null : h.geraetEinbau()))
+                    .append(',').append(kennung(h == null ? null : h.geraetEinbauZwei()))
+                    .append(',').append(kennung(h == null ? null : h.box()))
+                    .append(',').append(kennung(h == null ? null : h.boxZwei()))
+                    .append(',').append(zahl(h == null ? null : h.fassung()))
+                    .append(',').append(csv(h == null ? null : h.katalogVersion()))
+                    .append(',').append(csv(h == null ? null : h.rolle()))
+                    .append(',').append(value(h == null ? null : h.standAnfang()))
+                    .append(',').append(value(h == null ? null : h.standEnde()))
+                    .append('\n');
         }
         return out.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -412,6 +674,16 @@ public class MeasurementHistoryService {
     }
     private static String value(BigDecimal value) {
         return value == null ? "" : value.toPlainString();
+    }
+    /** Eine fehlende Zahl bleibt LEER — nie eine erfundene 0 (Hausregel „Ehrlichkeit der Zahlen"). */
+    private static String zahl(Number value) {
+        return value == null ? "" : value.toString();
+    }
+    private static String zeit(Instant value) {
+        return value == null ? "" : value.toString();
+    }
+    private static String kennung(UUID value) {
+        return value == null ? "" : value.toString();
     }
     private static String csv(String value) {
         if (value == null) return "";
