@@ -4210,6 +4210,96 @@ export interface RuleEvents {
   events: RuleEvent[];
 }
 
+// ---------------------------------------------------------------------------
+// Das ÄNDERUNGSPROTOKOLL (UEMS AP-04 IP-21) — drei Lesewege auf dieselben
+// Einträge: je Messstelle, je Gerät und für das ganze Unternehmen.
+//
+// ⚠ ZWEI ZEITACHSEN, und sie sind verschieden: `gilt_ab` sagt, WANN die
+// Änderung gilt, `eingetragen_am`, WANN sie eingetragen wurde. Ein rückwirkender
+// Zählerwechsel gilt um 10:40 und wurde um 11:05 eingetragen. `achse` sagt,
+// welche der beiden gefiltert und sortiert hat — sie steht in der ANTWORT, nicht
+// nur in der Anfrage.
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein UEMS-Gerät (`GET /api/v1/sites/{id}/geraete`, AP-04 IP-10) — hier nur mit
+ * den Feldern, die das Portal heute braucht: das Protokoll je Gerät hängt an
+ * dieser ID, die Fläche kennt aber nur die Komponente. `ausgebaut_am` null =
+ * eingebaut; `gueltig_bis` null = speist die Komponente bis auf Weiteres.
+ */
+export interface UemsGeraet {
+  id: string;
+  kennzeichen: string;
+  einbau_kennzeichen: string;
+  ausgebaut_am: string | null;
+  komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
+}
+
+/** Wer den Eintrag geschrieben hat; `rolle`/`art` null = vom Journal nicht festgehalten. */
+export interface ProtokollUrheber {
+  name: string;
+  rolle: string | null;
+  art: string | null;
+}
+
+/** Das Objekt, um das es geht; `name` null = inzwischen gelöscht (das Protokoll überlebt es). */
+export interface ProtokollBezug {
+  art: 'messstelle' | 'datenquelle' | 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'anlage';
+  id: string;
+  kennzeichen: string | null;
+  name: string | null;
+}
+
+/** Ein Eintrag; `text` ist der Kundensatz „was wurde geändert", `alt`/`neu` seine Fakten. */
+export interface ProtokollEintrag {
+  id: string;
+  quelle: 'messstelle' | 'ort' | 'datenquelle';
+  art: string;
+  text: string;
+  bezug: ProtokollBezug;
+  gilt_ab: string;
+  eingetragen_am: string;
+  zeitform: 'rueckwirkend' | 'angekuendigt' | 'sofort';
+  grund: string | null;
+  urheber: ProtokollUrheber;
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+}
+
+/** `weiter` ist der Fortsetzungszeiger der nächsten Seite — null, wenn es keine gibt. */
+export interface Protokoll {
+  eintraege: ProtokollEintrag[];
+  achse: 'wirkung' | 'eintrag';
+  von: string | null;
+  bis: string | null;
+  weiter: string | null;
+}
+
+/** Der Zeitraum-Filter der drei Protokoll-Routen. */
+export interface ProtokollAbfrage {
+  von?: string;
+  bis?: string;
+  /** Vorgabe `wirkung` = „gilt ab"; `eintrag` = „eingetragen am". */
+  achse?: 'wirkung' | 'eintrag';
+  limit?: number;
+  /** Der Wert `weiter` der vorigen Seite. */
+  nach?: string;
+}
+
+
+/** Baut die Abfrage der drei Protokoll-Routen; ein fehlendes Feld wird weggelassen. */
+function protokollFrage(f?: ProtokollAbfrage): string {
+  if (!f) return '';
+  const q = new URLSearchParams();
+  if (f.von) q.set('von', f.von);
+  if (f.bis) q.set('bis', f.bis);
+  if (f.achse) q.set('achse', f.achse);
+  if (f.limit != null) q.set('limit', String(f.limit));
+  if (f.nach) q.set('nach', f.nach);
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
@@ -5234,6 +5324,29 @@ export const api = {
   /** Der Vorschlag für das nächste Kennzeichen (MS-…), unaufdringlich gezeigt. */
   kennzeichenVorschlag: () =>
     request<{ kennzeichen: string }>(`/api/v1/messstellen/kennzeichen-vorschlag`),
+
+  /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
+  uemsGeraete: (siteId: string) =>
+    request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /**
+   * Das Änderungsprotokoll EINER Messstelle (AP-04 IP-21) — jüngster Eintrag
+   * zuerst. Ohne `von`/`bis` das ganze Protokoll.
+   */
+  messstelleAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/messstellen/${id}/aenderungen${protokollFrage(f)}`),
+
+  /**
+   * Das Änderungsprotokoll EINES Geräts — seine Bindungen, seine Einstellungen,
+   * sein Ein- und Ausbau. `id` ist das UEMS-Gerät (`/api/v1/sites/{id}/geraete`),
+   * nicht die Komponente.
+   */
+  geraetAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/geraete/${id}/aenderungen${protokollFrage(f)}`),
+
+  /** Das Änderungsprotokoll des ganzen Unternehmens über einen Zeitraum. */
+  unternehmenAenderungen: (f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/unternehmen/aenderungen${protokollFrage(f)}`),
 
   /** Legt eine berechnete Messstelle (Gesamtwert) mit ihrer gewichteten Summe an. */
   berechneteMessstelleAnlegen: (body: BerechneteMessstelleAnlegen) =>

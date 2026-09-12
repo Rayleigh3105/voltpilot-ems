@@ -49,6 +49,7 @@ import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment
 import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
+import { GeraetProtokoll } from '../components/GeraetProtokoll';
 import {
   anlageRoute,
   befehleGeraetHash,
@@ -1337,6 +1338,15 @@ export function GeraetSeiteSection({
                 <ZeilenListe zeilen={view.bms} />
               </Block>
             )}
+            {/* Das ÄNDERUNGSPROTOKOLL dieses Geräts (UEMS AP-04 IP-21): was sich
+                an seinen Quellen, seinen Einstellungen und seinem Ein- und Ausbau
+                geändert hat. Es steht HIER, weil genau diese Sektion sagt, was das
+                Gerät misst und steuert. Ohne auflösbares UEMS-Gerät rendert es
+                gar nichts - dieselbe Regel wie der BMS-Block darüber. */}
+            <GeraetProtokoll
+              siteId={site.id}
+              entityIds={view.komponenten.map((c) => c.entityId)}
+            />
           </RahmenSektion>
 
           {/* 5 · Register - Lesen, Beobachten und Schreiben an EINEM Ort. */}

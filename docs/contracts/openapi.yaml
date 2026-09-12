@@ -452,6 +452,33 @@ paths:
         "400": { $ref: "#/components/responses/OrtAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/unternehmen/aenderungen:
+    parameters:
+      - $ref: "#/components/parameters/ProtokollVon"
+      - $ref: "#/components/parameters/ProtokollBis"
+      - $ref: "#/components/parameters/ProtokollAchse"
+      - $ref: "#/components/parameters/ProtokollLimit"
+      - $ref: "#/components/parameters/ProtokollNach"
+    get:
+      tags: [unternehmen]
+      summary: Das Aenderungsprotokoll des ganzen Unternehmens ueber einen Zeitraum (AP-04 IP-21).
+      description: >
+        Recht `aenderungsprotokoll.lesen`. Fuehrt die Eintraege der drei Journale
+        zusammen: Messstellen (samt Quellenbindung, Einstellungs-Fassung und
+        Zaehlerwechsel), Ortsstruktur (Unternehmen, Standort, Gebaeude, Bereich,
+        Anlage) und Datenquellen. Sortiert nach der gewaehlten Achse absteigend,
+        stabil nach `quelle` und laufender Nummer - deshalb springt die Seitenweise
+        auch bei gleichen Zeitstempeln nicht. `limit` Vorgabe 100, hoechstens 500;
+        `nach` ist der Wert `weiter` der vorigen Seite (fehlt er, gibt es keine).
+      responses:
+        "200":
+          description: Das Protokoll des Unternehmens.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Protokoll" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/standorte:
     get:
       tags: [ortsstruktur]
@@ -8173,6 +8200,35 @@ paths:
         "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/messstellen/{id}/aenderungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: "#/components/parameters/ProtokollVon"
+      - $ref: "#/components/parameters/ProtokollBis"
+      - $ref: "#/components/parameters/ProtokollAchse"
+      - $ref: "#/components/parameters/ProtokollLimit"
+      - $ref: "#/components/parameters/ProtokollNach"
+    get:
+      tags: [messstellen]
+      summary: Das Aenderungsprotokoll EINER Messstelle, juengster Eintrag zuerst (AP-04 IP-21).
+      description: >
+        Recht `aenderungsprotokoll.lesen`. Jede Aenderung der Messstelle: anlegen,
+        bearbeiten, anhalten, fortsetzen, archivieren, Ort, elektrische Stellung,
+        Quellenbindung, Einstellungs-Fassung, Zaehlerwechsel. Nur lesend - ein
+        Eintrag entsteht allein im jeweiligen Fachweg. Jede Zeile nennt BEIDE
+        Zeitpunkte: `gilt_ab` (wann die Aenderung gilt) und `eingetragen_am` (wann
+        sie eingetragen wurde); `zeitform` ist das Urteil dazu. `von`/`bis` filtern
+        auf der Achse, die `achse` nennt - Vorgabe `wirkung` ("gilt ab"). Eine
+        fremde Messstelle ist 404, nie 403.
+      responses:
+        "200":
+          description: Das Protokoll der Messstelle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Protokoll" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/messstellen/{id}/quellen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8678,6 +8734,33 @@ paths:
               schema: { $ref: "#/components/schemas/Geraet" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/geraete/{id}/aenderungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: "#/components/parameters/ProtokollVon"
+      - $ref: "#/components/parameters/ProtokollBis"
+      - $ref: "#/components/parameters/ProtokollAchse"
+      - $ref: "#/components/parameters/ProtokollLimit"
+      - $ref: "#/components/parameters/ProtokollNach"
+    get:
+      tags: [geraete]
+      summary: Das Aenderungsprotokoll EINES Geraets - Bindungen, Einstellungen, Ein- und Ausbau (AP-04 IP-21).
+      description: >
+        Recht `aenderungsprotokoll.lesen`. Ein Geraet hat kein eigenes Journal: seine
+        Eintraege haengen an den Messstellen, die es speist, und nennen es ueber sein
+        Einbau-Kennzeichen. Ein Zaehlerwechsel steht deshalb in BEIDEN
+        Geraete-Protokollen - beim ausgebauten und beim eingebauten. Zeitachsen,
+        Zeitraum und Seitenweise wie bei der Messstelle. Ein fremdes Geraet ist 404,
+        nie 403.
+      responses:
+        "200":
+          description: Das Protokoll des Geraets.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Protokoll" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/geraete/{id}/einstellungen:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8812,6 +8895,53 @@ components:
         header is IGNORED for every non-admin token, so it can never widen a
         customer's access; an admin without the header sees zero rows
         (default-deny).
+  parameters:
+    ProtokollVon:
+      name: von
+      in: query
+      required: false
+      schema: { type: string }
+      description: >
+        Der Beginn des Zeitraums auf der gewaehlten Achse - ein Zeitpunkt mit
+        Versatz (2026-11-18T10:00:00+01:00, das "+" URL-kodiert) oder ein Tag
+        (2026-11-18, dann dessen Beginn in Europe/Berlin). Fehlend = ohne Grenze.
+        Der Zeitraum ist halboffen: "von" zaehlt mit.
+    ProtokollBis:
+      name: bis
+      in: query
+      required: false
+      schema: { type: string }
+      description: >
+        Das Ende des Zeitraums, AUSSCHLIESSLICH ("bis" zaehlt nicht mehr mit);
+        dieselbe Form wie "von". Fehlend = ohne Grenze.
+    ProtokollAchse:
+      name: achse
+      in: query
+      required: false
+      schema: { type: string, enum: [wirkung, eintrag], default: wirkung }
+      description: >
+        WELCHE der zwei Zeitachsen "von"/"bis" filtern und wonach sortiert wird.
+        `wirkung` (Vorgabe) ist "gilt ab" - wann die Aenderung GILT; `eintrag` ist
+        "eingetragen am" - wann sie EINGETRAGEN wurde. Ein rueckwirkender
+        Zaehlerwechsel gilt am 18.11. um 10:40 und wurde um 11:05 eingetragen: mit
+        `wirkung` steht er im Zeitraum 10:00-11:00, mit `eintrag` im Zeitraum
+        11:00-12:00 - beide Male genau EINMAL.
+    ProtokollLimit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      description: Wie viele Eintraege diese Seite hoechstens traegt.
+    ProtokollNach:
+      name: nach
+      in: query
+      required: false
+      schema: { type: string }
+      description: >
+        Der Fortsetzungszeiger: der Wert `weiter` der vorigen Seite. Er traegt das
+        Sortier-Tripel (Zeit auf der Achse, Herkunft, laufende Nummer), damit die
+        naechste Seite auch bei gleichen Zeitstempeln genau hinter dem letzten
+        gelieferten Eintrag ansetzt.
   responses:
     Unauthorized:
       description: Missing, expired or invalid Bearer token.
@@ -16873,6 +17003,68 @@ components:
         seriennummer: { type: string, nullable: true }
         eingebaut_am: { type: string, format: date-time }
         ausgebaut_am: { type: string, format: date-time, nullable: true }
+    ProtokollUrheber:
+      type: object
+      description: >
+        Wer den Eintrag geschrieben hat, im Akteur-Vokabular von AP-03. `rolle` und
+        `art` sind null, wo das Journal sie nicht festhaelt (die Eintraege der
+        Ortsstruktur, bis AP-03 IP-7 die Journale vereinheitlicht) - nie geraten.
+      required: [name, rolle, art]
+      properties:
+        name: { type: string, example: "Ines Kaltenbach" }
+        rolle: { type: string, nullable: true, enum: [kundenadministrator, energiemanager, bearbeiter, bedienberechtigt, leser, unterstuetzer, voltpilot_betrieb, null] }
+        art: { type: string, nullable: true, enum: [kunde, unterstuetzung, voltpilot, notfall, null] }
+    ProtokollBezug:
+      type: object
+      description: >
+        Das Objekt, um das es geht. `kennzeichen` ist MS-06, DQ-1 oder das
+        Kurzzeichen eines Ortes - null, wo die Art keins traegt. `name` ist null,
+        wenn das Objekt geloescht wurde: das Protokoll ueberlebt es.
+      required: [art, id, kennzeichen, name]
+      properties:
+        art: { type: string, enum: [messstelle, datenquelle, unternehmen, standort, gebaeude, bereich, anlage] }
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, nullable: true, example: MS-06 }
+        name: { type: string, nullable: true, example: "Hauptzaehler Werk" }
+    ProtokollEintrag:
+      type: object
+      description: >
+        Ein Eintrag. `id` ist Herkunft und laufende Nummer zusammen
+        ("messstelle:42") - die drei Journale zaehlen unabhaengig voneinander.
+        `text` ist der Kundensatz "was wurde geaendert", gebaut allein aus
+        `alt`/`neu`; `grund` ist die Begruendung, die der Schreiber mitgegeben hat
+        (null = keine).
+      required: [id, quelle, art, text, bezug, gilt_ab, eingetragen_am, zeitform, grund, urheber, alt, neu]
+      properties:
+        id: { type: string, example: "messstelle:42" }
+        quelle: { type: string, enum: [messstelle, ort, datenquelle], description: "Aus welchem Journal der Eintrag stammt." }
+        art: { type: string, example: zaehler_gewechselt, description: "Der Code des Eintrags in seinem Journal." }
+        text: { type: string, example: "Zaehler gewechselt: Z-5a -> Z-5b" }
+        bezug: { $ref: "#/components/schemas/ProtokollBezug" }
+        gilt_ab: { type: string, format: date-time, description: "WANN die Aenderung gilt." }
+        eingetragen_am: { type: string, format: date-time, description: "WANN sie eingetragen wurde." }
+        zeitform: { type: string, enum: [rueckwirkend, angekuendigt, sofort], description: "Das Urteil ueber die beiden Zeitpunkte; `rueckwirkend` ist das gespeicherte Urteil des Schreibwegs." }
+        grund: { type: string, nullable: true }
+        urheber: { $ref: "#/components/schemas/ProtokollUrheber" }
+        alt: { type: object, nullable: true, additionalProperties: true, description: "Der Stand davor - bei `bearbeitet` NUR die geaenderten Felder." }
+        neu: { type: object, nullable: true, additionalProperties: true }
+    Protokoll:
+      type: object
+      description: >
+        Das Aenderungsprotokoll (UEMS AP-04 IP-21), juengster Eintrag zuerst.
+        `achse` sagt, WELCHE Zeitachse gefiltert und sortiert hat - sie steht in der
+        ANTWORT, damit sie niemand verwechselt. `von`/`bis` ist der Zeitraum,
+        halboffen [von, bis); null heisst ohne Grenze. `weiter` ist der
+        Fortsetzungszeiger fuer die naechste Seite - null, wenn es keine gibt.
+      required: [eintraege, achse, von, bis, weiter]
+      properties:
+        eintraege:
+          type: array
+          items: { $ref: "#/components/schemas/ProtokollEintrag" }
+        achse: { type: string, enum: [wirkung, eintrag] }
+        von: { type: string, format: date-time, nullable: true }
+        bis: { type: string, format: date-time, nullable: true }
+        weiter: { type: string, nullable: true, example: "1763458800000:messstelle:42" }
     GeraetListe:
       type: object
       required: [geraete]
