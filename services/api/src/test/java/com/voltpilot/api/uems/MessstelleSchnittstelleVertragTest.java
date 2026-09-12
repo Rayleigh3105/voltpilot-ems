@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
+import com.voltpilot.api.web.dto.ZaehlerwechselDto;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -181,6 +182,41 @@ class MessstelleSchnittstelleVertragTest {
     }
 
     /**
+     * Der Zählerwechsel (IP-17): Anfrage und Antwort tragen in Java und OpenAPI genau dieselben
+     * Felder, und BEIDE Einstiege — {@code POST …/messstellen/{id}/quellen/wechsel} und
+     * {@code POST /api/v1/geraete/{id}/austausch} — schicken und bekommen dieselbe Form. Genau das
+     * heißt „ein Vorgang, zwei Einstiege".
+     */
+    @Test
+    void derZaehlerwechselTraegtDieFelderDerOpenApiUndIstAnBeidenEinstiegenDerselbe() {
+        PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
+        for (Object[] paar : new Object[][] {{"Zaehlerwechsel", ZaehlerwechselDto.Wechsel.class},
+                {"ZaehlerwechselNeuesGeraet", ZaehlerwechselDto.NeuesGeraet.class},
+                {"ZaehlerwechselVerbindung", ZaehlerwechselDto.Verbindung.class},
+                {"ZaehlerwechselEinbau", ZaehlerwechselDto.Einbau.class},
+                {"ZaehlerwechselGeraet", ZaehlerwechselDto.GeraetWechsel.class},
+                {"ZaehlerwechselBindung", ZaehlerwechselDto.Bindung.class},
+                {"ZaehlerwechselEinstellung", ZaehlerwechselDto.Einstellung.class},
+                {"ZaehlerwechselVorgang", ZaehlerwechselDto.Vorgang.class}}) {
+            assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
+                    .containsExactlyInAnyOrderElementsOf(Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
+                            .map(c -> snake.translate(c.getName())).toList());
+        }
+        String anfrage = "#/components/schemas/Zaehlerwechsel";
+        String antwort = "#/components/schemas/ZaehlerwechselVorgang";
+        for (String pfad : List.of("/api/v1/messstellen/{id}/quellen/wechsel", "/api/v1/geraete/{id}/austausch")) {
+            Map<String, Object> post = map(map(pfade, pfad), "post");
+            assertThat(ref(map(map(map(map(post, "requestBody"), "content"), "application/json"), "schema")))
+                    .as(pfad + " Anfrage").isEqualTo(anfrage);
+            Map<String, Object> erfolg = map(map(post, "responses"), "201");
+            assertThat(ref(map(map(map(erfolg, "content"), "application/json"), "schema")))
+                    .as(pfad + " Antwort").isEqualTo(antwort);
+            assertThat(map(post, "responses").keySet()).as(pfad + " Status")
+                    .containsExactlyInAnyOrder("201", "400", "401", "404", "409", "422");
+        }
+    }
+
+    /**
      * Das Register (IP-4): jede seiner Formen trägt in Java und OpenAPI genau dieselben Felder, und
      * {@code quelle.stand} sagt dort dieselben drei Wörter wie {@link MessstelleRegisterService}.
      */
@@ -256,6 +292,16 @@ class MessstelleSchnittstelleVertragTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> map(Map<String, Object> m, String key) {
         return (Map<String, Object>) m.get(key);
+    }
+
+    /** Der {@code $ref} eines Schemas — auch, wenn er in einem {@code allOf} steckt. */
+    @SuppressWarnings("unchecked")
+    private static String ref(Map<String, Object> schema) {
+        if (schema.get("$ref") != null) {
+            return String.valueOf(schema.get("$ref"));
+        }
+        List<Object> allOf = (List<Object>) schema.get("allOf");
+        return allOf == null ? null : String.valueOf(((Map<String, Object>) allOf.get(0)).get("$ref"));
     }
 
     @SuppressWarnings("unchecked")

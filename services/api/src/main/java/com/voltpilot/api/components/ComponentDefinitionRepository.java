@@ -150,6 +150,30 @@ public class ComponentDefinitionRepository {
     }
 
     /**
+     * Nur die VERBINDUNG ändern — der Zählerwechsel (UEMS AP-04 IP-17), wenn das neue Gerät unter
+     * einer anderen Geräte-ID antwortet. Alles andere bleibt zeichengleich (Rolle, Typ, Marke,
+     * Modell, Familie, Schutzklemmen); die Revisionsbedingung sitzt wie überall IN demselben
+     * UPDATE. {@code null} = die Komponente hat inzwischen eine neuere Fassung.
+     */
+    public Applied applyConnection(UUID siteId, UUID entityId, int expectedRevision,
+            String connectionJson) {
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET connection_json = ?::jsonb, "
+                        + "definition_version = definition_version + 1 "
+                        + "WHERE id = ? AND site_id = ? AND definition_version = ? "
+                        + "RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
+                connectionJson, entityId, siteId, expectedRevision);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Die heutige Fassungsnummer der Komponente; {@code null}, wenn es sie (für den Aufrufer) nicht gibt. */
+    public Integer definitionVersion(UUID siteId, UUID entityId) {
+        return jdbc.query("SELECT definition_version FROM measurement_point WHERE id = ? AND site_id = ?",
+                (rs, n) -> rs.getInt(1), entityId, siteId).stream().findFirst().orElse(null);
+    }
+
+    /**
      * Legt den TATSAECHLICH angewandten Stand als vollstaendigen Snapshot ab.
      *
      * <p>Der Assistent spricht in Kundenrollen (zum Beispiel {@code inverter}),

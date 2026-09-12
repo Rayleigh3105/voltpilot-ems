@@ -48,8 +48,9 @@ class RechteKennungenDerRoutenTest {
      * Datenquellen (AP-06), Standorte, Unternehmen, Gebäude und Bereiche (AP-02).
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
-            "GeraetController", "GeraetEinstellungController", "DatenquelleController", "StandortController",
-            "UnternehmenController", "OrtController", "MessstelleVorschlagController");
+            "GeraetController", "GeraetEinstellungController", "GeraetWechselController",
+            "DatenquelleController", "StandortController", "UnternehmenController", "OrtController",
+            "MessstelleVorschlagController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");

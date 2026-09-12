@@ -108,6 +108,22 @@ public class MessstelleQuelleRepository {
                 messstelleId);
     }
 
+    /**
+     * Alle Bindungen, die aus DIESEM Einbau lesen (führend wie Vergleich) und zum Zeitpunkt schon
+     * begonnen haben — beendete eingeschlossen: der Zählerwechsel (IP-17) muss auch die sehen, die
+     * schon beendet sind, um sie nicht ein zweites Mal zu beenden.
+     */
+    public List<Quelle> desEinbausAb(UUID geraetId, Instant zeitpunkt) {
+        return jdbc.query("SELECT " + SPALTEN + VON + "WHERE q.geraet_id = ? AND q.gueltig_ab <= ?" + REIHENFOLGE,
+                MessstelleQuelleRepository::quelle, geraetId, Timestamp.from(zeitpunkt));
+    }
+
+    /** Die Bindungen dieses Einbaus, die NACH dem Zeitpunkt erst beginnen (angekündigt). */
+    public List<Quelle> desEinbausNach(UUID geraetId, Instant zeitpunkt) {
+        return jdbc.query("SELECT " + SPALTEN + VON + "WHERE q.geraet_id = ? AND q.gueltig_ab > ?" + REIHENFOLGE,
+                MessstelleQuelleRepository::quelle, geraetId, Timestamp.from(zeitpunkt));
+    }
+
     /** Die Bindungen der Komponente, die zum Zeitpunkt laufen — „speist MS-06 (führend)“. */
     public List<Quelle> derKomponenteAm(UUID entityId, Instant zeitpunkt) {
         Timestamp t = Timestamp.from(zeitpunkt);

@@ -3027,6 +3027,118 @@
         }
       }
     ],
+    "wechsel": [
+      {
+        "name": "ms-06-wechsel-am-18-11-2026",
+        "herkunft": "AP-04 A1 · §5.13 · E2 · Regel 5",
+        "referenz": "MS-06",
+        "why": "DER Plan-Fall aus der Sicht des Geräts: Z-5a steckt seit 12.03.2024 und wird am 18.11.2026 um 10:40 getauscht; eingetragen wird der Vorgang um 11:05. Der Zeitpunkt liegt im laufenden Einbau — der Wechsel darf, und er ist rückwirkend (E2).",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "alt": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "eingebaut_am": "2024-03-12T00:00:00+01:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2026-11-18T10:40:00+01:00"
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": true,
+          "angekuendigt": false
+        }
+      },
+      {
+        "name": "ms-06-wechsel-angekuendigt-fuer-den-18-11",
+        "herkunft": "AP-04 A3 · E2",
+        "referenz": "MS-06",
+        "why": "Am 10.11.2026 wird der Wechsel für den 18.11.2026 10:00 angekündigt (A3). Der Zeitpunkt liegt in der Zukunft: erlaubt, und er heißt „angekündigt“ — bis dahin liefert Z-5a.",
+        "input": {
+          "jetzt": "2026-11-10T09:00:00+01:00",
+          "alt": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "eingebaut_am": "2024-03-12T00:00:00+01:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2026-11-18T10:00:00+01:00"
+        },
+        "expected": {
+          "fehler": null,
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": true
+        }
+      },
+      {
+        "name": "ms-06-wechsel-vor-dem-einbau-von-z5a",
+        "herkunft": "AP-04 A15 · §5.12 · Regel 5",
+        "referenz": "MS-06",
+        "why": "A15 am Gerät: ein Wechsel zum 01.03.2024 läge vor dem Einbau von Z-5a (12.03.2024) — das Kästchen steckte da noch gar nicht. 422, nichts wird gespeichert.",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "alt": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "eingebaut_am": "2024-03-12T00:00:00+01:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2024-03-01T00:00:00+01:00"
+        },
+        "expected": {
+          "fehler": "zeitpunkt_vor_vorgaenger",
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false
+        }
+      },
+      {
+        "name": "ms-06-wechsel-genau-zum-einbau-von-z5a",
+        "herkunft": "AP-04 A15 · Regel 5 (Kante)",
+        "referenz": "MS-06",
+        "why": "Die Kante: ein Wechsel GENAU zum Einbau von Z-5a (12.03.2024 00:00) ließe ihn null Minuten stecken. Ein Einbau von null Minuten ist keiner — also auch „vor dem Vorgänger“, dieselbe Kante wie im Fall ms-06-wechsel-genau-beim-einbau der Bindung.",
+        "input": {
+          "jetzt": "2026-11-18T11:05:00+01:00",
+          "alt": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "eingebaut_am": "2024-03-12T00:00:00+01:00",
+            "ausgebaut_am": null
+          },
+          "zeitpunkt": "2024-03-12T00:00:00+01:00"
+        },
+        "expected": {
+          "fehler": "zeitpunkt_vor_vorgaenger",
+          "ohne_geraet_ab": null,
+          "rueckwirkend": false,
+          "angekuendigt": false
+        }
+      },
+      {
+        "name": "ms-06-zweiter-wechsel-am-ausgebauten-z5a",
+        "herkunft": "AP-04 §4.5 („ausgebaut am …“) · Regel 5",
+        "referenz": "MS-06",
+        "why": "Nach dem Wechsel ist Z-5a seit 18.11.2026 10:40 ausgebaut. Ein zweiter Wechsel an DIESEM Einbau — ob danach oder mitten in seiner Zeit — findet kein steckendes Gerät mehr: sein Zeitraum ist geschlossen und wird nie nachträglich geteilt. 422 mit dem Zeitpunkt, ab dem er nicht mehr steckt; getauscht wird der Einbau, der jetzt steckt (Z-5b).",
+        "input": {
+          "jetzt": "2026-11-18T11:30:00+01:00",
+          "alt": {
+            "geraet": "GR-4",
+            "einbau": "Z-5a",
+            "eingebaut_am": "2024-03-12T00:00:00+01:00",
+            "ausgebaut_am": "2026-11-18T10:40:00+01:00"
+          },
+          "zeitpunkt": "2026-11-18T11:00:00+01:00"
+        },
+        "expected": {
+          "fehler": "kein_geraet_zum_zeitpunkt",
+          "ohne_geraet_ab": "2026-11-18T10:40:00+01:00",
+          "rueckwirkend": false,
+          "angekuendigt": false
+        }
+      }
+    ],
     "rueckwirkung": [
       {
         "name": "ms-06-wechsel-25-minuten",

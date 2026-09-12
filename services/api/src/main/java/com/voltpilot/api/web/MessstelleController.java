@@ -12,9 +12,11 @@ import com.voltpilot.api.uems.MessstelleRegeln;
 import com.voltpilot.api.uems.MessstelleRegisterService;
 import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.uems.MessstelleZuordnungService;
+import com.voltpilot.api.uems.ZaehlerwechselService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
+import com.voltpilot.api.web.dto.ZaehlerwechselDto;
 import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -36,6 +38,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
@@ -69,14 +72,17 @@ public class MessstelleController {
     private final MessstelleRegisterService register;
     private final MessstelleZuordnungService zuordnungen;
     private final MessstelleQuelleService quellen;
+    private final ZaehlerwechselService wechsel;
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
-            MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen, ObjectMapper json) {
+            MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
+            ZaehlerwechselService wechsel, ObjectMapper json) {
         this.messstellen = messstellen;
         this.register = register;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
+        this.wechsel = wechsel;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -260,6 +266,20 @@ public class MessstelleController {
         MessstelleQuelleDto.Vorgang v = quellen.binden(id, lies(body, MessstelleQuelleDto.Binden.class), akteur(auth));
         return ResponseEntity.created(URI.create("/api/v1/messstellen/" + id + "/quellen/" + v.quelle().id()))
                 .body(v);
+    }
+
+    /**
+     * Recht: {@code messstelle.quelle} („Führende Quelle binden · Zählerwechsel · Wandlerfaktoren");
+     * mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. Der Zählerwechsel als
+     * EIN Vorgang (IP-17) aus der Sicht der Messstelle: das Gerät ist das, aus dem sie zum
+     * Wechselzeitpunkt liest — es wird nachgeschlagen, nie gewählt. Derselbe Vorgang wie
+     * {@code POST /api/v1/geraete/{id}/austausch}; entweder alle Wirkungen landen oder keine.
+     */
+    @PostMapping("/{id}/quellen/wechsel")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ZaehlerwechselDto.Vorgang wechseln(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return wechsel.anMessstelle(id, lies(body, ZaehlerwechselDto.Wechsel.class), akteur(auth));
     }
 
     /**

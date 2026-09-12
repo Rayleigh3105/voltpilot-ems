@@ -685,6 +685,62 @@ export function beendenPruefen(e: BeendenEingang): BeendenUrteil {
   };
 }
 
+// ------------------------------------------------------------ Zählerwechsel
+
+/**
+ * Der Einbau, der beim Zählerwechsel geht (IP-17) — so, wie er gespeichert ist
+ * (`geraet`, eine Zeile = EIN Einbau). `geraet` ist die Stelle (GR-4, bleibt über den
+ * Wechsel), `einbau` das konkrete Kästchen (Z-5a); `ausgebautAm === null` = steckt noch.
+ */
+export interface EinbauStand {
+  geraet: string;
+  einbau: string;
+  eingebautAm: string;
+  ausgebautAm: string | null;
+}
+
+/** `zeitpunkt`: wann getauscht wird, auf die Minute (E2) — Vergangenheit und Zukunft erlaubt. */
+export interface WechselEingang {
+  jetzt: string;
+  alt: EinbauStand;
+  zeitpunkt: string;
+}
+
+/** `ohneGeraetAb` bei `kein_geraet_zum_zeitpunkt`: ab wann der Vorgänger nicht mehr steckt. */
+export interface WechselUrteil {
+  fehler: FehlerCode | null;
+  ohneGeraetAb: string | null;
+  rueckwirkend: boolean;
+  angekuendigt: boolean;
+}
+
+/**
+ * Darf zu diesem Zeitpunkt gewechselt werden (Regel 5)? Der Wechsel liegt IM laufenden
+ * Einbau des Vorgängers: NACH seinem Einbau — genau auf ihm zählt als davor, denn ein
+ * Einbau von null Minuten ist keiner (422 `zeitpunkt_vor_vorgaenger`) — und VOR seinem
+ * Ausbau: ein ausgebauter Einbau steckt nicht mehr und wird kein zweites Mal getauscht;
+ * sein Zeitraum ist geschlossen und wird nie nachträglich geteilt (422
+ * `kein_geraet_zum_zeitpunkt` mit `ausgebaut_am`). Was danach mit den Quellen geschieht,
+ * urteilt `beendenPruefen` (die laufende endet) und `bindungPruefen` mit dem Vorgang
+ * `wechsel` (die neue beginnt) — hier steht NUR das Gerät.
+ */
+export function wechselPruefen(e: WechselEingang): WechselUrteil {
+  const t = zeit(e.zeitpunkt);
+  if (t <= zeit(e.alt.eingebautAm)) {
+    return { fehler: 'zeitpunkt_vor_vorgaenger', ohneGeraetAb: null, rueckwirkend: false, angekuendigt: false };
+  }
+  if (e.alt.ausgebautAm !== null) {
+    return {
+      fehler: 'kein_geraet_zum_zeitpunkt',
+      ohneGeraetAb: e.alt.ausgebautAm,
+      rueckwirkend: false,
+      angekuendigt: false,
+    };
+  }
+  const jetzt = minute(e.jetzt);
+  return { fehler: null, ohneGeraetAb: null, rueckwirkend: t < jetzt, angekuendigt: t > jetzt };
+}
+
 /** Wie weit ein Zeitpunkt von „jetzt" entfernt ist, auf die Minute (E2). */
 export interface Rueckwirkung {
   art: RueckwirkungArt;
