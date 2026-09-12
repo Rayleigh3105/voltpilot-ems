@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +40,73 @@ public final class ViertelstundeRegeln {
     /** Die fünf Ereignisarten, die §4.4 je Intervall zählt. */
     public static final List<String> GEZAEHLTE_EREIGNISSE = List.of(
             "data_gap", "counter_reset", "device_boundary", "handover", "duplicate_conflict");
+
+    // ------------------------------------------------------------------ Faktor
+
+    /**
+     * Z8 — der Faktor, mit dem der Verdichtungs-Lauf die Rohwerte in die Einheit der Reihe
+     * rechnet (AP-08 IP-2). Er ist <b>1</b>, und das ist kein Platzhalter, sondern die Antwort
+     * des schon gemergten Vertrags {@code docs/contracts/v2/quelle-einstellung.md} §3:
+     *
+     * <ul>
+     *   <li>{@code angewendet} — „VoltPilot wendet sie <b>beim Erfassen</b> an": die Box liefert
+     *       den Wert bereits mit dem Faktor. Steht die Zustellung einer eingetragenen Fassung noch
+     *       aus, gilt derselbe Vertrag: „bis dahin erfasst sie wie bisher. Bereits erfasste Werte
+     *       berechnet VoltPilot nie neu."
+     *   <li>{@code dokumentiert} — „im Gerät eingestellt, <b>VoltPilot rechnet nichts um</b>":
+     *       das Gerät liefert den Wert bereits mit dem Faktor.
+     * </ul>
+     *
+     * <p>In BEIDEN Fällen trägt der gespeicherte Rohwert den Faktor schon. Ihn hier noch einmal
+     * anzuwenden hieße, ihn zu verdoppeln — der Fehler, den AP-07 IP-12 ausdrücklich vermeiden
+     * wollte, als es den Wert „wie die Box ihn geliefert hat" ablegte und die Fassung nur als
+     * ANKER dazuschrieb.
+     *
+     * <p><b>Er steht trotzdem als Zahl in jeder Zeile</b> ({@code faktor}): eine Menge, deren
+     * Faktor man nicht nachlesen kann, ist eine Behauptung. Und er steht als benannte Konstante
+     * statt als anonyme {@code 1} im Aufruf, damit der Tag, an dem eine Fassung entsteht, die die
+     * Cloud selbst umrechnen MUSS, genau EINE Stelle zu ändern hat — zusammen mit einem neuen
+     * Wort im Vokabular von {@code anwendung}, denn heute gibt es keines dafür (Befund AP-08 IP-2).
+     */
+    public static final BigDecimal FAKTOR_DER_FASSUNG = BigDecimal.ONE;
+
+    // -------------------------------------------------------------- Kennzeichen
+
+    /**
+     * Die Kennzeichen einer Viertelstunde als {@code jsonb}-Text — ein ARRAY, weil Wortlaut UND
+     * Reihenfolge Vertrag sind ({@code verbrauch-vectors.json}, {@code kennzeichen}).
+     *
+     * <p>Die Sätze kommen unverändert aus {@link VerbrauchRegeln}; hier wird nur gerahmt und
+     * maskiert — es gibt EINE Formulierung, nicht zwei.
+     */
+    public static String kennzeichenJson(List<String> saetze) {
+        StringBuilder b = new StringBuilder("[");
+        for (String satz : saetze == null ? List.<String>of() : saetze) {
+            if (b.length() > 1) {
+                b.append(',');
+            }
+            b.append('"');
+            for (int i = 0; i < satz.length(); i++) {
+                char c = satz.charAt(i);
+                switch (c) {
+                    case '"' -> b.append("\\\"");
+                    case '\\' -> b.append("\\\\");
+                    case '\n' -> b.append("\\n");
+                    case '\r' -> b.append("\\r");
+                    case '\t' -> b.append("\\t");
+                    default -> {
+                        if (c < 0x20) {
+                            b.append(String.format("\\u%04x", (int) c));
+                        } else {
+                            b.append(c);
+                        }
+                    }
+                }
+            }
+            b.append('"');
+        }
+        return b.append(']').toString();
+    }
 
     // ------------------------------------------------------------------ Raster
 
