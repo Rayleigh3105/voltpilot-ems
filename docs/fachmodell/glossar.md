@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 7 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -33,6 +33,13 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Benutzer und Rolle (nur Begriff, Rechte-Matrix AP-03)](#benutzer-und-rolle-nur-begriff-rechte-matrix-ap-03) — Sicht Ort
 - [Zuordnung (zeitgültig)](#zuordnung-zeitgültig) — Sicht Zustand
 - [Zustände: aktiv · eingerichtet · liefert Daten · steuert](#zustände-aktiv--eingerichtet--liefert-daten--steuert) — Sicht Zustand
+- [Ablesung](#ablesung) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Ablesezeitraum](#ablesezeitraum) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Fassung](#fassung) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Herkunft](#herkunft) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Import](#import) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Zuordnungs-Vorlage](#zuordnungs-vorlage) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Befund](#befund) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
 
 ## Kundenbereich
 
@@ -412,6 +419,8 @@ AP-00 legt nur fest, dass Bezugsgrößen an Objekte des Fachmodells gebunden sin
 
 **Abgrenzung.** Nicht die Messstelle (misst Energie), nicht die Kennzahl (AP-11: Verhältnis aus beidem).
 
+> **Verfeinert durch AP-09 E1/E2/E4/E17:** Der Geltungsbereich ist genau EINES von sieben Fachobjekten — Unternehmen · Standort · Gebäude · Bereich · Prozess · Kostenstelle · Messstelle (AP-00 nannte vier; aufgelöst in AP-09 W7) —, und die Wertart ist genau EINE von drei: Periodenwert (Menge je Tag, Woche, Monat oder Jahr), Stand (Ablesung zu einem Zeitpunkt) oder Stammdatum mit Gültigkeit. Die Einheit kommt aus einem geschlossenen Vokabular JE GRÖSSE (Masse kg · t, Stückzahl Stück, Zeit h · min, Fläche m², Volumen m³ · l, Personen, Schichten, Gradtage Kd); umgerechnet wird nur innerhalb derselben Größe mit festem Faktor, alles andere wird abgelehnt statt geraten. Die Betriebszeit ist eine Periodenreihe, kein Wochenmodell (E2). Die Bezugsfläche wird NICHT in AP-09 erfasst, sondern am Gebäude gelesen — zum Stichtag der Periode, ihrem letzten Tag (E17): ein neuer Wert ab Tag X ändert keine Periode vor X. Die Regeln stehen als Vertrag in `docs/contracts/v2/bezugsdaten.md` samt Vektoren (`bezugsdaten-vectors.json`).
+
 ## Benutzer und Rolle (nur Begriff, Rechte-Matrix AP-03)
 
 *Sicht: Ort*
@@ -487,3 +496,101 @@ Zeitgültig sind: Messstelle → Ort, Messstelle → Anlage/elektrische Stellung
 > **Verfeinert durch AP-04 E8:** Eine Messstelle ohne Quelle hat die Beobachtung „keine Datenquelle“ — sie ist eingerichtet und aktiv, zeigt aber nie eine 0.
 
 > **Verfeinert durch AP-07 E11:** Ereignisse (Lücke, Nachlieferung, Gerätegrenze, Zeitfehler, Konflikt) reisen über einen additiven Vertrag `…/v2/events` in eine Ereignis-Tabelle je Mandant, append-only und NIE gelöscht — sie sind der Beweis hinter jeder Zustandsaussage. Das geschlossene Vokabular (23 Arten mit Urheber, Bezug, Zeitregel und Kundensatz; ein offenes Ereignis wird fortgeschrieben, nie geändert), der Umschlag Box → Cloud (2.1) und das Redpanda-Ereignis `events.raw` stehen als Vertrag mit Vektoren in `docs/contracts/v2/events-vocabulary.md` (AP-07 IP-3).
+
+## Ablesung
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Ein von Hand erfasster Zählerstand zu einem Zeitpunkt — der Messwert einer Messstelle, die keine Datenquelle hat.**
+
+Eine Ablesung ist ein STAND, keine Menge: sie sagt, was der Zähler zu dieser Minute anzeigte. Sie trägt ihren Zeitpunkt auf die Minute mit Zone, ihren Urheber und ihre Fassung. Zwei Ablesungen derselben Reihe schließen einen Ablesezeitraum — erst daraus entsteht eine Menge. Dieselbe Ablesung noch einmal ist eine Wiederholung; derselbe Zeitpunkt mit einem anderen Stand ist ein Konflikt und braucht eine Berichtigung, nie ein stilles Überschreiben.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-21 Gas Heizung Verwaltung: 48 211 m³ am 01.10.2026 07:15 und 49 451 m³ am 02.11.2026 07:40, abgelesen von Jonas Wendlinger.
+
+**Heute im Code.** Heute nicht vorhanden (`grep -rni 'ablesung|meter_reading' MIG` → 0). Die Regeln stehen als Vertrag in `docs/contracts/v2/bezugsdaten.md` (AP-09 IP-1); der Speicherweg kommt mit AP-09 IP-8.
+
+**Abgrenzung.** Nicht der Messwert einer Datenquelle (der kommt von einer VoltPilot-Box), nicht die Menge (die entsteht erst aus zwei Ablesungen).
+
+## Ablesezeitraum
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Die Strecke zwischen zwei Ablesungen derselben Reihe — der Zeitraum, für den ihre Differenz gilt.**
+
+Der Ablesezeitraum ist die einzige Periode, für die eine abgelesene Menge gilt. Er wird NIE auf Tage oder Viertelstunden verteilt: ein Tag darin hat „keine Werte“, nicht 0. Berührt er zwei Kalendermonate, trägt die schließende Ablesung ein Kennzeichen „gilt für <Monat>“ — vorbelegt ist der Monat mit dem größten zeitlichen Anteil, änderbar durch den Kunden. Ab drei berührten Monaten gibt es keine Vorbelegung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** 01.10.2026 07:15 bis 02.11.2026 07:40 = 32 Tage 1 h 25 min, 1 240 m³; Anteil Oktober 95,9 % → „gilt für Oktober 2026“.
+
+**Heute im Code.** Heute nicht vorhanden. Die Zuordnungsregel steht als Vektor in `docs/contracts/v2/bezugsdaten-vectors.json` (Fall B8).
+
+**Abgrenzung.** Nicht die Periode einer Bezugsgröße (die ist ein Kalendertag, eine Woche, ein Monat oder ein Jahr), nicht das Zeitraster einer Verdichtung.
+
+## Fassung
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Ein Stand eines erfassten Werts mit Urheber, Zeitpunkt und Begründung — jede Änderung ist eine neue Fassung, keine überschreibt eine alte.**
+
+Ein gespeicherter Wert wird nie geändert und nie gelöscht. Der Erstwert ist Fassung 1 und braucht keine Begründung; jede Änderung ist eine Berichtigung = Fassung n + 1 mit Begründung, und Fassung n bleibt lesbar. Hat das Unternehmen das Vier-Augen-Prinzip eingeschaltet, ist die neue Fassung ein Vorschlag, bis eine ZWEITE Person freigibt — der Urheber kann sich nie selbst freigeben. Eine Rücknahme ist ebenfalls nur die nächste Fassung: ohne Betrag, wenn sie einen Erstwert trifft, und mit dem Betrag der Vorfassung, wenn sie eine Berichtigung trifft.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BZ-2 Gutteile Montage, Oktober 2026: Fassung 1 = 4 820 Stück (Tippfehler), Fassung 2 = 48 200 Stück mit der Begründung „Tippfehler — eine Null fehlte“.
+
+**Heute im Code.** Das Muster gibt es schon bei den zeitgültigen Einstellungen je Quelle (Tabelle `quelle_einstellung`, AP-04); für erfasste WERTE ist es neu. Die Regeln stehen in `docs/contracts/v2/bezugsdaten.md` (AP-09 IP-1).
+
+**Abgrenzung.** Nicht die Version einer Kennzahl (AP-11 bildet sie neu, wenn eine Fassung sich ändert), nicht die Zeitgültigkeit eines Stammdatums: „gültig ab“ sagt, WANN ein Wert gilt — die Fassung sagt, WER ihn wann erfasst hat.
+
+## Herkunft
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Woher ein Wert kommt: eingegeben, importiert, aus einem Messkanal abgeleitet oder aus einem Stammdatum gelesen — je Wert, nicht je Tabelle.**
+
+Jeder Wert nennt seine Art, seinen Urheber, seinen Erfassungszeitpunkt, seine Fassung und seinen Status. Ein importierter Wert nennt zusätzlich Datei, Zeile und den gelieferten Text samt Einheit; ein abgeleiteter nennt Komponente, Messkanal und die Regel. Die Herkunft reist unverändert in Kennzahlen und Berichte — eine Zahl ohne Herkunft ist im Unternehmens-Energiemanagement keine Zahl.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BZ-1 Produktionsmenge Spritzguss, Oktober 2026 = 312 400 kg · Import I-2026-0001, Zeile 2 · Ines Kaltenbach, 03.11.2026 09:12.
+
+**Heute im Code.** Für Messwerte entschieden und als Vertrag gebaut (`docs/contracts/v2/messwert-herkunft.md`, AP-07 IP-1). Für Bezugsdaten gilt ein EIGENER Vertrag (`docs/contracts/v2/bezugsdaten.md`, AP-09 E3) — der Messwert-Vertrag wird dafür nicht erweitert.
+
+**Abgrenzung.** Nicht das Änderungsprotokoll (das sagt, was jemand an einem OBJEKT geändert hat), nicht die Datenquelle (die ist der technische Weg einer VoltPilot-Box).
+
+## Import
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Ein bestätigter Vorgang, der aus einer hochgeladenen Datei Werte macht — in vier Schritten: Datei, Zuordnung, Vorschau, Übernahme.**
+
+Die Vorschau schreibt nichts: sie sagt je Zeile ihr Urteil und ihre Befunde und je Datei die Zähler, und sie darf beliebig oft laufen. Erst die Übernahme schreibt, in einem Stück; bricht sie ab, ist nichts geschrieben. Dieselbe Datei ein zweites Mal verdoppelt keine Menge. Ein Import kann zurückgenommen werden — dann bekommt jeder Wert, den er geschrieben hat, eine Folge-Fassung; gelöscht wird nichts.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** I-2026-0001 übernimmt eine Zeile (BZ-1 Oktober 2026 = 312 400 kg); I-2026-0002 ist dieselbe Datei und schreibt 0 Änderungen.
+
+**Heute im Code.** Heute nicht vorhanden. Die Urteile je Zeile, die Zähler je Datei und die Rücknahme stehen als Vektoren in `docs/contracts/v2/bezugsdaten-vectors.json` (AP-09 IP-1); der Weg selbst kommt mit AP-09 IP-11 … IP-13.
+
+**Abgrenzung.** Nicht die Datenannahme (die nimmt Messwerte einer VoltPilot-Box entgegen), nicht die Bestandsübernahme (die legt Objekte an, keine Werte).
+
+## Zuordnungs-Vorlage
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Die gespeicherte Deutung einer Datei-Art: welche Spalte was bedeutet, in welchem Zahlen- und Datumsformat, und welcher Text auf welche Bezugsgröße zeigt.**
+
+Eine Vorlage gehört dem Kundenbereich, nicht einem Benutzer: jeder, der importieren darf, sieht und nutzt sie. Sie hält Trennzeichen, Kodierung, Zahlen- und Datumsformat, die Perioden-Deutung, die Zeitzone, die Einheiten-Synonyme und die Tabelle „Spaltenwert → Bezugsgröße“. Sie wird versioniert: eine Änderung ist eine neue Fassung, und ein früherer Import nennt weiter die Fassung, mit der er gelesen wurde.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „ERP-Export Spritzguss“: Spalte 1 Periode (Monat, JJJJ-MM), Spalte 2 Bezug („Spritzguss gesamt“ → BZ-1), Spalte 3 Wert (Dezimalkomma, Tausenderpunkt), Spalte 4 Einheit.
+
+**Heute im Code.** Heute nicht vorhanden. Das Muster gibt es schon bei den Geräte-Vorlagen der Komponenten (Tabelle `component_template`, Einheitsmodell Stufe 0a).
+
+**Abgrenzung.** Nicht die Geräte-Vorlage (die beschreibt ein Gerät und seine Register), nicht der Bericht (der beschreibt eine Ausgabe).
+
+## Befund
+
+*Sicht: Erfassung · Nachtrag AP-09 §6.2 (W7)*
+
+**Ein benannter Grund, warum eine Zeile nicht übernommen wird — oder ein Hinweis, der sie begleitet.**
+
+Befunde sind ein geschlossenes Vokabular mit einem Kundensatz je Eintrag. Drei von ihnen sind Hinweise und verhindern nichts (die Datei ist bekannt, die Einheit wurde umgerechnet, der Wert ist auffällig); alle anderen halten die Zeile oder die Datei an. Ein Befund wird GENANNT, nicht aufgelöst: eine unbekannte Einheit wird nie geraten, ein mehrdeutiger Zeitpunkt nie gewählt, ein Zeitraum nie geteilt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „Unbekannte Einheit »lbs« — erlaubt sind kg, t.“ · „25.10.2026 02:30 gibt es an diesem Tag zweimal (Zeitumstellung). Geben Sie die Zone an.“
+
+**Heute im Code.** Das Muster gibt es schon bei den Ablehnungsgründen der Schreibwege (`MessstelleAbgelehnt`, `DatenquelleAbgelehnt`); das Vokabular der Bezugsdaten steht in `docs/contracts/v2/bezugsdaten.schema.json`.
+
+**Abgrenzung.** Nicht das Ereignis (das beschreibt, was an einer Messreihe geschehen ist), nicht die Fehlermeldung einer Route (die sagt, warum eine ANFRAGE abgelehnt wurde).

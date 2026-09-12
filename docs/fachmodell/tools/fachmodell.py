@@ -170,6 +170,56 @@ GLOSSAR = [
 ]
 
 # ---------------------------------------------------------------------------------------------
+# NACHTRAEGE spaeterer Pakete (Schluessel `nachtrag`): AP-00 hat 23 Begriffe festgelegt; ein
+# spaeteres Paket darf einen FEHLENDEN Begriff ergaenzen, nie einen bestehenden umschreiben.
+# Dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix (`rechte-matrix.json`).
+# ---------------------------------------------------------------------------------------------
+GLOSSAR += [
+    {"id": "ablesung", "sicht": "erf", "begriff": "Ablesung", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Ein von Hand erfasster Zählerstand zu einem Zeitpunkt — der Messwert einer Messstelle, die keine Datenquelle hat.",
+     "lang": "Eine Ablesung ist ein STAND, keine Menge: sie sagt, was der Zähler zu dieser Minute anzeigte. Sie trägt ihren Zeitpunkt auf die Minute mit Zone, ihren Urheber und ihre Fassung. Zwei Ablesungen derselben Reihe schließen einen Ablesezeitraum — erst daraus entsteht eine Menge. Dieselbe Ablesung noch einmal ist eine Wiederholung; derselbe Zeitpunkt mit einem anderen Stand ist ein Konflikt und braucht eine Berichtigung, nie ein stilles Überschreiben.",
+     "beispiel": "MS-21 Gas Heizung Verwaltung: 48 211 m³ am 01.10.2026 07:15 und 49 451 m³ am 02.11.2026 07:40, abgelesen von Jonas Wendlinger.",
+     "heute": "Heute nicht vorhanden (`grep -rni 'ablesung|meter_reading' MIG` → 0). Die Regeln stehen als Vertrag in `docs/contracts/v2/bezugsdaten.md` (AP-09 IP-1); der Speicherweg kommt mit AP-09 IP-8.",
+     "abgrenzung": "Nicht der Messwert einer Datenquelle (der kommt von einer VoltPilot-Box), nicht die Menge (die entsteht erst aus zwei Ablesungen)."},
+    {"id": "ablesezeitraum", "sicht": "erf", "begriff": "Ablesezeitraum", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Die Strecke zwischen zwei Ablesungen derselben Reihe — der Zeitraum, für den ihre Differenz gilt.",
+     "lang": "Der Ablesezeitraum ist die einzige Periode, für die eine abgelesene Menge gilt. Er wird NIE auf Tage oder Viertelstunden verteilt: ein Tag darin hat „keine Werte“, nicht 0. Berührt er zwei Kalendermonate, trägt die schließende Ablesung ein Kennzeichen „gilt für <Monat>“ — vorbelegt ist der Monat mit dem größten zeitlichen Anteil, änderbar durch den Kunden. Ab drei berührten Monaten gibt es keine Vorbelegung.",
+     "beispiel": "01.10.2026 07:15 bis 02.11.2026 07:40 = 32 Tage 1 h 25 min, 1 240 m³; Anteil Oktober 95,9 % → „gilt für Oktober 2026“.",
+     "heute": "Heute nicht vorhanden. Die Zuordnungsregel steht als Vektor in `docs/contracts/v2/bezugsdaten-vectors.json` (Fall B8).",
+     "abgrenzung": "Nicht die Periode einer Bezugsgröße (die ist ein Kalendertag, eine Woche, ein Monat oder ein Jahr), nicht das Zeitraster einer Verdichtung."},
+    {"id": "fassung", "sicht": "erf", "begriff": "Fassung", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Ein Stand eines erfassten Werts mit Urheber, Zeitpunkt und Begründung — jede Änderung ist eine neue Fassung, keine überschreibt eine alte.",
+     "lang": "Ein gespeicherter Wert wird nie geändert und nie gelöscht. Der Erstwert ist Fassung 1 und braucht keine Begründung; jede Änderung ist eine Berichtigung = Fassung n + 1 mit Begründung, und Fassung n bleibt lesbar. Hat das Unternehmen das Vier-Augen-Prinzip eingeschaltet, ist die neue Fassung ein Vorschlag, bis eine ZWEITE Person freigibt — der Urheber kann sich nie selbst freigeben. Eine Rücknahme ist ebenfalls nur die nächste Fassung: ohne Betrag, wenn sie einen Erstwert trifft, und mit dem Betrag der Vorfassung, wenn sie eine Berichtigung trifft.",
+     "beispiel": "BZ-2 Gutteile Montage, Oktober 2026: Fassung 1 = 4 820 Stück (Tippfehler), Fassung 2 = 48 200 Stück mit der Begründung „Tippfehler — eine Null fehlte“.",
+     "heute": "Das Muster gibt es schon bei den zeitgültigen Einstellungen je Quelle (Tabelle `quelle_einstellung`, AP-04); für erfasste WERTE ist es neu. Die Regeln stehen in `docs/contracts/v2/bezugsdaten.md` (AP-09 IP-1).",
+     "abgrenzung": "Nicht die Version einer Kennzahl (AP-11 bildet sie neu, wenn eine Fassung sich ändert), nicht die Zeitgültigkeit eines Stammdatums: „gültig ab“ sagt, WANN ein Wert gilt — die Fassung sagt, WER ihn wann erfasst hat."},
+    {"id": "herkunft", "sicht": "erf", "begriff": "Herkunft", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Woher ein Wert kommt: eingegeben, importiert, aus einem Messkanal abgeleitet oder aus einem Stammdatum gelesen — je Wert, nicht je Tabelle.",
+     "lang": "Jeder Wert nennt seine Art, seinen Urheber, seinen Erfassungszeitpunkt, seine Fassung und seinen Status. Ein importierter Wert nennt zusätzlich Datei, Zeile und den gelieferten Text samt Einheit; ein abgeleiteter nennt Komponente, Messkanal und die Regel. Die Herkunft reist unverändert in Kennzahlen und Berichte — eine Zahl ohne Herkunft ist im Unternehmens-Energiemanagement keine Zahl.",
+     "beispiel": "BZ-1 Produktionsmenge Spritzguss, Oktober 2026 = 312 400 kg · Import I-2026-0001, Zeile 2 · Ines Kaltenbach, 03.11.2026 09:12.",
+     "heute": "Für Messwerte entschieden und als Vertrag gebaut (`docs/contracts/v2/messwert-herkunft.md`, AP-07 IP-1). Für Bezugsdaten gilt ein EIGENER Vertrag (`docs/contracts/v2/bezugsdaten.md`, AP-09 E3) — der Messwert-Vertrag wird dafür nicht erweitert.",
+     "abgrenzung": "Nicht das Änderungsprotokoll (das sagt, was jemand an einem OBJEKT geändert hat), nicht die Datenquelle (die ist der technische Weg einer VoltPilot-Box)."},
+    {"id": "import", "sicht": "erf", "begriff": "Import", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Ein bestätigter Vorgang, der aus einer hochgeladenen Datei Werte macht — in vier Schritten: Datei, Zuordnung, Vorschau, Übernahme.",
+     "lang": "Die Vorschau schreibt nichts: sie sagt je Zeile ihr Urteil und ihre Befunde und je Datei die Zähler, und sie darf beliebig oft laufen. Erst die Übernahme schreibt, in einem Stück; bricht sie ab, ist nichts geschrieben. Dieselbe Datei ein zweites Mal verdoppelt keine Menge. Ein Import kann zurückgenommen werden — dann bekommt jeder Wert, den er geschrieben hat, eine Folge-Fassung; gelöscht wird nichts.",
+     "beispiel": "I-2026-0001 übernimmt eine Zeile (BZ-1 Oktober 2026 = 312 400 kg); I-2026-0002 ist dieselbe Datei und schreibt 0 Änderungen.",
+     "heute": "Heute nicht vorhanden. Die Urteile je Zeile, die Zähler je Datei und die Rücknahme stehen als Vektoren in `docs/contracts/v2/bezugsdaten-vectors.json` (AP-09 IP-1); der Weg selbst kommt mit AP-09 IP-11 … IP-13.",
+     "abgrenzung": "Nicht die Datenannahme (die nimmt Messwerte einer VoltPilot-Box entgegen), nicht die Bestandsübernahme (die legt Objekte an, keine Werte)."},
+    {"id": "zuordnungsvorlage", "sicht": "erf", "begriff": "Zuordnungs-Vorlage", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Die gespeicherte Deutung einer Datei-Art: welche Spalte was bedeutet, in welchem Zahlen- und Datumsformat, und welcher Text auf welche Bezugsgröße zeigt.",
+     "lang": "Eine Vorlage gehört dem Kundenbereich, nicht einem Benutzer: jeder, der importieren darf, sieht und nutzt sie. Sie hält Trennzeichen, Kodierung, Zahlen- und Datumsformat, die Perioden-Deutung, die Zeitzone, die Einheiten-Synonyme und die Tabelle „Spaltenwert → Bezugsgröße“. Sie wird versioniert: eine Änderung ist eine neue Fassung, und ein früherer Import nennt weiter die Fassung, mit der er gelesen wurde.",
+     "beispiel": "„ERP-Export Spritzguss“: Spalte 1 Periode (Monat, JJJJ-MM), Spalte 2 Bezug („Spritzguss gesamt“ → BZ-1), Spalte 3 Wert (Dezimalkomma, Tausenderpunkt), Spalte 4 Einheit.",
+     "heute": "Heute nicht vorhanden. Das Muster gibt es schon bei den Geräte-Vorlagen der Komponenten (Tabelle `component_template`, Einheitsmodell Stufe 0a).",
+     "abgrenzung": "Nicht die Geräte-Vorlage (die beschreibt ein Gerät und seine Register), nicht der Bericht (der beschreibt eine Ausgabe)."},
+    {"id": "befund", "sicht": "erf", "begriff": "Befund", "nachtrag": "AP-09 §6.2 (W7)",
+     "kurz": "Ein benannter Grund, warum eine Zeile nicht übernommen wird — oder ein Hinweis, der sie begleitet.",
+     "lang": "Befunde sind ein geschlossenes Vokabular mit einem Kundensatz je Eintrag. Drei von ihnen sind Hinweise und verhindern nichts (die Datei ist bekannt, die Einheit wurde umgerechnet, der Wert ist auffällig); alle anderen halten die Zeile oder die Datei an. Ein Befund wird GENANNT, nicht aufgelöst: eine unbekannte Einheit wird nie geraten, ein mehrdeutiger Zeitpunkt nie gewählt, ein Zeitraum nie geteilt.",
+     "beispiel": "„Unbekannte Einheit »lbs« — erlaubt sind kg, t.“ · „25.10.2026 02:30 gibt es an diesem Tag zweimal (Zeitumstellung). Geben Sie die Zone an.“",
+     "heute": "Das Muster gibt es schon bei den Ablehnungsgründen der Schreibwege (`MessstelleAbgelehnt`, `DatenquelleAbgelehnt`); das Vokabular der Bezugsdaten steht in `docs/contracts/v2/bezugsdaten.schema.json`.",
+     "abgrenzung": "Nicht das Ereignis (das beschreibt, was an einer Messreihe geschehen ist), nicht die Fehlermeldung einer Route (die sagt, warum eine ANFRAGE abgelehnt wurde)."},
+]
+
+# ---------------------------------------------------------------------------------------------
 # BEZIEHUNGEN — (von, Kardinalität, nach, zeitgültig, Bemerkung, Herkunft)
 # „Herkunft“ ist AP-00, wo der Stand vom 10.09.2026 unverändert gilt, und sonst das Paket samt
 # Entscheid, der die Zeile verfeinert oder ersetzt hat.
@@ -307,6 +357,21 @@ ENTSCHEIDUNGSLOG = [
 # Der AP-00-Text darüber bleibt byte-verbatim; hier steht, was heute zusätzlich gilt.
 # ---------------------------------------------------------------------------------------------
 VERFEINERUNGEN = {
+    'bezugsgroesse': [
+        ('AP-09 E1/E2/E4/E17',
+         'Der Geltungsbereich ist genau EINES von sieben Fachobjekten — Unternehmen · Standort · '
+         'Gebäude · Bereich · Prozess · Kostenstelle · Messstelle (AP-00 nannte vier; aufgelöst in '
+         'AP-09 W7) —, und die Wertart ist genau EINE von drei: Periodenwert (Menge je Tag, Woche, '
+         'Monat oder Jahr), Stand (Ablesung zu einem Zeitpunkt) oder Stammdatum mit Gültigkeit. Die '
+         'Einheit kommt aus einem geschlossenen Vokabular JE GRÖSSE (Masse kg · t, Stückzahl Stück, '
+         'Zeit h · min, Fläche m², Volumen m³ · l, Personen, Schichten, Gradtage Kd); umgerechnet '
+         'wird nur innerhalb derselben Größe mit festem Faktor, alles andere wird abgelehnt statt '
+         'geraten. Die Betriebszeit ist eine Periodenreihe, kein Wochenmodell (E2). Die Bezugsfläche '
+         'wird NICHT in AP-09 erfasst, sondern am Gebäude gelesen — zum Stichtag der Periode, ihrem '
+         'letzten Tag (E17): ein neuer Wert ab Tag X ändert keine Periode vor X. Die Regeln stehen '
+         'als Vertrag in `docs/contracts/v2/bezugsdaten.md` samt Vektoren '
+         '(`bezugsdaten-vectors.json`).'),
+    ],
     "unternehmen": [
         ("AP-02 E2", "Neben dem Kundenbereich entsteht ein eigenes Objekt „Unternehmen“ (Name, Kurzname, Zeitzone-Vorgabe, Sitz, Rechtsform); 1 : n für Konzerne bleibt vorbereitet."),
         ("AP-03 E10", "Die Unternehmensebene erscheint erst ab zwei zugänglichen Standorten und dann als Teilansicht („Teilansicht: n von m Standorten“); unternehmensweite Kennzahlen, Berichte und Exporte bleiben unsichtbar, solange nicht alle Standorte zugänglich sind."),
@@ -426,4 +491,7 @@ ENTSCHEIDUNGSLOG_NACHBARN = [
     ('10.09.2026', 'AP-06 E1/E2/E3', 'Option A — Datenquelle als eigenes Objekt; Zuständigkeit je Datenquelle; „führende Box“ je Anlage als gespeicherter Fakt'),
     ('10.09.2026', 'AP-07 E2', 'Option A — Reihe = Komponente + Messkanal; Gerät, Box und Fassung als Herkunft je Wert (ERSETZT AP-00 §6.4, AP-07 W1)'),
     ('10.09.2026', 'AP-07 E11', 'Option A — Ereignis-Vertrag `…/v2/events` + Ereignis-Tabelle je Mandant, append-only, nie gelöscht'),
+    ('12.09.2026', 'AP-09 E1/E2', 'Option A — Geltungsbereich einer Bezugsgröße = genau eines von SIEBEN Fachobjekten (AP-00 nannte vier, AP-09 W7); Betriebszeit als Periodenreihe'),
+    ('12.09.2026', 'AP-09 E3', 'Option A — Bezugsdaten bekommen einen EIGENEN Herkunftsvertrag; der Messwert-Herkunftsvertrag (AP-07) wird dafür nicht erweitert'),
+    ('12.09.2026', 'AP-09 E17', 'Option A — die Bezugsfläche wird nur aus der Ortsstruktur GELESEN, zum Stichtag der Periode (letzter Tag); es gibt keine zweite Flächen-Eingabe'),
 ]
