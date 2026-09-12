@@ -39,8 +39,13 @@ def tabelle(kopf, zeilen):
 # --------------------------------------------------------------------------------- glossar.md
 def glossar_md():
     p = [KOPF, "# Glossar des Unternehmens-Energiemanagements\n"]
+    aus_ap00 = [g for g in F.GLOSSAR if not g.get("nachtrag")]
+    nachtraege = [g for g in F.GLOSSAR if g.get("nachtrag")]
     p.append(
-        "Alle 23 Begriffs-Einträge aus AP-00 §4.1. **Definition · Erläuterung · Beispiel** sind die "
+        f"Alle {len(aus_ap00)} Begriffs-Einträge aus AP-00 §4.1, dazu {len(nachtraege)} NACHTRÄGE "
+        "späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die "
+        "`nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein "
+        "bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die "
         "Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen "
         "(`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was "
         "der Begriff NICHT ist.\n"
@@ -59,11 +64,13 @@ def glossar_md():
     sichten = {k: v[0] for k, v in F.SICHTEN.items()}
     p.append("## Inhalt\n")
     for g in F.GLOSSAR:
-        p.append(f"- [{g['begriff']}](#{anker(g['begriff'])}) — Sicht {sichten[g['sicht']]}")
+        zusatz = f" · Nachtrag {g['nachtrag']}" if g.get("nachtrag") else ""
+        p.append(f"- [{g['begriff']}](#{anker(g['begriff'])}) — Sicht {sichten[g['sicht']]}{zusatz}")
     p.append("")
     for g in F.GLOSSAR:
         p.append(f"## {g['begriff']}\n")
-        p.append(f"*Sicht: {sichten[g['sicht']]}*\n")
+        zusatz = f" · Nachtrag {g['nachtrag']}" if g.get("nachtrag") else ""
+        p.append(f"*Sicht: {sichten[g['sicht']]}{zusatz}*\n")
         p.append(f"**{g['kurz']}**\n")
         p.append(g["lang"] + "\n")
         p.append(f"**Beispiel (Referenzunternehmen Ahrenberg).** {g['beispiel']}\n")

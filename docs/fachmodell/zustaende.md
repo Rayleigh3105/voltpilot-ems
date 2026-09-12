@@ -96,3 +96,6 @@ AP-01 E8 bildet die drei Wörter des Programm-Plans darauf ab: **sichtbar** = ke
 | 10.09.2026 | AP-06 E1/E2/E3 | Option A — Datenquelle als eigenes Objekt; Zuständigkeit je Datenquelle; „führende Box“ je Anlage als gespeicherter Fakt |
 | 10.09.2026 | AP-07 E2 | Option A — Reihe = Komponente + Messkanal; Gerät, Box und Fassung als Herkunft je Wert (ERSETZT AP-00 §6.4, AP-07 W1) |
 | 10.09.2026 | AP-07 E11 | Option A — Ereignis-Vertrag `…/v2/events` + Ereignis-Tabelle je Mandant, append-only, nie gelöscht |
+| 12.09.2026 | AP-09 E1/E2 | Option A — Geltungsbereich einer Bezugsgröße = genau eines von SIEBEN Fachobjekten (AP-00 nannte vier, AP-09 W7); Betriebszeit als Periodenreihe |
+| 12.09.2026 | AP-09 E3 | Option A — Bezugsdaten bekommen einen EIGENEN Herkunftsvertrag; der Messwert-Herkunftsvertrag (AP-07) wird dafür nicht erweitert |
+| 12.09.2026 | AP-09 E17 | Option A — die Bezugsfläche wird nur aus der Ortsstruktur GELESEN, zum Stichtag der Periode (letzter Tag); es gibt keine zweite Flächen-Eingabe |

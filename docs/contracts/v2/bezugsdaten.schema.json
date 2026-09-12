@@ -1,0 +1,681 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/bezugsdaten.schema.json",
+  "title": "Bezugsdaten: Eingang, Ergebnis und die Vektor-Datei",
+  "description": "Der Vertrag der BEZUGSDATEN (UEMS AP-09 §4, Prosa: bezugsdaten.md): wie aus einer gelieferten Zeile — getippt oder aus einer CSV-Datei — ein Wert einer Bezugsgröße wird, welches Urteil eine Zeile bekommt, wie Fassungen entstehen und wann etwas ein Befund ist statt einer Zahl. Er beschreibt die Vektor-Datei bezugsdaten-vectors.json, gegen die BEIDE Umsetzungen gefahren werden: Java services/api .../uems/BezugsdatenRegeln und TypeScript frontend/portal/src/bezugsdaten.ts. Ein Fall trägt Prüfungen; jede Prüfung nennt ihre Regel, ihren Eingang und ihr Ergebnis. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge. E3: dies ist ein EIGENER Vertrag — der Messwert-Herkunftsvertrag (messwert-herkunft.schema.json) bleibt unberührt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "zeitzone",
+    "referenzunternehmen",
+    "vokabulare",
+    "einheiten",
+    "umrechnung",
+    "befund_saetze",
+    "regeln",
+    "zwillinge",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "description": "Die Regel in Prosa — dieselbe wie in bezugsdaten.md."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv."
+    },
+    "$schema_datei": { "type": "string", "description": "Verweis auf dieses Schema." },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Woher die Regeln stammen: Konzeptpaket, Regelnummern und Entscheide."
+    },
+    "zeitzone": {
+      "type": "string",
+      "const": "Europe/Berlin",
+      "description": "Z1/Z5/E7: die Zeitzone des Standorts, in der Tag, Woche, Monat und Jahr liegen und in der ein Zeitstempel ohne Zone gedeutet wird. Ahrenberg liegt in Europe/Berlin; das Feld ist die Zeitzone DIESER Fälle, nicht eine Festlegung für jeden Kunden."
+    },
+    "referenzunternehmen": {
+      "type": "string",
+      "const": "./uems-referenzunternehmen.json",
+      "description": "Die EINE Beispielwelt (Kunststoffwerk Ahrenberg GmbH). Bezugsgrößen, Messstellen, Personen und Beträge der Fälle stammen von dort."
+    },
+    "referenz_stand": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Welcher Stand des Referenzunternehmens gemeint ist — und was ein späteres Paket dort nachträgt, solange es nur hier steht."
+    },
+    "regeln_kurz": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Die sieben Kurzregeln, gegen die jeder Fall des Referenzfallkatalogs geprüft wurde (AP-09 §7), byte-gleich zur Vorlage."
+    },
+    "plan_abnahmen": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 },
+      "description": "Die Plan-Abnahmen des Programms und der Fall, der sie einlöst."
+    },
+    "vokabulare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wertart",
+        "geltung_art",
+        "periode_art",
+        "deutung",
+        "herkunft_art",
+        "status",
+        "import_status",
+        "zeilen_urteil",
+        "befunde",
+        "entscheidung",
+        "vorgang"
+      ],
+      "description": "Die geschlossenen Vokabulare. Ein Wort außerhalb wird abgelehnt, nie auf eine Vorgabe aufgelöst (Invariante 6).",
+      "properties": {
+        "wertart": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["periodenwert", "stand", "stammdatum"] },
+          "description": "E1: genau EINE Wertart je Bezugsgröße. Periodenwert = Menge je Periode, Stand = Ablesung zu einem Zeitpunkt, Stammdatum = zeitgültiger Wert (Fläche)."
+        },
+        "geltung_art": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["unternehmen", "standort", "gebaeude", "bereich", "prozess", "kostenstelle", "messstelle"]
+          },
+          "description": "E1: die sieben Fachobjekte, auf die sich eine Bezugsgröße beziehen kann — genau EINES je Bezugsgröße."
+        },
+        "periode_art": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["tag", "woche", "monat", "jahr"] },
+          "description": "Z1: Kalenderperioden in der Zeitzone des Standorts. Woche = Montag bis Sonntag."
+        },
+        "deutung": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["periode", "periodenbeginn", "periodenende", "von_bis", "zeitpunkt"]
+          },
+          "description": "Z3: wie eine Datumsspalte zu lesen ist. Steht in der Zuordnungs-Vorlage, wird nie geraten."
+        },
+        "herkunft_art": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
+          "description": "§4.8: woher ein Wert kommt. Jeder Wert trägt genau eine Art."
+        },
+        "status": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["wirksam", "vorschlag", "zurueckgenommen", "abgelehnt"] },
+          "description": "Der Status einer FASSUNG. „vorschlag“ entsteht nur mit eingeschaltetem Vier-Augen-Prinzip (F3)."
+        },
+        "import_status": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["vorschau", "uebernommen", "teilweise_uebernommen", "wiederholt", "zurueckgenommen", "verworfen"]
+          },
+          "description": "C4–C7: der Status eines Imports."
+        },
+        "zeilen_urteil": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["neu", "wiederholung", "konflikt", "berichtigung", "uebersprungen", "abgelehnt"]
+          },
+          "description": "C5: das Urteil einer Zeile."
+        },
+        "befunde": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/befund" },
+          "description": "C8: das geschlossene Befund-Vokabular. Jeder Befund hat einen Kundensatz in befund_saetze."
+        },
+        "entscheidung": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["behalten", "ersetzen"] },
+          "description": "E9: die Entscheidung des Kunden bei einem Konflikt. Vorgabe ist „behalten“ — ein fehlender Eintrag ersetzt nie."
+        },
+        "vorgang": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["erstwert", "berichtigung", "ruecknahme"] },
+          "description": "F1–F4/C7: was mit einem Wert geschieht. Es gibt kein „ändern“ und kein „löschen“."
+        }
+      }
+    },
+    "einheiten": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      },
+      "description": "E4: das geschlossene Einheiten-Vokabular JE GRÖSSE. Umgerechnet wird nur innerhalb derselben Größe; „lbs“ und „Paletten“ stehen nirgends und werden deshalb abgelehnt, nie geraten."
+    },
+    "umrechnung": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/umrechnung" },
+      "description": "U1: die erlaubten Umrechnungen mit festem Faktor. Alles, was nicht hier steht, ist keine Umrechnung."
+    },
+    "hinweis_befunde": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/befund" },
+      "description": "C8: die Befunde, die eine Zeile NICHT verhindern — sie sind Hinweise. Alle anderen verhindern die Zeile bzw. die Datei."
+    },
+    "befund_saetze": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 },
+      "description": "C8: je Befund ein Kundensatz de-DE. Das Portal zeigt ihn, ergänzt um die Werte der Zeile; es erfindet keinen zweiten Wortlaut."
+    },
+    "regeln": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pruefreihenfolge",
+        "begruendung_min_zeichen",
+        "begruendung_max_zeichen",
+        "stichtag",
+        "zuordnung_hoechstens_monate",
+        "anteil_nachkommastellen",
+        "abdeckung_nachkommastellen",
+        "vergleich_nachkommastellen",
+        "zahlformat_vorgabe",
+        "vier_augen_vorgabe"
+      ],
+      "description": "Die Schwellen und Reihenfolgen der Regeln als Daten — die Zwillinge lesen sie hier, statt sie je für sich festzuschreiben.",
+      "properties": {
+        "pruefreihenfolge": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Die Reihenfolge, in der eine Zeile geprüft wird. Sie ist ERGEBNISRELEVANT: eine Zeile mit unbekannter Einheit wird abgelehnt, BEVOR ihr Schlüssel mit einer anderen Zeile derselben Datei verglichen wird (§7 B13)."
+        },
+        "begruendung_min_zeichen": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "F2: eine Berichtigung ohne ausreichende Begründung wird nicht wirksam."
+        },
+        "begruendung_max_zeichen": { "type": "integer", "minimum": 1 },
+        "stichtag": {
+          "type": "string",
+          "const": "letzter Tag der Periode",
+          "description": "E17: der Tag, an dem ein zeitgültiges Stammdatum für eine Periode gelesen wird. Ein neuer Wert ab Tag X ändert keine Periode vor X (Plan-Abnahme 2)."
+        },
+        "zuordnung_hoechstens_monate": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Z6/E5: bis zu so vielen berührten Kalendermonaten gibt es eine Vorgabe (der Monat mit dem größten Anteil); bei mehr entscheidet nur der Kunde."
+        },
+        "anteil_nachkommastellen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Auf so viele Stellen wird der Anteil eines Monats am Ablesezeitraum ausgewiesen (kaufmännisch gerundet); die VORGABE entscheidet über die Minuten, nicht über die gerundete Zahl."
+        },
+        "abdeckung_nachkommastellen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "K: die Abdeckung eines Kanal-Werts ist ZEITBASIERT (gemessene Zeit ÷ Periodenlänge) und wird auf so viele Stellen ausgewiesen. ⚠ Nicht zu verwechseln mit der wertbasierten, abgeschnittenen Abdeckung der Verbrauchsregel (erhalten ÷ erwartet, AP-08 Z9)."
+        },
+        "vergleich_nachkommastellen": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Auf so viele Stellen wird verglichen; gerechnet wird mit dem gespeicherten Betrag (Invariante 12)."
+        },
+        "zahlformat_vorgabe": {
+          "type": "string",
+          "enum": ["de", "en"],
+          "description": "U4: was bei einem mehrdeutigen Zahlentext gilt, solange die Vorlage nichts anderes sagt („312.400“ ist deutsch der Tausenderpunkt)."
+        },
+        "vier_augen_vorgabe": {
+          "type": "boolean",
+          "const": false,
+          "description": "F3/E6: das Vier-Augen-Prinzip folgt der Einstellung des Unternehmens aus AP-08 E8 und ist per Vorgabe AUS."
+        }
+      }
+    },
+    "zwillinge": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "enum": ["java", "ts"] }
+      },
+      "description": "Je Regel, WELCHE Umsetzung sie prüft. Beide Zwillings-Tests lesen diese Angabe und prüfen genau die Regeln, die sie nennt — so ist eine Regel, die nur eine Seite kennt, DEKLARIERT und nicht stillschweigend übersprungen. Ein Eintrag muss mindestens „java“ nennen."
+    },
+    "zwillinge_grund": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 },
+      "description": "Für jede Regel ohne TypeScript-Zwilling: warum sie dort nicht hingehört."
+    },
+    "_abweichungen": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/abweichung" },
+      "description": "Jede Stelle, an der diese Datei bewusst von der Vorlage data/vp-uems-ap09-bezugsgroessen/referenzfaelle.json abweicht. Leer heißt: nichts wurde stillschweigend geändert."
+    },
+    "_nicht_geprueft": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nicht_geprueft" },
+      "description": "Jede Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet — mit dem Paket, das sie einlöst. Eine Erwartung verschwindet nie, nur weil niemand sie heute prüft."
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 14,
+      "description": "Die 14 handgerechneten Referenzfälle B1–B14 (AP-09 §7).",
+      "items": { "$ref": "#/$defs/fall" }
+    }
+  },
+
+  "$defs": {
+    "zeitpunkt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
+      "description": "ISO-8601 mit Offset. Gerechnet wird in UTC; der Offset trägt die Ortszeit des Standorts (E7)."
+    },
+
+    "tag": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "Ein Kalendertag in der Zeitzone des Standorts."
+    },
+
+    "betrag": {
+      "type": "string",
+      "pattern": "^-?[0-9]+([.][0-9]+)?$",
+      "description": "Ein Betrag als DEZIMALTEXT mit Punkt — nie als Gleitkommazahl. Beide Zwillinge lesen ihn in eine Dezimalzahl (Java BigDecimal, TypeScript ganzzahlige Mantisse) und vergleichen ihn numerisch: „312400“ und „312400.0“ sind derselbe Betrag."
+    },
+
+    "befund": {
+      "type": "string",
+      "enum": [
+        "datei_bekannt",
+        "zeile_bekannt",
+        "konflikt_anderer_wert",
+        "einheit_unbekannt",
+        "einheit_umgerechnet",
+        "periode_passt_nicht",
+        "periode_nicht_zu_ende",
+        "zeit_mehrdeutig",
+        "zeit_nicht_vorhanden",
+        "zahl_unlesbar",
+        "datum_unlesbar",
+        "bezug_unbekannt",
+        "wert_negativ",
+        "wert_unplausibel",
+        "keine_datenzeilen",
+        "datei_zu_gross",
+        "kodierung_unlesbar"
+      ],
+      "description": "C8: das geschlossene Befund-Vokabular."
+    },
+
+    "urteil_wort": {
+      "type": "string",
+      "enum": ["neu", "wiederholung", "konflikt", "berichtigung", "uebersprungen", "abgelehnt"],
+      "description": "C5: das Urteil einer Zeile."
+    },
+
+    "zustand_wort": {
+      "type": "string",
+      "enum": ["vollständig", "unvollständig", "keine Werte"],
+      "description": "AP-08 §4.5, von der Verbrauchsregel geerbt (K4). „keine Werte“ ist nie 0."
+    },
+
+    "umrechnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["von", "nach", "hinweis"],
+      "description": "U1: eine erlaubte Umrechnung. Entweder ein exakter Zehnerschritt (zehnerpotenz) oder ein Teiler mit ausgewiesener Genauigkeit — nie ein geschätzter Faktor. Jeder Eintrag gilt in BEIDE Richtungen: t → kg ist kg → t mit umgekehrtem Vorzeichen des Zehnerschritts. Eine Einheit derselben Größe OHNE Eintrag ist keine Umrechnung, sondern eine Annahme — sie wird abgelehnt wie ein unbekanntes Wort.",
+      "properties": {
+        "von": { "type": "string", "minLength": 1 },
+        "nach": { "type": "string", "minLength": 1 },
+        "zehnerpotenz": {
+          "type": "integer",
+          "description": "Verschiebung des Kommas: 3 heißt × 1 000, −3 heißt ÷ 1 000. Exakt, ohne Rundung."
+        },
+        "teiler": { "type": "integer", "minimum": 2, "description": "Kein Zehnerschritt — dann wird gerundet." },
+        "nachkommastellen": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "hinweis": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "abweichung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fall", "feld", "vorlage", "statt", "grund"],
+      "properties": {
+        "fall": { "type": "string", "minLength": 1, "description": "Fall und Prüfung, an der abgewichen wird." },
+        "feld": { "type": "string", "minLength": 1, "description": "Das Feld des Eingangs oder des Ergebnisses." },
+        "vorlage": { "description": "Was in referenzfaelle.json steht (null heißt: dort steht nichts)." },
+        "statt": { "description": "Was hier steht." },
+        "grund": { "type": "string", "minLength": 1, "description": "Warum — und ausdrücklich, ob ein Ergebnis der Vorlage davon berührt ist." }
+      }
+    },
+
+    "nicht_geprueft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fall", "feld", "warum"],
+      "properties": {
+        "fall": { "type": "string", "minLength": 1 },
+        "feld": { "type": "string", "minLength": 1 },
+        "warum": { "type": "string", "minLength": 1, "description": "Warum keine reine Regel das prüfen kann — und welches Paket es einlöst." }
+      }
+    },
+
+    "bestand": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["betrag", "fassung"],
+      "description": "Der wirksame Stand am Schlüssel der Zeile, BEVOR sie übernommen wird. null heißt: der Schlüssel ist unbelegt.",
+      "properties": {
+        "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+        "fassung": { "type": "integer", "minimum": 1 },
+        "import_kennung": { "type": ["string", "null"] }
+      }
+    },
+
+    "zeilenurteil": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urteil"],
+      "description": "Eine schon beurteilte Zeile, wie die Import-Regel sie zählt.",
+      "properties": {
+        "urteil": { "$ref": "#/$defs/urteil_wort" },
+        "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" } }
+      }
+    },
+
+    "stand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "stand"],
+      "description": "Eine Ablesung: ein Zählerstand zu einem Zeitpunkt.",
+      "properties": {
+        "t": { "$ref": "#/$defs/zeitpunkt" },
+        "stand": { "$ref": "#/$defs/betrag" }
+      }
+    },
+
+    "vorgang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "urheber", "zeitpunkt"],
+      "description": "F1–F4/C7: was mit einem Wert geschieht. Ein Vorgang ändert nie eine bestehende Fassung — er legt die nächste an.",
+      "properties": {
+        "art": { "type": "string", "enum": ["erstwert", "berichtigung", "ruecknahme"] },
+        "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+        "begruendung": { "type": ["string", "null"], "description": "F2: ab Fassung 2 Pflicht, begruendung_min_zeichen bis begruendung_max_zeichen." },
+        "urheber": { "type": "string", "minLength": 1 },
+        "freigeber": { "type": ["string", "null"], "description": "F3: bei eingeschaltetem Vier-Augen-Prinzip die ZWEITE Person; gleich dem Urheber ist nie eine Freigabe." },
+        "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" },
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
+        "import_kennung": { "type": ["string", "null"] }
+      }
+    },
+
+    "fassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fassung", "betrag", "status"],
+      "description": "Eine Fassung eines Werts. Sie wird nie geändert und nie gelöscht (Invariante 1).",
+      "properties": {
+        "fassung": { "type": "integer", "minimum": 1 },
+        "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }], "description": "null heißt „zurückgenommen“ — kein Betrag, nie 0." },
+        "status": { "type": "string", "minLength": 1, "description": "„wirksam“, „vorschlag“, „zurueckgenommen“ oder „wirksam bis Fassung n“ für eine abgelöste Fassung." },
+        "begruendung": { "type": ["string", "null"] },
+        "ersetzt_fassung": { "type": ["integer", "null"], "minimum": 1 },
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
+        "import_kennung": { "type": ["string", "null"] }
+      }
+    },
+
+    "ereignis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "fassung_alt", "fassung_neu"],
+      "description": "F4: jede wirksame Fassung ≥ 2 erzeugt ein `correction`-Ereignis — der Auslöser für AP-11 und AP-12. Fassung 1 erzeugt keines.",
+      "properties": {
+        "art": { "type": "string", "const": "correction" },
+        "fassung_alt": { "type": "integer", "minimum": 1 },
+        "fassung_neu": { "type": "integer", "minimum": 2 },
+        "import_kennung": { "type": ["string", "null"] }
+      }
+    },
+
+    "intervall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["betrag", "gueltig_ab"],
+      "description": "Ein zeitgültiges Stammdatum (Fläche, AP-02). „gültig bis“ ist der LETZTE Tag, nicht der erste danach.",
+      "properties": {
+        "betrag": { "$ref": "#/$defs/betrag" },
+        "gueltig_ab": { "$ref": "#/$defs/tag" },
+        "gueltig_bis": { "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }] },
+        "eingetragen_am": {
+          "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }],
+          "description": "Der Tag des Eintrags. Liegt er nach „gültig ab“, ist der Eintrag rückwirkend — das Abzeichen nennt die Tage."
+        }
+      }
+    },
+
+    "zustandswechsel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "zustand"],
+      "properties": {
+        "t": { "$ref": "#/$defs/zeitpunkt" },
+        "zustand": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "luecke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["von", "bis"],
+      "description": "Eine Strecke ohne Werte (`data_gap`). Sie zählt weder als der gewählte Zustand noch als sein Gegenteil — sie macht die Periode unvollständig (K4).",
+      "properties": {
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" },
+        "quelle": { "type": "string", "minLength": 1, "description": "Wer sich nicht gemeldet hat — er wird im Kennzeichen genannt." }
+      }
+    },
+
+    "anteil": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monat", "minuten", "prozent"],
+      "description": "Z6: der Anteil EINES Kalendermonats am Ablesezeitraum.",
+      "properties": {
+        "monat": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$" },
+        "minuten": { "type": "integer", "minimum": 0 },
+        "prozent": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+
+    "zaehler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zeilen", "neu", "wiederholung", "konflikt", "berichtigung", "uebersprungen", "abgelehnt", "mit_hinweis"],
+      "description": "C4: die Zähler der Vorschau. `konflikt` zählt die Zeilen, die als Konflikt ERKANNT wurden, `berichtigung` die, für die „ersetzen“ entschieden wurde — eine Zeile steht in beiden (§7 B3). `mit_hinweis` zählt Zeilen mit einem Hinweis-Befund; ein Hinweis nimmt einer Zeile nicht ihr Urteil.",
+      "properties": {
+        "zeilen": { "type": "integer", "minimum": 0 },
+        "neu": { "type": "integer", "minimum": 0 },
+        "wiederholung": { "type": "integer", "minimum": 0 },
+        "konflikt": { "type": "integer", "minimum": 0 },
+        "berichtigung": { "type": "integer", "minimum": 0 },
+        "uebersprungen": { "type": "integer", "minimum": 0 },
+        "abgelehnt": { "type": "integer", "minimum": 0 },
+        "mit_hinweis": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Der Eingang einer Prüfung. Welche Felder gelten, sagt `regel`; die Prosa nennt sie je Regel.",
+      "properties": {
+        "text": { "type": ["string", "null"], "description": "zahl · periode · zeit: der gelieferte Text, wie er in der Datei oder im Feld steht." },
+        "format": { "type": "string", "enum": ["de", "en", "auto"], "description": "zahl (U4): das Zahlformat der Spalte aus der Vorlage." },
+        "ganzzahlig": { "type": "boolean", "description": "zahl (U5): Stück, Personen und Schichten nehmen keine Nachkommastellen an." },
+        "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }], "description": "einheit · plausibilitaet · urteil: der schon gelesene Betrag." },
+        "geliefert": { "type": ["string", "null"], "description": "einheit (U1–U3): die gelieferte Einheit; null heißt „keine Einheitsspalte“ → die Einheit der Bezugsgröße gilt." },
+        "ziel": { "type": "string", "minLength": 1, "description": "einheit: die Einheit der Bezugsgröße." },
+        "einheit": { "type": "string", "minLength": 1, "description": "plausibilitaet: die Einheit des Betrags." },
+        "stunden_des_tages": { "type": ["integer", "null"], "minimum": 0, "description": "plausibilitaet (U6): die Obergrenze einer Betriebszeit am Umstellungstag — 23 oder 25 statt 24." },
+        "einheiten_gebunden": { "type": "integer", "minimum": 1, "description": "plausibilitaet (U6): wie viele Maschinen bzw. Anlagen die Bezugsgröße umfasst; bei einer Messstelle als Bezug 1." },
+        "von_text": { "type": "string", "minLength": 1, "description": "periode (Z3 von_bis): die Von-Spalte." },
+        "bis_text": { "type": "string", "minLength": 1, "description": "periode (Z3 von_bis): die Bis-Spalte (der LETZTE Tag, nicht der erste danach)." },
+        "deutung": { "type": "string", "enum": ["periode", "periodenbeginn", "periodenende", "von_bis", "zeitpunkt"], "description": "periode (Z3)." },
+        "periode_art": { "type": "string", "enum": ["tag", "woche", "monat", "jahr"], "description": "periode · stammdatum: welche Periode die Bezugsgröße führt." },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt", "description": "periode (Z4): der Zeitpunkt, gegen den „ist die Periode zu Ende?“ geprüft wird. Er wird ÜBERGEBEN — die Regel liest keine Uhr." },
+        "zeitzone": { "type": "string", "minLength": 1, "description": "zeit · zuordnung: die Zeitzone des Standorts (E7)." },
+        "offset_in_datei": { "type": ["string", "null"], "description": "zeit (Z5): ein Offset in der Datei gewinnt immer; null heißt „ohne Zone“." },
+        "tag": { "$ref": "#/$defs/tag", "description": "stunden (P3): der Kalendertag, dessen Länge gefragt ist." },
+        "schluessel": { "type": ["string", "null"], "description": "urteil (C2): der fachliche Schlüssel der Zeile — Bezugsgröße + Periode bzw. Reihe + Zeitpunkt. null heißt: es gibt keinen (die Zeile trägt schon einen Befund)." },
+        "bestand": { "$ref": "#/$defs/bestand" },
+        "datei_fingerabdruck_bekannt": { "type": "boolean", "description": "urteil (C2/E8): der SHA-256 der Datei ist schon einmal angekommen." },
+        "fingerabdruck_bekannt": { "type": "boolean", "description": "import: dasselbe auf Dateiebene." },
+        "frueherer_import_status": {
+          "type": ["string", "null"],
+          "enum": ["vorschau", "uebernommen", "teilweise_uebernommen", "wiederholt", "zurueckgenommen", "verworfen", null],
+          "description": "§4.7: der Status des früheren Imports derselben Datei. Nach einer Rücknahme ist dieselbe Zeile wieder „neu“."
+        },
+        "entscheidung": { "type": ["string", "null"], "enum": ["behalten", "ersetzen", null], "description": "urteil (E9): die Entscheidung des Kunden je Zeile; null heißt „noch nicht entschieden“ (Vorschau)." },
+        "befunde_vorher": { "type": "array", "items": { "$ref": "#/$defs/befund" }, "description": "urteil: was die früheren Schritte der Prüfreihenfolge an dieser Zeile schon festgestellt haben." },
+        "datenzeilen": { "type": "integer", "minimum": 0, "description": "import (C4): Datenzeilen der Datei ohne Kopfzeile. 0 heißt `keine_datenzeilen`." },
+        "zeilen": { "type": "array", "items": { "$ref": "#/$defs/zeilenurteil" }, "description": "import: die schon beurteilten Zeilen." },
+        "staende": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stand" }, "description": "menge: die Ablesungen, aus denen die Verbrauchsregel die Menge bildet." },
+        "von": { "$ref": "#/$defs/zeitpunkt", "description": "menge · zuordnung · kanal: Anfang des Zeitraums (einschließlich)." },
+        "bis": { "$ref": "#/$defs/zeitpunkt", "description": "menge · zuordnung · kanal: Ende des Zeitraums (ausschließlich bei Perioden, der schließende Ablesezeitpunkt bei einer Ablesung)." },
+        "kadenz_s": { "type": "integer", "minimum": 1, "description": "menge: die Kadenz der Reihe in Sekunden, wie die Verbrauchsregel sie braucht." },
+        "vier_augen": { "type": "boolean", "description": "fassung (F3/E6): die Einstellung des Unternehmens." },
+        "vorgaenge": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/vorgang" }, "description": "fassung: die Vorgänge in der Reihenfolge, in der sie geschehen sind." },
+        "intervalle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/intervall" }, "description": "stammdatum (E17)." },
+        "perioden": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "stammdatum: die Perioden, für die der Wert gefragt ist." },
+        "zustand_gewaehlt": { "type": "string", "minLength": 1, "description": "kanal (K): der Zustand, dessen Dauer gezählt wird." },
+        "zustand_am_anfang": { "type": ["string", "null"], "description": "kanal: der Zustand am Periodenanfang = letzter Wechsel davor; null heißt „vor dem ersten Wechsel wurde nicht gemessen“." },
+        "wechsel": { "type": "array", "items": { "$ref": "#/$defs/zustandswechsel" }, "description": "kanal: die Statuswechsel innerhalb der Periode." },
+        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." }
+      }
+    },
+
+    "ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Das erwartete Ergebnis einer Prüfung. Welche Felder gelten, sagt `regel`; ein fehlendes Feld wird nicht verglichen.",
+      "properties": {
+        "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }], "description": "zahl · einheit · kanal: der Betrag; null heißt „kein Betrag bildbar“ — nie 0." },
+        "befund": { "anyOf": [{ "$ref": "#/$defs/befund" }, { "type": "null" }], "description": "zahl · periode · zeit · plausibilitaet: der EINE Befund dieser Prüfung, oder null." },
+        "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" }, "description": "einheit · urteil · import: die Befunde in der Reihenfolge, in der die Regel sie feststellt." },
+        "einheit": { "type": "string", "minLength": 1, "description": "einheit · kanal: die Einheit des Ergebnisses." },
+        "schluessel": { "type": ["string", "null"], "description": "periode: die Periode als Schlüssel (`2026-10`, `2026-W40`, `2026-10-25`, `2026`); null bei einem Befund." },
+        "von": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "periode: Anfang der Periode (einschließlich)." },
+        "bis": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "periode: Ende der Periode (ausschließlich)." },
+        "stunden": { "type": ["integer", "null"], "minimum": 0, "description": "periode · stunden (P3): die Länge in Stunden — am Umstellungstag 23 oder 25. Sie kommt von der Verbrauchsregel AP-08, nicht aus einer zweiten Rechnung." },
+        "zeitpunkt": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "zeit: der gedeutete Zeitpunkt; null bei einem Befund." },
+        "varianten": { "type": "array", "items": { "$ref": "#/$defs/zeitpunkt" }, "description": "zeit: bei `zeit_mehrdeutig` die beiden möglichen Zeitpunkte — die Regel wählt keinen, sie zeigt beide." },
+        "dauer_minuten": { "type": "integer", "minimum": 0, "description": "zuordnung: die Länge des Ablesezeitraums in Minuten." },
+        "dauer_text": { "type": "string", "minLength": 1, "description": "zuordnung: dieselbe Länge als Kundensatz („32 Tage 1 h 25 min“)." },
+        "monate_beruehrt": { "type": "integer", "minimum": 1, "description": "zuordnung (Z6)." },
+        "anteile": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/anteil" }, "description": "zuordnung: je berührter Monat sein Anteil, in Kalenderreihenfolge." },
+        "vorgabe": { "type": ["string", "null"], "description": "zuordnung (E5): der vorbelegte Kalendermonat, oder null bei mehr als zuordnung_hoechstens_monate berührten Monaten." },
+        "urteil": { "$ref": "#/$defs/urteil_wort", "description": "urteil (C5)." },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["vorschau", "uebernommen", "teilweise_uebernommen", "wiederholt", "zurueckgenommen", "verworfen", null],
+          "description": "import: der Status des Imports; null heißt „es entsteht kein Import“ (§7 B12)."
+        },
+        "zaehler": { "$ref": "#/$defs/zaehler" },
+        "uebernahme_moeglich": { "type": "boolean", "description": "import (C4): ob der Übernahme-Knopf anwählbar ist." },
+        "import_datensatz": { "type": "boolean", "description": "import: ob ein Import-Datensatz entsteht. Eine Vorschau ohne Datenzeilen schreibt nichts, auch keinen Datensatz." },
+        "bestaetigung": { "type": ["string", "null"], "description": "import (E10): der Satz, den der Kunde bestätigen muss, wenn nicht alle Zeilen übernommen werden." },
+        "aenderungen": { "type": "integer", "minimum": 0, "description": "import: wie viele Werte die Übernahme schreibt. 0 heißt: nichts wird verdoppelt (Plan-Abnahme 1)." },
+        "menge": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }], "description": "menge: das Ergebnis der Verbrauchsregel AP-08." },
+        "zustand": { "$ref": "#/$defs/zustand_wort", "description": "menge · kanal." },
+        "fassungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fassung" }, "description": "fassung: alle Fassungen, älteste zuerst. Keine verschwindet." },
+        "ereignisse": { "type": "array", "items": { "$ref": "#/$defs/ereignis" }, "description": "fassung · stammdatum (F4)." },
+        "wirksamer_betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }], "description": "fassung: der Betrag der wirksamen Fassung; null nach einer Rücknahme." },
+        "abgelehnt": {
+          "type": "string",
+          "enum": ["ersteller_gleich_freigeber", "begruendung_zu_kurz"],
+          "description": "fassung: warum ein Vorgang NICHT wirksam wurde. Fehlt das Feld, wurde nichts abgelehnt."
+        },
+        "je_periode": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+          "description": "stammdatum: der Wert je Periode am Stichtag; null heißt „keine Werte“, nie 0."
+        },
+        "stichtage": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/tag" },
+          "description": "stammdatum: der Tag, an dem gelesen wurde — der LETZTE Tag der Periode (E17)."
+        },
+        "rueckwirkend_tage": { "type": "integer", "minimum": 0, "description": "stammdatum: Tage zwischen „gültig ab“ und dem Eintrag; 0 heißt „nicht rückwirkend“." },
+        "minuten_im_zustand": { "type": "integer", "minimum": 0, "description": "kanal: die gemessene Zeit im gewählten Zustand." },
+        "abdeckung_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "kanal: gemessene Zeit ÷ Periodenlänge. ⚠ Zeitbasiert — nicht die wertbasierte Abdeckung der Verbrauchsregel." },
+        "gemessene_stunden": { "$ref": "#/$defs/betrag", "description": "kanal: wie viele Stunden der Periode überhaupt gemessen wurden." },
+        "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." }
+      }
+    },
+
+    "pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regel", "name", "eingang", "ergebnis"],
+      "properties": {
+        "regel": {
+          "type": "string",
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal"],
+          "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
+        },
+        "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },
+        "eingang": { "$ref": "#/$defs/eingang" },
+        "ergebnis": { "$ref": "#/$defs/ergebnis" }
+      }
+    },
+
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "id", "familie", "abnahme", "titel", "why", "wertart", "einheit", "schritte", "pruefungen", "beschreibend", "annahmen"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^b[0-9]+-[a-z0-9-]+$", "description": "Kennung des Falls aus dem Referenzfallkatalog plus Kurztitel." },
+        "id": { "type": "string", "pattern": "^B[0-9]+$", "description": "B1 … B14." },
+        "familie": {
+          "type": "string",
+          "enum": ["import", "eingabe", "berichtigung", "stammdatum", "kanal", "ablesung", "einheit", "zeit", "leer"],
+          "description": "Die Familie des Falls (AP-09 §6.2)."
+        },
+        "abnahme": { "type": ["string", "null"], "enum": ["plan-1", "plan-2", null], "description": "Bezug auf eine Plan-Abnahme des Programms, sonst null." },
+        "titel": { "type": "string", "minLength": 1, "description": "Der Titel des Falls, byte-gleich zur Vorlage." },
+        "why": { "type": "string", "minLength": 1, "description": "Wozu der Fall da ist (der „Zweck“ der Vorlage) — er steht in der Meldung, wenn eine Prüfung bricht." },
+        "bezugsgroesse": { "type": ["string", "null"], "description": "Beschreibend: die Bezugsgröße des Referenzunternehmens, in der der Fall spielt; null, wenn der Fall an einer Messstelle spielt." },
+        "messstelle": { "type": "string", "minLength": 1, "description": "Beschreibend: die Messstelle, wenn der Fall dort spielt." },
+        "geltung": { "type": ["string", "null"], "description": "Beschreibend: der Geltungsbereich (E1)." },
+        "wertart": { "type": "string", "minLength": 1, "description": "Beschreibend: die Wertart(en), in denen der Fall spielt — B10 spielt in zwei." },
+        "periode": { "type": ["string", "null"], "description": "Beschreibend: die Periode der Bezugsgröße; null bei einem Stammdatum oder einem Stand." },
+        "einheit": { "type": "string", "minLength": 1, "description": "Beschreibend: die Einheit(en) des Falls." },
+        "schritte": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Die Handrechnung der Vorlage, Schritt für Schritt — byte-gleich. Sie ist der Beweis, dass die Zahlen nicht aus dem Code stammen." },
+        "pruefungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pruefung" } },
+        "beschreibend": { "type": "object", "description": "Was die Vorlage erwartet, aber keine reine Regel dieses Pakets bildet: Anzeigesätze, Herkunfts-Angaben, Kennzahlen (AP-11), Lesemodell-Aussagen (IP-8). `_nicht_geprueft` sagt je Eintrag, welches Paket ihn einlöst." },
+        "annahmen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Was in diesem Fall NICHT aus dem Referenzunternehmen stammt." }
+      }
+    }
+  }
+}

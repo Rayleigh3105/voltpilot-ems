@@ -1,0 +1,3200 @@
+{
+  "_comment": [
+    "Die EINE Wahrheit der BEZUGSDATEN (UEMS AP-09 IP-1): 14 handgerechnete Referenzfälle",
+    "(B1–B14) des Referenzunternehmens Ahrenberg. Die Prosa steht in bezugsdaten.md, die Regeln",
+    "selbst stehen HIER — wer die Regel ändert, ändert diese Datei UND beide Zwillinge.",
+    "Die Zwillinge lesen sie PER PFAD: Java services/api .../uems/BezugsdatenRegeln",
+    "(Test BezugsdatenVectorsTest) und TypeScript frontend/portal/src/bezugsdaten.ts",
+    "(Test bezugsdaten.test.ts). `zwillinge` sagt je Regel, WER sie prüft: die Fassungen, der",
+    "Stichtag eines Stammdatums, die Zustandsdauer eines Kanals und die Verbrauchsregel sind",
+    "Serverseite, die Vorschau (Zahl · Einheit · Periode · Zeit · Zuordnung · Urteil · Zähler)",
+    "steht in beiden Sprachen.",
+    "Beträge sind DEZIMALTEXT (nie Gleitkomma), Zeitpunkte ISO-8601 mit Offset; Perioden",
+    "Tag/Woche/Monat/Jahr liegen in der Zeitzone des Standorts.",
+    "Die Menge eines Ablesezeitraums rechnet NICHT diese Datei, sondern die schon gemergte",
+    "Verbrauchsregel AP-08 (VerbrauchRegeln.mengeZaehlerstand) — zwei Zahlen für dieselbe",
+    "Aussage wären genau die Drift, die diese Verträge verhindern sollen.",
+    "Erzeugt aus data/vp-uems-ap09-bezugsgroessen/referenzfaelle.json; _abweichungen nennt jede",
+    "Stelle, an der diese Datei bewusst von der Vorlage abweicht, _nicht_geprueft jede",
+    "Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./bezugsdaten.schema.json",
+  "herkunft": "UEMS AP-09 §4 (U1–U6, Z1–Z7, F1–F6, C1–C9, K1–K7, Invarianten 1–12), Entscheide E1–E17 vom 12.09.2026",
+  "zeitzone": "Europe/Berlin",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "referenz_stand": "Fassung vom 11.09.2026. BZ-5 „Ladezeit Ladepunkt Halle 2“, die Ablesungen an MS-21 und die Einheiten-Kennungen trägt AP-09 IP-2 dort nach; bis dahin stehen sie NUR hier und sind je Fall unter „annahmen“ als Annahme gekennzeichnet.",
+  "regeln_kurz": [
+    "Eine Bezugsgröße hat genau EINEN Geltungsbereich (Unternehmen · Standort · Gebäude · Bereich · Prozess · Kostenstelle · Messstelle) und genau EINE Wertart (Periodenwert · Stand · Stammdatum mit Gültigkeit).",
+    "Idempotenz: Periodenwert = Bezugsgröße + Periode; Stand = Reihe + Zeitpunkt. Gleicher Wert (nach Umrechnung) = Wiederholung (0 Änderungen); anderer Wert = Konflikt, nie still ersetzt.",
+    "Jeder Wert trägt Herkunft (eingabe · import mit Datei/Zeile · messkanal · Stammdatum AP-02), Urheber, Zeitpunkt und Fassung; Fassung 1 bleibt lesbar; Berichtigung = Fassung n + 1 mit Begründung.",
+    "Perioden werden nie geteilt, verteilt oder interpoliert; ein Zeitraum, der nicht zur Periode passt, ist ein Befund. Tag/Woche/Monat/Jahr liegen in der Zeitzone des Standorts.",
+    "Eine Ablesung schließt einen Ablesezeitraum; die Zuordnung zu einem Kalendermonat ist ein Kennzeichen an der schließenden Ablesung (AP-08 E13), Vorgabe = Monat mit dem größten Anteil, änderbar.",
+    "Stammdaten mit Gültigkeit (Fläche) werden zum Stichtag der Periode gelesen; ein neuer Wert ab Tag X ändert keine Periode vor X.",
+    "Ein Wort außerhalb des Einheiten-Vokabulars wird abgelehnt, nie geraten; Umrechnung nur innerhalb derselben Größe mit festem Faktor und Kennzeichen."
+  ],
+  "vokabulare": {
+    "wertart": [
+      "periodenwert",
+      "stand",
+      "stammdatum"
+    ],
+    "geltung_art": [
+      "unternehmen",
+      "standort",
+      "gebaeude",
+      "bereich",
+      "prozess",
+      "kostenstelle",
+      "messstelle"
+    ],
+    "periode_art": [
+      "tag",
+      "woche",
+      "monat",
+      "jahr"
+    ],
+    "deutung": [
+      "periode",
+      "periodenbeginn",
+      "periodenende",
+      "von_bis",
+      "zeitpunkt"
+    ],
+    "herkunft_art": [
+      "eingabe",
+      "import",
+      "messkanal",
+      "stammdatum_ap02"
+    ],
+    "status": [
+      "wirksam",
+      "vorschlag",
+      "zurueckgenommen",
+      "abgelehnt"
+    ],
+    "import_status": [
+      "vorschau",
+      "uebernommen",
+      "teilweise_uebernommen",
+      "wiederholt",
+      "zurueckgenommen",
+      "verworfen"
+    ],
+    "zeilen_urteil": [
+      "neu",
+      "wiederholung",
+      "konflikt",
+      "berichtigung",
+      "uebersprungen",
+      "abgelehnt"
+    ],
+    "befunde": [
+      "datei_bekannt",
+      "zeile_bekannt",
+      "konflikt_anderer_wert",
+      "einheit_unbekannt",
+      "einheit_umgerechnet",
+      "periode_passt_nicht",
+      "periode_nicht_zu_ende",
+      "zeit_mehrdeutig",
+      "zeit_nicht_vorhanden",
+      "zahl_unlesbar",
+      "datum_unlesbar",
+      "bezug_unbekannt",
+      "wert_negativ",
+      "wert_unplausibel",
+      "keine_datenzeilen",
+      "datei_zu_gross",
+      "kodierung_unlesbar"
+    ],
+    "entscheidung": [
+      "behalten",
+      "ersetzen"
+    ],
+    "vorgang": [
+      "erstwert",
+      "berichtigung",
+      "ruecknahme"
+    ]
+  },
+  "einheiten": {
+    "masse": [
+      "kg",
+      "t"
+    ],
+    "stueckzahl": [
+      "Stück"
+    ],
+    "zeit": [
+      "h",
+      "min"
+    ],
+    "flaeche": [
+      "m²"
+    ],
+    "volumen": [
+      "m³",
+      "l"
+    ],
+    "personen": [
+      "Personen"
+    ],
+    "schichten": [
+      "Schichten"
+    ],
+    "gradtage": [
+      "Kd"
+    ],
+    "temperatur": [
+      "°C"
+    ]
+  },
+  "umrechnung": [
+    {
+      "von": "t",
+      "nach": "kg",
+      "zehnerpotenz": 3,
+      "hinweis": "U1: × 1 000, exakt"
+    },
+    {
+      "von": "l",
+      "nach": "m³",
+      "zehnerpotenz": -3,
+      "hinweis": "U1: ÷ 1 000, exakt"
+    },
+    {
+      "von": "min",
+      "nach": "h",
+      "teiler": 60,
+      "nachkommastellen": 4,
+      "hinweis": "U1: ÷ 60 — der einzige Faktor, der kein Zehnerschritt ist; deshalb steht seine Genauigkeit hier"
+    }
+  ],
+  "hinweis_befunde": [
+    "datei_bekannt",
+    "einheit_umgerechnet",
+    "wert_unplausibel"
+  ],
+  "befund_saetze": {
+    "datei_bekannt": "Diese Datei wurde schon übernommen.",
+    "zeile_bekannt": "Für diesen Zeitraum gibt es schon einen Wert.",
+    "konflikt_anderer_wert": "Für diesen Zeitraum gibt es schon einen anderen Wert.",
+    "einheit_unbekannt": "Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe.",
+    "einheit_umgerechnet": "Der gelieferte Wert wurde in die Einheit der Bezugsgröße umgerechnet.",
+    "periode_passt_nicht": "Der gelieferte Zeitraum ist keine Periode dieser Bezugsgröße.",
+    "periode_nicht_zu_ende": "Diese Periode ist noch nicht zu Ende.",
+    "zeit_mehrdeutig": "Diesen Zeitpunkt gibt es an diesem Tag zweimal (Zeitumstellung). Geben Sie die Zone an.",
+    "zeit_nicht_vorhanden": "Diesen Zeitpunkt gibt es an diesem Tag nicht (Zeitumstellung).",
+    "zahl_unlesbar": "Diese Zahl ist nicht lesbar.",
+    "datum_unlesbar": "Dieses Datum ist nicht lesbar.",
+    "bezug_unbekannt": "Zu diesem Text gibt es keine Bezugsgröße. Ordnen Sie ihn in der Vorlage zu.",
+    "wert_negativ": "Ein Wert unter null wird nicht übernommen.",
+    "wert_unplausibel": "Dieser Wert ist auffällig — bitte prüfen.",
+    "keine_datenzeilen": "Die Datei enthält keine Datenzeilen.",
+    "datei_zu_gross": "Die Datei ist zu groß.",
+    "kodierung_unlesbar": "Die Datei lässt sich nicht lesen."
+  },
+  "regeln": {
+    "pruefreihenfolge": [
+      "zahl",
+      "einheit",
+      "periode",
+      "zeit",
+      "bezug",
+      "schluessel"
+    ],
+    "begruendung_min_zeichen": 10,
+    "begruendung_max_zeichen": 500,
+    "stichtag": "letzter Tag der Periode",
+    "zuordnung_hoechstens_monate": 2,
+    "anteil_nachkommastellen": 1,
+    "abdeckung_nachkommastellen": 1,
+    "vergleich_nachkommastellen": 4,
+    "zahlformat_vorgabe": "de",
+    "vier_augen_vorgabe": false
+  },
+  "zwillinge": {
+    "zahl": [
+      "java",
+      "ts"
+    ],
+    "einheit": [
+      "java",
+      "ts"
+    ],
+    "periode": [
+      "java",
+      "ts"
+    ],
+    "zeit": [
+      "java",
+      "ts"
+    ],
+    "stunden": [
+      "java",
+      "ts"
+    ],
+    "plausibilitaet": [
+      "java",
+      "ts"
+    ],
+    "zuordnung": [
+      "java",
+      "ts"
+    ],
+    "urteil": [
+      "java",
+      "ts"
+    ],
+    "import": [
+      "java",
+      "ts"
+    ],
+    "menge": [
+      "java"
+    ],
+    "fassung": [
+      "java"
+    ],
+    "stammdatum": [
+      "java"
+    ],
+    "kanal": [
+      "java"
+    ]
+  },
+  "zwillinge_grund": {
+    "menge": "Die Menge eines Ablesezeitraums rechnet die Verbrauchsregel AP-08 (VerbrauchRegeln.mengeZaehlerstand). Sie lebt in Java und Python, nicht im Portal — das Portal zeigt die Zahl, es bildet sie nicht.",
+    "fassung": "Fassungen, Vier-Augen und Rücknahme sind der Schreibweg des Servers (F1–F4, C7). Das Portal zeigt den Verlauf, es bildet ihn nicht.",
+    "stammdatum": "Der Stichtag eines zeitgültigen Stammdatums wird im Lesemodell gelesen (E17); das Portal bekommt den Wert fertig.",
+    "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht."
+  },
+  "_abweichungen": [
+    {
+      "fall": "B7 · Ladezeit 02.12.2026",
+      "feld": "eingang.zustand_am_anfang",
+      "vorlage": null,
+      "statt": "Available",
+      "grund": "Die Vorlage nennt vier Statuswechsel ab 07:12 und rechnet 298 min „Charging“ bei 23 von 24 gemessenen Stunden. Damit ist die Zeit VOR 07:12 gemessen und nicht „Charging“ — welcher Zustand dort galt, sagt die Vorlage nicht. Er steht deshalb als ausdrücklicher Eingang „Available“ da (K: Zustand am Periodenanfang = letzter Wechsel davor). Betrag, Zustand, Abdeckung und Kennzeichen der Vorlage bleiben unberührt."
+    },
+    {
+      "fall": "B10 · Vorschau-Zähler",
+      "feld": "ergebnis.zaehler",
+      "vorlage": "2 abgelehnt (Zeit), 1 neu, 1 Hinweis",
+      "statt": {
+        "neu": 2,
+        "abgelehnt": 2,
+        "mit_hinweis": 1
+      },
+      "grund": "Dieselben vier Zeilen, zwei Zähler statt drei disjunkter Kübel: ein Hinweis nimmt einer Zeile nicht ihr Urteil (C5/C8 — `wert_unplausibel` ist übernehmbar). Die Zeile mit dem Hinweis ist also „neu“ UND „mit Hinweis“. Welche Zeile übernommen wird und was gespeichert wird, ändert sich dadurch nicht."
+    },
+    {
+      "fall": "B8 · Ablesezeitraum",
+      "feld": "eingang.kadenz_s",
+      "vorlage": "monatlich (Soll)",
+      "statt": 2592000,
+      "grund": "Die Verbrauchsregel AP-08 braucht die Kadenz als Zahl (Fenster des Periodenstands, Lückenschwelle). „Monatlich“ steht hier als 30 Tage. Das Ergebnis ist davon unberührt: die beiden Ablesungen liegen GENAU auf den Rändern des Ablesezeitraums, also im Fenster jeder Kadenz ≥ 0."
+    }
+  ],
+  "_nicht_geprueft": [
+    {
+      "fall": "B1, B2, B3, B6, B14",
+      "feld": "kennzahl_kwh_je_kg · kennzahl_okt_kwh_je_m2 · kennzahl_okt",
+      "warum": "Eine Kennzahl bildet AP-11 (Zähler ÷ Nenner, Version, Kennzeichen „korrigiert“), nicht dieser Vertrag. Die Zahlen stehen unter `beschreibend`, damit AP-11 sie vorfindet; geprüft wird hier der NENNER — bei B6 ist genau er die Plan-Abnahme 2 (3 100 / 3 100 / 3 400 m²), bei B2 der unveränderte Betrag 312 400 kg."
+    },
+    {
+      "fall": "B3, B5, B14",
+      "feld": "beschreibend.ereignis (Weiterwirkung)",
+      "warum": "Dass ein `correction`-Ereignis entsteht, prüft die Regel `fassung`. Was es AUSLÖST (Neubildung der Kennzahl in AP-11, Revisions-Auslöser eines freigegebenen Berichts in AP-12) ist Sache dieser Pakete und hat hier keinen Zwilling."
+    },
+    {
+      "fall": "B8",
+      "feld": "kalendermonat · tag_20_10",
+      "warum": "Die ZUORDNUNG eines Ablesezeitraums zu einem Monat prüft die Regel `zuordnung`, die MENGE die Verbrauchsregel. Dass der November und der 20.10. „keine Werte“ tragen, ist eine Aussage des AP-08-Lesemodells über Perioden ohne zugeordneten Zeitraum (IP-8); ein Lesemodell gibt es in diesem Paket nicht."
+    },
+    {
+      "fall": "B1, B12, B13",
+      "feld": "gegeben.datei (Kodierung, Trennzeichen, Kopfzeile, Fingerabdruck)",
+      "warum": "Das Lesen einer CSV-Datei (C1: Kodierung, Trennzeichen, RFC-4180, SHA-256) ist IP-11. Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei bekannt ist, bekommt die Regel `urteil` als Eingang `datei_fingerabdruck_bekannt`."
+    },
+    {
+      "fall": "alle",
+      "feld": "anzeige · herkunft",
+      "warum": "Der Anzeigesatz und die Herkunfts-Angaben je Wert stehen unter `beschreibend`: sie sind der Wortlaut für die Portal-Fläche (IP-9/IP-10) und die Spalten der Tabelle (IP-4), nicht das Ergebnis einer Rechnung."
+    }
+  ],
+  "plan_abnahmen": {
+    "plan-1": "B2 — eine doppelt importierte Produktionsdatei verdoppelt keine Menge",
+    "plan-2": "B6 — eine Flächenänderung verändert nicht rückwirkend alte Kennzahlen"
+  },
+  "cases": [
+    {
+      "name": "b1-produktionsmenge-import-oktober",
+      "id": "B1",
+      "familie": "import",
+      "abnahme": null,
+      "titel": "BZ-1 Produktionsmenge Spritzguss — CSV aus dem ERP für Oktober 2026",
+      "why": "Der Normalfall: Datei hochladen, Spalten zuordnen, Vorschau prüfen, übernehmen — der Wert bekommt Herkunft „Import“ mit Datei und Zeile.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1 Spritzguss",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Datei-Fingerabdruck (SHA-256) ist unbekannt → kein Befund „datei_bekannt“.",
+        "Zeile 2: Periode „2026-10“ → Oktober 2026 (Monat, zu Ende) ✔; Bezug „Spritzguss gesamt“ → BZ-1 ✔; Wert „312.400,0“ → 312 400 (Tausenderpunkt, Dezimalkomma) ✔; Einheit kg = Einheit der Bezugsgröße ✔.",
+        "Zeilen-Schlüssel BZ-1 · 2026-10 ist unbelegt → Urteil „neu“. Vorschau: 1 neu · 0 Wiederholungen · 0 Konflikte · 0 abgelehnt.",
+        "Übernahme: Import I-2026-0001 (Status übernommen), Wert BZ-1 Oktober 2026 = 312 400 kg, Fassung 1.",
+        "Kennzahl AP-11 „Stromeinsatz Spritzguss je kg“: 88 630 kWh ÷ 312 400 kg = 0.2837 → 0,28 kWh/kg (Referenzunternehmen `kennzahl_beispiel`)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zahl",
+          "name": "Menge „312.400,0“ deutsch gelesen",
+          "eingang": {
+            "text": "312.400,0",
+            "format": "de",
+            "ganzzahlig": false
+          },
+          "ergebnis": {
+            "betrag": "312400.0",
+            "befund": null
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "Einheit kg = Einheit der Bezugsgröße",
+          "eingang": {
+            "betrag": "312400.0",
+            "geliefert": "kg",
+            "ziel": "kg"
+          },
+          "ergebnis": {
+            "betrag": "312400.0",
+            "einheit": "kg",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "Periode „2026-10“ ist der abgeschlossene Oktober",
+          "eingang": {
+            "text": "2026-10",
+            "deutung": "periode",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": "2026-10",
+            "von": "2026-10-01T00:00:00+02:00",
+            "bis": "2026-11-01T00:00:00+01:00",
+            "stunden": 745,
+            "befund": null
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Schlüssel BZ-1 · 2026-10 unbelegt → neu",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312400.0",
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "neu",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "import",
+          "name": "Vorschau und Übernahme: 1 neu, Import übernommen",
+          "eingang": {
+            "datenzeilen": 1,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "neu",
+                "befunde": []
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "uebernommen",
+            "zaehler": {
+              "zeilen": 1,
+              "neu": 1,
+              "wiederholung": 0,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 0,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": true,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 1,
+            "befunde": []
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Erstwert ohne Begründung, ohne Ereignis (F1)",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "312400.0"
+          }
+        }
+      ],
+      "beschreibend": {
+        "import": {
+          "kennung": "I-2026-0001",
+          "status": "uebernommen",
+          "zeilen": 1,
+          "neu": 1,
+          "wiederholung": 0,
+          "konflikt": 0,
+          "abgelehnt": 0
+        },
+        "wert": {
+          "bezugsgroesse": "BZ-1",
+          "periode": "2026-10",
+          "wert": 312400,
+          "einheit": "kg",
+          "fassung": 1,
+          "status": "wirksam"
+        },
+        "herkunft": {
+          "art": "import",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-03T09:12:00+01:00",
+          "fassung": 1,
+          "status": "wirksam",
+          "import_kennung": "I-2026-0001",
+          "datei": "ERP_Spritzguss_Produktion_2026-10.csv",
+          "zeile": 2,
+          "vorlage": "ERP-Export Spritzguss",
+          "geliefert": {
+            "wert": "312.400,0",
+            "einheit": "kg"
+          }
+        },
+        "anzeige": "BZ-1 · Oktober 2026 · 312 400 kg · Import I-2026-0001, Zeile 2 · Ines Kaltenbach, 03.11.2026 09:12",
+        "kennzahl_kwh_je_kg": 0.2837,
+        "kennzahl_rechnung": "88 630 kWh ÷ 312 400 kg (Referenzunternehmen kennzahl_beispiel) — die Kennzahl bildet AP-11, nicht dieser Vertrag"
+      },
+      "annahmen": [
+        "Dateiname, Kodierung, Spaltenaufbau und Erfassungszeitpunkt 03.11.2026 09:12 sind Annahmen; der Wert 312 400 kg ist der Referenzwert."
+      ]
+    },
+    {
+      "name": "b2-dieselbe-datei-zweimal-null-aenderungen",
+      "id": "B2",
+      "familie": "import",
+      "abnahme": "plan-1",
+      "titel": "Plan-Abnahme 1 — dieselbe Produktionsdatei ein zweites Mal: 0 Änderungen, nichts verdoppelt",
+      "why": "Eine doppelt importierte Produktionsdatei verdoppelt keine Menge (Plan-Abnahme AP-09).",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Datei-Fingerabdruck bekannt → Befund „datei_bekannt“: „Diese Datei wurde am 03.11.2026 09:12 als I-2026-0001 vollständig übernommen.“",
+        "Zeile 2: Zeilen-Schlüssel BZ-1 · 2026-10 belegt, Wert 312 400 kg = 312 400 kg → Urteil „wiederholung“ (kein Konflikt).",
+        "Vorschau: 0 neu · 1 Wiederholung · 0 Konflikte · 0 abgelehnt; der Knopf heißt „Nichts zu übernehmen“; Import I-2026-0002 wird mit Status „wiederholt (0 Änderungen)“ protokolliert.",
+        "BZ-1 Oktober 2026 bleibt 312 400 kg in Fassung 1 — nicht 624 800 kg; keine neue Fassung, kein Ereignis, Kennzahl unverändert 0,28 kWh/kg."
+      ],
+      "pruefungen": [
+        {
+          "regel": "urteil",
+          "name": "Fingerabdruck bekannt, gleicher Betrag → Wiederholung",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312400.0",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": true,
+            "frueherer_import_status": "uebernommen",
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "wiederholung",
+            "befunde": [
+              "datei_bekannt"
+            ]
+          }
+        },
+        {
+          "regel": "import",
+          "name": "0 Änderungen, nichts verdoppelt (Plan-Abnahme 1)",
+          "eingang": {
+            "datenzeilen": 1,
+            "fingerabdruck_bekannt": true,
+            "frueherer_import_status": "uebernommen",
+            "zeilen": [
+              {
+                "urteil": "wiederholung",
+                "befunde": [
+                  "datei_bekannt"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "wiederholt",
+            "zaehler": {
+              "zeilen": 1,
+              "neu": 0,
+              "wiederholung": 1,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 0,
+              "mit_hinweis": 1
+            },
+            "uebernahme_moeglich": false,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 0,
+            "befunde": [
+              "datei_bekannt"
+            ]
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Der zweite Import schreibt nichts: Fassung 1 bleibt 312 400 kg",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "312400.0"
+          }
+        }
+      ],
+      "beschreibend": {
+        "import": {
+          "kennung": "I-2026-0002",
+          "status": "wiederholt",
+          "zeilen": 1,
+          "neu": 0,
+          "wiederholung": 1,
+          "konflikt": 0,
+          "abgelehnt": 0
+        },
+        "wert": {
+          "bezugsgroesse": "BZ-1",
+          "periode": "2026-10",
+          "wert": 312400,
+          "einheit": "kg",
+          "fassung": 1,
+          "status": "wirksam"
+        },
+        "nicht": {
+          "wert": 624800
+        },
+        "herkunft": {
+          "art": "import",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-03T09:12:00+01:00",
+          "fassung": 1,
+          "status": "wirksam",
+          "import_kennung": "I-2026-0001",
+          "datei": "ERP_Spritzguss_Produktion_2026-10.csv",
+          "zeile": 2,
+          "hinweis": "unverändert; I-2026-0002 hat nichts geschrieben"
+        },
+        "anzeige": "Import I-2026-0002 · wiederholt · 0 Änderungen — „Diese Datei war schon übernommen (I-2026-0001).“",
+        "kennzahl_kwh_je_kg": 0.2837
+      },
+      "annahmen": [
+        "Zeitpunkt des zweiten Uploads (05.11.2026) ist eine Annahme."
+      ]
+    },
+    {
+      "name": "b3-konflikt-mit-entscheidung-berichtigung",
+      "id": "B3",
+      "familie": "import",
+      "abnahme": null,
+      "titel": "Import mit EINER abweichenden Zeile — Konflikt mit Entscheidung, Berichtigung als Fassung 2",
+      "why": "Gleiche Periode, anderer Wert: nie still ersetzen — der Kunde entscheidet je Zeile; „ersetzen“ ist eine Berichtigung mit Begründung, Fassung 1 bleibt.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Datei-Fingerabdruck unbekannt; Zeilen-Schlüssel BZ-1 · 2026-10 belegt mit 312 400 kg ≠ 312 900 kg → Urteil „konflikt“ (Befund „konflikt_anderer_wert“).",
+        "Vorschau zeigt die Zeile mit beiden Werten: „vorhanden 312 400 kg (Fassung 1, I-2026-0001) · in der Datei 312 900 kg“. Vorgabe: „behalten“. Ines wählt „ersetzen (berichtigen)“ und gibt die Begründung „ERP-Nachbuchung vom 05.11.2026“ ein (eine Begründung je Import, Pflicht ≥ 10 Zeichen).",
+        "Übernahme: Import I-2026-0003 (übernommen, 1 Berichtigung). BZ-1 Oktober 2026 bekommt Fassung 2 = 312 900 kg (Herkunft import I-2026-0003 Zeile 2, Begründung); Fassung 1 = 312 400 kg bleibt lesbar mit Herkunft I-2026-0001.",
+        "Ereignis `correction` (Bezugsgröße BZ-1, Periode 2026-10, Fassung 1 → 2) löst die Neubildung der Kennzahl aus (AP-08 E9-Kaskade, AP-11): 88 630 ÷ 312 900 = 0.2833 kWh/kg — gerundet weiterhin 0,28, aber Version 2 mit Kennzeichen „korrigiert (Version 2)“; der freigegebene Oktober-Bericht bekommt einen Revisions-Auslöser (AP-12), er ändert sich nie still.",
+        "Variante Vier-Augen an: „ersetzen“ erzeugt einen Berichtigungs-VORSCHLAG; Fassung 1 bleibt wirksam, bis Jonas Wendlinger freigibt."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zahl",
+          "name": "Menge „312.900,0“ deutsch gelesen",
+          "eingang": {
+            "text": "312.900,0",
+            "format": "de",
+            "ganzzahlig": false
+          },
+          "ergebnis": {
+            "betrag": "312900.0",
+            "befund": null
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Belegter Schlüssel, anderer Betrag → Konflikt (Vorschau, ohne Entscheidung)",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312900.0",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "konflikt",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Entscheidung „behalten“ (Vorgabe) → übersprungen",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312900.0",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": "behalten",
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "uebersprungen",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Entscheidung „ersetzen“ → Berichtigung",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312900.0",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": "ersetzen",
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "berichtigung",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        },
+        {
+          "regel": "import",
+          "name": "Import I-2026-0003: 1 Konflikt, 1 Berichtigung",
+          "eingang": {
+            "datenzeilen": 1,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "berichtigung",
+                "befunde": [
+                  "konflikt_anderer_wert"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "uebernommen",
+            "zaehler": {
+              "zeilen": 1,
+              "neu": 0,
+              "wiederholung": 0,
+              "konflikt": 1,
+              "berichtigung": 1,
+              "uebersprungen": 0,
+              "abgelehnt": 0,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": true,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 1,
+            "befunde": []
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Fassung 2 = 312 900 kg mit Begründung; Fassung 1 bleibt lesbar",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "312900.0",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-06T08:30:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 2,
+                "betrag": "312900.0",
+                "status": "wirksam",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": "I-2026-0003"
+              }
+            ],
+            "wirksamer_betrag": "312900.0"
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Vier-Augen AN: Fassung 2 ist ein Vorschlag, bis eine ZWEITE Person freigibt",
+          "eingang": {
+            "vier_augen": true,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "312900.0",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-06T08:30:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 2,
+                "betrag": "312900.0",
+                "status": "vorschlag",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "312400.0"
+          }
+        }
+      ],
+      "beschreibend": {
+        "import": {
+          "kennung": "I-2026-0003",
+          "status": "uebernommen",
+          "zeilen": 1,
+          "neu": 0,
+          "wiederholung": 0,
+          "konflikt": 1,
+          "berichtigung": 1,
+          "abgelehnt": 0
+        },
+        "wert_fassungen": [
+          {
+            "fassung": 1,
+            "wert": 312400,
+            "status": "wirksam bis Fassung 2",
+            "herkunft": "import I-2026-0001 Zeile 2"
+          },
+          {
+            "fassung": 2,
+            "wert": 312900,
+            "status": "wirksam",
+            "herkunft": "import I-2026-0003 Zeile 2",
+            "begruendung": "ERP-Nachbuchung vom 05.11.2026"
+          }
+        ],
+        "kennzahl_kwh_je_kg": {
+          "version_1": 0.2837,
+          "version_2": 0.2833,
+          "anzeige_beide": "0,28"
+        },
+        "ereignis": {
+          "art": "correction",
+          "bezug": "BZ-1 · 2026-10",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        },
+        "herkunft": {
+          "art": "import",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-06T08:30:00+01:00",
+          "fassung": 2,
+          "status": "wirksam",
+          "import_kennung": "I-2026-0003",
+          "datei": "ERP_Spritzguss_Produktion_2026-10_korr.csv",
+          "zeile": 2,
+          "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+          "ersetzt_fassung": 1
+        },
+        "anzeige": "BZ-1 · Oktober 2026 · 312 900 kg · Fassung 2 (berichtigt) · Import I-2026-0003, Zeile 2 · „ERP-Nachbuchung vom 05.11.2026“ · Fassung 1: 312 400 kg"
+      },
+      "annahmen": [
+        "Der abweichende Wert 312 900 kg, der Dateiname und der Zeitpunkt sind Annahmen; 312 400 kg ist der Referenzwert."
+      ]
+    },
+    {
+      "name": "b4-gutteile-montage-eingabe",
+      "id": "B4",
+      "familie": "eingabe",
+      "abnahme": null,
+      "titel": "BZ-2 Gutteile Montage — manuelle Eingabe für Oktober 2026",
+      "why": "Der Normalfall der Eingabe: Periode wählen, Wert tippen, speichern — mit Herkunft „Eingabe“, Urheber, Zeitpunkt, Fassung 1.",
+      "bezugsgroesse": "BZ-2",
+      "geltung": "Prozess P-2 Montage",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "Stück",
+      "schritte": [
+        "Periode Oktober 2026 ist zu Ende (heute 03.11.2026) ✔; Wert „48.200“ → 48 200 (Tausenderpunkt) ✔; ganzzahlig für Stück ✔; ≥ 0 ✔.",
+        "Zeilen-Schlüssel BZ-2 · 2026-10 unbelegt → gespeichert als Fassung 1 mit Herkunft „Eingabe“.",
+        "Kein Vier-Augen für Erstwerte: ein Erstwert ist keine Berichtigung."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zahl",
+          "name": "Eingabe „48.200“ deutsch gelesen, ganzzahlig für Stück",
+          "eingang": {
+            "text": "48.200",
+            "format": "de",
+            "ganzzahlig": true
+          },
+          "ergebnis": {
+            "betrag": "48200",
+            "befund": null
+          }
+        },
+        {
+          "regel": "zahl",
+          "name": "„48.200,5“ ist für Stück nicht lesbar (U5)",
+          "eingang": {
+            "text": "48.200,5",
+            "format": "de",
+            "ganzzahlig": true
+          },
+          "ergebnis": {
+            "betrag": null,
+            "befund": "zahl_unlesbar"
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "Oktober 2026 ist am 03.11.2026 zu Ende",
+          "eingang": {
+            "text": "Oktober 2026",
+            "deutung": "periode",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:20:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": "2026-10",
+            "von": "2026-10-01T00:00:00+02:00",
+            "bis": "2026-11-01T00:00:00+01:00",
+            "stunden": 745,
+            "befund": null
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "November 2026 ist am 03.11.2026 NICHT zu Ende (Z4)",
+          "eingang": {
+            "text": "2026-11",
+            "deutung": "periode",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:20:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": null,
+            "von": null,
+            "bis": null,
+            "stunden": null,
+            "befund": "periode_nicht_zu_ende"
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Schlüssel BZ-2 · 2026-10 unbelegt → neu",
+          "eingang": {
+            "schluessel": "BZ-2 · 2026-10",
+            "betrag": "48200",
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "neu",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Erstwert: Fassung 1, keine Begründung, kein Vier-Augen (F1)",
+          "eingang": {
+            "vier_augen": true,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "48200",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "48200",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "48200"
+          }
+        }
+      ],
+      "beschreibend": {
+        "wert": {
+          "bezugsgroesse": "BZ-2",
+          "periode": "2026-10",
+          "wert": 48200,
+          "einheit": "Stück",
+          "fassung": 1,
+          "status": "wirksam"
+        },
+        "herkunft": {
+          "art": "eingabe",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-03T09:20:00+01:00",
+          "fassung": 1,
+          "status": "wirksam",
+          "geliefert": {
+            "wert": "48.200",
+            "einheit": "Stück"
+          }
+        },
+        "anzeige": "BZ-2 · Oktober 2026 · 48 200 Stück · eingegeben von Ines Kaltenbach, 03.11.2026 09:20"
+      },
+      "annahmen": [
+        "Erfassungszeitpunkt ist eine Annahme; 48 200 Stück ist der Referenzwert."
+      ]
+    },
+    {
+      "name": "b5-tippfehler-berichtigung-vier-augen",
+      "id": "B5",
+      "familie": "berichtigung",
+      "abnahme": null,
+      "titel": "BZ-2 — Tippfehler (4 820 statt 48 200) und Berichtigung als Fassung 2; Vier-Augen aus und an",
+      "why": "Berichtigung = neue Fassung mit Begründung; Fassung 1 bleibt; die Vier-Augen-Einstellung des Unternehmens (AP-08 E8) gilt auch hier.",
+      "bezugsgroesse": "BZ-2",
+      "geltung": "Prozess P-2",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "Stück",
+      "schritte": [
+        "Beim Speichern von 4 820 gab es keinen harten Fehler (kein Vorwert für einen Vergleich); ab der zweiten Periode würde eine Abweichung > 50 % vom Mittel der letzten sechs Perioden einen HINWEIS (kein Fehler) erzeugen.",
+        "„Berichtigen“: neuer Wert 48 200, Begründung Pflicht (≥ 10 Zeichen). Vier-Augen AUS (Vorgabe): Fassung 2 sofort wirksam; Fassung 1 = 4 820 bleibt lesbar (Urheber, Zeit, „ersetzt durch Fassung 2“).",
+        "Vier-Augen AN (Jonas Wendlinger hat es je Unternehmen eingeschaltet, AP-08 E8): die Berichtigung ist ein Vorschlag; Fassung 1 bleibt wirksam; Jonas (≠ Erstellerin) gibt frei → Fassung 2 wirksam, Protokoll nennt Erstellerin, Freigeber, Zeitpunkte, Begründung.",
+        "Ereignis `correction` (BZ-2 · 2026-10, 1 → 2) → Kennzahlen mit BZ-2 im Nenner werden neu gebildet (Version n + 1, Kennzeichen „korrigiert (Version 2)“)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "urteil",
+          "name": "Gleicher Schlüssel, anderer Betrag → Konflikt, nie stilles Ersetzen (F5)",
+          "eingang": {
+            "schluessel": "BZ-2 · 2026-10",
+            "betrag": "48200",
+            "bestand": {
+              "betrag": "4820",
+              "fassung": 1,
+              "import_kennung": null
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "konflikt",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Vier-Augen AUS (Vorgabe): Fassung 2 sofort wirksam, Fassung 1 bleibt lesbar",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "4820",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "48200",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:34:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "4820",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "fassung": 2,
+                "betrag": "48200",
+                "status": "wirksam",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": null
+              }
+            ],
+            "wirksamer_betrag": "48200"
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Vier-Augen AN: Vorschlag, Fassung 1 bleibt wirksam",
+          "eingang": {
+            "vier_augen": true,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "4820",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "48200",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:34:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "4820",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "fassung": 2,
+                "betrag": "48200",
+                "status": "vorschlag",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "4820"
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Vier-Augen AN und freigegeben: Jonas Wendlinger ≠ Erstellerin → Fassung 2 wirksam",
+          "eingang": {
+            "vier_augen": true,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "4820",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "48200",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": "Jonas Wendlinger (Kundenadministrator)",
+                "zeitpunkt": "2026-11-03T09:34:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "4820",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "fassung": 2,
+                "betrag": "48200",
+                "status": "wirksam",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": null
+              }
+            ],
+            "wirksamer_betrag": "48200"
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Vier-Augen AN und Erstellerin gibt SICH SELBST frei: abgelehnt, Fassung 1 bleibt",
+          "eingang": {
+            "vier_augen": true,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "4820",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "48200",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": "Ines Kaltenbach (Energiemanager)",
+                "zeitpunkt": "2026-11-03T09:34:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "4820",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "fassung": 2,
+                "betrag": "48200",
+                "status": "vorschlag",
+                "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "4820",
+            "abgelehnt": "ersteller_gleich_freigeber"
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Eine Berichtigung ohne Begründung wird nicht wirksam (F2, ≥ 10 Zeichen)",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "4820",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:20:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "48200",
+                "begruendung": "Tipp",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:34:00+01:00",
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "4820",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "eingabe",
+                "import_kennung": null
+              }
+            ],
+            "ereignisse": [],
+            "wirksamer_betrag": "4820",
+            "abgelehnt": "begruendung_zu_kurz"
+          }
+        }
+      ],
+      "beschreibend": {
+        "wert_fassungen": [
+          {
+            "fassung": 1,
+            "wert": 4820,
+            "status": "wirksam bis Fassung 2"
+          },
+          {
+            "fassung": 2,
+            "wert": 48200,
+            "status": "wirksam",
+            "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)"
+          }
+        ],
+        "vier_augen_an": {
+          "fassung_2_status_vor_freigabe": "vorschlag",
+          "freigeber": "Jonas Wendlinger (Kundenadministrator)",
+          "ersteller_gleich_freigeber_erlaubt": false
+        },
+        "herkunft": {
+          "art": "eingabe",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-03T09:34:00+01:00",
+          "fassung": 2,
+          "status": "wirksam",
+          "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+          "ersetzt_fassung": 1
+        },
+        "anzeige": "BZ-2 · Oktober 2026 · 48 200 Stück · Fassung 2 (berichtigt 03.11.2026 09:34, Ines Kaltenbach) · Fassung 1: 4 820 Stück"
+      },
+      "annahmen": [
+        "Der Tippfehler 4 820 und die Zeitpunkte sind Annahmen.",
+        "Die zu kurze Begründung „Tipp“ (4 von 10 Pflichtzeichen) und die Selbst-Freigabe sind zwei Gegenproben zu F2/F3; die Vorlage nennt die Regeln, nicht diese beiden Eingaben."
+      ]
+    },
+    {
+      "name": "b6-flaeche-halle-2-stichtag",
+      "id": "B6",
+      "familie": "stammdatum",
+      "abnahme": "plan-2",
+      "titel": "Plan-Abnahme 2 — Fläche Halle 2 (G-2) 3 100 → 3 400 m² ab 01.01.2027, eingetragen 15.01.2027: alte Kennzahlen bleiben",
+      "why": "Eine Flächenänderung verändert nicht rückwirkend alte Kennzahlen (Plan-Abnahme AP-09; AP-02 A3). AP-09 liest die Fläche aus AP-02 zum Stichtag der Periode — es gibt keine zweite Flächen-Eingabe.",
+      "bezugsgroesse": "BZ-4",
+      "geltung": "Gebäude G-2 Halle 2",
+      "wertart": "stammdatum",
+      "periode": null,
+      "einheit": "m²",
+      "schritte": [
+        "Stichtag-Regel: eine Kennzahl je Monat liest das Stammdatum am LETZTEN Tag der Periode (Vorgabe) — Oktober 2026 → 31.10.2026 → 3 100 m²; Dezember 2026 → 31.12.2026 → 3 100 m²; Januar 2027 → 31.01.2027 → 3 400 m².",
+        "Kennzahl kWh/m² Halle 2, Oktober 2026 (vor dem Eintrag gerechnet): 36 900 ÷ 3 100 = 11.9032 → 11,90 kWh/m².",
+        "Nach dem Eintrag vom 15.01.2027: Oktober und Dezember 2026 lesen weiter 3 100 m² (Gültigkeit endet 31.12.2026) — die Kennzahl Oktober bleibt 11,90 kWh/m², Version 1, ohne Ereignis; nichts wird neu gebildet.",
+        "Januar 2027 rechnet Verbrauch Januar ÷ 3 400 m² (der Januar-Verbrauch steht nicht im Referenzunternehmen und wird hier nicht erfunden).",
+        "Rückwirkend: der Eintrag vom 15.01. gilt ab 01.01. — die Tage 01.–14.01.2027 gelten nachträglich anders; das ist KEINE Änderung alter Perioden, weil noch keine Januar-Kennzahl endgültig war; wäre sie es (Bericht freigegeben), löst AP-02s Protokolleintrag einen Revisions-Hinweis aus (AP-12), keine stille Änderung.",
+        "Es gibt keinen Import und keine Eingabe für Flächen in AP-09: „Fläche“ in einer CSV-Datei ist Befund „bezug_unbekannt“ mit Hinweis „Flächen pflegen Sie am Gebäude (Struktur).“"
+      ],
+      "pruefungen": [
+        {
+          "regel": "stammdatum",
+          "name": "Nenner je Monat: Stichtag = letzter Tag der Periode (E17)",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": "2027-01-15"
+              }
+            ],
+            "perioden": [
+              "2026-10",
+              "2026-12",
+              "2027-01"
+            ],
+            "periode_art": "monat"
+          },
+          "ergebnis": {
+            "je_periode": {
+              "2026-10": "3100",
+              "2026-12": "3100",
+              "2027-01": "3400"
+            },
+            "stichtage": {
+              "2026-10": "2026-10-31",
+              "2026-12": "2026-12-31",
+              "2027-01": "2027-01-31"
+            },
+            "rueckwirkend_tage": 14,
+            "ereignisse": []
+          }
+        },
+        {
+          "regel": "stammdatum",
+          "name": "Ein Monat ohne gültiges Intervall ist „keine Werte“, nie 0",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              }
+            ],
+            "perioden": [
+              "2026-09",
+              "2026-10"
+            ],
+            "periode_art": "monat"
+          },
+          "ergebnis": {
+            "je_periode": {
+              "2026-09": null,
+              "2026-10": "3100"
+            },
+            "stichtage": {
+              "2026-09": "2026-09-30",
+              "2026-10": "2026-10-31"
+            },
+            "rueckwirkend_tage": 0,
+            "ereignisse": []
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "„Fläche“ in einer CSV-Datei: es gibt keinen Flächen-Import (E17)",
+          "eingang": {
+            "schluessel": null,
+            "betrag": "3400",
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": [
+              "bezug_unbekannt"
+            ]
+          },
+          "ergebnis": {
+            "urteil": "abgelehnt",
+            "befunde": [
+              "bezug_unbekannt"
+            ]
+          }
+        }
+      ],
+      "beschreibend": {
+        "nenner_je_monat": {
+          "2026-10": 3100,
+          "2026-12": 3100,
+          "2027-01": 3400
+        },
+        "kennzahl_okt_kwh_je_m2": 11.9032,
+        "kennzahl_okt_nach_eintrag": {
+          "wert": 11.9032,
+          "version": 1,
+          "ereignis": null
+        },
+        "kennzahl_rechnung": "36 900 kWh (MS-10 Oktober 2026) ÷ 3 100 m² = 11,9032 kWh/m² — die Kennzahl bildet AP-11; DIESER Vertrag liefert den Nenner, und der bleibt 3 100 m²",
+        "herkunft": {
+          "art": "stammdatum_ap02",
+          "quelle": "flaeche_gueltigkeit (Gebäude G-2)",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2027-01-15T14:40:00+01:00",
+          "gilt_ab": "2027-01-01",
+          "abzeichen": "rückwirkend (14 Tage)"
+        },
+        "anzeige": "kWh/m² Halle 2 · Oktober 2026 · 11,90 (Fläche 3 100 m², Stand 31.10.2026) — Januar 2027: Fläche 3 400 m² (Stand 31.01.2027, geändert 15.01.2027, rückwirkend 14 Tage)",
+        "hinweis_halle": "Der Brief nennt „Halle 1“; das Referenzunternehmen 1.1 und AP-02 A3 legen den Anbau an Halle 2 (G-2). Der Katalog folgt der Quelle."
+      },
+      "annahmen": [
+        "Uhrzeit des Eintrags 14:40 aus AP-02 §4.4; alle Flächen, Gültigkeiten und der Oktober-Verbrauch sind Referenzwerte."
+      ]
+    },
+    {
+      "name": "b7-ladezeit-aus-zustands-kanal",
+      "id": "B7",
+      "familie": "kanal",
+      "abnahme": null,
+      "titel": "Betriebszeit aus einem Zustands-Kanal — Ladezeit des Ladepunkts K-9 aus dem OCPP-Status „Charging“ (02.12.2026)",
+      "why": "Ein Zustands-Kanal (Wertart state) liefert eine Dauer je Periode: Summe der gemessenen Zeit im gewählten Zustand; Lücken erben AP-08 („unvollständig“), nichts wird aufgefüllt; der Wert trägt Herkunft „Messkanal“.",
+      "bezugsgroesse": "BZ-5 (neu) Ladezeit Ladepunkt Halle 2",
+      "geltung": "Messstelle MS-14",
+      "wertart": "periodenwert",
+      "periode": "tag",
+      "einheit": "h",
+      "schritte": [
+        "Dauer im Zustand „Charging“ am 02.12.2026: 07:12–09:40 = 148 min; 13:05–15:35 = 150 min; Summe 298 min = 4.9667 h.",
+        "Lücke 10:00–11:00 (data_gap Box Halle 2): der Zustand ist in dieser Stunde nicht gemessen — sie zählt nicht als „Charging“ und nicht als „nicht Charging“; der Tag wird „unvollständig“, Abdeckung 23 von 24 h = 95.8 %.",
+        "Der Tageswert 4,9667 h trägt Herkunft „Messkanal K-9 · OCPP-Status = Charging“, Zustand unvollständig, Kennzeichen „1 h ohne Werte (Box Halle 2)“ — kein Urheber-Mensch, Urheber ist die Ableitung (AP-07 `woher = ableitung`).",
+        "Eine Kennzahl kWh je Ladestunde (MS-14 ÷ BZ-5) erbt „unvollständig“ (AP-08 §4.5 Fortpflanzung). Eine manuelle Eingabe für denselben Tag ist NICHT möglich, solange der Kanal gebunden ist (eine Quelle je Bezugsgröße und Zeitraum); ein Ersatz geht nur über den AP-08-Ersatzwert-Weg (Methode e, begründet, gekennzeichnet)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "kanal",
+          "name": "Dauer im Zustand „Charging“ am 02.12.2026, Lücke zählt weder als X noch als nicht-X",
+          "eingang": {
+            "von": "2026-12-02T00:00:00+01:00",
+            "bis": "2026-12-03T00:00:00+01:00",
+            "zustand_gewaehlt": "Charging",
+            "zustand_am_anfang": "Available",
+            "wechsel": [
+              {
+                "t": "2026-12-02T07:12:00+01:00",
+                "zustand": "Charging"
+              },
+              {
+                "t": "2026-12-02T09:40:00+01:00",
+                "zustand": "Finishing"
+              },
+              {
+                "t": "2026-12-02T13:05:00+01:00",
+                "zustand": "Charging"
+              },
+              {
+                "t": "2026-12-02T15:35:00+01:00",
+                "zustand": "Available"
+              }
+            ],
+            "luecken": [
+              {
+                "von": "2026-12-02T10:00:00+01:00",
+                "bis": "2026-12-02T11:00:00+01:00",
+                "quelle": "Box Halle 2"
+              }
+            ]
+          },
+          "ergebnis": {
+            "betrag": "4.9667",
+            "einheit": "h",
+            "minuten_im_zustand": 298,
+            "zustand": "unvollständig",
+            "abdeckung_prozent": 95.8,
+            "gemessene_stunden": "23",
+            "kennzeichen": [
+              "1 h ohne Werte (Box Halle 2, 10:00–11:00)"
+            ]
+          }
+        },
+        {
+          "regel": "kanal",
+          "name": "Ohne Lücke ist derselbe Tag vollständig und trägt kein Kennzeichen",
+          "eingang": {
+            "von": "2026-12-02T00:00:00+01:00",
+            "bis": "2026-12-03T00:00:00+01:00",
+            "zustand_gewaehlt": "Charging",
+            "zustand_am_anfang": "Available",
+            "wechsel": [
+              {
+                "t": "2026-12-02T07:12:00+01:00",
+                "zustand": "Charging"
+              },
+              {
+                "t": "2026-12-02T09:40:00+01:00",
+                "zustand": "Finishing"
+              },
+              {
+                "t": "2026-12-02T13:05:00+01:00",
+                "zustand": "Charging"
+              },
+              {
+                "t": "2026-12-02T15:35:00+01:00",
+                "zustand": "Available"
+              }
+            ],
+            "luecken": []
+          },
+          "ergebnis": {
+            "betrag": "4.9667",
+            "einheit": "h",
+            "minuten_im_zustand": 298,
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100.0,
+            "gemessene_stunden": "24",
+            "kennzeichen": []
+          }
+        },
+        {
+          "regel": "kanal",
+          "name": "Ein Tag ganz ohne Werte ist „keine Werte“, nie 0 h (K4)",
+          "eingang": {
+            "von": "2026-12-02T00:00:00+01:00",
+            "bis": "2026-12-03T00:00:00+01:00",
+            "zustand_gewaehlt": "Charging",
+            "zustand_am_anfang": null,
+            "wechsel": [],
+            "luecken": [
+              {
+                "von": "2026-12-02T00:00:00+01:00",
+                "bis": "2026-12-03T00:00:00+01:00",
+                "quelle": "Box Halle 2"
+              }
+            ]
+          },
+          "ergebnis": {
+            "betrag": null,
+            "einheit": "h",
+            "minuten_im_zustand": 0,
+            "zustand": "keine Werte",
+            "abdeckung_prozent": 0.0,
+            "gemessene_stunden": "0",
+            "kennzeichen": [
+              "24 h ohne Werte (Box Halle 2, 00:00–00:00)"
+            ]
+          }
+        },
+        {
+          "regel": "stunden",
+          "name": "Der 02.12.2026 hat 24 Stunden",
+          "eingang": {
+            "tag": "2026-12-02"
+          },
+          "ergebnis": {
+            "stunden": 24
+          }
+        }
+      ],
+      "beschreibend": {
+        "wert": {
+          "bezugsgroesse": "BZ-5",
+          "periode": "2026-12-02",
+          "wert": 4.9667,
+          "einheit": "h",
+          "zustand": "unvollständig",
+          "abdeckung_prozent": 95.8,
+          "kennzeichen": [
+            "1 h ohne Werte (Box Halle 2, 10:00–11:00)"
+          ],
+          "fassung": 1
+        },
+        "herkunft": {
+          "art": "messkanal",
+          "komponente": "K-9",
+          "kanal": "OCPP-Status",
+          "zustand": "Charging",
+          "urheber": "Ableitung (AP-08-Regeln)",
+          "erfasst_am": "2026-12-03T00:05:00+01:00",
+          "fassung": 1,
+          "status": "wirksam"
+        },
+        "anzeige": "Ladezeit · 02.12.2026 · 4,97 h · unvollständig (1 h ohne Werte) · aus Messkanal K-9 · OCPP-Status „Charging“",
+        "kanal": {
+          "komponente": "K-9",
+          "kanal": "OCPP-Status (Zustand)",
+          "zustand_gewaehlt": "Charging",
+          "kadenz": "bei Ereignis (Statuswechsel)"
+        },
+        "hinweis_kanal": "Das Referenzunternehmen 1.1 nennt für K-9 die Kanäle Ladeleistung, Energie je Ladevorgang, Zählerstand; der OCPP-Status ist ein Kanal des Produkts (ocpp_connector_status_event), seine Wechsel hier sind Annahmen."
+      },
+      "annahmen": [
+        "Alle Statuswechsel, die Lücke und der Ableitungszeitpunkt sind Annahmen; K-9/MS-14/Box Halle 2 sind Referenzobjekte.",
+        "Der Zustand VOR dem ersten Wechsel („Available“) steht in der Vorlage nicht; ohne ihn wären die 298 min und die 23 von 24 gemessenen Stunden der Vorlage nicht nachrechenbar. Er ist deshalb ein ausdrücklicher Eingang und in _abweichungen genannt."
+      ]
+    },
+    {
+      "name": "b8-ablesung-ablesezeitraum-kalendermonat",
+      "id": "B8",
+      "familie": "ablesung",
+      "abnahme": null,
+      "titel": "MS-21 Gas — Ablesungen 01.10. 07:15 und 02.11. 07:40 und die Zuordnung zum Kalendermonat (AP-08 E13 → AP-09)",
+      "why": "Eine Ablesung ist ein Stand zu einem Zeitpunkt; zwei Ablesungen schließen einen Ablesezeitraum; die Zuordnung zu einem Kalendermonat ist ein Kennzeichen an der schließenden Ablesung — Vorgabe „Monat mit dem größten Anteil“, änderbar, nie interpoliert.",
+      "bezugsgroesse": null,
+      "geltung": "Gebäude G-3",
+      "wertart": "stand",
+      "periode": null,
+      "einheit": "m³",
+      "schritte": [
+        "Zweite Ablesung: Stand 49 451 ≥ Vorstand 48 211 ✔ (ein kleinerer Stand wäre Befund „Rücksprung — Zählerwechsel eintragen?“, AP-04 E2/AP-08 Z4).",
+        "Ablesezeitraum 01.10. 07:15 MESZ → 02.11. 07:40 MEZ = 32 Tage 1 h 25 min (der 25-Stunden-Tag 25.10. liegt darin); Menge = 49 451 − 48 211 = 1240 m³ (AP-08 F17).",
+        "Anteile: Oktober 30 Tage 17 h 45 min (95.9 %), November 1 Tage 7 h 40 min. Der Zeitraum berührt zwei Monate → Vorgabe der Zuordnung: „gilt für Oktober 2026“; Jonas kann sie ändern oder „keinem Monat zuordnen“.",
+        "Kennzeichen an der Ablesung vom 02.11.: „gilt für Oktober 2026 · Ablesezeitraum 01.10. 07:15 – 02.11. 07:40“. Oktober trägt 1 240 m³ (nicht maschinell, Zuordnung durch den Kunden); November: „keine Werte“ bis zur nächsten Ablesung; Tage und Viertelstunden: „keine Werte“, nie 0 (AP-08 P5).",
+        "Ohne Zuordnung: Oktober = „keine Werte“ mit Hinweis „Ablesezeitraum ohne Monatszuordnung“; Kennzahlen je Monat mit MS-21 sind dann „keine Werte“.",
+        "Idempotenz: dieselbe Ablesung (02.11. 07:40 = 49 451) noch einmal → Wiederholung; derselbe Zeitpunkt mit anderem Stand → Konflikt: „Für 02.11.2026 07:40 gibt es schon 49 451 m³ — berichtigen?“ (Berichtigungsweg, Fassung 2)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zuordnung",
+          "name": "Ablesezeitraum, Anteile und die Vorgabe „größter Anteil“ (Z6/E5)",
+          "eingang": {
+            "von": "2026-10-01T07:15:00+02:00",
+            "bis": "2026-11-02T07:40:00+01:00",
+            "zeitzone": "Europe/Berlin"
+          },
+          "ergebnis": {
+            "dauer_minuten": 46165,
+            "dauer_text": "32 Tage 1 h 25 min",
+            "monate_beruehrt": 2,
+            "anteile": [
+              {
+                "monat": "2026-10",
+                "minuten": 44265,
+                "prozent": 95.9
+              },
+              {
+                "monat": "2026-11",
+                "minuten": 1900,
+                "prozent": 4.1
+              }
+            ],
+            "vorgabe": "2026-10"
+          }
+        },
+        {
+          "regel": "zuordnung",
+          "name": "Drei berührte Monate: keine Vorgabe, der Kunde entscheidet (Z6)",
+          "eingang": {
+            "von": "2026-10-01T07:15:00+02:00",
+            "bis": "2026-12-02T07:40:00+01:00",
+            "zeitzone": "Europe/Berlin"
+          },
+          "ergebnis": {
+            "dauer_minuten": 89365,
+            "dauer_text": "62 Tage 1 h 25 min",
+            "monate_beruehrt": 3,
+            "anteile": [
+              {
+                "monat": "2026-10",
+                "minuten": 44265,
+                "prozent": 49.5
+              },
+              {
+                "monat": "2026-11",
+                "minuten": 43200,
+                "prozent": 48.3
+              },
+              {
+                "monat": "2026-12",
+                "minuten": 1900,
+                "prozent": 2.1
+              }
+            ],
+            "vorgabe": null
+          }
+        },
+        {
+          "regel": "menge",
+          "name": "Die Menge des Ablesezeitraums rechnet die Verbrauchsregel AP-08 (Z1–Z9)",
+          "eingang": {
+            "staende": [
+              {
+                "t": "2026-10-01T07:15:00+02:00",
+                "stand": "48211"
+              },
+              {
+                "t": "2026-11-02T07:40:00+01:00",
+                "stand": "49451"
+              }
+            ],
+            "von": "2026-10-01T07:15:00+02:00",
+            "bis": "2026-11-02T07:40:00+01:00",
+            "kadenz_s": 2592000
+          },
+          "ergebnis": {
+            "menge": "1240",
+            "zustand": "vollständig"
+          }
+        },
+        {
+          "regel": "menge",
+          "name": "Ein kleinerer Stand ist nie eine negative Menge (Z4/Z5 der Verbrauchsregel)",
+          "eingang": {
+            "staende": [
+              {
+                "t": "2026-10-01T07:15:00+02:00",
+                "stand": "48211"
+              },
+              {
+                "t": "2026-11-02T07:40:00+01:00",
+                "stand": "120"
+              }
+            ],
+            "von": "2026-10-01T07:15:00+02:00",
+            "bis": "2026-11-02T07:40:00+01:00",
+            "kadenz_s": 2592000
+          },
+          "ergebnis": {
+            "menge": "0",
+            "zustand": "unvollständig"
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Dieselbe Ablesung noch einmal → Wiederholung",
+          "eingang": {
+            "schluessel": "MS-21 · Volumen · ablesung · 2026-11-02T07:40:00+01:00",
+            "betrag": "49451",
+            "bestand": {
+              "betrag": "49451",
+              "fassung": 1,
+              "import_kennung": null
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "wiederholung",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Derselbe Zeitpunkt mit anderem Stand → Konflikt",
+          "eingang": {
+            "schluessel": "MS-21 · Volumen · ablesung · 2026-11-02T07:40:00+01:00",
+            "betrag": "49460",
+            "bestand": {
+              "betrag": "49451",
+              "fassung": 1,
+              "import_kennung": null
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "konflikt",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        }
+      ],
+      "beschreibend": {
+        "ablesezeitraum": {
+          "von": "2026-10-01T07:15:00+02:00",
+          "bis": "2026-11-02T07:40:00+01:00",
+          "dauer": "32 Tage 1 h 25 min",
+          "menge_m3": 1240,
+          "zustand": "vollständig"
+        },
+        "zuordnung_vorgabe": "2026-10",
+        "anteil_oktober_prozent": 95.9,
+        "kalendermonat": {
+          "2026-10": {
+            "menge_m3": 1240,
+            "kennzeichen": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)",
+            "maschinell": false
+          },
+          "2026-11": {
+            "menge_m3": null,
+            "zustand": "keine Werte"
+          }
+        },
+        "tag_20_10": {
+          "menge_m3": null,
+          "zustand": "keine Werte"
+        },
+        "herkunft": {
+          "art": "eingabe",
+          "urheber": "Jonas Wendlinger (Kundenadministrator)",
+          "erfasst_am": "2026-11-02T07:44:00+01:00",
+          "fassung": 1,
+          "status": "wirksam",
+          "reihe": "MS-21 · Volumen · Spur ablesung",
+          "zeitpunkt": "2026-11-02T07:40:00+01:00",
+          "geliefert": {
+            "stand": "49451",
+            "einheit": "m³"
+          },
+          "zuordnung_monat": "2026-10"
+        },
+        "anzeige": "MS-21 · Oktober 2026 · 1 240 m³ · Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 · abgelesen von Jonas Wendlinger — Tage: keine Werte"
+      },
+      "annahmen": [
+        "Erfassungszeitpunkt 07:44 ist eine Annahme; Stände, Zeitpunkte und die Person stammen aus dem Referenzunternehmen bzw. AP-08 F17.",
+        "Die Kadenz der Ablesungs-Reihe ist ein SOLL („monatlich“, AP-07 E9); als Zahl für die Verbrauchsregel steht hier 30 Tage (2 592 000 s). Sie berührt das Ergebnis nicht: der Ablesezeitraum trägt seine beiden Stände an den Rändern."
+      ]
+    },
+    {
+      "name": "b9-tonnen-statt-kilogramm",
+      "id": "B9",
+      "familie": "einheit",
+      "abnahme": null,
+      "titel": "Einheit t statt kg — 312,4 t werden zu 312 400 kg (Kennzeichen „umgerechnet“) und sind dieselbe Zeile wie in B1",
+      "why": "Umrechnung nur innerhalb derselben Größe mit festem Faktor; der gelieferte Wert samt Einheit bleibt in der Herkunft; der Zeilen-Schlüssel vergleicht den umgerechneten Wert.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Einheit „t“ ist im Vokabular (Größe Masse), Bezugsgröße führt kg → Umrechnung × 1 000 = 312400 kg, Befund „einheit_umgerechnet“ (Hinweis, kein Fehler).",
+        "Zeilen-Schlüssel BZ-1 · 2026-10 belegt mit 312 400 kg; umgerechneter Wert 312 400 kg gleich → Urteil „wiederholung“ (0 Änderungen).",
+        "Wäre der Schlüssel unbelegt: gespeichert würde 312 400 kg mit Herkunft geliefert = „312,4 t“ und Kennzeichen „umgerechnet aus 312,4 t“.",
+        "Gegenprobe: „312,4“ ohne Einheitsspalte und ohne Einheit in der Vorlage → Einheit der Bezugsgröße (kg) → 312,4 kg → Konflikt mit 312 400 kg — die Vorschau zeigt es, bevor etwas geschrieben wird."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zahl",
+          "name": "Menge „312,4“ deutsch gelesen",
+          "eingang": {
+            "text": "312,4",
+            "format": "de",
+            "ganzzahlig": false
+          },
+          "ergebnis": {
+            "betrag": "312.4",
+            "befund": null
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "t → kg mit festem Faktor 1 000, Kennzeichen „umgerechnet“",
+          "eingang": {
+            "betrag": "312.4",
+            "geliefert": "t",
+            "ziel": "kg"
+          },
+          "ergebnis": {
+            "betrag": "312400",
+            "einheit": "kg",
+            "befunde": [
+              "einheit_umgerechnet"
+            ]
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Der Schlüssel vergleicht den UMGERECHNETEN Betrag → Wiederholung",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312400",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": [
+              "einheit_umgerechnet"
+            ]
+          },
+          "ergebnis": {
+            "urteil": "wiederholung",
+            "befunde": [
+              "einheit_umgerechnet"
+            ]
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "Gegenprobe: ohne Einheitsspalte gilt die Einheit der Bezugsgröße (U3)",
+          "eingang": {
+            "betrag": "312.4",
+            "geliefert": null,
+            "ziel": "kg"
+          },
+          "ergebnis": {
+            "betrag": "312.4",
+            "einheit": "kg",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Gegenprobe: 312,4 kg gegen 312 400 kg → Konflikt, sichtbar VOR dem Schreiben",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312.4",
+            "bestand": {
+              "betrag": "312400.0",
+              "fassung": 1,
+              "import_kennung": "I-2026-0001"
+            },
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "konflikt",
+            "befunde": [
+              "konflikt_anderer_wert"
+            ]
+          }
+        },
+        {
+          "regel": "import",
+          "name": "1 Wiederholung, 0 Änderungen",
+          "eingang": {
+            "datenzeilen": 1,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "wiederholung",
+                "befunde": [
+                  "einheit_umgerechnet"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "wiederholt",
+            "zaehler": {
+              "zeilen": 1,
+              "neu": 0,
+              "wiederholung": 1,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 0,
+              "mit_hinweis": 1
+            },
+            "uebernahme_moeglich": false,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 0,
+            "befunde": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "umgerechnet_kg": 312400,
+        "urteil": "wiederholung",
+        "befunde": [
+          "einheit_umgerechnet"
+        ],
+        "aenderungen": 0,
+        "herkunft": {
+          "art": "import",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-03T09:12:00+01:00",
+          "fassung": 1,
+          "status": "wirksam",
+          "import_kennung": "I-2026-0001",
+          "hinweis": "unverändert (Wiederholung); bei Erstübernahme: geliefert 312,4 t, Kennzeichen „umgerechnet“"
+        },
+        "anzeige": "Vorschau: 1 Wiederholung · Hinweis: „312,4 t wurden als 312 400 kg gelesen.“"
+      },
+      "annahmen": [
+        "Die t-Zeile ist eine Annahme; der Faktor 1 000 ist exakt."
+      ]
+    },
+    {
+      "name": "b10-sommerzeit-mehrdeutig-nicht-vorhanden",
+      "id": "B10",
+      "familie": "zeit",
+      "abnahme": null,
+      "titel": "Sommerzeit — ein Zeitpunkt „25.10.2026 02:30“ ohne Zone ist mehrdeutig; „28.03.2027 02:30“ gibt es nicht; ein Tageswert darf 25 bzw. 23 h haben",
+      "why": "Zeitstempel ohne Zone bekommen die Zeitzone des Standorts; die doppelte und die fehlende Stunde sind Befunde, keine Vermutungen; Tages-Dauern kennen den 25- und den 23-Stunden-Tag.",
+      "bezugsgroesse": "BZ-3 (Tagesvariante) / MS-21",
+      "geltung": "Prozess P-1 / Messstelle MS-21",
+      "wertart": "stand · periodenwert",
+      "periode": "tag",
+      "einheit": "h · m³",
+      "schritte": [
+        "Zeile 2: 25.10.2026 02:30 existiert zweimal (MESZ 00:30 UTC und MEZ 01:30 UTC) → Befund „zeit_mehrdeutig“, Zeile abgelehnt; Hinweis: „Geben Sie die Zone an (02:30 MESZ oder 02:30 MEZ) oder wählen Sie in der Vorlage »Zeit in UTC«.“ Mit Offset in der Datei (+02:00/+01:00) ist die Zeile eindeutig.",
+        "Zeile 3: 28.03.2027 02:30 gibt es in Europe/Berlin nicht (Sprung 02:00 → 03:00) → Befund „zeit_nicht_vorhanden“, Zeile abgelehnt — nicht auf 03:30 verschoben.",
+        "Zeile 4: der 25.10.2026 hat 25 h → 24,5 h Betriebszeit ist plausibel (Obergrenze = Stundenzahl des Tages × Anzahl der Maschinen/Anlagen der Bezugsgröße; bei einer Messstelle als Bezug = Stundenzahl des Tages).",
+        "Zeile 5: der 28.03.2027 hat 23 h → 23,5 h überschreitet die Obergrenze einer einzelnen Messstelle → Befund „wert_unplausibel“ (Hinweis; bei Bezug Prozess mit mehreren Maschinen kein Befund).",
+        "Vorschau: 2 abgelehnt (Zeit), 1 neu, 1 Hinweis; Teilübernahme mit ausdrücklicher Bestätigung möglich (E10)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "zeit",
+          "name": "„25.10.2026 02:30“ ohne Zone gibt es zweimal → mehrdeutig, abgelehnt",
+          "eingang": {
+            "text": "25.10.2026 02:30",
+            "zeitzone": "Europe/Berlin",
+            "offset_in_datei": null
+          },
+          "ergebnis": {
+            "zeitpunkt": null,
+            "befund": "zeit_mehrdeutig",
+            "varianten": [
+              "2026-10-25T02:30:00+02:00",
+              "2026-10-25T02:30:00+01:00"
+            ]
+          }
+        },
+        {
+          "regel": "zeit",
+          "name": "Mit Offset in der Datei ist dieselbe Zeile eindeutig (Z5)",
+          "eingang": {
+            "text": "25.10.2026 02:30",
+            "zeitzone": "Europe/Berlin",
+            "offset_in_datei": "+02:00"
+          },
+          "ergebnis": {
+            "zeitpunkt": "2026-10-25T02:30:00+02:00",
+            "befund": null,
+            "varianten": []
+          }
+        },
+        {
+          "regel": "zeit",
+          "name": "„28.03.2027 02:30“ gibt es nicht → abgelehnt, nie auf 03:30 verschoben",
+          "eingang": {
+            "text": "28.03.2027 02:30",
+            "zeitzone": "Europe/Berlin",
+            "offset_in_datei": null
+          },
+          "ergebnis": {
+            "zeitpunkt": null,
+            "befund": "zeit_nicht_vorhanden",
+            "varianten": []
+          }
+        },
+        {
+          "regel": "zeit",
+          "name": "Ein gewöhnlicher Zeitpunkt bekommt die Zeitzone des Standorts",
+          "eingang": {
+            "text": "02.11.2026 07:40",
+            "zeitzone": "Europe/Berlin",
+            "offset_in_datei": null
+          },
+          "ergebnis": {
+            "zeitpunkt": "2026-11-02T07:40:00+01:00",
+            "befund": null,
+            "varianten": []
+          }
+        },
+        {
+          "regel": "stunden",
+          "name": "Der 25.10.2026 hat 25 Stunden",
+          "eingang": {
+            "tag": "2026-10-25"
+          },
+          "ergebnis": {
+            "stunden": 25
+          }
+        },
+        {
+          "regel": "stunden",
+          "name": "Der 28.03.2027 hat 23 Stunden",
+          "eingang": {
+            "tag": "2027-03-28"
+          },
+          "ergebnis": {
+            "stunden": 23
+          }
+        },
+        {
+          "regel": "zahl",
+          "name": "Tageswert „24,5“ deutsch gelesen",
+          "eingang": {
+            "text": "24,5",
+            "format": "de",
+            "ganzzahlig": false
+          },
+          "ergebnis": {
+            "betrag": "24.5",
+            "befund": null
+          }
+        },
+        {
+          "regel": "plausibilitaet",
+          "name": "24,5 h am 25-Stunden-Tag: kein Befund",
+          "eingang": {
+            "betrag": "24.5",
+            "einheit": "h",
+            "stunden_des_tages": 25,
+            "einheiten_gebunden": 1
+          },
+          "ergebnis": {
+            "befund": null
+          }
+        },
+        {
+          "regel": "plausibilitaet",
+          "name": "23,5 h am 23-Stunden-Tag: Hinweis wert_unplausibel",
+          "eingang": {
+            "betrag": "23.5",
+            "einheit": "h",
+            "stunden_des_tages": 23,
+            "einheiten_gebunden": 1
+          },
+          "ergebnis": {
+            "befund": "wert_unplausibel"
+          }
+        },
+        {
+          "regel": "plausibilitaet",
+          "name": "Bei einem Prozess mit sechs Maschinen ist 23,5 h kein Befund (U6)",
+          "eingang": {
+            "betrag": "23.5",
+            "einheit": "h",
+            "stunden_des_tages": 23,
+            "einheiten_gebunden": 6
+          },
+          "ergebnis": {
+            "befund": null
+          }
+        },
+        {
+          "regel": "plausibilitaet",
+          "name": "Ein Betrag unter null wird abgelehnt (U6)",
+          "eingang": {
+            "betrag": "-1",
+            "einheit": "kg",
+            "stunden_des_tages": null,
+            "einheiten_gebunden": 1
+          },
+          "ergebnis": {
+            "befund": "wert_negativ"
+          }
+        },
+        {
+          "regel": "import",
+          "name": "Vorschau: 2 abgelehnt (Zeit), 2 neu, davon 1 mit Hinweis → Teilübernahme mit Bestätigung",
+          "eingang": {
+            "datenzeilen": 4,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "zeit_mehrdeutig"
+                ]
+              },
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "zeit_nicht_vorhanden"
+                ]
+              },
+              {
+                "urteil": "neu",
+                "befunde": []
+              },
+              {
+                "urteil": "neu",
+                "befunde": [
+                  "wert_unplausibel"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "teilweise_uebernommen",
+            "zaehler": {
+              "zeilen": 4,
+              "neu": 2,
+              "wiederholung": 0,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 2,
+              "mit_hinweis": 1
+            },
+            "uebernahme_moeglich": true,
+            "import_datensatz": true,
+            "bestaetigung": "2 von 4 Zeilen übernehmen",
+            "aenderungen": 2,
+            "befunde": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "zeile_2": {
+          "befund": "zeit_mehrdeutig",
+          "urteil": "abgelehnt"
+        },
+        "zeile_3": {
+          "befund": "zeit_nicht_vorhanden",
+          "urteil": "abgelehnt"
+        },
+        "zeile_4": {
+          "urteil": "neu",
+          "stunden_des_tages": 25
+        },
+        "zeile_5": {
+          "befund": "wert_unplausibel",
+          "stunden_des_tages": 23
+        },
+        "vorschau_text": "Vorschau: 2 abgelehnt (Zeit), 1 neu, 1 Hinweis; Teilübernahme mit ausdrücklicher Bestätigung möglich (E10).",
+        "herkunft": {
+          "art": "import",
+          "hinweis": "abgelehnte Zeilen bekommen keine Herkunft — sie werden nicht gespeichert; sie stehen im Import-Protokoll mit Befund"
+        },
+        "anzeige": "„2 Zeilen können nicht übernommen werden: 25.10.2026 02:30 ist mehrdeutig (Zeitumstellung), 28.03.2027 02:30 gibt es nicht.“"
+      },
+      "annahmen": [
+        "Alle Zeilenwerte sind Annahmen; die Stundenzahlen 25/23 folgen aus der Zeitzone Europe/Berlin.",
+        "Der WORTLAUT der Teilübernahme-Bestätigung „2 von 4 Zeilen übernehmen“ und der Import-Status „teilweise übernommen“ stehen in der Vorlage nicht als Zahl; sie folgen aus E10 und aus demselben Satz in B13 („1 von 3 Zeilen übernehmen“)."
+      ]
+    },
+    {
+      "name": "b11-kalenderwoche-passt-nicht-in-monat",
+      "id": "B11",
+      "familie": "zeit",
+      "abnahme": null,
+      "titel": "Periode über die Monatsgrenze — KW 40 (28.09.–04.10.2026) passt nicht in die Monatsreihe BZ-1 und wird nie geteilt",
+      "why": "Ein gelieferter Zeitraum muss GENAU eine Periode der Bezugsgröße sein; sonst Befund — keine Aufteilung nach Tagen, keine Zuordnung nach Mehrheit (das wäre eine Rechnung, die niemand gemessen hat).",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Zeitraum 28.09.–04.10.2026 (7 Tage) ≠ Kalendermonat → Befund „periode_passt_nicht“: „Der Zeitraum 28.09.–04.10.2026 ist kein Monat. Diese Bezugsgröße führt Monatswerte.“",
+        "Nicht getan: 3/7 September + 4/7 Oktober (Verteilung); Zuordnung zum Oktober nach Mehrheit — beides wäre eine erfundene Menge (Plan §1, AP-08 Invariante 3).",
+        "Hebel im Hinweis: „Legen Sie eine Bezugsgröße mit Periode Woche an“ oder „Liefern Sie Monatswerte“. Eine Wochen-Bezugsgröße kann von AP-11 nur für Wochen-Kennzahlen genutzt werden; eine Monats-Kennzahl daraus ist „keine Werte“."
+      ],
+      "pruefungen": [
+        {
+          "regel": "periode",
+          "name": "KW 40 (28.09.–04.10.2026) ist kein Kalendermonat → Befund, nie geteilt",
+          "eingang": {
+            "von_text": "28.09.2026",
+            "bis_text": "04.10.2026",
+            "deutung": "von_bis",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": null,
+            "von": null,
+            "bis": null,
+            "stunden": null,
+            "befund": "periode_passt_nicht"
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "Dieselben zwei Spalten für den ganzen Oktober passen (Z3 von_bis)",
+          "eingang": {
+            "von_text": "01.10.2026",
+            "bis_text": "31.10.2026",
+            "deutung": "von_bis",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": "2026-10",
+            "von": "2026-10-01T00:00:00+02:00",
+            "bis": "2026-11-01T00:00:00+01:00",
+            "stunden": 745,
+            "befund": null
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "KW 40 in einer WOCHEN-Bezugsgröße passt",
+          "eingang": {
+            "von_text": "28.09.2026",
+            "bis_text": "04.10.2026",
+            "deutung": "von_bis",
+            "periode_art": "woche",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": "2026-W40",
+            "von": "2026-09-28T00:00:00+02:00",
+            "bis": "2026-10-05T00:00:00+02:00",
+            "stunden": 168,
+            "befund": null
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "Ein Tagesdatum in der Mitte des Monats ist kein Periodenbeginn (Z3)",
+          "eingang": {
+            "text": "15.10.2026",
+            "deutung": "periodenbeginn",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": null,
+            "von": null,
+            "bis": null,
+            "stunden": null,
+            "befund": "periode_passt_nicht"
+          }
+        },
+        {
+          "regel": "periode",
+          "name": "„31.10.2026“ als Periodenende ist der Oktober (Z3)",
+          "eingang": {
+            "text": "31.10.2026",
+            "deutung": "periodenende",
+            "periode_art": "monat",
+            "jetzt": "2026-11-03T09:12:00+01:00"
+          },
+          "ergebnis": {
+            "schluessel": "2026-10",
+            "von": "2026-10-01T00:00:00+02:00",
+            "bis": "2026-11-01T00:00:00+01:00",
+            "stunden": 745,
+            "befund": null
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Eine Zeile mit Perioden-Befund wird nicht übernommen",
+          "eingang": {
+            "schluessel": null,
+            "betrag": "71300",
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": [
+              "periode_passt_nicht"
+            ]
+          },
+          "ergebnis": {
+            "urteil": "abgelehnt",
+            "befunde": [
+              "periode_passt_nicht"
+            ]
+          }
+        },
+        {
+          "regel": "import",
+          "name": "1 Zeile, 1 abgelehnt, 0 Änderungen",
+          "eingang": {
+            "datenzeilen": 1,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "periode_passt_nicht"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "verworfen",
+            "zaehler": {
+              "zeilen": 1,
+              "neu": 0,
+              "wiederholung": 0,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 1,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": false,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 0,
+            "befunde": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "zeile_2": {
+          "befund": "periode_passt_nicht",
+          "urteil": "abgelehnt"
+        },
+        "aenderungen": 0,
+        "herkunft": null,
+        "anzeige": "„1 Zeile kann nicht übernommen werden: 28.09.–04.10.2026 ist kein Monat.“"
+      },
+      "annahmen": [
+        "Wochenwert 71 300 kg ist eine Annahme.",
+        "Den Import-STATUS einer Datei, deren Zeilen ALLE abgelehnt sind, nennt die Vorlage nicht. Hier steht „verworfen“ — die Lesart von C6 („bricht sie ab, ist nichts geschrieben“): es gibt keine übernehmbare Zeile. Die geprüfte Aussage der Vorlage, 0 Änderungen, ist davon unberührt."
+      ]
+    },
+    {
+      "name": "b12-leerer-import-nichts-gespeichert",
+      "id": "B12",
+      "familie": "leer",
+      "abnahme": null,
+      "titel": "Leerer Import — nur die Kopfzeile: nichts zu übernehmen, nichts gespeichert",
+      "why": "Die Vorschau schreibt nichts; ohne Datenzeilen gibt es keine Übernahme und keinen Import-Datensatz.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Erkennung: Trennzeichen „;“, 4 Spalten, 0 Datenzeilen → Befund „keine_datenzeilen“.",
+        "Vorschau: „Die Datei enthält keine Datenzeilen.“ — Zuordnung möglich (zum Prüfen der Vorlage), Übernahme-Knopf nicht anwählbar.",
+        "Nichts gespeichert: kein Wert, keine Fassung, kein Import-Datensatz (nur ein Vorschau-Aufruf im Zugriffsprotokoll); die Vorlage darf gespeichert werden.",
+        "0-Byte-Datei: Befund „keine_datenzeilen“ mit Zusatz „Die Datei ist leer (0 Byte).“"
+      ],
+      "pruefungen": [
+        {
+          "regel": "import",
+          "name": "Nur die Kopfzeile: keine Übernahme, kein Import-Datensatz",
+          "eingang": {
+            "datenzeilen": 0,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": []
+          },
+          "ergebnis": {
+            "status": null,
+            "zaehler": {
+              "zeilen": 0,
+              "neu": 0,
+              "wiederholung": 0,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 0,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": false,
+            "import_datensatz": false,
+            "bestaetigung": null,
+            "aenderungen": 0,
+            "befunde": [
+              "keine_datenzeilen"
+            ]
+          }
+        }
+      ],
+      "beschreibend": {
+        "befunde": [
+          "keine_datenzeilen"
+        ],
+        "uebernahme_moeglich": false,
+        "import_datensatz": null,
+        "aenderungen": 0,
+        "herkunft": null,
+        "anzeige": "„Die Datei enthält keine Datenzeilen.“"
+      },
+      "annahmen": [
+        "Dateiname ist eine Annahme."
+      ]
+    },
+    {
+      "name": "b13-fremde-einheit-abgelehnt",
+      "id": "B13",
+      "familie": "einheit",
+      "abnahme": null,
+      "titel": "Fremde Einheit — „lbs“ und „Paletten“ werden abgelehnt, nie geraten; die übrigen Zeilen bleiben übernehmbar",
+      "why": "Ein Wort außerhalb des geschlossenen Vokabulars ist ein Befund je Zeile (Hausregel „verwerfen, nie raten“); Teilübernahme der gültigen Zeilen mit Bestätigung.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Zeile 2: kg ✔ → „wiederholung“ (B1) oder „neu“.",
+        "Zeile 3: „lbs“ ist nicht im Vokabular → Befund „einheit_unbekannt“, abgelehnt; KEINE Umrechnung 0,4536 (kein Faktor außerhalb des Vokabulars).",
+        "Zeile 4: „Paletten“ ist nicht im Vokabular; für BZ-2 (Stück) wäre auch ein Faktor Palette → Stück eine Annahme → abgelehnt.",
+        "Vorschau: „2 von 3 Zeilen können nicht übernommen werden: unbekannte Einheit »lbs«, »Paletten«.“ Übernahme der Zeile 2 nur mit ausdrücklicher Bestätigung „1 von 3 Zeilen übernehmen“ (E10); Import-Status „teilweise übernommen“, die abgelehnten Zeilen stehen mit Befund im Import-Protokoll."
+      ],
+      "pruefungen": [
+        {
+          "regel": "einheit",
+          "name": "„lbs“ steht nicht im Vokabular → abgelehnt, KEIN Faktor 0,4536",
+          "eingang": {
+            "betrag": "688720",
+            "geliefert": "lbs",
+            "ziel": "kg"
+          },
+          "ergebnis": {
+            "betrag": null,
+            "einheit": "kg",
+            "befunde": [
+              "einheit_unbekannt"
+            ]
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "„Paletten“ steht nicht im Vokabular → abgelehnt, auch nicht für Stück",
+          "eingang": {
+            "betrag": "96",
+            "geliefert": "Paletten",
+            "ziel": "Stück"
+          },
+          "ergebnis": {
+            "betrag": null,
+            "einheit": "Stück",
+            "befunde": [
+              "einheit_unbekannt"
+            ]
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "„t“ gegen eine Stück-Bezugsgröße: andere Größe, keine Umrechnung (U1)",
+          "eingang": {
+            "betrag": "96",
+            "geliefert": "t",
+            "ziel": "Stück"
+          },
+          "ergebnis": {
+            "betrag": null,
+            "einheit": "Stück",
+            "befunde": [
+              "einheit_unbekannt"
+            ]
+          }
+        },
+        {
+          "regel": "einheit",
+          "name": "kg gegen kg: übernehmbar",
+          "eingang": {
+            "betrag": "312400.0",
+            "geliefert": "kg",
+            "ziel": "kg"
+          },
+          "ergebnis": {
+            "betrag": "312400.0",
+            "einheit": "kg",
+            "befunde": []
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Zeile mit unbekannter Einheit wird abgelehnt",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": null,
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "entscheidung": null,
+            "befunde_vorher": [
+              "einheit_unbekannt"
+            ]
+          },
+          "ergebnis": {
+            "urteil": "abgelehnt",
+            "befunde": [
+              "einheit_unbekannt"
+            ]
+          }
+        },
+        {
+          "regel": "import",
+          "name": "1 von 3 Zeilen übernehmen — ausdrückliche Bestätigung (E10)",
+          "eingang": {
+            "datenzeilen": 3,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "neu",
+                "befunde": []
+              },
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "einheit_unbekannt"
+                ]
+              },
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "einheit_unbekannt"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "teilweise_uebernommen",
+            "zaehler": {
+              "zeilen": 3,
+              "neu": 1,
+              "wiederholung": 0,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 2,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": true,
+            "import_datensatz": true,
+            "bestaetigung": "1 von 3 Zeilen übernehmen",
+            "aenderungen": 1,
+            "befunde": []
+          }
+        },
+        {
+          "regel": "import",
+          "name": "Variante: Zeile 2 ist eine Wiederholung (B1 übernommen) → 0 Änderungen",
+          "eingang": {
+            "datenzeilen": 3,
+            "fingerabdruck_bekannt": false,
+            "frueherer_import_status": null,
+            "zeilen": [
+              {
+                "urteil": "wiederholung",
+                "befunde": []
+              },
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "einheit_unbekannt"
+                ]
+              },
+              {
+                "urteil": "abgelehnt",
+                "befunde": [
+                  "einheit_unbekannt"
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "status": "teilweise_uebernommen",
+            "zaehler": {
+              "zeilen": 3,
+              "neu": 0,
+              "wiederholung": 1,
+              "konflikt": 0,
+              "berichtigung": 0,
+              "uebersprungen": 0,
+              "abgelehnt": 2,
+              "mit_hinweis": 0
+            },
+            "uebernahme_moeglich": false,
+            "import_datensatz": true,
+            "bestaetigung": null,
+            "aenderungen": 0,
+            "befunde": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "zeile_3": {
+          "befund": "einheit_unbekannt",
+          "urteil": "abgelehnt"
+        },
+        "zeile_4": {
+          "befund": "einheit_unbekannt",
+          "urteil": "abgelehnt"
+        },
+        "import_status": "teilweise_uebernommen",
+        "herkunft": null,
+        "anzeige": "„Unbekannte Einheit »lbs« — erlaubt sind kg, t.“"
+      },
+      "annahmen": [
+        "Die Zeilen 3 und 4 sind Annahmen."
+      ]
+    },
+    {
+      "name": "b14-import-zuruecknehmen-nie-loeschen",
+      "id": "B14",
+      "familie": "import",
+      "abnahme": null,
+      "titel": "Import zurücknehmen — I-2026-0001 wird zurückgenommen: neue Fassung „zurückgenommen“, Kennzahl wird „keine Werte“, nichts gelöscht",
+      "why": "Rücknahme eines Imports = neue Fassung jedes Werts, den er geschrieben hat; Berichtigungen fallen auf ihre Vorfassung zurück; Fassung 1 bleibt lesbar.",
+      "bezugsgroesse": "BZ-1",
+      "geltung": "Prozess P-1",
+      "wertart": "periodenwert",
+      "periode": "monat",
+      "einheit": "kg",
+      "schritte": [
+        "Vorschau der Rücknahme: „1 Wert wird zurückgenommen: BZ-1 Oktober 2026 (312 400 kg). Kennzahlen mit diesem Wert werden »keine Werte«.“",
+        "Übernahme: BZ-1 Oktober 2026 bekommt Fassung 2 „zurückgenommen (Import I-2026-0001)“ ohne Wert; Fassung 1 bleibt lesbar; Import-Status „zurückgenommen“ mit Urheber, Zeitpunkt, Begründung. Vier-Augen an → Vorschlag bis zur Freigabe.",
+        "Ereignis `correction` → Kennzahl Oktober „Stromeinsatz je kg“ = „keine Werte“ (Nenner fehlt), Version 2; ein freigegebener Bericht bekommt den Revisions-Auslöser.",
+        "Hätte I-2026-0003 (B3) den Wert berichtigt und würde I-2026-0003 zurückgenommen: Fassung 3 = Wert der Fassung 1 (312 400 kg) mit Kennzeichen „Rücknahme der Berichtigung aus I-2026-0003“ — nie ein Löschen.",
+        "Ein späterer Import derselben Datei: Datei-Fingerabdruck bekannt, aber Status „zurückgenommen“ → Hinweis, Zeile 2 ist wieder „neu“ (der wirksame Stand hat keinen Wert) → Fassung 3 = 312 400 kg."
+      ],
+      "pruefungen": [
+        {
+          "regel": "fassung",
+          "name": "Rücknahme = Fassung 2 ohne Betrag; Fassung 1 bleibt lesbar (C7/E11)",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "ruecknahme",
+                "betrag": null,
+                "begruendung": "Falsche Artikelgruppe exportiert — Datei war ein Testexport",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-04T16:05:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 2,
+                "betrag": null,
+                "status": "zurueckgenommen",
+                "begruendung": "Falsche Artikelgruppe exportiert — Datei war ein Testexport",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": "I-2026-0001"
+              }
+            ],
+            "wirksamer_betrag": null
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Rücknahme einer BERICHTIGUNG fällt auf den Betrag der Vorfassung zurück (C7)",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "berichtigung",
+                "betrag": "312900.0",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-06T08:30:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              },
+              {
+                "art": "ruecknahme",
+                "betrag": null,
+                "begruendung": "Rücknahme der Berichtigung aus I-2026-0003",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-07T10:00:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 2,
+                "betrag": "312900.0",
+                "status": "wirksam bis Fassung 3",
+                "begruendung": "ERP-Nachbuchung vom 05.11.2026",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              },
+              {
+                "fassung": 3,
+                "betrag": "312400.0",
+                "status": "wirksam",
+                "begruendung": "Rücknahme der Berichtigung aus I-2026-0003",
+                "ersetzt_fassung": 2,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0003"
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": "I-2026-0003"
+              },
+              {
+                "art": "correction",
+                "fassung_alt": 2,
+                "fassung_neu": 3,
+                "import_kennung": "I-2026-0003"
+              }
+            ],
+            "wirksamer_betrag": "312400.0"
+          }
+        },
+        {
+          "regel": "urteil",
+          "name": "Dieselbe Datei nach der Rücknahme: Fingerabdruck bekannt, die Zeile ist wieder neu",
+          "eingang": {
+            "schluessel": "BZ-1 · 2026-10",
+            "betrag": "312400.0",
+            "bestand": null,
+            "datei_fingerabdruck_bekannt": true,
+            "frueherer_import_status": "zurueckgenommen",
+            "entscheidung": null,
+            "befunde_vorher": []
+          },
+          "ergebnis": {
+            "urteil": "neu",
+            "befunde": [
+              "datei_bekannt"
+            ]
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Der spätere Import derselben Datei wird Fassung 3 = 312 400 kg",
+          "eingang": {
+            "vier_augen": false,
+            "vorgaenge": [
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-03T09:12:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "ruecknahme",
+                "betrag": null,
+                "begruendung": "Falsche Artikelgruppe exportiert — Datei war ein Testexport",
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-04T16:05:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "erstwert",
+                "betrag": "312400.0",
+                "begruendung": null,
+                "urheber": "Ines Kaltenbach (Energiemanager)",
+                "freigeber": null,
+                "zeitpunkt": "2026-11-10T08:00:00+01:00",
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0004"
+              }
+            ]
+          },
+          "ergebnis": {
+            "fassungen": [
+              {
+                "fassung": 1,
+                "betrag": "312400.0",
+                "status": "wirksam bis Fassung 2",
+                "begruendung": null,
+                "ersetzt_fassung": null,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 2,
+                "betrag": null,
+                "status": "wirksam bis Fassung 3",
+                "begruendung": "Falsche Artikelgruppe exportiert — Datei war ein Testexport",
+                "ersetzt_fassung": 1,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "fassung": 3,
+                "betrag": "312400.0",
+                "status": "wirksam",
+                "begruendung": null,
+                "ersetzt_fassung": 2,
+                "herkunft_art": "import",
+                "import_kennung": "I-2026-0004"
+              }
+            ],
+            "ereignisse": [
+              {
+                "art": "correction",
+                "fassung_alt": 1,
+                "fassung_neu": 2,
+                "import_kennung": "I-2026-0001"
+              },
+              {
+                "art": "correction",
+                "fassung_alt": 2,
+                "fassung_neu": 3,
+                "import_kennung": "I-2026-0004"
+              }
+            ],
+            "wirksamer_betrag": "312400.0"
+          }
+        }
+      ],
+      "beschreibend": {
+        "wert_fassungen": [
+          {
+            "fassung": 1,
+            "wert": 312400,
+            "status": "wirksam bis Fassung 2"
+          },
+          {
+            "fassung": 2,
+            "wert": null,
+            "status": "zurueckgenommen",
+            "grund": "Import I-2026-0001 zurückgenommen"
+          }
+        ],
+        "import": {
+          "kennung": "I-2026-0001",
+          "status": "zurueckgenommen"
+        },
+        "kennzahl_okt": {
+          "wert": null,
+          "zustand": "keine Werte",
+          "version": 2
+        },
+        "herkunft": {
+          "art": "import",
+          "urheber": "Ines Kaltenbach (Energiemanager)",
+          "erfasst_am": "2026-11-04T16:05:00+01:00",
+          "fassung": 2,
+          "status": "zurueckgenommen",
+          "import_kennung": "I-2026-0001",
+          "begruendung": "Falsche Artikelgruppe exportiert — Datei war ein Testexport"
+        },
+        "anzeige": "BZ-1 · Oktober 2026 · — (zurückgenommen 04.11.2026, Import I-2026-0001) · Fassung 1: 312 400 kg"
+      },
+      "annahmen": [
+        "Anlass und Zeitpunkt der Rücknahme sind Annahmen.",
+        "Der dritte Vorgang (derselbe Import nach der Rücknahme, I-2026-0004) und sein Zeitpunkt sind Annahmen; die Vorlage nennt das Ergebnis „Fassung 3 = 312 400 kg“."
+      ]
+    }
+  ]
+}
