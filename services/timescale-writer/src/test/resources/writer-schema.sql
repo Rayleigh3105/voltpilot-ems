@@ -178,11 +178,24 @@ CREATE TABLE device_measurement_sample (
     edge_sequence BIGINT NOT NULL, aggregation_kind TEXT NOT NULL, long_term_cadence_s INTEGER,
     gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL, signed_data TEXT,
     signed_data_format TEXT,
+    -- UEMS AP-07 IP-6 (V20260912140000): die Reihe je Komponente und die
+    -- Herkunftsspalten. Der Writer füllt sie NICHT - das ist IP-7. Sie stehen
+    -- hier, damit dieser Test beweist, dass er unter der neuen Tabellenform
+    -- zeichengleich weiterschreibt.
+    entity_id UUID, device_install_id UUID, applied_revision BIGINT,
+    value_kind TEXT, role TEXT, delivery TEXT, delay_s INTEGER,
     CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
 );
 SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
 CREATE UNIQUE INDEX uq_device_measurement_sample_idempotency
     ON device_measurement_sample(device_id,point_key,time,edge_sequence);
+-- Der neue Doppel-Erkennungsschlüssel (Reihe + Messzeit) liegt ab IP-6 daneben.
+-- Der Writer schreibt ohne `entity_id` und trifft ihn deshalb nie: sein
+-- `ON CONFLICT DO NOTHING` ohne Ziel sieht alle Unique-Indexe der Tabelle, und
+-- dieser darf keine Zeile abweisen, die vorher gespeichert wurde.
+CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
+    ON device_measurement_sample(tenant_id,entity_id,point_key,time)
+    WHERE entity_id IS NOT NULL AND role IS DISTINCT FROM 'spiegel';
 GRANT SELECT,INSERT ON device_measurement_sample TO voltpilot_app;
 ALTER TABLE device_measurement_sample ENABLE ROW LEVEL SECURITY;
 ALTER TABLE device_measurement_sample FORCE ROW LEVEL SECURITY;
