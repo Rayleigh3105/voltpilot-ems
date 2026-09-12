@@ -35,9 +35,9 @@ import java.util.List;
  *       Zahlen für dieselbe Aussage.
  * </ol>
  *
- * <p><b>Was hier NICHT steht: eine Menge.</b> Die Tagesklasse trägt Fakten — Stände, Abdeckung,
- * Qualitätszähler, Anker, Zustand. Die Tages- und Monatsmengen bildet AP-08 IP-5 aus den
- * PERIODENSTÄNDEN, nicht als Summe der Viertelstunden.
+ * <p><b>Was hier NICHT steht: eine Menge.</b> Die Tages-, Monats- und Jahresmengen bildet
+ * {@link VerbrauchRegeln#zaehlerstandAusTeilperioden} (AP-08 IP-5) aus den PERIODENSTÄNDEN, nicht
+ * als Summe der Viertelstunden; {@link #zustand} gilt dabei Stufe für Stufe weiter.
  */
 public final class TagRegeln {
 

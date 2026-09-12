@@ -29,10 +29,9 @@ sie nicht beide gegen dieselbe Datei geprüft werden — dasselbe Muster wie bei
 Speicher (`stur-speicher-vectors.json` mit `voltpilot_optimization/stur.py` ⟷
 `repo/StandardSpeicher.java`).
 
-> **Wer anruft (Stand AP-08 IP-1): niemand.** Dieses Paket legt die Wahrheit fest, gegen die
-> die folgenden gebaut werden. Der Verdichtungs-Job bekommt die Regel mit IP-2 (Zählerstand),
-> IP-3 (Intervallmenge/Momentanwert), IP-4 (Ereignisse) und IP-5 (Perioden). Die
-> Kern-Telemetrie, ihre Rollups, das Cockpit und die Erlöse sind unberührt.
+> **Wer anruft:** seit AP-08 IP-2 der Verdichtungs-Lauf je Viertelstunde, seit IP-5 der
+> Tageslauf, der Monats-/Jahreslauf und der freie Zeitraum (§7). Die Kern-Telemetrie, ihre
+> Rollups, das Cockpit und die Erlöse sind unberührt.
 
 ## 1. Der Eingang: eine Reihe, eine Periode
 
@@ -124,8 +123,35 @@ Zustand und Abdeckung der Vorlage bleiben unberührt).
 ## 6. Was dieser Vertrag NICHT regelt
 
 Ersatzwerte und ihre Methoden, Korrekturen und Versionierung (§4.6, ab IP-12), die
-Fortpflanzung über Perioden und über berechnete Messstellen (§4.5, AP-10), die Kundensätze
-(IP-8), die Zustandsart `state` (S1/S2) und die Bildung der Perioden selbst — eine Erwartung
-nennt ihre Periode als `von`/`bis`, sie wird hier nicht erzeugt. All das kommt in eigenen
+Fortpflanzung über berechnete Messstellen (§4.5, AP-10), die Fortpflanzung von Intervallmenge
+und Momentanwert über Perioden (IP-3), die Kundensätze (IP-8), die Zustandsart `state` (S1/S2)
+und die Bildung der Perioden selbst — eine Erwartung nennt ihre Periode als `von`/`bis`, sie
+wird hier nicht erzeugt. All das kommt in eigenen
 Paketen und erweitert diese Datei **additiv**: `schema_version` bleibt, ein abwesendes Feld
 heißt „der Zustand von vorher", nie ein geratener Wert.
+
+## 7. Zählerstand aus Teilperioden (AP-08 IP-5, P7/§4.5)
+
+Ein Tag, ein Monat, ein Jahr oder ein freier Zeitraum wird **nicht aus Rohwerten neu
+gerechnet** (die leben 90 Tage) und **nie als Summe seiner Teilmengen** gebildet, sondern aus
+dem, was die gespeicherten Teilperioden tragen: `Stand(von)`, `Stand(bis)`, erster und letzter
+guter Wert, Menge, erhalten, erwartet, Kennzeichen (`regeln.teilperioden`; Java
+`VerbrauchRegeln.zaehlerstandAusTeilperioden`, Python `verbrauch.zaehlerstand_aus_teilperioden`).
+
+- **Menge** = Stand am Kettenende − Stand am Kettenanfang, dazu je Teilperiode ihr **Bruch**
+  (Menge minus eigene gerundete Standdifferenz — genau 0 ohne Gerätegrenze, Überlauf,
+  Rücksetzung) und je Grenze **ohne** gemessenen Stand die Nachbarschaft „letzter Wert davor →
+  erster Wert danach", eingeordnet wie jede andere (Lücke, Rücksetzung, Gerätegrenze).
+- **Periodenstände** der gröberen Periode trägt die Teilperiode, die dort beginnt oder endet;
+  liegt keine an, der letzte gute Wert davor im Fenster `(t − Kadenz, t]` — nie ein älterer.
+- **Kennzeichen:** Randkennzeichen an inneren Grenzen entfallen, alles andere bleibt in seiner
+  Reihenfolge; Neustarts kommen aus den Ereignissen der gröberen Periode.
+- **Abdeckung** = Summe erhalten ÷ Summe erwartet; eine Teilperiode ohne Zeile zählt mit
+  `Länge ÷ Kadenz`.
+
+Die Summe gerundeter Teilmengen wäre schon ohne jede Lücke falsch: 31 Oktobertage aus F16
+summieren sich zu 55 100,013 kWh, der Oktober hat 55 100,000. **Beide Zwillinge prüfen an jeder
+Zählerstand-Erwartung ab zwei Viertelstunden**, dass die Zusammensetzung aus Viertelstunden (und
+über Tage) die Erwartung der Datei ergibt (`VerbrauchTeilperiodenTest`, `test_verbrauch.py`).
+Fehlt an einer Grenze der Stand, ist die Menge der **gemessene Teil** und `unvollständig` (F20)
+— ein Stand wird nie erfunden oder fortgeschrieben.

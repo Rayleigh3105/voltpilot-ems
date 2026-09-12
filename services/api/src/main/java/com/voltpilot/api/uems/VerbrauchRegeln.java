@@ -49,7 +49,8 @@ import java.util.Locale;
  * nicht gemessener Rand ist nie ein gemessener, und wo keine Menge bildbar ist, steht
  * {@code null} — nie {@code 0}.
  *
- * <p>Noch ruft kein Produktionsweg an — der Verdichtungs-Job bekommt die Regel mit AP-08 IP-2.
+ * <p>Wer anruft: der Verdichtungs-Lauf je Viertelstunde (AP-08 IP-2) und — über
+ * {@link #zaehlerstandAusTeilperioden} — Tag, Monat, Jahr und freier Zeitraum (AP-08 IP-5).
  */
 public final class VerbrauchRegeln {
 
@@ -71,6 +72,15 @@ public final class VerbrauchRegeln {
     public static final String VOLLSTAENDIG = "vollständig";
     public static final String UNVOLLSTAENDIG = "unvollständig";
     public static final String KEINE_WERTE = "keine Werte";
+
+    // Die Kennzeichen, die die Zusammensetzung aus Teilperioden (P7, §4.5) wiedererkennen muss —
+    // an EINER Stelle, damit Erzeugen und Wiedererkennen nicht auseinanderlaufen.
+    static final String ANFANG_NICHT_GEMESSEN = "Anfang nicht gemessen (kein Stand an der Periodengrenze)";
+    static final String ENDE_NICHT_GEMESSEN = "Ende nicht gemessen (kein Stand an der Periodengrenze)";
+    static final String NUR_EIN_STAND = "nur ein Stand in der Periode — keine Menge bildbar";
+    static final String ZUWACHS_NICHT_MESSBAR = "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)";
+    static final String RUECKSETZUNG = "Rücksetzung ";
+    static final String NEUSTART = "Neustart ";
 
     /** Dieselbe Rechengenauigkeit wie der Python-Zwilling (Decimal-Vorgabe: 28 Stellen, half-even). */
     private static final MathContext RECHNUNG = new MathContext(28, RoundingMode.HALF_EVEN);
@@ -299,7 +309,7 @@ public final class VerbrauchRegeln {
             folge.add(standEnde);
         }
         if (folge.size() < 2) {
-            return leer(UNVOLLSTAENDIG, gute.size(), List.of("nur ein Stand in der Periode — keine Menge bildbar"));
+            return leer(UNVOLLSTAENDIG, gute.size(), List.of(NUR_EIN_STAND));
         }
 
         List<Ereignis> grenzen = ereignisseIn(ereignisse, Ereignis.GERAETEGRENZE, von, bis);
@@ -310,74 +320,21 @@ public final class VerbrauchRegeln {
         boolean unvollstaendig = false;
         if (standAnfang == null) {
             unvollstaendig = true;
-            kennzeichen.add("Anfang nicht gemessen (kein Stand an der Periodengrenze)");
+            kennzeichen.add(ANFANG_NICHT_GEMESSEN);
         }
         if (standEnde == null) {
             unvollstaendig = true;
-            kennzeichen.add("Ende nicht gemessen (kein Stand an der Periodengrenze)");
+            kennzeichen.add(ENDE_NICHT_GEMESSEN);
         }
 
         for (int i = 0; i + 1 < folge.size(); i++) {
-            Rohwert vorher = folge.get(i);
-            Rohwert nachher = folge.get(i + 1);
-            Ereignis grenze = grenzen.stream()
-                    .filter(e -> e.zeit().isAfter(vorher.zeit()) && !e.zeit().isAfter(nachher.zeit()))
-                    .findFirst()
-                    .orElse(null);
-            if (grenze != null) {
-                BigDecimal alt = grenze.endstand() != null ? grenze.endstand().subtract(vorher.wert()) : BigDecimal.ZERO;
-                BigDecimal neu =
-                        grenze.anfangsstand() != null ? nachher.wert().subtract(grenze.anfangsstand()) : BigDecimal.ZERO;
-                menge = menge.add(alt).add(neu);
-                boolean mit = grenze.endstand() != null && grenze.anfangsstand() != null;
-                kennzeichen.add("Gerätegrenze " + grenze.uhrzeit()
-                        + (mit ? " mit Ablesestände" : " ohne Ablesestände"));
-                if (!mit) {
-                    unvollstaendig = true;
-                    kennzeichen.add("Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)");
-                }
-                if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
-                    kennzeichen.add("Lücke am Wechsel " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
-                            + " (nicht aufgefüllt)");
-                }
-                continue;
-            }
-
-            BigDecimal zuwachs = nachher.wert().subtract(vorher.wert());
-            if (zuwachs.signum() < 0) {
-                BigDecimal ueber = wertebereichModul == null
-                        ? null
-                        : wertebereichModul.subtract(vorher.wert()).add(nachher.wert());
-                BigDecimal schranke = hoechstzuwachsJeKadenz == null
-                        ? null
-                        : hoechstzuwachsJeKadenz.multiply(kadenzen(vorher.zeit(), nachher.zeit(), kadenz));
-                if (ueber != null && schranke != null && ueber.compareTo(schranke) <= 0) {
-                    menge = menge.add(ueber);
-                    kennzeichen.add("Überlauf " + uhr(nachher.zeit())
-                            + " (Wertebereich " + wertebereichModul.toPlainString() + ")");
-                } else {
-                    // Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
-                    // nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
-                    unvollstaendig = true;
-                    kennzeichen.add("Rücksetzung " + uhr(nachher.zeit())
-                            + " ohne Endstand — bis zu 1 Kadenz nicht gezählt");
-                }
-                continue;
-            }
-
-            if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
-                kennzeichen.add("Lücke " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
-                        + ": Zuwachs " + runde(zuwachs.multiply(faktor), NACHKOMMASTELLEN).toPlainString()
-                        + " gemessen, nicht auf Viertelstunden verteilbar");
-            }
-            menge = menge.add(zuwachs);
+            Paar p = paar(folge.get(i), folge.get(i + 1), grenzen, kadenz, faktor, wertebereichModul,
+                    hoechstzuwachsJeKadenz, kennzeichen);
+            menge = menge.add(p.beitrag());
+            unvollstaendig |= p.unvollstaendig();
         }
 
-        for (Ereignis neustart : neustarts) {
-            unvollstaendig = true;
-            kennzeichen.add("Neustart " + neustart.uhrzeit() + ": bis zu " + neustart.verlustS()
-                    + " s Zählung möglicherweise verloren");
-        }
+        unvollstaendig |= neustartKennzeichen(neustarts, kennzeichen);
 
         return new Ergebnis(
                 runde(menge.multiply(faktor), NACHKOMMASTELLEN),
@@ -407,6 +364,328 @@ public final class VerbrauchRegeln {
 
     private static Ergebnis leer(String zustand, int erhalten, List<String> kennzeichen) {
         return new Ergebnis(null, null, null, null, null, zustand, erhalten, 0, null, List.copyOf(kennzeichen));
+    }
+
+    /** Der Beitrag EINER Nachbarschaft der Wertfolge (in Rohwert-Einheit, vor dem Faktor). */
+    private record Paar(BigDecimal beitrag, boolean unvollstaendig) {}
+
+    /**
+     * Z2/Z4/Z5/Z6 — eine Nachbarschaft {@code vorher → nachher} einordnen und ihr Kennzeichen
+     * anhängen. Die EINE Stelle dafür: die Rohwert-Regel und die Zusammensetzung aus
+     * Teilperioden rufen beide hier an.
+     */
+    private static Paar paar(Rohwert vorher, Rohwert nachher, List<Ereignis> grenzen, Duration kadenz,
+            BigDecimal faktor, BigDecimal wertebereichModul, BigDecimal hoechstzuwachsJeKadenz,
+            List<String> kennzeichen) {
+        Ereignis grenze = grenzen.stream()
+                .filter(e -> e.zeit().isAfter(vorher.zeit()) && !e.zeit().isAfter(nachher.zeit()))
+                .findFirst()
+                .orElse(null);
+        if (grenze != null) {
+            BigDecimal alt = grenze.endstand() != null ? grenze.endstand().subtract(vorher.wert()) : BigDecimal.ZERO;
+            BigDecimal neu =
+                    grenze.anfangsstand() != null ? nachher.wert().subtract(grenze.anfangsstand()) : BigDecimal.ZERO;
+            boolean mit = grenze.endstand() != null && grenze.anfangsstand() != null;
+            kennzeichen.add("Gerätegrenze " + grenze.uhrzeit()
+                    + (mit ? " mit Ablesestände" : " ohne Ablesestände"));
+            if (!mit) {
+                kennzeichen.add(ZUWACHS_NICHT_MESSBAR);
+            }
+            if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
+                kennzeichen.add("Lücke am Wechsel " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
+                        + " (nicht aufgefüllt)");
+            }
+            return new Paar(alt.add(neu), !mit);
+        }
+
+        BigDecimal zuwachs = nachher.wert().subtract(vorher.wert());
+        if (zuwachs.signum() < 0) {
+            BigDecimal ueber = wertebereichModul == null
+                    ? null
+                    : wertebereichModul.subtract(vorher.wert()).add(nachher.wert());
+            BigDecimal schranke = hoechstzuwachsJeKadenz == null
+                    ? null
+                    : hoechstzuwachsJeKadenz.multiply(kadenzen(vorher.zeit(), nachher.zeit(), kadenz));
+            if (ueber != null && schranke != null && ueber.compareTo(schranke) <= 0) {
+                kennzeichen.add("Überlauf " + uhr(nachher.zeit())
+                        + " (Wertebereich " + wertebereichModul.toPlainString() + ")");
+                return new Paar(ueber, false);
+            }
+            // Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
+            // nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
+            kennzeichen.add(RUECKSETZUNG + uhr(nachher.zeit())
+                    + " ohne Endstand — bis zu 1 Kadenz nicht gezählt");
+            return new Paar(BigDecimal.ZERO, true);
+        }
+
+        if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
+            kennzeichen.add("Lücke " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
+                    + ": Zuwachs " + runde(zuwachs.multiply(faktor), NACHKOMMASTELLEN).toPlainString()
+                    + " gemessen, nicht auf Viertelstunden verteilbar");
+        }
+        return new Paar(zuwachs, false);
+    }
+
+    /** Z7 — je Neustart ein Kennzeichen, zuletzt; {@code true}, wenn es einen gab. */
+    private static boolean neustartKennzeichen(List<Ereignis> neustarts, List<String> kennzeichen) {
+        for (Ereignis neustart : neustarts) {
+            kennzeichen.add(NEUSTART + neustart.uhrzeit() + ": bis zu " + neustart.verlustS()
+                    + " s Zählung möglicherweise verloren");
+        }
+        return !neustarts.isEmpty();
+    }
+
+    // ------------------------------------------- Zählerstand aus Teilperioden (P7, §4.5)
+
+    /**
+     * Eine gebildete Periode, wie eine GRÖBERE sie braucht: ihr Ergebnis und die Stützstellen,
+     * aus denen es entstand. Genau das trägt eine gespeicherte Viertelstunde, ein Tag, ein Monat.
+     *
+     * @param standAnfang Z1: {@code Stand(von)}, {@code null} wenn an dieser Grenze nicht gemessen
+     * @param standEnde Z1: {@code Stand(bis)}, {@code null} wenn nicht gemessen
+     * @param erster der erste gute Wert in {@code [von, bis)}, {@code null} ohne guten Wert
+     * @param letzter der letzte gute Wert in {@code [von, bis)}
+     * @param ergebnis Menge, Zustand, erhalten, erwartet und Kennzeichen dieser Periode
+     */
+    public record Teilperiode(
+            Instant von,
+            Instant bis,
+            Rohwert standAnfang,
+            Rohwert standEnde,
+            Rohwert erster,
+            Rohwert letzter,
+            Ergebnis ergebnis) {}
+
+    /** Eine Periode aus Rohwerten als {@link Teilperiode} — die Form, in der sie gespeichert wird. */
+    public static Teilperiode teilperiode(
+            List<Rohwert> werte,
+            Instant von,
+            Instant bis,
+            Duration kadenz,
+            Collection<Ereignis> ereignisse,
+            BigDecimal faktor,
+            BigDecimal wertebereichModul,
+            BigDecimal hoechstzuwachsJeKadenz) {
+        Ergebnis e = ergebnis("zaehlerstand", werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
+                hoechstzuwachsJeKadenz, false);
+        List<Rohwert> gute = guteIn(werte, von, bis);
+        return new Teilperiode(von, bis, periodenstand(werte, von, kadenz), periodenstand(werte, bis, kadenz),
+                gute.isEmpty() ? null : gute.get(0), gute.isEmpty() ? null : gute.get(gute.size() - 1), e);
+    }
+
+    /**
+     * P7/§4.5 — die Menge einer GRÖBEREN Periode {@code [von, bis)} aus den gespeicherten
+     * Teilperioden, <b>aus den Periodenständen und nie als Summe der Teilmengen</b>.
+     *
+     * <p>Das Ergebnis ist dasselbe wie {@link #mengeZaehlerstand} über alle Rohwerte der Periode
+     * ({@code VerbrauchTeilperiodenTest} hält das an jedem Zählerstand-Fall der Vektor-Datei fest).
+     * Es wird nur aus dem gebildet, was die Teilperioden tragen:
+     *
+     * <ul>
+     *   <li><b>Periodenstände:</b> {@code Stand(von)}/{@code Stand(bis)} der gröberen Periode trägt
+     *       die Teilperiode, die dort beginnt oder endet; liegt dort keine an (sie hatte keinen
+     *       einzigen Rohwert), ist es der letzte gute Wert davor — im Fenster
+     *       {@code (t − Kadenz, t]}, nie ein älterer.
+     *   <li><b>Menge:</b> {@code Stand am Kettenende − Stand am Kettenanfang}, dazu je Teilperiode ihr
+     *       BRUCH (was ihre Menge von ihrer eigenen Standdifferenz trennt: Gerätegrenze, Überlauf,
+     *       Rücksetzung — ohne solche ist er genau 0) und je Grenze, an der kein Stand gemessen
+     *       wurde, die Nachbarschaft {@code letzter Wert davor → erster Wert danach}, eingeordnet wie
+     *       jede andere (Lücke, Rücksetzung, Gerätegrenze). Die Summe gerundeter Teilmengen wäre
+     *       schon ohne jede Lücke falsch (F16: 55 100,013 statt 55 100,000 aus 31 Tagen).
+     *   <li><b>Zustand und Kennzeichen:</b> die Randkennzeichen der Teilperioden an INNEREN
+     *       Grenzen entfallen (dort misst die gröbere Periode durch), alle anderen bleiben in ihrer
+     *       Reihenfolge; Neustarts werden aus den Ereignissen der gröberen Periode gebildet.
+     *   <li><b>Abdeckung:</b> Summe erhalten ÷ Summe erwartet — eine Teilperiode ohne Zeile zählt
+     *       mit ihrer Erwartung ({@code Länge ÷ Kadenz}), nie als erfüllt.
+     * </ul>
+     *
+     * @param teile die Teilperioden IN {@code [von, bis)} und höchstens je eine direkt davor und
+     *     an {@code bis} (für die Periodenstände); eine, die über eine Grenze ragt, ist ein Fehler
+     * @param kadenz die Kadenz der Reihe: Fenster der Periodenstände, Lückenschwelle, Erwartung
+     *     der Zeit ohne Teilperiode
+     */
+    public static Teilperiode zaehlerstandAusTeilperioden(
+            List<Teilperiode> teile,
+            Instant von,
+            Instant bis,
+            Duration kadenz,
+            Collection<Ereignis> ereignisse,
+            BigDecimal faktor,
+            BigDecimal wertebereichModul,
+            BigDecimal hoechstzuwachsJeKadenz) {
+        List<Teilperiode> alle = teile.stream().sorted(Comparator.comparing(Teilperiode::von)).toList();
+        List<Teilperiode> innen = new ArrayList<>();
+        Instant bisher = von;
+        for (Teilperiode t : alle) {
+            boolean drin = !t.von().isBefore(von) && !t.bis().isAfter(bis);
+            boolean beruehrt = t.von().isBefore(bis) && t.bis().isAfter(von);
+            if (beruehrt && !drin) {
+                throw new IllegalArgumentException("Teilperiode " + t.von() + "–" + t.bis()
+                        + " ragt über die Periode " + von + "–" + bis);
+            }
+            if (drin) {
+                if (t.von().isBefore(bisher)) {
+                    throw new IllegalArgumentException("Teilperioden überlappen bei " + t.von());
+                }
+                innen.add(t);
+                bisher = t.bis();
+            }
+        }
+
+        Rohwert standAnfang = standAnGrenze(alle, von, kadenz);
+        Rohwert standEnde = standAnGrenze(alle, bis, kadenz);
+        int erhalten = innen.stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
+        int erwartet = erwartetAusTeilperioden(innen, von, bis, kadenz);
+        Rohwert erster = innen.stream().map(Teilperiode::erster).filter(r -> r != null).findFirst().orElse(null);
+        Rohwert letzter = innen.stream().map(Teilperiode::letzter).filter(r -> r != null)
+                .reduce((a, b) -> b).orElse(null);
+
+        if (erster == null
+                && (Duration.between(von, bis).compareTo(kadenz) < 0 || standEnde == null)) {
+            return new Teilperiode(von, bis, standAnfang, standEnde, null, null,
+                    leer(KEINE_WERTE, 0, List.of()).mitAbdeckung(erwartet));
+        }
+
+        // Die Kette: Stand(von) → je Teilperiode ihre Strecke → Stand(bis). `ueber.get(i)` ist die
+        // Teilperiode, deren Strecke von punkte[i] nach punkte[i+1] führt — null heißt: diese
+        // Nachbarschaft liegt über einer Grenze ohne gemessenen Stand und wird hier eingeordnet.
+        List<Rohwert> punkte = new ArrayList<>();
+        List<Teilperiode> ueber = new ArrayList<>();
+        anhaengen(punkte, ueber, standAnfang, null);
+        for (Teilperiode t : innen) {
+            Rohwert a = t.standAnfang() != null ? t.standAnfang() : t.erster();
+            Rohwert e = t.standEnde() != null ? t.standEnde() : t.letzter();
+            a = a != null ? a : e;
+            e = e != null ? e : a;
+            if (a == null) {
+                continue;
+            }
+            anhaengen(punkte, ueber, a, null);
+            anhaengen(punkte, ueber, e, t);
+        }
+        anhaengen(punkte, ueber, standEnde, null);
+
+        if (punkte.size() < 2) {
+            return new Teilperiode(von, bis, standAnfang, standEnde, erster, letzter,
+                    leer(UNVOLLSTAENDIG, erhalten, List.of(NUR_EIN_STAND)).mitAbdeckung(erwartet));
+        }
+
+        List<Ereignis> grenzen = ereignisseIn(ereignisse, Ereignis.GERAETEGRENZE, von, bis);
+        List<String> kennzeichen = new ArrayList<>();
+        boolean unvollstaendig = false;
+        if (standAnfang == null) {
+            unvollstaendig = true;
+            kennzeichen.add(ANFANG_NICHT_GEMESSEN);
+        }
+        if (standEnde == null) {
+            unvollstaendig = true;
+            kennzeichen.add(ENDE_NICHT_GEMESSEN);
+        }
+
+        Rohwert kettenAnfang = punkte.get(0);
+        Rohwert kettenEnde = punkte.get(punkte.size() - 1);
+        BigDecimal menge = kettenEnde.wert().subtract(kettenAnfang.wert()).multiply(faktor);
+        for (int i = 0; i + 1 < punkte.size(); i++) {
+            Rohwert vorher = punkte.get(i);
+            Rohwert nachher = punkte.get(i + 1);
+            BigDecimal differenz = nachher.wert().subtract(vorher.wert());
+            Teilperiode t = ueber.get(i);
+            if (t == null) {
+                Paar p = paar(vorher, nachher, grenzen, kadenz, faktor, wertebereichModul,
+                        hoechstzuwachsJeKadenz, kennzeichen);
+                menge = menge.add(p.beitrag().subtract(differenz).multiply(faktor));
+                unvollstaendig |= p.unvollstaendig();
+                continue;
+            }
+            // Der BRUCH der Teilperiode: was ihre Menge von ihrer Standdifferenz trennt. Ohne
+            // Gerätegrenze, Überlauf und Rücksetzung ist er genau 0 — gerundet wie die Menge selbst.
+            BigDecimal teilmenge = t.ergebnis().menge() != null ? t.ergebnis().menge() : BigDecimal.ZERO;
+            menge = menge.add(teilmenge.subtract(runde(differenz.multiply(faktor), NACHKOMMASTELLEN)));
+            for (String k : t.ergebnis().kennzeichen()) {
+                if (k.equals(ANFANG_NICHT_GEMESSEN) || k.equals(ENDE_NICHT_GEMESSEN)
+                        || k.equals(NUR_EIN_STAND) || k.startsWith(NEUSTART)) {
+                    continue;
+                }
+                kennzeichen.add(k);
+                unvollstaendig |= k.equals(ZUWACHS_NICHT_MESSBAR) || k.startsWith(RUECKSETZUNG);
+            }
+        }
+
+        unvollstaendig |= neustartKennzeichen(ereignisseIn(ereignisse, Ereignis.NEUSTART, von, bis), kennzeichen);
+
+        Ergebnis ergebnis = new Ergebnis(
+                        runde(menge, NACHKOMMASTELLEN),
+                        null,
+                        null,
+                        null,
+                        null,
+                        unvollstaendig ? UNVOLLSTAENDIG : VOLLSTAENDIG,
+                        erhalten,
+                        0,
+                        null,
+                        List.copyOf(kennzeichen))
+                .mitAbdeckung(erwartet);
+        return new Teilperiode(von, bis, standAnfang, standEnde, erster, letzter, ergebnis);
+    }
+
+    /** Einen Punkt an die Kette hängen — derselbe Zeitpunkt ist derselbe Stand und verbindet nur. */
+    private static void anhaengen(List<Rohwert> punkte, List<Teilperiode> ueber, Rohwert punkt, Teilperiode teil) {
+        if (punkt == null) {
+            return;
+        }
+        if (!punkte.isEmpty() && !punkt.zeit().isAfter(punkte.get(punkte.size() - 1).zeit())) {
+            return;
+        }
+        if (!punkte.isEmpty()) {
+            ueber.add(teil);
+        }
+        punkte.add(punkt);
+    }
+
+    /**
+     * Z1 an einer Grenze {@code t} der gröberen Periode — aus den Teilperioden: die dort beginnt
+     * oder endet, hat ihren Stand schon gebildet; sonst hatte an {@code t} keine einen Rohwert, und
+     * der Stand ist der letzte gute Wert davor, sofern er im Fenster {@code (t − Kadenz, t]} liegt.
+     */
+    private static Rohwert standAnGrenze(List<Teilperiode> alle, Instant t, Duration kadenz) {
+        for (Teilperiode p : alle) {
+            if (p.von().equals(t)) {
+                return p.standAnfang();
+            }
+        }
+        for (Teilperiode p : alle) {
+            if (p.bis().equals(t)) {
+                return p.standEnde();
+            }
+        }
+        Rohwert kandidat = null;
+        for (Teilperiode p : alle) {
+            if (p.bis().isAfter(t)) {
+                continue;
+            }
+            for (Rohwert r : new Rohwert[] {p.letzter(), p.standEnde()}) {
+                if (r != null && !r.zeit().isAfter(t) && (kandidat == null || r.zeit().isAfter(kandidat.zeit()))) {
+                    kandidat = r;
+                }
+            }
+        }
+        return kandidat != null && kandidat.zeit().isAfter(t.minus(kadenz)) ? kandidat : null;
+    }
+
+    /**
+     * §4.5 — die Erwartung der gröberen Periode: Summe der Erwartungen ihrer Teilperioden, und
+     * für die Zeit, in der keine Teilperiode steht, {@code Länge ÷ Kadenz}. Eine fehlende
+     * Viertelstunde ist nie erfüllt.
+     */
+    public static int erwartetAusTeilperioden(List<Teilperiode> innen, Instant von, Instant bis, Duration kadenz) {
+        Duration bedeckt = Duration.ZERO;
+        int summe = 0;
+        for (Teilperiode t : innen) {
+            bedeckt = bedeckt.plus(Duration.between(t.von(), t.bis()));
+            summe += t.ergebnis().erwartet();
+        }
+        Duration frei = Duration.between(von, bis).minus(bedeckt);
+        return summe + (frei.isNegative() ? 0 : (int) (frei.toNanos() / kadenz.toNanos()));
     }
 
     // ------------------------------------------------------------------ Intervallmenge (I)

@@ -122,6 +122,11 @@ Messzeiten), Abdeckung, Qualitätszähler, Anker, Zustand. Sie trägt **KEINE `m
 `summe`**: die Tages- und Monatsmengen bildet **AP-08 IP-5 aus den PERIODENSTÄNDEN**, nicht als
 Summe der Viertelstunden. Genau diese Stände liefert die Zeile.
 
+**Nachtrag AP-08 IP-5:** die Zeile trägt jetzt `menge`/`menge_zustand`/`kennzeichen`/`kadenz_s`
+aus den Periodenständen, `stand_anfang`/`stand_ende` sind die Stände an den TAGESGRENZEN, und
+`erwartet`/`abdeckung_prozent` zählen fehlende Viertelstunden mit — siehe
+`uems-periodenmengen.md`.
+
 `mittel` ist das mit `erhalten` **gewichtete** Mittel der Viertelstunden — also exakt das Mittel
 der guten Werte des Tages, nie ein Mittel von Mitteln; `min_wert`/`max_wert` sind Minimum und
 Maximum. Das sind Momentanwert-Fakten, keine Mengen.

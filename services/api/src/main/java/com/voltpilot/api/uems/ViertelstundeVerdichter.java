@@ -632,7 +632,7 @@ public class ViertelstundeVerdichter {
     }
 
     /** Die Gerätegrenzen und Neustarts als Eingang von {@link VerbrauchRegeln} (Z4/Z7). */
-    private static Collection<VerbrauchRegeln.Ereignis> fuerVerbrauchRegeln(List<Ereignis> ereignisse) {
+    static Collection<VerbrauchRegeln.Ereignis> fuerVerbrauchRegeln(List<Ereignis> ereignisse) {
         List<VerbrauchRegeln.Ereignis> aus = new ArrayList<>();
         for (Ereignis e : ereignisse) {
             if (VerbrauchRegeln.Ereignis.GERAETEGRENZE.equals(e.art())) {

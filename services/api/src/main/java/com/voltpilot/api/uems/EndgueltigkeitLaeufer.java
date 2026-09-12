@@ -9,11 +9,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Der TAKT der Endgültigkeit und der Tageswerte (UEMS AP-07 IP-13): einmal je Stunde erst
- * {@link EndgueltigkeitLauf#umschalten}, dann {@link TagVerdichter#lauf}.
+ * {@link EndgueltigkeitLauf#umschalten}, dann {@link TagVerdichter#lauf}, dann
+ * {@link PeriodeVerdichter#lauf} (Monat und Jahr, AP-08 IP-5).
  *
  * <p><b>Die Reihenfolge ist Absicht.</b> Erst werden die fälligen Viertelstunden endgültig, dann
  * zieht der Tageslauf nach — so trägt eine Tageszeile, die in diesem Takt entsteht, schon die
- * frisch umgeschalteten Slots. Umgekehrt wäre sie eine Stunde lang hinterher.
+ * frisch umgeschalteten Slots. Umgekehrt wäre sie eine Stunde lang hinterher. Dasselbe gilt eine
+ * Stufe höher: der Monatslauf findet die Tage, die der Tageslauf gerade in seine Liste schrieb.
  *
  * <p><b>Eine Stunde, weil §4.6 Nr. 3 es so nennt</b> („ein Lauf je Stunde setzt Intervalle mit
  * Ende + 7 Tage ≤ jetzt auf endgültig"). Genauer muss er nicht sein: die Frist gehört dem
@@ -40,10 +42,13 @@ public class EndgueltigkeitLaeufer {
 
     private final EndgueltigkeitLauf endgueltigkeit;
     private final TagVerdichter tage;
+    private final PeriodeVerdichter perioden;
 
-    public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage) {
+    public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage,
+            PeriodeVerdichter perioden) {
         this.endgueltigkeit = endgueltigkeit;
         this.tage = tage;
+        this.perioden = perioden;
     }
 
     @Scheduled(fixedDelayString = "${voltpilot.uems.endgueltigkeit.interval-ms:3600000}",
@@ -59,6 +64,11 @@ public class EndgueltigkeitLaeufer {
             tage.lauf(jetzt);
         } catch (RuntimeException e) {
             log.warn("UEMS Tageslauf übersprungen: {}", e.toString());
+        }
+        try {
+            perioden.lauf(jetzt);
+        } catch (RuntimeException e) {
+            log.warn("UEMS Monats-/Jahreslauf übersprungen: {}", e.toString());
         }
     }
 }

@@ -11,7 +11,10 @@
   "einzeln {t, v, q}; luecken entfernen Werte [von, bis); ereignisse {art, t, …}; ereignisse_zusatz je",
   "Erwartung = Variante desselben Falls (z. B. nachgetragener Ablesestand).",
   "Erzeugt aus data/vp-uems-ap08-verbrauch/referenzfaelle.json; _abweichungen nennt jede Stelle, an der",
-  "diese Datei bewusst von der Vorlage abweicht."
+  "diese Datei bewusst von der Vorlage abweicht.",
+  "AP-08 IP-5: Tag, Monat, Jahr und freier Zeitraum werden aus den gespeicherten Teilperioden gebildet",
+  "(regeln.teilperioden) — beide Zwillinge prüfen an JEDER Zählerstand-Erwartung ab zwei Viertelstunden,",
+  "dass die Zusammensetzung dieselbe Erwartung ergibt (Java VerbrauchTeilperiodenTest, Python test_verbrauch.py)."
  ],
  "schema_version": "1.0",
  "$schema_datei": "./verbrauch.schema.json",
@@ -22,7 +25,8 @@
   "periodenstand": "letzter guter Wert in (t − kadenz_s, t]",
   "luecke_faktor": 2,
   "integration_halten_faktor": 2,
-  "vergleich_nachkommastellen": 3
+  "vergleich_nachkommastellen": 3,
+  "teilperioden": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen"
  },
  "zustaende": [
   "vollständig",

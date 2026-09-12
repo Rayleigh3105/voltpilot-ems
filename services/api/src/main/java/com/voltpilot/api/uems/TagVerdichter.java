@@ -41,10 +41,13 @@ import org.springframework.stereotype.Component;
  * Verbrauchsregel von AP-08. Am 25.10.2026 sind es 25 Stunden (100 Viertelstunden), am 28.03.2027
  * 23 (92).
  *
- * <p><b>Die Grenze zu AP-08 IP-5.</b> Diese Zeile trägt FAKTEN: die Stände an den Tagesgrenzen mit
- * ihren Messzeiten, Abdeckung, Qualitätszähler, Anker, Zustand. Sie trägt KEINE Menge und KEINE
- * Summe — die Tages- und Monatsmengen bildet IP-5 aus den PERIODENSTÄNDEN, nicht als Summe der
- * Viertelstunden. Genau diese Stände liefert die Zeile.
+ * <p><b>Die Menge (AP-08 IP-5)</b> kommt aus den PERIODENSTÄNDEN des Tages, nie als Summe der
+ * Viertelstunden: {@link VerbrauchRegeln#zaehlerstandAusTeilperioden} über die gespeicherten
+ * Viertelstunden samt ihren Nachbarn an den Tagesgrenzen ({@link ViertelstundenTeile}). Die
+ * Stände {@code stand_anfang}/{@code stand_ende} sind die an den TAGESGRENZEN (NULL, wo dort nicht
+ * gemessen wurde), die Abdeckung zählt eine Viertelstunde ohne Zeile mit ihrer Erwartung. Eine
+ * Summe trägt die Zeile nie. Ein geschriebener Tag trägt seinen Monat in die Arbeitsliste von
+ * {@link PeriodeVerdichter} ein — in derselben Transaktion.
  *
  * <p><b>Vorläufig und endgültig gelten hier wie eine Stufe tiefer</b> ({@link TagRegeln#zustand}):
  * ein Tag, dessen Viertelstunden noch vorläufig sind, ist selbst vorläufig — und er wird erst
@@ -108,9 +111,10 @@ public class TagVerdichter {
         "geraet_einbau", "geraet_einbau_2", "geraet_einbau_weitere",
         "box", "box_2", "box_weitere", "fassung", "katalog", "rolle",
         "zustand", "endgueltig_ab", "berechnet_am", "version",
-        "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse"};
+        "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse",
+        "menge", "menge_zustand", "kennzeichen", "kadenz_s"};
 
-    private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse");
+    private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
 
     private static final List<String> SCHLUESSEL =
             List.of("tenant_id", "entity_id", "messkanal", "tag");
@@ -524,20 +528,41 @@ public class TagVerdichter {
     private int bilden(Connection con, List<Ortstag> tage, Instant jetzt) throws SQLException {
         Map<Integer, List<Slot>> slots = slots(con, tage);
         int geschrieben = 0;
-        try (PreparedStatement ps = con.prepareStatement(upsertSql())) {
+        try (PreparedStatement ps = con.prepareStatement(upsertSql());
+                PreparedStatement monat = con.prepareStatement(MONAT_EINTRAGEN)) {
             for (int i = 0; i < tage.size(); i++) {
-                Object[] werte = zeile(tage.get(i), slots.getOrDefault(i, List.of()), jetzt);
-                if (werte == null) {
+                Ortstag t = tage.get(i);
+                List<Slot> s = slots.getOrDefault(i, List.of());
+                if (s.isEmpty()) {
                     continue;
                 }
+                // AP-08 IP-5: die Viertelstunden als Teilperioden, samt ihren Nachbarn an den
+                // Tagesgrenzen und den Ereignissen des Tages — die Menge bildet die Regel.
+                ViertelstundenTeile.Geladen teile = ViertelstundenTeile.laden(con, t.tenant(), t.entity(),
+                        t.kanal(), TagRegeln.beginn(t.tag(), t.zone()), TagRegeln.ende(t.tag(), t.zone()));
+                Object[] werte = zeile(t, s, teile, jetzt);
                 for (int p = 0; p < werte.length; p++) {
                     ps.setObject(p + 1, werte[p]);
                 }
-                geschrieben += ps.executeUpdate();
+                int n = ps.executeUpdate();
+                geschrieben += n;
+                if (n > 0) {
+                    // Ein geschriebener Tag macht seinen MONAT neu fällig — in DERSELBEN
+                    // Transaktion, damit ein Abbruch nie einen Tag ohne Monats-Eintrag hinterlässt.
+                    monat.setObject(1, t.tenant(), Types.OTHER);
+                    monat.setObject(2, t.entity(), Types.OTHER);
+                    monat.setString(3, t.kanal());
+                    monat.setObject(4, t.tag().withDayOfMonth(1));
+                    monat.executeUpdate();
+                }
             }
         }
         return geschrieben;
     }
+
+    private static final String MONAT_EINTRAGEN = "INSERT INTO messreihe_periode_arbeit "
+            + "(tenant_id, entity_id, messkanal, art, tag, grund) VALUES (?, ?, ?, 'monat', ?, 'tag') "
+            + "ON CONFLICT DO NOTHING";
 
     /**
      * Die eine Zeile aus der MENGE der Viertelstunden eines Ortstages — reihenfolge-unabhängig.
@@ -545,10 +570,7 @@ public class TagVerdichter {
      * Zeile, so wie eine Viertelstunde ohne Rohwert keine bekommt (IP-12). Eine Lücke ist keine
      * Null.
      */
-    private Object[] zeile(Ortstag t, List<Slot> slots, Instant jetzt) {
-        if (slots.isEmpty()) {
-            return null;
-        }
+    private Object[] zeile(Ortstag t, List<Slot> slots, ViertelstundenTeile.Geladen teile, Instant jetzt) {
         Instant beginn = TagRegeln.beginn(t.tag(), t.zone());
         Instant ende = TagRegeln.ende(t.tag(), t.zone());
         int stunden = TagRegeln.stunden(t.tag(), t.zone());
@@ -567,8 +589,6 @@ public class TagVerdichter {
         BigDecimal max = null;
         BigDecimal mittelSumme = BigDecimal.ZERO;
         int mittelGewicht = 0;
-        Slot standAnfang = null;
-        Slot standEnde = null;
         Slot erster = null;
         Slot letzter = null;
         Slot letzterMitAnker = null;
@@ -599,12 +619,6 @@ public class TagVerdichter {
                 mittelSumme = mittelSumme.add(
                         s.mittel().multiply(BigDecimal.valueOf(s.erhalten())));
                 mittelGewicht += s.erhalten();
-            }
-            if (s.standAnfang() != null && standAnfang == null) {
-                standAnfang = s;
-            }
-            if (s.standEnde() != null) {
-                standEnde = s;
             }
             if (s.ersterZeit() != null && erster == null) {
                 erster = s;
@@ -652,6 +666,18 @@ public class TagVerdichter {
         ViertelstundeRegeln.Anker<UUID> box = ViertelstundeRegeln.anker(boxen);
         int slotsErwartet = TagRegeln.slotsErwartet(stunden);
         int slotsVorhanden = slots.size();
+
+        // AP-08 IP-5 — die MENGE aus den PERIODENSTÄNDEN des Tages, nie als Summe der
+        // Viertelstunden: gerechnet von VerbrauchRegeln, hier nur angerufen. Für eine Reihe ohne
+        // Zählerstand gibt es keine Periodenregel über Ständen (null).
+        VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(teile.teile(), teile.ereignisse(),
+                wertart, teile.kadenzS(), beginn, ende);
+        // §4.5: Summe erhalten ÷ Summe erwartet — eine Viertelstunde OHNE Zeile zählt mit ihrer
+        // Erwartung (F8: 85 %, nicht 98 %). Vor IP-5 zählten nur die vorhandenen.
+        if (teile.kadenzS() != null) {
+            erwartet = VerbrauchRegeln.erwartetAusTeilperioden(teile.innen(beginn, ende), beginn, ende,
+                    Duration.ofSeconds(teile.kadenzS()));
+        }
         // Die Abdeckung wird ABGESCHNITTEN, nie auf 100 % gerundet (§4.9 Nr. 6).
         Integer abdeckung = erwartet == 0 ? null : Math.min(100, (int) (100L * erhalten / erwartet));
         BigDecimal mittel = mittelGewicht == 0 ? null
@@ -672,10 +698,14 @@ public class TagVerdichter {
         z.put("slots_vorhanden", slotsVorhanden);
         z.put("slots_endgueltig", slotsEndgueltig);
         z.put("wertart", wertart);
-        z.put("stand_anfang", standAnfang == null ? null : standAnfang.standAnfang());
-        z.put("stand_anfang_zeit", ts(standAnfang == null ? null : standAnfang.standAnfangZeit()));
-        z.put("stand_ende", standEnde == null ? null : standEnde.standEnde());
-        z.put("stand_ende_zeit", ts(standEnde == null ? null : standEnde.standEndeZeit()));
+        // Z1: die Periodenstände an den TAGESGRENZEN — NULL, wo dort nicht gemessen wurde (vor
+        // IP-5 stand hier der erste Stand irgendeiner Viertelstunde des Tages).
+        VerbrauchRegeln.Rohwert sA = menge == null ? null : menge.standAnfang();
+        VerbrauchRegeln.Rohwert sE = menge == null ? null : menge.standEnde();
+        z.put("stand_anfang", sA == null ? null : sA.wert());
+        z.put("stand_anfang_zeit", ts(sA == null ? null : sA.zeit()));
+        z.put("stand_ende", sE == null ? null : sE.wert());
+        z.put("stand_ende_zeit", ts(sE == null ? null : sE.zeit()));
         z.put("mittel", mittel);
         z.put("min_wert", min);
         z.put("max_wert", max);
@@ -710,6 +740,11 @@ public class TagVerdichter {
         z.put("letzte_eingangszeit", ts(letzteEingangszeit));
         z.put("zustellart", ViertelstundeRegeln.zustellart(zustellarten));
         z.put("ereignisse", ereignisJson(ereignisse));
+        z.put("menge", menge == null ? null : menge.ergebnis().menge());
+        z.put("menge_zustand", menge == null ? null : menge.ergebnis().zustand());
+        z.put("kennzeichen", ViertelstundeRegeln.kennzeichenJson(
+                menge == null ? List.of() : menge.ergebnis().kennzeichen()));
+        z.put("kadenz_s", teile.kadenzS());
 
         Object[] werte = new Object[SPALTEN.length];
         for (int i = 0; i < SPALTEN.length; i++) {
