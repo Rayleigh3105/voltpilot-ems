@@ -145,7 +145,7 @@ class UemsViertelstundeMigrationTest {
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
         verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
-                500, 40, 200_000);
+                new SpaetankunftMelder(), 500, 40, 200_000);
 
         // 1. Der ERSTE Lauf überhaupt trägt nichts ein — er setzt nur den Zeiger; die
         //    Vergangenheit gehört der Rückrechnung.
@@ -196,7 +196,7 @@ class UemsViertelstundeMigrationTest {
                 KB, IDS.get("ABBRUCH"), Timestamp.from(Instant.parse("2026-06-01T09:00:00Z")));
         root.execute("REVOKE INSERT ON messreihe_viertelstunde FROM " + ADMIN_USER);
         try {
-            verdichter.verdichteEinenStapel();
+            verdichter.verdichteEinenStapel(JETZT);
             abbruchWarf = false;
         } catch (RuntimeException e) {
             abbruchWarf = true;
@@ -206,7 +206,7 @@ class UemsViertelstundeMigrationTest {
         zeilenNachAbbruch = zahl("SELECT count(*) FROM messreihe_viertelstunde "
                 + "WHERE messkanal = 'energy_kwh_abbruch'");
         root.execute("GRANT INSERT ON messreihe_viertelstunde TO " + ADMIN_USER);
-        verdichter.verdichteEinenStapel();
+        verdichter.verdichteEinenStapel(JETZT);
 
         // 6. Der EINGANGS-Weg: der nachgelieferte Rohwert (er liegt seit dem Aufbau in der
         //    Rohtabelle, seine EINGANGSZEIT ist aber JETZT − 5 min) holt SEIN Intervall über den
@@ -214,7 +214,7 @@ class UemsViertelstundeMigrationTest {
         root.update("UPDATE messreihe_viertelstunde_lauf SET zeitpunkt = ? WHERE schluessel = 'zeiger'",
                 Timestamp.from(JETZT.minus(Duration.ofMinutes(10))));
         eingangNachtraeglich = verdichter.eintragenAusEingang(JETZT);
-        verdichter.verdichteEinenStapel();
+        verdichter.verdichteEinenStapel(JETZT);
 
         fingerNachLauf = fingerabdruck();
 
@@ -468,7 +468,7 @@ class UemsViertelstundeMigrationTest {
                 + "intervall_beginn, grund) SELECT tenant_id, entity_id, messkanal, intervall_beginn, "
                 + "'eingang' FROM messreihe_viertelstunde WHERE entity_id = ? AND messkanal = "
                 + "'energy_kwh_a' ON CONFLICT DO NOTHING", IDS.get("A12A"));
-        verdichter.verdichteEinenStapel();
+        verdichter.verdichteEinenStapel(JETZT);
         assertThat(zahl("SELECT count(*) FROM messreihe_viertelstunde WHERE entity_id = '"
                 + IDS.get("A12A") + "' AND erhalten <> 99")).isZero();
         root.update("UPDATE messreihe_viertelstunde SET zustand = 'vorlaeufig', erhalten = 15 "

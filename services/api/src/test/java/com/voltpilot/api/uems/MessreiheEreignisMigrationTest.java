@@ -416,10 +416,16 @@ class MessreiheEreignisMigrationTest {
         assertThat(recht(APP_USER, "INSERT")).isTrue();
         assertThat(recht(ADMIN_USER, "SELECT")).isTrue();
         assertThat(recht(ADMIN_USER, "DELETE")).as("nur fürs Offboarding").isTrue();
+        // Seit AP-07 IP-13 (V20260912190000) darf die BYPASSRLS-Rolle auch ANHÄNGEN: der
+        // Stundenlauf meldet die Spätankunft (`late_arrival`) als Hintergrund-Lauf OHNE
+        // Mandanten-Kontext, und zwar in derselben Transaktion, in der er den Nachzügler
+        // ablehnt. APPEND-ONLY bleibt trotzdem: UPDATE bekommt weiterhin niemand, und der
+        // Trigger weist es auch dann ab.
+        assertThat(recht(ADMIN_USER, "INSERT")).as("der Hintergrund-Lauf meldet").isTrue();
         for (String r : List.of("UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")) {
             assertThat(recht(APP_USER, r)).as("App " + r).isFalse();
         }
-        for (String r : List.of("INSERT", "UPDATE", "TRUNCATE")) {
+        for (String r : List.of("UPDATE", "TRUNCATE")) {
             assertThat(recht(ADMIN_USER, r)).as("Admin " + r).isFalse();
         }
         abgelehntWegen("42501", "permission denied", () -> als(kb, () -> app.update(

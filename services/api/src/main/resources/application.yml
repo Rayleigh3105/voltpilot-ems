@@ -397,6 +397,26 @@ voltpilot:
       stapel: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL:500}
       stapel-je-lauf: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL_JE_LAUF:40}
       arbeit-hochwasser: ${VOLTPILOT_UEMS_VIERTELSTUNDE_ARBEIT_HOCHWASSER:200000}
+    # UEMS AP-07 IP-13: der STUNDENLAUF der Endgueltigkeit und der TAGESLAUF.
+    # Einmal je Stunde setzt er jede faellige Viertelstunde (Intervallende +
+    # 7 Tage, Entscheid E5) auf `endgueltig` und zieht danach die Tageswerte
+    # nach - ein Kalendertag in der ZEITZONE DES STANDORTS (W10), die Zeitzone
+    # steht in der Zeile. Vorgabe AN (die Hausregel "ein Flag hat die Vorgabe
+    # AN"), im Testlauf AUS (surefire); wer ihn prueft, ruft
+    # EndgueltigkeitLauf.umschalten() und TagVerdichter.lauf() selbst.
+    # `endgueltigkeit.stapel` = Zeilen je Transaktion des Umschaltens,
+    # `tag.stapel` = Eintraege je Transaktion des Tageslaufs, `tag.frist-je-lauf`
+    # = wie viele faellige Tage ein Takt hoechstens nachzieht.
+    endgueltigkeit:
+      enabled: ${VOLTPILOT_UEMS_ENDGUELTIGKEIT_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_ENDGUELTIGKEIT_INTERVAL_MS:3600000}
+      stapel: ${VOLTPILOT_UEMS_ENDGUELTIGKEIT_STAPEL:2000}
+      stapel-je-lauf: ${VOLTPILOT_UEMS_ENDGUELTIGKEIT_STAPEL_JE_LAUF:200}
+    tag:
+      stapel: ${VOLTPILOT_UEMS_TAG_STAPEL:200}
+      stapel-je-lauf: ${VOLTPILOT_UEMS_TAG_STAPEL_JE_LAUF:40}
+      frist-je-lauf: ${VOLTPILOT_UEMS_TAG_FRIST_JE_LAUF:20000}
+      arbeit-hochwasser: ${VOLTPILOT_UEMS_TAG_ARBEIT_HOCHWASSER:200000}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

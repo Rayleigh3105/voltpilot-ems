@@ -590,7 +590,7 @@
     },
     "art_late_arrival": {
       "type": "object",
-      "description": "late_arrival — Nach Abschluss eingegangen. Urheber: writer.",
+      "description": "late_arrival — Nach Abschluss eingegangen. Urheber: writer, cloud.",
       "additionalProperties": false,
       "required": [
         "ereignis_id",

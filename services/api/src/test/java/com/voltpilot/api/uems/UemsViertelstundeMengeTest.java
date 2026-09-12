@@ -75,6 +75,14 @@ class UemsViertelstundeMengeTest {
     private static final String ADMIN_USER = "voltpilot_admin";
     private static final String ADMIN_PW = "voltpilot_admin_test_pw";
 
+    /**
+     * Die Uhr, mit der der Verdichtungs-Lauf hier fährt: sie liegt VOR jeder Frist der gesäten
+     * Fälle, also ist kein Intervall geschlossen und keine Spätankunft im Spiel (AP-07 IP-13).
+     * Dieser Test fragt, was der Lauf RECHNET; die Endgültigkeit prüft
+     * {@code UemsEndgueltigkeitTagesklasseTest}.
+     */
+    private static final Instant JETZT = Instant.parse("2026-10-20T09:00:00Z");
+
     private static final UUID KB = UUID.fromString("4e0d0000-0000-0000-0000-000000000001");
     private static final UUID FREMD = UUID.fromString("4e0d0000-0000-0000-0000-000000000002");
 
@@ -142,7 +150,7 @@ class UemsViertelstundeMengeTest {
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
         verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
-                500, 40, 200_000);
+                new SpaetankunftMelder(), 500, 40, 200_000);
 
         arbeitFuellen();
         verdichtenBisLeer();
@@ -152,7 +160,7 @@ class UemsViertelstundeMengeTest {
         arbeitFuellen();
         int zweitesMal = 0;
         while (true) {
-            int[] r = verdichter.verdichteEinenStapel();
+            int[] r = verdichter.verdichteEinenStapel(JETZT);
             zweitesMal += r[1];
             if (r[0] == 0) {
                 break;
@@ -185,7 +193,7 @@ class UemsViertelstundeMengeTest {
                 KB, IDS.get("F1"), Timestamp.from(Instant.parse("2026-10-20T08:15:00Z")));
         root.execute("REVOKE INSERT ON messreihe_viertelstunde FROM " + ADMIN_USER);
         try {
-            verdichter.verdichteEinenStapel();
+            verdichter.verdichteEinenStapel(JETZT);
             abbruchWarf = false;
         } catch (RuntimeException e) {
             abbruchWarf = true;
@@ -753,7 +761,7 @@ class UemsViertelstundeMengeTest {
     }
 
     private static void verdichtenBisLeer() {
-        while (verdichter.verdichteEinenStapel()[0] > 0) {
+        while (verdichter.verdichteEinenStapel(JETZT)[0] > 0) {
             // weiter, bis die Arbeitsliste leer ist
         }
     }
@@ -828,6 +836,12 @@ class UemsViertelstundeMengeTest {
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
                         + "AND table_type = 'BASE TABLE' "
                         + "AND table_name NOT LIKE 'messreihe_viertelstunde%' "
+                        // Und was eine SPAETERE Migration anlegt, gehoert nicht in diese
+                        // Messung: AP-07 IP-13 bringt die Tagesklasse und die Korrektur-Liste
+                        // (V20260912190000), die es zum Zeitpunkt der ersten Messung noch gar
+                        // nicht gab.
+                        + "AND table_name NOT LIKE 'messreihe_tag%' "
+                        + "AND table_name <> 'messreihe_korrektur_vorschlag' "
                         + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
                 String.class);
         Map<String, String> aus = new LinkedHashMap<>();

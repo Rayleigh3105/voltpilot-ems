@@ -21,14 +21,24 @@ Dazu ein TEILWEISER Index auf der Rohtabelle,
 DISTINCT FROM 'spiegel'` — ohne ihn läse der Lauf alle fünf Minuten jeden Chunk der 90 Tage voll.
 Preis: ein Index-Eintrag mehr je geschriebenem Rohwert.
 
-## ⚠ Die Grenze zu IP-13
+## ⚠ Die Grenze zu IP-13 — seit IP-13 GESCHLOSSEN
 
 Dieser Lauf schreibt **nur vorläufige** Werte und rührt eine `endgueltig`e Zeile nie an — auch
 nicht, wenn neue Rohwerte für ihr Intervall eintreffen (`ON CONFLICT … WHERE zustand =
 'vorlaeufig' AND version = 1`). `endgueltig_ab` wird hier **angelegt und gefüllt** (Intervallende
-+ 7 Tage, E5 — der CHECK hält das an der Datenbankgrenze), aber **nicht vollzogen**: der
-Stundenlauf, der Werte umschaltet, die Spätankunft (`late_arrival` + Korrektur-Vorschlag an
-AP-08) und die Tageswerte sind **IP-13**.
++ 7 Tage, E5 — der CHECK hält das an der Datenbankgrenze).
+
+**Vollzogen wird es seit AP-07 IP-13** (`V20260912190000`, Wegweiser
+[`uems-endgueltigkeit-tageswerte.md`](./uems-endgueltigkeit-tageswerte.md)): dort wohnen der
+Stundenlauf, der Werte umschaltet, die Spätankunft (`late_arrival` + Korrektur-Vorschlag an AP-08)
+und die Tageswerte. Zwei Dinge an DIESEM Lauf hat IP-13 dafür geändert:
+
+- **`verdichteEinenStapel(jetzt)`** bekommt die Uhr des Laufs. Findet er für einen
+  `eingang`-Eintrag einen NACHZÜGLER (einen Rohwert, dessen Eingangszeit nach der Frist des
+  Intervalls liegt), **bildet er das Intervall nicht**, sondern meldet und schlägt vor —
+  *speichern, melden, vorschlagen, nicht anwenden*. Ohne Nachzügler bildet er wie bisher.
+- **`berechnet_am` ist die Uhr des Laufs**, nicht mehr `Instant.now()`: der Tageslauf hängt seinen
+  Zeiger an diese Spalte, und ein Lauf muss eine einzige Zeit haben.
 
 ## Die Rechenregeln werden AUFGERUFEN, nie nachgebaut
 

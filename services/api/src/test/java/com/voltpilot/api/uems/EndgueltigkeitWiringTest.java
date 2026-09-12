@@ -3,8 +3,6 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,18 +18,19 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Die Spring-Verdrahtung des VERDICHTUNGS-TAKTS der Viertelstundenwerte (UEMS AP-07 IP-12) — der
- * Teil, den weder die reinen Regeln ({@link ViertelstundeRegelnTest}) noch der Testcontainers-Lauf
- * ({@code UemsViertelstundeMigrationTest} ruft {@code lauf()} von Hand) je anfasst.
+ * Die Spring-Verdrahtung des STUNDENTAKTS der Endgültigkeit und der Tageswerte (UEMS AP-07
+ * IP-13) — der Teil, den weder die reinen Regeln ({@link TagRegelnTest}) noch der
+ * Testcontainers-Lauf ({@code UemsEndgueltigkeitTagesklasseTest} ruft die Läufe von Hand) je
+ * anfasst.
  *
  * <p>Genau diese Lücke hat in diesem Projekt schon Produktion gekostet: ein Schalter, der in der
  * AUSGELIEFERTEN Datei falsch vorbelegt ist, ist grün im Testlauf und wirkungslos im Cluster (die
  * dokumentierte OTA-Listener-Falle). Also: Vorgabe AN in {@code application.yml}, AUS im Testlauf
  * ({@code pom.xml}).
  */
-class ViertelstundeWiringTest {
+class EndgueltigkeitWiringTest {
 
-    private static final String SCHALTER = "voltpilot.uems.viertelstunde.enabled";
+    private static final String SCHALTER = "voltpilot.uems.endgueltigkeit.enabled";
 
     @Configuration(proxyBeanMethods = false)
     static class Nachbarn {
@@ -40,40 +39,35 @@ class ViertelstundeWiringTest {
         JdbcTemplate adminJdbcTemplate() {
             return mock(JdbcTemplate.class);
         }
-
-        @Bean
-        MeasurementCatalog measurementCatalog() {
-            return new MeasurementCatalog(new ObjectMapper());
-        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(ctx -> ctx.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
-            .withUserConfiguration(Nachbarn.class, ViertelstundeVerdichter.class,
-                    ViertelstundeLaeufer.class, ViertelstundeSchedulingConfig.class,
-                    // Seit AP-07 IP-13 hängt der Verdichter am Melder der Spätankunft.
-                    SpaetankunftMelder.class);
+            .withUserConfiguration(Nachbarn.class, EndgueltigkeitLauf.class, TagVerdichter.class,
+                    EndgueltigkeitLaeufer.class, EndgueltigkeitSchedulingConfig.class);
 
     @Test
-    void derTaktVerdrahtetSichMitSeinemVerdichter() {
+    void derTaktVerdrahtetSichMitBeidenLaeufen() {
         runner.withPropertyValues(SCHALTER + "=true").run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(ViertelstundeLaeufer.class);
-            assertThat(context).hasSingleBean(ViertelstundeVerdichter.class);
-            assertThat(context).hasSingleBean(ViertelstundeSchedulingConfig.class);
+            assertThat(context).hasSingleBean(EndgueltigkeitLaeufer.class);
+            assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
+            assertThat(context).hasSingleBean(TagVerdichter.class);
+            assertThat(context).hasSingleBean(EndgueltigkeitSchedulingConfig.class);
         });
     }
 
-    /** Der Not-Aus nimmt den Takt UND seinen Thread-Pool — nie den Verdichter. */
+    /** Der Not-Aus nimmt den Takt UND seinen Thread-Pool — nie die Läufe selbst. */
     @Test
-    void derNotAusNimmtDenTaktUndSeinenThreadPoolNieDenVerdichter() {
+    void derNotAusNimmtDenTaktUndSeinenThreadPoolNieDieLaeufe() {
         runner.withPropertyValues(SCHALTER + "=false").run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).doesNotHaveBean(ViertelstundeLaeufer.class);
-            assertThat(context).doesNotHaveBean(ViertelstundeSchedulingConfig.class);
-            assertThat(context).hasSingleBean(ViertelstundeVerdichter.class);
+            assertThat(context).doesNotHaveBean(EndgueltigkeitLaeufer.class);
+            assertThat(context).doesNotHaveBean(EndgueltigkeitSchedulingConfig.class);
+            assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
+            assertThat(context).hasSingleBean(TagVerdichter.class);
         });
     }
 
@@ -86,10 +80,13 @@ class ViertelstundeWiringTest {
             assertThat(in).as("application.yml auf dem Klassenpfad").isNotNull();
             yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
         }
-        assertThat(at(yml, "voltpilot", "uems", "viertelstunde", "enabled"))
-                .isEqualTo("${VOLTPILOT_UEMS_VIERTELSTUNDE_ENABLED:true}");
-        assertThat(at(yml, "voltpilot", "uems", "viertelstunde", "interval-ms"))
-                .isEqualTo("${VOLTPILOT_UEMS_VIERTELSTUNDE_INTERVAL_MS:300000}");
+        assertThat(at(yml, "voltpilot", "uems", "endgueltigkeit", "enabled"))
+                .isEqualTo("${VOLTPILOT_UEMS_ENDGUELTIGKEIT_ENABLED:true}");
+        assertThat(at(yml, "voltpilot", "uems", "endgueltigkeit", "interval-ms"))
+                .as("ein Lauf je Stunde, §4.6 Nr. 3")
+                .isEqualTo("${VOLTPILOT_UEMS_ENDGUELTIGKEIT_INTERVAL_MS:3600000}");
+        assertThat(at(yml, "voltpilot", "uems", "tag", "frist-je-lauf"))
+                .isEqualTo("${VOLTPILOT_UEMS_TAG_FRIST_JE_LAUF:20000}");
 
         String pom = Files.readString(Path.of("pom.xml"));
         assertThat(pom).contains("<" + SCHALTER + ">false</" + SCHALTER + ">");

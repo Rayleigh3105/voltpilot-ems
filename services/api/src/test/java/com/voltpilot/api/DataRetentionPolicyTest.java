@@ -165,6 +165,60 @@ class DataRetentionPolicyTest {
     }
 
     /**
+     * AP-07 IP-13 (Entscheid E6/E7, Widerspruch W10): die TAGESKLASSE behält dieselben ZEHN
+     * JAHRE wie die Viertelstunde — Retention genau 3 653 Tage, Chunk 1 Jahr, und keine
+     * Kompression, weil sie RLS/FORCE ist. Das Layout ist auch hier festgelegt und abrufbar.
+     */
+    @Test
+    void theDayClassKeepsTenYearsWithoutCompressionButWithAPreparedLayout() throws Exception {
+        assertThat(hasJob("policy_retention", "messreihe_tag"))
+                .as("messreihe_tag retention policy").isTrue();
+        assertThat(hasRetentionOf("messreihe_tag", 3653))
+                .as("messreihe_tag retention is exactly 3653 days (ten years)").isTrue();
+        assertThat(hasJob("policy_compression", "messreihe_tag"))
+                .as("messreihe_tag must have NO compression policy").isFalse();
+        assertThat(compressionEnabled("messreihe_tag"))
+                .as("messreihe_tag must NOT be compression-enabled (RLS/FORCE, E7)").isFalse();
+
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement(
+                        "SELECT segmentby, orderby FROM messreihe_tag_kompression_layout()");
+                ResultSet rs = ps.executeQuery()) {
+            assertThat(rs.next()).as("the prepared layout is retrievable").isTrue();
+            assertThat(rs.getString("segmentby")).isEqualTo("tenant_id, entity_id, messkanal");
+            assertThat(rs.getString("orderby")).isEqualTo("tag DESC");
+        }
+
+        // Chunk 1 Jahr (§4.3) - zehn Jahre sind damit zehn Chunks je Reihe, nicht 122.
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement(
+                        "SELECT time_interval FROM timescaledb_information.dimensions "
+                                + "WHERE hypertable_name = 'messreihe_tag'");
+                ResultSet rs = ps.executeQuery()) {
+            assertThat(rs.next()).as("messreihe_tag is a hypertable").isTrue();
+            assertThat(rs.getString("time_interval")).isEqualTo("365 days");
+        }
+
+        // Die Arbeitsliste, der Laufzustand und die Korrektur-Liste sind KEINE Hypertables -
+        // sie tragen also weder Retention noch Kompression, und das soll so bleiben. Die
+        // Korrektur-Liste ist ausserdem ein BELEG: sie wird nie automatisch weggeraeumt.
+        for (String table : new String[] {
+                "messreihe_tag_arbeit", "messreihe_tag_lauf", "messreihe_korrektur_vorschlag"}) {
+            try (Connection c = admin();
+                    PreparedStatement ps = c.prepareStatement("SELECT count(*) FROM "
+                            + "timescaledb_information.hypertables WHERE hypertable_name = ?")) {
+                ps.setString(1, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    assertThat(rs.getLong(1)).as(table + " is a plain table").isZero();
+                }
+            }
+            assertThat(hasJob("policy_retention", table))
+                    .as(table + " must have NO retention policy").isFalse();
+        }
+    }
+
+    /**
      * Der Rohwert bleibt bei seinen 90 Tagen: die Viertelstundenklasse tritt NEBEN ihn, nicht an
      * seine Stelle (§4.3). Fiele diese Zusicherung, verlöre A2 seinen Sinn.
      */

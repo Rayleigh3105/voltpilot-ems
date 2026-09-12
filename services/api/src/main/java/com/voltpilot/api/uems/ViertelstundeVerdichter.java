@@ -141,6 +141,7 @@ public class ViertelstundeVerdichter {
 
     private final JdbcTemplate adminJdbc;
     private final MeasurementCatalog katalog;
+    private final SpaetankunftMelder melder;
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int arbeitHochwasser;
@@ -148,11 +149,13 @@ public class ViertelstundeVerdichter {
     public ViertelstundeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementCatalog katalog,
+            SpaetankunftMelder melder,
             @Value("${voltpilot.uems.viertelstunde.stapel:500}") int stapelGroesse,
             @Value("${voltpilot.uems.viertelstunde.stapel-je-lauf:40}") int stapelJeLauf,
             @Value("${voltpilot.uems.viertelstunde.arbeit-hochwasser:200000}") int arbeitHochwasser) {
         this.adminJdbc = adminJdbc;
         this.katalog = katalog;
+        this.melder = melder;
         this.stapelGroesse = stapelGroesse;
         this.stapelJeLauf = stapelJeLauf;
         this.arbeitHochwasser = arbeitHochwasser;
@@ -162,7 +165,7 @@ public class ViertelstundeVerdichter {
 
     /** Was ein Lauf tat — für das Log und die Tests. */
     public record Lauf(int eingetragen, int rueckgerechnet, int scheiben, boolean rueckrechnungFertig,
-            int verdichtet, int geschrieben) {}
+            int verdichtet, int geschrieben, int spaetankuenfte) {}
 
     /**
      * Ein ganzer Takt: eintragen → eine Scheibe zurückrechnen → verdichten, bis die Arbeitsliste
@@ -173,21 +176,23 @@ public class ViertelstundeVerdichter {
         Scheibe s = rueckrechnenEineScheibe(jetzt);
         int verdichtet = 0;
         int geschrieben = 0;
+        int spaet = 0;
         for (int i = 0; i < stapelJeLauf; i++) {
-            int[] ergebnis = verdichteEinenStapel();
+            int[] ergebnis = verdichteEinenStapel(jetzt);
             if (ergebnis[0] == 0) {
                 break;
             }
             verdichtet += ergebnis[0];
             geschrieben += ergebnis[1];
+            spaet += ergebnis[2];
         }
         Lauf l = new Lauf(eingetragen, s.eingetragen(), s.gefahren() ? 1 : 0, s.fertig(),
-                verdichtet, geschrieben);
+                verdichtet, geschrieben, spaet);
         if (eingetragen > 0 || verdichtet > 0 || s.eingetragen() > 0) {
             log.info("UEMS Viertelstunden-Lauf: {} Intervalle aus dem Eingang, {} aus der "
-                    + "Rückrechnung ({}), {} verdichtet, {} geschrieben",
+                    + "Rückrechnung ({}), {} verdichtet, {} geschrieben, {} zu spät",
                     eingetragen, s.eingetragen(), s.fertig() ? "fertig" : "läuft",
-                    verdichtet, geschrieben);
+                    verdichtet, geschrieben, spaet);
         }
         return l;
     }
@@ -303,22 +308,59 @@ public class ViertelstundeVerdichter {
 
     // =================================================================== Verdichten
 
-    /** Ein Eintrag der Arbeitsliste — genau eine Reihe und genau ein Intervall. */
-    record Auftrag(UUID tenant, UUID entity, String kanal, Instant beginn) {}
+    /**
+     * Ein Eintrag der Arbeitsliste — genau eine Reihe und genau ein Intervall, samt dem GRUND,
+     * aus dem er eingetragen wurde.
+     *
+     * <p>Der Grund entscheidet über die Spätankunft (AP-07 IP-13): {@code eingang} heißt „ein
+     * Rohwert ist eingetroffen" — liegt sein Intervall hinter der Frist, wird es NICHT gebildet,
+     * sondern gemeldet und vorgeschlagen. {@code rueckrechnung} ist die einmalige ERSTE Bildung
+     * der Vergangenheit; für sie gilt die Frist nicht, sonst bliebe die Vergangenheit für immer
+     * leer.
+     */
+    record Auftrag(UUID tenant, UUID entity, String kanal, Instant beginn, String grund) {
+
+        boolean ausEingang() {
+            return "eingang".equals(grund);
+        }
+    }
 
     /**
-     * Entnimmt EINEN Stapel und schreibt seine Intervalle in derselben Transaktion.
+     * Entnimmt EINEN Stapel und schreibt seine Intervalle in derselben Transaktion — und meldet
+     * in DERSELBEN Transaktion, was zu spät kam.
      *
-     * @return {@code [entnommene Intervalle, wirklich geschriebene Zeilen]}
+     * @return {@code [entnommene Intervalle, geschriebene Zeilen, gemeldete Spätankünfte]}
      */
-    int[] verdichteEinenStapel() {
+    int[] verdichteEinenStapel(Instant jetzt) {
         return inTransaktion(con -> {
             List<Auftrag> stapel = entnehmen(con, stapelGroesse);
             if (stapel.isEmpty()) {
-                return new int[] {0, 0};
+                return new int[] {0, 0, 0};
             }
-            int geschrieben = bilden(con, stapel);
-            return new int[] {stapel.size(), geschrieben};
+            // AP-07 IP-13, E5: ein Rohwert für ein GESCHLOSSENES Intervall wird gespeichert,
+            // gemeldet und vorgeschlagen — nie angewendet. Aussortiert wird deshalb VOR dem
+            // Bilden, und genau dann, wenn es wirklich einen NACHZÜGLER gibt: einen Rohwert
+            // dieses Intervalls, dessen EINGANGSZEIT nach der Frist liegt.
+            //
+            // Warum nicht schon „das Intervall ist geschlossen"? Weil ein geschlossenes
+            // Intervall auch ohne Nachzügler wieder in der Arbeitsliste landen kann (die
+            // Überlappung des Zeigers, ein Betriebs-Anstoß, die Rückrechnung). Dann ist das
+            // Bilden harmlos: es entsteht dieselbe Zeile, und eine endgültige rührt der
+            // Schreibsatz ohnehin nicht an. Was E5 verbietet, ist genau das eine — einen zu
+            // spät eingetroffenen Wert ANWENDEN.
+            List<Auftrag> offen = new ArrayList<>();
+            int spaet = 0;
+            for (Auftrag a : stapel) {
+                if (a.ausEingang() && TagRegeln.geschlossen(a.beginn(), jetzt)
+                        && melder.melden(con, a.tenant(), a.entity(), a.kanal(), a.beginn())
+                                .vorgeschlagen()) {
+                    spaet++;
+                } else {
+                    offen.add(a);
+                }
+            }
+            int geschrieben = offen.isEmpty() ? 0 : bilden(con, offen, jetzt);
+            return new int[] {stapel.size(), geschrieben, spaet};
         });
     }
 
@@ -339,13 +381,13 @@ public class ViertelstundeVerdichter {
                          FOR UPDATE SKIP LOCKED) c
                  WHERE a.tenant_id = c.tenant_id AND a.entity_id = c.entity_id
                    AND a.messkanal = c.messkanal AND a.intervall_beginn = c.intervall_beginn
-                RETURNING a.tenant_id, a.entity_id, a.messkanal, a.intervall_beginn
+                RETURNING a.tenant_id, a.entity_id, a.messkanal, a.intervall_beginn, a.grund
                 """)) {
             ps.setInt(1, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     auftraege.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
-                            rs.getString(3), rs.getTimestamp(4).toInstant()));
+                            rs.getString(3), rs.getTimestamp(4).toInstant(), rs.getString(5)));
                 }
             }
         }
@@ -380,7 +422,7 @@ public class ViertelstundeVerdichter {
     record Ereignis(String art, Instant zeit, BigDecimal endstand, BigDecimal anfangsstand,
             Long verlustS, String einbauAlt, String einbauNeu, UUID boxAlt, UUID boxNeu) {}
 
-    private int bilden(Connection con, List<Auftrag> stapel) throws SQLException {
+    private int bilden(Connection con, List<Auftrag> stapel, Instant jetzt) throws SQLException {
         // 1. Die Erwartung ZUM INTERVALL (IP-10): Fassung -> Auswahl -> Katalog -> 300 s.
         Map<Integer, KadenzRegeln.Wirksam> kadenzen = kadenzJeAuftrag(con, stapel);
         // 2. Die Rohwerte, je Auftrag mit dem Rückblick einer Kadenz (Z1 braucht ihn für den
@@ -396,7 +438,7 @@ public class ViertelstundeVerdichter {
             for (int i = 0; i < stapel.size(); i++) {
                 Object[] werte = zeile(stapel.get(i), kadenzen.get(i),
                         rohe.getOrDefault(i, List.of()), ereignisse.getOrDefault(i, List.of()),
-                        einbauten);
+                        einbauten, jetzt);
                 if (werte == null) {
                     continue;
                 }
@@ -415,7 +457,7 @@ public class ViertelstundeVerdichter {
      * keinen einzigen Rohwert hat: eine Lücke ist keine Null und wird nicht geschrieben.
      */
     private Object[] zeile(Auftrag a, KadenzRegeln.Wirksam kadenz, List<Roh> fenster,
-            List<Ereignis> ereignisse, Map<String, UUID> einbauten) {
+            List<Ereignis> ereignisse, Map<String, UUID> einbauten, Instant jetzt) {
         Instant von = a.beginn();
         Instant bis = ViertelstundeRegeln.ende(von);
         List<Roh> imIntervall = fenster.stream()
@@ -538,7 +580,9 @@ public class ViertelstundeVerdichter {
         werteJeSpalte.put("rolle", bezug.rolle());
         werteJeSpalte.put("zustand", ViertelstundeRegeln.VORLAEUFIG);
         werteJeSpalte.put("endgueltig_ab", Timestamp.from(ViertelstundeRegeln.endgueltigAb(von)));
-        werteJeSpalte.put("berechnet_am", Timestamp.from(Instant.now()));
+        // Die Uhr DES LAUFS, nicht die der Maschine: seit AP-07 IP-13 hängt der Tageslauf
+        // seinen Zeiger an diese Spalte, und ein Lauf muss eine einzige Zeit haben.
+        werteJeSpalte.put("berechnet_am", Timestamp.from(jetzt));
         werteJeSpalte.put("version", 1);
         werteJeSpalte.put("n_nachgeliefert", nachgeliefert);
         werteJeSpalte.put("letzte_eingangszeit", letzterEingang == null ? null : Timestamp.from(letzterEingang));
