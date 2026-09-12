@@ -80,8 +80,8 @@ und I4 (Intervall über die Grenze) sind nicht gebaut, I5 ist keine Reihe, M5 is
   ein Loch, das erst dahinter endet, macht sie nicht unvollständig — Tag und Monat sehen es.
 - Eine **später angelegte** Bindung `integration` ändert nur neu gebildete Viertelstunden; es gibt
   keine Rückrechnung dafür. Endgültige Zeilen bleiben unberührt, keine Korrektur (IP-12 ff.).
-- Kein Lesepfad (`SpeicherklasseHistorie` zeigt `energie` nicht), keine Route, keine Fläche, kein
-  freier Zeitraum für Momentanwerte (`ZeitraumMenge` bleibt Zählerstand).
+- Keine Route, keine Fläche, kein freier Zeitraum für Momentanwerte (`ZeitraumMenge.zeitraum` bleibt
+  Zählerstand). Der Lesepfad zeigt `energie` nur mit Kennzeichen — `uems-lesepfad-verlauf-herkunft-rueckfall.md` §8.
 
 Prüfnachweis (gezielt): `(cd services/api && ./mvnw test -Dtest='VerbrauchVectorsTest,VerbrauchWerteteileTest,UemsIntervallMomentanwertTest')`,
 `(cd services/optimization && ./.venv/bin/python -m pytest tests/test_verbrauch.py -q)` — JDK 21 und

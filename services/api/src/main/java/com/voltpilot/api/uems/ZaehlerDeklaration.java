@@ -11,6 +11,9 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -51,6 +54,31 @@ record ZaehlerDeklaration(
                 return rs.next() ? aus(rs, 1) : NICHTS;
             }
         }
+    }
+
+    /**
+     * Die Deklaration zu JEDEM dieser Zeitpunkte in einer Abfrage (Lesepfad: je Raster-Schritt ihr
+     * Beginn) — dieselbe Funktion wie {@link #lesen(Connection, UUID, UUID, String, Instant)}.
+     */
+    static Map<Instant, ZaehlerDeklaration> lesen(Connection con, UUID tenant, UUID entity, String kanal,
+            List<Instant> zeiten) throws SQLException {
+        Map<Instant, ZaehlerDeklaration> aus = new HashMap<>();
+        try (PreparedStatement ps = con.prepareStatement("SELECT z.zeit, d.wertebereich_modul, "
+                + "d.hoechstzuwachs_je_kadenz, d.kadenz_s, d.neustart_verlust_s "
+                + "FROM unnest(CAST(? AS timestamptz[])) AS z(zeit) "
+                + "CROSS JOIN LATERAL messreihe_zaehler_deklaration(?, ?, ?, z.zeit) d")) {
+            // Als ISO-Text mit „Z“: eindeutig, unabhängig von der Zeitzone der JVM.
+            ps.setArray(1, con.createArrayOf("text", zeiten.stream().map(Instant::toString).toArray()));
+            ps.setObject(2, tenant, Types.OTHER);
+            ps.setObject(3, entity, Types.OTHER);
+            ps.setString(4, kanal);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    aus.putIfAbsent(rs.getTimestamp(1).toInstant(), aus(rs, 2));
+                }
+            }
+        }
+        return aus;
     }
 
     /** Eine Zeile ab Spalte {@code erste} (vier Spalten in der Reihenfolge der Funktion). */

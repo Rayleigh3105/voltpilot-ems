@@ -1,7 +1,9 @@
 package com.voltpilot.api.measurement;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.voltpilot.api.measurement.MeasurementCatalog.Point;
 import com.voltpilot.api.uems.LesepfadQuelle;
+import com.voltpilot.api.uems.VerbrauchRegeln;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -37,6 +39,12 @@ public class MeasurementHistoryService {
      * Rolle, Wertart, Zustellart); Abdeckung, Qualitätszähler und Zustand entstehen erst in der
      * Viertelstunde und bleiben dort leer. Die bestehenden Verdichtungen der Box tragen
      * überhaupt keine Herkunft — dort ist das Feld {@code null}, nicht erfunden.
+     *
+     * <p><b>Die Nacharbeit zu AP-08 IP-3/IP-5</b> hängt drei Felder an, die nur die Speicherklassen
+     * füllen: {@code mengeZustand} und {@code kennzeichen} der Menge (Viertelstunde, Zeitraum, Tag)
+     * und {@code energieAusLeistung} — Wert UND Kennzeichen in einem, nie der Wert allein. Sie
+     * erscheinen im JSON nur, wo sie gefüllt sind: die Antwort des Rohwert-Wegs bleibt Zeichen für
+     * Zeichen die von vorher.
      */
     public record Herkunft(String quelle, String wertart, Integer abdeckungProzent,
             Integer erhalten, Integer erwartet, Integer nGood, Integer nUncertain,
@@ -44,7 +52,56 @@ public class MeasurementHistoryService {
             Instant endgueltigAb, Integer version, Integer nachgeliefert, String zustellart,
             Instant letzteEingangszeit, UUID geraetEinbau, UUID geraetEinbauZwei, UUID box,
             UUID boxZwei, Long fassung, String katalogVersion, String rolle,
-            BigDecimal standAnfang, BigDecimal standEnde) {}
+            BigDecimal standAnfang, BigDecimal standEnde,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String mengeZustand,
+            @JsonInclude(JsonInclude.Include.NON_NULL) List<String> kennzeichen,
+            @JsonInclude(JsonInclude.Include.NON_NULL) EnergieAusLeistung energieAusLeistung) {
+
+        /** Die Form von VOR der Nacharbeit — ohne Menge-Zustand, Kennzeichen und Energie. */
+        public Herkunft(String quelle, String wertart, Integer abdeckungProzent,
+                Integer erhalten, Integer erwartet, Integer nGood, Integer nUncertain,
+                Integer nInvalid, Integer nStale, Integer nDeviceError, String zustand,
+                Instant endgueltigAb, Integer version, Integer nachgeliefert, String zustellart,
+                Instant letzteEingangszeit, UUID geraetEinbau, UUID geraetEinbauZwei, UUID box,
+                UUID boxZwei, Long fassung, String katalogVersion, String rolle,
+                BigDecimal standAnfang, BigDecimal standEnde) {
+            this(quelle, wertart, abdeckungProzent, erhalten, erwartet, nGood, nUncertain, nInvalid,
+                    nStale, nDeviceError, zustand, endgueltigAb, version, nachgeliefert, zustellart,
+                    letzteEingangszeit, geraetEinbau, geraetEinbauZwei, box, boxZwei, fassung,
+                    katalogVersion, rolle, standAnfang, standEnde, null, null, null);
+        }
+    }
+
+    /**
+     * Eine Energie AUS LEISTUNG (AP-08 IP-3, E5) — interpoliert, nicht gemessen. Sie reist nur mit
+     * ihrem Kennzeichen „aus Leistung integriert …" (Wortlaut {@link
+     * VerbrauchRegeln#AUS_LEISTUNG_INTEGRIERT}); ohne es gibt es sie nicht, damit keine Fläche sie
+     * je wie eine gemessene Menge zeigen kann. Die Datenbank hält dasselbe per Prüfregel
+     * ({@code messreihe_energie_gekennzeichnet}).
+     *
+     * @param wert die Energie in der Einheit der Reihe × Stunde, ungerundet wie gespeichert
+     * @param kennzeichen der Satz „aus Leistung integriert (…)" aus den Kennzeichen des Schritts
+     */
+    public record EnergieAusLeistung(BigDecimal wert, String kennzeichen) {
+
+        public EnergieAusLeistung {
+            if (wert == null || kennzeichen == null
+                    || !kennzeichen.startsWith(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT_WORT)) {
+                throw new IllegalArgumentException(
+                        "eine Energie aus Leistung steht nie ohne ihr Kennzeichen: " + kennzeichen);
+            }
+        }
+
+        /** Die Energie mit ihrem Kennzeichen — {@code null}, wenn eines von beiden fehlt. */
+        public static EnergieAusLeistung aus(BigDecimal wert, List<String> kennzeichen) {
+            if (wert == null || kennzeichen == null) {
+                return null;
+            }
+            return kennzeichen.stream()
+                    .filter(k -> k.startsWith(VerbrauchRegeln.AUS_LEISTUNG_INTEGRIERT_WORT))
+                    .findFirst().map(k -> new EnergieAusLeistung(wert, k)).orElse(null);
+        }
+    }
 
     public record Datum(Instant time, BigDecimal value, BigDecimal minimum, BigDecimal maximum,
             String text, long sampleCount, boolean gap, Herkunft herkunft) {
@@ -204,7 +261,7 @@ public class MeasurementHistoryService {
         // Rückfall: ein Gerätewechsel von gestern ist genau der Sprung, der eine Erklärung
         // braucht. Sie sind die EINE Stelle, an der dieses Paket ein bestehendes Feld
         // anreichert; ohne Ereignis zur Reihe ist die Antwort unverändert.
-        List<Marker> markers = markers(scope, siteId, deviceId, entityId, pointKey, window);
+        List<Marker> markers = markers(scope, siteId, deviceId, entityId, reihe, pointKey, window);
         if (reihe != null) {
             markers = mitEreignissen(markers, speicherklassen.ereignisse(scope.tenantId(), reihe,
                     pointKey, window.from(), window.to(), bucketSeconds));
@@ -242,7 +299,8 @@ public class MeasurementHistoryService {
                         z.nStale(), z.nDeviceError(), z.zustand(), z.endgueltigAb(), z.version(),
                         z.nachgeliefert(), z.zustellart(), z.letzteEingangszeit(),
                         z.geraetEinbau(), z.geraetEinbauZwei(), z.box(), z.boxZwei(), z.fassung(),
-                        z.katalogVersion(), z.rolle(), z.standAnfang(), z.standEnde()));
+                        z.katalogVersion(), z.rolle(), z.standAnfang(), z.standEnde(),
+                        z.mengeZustand(), z.kennzeichen(), z.energie()));
     }
 
     /**
@@ -260,11 +318,12 @@ public class MeasurementHistoryService {
         return List.copyOf(out);
     }
 
-    /** Kundensprache für die sechs Ereignisarten, die der Verlauf zeigt (§4.8). */
+    /** Kundensprache für die sieben Ereignisarten, die der Verlauf zeigt (§4.8, AP-08 IP-4). */
     private static String ereignisWort(String art, int anzahl) {
         String wort = switch (art) {
             case "data_gap" -> "Datenlücke";
             case "counter_reset" -> "Zählerneustart";
+            case "counter_overflow" -> "Zähler übergelaufen";
             case "device_boundary" -> "Gerät gewechselt";
             case "handover" -> "Messung von einer anderen Box übernommen";
             case "duplicate_conflict" -> "Doppelte Zustellung mit abweichendem Wert";
@@ -551,7 +610,7 @@ public class MeasurementHistoryService {
     }
 
     private List<Marker> markers(MeasurementSelectionRepository.DeviceScope scope, UUID siteId,
-            UUID deviceId, UUID entityId, String pointKey, Window w) {
+            UUID deviceId, UUID entityId, UUID reihe, String pointKey, Window w) {
         List<Marker> result = new ArrayList<>();
         result.addAll(jdbc.query("SELECT requested_at marker_time,event_kind,requested_enabled,apply_status "
                         + "FROM device_measurement_selection_event WHERE tenant_id=? AND site_id=? "
@@ -562,17 +621,26 @@ public class MeasurementHistoryService {
                                 rs.getBoolean("requested_enabled"), rs.getString("apply_status"))),
                 scope.tenantId(), siteId, deviceId, pointKey,
                 Timestamp.from(w.from()), Timestamp.from(w.to())));
+        // UEMS AP-08 IP-4: eine Bestands-Rücksetzung, zu der der Writer an derselben Messzeit
+        // einen Überlauf meldet, IST dieser Überlauf — er steht als Marke der Reihe da, die
+        // Rücksetzung nicht noch einmal. Ohne Reihe bleibt die Abfrage Zeichen für Zeichen die alte.
+        List<Object> bestandArgs = new ArrayList<>(List.of(scope.tenantId(), siteId, deviceId,
+                pointKeyValue(pointKey), Timestamp.from(w.from()), Timestamp.from(w.to())));
+        if (reihe != null) {
+            bestandArgs.add(reihe);
+        }
         result.addAll(jdbc.query("SELECT occurred_at marker_time,event_kind,previous_numeric,"
                         + "value_numeric,previous_text,value_text FROM device_measurement_event "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? "
                         + "AND (" + pointKeyPredicate("point_key", pointKey)
                         + " OR point_key='_pipeline') AND occurred_at>=? AND occurred_at<=? "
                         + "AND event_kind IN ('data_gap','counter_reset','state_change','error_change',"
-                        + "'bitfield_change','text_change') ORDER BY occurred_at",
+                        + "'bitfield_change','text_change') "
+                        + (reihe == null ? ""
+                                : "AND " + SpeicherklasseHistorie.RUECKSETZUNG_OHNE_UEBERLAUF + " ")
+                        + "ORDER BY occurred_at",
                 (rs, n) -> new Marker(rs.getTimestamp("marker_time").toInstant(),
-                        rs.getString("event_kind"), eventLabel(rs)), scope.tenantId(), siteId,
-                deviceId, pointKeyValue(pointKey), Timestamp.from(w.from()),
-                Timestamp.from(w.to())));
+                        rs.getString("event_kind"), eventLabel(rs)), bestandArgs.toArray()));
         if (entityId != null) {
             result.addAll(jdbc.query("SELECT effective_at marker_time,event_type,from_value,to_value "
                             + "FROM component_change_event WHERE tenant_id=? AND site_id=? "

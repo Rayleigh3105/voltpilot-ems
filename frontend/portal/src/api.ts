@@ -1039,6 +1039,11 @@ export interface MeasurementHerkunft {
   box: string | null; boxZwei: string | null;
   fassung: number | null; katalogVersion: string | null; rolle: string | null;
   standAnfang: number | null; standEnde: number | null;
+  /** Nur Speicherklassen: Vollständigkeit der Menge (bzw. des Momentanwerts) und ihre Kennzeichen. */
+  mengeZustand?: 'vollständig' | 'unvollständig' | 'keine Werte';
+  kennzeichen?: string[];
+  /** Energie aus Leistung — interpoliert, darum nie ohne ihr Kennzeichen „aus Leistung integriert …". */
+  energieAusLeistung?: { wert: number; kennzeichen: string };
 }
 
 export interface MeasurementHistory {

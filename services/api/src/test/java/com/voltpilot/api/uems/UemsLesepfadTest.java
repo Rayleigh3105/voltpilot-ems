@@ -422,9 +422,11 @@ class UemsLesepfadTest {
     }
 
     /**
-     * Ein Zeitraum über 90 Tage fällt auf die TAGESKLASSE zurück — und ein Zählerstand bleibt
-     * dort ohne Kurvenwert: die Tagesmenge bildet AP-08 IP-5 aus den Periodenständen, sie wird
-     * hier nicht erfunden. Anfangs- und Endstand reisen stattdessen in der Herkunft mit.
+     * Ein Zeitraum über 90 Tage fällt auf die TAGESKLASSE zurück. Diese Tageszeilen sind wie vor
+     * AP-08 IP-5 gesät — OHNE Menge —, und ein Zählerstand bleibt dann ohne Kurvenwert: eine
+     * fehlende Tagesmenge wird hier nicht erfunden (und nie aus Viertelstunden summiert).
+     * Anfangs- und Endstand reisen in der Herkunft mit. Die GESPEICHERTE Tagesmenge zeigt
+     * {@code UemsLesepfadMengenTest}.
      */
     @Test
     void ueberNeunzigTageTraegtDieTagesklasseUndErfindetKeineTagesmenge() {

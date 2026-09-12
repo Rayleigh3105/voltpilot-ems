@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -46,6 +47,12 @@ final class ViertelstundenTeile {
     private static final Duration VIERTELSTUNDE = Duration.ofMinutes(15);
     private static final Duration RUECKBLICK = Duration.ofDays(1);
 
+    /** Die Spalten einer gelesenen Viertelstunde — {@link #teilperiode} und {@link #werteteil} lesen nach Index. */
+    private static final String SPALTEN = "intervall_beginn, zustand, wertart, site_id, stand_anfang, stand_anfang_zeit, "
+            + "stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, "
+            + "menge, menge_zustand, erhalten, erwartet, kennzeichen::text, kadenz_s, n_nachgeliefert, "
+            + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen";
+
     private ViertelstundenTeile() {}
 
     /**
@@ -72,10 +79,7 @@ final class ViertelstundenTeile {
     /** Die Viertelstunden und Ereignisse einer Reihe für {@code [von, bis)}. */
     static Geladen laden(Connection con, UUID tenant, UUID entity, String kanal, Instant von, Instant bis)
             throws SQLException {
-        String spalten = "intervall_beginn, zustand, wertart, site_id, stand_anfang, stand_anfang_zeit, "
-                + "stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, "
-                + "menge, menge_zustand, erhalten, erwartet, kennzeichen::text, kadenz_s, n_nachgeliefert, "
-                + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen";
+        String spalten = SPALTEN;
         List<Teilperiode> teile = new ArrayList<>();
         List<Werteteil> werteteile = new ArrayList<>();
         int vorhanden = 0;
@@ -195,6 +199,13 @@ final class ViertelstundenTeile {
      */
     static List<VerbrauchRegeln.Ereignis> ereignisse(Connection con, UUID tenant, UUID entity, String kanal,
             Instant von, Instant bis, ZaehlerDeklaration deklaration) throws SQLException {
+        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(
+                ereignisseRoh(con, tenant, entity, kanal, von, bis), deklaration));
+    }
+
+    /** Die Gerätegrenzen und Neustarts von {@code (von, bis]}, wie gespeichert — noch ohne Deklaration. */
+    private static List<ViertelstundeVerdichter.Ereignis> ereignisseRoh(Connection con, UUID tenant, UUID entity,
+            String kanal, Instant von, Instant bis) throws SQLException {
         List<ViertelstundeVerdichter.Ereignis> roh = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT e.art, e.zeit, e.nutzlast->>'endstand', e.nutzlast->>'anfangsstand',
@@ -224,7 +235,7 @@ final class ViertelstundenTeile {
                 }
             }
         }
-        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(roh, deklaration));
+        return roh;
     }
 
     /** Die Kennzeichen einer gespeicherten Zeile — ein jsonb-Array von Sätzen. */
@@ -298,4 +309,120 @@ final class ViertelstundenTeile {
                 ViertelstundeRegeln.FAKTOR_DER_FASSUNG, deklaration.modulFuer(kadenz),
                 deklaration.hoechstzuwachsFuer(kadenz));
     }
+
+    /**
+     * Ein Schritt eines gröberen Rasters: Zählerstand-Menge ({@link #zaehlerstand}) bzw. Momentanwert
+     * ({@link #werte}) von {@code [von, bis)} — je {@code null} für die andere Wertart.
+     */
+    record Schritt(Instant von, Instant bis, String wertart, Teilperiode menge, Werteteil werte) {}
+
+    /**
+     * Die Schritte eines Rasters aus EINEM Lesezug (Lesepfad, AP-07 IP-14): je Beginn genau das, was
+     * {@link #laden} für {@code [Beginn, Beginn + Raster)} läse — die Viertelstunden darin samt der an
+     * {@code bis}, die letzte mit gutem Wert davor und die erste danach (je höchstens einen Tag), die
+     * Kadenz der jüngsten und die Wertart der jüngsten benannten Viertelstunde, die Ereignisse in
+     * {@code (von, bis]} und die Deklaration zum Beginn —, gegeben an dieselben Regeln. Gerechnet wird
+     * hier nichts; {@code UemsLesepfadMengenTest} hält jeden Schritt gegen {@link ZeitraumMenge#zeitraum}.
+     *
+     * <p>Warum nicht {@link #laden} je Schritt: 80 Tage im Stundenraster sind 1 920 Schritte mit je vier
+     * Abfragen. Hier sind es drei, gleich wie viele Schritte.
+     */
+    static List<Schritt> schritte(Connection con, UUID tenant, UUID entity, String kanal,
+            Collection<Instant> beginne, Duration raster) throws SQLException {
+        List<Instant> reihenfolge = beginne.stream().distinct().sorted().toList();
+        if (reihenfolge.isEmpty()) {
+            return List.of();
+        }
+        Instant erster = reihenfolge.get(0);
+        Instant letzter = reihenfolge.get(reihenfolge.size() - 1).plus(raster);
+        List<Gelesen> zeilen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("SELECT " + SPALTEN + " FROM messreihe_viertelstunde"
+                + " WHERE tenant_id = ? AND entity_id = ? AND messkanal = ?"
+                + " AND intervall_beginn >= ? AND intervall_beginn < ? ORDER BY intervall_beginn")) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            ps.setTimestamp(4, Timestamp.from(erster.minus(RUECKBLICK)));
+            ps.setTimestamp(5, Timestamp.from(letzter.plus(RUECKBLICK)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Teilperiode t = teilperiode(rs);
+                    zeilen.add(new Gelesen(zeit(rs, 1), t, werteteil(rs, t), (Integer) rs.getObject(18),
+                            rs.getString(3), zeit(rs, 10) != null, zeit(rs, 12) != null));
+                }
+            }
+        }
+        boolean zaehler = zeilen.stream().anyMatch(z -> "counter".equals(z.wertart()));
+        List<ViertelstundeVerdichter.Ereignis> ereignisse = zaehler
+                ? ereignisseRoh(con, tenant, entity, kanal, erster, letzter) : List.of();
+        Map<Instant, ZaehlerDeklaration> deklarationen = zaehler
+                ? ZaehlerDeklaration.lesen(con, tenant, entity, kanal, reihenfolge) : Map.of();
+
+        List<Schritt> aus = new ArrayList<>();
+        for (Instant von : reihenfolge) {
+            Instant bis = von.plus(raster);
+            List<Teilperiode> teile = new ArrayList<>();
+            List<Werteteil> werteteile = new ArrayList<>();
+            Gelesen davor = null;
+            Gelesen danach = null;
+            Integer kadenzS = null;
+            String wertart = null;
+            // Nur das Fenster [von − 1 Tag, bis + 1 Tag) — mehr liest auch `laden` nicht.
+            for (int i = erstesAb(zeilen, von.minus(RUECKBLICK)); i < zeilen.size()
+                    && zeilen.get(i).beginn().isBefore(bis.plus(RUECKBLICK)); i++) {
+                Gelesen z = zeilen.get(i);
+                if (z.beginn().isBefore(von)) {
+                    if (!z.beginn().isBefore(von.minus(RUECKBLICK)) && z.letzterZeit()) {
+                        davor = z;
+                    }
+                } else if (!z.beginn().isAfter(bis)) {
+                    teile.add(z.teil());
+                    werteteile.add(z.werteteil());
+                    if (z.beginn().isBefore(bis)) {
+                        kadenzS = z.kadenzS();
+                        wertart = z.wertart() != null ? z.wertart() : wertart;
+                    }
+                }
+                if (danach == null && !z.beginn().isBefore(bis) && z.beginn().isBefore(bis.plus(RUECKBLICK))
+                        && z.ersterZeit()) {
+                    danach = z;
+                }
+            }
+            if (davor != null) {
+                teile.add(0, davor.teil());
+                werteteile.add(0, davor.werteteil());
+            }
+            if (danach != null) {
+                werteteile.add(danach.werteteil());
+            }
+            List<ViertelstundeVerdichter.Ereignis> imSchritt = ereignisse.stream()
+                    .filter(e -> e.zeit().isAfter(von) && !e.zeit().isAfter(bis)).toList();
+            ZaehlerDeklaration deklaration = deklarationen.getOrDefault(von, ZaehlerDeklaration.NICHTS);
+            List<VerbrauchRegeln.Ereignis> fuerRegel =
+                    List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(imSchritt, deklaration));
+            aus.add(new Schritt(von, bis, wertart,
+                    zaehlerstand(teile, fuerRegel, deklaration, wertart, kadenzS, von, bis),
+                    werte(werteteile, wertart, kadenzS, von, bis)));
+        }
+        return aus;
+    }
+
+    /** Der Index der ersten Zeile mit Beginn ab {@code zeit} (die Zeilen sind nach Beginn sortiert). */
+    private static int erstesAb(List<Gelesen> zeilen, Instant zeit) {
+        int links = 0;
+        int rechts = zeilen.size();
+        while (links < rechts) {
+            int mitte = (links + rechts) >>> 1;
+            if (zeilen.get(mitte).beginn().isBefore(zeit)) {
+                links = mitte + 1;
+            } else {
+                rechts = mitte;
+            }
+        }
+        return links;
+    }
+
+    /** Eine Viertelstunde aus dem Lesezug von {@link #schritte}. */
+    private record Gelesen(Instant beginn, Teilperiode teil, Werteteil werteteil, Integer kadenzS, String wertart,
+            boolean ersterZeit, boolean letzterZeit) {}
 }
