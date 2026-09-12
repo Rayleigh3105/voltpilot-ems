@@ -127,9 +127,11 @@ aus den Periodenständen, `stand_anfang`/`stand_ende` sind die Stände an den TA
 `erwartet`/`abdeckung_prozent` zählen fehlende Viertelstunden mit — siehe
 `uems-periodenmengen.md`.
 
-`mittel` ist das mit `erhalten` **gewichtete** Mittel der Viertelstunden — also exakt das Mittel
-der guten Werte des Tages, nie ein Mittel von Mitteln; `min_wert`/`max_wert` sind Minimum und
-Maximum. Das sind Momentanwert-Fakten, keine Mengen.
+`mittel`, `min_wert`, `max_wert` sind Momentanwert-Fakten, keine Mengen. **Seit AP-08 IP-3**
+rechnet sie `VerbrauchRegeln.momentanwertAusTeilperioden`: Mittel = Summe der guten Werte ÷
+erhalten (Spalte `summe`), auf eine Nachkommastelle wie die Viertelstunde. Vorher gewichtete dieser
+Lauf die GERUNDETEN Viertelstunden-Mittel mit `erhalten` — das war nur auf 0,05 genau. Siehe
+`uems-intervall-momentanwert.md`.
 
 ## Der Tageslauf (`TagVerdichter`)
 

@@ -15,7 +15,7 @@ widersprechen, gilt die Datei.
 
 | Datei | Rolle |
 |---|---|
-| [`verbrauch-vectors.json`](./verbrauch-vectors.json) | **die eine Wahrheit**: 23 handgerechnete Referenzfälle (F1–F23) mit Eingang und erwartetem Ergebnis |
+| [`verbrauch-vectors.json`](./verbrauch-vectors.json) | **die eine Wahrheit**: 23 handgerechnete Referenzfälle der Vorlage (F1–F23) plus F24 (AP-08 IP-3) mit Eingang und erwartetem Ergebnis |
 | [`verbrauch.schema.json`](./verbrauch.schema.json) | das Schema für Eingang, Ergebnis und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/optimization/voltpilot_optimization/verbrauch.py` | der **Python-Zwilling** (rein: keine Uhr, keine DB, kein Netz) |
 | `services/api/.../uems/VerbrauchRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
@@ -30,8 +30,9 @@ Speicher (`stur-speicher-vectors.json` mit `voltpilot_optimization/stur.py` ⟷
 `repo/StandardSpeicher.java`).
 
 > **Wer anruft:** seit AP-08 IP-2 der Verdichtungs-Lauf je Viertelstunde, seit IP-5 der
-> Tageslauf, der Monats-/Jahreslauf und der freie Zeitraum (§7). Die Kern-Telemetrie, ihre
-> Rollups, das Cockpit und die Erlöse sind unberührt.
+> Tageslauf, der Monats-/Jahreslauf und der freie Zeitraum (§7), seit IP-3 dieselben Läufe für
+> Momentanwert und Intervallmenge (§8). Die Kern-Telemetrie, ihre Rollups, das Cockpit und die
+> Erlöse sind unberührt.
 
 ## 1. Der Eingang: eine Reihe, eine Periode
 
@@ -123,8 +124,9 @@ Zustand und Abdeckung der Vorlage bleiben unberührt).
 ## 6. Was dieser Vertrag NICHT regelt
 
 Ersatzwerte und ihre Methoden, Korrekturen und Versionierung (§4.6, ab IP-12), die
-Fortpflanzung über berechnete Messstellen (§4.5, AP-10), die Fortpflanzung von Intervallmenge
-und Momentanwert über Perioden (IP-3), die Kundensätze (IP-8), die Zustandsart `state` (S1/S2)
+Fortpflanzung über berechnete Messstellen (§4.5, AP-10), der gröbere Eingang und das Intervall
+über die Grenze (I3/I4), die Vorzeichen-Aufteilung (M5, IP-7), die Kundensätze (IP-8), die
+Zustandsart `state` (S1/S2)
 und die Bildung der Perioden selbst — eine Erwartung nennt ihre Periode als `von`/`bis`, sie
 wird hier nicht erzeugt. All das kommt in eigenen
 Paketen und erweitert diese Datei **additiv**: `schema_version` bleibt, ein abwesendes Feld
@@ -155,3 +157,37 @@ Zählerstand-Erwartung ab zwei Viertelstunden**, dass die Zusammensetzung aus Vi
 über Tage) die Erwartung der Datei ergibt (`VerbrauchTeilperiodenTest`, `test_verbrauch.py`).
 Fehlt an einer Grenze der Stand, ist die Menge der **gemessene Teil** und `unvollständig` (F20)
 — ein Stand wird nie erfunden oder fortgeschrieben.
+
+## 8. Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
+
+Eine gröbere Periode einer Momentanwert- oder Intervallmengen-Reihe wird ebenfalls aus ihren
+gespeicherten Teilperioden gebildet (`regeln.werte_teilperioden`; Java
+`VerbrauchRegeln.momentanwertAusTeilperioden` / `intervallmengeAusTeilperioden`, Python
+`verbrauch.momentanwert_aus_teilperioden` / `intervallmenge_aus_teilperioden`). Ein Teil trägt
+dafür neben seinem Ergebnis die **ungerundete Summe** der guten Werte, die **ungerundete
+Energie**, die **gemessene Zeit** und ob **in ihm** eine Lücke liegt.
+
+- **Mittel** = Summe der Teilsummen ÷ Summe erhalten — nie ein Mittel von Mitteln (zwei
+  Viertelstunden mit 10,05 und 10,04 sind gerundet 10,1 und 10,0; ihr Mittel 10,05 ergäbe 10,1,
+  die halbe Stunde hat 10,045 = 10,0). Min/Max über die Teile.
+- **Vollständig** nur ohne Lücke zwischen zwei guten Werten — in einem Teil, zwischen zwei
+  Teilen, zum letzten Wert davor und zum ersten danach — und mit beiden Rändern innerhalb einer
+  Kadenz (M3). Ein unvollständiger RAND eines Teils ist an einer inneren Grenze kein Rand mehr
+  (F24: Viertelstunde 10:30 unvollständig, halbe Stunde 10:30–11:00 vollständig).
+- **Energie aus Leistung** (E5, M4) nur gekennzeichnet („aus Leistung integriert …“) und nur, wenn
+  JEDER Teil mit gutem Wert seine Energie trägt: Summe der ungerundeten Teil-Energien plus je
+  Strecke ohne Teil mit Werten das, was der Wert davor dorthin hält. Ohne einen guten Wert gibt es
+  keine Zahl — nie 0, nie Mittel × Länge.
+- **Halten über die Grenze:** ein Wert hält bis zum nächsten guten Wert, höchstens zwei Kadenzen,
+  **auch wenn dieser hinter der Periodengrenze liegt** (F24 Viertelstunde 10:15: 18,667 statt
+  18,444 kWh). Nur so ergeben die Viertelstunden-Energien genau die der Stunde (107,308 kWh).
+- **Rundung:** die ungerundete Energie ist eine Summe 28-stelliger Divisionen; vor der Rundung auf
+  drei Stellen wird Rechenrauschen unter 10⁻¹⁵ entfernt (`ENERGIE_RAUSCHEN_STELLEN`), damit eine
+  Summe genau auf der Grenze (F3: 24,1125) nicht als 24,11249…9 kippt.
+- **Intervallmenge** = Summe der ungerundeten Teilsummen, einmal gerundet; jede fehlende
+  Intervallmenge — auch die eines Teils ohne Zeile — macht die Periode unvollständig (F2, halbe
+  Stunde).
+
+Beide Zwillinge prüfen an jeder Momentanwert- und Intervallmengen-Erwartung ab zwei
+Viertelstunden, dass die Zusammensetzung die Erwartung der Datei ergibt
+(`VerbrauchWerteteileTest`, `test_verbrauch.py`).
