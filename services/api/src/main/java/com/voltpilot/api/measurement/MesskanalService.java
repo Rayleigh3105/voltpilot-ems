@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.uems.GeraetRepository;
+import com.voltpilot.api.uems.KadenzRegeln;
 import com.voltpilot.api.uems.MessstelleQuelleRepository;
 import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.web.dto.MesskanalDto;
@@ -162,21 +163,30 @@ public class MesskanalService {
     }
 
     /**
-     * Die WIRKSAME Kadenz eines Kanals in Sekunden — dieselbe Regel wie im Read-Model
-     * ({@code MeasurementCatalog.Point.view}): die der Mess-Selektion, sonst die Vorgabe des
-     * Katalogs ({@code default_cadence_s}), sonst 300 s. Die Beobachtung (IP-15) misst ihre
-     * Toleranz daran.
+     * Die WIRKSAME Kadenz eines Kanals in Sekunden OHNE eine eingetragene Fassung — die VORGABE:
+     * die der Mess-Selektion, sonst die des Katalogs ({@code default_cadence_s}), sonst 300 s
+     * (dieselbe Regel wie {@code MeasurementCatalog.Point.view}).
+     *
+     * <p>Seit UEMS AP-07 IP-10 ist das nur noch das hintere Stück der Kette: vorn steht die
+     * zeitgültige Fassung der Quellenbindung. Wer eine hat, ruft {@link #kadenz}.
      */
     public int kadenzS(String pointKey, Integer selektion) {
-        if (selektion != null) {
-            return selektion;
-        }
-        MeasurementCatalog.Point p = catalog.resolve(pointKey);
-        return p == null || p.defaultCadenceS() == null ? VORGABE_KADENZ_S : p.defaultCadenceS();
+        return kadenz(pointKey, selektion, null).erwartetS();
     }
 
-    /** Die Kadenz, wenn weder Selektion noch Katalog eine nennt (der Stand von {@code Point.view}). */
-    public static final int VORGABE_KADENZ_S = 300;
+    /**
+     * Die ganze Vorgabe-Kette (UEMS AP-07 IP-10, Entscheid E9): Fassung der Quellenbindung →
+     * Mess-Selektion → Katalog → 300 s, mit der Herkunft der Zahl. {@code fassungS} ist die zum
+     * gefragten ZEITPUNKT geltende Fassung ({@code QuelleKadenzService.jeBindung}), {@code null},
+     * wenn es keine gibt — dann rechnet diese Methode Zeichen für Zeichen wie vor IP-10.
+     */
+    public KadenzRegeln.Wirksam kadenz(String pointKey, Integer selektion, Integer fassungS) {
+        MeasurementCatalog.Point p = catalog.resolve(pointKey);
+        return KadenzRegeln.wirksam(fassungS, selektion, p == null ? null : p.defaultCadenceS());
+    }
+
+    /** Die Kadenz, wenn weder Fassung noch Selektion noch Katalog eine nennt. */
+    public static final int VORGABE_KADENZ_S = KadenzRegeln.VORGABE_S;
 
     private static String katalogName(MeasurementCatalog.Point p) {
         return p == null ? null : p.labelDe() == null ? p.labelSource() : p.labelDe();

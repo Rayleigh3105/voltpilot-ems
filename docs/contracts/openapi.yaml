@@ -8373,6 +8373,62 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/messstellen/{id}/quellen/{quelleId}/kadenz:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: quelleId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Die erwartete Kadenz der Quellenbindung zum Stichtag, mit Herkunft und Historie (AP-07 IP-10).
+      description: >
+        Recht `messstelle.ansehen`. Die Kadenz ist seit AP-07 IP-10 (Entscheid E9) ein
+        zeitgültiges Feld der Quellenbindung: `erwartet_s` ist, was zum `stichtag`
+        erwartet wird, `herkunft` sagt woher die Zahl kommt (`fassung` · `auswahl` ·
+        `katalog` · `vorgabe`), `vorgabe_s` was ohne eingetragene Fassung gälte.
+        `stichtag` ist ein Tag (`2027-03-03`, dann gilt sein Beginn) oder ein Zeitpunkt
+        mit Versatz; fehlend = jetzt. Eine Quelle einer anderen oder fremden Messstelle
+        ist 404.
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Die Kadenz zum Stichtag und die Historie ihrer Fassungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kadenz" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [messstellen]
+      summary: Trägt eine neue Kadenz-Fassung ein - sie gilt ab ihrem Zeitpunkt, nie rückwärts.
+      description: >
+        Recht `messstelle.quelle`; mit einem `gueltig_ab` vor jetzt zusätzlich
+        `aenderung.rueckwirkend`. `erwartet_s` 1 … 86 400 s - genau die Schranken des
+        Drahtvertrags `mqtt-measurement-config` (400 `kadenz_ungueltig`);
+        `gueltig_ab` auf die volle Minute (400 `zeitpunkt_ungueltig`), fehlend = jetzt.
+        Die Fassung liegt in ihrer Bindung (422 `vor_beginn` · `nach_ende`), zu einem
+        schon belegten Beginn gibt es keine zweite (409 `beginn_belegt`), und dieselbe
+        Zahl noch einmal ist 400 `unveraendert`. Die dort geltende Fassung endet GENAU
+        zu diesem Zeitpunkt; alles davor behält seine alte Erwartung. Ein
+        Protokolleintrag `kadenz_geaendert` an der Messstelle. ⚠ Am Draht ändert sich
+        nichts: die Box bekommt dieselbe Nachricht `…/v2/measurement-config` in
+        derselben Form - nur mit dieser Zahl in `cadence_s`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KadenzEintragen" }
+      responses:
+        "201":
+          description: Die neue Fassung und die, die sie beendet hat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KadenzVorgang" }
+        "400": { $ref: "#/components/responses/KadenzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/KadenzAbgelehnt" }
+        "422": { $ref: "#/components/responses/KadenzAbgelehnt" }
   /api/v1/sites/{siteId}/data-sources:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -8962,6 +9018,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleFehler" }
+    KadenzAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
+        `code`, einen deutschen `message`-Satz und die Fakten des Urteils (siehe
+        KadenzFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/KadenzFehler" }
     DatenquelleAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Der Körper trägt `code`, einen deutschen
@@ -16580,6 +16644,90 @@ components:
         neu: { type: integer }
         unveraendert: { type: integer, description: "Zeilen, die schon übernommen waren - ein zweiter Aufruf legt nichts an." }
         messstellen: { type: array, items: { $ref: "#/components/schemas/Messstelle" } }
+    KadenzFehler:
+      type: object
+      description: >
+        Die Ablehnung der Kadenz-Schnittstelle (AP-07 IP-10). Die Codes der Regeln
+        (uems/KadenzRegeln) in ihrer Prüfreihenfolge: `kadenz_ungueltig` 400 (keine
+        Zahl oder außerhalb 1 … 86 400 s - die Schranken des Drahtvertrags),
+        `zeitpunkt_ungueltig` 400 (`gueltig_ab` nicht auf die volle Minute),
+        `vor_beginn` 422 und `nach_ende` 422 (die Fassung liegt in ihrer
+        Quellenbindung), `beginn_belegt` 409 (dort beginnt schon eine - eine Fassung
+        wird nie überschrieben), `unveraendert` 400. Dazu der Code der Schnittstelle:
+        `anfrage_ungueltig` 400 (`feld`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [kadenz_ungueltig, zeitpunkt_ungueltig, vor_beginn, nach_ende, beginn_belegt,
+            unveraendert, anfrage_ungueltig]
+        message: { type: string }
+        feld: { type: string }
+        quelle_id: { type: string, format: uuid }
+        erwartet_s: { type: integer, nullable: true }
+        gueltig_ab: { type: string, nullable: true }
+    KadenzEintragen:
+      type: object
+      required: [erwartet_s]
+      properties:
+        erwartet_s: { type: integer, minimum: 1, maximum: 86400 }
+        gueltig_ab:
+          type: string
+          format: date-time
+          description: Auf die volle Minute, mit Versatz; fehlend = jetzt.
+        grund: { type: string, maxLength: 500 }
+    KadenzFassung:
+      type: object
+      required: [id, erwartet_s, herkunft, gueltig_ab, status, rueckwirkend]
+      properties:
+        id: { type: string, format: uuid }
+        erwartet_s: { type: integer }
+        herkunft:
+          type: string
+          enum: [bestand, eintrag]
+          description: >
+            `bestand` - beim Umstieg aus der Mess-Selektion übernommen, gilt seit dem
+            Beginn der Bindung; `eintrag` - von Hand eingetragen.
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [geplant, gilt, beendet] }
+        rueckwirkend: { type: boolean }
+        begruendung: { type: string, nullable: true }
+        eingetragen_am: { type: string, format: date-time }
+        eingetragen_von: { type: string }
+    Kadenz:
+      type: object
+      required: [messstelle_id, quelle_id, kanal, stichtag, erwartet_s, herkunft, vorgabe_s, fassungen]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        quelle_id: { type: string, format: uuid }
+        komponente: { type: string, format: uuid }
+        kanal: { type: string }
+        stichtag: { type: string, format: date-time }
+        erwartet_s: { type: integer }
+        herkunft:
+          type: string
+          enum: [fassung, auswahl, katalog, vorgabe]
+          description: >
+            Die Vorgabe-Kette: eingetragene Fassung, sonst die Kadenz der
+            Mess-Selektion, sonst die des Katalogs (`default_cadence_s`), sonst 300 s.
+        vorgabe_s: { type: integer, description: Was ohne eingetragene Fassung gälte. }
+        vorgabe_herkunft: { type: string, enum: [auswahl, katalog, vorgabe] }
+        gueltig:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/KadenzFassung" }]
+        fassungen:
+          type: array
+          items: { $ref: "#/components/schemas/KadenzFassung" }
+    KadenzVorgang:
+      type: object
+      required: [fassung]
+      properties:
+        fassung: { $ref: "#/components/schemas/KadenzFassung" }
+        beendet:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/KadenzFassung" }]
+        rueckwirkung: { $ref: "#/components/schemas/MessstelleQuelleRueckwirkung" }
     MessstelleFehler:
       type: object
       description: >

@@ -3,11 +3,17 @@ package com.voltpilot.api.measurement;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.uems.ErwarteteKadenz;
+import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
+import com.voltpilot.api.uems.KadenzRegeln;
 import jakarta.annotation.PreDestroy;
+import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -28,17 +34,19 @@ public class MeasurementConfigPublisher {
     private final String username;
     private final String password;
     private final ObjectMapper mapper;
+    private final ErwarteteKadenz kadenzen;
     private MqttClient client;
 
     public MeasurementConfigPublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            ObjectMapper mapper) {
+            ObjectMapper mapper, ErwarteteKadenz kadenzen) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.mapper = mapper;
+        this.kadenzen = kadenzen;
     }
 
     public static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -73,19 +81,28 @@ public class MeasurementConfigPublisher {
      * the conservative one. {@code entity_id} rides along only when the key
      * belongs unambiguously to ONE component: it is routing metadata for the
      * Stufe-3c edge, and an ambiguous binding would be an invented one.
+     *
+     * <p><b>⚠ Die Kadenz kommt seit UEMS AP-07 IP-10 aus der Quellenbindung</b> (Entscheid E9):
+     * gilt für den Messkanal dieser Auswahlzeile eine eingetragene Fassung, steht DEREN Zahl in
+     * {@code cadence_s} - sonst die der Auswahl, genau wie bisher. Am Draht ändert das nichts: das
+     * Dokument hat dieselben Felder in derselben Reihenfolge, {@code schema_version} bleibt 2.0,
+     * und die Fassung trägt dieselben Schranken wie das Feld (1 … 86 400 s), weil sie gar nicht
+     * anders entstehen kann. Nur die QUELLE der Zahl wechselt.
      */
     byte[] payload(DeviceScope scope, State state) throws Exception {
+        Map<Messkanal, Integer> fassungen = kadenzen.fassungenJeKanal(messkanaele(state), Instant.now());
         Map<String, Map<String, Object>> byPointKey = new LinkedHashMap<>();
         Map<String, Boolean> unambiguousEntity = new LinkedHashMap<>();
         for (MeasurementSelectionService.SelectionPoint p : state.selections()) {
             if (!p.enabled()) {
                 continue;
             }
+            Integer soll = cadence(p, fassungen);
             Map<String, Object> selection = byPointKey.get(p.pointKey());
             if (selection == null) {
                 selection = new LinkedHashMap<>();
                 selection.put("point_key", p.pointKey());
-                selection.put("cadence_s", p.cadenceS());
+                selection.put("cadence_s", soll);
                 if (p.customDefinition() != null) {
                     selection.put("definition", p.customDefinition());
                 }
@@ -97,9 +114,9 @@ public class MeasurementConfigPublisher {
                 continue;
             }
             Object cadence = selection.get("cadence_s");
-            if (p.cadenceS() != null && (!(cadence instanceof Integer existing)
-                    || p.cadenceS().intValue() < existing.intValue())) {
-                selection.put("cadence_s", p.cadenceS());
+            if (soll != null && (!(cadence instanceof Integer existing)
+                    || soll.intValue() < existing.intValue())) {
+                selection.put("cadence_s", soll);
             }
             if (!Objects.equals(p.entityId(), selection.get("entity_id"))) {
                 unambiguousEntity.put(p.pointKey(), Boolean.FALSE);
@@ -120,6 +137,32 @@ public class MeasurementConfigPublisher {
         payload.put("catalog_version", state.catalogVersion());
         payload.put("selections", selections);
         return mapper.writeValueAsBytes(payload);
+    }
+
+    /**
+     * Die Soll-Kadenz EINER Auswahlzeile: die Fassung ihrer Quellenbindung, sonst die der Auswahl.
+     * Eine Fassung außerhalb der Schranken des Drahtvertrags wird ÜBERGANGEN, nie zurechtgebogen —
+     * über den Schreibweg kann sie nicht entstehen (CHECK und {@link KadenzRegeln}), von Hand in
+     * der Datenbank schon.
+     */
+    private static Integer cadence(MeasurementSelectionService.SelectionPoint p,
+            Map<Messkanal, Integer> fassungen) {
+        if (p.entityId() == null) {
+            return p.cadenceS();
+        }
+        Integer fassung = fassungen.get(new Messkanal(p.entityId(), p.pointKey()));
+        return KadenzRegeln.imRahmen(fassung) ? fassung : p.cadenceS();
+    }
+
+    /** Die Messkanäle, nach deren Fassung gefragt wird: je aktive Auswahlzeile mit Komponente. */
+    private static Set<Messkanal> messkanaele(State state) {
+        Set<Messkanal> out = new LinkedHashSet<>();
+        for (MeasurementSelectionService.SelectionPoint p : state.selections()) {
+            if (p.enabled() && p.entityId() != null) {
+                out.add(new Messkanal(p.entityId(), p.pointKey()));
+            }
+        }
+        return out;
     }
 
     private MqttClient connected() throws Exception {

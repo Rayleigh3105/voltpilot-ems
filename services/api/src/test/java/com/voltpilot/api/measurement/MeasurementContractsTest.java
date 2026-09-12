@@ -14,6 +14,8 @@ import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.SelectionPoint;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.ErwarteteKadenz;
+import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -36,7 +38,7 @@ class MeasurementContractsTest {
     @Test
     void publisherPayloadIsTheCommittedValidFixture() throws Exception {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
-                "tcp://unused:1883", "", "", mapper);
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         SelectionPoint point = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
                 7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
                 null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
@@ -55,7 +57,7 @@ class MeasurementContractsTest {
     @Test
     void publisherCarriesConcreteCustomDefinitionToTheEdge() throws Exception {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
-                "tcp://unused:1883", "", "", mapper);
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         var definition = mapper.readTree("{\"label\":\"Test\",\"sourceKind\":\"modbus_input\",\"address\":42,"
                 + "\"selector\":\"input:0x002a\",\"valueType\":\"uint16\",\"widthBits\":16,"
                 + "\"signed\":false,\"endian\":\"big\",\"scale\":1,\"unit\":\"V\","
@@ -116,7 +118,7 @@ class MeasurementContractsTest {
     void publisherBindsAnUnambiguousComponentAndCollapsesTheSameRegisterOfTwo()
             throws Exception {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
-                "tcp://unused:1883", "", "", mapper);
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
         UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
         String shared = "deye.hybrid_1p.battery.battery";
@@ -155,6 +157,80 @@ class MeasurementContractsTest {
         assertThat(mixedPayload.at("/selections")).hasSize(1);
         assertThat(mixedPayload.at("/selections/0/entity_id").isMissingNode()).isTrue();
         assertThat(mixedPayload.at("/selections/0/cadence_s").asInt()).isEqualTo(30);
+    }
+
+    /**
+     * UEMS AP-07 IP-10: die Soll-Kadenz kommt jetzt aus der Quellenbindung — und AM DRAHT ÄNDERT
+     * SICH NICHTS. Bewiesen an der festgeschriebenen Beispieldatei:
+     *
+     * <ul>
+     *   <li>trägt die Fassung DIESELBE Zahl wie die Auswahl, ist das Dokument ZEICHENGLEICH mit
+     *       ihr — nur die Quelle der Zahl hat gewechselt;</li>
+     *   <li>trägt sie eine andere, unterscheidet sich GENAU EIN Wert ({@code cadence_s}): dieselben
+     *       Felder, dieselbe Reihenfolge, {@code schema_version} weiter 2.0;</li>
+     *   <li>ohne Fassung gilt die Auswahl, Zeichen für Zeichen wie vor IP-10;</li>
+     *   <li>eine Zahl außerhalb der Schranken des Drahtvertrags wird übergangen, nie
+     *       zurechtgebogen;</li>
+     *   <li>eine Zeile ohne Komponente (alte Box-Semantik) fragt nie nach einer Fassung.</li>
+     * </ul>
+     */
+    @Test
+    void dieKadenzKommtAusDerFassungUndDerDrahtBleibtDerselbe() throws Exception {
+        UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+        String shared = "deye.hybrid_1p.battery.battery";
+        State state = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null, null,
+                List.of(selection(left, shared, 10),
+                        selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
+                List.of(), null);
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.per-component.json")));
+
+        // Dieselbe Zahl aus der neuen Wahrheit: das Dokument ist zeichengleich mit der Datei.
+        assertThat(mapper.readTree(publisher(Map.of(new Messkanal(left, shared), 10))
+                .payload(new DeviceScope(TENANT, SITE, DEVICE), state))).isEqualTo(fixture);
+
+        // Eine andere Zahl: GENAU cadence_s wandert, sonst nichts.
+        var abweichend = mapper.readTree(publisher(Map.of(new Messkanal(left, shared), 30))
+                .payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        assertThat(abweichend.at("/selections/0/cadence_s").asInt()).isEqualTo(30);
+        var erwartet = fixture.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode) erwartet.at("/selections/0")).put("cadence_s", 30);
+        assertThat(abweichend).isEqualTo(erwartet);
+        assertThat(abweichend.at("/schema_version").asText()).isEqualTo("2.0");
+        assertThat(feldnamen(abweichend.at("/selections/0")))
+                .containsExactlyElementsOf(feldnamen(fixture.at("/selections/0")));
+
+        // Ohne Fassung: die Auswahl, wie vor IP-10.
+        assertThat(mapper.readTree(publisher(Map.of())
+                .payload(new DeviceScope(TENANT, SITE, DEVICE), state))).isEqualTo(fixture);
+
+        // Außerhalb 1 … 86 400 s: übergangen, nie zurechtgebogen.
+        for (int daneben : new int[] {0, -10, 86401}) {
+            assertThat(mapper.readTree(publisher(Map.of(new Messkanal(left, shared), daneben))
+                    .payload(new DeviceScope(TENANT, SITE, DEVICE), state))).isEqualTo(fixture);
+        }
+
+        // Eine Zeile ohne Komponente fragt nie nach einer Fassung.
+        State ohneKomponente = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null,
+                null, List.of(selection(null, shared, 10)), List.of(), null);
+        MeasurementConfigPublisher zaehlend = new MeasurementConfigPublisher("tcp://unused:1883", "", "",
+                mapper, (kanaele, zeitpunkt) -> {
+                    assertThat(kanaele).isEmpty();
+                    return Map.of();
+                });
+        assertThat(mapper.readTree(zaehlend.payload(new DeviceScope(TENANT, SITE, DEVICE), ohneKomponente))
+                .at("/selections/0/cadence_s").asInt()).isEqualTo(10);
+    }
+
+    private MeasurementConfigPublisher publisher(Map<Messkanal, Integer> fassungen) {
+        return new MeasurementConfigPublisher("tcp://unused:1883", "", "", mapper,
+                (kanaele, zeitpunkt) -> fassungen);
+    }
+
+    private static List<String> feldnamen(com.fasterxml.jackson.databind.JsonNode n) {
+        List<String> namen = new java.util.ArrayList<>();
+        n.fieldNames().forEachRemaining(namen::add);
+        return namen;
     }
 
     private static SelectionPoint selection(UUID entityId, String pointKey, Integer cadenceS) {

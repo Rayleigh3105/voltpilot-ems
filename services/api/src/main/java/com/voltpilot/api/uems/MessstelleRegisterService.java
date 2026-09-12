@@ -91,14 +91,16 @@ public class MessstelleRegisterService {
     private final MessstelleService messstellen;
     private final StandortService standorte;
     private final MesskanalService kanaele;
+    private final QuelleKadenzRepository kadenzen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleRegisterService(MessstelleRegisterRepository register, MessstelleService messstellen,
-            StandortService standorte, MesskanalService kanaele) {
+            StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen) {
         this.register = register;
         this.messstellen = messstellen;
         this.standorte = standorte;
         this.kanaele = kanaele;
+        this.kadenzen = kadenzen;
     }
 
     /** Nur für Tests: die Uhr, an der „ohne Stichtag = jetzt“ hängt. */
@@ -132,11 +134,15 @@ public class MessstelleRegisterService {
         Map<UUID, String> anlagen = baum.zeilen().anlagen().stream()
                 .collect(Collectors.toMap(StandortLesemodell.Anlage::id, StandortLesemodell.Anlage::name));
         Map<Messwert, Werte> werte = register.werte(messwerte(bestand, zeitpunkt), zeitpunkt);
+        // ⚠ ZUM ZEITPUNKT, nie „jetzt": die Kadenz ist seit AP-07 IP-10 eine Tatsache mit
+        // Geschichte, und ein alter Stichtag sieht die alte Erwartung.
+        Map<UUID, Integer> fassungen = kadenzen.jeBindung(bindungen(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
         for (int i = 0; i < bestand.size(); i++) {
-            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt, werte);
+            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt,
+                    werte, fassungen);
             if (auswahl.passt(z)) {
                 messstellenListe.add(voll.get(i));
                 zeilen.add(z);
@@ -165,19 +171,20 @@ public class MessstelleRegisterService {
     // ---------------------------------------------------------------- Zeile
 
     private MessstelleDto.RegisterZeile zeile(Bestand b, MessstelleDto.Messstelle voll, StandortService.Baum baum,
-            Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt, Map<Messwert, Werte> werte) {
+            Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt, Map<Messwert, Werte> werte,
+            Map<UUID, Integer> fassungen) {
         MessstelleRepository.Messstelle m = b.messstelle();
         Groesse h = m.hauptgroesse();
         MessstelleDto.RegisterOrt ort = ort(b, baum, tag);
         ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), ort.standort());
         boolean gemessen = !MessstelleRegeln.BERECHNET.equals(m.art());
         MessstelleBeobachtung.Ergebnis haupt = gemessen
-                ? beobachtung(fuehrend(b, h, zeitpunkt), werte, zeitpunkt, zone) : null;
+                ? beobachtung(fuehrend(b, h, zeitpunkt), werte, fassungen, zeitpunkt, zone) : null;
         List<MessstelleDto.RegisterNebengroesse> neben = new ArrayList<>();
         for (MessstelleRepository.Nebengroesse n : b.nebengroessen()) {
             Groesse g = n.groesse();
             MessstelleBeobachtung.Ergebnis e = gemessen
-                    ? beobachtung(fuehrend(b, g, zeitpunkt), werte, zeitpunkt, zone) : null;
+                    ? beobachtung(fuehrend(b, g, zeitpunkt), werte, fassungen, zeitpunkt, zone) : null;
             neben.add(new MessstelleDto.RegisterNebengroesse(n.id(),
                     new MessstelleDto.Groesse(g.groesse(), g.richtung(), g.einheit(), g.wertart()),
                     e == null ? null : e.beobachtung(), e == null ? null : e.letzterWert()));
@@ -197,7 +204,7 @@ public class MessstelleRegisterService {
      * und der schlägt jeden alten Wert.
      */
     private MessstelleBeobachtung.Ergebnis beobachtung(QuelleZeile fuehrend, Map<Messwert, Werte> werte,
-            Instant zeitpunkt, ZoneId zone) {
+            Map<UUID, Integer> fassungen, Instant zeitpunkt, ZoneId zone) {
         if (fuehrend == null) {
             return MessstelleBeobachtung.ableiten(null, null, MesskanalService.VORGABE_KADENZ_S, null, zeitpunkt,
                     zone);
@@ -205,8 +212,24 @@ public class MessstelleRegisterService {
         Quelle q = fuehrend.quelle();
         Werte w = werte.get(messwert(fuehrend));
         return MessstelleBeobachtung.ableiten(fuehrend, w,
-                kanaele.kadenzS(q.kanal(), w == null ? null : w.kadenzS()),
+                kanaele.kadenz(q.kanal(), w == null ? null : w.kadenzS(), fassungen.get(q.id())).erwartetS(),
                 kanaele.einheit(q.kanal(), fuehrend.kanalDefinition()), zeitpunkt, zone);
+    }
+
+    /**
+     * Die führenden Bindungen, die zum Zeitpunkt laufen — nach ihren Kadenz-Fassungen wird EINMAL
+     * gefragt (AP-07 IP-10), nicht je Zeile.
+     */
+    private static Set<UUID> bindungen(List<Bestand> bestand, Instant zeitpunkt) {
+        Set<UUID> out = new LinkedHashSet<>();
+        for (Bestand b : bestand) {
+            for (QuelleZeile z : b.quellen()) {
+                if (FUEHREND.equals(z.quelle().rolle()) && MessstelleQuelleService.gilt(z.quelle(), zeitpunkt)) {
+                    out.add(z.quelle().id());
+                }
+            }
+        }
+        return out;
     }
 
     /**
