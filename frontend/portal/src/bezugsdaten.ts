@@ -16,11 +16,22 @@
  *
  * REIN: kein Netz, kein Zustand, keine Uhr — „jetzt" wird übergeben. Jeder
  * Betrag reist als Dezimaltext und wird als ganzzahlige Mantisse gerechnet
- * (`Dez`), damit keine Rechnung einen Binärbruch-Fehler erbt: `0.1 + 0.2` ist
- * hier nicht `0.30000000000000004`, und `312,4 t` sind genau `312400 kg`.
+ * (`Dez` aus `dez.ts`), damit keine Rechnung einen Binärbruch-Fehler erbt:
+ * `0.1 + 0.2` ist hier nicht `0.30000000000000004`, und `312,4 t` sind genau
+ * `312400 kg`.
  *
- * Wer anruft (Stand AP-09 IP-1): niemand. Die Flächen kommen mit IP-9 … IP-16.
+ * Seit AP-09 IP-3 rechnet diese Datei die Einheiten und die Perioden NICHT
+ * mehr selbst: `bezugsEinheit.ts` (Vokabular je Größe, feste Faktoren,
+ * Synonyme) und `bezugsPeriode.ts` (Deutung der Datumsspalte, Zeitzone des
+ * Standorts, 23-/25-Stunden-Tage) sind eigene Module, weil Import, Eingabe,
+ * Kennzahlen und Berichte sie alle brauchen. Diese Datei reicht sie weiter —
+ * eine Fassung, ein Einstieg.
+ *
+ * Wer anruft (Stand AP-09 IP-3): niemand. Die Flächen kommen mit IP-9 … IP-16.
  */
+
+import { dez, dezGleich, dezProzent, dezVergleich, dezVon, type Dez } from './dez';
+import { mitternacht, monatsschluessel, ortsteile, zwei } from './bezugsPeriode';
 
 // ------------------------------------------------------------------ Schwellen (Vertrag)
 
@@ -52,197 +63,58 @@ export const HINWEIS_BEFUNDE = ['datei_bekannt', 'einheit_umgerechnet', 'wert_un
 
 const istHinweis = (befund: string): boolean => HINWEIS_BEFUNDE.includes(befund);
 
-// --------------------------------------------------------------- Dezimalzahlen (exakt)
+// ------------------------------------------- Die drei Module, aus denen diese Datei besteht
 
-/** Ein Betrag als ganzzahlige Mantisse: der Wert ist `z / 10^e`. */
-export type Dez = { z: bigint; e: number };
+// Seit AP-09 IP-3 wohnen die exakte Dezimalrechnung, die Einheiten und die
+// Perioden in eigenen, wiederverwendbaren Modulen — Import, Eingabe,
+// Kennzahlen und Berichte brauchen sie alle. Diese Datei RUFT sie an und reicht
+// sie weiter; es gibt keine zweite Fassung.
 
-const zehn = (n: number): bigint => 10n ** BigInt(n);
+export {
+  dez,
+  dezGleich,
+  dezProzent,
+  dezRunde,
+  dezSkaliere,
+  dezTeile,
+  dezText,
+  dezVergleich,
+  dezVon,
+  type Dez,
+} from './dez';
 
-/** Dezimaltext (mit Punkt) → Betrag. Alles andere ist ein Programmfehler, kein Befund. */
-export const dez = (text: string): Dez => {
-  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text.trim());
-  if (!m) throw new Error(`kein Dezimaltext: ${text}`);
-  const bruch = m[3] ?? '';
-  return { z: BigInt(`${m[1]}${m[2]}${bruch}`), e: bruch.length };
-};
+export {
+  EINHEIT_UMGERECHNET,
+  EINHEIT_UNBEKANNT,
+  GANZZAHL_EINHEITEN,
+  einheit,
+  groesseVon,
+  istGanzzahlig,
+  synonym,
+  type Einheitswert,
+  type Umrechnung,
+} from './bezugsEinheit';
 
-export const dezVon = (n: number): Dez => dez(String(n));
-
-const halbAuf = (zaehler: bigint, nenner: bigint): bigint => {
-  const negativ = zaehler < 0n !== nenner < 0n;
-  const a = zaehler < 0n ? -zaehler : zaehler;
-  const b = nenner < 0n ? -nenner : nenner;
-  const ganz = a / b;
-  const rest = a % b;
-  const auf = rest * 2n >= b ? ganz + 1n : ganz;
-  return negativ ? -auf : auf;
-};
-
-/** Auf `stellen` Nachkommastellen, kaufmännisch gerundet. */
-export const dezRunde = (d: Dez, stellen: number): Dez =>
-  stellen >= d.e ? { z: d.z * zehn(stellen - d.e), e: stellen } : { z: halbAuf(d.z, zehn(d.e - stellen)), e: stellen };
-
-/** Mal `10^potenz` — exakt, ohne Rundung (t → kg ist potenz 3). */
-export const dezSkaliere = (d: Dez, potenz: number): Dez =>
-  potenz >= d.e ? { z: d.z * zehn(potenz - d.e), e: 0 } : { z: d.z, e: d.e - potenz };
-
-/** Geteilt durch eine ganze Zahl, auf `stellen` gerundet. */
-export const dezTeile = (d: Dez, teiler: number, stellen: number): Dez => ({
-  z: halbAuf(d.z * zehn(stellen), BigInt(teiler) * zehn(d.e)),
-  e: stellen,
-});
-
-export const dezVergleich = (a: Dez, b: Dez): number => {
-  const e = Math.max(a.e, b.e);
-  const x = a.z * zehn(e - a.e);
-  const y = b.z * zehn(e - b.e);
-  return x < y ? -1 : x > y ? 1 : 0;
-};
-
-/** Gleich heißt: gleich auf `vergleich_nachkommastellen` Stellen. */
-export const dezGleich = (a: Dez, b: Dez, stellen = VERGLEICH_NACHKOMMASTELLEN): boolean =>
-  dezVergleich(dezRunde(a, stellen), dezRunde(b, stellen)) === 0;
-
-/** Der Betrag als Dezimaltext mit Punkt — die Form, in der er im Vertrag steht. */
-export const dezText = (d: Dez): string => {
-  const negativ = d.z < 0n;
-  const ziffern = (negativ ? -d.z : d.z).toString().padStart(d.e + 1, '0');
-  const ganz = ziffern.slice(0, ziffern.length - d.e);
-  const bruch = d.e > 0 ? `.${ziffern.slice(ziffern.length - d.e)}` : '';
-  return `${negativ ? '-' : ''}${ganz}${bruch}`;
-};
-
-const prozent = (teil: number, ganz: number, stellen: number): Dez =>
-  ganz === 0
-    ? { z: 0n, e: stellen }
-    : { z: halbAuf(BigInt(teil) * 100n * zehn(stellen), BigInt(ganz)), e: stellen };
-
-// ----------------------------------------------------- Zeitzone, Tage und Kalenderperioden
-
-const OFFSET_FORM = new Map<string, Intl.DateTimeFormat>();
-
-const offsetFormat = (zone: string): Intl.DateTimeFormat => {
-  let f = OFFSET_FORM.get(zone);
-  if (!f) {
-    f = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' });
-    OFFSET_FORM.set(zone, f);
-  }
-  return f;
-};
-
-/** Der Offset der Zeitzone AN diesem Zeitpunkt, in Minuten. */
-export const offsetMinuten = (ms: number, zone: string): number => {
-  const teil = offsetFormat(zone)
-    .formatToParts(new Date(ms))
-    .find((p) => p.type === 'timeZoneName');
-  const m = /GMT([+-])(\d{2}):(\d{2})/.exec(teil?.value ?? '');
-  return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
-};
-
-/**
- * Z5 — alle Zeitpunkte, die zu einer Ortszeit OHNE Zone gehören: keiner in der
- * fehlenden Stunde am Sommerzeit-Beginn, zwei in der doppelten Stunde am
- * Sommerzeit-Ende, sonst genau einer.
- */
-export const zeitpunkteVon = (ortszeitIso: string, zone: string): number[] => {
-  const wand = Date.parse(`${ortszeitIso}Z`);
-  if (Number.isNaN(wand)) return [];
-  const gefunden: number[] = [];
-  for (const probe of [wand - 26 * 3600000, wand, wand + 26 * 3600000]) {
-    const offset = offsetMinuten(probe, zone);
-    const ms = wand - offset * 60000;
-    if (offsetMinuten(ms, zone) === offset && !gefunden.includes(ms)) gefunden.push(ms);
-  }
-  return gefunden.sort((a, b) => a - b);
-};
-
-const zwei = (n: number): string => String(n).padStart(2, '0');
-
-/** Ein Zeitpunkt als ISO-8601 mit dem Offset, den die Zeitzone dort trägt. */
-export const iso = (ms: number, zone: string): string => {
-  const offset = offsetMinuten(ms, zone);
-  const d = new Date(ms + offset * 60000);
-  const vorzeichen = offset < 0 ? '-' : '+';
-  const abs = Math.abs(offset);
-  return (
-    `${d.getUTCFullYear()}-${zwei(d.getUTCMonth() + 1)}-${zwei(d.getUTCDate())}` +
-    `T${zwei(d.getUTCHours())}:${zwei(d.getUTCMinutes())}:${zwei(d.getUTCSeconds())}` +
-    `${vorzeichen}${zwei(Math.floor(abs / 60))}:${zwei(abs % 60)}`
-  );
-};
-
-/** Der Kalendertag (und die Uhrzeit) eines Zeitpunkts in der Zeitzone des Standorts. */
-const ortsteile = (ms: number, zone: string) => {
-  const d = new Date(ms + offsetMinuten(ms, zone) * 60000);
-  return { jahr: d.getUTCFullYear(), monat: d.getUTCMonth() + 1, tag: d.getUTCDate() };
-};
-
-/** Mitternacht eines Kalendertages in der Zeitzone des Standorts. */
-export const mitternacht = (tag: string, zone: string): number => {
-  const moeglich = zeitpunkteVon(`${tag}T00:00:00`, zone);
-  return moeglich.length > 0 ? moeglich[0] : Date.parse(`${tag}T00:00:00Z`);
-};
-
-const tagPlus = (tag: string, tage: number): string =>
-  new Date(Date.parse(`${tag}T00:00:00Z`) + tage * 86400000).toISOString().slice(0, 10);
-
-/** P3 — die Länge eines Kalendertages in Stunden: am Umstellungstag 23 oder 25. */
-export const stundenDesTages = (tag: string, zone: string): number =>
-  (mitternacht(tagPlus(tag, 1), zone) - mitternacht(tag, zone)) / 3600000;
-
-const isoWoche = (tag: string): { jahr: number; woche: number } => {
-  const d = Date.parse(`${tag}T00:00:00Z`);
-  const wochentag = (new Date(d).getUTCDay() + 6) % 7;
-  const donnerstag = d + (3 - wochentag) * 86400000;
-  const jahr = new Date(donnerstag).getUTCFullYear();
-  return { jahr, woche: Math.round((donnerstag - wochenMontag(jahr, 1)) / (7 * 86400000)) + 1 };
-};
-
-const wochenMontag = (jahr: number, woche: number): number => {
-  const jan4 = Date.UTC(jahr, 0, 4);
-  const wochentag = (new Date(jan4).getUTCDay() + 6) % 7;
-  return jan4 - wochentag * 86400000 + (woche - 1) * 7 * 86400000;
-};
-
-const monatsschluessel = (jahr: number, monat: number): string => `${jahr}-${zwei(monat)}`;
-
-/** Der Schlüssel der Periode, in der ein Kalendertag liegt. */
-export const schluesselVon = (tag: string, periodeArt: string): string => {
-  const [jahr, monat] = tag.split('-').map(Number);
-  if (periodeArt === 'monat') return monatsschluessel(jahr, monat);
-  if (periodeArt === 'jahr') return String(jahr);
-  if (periodeArt === 'woche') {
-    const w = isoWoche(tag);
-    return `${w.jahr}-W${zwei(w.woche)}`;
-  }
-  return tag;
-};
-
-/** Erster und LETZTER Tag einer Periode aus ihrem Schlüssel. */
-export const spanneVon = (schluessel: string, periodeArt: string): [string, string] => {
-  if (periodeArt === 'monat') {
-    const [jahr, monat] = schluessel.split('-').map(Number);
-    return [`${schluessel}-01`, new Date(Date.UTC(jahr, monat, 0)).toISOString().slice(0, 10)];
-  }
-  if (periodeArt === 'jahr') return [`${schluessel}-01-01`, `${schluessel}-12-31`];
-  if (periodeArt === 'woche') {
-    const montag = wochenMontag(Number(schluessel.slice(0, 4)), Number(schluessel.slice(6)));
-    const ab = new Date(montag).toISOString().slice(0, 10);
-    return [ab, tagPlus(ab, 6)];
-  }
-  return [schluessel, schluessel];
-};
-
-const tagText = (text: string | null | undefined): string | null => {
-  if (!text) return null;
-  const s = text.trim();
-  const deutsch = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
-  const kandidat = deutsch ? `${deutsch[3]}-${zwei(Number(deutsch[2]))}-${zwei(Number(deutsch[1]))}` : s;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(kandidat)) return null;
-  const ms = Date.parse(`${kandidat}T00:00:00Z`);
-  return Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== kandidat ? null : kandidat;
-};
+export {
+  DATUM_UNLESBAR,
+  PERIODE_NICHT_ZU_ENDE,
+  PERIODE_PASST_NICHT,
+  ZEIT_MEHRDEUTIG,
+  ZEIT_NICHT_VORHANDEN,
+  iso,
+  mitternacht,
+  offsetMinuten,
+  periode,
+  schluesselVon,
+  spanneVon,
+  stundenDesTages,
+  tagText,
+  zeitpunkt,
+  zeitpunkteVon,
+  type Periodendeutung,
+  type Periodeneingang,
+  type Zeitdeutung,
+} from './bezugsPeriode';
 
 // ------------------------------------------------------------------- U4/U5 — die Zahl
 
@@ -291,71 +163,6 @@ export const zahl = (text: string | null, format: string, ganzzahlig: boolean): 
   return { betrag: dez(`${negativ ? '-' : ''}${roh}`), befund: null };
 };
 
-// -------------------------------------------------------------- U1–U3 — die Einheit
-
-/** U1: eine erlaubte Umrechnung. Sie gilt in BEIDE Richtungen. */
-export type Umrechnung = {
-  von: string;
-  nach: string;
-  zehnerpotenz?: number;
-  teiler?: number;
-  nachkommastellen?: number;
-};
-
-export type Einheitswert = { betrag: Dez | null; einheit: string; befunde: string[] };
-
-const groesseVon = (einheitswort: string, einheiten: Record<string, string[]>): string | null => {
-  for (const [groesse, woerter] of Object.entries(einheiten)) {
-    if (woerter.includes(einheitswort)) return groesse;
-  }
-  return null;
-};
-
-/**
- * U1–U3 — der gelieferte Betrag wird auf die Einheit der Bezugsgröße gebracht.
- *
- * Keine gelieferte Einheit heißt: die Einheit der Bezugsgröße gilt (U3). Eine
- * Einheit außerhalb des Vokabulars der ZIEL-Größe ist `einheit_unbekannt` (U2)
- * — es wird nie ein Faktor geraten und nie über Größen hinweg gerechnet. Eine
- * Einheit derselben Größe OHNE Eintrag in `umrechnung` ist keine Umrechnung,
- * sondern eine Annahme, und wird genauso abgelehnt.
- */
-export const einheit = (
-  betrag: Dez | null,
-  geliefert: string | null,
-  ziel: string,
-  einheiten: Record<string, string[]>,
-  umrechnungen: Umrechnung[],
-): Einheitswert => {
-  if (geliefert === null || geliefert === ziel) return { betrag, einheit: ziel, befunde: [] };
-  const groesse = groesseVon(ziel, einheiten);
-  if (!groesse || !einheiten[groesse].includes(geliefert)) {
-    return { betrag: null, einheit: ziel, befunde: ['einheit_unbekannt'] };
-  }
-  for (const u of umrechnungen) {
-    const hin = u.von === geliefert && u.nach === ziel;
-    const zurueck = u.von === ziel && u.nach === geliefert;
-    if (!hin && !zurueck) continue;
-    if (betrag === null) return { betrag: null, einheit: ziel, befunde: ['einheit_umgerechnet'] };
-    if (u.zehnerpotenz !== undefined) {
-      return {
-        betrag: dezSkaliere(betrag, hin ? u.zehnerpotenz : -u.zehnerpotenz),
-        einheit: ziel,
-        befunde: ['einheit_umgerechnet'],
-      };
-    }
-    const teiler = u.teiler ?? 1;
-    return {
-      betrag: hin
-        ? dezTeile(betrag, teiler, u.nachkommastellen ?? 0)
-        : { z: betrag.z * BigInt(teiler), e: betrag.e },
-      einheit: ziel,
-      befunde: ['einheit_umgerechnet'],
-    };
-  }
-  return { betrag: null, einheit: ziel, befunde: ['einheit_unbekannt'] };
-};
-
 // -------------------------------------------------------------- U6 — Plausibilität
 
 /**
@@ -378,162 +185,6 @@ export const plausibilitaet = (
   const faktor = einheitswort === 'min' ? 60 : 1;
   const grenze = dezVon(stundenDesTagesWert * einheitenGebunden * faktor);
   return dezVergleich(betrag, grenze) > 0 ? 'wert_unplausibel' : null;
-};
-
-// -------------------------------------------------------------- Z1–Z4 — die Periode
-
-export type Periodeneingang = {
-  text?: string | null;
-  vonText?: string | null;
-  bisText?: string | null;
-  deutung: string;
-  periodeArt: string;
-  jetzt?: number | null;
-};
-
-export type Periodendeutung = {
-  schluessel: string | null;
-  von: number | null;
-  bis: number | null;
-  stunden: number | null;
-  befund: string | null;
-};
-
-const MONATSNAMEN = [
-  'januar',
-  'februar',
-  'märz',
-  'april',
-  'mai',
-  'juni',
-  'juli',
-  'august',
-  'september',
-  'oktober',
-  'november',
-  'dezember',
-];
-
-const befundPeriode = (befund: string): Periodendeutung => ({
-  schluessel: null,
-  von: null,
-  bis: null,
-  stunden: null,
-  befund,
-});
-
-/** Z3: nennt der Text GENAU eine Periode der gefragten Art? Sonst `null`. */
-const periodenschluessel = (text: string | null | undefined, periodeArt: string): string | null => {
-  const s = (text ?? '').trim();
-  if (periodeArt === 'monat') {
-    if (/^\d{4}-\d{2}$/.test(s)) {
-      const monat = Number(s.slice(5));
-      return monat >= 1 && monat <= 12 ? s : null;
-    }
-    const zahlform = /^(\d{1,2})[/.](\d{4})$/.exec(s);
-    if (zahlform) {
-      const monat = Number(zahlform[1]);
-      return monat >= 1 && monat <= 12 ? monatsschluessel(Number(zahlform[2]), monat) : null;
-    }
-    const wort = s.split(/\s+/);
-    if (wort.length === 2 && /^\d{4}$/.test(wort[1])) {
-      const monat = MONATSNAMEN.indexOf(wort[0].toLowerCase()) + 1;
-      return monat === 0 ? null : monatsschluessel(Number(wort[1]), monat);
-    }
-    return null;
-  }
-  if (periodeArt === 'woche') return /^\d{4}-W\d{2}$/.test(s) ? s : null;
-  if (periodeArt === 'jahr') return /^\d{4}$/.test(s) ? s : null;
-  return tagText(s);
-};
-
-/**
- * Z1–Z4 — eine Datumsspalte wird die Periode, für die der Wert gilt.
- *
- * Die Deutung steht in der Zuordnungs-Vorlage (Z3) und wird nie geraten. Ein
- * gelieferter Zeitraum, der keine Periode dieser Bezugsgröße ist, ist
- * `periode_passt_nicht` — er wird nie geteilt, verteilt oder nach Mehrheit
- * zugeordnet (Z2). Eine Periode, deren Ende hinter `jetzt` liegt, ist
- * `periode_nicht_zu_ende` (Z4/E16).
- */
-export const periode = (eingang: Periodeneingang, zone: string): Periodendeutung => {
-  const { deutung, periodeArt } = eingang;
-  let spanne: [string, string];
-  let schluessel: string;
-
-  if (deutung === 'periode') {
-    const gefunden = periodenschluessel(eingang.text, periodeArt);
-    if (!gefunden) return befundPeriode('periode_passt_nicht');
-    schluessel = gefunden;
-    spanne = spanneVon(schluessel, periodeArt);
-  } else if (deutung === 'periodenbeginn' || deutung === 'periodenende') {
-    const tag = tagText(eingang.text);
-    if (!tag) return befundPeriode('datum_unlesbar');
-    schluessel = schluesselVon(tag, periodeArt);
-    spanne = spanneVon(schluessel, periodeArt);
-    if (tag !== (deutung === 'periodenbeginn' ? spanne[0] : spanne[1])) {
-      return befundPeriode('periode_passt_nicht');
-    }
-  } else if (deutung === 'von_bis') {
-    const von = tagText(eingang.vonText);
-    const bis = tagText(eingang.bisText);
-    if (!von || !bis) return befundPeriode('datum_unlesbar');
-    schluessel = schluesselVon(von, periodeArt);
-    spanne = spanneVon(schluessel, periodeArt);
-    if (von !== spanne[0] || bis !== spanne[1]) return befundPeriode('periode_passt_nicht');
-  } else {
-    return befundPeriode('periode_passt_nicht');
-  }
-
-  const von = mitternacht(spanne[0], zone);
-  const bis = mitternacht(tagPlus(spanne[1], 1), zone);
-  if (eingang.jetzt != null && bis > eingang.jetzt) return befundPeriode('periode_nicht_zu_ende');
-  return { schluessel, von, bis, stunden: (bis - von) / 3600000, befund: null };
-};
-
-// ------------------------------------------------------------ Z5 — der Zeitstempel
-
-export type Zeitdeutung = { zeitpunkt: number | null; befund: string | null; varianten: string[] };
-
-const ortszeit = (text: string): string | null => {
-  const s = text.trim();
-  const deutsch = /^(\d{1,2})\.(\d{1,2})\.(\d{4}) (\d{1,2}):(\d{2})$/.exec(s);
-  if (deutsch) {
-    const tag = tagText(`${deutsch[1]}.${deutsch[2]}.${deutsch[3]}`);
-    return tag ? `${tag}T${zwei(Number(deutsch[4]))}:${deutsch[5]}:00` : null;
-  }
-  const isoform = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(:\d{2})?$/.exec(s);
-  return isoform ? `${isoform[1]}T${isoform[2]}${isoform[3] ?? ':00'}` : null;
-};
-
-/**
- * Z5/E7 — ein Zeitstempel ohne Zone bekommt die Zeitzone des Standorts.
- *
- * Ein Offset in der Datei gewinnt immer. Ohne Zone gilt: in der doppelten
- * Stunde am Sommerzeit-Ende ist die Ortszeit `zeit_mehrdeutig` (beide
- * Möglichkeiten stehen in `varianten` — die Regel wählt keine), in der
- * fehlenden Stunde am Sommerzeit-Beginn `zeit_nicht_vorhanden`. Beides wird
- * abgelehnt, nie geraten.
- */
-export const zeitpunkt = (text: string, zone: string, offsetInDatei: string | null): Zeitdeutung => {
-  const ort = ortszeit(text);
-  if (!ort) return { zeitpunkt: null, befund: 'datum_unlesbar', varianten: [] };
-  if (offsetInDatei) {
-    const ms = Date.parse(`${ort}${offsetInDatei}`);
-    return Number.isNaN(ms)
-      ? { zeitpunkt: null, befund: 'datum_unlesbar', varianten: [] }
-      : { zeitpunkt: ms, befund: null, varianten: [] };
-  }
-  const moeglich = zeitpunkteVon(ort, zone);
-  if (moeglich.length === 0) return { zeitpunkt: null, befund: 'zeit_nicht_vorhanden', varianten: [] };
-  if (moeglich.length > 1) {
-    return {
-      zeitpunkt: null,
-      befund: 'zeit_mehrdeutig',
-      varianten: moeglich.map((ms) => iso(ms, zone)),
-    };
-  }
-  return { zeitpunkt: moeglich[0], befund: null, varianten: [] };
 };
 
 // ------------------------------------------------------------- Z6 — die Zuordnung
@@ -584,7 +235,7 @@ export const zuordnung = (von: number, bis: number, zone: string): Zuordnung => 
     anteile.push({
       monat: monatsschluessel(teile.jahr, teile.monat),
       minuten,
-      prozent: prozent(minuten, gesamt, ANTEIL_NACHKOMMASTELLEN),
+      prozent: dezProzent(minuten, gesamt, ANTEIL_NACHKOMMASTELLEN),
     });
     lauf = schnitt;
   }
@@ -629,7 +280,7 @@ export const urteil = (eingang: Urteilseingang): Urteil => {
   if (befunde.some((b) => !istHinweis(b))) return { urteil: 'abgelehnt', befunde };
   const bestand = eingang.bestand;
   if (!bestand || bestand.betrag === null) return { urteil: 'neu', befunde };
-  if (eingang.betrag !== null && dezGleich(bestand.betrag, eingang.betrag)) {
+  if (eingang.betrag !== null && dezGleich(bestand.betrag, eingang.betrag, VERGLEICH_NACHKOMMASTELLEN)) {
     return { urteil: 'wiederholung', befunde };
   }
   befunde.push('konflikt_anderer_wert');

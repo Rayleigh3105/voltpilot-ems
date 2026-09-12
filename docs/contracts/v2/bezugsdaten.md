@@ -21,12 +21,15 @@ widersprechen, gilt die Datei.
 | [`bezugsdaten.schema.json`](./bezugsdaten.schema.json) | das Schema für Eingang, Ergebnis und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/api/.../uems/BezugsdatenRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
 | `frontend/portal/src/bezugsdaten.ts` | der **TypeScript-Zwilling** (rein: dieselben Regeln für die Vorschau im Portal) |
+| `…/uems/BezugsEinheit.java` ⟷ `…/src/bezugsEinheit.ts` | seit **AP-09 IP-3** das eigene Modul der Regel `einheit` (Vokabular je Größe, feste Faktoren, Synonyme) — die Zwillinge oben RUFEN es an |
+| `…/uems/BezugsPeriode.java` ⟷ `…/src/bezugsPeriode.ts` | seit **AP-09 IP-3** das eigene Modul der Regeln `periode`, `zeit` und `stunden` (Deutung, Zeitzone des Standorts, 23/25 h) |
 | `…/uems/BezugsdatenVectorsTest.java` · `…/src/bezugsdaten.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
+| `…/uems/BezugsEinheitTest.java` · `…/BezugsPeriodeTest.java` ⟷ `…/src/bezugsEinheit.test.ts` · `bezugsPeriode.test.ts` | dieselben Familien noch einmal, DIREKT am Modul — plus die Zusagen ohne Referenzfall |
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> **Wer anruft (Stand AP-09 IP-1): niemand.** Dieses Paket legt die Wahrheit fest, gegen die
-> IP-3 … IP-19 gebaut werden. Es gibt keine Tabelle, keine Route, keine Portal-Fläche und
+> **Wer anruft (Stand AP-09 IP-3): niemand.** Dieses Paket legt die Wahrheit fest, gegen die
+> IP-4 … IP-19 gebaut werden. Es gibt keine Tabelle, keine Route, keine Portal-Fläche und
 > keinen CSV-Leser; die Kern-Telemetrie, ihre Verdichtungen, das Cockpit, die Erlöse und der
 > Messwert-Export sind unberührt. Der **Messwert-Herkunftsvertrag**
 > ([`messwert-herkunft.md`](./messwert-herkunft.md)) ist ausdrücklich NICHT angefasst: E3

@@ -5,14 +5,10 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -34,13 +30,19 @@ import java.util.Objects;
  * übergeben (Z4). Jede Zahl reist als Dezimaltext und wird als {@link BigDecimal} gerechnet, damit
  * keine Rechnung einen Binärbruch-Fehler erbt.
  *
+ * <p><b>Einheiten und Perioden rechnet diese Klasse NICHT.</b> Seit AP-09 IP-3 wohnen sie als
+ * eigene, wiederverwendbare Module daneben: {@link BezugsEinheit} (Vokabular je Größe, feste
+ * Faktoren, Synonyme) und {@link BezugsPeriode} (Deutung der Datumsspalte, Zeitzone des
+ * Standorts, 23-/25-Stunden-Tage, die beiden getrennten Perioden-Befunde). Die Methoden hier
+ * sind nur noch der ANRUF — es gibt keine zweite Fassung.
+ *
  * <p><b>Die Menge eines Ablesezeitraums rechnet diese Klasse NICHT.</b> Das tut die schon
  * gemergte Verbrauchsregel {@link VerbrauchRegeln#mengeZaehlerstand} (AP-08 IP-1); ebenso kommt
  * die Länge einer Periode in Stunden aus {@link VerbrauchRegeln#stunden}. Zwei Zahlen für dieselbe
  * Aussage wären genau die Drift, die diese Verträge verhindern sollen.
  *
- * <p><b>Wer anruft (Stand AP-09 IP-1): niemand.</b> Dieses Paket legt die Wahrheit fest, gegen die
- * IP-3 … IP-19 gebaut werden. Kein Produktionsweg berührt diese Klasse.
+ * <p><b>Wer anruft (Stand AP-09 IP-3): niemand.</b> Dieses Paket legt die Wahrheit fest, gegen die
+ * IP-4 … IP-19 gebaut werden. Kein Produktionsweg berührt diese Klasse.
  */
 public final class BezugsdatenRegeln {
 
@@ -75,14 +77,14 @@ public final class BezugsdatenRegeln {
 
     public static final String DATEI_BEKANNT = "datei_bekannt";
     public static final String KONFLIKT_ANDERER_WERT = "konflikt_anderer_wert";
-    public static final String EINHEIT_UNBEKANNT = "einheit_unbekannt";
-    public static final String EINHEIT_UMGERECHNET = "einheit_umgerechnet";
-    public static final String PERIODE_PASST_NICHT = "periode_passt_nicht";
-    public static final String PERIODE_NICHT_ZU_ENDE = "periode_nicht_zu_ende";
-    public static final String ZEIT_MEHRDEUTIG = "zeit_mehrdeutig";
-    public static final String ZEIT_NICHT_VORHANDEN = "zeit_nicht_vorhanden";
+    public static final String EINHEIT_UNBEKANNT = BezugsEinheit.EINHEIT_UNBEKANNT;
+    public static final String EINHEIT_UMGERECHNET = BezugsEinheit.EINHEIT_UMGERECHNET;
+    public static final String PERIODE_PASST_NICHT = BezugsPeriode.PERIODE_PASST_NICHT;
+    public static final String PERIODE_NICHT_ZU_ENDE = BezugsPeriode.PERIODE_NICHT_ZU_ENDE;
+    public static final String ZEIT_MEHRDEUTIG = BezugsPeriode.ZEIT_MEHRDEUTIG;
+    public static final String ZEIT_NICHT_VORHANDEN = BezugsPeriode.ZEIT_NICHT_VORHANDEN;
     public static final String ZAHL_UNLESBAR = "zahl_unlesbar";
-    public static final String DATUM_UNLESBAR = "datum_unlesbar";
+    public static final String DATUM_UNLESBAR = BezugsPeriode.DATUM_UNLESBAR;
     public static final String WERT_NEGATIV = "wert_negativ";
     public static final String WERT_UNPLAUSIBEL = "wert_unplausibel";
     public static final String KEINE_DATENZEILEN = "keine_datenzeilen";
@@ -116,36 +118,16 @@ public final class BezugsdatenRegeln {
     public static final String ERSTELLER_GLEICH_FREIGEBER = "ersteller_gleich_freigeber";
     public static final String BEGRUENDUNG_ZU_KURZ = "begruendung_zu_kurz";
 
-    private static final DateTimeFormatter OFFSET_FORM =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT);
-
     private static final DateTimeFormatter UHR = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
-
-    /** Die deutschen Monatsnamen, wie eine Datumsspalte sie tragen kann („Oktober 2026“). */
-    private static final List<String> MONATSNAMEN = List.of(
-            "januar", "februar", "märz", "april", "mai", "juni",
-            "juli", "august", "september", "oktober", "november", "dezember");
 
     // ------------------------------------------------------------------------- Die Ergebnisse
 
     /** U4/U5: der gelesene Betrag oder der Befund, warum er nicht lesbar ist. */
     public record Zahl(BigDecimal betrag, String befund) {}
 
-    /** U1–U3: der Betrag in der Einheit der Bezugsgröße; {@code null} heißt „abgelehnt“. */
-    public record Einheitswert(BigDecimal betrag, String einheit, List<String> befunde) {}
-
-    /**
-     * U1: eine erlaubte Umrechnung, wie sie im Vertrag steht. Sie gilt in BEIDE Richtungen — t →
-     * kg ist kg → t mit umgekehrtem Vorzeichen des Zehnerschritts. Entweder {@code zehnerpotenz}
-     * (exakt) oder {@code teiler} mit {@code nachkommastellen}; nie ein geschätzter Faktor.
-     */
-    public record Umrechnung(String von, String nach, Integer zehnerpotenz, Integer teiler, Integer nachkommastellen) {}
-
-    /** Z1–Z4: die gedeutete Periode mit ihren Grenzen, oder ein Befund. */
-    public record Periodendeutung(String schluessel, Instant von, Instant bis, Long stunden, String befund) {}
-
-    /** Z5: der gedeutete Zeitpunkt; bei {@code zeit_mehrdeutig} stehen BEIDE Möglichkeiten in {@code varianten}. */
-    public record Zeitdeutung(Instant zeitpunkt, String befund, List<String> varianten) {}
+    // Die Ergebnisse der beiden herausgelösten Module wohnen DORT, nicht hier:
+    // BezugsEinheit.Einheitswert + BezugsEinheit.Umrechnung (U1–U3) und
+    // BezugsPeriode.Periodendeutung + BezugsPeriode.Zeitdeutung (Z1–Z5).
 
     /** Z6: der Anteil EINES Kalendermonats am Ablesezeitraum. */
     public record Anteil(String monat, long minuten, BigDecimal prozent) {}
@@ -253,14 +235,14 @@ public final class BezugsdatenRegeln {
 
     // ------------------------------------------------------------------------------- Hilfen
 
-    /** ISO-8601 mit Offset → Zeitpunkt. Dieselbe Deutung wie in der Verbrauchsregel. */
+    /** ISO-8601 mit Offset → Zeitpunkt. Gedeutet von {@link BezugsPeriode#zeit}. */
     public static Instant zeit(String iso) {
-        return VerbrauchRegeln.zeit(iso);
+        return BezugsPeriode.zeit(iso);
     }
 
-    /** Ein Zeitpunkt als ISO-8601 mit dem Offset, den die Zeitzone an diesem Zeitpunkt trägt. */
+    /** Ein Zeitpunkt als ISO-8601 mit dem Offset der Zone — aus {@link BezugsPeriode#iso}. */
     public static String iso(Instant t, ZoneId zone) {
-        return OFFSET_FORM.format(t.atZone(zone));
+        return BezugsPeriode.iso(t, zone);
     }
 
     private static BigDecimal dezimal(String s) {
@@ -355,57 +337,17 @@ public final class BezugsdatenRegeln {
     /**
      * U1–U3 — der gelieferte Betrag wird auf die Einheit der Bezugsgröße gebracht.
      *
-     * <p>Keine gelieferte Einheit heißt: die Einheit der Bezugsgröße gilt (U3). Eine Einheit
-     * außerhalb des Vokabulars der ZIEL-Größe ist {@code einheit_unbekannt} und die Zeile wird
-     * nicht übernommen (U2) — es wird nie ein Faktor geraten und nie über Größen hinweg
-     * gerechnet. Innerhalb derselben Größe gilt genau der Faktor aus {@code umrechnung}, in
-     * beiden Richtungen; das Ergebnis trägt {@code einheit_umgerechnet}.
-     *
-     * @param einheiten das Vokabular je Größe, wie es im Vertrag steht
-     * @param umrechnungen die erlaubten Umrechnungen, wie sie im Vertrag stehen
+     * <p>Gerechnet wird in {@link BezugsEinheit}: das geschlossene Vokabular je Größe, die festen
+     * Faktoren und die Synonyme wohnen seit AP-09 IP-3 dort, damit Import, Eingabe, Kennzahlen
+     * und Berichte dieselbe Umrechnung benutzen. Hier steht nur der Anruf.
      */
-    public static Einheitswert einheit(
+    public static BezugsEinheit.Einheitswert einheit(
             BigDecimal betrag,
             String geliefert,
             String ziel,
             Map<String, List<String>> einheiten,
-            List<Umrechnung> umrechnungen) {
-        if (geliefert == null || geliefert.equals(ziel)) {
-            return new Einheitswert(betrag, ziel, List.of());
-        }
-        String groesse = groesseVon(ziel, einheiten);
-        if (groesse == null || !einheiten.get(groesse).contains(geliefert)) {
-            return new Einheitswert(null, ziel, List.of(EINHEIT_UNBEKANNT));
-        }
-        for (Umrechnung u : umrechnungen) {
-            boolean hin = geliefert.equals(u.von()) && ziel.equals(u.nach());
-            boolean zurueck = ziel.equals(u.von()) && geliefert.equals(u.nach());
-            if (hin || zurueck) {
-                return new Einheitswert(rechne(betrag, u, hin), ziel, List.of(EINHEIT_UMGERECHNET));
-            }
-        }
-        // Gleiche Größe, aber kein Faktor im Vertrag: das ist keine Umrechnung, das wäre eine
-        // Annahme. Sie wird abgelehnt wie ein unbekanntes Wort.
-        return new Einheitswert(null, ziel, List.of(EINHEIT_UNBEKANNT));
-    }
-
-    private static BigDecimal rechne(BigDecimal betrag, Umrechnung u, boolean hin) {
-        if (u.zehnerpotenz() != null) {
-            return betrag.scaleByPowerOfTen(hin ? u.zehnerpotenz() : -u.zehnerpotenz()).stripTrailingZeros();
-        }
-        BigDecimal teiler = BigDecimal.valueOf(u.teiler());
-        return hin
-                ? betrag.divide(teiler, u.nachkommastellen(), RoundingMode.HALF_UP).stripTrailingZeros()
-                : betrag.multiply(teiler).stripTrailingZeros();
-    }
-
-    private static String groesseVon(String einheit, Map<String, List<String>> einheiten) {
-        for (Map.Entry<String, List<String>> e : einheiten.entrySet()) {
-            if (e.getValue().contains(einheit)) {
-                return e.getKey();
-            }
-        }
-        return null;
+            List<BezugsEinheit.Umrechnung> umrechnungen) {
+        return BezugsEinheit.einheit(betrag, geliefert, ziel, einheiten, umrechnungen);
     }
 
     // --------------------------------------------------------------------- U6 — Plausibilität
@@ -443,15 +385,12 @@ public final class BezugsdatenRegeln {
     /**
      * Z1–Z4 — eine Datumsspalte wird die Periode, für die der Wert gilt.
      *
-     * <p>Die Deutung steht in der Zuordnungs-Vorlage (Z3) und wird nie geraten. Ein gelieferter
-     * Zeitraum, der keine Periode dieser Bezugsgröße ist, ist {@code periode_passt_nicht} — er
-     * wird nie geteilt, verteilt oder nach Mehrheit zugeordnet (Z2, §7 B11). Eine Periode, deren
-     * Ende hinter {@code jetzt} liegt, ist {@code periode_nicht_zu_ende} (Z4, E16).
-     *
-     * <p>Die Stundenzahl der Periode kommt aus {@link VerbrauchRegeln#stunden} — am
-     * Umstellungstag 23 oder 25.
+     * <p>Gedeutet wird in {@link BezugsPeriode}: die Deutungen der Vorlage (Z3), die Zeitzone des
+     * Standorts (Z1/E7), die 23-/25-Stunden-Tage und die beiden getrennten Befunde
+     * {@code periode_passt_nicht} (passt nie, wird nie geteilt) und {@code periode_nicht_zu_ende}
+     * (läuft noch) wohnen seit AP-09 IP-3 dort. Hier steht nur der Anruf.
      */
-    public static Periodendeutung periode(
+    public static BezugsPeriode.Periodendeutung periode(
             String text,
             String vonText,
             String bisText,
@@ -459,158 +398,7 @@ public final class BezugsdatenRegeln {
             String periodeArt,
             ZoneId zone,
             Instant jetzt) {
-        LocalDate[] spanne;
-        String schluessel;
-        switch (deutung) {
-            case "periode" -> {
-                schluessel = periodenschluessel(text, periodeArt);
-                if (schluessel == null) {
-                    return befundPeriode(PERIODE_PASST_NICHT);
-                }
-                spanne = spanneVon(schluessel, periodeArt);
-            }
-            case "periodenbeginn", "periodenende" -> {
-                LocalDate tag = tag(text);
-                if (tag == null) {
-                    return befundPeriode(DATUM_UNLESBAR);
-                }
-                spanne = spanneUm(tag, periodeArt);
-                LocalDate soll = "periodenbeginn".equals(deutung) ? spanne[0] : spanne[1];
-                if (!tag.equals(soll)) {
-                    return befundPeriode(PERIODE_PASST_NICHT);
-                }
-                schluessel = schluesselVon(spanne[0], periodeArt);
-            }
-            case "von_bis" -> {
-                LocalDate von = tag(vonText);
-                LocalDate bis = tag(bisText);
-                if (von == null || bis == null) {
-                    return befundPeriode(DATUM_UNLESBAR);
-                }
-                spanne = spanneUm(von, periodeArt);
-                if (!von.equals(spanne[0]) || !bis.equals(spanne[1])) {
-                    return befundPeriode(PERIODE_PASST_NICHT);
-                }
-                schluessel = schluesselVon(spanne[0], periodeArt);
-            }
-            default -> {
-                return befundPeriode(PERIODE_PASST_NICHT);
-            }
-        }
-
-        Instant von = spanne[0].atStartOfDay(zone).toInstant();
-        Instant bis = spanne[1].plusDays(1).atStartOfDay(zone).toInstant();
-        if (jetzt != null && bis.isAfter(jetzt)) {
-            return befundPeriode(PERIODE_NICHT_ZU_ENDE);
-        }
-        return new Periodendeutung(schluessel, von, bis, VerbrauchRegeln.stunden(von, bis), null);
-    }
-
-    private static Periodendeutung befundPeriode(String befund) {
-        return new Periodendeutung(null, null, null, null, befund);
-    }
-
-    /** Z3: nennt der Text GENAU eine Periode der gefragten Art? Sonst {@code null}. */
-    private static String periodenschluessel(String text, String periodeArt) {
-        if (text == null) {
-            return null;
-        }
-        String s = text.trim();
-        switch (periodeArt) {
-            case "monat" -> {
-                if (s.matches("[0-9]{4}-[0-9]{2}")) {
-                    return monatsschluessel(Integer.parseInt(s.substring(0, 4)), Integer.parseInt(s.substring(5)));
-                }
-                if (s.matches("[0-9]{1,2}[/.][0-9]{4}")) {
-                    String[] t = s.split("[/.]");
-                    return monatsschluessel(Integer.parseInt(t[1]), Integer.parseInt(t[0]));
-                }
-                String[] wort = s.split("\\s+");
-                if (wort.length == 2 && wort[1].matches("[0-9]{4}")) {
-                    int m = MONATSNAMEN.indexOf(wort[0].toLowerCase(Locale.GERMANY)) + 1;
-                    return m == 0 ? null : monatsschluessel(Integer.parseInt(wort[1]), m);
-                }
-                return null;
-            }
-            case "woche" -> {
-                return s.matches("[0-9]{4}-W[0-9]{2}") ? s : null;
-            }
-            case "jahr" -> {
-                return s.matches("[0-9]{4}") ? s : null;
-            }
-            case "tag" -> {
-                LocalDate t = tag(s);
-                return t == null ? null : t.toString();
-            }
-            default -> {
-                return null;
-            }
-        }
-    }
-
-    private static String monatsschluessel(int jahr, int monat) {
-        return monat < 1 || monat > 12 ? null : String.format(Locale.ROOT, "%04d-%02d", jahr, monat);
-    }
-
-    /** Die Spanne (erster und LETZTER Tag) einer Periode aus ihrem Schlüssel. */
-    private static LocalDate[] spanneVon(String schluessel, String periodeArt) {
-        switch (periodeArt) {
-            case "monat" -> {
-                LocalDate ab = LocalDate.parse(schluessel + "-01");
-                return new LocalDate[] {ab, ab.withDayOfMonth(ab.lengthOfMonth())};
-            }
-            case "woche" -> {
-                int jahr = Integer.parseInt(schluessel.substring(0, 4));
-                int woche = Integer.parseInt(schluessel.substring(6));
-                LocalDate ab = LocalDate.of(jahr, 1, 4)
-                        .with(IsoFields.WEEK_BASED_YEAR, jahr)
-                        .with(IsoFields.WEEK_OF_WEEK_BASED_YEAR, woche)
-                        .with(java.time.DayOfWeek.MONDAY);
-                return new LocalDate[] {ab, ab.plusDays(6)};
-            }
-            case "jahr" -> {
-                LocalDate ab = LocalDate.of(Integer.parseInt(schluessel), 1, 1);
-                return new LocalDate[] {ab, ab.withDayOfYear(ab.lengthOfYear())};
-            }
-            default -> {
-                LocalDate ab = LocalDate.parse(schluessel);
-                return new LocalDate[] {ab, ab};
-            }
-        }
-    }
-
-    /** Die Spanne der Periode, in der ein Tag liegt. */
-    private static LocalDate[] spanneUm(LocalDate tag, String periodeArt) {
-        return spanneVon(schluesselVon(tag, periodeArt), periodeArt);
-    }
-
-    private static String schluesselVon(LocalDate tag, String periodeArt) {
-        return switch (periodeArt) {
-            case "monat" -> String.format(Locale.ROOT, "%04d-%02d", tag.getYear(), tag.getMonthValue());
-            case "woche" -> String.format(
-                    Locale.ROOT,
-                    "%04d-W%02d",
-                    tag.get(IsoFields.WEEK_BASED_YEAR),
-                    tag.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR));
-            case "jahr" -> String.valueOf(tag.getYear());
-            default -> tag.toString();
-        };
-    }
-
-    private static LocalDate tag(String text) {
-        if (text == null) {
-            return null;
-        }
-        String s = text.trim();
-        try {
-            if (s.matches("[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4}")) {
-                String[] t = s.split("\\.");
-                return LocalDate.of(Integer.parseInt(t[2]), Integer.parseInt(t[1]), Integer.parseInt(t[0]));
-            }
-            return LocalDate.parse(s);
-        } catch (java.time.DateTimeException e) {
-            return null;
-        }
+        return BezugsPeriode.periode(text, vonText, bisText, deutung, periodeArt, zone, jetzt);
     }
 
     // ------------------------------------------------------------------ Z5 — der Zeitstempel
@@ -618,57 +406,17 @@ public final class BezugsdatenRegeln {
     /**
      * Z5/E7 — ein Zeitstempel ohne Zone bekommt die Zeitzone des Standorts.
      *
-     * <p>Ein Offset in der Datei gewinnt immer. Ohne Zone gilt: in der doppelten Stunde am
-     * Sommerzeit-Ende ist die Ortszeit {@code zeit_mehrdeutig} (beide Möglichkeiten stehen in
-     * {@code varianten} — die Regel wählt keine), in der fehlenden Stunde am Sommerzeit-Beginn
-     * {@code zeit_nicht_vorhanden}. Beides wird abgelehnt, nie geraten (§7 B10).
+     * <p>Gedeutet wird in {@link BezugsPeriode}: die doppelte Stunde ist {@code zeit_mehrdeutig}
+     * mit BEIDEN Möglichkeiten, die fehlende {@code zeit_nicht_vorhanden} — nie geraten. Hier
+     * steht nur der Anruf.
      */
-    public static Zeitdeutung zeitpunkt(String text, ZoneId zone, String offsetInDatei) {
-        LocalDateTime ort = ortszeit(text);
-        if (ort == null) {
-            return new Zeitdeutung(null, DATUM_UNLESBAR, List.of());
-        }
-        if (offsetInDatei != null) {
-            return new Zeitdeutung(ort.toInstant(ZoneOffset.of(offsetInDatei)), null, List.of());
-        }
-        List<ZoneOffset> moeglich = zone.getRules().getValidOffsets(ort);
-        if (moeglich.isEmpty()) {
-            return new Zeitdeutung(null, ZEIT_NICHT_VORHANDEN, List.of());
-        }
-        if (moeglich.size() > 1) {
-            List<String> varianten = new ArrayList<>();
-            for (ZoneOffset o : moeglich) {
-                varianten.add(OFFSET_FORM.format(ort.atOffset(o)));
-            }
-            return new Zeitdeutung(null, ZEIT_MEHRDEUTIG, List.copyOf(varianten));
-        }
-        return new Zeitdeutung(ZonedDateTime.of(ort, zone).toInstant(), null, List.of());
+    public static BezugsPeriode.Zeitdeutung zeitpunkt(String text, ZoneId zone, String offsetInDatei) {
+        return BezugsPeriode.zeitpunkt(text, zone, offsetInDatei);
     }
 
-    private static LocalDateTime ortszeit(String text) {
-        if (text == null) {
-            return null;
-        }
-        String s = text.trim();
-        try {
-            if (s.matches("[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{4} [0-9]{1,2}:[0-9]{2}")) {
-                String[] teile = s.split(" ");
-                LocalDate d = tag(teile[0]);
-                String[] uhr = teile[1].split(":");
-                return d == null
-                        ? null
-                        : LocalDateTime.of(d, LocalTime.of(Integer.parseInt(uhr[0]), Integer.parseInt(uhr[1])));
-            }
-            return LocalDateTime.parse(s);
-        } catch (java.time.DateTimeException e) {
-            return null;
-        }
-    }
-
-    /** P3 — die Länge eines Kalendertages in Stunden. Sie kommt aus der Verbrauchsregel AP-08. */
+    /** P3 — die Länge eines Kalendertages in Stunden; sie kommt über {@link BezugsPeriode} aus AP-08. */
     public static long stundenDesTages(LocalDate tag, ZoneId zone) {
-        return VerbrauchRegeln.stunden(
-                tag.atStartOfDay(zone).toInstant(), tag.plusDays(1).atStartOfDay(zone).toInstant());
+        return BezugsPeriode.stundenDesTages(tag, zone);
     }
 
     // ------------------------------------------------------------------- Z6 — die Zuordnung
@@ -951,7 +699,7 @@ public final class BezugsdatenRegeln {
         Map<String, BigDecimal> jePeriode = new LinkedHashMap<>();
         Map<String, LocalDate> stichtage = new LinkedHashMap<>();
         for (String p : perioden) {
-            LocalDate stichtag = spanneVon(p, periodeArt)[1];
+            LocalDate stichtag = BezugsPeriode.spanneVon(p, periodeArt)[1];
             stichtage.put(p, stichtag);
             BigDecimal betrag = null;
             for (Intervall i : intervalle) {
