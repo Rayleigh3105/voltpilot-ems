@@ -1,0 +1,1747 @@
+{
+ "_comment": [
+  "Die EINE Wahrheit der Verbrauchsbildung (UEMS AP-08 IP-1): 23 handgerechnete Referenzfälle des",
+  "Referenzunternehmens Ahrenberg. Die Prosa steht in verbrauch.md, die Regeln selbst stehen HIER —",
+  "wer die Regel ändert, ändert diese Datei UND beide Zwillinge.",
+  "Die Zwillinge lesen sie PER PFAD: Python services/optimization/voltpilot_optimization/verbrauch.py",
+  "(Test tests/test_verbrauch.py) und Java services/api .../uems/VerbrauchRegeln (Test VerbrauchVectorsTest).",
+  "Zeiten ISO-8601 mit Offset; Perioden Tag/Monat in der Zeitzone des Standorts; Viertelstunden/Stunden",
+  "im UTC-Raster. Mengen in der Einheit der Reihe nach Rohwert × faktor, ungerundet (3 Nachkommastellen im Vergleich).",
+  "Rohwerte als Abschnitte {von, bis, kadenz_s, stand_von, zuwachs_je_kadenz} (beide Grenzen inklusive) oder",
+  "einzeln {t, v, q}; luecken entfernen Werte [von, bis); ereignisse {art, t, …}; ereignisse_zusatz je",
+  "Erwartung = Variante desselben Falls (z. B. nachgetragener Ablesestand).",
+  "Erzeugt aus data/vp-uems-ap08-verbrauch/referenzfaelle.json; _abweichungen nennt jede Stelle, an der",
+  "diese Datei bewusst von der Vorlage abweicht."
+ ],
+ "schema_version": "1.0",
+ "$schema_datei": "./verbrauch.schema.json",
+ "herkunft": "UEMS AP-08 §4 (Rechenregeln Z1–Z9, I1–I5, M1–M6, P1–P7, E1–E15)",
+ "zeitzone": "Europe/Berlin",
+ "referenzunternehmen": "./uems-referenzunternehmen.json",
+ "regeln": {
+  "periodenstand": "letzter guter Wert in (t − kadenz_s, t]",
+  "luecke_faktor": 2,
+  "integration_halten_faktor": 2,
+  "vergleich_nachkommastellen": 3
+ },
+ "zustaende": [
+  "vollständig",
+  "unvollständig",
+  "keine Werte",
+  "mit Ersatzwert"
+ ],
+ "kennzeichen": [
+  "nachgeliefert",
+  "korrigiert (Version n)",
+  "vorläufig",
+  "endgültig",
+  "Gerätegrenze",
+  "Rücksetzung",
+  "Überlauf",
+  "Neustart-Verlust",
+  "aus Leistung integriert",
+  "positiver Anteil",
+  "negativer Anteil",
+  "Ablesezeitraum",
+  "Lücke: Zuwachs gemessen"
+ ],
+ "_abweichungen": [
+  {
+   "fall": "F15 · Vergleich · Stunde 10:00–11:00",
+   "feld": "kennzeichen",
+   "vorlage": [
+    "Lücke 10:15–10:45: Zuwachs 48.000 gemessen, nicht auf Viertelstunden verteilbar"
+   ],
+   "statt": [],
+   "grund": "Der Abstand 10:15 → 10:45 ist GENAU 2 × Kadenz (900 s). Eine Lücke beginnt nach Z2 und nach dem schon gemergten Zustandsvertrag (ZustandAbleitung.LUECKE_FAKTOR, strikt >) erst ÜBER 2 × Kadenz; mit ≥ wäre die führende 60-s-Reihe desselben Falls (Loch 10:07–10:08) ebenfalls eine Lücke und F15 in sich widersprüchlich. Menge, Zustand, erhalten/erwartet und Abdeckung der Vorlage bleiben unberührt."
+  }
+ ],
+ "cases": [
+  {
+   "name": "f1-normalfall-z-hlerstand",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Die Grundregel: Menge = Stand am Intervallende − Stand am Intervallanfang; Abdeckung aus der Kadenz.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-10-20T10:00:00+02:00",
+       "bis": "2026-10-20T11:00:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 1062113.4,
+       "zuwachs_je_kadenz": 2.4
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "menge": 36.0,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Stunde 10:00–11:00",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "menge": 144.0,
+     "zustand": "vollständig",
+     "erhalten": 60,
+     "erwartet": 60,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f2-intervallmenge",
+   "familie": "intervallmenge",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Intervallmengen werden summiert; ein fehlendes Intervall ist verlorene Menge → unvollständig, nie aufgefüllt.",
+   "messstelle": "MS-14",
+   "input": {
+    "reihe": {
+     "wertart": "intervallmenge",
+     "einheit": "kWh",
+     "faktor": 0.001,
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "t": "2026-10-20T10:01:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:02:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:03:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:04:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:05:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:06:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:07:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:08:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:09:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:10:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:11:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:12:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:13:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:14:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:15:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:16:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:17:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:18:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:19:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:20:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:21:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:23:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:24:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:25:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:26:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:27:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:28:00+02:00",
+       "v": 183
+      },
+      {
+       "t": "2026-10-20T10:29:00+02:00",
+       "v": 184
+      },
+      {
+       "t": "2026-10-20T10:30:00+02:00",
+       "v": 183
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "menge": 2.751,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Viertelstunde 10:15–10:30",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.567,
+     "zustand": "unvollständig",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "1 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f3-momentanwert",
+   "familie": "momentanwert",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Momentanwerte liefern Mittel, Minimum, Maximum; Energie daraus nur als gekennzeichnete Größe „aus Leistung integriert“ (E5).",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "momentanwert",
+     "einheit": "kW",
+     "kadenz_s": 10,
+     "zeitzone": "Europe/Berlin",
+     "integrieren": true,
+     "rohwerte": [
+      {
+       "von": "2026-10-20T10:00:00+02:00",
+       "bis": "2026-10-20T10:15:00+02:00",
+       "kadenz_s": 10,
+       "stand_von": 92.0,
+       "zuwachs_je_kadenz": 0.1
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "mittel": 96.5,
+     "min": 92.0,
+     "max": 100.9,
+     "energie_kwh": 24.113,
+     "zustand": "vollständig",
+     "erhalten": 90,
+     "erwartet": 90,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f4-z-hlerwechsel-mit-ablesest-nde",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Gerätegrenze als Fakt: keine Differenz über die Grenze; mit Ablesestände ist die Tagesmenge vollständig, obwohl zwei Viertelstunden unvollständig sind.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-18T00:00:00+01:00",
+       "bis": "2026-11-18T10:39:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 1081881.6,
+       "zuwachs_je_kadenz": 2.4
+      },
+      {
+       "von": "2026-11-18T10:47:00+01:00",
+       "bis": "2026-11-18T11:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 0.4,
+       "zuwachs_je_kadenz": 0.6
+      },
+      {
+       "von": "2026-11-18T11:01:00+01:00",
+       "bis": "2026-11-19T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 10.6,
+       "zuwachs_je_kadenz": 2.4
+      }
+     ],
+     "ereignisse": [
+      {
+       "art": "device_boundary",
+       "t": "2026-11-18T10:40:00+01:00",
+       "geraet_alt": "Z-5a (Seriennr. 4471023)",
+       "geraet_neu": "Z-5b (Seriennr. 88231)",
+       "endstand": 1083415.2,
+       "anfangsstand": 0.0
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:30–10:45",
+     "von": "2026-11-18T10:30:00+01:00",
+     "bis": "2026-11-18T10:45:00+01:00",
+     "menge": 21.6,
+     "zustand": "unvollständig",
+     "erhalten": 10,
+     "erwartet": 15,
+     "abdeckung_prozent": 66,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Viertelstunde 10:45–11:00",
+     "von": "2026-11-18T10:45:00+01:00",
+     "bis": "2026-11-18T11:00:00+01:00",
+     "menge": 7.8,
+     "zustand": "unvollständig",
+     "erhalten": 13,
+     "erwartet": 15,
+     "abdeckung_prozent": 86,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Stunde 10:00–11:00",
+     "von": "2026-11-18T10:00:00+01:00",
+     "bis": "2026-11-18T11:00:00+01:00",
+     "menge": 101.8,
+     "zustand": "vollständig",
+     "erhalten": 53,
+     "erwartet": 60,
+     "abdeckung_prozent": 88,
+     "kennzeichen": [
+      "Gerätegrenze 10:40 mit Ablesestände",
+      "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+     ]
+    },
+    {
+     "name": "Tag 18.11.2026",
+     "von": "2026-11-18T00:00:00+01:00",
+     "bis": "2026-11-19T00:00:00+01:00",
+     "menge": 3413.8,
+     "zustand": "vollständig",
+     "erhalten": 1433,
+     "erwartet": 1440,
+     "abdeckung_prozent": 99,
+     "kennzeichen": [
+      "Gerätegrenze 10:40 mit Ablesestände",
+      "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f5-z-hlerwechsel-ohne-ablesest-nde",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Ohne Endstand/Anfangsstand ist der Zuwachs am Wechsel nicht messbar: die Zahl bleibt fast gleich, aber der Zustand sagt „unvollständig“ — nichts wird geraten.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-18T00:00:00+01:00",
+       "bis": "2026-11-18T10:39:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 1081881.6,
+       "zuwachs_je_kadenz": 2.4
+      },
+      {
+       "von": "2026-11-18T10:47:00+01:00",
+       "bis": "2026-11-18T11:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 0.4,
+       "zuwachs_je_kadenz": 0.6
+      },
+      {
+       "von": "2026-11-18T11:01:00+01:00",
+       "bis": "2026-11-19T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 10.6,
+       "zuwachs_je_kadenz": 2.4
+      }
+     ],
+     "ereignisse": [
+      {
+       "art": "device_boundary",
+       "t": "2026-11-18T10:40:00+01:00",
+       "geraet_alt": "Z-5a",
+       "geraet_neu": "Z-5b"
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Stunde 10:00–11:00",
+     "von": "2026-11-18T10:00:00+01:00",
+     "bis": "2026-11-18T11:00:00+01:00",
+     "menge": 101.4,
+     "zustand": "unvollständig",
+     "erhalten": 53,
+     "erwartet": 60,
+     "abdeckung_prozent": 88,
+     "kennzeichen": [
+      "Gerätegrenze 10:40 ohne Ablesestände",
+      "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)",
+      "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+     ]
+    },
+    {
+     "name": "Tag 18.11.2026",
+     "von": "2026-11-18T00:00:00+01:00",
+     "bis": "2026-11-19T00:00:00+01:00",
+     "menge": 3413.4,
+     "zustand": "unvollständig",
+     "erhalten": 1433,
+     "erwartet": 1440,
+     "abdeckung_prozent": 99,
+     "kennzeichen": [
+      "Gerätegrenze 10:40 ohne Ablesestände",
+      "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)",
+      "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f6-plan-abnahme-1",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": "1",
+   "why": "Der Stand fällt von 6 184,37 auf 0,00: weder −6 184,37 noch +6 184,37 werden Verbrauch; gezählt wird, was vor und nach dem Sprung gemessen ist.",
+   "messstelle": "MS-11",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2027-01-15T09:00:00+01:00",
+       "bis": "2027-01-15T09:11:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 6173.15,
+       "zuwachs_je_kadenz": 1.02
+      },
+      {
+       "von": "2027-01-15T09:12:00+01:00",
+       "bis": "2027-01-15T09:15:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 0.0,
+       "zuwachs_je_kadenz": 1.02
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 09:00–09:15",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.28,
+     "zustand": "unvollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f7-berlauf-eines-16-bit-impulsz-hlers-ms-07-drucklu",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Ein deklarierter Überlauf ist lückenlos (E4); ein Sprung, der den Höchstzuwachs verletzt, ist eine Rücksetzung.",
+   "messstelle": "MS-07",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "faktor": 0.001,
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "wertebereich_modul": 65536,
+     "hoechstzuwachs_je_kadenz": 1667,
+     "rohwerte": [
+      {
+       "von": "2026-10-20T10:00:00+02:00",
+       "bis": "2026-10-20T10:02:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 63420,
+       "zuwachs_je_kadenz": 767
+      },
+      {
+       "von": "2026-10-20T10:03:00+02:00",
+       "bis": "2026-10-20T10:19:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 185,
+       "zuwachs_je_kadenz": 767
+      },
+      {
+       "von": "2026-10-20T10:20:00+02:00",
+       "bis": "2026-10-20T10:30:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 100,
+       "zuwachs_je_kadenz": 767
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "menge": 11.505,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Überlauf 10:03 (Wertebereich 65536)"
+     ]
+    },
+    {
+     "name": "Viertelstunde 10:15–10:30",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 10.738,
+     "zustand": "unvollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Rücksetzung 10:20 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f8-plan-abnahme-2",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": "2",
+   "why": "Viertelstunden ohne Werte zeigen „keine Werte“ (nie 0 kWh); der Zähler hat weitergezählt, die Tagesmenge ist aus den Zählerständen vollständig, der Zuwachs über die Lücke bleibt gemessen, aber unverteilt (E1/E2).",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-03T17:31:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418537.6,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 14:00–14:15",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T14:15:00+01:00",
+     "menge": null,
+     "zustand": "unvollständig",
+     "erhalten": 1,
+     "erwartet": 15,
+     "abdeckung_prozent": 6,
+     "kennzeichen": [
+      "nur ein Stand in der Periode — keine Menge bildbar"
+     ]
+    },
+    {
+     "name": "Viertelstunde 14:15–14:30",
+     "von": "2026-11-03T14:15:00+01:00",
+     "bis": "2026-11-03T14:30:00+01:00",
+     "menge": null,
+     "zustand": "keine Werte",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": []
+    },
+    {
+     "name": "Viertelstunde 17:30–17:45",
+     "von": "2026-11-03T17:30:00+01:00",
+     "bis": "2026-11-03T17:45:00+01:00",
+     "menge": 22.4,
+     "zustand": "unvollständig",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Stunde 17:00–18:00",
+     "von": "2026-11-03T17:00:00+01:00",
+     "bis": "2026-11-03T18:00:00+01:00",
+     "menge": 46.4,
+     "zustand": "unvollständig",
+     "erhalten": 29,
+     "erwartet": 60,
+     "abdeckung_prozent": 48,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Tag 03.11.2026",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "vollständig",
+     "erhalten": 1230,
+     "erwartet": 1440,
+     "abdeckung_prozent": 85,
+     "kennzeichen": [
+      "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f9-nachlieferung-innerhalb-von-7-tagen",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Nachgelieferte Werte sind gemessene Werte: vorläufige Viertelstundenwerte werden automatisch neu gebildet und tragen „nachgeliefert“; keine Korrektur, keine Version 2 (AP-07 E5).",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-03T14:01:00+01:00",
+       "bis": "2026-11-03T17:30:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418201.6,
+       "zuwachs_je_kadenz": 1.6,
+       "eingang": "2026-11-05T09:00:00+01:00"
+      },
+      {
+       "von": "2026-11-03T17:31:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418537.6,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 14:00–14:15",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T14:15:00+01:00",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "version": 1
+    },
+    {
+     "name": "Viertelstunde 17:30–17:45",
+     "von": "2026-11-03T17:30:00+01:00",
+     "bis": "2026-11-03T17:45:00+01:00",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "version": 1
+    },
+    {
+     "name": "Tag 03.11.2026",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "vollständig",
+     "erhalten": 1440,
+     "erwartet": 1440,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "version": 1
+    }
+   ]
+  },
+  {
+   "name": "f10-nachlieferung-nach-7-tagen",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Endgültige Werte ändern sich nie still: Rohwerte werden gespeichert, `late_arrival` gemeldet, ein Korrektur-Vorschlag entsteht; erst die Freigabe erzeugt Version 2, Version 1 bleibt lesbar.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-03T14:01:00+01:00",
+       "bis": "2026-11-03T17:30:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418201.6,
+       "zuwachs_je_kadenz": 1.6,
+       "eingang": "2026-11-12T09:02:00+01:00"
+      },
+      {
+       "von": "2026-11-03T17:31:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418537.6,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 14:00–14:15 (Version 2)",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T14:15:00+01:00",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "version": 2
+    },
+    {
+     "name": "Tag 03.11.2026 (Version 2)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "vollständig",
+     "erhalten": 1440,
+     "erwartet": 1440,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "f11-begr-ndeter-ersatzwert",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Eine Lücke, die nie nachgeliefert wird: der Zähler hat weitergezählt (Zuwachs gemessen), die Tage sind unvollständig; der Bearbeiter verteilt den gemessenen Zuwachs begründet auf das Tagesprofil — gekennzeichnet, versioniert, widerrufbar.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-04T09:30:00+01:00",
+       "bis": "2026-11-05T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 420072.0,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 (Version 1)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ],
+     "version": 1
+    },
+    {
+     "name": "Tag 04.11.2026 (Version 1)",
+     "von": "2026-11-04T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 1392.0,
+     "zustand": "unvollständig",
+     "erhalten": 870,
+     "erwartet": 1440,
+     "abdeckung_prozent": 60,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ],
+     "version": 1
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "vollständig",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "Lücke 14:00–09:30: Zuwachs 1872.000 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f12-korrektur-mit-version-2",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Ein nachgetragener Fakt (Endstand) nach der Endgültigkeit ändert nichts still: Vorschlag → Prüfung → Version 2; das Original bleibt Version 1.",
+   "messstelle": "MS-11",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2027-01-15T09:00:00+01:00",
+       "bis": "2027-01-15T09:11:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 6173.15,
+       "zuwachs_je_kadenz": 1.02
+      },
+      {
+       "von": "2027-01-15T09:12:00+01:00",
+       "bis": "2027-01-15T09:15:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 0.0,
+       "zuwachs_je_kadenz": 1.02
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 09:00–09:15 (Version 1)",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.28,
+     "zustand": "unvollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+     ],
+     "version": 1
+    },
+    {
+     "name": "Viertelstunde 09:00–09:15 (Version 2)",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.81,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Gerätegrenze 09:12 mit Ablesestände"
+     ],
+     "version": 2,
+     "ereignisse_zusatz": [
+      {
+       "art": "device_boundary",
+       "t": "2027-01-15T09:12:00+01:00",
+       "geraet_alt": "EK-2",
+       "geraet_neu": "EK-2 (Rücksetzung)",
+       "endstand": 6184.9,
+       "anfangsstand": 0.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f13-sommerzeit-ende-25-10-2026",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Tagesgrenzen in der Zeitzone des Standorts: der Tag hat 25 Stunden und 100 Viertelstunden; die Stunde 02:00–03:00 gibt es zweimal (MESZ, dann MEZ); die Viertelstunden laufen im UTC-Raster durch.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-10-25T00:00:00+02:00",
+       "bis": "2026-10-26T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 1070000.0,
+       "zuwachs_je_kadenz": 0.48
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Tag 25.10.2026 (25 h)",
+     "von": "2026-10-25T00:00:00+02:00",
+     "bis": "2026-10-26T00:00:00+01:00",
+     "menge": 720.0,
+     "zustand": "vollständig",
+     "erhalten": 1500,
+     "erwartet": 1500,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "stunden": 25
+    },
+    {
+     "name": "Stunde 02:00–03:00 MESZ",
+     "von": "2026-10-25T00:00:00+00:00",
+     "bis": "2026-10-25T01:00:00+00:00",
+     "menge": 28.8,
+     "zustand": "vollständig",
+     "erhalten": 60,
+     "erwartet": 60,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Stunde 02:00–03:00 MEZ",
+     "von": "2026-10-25T01:00:00+00:00",
+     "bis": "2026-10-25T02:00:00+00:00",
+     "menge": 28.8,
+     "zustand": "vollständig",
+     "erhalten": 60,
+     "erwartet": 60,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Viertelstunde 02:15–02:30 MEZ",
+     "von": "2026-10-25T01:15:00+00:00",
+     "bis": "2026-10-25T01:30:00+00:00",
+     "menge": 7.2,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f14-sommerzeit-beginn-28-03-2027",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Die Stunde 02:00–03:00 existiert nicht; der Tag hat 92 Viertelstunden; Kennzahlen je Stunde teilen durch 23.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2027-03-28T00:00:00+01:00",
+       "bis": "2027-03-29T00:00:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 1300000.0,
+       "zuwachs_je_kadenz": 0.48
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Tag 28.03.2027 (23 h)",
+     "von": "2027-03-28T00:00:00+01:00",
+     "bis": "2027-03-29T00:00:00+02:00",
+     "menge": 662.4,
+     "zustand": "vollständig",
+     "erhalten": 1380,
+     "erwartet": 1380,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [],
+     "stunden": 23
+    },
+    {
+     "name": "Stunde 01:00–02:00 MEZ",
+     "von": "2027-03-28T00:00:00+00:00",
+     "bis": "2027-03-28T01:00:00+00:00",
+     "menge": 28.8,
+     "zustand": "vollständig",
+     "erhalten": 60,
+     "erwartet": 60,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Stunde 03:00–04:00 MESZ",
+     "von": "2027-03-28T01:00:00+00:00",
+     "bis": "2027-03-28T02:00:00+00:00",
+     "menge": 28.8,
+     "zustand": "vollständig",
+     "erhalten": 60,
+     "erwartet": 60,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f15-kadenz-60-s-gegen-15-min",
+   "familie": "mehrere-reihen",
+   "ableitung": "reihen",
+   "abnahme": null,
+   "why": "Dieselbe Regel bei jeder Kadenz: ein einzelner fehlender Wert ist keine Lücke; bei 15-min-Ständen fehlt mit einem Wert gleich der Stand einer Grenze — die Stunde bleibt aus den Ständen vollständig.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihen": {
+     "60s": {
+      "wertart": "zaehlerstand",
+      "einheit": "kWh",
+      "kadenz_s": 60,
+      "zeitzone": "Europe/Berlin",
+      "rohwerte": [
+       {
+        "von": "2026-10-20T10:00:00+02:00",
+        "bis": "2026-10-20T11:00:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 400000.0,
+        "zuwachs_je_kadenz": 1.6
+       }
+      ],
+      "luecken": [
+       {
+        "von": "2026-10-20T10:07:00+02:00",
+        "bis": "2026-10-20T10:08:00+02:00"
+       }
+      ]
+     },
+     "15min": {
+      "wertart": "zaehlerstand",
+      "einheit": "kWh",
+      "kadenz_s": 900,
+      "zeitzone": "Europe/Berlin",
+      "rohwerte": [
+       {
+        "t": "2026-10-20T10:00:00+02:00",
+        "v": 400000.0
+       },
+       {
+        "t": "2026-10-20T10:15:00+02:00",
+        "v": 400024.0
+       },
+       {
+        "t": "2026-10-20T10:45:00+02:00",
+        "v": 400072.0
+       },
+       {
+        "t": "2026-10-20T11:00:00+02:00",
+        "v": 400096.0
+       }
+      ]
+     }
+    }
+   },
+   "expected": [
+    {
+     "name": "führend · Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "reihe": "60s",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": []
+    },
+    {
+     "name": "führend · Stunde 10:00–11:00",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "reihe": "60s",
+     "menge": 96.0,
+     "zustand": "vollständig",
+     "erhalten": 59,
+     "erwartet": 60,
+     "abdeckung_prozent": 98,
+     "kennzeichen": []
+    },
+    {
+     "name": "Vergleich · Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "reihe": "15min",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 1,
+     "erwartet": 1,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "Vergleich · Viertelstunde 10:15–10:30",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "reihe": "15min",
+     "menge": null,
+     "zustand": "unvollständig",
+     "erhalten": 1,
+     "erwartet": 1,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "nur ein Stand in der Periode — keine Menge bildbar"
+     ]
+    },
+    {
+     "name": "Vergleich · Viertelstunde 10:30–10:45",
+     "von": "2026-10-20T10:30:00+02:00",
+     "bis": "2026-10-20T10:45:00+02:00",
+     "reihe": "15min",
+     "menge": null,
+     "zustand": "unvollständig",
+     "erhalten": 0,
+     "erwartet": 1,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [
+      "nur ein Stand in der Periode — keine Menge bildbar"
+     ]
+    },
+    {
+     "name": "Vergleich · Stunde 10:00–11:00",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "reihe": "15min",
+     "menge": 96.0,
+     "zustand": "vollständig",
+     "erhalten": 3,
+     "erwartet": 4,
+     "abdeckung_prozent": 75,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f16-monatsgrenze-oktober-november-2026-und-die-endg-",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Der Monat ist ein Kalendermonat in der Zeitzone des Standorts; der Stand um 01.11. 00:00 schließt den Oktober und eröffnet den November; der Monatswert ist vorläufig, bis seine letzte Viertelstunde endgültig ist.",
+   "messstelle": "MS-06",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-10-01T00:00:00+02:00",
+       "bis": "2026-11-01T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 1027615.3,
+       "zuwachs_je_kadenz": "1.232662192394"
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Monat Oktober 2026",
+     "von": "2026-10-01T00:00:00+02:00",
+     "bis": "2026-11-01T00:00:00+01:00",
+     "menge": 55100.0,
+     "zustand": "vollständig",
+     "erhalten": 44700,
+     "erwartet": 44700,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f17-messstelle-ohne-datenquelle",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Ohne Kanal gibt es keine Viertelstunden- und Tageswerte (nie 0); die Menge gilt für den Ablesezeitraum, nicht für den Kalendermonat (E13).",
+   "messstelle": "MS-21",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "m³",
+     "kadenz_s": 2678400,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "t": "2026-10-01T07:15:00+02:00",
+       "v": 48211
+      },
+      {
+       "t": "2026-11-02T07:40:00+01:00",
+       "v": 49451
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 20.10. 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "menge": null,
+     "zustand": "keine Werte",
+     "erhalten": 0,
+     "kennzeichen": []
+    },
+    {
+     "name": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40",
+     "von": "2026-10-01T07:15:00+02:00",
+     "bis": "2026-11-02T07:40:00+01:00",
+     "menge": 1240.0,
+     "zustand": "vollständig",
+     "erhalten": 1,
+     "erwartet": 1,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f18-momentanwert-mit-l-cke",
+   "familie": "momentanwert",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Mittel/Min/Max gelten nur für die gemessene Zeit; die integrierte Energie zählt nur gemessene Zeit — die Lücke wird nicht mit dem Mittel gefüllt.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "momentanwert",
+     "einheit": "kW",
+     "kadenz_s": 10,
+     "zeitzone": "Europe/Berlin",
+     "integrieren": true,
+     "rohwerte": [
+      {
+       "von": "2026-10-20T10:00:00+02:00",
+       "bis": "2026-10-20T10:15:00+02:00",
+       "kadenz_s": 10,
+       "stand_von": 96.0,
+       "zuwachs_je_kadenz": 0.0
+      }
+     ],
+     "luecken": [
+      {
+       "von": "2026-10-20T10:05:00+02:00",
+       "bis": "2026-10-20T10:09:00+02:00"
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "mittel": 96.0,
+     "min": 96.0,
+     "max": 96.0,
+     "energie_kwh": 17.6,
+     "zustand": "unvollständig",
+     "erhalten": 66,
+     "erwartet": 90,
+     "abdeckung_prozent": 73,
+     "kennzeichen": [
+      "gemessene Zeit 11:00 min von 15 min",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f19-richtung",
+   "familie": "mehrere-reihen",
+   "ableitung": "reihen",
+   "abnahme": null,
+   "why": "Zwei Größen, zwei Mengen; ein Saldo entsteht nur als berechnete Messstelle mit Kennzeichen „saldiert“ (E12, AP-10).",
+   "messstelle": "MS-01 / MS-02",
+   "input": {
+    "reihen": {
+     "bezug": {
+      "wertart": "zaehlerstand",
+      "einheit": "kWh",
+      "kadenz_s": 60,
+      "zeitzone": "Europe/Berlin",
+      "rohwerte": [
+       {
+        "von": "2026-10-20T12:00:00+02:00",
+        "bis": "2026-10-20T12:05:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 3210400.0,
+        "zuwachs_je_kadenz": 0.64
+       },
+       {
+        "von": "2026-10-20T12:06:00+02:00",
+        "bis": "2026-10-20T12:15:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 3210403.2,
+        "zuwachs_je_kadenz": 0.0
+       }
+      ]
+     },
+     "abgabe": {
+      "wertart": "zaehlerstand",
+      "einheit": "kWh",
+      "kadenz_s": 60,
+      "zeitzone": "Europe/Berlin",
+      "rohwerte": [
+       {
+        "von": "2026-10-20T12:00:00+02:00",
+        "bis": "2026-10-20T12:05:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 180500.0,
+        "zuwachs_je_kadenz": 0.0
+       },
+       {
+        "von": "2026-10-20T12:06:00+02:00",
+        "bis": "2026-10-20T12:15:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 180500.57,
+        "zuwachs_je_kadenz": 0.57
+       }
+      ]
+     }
+    }
+   },
+   "expected": [
+    {
+     "name": "MS-01 Bezug · Viertelstunde 12:00–12:15",
+     "von": "2026-10-20T12:00:00+02:00",
+     "bis": "2026-10-20T12:15:00+02:00",
+     "reihe": "bezug",
+     "menge": 3.2,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    },
+    {
+     "name": "MS-02 Abgabe · Viertelstunde 12:00–12:15",
+     "von": "2026-10-20T12:00:00+02:00",
+     "bis": "2026-10-20T12:15:00+02:00",
+     "reihe": "abgabe",
+     "menge": 5.7,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "f20-l-cke-ber-die-tagesgrenze",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Fehlt der Stand an der Tagesgrenze, sind BEIDE Tage unvollständig; der Zuwachs über die Lücke gehört dem kleinsten Zeitraum, der sie ganz enthält (hier: der Zwei-Tage-Zeitraum bzw. der Monat).",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-10-20T00:00:00+02:00",
+       "bis": "2026-10-20T23:00:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 402000.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-10-21T01:00:00+02:00",
+       "bis": "2026-10-22T00:00:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 404400.0,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Tag 20.10.2026",
+     "von": "2026-10-20T00:00:00+02:00",
+     "bis": "2026-10-21T00:00:00+02:00",
+     "menge": 2208.0,
+     "zustand": "unvollständig",
+     "erhalten": 1381,
+     "erwartet": 1440,
+     "abdeckung_prozent": 95,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Tag 21.10.2026",
+     "von": "2026-10-21T00:00:00+02:00",
+     "bis": "2026-10-22T00:00:00+02:00",
+     "menge": 2208.0,
+     "zustand": "unvollständig",
+     "erhalten": 1380,
+     "erwartet": 1440,
+     "abdeckung_prozent": 95,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Zeitraum 20.–21.10.2026",
+     "von": "2026-10-20T00:00:00+02:00",
+     "bis": "2026-10-22T00:00:00+02:00",
+     "menge": 4608.0,
+     "zustand": "vollständig",
+     "erhalten": 2761,
+     "erwartet": 2880,
+     "abdeckung_prozent": 95,
+     "kennzeichen": [
+      "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f21-widerruf-und-ersatz-durch-eine-bessere-methode",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Ein Ersatzwert wird nie gelöscht, sondern zurückgenommen; die neue Fassung ist Version 3; die Summe über eine Zählerstand-Lücke bleibt der gemessene Zuwachs.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-04T09:30:00+01:00",
+       "bis": "2026-11-05T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 420072.0,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Zeitraum 03.–04.11.2026 (Version 3)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "vollständig",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "Lücke 14:00–09:30: Zuwachs 1872.000 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f22-neustart-des-wago-controllers",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Die dokumentierte Unschärfe: der Kartenzähler wird nur alle 60–255 s gesichert; nach einem Spannungsausfall fehlt die Zählung seit der letzten Sicherung — das Intervall und der Tag sind unvollständig, obwohl beide Stände da sind.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2027-05-12T10:15:00+02:00",
+       "bis": "2027-05-12T10:20:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 499992.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2027-05-12T10:26:00+02:00",
+       "bis": "2027-05-12T10:30:00+02:00",
+       "kadenz_s": 60,
+       "stand_von": 500006.4,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ],
+     "ereignisse": [
+      {
+       "art": "device_restart",
+       "t": "2027-05-12T10:22:00+02:00",
+       "verlust_s": 120
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30",
+     "von": "2027-05-12T10:15:00+02:00",
+     "bis": "2027-05-12T10:30:00+02:00",
+     "menge": 20.8,
+     "zustand": "unvollständig",
+     "erhalten": 10,
+     "erwartet": 15,
+     "abdeckung_prozent": 66,
+     "kennzeichen": [
+      "Lücke 10:20–10:26: Zuwachs 6.400 gemessen, nicht auf Viertelstunden verteilbar",
+      "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f23-nachlieferung-unvollst-ndig",
+   "familie": "zaehlerstand",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Was nicht nachkommt, bleibt Lücke — für immer; der Rest wird gemessen nachgeliefert; die Stunde bleibt aus den Ständen vollständig.",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "zaehlerstand",
+     "einheit": "kWh",
+     "kadenz_s": 60,
+     "zeitzone": "Europe/Berlin",
+     "rohwerte": [
+      {
+       "von": "2026-11-03T00:00:00+01:00",
+       "bis": "2026-11-03T14:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 416856.0,
+       "zuwachs_je_kadenz": 1.6
+      },
+      {
+       "von": "2026-11-03T14:41:00+01:00",
+       "bis": "2026-11-03T17:30:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418265.6,
+       "zuwachs_je_kadenz": 1.6,
+       "eingang": "2026-11-03T17:31:00+01:00"
+      },
+      {
+       "von": "2026-11-03T17:31:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "kadenz_s": 60,
+       "stand_von": 418537.6,
+       "zuwachs_je_kadenz": 1.6
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 14:30–14:45",
+     "von": "2026-11-03T14:30:00+01:00",
+     "bis": "2026-11-03T14:45:00+01:00",
+     "menge": 6.4,
+     "zustand": "unvollständig",
+     "erhalten": 4,
+     "erwartet": 15,
+     "abdeckung_prozent": 26,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    },
+    {
+     "name": "Stunde 14:00–15:00",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T15:00:00+01:00",
+     "menge": 96.0,
+     "zustand": "vollständig",
+     "erhalten": 20,
+     "erwartet": 60,
+     "abdeckung_prozent": 33,
+     "kennzeichen": [
+      "Lücke 14:00–14:41: Zuwachs 65.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    },
+    {
+     "name": "Tag 03.11.2026",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "vollständig",
+     "erhalten": 1400,
+     "erwartet": 1440,
+     "abdeckung_prozent": 97,
+     "kennzeichen": [
+      "Lücke 14:00–14:41: Zuwachs 65.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  }
+ ]
+}
