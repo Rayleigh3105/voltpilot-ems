@@ -7854,8 +7854,9 @@ paths:
         ein Zeitpunkt mit Versatz (das „+“ URL-kodiert); fehlend = jetzt. Ort und
         Stellung gelten an dessen Tag, die Quelle genau zu ihm. Ein Standort, Ort oder
         eine Anlage, die es im Kundenbereich nicht gibt (auch eine fremde), findet
-        nichts - leer, nie 403. `beobachtung` und `letzter_wert` sind bis IP-15 immer
-        `null` (nie geraten), `teilansicht` bis AP-03 immer `false`.
+        nichts - leer, nie 403. `beobachtung` und `letzter_wert` (IP-15) sagen je Größe,
+        was ihre führende Quelle liefert - `aggregat` zählt „x von y Messstellen liefern
+        Daten“ über genau die gezeigten Zeilen; `teilansicht` bleibt bis AP-03 `false`.
       parameters:
         - { name: standort, in: query, required: false, description: "Kurzzeichen oder ID des Standorts; die Zeile zählt, wenn ihr abgeleiteter Standort dieser ist.", schema: { type: string } }
         - { name: ort, in: query, required: false, description: "Kurzzeichen oder ID eines Standorts, Gebäudes oder Bereichs - einschließlich seines Teilbaums am Stichtag; U = direkt am Unternehmen.", schema: { type: string } }
@@ -15658,7 +15659,7 @@ components:
         Zeilen zum Stichtag (IP-4) - dieselben Messstellen, dieselbe Reihenfolge.
         `stichtag` ist der Tag, an dem Ort und Stellung gelten, `zeitpunkt` der
         Augenblick, zu dem die Quelle gilt.
-      required: [messstellen, register, stichtag, zeitpunkt, teilansicht]
+      required: [messstellen, register, stichtag, zeitpunkt, teilansicht, aggregat]
       properties:
         messstellen:
           type: array
@@ -15671,6 +15672,7 @@ components:
         teilansicht:
           type: boolean
           description: "Ob die Liste nur einen Teil der Messstellen des Unternehmens zeigt (AP-03); bis dahin immer false."
+        aggregat: { $ref: "#/components/schemas/MessstelleRegisterAggregat" }
     MessstelleRegisterZeile:
       type: object
       description: >
@@ -15678,7 +15680,7 @@ components:
         sind die der Messstellen-Antwort - der HEUTIGE Lebenszyklus (gespeichert ist nur
         der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
       required: [id, kennzeichen, name, art, medium, hauptgroesse, ort, elektrische_stellung, quelle,
-        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert]
+        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -15698,10 +15700,18 @@ components:
         archiviert_am: { type: string, format: date-time, nullable: true }
         beobachtung:
           nullable: true
-          description: "Liefert Daten / seit … / wartet / keine Datenquelle - kommt mit AP-04 IP-15; bis dahin IMMER null, nie geraten."
+          description: >
+            Die Beobachtung der HAUPTGRÖSSE über ihre führende Quelle (AP-04 IP-15). null nur
+            bei einer BERECHNETEN Messstelle - ihre Vollständigkeit kommt mit AP-10; nie geraten.
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBeobachtung" }]
         letzter_wert:
           nullable: true
-          description: "Der letzte Wert mit Einheit und Zeitpunkt - kommt mit AP-04 IP-15; bis dahin IMMER null, nie geraten."
+          description: "Der letzte gute Wert der Hauptgröße mit Einheit und Zeitpunkt; null, solange es keinen gibt - nie eine 0."
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterWert" }]
+        nebengroessen:
+          type: array
+          description: "Je Nebengröße dieselbe Beobachtung, über ihre EIGENE führende Quelle."
+          items: { $ref: "#/components/schemas/MessstelleRegisterNebengroesse" }
     MessstelleRegisterOrt:
       type: object
       description: >
@@ -15769,6 +15779,80 @@ components:
         geraet: { type: string, example: GR-4 }
         einbau: { type: string, example: Z-5b }
         bezeichnung: { type: string, nullable: true, description: "Der Name des Geräts; null, solange niemand einen vergeben hat." }
+    MessstelleRegisterBeobachtung:
+      type: object
+      description: >
+        Die Beobachtung EINER Größe (AP-04 IP-15) - abgeleitet, nie gespeichert und nie geraten.
+        `zustand` ist eines der vier Wörter des Zustandsvertrags, `text` der Kundensatz dazu;
+        `seit` trägt nur liefert_nicht_seit (ein Satz ohne Zeitpunkt wäre eine halbe Aussage).
+        `toleranz_s` ist das angewandte Fenster min(max(3 x kadenz_s, 300), 86400) - die Kante
+        gehört zu „liefert“. ⚠ 3 x Kadenz ist die BEOBACHTUNG; 2 x Kadenz ist die LÜCKE, eine
+        andere Aussage (AP-07 IP-9), die hier nicht vorkommt. Es gibt keinen Fehler- und keinen
+        Störungszustand: Schweigen ist nie ein bewiesener Fehlschlag.
+      required: [zustand, text, seit, toleranz_s, kadenz_s, geraet]
+      properties:
+        zustand: { type: string, enum: [liefert, liefert_nicht_seit, wartet_auf_erste_daten, keine_datenquelle] }
+        text: { type: string, example: "Wartet auf erste Daten von Z-5b" }
+        seit: { type: string, format: date-time, nullable: true, description: "Nur bei liefert_nicht_seit: der letzte gute Wert." }
+        toleranz_s: { type: integer, format: int64, nullable: true, description: "null bei keine_datenquelle - ohne Kanal ist kein Fenster bekannt." }
+        kadenz_s: { type: integer, format: int64, nullable: true, description: "Die erwartete Häufigkeit des Kanals (Mess-Selektion, sonst Katalog); null bei keine_datenquelle." }
+        geraet: { type: string, nullable: true, description: "Der Einbau der führenden Quelle (Z-5b); null ohne Quelle.", example: Z-5b }
+    MessstelleRegisterWert:
+      type: object
+      description: >
+        Der letzte Wert mit Qualität „gut“ der führenden Quelle. Genau eines von `wert` und `text`
+        ist gesetzt (die Wert-Regel der Messreihe); `einheit` ist die des Messkanals, ohne jede
+        Umrechnung.
+      required: [wert, text, einheit, zeitpunkt]
+      properties:
+        wert: { type: number, nullable: true }
+        text: { type: string, nullable: true }
+        einheit: { type: string, nullable: true, example: kWh }
+        zeitpunkt: { type: string, format: date-time }
+    MessstelleRegisterNebengroesse:
+      type: object
+      description: "Eine Nebengröße der Zeile mit ihrer eigenen Beobachtung über ihre eigene führende Quelle."
+      required: [id, groesse, beobachtung, letzter_wert]
+      properties:
+        id: { type: string, format: uuid }
+        groesse: { $ref: "#/components/schemas/MessGroesse" }
+        beobachtung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBeobachtung" }]
+        letzter_wert:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterWert" }]
+    MessstelleRegisterAggregat:
+      type: object
+      description: >
+        „x von y Messstellen liefern Daten“ (AP-04 IP-15) über die Ableitung aggregat des
+        Zustandsvertrags: nur liefert zählt im Zähler, „keine Datenquelle“ steht im Nenner.
+        Gezählt werden GENAU die Zeilen dieser Antwort (die Filter gelten also auch hier) mit
+        einer Beobachtung - eine BERECHNETE Messstelle hat keine (AP-10) und steht in keinem
+        Nenner. Eine Zeile ohne Standort an dem Tag zählt nur beim Unternehmen.
+      required: [unternehmen, standorte]
+      properties:
+        unternehmen: { $ref: "#/components/schemas/MessstelleRegisterAbdeckung" }
+        standorte:
+          type: array
+          items: { $ref: "#/components/schemas/MessstelleRegisterStandortAbdeckung" }
+    MessstelleRegisterAbdeckung:
+      type: object
+      required: [erfuellt, gesamt, text]
+      properties:
+        erfuellt: { type: integer }
+        gesamt: { type: integer }
+        text: { type: string, example: "14 von 17 Messstellen liefern Daten" }
+    MessstelleRegisterStandortAbdeckung:
+      type: object
+      required: [id, kurzzeichen, name, erfuellt, gesamt, text]
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        kurzzeichen: { type: string, example: ST-1 }
+        name: { type: string, nullable: true }
+        erfuellt: { type: integer }
+        gesamt: { type: integer }
+        text: { type: string }
     MesskanalListe:
       type: object
       required: [site_id, komponente, inhaltsstand, messkanaele]

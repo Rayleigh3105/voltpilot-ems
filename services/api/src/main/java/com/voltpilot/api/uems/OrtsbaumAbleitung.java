@@ -369,7 +369,12 @@ public final class OrtsbaumAbleitung {
         return new Pfad(pfad, null);
     }
 
-    private static ZoneId zeitzoneVon(Ortsbaum baum, String standort) {
+    /**
+     * Die Zeitzone eines Standorts (sein Kurzzeichen), sonst die Vorgabe des Unternehmens — die
+     * EINE Stelle, an der ein Kundensatz seine Uhrzeit findet. Paket-sichtbar, damit auch das
+     * Messstellen-Register (AP-04 IP-15) sie liest, statt eine zweite Fassung zu bauen.
+     */
+    static ZoneId zeitzoneVon(Ortsbaum baum, String standort) {
         return Optional.ofNullable(standort)
                 .flatMap(baum::ort)
                 .map(Ort::zeitzone)

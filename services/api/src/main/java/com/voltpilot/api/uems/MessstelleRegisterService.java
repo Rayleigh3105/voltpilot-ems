@@ -4,7 +4,9 @@ import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.uems.MessstelleQuelleRepository.Quelle;
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Bestand;
+import com.voltpilot.api.uems.MessstelleRegisterRepository.Messwert;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.QuelleZeile;
+import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.OrtZeile;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.StellungZeile;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.ObjektZustand;
@@ -14,12 +16,16 @@ import com.voltpilot.api.web.dto.MessstelleDto;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -35,7 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p><b>Lesezüge.</b> Alles über die Messstellen kommt aus EINER Abfrage
  * ({@link MessstelleRegisterRepository}); der Ortsbaum zum Stichtag aus dem Lesezug des
  * Standort-Lesemodells ({@link StandortService#baum}) — eine feste Zahl, gleich wie viele
- * Messstellen es gibt. Beides in einer Lese-Transaktion.
+ * Messstellen es gibt. Dazu EIN weiterer Zug für die Werte
+ * ({@link MessstelleRegisterRepository#werte}) — er bekommt alle Messwerte auf einmal als Feld
+ * und rührt keine Messstellen-Tabelle an. Alles in einer Lese-Transaktion.
  *
  * <p><b>Keine zweite Ableitung.</b> Der Standort einer Messstelle ist {@link OrtsbaumAbleitung#verortung}
  * (dieselbe wie {@code …/{id}/standort?am=}), ob eine Bindung zum Zeitpunkt läuft
@@ -43,9 +51,18 @@ import org.springframework.transaction.annotation.Transactional;
  * Lebenszyklus der der Messstellen-Antwort ({@link MessstelleService#darstellung}), der Name des
  * Messwerts der des Messkanal-Read-Models ({@link MesskanalService#anzeigename}).
  *
- * <p><b>Was noch nicht da ist, ist {@code null}:</b> Beobachtung und letzter Wert (IP-15), die
- * Formel einer berechneten Messstelle (AP-10; die Quelle sagt {@code berechnet}), Prozesse und
- * Kostenstellen (ihre Objekte fehlen), {@code teilansicht} ist {@code false} bis AP-03.
+ * <p><b>Die Beobachtung (IP-15)</b> steht je Größe: {@code beobachtung} und {@code letzter_wert}
+ * gelten der Hauptgröße, {@code nebengroessen} nennt dasselbe je Nebengröße — jede über ihre
+ * EIGENE führende Bindung zum Zeitpunkt. Welcher der vier Zustände gilt, entscheidet allein
+ * {@link ZustandAbleitung#liefertDaten} ({@link MessstelleBeobachtung} sammelt nur die Eingänge);
+ * {@code aggregat} zählt „x von y Messstellen liefern Daten“ über
+ * {@link ZustandAbleitung#aggregatLiefertDaten}. ⚠ Die Toleranz ist 3 × Kadenz (Boden 300 s,
+ * Deckel 1 Tag); 2 × Kadenz ist die LÜCKE — eine andere Aussage, die hier nicht vorkommt (AP-07
+ * IP-9).
+ *
+ * <p><b>Was noch nicht da ist, ist {@code null}:</b> die Formel einer berechneten Messstelle
+ * (AP-10; die Quelle sagt {@code berechnet}), Prozesse und Kostenstellen (ihre Objekte fehlen),
+ * {@code teilansicht} ist {@code false} bis AP-03.
  */
 @Service
 public class MessstelleRegisterService {
@@ -100,7 +117,8 @@ public class MessstelleRegisterService {
         LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
         List<Bestand> bestand = register.alle();
         if (bestand.isEmpty()) {
-            return new MessstelleDto.Liste(List.of(), List.of(), tag, MessstelleService.zeit(zeitpunkt), false);
+            return new MessstelleDto.Liste(List.of(), List.of(), tag, MessstelleService.zeit(zeitpunkt), false,
+                    aggregat(List.of()));
         }
         List<MessstelleDto.Messstelle> voll = bestand.stream()
                 .map(b -> messstellen.darstellung(b.messstelle(), b.nebengroessen(), b.orte(), b.stellungen(),
@@ -113,30 +131,141 @@ public class MessstelleRegisterService {
         StandortService.Baum baum = standorte.baum(imBaum);
         Map<UUID, String> anlagen = baum.zeilen().anlagen().stream()
                 .collect(Collectors.toMap(StandortLesemodell.Anlage::id, StandortLesemodell.Anlage::name));
+        Map<Messwert, Werte> werte = register.werte(messwerte(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
         for (int i = 0; i < bestand.size(); i++) {
-            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt);
+            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt, werte);
             if (auswahl.passt(z)) {
                 messstellenListe.add(voll.get(i));
                 zeilen.add(z);
             }
         }
         return new MessstelleDto.Liste(List.copyOf(messstellenListe), List.copyOf(zeilen), tag,
-                MessstelleService.zeit(zeitpunkt), false);
+                MessstelleService.zeit(zeitpunkt), false, aggregat(zeilen));
+    }
+
+    /**
+     * Alle Messwerte, deren Werte die Beobachtung braucht: die führenden Bindungen JEDER Größe, die
+     * zum Zeitpunkt laufen — einmal je (Komponente, Kanal, Beginn), nie je Messstelle.
+     */
+    private static Set<Messwert> messwerte(List<Bestand> bestand, Instant zeitpunkt) {
+        Set<Messwert> out = new LinkedHashSet<>();
+        for (Bestand b : bestand) {
+            for (QuelleZeile z : b.quellen()) {
+                if (FUEHREND.equals(z.quelle().rolle()) && MessstelleQuelleService.gilt(z.quelle(), zeitpunkt)) {
+                    out.add(messwert(z));
+                }
+            }
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- Zeile
 
     private MessstelleDto.RegisterZeile zeile(Bestand b, MessstelleDto.Messstelle voll, StandortService.Baum baum,
-            Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt) {
+            Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt, Map<Messwert, Werte> werte) {
         MessstelleRepository.Messstelle m = b.messstelle();
         Groesse h = m.hauptgroesse();
+        MessstelleDto.RegisterOrt ort = ort(b, baum, tag);
+        ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), ort.standort());
+        boolean gemessen = !MessstelleRegeln.BERECHNET.equals(m.art());
+        MessstelleBeobachtung.Ergebnis haupt = gemessen
+                ? beobachtung(fuehrend(b, h, zeitpunkt), werte, zeitpunkt, zone) : null;
+        List<MessstelleDto.RegisterNebengroesse> neben = new ArrayList<>();
+        for (MessstelleRepository.Nebengroesse n : b.nebengroessen()) {
+            Groesse g = n.groesse();
+            MessstelleBeobachtung.Ergebnis e = gemessen
+                    ? beobachtung(fuehrend(b, g, zeitpunkt), werte, zeitpunkt, zone) : null;
+            neben.add(new MessstelleDto.RegisterNebengroesse(n.id(),
+                    new MessstelleDto.Groesse(g.groesse(), g.richtung(), g.einheit(), g.wertart()),
+                    e == null ? null : e.beobachtung(), e == null ? null : e.letzterWert()));
+        }
         return new MessstelleDto.RegisterZeile(m.id(), m.kennzeichen(), m.name(), m.art(), m.medium(),
                 new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                ort(b, baum, tag), stellung(b, anlagen, tag), quelle(b, zeitpunkt),
-                voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(), null, null);
+                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
+                voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
+                haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
+                List.copyOf(neben));
+    }
+
+    /**
+     * Die Beobachtung EINER Größe: Kadenz und Einheit ihres Kanals wie im Messkanal-Read-Model, der
+     * letzte gute Wert aus dem einen Werte-Zug, das Urteil aus {@link ZustandAbleitung}. Ohne
+     * führende Bindung braucht es weder Kanal noch Kadenz — der Zustand ist „keine Datenquelle“,
+     * und der schlägt jeden alten Wert.
+     */
+    private MessstelleBeobachtung.Ergebnis beobachtung(QuelleZeile fuehrend, Map<Messwert, Werte> werte,
+            Instant zeitpunkt, ZoneId zone) {
+        if (fuehrend == null) {
+            return MessstelleBeobachtung.ableiten(null, null, MesskanalService.VORGABE_KADENZ_S, null, zeitpunkt,
+                    zone);
+        }
+        Quelle q = fuehrend.quelle();
+        Werte w = werte.get(messwert(fuehrend));
+        return MessstelleBeobachtung.ableiten(fuehrend, w,
+                kanaele.kadenzS(q.kanal(), w == null ? null : w.kadenzS()),
+                kanaele.einheit(q.kanal(), fuehrend.kanalDefinition()), zeitpunkt, zone);
+    }
+
+    /**
+     * Der Schlüssel, unter dem die Werte einer Bindung liegen: Komponente, Kanal UND ihr Beginn —
+     * ein Zählerwechsel behält Komponente und Kanal, nur der Beginn trennt Z-5a von Z-5b.
+     */
+    private static Messwert messwert(QuelleZeile z) {
+        return new Messwert(z.quelle().entityId(), z.quelle().kanal(), z.quelle().gueltigAb());
+    }
+
+    /** Die führende Bindung EINER Größe zum Zeitpunkt; {@code null}, wenn dann keine läuft. */
+    private static QuelleZeile fuehrend(Bestand b, Groesse g, Instant zeitpunkt) {
+        return b.quellen().stream()
+                .filter(z -> FUEHREND.equals(z.quelle().rolle())
+                        && z.quelle().groesse().equals(g.groesse())
+                        && z.quelle().richtung().equals(g.richtung())
+                        && MessstelleQuelleService.gilt(z.quelle(), zeitpunkt))
+                .findFirst().orElse(null);
+    }
+
+    // ---------------------------------------------------------------- Aggregat
+
+    /**
+     * „x von y Messstellen liefern Daten“ (§5.16) über {@link ZustandAbleitung#aggregatLiefertDaten}
+     * — für das Unternehmen und je Standort, über GENAU die Zeilen dieser Antwort. Gezählt werden
+     * die Zeilen mit einer Beobachtung; eine BERECHNETE Messstelle hat keine (ihre Vollständigkeit
+     * kommt mit AP-10) und steht deshalb in keinem der beiden Nenner. Eine Zeile ohne Standort an
+     * dem Tag zählt nur beim Unternehmen — nie unter einem geratenen Standort.
+     */
+    private static MessstelleDto.RegisterAggregat aggregat(List<MessstelleDto.RegisterZeile> zeilen) {
+        List<ZustandAbleitung.LiefertDaten> alle = new ArrayList<>();
+        Map<String, List<ZustandAbleitung.LiefertDaten>> jeStandort = new LinkedHashMap<>();
+        Map<String, MessstelleDto.RegisterOrt> orte = new LinkedHashMap<>();
+        for (MessstelleDto.RegisterZeile z : zeilen) {
+            if (z.beobachtung() == null) {
+                continue;
+            }
+            ZustandAbleitung.LiefertDaten zustand = ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
+            alle.add(zustand);
+            String standort = z.ort().standort();
+            if (standort != null) {
+                jeStandort.computeIfAbsent(standort, k -> new ArrayList<>()).add(zustand);
+                orte.putIfAbsent(standort, z.ort());
+            }
+        }
+        List<MessstelleDto.RegisterStandortAbdeckung> standorte = jeStandort.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> {
+                    ZustandAbleitung.AggregatErgebnis a = ZustandAbleitung.aggregatLiefertDaten(e.getValue(),
+                            ZustandAbleitung.Einheit.MESSSTELLE);
+                    MessstelleDto.RegisterOrt o = orte.get(e.getKey());
+                    return new MessstelleDto.RegisterStandortAbdeckung(o.standortId(), e.getKey(),
+                            o.standortName(), a.erfuellt(), a.gesamt(), a.text());
+                })
+                .toList();
+        ZustandAbleitung.AggregatErgebnis u = ZustandAbleitung.aggregatLiefertDaten(alle,
+                ZustandAbleitung.Einheit.MESSSTELLE);
+        return new MessstelleDto.RegisterAggregat(
+                new MessstelleDto.RegisterAbdeckung(u.erfuellt(), u.gesamt(), u.text()), standorte);
     }
 
     /** Die Verortung am Tag (Regel 7 des Ortsbaums) mit den Namen aus demselben Baum. */

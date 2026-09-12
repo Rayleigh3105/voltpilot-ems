@@ -193,7 +193,13 @@ class MessstelleSchnittstelleVertragTest {
                 {"MessstelleRegisterStellung", MessstelleDto.RegisterStellung.class},
                 {"MessstelleRegisterQuelle", MessstelleDto.RegisterQuelle.class},
                 {"MessstelleRegisterBindung", MessstelleDto.RegisterBindung.class},
-                {"MessstelleRegisterGeraet", MessstelleDto.RegisterGeraet.class}}) {
+                {"MessstelleRegisterGeraet", MessstelleDto.RegisterGeraet.class},
+                {"MessstelleRegisterBeobachtung", MessstelleDto.RegisterBeobachtung.class},
+                {"MessstelleRegisterWert", MessstelleDto.RegisterWert.class},
+                {"MessstelleRegisterNebengroesse", MessstelleDto.RegisterNebengroesse.class},
+                {"MessstelleRegisterAggregat", MessstelleDto.RegisterAggregat.class},
+                {"MessstelleRegisterAbdeckung", MessstelleDto.RegisterAbdeckung.class},
+                {"MessstelleRegisterStandortAbdeckung", MessstelleDto.RegisterStandortAbdeckung.class}}) {
             List<String> felder = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
                     .map(c -> snake.translate(c.getName())).toList();
             assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
@@ -210,6 +216,10 @@ class MessstelleSchnittstelleVertragTest {
                         "enum"));
         assertThat(liste(map(map(schema("MessstelleRegisterZeile"), "properties"), "lebenszyklus"), "enum"))
                 .containsExactlyElementsOf(MessstelleRegeln.LEBENSZYKLUS);
+        // Die Beobachtung (IP-15) sagt genau die vier Wörter des Zustandsvertrags, in seiner Reihenfolge.
+        assertThat(liste(map(map(schema("MessstelleRegisterBeobachtung"), "properties"), "zustand"), "enum"))
+                .containsExactlyElementsOf(Arrays.stream(ZustandAbleitung.LiefertDaten.values())
+                        .map(ZustandAbleitung.LiefertDaten::code).toList());
         // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
         assertThat(parameter("/api/v1/messstellen"))
                 .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle", "stichtag");

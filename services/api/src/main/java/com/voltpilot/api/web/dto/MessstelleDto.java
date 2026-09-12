@@ -120,11 +120,13 @@ public final class MessstelleDto {
      * an dem Ort und Stellung gelten; {@code zeitpunkt} der Augenblick, zu dem die Quelle gilt
      * (ein Tag: sein Beginn, wie {@code …/quellen?stichtag=}; ohne Stichtag: jetzt).
      * {@code teilansicht} bleibt {@code false}, bis AP-03 Rechte je Standort durchsetzt — bis dahin
-     * sieht jeder den ganzen Kundenbereich (RLS).
+     * sieht jeder den ganzen Kundenbereich (RLS). {@code aggregat} zählt „x von y Messstellen
+     * liefern Daten“ (IP-15) über GENAU die gezeigten Zeilen — je Standort und für das ganze
+     * Unternehmen.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Messstelle> messstellen, List<RegisterZeile> register, LocalDate stichtag,
-            OffsetDateTime zeitpunkt, boolean teilansicht) {}
+            OffsetDateTime zeitpunkt, boolean teilansicht, RegisterAggregat aggregat) {}
 
     /**
      * Eine Zeile des Registers (AP-04 §5.16) zum Stichtag. {@code ort} ist immer da (mit
@@ -132,8 +134,8 @@ public final class MessstelleDto {
      * Tag keine gilt, {@code quelle} immer da (mit {@code stand}). {@code lebenszyklus} und
      * {@code fehlt} sind die der Messstellen-Antwort — der HEUTIGE Lebenszyklus (gespeichert ist nur
      * der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
-     * {@code beobachtung} und {@code letzter_wert} sind benannte Platzhalter: IMMER {@code null},
-     * bis IP-15 sie aus den Werten ableitet — nie geraten.
+     * {@code beobachtung} und {@code letzter_wert} gelten der HAUPTGRÖSSE über ihre führende Quelle
+     * (IP-15); {@code nebengroessen} sagt dasselbe je Nebengröße über deren eigene führende Quelle.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterZeile(
@@ -150,8 +152,64 @@ public final class MessstelleDto {
             List<String> fehlt,
             OffsetDateTime angehaltenAb,
             OffsetDateTime archiviertAm,
-            Object beobachtung,
-            Object letzterWert) {}
+            RegisterBeobachtung beobachtung,
+            RegisterWert letzterWert,
+            List<RegisterNebengroesse> nebengroessen) {}
+
+    /**
+     * Die Beobachtung EINER Größe (AP-04 IP-15) — abgeleitet, nie gespeichert und nie geraten:
+     * {@code zustand} ist eines der vier Wörter von {@code ZustandAbleitung.LiefertDaten}
+     * ({@code liefert} · {@code liefert_nicht_seit} · {@code wartet_auf_erste_daten} ·
+     * {@code keine_datenquelle}), {@code text} der Kundensatz dazu. {@code seit} trägt nur
+     * {@code liefert_nicht_seit} (ein Satz ohne Zeitpunkt wäre eine halbe Aussage).
+     *
+     * <p>{@code toleranz_s} ist das tatsächlich angewandte Fenster
+     * {@code min(max(3 × kadenz_s, 300), 86400)} und {@code kadenz_s} die erwartete Häufigkeit —
+     * beide mitgeführt, damit der Satz nachvollziehbar ist, und beide {@code null} bei
+     * {@code keine_datenquelle}: ohne Kanal ist keine Kadenz bekannt, und eine erfundene wäre
+     * eine erfundene Zahl. ⚠ 3 × Kadenz ist die BEOBACHTUNG; 2 × Kadenz ist die LÜCKE, eine
+     * andere Aussage (AP-07 IP-9), die hier nicht vorkommt.
+     *
+     * <p>{@code geraet} ist der Einbau der führenden Quelle (Z-5b) — er steht auch im Satz, sobald
+     * eine Größe nach einem Zählerwechsel noch auf ihre ersten Werte wartet („Wartet auf erste
+     * Daten von Z-5b“); {@code null}, wenn keine Quelle gebunden ist.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterBeobachtung(String zustand, String text, OffsetDateTime seit, Long toleranzS,
+            Long kadenzS, String geraet) {}
+
+    /**
+     * Der letzte Wert mit Qualität „gut“ der führenden Quelle — {@code null}, solange es keinen
+     * gibt (nie eine 0). Genau eines von {@code wert} und {@code text} ist gesetzt (die
+     * Wert-Regel der Messreihe); {@code einheit} ist die des Messkanals, ohne jede Umrechnung.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterWert(Double wert, String text, String einheit, OffsetDateTime zeitpunkt) {}
+
+    /** Eine Nebengröße der Zeile mit ihrer eigenen Beobachtung über ihre eigene führende Quelle. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterNebengroesse(UUID id, Groesse groesse, RegisterBeobachtung beobachtung,
+            RegisterWert letzterWert) {}
+
+    /**
+     * „x von y Messstellen liefern Daten“ (AP-04 IP-15) über die Ableitung {@code aggregat} des
+     * Zustandsvertrags: nur {@code liefert} zählt im Zähler, „keine Datenquelle“ steht im Nenner.
+     * Gezählt werden GENAU die Zeilen dieser Antwort (die Filter gelten also auch hier), die eine
+     * Beobachtung haben — eine BERECHNETE Messstelle hat keine (AP-10) und steht in keinem Nenner.
+     * {@code standorte} nennt je Standort seine Zeilen, {@code unternehmen} alle — eine Messstelle
+     * ohne Standort an dem Tag zählt deshalb nur beim Unternehmen.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterAggregat(RegisterAbdeckung unternehmen, List<RegisterStandortAbdeckung> standorte) {}
+
+    /** Zähler, Nenner und der Satz des Vertrags („14 von 17 Messstellen liefern Daten“). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterAbdeckung(int erfuellt, int gesamt, String text) {}
+
+    /** Dieselbe Zählung je Standort, mit seinem Kurzzeichen und Namen. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterStandortAbdeckung(UUID id, String kurzzeichen, String name, int erfuellt,
+            int gesamt, String text) {}
 
     /**
      * Der Ort am Stichtag und der daraus abgeleitete Standort — die Verortung des

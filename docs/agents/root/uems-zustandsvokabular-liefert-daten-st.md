@@ -16,13 +16,19 @@ ABLEITUNG lebt seit IP-3 als Vertrag:
   und TS `frontend/portal/src/uemsZustand.ts` (+ `uemsZustand.test.ts`). Beide fahren dieselbe
   Datei; **wer die Regel ändert, ändert beide Seiten UND die Vektor-Datei.**
 
-## ⚠ Noch ruft niemand an
+## ⚠ Wer ruft an — und wer NICHT
 
-IP-3 stellt KEINE Fläche um. `services/api` (`OverviewRepository`, `AdminFleetRepository`) und
-das Portal (`api.ts ONLINE_WINDOW_MS`/`deviceLiveStatus`, `komponenten.ts deviceState`) leiten
-„liefert Daten“ weiterhin über das harte 5-Minuten-Fenster ab und behalten ihre heutigen
-Wörter („Meldet sich gerade nicht“, „Wartet auf die ersten Daten“). Der Vertrag ist das Ziel,
-gegen das die Umstellung gebaut wird — nicht ihr Vollzug.
+Seit AP-04 IP-15 (12.09.2026) hat die Familie „liefert Daten“ ihren ersten Aufrufer: das
+Messstellen-Register (`GET /api/v1/messstellen`, `uems/MessstelleBeobachtung` +
+`uems/MessstelleRegisterService`) leitet Beobachtung, letzten Wert und „x von y“ ausschließlich
+hier ab — siehe [`uems-messstellen-beobachtung-letzter-wert.md`](uems-messstellen-beobachtung-letzter-wert.md).
+Die Familie „steuert“ ruft weiterhin niemand.
+
+Die BESTEHENDEN Live-Flächen bleiben unverändert: `services/api` (`OverviewRepository`,
+`AdminFleetRepository`) und das Portal (`api.ts ONLINE_WINDOW_MS`/`deviceLiveStatus`,
+`komponenten.ts deviceState`) leiten „liefert Daten“ weiter über das harte 5-Minuten-Fenster ab
+und behalten ihre heutigen Wörter („Meldet sich gerade nicht“, „Wartet auf die ersten Daten“).
+Der Vertrag ist für sie das Ziel, gegen das die Umstellung gebaut wird — nicht ihr Vollzug.
 
 ## Die vier Fakten, die man ohne Nachlesen braucht
 
