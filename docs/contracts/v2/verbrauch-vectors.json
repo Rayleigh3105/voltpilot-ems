@@ -14,7 +14,13 @@
   "diese Datei bewusst von der Vorlage abweicht.",
   "AP-08 IP-5: Tag, Monat, Jahr und freier Zeitraum werden aus den gespeicherten Teilperioden gebildet",
   "(regeln.teilperioden) — beide Zwillinge prüfen an JEDER Zählerstand-Erwartung ab zwei Viertelstunden,",
-  "dass die Zusammensetzung dieselbe Erwartung ergibt (Java VerbrauchTeilperiodenTest, Python test_verbrauch.py)."
+  "dass die Zusammensetzung dieselbe Erwartung ergibt (Java VerbrauchTeilperiodenTest, Python test_verbrauch.py).",
+  "AP-08 IP-3: Momentanwert und Intervallmenge einer gröberen Periode kommen ebenfalls aus den gespeicherten",
+  "Teilperioden (regeln.werte_teilperioden) — Mittel aus Summe ÷ erhalten, nie ein Mittel von Mitteln; die Energie",
+  "aus Leistung nur gekennzeichnet und nur über gemessene Zeit. F24 ist KEIN Fall der Vorlage, sondern für IP-3",
+  "handgerechnet (Lücke über die Viertelstundengrenze, Halten bis zum nächsten Wert hinter der Grenze); F2 trägt",
+  "seit IP-3 zusätzlich die halbe Stunde. Beide Zwillinge prüfen an jeder Momentanwert- und Intervallmengen-",
+  "Erwartung ab zwei Viertelstunden die Zusammensetzung (Java VerbrauchWerteteileTest, Python test_verbrauch.py)."
  ],
  "schema_version": "1.0",
  "$schema_datei": "./verbrauch.schema.json",
@@ -26,7 +32,8 @@
   "luecke_faktor": 2,
   "integration_halten_faktor": 2,
   "vergleich_nachkommastellen": 3,
-  "teilperioden": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen"
+  "teilperioden": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
+  "werte_teilperioden": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge"
  },
  "zustaende": [
   "vollständig",
@@ -267,6 +274,19 @@
      "abdeckung_prozent": 93,
      "kennzeichen": [
       "1 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen"
+     ]
+    },
+    {
+     "name": "Halbe Stunde 10:00–10:30",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 5.318,
+     "zustand": "unvollständig",
+     "erhalten": 29,
+     "erwartet": 30,
+     "abdeckung_prozent": 96,
+     "kennzeichen": [
+      "1 von 30 Intervallmengen fehlt — Menge ist die Summe der gemessenen"
      ]
     }
    ]
@@ -1743,6 +1763,154 @@
      "abdeckung_prozent": 97,
      "kennzeichen": [
       "Lücke 14:00–14:41: Zuwachs 65.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "f24-momentanwert-ueber-die-viertelstundengrenze",
+   "familie": "momentanwert",
+   "ableitung": "einzel",
+   "abnahme": null,
+   "why": "Aus Viertelstunden wird die Stunde, ohne Mittel von Mitteln und ohne aufgefüllte Lücke: die Lücke 10:14:20–10:16:00 liegt über der Grenze und macht beide Viertelstunden und die Stunde unvollständig; der fehlende Wert 10:44:50 macht nur die Viertelstunde 10:30 unvollständig (Rand), nicht die halbe Stunde; der Wert 10:29:40 hält bis zum nächsten Wert 10:30:00 HINTER der Grenze (18,667 statt 18,444 kWh) — so ergeben die Viertelstunden-Energien genau die der Stunde (107,308 kWh), nie Mittel × Länge (AP-08 IP-3).",
+   "messstelle": "MS-10",
+   "input": {
+    "reihe": {
+     "wertart": "momentanwert",
+     "einheit": "kW",
+     "kadenz_s": 10,
+     "zeitzone": "Europe/Berlin",
+     "integrieren": true,
+     "rohwerte": [
+      {
+       "von": "2026-10-20T10:00:00+02:00",
+       "bis": "2026-10-20T10:14:20+02:00",
+       "kadenz_s": 10,
+       "stand_von": 100.0,
+       "zuwachs_je_kadenz": 0.0
+      },
+      {
+       "von": "2026-10-20T10:16:00+02:00",
+       "bis": "2026-10-20T10:29:40+02:00",
+       "kadenz_s": 10,
+       "stand_von": 80.0,
+       "zuwachs_je_kadenz": 0.0
+      },
+      {
+       "von": "2026-10-20T10:30:00+02:00",
+       "bis": "2026-10-20T11:00:00+02:00",
+       "kadenz_s": 10,
+       "stand_von": 120.0,
+       "zuwachs_je_kadenz": 0.1
+      }
+     ],
+     "luecken": [
+      {
+       "von": "2026-10-20T10:44:50+02:00",
+       "bis": "2026-10-20T10:45:00+02:00"
+      }
+     ]
+    }
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "mittel": 100.0,
+     "min": 100.0,
+     "max": 100.0,
+     "energie_kwh": 24.167,
+     "zustand": "unvollständig",
+     "erhalten": 87,
+     "erwartet": 90,
+     "abdeckung_prozent": 96,
+     "kennzeichen": [
+      "gemessene Zeit 14:30 min von 15 min",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "Viertelstunde 10:15–10:30",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "mittel": 80.0,
+     "min": 80.0,
+     "max": 80.0,
+     "energie_kwh": 18.667,
+     "zustand": "unvollständig",
+     "erhalten": 83,
+     "erwartet": 90,
+     "abdeckung_prozent": 92,
+     "kennzeichen": [
+      "gemessene Zeit 13:50 min von 15 min",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "Viertelstunde 10:30–10:45",
+     "von": "2026-10-20T10:30:00+02:00",
+     "bis": "2026-10-20T10:45:00+02:00",
+     "mittel": 124.4,
+     "min": 120.0,
+     "max": 128.8,
+     "energie_kwh": 31.112,
+     "zustand": "unvollständig",
+     "erhalten": 89,
+     "erwartet": 90,
+     "abdeckung_prozent": 98,
+     "kennzeichen": [
+      "gemessene Zeit 14:50 min von 15 min",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "Viertelstunde 10:45–11:00",
+     "von": "2026-10-20T10:45:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "mittel": 133.5,
+     "min": 129.0,
+     "max": 137.9,
+     "energie_kwh": 33.363,
+     "zustand": "vollständig",
+     "erhalten": 90,
+     "erwartet": 90,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "Halbe Stunde 10:30–11:00",
+     "von": "2026-10-20T10:30:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "mittel": 129.0,
+     "min": 120.0,
+     "max": 137.9,
+     "energie_kwh": 64.475,
+     "zustand": "vollständig",
+     "erhalten": 179,
+     "erwartet": 180,
+     "abdeckung_prozent": 99,
+     "kennzeichen": [
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "Stunde 10:00–11:00",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T11:00:00+02:00",
+     "mittel": 110.1,
+     "min": 80.0,
+     "max": 137.9,
+     "energie_kwh": 107.308,
+     "zustand": "unvollständig",
+     "erhalten": 349,
+     "erwartet": 360,
+     "abdeckung_prozent": 96,
+     "kennzeichen": [
+      "gemessene Zeit 58:10 min von 60 min",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
      ]
     }
    ]
