@@ -252,6 +252,15 @@
                              ViertelstundeWiringTest an der echten
                              application.yml. -->
                         <voltpilot.uems.viertelstunde.enabled>false</voltpilot.uems.viertelstunde.enabled>
+                        <!-- Und der Stundenlauf der Endgueltigkeit samt Tageslauf
+                             (AP-07 IP-13) ist dieselbe @Scheduled-Falle: im
+                             Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Wer ihn prueft, ruft
+                             EndgueltigkeitLauf.umschalten() und
+                             TagVerdichter.lauf() selbst; dass die AUSGELIEFERTE
+                             Vorgabe AN ist, prueft EndgueltigkeitWiringTest an
+                             der echten application.yml. -->
+                        <voltpilot.uems.endgueltigkeit.enabled>false</voltpilot.uems.endgueltigkeit.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

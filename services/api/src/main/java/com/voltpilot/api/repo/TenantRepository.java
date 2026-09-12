@@ -174,6 +174,13 @@ public class TenantRepository {
                 // every other series table above. The run-state row is not tenant-bound and stays.
                 deleteByTenant(con, "messreihe_viertelstunde", tenantId);
                 deleteByTenant(con, "messreihe_viertelstunde_arbeit", tenantId);
+                // The day class, its work list and the correction proposals (AP-07 IP-13) go the
+                // same way: hypertable + operational queues + a proposal list that holds the
+                // tenant by RESTRICT. Offboarding is the ONE way out. The run-state row is not
+                // tenant-bound and stays.
+                deleteByTenant(con, "messreihe_tag", tenantId);
+                deleteByTenant(con, "messreihe_tag_arbeit", tenantId);
+                deleteByTenant(con, "messreihe_korrektur_vorschlag", tenantId);
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

@@ -321,7 +321,7 @@ public final class EreignisVokabular {
                 EINGANGSZEIT, List.of("box"), List.of(),
                 List.of("strom", "sequenz_erwartet", "sequenz_erhalten"), List.of(), List.of(),
                 null, null),
-        LATE_ARRIVAL("late_arrival", EnumSet.of(WRITER), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+        LATE_ARRIVAL("late_arrival", EnumSet.of(WRITER, CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
                 List.of("komponente", "messkanal"), List.of("box", "messstelle"),
                 List.of("eingangszeit", "anzahl"), List.of(), List.of(), null, null),
         COUNTER_RESET("counter_reset", EnumSet.of(WRITER), ZEITPUNKT, null, false, MESSZEIT,

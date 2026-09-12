@@ -121,7 +121,7 @@ Felder, die eine Fortschreibung setzen darf.
 | `duplicate_conflict` | Abweichender Wert | writer | — | Zeitpunkt · Eingangszeit | box, komponente, messkanal (+ messstelle) | `messzeit`, `gespeicherter_wert`, `abgewiesener_wert`, `sequenzen` | — |
 | `sequence_gap` | Datenpakete fehlen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten`, `anzahl` | — |
 | `sequence_reset` | Paketzählung neu begonnen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten` | — |
-| `late_arrival` | Nach Abschluss eingegangen | writer | — | [von, bis) · Messzeit | komponente, messkanal (+ box, messstelle) | `eingangszeit`, `anzahl` | — |
+| `late_arrival` | Nach Abschluss eingegangen | writer · cloud | — | [von, bis) · Messzeit | komponente, messkanal (+ box, messstelle) | `eingangszeit`, `anzahl` | — |
 | `counter_reset` | Zähler zurückgesetzt | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `stand_alt`, `stand_neu` | — |
 | `device_boundary` | Gerätegrenze | kunde | — | Zeitpunkt · Messzeit | komponente (+ messkanal, messstelle) | `anlass`, `einbau_alt`, `einbau_neu`, `eingetragen_am` | — |
 | `handover` | Übergabe | cloud | — | [von, bis) · offen erlaubt · Messzeit | datenquelle | `anlass`, `box_alt`, `box_neu` | `bis` |

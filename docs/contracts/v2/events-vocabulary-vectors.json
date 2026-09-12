@@ -627,7 +627,8 @@
         "art": "late_arrival",
         "name": "Nach Abschluss eingegangen",
         "urheber": [
-          "writer"
+          "writer",
+          "cloud"
         ],
         "zeit": {
           "form": "zeitraum",
@@ -1891,6 +1892,36 @@
         "urheber": "writer",
         "ereignis": {
           "ereignis_id": "e7e00000-0000-4000-8000-000000000010",
+          "art": "late_arrival",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T13:15:00Z",
+          "box": "E-2",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "eingangszeit": "2026-11-12T08:02:00Z",
+          "anzahl": 15
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nach Abschluss eingegangen: 15 Werte für 03.11.2026 14:00 bis 14:15, am 12.11.2026 09:02 — der endgültige Viertelstundenwert bleibt unverändert"
+        ]
+      }
+    },
+    {
+      "name": "ms10-nach-abschluss-eingegangen-von-der-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 late_arrival, E5; Lieferpaket IP-13 (services/api)",
+      "why": "Dieselbe Meldung, gestellt von dem Lauf, der sie wirklich feststellt: die Endgültigkeit ist ein Lauf der api, und dort heißt Weg 2 `cloud` — wie schon bei data_gap aus dem Herzschlag. Der Urheber ist eine Herkunftsangabe, also wird er nicht verbogen, sondern geweitet.",
+      "annahme": "AP-07 §4.8 nennt für late_arrival den Writer; §8 legt IP-13 in die api. Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig).",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000012",
           "art": "late_arrival",
           "von": "2026-11-03T13:00:00Z",
           "bis": "2026-11-03T13:15:00Z",
