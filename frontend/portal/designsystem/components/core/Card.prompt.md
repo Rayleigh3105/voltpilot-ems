@@ -1,10 +1,12 @@
-White surface container — soft border + small shadow. Set `interactive` for the signature hover (lift, brand-glow shadow, sliding colored top bar) used on solution and testimonial tiles.
+# Card
+
+Weiße Fläche mit Rand und Schatten. `interactive` ergänzt Hover-Anhebung und Akzentleiste, erzeugt aber keine Klick- oder Tastaturaktion. Die tatsächliche Aktion braucht ein bedienbares Element.
 
 ```jsx
-<Card interactive accent="solar" padding="md">
-  <h4>PV-Optimierung</h4>
-  <p>Maximieren Sie Ihren Eigenverbrauch.</p>
+<Card accent="solar" padding="md">
+  <h4>PV-Erzeugung</h4>
+  <p>Messwerte und Verlauf der Anlage.</p>
 </Card>
 ```
 
-Props: `interactive`, `accent` (primary/solar/battery/ev/home/industry/dynamic — colors the top bar), `padding` (md/lg), `radius` (md/lg).
+Props: `interactive`, `accent` (`primary`, `solar`, `battery`, `ev`, `home`, `industry`, `dynamic`), `padding` (`md`, `lg`), `radius` (`md`, `lg`).

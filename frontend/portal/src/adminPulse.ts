@@ -6,7 +6,7 @@ import type { Tenant } from './admin/adminApi';
  * call, no new data - so it stays honest: it can only report what a tenant row
  * carries (its segment). The bigger cross-tenant health dashboard (devices
  * online platform-wide, pending enrollments, …) needs a backend endpoint and is
- * a separate, captain-decided swing (see docs/admin-ux-assessment.md).
+ * a separate, captain-decided swing (see docs/portal.md).
  */
 export interface TenantPulse {
   total: number;

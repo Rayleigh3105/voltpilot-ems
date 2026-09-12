@@ -23,7 +23,7 @@ export interface HelpSection {
   steps?: string[];
   note?: string;
   figure?: string;
-  diagram?: 'energy' | 'loop' | 'day';
+  diagram?: 'energy' | 'loop' | 'day' | 'system' | 'proof' | 'storage';
 }
 
 export interface HelpArticle {

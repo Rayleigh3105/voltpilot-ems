@@ -38,7 +38,7 @@
     "entity_type": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,62}$",
-      "description": "Domain type on top of the capability model (plan decision D10). OPEN vocabulary since E1b: the data-driven platform type CATALOG (services/api entitytypes/catalog.json) is the truth for known types - adding a type is catalog data + an optional driver, never a schema release. Catalog types today: battery-hybrid, producer, grid-meter, wallbox, heating-rod, generic-load. Consumers key BEHAVIOR on the declared capabilities and guards, never on the type string alone: no actuate list (or a measure-only failsafe) = measure-only; storage-shaped guard limits = the storage guard chain incl. D-8; max_generation_kw = producer reduce-only caps; otherwise the consumer clamp ([0, max_consumption_kw], + = consume)."
+      "description": "Domain type on top of the capability model (plan decision D10). OPEN vocabulary since E1b: the data-driven platform type CATALOG (services/api entitytypes/catalog.json) is the truth for known types - adding a type is catalog data + an optional driver, never a schema release. Examples include battery-hybrid, producer, grid-meter, wallbox, heating-rod and generic-load; the current catalog is authoritative. Consumers key BEHAVIOR on the declared capabilities and guards, never on the type string alone: no actuate list (or a measure-only failsafe) = measure-only; storage-shaped guard limits = the storage guard chain incl. D-8; max_generation_kw = producer reduce-only caps; otherwise the consumer clamp ([0, max_consumption_kw], + = consume)."
     },
     "channels": {
       "type": "object",

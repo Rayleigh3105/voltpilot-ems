@@ -7,16 +7,13 @@ export const startArticles: HelpArticle[] = [
     keywords: ['EMS', 'Energiemanagement', 'Überblick', 'Projekt', 'Optimierung', 'Cloud', 'Box'],
     sections: [
       { id: 'zusammenspiel', title: 'Eine Anlage, mehrere Aufgaben', paragraphs: [
-        'Eine Solaranlage produziert Strom, wenn die Sonne scheint. Ihr Verbrauch folgt einem anderen Tagesablauf. Ein Speicher kann Energie zwischen diesen Zeiten verschieben; Ladepunkte und andere steuerbare Verbraucher bringen zusätzliche Möglichkeiten und Anforderungen mit.',
-        'VoltPilot führt diese Informationen zusammen. Im Portal sehen Sie, was Ihre Anlage gerade tut, was als Nächstes geplant ist und welche Ergebnisse bereits gemessen wurden. Welche Ansichten erscheinen, hängt von den Geräten, Einstellungen und Betriebsmodellen Ihrer Anlage ab.',
+        "VoltPilot verbindet PV, Speicher und steuerbare Verbraucher. Im Portal sehen Sie den aktuellen Zustand, die nächsten geplanten Aktionen und die gemessenen Ergebnisse. Die verfügbaren Ansichten richten sich nach Ihrer Ausstattung.",
       ], diagram: 'loop' },
       { id: 'aufgaben', title: 'Portal, Planung und Box', paragraphs: [
-        'Das Portal ist Ihr Arbeitsplatz: Hier lesen Sie Messwerte, hinterlegen Angaben zur Anlage und verwalten die angebotenen Steuerungsmöglichkeiten. Die Planung verwendet Messwerte, Vorhersagen, Preise und die hinterlegten Grenzen.',
-        'Die VoltPilot Box verbindet die Geräte vor Ort mit dem System. Sie übermittelt Messwerte und führt freigegebene Vorgaben aus. Ein angezeigter Fahrplan beschreibt deshalb zunächst eine Absicht. Ob sie tatsächlich umgesetzt wurde, zeigen die Rückmeldungen und Messwerte.',
-      ] },
+        "Im Portal verwalten Sie die Anlage. Die Planung berücksichtigt Messwerte, Vorhersagen, Preise und Grenzen. Die Box verbindet die Geräte vor Ort und führt freigegebene Vorgaben aus.",
+      ], diagram: 'system' },
       { id: 'einstieg', title: 'So finden Sie sich zurecht', paragraphs: [
-        'Beginnen Sie im Cockpit mit dem Zustand und den aktuellen Energieflüssen. Im Fahrplan sehen Sie die nächsten Schritte des Speichers. Unter Verlauf prüfen Sie zurückliegende Messwerte und – wenn verfügbar – Erlöse. Steuerung erklärt die aktiven Betriebsmodelle und Regeln. Unter Anlage finden Sie Geräte und Einstellungen.',
-        'Die Hilfe erklärt auch Funktionen, die für Ihre Anlage noch nicht verfügbar sind. Die Voraussetzungen am Artikelanfang sagen Ihnen, welche Ausstattung oder Freigabe dafür benötigt wird.',
+        "Cockpit: aktueller Zustand. Fahrplan: nächste Speicheraktionen. Verlauf: Messwerte und verfügbare Erlöse. Steuerung: Betriebsmodelle und Regeln. Anlage: Geräte und Einstellungen. Voraussetzungen für optionale Funktionen stehen am Artikelanfang.",
       ] },
     ],
     related: ['energiefluesse', 'beispieltag', 'orientierung'],
@@ -27,16 +24,13 @@ export const startArticles: HelpArticle[] = [
     keywords: ['PV', 'Solar', 'Energiefluss', 'Batterie', 'Akku', 'Eigenverbrauch', 'Bezug', 'Einspeisung', 'kW', 'kWh'],
     sections: [
       { id: 'wege', title: 'Wo Strom herkommt und wohin er fließt', paragraphs: [
-        'PV steht für Photovoltaik: Ihre Solarmodule liefern elektrische Energie. Diese kann die Verbraucher vor Ort versorgen, den Speicher laden oder in das Netz fließen. Reicht die Erzeugung nicht aus, kommen je nach Betriebszustand Energie aus dem Speicher und Strom aus dem Netz hinzu.',
-        'Die Abbildung zeigt mögliche Wege, keine gleichzeitig gemessenen Flüsse. Im Cockpit beschreiben Richtung und Beschriftung den aktuellen Zustand Ihrer eigenen Anlage.',
+        "Solarstrom kann Verbraucher versorgen, den Speicher laden oder ins Netz fließen. Bei Bedarf ergänzen Speicher und Netz die Erzeugung. Die Illustration zeigt mögliche Wege; aktuelle Flüsse sehen Sie im Cockpit.",
       ], diagram: 'energy' },
       { id: 'einheiten', title: 'Leistung, Energie und Ladestand unterscheiden', paragraphs: [
-        'Kilowatt (kW) beschreibt die Leistung zu einem Zeitpunkt. Kilowattstunden (kWh) beschreibt die Energiemenge über einen Zeitraum: Eine Leistung von 2 kW über eine Stunde entspricht 2 kWh. Der Ladestand in Prozent beschreibt, wie voll der Speicher im Verhältnis zu seiner Kapazität ist.',
-        'Vergleichen Sie deshalb eine aktuelle kW-Anzeige nicht direkt mit einem Tageswert in kWh. Lesen Sie außerdem immer die Bezeichnung: Laden und Entladen beziehungsweise Netzbezug und Einspeisung sind verschiedene Richtungen.',
+        "kW ist die momentane Leistung, kWh die Energiemenge: 2 kW über eine Stunde ergeben 2 kWh. Der Ladestand in Prozent zeigt den Füllstand des Speichers. Laden und Entladen sowie Bezug und Einspeisung haben jeweils entgegengesetzte Richtungen.",
       ] },
       { id: 'messung', title: 'Ein Gesamtbild aus mehreren Messungen', paragraphs: [
-        'Messwerte verschiedener Geräte müssen nicht im selben Augenblick eintreffen. Manche Größen werden aus anderen Messungen abgeleitet. Kleine Abweichungen oder zeitversetzte Änderungen sind deshalb nicht automatisch ein Fehler.',
-        'Fehlt ein Messwert, ist das keine gemessene Null. Prüfen Sie den Datenstand und die Gerätezuordnung, bevor Sie aus einer Lücke auf einen ausgefallenen Verbraucher oder fehlende Erzeugung schließen.',
+        "Geräte melden zeitversetzt; manche Größen werden aus mehreren Messungen berechnet. Prüfen Sie deshalb Datenstand und Zuordnung. Ein fehlender Wert ist keine gemessene Null.",
       ], figure: 'cockpit' },
     ],
     related: ['cockpit', 'messwerte', 'glossar'],
@@ -48,16 +42,13 @@ export const startArticles: HelpArticle[] = [
     prerequisite: 'Das Beispiel zeigt eine Anlage mit PV und Speicher. Netzladen setzt die passende Einstellung und technische Möglichkeit voraus.',
     sections: [
       { id: 'tag', title: 'Vom Morgen bis zum Abend', paragraphs: [
-        'Am Morgen ist die Solarproduktion noch gering, während bereits Strom verbraucht wird. Mittags kann ein Überschuss entstehen. Am Abend nimmt die Erzeugung ab, der Verbrauch kann aber hoch bleiben. Der Speicher verbindet diese Zeiträume.',
-        'Das ist ein vereinfachtes Beispiel, keine Empfehlung für feste Ladezeiten. Wetter, Tarif, Verbrauch, Reserven und das Betriebsmodell können zu einem anderen Verlauf führen.',
+        "Morgens und abends kann der Speicher fehlenden Sonnenstrom ergänzen. Mittags kann er Energie für später aufnehmen. Das Beispiel zeigt mögliche Abläufe; Wetter, Tarif, Bedarf und Reserven bestimmen Ihren tatsächlichen Plan.",
       ], diagram: 'day' },
       { id: 'vorausblick', title: 'Die Planung blickt voraus', paragraphs: [
-        'Eine Vorhersage schätzt, wie viel PV-Strom und Verbrauch zu erwarten sind. Bei einem passenden Tarif kommen zeitabhängige Preise hinzu. Daraus entsteht ein Fahrplan innerhalb der hinterlegten Speicher- und Anschlussgrenzen.',
-        'Ein Speicher muss deshalb nicht jeden Überschuss sofort aufnehmen und nicht bei jedem hohen Preis entladen. Er kann beispielsweise Raum für spätere PV-Erzeugung freihalten oder eine Reserve einhalten. Den konkreten Plan und seine Erläuterungen finden Sie im Fahrplan.',
+        "Die Planung verbindet PV- und Verbrauchsvorhersagen mit Preisen und Gerätegrenzen. Der Speicher kann Platz für spätere Erzeugung lassen oder Reserven halten. Die konkrete Begründung steht im Fahrplan.",
       ], figure: 'fahrplan' },
       { id: 'nachsehen', title: 'Plan und Ergebnis zusammen lesen', paragraphs: [
-        'Im Cockpit sehen Sie den aktuellen Zustand. Im Fahrplan prüfen Sie die geplanten Zeitabschnitte. Unter Messwerte sehen Sie später, was tatsächlich gemessen wurde. Unter Erlöse wird die wirtschaftliche Einordnung dargestellt, soweit die nötigen Daten vorliegen.',
-        'Ändern sich Wetter oder Verbrauch, kann sich auch der nächste Fahrplan ändern. Eine frühere Vorhersage ist deshalb kein unveränderliches Versprechen. Vergleichen Sie Zeiträume, Datenstand und Einheiten, bevor Sie eine Abweichung bewerten.',
+        "Vergleichen Sie Fahrplan und Messwerte für denselben Zeitraum. Das Cockpit zeigt den aktuellen Zustand, Erlöse die verfügbare wirtschaftliche Einordnung. Neue Daten können den nächsten Plan ändern.",
       ] },
     ],
     related: ['fahrplan', 'prognosen', 'erloese'],
@@ -68,16 +59,13 @@ export const startArticles: HelpArticle[] = [
     keywords: ['Login', 'Anmeldung', 'Konto', 'Registrierung', 'Mobil', 'Handy', 'Menü', 'Passwort'],
     sections: [
       { id: 'konto', title: 'Ihr Konto und Ihre Anlagen', paragraphs: [
-        'Melden Sie sich mit dem für Sie eingerichteten Konto an. Bei der Registrierung verwenden Sie Ihren Namen beziehungsweise Firmennamen, Ihre E-Mail-Adresse und ein Passwort. Nach der Anmeldung führt ein neues Konto in die Einrichtung der ersten Anlage.',
-        'Die sichtbaren Anlagen gehören zum angemeldeten Konto. Wenn Sie eine erwartete Anlage nicht sehen, prüfen Sie zunächst, ob Sie das richtige Konto verwenden. Das erneute Anlegen einer bestehenden Anlage löst eine falsche Kontozuordnung nicht.',
+        "Melden Sie sich mit Ihrem Konto an oder registrieren Sie sich mit Name, E-Mail-Adresse und Passwort. Neue Konten starten mit der ersten Anlage. Fehlt eine bestehende Anlage, prüfen Sie zuerst das angemeldete Konto.",
       ] },
       { id: 'navigation', title: 'Ein Ort für jede Frage', paragraphs: [
-        'Auf dem Rechner stehen die Bereiche in der Seitenleiste. Auf dem Telefon finden Sie innerhalb einer Anlage die verfügbaren Bereiche unten. Der Anlagenname oben dient zum Wechseln, wenn mehrere Anlagen vorhanden sind.',
-        'Verlauf und Anlage haben je nach Ausstattung weitere Reiter. Eine reine Ladeanlage kann Ladevorgänge anstelle eines Speicher-Fahrplans zeigen. Auf der Portfolio-Ebene arbeiten Sie mit den Reitern der Übersicht.',
+        "Am Rechner stehen die Bereiche in der Seitenleiste, innerhalb einer Anlage am Telefon unten. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
       ], figure: 'orientierung' },
       { id: 'mobil', title: 'Hilfe auf dem Telefon', paragraphs: [
-        'Hilfe & Kontakt und Abmelden finden Sie im Konto-Menü hinter Ihrem Avatar. Ein Hilfelink innerhalb einer Ansicht öffnet die passende Erklärung. Auf dem Telefon füllt die Erklärung den Bildschirm; über Schließen gelangen Sie zu Ihrer unveränderten Eingabe zurück.',
-        'Wenn Sie Ihr Passwort vergessen haben oder die Anmeldung dauerhaft scheitert, wenden Sie sich an Ihren VoltPilot-Ansprechpartner. Geben Sie niemals Ihr Passwort weiter.',
+        "Hilfe & Kontakt und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
       ], figure: 'orientierung-mobil' },
     ],
     related: ['anlage-anlegen', 'portfolio', 'kontakt'],
@@ -88,11 +76,10 @@ export const startArticles: HelpArticle[] = [
     keywords: ['Standort', 'Einrichten', 'Onboarding', 'MaStR', 'Register', 'Adresse', 'PV', 'Speicher'],
     sections: [
       { id: 'starten', title: 'Mit dem richtigen Standort beginnen', paragraphs: [
-        'Eine Anlage fasst die zusammengehörigen Geräte und Energiedaten an einem Standort zusammen. Der erste Besuch öffnet den Einrichtungsassistenten. Weitere Anlagen legen Sie über Anlage hinzufügen an.',
-        'Verwenden Sie einen Namen, den Sie später beim Wechseln sicher erkennen. Prüfen Sie den Standort sorgfältig: Er hilft dabei, passende Wetterdaten und PV-Vorhersagen zuzuordnen.',
+        "Beim ersten Besuch startet die Einrichtung; weitere Standorte legen Sie über Anlage hinzufügen an. Wählen Sie einen eindeutigen Namen und den richtigen Standort für Wetter und PV-Prognose.",
       ], figure: 'anlage-anlegen' },
       { id: 'schritte', title: 'Die Einrichtung durchlaufen', paragraphs: [
-        'Der Assistent zeigt Ihnen, welcher Schritt gerade offen ist. Angaben, die Sie überspringen, müssen gegebenenfalls später ergänzt werden, bevor alle Funktionen verfügbar sind.',
+        "Der Assistent zeigt den offenen Schritt. Übersprungene Angaben können später für einzelne Funktionen nötig sein.",
       ], steps: [
         'Anlage: Namen und Standort erfassen und die Anlage anlegen.',
         'Register: PV- und Speicherdaten über die passende MaStR-Nummer suchen. Die Vorschau prüfen, bevor Sie Werte übernehmen. Falls nötig, den angebotenen manuellen Weg verwenden.',
@@ -100,8 +87,7 @@ export const startArticles: HelpArticle[] = [
         'Betrieb: den passenden Einsatzzweck und die angebotenen Betriebsmodelle prüfen. Fehlende Voraussetzungen werden direkt angezeigt.',
       ] },
       { id: 'pruefen', title: 'Woran Sie den erfolgreichen Abschluss erkennen', paragraphs: [
-        'Die Anlage erscheint im Portal. Nach dem Verbinden sollte die Box Daten liefern; anschließend wird das Cockpit mit Messwerten gefüllt. Eine angelegte Anlage allein bedeutet noch nicht, dass eine Verbindung oder Steuerfreigabe besteht.',
-        'Prüfen Sie unter Anlage die übernommenen Geräte und Einstellungen. Besonders Kapazität, Leistungsgrenzen und Tarifangaben sollten zur tatsächlichen Anlage passen. Für Änderungen, die nur VoltPilot vornehmen kann, nennt die Oberfläche den Ansprechpartner.',
+        "Prüfen Sie unter Anlage Geräte, Kapazität, Leistungsgrenzen und Tarif. Nach dem Verbinden müssen erste Messwerte eintreffen. Eine angelegte Anlage allein bestätigt weder Datenverbindung noch Steuerfreigabe.",
       ] },
     ],
     related: ['box-verbinden', 'einstellungen', 'betriebsmodelle'],
@@ -113,8 +99,7 @@ export const startArticles: HelpArticle[] = [
     prerequisite: 'Eine eingerichtete VoltPilot Box und eine Anlage im Portal.',
     sections: [
       { id: 'vorbereiten', title: 'Die richtige Geräte-ID verwenden', paragraphs: [
-        'Verwenden Sie die Geräte-ID des vorgesehenen VoltPilot-Geräts. Sie finden sie je nach Gerät auf dem Aufkleber oder in dessen lokaler Web-App. Die ID eines Wechselrichters oder dessen Hersteller-Seriennummer ist nicht automatisch die VoltPilot-Geräte-ID.',
-        'Wenn die lokale Einrichtung noch nicht abgeschlossen ist, schließen Sie zunächst den dort angezeigten Einrichtungsweg ab. Im Portal ordnen Sie anschließend die Box Ihrer Anlage zu.',
+        "Die VoltPilot-Geräte-ID steht auf dem Aufkleber oder in der lokalen Web-App der Box. Verwenden Sie diese ID, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
         'Im Assistenten oder beim Hinzufügen eines VoltPilot-Geräts die gewünschte Anlage prüfen.',
@@ -122,8 +107,7 @@ export const startArticles: HelpArticle[] = [
         'Auf die Rückmeldung warten. Anschließend Geräteverbindung, Zeitpunkt des letzten Kontakts und erste Messwerte prüfen.',
       ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf Daten“ ist noch kein gemessener Betriebszustand.' },
       { id: 'fehler', title: 'Wenn die ID nicht angenommen wird', paragraphs: [
-        'Bei einer unbekannten ID prüfen Sie jeden Buchstaben und jedes Zeichen anhand der Originalanzeige. Eine bereits mit Ihrem Konto verbundene Box kann weiterhin ihrer bisherigen Anlage zugeordnet sein; prüfen Sie deshalb den angezeigten Standort.',
-        'Gehört das Gerät zu einem anderen Konto, wenden Sie sich an VoltPilot. Erfinden Sie keine abgewandelte ID. Wenn die Zuordnung gelingt, aber Daten fehlen, prüfen Sie Stromversorgung und Verbindung der Box sowie die Geräteübersicht.',
+        "Bei unbekannter ID vergleichen Sie alle Zeichen mit dem Original. Prüfen Sie bei einer bereits verbundenen Box den angezeigten Standort. Gehört sie zu einem anderen Konto, hilft VoltPilot. Verändern Sie die ID nicht, um die Meldung zu umgehen.",
       ] },
     ],
     related: ['geraete', 'probleme', 'kontakt'],

@@ -8,6 +8,14 @@ komplett vom **Go-Core** (`edge-app/core/internal/shelly`), es gibt bewusst
 Steuer-Executor teilen sich EINEN Besitzer des Geräte-Sockets). Bench-Ablauf:
 [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Shelly".
 
+```mermaid
+flowchart LR
+  Rule[Plan oder Regel] --> Core[Core: Freigabe und Grenzen]
+  Core --> Write[Geräteauftrag]
+  Write --> Readback[Rückmeldung lesen]
+  Readback --> Measure[Wirkung mit Messwerten prüfen]
+```
+
 ## 1. Voraussetzungen
 
 - **Festes WLAN, feste IP** (DHCP-Reservierung im Router). Die Verbindung ist
@@ -117,8 +125,7 @@ Abfall-Timer (0/fehlend = 180).
 ## 7. Sicherheits-Rahmen (unverändert)
 
 Der Executor läuft nur mit `VP_CONTROL_ENABLED` **und**
-`VP_CONSUMER_CONTROL_ENABLED` (beide Vorgabe AUS - mit Flags aus null HTTP an
-das Relais, byte-identisch). Vorgelagert bleiben alle Guards autoritativ.
+`VP_CONSUMER_CONTROL_ENABLED` (Vorgabe: global EIN, Verbrauchersteuerung AUS; Messung und Verbindungstest bleiben getrennt). Vorgelagert bleiben alle Guards autoritativ.
 Die Typen `heating-rod`/`generic-load` bleiben im Katalog **unzertifiziert**
 (`simulator_only`), bis die Captain-Bench-Session sie flippt (D11, eigener
 Mini-PR - siehe CONTROL-BENCH.md „Shelly", Abschluss).

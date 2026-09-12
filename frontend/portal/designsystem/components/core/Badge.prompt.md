@@ -1,8 +1,10 @@
-Pill-shaped label for tags, statuses, and section eyebrows — 50px radius, 600 weight.
+# Badge
+
+Kompakte Beschriftung für Status oder Kategorien. Bedeutung immer als Text zeigen; Farbe allein genügt nicht.
 
 ```jsx
-<Badge variant="tint">BAFA-förderfähig</Badge>
-<Badge variant="gradient">Neu</Badge>
+<Badge variant="ok" dot>Verbunden</Badge>
+<Badge variant="warn">Daten veraltet</Badge>
 ```
 
-Variants: `tint` (soft blue bg, deep-blue text), `gradient` (blue gradient), `solid` (deep blue, white text).
+Varianten: `tint`, `gradient`, `solid`, `ok`, `warn`, `off`; `dot` ergänzt einen Statuspunkt. Keine Förder- oder Zertifizierungszusage als dekoratives Beispiel verwenden.

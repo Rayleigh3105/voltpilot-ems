@@ -307,7 +307,7 @@
 }
 
 /* =========================================================================
- * Portal v3 · M4 — die ZWEI Kapseln (`docs/portal-v3/M4-steuerung.md`)
+ * Portal v3 · M4 — die ZWEI Kapseln (`docs/portal.md`)
  *
  * Layout-Regel wie oben: jedes Flex-/Grid-Kind, das eine Zahl, ein Badge oder
  * einen langen Namen trägt, bekommt `min-width: 0` — sonst sprengt es die

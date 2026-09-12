@@ -1,9 +1,6 @@
 # KACO-Wechselrichter lesen - Referenz + Einrichtung
 
-Quelle der Palette + der Belege: Scout-Report `data/vp-kaco-palette-y6`
-(offizielle KACO-/AISWEI-Dokumente, OpenEMS-/evcc-/Home-Assistant-Produktivcode).
-Diese Datei ist die BETREIBER-Sicht: was am Gerät einzustellen ist, was VoltPilot
-liest und was bewusst nicht geht.
+Einrichtung und Grenzen der beiden Modellplattformen. Implementierung: [`kaco/`](kaco/) und [`sunspec/`](sunspec/). Die KACO-Schreibpfade sind vorbereitet, bleiben aber im Treiber gesperrt.
 
 ## 0. Das Wichtigste zuerst: KACO sind ZWEI Plattformen
 

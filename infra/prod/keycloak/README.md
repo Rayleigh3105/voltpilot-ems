@@ -1,31 +1,36 @@
-# Production Keycloak realm import
+# Produktions-Realm
 
-`voltpilot-realm.json` is the PRODUCTION realm import for the single-VM/VPS deploy (`docker-compose.prod.yml`).
-It mirrors the dev realm (`infra/local/keycloak/voltpilot-realm.json`) but parametrizes everything host-specific or secret, so nothing is baked in.
+[`voltpilot-realm.json`](voltpilot-realm.json) ist die Vorlage für **neue** Keycloak-Realms in Compose und im Projektimage. Ein bestehender Realm wird durch `start --import-realm` nicht überschrieben; Änderungen dort gezielt über die Administration nachziehen.
 
-Documentation lives here instead of a `_comment` field in the JSON: Keycloak 26 in production mode (`start --import-realm`) strict-parses the realm representation and ABORTS the boot on any unknown field (`Unrecognized field "_comment"`).
+## Importwerte
 
-Key points:
+Keycloak ersetzt `${VAR}` / `${VAR:default}` aus der Containerumgebung. `${env.VAR}` ist für diesen Import falsch. Das JSON akzeptiert keine zusätzlichen `_comment`-Felder.
 
-- Keycloak substitutes the `${VAR}` / `${VAR:default}` placeholders from the container environment at import time.
-  `VP_PUBLIC_ORIGIN` (redirect URIs / web origins), `VP_API_CLIENT_SECRET` (confidential client) and `VP_PORTAL_ADMIN_PASSWORD` (seeded Portal-Admin user) are set on the keycloak service in `docker-compose.prod.yml`.
-  The secret placeholders deliberately carry NO in-file defaults: importing this realm outside the compose path (whose `${VAR:?}` guards enforce real values) with the vars unset leaves the un-substituted literal in place instead of silently seeding a well-known `admin`/`change-me` credential.
-  NOTE: the Wildfly-era `${env.VAR}` prefix syntax is NOT substituted by Keycloak 26 - it reaches client validation literally and aborts the import with "A redirect URI is not a valid URI" (verified against 26.0.5).
-- `sslRequired=external`: HTTPS is required for external requests, which the external reverse proxy (Nginx Proxy Manager or Caddy) terminates and signals via `X-Forwarded-Proto` (`KC_PROXY_HEADERS=xforwarded`).
-- `loginTheme: voltpilot` selects the branded login theme (`deploy/keycloak/themes/voltpilot`, bind-mounted by the compose).
-- `voltpilot-frontend` has `directAccessGrantsEnabled=true` (same as dev): the portal's seamless post-registration auto-login mints tokens via the password grant on this public client.
-- `bruteForceProtected` is on (temporary lockout: 10 failures -> 60 s wait escalating to 15 min, never permanent) to bound password guessing at the token endpoint; support lifts a lock via the admin console's "Passwort zurücksetzen" (which also sets a new password).
-  Like every realm change, these reach an EXISTING Keycloak volume only after a fresh import.
-- **Dauer-Login (Sitzungsdauern + Remember-Me).** `rememberMe: true` plus die vier Sitzungswerte: `ssoSessionIdleTimeout` 43200 (12 h) / `ssoSessionMaxLifespan` 86400 (24 h) und, sobald der Kunde "Angemeldet bleiben" anhakt, `ssoSessionIdleTimeoutRememberMe` 7776000 (90 Tage) / `ssoSessionMaxLifespanRememberMe` 15552000 (180 Tage).
-  `accessTokenLifespan` bleibt bei 900 s - die SSO-Sitzung ist das, was lange lebt, nicht das Zugriffs-Token (der Portal-Store erneuert es ohnehin per Refresh-Grant).
-  Das Häkchen auf der Anmeldeseite ist beim ersten Aufruf VORAB gesetzt; die Regel und ihre zwei Fallen stehen am Kästchen in `deploy/keycloak/themes/voltpilot/login/login.ftl`.
-  **⚠ Der LIVE-Realm wurde am 2026-08-24 von Hand in der Admin-Konsole nachgezogen, weil `start --import-realm` einen EXISTIERENDEN Realm NICHT überschreibt.** Diese Datei ist damit die Wahrheit für jeden FRISCHEN Import (neues Volume, CI/Testcontainers, ein weiterer Standort) - sie kann eine laufende Instanz weder ändern noch zurückdrehen.
-- The `realm-management` roles on the `voltpilot-api` service account and the declarative user profile (`tenant_id`, `ADMIN_EDIT`) are required for Portal-Admin user provisioning - same as dev.
-  Keycloak 26 silently drops unmanaged attributes without the profile ("Account is not fully set up" on login).
-- **`edge-release-publisher` + the `voltpilot-release-publisher` client ship DISABLED.**
-  They are the OTA release automation's account (`git tag edge-*` → signed release → register entry): client-credentials only, no browser flow, no password grant, and the service account carries exactly ONE realm role that reaches exactly two api routes (`GET/POST /api/v1/admin/edge-releases[/next-seq]`) - never a rollout, never a device target.
-  `enabled: false` is deliberate and fail-closed: the secret placeholder `${VP_RELEASE_PUBLISHER_SECRET:change-me}` carries an in-file default (unlike the others above) so a deploy that does not use OTA automation never has to set it, and a DISABLED client hands out no token whatever its secret is.
-  To switch it on: set `VP_RELEASE_PUBLISHER_SECRET` in `.env`, recreate keycloak, then flip the client to Enabled.
-  The EXISTING prod realm was imported long ago, so there this is a one-time manual setup - exact clicks and `kcadm` lines in [`docs/ota-signing.md`](../../../docs/ota-signing.md) §4d.
-- The `admin` (Portal-Admin) and `demo`/`demo2` users are seeded so a fresh deploy is immediately loginable alongside `SPRING_PROFILES_ACTIVE=local`.
-  Remove the demo users (and clear the api profile) before a real customer launch - see `docs/deploy.md`.
+| Variable | Zweck |
+|---|---|
+| `VP_PUBLIC_ORIGIN` | Redirects und Web Origins |
+| `VP_API_CLIENT_SECRET` | Vertraulicher API-Client |
+| `VP_PORTAL_ADMIN_PASSWORD` | Initialer Portal-Admin |
+| `VP_RELEASE_PUBLISHER_SECRET` | Optionaler OTA-Publisher |
+
+Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende Werte außerhalb der Compose-Prüfungen können als Literal stehen bleiben; das ist kein gültiges Secret-Setup.
+
+## Authentifizierung
+
+- `sslRequired=external`; TLS und korrekte Proxy-Header am öffentlichen Einstieg konfigurieren.
+- `voltpilot-frontend`: PKCE-Login und Direct Grant für die automatische Anmeldung direkt nach Registrierung.
+- Temporärer Brute-Force-Schutz: 10 Fehlversuche, zunächst 60 Sekunden Wartezeit bis maximal 15 Minuten. Admin-Passwortreset hebt auch die Sperre auf.
+- API-Servicekonto benötigt `realm-management`-Rollen; das deklarative User-Profil muss `tenant_id` als administrativ verwaltetes Attribut zulassen.
+
+| Sitzung | Inaktivität | Maximale Dauer |
+|---|---:|---:|
+| Normal | 12 Stunden | 24 Stunden |
+| „Angemeldet bleiben“ | 90 Tage | 180 Tage |
+
+Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen ist im Theme vorbelegt; die Sitzungsdauer gehört zum Realm.
+
+## OTA und Demodaten
+
+Der Client `voltpilot-release-publisher` wird deaktiviert importiert. Sein Servicekonto besitzt nur `edge-release-publisher` für die dafür freigegebenen Release-/Trust-Set-Routen, keine Geräte-Rollout-Rechte. Vor Aktivierung ein echtes Secret setzen; den Platzhalter `change-me` nicht verwenden. [Signierung](../../../docs/ota-signing.md)
+
+Der Import enthält initiale Admin- und Demo-Benutzer. Für Kundenbetrieb Demozugänge entfernen und das API-Profil leer lassen; `local` aktiviert zusätzliche Demo-Seeds. [API und Mandanten](../../../docs/api.md)

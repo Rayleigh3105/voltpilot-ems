@@ -7,16 +7,13 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Dashboard', 'Übersicht', 'Live', 'Energiefluss', 'Status', 'Warnung', 'Anpassen'],
     sections: [
       { id: 'blick', title: 'Zuerst Zustand und Datenstand prüfen', paragraphs: [
-        'Das Cockpit beantwortet die Frage: Was passiert gerade in meiner Anlage? Beginnen Sie mit dem Zustands-Hinweis und dem Zeitpunkt der Daten. Ein alter Messwert beschreibt einen früheren Zustand, auch wenn seine Zahl plausibel aussieht.',
-        'Die angezeigten Bausteine folgen Ihrer Ausstattung und den verfügbaren Messungen. Eine PV-Anlage mit Speicher sieht deshalb anders aus als ein Ladepark. Unter Anpassen können Sie die angebotenen Cockpit-Bausteine ordnen oder ausblenden.',
+        "Prüfen Sie zuerst Zustand und Datenstand. Die Bausteine folgen Ihrer Ausstattung; unter Anpassen können Sie die angebotenen Bausteine ordnen oder ausblenden. Alte Messwerte beschreiben einen früheren Zustand.",
       ], figure: 'cockpit' },
       { id: 'lesen', title: 'Von den Flüssen zu den Einzelwerten', paragraphs: [
-        'Lesen Sie Erzeugung, Verbrauch, Netzfluss und Speicher zusammen. Pfeile, Bezeichnungen und Einheiten helfen bei der Richtung: Ein voller Speicher ist ein Ladestand, Laden oder Entladen ist eine Leistung.',
-        'Die Komponentenansicht schlüsselt Messwerte nach Geräten auf. Bei mehreren PV-Quellen hilft die Aufteilung, den Gesamtwert einzuordnen. Der kompakte Verlauf zeigt, ob die aktuelle Situation gerade entstanden ist oder schon länger besteht.',
+        "Lesen Sie Erzeugung, Verbrauch, Netz und Speicher zusammen. Pfeile zeigen die Richtung, Einheiten unterscheiden Leistung und Ladestand. Komponenten und kompakter Verlauf helfen, den Gesamtwert einzuordnen.",
       ] },
       { id: 'weiter', title: 'Was tun bei einem Hinweis?', paragraphs: [
-        'Öffnen Sie den Hinweis und lesen Sie seine Ursache. Für die nächste geplante Speicheraktion wechseln Sie zum Fahrplan. Für länger zurückliegende Werte nutzen Sie Verlauf → Messwerte. Geräteverbindung und Zuordnung prüfen Sie unter Anlage.',
-        'Eine fehlende Zahl sollte zunächst als fehlende Information behandelt werden. Prüfen Sie Datenstand und Quelle, bevor Sie die Steuerung ändern.',
+        "Öffnen Sie einen Hinweis für seine Ursache. Geplante Aktionen stehen im Fahrplan, vergangene Messungen unter Verlauf → Messwerte und Geräteverbindungen unter Anlage. Prüfen Sie bei fehlenden Zahlen zuerst Quelle und Datenstand.",
       ] },
     ], related: ['energiefluesse', 'fahrplan', 'probleme'],
   },
@@ -27,17 +24,14 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Ein Speicher beziehungsweise eine Anlage, für die ein Fahrplan angeboten wird.',
     sections: [
       { id: 'lesen', title: 'Ein Plan über mehrere Zeitabschnitte', paragraphs: [
-        'Der Fahrplan zeigt geplante Speicheraktionen entlang einer Zeitachse. Lesen Sie zunächst den gewählten Zeitraum, den Erstellungszeitpunkt und die Erklärung zur aktuellen Aktion. Die Planung kann sich ändern, wenn neue Daten oder geänderte Vorgaben vorliegen.',
-        'Preis und Leistung stehen in getrennten Diagrammflächen. Achten Sie auf deren Einheiten und die gemeinsame Zeitachse. Laden, Entladen und der erwartete Ladestand beschreiben verschiedene Größen; ihre Kurven gehören jeweils zur angegebenen Skala.',
+        "Der Fahrplan zeigt geplante Speicheraktionen. Prüfen Sie Zeitraum und Erstellungszeitpunkt. Preis, Leistung und Ladestand haben eigene Skalen entlang derselben Zeitachse; neue Daten können den Plan ändern.",
       ], figure: 'fahrplan' },
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
-        'PV- und Verbrauchsprognosen, Tarif, vorhandene Energie und die hinterlegten Grenzen beeinflussen den Plan. Ein günstiger Preis allein ist deshalb noch keine Zusage zum Netzladen. Das muss erlaubt, technisch möglich und innerhalb des übrigen Plans sinnvoll sein.',
-        'Ebenso bedeutet ein hoher Preis nicht, dass der Speicher vollständig entladen wird. Reserven, Leistungsgrenzen oder der weitere erwartete Bedarf können dagegenstehen. Lesen Sie die angebotenen Erklärungen und Ebenen des Plans, bevor Sie Einstellungen ändern.',
+        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Nutzen Sie die Erklärungen im Fahrplan.",
       ] },
       { id: 'kontrolle', title: 'Plan ist nicht gleich Ausführung', paragraphs: [
-        'Ein gespeicherter Fahrplan beweist noch nicht, dass ein Gerät genau so gearbeitet hat. Prüfen Sie für den aktuellen Zustand das Cockpit und die Geräte-Rückmeldungen, für vergangene Zeiträume die Messwerte.',
-        'Wenn kein Plan vorhanden ist, prüfen Sie zunächst Datenverbindung, Speicherzuordnung und die Hinweise in Steuerung. Ein fehlender Plan darf nicht als geplanter Stillstand gelesen werden.',
-      ] },
+        "Ein Plan belegt eine Absicht. Geräteantworten und Messwerte zeigen, was daraus wurde. Fehlt der Plan, prüfen Sie Verbindung, Speicherzuordnung und die Hinweise unter Steuerung.",
+      ], diagram: 'proof' },
     ], related: ['beispieltag', 'speicher', 'probleme'],
   },
   {
@@ -46,16 +40,13 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Historie', 'Verlauf', 'Messungen', 'Diagramm', 'Vergleich', 'Tag', 'Woche', 'Monat', 'Jahr'],
     sections: [
       { id: 'auswahl', title: 'Die richtige Frage eingrenzen', paragraphs: [
-        'Unter Verlauf → Messwerte sehen Sie den zeitlichen Verlauf Ihrer Anlage. Wählen Sie zuerst den Zeitraum und anschließend die Messgröße beziehungsweise die angebotenen Reihen. Auf der Portfolio-Ebene bezieht sich die Auswertung auf die dort gewählten Anlagen.',
-        'Eine aktuelle Leistung, eine Energiesumme und ein Durchschnitt beantworten unterschiedliche Fragen. Lesen Sie Einheit und Zeitbezug an jeder Kennzahl. Größere Zeiträume können zusammengefasste Werte zeigen und dadurch weniger einzelne Schwankungen erkennen lassen.',
+        "Wählen Sie unter Verlauf → Messwerte zuerst Zeitraum und Messgröße. Auf Portfolio-Ebene gilt die gewählte Anlagenauswahl. Achten Sie auf Einheit und Zusammenfassung: Leistung, Energiesumme und Durchschnitt beantworten unterschiedliche Fragen.",
       ], figure: 'messwerte' },
       { id: 'vergleich', title: 'Zwei Zeiträume sinnvoll vergleichen', paragraphs: [
-        'Nutzen Sie die angebotene Vergleichsansicht, um einen weiteren Zeitraum daneben oder als zusätzliche Reihe zu sehen. Die Vergleichsbezeichnung sagt, welcher Zeitraum gemeint ist. Vergleichen Sie möglichst dieselbe Größe mit derselben Einheit.',
-        'Ein Unterschied erklärt seine Ursache noch nicht. Wetter, Nutzung, neue Geräte oder eine geänderte Einstellung können einen Verlauf verändern. Für eine Speicherentscheidung hilft zusätzlich der Blick in Fahrplan und Steuerung.',
+        "Die Vergleichsansicht nennt den zusätzlichen Zeitraum. Vergleichen Sie dieselbe Größe und Einheit. Wetter, Nutzung, neue Geräte und Einstellungen können Unterschiede erklären.",
       ] },
       { id: 'luecken', title: 'Lücken und Datenstand beachten', paragraphs: [
-        'Ein unterbrochener Verlauf bedeutet nicht automatisch, dass die Leistung null war. Es können Messungen fehlen oder später eintreffen. Prüfen Sie die Geräteverbindung und die Hinweise zur Abdeckung.',
-        'Wenn ein erwarteter Messwert nicht auswählbar ist, prüfen Sie die Komponente und ihre Zuordnung unter Anlage. Notieren Sie bei einer Rückfrage die Messgröße und den betroffenen Zeitraum.',
+        "Eine Lücke ist keine gemessene Null; Daten können fehlen oder später eintreffen. Prüfen Sie Verbindung und Abdeckung. Fehlt eine auswählbare Größe, prüfen Sie Komponente und Zuordnung unter Anlage.",
       ] },
     ], related: ['glossar', 'anlagenmodell', 'probleme'],
   },
@@ -66,16 +57,13 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Eine Anlage mit den nötigen Mess- und Preisdaten und einer verfügbaren Erlöse-Ansicht.',
     sections: [
       { id: 'zeitraum', title: 'Welche Aussage zeigt die Zahl?', paragraphs: [
-        'Die Erlöse-Ansicht ordnet den Energieverlauf wirtschaftlich ein. Prüfen Sie zuerst Zeitraum und Kennzahlenbezeichnung: Einspeiseerlös, Bezugskosten, Einsparung und ein Planwert sind nicht dieselbe Aussage.',
-        'Die Berechnung hängt von den hinterlegten Angaben und den verfügbaren Messungen ab. Lesen Sie die Erläuterung der jeweiligen Kennzahl. Die Portalansicht ist keine Stromrechnung oder Abrechnung Ihres Vertragspartners.',
+        "Prüfen Sie Zeitraum und Kennzahl: Einspeiseerlös, Bezugskosten, Einsparung und Planwert haben unterschiedliche Bedeutungen. Die Berechnung hängt von Tarifangaben und Messungen ab; sie ersetzt keine Rechnung Ihres Vertragspartners.",
       ], figure: 'erloese' },
       { id: 'speicherbestand', title: 'Warum die Tagesbilanz zwischendurch anders aussieht', paragraphs: [
-        'Wird Energie im Speicher zurückgehalten, fehlt sie in diesem Moment beispielsweise bei der Einspeisung. Ihr Nutzen kann erst später entstehen. Deshalb zeigt die wirtschaftliche Betrachtung neben dem laufenden Ergebnis gegebenenfalls auch den Wert des Speicherbestands.',
-        'Lesen Sie die ausgewiesene Bilanz und das Bestandskonto zusammen mit den Erklärungen der Ansicht. Ein Zwischenstand mitten am Tag ist nicht automatisch das Ergebnis des abgeschlossenen Tages.',
+        "Gespeicherte Energie kann ihren Nutzen erst später bringen. Lesen Sie deshalb Ergebnis und gegebenenfalls Bestandskonto zusammen. Der Zwischenstand am Mittag ist noch kein abgeschlossenes Tagesergebnis.",
       ] },
       { id: 'nachvollziehen', title: 'Eine auffällige Zahl prüfen', paragraphs: [
-        'Grenzen Sie den betroffenen Tag ein und vergleichen Sie Energieverlauf, Speicherbewegung und Preise im Tagesbild. Prüfen Sie danach Tarifangaben und Datenabdeckung. Eine Änderung von Tarifdaten kann die Einordnung beeinflussen.',
-        'Für eine Rückfrage sind Zeitraum, Name der Kennzahl und die dazugehörige Erklärung hilfreicher als eine einzelne ausgeschnittene Zahl.',
+        "Grenzen Sie den Tag ein und vergleichen Sie Energieverlauf, Speicherbewegung und Preise. Prüfen Sie anschließend Tarif und Datenabdeckung. Für Rückfragen nennen Sie Zeitraum, Kennzahl und deren Erklärung.",
       ] },
     ], related: ['einstellungen', 'messwerte', 'marktpreise'],
   },
@@ -86,16 +74,13 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Die Marktpreise-Ansicht ist für entsprechend konfigurierte Anlagen verfügbar.',
     sections: [
       { id: 'diagramm', title: 'Preis und Zeit gehören zusammen', paragraphs: [
-        'Die Preisansicht zeigt veröffentlichte Marktpreise für den gewählten Zeitraum und Markt. Lesen Sie Datum, Zeitachse und Einheit. Ein günstiges Zeitfenster ist ein Abschnitt der Kurve, keine Zusage für den gesamten Tag.',
-        'Noch nicht veröffentlichte oder fehlende Preise sind unbekannt. Eine Lücke ist deshalb weder ein Preis von null noch eine Prognose. Nutzen Sie die angebotene Zeitraum-Navigation, um vorhandene Tage zu betrachten.',
+        "Die Ansicht zeigt veröffentlichte Preise für Zeitraum und Markt. Prüfen Sie Datum und Einheit. Eine Lücke steht für fehlende Preise; sie ist weder null noch eine Vorhersage.",
       ], figure: 'marktpreise' },
       { id: 'tarif', title: 'Börsenpreis ist nicht Ihr vollständiger Bezugspreis', paragraphs: [
-        'Je nach hinterlegtem Tarif kommen zum Börsenanteil weitere Preisbestandteile hinzu. Ein negativer Marktpreis bedeutet deshalb nicht automatisch, dass Ihr vollständiger Bezugspreis negativ ist.',
-        'Die für Ihre Anlage hinterlegten Werte finden Sie in den Einstellungen. Für Aussagen zu Ihrem Vertrag sind dessen Angaben maßgeblich. Die Hilfe erklärt die Darstellung im Portal, nicht die Bedingungen eines bestimmten Vertrags.',
+        "Zum Börsenanteil können weitere Tarifbestandteile kommen. Ein negativer Börsenpreis bedeutet deshalb nicht automatisch einen negativen Bezugspreis. Prüfen Sie Einstellungen und Vertragsangaben.",
       ] },
       { id: 'plan', title: 'Was die Planung daraus macht', paragraphs: [
-        'Preise sind ein Eingang der Planung. Speicherstand, Wirkungsgrad, Verbrauch, PV-Vorhersage und Grenzen gehören ebenfalls dazu. Ob tatsächlich geladen werden soll, lesen Sie im Fahrplan.',
-        'Prüfen Sie bei einer unerwarteten Aktion zuerst den passenden Zeitraum und die hinterlegten Tarif- und Netzladeangaben, statt allein die höchste oder niedrigste Stelle der Preiskurve zu betrachten.',
+        "Der Fahrplan berücksichtigt neben Preisen auch Ladestand, Wirkungsgrad, Bedarf, PV und Grenzen. Prüfen Sie bei unerwarteten Aktionen den Zeitraum sowie Tarif- und Netzladeangaben.",
       ] },
     ], related: ['fahrplan', 'einstellungen', 'beispieltag'],
   },
@@ -105,16 +90,13 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Modell', 'Schatten'],
     sections: [
       { id: 'wetter', title: 'Wetter beschreibt die erwarteten Bedingungen', paragraphs: [
-        'Die Wetteransicht bezieht sich auf den Standort Ihrer Anlage. Einstrahlung und weitere Wettergrößen helfen bei der Einschätzung der erwarteten PV-Produktion. Das ist eine Vorhersage, keine Messung Ihrer Solarmodule.',
-        'Prüfen Sie bei unplausiblen Ortsangaben zuerst den Standort der Anlage. Auch bei richtiger Zuordnung können Wolken oder lokale Bedingungen von der Vorhersage abweichen.',
+        "Die Wetteransicht schätzt Bedingungen am Anlagenstandort; sie misst keine Solarproduktion. Bei unplausiblen Ortsangaben prüfen Sie den Standort. Lokales Wetter kann von der Vorhersage abweichen.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
-        'Die Planung verwendet Vorhersagen für Produktion und Verbrauch. Die Prognosequalität stellt gegenüber, wie gut Modelle in ausgewerteten Zeiträumen zu den tatsächlichen Messungen gepasst haben.',
-        'Ein aktives Modell liefert die verwendete Vorhersage. Ein Kandidat im Schattenbetrieb wird daneben bewertet und beeinflusst die Planung noch nicht. Wenige ausgewertete Tage oder fehlende Messungen begrenzen die Aussagekraft eines Vergleichs.',
+        "Das aktive Modell liefert Prognosen, ein Kandidat im Schattenbetrieb wird nur bewertet. Prognosequalität vergleicht gespeicherte Vorhersagen mit Messungen. Wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich.",
       ], figure: 'prognose' },
       { id: 'bewertung', title: 'Abweichungen mit ihrer Einheit lesen', paragraphs: [
-        'Die Ansicht bezeichnet die verwendete Fehlermetrik ausdrücklich. Eine durchschnittliche Abweichung in kW ist keine Genauigkeit in Prozent. Vergleichen Sie Modelle für dieselbe Größe und einen vergleichbaren Zeitraum.',
-        'Wenn Ihnen ein Modellwechsel angeboten wird, lesen Sie die Bestätigung und ihre Folgen. Ein besserer historischer Vergleich ist keine Garantie für jeden zukünftigen Tag.',
+        "Lesen Sie Fehlermetrik und Einheit: Eine Abweichung in kW ist keine Prozentgenauigkeit. Vergleichen Sie dieselbe Größe und denselben Zeitraum. Ein historisch besseres Modell garantiert keinen besseren einzelnen Tag.",
       ] },
     ], related: ['beispieltag', 'fahrplan', 'messwerte'],
   },
@@ -125,16 +107,13 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Mehrere Anlagen oder ein Konto mit Betreiber-Ansicht.',
     sections: [
       { id: 'ueberblick', title: 'Die gemeinsame Übersicht', paragraphs: [
-        'Die Übersicht heißt abhängig von Ihrem Konto Portfolio oder Meine Anlagen. Sie zeigt die Anlagen, auf die Sie Zugriff haben, und hilft dabei, auffällige Zustände sowie Ergebnisse über mehrere Standorte zu erkennen.',
-        'Öffnen Sie eine Anlage, um ihren Zustand genauer zu prüfen. Im Kopf der geöffneten Anlage erkennen Sie, an welchem Standort Sie gerade arbeiten. Über den Anlagenwechsler können Sie zu einer anderen Anlage gelangen.',
+        "Portfolio beziehungsweise Meine Anlagen zeigt Ihre zugänglichen Standorte. Öffnen Sie eine Anlage für Details; der Name im Kopf zeigt den aktuellen Standort. Über den Anlagenwechsler gelangen Sie zu einem anderen.",
       ], figure: 'portfolio' },
       { id: 'auswertung', title: 'Gesamtwerte und einzelne Anlagen', paragraphs: [
-        'Messwerte und Erlöse auf Portfolio-Ebene haben einen anderen Umfang als die entsprechenden Ansichten einer einzelnen Anlage. Prüfen Sie deshalb Auswahl und Zeitraum, bevor Sie Zahlen miteinander vergleichen.',
-        'Nicht jede Anlage besitzt dieselben Geräte oder Betriebsmodelle. Eine fehlende Erlöse-Ansicht oder ein anderer zweiter Navigationsbereich kann durch diese Ausstattung erklärt sein.',
+        "Gesamtwerte und einzelne Anlagen haben unterschiedliche Geltungsbereiche. Prüfen Sie Auswahl und Zeitraum. Andere Geräte oder Betriebsmodelle erklären, warum Ansichten zwischen Anlagen abweichen.",
       ] },
       { id: 'kontrolle', title: 'Vor Änderungen den Namen prüfen', paragraphs: [
-        'Einstellungen und Regeln einer geöffneten Anlage beziehen sich auf diesen Standort. Prüfen Sie vor jeder Änderung den Namen im Kopf und den Geltungsbereich im Dialog.',
-        'Ein Endkundenkonto mit nur einer Anlage kann direkt in deren Cockpit starten. Eine separate Portfolio-Seite ist dann für die tägliche Arbeit nicht erforderlich.',
+        "Vor Änderungen Anlagenname und Geltungsbereich im Dialog prüfen. Ein Endkundenkonto mit nur einer Anlage kann direkt im Cockpit starten.",
       ] },
     ], related: ['orientierung', 'cockpit', 'erloese'],
   },

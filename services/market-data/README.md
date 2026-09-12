@@ -1,192 +1,37 @@
-# services/market-data - ENTSO-E day-ahead price adapter
+# Marktdaten
 
-**Language:** Python 3.10+
-**State:** stateless (scheduled/manual job)
-**Responsibility (architecture section 8/11/13):** fetch external **market data**
-(day-ahead spot prices per Gebotszone) behind an **anti-corruption adapter** and
-expose an internal, provider-agnostic price series to the optimizer.
+Lädt Day-Ahead-Preise und ergänzende Marktwerte hinter Provider-Adaptern. Standard für Preise ist `energy-charts` ohne Token; ENTSO-E bleibt über `--source entsoe` mit `ENTSOE_SECURITY_TOKEN` verfügbar.
 
-Day-ahead prices are an input to the MILP optimizer (architecture section 11:
-"Eingaben: ... Day-Ahead-Preise (ENTSO-E)"). ENTSO-E Transparency is one provider;
-a commercial data provider can be swapped in later **without touching callers** -
-that is the whole point of the port below (architecture section 13).
-
-> **KEYLESS by default: energy-charts.info.** The default source is
-> `EnergyChartsDayAheadPriceSource` (`energy_charts.py`) against the Fraunhofer ISE
-> **energy-charts.info** API - **no API key / token**, so real DE-LU day-ahead
-> prices at **15-min** resolution flow with zero captain secret. ENTSO-E remains
-> available via `--source entsoe` (needs `ENTSOE_SECURITY_TOKEN`). Resolution is
-> derived from the data (900 s -> `PT15M`, 3600 s -> `PT60M`), following the
-> Oct-2025 EPEX 15-min MTU. The new `serve` command refreshes **today+tomorrow on
-> startup then periodically** (`MARKET_DATA_REFRESH_SECONDS`, default 6h):
->
-> ```bash
-> python -m voltpilot_market_data fetch            # one-shot, tomorrow (energy-charts)
-> python -m voltpilot_market_data serve --persist  # startup + periodic refresh
-> ```
->
-> In compose it runs as the `market-data` service in the `feeds` profile
-> (`docker compose --profile feeds up -d --build market-data`).
-
-> **Coverage-aware publication retry (`refresh.py`).** EPEX publishes tomorrow's
-> prices ~12:45 market time (Europe/Berlin); a fixed 6-h cadence with an unlucky
-> phase (refresh 12:50 -> next 18:50) missed that by hours, and every 15-min
-> optimizer replan in between truncated its horizon at today's midnight (the
-> captain's Fahrplan ended at 24:00). So `serve` is now **coverage-aware**: when
-> TOMORROW's Berlin delivery day is not fully covered for the served zone
-> (count/period check over the fetched series - the resilient source serves the
-> DB-primed last-good cache, so coverage survives restarts/outages) and local
-> time is past `MARKET_DATA_PUBLICATION_HOUR` (decimal hours, default `12.75` =
-> 12:45), it polls every `MARKET_DATA_FAST_REFRESH_SECONDS` (default `900` =
-> 15 min) until coverage lands, then falls back to the baseline cadence. The
-> fast polling is **bounded at local midnight** (one loud WARN if tomorrow never
-> published, never an all-night hammer), and an uncovered pre-threshold cycle
-> caps its sleep at the threshold so the unlucky phase cannot re-appear one
-> baseline period later. Enter/land/expire are each logged once
-> (`refresh.fast_poll_start` / `refresh.coverage_landed` with the slot count /
-> `refresh.fast_poll_expired`). The optimizer needs no change - it replans every
-> 15 min and extends automatically once prices exist.
-
-> **Monatsmarktwert Solar (netztransparenz.de, also KEYLESS).** The dynamic
-> EEG Marktprämie needs the monthly market value: `netztransparenz.py`
-> implements `MarketValueSource` (`market_value.py`) against the JSON endpoint
-> feeding netztransparenz.de's own Marktwertübersicht chart
-> (`POST .../HighchartService.asmx/GetMarketpremiumData` - no key, no session;
-> the OFFICIAL WebAPI requires a registered OAuth2 client, so it is the
-> documented upgrade path, not the default). Values land in the plain table
-> `monthly_market_value` (`db/migration/V20260707001000`; twelve rows per
-> technology per year, so deliberately NOT a hypertable). For months the TSOs
-> have not published yet (always the running month), a PROVISIONAL value is
-> computed with the OFFICIAL formula of Anlage 1 Nr. 2.2 EEG 2023,
-> `MW = sum(p_i * E_i) / sum(E_i)`: the stored DE-LU day-ahead prices weighted
-> by the Germany-wide solar generation of the same quarter hours
-> (`provisional_solar_market_value`, formula/join rule/caveats documented in
-> `market_value.py`), and flagged `provisional`; the official value overwrites
-> it after publication, never the reverse.
->
-> The quantity `E` comes from a keyless fallback chain (`solar_generation.py`):
-> the ÜNB **Online-Hochrechnung der tatsächlichen Erzeugung**
-> (`netztransparenz_generation.py`, the quantity the EEG names) first, then
-> energy-charts `public_power` (`energy_charts.py`), and only if neither answers
-> the weather-blind clear-sky shape. Measured on June 2026 against the official
-> 6.190 ct/kWh: **6.1897** (ÜNB), 6.372 (energy-charts), 6.966 (clear-sky),
-> 10.952 (unweighted average). The series is fetched per refresh cycle, not
-> persisted (rationale in `solar_generation.py`). A part-month value is a
-> running average that converges as the month fills up - not a month value and
-> not a forecast; nothing models the remaining days.
->
-> `serve --persist` refreshes it every cycle; one-shot:
->
-> ```bash
-> python -m voltpilot_market_data market-values            # print published months
-> python -m voltpilot_market_data market-values --persist  # upsert + provisional
-> ```
-
-## Design (the anti-corruption layer)
-
-```
-optimizer / job  ->  DayAheadPriceSource        (port, source.py)
-                         ^
-                         |  implemented by
-                         |
-              EntsoeDayAheadPriceSource          (adapter, entsoe.py)
-                         ^
-                         |  wrapped by
-                         |
-              ResilientPriceSource               (cache+retry+breaker, resilience.py)
+```mermaid
+flowchart LR
+    Anbieter["energy-charts / ENTSO-E"] --> Adapter["Adapter, Retry, Abdeckungsprüfung"]
+    Adapter --> DB[("day_ahead_prices")]
+    DB --> Optimierung
+    DB --> Portal
 ```
 
-- `model.py` - internal representation: `PriceSeries` / `PricePoint` (EUR/MWh,
-  UTC slot bounds, 15-min or hourly). Carries **no** vendor vocabulary.
-- `source.py` - `DayAheadPriceSource` port + `PriceSourceError` /
-  `PriceSourceUnavailable`.
-- `zones.py` - the only place ENTSO-E's EIC addressing leaks in. Bidding zone
-  -> EIC: `DE-LU -> 10Y1001A1001A82H`, `AT -> 10YAT-APG------L`,
-  `CH -> 10YCH-SWISSGRIDZ`. Adding a zone is a one-line edit.
-- `entsoe.py` - the ENTSO-E adapter: builds the `A44` request, parses the
-  `Publication_MarketDocument` XML into a `PriceSeries`. Densifies to the full
-  Period `timeInterval` length, carrying the last price forward over both
-  interior gaps and omitted trailing slots (ENTSO-E's variable-block quirk), and
-  handles `Acknowledgement_MarketDocument` "no data" replies.
-- `resilience.py` - `ResilientPriceSource`: retry w/ exponential backoff,
-  circuit breaker, and a **last-good cache keyed by (zone, delivery-day
-  window)** so the optimizer always gets a usable series for the requested day -
-  never a different day's - even when ENTSO-E is down (architecture section 13).
-- `persistence.py` - writes a series into the `day_ahead_prices` hypertable and
-  reads the last-good series back (`latest_series`, used to prime the cache on a
-  cron run) - `TimescaleDayAheadPriceRepository`, optional `[db]` extra, with an
-  in-memory double for tests.
-- `service.py` / `cli.py` - the fetch orchestration and the cron/manual
-  entrypoint.
-- `solar_generation.py` - the SECOND port, for the Monatsmarktwert's quantity
-  `E`: `SolarGenerationSource` + `GenerationPoint`/`SolarGenerationSeries` (MW,
-  UTC interval bounds) + `FallbackSolarGenerationSource`, which encodes the
-  ranking "official ÜNB series first, substitute second" and logs a fallback
-  hit at WARNING. Adapters: `netztransparenz_generation.py` (ÜNB
-  Online-Hochrechnung, primary) and `EnergyChartsSolarGenerationSource` in
-  `energy_charts.py` (fallback).
-
-## Persistence
-
-Prices are timeseries data, so they live in a **TimescaleDB hypertable**
-`day_ahead_prices`, keyed by `(bidding_zone, resolution, ts)`. Prices are
-market-wide **per bidding zone**, not per tenant - so there is deliberately no
-`tenant_id` (and no RLS) on this table, unlike `telemetry`.
-
-Schema is owned by the forward-only migration
-`db/migration/V20260701001200__day_ahead_prices_hypertable.sql`
-(Flyway/Liquibase-compatible, date-based version chosen so it does not collide
-with the api service's future `V1, V2, ...` baseline). The local dev stack
-mirrors it via `infra/local/timescale/02-day-ahead-prices.sql` so the table
-exists after `docker compose up` without running Flyway. Keep the two in sync.
-
-## Run / build / test
+## Start und Tests
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'          # add ,db extra for the TimescaleDB writer: '.[dev,db]'
-pytest                           # fixture-based; never hits the live API
-
-# Manual fetch (needs a live ENTSOE_SECURITY_TOKEN in the environment):
-export ENTSOE_SECURITY_TOKEN=...            # captain-provided, see below
-python -m voltpilot_market_data fetch --zone DE-LU              # next delivery day
-python -m voltpilot_market_data fetch --zone DE-LU --day 2026-07-02
-python -m voltpilot_market_data fetch --zone DE-LU --persist    # write to DB
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+python -m voltpilot_market_data --help
+python -m voltpilot_market_data fetch --zone DE-LU
+pytest
 ```
 
-`--zone` defaults to `MARKET_DATA_ZONE` (fallback `DE-LU`) when omitted; an
-explicit `--zone` always overrides it.
+`fetch` holt Preise; `--persist` schreibt in die konfigurierte Datenbank. `serve --persist` aktualisiert periodisch. Ohne Tagesangabe zielt `fetch` auf den nächsten Liefertag. Ein noch nicht veröffentlichter Folgetag ist kein erfundener Nullpreis.
 
-## Scheduled fetch
+## Daten und Konfiguration
 
-ENTSO-E publishes the next day's day-ahead prices around **12:45 market time**.
-Run the job daily shortly after, e.g. cron:
+| Thema | Maßgebliche Quelle |
+|---|---|
+| Quelle, Zone und CLI | `voltpilot_market_data/cli.py` |
+| Vollständigkeit und Wiederholung | `refresh.py`, `resilience.py` |
+| Liefertag, Zeitzone und Speicherung | `service.py`, `persistence.py` |
+| Marktwerte und Solarerzeugung | `market_value_service.py`, `netztransparenz*.py`, `solar_generation.py` |
 
-```cron
-# fetch tomorrow's DE-LU day-ahead prices at 13:00 and persist them
-0 13 * * *  ENTSOE_SECURITY_TOKEN=... python -m voltpilot_market_data fetch --zone DE-LU --persist
-```
+Die Dateinamen beziehen sich auf `voltpilot_market_data/`. Liefertage und Sommerzeit nicht mit pauschal 24 Stunden gleichsetzen. API/Flyway, Service-Migrationen und Bootstrap müssen kompatibel bleiben.
 
-The containerised form (`Dockerfile`) defaults to `fetch --persist` and reads
-the zone from `MARKET_DATA_ZONE` (fallback `DE-LU`), so the same image serves any
-bidding zone by environment alone; deploy it as a K8s `CronJob` (future infra).
-Following the repo's backbone-first convention, this service is **not** added to
-`docker-compose.yml` (like the other `services/*` app skeletons).
-
-## ENTSO-E security token (captain-provided secret)
-
-A live token is **not** required for tests or CI - parsing/mapping/resilience
-run entirely off recorded fixtures under `tests/fixtures/`. A token is needed
-only for a real end-to-end fetch. To obtain one:
-
-1. Register at <https://transparency.entsoe.eu>.
-2. Email `transparency@entsoe.eu`, subject **"Restful API access"**, from the
-   registered address, to have the API role granted.
-3. Copy the token from *My Account Settings -> Web Api Security Token*.
-4. Set `ENTSOE_SECURITY_TOKEN` in `.env` (placeholder is in `.env.example`).
-
-## Status
-
-MVP. DE-LU implemented end to end against fixtures; AT/CH ready via the zone
-map. The optimizer integration (feeding `PriceSeries` into the MILP) is owned by
-the optimization service and is out of scope here.
+Compose-Profil: `feeds`. [Betriebsvertrag und Metriken](../../docs/k8s-readiness.md), [Optimierung](../optimization/README.md).

@@ -5,11 +5,11 @@ die DC-Seite IST die Hochvolt-Batterie, es gibt keine PV-MPPTs). VoltPilot liest
 ihn als **Primär-Wechselrichter** über den herstellereigenen Modbus-TCP-Server —
 Grundlage ist die offizielle Schnittstellenbeschreibung („PIKO IQ/PLENTICORE —
 KOSTAL Interface description MODBUS (TCP) & SunSpec with control information",
-Rev. 2.9). Vollständige Analyse: firstmate `data/vp-kostal-plenticore-s5/report.md`.
+Rev. 2.9). Decoder und Registerkarte: [`kostal-decode.js`](kostal/kostal-decode.js).
 
 Die **Steuerung** (externes Batteriemanagement, Tier 2) ist gebaut, aber
 **stumm**: bis zur Prüfstand-/First-Light-Freigabe auf dem echten Gerät geht kein
-einziger Schreibbefehl hinaus (§6).
+einziger Schreibbefehl hinaus (Abschnitt 5).
 
 ## 1. Transport
 

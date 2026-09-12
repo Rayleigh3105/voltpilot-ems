@@ -3,19 +3,14 @@ info:
   title: Voltpilot-EMS Portal API
   version: 0.1.0-mvp
   description: >
-    OpenAPI contract for the portal backend (Spring Boot). BINDING contract
-    (architecture section 20 item 8). Covers the MVP portal surface: auth-guarded
-    tenancy, device claiming, telemetry and schedule views, and economic KPIs
-    (architecture section 4).
+    Vertrag der Portal-API (Spring Boot): Anlagen, Geräte, Messwerte,
+    Planung, Verbrauchersteuerung und Administration. Implementierungsstand
+    und Betriebsregeln stehen in docs/api.md.
 
-
-    Every non-system endpoint requires a Keycloak-issued Bearer JWT (realm
-    `voltpilot`). The `tenant_id` claim scopes all data via Postgres
-    Row-Level-Security - a caller only ever sees its own tenant's rows; another
-    tenant's resources return 404 (not found) rather than 403. The
-    sites/devices/telemetry/prices/weather/schedule and device-claim endpoints
-    are implemented in services/api; KPIs remain a stub pending a later
-    increment.
+    Standardmäßig ist ein Bearer-JWT aus dem Realm voltpilot erforderlich.
+    Öffentliche Routen wie Registrierung und Enrollment weisen security: []
+    aus. Mandantenrouten verwenden tenant_id und Postgres Row-Level-Security;
+    Plattformverwaltung besitzt gesonderte Rollen und Datenzugriffe.
   contact:
     name: Voltpilot-EMS
 servers:

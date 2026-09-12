@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.local/contracts/v2/flow-graph.schema.json",
   "title": "VoltPilot v2 Flow Graph",
-  "description": "The typed flow model: the EDITABLE source document a portal-built flow is stored, versioned, validated and simulated as, and the compiler's input (compiler output = flow-artifact.schema.json). A flow is a graph of node INSTANCES drawn from the VoltPilot node catalog (no free code nodes, D1/D2), connected via typed ports, driven by declared triggers. This schema pins the DOCUMENT shape; the semantic validation rules (port type compatibility, cycle rules, required ports, exclusive-resource conflicts) are specified in flow-graph.md and enforced by the platform validator - JSON Schema alone cannot express them. schema_version starts at 1.0 (brand-new contract).",
+  "description": "Editierbarer, versionierter Flow-Graph und Eingabe des Compilers. Knoten stammen aus dem VoltPilot-Katalog und werden über typisierte Ports und Trigger verbunden. Der Katalog enthält einen begrenzten Funktionsknoten sowie ausdrücklich geregelte generische Modbus-Knoten; deren Ausführungs- und Governance-Grenzen stehen in flow-graph.md. Dieses Schema prüft die Dokumentform. Ports, Zyklen, Claims, Berechtigungen und Herkunftsregeln benötigen zusätzlich die semantischen Validatoren. Vertragsversion: 1.0.",
   "type": "object",
   "required": ["schema_version", "flow_id", "flow_version", "name", "runtime", "nodes", "edges", "triggers"],
   "additionalProperties": false,

@@ -2,7 +2,7 @@
  * Die Ableitung der Steuerungs-Fläche — rein, ohne React/Netzwerk (der
  * `surface.ts`/`fleet.ts`-Präzedenzfall).
  *
- * **Portal v3 · M4** (`docs/portal-v3/M4-steuerung.md`): die Steuerung
+ * **Portal v3 · M4** (`docs/portal.md`): die Steuerung
  * beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich selbst
  * geregelt?" — mit ZWEI Kapseln plus einer schmalen Schutz-Zeile:
  *

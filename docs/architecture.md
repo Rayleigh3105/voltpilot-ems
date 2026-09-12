@@ -1,191 +1,103 @@
-# Energiemanagementsystem (EMS) - Voltpilot-EMS
+# Architektur
 
-## Technische Projektdokumentation
+VoltPilot ist ein selbst betreibbares, mandantenfähiges EMS für PV, Speicher und Verbraucher. Dieses Dokument beschreibt den implementierten Aufbau; Deployment-Details stehen im [Betriebshandbuch](deploy.md).
 
-**Version:** 1.3 · **Datum:** 01.07.2026 · **Autor:** Max · **Status:** Architektur final; TimescaleDB + Redpanda (ab MVP) gesetzt, Node-RED-Edge, §14a präzisiert
+## System und Zuständigkeiten
 
-> This is the canonical architecture document provided by the captain. The scaffold task derives the repository structure and local dev stack from it. Where the MVP scope narrows the target, follow section 4 (MVP-Schnitt).
-
----
-
-## 1. Executive Summary
-
-Ein SaaS-Energiemanagementsystem für PV-, Batteriespeicher- und Lastmanagement, das je Kundenanlage den wirtschaftlich optimalen Betrieb ermittelt: Speicher laden bei günstigem Strom bzw. PV-Überschuss, entladen bei teurem Strom - unter Maximierung der Eigenverbrauchsdeckung und perspektivisch Vermarktung der Flexibilität über einen Direktvermarkter.
-
-Das Produkt besteht aus einer Node-RED-basierten Edge beim Kunden auf günstiger Hardware (Ziel <= 200 EUR, Raspberry-Pi-Klasse; spricht per Modbus TCP mit den Wechselrichtern, liest Messwerte, führt den Cloud-Fahrplan slot-weise aus und beobachtet die tatsächlich wirksame Netzbetreiber-Leistungsgrenze) und einer hochskalierbaren Cloud-Plattform (Multi-Tenant-Portal, Optimierung, Prognose, Vermarktung). Die Intelligenz liegt in der Cloud; die Edge bleibt bewusst dünn.
-
-Zielmarkt: DACH. Segmente: B2C-Heimanlagen und C&I-Gewerbe. Betrieb: self-hosted auf EU-Infrastruktur (Hetzner), DSGVO by design. Team: 2-5 Entwickler. MVP-Ziel: 3 Monate.
-
-Leitidee: Vorhersage (Prognose) und Entscheidung (Optimierung) sind getrennt. Die Entscheidung ist ein MILP/MPC-Optimierungsproblem und kommt im ersten Release ohne ML aus. ML (XGBoost) folgt als spätere Stufe für die Lastprognose.
-
-## 2. Leitprinzipien
-
-- Schlank starten, Hyperscale-fähig bleiben.
-- EU-Souveränität & DSGVO by design (self-hosted EU, keine US-Provider in der Datenebene).
-- Trennung von Vorhersage und Entscheidung.
-- Edge-Autonomie (schlank) - Eigenverbrauchs-Default bei Cloud-Ausfall.
-- Durables Event-Log ab Tag 1 (Redpanda).
-- Zwei Segmente, eine Plattform.
-
-## 3. Kernentscheidungen (Decision Record)
-
-- Zielmarkt: DACH (DE zuerst, AT/CH-fähig), ENTSO-E Gebotszonen DE-LU/AT/CH.
-- Segmente: B2C-Heim und C&I.
-- Messaging Edge->Cloud: MQTT-Ingress (EMQX) + Redpanda (Kafka-API) als internes Event-Log ab MVP.
-- Cloud-Plattform: Self-hosted Kubernetes auf Hetzner (EU).
-- MQTT-Broker: EMQX (MQTT 5.0, Clustering, Tenant-ACLs).
-- Skalierung: MVP-first, Hyperscale-fähig designt.
-- SLA: Best-Effort im MVP.
-- Regelkreis: Hybrid (Cloud rechnet Fahrplan, Edge führt slot-weise autonom aus + einfacher Eigenverbrauchs-Default).
-- Produktklasse: Nur langsame Produkte im 15-Min-Takt (Day-Ahead-Arbitrage, Eigenverbrauch, Fahrplan-Vermarktung). Kein FCR/aFRR.
-- §14a-Durchsetzung: Netzbetreiber setzt §14a über eigene, parallele Steuereinrichtung durch; EMS beobachtet die wirksame Grenze und optimiert im freigegebenen Rahmen.
-- Edge-Laufzeit: Node-RED direkt am Edge (bewusst dünn); kompilierter Agent (Go/Rust) optionaler späterer Pfad. Läuft auf Pi-Klasse.
-- Entscheidungslogik: MILP-Optimierung im MPC-Stil (15-Min-Takt, 24-48h-Horizont), Solver HiGHS.
-- Prognose/ML: Kein eigenes ML in v1; danach XGBoost/LightGBM für Lastprognose.
-- Time-Series-DB: TimescaleDB (PostgreSQL-Extension), hinter Repository gekapselt.
-- Relationale DB: PostgreSQL (+ TimescaleDB-Extension) + Row-Level-Security; kann dieselbe Instanz sein.
-- Inverter-Anbindung: Modbus TCP + SunSpec (generisch). RTU aktuell nicht im Scope.
-- Auth/Multi-Tenancy: Keycloak (OIDC) + tenant_id + Postgres-RLS.
-- Backend: Spring Boot (Kern) + Python (ML/Optimierung).
-- Frontend: React, Responsive Web zuerst (ECharts/uPlot).
-- API-Stil: REST (OpenAPI) + WebSocket/SSE.
-- Marktdaten: ENTSO-E Transparency (Day-Ahead), hinter Adapter.
-- Direktvermarktung: Kernfeature, früh - generischer Adapter zuerst.
-- Billing: Nicht im MVP.
-- MLOps: Pragmatisch (MLflow + Batch-Training, erst bei ML-Bedarf).
-- Edge-Fleet/OTA: Containerisiert (ARM+x86) + Mender (self-hosted), Config via MQTT, x.509.
-
-## 4. Architektur-Zielbild vs. MVP-Schnitt (3 Monate)
-
-Die Architektur trägt beide Segmente, DACH und Direktvermarktung; der MVP-Scope wird bewusst eng geschnitten:
-
-- Segment: MVP ein Segment zuerst (Empfehlung C&I).
-- Markt: MVP DE (DE-LU) zuerst.
-- Inverter: MVP 1-2 konkrete SunSpec-fähige Geräte (Modbus TCP).
-- Messaging: MVP EMQX + Redpanda + Timescale-Writer.
-- Datenhaltung: MVP TimescaleDB (eine Postgres-Instanz für Stammdaten + Zeitreihen).
-- Optimierung: MVP MILP für Eigenverbrauch + Spotpreis-Arbitrage unter beobachteter §14a-Grenze.
-- Direktvermarktung: MVP Mechanik demonstriert, Adapter-Stub; zertifizierte Anbindung Fast-Follow.
-- Prognose: MVP simple Baseline + physikalische PV-Prognose.
-- Portal: MVP Auth, Geräte-Claiming, Telemetrie- & Fahrplan-Ansicht, Wirtschaftlichkeits-KPIs.
-- Billing: keins. SLA: Best-Effort.
-
-## 5. Architekturüberblick (Datenfluss)
-
-Node-RED-Edge liest Inverter (inkl. wirksamer §14a-Grenze) -> MQTT (EMQX) -> Ingest -> Redpanda (Event-Log) -> TimescaleDB -> Prognose -> Optimierung (HiGHS-MILP gegen Day-Ahead-Preise, Last-/PV-Prognose, §14a-Grenze als harte Restriktion, optional Vermarktungssignale) -> 24h-Fahrplan zurück per MQTT -> Edge führt slot-weise autonom aus.
-
-## 6. Edge-Layer (Node-RED, schlank)
-
-Flows: Acquisition (Modbus TCP/SunSpec poll inkl. wirksamer Grenze), Publish (mTLS-MQTT QoS1), Schedule-Exec (retained Fahrplan, 15-Min-Slots), Default-Watchdog (Eigenverbrauchs-Default bei Ausfall), Guards (lokale Plausibilitätsprüfung vor Schreibzugriff). Containerisiert (ARM+x86). OTA via Mender (A/B + Rollback). x.509-Identität je Gerät. Keine eingehenden Ports (nur ausgehende MQTT).
-
-## 7. Messaging & Ingest
-
-- MQTT (EMQX) = Geräte-Eingang (QoS, retained, kleine Payloads, instabile Netze).
-- Redpanda (Kafka-API) = internes Event-Log ab MVP (durables Replay, Entkopplung mehrerer Consumer). Ein Binary, kein Zookeeper/JVM.
-- MVP-Datenpfad: EMQX -> Ingest-Service -> Redpanda -> TimescaleDB-Writer -> TimescaleDB. Weitere Consumer (Feature-Pipeline, Alerting, Live-View) hängen unabhängig am selben Log.
-
-MQTT-Topics (Edge <-> Cloud):
-
-```
-ems/{tenant_id}/{site_id}/{device_id}/telemetry   # Edge -> Cloud, Messwerte (QoS1)
-ems/{tenant_id}/{site_id}/{device_id}/status      # Edge -> Cloud, Heartbeat/Health
-ems/{tenant_id}/{site_id}/{device_id}/schedule    # Cloud -> Edge, Fahrplan (retained; Contract: mqtt-schedule.schema.json)
-ems/{tenant_id}/{site_id}/{device_id}/command     # Cloud -> Edge, Ad-hoc-Befehl
-ems/{tenant_id}/{site_id}/{device_id}/config      # Cloud -> Edge, Konfiguration (retained)
+```mermaid
+flowchart TB
+    subgraph Anlage["Anlage vor Ort"]
+        Hardware["Wechselrichter · Zähler · Verbraucher · Ladepunkte"]
+        IO["Node-RED: Geräteadapter"]
+        Core["Go-Core: Identität, Puffer, Ausführung, Schutzregeln"]
+        Hardware <--> IO
+        IO <--> Core
+        Core <-->|OCPP| Hardware
+    end
+    subgraph Cloud["Cloud"]
+        MQTT["EMQX"] --> Ingest --> Log["Redpanda"] --> Writer --> DB[("TimescaleDB")]
+        Feed["Preise und Wetter"] --> DB
+        DB --> Forecast["Prognose"] --> DB
+        DB --> Optimizer["Optimierung"]
+        Optimizer --> DB
+        Optimizer --> MQTT
+        API["API"] <--> DB
+        API <--> MQTT
+        Portal["Portal"] <--> API
+        Portal <-->|OIDC| Auth["Keycloak"]
+    end
+    Core <-->|"MQTT mit mTLS"| MQTT
+    Core -->|"HTTPS-Enrollment"| API
 ```
 
-Ingest mappt Telemetrie auf Redpanda-Topics (z. B. `telemetry.raw`), partitioniert nach tenant_id/site_id.
+Die Cloud berechnet Fahrpläne aus Messungen, Preisen, Prognosen und Anlagenparametern. Der Go-Core setzt Vorgaben vor Ort um; Node-RED bindet Geräte ein. Lokale Schutzregeln bleiben auch bei Cloud-Ausfall wirksam. Die Box hat außerdem lokale Web-, MQTT- und OCPP-Schnittstellen; diese gehören ins Kundennetz.
 
-## 8. Cloud-Plattform
+## Bausteine
 
-Kubernetes auf Hetzner (k3s/RKE2 oder managed), GitOps (Argo CD/Flux). Zustandslose Services (Ingest, Writer, API, Prognose, Optimierung) horizontal per HPA; zustandsbehaftete Teile (TimescaleDB/Postgres, EMQX, Redpanda, Keycloak) als StatefulSets.
+| Baustein | Aufgabe | Einstieg |
+|---|---|---|
+| API | Anmeldung prüfen, Mandanten, Anlagen, Geräte, Betriebsfunktionen | [API](../services/api/README.md) |
+| Ingest / Writer | MQTT validieren, Ereignisse transportieren und speichern | [Ingest](../services/ingest/README.md), [Writer](../services/timescale-writer/README.md) |
+| Forecast | Last-/PV-Prognosen, Modelltraining und Bewertung | [Prognose](forecasting.md) |
+| Market-Data | Day-Ahead-Preise hinter einem Provider-Adapter | [Marktdaten](../services/market-data/README.md) |
+| Optimization | Speicher und flexible Verbraucher planen | [Optimierung](../services/optimization/README.md) |
+| Flow-Compiler | Validierte Flow-Graphen in Node-RED-Artefakte übersetzen | [flowc](../edge-app/nodered/flowc/README.md) |
+| Edge-App | Geräte verbinden, Messwerte puffern, Vorgaben ausführen, OTA | [Edge](../edge-app/README.md) |
+| Portal | Kunden- und Plattformoberfläche, kontextuelle Hilfe | [Portal](portal.md) |
+| Marketing-Adapter | Schnittstelle für einen späteren Direktvermarkter; derzeit Stub | [Adapter](../services/marketing-adapter/README.md) |
 
-Service-Landschaft:
+## Messwerte und Steuerung
 
-| Service | Sprache | Aufgabe | Zustand |
-|---|---|---|---|
-| Ingest-Service | Spring Boot | MQTT konsumieren, validieren, in Redpanda publizieren | zustandslos |
-| TimescaleDB-Writer | Spring Boot/JVM | Redpanda -> TimescaleDB schreiben | zustandslos |
-| Portal-Backend / API | Spring Boot | REST/WS, Tenancy, Business-Logik | zustandslos |
-| Prognose-Service | Python | Last-/PV-Prognose, Features | zustandslos |
-| Optimierungs-Engine | Python | MILP/MPC-Fahrplan (HiGHS) | zustandslos (Job) |
-| Vermarktungs-Adapter | Python/JVM | generische DV-Schnittstelle | zustandslos |
-| Scheduler/Worker | JVM/Python | 15-Min-Takt, Jobs | zustandslos |
-| Keycloak | - | Auth/OIDC | zustandsbehaftet |
-| TimescaleDB / EMQX / Redpanda | - | Daten / Transport / Event-Log | zustandsbehaftet |
+```mermaid
+sequenceDiagram
+    participant E as Box
+    participant M as EMQX
+    participant I as Ingest / Redpanda / Writer
+    participant D as Datenbank
+    participant O as Optimierung
+    E->>M: Telemetrie (QoS 1)
+    M->>I: Nachricht mit Geräteidentität
+    I->>D: Validierte, wiederholbar speicherbare Messwerte
+    D->>O: Preise, Prognosen, Zustand, Grenzen
+    O->>D: Plan und Begründungsdaten
+    O->>M: Retained Fahrplan
+    M->>E: Aktuelle Vorgabe
+    E->>E: Vorrang, Frische und Schutzregeln prüfen
+    E->>M: Zustand, Rückmeldung, neue Messwerte
+```
 
-## 9. Backend (Spring Boot)
+Eine bestätigte Nachricht ist noch kein physischer Wirkungsnachweis. Das Portal unterscheidet Plan, Geräteantwort und Messung. Fehlende Messwerte werden nicht als gemessene Null dargestellt.
 
-REST (OpenAPI) + WebSocket/SSE. Multi-Tenancy: tenant_id-Claim aus Keycloak-Token; zentrale Schicht setzt Tenant-Kontext (`SET app.tenant_id`) für RLS. Python-Services lose angebunden (interne REST/gRPC oder Queue-Jobs).
+v1 und v2 koexistieren auf getrennten MQTT-Topics. v2 verwendet mehrere Entitäten pro Box, Flow-Wünsche und einen lokalen Arbiter. Der Go-Core bleibt für die Ausführung zuständig. Verträge: [v1/v2](contracts/README.md), [Ausführungsverantwortung](contracts/v2/plan-execution-ownership.md).
 
-## 10. Datenhaltung (TimescaleDB)
+## Daten und Mandanten
 
-Eine DB-Technologie: TimescaleDB (PostgreSQL-Extension) hält Zeitreihen (Hypertables: Telemetrie, Prognosen, Fahrpläne, KPIs) mit Kompression + Continuous Aggregates. Stammdaten (Tenants, Sites, Devices, Assets, Tariffs, Audit-Log, Modell-Metadaten) als relationale Tabellen in derselben Postgres-Instanz. Zugriff hinter Repository-Interface. RLS greift einheitlich.
+```mermaid
+erDiagram
+    TENANT ||--o{ SITE : besitzt
+    SITE ||--o{ DEVICE : verbindet
+    SITE ||--o{ ASSET : beschreibt
+    DEVICE ||--o{ ENTITY : meldet
+    SITE ||--o{ TELEMETRY : misst
+    SITE ||--o{ SCHEDULE : plant
+```
 
-Datenmodell (Auszug): TENANT (id, name, segment, plan) -> USER, SITE (id, tenant_id, name, bidding_zone); SITE -> DEVICE, ASSET (type, capacity_kwh, max_charge_kw, max_discharge_kw), TARIFF, SCHEDULE, FORECAST_RUN; DEVICE -> DEVICE_CERT (x.509).
+Das Diagramm zeigt fachliche Beziehungen, kein vollständiges SQL-Schema. `site` ist die Anlage, `device` die registrierte Box; Komponenten und Messpunkte verfeinern das Anlagenmodell.
 
-Datenlebenszyklus: Hot (<90 Tage) volle Auflösung; Warm (90 Tage-2 Jahre) Continuous Aggregates + Kompression; Cold Aggregate; Retention Policies pro Hypertable. Redpanda hält zusätzlich das rohe Event-Log begrenzt.
+Keycloak liefert den Mandanten im JWT. Die API verwendet eine RLS-gebundene Datenbankrolle; administrative Zugriffe laufen getrennt. Flyway in der API besitzt das Anwendungsschema. Gemeinsame Markt-/Herstellerdaten haben andere Zugriffsregeln als Kundendaten. Details: [API und Datenbank](api.md).
 
-## 11. Optimierungs-Engine (Herzstück)
+## Laufzeit und Betrieb
 
-MILP im MPC-Stil (rollierender Horizont): alle 15 Minuten optimaler Lade-/Entlade-Fahrplan über 24-48h (15-Min-Slots). Der angefragte Horizont ist `OPTIMIZER_HORIZON_SLOTS` (Vorgabe 192 Slots = 48h, seit Captain-Entscheid 28.08.2026; `96` = das frühere Verhalten; der alte `OPTIMIZER_HORIZON_HOURS` wird weiter akzeptiert und auf Slots abgebildet, mit Deprecation-Warnung). Er ist eine ANFRAGE - das geplante Fenster ist `min(Anfrage, bekannte Day-Ahead-Preise, echte Prognosen)`, es wird also keine Viertelstunde auf einem erfundenen Preis oder einer synthetischen Prognose geplant. An die Box gehen unverändert die ersten 24h (`publisher.EDGE_PLAN_SLOTS`); der MQTT-Kontrakt ist unberührt. Nur der erste Slot wird ausgeführt. Solver HiGHS (Pyomo-kompatibel). Zielfunktion: Minimierung Netto-Energiekosten = Bezugskosten - Erlöse (Einspeisung, Direktvermarktung), Eigenverbrauch berücksichtigt. Restriktionen: SoC-Grenzen, max Lade-/Entladeleistung, Wirkungsgrade, optional Zyklen-/Degradationskosten, Netzanschlussgrenzen, beobachtete §14a-Grenze als harte Obergrenze. Eingaben: Last-/PV-Prognose, Day-Ahead-Preise (ENTSO-E), SoC, §14a-Grenze, Tarif, Vermarktungssignale.
+- Lokal: Docker Compose, optional mit `edge`, `feeds` und `optimize`; das Portal läuft über Vite.
+- Cloud-Release: Forgejo baut Images und aktualisiert das separate GitOps-Repository. Argo CD übernimmt den gewünschten Stand in den Cluster. Die tatsächliche Sync-Einstellung steht im GitOps-Repository.
+- Datenebene: Die Compose-Konfiguration unterstützt separat betriebene Datenbanken, EMQX und Redpanda mit begrenztem LAN-Zugriff für den Cluster.
+- Edge-Release: eigener signierter OTA-Pfad mit Verifikation, Selbsttest und Rücknahme. Kein Mender-Abhängigkeitspfad.
+- Nicht alle Dienste sind beliebig replizierbar; API, Ingest und periodische Jobs haben Singleton-Grenzen. Siehe [Kubernetes-Betriebsvertrag](k8s-readiness.md).
 
-Umsetzung v1 (`services/optimization`): 24h-Horizont, symmetrische Spot-Bepreisung für Bezug und Einspeisung (Direktvermarktungs-Annahme), Wirkungsgrad sqrt-symmetrisch aufgeteilt, Binärvariablen gegen gleichzeitiges Laden+Entladen (bei negativen Preisen wäre das im LP profitabel), End-SoC >= Start-SoC als Terminalbedingung. Jeder Lauf wird vollständig in die `schedule`-Hypertable persistiert (Plan-vs-Ist / ML-Grundlage) und retained per MQTT publiziert (Contract: `docs/contracts/mqtt-schedule.schema.json`). Zyklen-/Degradationskosten, Tarife und Vermarktungssignale sind noch offen.
+Versionsquellen sind die Manifeste: Maven-POMs, Python-`pyproject.toml`, Portal-`package.json`, Go-`go.mod` und Compose-Images. Sie ersetzen mehrfach gepflegte Versionstabellen.
 
-## 12. Prognose & ML (gestaffelt, kein ML in v1)
+## Planungshorizont und Fachmodell
 
-- Strompreis Day-Ahead: gegeben via ENTSO-E, kein Forecast.
-- PV: physikalisches Modell (Wetter-Einstrahlung + Anlagenparameter); später ML-Korrektur.
-- Last: Baseline (Persistenz/Profil) in v1; später XGBoost/LightGBM (Quantil-Objective für Unsicherheitsbänder).
-- MLOps: MLflow + Batch-Training (K8s-Jobs), erst bei ML-Bedarf.
+Die Optimierung fragt standardmäßig 192 Viertelstunden (48 h) an (`OPTIMIZER_HORIZON_SLOTS`). Tatsächlich geplant wird nur das von Preisen und realen Prognosen gedeckte Fenster; an die Box gehen die ersten 24 h. Details: [Optimierung](../services/optimization/README.md).
 
-## 13. Externe Integrationen
-
-- ENTSO-E Transparency (Day-Ahead-Preise je Gebotszone), hinter Adapter.
-- Direktvermarkter: generischer Adapter zuerst; §9-EEG-Fernsteuerbarkeit.
-- Wetterdaten (PV-/Lastprognose), EU-Hosting.
-- Anti-Corruption-Layer je Integration; Caching, Retry/Circuit-Breaker.
-
-## 14. Sicherheit, Compliance & Regulatorik
-
-- Keycloak (OIDC), tenant_id + Postgres-RLS. Onboarding = ein Insert. Schema-/DB-pro-Tenant nachrüstbar.
-- DSGVO: EU-Hosting (Hetzner DE), Zweckbindung/Datenminimierung, Betroffenenrechte inkl. Zeitreihen- und Redpanda-Log-Retention, TLS in transit + at rest, Audit-Log.
-- §14a EnWG (Lesart A): Netzbetreiber setzt Drosselung über eigene parallele Steuereinrichtung durch; EMS nur beobachtend -> keine steuernde Einrichtung, günstige Hardware.
-- §9 EEG / Direktvermarktung: Fernsteuerbarkeit + Zertifizierung; mögliche steuernde Rolle in Phase 2.
-- Mess- und Eichrecht: abrechnungsrelevante Messung ggf. geeichte Zähler.
-
-## 15. Observability & Betrieb
-
-Prometheus + Grafana (Service-Health, Ingest-Durchsatz, Redpanda-Consumer-Lag, Optimierungs-Laufzeit, Forecast-Error). Logging zentral (Loki/ELK), strukturiert mit tenant_id/site_id. Tracing OpenTelemetry. Alerting (Gerät offline, Ingest-/Consumer-Stau, fehlende externe Daten, fehlgeschlagene Optimierung, Prognose-Drift). Fleet-Health-Dashboard.
-
-## 16. CI/CD & Deployment
-
-Monorepo mit klaren Service-Grenzen. CI: Build/Test/Lint je Service, signierte Container-Images in EU-Registry. CD: GitOps (Argo CD/Flux). Umgebungen dev -> staging -> prod mit Schema-Migrationen (Flyway/Liquibase inkl. Timescale-Hypertable-Setup). Edge-CD: getrennte Pipeline -> Mender-Artefakte (Node-RED-Container), Canary + Rollback.
-
-## 17. Skalierungsstrategie
-
-Stabile Verträge (MQTT-Topics, Redpanda-Schemas, DB-Repository-Interfaces) entkoppeln Skalierungs-Upgrades. MVP: EMQX + Ingest + Redpanda; TimescaleDB gekapselt; synchrone Optimierungs-Jobs; Baseline-Prognose; shared DB + RLS; Node-RED-Edge; Single-Region Best-Effort. Hyperscale-Pfad ohne Architektur-Bruch.
-
-## 19. Tech-Stack-Zusammenfassung
-
-- Edge-Steuerung: Node-RED (Container, ARM+x86), SunSpec/Modbus TCP.
-- Edge-Fleet/OTA: Mender (self-hosted), x.509.
-- Transport: MQTT - EMQX, mTLS.
-- Event-Log: Redpanda (Kafka-API, ab MVP).
-- Backend-Kern: Java / Spring Boot, REST (OpenAPI) + WebSocket/SSE.
-- ML & Optimierung: Python - HiGHS (Pyomo), XGBoost/LightGBM (später).
-- Datenbank: TimescaleDB (PostgreSQL-Extension), RLS, Repository-gekapselt.
-- Auth: Keycloak (OIDC).
-- Frontend: React (Responsive Web) + ECharts/uPlot.
-- Marktdaten: ENTSO-E Transparency (Adapter).
-- MLOps: MLflow + Batch-Training (K8s-Jobs).
-- Orchestrierung: Kubernetes auf Hetzner (EU), GitOps (Argo CD/Flux).
-- Observability: Prometheus, Grafana, Loki/ELK, OpenTelemetry.
-- CI/CD: Container-Build + GitOps, Flyway/Liquibase.
-
-## 18. Roadmap
-
-- Phase 1 - MVP-Kern (~3 Monate): ein Segment (C&I), DE. Node-RED-Edge -> EMQX -> Ingest -> Redpanda -> TimescaleDB-Writer -> TimescaleDB. Portal (Keycloak-Auth, Geräte-Claiming, Telemetrie-/Fahrplan-Ansicht, KPIs). Optimierung (HiGHS-MILP). Eigenverbrauchs-Default. OTA via Mender. Vermarktungs-Mechanik via Adapter-Stub.
-- Phase 2 - Direktvermarktung live.
-- Phase 3 - Prognose & ML.
-- Phase 4 - Hyperscale & DACH-Breite.
+Das [UEMS-Fachmodell](fachmodell/README.md) ergänzt Unternehmen, Standorte, Gebäude, Messstellen und zeitgültige Zuordnungen. Die Übersicht oben zeigt die bestehende EMS-Strecke; sie ersetzt weder diese Verträge noch deren Umsetzungsbelege.

@@ -10,8 +10,16 @@ der erlaubt nur EINEN Client, und diesen Client braucht VoltPilot für die Steue
 auf den Logger aus. Jede Antwort kommt aus dem Zwischenspeicher, den unser eigener
 5-s-Poll füllt. Verbraucher-Nachfrage steuert höchstens, was **unser** Poll zusätzlich
 liest (Auto-Lernen, unten) – hart gedeckelt und immer nachrangig zur bestehenden
-Socket-Disziplin, in der Steuer-Schreibbefehle Vorrang haben. Die Steuerung wird durch
-den Spiegel nicht beeinflusst.
+Socket-Disziplin, in der Steuer-Schreibbefehle Vorrang haben. Zusatzlesungen teilen die verfügbare Buszeit; Steueraufträge behalten Vorrang.
+
+```mermaid
+flowchart LR
+  Inverter[Wechselrichter] --> Poll[Koordinierter Box-Poll]
+  Poll --> Cache[Zwischenspeicher]
+  Cache --> Mirror[Nur-Lese-Modbus-Spiegel]
+  Mirror --> House[Gebäudeautomation]
+  House -. begrenzte Lesewünsche .-> Poll
+```
 
 ## Einschalten
 

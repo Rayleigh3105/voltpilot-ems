@@ -1,54 +1,21 @@
-# services/api - Portal Backend / API
+# Portal-API
 
-**Language:** Java 21 / Spring Boot 3.3
-**State:** stateless
-**Responsibility (architecture section 8):** REST/WS, Tenancy, Business-Logik.
+Validiert Keycloak-Tokens und stellt mandantengebundene Anlagen-, Geräte-, Messwert- und Betriebsfunktionen bereit. Plattformverwaltung verwendet getrennte Rollen und Datenbankzugänge.
 
-Serves the portal REST API (OpenAPI, see [`docs/contracts/openapi.yaml`](../../docs/contracts/openapi.yaml)).
-Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped layer sets the Postgres RLS tenant context (`app.tenant_id`) on the connection so every query is transparently scoped to the caller's tenant. Full design and rationale are in the repo `AGENTS.md` ("Portal API: auth, tenancy & RLS").
+## Start und Tests
 
-## Endpoints (`/api/v1`, Bearer JWT required unless noted)
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/registration` | **Public** (no token) self-registration: creates a tenant + its Keycloak login in one step (rate-limited, toggle `VOLTPILOT_REGISTRATION_ENABLED`) |
-| POST | `/enrollment/{ref}/csr` | **Public** (no token) first-boot enrollment: store the device-generated CSR for a reference (rate-limited; `VP-` refs registry-gated -> 422; replaceable until issued -> then 409) |
-| GET | `/enrollment/{ref}/certificate` | **Public** (no token) poll for the device's mTLS certificate: 404 `pending` until the ref is claimed (identical for unknown refs), then cert + CA + broker params (toggle `VOLTPILOT_ENROLLMENT_ENABLED`) |
-| GET | `/sites` | List the caller's sites |
-| POST | `/sites` | Create a site for the caller's tenant (name, bidding zone, optional lat/lon) |
-| GET | `/devices` | List the caller's devices (incl. `lastSeenAt` for the portal's live status) |
-| POST | `/devices/claim` | Claim an edge device into a site (canonicalizes sticker `VP-` IDs; idempotent re-claim in the own tenant -> 200; 409 if claimed by another tenant, 404 if site not in tenant, 422 if the sticker ID is not in the provisioned-device registry) |
-| GET | `/devices/{deviceId}/measurement-selection/catalog` | Search the canonical measurement catalog; group/semantic facets, recorded/available filters and the “Eigenen Messwert hinzufügen” action label |
-| GET | `/devices/{deviceId}/measurement-selection` | Desired selection revision, pending Edge apply status, append-only event history and D5/D6 volume estimate |
-| GET | `/devices/{deviceId}/measurement-selection/estimate?pointKey&cadenceS` | Preview 96-byte/90-day volume plus sample/request/duty budget without writing |
-| POST | `/devices/{deviceId}/measurement-selection/custom/estimate` | Run the same validation/budget preview for a not-yet-created free register |
-| PUT | `/devices/{deviceId}/measurement-selection/{pointKey}` | Optimistic/idempotent enable or deselect; server `enabledAt`, no backfill, no history deletion, never “applied” without Edge Ack |
-| POST | `/devices/{deviceId}/measurement-selection/custom` | “Eigenen Messwert hinzufügen”: strictly validated read-only free Modbus register (no write capability); request cost is server-side conservative (2000 ms), never client-supplied |
-| GET | `/sites/{siteId}/telemetry?from&to` | Recent telemetry for a site (defaults to last 24h) |
-| GET | `/sites/{siteId}/prices?from&to` | Day-ahead spot prices (15-min) for the site's bidding zone; defaults to ~today+tomorrow |
-| GET | `/sites/{siteId}/weather` | Latest weather forecast (hourly, coming days) for the site |
-| GET | `/sites/{siteId}/assets` | The site's asset master data incl. MaStR provenance |
-| POST | `/sites/{siteId}/mastr-lookup` | Fetch one MaStR unit for confirmation (preview only; German error messages) |
-| POST | `/sites/{siteId}/mastr-apply` | Persist confirmed registry values onto the site's PV/battery assets |
-| GET | `/sites/{siteId}/schedule` | Latest optimizer battery-dispatch plan + projected savings |
-| GET | `/sites/{siteId}/history?range&at` | History rollups (day/week/month/year), totals + Tagesprotokoll |
-
-Platform-admin-only (`/api/v1/admin/**`, realm role `platform-admin`): tenants, per-tenant sites/users (incl. user `disable` and the support `reset-password`, which also lifts a brute-force lockout), and the `provisioned-devices` manufacturing registry gating sticker claims. See the repo `AGENTS.md` admin section.
-
-## Run / build / test
+Java 21; Befehle in diesem Verzeichnis:
 
 ```bash
-./mvnw spring-boot:run       # http://localhost:8090 (needs a Postgres + Keycloak; usually run via docker compose)
-./mvnw test                  # unit test always; Testcontainers RLS + OIDC tests when Docker is available
-./mvnw clean package         # build the jar
+./mvnw spring-boot:run
+./mvnw test
+./mvnw clean package
 ```
 
-- Health: `GET /health` (Spring Boot Actuator, mapped to root).
-- OIDC is ON by default (fail-secure). Offline unit tests / broker-less dev opt out with `VOLTPILOT_SECURITY_OIDC_ENABLED=false`; docker compose sets it `true` explicitly plus the issuer/JWKS URIs and the DB roles.
-- **DB roles:** runtime connects as the non-privileged `voltpilot_app` role (so RLS applies); Flyway migrates as the `voltpilot` superuser. Never run the app datasource as the superuser.
+Standardport: `8090`. Health: `/health`; Kubernetes: `/health/liveness` und `/health/readiness`. Testcontainers-Fälle benötigen Docker.
 
-## Status
+Konfiguration: [`application.yml`](src/main/resources/application.yml), lokale/prod Compose-Dateien. Zugangsdaten nicht aus Entwicklungsbeispielen in Produktion übernehmen.
 
-Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2/V4 + the date-versioned site-geo/data-feeds, battery-efficiency, history-rollup and provisioned-device migrations + dev seeds `db/dev` V100/V20260702020100), public **self-registration** (tenant + Keycloak login in one request, sliding-window rate-limited), site creation, sites/devices/telemetry reads, **device claiming** (canonicalized, idempotent per tenant, sticker IDs gated by the provisioned-device registry), the **revisioned additional-measurement selection foundation** (canonical catalog search, read-only custom registers, append-only audit, D5 budget and D6 retention metadata; Edge/MQTT/sample storage deliberately follow later), the **admin API** (tenants, per-tenant sites/users incl. disable + support password-reset, provisioned devices), the **MaStR integration** (lookup/apply/assets, see the repo `AGENTS.md`), the KEYLESS **day-ahead price** + **weather** reads plus the **schedule** and **history** reads (fed by the compose `feeds`/`optimize` profiles), and **first-boot device enrollment** (public CSR upload + certificate poll; the api signs with the device CA once the ref is claimed - see the repo `AGENTS.md` enrollment section).
-KPIs (see OpenAPI) remain a stub.
-Live telemetry arrives via the separate ingest pipe (compose `edge` profile); without it the portal reads dev-seeded demo telemetry.
+## Referenzen
+
+[API und Datenbank](../../docs/api.md), [OpenAPI](../../docs/contracts/openapi.yaml); [Betriebsvertrag](../../docs/k8s-readiness.md).

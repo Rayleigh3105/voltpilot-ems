@@ -9,20 +9,16 @@ export const problemArticles: HelpArticle[] = [
     keywords: ['Fehler', 'Hilfe', 'Offline', 'Keine Daten', 'Kein Fahrplan', 'Lädt nicht', 'Unbekannte ID', 'Verbindung', 'Störung'],
     sections: [
       { id: 'keine-daten', title: 'Es kommen keine Messwerte an', paragraphs: [
-        'Prüfen Sie zuerst die geöffnete Anlage und den Datenstand. Bei einem neuen Gerät kann die Zuordnung bereits abgeschlossen sein, während noch keine Daten eintreffen. Bei einem bisher aktiven Gerät zeigt der letzte Kontakt, seit wann die Verbindung fehlt.',
-        'Öffnen Sie Box und Gerät. Prüfen Sie die Stromversorgung und die bekannte Netzwerkverbindung vor Ort sowie die im Portal angezeigte Zuordnung. Wenn nur ein Messwert fehlt, prüfen Sie dessen Komponente und Quelle. Ein fehlender Messwert ist keine bestätigte Null.',
+        "Anlagenname, Datenstand und letzten Kontakt prüfen. Danach Stromversorgung, Netzwerk und Box-Zuordnung kontrollieren. Fehlt nur eine Größe, prüfen Sie deren Komponente und Quelle. Fehlend bedeutet nicht null.",
       ], figure: 'box' },
       { id: 'kein-fahrplan', title: 'Es gibt keinen Fahrplan', paragraphs: [
-        'Prüfen Sie, ob die Anlage einen korrekt zugeordneten Speicher beziehungsweise die Voraussetzungen für diese Ansicht besitzt. Kontrollieren Sie dann die aktuellen Daten, den Ladestand und die Hinweise in Steuerung.',
-        'Unterscheiden Sie einen fehlenden Plan von einem vorhandenen Plan ohne Ladeaktion. Notieren Sie bei einer Rückfrage den letzten sichtbaren Erstellungszeitpunkt und die angezeigte Ursache.',
+        "Speicherzuordnung, aktuelle Daten, Ladestand und Hinweise unter Steuerung prüfen. Ein fehlender Plan unterscheidet sich von einem vorhandenen Plan ohne Ladeaktion. Notieren Sie Planzeitpunkt und Ursache.",
       ] },
       { id: 'unerwartet', title: 'Der Speicher oder Verbraucher verhält sich anders als erwartet', paragraphs: [
-        'Vergleichen Sie zuerst denselben Zeitpunkt in Fahrplan und Messwerten. Prüfen Sie anschließend aktives Betriebsmodell, Regeln, Reserven und technische Grenzen. Eine aktive Regel kann auf ihre Bedingung warten.',
-        'Eine gesendete Vorgabe kann von der tatsächlichen Wirkung abweichen. Lesen Sie deshalb die Geräte-Rückmeldung und Befehls-Historie. Bei Ladepunkten zusätzlich Anschlusszustand, Freigabe und verfügbare Leistung prüfen.',
+        "Vergleichen Sie Plan und Messwerte zum selben Zeitpunkt. Prüfen Sie Betriebsmodell, Regeln, Reserven und Geräteantwort. Bei Ladepunkten zusätzlich Anschlusszustand, Freigabe und verfügbare Leistung kontrollieren.",
       ] },
       { id: 'zugang', title: 'Eine ID, Ansicht oder Anmeldung funktioniert nicht', paragraphs: [
-        'Bei einer unbekannten Geräte-ID vergleichen Sie die Eingabe mit dem Aufkleber oder der lokalen Web-App. Bei einer Zuordnung zu einem anderen Konto hilft VoltPilot; eine abgewandelte ID ist kein Ersatz.',
-        'Fehlt eine Ansicht, prüfen Sie ihre Voraussetzungen und die Ausstattung der Anlage. Bei einem allgemeinen Ladefehler nutzen Sie Erneut laden. Die Hilfe bleibt unabhängig von den Messdaten erreichbar. Bei einem vergessenen Passwort wenden Sie sich an Ihren Ansprechpartner.',
+        "Geräte-ID mit dem Original vergleichen; bei fremder Kontozuordnung hilft VoltPilot. Fehlende Ansichten anhand ihrer Voraussetzungen prüfen. Bei Ladefehlern Erneut laden nutzen, bei vergessenem Passwort den Ansprechpartner kontaktieren.",
       ] },
     ], related: ['box-verbinden', 'fahrplan', 'kontakt'],
   },
@@ -66,8 +62,7 @@ export const problemArticles: HelpArticle[] = [
         'Wenn hilfreich, einen Screenshot der betreffenden Ansicht mit ihrem Zeitraum vorbereiten. Prüfen Sie vorher, welche persönlichen Angaben darauf sichtbar sind.',
       ] },
       { id: 'konto', title: 'Bei Fragen zum Konto', paragraphs: [
-        'Nennen Sie die zum Konto gehörende E-Mail-Adresse über Ihren bekannten Kontaktweg. Teilen Sie niemals Ihr Passwort oder Anmeldecodes. Bei einem vergessenen Passwort unterstützt Sie VoltPilot beim Zurücksetzen.',
-        'Für allgemeine Begriffe und die Bedienung können Sie zuerst die Suche dieses Hilfe-Centers nutzen. Die Artikel sind unabhängig von Ihren aktuellen Messdaten verfügbar.',
+        "Nennen Sie Ihre Konto-E-Mail über den bekannten Kontaktweg. Teilen Sie keine Passwörter oder Anmeldecodes. Beim Zurücksetzen unterstützt Sie VoltPilot; allgemeine Bedienfragen beantwortet auch die Hilfesuche.",
       ] },
     ], related: ['probleme', 'orientierung', 'glossar'],
   },

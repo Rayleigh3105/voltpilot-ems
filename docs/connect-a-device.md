@@ -1,213 +1,55 @@
-# Connect an edge device
+# Eine Box verbinden
 
-How a physical edge device on a customer site connects to the VoltPilot broker and starts publishing telemetry.
+Für Kundenboxen ist HTTPS-Enrollment mit anschließendem MQTT-mTLS der normale Weg. Die Box erzeugt ihren privaten Schlüssel selbst; im Portal wird ihre Geräte-ID der Anlage zugeordnet.
 
-There are three paths:
-
-- **[First-boot enrollment over HTTPS](#first-boot-enrollment-over-https-kinderleicht-production)** (recommended for production): the device knows only its **reference** and the **portal URL**; its mTLS certificate arrives automatically once the customer claims the reference. No manual cert copying.
-- **[Zero-touch onboarding](#zero-touch-onboarding-plain-mqtt-dev)** (v1: plain MQTT/dev): the device knows only its **edge reference** and the broker host; identity arrives over the provisioning handshake once the ref is claimed in the portal. No IDs to copy.
-- **[Secure mTLS, manual](#connect-over-mtls-production-hardened-broker)** (production, hardened broker): explicit per-device certificate + IDs issued by the operator, for the internet-facing 8883 listener.
-
-## First-boot enrollment over HTTPS (kinderleicht, production)
-
-Der kinderleichte Weg: das Gerät zeigt seine Referenz, der Kunde beansprucht sie im Portal, das Zertifikat kommt automatisch.
-The device ships knowing only its printed **reference** and the **portal URL**; the customer types the reference into the portal (*Geräte → ＋ Gerät hinzufügen*), and the device fetches its own mTLS certificate - no cert files to copy, no IDs to type.
-
-Under the hood (binding contract: the `enrollment` tag in [`docs/contracts/openapi.yaml`](contracts/openapi.yaml)):
-
-1. On first boot the device generates a keypair **locally** (the private key never leaves the device) and uploads a CSR: `POST /api/v1/enrollment/{ref}/csr`.
-2. It polls `GET /api/v1/enrollment/{ref}/certificate` - 404 `status=pending` until the reference is claimed in the portal (poll every ~10 s at first, back off to >= 60 s; keep polling indefinitely - claiming may happen days later).
-3. Once claimed, the response carries the device-CA-signed client certificate (subject enforced from the claim: `CN=device_id, O=tenant_id, OU=site_id` + SPIFFE SAN), the CA PEM to verify the broker, and the broker host/port.
-   The per-device broker ACL grant is written at the same moment.
-4. The device stores the bundle and connects to `mqtts://<mqttHost>:8883` exactly as in the [mTLS section](#connect-over-mtls-production-hardened-broker) below.
-
-Notes:
-
-- Sticker refs (`VP-`) must be registered in the provisioned-device registry, exactly like portal claims; the CSR key must be RSA >= 2048 or EC P-256/P-384.
-- The certificate stays retrievable for device retries (the private key is the secret, and it never traveled). Re-keying a device = operator revokes + the customer unclaims/re-claims.
-- Unclaiming a device removes its ACL grant (default-deny at the next authz reload); `voltpilot-ca.sh revoke` remains the cryptographic kill switch - api-issued certs are recorded in the same CA database.
-- Server side this requires the device CA staged on the api host (see [`deploy.md`](deploy.md)); the endpoints are rate-limited and unauthenticated by design.
-
-## Zero-touch onboarding (recommended)
-
-The customer flow is exactly two things:
-
-1. **Portal:** *Geräte → ＋ Gerät hinzufügen* - pick the Standort, type the device's **Edge-Referenz** (e.g. `plant-a-inverter-01`), claim. The row shows *"wartet auf erste Daten"*.
-   Sticker Geräte-IDs (prefix `VP-`, case-insensitive, uppercased on claim) must first be registered in the provisioned-device registry (admin *Geräte-Registry* page or `POST /api/v1/admin/provisioned-devices`), or the claim is refused; free-form refs like the example stay ungated.
-2. **Device:** power it on, configured with only the broker host and its ref.
-
-Under the hood (binding contract [`docs/contracts/mqtt-provisioning.schema.json`](contracts/mqtt-provisioning.schema.json)):
-
-```
-device                                 cloud
-  │  publish provision/{ref}/hello       │   (QoS1; retried until claimed)
-  │  subscribe provision/{ref}/config    │
-  │                                      │  ref claimed? -> publish RETAINED
-  │  ◄─ provision/{ref}/config ───────── │  {tenant_id, site_id, device_id}
-  │  adopt identity, then publish        │
-  │  ems/{t}/{s}/{d}/telemetry (frozen   │
-  │  telemetry contract, unchanged)      │
+```mermaid
+sequenceDiagram
+    participant B as Box
+    participant A as API
+    participant P as Portal
+    B->>B: Schlüssel erzeugen und lokal speichern
+    B->>A: CSR für die eigene Referenz hochladen
+    A-->>B: Pending
+    P->>A: Referenz mit Anlage verbinden
+    B->>A: Zertifikat erneut abfragen
+    A-->>B: Zertifikat, Identität und Broker-Adresse
+    B->>B: MQTT-mTLS-Verbindung aufbauen
 ```
 
-- **Unclaimed ref:** no answer; the device retries its hello (default every 10 s). Normal pre-onboarding state.
-- **Claim-later:** the portal api publishes the retained config the moment the claim succeeds, so an already-waiting device converges instantly.
-- **Restart:** the config is retained on the broker - the device re-provisions on subscribe with no cloud round-trip.
-- The portal row flips to **online** as soon as the first telemetry arrives.
+## Kundenweg
 
-Try it with the standalone simulator (see [`tools/edge-simulator/README.md`](../tools/edge-simulator/README.md)):
+1. [Box installieren](../edge-app/DEPLOY.md) und `http://<box>:8484` öffnen.
+2. Geräte-ID exakt übernehmen. Im Portal eine Anlage anlegen beziehungsweise wählen und die Box verbinden.
+3. Warten, bis Zertifikat und Cloud-Verbindung bestätigt sind.
+4. Komponenten zuordnen und frische Messwerte prüfen. Erst anschließend gegebenenfalls physische Steuerung freigeben.
 
-```bash
-python3 tools/edge-simulator/voltpilot_edge_sim.py --host mqtt.example.com --ref plant-a-inverter-01 --verbose
-```
+`VP-`-Sticker müssen in der Plattform-Registry existieren. Selbst erzeugte `edge-`-IDs haben sechs Nutzzeichen plus Prüfzeichen. Erneuter Claim im eigenen Mandanten liefert dasselbe Gerät; fremder Besitz ergibt 409, unbekannter Sticker/falsche Prüfziffer 422.
 
-v1 note: the zero-touch handshake runs over the dev/plain-MQTT listener (1883). The mTLS variant (hello/config over the hardened 8883 listener with a bootstrap cert) is future work - for the hardened production broker, use the explicit mTLS path below.
+## Technischer Vertrag
 
-## Connect over mTLS (production, hardened broker)
-
-The edge makes **only an outbound** MQTT connection (mutual TLS on port 8883).
-It exposes **no inbound ports** - this is a hard architecture rule (architecture §6), so the device works behind NAT/CGNAT with no port-forwarding.
-
-```
-   customer site                      internet            your server (EU)
- ┌───────────────┐   mqtts:8883   ┌───────────────────────────────────────┐
- │ Node-RED edge │ ─────────────► │ EMQX  mTLS listener 8883               │
- │  (device.crt) │  outbound only │  verify_peer + per-device ACL          │
- └───────────────┘                │  1883 (loopback) → ingest → Redpanda…  │
-                                   └───────────────────────────────────────┘
-```
-
-## Prerequisites
-
-- The device is **claimed** in the portal (it exists in your tenant with a `device_id`). See [Provisioning](#provisioning-claim--issue-cert) to do both steps in one command.
-- You know the topic IDs: `tenant_id`, `site_id`, `device_id` (all UUIDs).
-- You have the device's mTLS bundle: `device.crt`, `device.key`, and `device-ca.crt` (the CA that signs the broker's server cert).
-- Node-RED 4.x on the device (the VoltPilot edge image already has it).
-
-## 1. Get a device certificate
-
-Certs are issued by the device-CA tool. On the server that holds the CA:
-
-```bash
-# One-time: create the device CA + broker server cert for your domain.
-./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip 203.0.113.10
-
-# Per device: issue a client cert whose identity encodes tenant/site/device.
-./tools/pki/voltpilot-ca.sh issue \
-  --tenant 00000000-0000-0000-0000-000000000001 \
-  --site   00000000-0000-0000-0000-000000000002 \
-  --device 00000000-0000-0000-0000-000000000003
-```
-
-This writes the bundle to `tools/pki/out/devices/<device_id>/` and appends an ACL grant to `infra/mqtt/acl/acl.conf` binding that cert to exactly its own topics.
-Ship `device.crt`, `device.key` and `device-ca.crt` to the device over a secure channel (the **private key never leaves your control except onto that one device**).
-
-Reload the broker authorization so the new grant takes effect:
-
-```bash
-./tools/pki/reload-broker-authz.sh
-```
-
-## 2. Broker connection params
-
-| Setting | Value |
+| Schritt | Endpunkt |
 |---|---|
-| Protocol | `mqtts` (MQTT over TLS) |
-| Host | `mqtt.example.com` *(your broker's public FQDN)* |
-| Port | `8883` |
-| TLS | on, **mutual** (present the client cert) |
-| CA cert | `device-ca.crt` (verify the broker) |
-| Client cert / key | `device.crt` / `device.key` |
-| Username / clientid | **do not set** - the broker derives both from the cert CN (`device_id`) |
-| QoS | `1` |
+| CSR senden | `POST /api/v1/enrollment/{ref}/csr` |
+| Zertifikat holen | `GET /api/v1/enrollment/{ref}/certificate` |
+| Gerät beanspruchen | `POST /api/v1/devices/claim` |
 
-The host you dial must be in the broker server cert's SAN: `init-ca --domain mqtt.example.com --ip <ip>` puts both in, so the **MQTT domain (recommended)** and the raw IP both verify.
-If the domain was added only after the broker went live, re-running `init-ca` is safe - it keeps the existing CA (all device certs stay valid) and re-issues only the server cert with the new SANs; re-stage `server.crt`/`server.key` and restart EMQX (see [`deploy.md`](deploy.md)).
+Bis zum Claim bleibt die Zertifikatsabfrage pending. Die API bestimmt Zertifikatsidentität aus dem registrierten Gerät, nicht aus frei gewählten CSR-Subject-Feldern. Zulässige Schlüssel und Rückgaben stehen in [OpenAPI](contracts/openapi.yaml) und `EnrollmentApiTest`.
 
-## 3. Topics (contract)
+Die Box benötigt ausgehendes HTTPS und MQTT-mTLS `8883`. Ihre lokalen Web-/OCPP-Ports gehören ins Kundennetz; für Enrollment ist keine öffentliche Weiterleitung zur Box nötig.
 
-The device may use **only its own** path. Publishing under any other tenant/site/device is denied by the broker ACL.
+## Diagnose
 
-```
-ems/{tenant_id}/{site_id}/{device_id}/telemetry   # publish  (QoS1)   measurements
-ems/{tenant_id}/{site_id}/{device_id}/status      # publish           heartbeat/health
-ems/{tenant_id}/{site_id}/{device_id}/schedule    # subscribe (retained) cloud→edge schedule
-ems/{tenant_id}/{site_id}/{device_id}/command     # subscribe          ad-hoc command
-ems/{tenant_id}/{site_id}/{device_id}/config      # subscribe (retained) config
-```
-
-Telemetry payload is the binding contract [`docs/contracts/mqtt-telemetry.schema.json`](contracts/mqtt-telemetry.schema.json) (`schema_version` `"1.0"`).
-No payload/mapping change is needed - the existing edge flow already publishes this shape.
-
-## 4. Node-RED MQTT-out config (mTLS)
-
-On the device, configure the `mqtt-broker` config node and a `tls-config` node:
-
-**TLS configuration node**
-
-| Field | Value |
+| Symptom | Ursache eingrenzen |
 |---|---|
-| Certificate | `device.crt` |
-| Private Key | `device.key` |
-| CA Certificate | `device-ca.crt` |
-| Verify server certificate | ✅ on |
-| Server name (SNI) | `mqtt.example.com` |
+| ID nicht bekannt | Sticker-Registry oder Prüfziffer prüfen |
+| Zertifikat bleibt aus | Claim, Referenznormalisierung und Portal-URL prüfen |
+| Zertifikat vorhanden, MQTT scheitert | Broker-DNS/Port, CA, Zertifikatsidentität und ACL-Reload prüfen |
+| Verbunden, keine Daten | Lokale Quelle, Protokoll, Gerätezuordnung und Ingest-/Writer-Pfad prüfen |
 
-**MQTT broker config node**
+Plattformverwaltung kann ausstehende Enrollments ohne Claim sehen. Nicht als Abhilfe eine zweite ähnliche Referenz anlegen.
 
-| Field | Value |
-|---|---|
-| Server | `mqtt.example.com` |
-| Port | `8883` |
-| Enable secure (SSL/TLS) connection | ✅ on → select the TLS config node above |
-| Protocol | MQTT V3.1.1 or V5 |
-| Client ID | *leave blank* (broker sets it from the cert) |
-| Username / Password | *leave blank* |
+## Integrationen und Testgeräte
 
-The equivalent `flows.json` fragment (the edge already publishes telemetry at QoS1 - only the broker/TLS config changes for production):
+Der ältere `provision/{ref}/hello` → retained `provision/{ref}/config`-Handshake existiert weiterhin für Integrationen/Tests am dafür vorgesehenen Broker. Er ersetzt nicht die Authentifizierung durch Kunden-Enrollment/mTLS.
 
-```json
-{
-  "id": "cfg-tls-prod", "type": "tls-config",
-  "cert": "/data/certs/device.crt",
-  "key": "/data/certs/device.key",
-  "ca": "/data/certs/device-ca.crt",
-  "verifyservercert": true, "servername": "mqtt.example.com"
-},
-{
-  "id": "cfg-mqtt-prod", "type": "mqtt-broker", "name": "VoltPilot (prod mTLS)",
-  "broker": "mqtt.example.com", "port": "8883",
-  "usetls": true, "tls": "cfg-tls-prod",
-  "protocolVersion": "5", "clientid": "", "keepalive": "60", "cleansession": false
-}
-```
-
-Point the existing `mqtt out` telemetry/status nodes at `cfg-mqtt-prod` (QoS 1) and the `mqtt in` schedule/command/config nodes at the same broker.
-
-## Provisioning (claim + issue cert)
-
-To do the DB claim and the cert in one step, use the helper (it reuses the portal's `POST /api/v1/devices/claim`, then issues the cert bound to the returned `device_id`):
-
-```bash
-./tools/pki/provision-device.sh \
-  --api-base https://portal.example.com \
-  --token "$ACCESS_TOKEN" \
-  --site 00000000-0000-0000-0000-000000000002 \
-  --external-ref plant-a-inverter-01 \
-  --domain mqtt.example.com
-```
-
-`tenant_id` is read from the access token's `tenant_id` claim. The script prints the broker URL, exact topics and the cert bundle path.
-
-## Revoke a compromised device
-
-```bash
-./tools/pki/voltpilot-ca.sh revoke --device 00000000-0000-0000-0000-000000000003
-./tools/pki/reload-broker-authz.sh
-```
-
-Revoke removes the device's ACL grant (an ungranted device_id is denied every topic by default) **and** adds the cert to the CRL. If you enable CRL checking on the listener, the cert is also rejected at the TLS handshake.
-
-## Verify it works
-
-- Server side: `docker compose -f docker-compose.prod.yml logs -f emqx` and the EMQX dashboard (loopback `:18083`) show the client connecting with clientid = `device_id`.
-- Local proof without a live broker (CI-friendly): `python3 tools/pki/verify_mqtt_security.py` runs the mutual-TLS handshake and the ACL policy checks (valid cert connects, no/untrusted cert rejected, cross-tenant denied, revocation). See [`docs/security-mqtt.md`](security-mqtt.md) for the full model and the live-broker test recipe.
+Für explizit vorprovisionierte mTLS-Geräte stehen [PKI-Werkzeuge](../tools/pki/README.md) bereit. Der [Standalone-Simulator](../tools/edge-simulator/README.md) unterstützt entsprechende Testpfade. Brokerkonfiguration und Widerruf: [MQTT-Sicherheit](security-mqtt.md).

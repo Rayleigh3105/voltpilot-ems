@@ -1,5 +1,5 @@
 /**
- * Anlage → **Steuerung** (Portal v3 · M4, spec `docs/portal-v3/M4-steuerung.md`).
+ * Anlage → **Steuerung** (Portal v3 · M4, spec `docs/portal.md`).
  *
  * Die Fläche beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich
  * selbst geregelt?" — mit genau ZWEI Kapseln und einer schmalen Schutz-Zeile:

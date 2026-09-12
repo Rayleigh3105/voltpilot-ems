@@ -1,13 +1,9 @@
-<!-- @dsCard group="Components" viewport="700x360" name="Cards · Stats · Icon Tiles" subtitle="Solution surfaces, metrics, category tiles" -->
+<!-- @dsCard group="Components" viewport="700x360" name="Cards · Stats · Icon Tiles" subtitle="Karten, Beispielwerte, Kategorieflächen" -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
 <meta charset="utf-8" />
 <link rel="stylesheet" href="../../styles.css" />
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="../../_ds_bundle.js"></script>
 <style>
   body { margin: 0; font-family: var(--vp-font-body); background: var(--vp-bg-light); }
   #root { padding: 24px; }
@@ -18,38 +14,7 @@
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-  const { Card, IconTile, Stat } = window.VoltPilotDesignSystem_0e1953;
-  function Demo() {
-    return (
-      <div>
-        <div className="grid">
-          <Card interactive accent="solar">
-            <IconTile category="solar" size={56}>☀</IconTile>
-            <h4>PV-Optimierung</h4>
-            <p className="body">Maximaler Eigenverbrauch Ihrer Solaranlage.</p>
-          </Card>
-          <Card interactive accent="battery">
-            <IconTile category="battery" size={56}>🔋</IconTile>
-            <h4>Speicher</h4>
-            <p className="body">Intelligentes Laden und Entladen.</p>
-          </Card>
-          <Card interactive accent="ev">
-            <IconTile category="ev" size={56}>🚗</IconTile>
-            <h4>Wallbox</h4>
-            <p className="body">Solaroptimiertes Laden Ihres E-Autos.</p>
-          </Card>
-        </div>
-        <div className="stats">
-          <Stat value="30%" label="weniger Stromkosten" />
-          <Stat value="1.200+" label="optimierte Anlagen" />
-          <Stat value="ISO 50001" label="zertifiziert" />
-        </div>
-      </div>
-    );
-  }
-  ReactDOM.createRoot(document.getElementById('root')).render(<Demo />);
-</script>
+<div id="root" data-preview="cards"></div>
+<script type="module" src="../../preview.jsx"></script>
 </body>
 </html>

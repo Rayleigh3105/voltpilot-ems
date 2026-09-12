@@ -1,43 +1,18 @@
-# Wechselrichter-Steuerung: Freigabe am Prüfstand (Bench-Verification)
+# Geräte am Prüfstand freigeben
 
-Die VoltPilot-Steuerung schreibt den optimierten Fahrplan-Sollwert in den
-Wechselrichter **und liest jedes Register zurück**, um register-genau zu belegen,
-dass der Wechselrichter den Befehl übernommen hat (Rückleseverifikation, siehe
-`inverter-control-routing.js` + `:8484` „Steuerung & Bestätigung").
+Diese Referenz enthält die Messprogramme je Treiber. Für den Einstieg: [Edge-Laufzeit](../../docs/edge-runtime.md). Registerantwort, Ausführungsmodus und gemessene Wirkung getrennt belegen.
 
-**Sicherheitsvorgabe (Captain-Entscheidung 3, nicht verhandelbar):** Der generische
-SunSpec-/Modbus-Adapter ist gegen den Simulator bewiesen und daher zertifiziert;
-**alle Deye-Familien sind bewusst NICHT zertifiziert** (`CERTIFIED_CONTROL_FAMILIES`
-in `inverter-control-routing.js` bzw. `VP_CONTROL_CERTIFIED_FAMILIES` im Core) und
-bleiben **nur lesend**, bis diese Checkliste pro Modell abgearbeitet ist. Die
-ToU-/Work-Mode-Register in `inverter-control-routing.js` (`DEYE_CONTROL_REG`) sind
-seit 2026-07-08 **quellenbasiert aus [`davidrapan/ha-solarman`](https://github.com/davidrapan/ha-solarman)**
-(MIT; `deye_p3.yaml` → `hybrid_3p`, `deye_hybrid.yaml` → `hybrid_1p`) statt trianguliert -
-ha-solarman steuert denselben Solarman-V5-Logger, die Adressen sind also belastbar.
-Sie bleiben dennoch **als `bench_pending` markiert** (per Modell/Firmware zu bestätigen) und
-werden bis zur Freigabe nie in einen Schreibbefehl umgesetzt. Konkrete Adressen: siehe
-die Tabelle in [`DEYE.md`](DEYE.md) → „Ausgeklammert: Hybrid-Batteriesteuerung".
+```mermaid
+flowchart LR
+  Read[Lesen und Modell prüfen] --> Trial[Begrenzter First-Light-Test]
+  Trial --> Verify[Rücklesen und Wirkung messen]
+  Verify --> Grant[Freigabe für dieses Gerät]
+  Grant --> Watch[Schutz und Rückfall weiter überwachen]
+```
 
-**Tier-Modell + Standard-EIN (Stand 2026, `vp-batctl-generic-r4`):** Die Steuerung
-dispatcht jetzt nach **`control_tier`** (0 read-only · 1 SunSpec-Modell 124 · 2 Vendor-EMS ·
-3 Deye Time-of-Use), nicht nach der Lese-Kommunikation - so bekommt ein künftiger
-Tier-2-Hersteller (Sungrow/SolarEdge) seinen eigenen Adapter, obwohl er über
-`modbus_tcp` liest. `VP_CONTROL_ENABLED` ist **standardmäßig EIN** (Owner-Entscheidung);
-sicher ist das ausschließlich, weil die **Zertifizierungs-Allowlist die eigentliche
-Geräte-Klammer** ist: eine unzertifizierte Familie liefert `writes:[]`, also **keinen
-Live-Schreibbefehl**, egal ob der Not-Aus an ist. Der **Deye-Solarman-V5-Schreib-Executor
-ist gebaut und offline bewiesen** (`deye-control.e2e.test.js`: Schreiben→Zurücklesen→Abgleich
-gegen einen echten In-Process-Solarman-V5-Server, EEPROM-Write-on-Change, Fail-Safe-Release),
-aber `hybrid_3p` steht **NICHT** in der Allowlist → er macht in Produktion nichts. **Die
-Freigabe = diese Checkliste bestehen, DANN die Familie in die Allowlist eintragen** (der
-einzige, code-freie Schalter, der Live-Schreiben aktiviert). Sign/Scale sind Config
-(`invert_control_sign`, `power_scale`; Deye HV = Dekawatt ×10) und werden hier kalibriert,
-nie angenommen. **Dual-Controller-Warnung:** Solange VoltPilot steuert, muss das eigene
-Smart-Control/„Selbstverbrauch+"-Programm des Wechselrichters AUS sein (evcc-Regel „nur ein
-Controller"); ein möglicher Konflikt wird über die Rückmeldung/den Status sichtbar gemacht.
+`VP_CONTROL_ENABLED` ist standardmäßig an. Die Familien-Allowlist enthält `sunspec`; zusätzlich kann eine gerätebezogene First-Light-Freigabe den dafür vorgesehenen Treiber erlauben. Eine Pilotfreigabe darf nicht ungeprüft auf die ganze Familie übertragen werden. KACO besitzt darüber hinaus eine harte Treibersperre.
 
-Diese Datei ist die Vorlage, die firstmate dem Captain für die Prüfstand-Sitzung an
-seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.
+Die Steuerung wird nach `control_tier` gewählt: 0 nur lesen, 1 SunSpec, 2 Hersteller-EMS, 3 Deye-ToU. Deye-Fernsteuerung und ToU sind gebaut; der tatsächliche Schreibweg hängt von Firmware, Skalierung und Freigabe ab. Konkurrierende externe Regler vor dem Test ausschließen.
 
 ## First-Light-Kalibrierung (`:8484`, der geführte erste Schreibbefehl)
 
@@ -467,24 +442,13 @@ Nach bestandener Curtailment- **und** Storage-Freigabe: siehe „Freigabe" unten
 
 ## Freigabe (Zertifizierung)
 
-Erst wenn **alle sieben Punkte** für ein konkretes Modell/Firmware bestätigt sind:
+Nach bestandener gerätespezifischer Liste die First-Light-Freigabe für genau dieses physische Gerät setzen. `VP_CONTROL_ENABLED` bleibt die äußere Freigabe; Netzladen benötigt zusätzlich die ausdrückliche Erlaubnis der Anlage.
 
-- Die Register-Familie in die Zertifizierungs-Allowlist aufnehmen -
-  `VP_CONTROL_CERTIFIED_FAMILIES` im Core (z. B. `sunspec,hybrid_3p` bzw.
-  `sunspec,fronius_solar_api` für Fronius-Curtailment) und
-  `CERTIFIED_CONTROL_FAMILIES` in `inverter-control-routing.js` (+ dem synchron
-  gehaltenen Flow-Knoten). Beide Gates sind absichtlich redundant (Defense-in-Depth).
-- Steuerung pro Gerät scharfschalten: `VP_CONTROL_ENABLED=true` erst für die
-  freigegebenen Geräte.
-- Netzladen bleibt EEG-gesperrt: das Netzlade-Bit wird nur gesetzt, wenn der Standort
-  Netzladen ausdrücklich erlaubt (`grid_charge_allowed`, aus `site.netzladen_erlaubt`);
-  Standard ist AUS.
+Eine Familienfreigabe ist eine gesonderte Änderung mit entsprechend breitem Nachweis. Core- und Node-RED-Allowlist müssen dabei übereinstimmen. Ein einzelner erfolgreich geprüfter Pilot rechtfertigt keinen pauschalen Flotteneintrag.
 
-Solange ein Modell nicht freigegeben ist, zeigt das Portal „Steuerung für dieses
-Modell noch nicht freigegeben" und die `:8484`-Karte „nur lesen" - die Anlage wird
-ausgelesen, aber nicht gesteuert.
+Ohne wirksame Freigabe wird weiter gelesen, der reguläre Schreibpfad bleibt gesperrt. Der begrenzte Kalibrierungstest besitzt seinen eigenen Ablauf.
 
-## go-e Charger (Wallbox) — ZERTIFIZIERT in Software, nur kurze Geräte-Kontrolle
+## go-e Charger (Wallbox) — Treibernachweis und Geräteprüfung
 
 Anders als Deye/Fronius braucht die **go-e-Wallbox keine Prüfstand-Freigabe pro
 Modell**: die **go-e HTTP-API v2** ist dokumentiert, versioniert und deterministisch
@@ -492,12 +456,10 @@ Modell**: die **go-e HTTP-API v2** ist dokumentiert, versioniert und determinist
 — die Steuerschlüssel und ihre Enums sind veröffentlichte Fakten, und die komplette
 Schreib-→Rücklese-Schleife ist in Software beweisbar (`goe/goe-control.js`
 `goe-control.test.js` gegen einen In-Process-HTTP-Server; der Go-Zwilling
-`edge-app/core/internal/goe` gegen einen `httptest`-Server). Ein falscher Strom lädt
-das Auto nur etwas langsamer/schneller — **kein Batterie-Gesundheits-/Garantierisiko**
-wie ein Deye-ToU- oder Fronius-Speicher-Schreibbefehl. Deshalb ist `goe_http_api`
+`edge-app/core/internal/goe` gegen einen `httptest`-Server). Die Softwareprüfung ersetzt nicht den Nachweis von Phasenumschaltung, Grenzen und Rückfall am konkreten Gerät. Der Treiber ist `goe_http_api`
 **zertifiziert** (`CERTIFIED_CONTROL_FAMILIES` in `goe/goe-control.js` bzw.
 `goe.PlanFor().Certified` im Core) und darf hinter dem Not-Aus `VP_CONTROL_ENABLED`
-live schreiben.
+und `VP_CONSUMER_CONTROL_ENABLED` schreiben.
 
 Die Wallbox ist ein **Verbraucher (Consumer)-Entity**: der E2-Arbiter klammert den
 gewünschten Ladesollwert über das Verbraucher-Band (plus Zyklen-Guard) und der
@@ -555,7 +517,7 @@ Prüfstand):** dieselbe Ehrlichkeit wie bei jedem Hersteller.
    `amp`/`frc`/`psm` an und echot sie, ohne Fehlerzustand? Beginnt das Laden nach
    dem Anstecken mit den zuletzt gesetzten Werten?
 5. **Not-Aus.** `VP_CONTROL_ENABLED=false` bzw. `VP_CONSUMER_CONTROL_ENABLED=false`
-   → **null HTTP** an die Wallbox (die Live-Lesestandorte werden nie angefasst).
+   → keine regulären Steuer-Schreibaufträge. Messungen und explizite Verbindungstests getrennt prüfen.
 
 **Abschluss der Session (D11, definiert):** Das Ergebnis ist der **Katalog-Flip als
 eigener Mini-PR** — `certification_status` des Typs `wallbox` in
@@ -565,7 +527,7 @@ Gerätetyp, kein Anlagen-Schalter; Runbook `docs/verbrauchssteuerung-betrieb.md`
 Bis dieser PR gemerged ist, bleibt der Typ unzertifiziert — der Treiber-Code ändert
 sich dafür nicht.
 
-## Shelly (Relais/Heizstab) — ZERTIFIZIERT in Software, nur kurze Geräte-Kontrolle
+## Shelly (Relais/Heizstab) — Treibernachweis und Geräteprüfung
 
 Der zweite reale Verbraucher-Steuerpfad nach go-e (D10; Pilot: Heizstab über
 Shelly). Wie bei go-e braucht die **Shelly-Relais-Steuerung keine
@@ -575,10 +537,9 @@ dokumentiert und deterministisch (Gen1 REST `/relay/N?turn=`, Gen2+ RPC
 evcc), es gibt keine geratenen Register, und die komplette
 Schreib-→Rücklese-Schleife ist in Software beweisbar
 (`edge-app/core/internal/shelly` gegen `httptest`-Stubs BEIDER Generationen).
-Ein falscher Relais-Befehl schaltet eine ohmsche Last — kein
-Batterie-Gesundheitsrisiko. Deshalb ist `shelly_http` treiberseitig
+Schaltzustand, Last und Abfall-Timer bleiben am Gerät zu prüfen. `shelly_http` ist treiberseitig
 zertifiziert und darf hinter den beiden Not-Aus-Schaltern
-(`VP_CONTROL_ENABLED` UND `VP_CONSUMER_CONTROL_ENABLED`, beide Vorgabe AUS)
+(`VP_CONTROL_ENABLED` Vorgabe EIN, `VP_CONSUMER_CONTROL_ENABLED` Vorgabe AUS)
 live schreiben. Betreiber-Voraussetzungen + Config: [`SHELLY.md`](SHELLY.md).
 
 Der Verbraucher ist ein **Consumer-Entity**: der E2-Arbiter klammert den Wunsch

@@ -1,45 +1,17 @@
-# Deye-Wechselrichter lesen (Solarman-V5) - Referenz + Kalibrierung
+# Deye: Lesen, Steuern und Kalibrieren
 
-> **Selbstverdrahtung statt manueller Vorlage (seit Tranche 3b).**
-> Deye wird jetzt aus der **Wechselrichter-Auswahl** des Kunden getrieben: der
-> Kunde wählt im Edge-App-Portal Marke=Deye + Familie + Datenlogger-Daten, der
-> Core veröffentlicht das retained auf `edge/inverter/config`, und der
-> **immer aktive** Node-RED-Tab **"Wechselrichter (automatisch)"** liest per
-> Solarman-V5 mit der gewählten `family`-Registerkarte - **kein Flow-Edit pro
-> Kunde** (Contract: [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md), Routing:
-> [`inverter-routing.js`](inverter-routing.js)).
-> Die frühere manuelle **"Deye (Vorlage)"**-Karte ist damit **entfallen**.
-> Der Selbstverdrahtungs-Lesepfad nutzt **ausschließlich `solarman_v5`** (die
-> Kommunikationsmethode ist pro Marke fix); die AT-CLI (`at_cli`) ist kein
-> Flow-Pfad mehr (die `deye`-CLI bleibt im Image nur als Diagnose-Werkzeug).
->
-> **Dieses Dokument bleibt die maßgebliche Referenz** für die Registerkarten je
-> Familie, die On-Device-Verifikation mit `solarman-probe.js`, die
-> Vorzeichen-Kalibrierung und das `power_scale`/HV-Thema - VoltPilot nutzt sie
-> beim Anlegen einer Familie und beim Kalibrieren eines Geräts.
-> Die Werte, die der Kunde im Portal einträgt (`ip`/`port`/`serial`/
-> `mb_slave_id`/`family`/`invert_grid_sign`/`power_scale`), sind genau die
-> `connection`-Felder unten.
+Die lokale Einrichtung wählt das konkrete Modell und seine Verbindung; Node-RED verwendet daraus die passende Registerfamilie. Der reguläre Lesepfad nutzt Solarman V5 am Datenlogger. Die AT-CLI bleibt ein Diagnosewerkzeug und ist kein auswählbarer Flow-Transport.
 
-Er liest Deye-Wechselrichter (alle großen Familien) über den WiFi-Datenlogger und speist die Messwerte als `edge/telemetry` in den VoltPilot-Core.
-**Auswahlgetrieben:** der Kunde wählt die **Modell-Familie**, die passende Registerkarte greift automatisch.
+```mermaid
+flowchart LR
+  Model[Modell und Loggerdaten] --> Read[Solarman V5 lesen]
+  Read --> Decode[Familie, Skalierung, Vorzeichen]
+  Decode --> Core[Messwerte und Schutz im Core]
+  Core --> Gate[Gerätefreigabe]
+  Gate --> Remote[Fernsteuerung oder ToU]
+```
 
-Es gibt zwei Kommunikationsmethoden (Feld `communication` in der Konfiguration):
-
-| Methode | Transport | Port | Empfehlung |
-|---|---|---|---|
-| **`solarman_v5`** | Modbus-RTU im **Solarman-V5-Rahmen** über **TCP** | **8899** | **Standard/empfohlen** - eine geordnete TCP-Verbindung, robust; das ist die Methode, die auch Home Assistant / pysolarmanv5 nutzen. |
-| `at_cli` | AT-Kommando-Modbus-Tunnel über **UDP** (`deye`-CLI) | 48899 | Fallback - hinter NAT oft flaky (siehe [Abschnitt 6](#6-die-deye-cli-im-container)), nur wenn der Logger V5 nicht spricht. |
-
-**Die Registerkarten und die Skalierung sind bei beiden Methoden identisch** - nur der Transport unterscheidet sich.
-Quelle der Wahrheit + Offline-Tests: [`deye/deye-decode.js`](deye/deye-decode.js) (Registerkarten/Decode) und [`deye/solarman-v5.js`](deye/solarman-v5.js) (V5-Rahmen/Modbus-Codec).
-
-Die Vorlage ist **deaktiviert ausgeliefert**. VoltPilot passt sie pro Kunde an (der Kunde nie); der Editor läuft LAN-only hinter Auth (siehe `edge-app/README.md`).
-
-> **Scope (ehrlich):** Diese Vorlage liefert **Monitoring für alle Familien** plus die **Wirkleistungsbegrenzung (string/micro, Register 0x0028)**.
-> Die **Batterie-Lade-/Entladesteuerung für Hybride ist bewusst NICHT enthalten** - sie ist sicherheitskritisch und ein separater Folgeschritt (siehe [Ausgeklammert](#ausgeklammert-hybrid-batteriesteuerung)).
-
----
+Messung, Hybrid-Batteriesteuerung und PV-Begrenzung sind implementiert. Welche Schreiboperation zulässig ist, bestimmen konkrete Firmware, Treiber und Freigabe; siehe [Prüfstand](CONTROL-BENCH.md). Die folgenden Registertabellen sind die technische Referenz. Quellen: [`deye-decode.js`](deye/deye-decode.js), [`solarman-v5.js`](deye/solarman-v5.js) und [`inverter-control-routing.js`](inverter-control-routing.js).
 
 ## 0. Solarman V5 (empfohlene Methode, TCP 8899)
 
@@ -65,24 +37,7 @@ Antwort:  A5 <len LE16> 1510 <seq LE16> <Logger-Serial LE32>
 
 ### Konfiguration
 
-```js
-flow.set('deye_wechselrichter', [
-  {
-    id: 'wr1',
-    ip: '192.168.0.28',        // IP des Loggers im LAN
-    communication: 'solarman_v5',
-    port: 8899,                // Solarman-V5-Standardport
-    serial: 2985159064,        // PFLICHT: DATALOGGER-Seriennummer (Zahl!) - NICHT die WR-Seriennummer
-    mb_slave_id: 1,            // Modbus-Unit-ID (Standard 1)
-    family: 'string',          // 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'
-    invert_grid_sign: false,
-    invert_batt_sign: false,
-    limit_stages: []
-  }
-]);
-```
-
-Damit der Flow-Funktionsknoten die TCP-Verbindung öffnen darf, exponiert [`settings.js`](settings.js) das Node-Built-in `net` in den `functionGlobalContext` (bereits eingerichtet - bei einem eigenen Node-RED-Setup nachziehen).
+Modell und Logger-Verbindung in der lokalen Web-App auswählen; `edge/inverter/config` verdrahtet den Leser automatisch. Keine `flow.set`-Liste aus der früheren manuellen Vorlage mehr anlegen. [Auswahlvertrag](../INVERTER-CONFIG.md)
 
 ### Die Logger-Seriennummer finden (wichtig!)
 
@@ -139,7 +94,7 @@ Passen decodierte Werte gar nicht zur Familie, mit `--start/--count` die Rohregi
 
 ---
 
-## 1. Fallback-Transport: die `deye`-CLI (s10l/deye-logger-at-cmd)
+## 1. Diagnosewerkzeug: die `deye`-CLI (s10l/deye-logger-at-cmd)
 
 Ein abhängigkeitsfreies Go-CLI, das den AT-Kommando-Modbus-Tunnel des Deye-WiFi-Loggers spricht.
 Es ist **im Container gebündelt** (`/usr/local/bin/deye`, siehe [Abschnitt 6](#6-die-deye-cli-im-container)).
@@ -185,14 +140,14 @@ Die **fünf** ha-solarman-Deye-Definitionen fallen auf **vier** unterschiedliche
 | **1-phasige Hybride** (low map): `SUN-5/6/8/10/12K-SG03LP1` | `deye_hybrid.yaml` | **`hybrid_1p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
 | **3-phasige Hybride** (high map): LV `SUN-5..12K-SG04LP3` (2 MPPT), HV `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4` (3-4 MPPT) und HV neue Generation `SUN-25/29.9/30K-SG02HP3-EU-AM3` (3 MPPT) | `deye_sg04lp3.yaml` | **`hybrid_3p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
 
-\* `batt` (Batterieleistung) ist **kein** Cloud-Telemetriefeld - nur Kalibrier-/Statushilfe (siehe Ende von [Abschnitt 2](#micro---deyebosswerk-mikrowechselrichter)).
+\* `batt` (Batterieleistung) ist **kein** Cloud-Telemetriefeld - nur Kalibrier-/Statushilfe (siehe Ende von [Abschnitt 2](#micro---deyebosswerk-mikrowechselrichter-sung3)).
 
 **String und Mikro liefern nur die Erzeugung** (AC-Ausgangsleistung des Wechselrichters) - sie haben **kein** Netz-/Last-Register (das ist ein Hybrid-Feature). Die AC-Ausgangsleistung summiert bereits **alle MPPT-Strings** (post-inverter), ist also MPPT-Zahl-unabhängig (1-4 Strings).
 
 Alle Momentanleistungen sind **einzelne 16-Bit-Register (in W)**, sofern nicht als 32-Bit markiert; die Skalierung wird zu **kW (/1000)** gerechnet, PV wird bei geteilten Strings (Hybride) summiert.
 `power_kw`-Konvention: **+ = Netzbezug / − = Einspeisung** (kalibrieren!).
 
-> ⚠️ **Die Adressen sind autoritativ aus ha-solarman**; einzelne **Skalierungen und alle rohen Vorzeichen** sind firmwareabhängig und **am Gerät zu verifizieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)).
+> ⚠️ **Die Adressen sind autoritativ aus ha-solarman**; einzelne **Skalierungen und alle rohen Vorzeichen** sind firmwareabhängig und **am Gerät zu verifizieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-gerät)).
 
 ### `string` - netzgekoppelter String-Wechselrichter, **ohne** Batterie (kein SoC)
 
@@ -361,28 +316,13 @@ Zusätzlich bleibt die **Wirkleistungsbegrenzung** an `0x0028` ([Abschnitt 4](#4
 
 ---
 
-## 3. Familien-Autoerkennung
+## 3. Familie bestimmen
 
-Bei Hybriden lässt sich die Familie automatisch bestimmen: die Sonde vergleicht die SoC-Register **beider** Karten -
-`-xmb 00B80001` (low map) vs. `-xmb 024C0001` (high map). **Genau eine** liefert einen sinnvollen Wert 0..100 → das ist die Familie.
-
-Im Editor: den Inject **"Familie erkennen"** auslösen. Ergebnis erscheint im Debug-Fenster und im Knotenstatus, z. B. `Familie erkannt: hybrid_1p (low=55, high=304)`.
-Ist das Ergebnis unklar (beide/keine sinnvoll), handelt es sich um `string`/`micro` (kein SoC) - diese Familie manuell in der Konfiguration setzen.
-
----
+Das konkrete Katalogmodell bestimmt die Registerfamilie. Bei unbekannter Hardware Rohregister mit `solarman-probe.js` prüfen und die Modellzuordnung klären. Ein scheinbar plausibler Einzelwert allein bestätigt keine Registerkarte. Die alten Inject-Knoten „Familie erkennen“ gehören nicht mehr zur automatischen Einrichtung.
 
 ## 4. Wirkleistungsbegrenzung (string/micro)
 
-Der bewährte Schreibpfad des Operators auf **Register `0x0028`** (aktive Leistungsbegrenzung, 0..100 %).
-Klar benannte Steuerstelle im Knoten *Prozent → 0x0028-Schreibbefehl*:
-
-- Eingang `msg.payload` = gewünschte Begrenzung in **Prozent** (0..100), wird geklammert.
-- `cfg.limit_stages` (optional) rastet auf die vom Gerät akzeptierten **Stufen** (z. B. `[0, 25, 50, 75, 100]`); leer = 1-%-Schritte. Hier bildet VoltPilot seine §14a-/Kurven-Vorgabe auf die Gerätestufen ab.
-- Ergebnis: `deye -t <ip>:48899 -xmbw 00280001 02 <WERTHEX4>`, z. B. 100 % → `00280001020064`.
-
-Zum Test liegt ein Inject **"Begrenzung 100 % (Test)"** bei. Für Hybride verweigert der Knoten den Schreibbefehl bewusst (dort steuert die Batterie, siehe unten).
-
----
+Der aktuelle Solarman-Schreibpfad bildet `pv_limit_kw` auf Register `0x0028` ab. Die Umrechnung benötigt eine bekannte Nennleistung; Freigabe und Grenzen gelten vor jedem Schreiben. Hybridgeräte verwenden andere Steuerregister. Für Registerkarte und Ablehnung nicht unterstützter Fälle gilt `inverter-control-routing.js`.
 
 ## 5. Vorzeichen-Kalibrierung (am Gerät)
 
@@ -405,7 +345,7 @@ Der Container-Build (`edge-app/nodered/Dockerfile`) baut `deye` in einer Go-Buil
 Unter `buildx` läuft die Go-Stufe je Zielplattform, also entsteht das richtige Arch nativ (arm64 für den Pi, amd64).
 Pinnen einer Version: `--build-arg DEYE_REF=<tag-oder-commit>`.
 
-**Offline/ohne Build-Netz:** ein Release-Binary von <https://github.com/s10l/deye-logger-at-cmd/releases> passend zur Geräte-Architektur herunterladen, nach `/usr/local/bin/deye` legen und `chmod 0755` - danach funktionieren die exec-Knoten unverändert.
+**Offline/ohne Build-Netz:** ein Release-Binary von <https://github.com/s10l/deye-logger-at-cmd/releases> passend zur Geräte-Architektur herunterladen, nach `/usr/local/bin/deye` legen und `chmod 0755` - danach steht das Diagnosewerkzeug bereit.
 
 Prüfen: `docker compose exec nodered deye` zeigt die Usage; ein Live-Lesetest: `docker compose exec nodered deye -t <logger-ip>:48899 -xmb 00B80001`.
 
@@ -419,12 +359,12 @@ Deye wird über die **Wechselrichter-Auswahl** im Edge-App-Portal eingerichtet; 
 
 1. Zuerst am Gerät verifizieren: `node deye/solarman-probe.js --ip <logger> --serial <n> --family <f>` ([Abschnitt 0](#0-solarman-v5-empfohlene-methode-tcp-8899)) - bestätigt Transport + Familie + Datenlogger-Seriennummer, bevor du sie einträgst.
 2. Lokale Webansicht öffnen (`http://<geraet>:8484` → **"Wechselrichter einrichten"**) und wählen:
-   - Marke **Deye**, **Familie** (`string` | `hybrid_1p` | `hybrid_3p` | `micro`),
+   - Marke **Deye** und konkretes **Modell**; daraus wird die Familie abgeleitet,
    - Logger-**IP**, **Datenlogger-Seriennummer** (die Zahl aus der Probe - NICHT die Wechselrichter-Seriennummer), ggf. Modbus-Slave-ID,
    - **"Netz-Vorzeichen invertieren"** bleibt zunächst aus und wird bei der Kalibrierung gesetzt; **Leistungsskalierung** bleibt auf **"Automatisch"** (die LV/HV-Skala erkennt der Decoder aus dem Geräteregister `0x0000`).
    Diese Felder sind exakt die `connection`-Parameter aus [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md); der Transport (Solarman-V5, TCP 8899) ist pro Marke fix.
-3. Familie unbekannt? Mit `solarman-probe.js --ip <logger> --serial <n> --start 0x00B8 --count 1` (low map) vs `--start 0x024C --count 1` (high map) prüfen: genau eine liefert einen sinnvollen SoC (0..100) → `hybrid_1p` vs `hybrid_3p`. `string`/`micro` haben keinen SoC und werden manuell gewählt.
-4. **Vorzeichen am Gerät kalibrieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)): stimmt das Netz-Vorzeichen nicht, in der Auswahl "Netz-Vorzeichen invertieren" setzen. Die HV/LV-Leistungsskala wird automatisch erkannt; nur falls sie nicht greift, "Leistungsskalierung" manuell auf ×10 (bzw. ×1) stellen.
+3. Familie unbekannt? Mit `solarman-probe.js --ip <logger> --serial <n> --start 0x00B8 --count 1` (low map) vs `--start 0x024C --count 1` (high map) prüfen: genau eine liefert einen sinnvollen SoC (0..100) → `hybrid_1p` vs `hybrid_3p`. `string`/`micro` haben keinen SoC; Modell und Decoderzuordnung entsprechend prüfen.
+4. **Vorzeichen am Gerät kalibrieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-gerät)): stimmt das Netz-Vorzeichen nicht, in der Auswahl "Netz-Vorzeichen invertieren" setzen. Die HV/LV-Leistungsskala wird automatisch erkannt; nur falls sie nicht greift, "Leistungsskalierung" manuell auf ×10 (bzw. ×1) stellen.
 5. Batterie-Limits im `.env` setzen (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) und `docker compose up -d`.
 
 Die Auswahl treibt den Lesepfad `read → vp-telemetrie`, `Link-Status → vp-status`; alles Cloud-seitige bleibt im Core.
@@ -434,7 +374,7 @@ Der Messwert-Kontrakt (Felder/Einheiten/Vorzeichen, QoS/Kadenz) steht in [`CUSTO
 
 ## Batteriesteuerung: ZWEI Pfade (Fernsteuerung bevorzugt, ToU als Rückfall)
 
-**Sicherheitskritisch. Nichts davon schreibt live, bevor das Modell am Prüfstand freigegeben ist** ([`CONTROL-BENCH.md`](CONTROL-BENCH.md)).
+**Schreiben benötigt die passende Geräte-/Modellfreigabe** ([`CONTROL-BENCH.md`](CONTROL-BENCH.md)).
 
 Lange galt: *Deye-Hybride haben keinen direkten Batterie-Watt-Sollwert.* Das war für die **alten** Protokollstände richtig - und ist seit **Protokoll V105.1 (2023-10-06)** falsch. Deye hat einen „Customized register"-Block **1100–1121** ergänzt, der eine echte externe-EMS-Schnittstelle ist. Deshalb gibt es jetzt zwei Pfade, und der Adapter **erkennt selbst**, welcher gilt:
 
@@ -625,7 +565,7 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 **Schreibweg = Standard-Modbus im V5-Frame.** ha-solarman schreibt mit `WRITE_SINGLE_REGISTER` (FC6) / `WRITE_MULTIPLE_REGISTERS` (FC16) - byte-identisch zu unseren `deye/solarman-v5.js`-Buildern (`writeSingleRegisterRequest`/`writeMultipleRegistersRequest`, unit-getestet). Kein Frame-Fix nötig.
 
-**Die Steuer-Abstraktion + der Solarman-V5-Schreib-Executor sind GEBAUT und OFFLINE bewiesen** (`inverter-control-routing.js` `controlRoute`/`controlRelease` + der Node-RED-Knoten `auto-control-exec-deye` in `build-flows.js`, der über `deye/solarman-v5.js` FC6 schreibt und per FC3 zurückliest; `deye-control.e2e.test.js` fährt Schreiben→Zurücklesen→Abgleich, EEPROM-Write-on-Change und den Fail-Safe-Release gegen einen echten In-Process-Solarman-V5-Server). Der Deye-Adapter ist **un-gated** (dieselbe Zwei-Tor-Logik wie SunSpec: `writes` fließen nur bei `certified && control_enabled`), aber `hybrid_3p`/`hybrid_1p` bleiben **bewusst `bench_pending` und aus der Allowlist** (`CERTIFIED_CONTROL_FAMILIES = {sunspec}`), **egal dass `VP_CONTROL_ENABLED` jetzt standardmäßig EIN ist** - die Allowlist ist die eigentliche Geräte-Klammer, also **kein Live-Schreiben** bis die Prüfstand-Checkliste pro Modell abgehakt ist: **[`CONTROL-BENCH.md`](CONTROL-BENCH.md)**. Erst dann kommt die Familie in die Allowlist. **Dual-Controller:** eine geschriebene, aber nicht gehaltene Register-Rückmeldung wird als möglicher Konflikt („VoltPilot muss der einzige Controller sein") über den Rückleseweg sichtbar gemacht (`edge/control/readback` → `:8484`).
+Der Solarman-V5-Executor schreibt über die konfigurierte FC16-/FC6-Folge und liest per FC3 zurück. `deye-control.e2e.test.js` prüft Reihenfolge, Rücklesen, Write-on-Change und Release am Stub. Reguläre Schreibaufträge benötigen `control_enabled` und entweder die passende Familien- oder Gerätefreigabe (`device_certified`). Die Familien-Allowlist enthält weiterhin nur `sunspec`; einzelne Deye-Geräte können über First-Light freigegeben sein. [Prüfstand](CONTROL-BENCH.md).
 
 ### Korrigierter ENTLADE-Schreibplan (report `vp-deye-tou-dir-q5` §8, `bench_pending`)
 
@@ -647,7 +587,7 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 **Der schwerere „6a"-Hebel (Max-Ladestrom `0x006C` ≈ 2 A klemmen) ist BEWUSST NICHT verdrahtet** (Owner-Entscheidung); der Code ist so strukturiert, dass 6a später als Fallback ergänzt werden kann, falls der Prüfstand zeigt, dass diese Firmware 6b nicht befolgt. **LADEN** behält Strategie A plus Energy Pattern → **Battery First (0)** und stellt `Max Sell Power` aus dem Snapshot auf den Vor-Steuerungswert zurück.
 
-**Snapshot-and-Restore (Deye hat KEINEN Revert-Timer).** Alles, was wir ändern, bleibt im EEPROM, bis wir es zurücksetzen. Der Executor liest daher **vor dem ersten Schreibbefehl** die Installateur-Werte der Register per FC3 aus (`snapshotPlan`) und speichert sie **dauerhaft** (Node-RED `contextStorage` `file`, überlebt Neustart/Re-Seed); `controlRelease` schreibt sie auf JEDER Rückgabe zurück (TTL/Abbruch/Not-Aus/Verbindungsverlust laufen im Plan-Knoten in denselben `controlRelease`; Absturz-Wiederherstellung beim Start ist ein eigener Knoten). ToU-Aktivierung wird ZULETZT zurückgesetzt; ohne Snapshot bleibt der Release wie bisher (nur `tou_enable = 0`).
+**Snapshot-and-Restore im ToU-Pfad (ohne eigenen Revert-Timer).** Alles, was wir ändern, bleibt im EEPROM, bis wir es zurücksetzen. Der Executor liest daher **vor dem ersten Schreibbefehl** die Installateur-Werte der Register per FC3 aus (`snapshotPlan`) und speichert sie **dauerhaft** (Node-RED `contextStorage` `file`, überlebt Neustart/Re-Seed); `controlRelease` schreibt sie auf JEDER Rückgabe zurück (TTL/Abbruch/Not-Aus/Verbindungsverlust laufen im Plan-Knoten in denselben `controlRelease`; Absturz-Wiederherstellung beim Start ist ein eigener Knoten). ToU-Aktivierung wird ZULETZT zurückgesetzt; ohne Snapshot bleibt der Release wie bisher (nur `tou_enable = 0`).
 
 **N1 (Skala) - der behobene 10×-Livefehler.** `progPower` UND `maxSellPower` nutzen `power_scale` ([1,10]; HV=10 Dekawatt). Bisher fiel eine unbestätigte Skala **still auf 1 zurück** - ein HV-SG01HP3 wurde damit **10-fach zu groß** geschrieben: aus 0,3 kW wurden 3000 W, und die mit angehobene Verkaufs-Kappe ließ die Anlage 14,6 kW ins Netz entladen. Auflösung jetzt: (1) explizites `power_scale` 1/10, sonst (2) die **aus dem Gerät erkannte** LV/HV-Klasse aus Register `0x0000` (dieselbe Auto-Erkennung wie der Lesepfad, aus der Fähigkeitsprüfung), sonst (3) **Verweigerung**: der GESAMTE ToU-Plan wird zurückgehalten (`powerScaleSuppressed`), denn ihn ohne die Leistungsregister zu schreiben wäre genauso gefährlich - ToU + Export First + Solar Sell wären dann gegen die *installateurseitige* Verkaufs-Kappe scharf. Der Executor warnt mit der konkreten Abhilfe. **Der Fernsteuerungspfad kennt `power_scale` gar nicht** - er rechnet aus der Nennleistung. **N2 (Slot-Zeit):** der Executor liest alle 6 Programm-Startzeiten und **warnt** (+ `active_slot_conflict`), wenn ein späteres Programm (2-6) „jetzt" aktiv ist und Programm 1 verdrängt - **wir schreiben Programme 2-6 NIE um**. Einmalige Inbetriebnahme (report §8.9): Programme 2-6 so setzen, dass Programm 1 der aktive Slot ist (oder das Raster auf Programm 1 = ganztags kollabieren).
 

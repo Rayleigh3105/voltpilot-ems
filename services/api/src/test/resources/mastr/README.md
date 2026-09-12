@@ -1,9 +1,11 @@
-# Recorded MaStR fixtures
+# MaStR-Testdaten
 
-Public-data records of two real small residential units, used by the offline unit tests (no live registry call ever happens in CI).
+Offline-Fixtures aus öffentlichen Daten zweier Wohnanlagen. CI ruft dafür kein Register ab.
 
-- `json_pv_SEE966831669444.json` / `json_storage_SEE972142227037.json`: recorded VERBATIM from the keyless public JSON backend (`GetErweiterteOeffentlicheEinheitStromerzeugung`, exact-match unit-number filter) on 2026-07-02.
-  Data license: Datenlizenz Deutschland - Namensnennung - 2.0 (Marktstammdatenregister der Bundesnetzagentur).
-- `soap_solar_*.xml` / `soap_storage_*.xml`: hand-crafted to the SOAP webservice response shape (WCF envelope, `Get...Antwort` payload in the `Modelle` namespace, catalog-id fields per `mastrservicetypes_anlage.xsd`), carrying the same units' real values.
-  The request-side envelope + `SOAPAction` shape was live-verified against the real API on 2026-07-02; the response XML here mirrors the WSDL field names because recording a real response requires the captain's API key.
-- `soap_fault_keine_daten.xml`: the WCF fault shape for an unknown unit number.
+| Dateien | Herkunft |
+|---|---|
+| `json_pv_SEE966831669444.json`, `json_storage_SEE972142227037.json` | Unveränderte Antworten des öffentlichen JSON-Backends vom 02.07.2026, exakte Einheitennummern |
+| `soap_solar_*.xml`, `soap_storage_*.xml` | Von Hand erstellte SOAP-Antworten mit denselben Werten und WSDL-Feldnamen; keine aufgezeichneten Live-Antworten |
+| `soap_fault_keine_daten.xml` | Fehlerantwort für unbekannte Einheit |
+
+JSON-Daten: Marktstammdatenregister der Bundesnetzagentur, Datenlizenz Deutschland – Namensnennung – 2.0. SOAP-Requestform und `SOAPAction` wurden am 02.07.2026 geprüft; die Antwort-Fixtures bilden die WCF-/`Modelle`-Struktur nach.

@@ -54,7 +54,7 @@ describe('help search', () => {
     expect(searchHelp(HELP_ARTICLES, 'Fahrplan')[0].id).toBe('fahrplan');
     expect(searchHelp(HELP_ARTICLES, 'Ausschaltbare Phantomfunktion')).toEqual([]);
     expect(searchHelp(HELP_ARTICLES, 'Schattenbetrieb').some((a) => a.id === 'prognosen')).toBe(true);
-    expect(searchHelp(HELP_ARTICLES, 'nicht automatisch die VoltPilot').some((a) => a.id === 'box-verbinden')).toBe(true);
+    expect(searchHelp(HELP_ARTICLES, 'Seriennummer des Wechselrichters').some((a) => a.id === 'box-verbinden')).toBe(true);
   });
   it('supports German alternatives and requires every query word', () => {
     expect(searchHelp(HELP_ARTICLES, 'Erlöse')).toEqual(searchHelp(HELP_ARTICLES, 'Erloese'));

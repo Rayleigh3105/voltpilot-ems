@@ -1,58 +1,37 @@
-# Golden co-optimizer suite — the v1 → v2 cutover acceptance basis
+# Golden-Tests des Co-Optimierers
 
-**What this is.** Eight committed input scenarios (`*.json`) of the pilot-site
-shape, each solved through BOTH solvers on identical data — the v1
-single-battery MILP (`voltpilot_optimization/solver.py`) and the generalized
-multi-entity co-optimizer (`co_solver.py`) via the N=1 adapter
-(`entities.from_v1_input`) — with the results compared **slot by slot**:
-objective value, battery setpoint, grid power, SoC trajectory, curtailment,
-and the per-slot economics (cost / baseline / wear), plus peak target and
-terminal value. The suite lives in `tests/test_golden_cooptimizer.py`.
+Acht eingecheckte Szenarien vergleichen v1-Solver und Co-Optimierer über den N=1-Adapter mit identischen Eingaben. Geprüft werden Zielfunktion, Slots, Batterie, Netz, SoC, Abregelung, Kosten, Verschleiß, Peak-Ziel und Endwert. Tests: [`test_golden_cooptimizer.py`](../test_golden_cooptimizer.py).
 
-**Why it exists (ticket E4-Basis).** The co-optimizer will eventually REPLACE
-the v1 solver for existing sites. This suite is the acceptance evidence for
-that cutover: as long as it is green, the generalized solver provably makes
-the same decisions on representative real-shaped inputs, so the switch
-changes no plan. Rules:
+```mermaid
+flowchart LR
+  Input[Identisches Szenario] --> V1[v1-Solver]
+  Input --> V2[Co-Optimierer mit einer Batterie]
+  V1 --> Compare[Ergebnisse je Slot vergleichen]
+  V2 --> Compare
+```
 
-- **Extend before you change.** A model change (new module, new entity
-  semantics) must land with the golden suite green. If a scenario legitimately
-  must change behavior, that is a CONTRACT change — regenerate deliberately
-  and say so in the PR, never loosen tolerances to make it pass.
-- **Tolerances are policy, not tuning.** Objective 1e-5 EUR, slots 1e-3 kW /
-  kWh (`OBJECTIVE_TOL_EUR` / `SLOT_TOL` in the test module). They only absorb
-  solver-version noise; any real decision flip exceeds them by orders of
-  magnitude. Do not raise them.
-- **Inputs, never DB dumps.** Scenarios come from existing repo fixtures: the
-  captain's Excel reference workbook day (`tests/test_excel_spec_day.py`,
-  scout vp-solver-xlsx-f2 — the pilot plant), the simulation service's
-  synthetic household profile, and deterministic C&I/price shapes. No live
-  telemetry, no tenant data.
+| Szenario | Schwerpunkt |
+|---|---|
+| `excel-reference-day` | Excel-Referenztag, Einspeisegrenze und Festpreis |
+| `eeg-household-pv-summer` | Solar-only, dynamischer Tarif und feste Vergütung |
+| `merchant-arbitrage-winter` | Spotpreise und Reserve |
+| `peak-shaving-ci` | Lastspitzen und Peak-Reserve |
+| `dv-negative-prices` | Negative Preise, Abregelung und Einspeisegrenze |
+| `grid-limit-14a` | Netzgrenze und Fallback-Modell |
+| `custom-soc-band-reserves` | Geändertes SoC-Band, Reserve und Verschleiß |
+| `kitchen-sink-all-modules` | Kombination aller erfassten Module |
 
-**Coverage.** Together the scenarios select every declared solver module at
-least once (pinned by `test_golden_scenarios_cover_every_module`): EEG
-solar-only charge, §14a grid limit (incl. the infeasible-fallback build),
-FK1 feed-in cap, PS-1 peak shaving, the P11/PS-2 reservation stack — plus
-both pricing models (symmetric bare-spot and asymmetric import/export) and a
-kitchen-sink scenario with every module at once.
+## Regeln
 
-| Scenario | Shape | Modules exercised |
-|---|---|---|
-| `excel-reference-day` | the captain's Solver-PV.xlsx day (pilot) | feed-in cap, flat-tariff pricing |
-| `eeg-household-pv-summer` | EEG household, duck-curve day | solar-only, dyn. tariff + feste Vergütung |
-| `merchant-arbitrage-winter` | merchant winter spreads | backup reserve, symmetric spot |
-| `peak-shaving-ci` | RLM C&I, 95 kW noon peak | peak epigraph + ratchet, peak reserve |
-| `dv-negative-prices` | DV plant, negative midday | curtailment, solar-only, feed-in cap |
-| `grid-limit-14a` | §14a 11 kW envelope, binding | grid-limit (both builds) |
-| `custom-soc-band-reserves` | admin-tuned 10–90 % band | SoC band, backup reserve, wear 8 ct |
-| `kitchen-sink-all-modules` | everything at once | all of the above |
+- Toleranzen: Zielfunktion `1e-5 EUR`, Slots `1e-3 kW/kWh`. Nicht zum Verbergen fachlicher Unterschiede erhöhen.
+- Verhalten bewusst ändern: Szenario, erwartete Änderung und Vertragsfolgen gemeinsam prüfen. Ein grüner Lauf belegt die geprüften Szenarien, nicht die Gleichheit aller möglichen Pläne.
+- Eingaben sind deterministische Repo-Fixtures, keine Kundendatenbank-Auszüge. Neue Module in die Abdeckungsprüfung aufnehmen.
 
-**Regenerating.** The fixtures are produced by the deterministic
-`generate_scenarios.py` (no clock, no randomness):
+Aus `services/optimization`:
 
 ```bash
 .venv/bin/python tests/golden/generate_scenarios.py
+.venv/bin/python -m pytest tests/test_golden_cooptimizer.py -q
 ```
 
-`test_fixtures_match_the_generator` pins committed JSON == generator output,
-so drift is impossible and every fixture edit is a conscious regeneration.
+Der Generator verwendet weder Uhrzeit noch Zufall. `test_fixtures_match_the_generator` vergleicht eingecheckte Daten mit seiner Ausgabe.

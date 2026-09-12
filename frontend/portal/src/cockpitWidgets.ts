@@ -1,5 +1,5 @@
 /**
- * Portal v3 · **M2 — das Live-Cockpit** (`docs/portal-v3/M2-cockpit.md`,
+ * Portal v3 · **M2 — das Live-Cockpit** (`docs/portal.md`,
  * Konzept-Tab „3 · Live-Cockpit").
  *
  * Die Anlagen-Startseite führt mit dem **bestehenden Energiefluss-Diagramm**

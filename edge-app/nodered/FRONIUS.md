@@ -1,27 +1,17 @@
-# Fronius-Wechselrichter lesen (Solar API) - Referenz + Einrichtung
+# Fronius: Solar API und SunSpec
 
-Fronius-Wechselrichter (GEN24, Symo, Primo, Symo Hybrid u. a.) werden über die
-**lokale Fronius Solar API** (HTTP/JSON) ausgelesen - **kein Modbus**. Genau so
-integriert Home Assistant Fronius: ein einziger HTTP-GET auf
-`GetPowerFlowRealtimeData.fcgi` liefert PV + Netz + Last + Batterie + Ladestand
-in einem Aufruf, also den kompletten kanonischen Messwertsatz von VoltPilot.
+Fronius kann über die lokale Solar API oder SunSpec Modbus TCP gelesen werden. PV-Abregelung verwendet SunSpec und eine Freigabe je Wechselrichtereinheit. Registertabellen und Hardwarebelege bleiben unten als technische Referenz.
 
-- **Kanonische, offline-getestete Decode-Quelle:**
-  [`fronius/solar-api.js`](fronius/solar-api.js) (`fronius/solar-api.test.js`) -
-  owns nur die Zuordnung + den Endpunktpfad, **keinen Socket-Code**. Der
-  Funktionsknoten im Flow trägt eine **synchrone Kopie** von `decodePowerFlow`
-  (ein Node-RED-Flow ist self-contained JSON und kann keine Repo-Datei requiren);
-  `flows-sync.test.js` pinnt beide zusammen - das gleiche Prinzip wie bei Deye
-  (`deye/solarman-v5.js` + `deye/deye-decode.js`).
-- **Nur lesen (Steuerung unzertifiziert).** Fronius bleibt per Konstruktion
-  nur-lesend, wie Deye: es steht **nicht** in `inverter-control-routing.js`'s
-  `CERTIFIED_CONTROL_FAMILIES`. Der SunSpec-Modbus-Steuerpfad - **Curtailment**
-  (Modell 123 `WMaxLimPct`) UND **Batterie Laden/Entladen** (Modell 124 Storage) -
-  ist als **nur geplant** (`planned`/`bench_pending`, nie ausgeführt) verdrahtet;
-  Details + Sicherheit in Abschnitt 6.
-- **Nur cloud-/vertragsneutral.** Die kanonischen Kanäle
-  (`pv_power_kw`/`power_kw`/`load_kw`/`soc_pct`) existieren bereits - keine
-  Änderung an Contract, Ingest, Rollups, Portal oder Optimierer.
+```mermaid
+flowchart LR
+  Setup[Modell und Verbindung] --> HTTP[Solar API: Messwerte]
+  Setup --> Modbus[SunSpec: Modelle erkennen]
+  Modbus --> Read[Messwerte lesen]
+  Modbus --> Grant[Schreibfähigkeit und Gerätefreigabe]
+  Grant --> Control[PV-Limit oder Speicherauftrag]
+```
+
+Lesen allein erfordert keine Steuerfreigabe. Modelle 123/124, physische Zielkennung und Rückfallverhalten am konkreten Gerät prüfen; ein erfolgreiches Registerecho ist kein Wirkungsnachweis. [Prüfstand](CONTROL-BENCH.md) · [Decoder](fronius/solar-api.js) · [SunSpec](sunspec/sunspec-live.js)
 
 ## 0. Solar API in der Wechselrichter-Weboberfläche aktivieren (WICHTIG!)
 
@@ -87,7 +77,7 @@ kanonischen Kanäle ab:
 | `pv_power_kw` | `P_PV` | W → kW, ≥ 0. `null` (Wechselrichter schläft) → Feld **ausgelassen**, nie fabrizierte 0. |
 | `load_kw` | **`−P_Load`** | Fronius meldet die Last **negativ** beim Verbrauch; VoltPilots `load_kw` ist nicht-negativ, also negieren (und auf ≥ 0 begrenzen). |
 | `soc_pct` | `Inverters["1"].SOC` | Nur bei Hybrid mit Batterie vorhanden. Fehlend/außerhalb `(0,100]` → **ausgelassen**, nie fabrizierte 0 (dieselbe Regel wie Deye `socPlausible`). |
-| Batterieleistung (nicht veröffentlicht) | `P_Akku` | Nur Kalibrierung/Gegenprobe - VoltPilot leitet `battery_kw` aus der Leistungsbilanz ab und veröffentlicht die Fronius-Zahl **nie** direkt. **Bewusst auch nicht als lokales `battery_power_kw`** (das die Deye-/Modbus-Pfade für die Hausverbrauch-Bilanz mit Netz-Zähler mitgeben): das `P_Akku`-Vorzeichen ist AM GERÄT ZU PRÜFEN und noch unbestätigt - ein Fronius-Hybrid als Primärgerät fällt daher bei der Bilanz ehrlich auf die Schätzung zurück, statt mit falschem Vorzeichen zu rechnen. |
+| Batterieleistung (nicht veröffentlicht) | `P_Akku` | Nur Kalibrierung/Gegenprobe - VoltPilot leitet `battery_kw` aus der Leistungsbilanz ab und veröffentlicht die Fronius-Zahl **nie** direkt. **Bewusst auch nicht als lokales `battery_power_kw`** (das die Deye-/Modbus-Pfade für die Hausverbrauch-Bilanz mit Netz-Zähler mitgeben): das `P_Akku`-Vorzeichen ist AM GERÄT ZU PRÜFEN und noch unbestätigt - bei einem nachweislichen Hybrid ohne Batteriemessung bleibt die Hauslast unbekannt; eine ungeprüfte Vorzeichenannahme darf sie nicht ersetzen. |
 | `grid_limit_kw` (§14a) | – | In den geprüften Realtime-Endpunkten **nicht bestätigt** vorhanden; der Contract behandelt das Feld ohnehin als optional (fehlt sauber). |
 
 ### Vorzeichen sind AM GERÄT ZU PRÜFEN
@@ -228,35 +218,9 @@ Anlage" → Erzeuger hinzufügen), gleiche IP, unterschiedliche Unit-ID:
 - Eine falsche Unit-ID meldet sich laut im Log (`docker compose logs nodered`),
   die übrigen Quellen liefern weiter.
 
-## 6. Steuerung (Curtailment + Batterie) - SunSpec Modbus, NUR GEPLANT
+## 6. Steuerung über SunSpec
 
-> **Increment 3 ist da:** die **PV-Abregelung auf fronius_sunspec-ERZEUGER-
-> QUELLEN** kann inzwischen LIVE gehen - hinter einer Freigabe **je
-> Wechselrichter-Einheit** (First-Light-Test auf `:8484`), nie über die
-> Familien-Allowlist. Siehe **§6b**. DIESER Abschnitt (§6) beschreibt die
-> Steuerung des PRIMÄR-Wechselrichters über `froniusControl` (Curtailment
-> Increment 1 + Batterie Increment 2) - die bleibt unverändert nur geplant.
-
-Fronius-Steuerung läuft über die **standardbasierte SunSpec-Modbus-Schnittstelle**
-(nicht die Solar-API und **nicht** den evcc-`config/timeofuse`-HTTP-Hack - vom
-Design-Bericht `vp-fronius-control-scout-c4` verworfen: undokumentiert,
-credential-gebunden, zweimal über Firmware-Versionen gebrochen). Zwei Increments:
-**Increment 1 = Curtailment** (SunSpec **Modell 123 `WMaxLimPct`**, 0-100 % der
-Nennleistung, das direkte Gegenstück zum bereits zertifizierten Simulator-`pv_limit`-Write)
-und **Increment 2 = Batterie Laden/Entladen** (SunSpec **Modell 124 (Storage)**
-`InWRte`/`OutWRte` + `StorCtl_Mod`, mit `MinRsvPct` + EEG-gesperrtem `ChaGriSet` +
-`InOutWRte_RvrtTms`). Beide sind gebaut, aber **unzertifiziert** (siehe SICHERHEIT).
-
-**SICHERHEIT (Captain-Entscheidung 3, nicht verhandelbar): Fronius ist UNZERTIFIZIERT
-und schreibt NICHTS live.** Genau wie jede Deye-Familie: `fronius_solar_api` steht
-**nicht** in `CERTIFIED_CONTROL_FAMILIES` (`inverter-control-routing.js`) noch in
-`VP_CONTROL_CERTIFIED_FAMILIES` (Core). `controlRoute` liefert den beabsichtigten
-Schreibplan nur als **`planned`** (Prüfstand-Artefakt, `bench_pending`), **niemals
-als ausführbaren `writes`-Eintrag**, unabhängig von `VP_CONTROL_ENABLED`. Der
-Adaptername `fronius_sunspec` ist bewusst ungleich `modbus_tcp`, sodass der
-Schreib-/Rücklese-Executor im Flow darauf **nichts tut** (no-op, wie bei Deye).
-Live-Steuerung folgt **erst nach einem echten Prüfstand-Durchgang** (siehe
-[`CONTROL-BENCH.md`](CONTROL-BENCH.md) → Fronius) - separat und später.
+Modell 123 begrenzt PV, Modell 124 steuert einen vorhandenen Speicher. Der primäre Pfad und zusätzliche Erzeugerquellen haben getrennte physische Ziele und Freigaben. Ohne passende Freigabe bleibt ein Schreibplan Vorschau; eine wirksame gerätebezogene Freigabe ist neben der Familien-Allowlist zu berücksichtigen. Quellen-Abregelung und ihre Geräteprüfung stehen in Abschnitt 6b. Die Solar API selbst ist kein Schreibpfad.
 
 - **Echte SunSpec-Modell-Erkennung** ([`sunspec/model-discovery.js`](sunspec/model-discovery.js),
   `sunspec/model-discovery.test.js`): läuft vom bekannten Basis-Register (40001 /
@@ -295,10 +259,9 @@ Live-Steuerung folgt **erst nach einem echten Prüfstand-Durchgang** (siehe
   Fläche (Port 502, nachdem der Installateur „Allow Control" gesetzt hat). Der
   Steuer-Adapter nutzt dieselbe `connection.ip` plus optional `control_port`
   (Standard 502) + `control_unit_id` (Standard 1) - additive Felder, die der
-  Lesepfad ignoriert. Da nur geplant, ist das eine Prüfstand-/Freigabe-Einstellung,
-  kein UX-Schritt in diesem Increment.
+  Lesepfad ignoriert. Die Verbindung muss zur tatsächlich freigegebenen Einheit gehören.
 
-**Aktivieren am Gerät (für den späteren Prüfstand, NICHT für diesen Increment):**
+**Für einen abgestimmten Steuerungstest am Gerät:**
 Weboberfläche → **Kommunikation → Modbus** → (1) **SunSpec Model Type** wählen
 (`float` = 111/112/113 oder `int + SF` = 101/102/103) und (2) **„Allow Control"**
 ankreuzen (das ist ein zweiter, separater Schalter neben „Solar API aktivieren").

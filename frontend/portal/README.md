@@ -1,38 +1,31 @@
-# frontend/portal - Web Portal
+# Portal
 
-**Language:** TypeScript / React 18 + Vite
-**Responsibility:** Responsive web portal (architecture section 4/19). Auth, device claiming, telemetry & schedule views, economic KPIs.
+React-Anwendung für Kunden und Plattformverwaltung. [Bedienmodell und Entwicklungsregeln](../../docs/portal.md); [lokaler Gesamtstack](../../docs/development.md).
 
-## Run / build / test
+## Start und Prüfung
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm run build      # type-check (tsc) + production build to dist/
-npm run preview
+npm run dev
+npm run typecheck
+npm test
+npm run build
 ```
 
-Env (all optional, defaults match the compose stack): `VITE_API_BASE` (default `http://localhost:8090`), `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM`, `VITE_KEYCLOAK_CLIENT_ID`.
+Vite startet auf <http://localhost:5173>. API-/Keycloak-Adressen werden über `VITE_*` konfiguriert; Anmeldung und lokale Demozugänge stehen in der Entwicklungsanleitung.
 
-Deps install from **public npm** (`.npmrc` in this folder); override it if you build behind a corporate mirror.
+## Aufbau
 
-Repeatable cockpit/site-switch measurements and customer-page screenshots:
-[performance audit](e2e/performance/README.md). `npm run test:bundle` checks both
-the entry bundle (230 kB gzip) and shared chart bundle (210 kB gzip).
+| Bereich | Quelle |
+|---|---|
+| Routen und alte Lesezeichen | `src/nav.ts` |
+| Anlagenbereiche und verfügbare Ansichten | `src/anlageNav.ts`, `src/surface.ts` |
+| Gemeinsame UI / Tokens | `designsystem/` |
+| Kundenhilfe mit Screenshots | [src/help](src/help/README.md) |
+| Browserprüfung | `e2e/`, `playwright.config.ts` |
 
-## Design system
+Gezielte Browserfälle: `npm run test:e2e -- help.spec.ts`; weitere Fälle entsprechend auswählen. Browserabhängigkeiten einmalig mit `npx playwright install chromium webkit` installieren.
 
-`designsystem/` holds the shared VoltPilot design system - CSS tokens (`tokens/*.css`), core/form components (`.jsx` + `.d.ts` + `.prompt.md`) and guideline cards. Tokens are imported once in `src/main.tsx`; build new UI on these components, not hand-rolled ones.
+## Messbare Ladezeiten
 
-## Help center
-
-`#/hilfe` provides the German customer/operator handbook with search, system
-diagrams and annotated portal screenshots. Contextual help opens over the
-current page and preserves unfinished inputs. It also works during onboarding
-and when tenant data cannot load. Article editing, screenshot regeneration and
-verification are documented in [`src/help/README.md`](src/help/README.md).
-
-## Status
-
-Implemented: Keycloak OIDC login/logout (`voltpilot-frontend` public client, PKCE) plus public **self-registration** ("Konto erstellen") with seamless post-registration auto-login (`loginWithCredentials()` in `src/auth.ts`), the **guided first-run onboarding wizard** (`src/Onboarding.tsx`: Standort -> Gerät -> Startklar, keyless address search, waits for first data), and the unified shell for both roles - sites/devices (live connectivity status from `lastSeenAt`), telemetry/prices/weather/Fahrplan/Historie views (ECharts + design system), and the admin **Plattform** pages (Mandanten, Benutzer incl. "Passwort zurücksetzen", Geräte-Registry) with the tenant switcher.
-Telemetry is loaded via REST polling (live WS/SSE deferred); KPI views are future work.
+Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (230 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).

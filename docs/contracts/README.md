@@ -1,32 +1,35 @@
-# Contracts
+# Schnittstellenverträge
 
-These are the **binding interface contracts** for Voltpilot-EMS (architecture section 20, item 8).
-They are first-class artifacts: services implement against them, and changes here are breaking changes that must be versioned.
+JSON-Schemas und OpenAPI beschreiben die gemeinsamen Grenzen zwischen Portal, API, Cloud und Box. Änderungen am Vertrag müssen mit Produzenten, Konsumenten und Fixtures kompatibel sein.
 
-| File | Contract | Owner boundary |
-|---|---|---|
-| [`mqtt-telemetry.schema.json`](./mqtt-telemetry.schema.json) | MQTT topic convention + telemetry payload published by the edge. Includes the observed §14a effective power limit (`grid_limit_kw`). | Node-RED edge -> EMQX -> Ingest |
-| [`telemetry-raw.event.schema.json`](./telemetry-raw.event.schema.json) | Redpanda `telemetry.raw` event written by Ingest and consumed by the TimescaleDB-Writer (and future consumers). | Ingest -> Redpanda -> Writer |
-| [`mqtt-schedule.schema.json`](./mqtt-schedule.schema.json) | Battery dispatch plan (24h, 15-min slots) published retained by the optimizer and executed slot-wise by the edge. Includes fail-safe semantics (`x-failsafe`). | Optimization -> EMQX -> Node-RED edge |
-| [`mqtt-provisioning.schema.json`](./mqtt-provisioning.schema.json) | Zero-touch onboarding handshake: device hello on `provision/{ref}/hello`, cloud answers claimed refs with the RETAINED identity config on `provision/{ref}/config`. Additive - the telemetry/schedule contracts are unchanged. | Device -> EMQX -> Ingest resolver (+ portal api at claim time) |
-| [`mqtt-ocpp-events.schema.json`](./mqtt-ocpp-events.schema.json) | Privacy-redigiertes, dauerhaft am Edge gejournaltes OCPP-1.6 Call/CallResult/CallError-/Verbindungsereignis (QoS1, nicht retained). Der Command-Downlink hat einen eigenen Vertrag; diese Ereignisse sind seine Antwort-/Wirkungsbelege. | Edge-App CSMS -> EMQX -> API |
-| [`mqtt-ocpp-command.schema.json`](./mqtt-ocpp-command.schema.json) | Nicht-retained One-shot Cloud→Edge-OCPP-1.6-Command. Die Antwort und der Wirkungsnachweis kommen als korrelierte OCPP-Journalereignisse zurück. | API -> EMQX -> Edge-App CSMS |
-| [`openapi.yaml`](./openapi.yaml) | Portal API REST surface (stub) consumed by the frontend. | API <-> Frontend |
-
-## MQTT topic convention
-
-```
-ems/{tenant_id}/{site_id}/{device_id}/telemetry   # Edge -> Cloud, measurements (QoS1)
-ems/{tenant_id}/{site_id}/{device_id}/status      # Edge -> Cloud, heartbeat/health
-ems/{tenant_id}/{site_id}/{device_id}/schedule    # Cloud -> Edge, schedule (retained)
-ems/{tenant_id}/{site_id}/{device_id}/command     # Cloud -> Edge, ad-hoc command
-ems/{tenant_id}/{site_id}/{device_id}/config      # Cloud -> Edge, configuration (retained)
-ems/{tenant_id}/{site_id}/{device_id}/v2/ocpp-events # Edge -> Cloud, privacy-safe OCPP journal (QoS1)
-
-provision/{ref}/hello                             # Device -> Cloud, zero-touch hello (QoS1, retried)
-provision/{ref}/config                            # Cloud -> Device, claimed identity (retained)
+```mermaid
+flowchart LR
+    Portal["Portal"] <-->|OpenAPI| API["API"]
+    Box["Box"] <-->|"MQTT v1 / v2"| Cloud["Cloud"]
+    Ingest["Ingest"] -->|"Redpanda-Ereignisse"| Writer["Writer"]
 ```
 
-## Versioning
+## Nachschlagen
 
-Every payload/event carries `schema_version`. Bump it on any breaking change and keep consumers tolerant of unknown additive fields where possible.
+| Grenze | Referenz |
+|---|---|
+| HTTP-API | [openapi.yaml](openapi.yaml) |
+| v1-Telemetrie / Ereignis | [MQTT](mqtt-telemetry.schema.json), [telemetry.raw](telemetry-raw.event.schema.json) |
+| v1-Fahrplan | [mqtt-schedule](mqtt-schedule.schema.json) |
+| Provisioning | [Hello-/Config-Vertrag](mqtt-provisioning.schema.json) |
+| v2: Entitäten, Flows, Verbraucher und Messpunkte | [v2-Übersicht](v2/README.md) |
+| OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
+| OTA | [Manifest](ota-release-manifest.schema.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
+| Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
+| Diagnose / Eingriff | [Probe](mqtt-probe.schema.json), [Registerauftrag](mqtt-register-write.schema.json), [Datenbereinigung](mqtt-data-purge.schema.json) |
+| Beispiele | [v1-Fixtures](examples/README.md), [v2-Fixtures](v2/examples/README.md) |
+
+Die Dateien in diesem Verzeichnis sind die vollständige Schemaablage; die Tabelle gruppiert die wichtigsten Grenzen.
+
+## Versionsregeln
+
+Versionen gehören zum jeweiligen Vertrag. Ein neuer v2-Plattformvertrag kann mit `schema_version: "1.0"` beginnen. Bestehende v1-Geräte müssen weiterhin bedient werden; v2-Themen leben getrennt unter `ems/{tenant}/{site}/{device}/v2/…`.
+
+Breaking Changes ausdrücklich versionieren. Neue optionale Felder dürfen alte Konsumenten nicht beschädigen. Bekannte semantische Abweichungen nicht durch unbemerkte Schemaänderungen „bereinigen“: siehe [Netzladen-Default](v2/mqtt-schedule-2.0.md#netzladen).
+
+Schema-Prüfung ergänzt, ersetzt aber keine semantischen Tests zu Identität, Grenzen, TTL, RLS oder tatsächlicher Gerätewirkung.

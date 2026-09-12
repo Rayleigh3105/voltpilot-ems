@@ -1,215 +1,66 @@
-# services/optimization - Optimization Engine
+# Optimierung
 
-**Language:** Python 3.10+ (Pyomo + HiGHS)
-**State:** stateless (job)
-**Responsibility (architecture section 8/11):** MILP/MPC-Fahrplan (HiGHS).
-
-The heart of the system: a deterministic battery-dispatch MILP in MPC style (rolling 24h horizon, 15-min slots) that **maximizes what the site earns at the electricity market** - import priced at the site's real supply tariff, export at its real remuneration (spot + Marktprämie for Direktvermarktung, feste EEG-Einspeisevergütung for eigenverbrauch plants) - subject to SoC limits, charge/discharge power, round-trip efficiency, priced battery wear and the **observed §14a limit as a hard cap**.
-**Predict-then-optimize:** forecasting is a separate layer (`services/forecast`) - the optimizer consumes plain price/forecast series, so learned forecast models slot in later without touching it. No ML in here, ever.
-
-## How the optimizer thinks (all influences at a glance)
-
-Everything that drives a dispatch plan, and everything a plan drives.
-Every box below is verified against the current code; the file names in parentheses are where each piece lives.
+Der Python-Dienst berechnet wiederkehrend kosten-/erlösorientierte Fahrpläne aus Preisen, Prognosen und Anlagenzustand. Pyomo/HiGHS löst Speicher- und gegebenenfalls Verbraucherplanung; der Go-Core prüft die tatsächliche Ausführung lokal.
 
 ```mermaid
-flowchart LR
-    subgraph IN["Inputs - gathered per site each cycle (inputs.py)"]
-        PRICES["Day-ahead prices<br/>day_ahead_prices per site.bidding_zone<br/>PT15M preferred, PT60M expanded to quarter hours<br/>horizon = contiguous priced prefix, under 4 h → site skipped"]
-        LOAD["Load forecast<br/>forecast hypertable, ACTIVE model only<br/>VOLTPILOT_ACTIVE_LOAD_MODEL, default load-persistence"]
-        PV["PV forecast<br/>forecast hypertable, ACTIVE model only<br/>VOLTPILOT_ACTIVE_PV_MODEL, default pv-physical"]
-        FB["Persistence fallback (fallback.py)<br/>last 3 days of telemetry when no stored run<br/>covers the horizon; no telemetry at all → zeros"]
-        BAT["Battery params (asset row)<br/>capacity_kwh, max_charge_kw, max_discharge_kw,<br/>roundtrip_efficiency_pct (default 92 %),<br/>usable SoC band 5-95 % (platform default),<br/>backup reserve site.backup_reserve_soc_pct<br/>(NULL → the 5 % floor; set → hard raised floor, P11),<br/>wear_cost_ct_per_kwh (NULL → platform default 4 ct)"]
-        SOC["Start SoC<br/>latest telemetry soc_pct (default 50 %),<br/>clamped into the usable band;<br/>stale (&gt; OPTIMIZER_SOC_MAX_AGE_MINUTES, default 120) → default"]
-        LIMIT["Observed §14a envelope<br/>latest telemetry grid_limit_kw<br/>absent → unconstrained;<br/>stale (&gt; OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES, default 60)<br/>→ no active limit"]
-        NETZ["Grid-charging switch<br/>site.netzladen_erlaubt (DB default: verboten)<br/>false → EEG mode: charge from PV surplus only"]
-        TARIF["Pricing master data (pricing.py, P1)<br/>site.plant_kind, tarif_art + tarif_param_ct_kwh,<br/>anzulegender_wert_ct_kwh + monthly_market_value,<br/>PV asset commissioned_on + pv_capacity_kwp (MaStR)<br/>→ per-slot import_price_t / export_value_t;<br/>anything missing degrades that side to bare spot"]
-        FB -. "only when the active model<br/>has no covering run" .-> LOAD
-        FB -.-> PV
-    end
-
-    subgraph MILP["MILP core (solver.py, Pyomo + HiGHS)"]
-        OBJ["Objective: maximize market revenue (P1) − battery wear<br/>minimize Σ (import_price_t × import_t − export_value_t × export_t) × dt<br/>+ c_wear/2 × (charge_t + discharge_t) × dt<br/>− V_end × (SoC_end − SoC_start) (terminal energy value, P3)<br/>import_t − export_t = load − pv + curtail + charge − discharge<br/>import_price_t = tariff (spot+Aufschlag / flat retail / spot),<br/>export_value_t = spot+Marktprämie (DV) / feste Vergütung / spot;<br/>c_wear = asset wear cost per kWh cycled (default 4 ct);<br/>V_end = η × (low-quantile best-use price − wear), see below"]
-        CON["Constraints<br/>• SoC dynamics with sqrt-split round-trip efficiency<br/>• SoC bounds: floor 5 % raised by the backup reserve (P11, hard),<br/>ceiling 95 %<br/>• charge/discharge power caps<br/>• binaries: never charge AND discharge in one slot<br/>• binaries: never import AND export in one slot<br/>• curtailment 0 ≤ curtail_t ≤ pv_t (only ever a reduction)<br/>• import_t ≤ grid_limit_kw, export_t ≤ grid_limit_kw (hard)<br/>• two ε tie-breaks: prefer NOT curtailing,<br/>prefer an IDLE battery when cycling moves no money<br/>• EEG mode only: charge_t ≤ max(pv_t − load_t, 0)<br/>and never import while charging"]
-        OBJ --- CON
-    end
-
-    subgraph OUT["Outputs (engine.py, per plan)"]
-        DB["schedule hypertable (persistence.py)<br/>battery/grid power, SoC trajectory, forecast inputs,<br/>price, cost vs. no-battery baseline, curtail_kw,<br/>wear_cost_eur (priced degradation per slot)<br/>idempotent upsert on (site_id, generated_at, time)"]
-        MQTT["Retained QoS1 MQTT (publisher.py)<br/>ems/{tenant}/{site}/{device}/schedule<br/>battery_setpoint_kw per slot;<br/>pv_limit_kw = pv − curtail, only when curtailing<br/>(skipped entirely when no device is claimed)"]
-        PORTAL["Portal Fahrplan<br/>GET /api/v1/sites/{id}/schedule"]
-        SAVINGS["Savings headline<br/>baseline cost (battery idle) − planned cost"]
-    end
-
-    PRICES --> OBJ
-    TARIF --> OBJ
-    LOAD --> OBJ
-    PV --> OBJ
-    BAT --> CON
-    SOC --> CON
-    LIMIT --> CON
-    NETZ --> CON
-    MILP --> DB
-    MILP --> MQTT
-    DB --> PORTAL
-    DB --> SAVINGS
+flowchart TD
+    Preis["Preise und Tarif"] --> Plan["Optimierung"]
+    Prognose["Aktive Last-/PV-Prognose"] --> Plan
+    Grenzen["SoC, Leistung, Reserven, Netzgrenzen"] --> Plan
+    Bedarf["Freigegebene Verbraucheranforderungen"] --> Plan
+    Plan --> DB["Plan und Begründung speichern"]
+    Plan --> MQTT["Retained MQTT-Fahrplan"]
+    MQTT --> Edge["Box: Schutzregeln und Ausführung"]
+    DB --> Portal["Portal: Fahrplan und Vergleich"]
 ```
 
-**The P1 market-revenue objective (Stage 2 of the optimizer redesign)** replaced the old symmetric bare-spot model (critique finding F1: economically wrong for nearly every real DACH prosumer - the plan optimized a tariff almost no customer has). The optimizer now reads the same pricing master data `EarningsRepository` reports with (`site.plant_kind`, `tarif_art`/`tarif_param_ct_kwh`, `anzulegender_wert_ct_kwh` + `monthly_market_value`, the PV asset's MaStR `commissioned_on`/`pv_capacity_kwp`) and prices each slot asymmetrically (`voltpilot_optimization/pricing.py`):
+## Verhalten
 
-- **Import** at the supply tariff: `dynamisch` = spot + Aufschlag, `fest` = the flat retail price, `ohne` = bare spot (a spot-settled load has no retail premium to protect - target report §2.3).
-- **Export** at the remuneration: Direktvermarktung = spot + dynamic Marktprämie (`max(anzulegender_wert − Monatsmarktwert, 0)`, suspended in negative-price slots - byte-for-byte the EarningsRepository rule); eigenverbrauch = the feste EEG-Einspeisevergütung from the commissioning date + kWp (config-driven schedule in `config.py`, incl. the EEG-2023 degression steps, tranche-blended rates, 20-year expiry and the §51a Solarspitzengesetz negative-price suspension for plants commissioned ≥ 2025-02-25); anything else = spot.
-- **EEG remuneration enters the objective only in EEG mode** (`netzladen_erlaubt = false`): the constraint pair makes the battery content provably solar there. A merchant (grid-charging) site exports at bare spot - crediting the Marktprämie on grid-charged energy would be an objective money pump AND illegal (Ausschließlichkeitsprinzip); the inconsistent config is flagged in the logs.
-- **Every missing datum degrades that side to bare spot** (logged, never a skipped site, never an invented price) - so an unconfigured site behaves exactly like the pre-P1 optimizer, and the worst rollout case is "no regression".
+- Rollierender Horizont mit Viertelstunden-Slots; Preisabdeckung kann ihn verkürzen. Unzureichende Eingaben dürfen keinen erfundenen erfolgreichen Plan ergeben.
+- Bezug und Einspeisung werden getrennt anhand der vorhandenen Tarif-/Vergütungsdaten bewertet. Verschleiß und Terminalwert fließen in die Optimierung ein.
+- Lade-/Entladeleistung, SoC-Band, Reserve und Netzgrenzen begrenzen den Plan. Widersprüchliche gleichzeitige Lade-/Entladeentscheidungen werden verhindert.
+- Sonnenstrom-Laden folgt dem aktuellen PV-Bus-Modell: Laden kann bis zur verfügbaren PV-Leistung reichen, während die Last parallel aus dem Netz versorgt wird. Nicht auf die alte reine Überschussformel zurücksetzen.
+- Last-/PV-Prognose ist getrennt vom Solver. Die gewählte Modellreihe, Ersatzpfade und der PV-Nowcast werden in `inputs.py` zusammengeführt.
+- v1 und v2 verwenden getrennte Publishpfade. v2 plant mehrere Entitäten; Verbraucherplanung benötigt ihre Freigaben. Schattenplanung ist keine physische Ausführung.
+- Historische Erlöse werden aus Messwerten ermittelt; der Vergleich im Fahrplan ist ein Planungsergebnis.
 
-This is what makes the dispatch genuinely market-revenue-maximizing: energy routes to whichever flow (self-consume, store, export) earns most per slot - including the reference scenario "midday: PV into the battery while the load imports cheap grid power; evening: discharge into the expensive hours" (target report §2.2, pinned by `tests/test_objective.py`). There is no hard-coded self-consumption preference anywhere; where self-consumption wins (retail-billed load), it wins on price.
+## Code finden
 
-An infeasible §14a cap (the envelope is tighter than the site's residual load even with full battery support) does not kill the cycle: the engine retries without the grid constraint (`optimize_ignoring_grid_limit` in `solver.py`) - the physical limit is enforced by the grid operator and the edge guards regardless, and an advisory plan beats none.
+| Aufgabe | Quelle |
+|---|---|
+| Eingaben und Frische | `voltpilot_optimization/inputs.py`, `fallback.py` |
+| Tarif und Bewertung | `pricing.py`, `config.py` |
+| Solver | `solver.py`, `co_solver.py` |
+| Planzeitkorrektur | `nowcast.py` |
+| Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
+| Laufzeit / CLI | `cli.py`, `runtime.py` |
 
-**The P3 terminal energy value (Stage 3)** replaced the old hard terminal floor `SoC_end ≥ SoC_start`, which froze an EEG battery on every low-PV day (critique F3: no PV surplus → nothing may charge → nothing was ALLOWED to discharge - a full battery idled through a 250 EUR/MWh evening, and through whole German winters) and forced merchant plans into uneconomic end-of-horizon buy-backs. The objective now credits `V_end × (SoC_end − SoC_start)`: stored energy left at the horizon end is worth money, so the plan discharges whenever a slot genuinely beats that value and holds otherwise. `V_end` = `η × (P_q − wear)` per stored kWh, floored at 0, where `P_q` is a conservative low quantile (default the 30th percentile, `OPTIMIZER_TERMINAL_VALUE_QUANTILE`) of the horizon's per-slot replacement/refill price: `min(import, export)` when grid charging is permitted; in EEG mode the forgone export value in PV-surplus slots and the avoided import price in deficit slots. It is finally kept strictly below the best in-horizon use value so at least the best opportunity remains dispatchable. Because the same η/wear terms price the in-horizon discharge, "discharge at exactly `P_q`" is an exact tie broken toward holding - a flat curve still plans an idle battery with zero savings. The forecast free-PV refill share remains an explainability fact, but no longer discounts `V_end`: that old circular rule assumed the refill had happened and then caused the optimizer to curtail it with an empty battery (Pilsting, 28.08.2026). Only actual charging in the SoC trajectory realizes free refill. `OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH` pins a fixed platform value instead. Note the plan may now realize energy stored BEFORE the horizon (that IS the F3 fix); the realized-earnings engine remains the honest money number.
+Dateinamen in der Tabelle beziehen sich auf `voltpilot_optimization/`. Verbindliche Defaults stehen im Code und in der Deployment-Konfiguration.
 
-**The P11 backup-reserve floor** (`site.backup_reserve_soc_pct`, nullable, api migration `V20260710010000`): a customer-configured minimum SoC the plan NEVER discharges below - a hard constraint (`BatteryParams.soc_floor_kwh`), never a soft preference, distinct from the soft V_end (the Deye-Copilot scout documented that product silently draining below its configured min-SoC). NULL = the 5% technical floor unchanged; a battery currently below its reserve relaxes the floor to the actual start (feasibility - it may not discharge further, and the rolling MPC re-plan ratchets the floor back up as it recovers); a reserve above the 95% ceiling pins the battery at the ceiling instead of going infeasible. The portal/admin UI for editing the column is follow-up work.
-
-**The night value function (P3 of the Nachtreserve analysis, 08.09.2026)** prices the charge left at SUNRISE against the site's OWN night-error distribution - the answer to a plan that budgeted the night from a point forecast and stood at the floor at 02:45 instead of 08:00 (Pilsting/Herzogau, 04./05.09.2026). It is deliberately NOT a reserve: nothing is forbidden, no floor moves. `voltpilot_optimization/night_reserve.py` reads the relative error of the last complete nights (measured over what the previous evening's 17:45 run predicted, from the ACTIVE load model) and turns its quantiles into a piecewise-linear extra cost over `soc[i1]`, the first PV-surplus slot after the night: `vf_s[k] >= L_k - (soc[i1] - soc_floor)`, priced `c_k = (p_imp - v_left) * (q_k - q_{k-1})`. The marginal rule that falls out is exactly the newsvendor one - a kWh is sold iff `p_sale - wear > v_left + (p_imp - v_left) * P(eps > slack)` - inside the MILP, over ONE node, so the running slot's setpoint is untouched. Without an error distribution, without a price spread (`p_imp <= v_left`), without a sunrise in the horizon, on a customer-rule-held battery, or with `OPTIMIZER_NIGHT_RESERVE_ENABLED=false` no term is built and the plan is byte-identical. What it held (kWh above the floor) and how often that much is needed travel as `schedule.why_night_reserve_kwh`/`_q`.
-
-### What happens when (plain language)
-
-| Situation | What the plan does | Why |
-|---|---|---|
-| Cheap hours ahead of expensive ones | Charge (up to `max_charge_kw`, up to the 95 % SoC bound) | Buying low and discharging high beats importing at the high price - as long as the spread survives the round-trip loss. Cheap/expensive are measured at the site's REAL prices: a flat retail tariff has no spread at all, so spot arbitrage alone never grid-charges it (F7). |
-| Expensive hours | Discharge into load or export (up to `max_discharge_kw`, down to the SoC floor) | Every discharged kWh goes to whichever flow earns more THAT slot: avoided import at the tariff, or export at the remuneration - a per-slot comparison, not a self-consumption rule. |
-| Full battery, cloudy 24 h ahead, expensive evening (EEG site) | Discharges the stored energy into the peak | The F3 fix (P3): the old `SoC_end ≥ SoC_start` floor froze exactly this battery all winter. Stored energy now carries a terminal VALUE; a peak above it discharges, a trough below it holds. |
-| Prices decline into a cheap end-of-horizon tail | Stored energy is HELD, not dumped | The terminal value (anchored on the horizon's typical prices) beats realizing a trivial gain at the tail - no dump-to-earn. |
-| Customer configured a backup reserve (`site.backup_reserve_soc_pct`) | No slot ever schedules SoC below it | A HARD floor (P11), regardless of prices or terminal value. A battery currently below its reserve never discharges further and recovers via normal economics. |
-| Cheap midday spot + abundant PV before an expensive evening | May charge BEYOND the PV surplus: PV feeds the battery while the load imports cheap grid power (merchant sites) | The captain's reference scenario (target §2.2): under asymmetric pricing the two routings are no longer indistinguishable, and the decoupled one wins whenever the evening value clears the cheap import + losses + wear. |
-| Price spread below the round-trip losses | Battery stays idle | The efficiency terms eat the margin; the ε tie-break settles the exact tie toward idle. |
-| Price spread beats the losses but not the **wear cost** | Battery stays idle | Degradation is PRICED (P2): every kWh cycled costs `wear_cost_ct_per_kwh` (per-asset `asset.wear_cost_ct_per_kwh`, NULL → `OPTIMIZER_WEAR_COST_CT_PER_KWH`, default 4 ct ≈ 250 €/kWh replacement / 6,000 cycles). A cycle needs `eta² × p_discharge − p_charge` > ~38 EUR/MWh at the default - no more ~3 cycles/day chasing sub-cent spreads. The spent wear lands per slot in `schedule.wear_cost_eur`. |
-| Stale telemetry (`grid_limit_kw` older than 60 min / `soc_pct` older than 120 min, both env-tunable) | Limit treated as ABSENT / SoC falls back to the 50 % default, discard logged | A §14a dimming event is temporary and re-asserts itself in live telemetry - one old reading must never become a standing cap on every future plan (it once forced 67 % PV curtailment at positive prices); a battery that stopped reporting must not plan from yesterday's SoC. |
-| Negative prices, surplus PV, battery full (or not worth storing) | Curtail PV feed-in EXACTLY when the export VALUE is negative; the published slot carries `pv_limit_kw` as an inverter cap | No hard-coded price condition: a DV plant curtails at negative spot (premium suspended, export value = spot < 0); a pre-Solarspitzengesetz feste-Vergütung plant NEVER curtails (its export value stays ~8 ct regardless of spot - F6 fixed); a post-2025-02-25 plant earns 0 there and the tie-break keeps it feeding in. |
-| Negative prices, battery has headroom | May charge - with `netzladen_erlaubt` even from the grid, even paying round-trip losses | You are PAID to consume when the site's import price is genuinely negative (spot-settled). A retail-billed site's import price stays positive at negative spot (spot + Aufschlag / flat), so it no longer sees phantom "paid import". EEG sites still charge only their own PV surplus. |
-| §14a `grid_limit_kw` observed in telemetry (fresh) | Every slot's net import AND export clamped to the envelope | Hard constraint in the model; the edge guards re-clamp on execution anyway. NOTE: mirroring the observed IMPORT envelope onto EXPORT is a known modeling question (§14a is import-side dimming; critique F4 part 2 / D5) - deliberately unchanged pending the captain's decision. |
-| §14a cap infeasible | Replan without the grid constraint, plan still ships | Advisory plan beats none; the physical limit is enforced by the grid operator + edge guards regardless. |
-| Flat price curve | Battery idle, zero savings | Discharging at exactly the terminal-value anchor is an exact tie with holding; the ε tie-breaks settle it toward idle. |
-| EEG site (`netzladen_erlaubt = false`, the default) | Battery charges ONLY from the site's own PV surplus - a cheap or even negative-price night with no sun leaves it idle | Ausschließlichkeitsprinzip: grid power in an EEG plant's storage risks the EEG remuneration. See the switch section below. |
-| Fewer than 4 h of priced slots (16 slots) | Site skipped this cycle | Prices are the binding input; the site is retried next cycle once the market-data collector caught up. |
-| Active forecast model has no run covering the horizon | Persistence fallback over the last 3 days of telemetry | Never fails: with no telemetry at all it degrades to zeros, i.e. a pure price-arbitrage plan. |
-| Battery asset not claimed to a device | Plan persisted, nothing published | There is no schedule topic without a device; the portal still shows the Fahrplan. |
-
-### Per-site grid-charging switch (`site.netzladen_erlaubt`)
-
-The former "grid charging is unconstrained" known gap is CLOSED (captain decisions 2026-07-07): every site carries the boolean `netzladen_erlaubt`, **default FALSE** - no existing plant is accidentally non-compliant, and only a Portal-Admin may flip it (enforced server-side in `services/api`).
-
-- **Merchant mode (`true`):** the exact model described above - grid arbitrage allowed. Deliberately regression-identical to the pre-switch optimizer (the untouched solver tests pin it; `test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds` pins the model structure).
-- **EEG mode (`false`):** the Ausschließlichkeitsprinzip as two extra constraints, present in the primary AND the infeasible-§14a fallback build:
-  1. `charge_t ≤ max(pv_t − load_t, 0)` - charge only from the forecast PV surplus.
-  2. `import_t ≤ M_t × (1 − is_charging_t)` - never an importing slot while charging. This closes the curtailment loophole: without it the model could curtail the PV fully at negative prices and cover the "solar" charge with paid grid import (Graustrom). Curtailment itself stays available - it limits feed-in, not charge availability. It is also why EEG remuneration may be credited on ALL export in EEG mode (the stored energy is provably solar - see the P1 section above).
-
-Everything else (prices, forecasts, §14a, efficiency, curtailment, tie-breaks, persistence, publishing) is shared between the modes - one optimizer, one conditional constraint pair, never two code paths.
-The portal derives the visible proof from the persisted plan: a slot that charges while net-importing is a grid-charge slot (own color in the Fahrplan chart); on an EEG site that color can never appear.
-Since Stage 4 (P5) the constraint is no longer forecast-only: the published payload carries the OPTIONAL `grid_charge_allowed` field (= `netzladen_erlaubt`; contract-additive, `schema_version` stays 1.0) and the customer edge clamps commanded charge to the MEASURED PV surplus (`edge-app/core` `guards.Limits.SolarOnlyCharge`) - so a PV forecast overshoot can no longer turn a planned "solar" charge into real grid import at execution time (critique F5).
-
-### The near horizon: the slot in progress is MEASURED, not forecast
-
-The horizon's first slot is already running, so the plant can be asked what it
-is doing rather than what a model expected. Three corrections sit between the
-stored forecast and the solver, in this order, each with its own kill switch and
-each fail-soft (a bad value or an unreachable read logs and returns the series
-unchanged - a missing correction is a worse plan, a raised exception is no plan):
-
-| Step | Reads | Applies to | Since |
-|---|---|---|---|
-| Load nowcast (`load_nowcast.py`) | fresh `load_kw` samples, EWMA of actual-minus-plan | slot 0 IS the measurement, fading over 8 slots | P1/P2 |
-| PV ratio anchor (`nowcast.py`) | COMPLETED slots: what the active model predicted vs what was measured | a bounded ratio, fading over 8 slots | Morgenprognose 24.08.2026 |
-| **PV nowcast (`pv_nowcast.py`)** | the newest `pv_power_kw` reading, if fresher than 30 s | **slot 0 IS the measurement**, fading over 2 slots | dusk case 28.08.2026 |
-
-The PV nowcast is the mirror of the load one and closes the gap the ratio anchor
-cannot: the anchor reads completed slots by design, so it cannot see the cloud
-that arrived a minute ago. At Pilsting on 28.08.2026 the running slot was planned
-from a forecast claiming a 3 kW surplus while the plant made 1.3 kW against a
-2.7 kW house - 1.4 kW bought at 25 ct with the battery at 92 %.
-
-Its shape is deliberately identical to the load one (an additive residual fading
-linearly to zero), because at slot 0 that residual is exactly
-`measured − forecast`: substitution and correction are one rule, not two. The
-fade is short on purpose - PV persistence is worth something for the next few
-minutes and nothing for the next few hours. The **night floor keeps the last
-word**: a measurement cannot outrank physics, so a reading after sunset still
-reaches the plan as 0.
-
-**The measurement is a WINDOW MEAN, and on a curtailed slot it may only
-lift** (Herzogau 29.08.2026). A single instantaneous reading of a quantity that
-swings 8 → 44 → 22 kW inside a minute is a coin toss: on that day it landed in
-a six-minute cloud and the plan commanded a **discharge** while 23 kW went to
-the grid. The same 24 readings averaged say *charge*. And where the plant is
-being **curtailed**, the reading is the output of our own cap - a floor of the
-potential, never the potential - so it may raise the forecast but never lower
-it, which is what closed the feedback loop *cap → measure less → plan less →
-cap falls away → export*.
-
-| Env | Default | Meaning |
-|---|---|---|
-| `OPTIMIZER_PV_NOWCAST_ENABLED` | `true` | kill switch |
-| `OPTIMIZER_PV_NOWCAST_DECAY_SLOTS` | `2` | slots over which the measurement fades back to the forecast |
-| `OPTIMIZER_PV_NOWCAST_MAX_AGE_SECONDS` | `30` | how stale the NEWEST sample may be and still speak for the running slot |
-| `OPTIMIZER_PV_NOWCAST_LOOKBACK_SECONDS` | `120` | the window the running slot is averaged over - longer is more cloud-robust, shorter reacts faster at dusk |
-
-The upstream half of the same incident - why the forecast claimed 5.9 kW from a
-100 kWp plant at 1.9° of sun - is fixed in `services/forecast` (hour alignment,
-solar-shaped quarters, clear-sky ceiling; see its README).
-
-## What one cycle does (per site with a battery asset)
-
-1. **Gather** (`inputs.py`): battery params from `asset` (+ `site.bidding_zone`; the per-asset `wear_cost_ct_per_kwh` override, NULL → platform default), the pricing master data (`site.plant_kind`/`tarif_art`/`tarif_param_ct_kwh`/`anzulegender_wert_ct_kwh`, the PV asset's `commissioned_on`/`pv_capacity_kwp`, plus `monthly_market_value` rows for DV sites), day-ahead prices from `day_ahead_prices` (written by `services/market-data`), load/PV forecasts from the `forecast` hypertable - reading ONLY the ACTIVE model's rows (`VOLTPILOT_ACTIVE_LOAD_MODEL`/`VOLTPILOT_ACTIVE_PV_MODEL`, defaults = the baselines; shadow challengers never reach a plan - see `docs/forecasting.md`) and falling back to the persistence baseline over recent telemetry when no stored run covers the horizon (REUSING `voltpilot_forecast`, see `fallback.py`), current SoC + observed `grid_limit_kw` from latest telemetry - each behind a FRESHNESS window (stale = ignored + logged, see the behavior table), the site's `netzladen_erlaubt` grid-charging switch and its `backup_reserve_soc_pct` reserve floor (P11). The spot series is turned into per-slot import/export price series by `pricing.py` (see the P1 section above).
-2. **Solve** (`solver.py`): market-revenue maximization - minimize `Σ (import_price_t × import_t − export_value_t × export_t)` PLUS the priced battery wear on every kWh of throughput (see the behavior table). Binaries exclude the simultaneous-charge-discharge artifact (an LP would burn energy through the round trip at NEGATIVE prices, which DE-LU regularly has) AND simultaneous import+export (load-bearing whenever the export value exceeds the import price, e.g. a spot-settled DV site's premium - an LP would otherwise farm the difference without any physical flow). The terminal energy value `V_end × (SoC_end − SoC_start)` (P3, see its section above) credits stored energy at the horizon end, so the plan neither dumps the battery for a trivial end-of-horizon gain nor freezes it when discharging is clearly more valuable; the customer's backup reserve raises the SoC floor as a hard bound (P11). **PV curtailment is a decision variable** (`0 <= curtail_t <= pv_t` - only ever a reduction of feed-in): with a full battery the plan discards surplus instead of paying to export; no price condition is hard-coded - the economics curtail exactly when feeding in would cost money at the site's EXPORT VALUE (see the module docstring, incl. the two epsilon tie-breaks that keep degenerate optima deterministic and the battery idle when cycling moves no money). An infeasible §14a cap degrades to a plan without the grid constraint (the physical limit is enforced by the grid operator + edge guards regardless); a tight EXPORT cap that used to be infeasible now resolves via minimal curtailment.
-3. **Persist** (`persistence.py`): the full plan - battery/grid power, SoC trajectory, forecast inputs used, projected cashflow (`cost_eur`, at the asymmetric prices) vs. the no-battery baseline per slot (same pricing - the baseline plant imports its residual at the tariff and feeds its surplus in at the remuneration), planned `curtail_kw`, spent `wear_cost_eur` - upserted idempotently into the `schedule` hypertable (schema owned by the api migrations `V20260701020000` + `V20260706040000` + `V20260710000000`, RLS-scoped for the portal read; `price_eur_mwh` stays the SPOT price for the portal's price curve). This is the ML groundwork: plan-vs-actual against `telemetry` is a plain join.
-4. **Publish** (`publisher.py`): retained QoS1 to `ems/{tenant}/{site}/{device}/schedule` per the **frozen contract** [`docs/contracts/mqtt-schedule.schema.json`](../../docs/contracts/mqtt-schedule.schema.json); curtailing slots additionally carry the OPTIONAL `pv_limit_kw` inverter cap (= `pv - curtail`, omitted when not curtailing - an additive contract extension, `schema_version` stays 1.0). The headline number - projected EUR savings vs. leaving the battery idle - is what the portal shows.
-
-## Multi-entity co-optimizer basis (E4-Basis, v2 track)
-
-The v2 replatforming's solver generalization (plan-draft §2.3) ships alongside the untouched v1 path:
-
-- **`entities.py`** — the generalized input: `CoOptimizationInput` with `storages[]` / `producers[]` / `controllable_loads[]` (loads: declared but empty-only for now), per-entity params/limits; `from_v1_input` adapts today's single-battery `OptimizationInput` into the exact N=1 special case (entity ids `storage-main`/`pv-main` until the E1a registry lands). The multi-entity plan artifact is `SitePlan` (per-entity dispatches + site-level flows).
-- **`modules.py`** — the former inline conditionals as **declared constraint/objective contributions** selected per site: EEG solar-only charge (as a joint SUBSET constraint over the non-permitted storages), §14a grid limit (the only module the infeasible-fallback build drops), FK1 feed-in cap, PS-1 peak epigraph + ratchet, and the P11/PS-2 reservation stack (a SoC-floor channel). `build_co_model(..., modules=...)` is the registration seam v2 strategy nodes will use.
-- **`co_solver.py`** — the pure-function multi-entity MILP: one grid balance/connection point, per-entity SoC dynamics/binaries/wear/terminal value, per-producer curtailment. Every rule is the v1 rule generalized by summation.
-- **GOLDEN SUITE** (`tests/golden/` + `tests/test_golden_cooptimizer.py`) — the cutover acceptance basis: eight committed pilot-shaped scenarios solved through BOTH solvers, compared slot by slot (objective 1e-5 EUR, slots 1e-3 kW). Green golden suite == the generalized solver provably reproduces v1. Read `tests/golden/README.md` before touching either solver.
-- **Schedule-2.0 shadow publisher** (`publisher_v2.py`) — for sites flagged via `VOLTPILOT_V2_PLAN_SITES` (comma-separated site UUIDs; an env flip like the active-model promotion, default empty = nobody) the engine ADDITIONALLY co-optimizes and publishes the per-entity plan retained on `ems/{t}/{s}/{d}/v2/plan` per [`docs/contracts/v2/mqtt-schedule-2.0.schema.json`](../../docs/contracts/v2/mqtt-schedule-2.0.schema.json) — the E13a shadow phase (v2 publishes, v1 controls; the 1.0 publisher is untouched for every site). D-8 discipline: `charge_from_grid_allowed` is ALWAYS emitted explicitly (absent = NOT allowed by contract); a producer that curtails nothing is omitted (release semantics clear limits), a curtailing one carries `limit_kw` on curtailing slots and the explicit no-op `limit_pct: 100` elsewhere (contiguity + non-empty commands).
-- **DV-konformer Modus** (`CoOptimizationInput.dv_konform`) — hard-disables grid-charge arbitrage for EVERY storage entity (most-restrictive-wins over per-entity `charge_from_grid_allowed`) while consumption-side strategies (solar charging, self-consumption, peak shaving, reserves) stay active. It reuses the `netzladen_erlaubt` machinery verbatim: the mapping table lives in the `entities.py` module docstring. v1's `netzladen_erlaubt=False` == the single storage's permission False == the same solar-only constraint.
-- **Attribution groundwork:** [`docs/attribution-three-pot.md`](../../docs/attribution-three-pot.md) (design only, no earnings runtime change) — the two-pot `arbitrageSplit` storage-mix model extended to green/grey/arbitrage for the D6 Erlösbeteiligung.
-
-No site is v2-flagged by default; the whole v2 surface is dormant until `VOLTPILOT_V2_PLAN_SITES` names one.
-
-## Run / build / test
+## Start und Tests
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev,solver]' -e ../forecast   # forecast = the fallback baseline (path dep)
-pytest                                          # solver behavior + contract + engine tests
-python -m voltpilot_optimization plan           # one cycle (needs [db]+[mqtt] extras + a live stack)
-python -m voltpilot_optimization serve          # cycle on startup, then every 15 min
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev,solver]' -e ../forecast
+python -m voltpilot_optimization --help
+pytest -m 'not slow'
 ```
 
-`highspy` (HiGHS) lives in the optional `solver` extra because its wheel isn't available on every platform; solver-dependent tests skip without it. `db` (psycopg) and `mqtt` (paho) extras gate the live-stack I/O the same way.
+`plan` führt einen Zyklus aus, `serve` den periodischen Betrieb; beide benötigen die konfigurierten Daten-/Brokerzugänge. `pytest` ohne Filter ergänzt die langsamen Szenarien. Im Gesamtstack startet das Profil `optimize` den Dienst.
 
-**Test markers / CI selection.** A plain `pytest` runs everything (the whole suite finishes in well under a minute). Tests marked `@pytest.mark.slow` (registered in `pyproject.toml`) are the heavy multi-solve year chains (gold-equivalence runs, the Netzladen variant's full second year); the CI gate runs `pytest -m "not slow"` (see `.forgejo/workflows/deploy.yaml`) and keeps a 3-day smoke twin of the chaining test in the default set so the 48h/24h artefact protection stays guarded. Run only the slow set with `pytest -m slow`. Every test also has a hard `pytest-timeout` ceiling (`timeout = 300` in `pyproject.toml`), so a wedged test - e.g. a deadlocked process pool - FAILS loudly instead of hanging the runner; `run_milp_year`'s pool deliberately uses the **spawn** start method (fork after HiGHS/OpenMP threads livelocked forked children at 100 % CPU - a real CI wedge) and degrades to serial when fewer usable CPUs than workers are available.
+[Prognosen](../../docs/forecasting.md), [Verbraucher](../../docs/verbrauchssteuerung.md), [Golden-Suite](tests/golden/README.md), [Betriebsvertrag](../../docs/k8s-readiness.md).
 
-Config via env (same names as the sibling collectors): `POSTGRES_HOST/PORT/DB/USER/PASSWORD` (the trusted backend role - the optimizer reads assets/prices/forecasts across tenants and stamps each plan row's tenant, like the weather collector), `MQTT_HOST/PORT` (+ optional `MQTT_USERNAME/PASSWORD`), `OPTIMIZER_INTERVAL_SECONDS` (default 900), `OPTIMIZER_HORIZON_SLOTS` (planning horizon in 15-min slots, default **192 = 48 h**, allowed 16..192 - the value is a REQUEST, truncated to what day-ahead prices and REAL forecasts cover; `96` restores the pre-28.08.2026 24 h behaviour exactly and is the instant rollback lever. `OPTIMIZER_HORIZON_HOURS` is DEPRECATED but still honoured - mapped `hours*4` with a loud WARN, because the k8s manifests carry it today and refusing it would crash-loop the container; setting it AND `OPTIMIZER_HORIZON_SLOTS` to contradicting values aborts loudly, garbage in either aborts loudly, and `--horizon-hours` remains the per-invocation CLI override), `VOLTPILOT_ACTIVE_LOAD_MODEL`/`VOLTPILOT_ACTIVE_PV_MODEL` (which forecast model to consume; keep in sync with the forecast collector). Economic/freshness tunables (all in `voltpilot_optimization/config.py`, garbage values fail loudly): `OPTIMIZER_WEAR_COST_CT_PER_KWH` (platform battery wear cost per kWh cycled, default 4.0; per-asset override via `asset.wear_cost_ct_per_kwh`), `OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES` (default 60) and `OPTIMIZER_SOC_MAX_AGE_MINUTES` (default 120) - telemetry readings older than their window are ignored (no §14a cap / default SoC) - `OPTIMIZER_TERMINAL_VALUE_QUANTILE` (default 0.3, the anchor of the derived terminal energy value) and `OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH` (fixed platform terminal value per stored kWh; unset = derive per plan, see the P3 section), `OPTIMIZER_EEG_RATES_JSON` (wholesale replacement of the feste-Vergütung schedule, a JSON array of `{"from": "YYYY-MM-DD", "le10": ct, "le40": ct, "le100": ct}` bands; the built-in default encodes EEG 2023 exactly and pre-2022 years as documented annual approximations), and `OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS` (default `true` since captain decision 2026-07-29, `false` opts out: whether the researched default supply-price components - `pricing.DEFAULT_SUPPLY_COMPONENTS`, ~15.7 ct netto + 19% USt, report vp-nacht-bezug-e7 Teil 2 - stand in for a missing `site_supply_price` row on `dynamisch`-without-Aufschlag/`ohne` sites; a maintained row always wins and composes `(spot + Σ Komponenten netto) × (1 + USt)`, `fest` stays all-in untouched).
+## Horizont und kurzfristige Korrektur
 
-In compose the service runs under the **`optimize` profile** (`docker compose --profile optimize up -d --build optimizer`); its Docker build context is the **repo root** (it installs `services/forecast` alongside - see the Dockerfile header).
+`OPTIMIZER_HORIZON_SLOTS` fragt 16–192 Viertelstunden an (Vorgabe 192 = 48 h). Preise und reale Prognosen begrenzen das Ergebnis. `96` stellt den früheren 24-h-Horizont wieder her. `OPTIMIZER_HORIZON_HOURS` wird noch mit Warnung umgerechnet; widersprüchliche Werte werden abgelehnt. MQTT überträgt weiterhin die ersten 24 h.
 
-## Ersparnis-Simulation: BDEW-Profil-Konverter (`bdew-convert`)
+| Korrektur | Wirkung |
+|---|---|
+| `load_nowcast.py` | Aktuelle Last verankert Slot 0, Ausblendung über acht Slots |
+| `nowcast.py` | Verhältnis aus abgeschlossenen PV-Slots, Ausblendung über acht Slots |
+| `pv_nowcast.py` | PV-Mittel der letzten 120 s, jüngster Wert höchstens 30 s alt; Ausblendung über zwei Slots |
 
-The Ersparnis-Simulation's load profile can be the official **BDEW H25** dynamic standard load profile instead of the synthetic household shape - but the BDEW publication ("Repräsentative Profile BDEW H25 G25 L25 P25 S25", free download at bdew.de → Standardlastprofile Strom) carries **no clear redistribution grant** (downloads are limited to private/non-commercial use; redistribution needs BDEW's written consent). So the repo ships **only this converter, never the data**: the operator downloads the official xlsx themself and converts it locally.
+Bei Abregelung darf PV-Nowcast die Prognose nur anheben; die Nachtgrenze bleibt wirksam. Schalter: `OPTIMIZER_PV_NOWCAST_ENABLED` (true), `…_DECAY_SLOTS` (2), `…_MAX_AGE_SECONDS` (30), `…_LOOKBACK_SECONDS` (120). Fehler lassen die ursprüngliche Prognose bestehen.
 
-```bash
-pip install -e '.[convert]'   # openpyxl, kept out of the runtime image
-python -m voltpilot_optimization bdew-convert /pfad/zur/BDEW_H25.xlsx \
-    --profile H25 --year 2025 --out /srv/voltpilot/bdew-h25-2025.json
-# then point the simulation service at it:
-#   SIM_BDEW_H25_JSON=/srv/voltpilot/bdew-h25-2025.json
-```
-
-`--year` must be the simulation's **reference year** (the profile is expanded onto that year's real calendar: day types incl. bundesweite Feiertage, Dynamisierung, DST, leap years). The command validates the result (slot count, non-negativity, the expanded year must reproduce the publication's 1-Mio-kWh normalization) and prints a short report (min/max/mean weight, weekday-vs-Sunday ratio, day-type counts). All expansion semantics - sheet layout, the SA/FT/WT day-type mapping incl. the classic Dec-24/31-as-Samstag rule, the VDEW-H0 Dynamisierungsfunktion (applied to H25/P25/S25, not G25/L25), wall-clock slot indexing across DST - are documented in [`voltpilot_optimization/simulation/bdew_convert.py`](voltpilot_optimization/simulation/bdew_convert.py). **Never commit the xlsx or the generated JSON** - both derive from the BDEW publication.
-
-## Status
-
-**Built:** the full loop above, verified by offline tests (economic behavior on synthetic curves, constraint compliance, contract conformance, engine orchestration). **Built too:** the per-site grid-charging switch (see its section above), priced battery degradation (P2) and the telemetry freshness windows (F4 freshness half) - Stage 1 of the market-revenue optimizer redesign - **the P1 tariff/Marktprämie-aware market-revenue objective (Stage 2, see the P1 section above)**: import/export split with per-slot asymmetric pricing, Marktprämie + feste EEG-Vergütung on the export side, the supply tariff on the import side, everything-missing-degrades-to-spot - and **Stage 3: the P3 terminal energy value** (replaces the hard `SoC_end ≥ SoC_start` floor; fixes the F3 EEG winter-freeze and merchant forced buy-backs, see its section above) **plus the P11 customer backup-reserve SoC floor** (`site.backup_reserve_soc_pct`, a hard constraint). **Future work:** the §14a export-cap semantics question (D5 - the observed import envelope is still mirrored onto export, deliberately unchanged), the portal/admin UI for the backup reserve, horizon extension to all priced slots (P8a), peak-shaving / capacity tariffs, multi-battery sites, plan-vs-actual KPIs from the persisted schedules; the pre-2022 feste-Vergütung anchors are documented approximations awaiting captain-confirmed rates (D2), and a merchant-mode DV site deliberately earns NO premium in the objective pending a Messkonzept concept (see the P1 section).
+`night_reserve.py` bewertet Energie am ersten PV-Überschussslot nach der Nacht anhand der eigenen historischen Nachtfehler. Das ist ein ökonomischer Wertterm, keine zusätzliche harte SoC-Reserve. Ohne geeignete Daten, Preisdifferenz oder Sonnenaufgang im Horizont entsteht kein Term; `OPTIMIZER_NIGHT_RESERVE_ENABLED=false` schaltet ihn ab. Begründungsfelder: `why_night_reserve_kwh` und `why_night_reserve_q`.

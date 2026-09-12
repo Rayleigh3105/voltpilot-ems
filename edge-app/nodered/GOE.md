@@ -5,6 +5,14 @@ Lesen: `goe/goe-api.js` (Quelle mit Rolle **Verbraucher**, `load_kw` aus `nrg[11
 Steuern: der Go-Core-Executor `edge-app/core/internal/goe` (der Einzel-Schreiber; Node-RED bleibt bewusst read-only), kanonische JS-Referenz `goe/goe-control.js`, beide an dieselben Golden-Vektoren gepinnt (`goe/goe-control-vectors.json`).
 Bench-Ablauf + Zertifizierungs-Abschluss: [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „go-e Charger".
 
+```mermaid
+flowchart LR
+  Rule[Plan oder Regel] --> Core[Core: Freigabe und Grenzen]
+  Core --> Write[Geräteauftrag]
+  Write --> Readback[Rückmeldung lesen]
+  Readback --> Measure[Wirkung mit Messwerten prüfen]
+```
+
 ## 1. Geräte-Voraussetzungen
 
 - **Lokale HTTP-API v2 aktivieren:** go-e-App → Internet → „Lokale HTTP API v2" einschalten.
@@ -71,6 +79,6 @@ Nur `ip` ist Pflicht; alles andere hat die genannten Vorgaben.
 
 ## 6. Sicherheits-Rahmen (unverändert)
 
-Der Executor läuft nur mit `VP_CONTROL_ENABLED` **und** `VP_CONSUMER_CONTROL_ENABLED` (beide Vorgabe AUS — mit Flags aus null HTTP an die Wallbox, byte-identisch).
+Der Executor läuft nur mit `VP_CONTROL_ENABLED` **und** `VP_CONSUMER_CONTROL_ENABLED` (Vorgabe: global EIN, Verbrauchersteuerung AUS; Lesen und der ausdrücklich ausgelöste Verbindungstest bleiben getrennte Pfade).
 Vorgelagert bleiben alle Guards autoritativ: Verbraucher-Klemme des Arbiters, Zyklen-Guard (Mindestlauf/-pause/Startbudget), §14a/Netz/Vertrag.
 Der Gerätetyp `wallbox` bleibt im entitytypes-Katalog **unzertifiziert** (`simulator_only`), bis die Bench-Session des Captains den Katalog-Flip als eigenen Mini-PR liefert (D11; `CONTROL-BENCH.md`).

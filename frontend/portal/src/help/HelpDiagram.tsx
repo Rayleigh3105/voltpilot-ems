@@ -1,20 +1,24 @@
-import { Icon } from '../../designsystem/components/core/Icon';
+import type { HelpSection } from './model';
+import energy from './assets/energy-system.svg';
+import system from './assets/portal-cloud-box.svg';
+import proof from './assets/plan-and-effect.svg';
+import storage from './assets/storage-reserves.svg';
 
-export function HelpDiagram({ kind }: { kind: 'energy' | 'loop' | 'day' }) {
-  if (kind === 'energy') return <figure className="vp-help-diagram">
-    <div className="vp-help-energy" role="img" aria-label="Mögliche Energieflüsse: PV versorgt Verbraucher, lädt den Speicher oder speist ins Netz ein. Speicher und Netz können Verbraucher versorgen.">
-      <div className="vp-help-energy-node solar"><Icon name="sun" size={26} /><strong>PV-Erzeugung</strong><span>Strom vom eigenen Dach</span></div>
-      <div className="vp-help-energy-arrow" aria-hidden="true">↓</div>
-      <div className="vp-help-energy-center"><strong>Ihre Anlage</strong><span>Erzeugen · nutzen · verschieben</span></div>
-      <div className="vp-help-energy-branches" aria-hidden="true"><span>↕</span><span>↓</span><span>↕</span></div>
-      <div className="vp-help-energy-bottom">
-        <div className="vp-help-energy-node battery"><strong>Speicher</strong><span>Für später aufbewahren</span></div>
-        <div className="vp-help-energy-node load"><strong>Verbraucher</strong><span>Haus, Betrieb, Fahrzeug</span></div>
-        <div className="vp-help-energy-node grid"><strong>Stromnetz</strong><span>Beziehen und einspeisen</span></div>
-      </div>
-    </div>
-    <figcaption>Mögliche Wege, keine Live-Messung. Die tatsächliche Richtung sehen Sie im Cockpit.</figcaption>
-  </figure>;
+const illustrations = {
+  energy: { src: energy, alt: 'PV versorgt die Anlage. Speicher und Netz liefern oder nehmen Energie auf; Verbraucher nutzen sie.', caption: 'Mögliche Wege, keine Live-Messung. Die tatsächliche Richtung sehen Sie im Cockpit.' },
+  system: { src: system, alt: 'Portal und Cloud-Planung tauschen Angaben aus. Die Box empfängt Pläne, meldet Messwerte und verbindet die Geräte vor Ort.', caption: 'Neue Messungen fließen wieder in die Planung ein.' },
+  proof: { src: proof, alt: 'Vier Nachweise: Plan, gesendeter Auftrag, Geräteantwort und gemessene Wirkung.', caption: 'Eine Bestätigung allein belegt noch keine gemessene Wirkung.' },
+  storage: { src: storage, alt: 'Technische Untergrenze, Reserve und obere Grenze bestimmen den planbaren Speicherbereich.', caption: 'Schematische Aufteilung ohne Zahlenvorgabe. Ihre tatsächlichen Grenzen stehen in den Einstellungen.' },
+};
+
+export function HelpDiagram({ kind }: { kind: NonNullable<HelpSection['diagram']> }) {
+  if (kind !== 'loop' && kind !== 'day') {
+    const illustration = illustrations[kind];
+    return <figure className="vp-help-diagram">
+      <img className="vp-help-illustration" src={illustration.src} alt={illustration.alt} loading="lazy" />
+      <figcaption>{illustration.caption}</figcaption>
+    </figure>;
+  }
   const entries = kind === 'loop' ? [
     ['01', 'Messen', 'Die Box meldet Erzeugung, Verbrauch und Gerätezustände.'],
     ['02', 'Planen', 'Vorhersagen, Preise und Grenzen fließen in den Fahrplan ein.'],

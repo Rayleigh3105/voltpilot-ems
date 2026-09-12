@@ -1,9 +1,15 @@
 # Messpunktkatalog
 
 Dieser Ordner ist die gemeinsame, versionierte Wahrheit für Messpunkte in Portal,
-Cloud und Edge. Slice 0 stellt ausschließlich Katalog und Tooling bereit: Er ändert
-keinen bestehenden Telemetrie-/MQTT-Vertrag, aktiviert keinen Poller und schreibt
-keine Register.
+Cloud und Edge. Portal und Cloud verwenden ihn für die Messauswahl; die Edge liest zusätzliche Punkte über den [Messruntime](../../edge-app/nodered/measurements/README.md). Der Katalog selbst schreibt keine Register.
+
+```mermaid
+flowchart LR
+  Sources[Fixierte Herstellerquellen] --> Generator[Offline-Generator]
+  Generator --> Catalog[Versionierter Katalog]
+  Catalog --> Portal[Portal und Cloud]
+  Catalog --> Runtime[Edge-Leseplan]
+```
 
 Das aktuelle, kanonische Artefakt ist
 [`dist/measurement-point-catalog-2026.09.11.1.json`](dist/measurement-point-catalog-2026.09.11.1.json).
@@ -35,9 +41,7 @@ die Einheit der 316 go-e-Keys bewusst leer. Für SunSpec ist `address.base` imme
 `discovered`; insbesondere modelliert Model 160 jedes live entdeckte `module[i]`
 über einen eigenen dynamischen Point-Key und relativen Offset.
 
-`edge_min_version` ist in dieser ersten Version `unreleased`, weil Slice 0 keinen
-Edge-Consumer veröffentlicht. Ein späterer Edge-Release setzt hier seine echte
-Mindestversion in einer neuen Katalogversion.
+`edge_min_version` ist pro Katalogpunkt hinterlegt. Ein Wert `unreleased` ist keine Zusage einer kompatiblen Geräteversion; die tatsächlich ausgelieferte Runtime und ihre Fähigkeiten zusätzlich prüfen.
 
 Die JSON-Schemata liegen unter `schema/`. Der Standardbibliothek-Validator wertet
 alle in ihnen verwendeten Draft-2020-12-Schlüssel tatsächlich aus und bricht bei
@@ -207,6 +211,4 @@ Herstellerlizenz erneut zu prüfen.
 7. Sollbestände und Quellenstände in `tests/expected_inventory.json` bewusst
    anpassen, danach Generator-Drift, Validator und Unit-Tests ausführen.
 
-Künftige Portal-, Cloud- und Edge-Implementierungen lesen dieses Artefakt oder ein
-bytegleich daraus ausgeliefertes Paket. Sie pflegen keine zweite Liste von
-Point-Keys, Labels oder Einheiten.
+Portal, Cloud und Edge verwenden den Katalog oder daraus erzeugte Ableitungen. `tools/package_edge_runtime.py --check` prüft Runtime-JSON und SQL-Metadaten. Neue Katalogstände brauchen eine neue Migration; bereits angewandte SQL-Dateien bleiben unverändert.

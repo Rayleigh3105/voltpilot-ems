@@ -1,181 +1,56 @@
-# MQTT broker security model (mTLS + per-device ACL)
+# MQTT-Sicherheit
 
-How VoltPilot lets a real remote edge device connect securely to the self-hosted broker, and how to run/harden it. Companion to the device-facing [connect-a-device.md](connect-a-device.md).
+Kundenboxen verbinden sich über MQTT-mTLS auf `8883`. Zertifikatsidentität und Geräte-ACL begrenzen den Zugriff auf den jeweiligen Topic-Unterbaum.
 
-## Listeners
-
-| Port | Listener | TLS | Auth | Exposure | Purpose |
-|---|---|---|---|---|---|
-| `1883` | `tcp/default` | none | anonymous | **loopback + firewalled** (prod) / host (dev) | internal ingest consumer + local dev only |
-| `8883` | `ssl/default` | **mTLS** | client x.509 cert | **public** | real remote devices |
-
-The plaintext dev listener (1883) is **kept intact** so the local stack and the internal ingest→Redpanda path work unchanged.
-The production compose (`docker-compose.prod.yml`) publishes it on `127.0.0.1` only; devices never use it.
-
-## mTLS (transport auth)
-
-The 8883 listener runs with:
-
-- `verify = verify_peer` and `fail_if_no_peer_cert = true` - a client with **no** cert or a cert **not** signed by the device CA is dropped at the TLS handshake.
-- `cacertfile = device-ca.crt` - the trust anchor for client certs.
-- `certfile/keyfile = server.crt/server.key` - the broker's own identity, which the device verifies against the CA it was shipped.
-- `peer_cert_as_username = cn` and `peer_cert_as_clientid = cn` - the MQTT username **and** clientid are taken from the cert CN, so a device cannot spoof its identity by setting them in the CONNECT packet.
-  In EMQX 5.x these two are **global `mqtt.*` settings, not listener fields** (env: `EMQX_MQTT__PEER_CERT_AS_USERNAME` / `EMQX_MQTT__PEER_CERT_AS_CLIENTID`; the listener-scoped `EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_*` form is rejected as `unknown_env_vars` and silently ignored - verified on 5.8.3).
-  Setting them globally is safe: a connection that presents no client cert (the loopback-only 1883 backbone clients) keeps whatever username/clientid it sent.
-
-## Identity binding
-
-A device cert encodes the full tenant/site/device identity in its subject:
-
-```
-O  = {tenant_id}      OU = {site_id}      CN = {device_id}
-SAN: URI spiffe://voltpilot/ems/{tenant_id}/{site_id}/{device_id}
+```mermaid
+flowchart LR
+    Box["Box mit Client-Zertifikat"] --> TLS["mTLS: vertrauenswürdige CA"]
+    TLS --> Ident["CN wird Geräteidentität"]
+    Ident --> ACL["ACL: eigener Topic-Unterbaum"]
+    ACL --> Pipe["Ingest: Topic und Payload vergleichen"]
 ```
 
-CN carries the `device_id` (a UUID, within the 64-char CN limit); `tenant_id`/`site_id` ride in O/OU (and the SPIFFE SAN) for audit.
-Because `peer_cert_as_username = cn`, the broker sees `username = device_id`, which is what the ACL grants key on.
+## Listener und Identität
 
-## Per-tenant / per-device ACL
+- `8883`: Client-Zertifikat erforderlich; `verify_peer` und `fail_if_no_peer_cert` sind aktiv.
+- `1883`: interner Backbone. Im eigenständigen Compose-Betrieb am Host Loopback; optional über die begrenzte [Datenebene](deploy.md#datenebene-und-cluster) für Cluster-Nodes erreichbar.
+- `18083`: Brokerverwaltung, kein öffentlicher Gerätezugang.
 
-`infra/mqtt/acl/acl.conf` (mounted into EMQX by the production compose) is evaluated top-down, first match wins:
+Zertifikat: `O=tenant_id`, `OU=site_id`, `CN=device_id`; SPIFFE-SAN enthält dieselbe Identität. EMQX übernimmt CN als Benutzer-/Client-ID. In EMQX 5.8 gehören `peer_cert_as_username` und `peer_cert_as_clientid` zu den globalen `mqtt.*`-Einstellungen, nicht in den Listenerblock.
 
-1. `dashboard` may watch `$SYS/#`.
-2. The internal backbone user **`vp-internal`** (ingest/writer on the trusted 1883) gets full `ems/#` - ingest subscribes to `ems/+/+/+/telemetry` across tenants.
-3. **Generated per-device grants** - one block per issued device, binding its exact path:
-   ```
-   {allow, {username, "<device_id>"}, publish,   ["ems/<t>/<s>/<device_id>/telemetry", ".../status"]}.
-   {allow, {username, "<device_id>"}, subscribe, ["ems/<t>/<s>/<device_id>/schedule", ".../command", ".../config"]}.
-   ```
-   Telemetry/status are **up-only**, schedule/command/config **down-only**.
-4. **Default-deny for devices**: any client whose username is a UUID but matched no grant above is denied **every** topic. This is why revocation = "remove the grant".
-5. `$SYS` is protected from everyone else; anonymous internal/dev clients on the firewalled 1883 are allowed last.
+## ACL und Dateimounts
 
-**Result:** a device can talk on its own `ems/{tenant}/{site}/{device}/…` path and nothing else. One site cannot publish as another - a cross-tenant publish falls through to default-deny.
+ACL-Regeln werden in Reihenfolge ausgewertet. Interne Dienste verwenden den vorgesehenen Backbone-Zugang; Geräte erhalten ihren eigenen `ems/{tenant}/{site}/{device}/…`-Pfad. v2 verwendet den geräteeigenen `v2/#`-Unterbaum. Eine gültige Zertifikatssignatur allein erteilt keinen fremden Topic-Zugriff.
 
-The grants are managed by `tools/pki/voltpilot-ca.sh` (`issue` inserts a block, `revoke` removes it) and by the api's enrollment issuance.
-Apply changes with `tools/pki/reload-broker-authz.sh` - a running broker never re-reads the file on its own, and `emqx ctl conf reload` does **not** re-initialize the file authorizer (verified on 5.8.3; the script forces the re-init via `emqx_authz:update/2`).
-The ACL lives in its own directory (`infra/mqtt/acl/`) which is mounted **as a directory** into both EMQX (read-only) and the api (read-write): the api replaces `acl.conf` atomically via rename, which fails with EBUSY when the target is a single-file bind mount - and such a mount would pin the broker's view to the replaced inode anyway. Never mount `acl.conf` as a single file.
+`infra/mqtt/acl/` wird als Verzeichnis gemountet: API schreibbar, Broker lesbar. Einzeldatei-Mounts für `acl.conf` verhindern den atomaren Rename beziehungsweise halten den alten Inode fest.
 
-## CA & certificate issuance
-
-`tools/pki/voltpilot-ca.sh` is the reproducible CLI:
-
-| Command | Does |
-|---|---|
-| `init-ca --domain <fqdn> [--ip <ip>]` | create the device CA once + issue the broker server cert |
-| `issue --tenant <uuid> --site <uuid> --device <uuid>` | mint a client cert bound to those IDs + write its ACL grant |
-| `revoke --device <uuid>` | CRL-revoke the cert + remove its ACL grant |
-| `gen-crl` | (re)generate the CRL |
-| `list` | list issued/revoked certs |
-
-Keys are written under `tools/pki/out/` (git-ignored). **CA and device private keys are never committed.**
-`openssl.cnf` holds the CA policy and the server/device extension profiles (serverAuth vs clientAuth EKU).
-
-### The api as second issuer (first-boot enrollment)
-
-Production also wires the CA into the **api service** for [first-boot enrollment over HTTPS](connect-a-device.md#first-boot-enrollment-over-https-kinderleicht-production): the device uploads a CSR (its key never travels), and once the ref is claimed the api signs the client cert itself - subject enforced from the claim, same `[v3_device]` extension profile, same ACL grant block, recorded into the same serial/`index.txt` CA database, so `revoke`/`gen-crl`/`list` cover api-issued certs too.
-Security trade-off, made deliberately: the api container holds the CA key (read-write mount in `docker-compose.prod.yml`), which puts the api host inside the PKI trust boundary.
-Mitigations: the signing code path is one small audited class (`services/api` `enrollment/DeviceCertificateAuthority`), every issuance is logged with serial + full identity, the public endpoints are rate-limited and enforce the subject regardless of the CSR, and `VOLTPILOT_ENROLLMENT_ENABLED=false` removes the whole surface for deployments that keep the CA offline.
-
-## Revocation
-
-Two independent cut-offs (architecture §6.6):
-
-1. **ACL denylist (immediate):** `revoke` removes the device's grant; the default-deny rule then blocks it on the next `tools/pki/reload-broker-authz.sh` - no restart, no handshake change.
-2. **CRL (cryptographic backstop):** `revoke` also marks the cert on the CA CRL (`out/ca/crl.pem`). Copy it to `infra/mqtt/certs/crl.pem`; if you enable CRL checking on the listener (`ssl_options.enable_crl_check = true` + a served CRL) the revoked cert is rejected at the TLS handshake itself.
-
-## Run the secure broker (single self-hosted host)
+ACL-Datei und laufender Authorizer sind getrennte Zustände. Nach einer manuellen Änderung den vorgesehenen Reload auslösen:
 
 ```bash
-# 1. Create CA + broker cert for the name devices dial - recommended: a dedicated
-#    MQTT subdomain (plain DNS A record to this host); the --ip SAN keeps the raw
-#    IP working as fallback. Safe to re-run later to add the domain: the CA (and
-#    all issued device certs) is kept, only the server cert is re-issued.
-./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip <public-ip>
-
-# 2. Stage the broker material (dir is git-ignored).
-cp tools/pki/out/server/server.crt     infra/mqtt/certs/
-cp tools/pki/out/server/server.key     infra/mqtt/certs/
-cp tools/pki/out/server/device-ca.crt  infra/mqtt/certs/
-cp tools/pki/out/ca/crl.pem            infra/mqtt/certs/     # optional
-
-# 3. Bring up the production stack (docker-compose.prod.yml is the full,
-#    standalone server-side stack and includes the hardened 8883 broker).
-#    See docs/deploy.md for the complete first-deploy flow (VPS .env, Caddy, CI).
-docker compose -f docker-compose.prod.yml up -d
-
-# 4. Provision devices (claim + cert) and hand out params - see connect-a-device.md.
+./tools/pki/reload-broker-authz.sh
 ```
 
-## Hardening checklist (production)
+Ein allgemeines `emqx ctl conf reload` ersetzt diesen Authorizer-Reload nicht. Die API hat dafür `BrokerAuthzReloader`.
 
-- [ ] **Firewall**: expose only `8883/tcp` to the internet. Block `1883`, `8083`, `18083`, `9092`, `9644`, `5432`, Keycloak, etc. The overlay already binds 1883/dashboard to loopback; the firewall is the real guarantee.
-- [ ] **TLS only for external**: devices use 8883 mTLS exclusively. Never expose 1883 off-host.
-- [ ] **No anonymous device access**: 8883 requires a CA-signed client cert (`fail_if_no_peer_cert = true`). Verified by `verify_mqtt_security.py` (A2/A3).
-- [ ] **Cert identity is bound**: `peer_cert_as_username/clientid = cn` - devices cannot self-assign identity.
-- [ ] **ACL default-deny for devices**: ungranted UUID usernames get nothing (`no_match = deny` + the UUID deny rule).
-- [ ] **Rotate certs**: default validity 825 days; re-issue before expiry. Rotating = `issue` a fresh cert (same IDs), ship it, reload.
-- [ ] **Revocation ready**: `revoke` + `tools/pki/reload-broker-authz.sh` on any suspected compromise; keep the CRL current.
-- [ ] **Internal creds**: give ingest/writer the `vp-internal` username (or tighten the last ACL rule to your internal clientids) and keep 1883 loopback-only.
-- [ ] **Dashboard**: change the default dashboard password; reach it via SSH tunnel to `127.0.0.1:18083`, not publicly.
-- [ ] **Secrets**: CA/device keys stay in `tools/pki/out/` (git-ignored) or your secret store - never in the repo or images.
-
-## Verification
-
-Docker-free, CI-friendly proof of the whole model:
+## CA und Enrollment
 
 ```bash
-python3 tools/pki/verify_mqtt_security.py
+./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com
+./tools/pki/voltpilot-ca.sh list
 ```
 
-It uses the real cert tool + Python's `ssl` (the same OpenSSL machinery EMQX uses) to prove: valid cert connects, no-cert/untrusted-cert rejected, revoked cert fails CRL check, and the ACL (parsed from the real `acl.conf` with EMQX first-match semantics) confines devices and denies cross-tenant publishes.
+`mqtt.example.com` durch den tatsächlichen Broker-Namen ersetzen. Weitere Befehle: `issue --tenant … --site … --device …`, `revoke --device …`, `gen-crl`. Schlüssel liegen im ignorierten `tools/pki/out/` und werden nicht committet.
 
-### Live-broker manual check (when Docker is available)
+Bei automatischem [Enrollment](connect-a-device.md) hält die API Zugriff auf die CA und signiert den von der Box erzeugten CSR. Damit gehört die API in die PKI-Vertrauensgrenze. Ohne diesen Betriebsweg kann Enrollment per `VOLTPILOT_ENROLLMENT_ENABLED=false` abgeschaltet werden.
 
-Run a throwaway secured EMQX on non-colliding ports and exercise it with `mosquitto_pub`:
+Der Broker braucht lesbare `server.crt`, `server.key` und `device-ca.crt`. Den privaten Serverschlüssel gezielt für den EMQX-Prozess lesbar machen; keine pauschale Welt-Lesbarkeit.
 
-```bash
-# Mint a PKI + a device cert (writes to tools/pki/out, appends an ACL grant).
-./tools/pki/voltpilot-ca.sh init-ca --domain localhost --ip 127.0.0.1
-./tools/pki/voltpilot-ca.sh issue --tenant 00000000-0000-0000-0000-000000000001 \
-  --site 00000000-0000-0000-0000-000000000002 --device 00000000-0000-0000-0000-000000000003
+## Widerruf
 
-# Throwaway broker on 18883 (no host-port collision with a running dev stack).
-docker run --rm -d --name emqx-secure-test -p 18883:8883 \
-  -v "$PWD/tools/pki/out/server/server.crt:/opt/emqx/etc/certs/server.crt:ro" \
-  -v "$PWD/tools/pki/out/server/server.key:/opt/emqx/etc/certs/server.key:ro" \
-  -v "$PWD/tools/pki/out/server/device-ca.crt:/opt/emqx/etc/certs/device-ca.crt:ro" \
-  -v "$PWD/infra/mqtt/acl:/opt/emqx/etc/acl:ro" \
-  -e 'EMQX_AUTHORIZATION__SOURCES=[{type = file, enable = true, path = "/opt/emqx/etc/acl/acl.conf"}]' \
-  -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE=/opt/emqx/etc/certs/device-ca.crt \
-  -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE=/opt/emqx/etc/certs/server.crt \
-  -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE=/opt/emqx/etc/certs/server.key \
-  -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__VERIFY=verify_peer \
-  -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__FAIL_IF_NO_PEER_CERT=true \
-  -e EMQX_MQTT__PEER_CERT_AS_USERNAME=cn \
-  -e EMQX_MQTT__PEER_CERT_AS_CLIENTID=cn \
-  -e EMQX_AUTHORIZATION__NO_MATCH=deny \
-  emqx/emqx:5.8.3
-sleep 15
-D=tools/pki/out/devices/00000000-0000-0000-0000-000000000003
+1. Gerätefreigabe mit dem PKI-Werkzeug widerrufen und ACL-Änderung laden. Default-Deny sperrt den nicht mehr zugelassenen Gerätepfad.
+2. CRL erzeugen/verteilen. TLS-seitiger Widerruf greift nur, wenn die CRL-Prüfung tatsächlich konfiguriert und die aktuelle Liste verfügbar ist.
+3. Verbindung und nicht mehr zulässige Publishes/Subscriptions prüfen. Ein geändertes File allein ist noch kein Wirksamkeitsnachweis.
 
-# (a) valid cert publishes its OWN topic -> success
-mosquitto_pub -h localhost -p 18883 --cafile $D/device-ca.crt \
-  --cert $D/device.crt --key $D/device.key \
-  -t ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/telemetry \
-  -q 1 -m '{"schema_version":"1.0"}'          # exit 0
+## Prüfung
 
-# (b) no client cert -> TLS handshake rejected
-mosquitto_pub -h localhost -p 18883 --cafile $D/device-ca.crt \
-  -t ems/.../telemetry -m x                    # non-zero, TLS error
-
-# (c) valid cert, ANOTHER tenant's topic -> ACL denied (broker disconnects)
-mosquitto_pub -h localhost -p 18883 --cafile $D/device-ca.crt \
-  --cert $D/device.crt --key $D/device.key \
-  -t ems/10000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/telemetry \
-  -q 1 -m x                                    # not authorized
-
-docker rm -f emqx-secure-test
-```
-
-> This recipe has been executed against the real `emqx/emqx:5.8.3` image (2026-07-02): valid cert + own-topic publish gets PUBACK and is delivered, a foreign-tenant publish/subscribe is denied by the file authorizer and disconnected, a no-cert connect fails the TLS handshake with `certificate required`, and `emqx ctl clients show` confirms `username = clientid = <device_id>` (the cert CN). The automated `verify_mqtt_security.py` covers the same guarantees (mTLS gating + ACL confinement + revocation) without Docker.
+[PKI-Werkzeuge und Sicherheitsprüfung](../tools/pki/README.md); API-Enrollment-/Broker-Tests und Ingest-Identitätsprüfungen. Firewallregeln, Zertifikatsgültigkeit und effektive Listenerkonfiguration müssen in der jeweiligen Umgebung geprüft werden.
