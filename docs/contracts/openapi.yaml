@@ -8424,6 +8424,69 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/KadenzAbgelehnt" }
         "422": { $ref: "#/components/responses/KadenzAbgelehnt" }
+  /api/v1/messstellen/{id}/formel:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [messstellen]
+      summary: Die Formel einer berechneten Messstelle an einem Tag - die Terme der Fassung, die an ihm gilt (AP-10 IP-3).
+      description: >
+        Recht `messstelle.ansehen`. Die Formel ist tagesgenau zeitgültig (Fassungen,
+        Vertrag docs/contracts/v2/messstelle-formel.md §6): `terme` sind die Terme der
+        Fassung, die am Tag `am` gilt, `formel_vorhanden`/`eingaenge_eingerichtet` ihr
+        Stand. OHNE `am` gilt heute (Zeitzone des Standorts) und die Antwort ist
+        Zeichen für Zeichen die von vor AP-10 IP-3 - ohne den Block `fassung_am`; die
+        Portal-Fläche „Gesamtwert“ (PR #689) liest sie unverändert. MIT `am` steht
+        zusätzlich `fassung_am` in der Antwort: der Tag und die Fassung, die an ihm gilt
+        (`null`, wenn an dem Tag keine gilt - dann ohne Terme). Felder in snake_case.
+        Keine oder eine fremde berechnete Messstelle ist 404, nie 403.
+      parameters:
+        - { name: am, in: query, required: false, schema: { type: string, format: date }, description: "Der Tag (JJJJ-MM-TT); fehlend = heute, dann ohne `fassung_am`." }
+      responses:
+        "200":
+          description: Die Formel am Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleFormel" }
+        "400": { $ref: "#/components/responses/MessstelleFormelAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/messstellen/{id}/formel/fassungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [messstellen]
+      summary: Trägt eine neue Fassung der Formel ab einem Tag ein - die laufende endet am Vortag, nie rückwärts (AP-10 IP-3).
+      description: >
+        Recht `messstelle.formel` (AP-10 E15); mit einem `gueltig_ab` vor heute zusätzlich
+        `aenderung.rueckwirkend`. Die Terme werden geprüft wie beim Anlegen
+        (`anfrage_ungueltig` 400, `groessen_gemischt` 422, `formel_zyklus` 422); die
+        abgeleitete Hauptgröße muss die der Messstelle bleiben (`groessen_gemischt` 422
+        mit `grund`). Die Regel der Tage (uems/MessstelleFormelRegeln.fassungEintrag):
+        Fassung n + 1 beendet Fassung n am VORTAG, nichts wird überschrieben; beginnt die
+        neue nicht NACH dem Beginn der jüngsten Fassung, 422
+        `formel_fassung_ueberlappt` („Ab diesem Tag gilt schon Fassung 2.“, `fassung`,
+        `gueltig_ab`). Eine Fassung vor dem Eintragstag ist erlaubt und trägt
+        `rueckwirkend` samt `abzeichen` („rückwirkend (5 Tage)“). Eine archivierte
+        Messstelle bekommt keine Fassung (409 `zustand_passt_nicht`). In einer
+        Transaktion mit GENAU EINEM Protokolleintrag `formel_geaendert`. Die Anfrage wird
+        streng gelesen: ein unbekanntes Feld (auch camelCase) ist 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleFormelFassungEintragen" }
+      responses:
+        "201":
+          description: Die Formel am ersten Tag der neuen Fassung (mit `fassung_am`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleFormel" }
+        "400": { $ref: "#/components/responses/MessstelleFormelAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "422": { $ref: "#/components/responses/MessstelleFormelAbgelehnt" }
   /api/v1/sites/{siteId}/data-sources:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9013,6 +9076,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleFehler" }
+    MessstelleFormelAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
+        `code`, einen deutschen `message`-Satz und die Fakten des Urteils (siehe
+        MessstelleFormelFehler).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/MessstelleFormelFehler" }
     KadenzAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -16714,6 +16785,100 @@ components:
         fassungen:
           type: array
           items: { $ref: "#/components/schemas/KadenzFassung" }
+    MessstelleFormelTerm:
+      type: object
+      description: Ein Term der Formel, wie er gespeichert ist (snake_case - das Portal wandelt nichts um).
+      required: [position, eingang_art, vorzeichen, faktor, eingerichtet]
+      properties:
+        position: { type: integer }
+        eingang_art: { type: string, enum: [messkanal, messstelle] }
+        entity_id: { type: string, format: uuid, nullable: true }
+        point_key: { type: string, nullable: true }
+        quell_messstelle_id: { type: string, format: uuid, nullable: true }
+        vorzeichen: { type: string, enum: ["+", "-"] }
+        faktor: { type: number }
+        groesse:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MessGroesse" }]
+        eingerichtet: { type: boolean }
+    MessstelleFormelFassung:
+      type: object
+      description: >
+        Eine Fassung der Formel (AP-10 IP-3). `gueltig_ab` null = gilt seit Beginn (Fassung 1
+        des Bestands und des Anlegens); `gueltig_bis` ist der LETZTE Tag, einschließlich
+        (null = bis auf Weiteres).
+      required: [nummer, formel_typ, gueltig_ab, gueltig_bis, herkunft, rueckwirkend, abzeichen, begruendung, eingetragen_am]
+      properties:
+        nummer: { type: integer, minimum: 1 }
+        formel_typ: { type: string, enum: [gewichtete_summe] }
+        gueltig_ab: { type: string, format: date, nullable: true }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        herkunft:
+          type: string
+          enum: [bestand, anlage, eintrag]
+          description: >
+            `bestand` - die Terme von vor AP-10 IP-3 (Migration); `anlage` - beim Anlegen der
+            berechneten Messstelle; `eintrag` - über `POST …/formel/fassungen`.
+        rueckwirkend: { type: boolean }
+        abzeichen: { type: string, nullable: true, example: "rückwirkend (5 Tage)" }
+        begruendung: { type: string, nullable: true }
+        eingetragen_am: { type: string, format: date-time }
+    MessstelleFormel:
+      type: object
+      required: [messstelle_id, schema_version, hauptgroesse, terme, formel_vorhanden, eingaenge_eingerichtet]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        schema_version: { type: string, example: "1.0" }
+        hauptgroesse: { $ref: "#/components/schemas/MessGroesse" }
+        terme: { type: array, items: { $ref: "#/components/schemas/MessstelleFormelTerm" } }
+        formel_vorhanden: { type: boolean }
+        eingaenge_eingerichtet: { type: boolean }
+        fassung_am:
+          type: object
+          description: NUR mit `am` - ohne `am` fehlt der Block (die Antwort von vor AP-10 IP-3).
+          required: [tag, fassung]
+          properties:
+            tag: { type: string, format: date }
+            fassung:
+              nullable: true
+              allOf: [{ $ref: "#/components/schemas/MessstelleFormelFassung" }]
+    MessstelleFormelFassungEintragen:
+      type: object
+      additionalProperties: false
+      required: [gueltig_ab, terme]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        formel_typ: { type: string, enum: [gewichtete_summe], description: "Fehlend = gewichtete_summe; rest und saldo kommen mit AP-10 IP-4." }
+        terme:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [eingang_art, vorzeichen]
+            properties:
+              eingang_art: { type: string, enum: [messkanal, messstelle] }
+              entity_id: { type: string, format: uuid }
+              point_key: { type: string }
+              quell_messstelle_id: { type: string, format: uuid }
+              vorzeichen: { type: string, enum: ["+", "-"] }
+              faktor: { type: number, description: "Fehlend = 1, nie 0." }
+        begruendung: { type: string, maxLength: 500 }
+    MessstelleFormelFehler:
+      type: object
+      description: >
+        Die Ablehnung der Formel-Schnittstelle (Vertrag messstelle-formel.md §5 und §6):
+        `anfrage_ungueltig` 400 (`feld`), `groessen_gemischt` 422 (`grund`: groesse ·
+        wertart · richtung), `formel_zyklus` 422 (`kette`), `formel_fassung_ueberlappt` 422
+        (`fassung`, `gueltig_ab` der jüngsten Fassung).
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, groessen_gemischt, formel_zyklus, formel_fassung_ueberlappt] }
+        message: { type: string }
+        feld: { type: string }
+        grund: { type: string }
+        kette: { type: array, items: { type: string } }
+        fassung: { type: integer }
+        gueltig_ab: { type: string, format: date, nullable: true }
     KadenzVorgang:
       type: object
       required: [fassung]

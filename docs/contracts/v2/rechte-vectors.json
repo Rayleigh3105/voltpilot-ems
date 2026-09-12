@@ -4021,6 +4021,139 @@
       }
     },
     {
+      "name": "ap10-peter-aendert-die-formel-in-lindach",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-10 §4.10 (E15): Peter Hollerbach (Bearbeiter Werk Lindach) trägt eine neue Fassung der Formel einer berechneten Messstelle in Werk Lindach ein — die neue Zeile `messstelle.formel` hat die Zellen von `messstelle.bearbeiten` (Bearbeiter S).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.formel",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap10-claudia-aendert-keine-formel-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-10 §4.10 (E15): Claudia Berger (Leserin für Werk Ahrenberg und Werk Lindach) liest die Formel über `messstelle.ansehen`, ändert sie aber nicht — `messstelle.formel` gibt dem Leser nichts: 403, nötige Rolle Bearbeiter.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "messstelle.formel",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-18T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
       "name": "w8-brunner-zaehlerwechsel-ms06-darf",
       "familie": "darf",
       "ableitung": "darf",

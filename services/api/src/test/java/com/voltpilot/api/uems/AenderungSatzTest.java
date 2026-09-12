@@ -151,6 +151,15 @@ class AenderungSatzTest {
                 .isEqualTo("Datenquelle aus dem Bestand übernommen");
     }
 
+    /** AP-10 IP-3: eine eingetragene Formel-Fassung nennt ihre Nummer. */
+    @Test
+    void eineNeueFormelFassungNenntIhreNummer() throws Exception {
+        assertThat(satz("messstelle", "formel_geaendert", null,
+                "{\"fassung\": 2, \"formel_typ\": \"gewichtete_summe\", \"gueltig_ab\": \"2026-10-18\"}"))
+                .isEqualTo("Formel geändert: Fassung 2");
+        assertThat(satz("messstelle", "formel_geaendert", null, null)).isEqualTo("Formel geändert");
+    }
+
     // ---- Vollständigkeit ----------------------------------------------------------------------
 
     /**

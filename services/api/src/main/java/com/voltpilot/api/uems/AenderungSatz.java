@@ -91,6 +91,8 @@ public final class AenderungSatz {
             case "einstellung_geaendert" -> "Einstellung geändert" + einstellung(alt, neu);
             case "zaehler_gewechselt" -> "Zähler gewechselt" + wechsel(text(neu, "vorgaenger"),
                     text(neu, "einbau"), "");
+            case "formel_geaendert" -> "Formel geändert" + zusatz(text(neu, "fassung") == null ? null
+                    : "Fassung " + text(neu, "fassung"));
             case "erreichbarkeit_geprueft" -> "Erreichbarkeit geprüft" + zusatz(ergebnis);
             case "zustaendigkeit_begonnen" -> "Zuständigkeit begonnen";
             case "zustaendigkeit_gewechselt" -> "Zuständigkeit gewechselt";
