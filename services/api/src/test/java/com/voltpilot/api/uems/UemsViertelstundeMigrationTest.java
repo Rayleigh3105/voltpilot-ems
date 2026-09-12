@@ -314,7 +314,13 @@ class UemsViertelstundeMigrationTest {
         assertThat(z.get("letzter_wert")).asString().isEqualTo("1083415.2");
         assertThat(z.get("summe")).isNull();
         assertThat(z.get("mittel")).as("ein Zählerstand hat kein Mittel").isNull();
-        assertThat(zeilen.get(0)).doesNotContainKey("menge");
+        // AP-08 IP-2 hat die Menge-Spalte nachgereicht: die Strecke rechnet weiterhin KEINE
+        // Differenz selbst — sie ruft VerbrauchRegeln. Ueber die Geraetegrenze ohne Stand(Ende)
+        // bleibt der Beitrag des Wechsels 0, und die Viertelstunde ist unvollstaendig.
+        assertThat(z.get("menge")).as("nur der Zuwachs, den Z-5a gemessen hat - nichts ueber die "
+                + "Grenze hinweg").asString().isEqualTo("9.000");
+        assertThat(z.get("menge_zustand")).isEqualTo("unvollständig");
+        assertThat(z.get("kennzeichen").toString()).contains("Ende nicht gemessen");
         assertThat(z.get("ereignisse").toString())
                 .contains("\"data_gap\": 1").contains("\"device_boundary\": 1");
         // Das Folge-Intervall gehört schon Z-5b allein.

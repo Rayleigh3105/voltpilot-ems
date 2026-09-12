@@ -27,7 +27,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Der VERDICHTUNGS-LAUF der Speicherklasse Viertelstundenwerte (UEMS AP-07 IP-12).
+ * Der VERDICHTUNGS-LAUF der Speicherklasse Viertelstundenwerte (UEMS AP-07 IP-12) — und seit
+ * AP-08 IP-2 die Stelle, an der aus den gespeicherten Fakten die MENGE wird.
  *
  * <p>Er tut drei Dinge, und jedes in seiner EIGENEN Transaktion:
  *
@@ -49,6 +50,25 @@ import org.springframework.stereotype.Component;
  * die ZUM INTERVALL galt, nie der von „jetzt" (IP-10). Zwei Rechenwege für dieselbe Zahl sind
  * genau die Drift, die diese Verträge verhindern.
  *
+ * <p><b>AP-08 IP-2: die Menge.</b> Die Regel liefert dasselbe {@code Ergebnis} wie bisher — neu
+ * ist nur, dass {@code menge}, {@code menge_zustand} und {@code kennzeichen} nicht mehr
+ * weggeworfen, sondern gespeichert werden (Z1–Z3, Z8, Z9; Spalten aus {@code V20260912180000}).
+ * Vier Sätze, die dabei nie verletzt werden:
+ *
+ * <ul>
+ *   <li><b>Eine Lücke ist nie eine Null.</b> Eine Viertelstunde ohne einen einzigen Rohwert
+ *       bekommt gar keine Zeile; wo eine Zeile steht, aber keine Menge bildbar ist, steht
+ *       {@code NULL} — ein Zählerrücksprung erzeugt nie einen erfundenen Verbrauch, ein
+ *       Box-Ausfall nie einen gemessenen Stillstand.
+ *   <li><b>Abdeckung ist nicht Vollständigkeit.</b> {@code menge_zustand} und
+ *       {@code abdeckung_prozent} sind zwei verschiedene Aussagen; nichts wird aufgefüllt und
+ *       nichts auf 100 % gerundet.
+ *   <li><b>Eine Lücke beginnt ÜBER 2 × Kadenz</b> — mit der Kadenz, die ZUM INTERVALL galt
+ *       ({@link KadenzRegeln}, IP-10), nie der von „jetzt".
+ *   <li><b>Der Faktor wirkt genau einmal</b> — nämlich beim Erfassen, nicht hier:
+ *       {@link ViertelstundeRegeln#FAKTOR_DER_FASSUNG}.
+ * </ul>
+ *
  * <p><b>Wiederholbar und abbruchsicher.</b> Ein Stapel wird ENTNOMMEN und in DERSELBEN Transaktion
  * geschrieben: bricht der Lauf ab, ist die Entnahme mitgerollt und der Eintrag steht wieder in der
  * Arbeitsliste — es bleibt nie etwas Halbes liegen. Zweimal über dasselbe Intervall ergibt
@@ -59,7 +79,8 @@ import org.springframework.stereotype.Component;
  * <p><b>⚠ Die Grenze zu IP-13.</b> Dieser Lauf schreibt NUR vorläufige Werte und rührt eine
  * endgültige Zeile nie an. Das Umschalten auf {@code endgueltig} (Stundenlauf), die Behandlung
  * einer Spätankunft ({@code late_arrival} + Korrektur-Vorschlag an AP-08) und die Tageswerte sind
- * AP-07 IP-13.
+ * AP-07 IP-13. KORREKTUREN, Kaskade und Versionierung sind AP-08 IP-12 ff.: {@code version}
+ * bleibt 1, und eine korrigierte Zeile wird ebenso wenig angefasst wie eine endgültige.
  */
 @Component
 public class ViertelstundeVerdichter {
@@ -95,6 +116,7 @@ public class ViertelstundeVerdichter {
         "stand_anfang", "stand_anfang_zeit", "stand_ende", "stand_ende_zeit",
         "summe", "mittel", "min_wert", "max_wert",
         "erster_wert", "erster_text", "erster_zeit", "letzter_wert", "letzter_text", "letzter_zeit",
+        "menge", "menge_zustand", "kennzeichen", "faktor",
         "erhalten", "erwartet", "abdeckung_prozent", "kadenz_s", "kadenz_herkunft",
         "n_good", "n_uncertain", "n_invalid", "n_stale", "n_device_error",
         "geraet_einbau", "geraet_einbau_2", "geraet_einbau_weitere",
@@ -102,6 +124,9 @@ public class ViertelstundeVerdichter {
         "fassung", "katalog", "rolle",
         "zustand", "endgueltig_ab", "berechnet_am", "version",
         "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse"};
+
+    /** Die Spalten, die als {@code jsonb} geschrieben werden (der Platzhalter braucht den Cast). */
+    private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
 
     /** Der Schlüssel der Zeile (die Spalten des Unique-Index) — er wird nie überschrieben. */
     private static final List<String> SCHLUESSEL =
@@ -414,7 +439,8 @@ public class ViertelstundeVerdichter {
         VerbrauchRegeln.Ergebnis e;
         if (regel != null) {
             e = VerbrauchRegeln.ergebnis(regel, werte, von, bis, kadenzD,
-                    fuerVerbrauchRegeln(ereignisse), BigDecimal.ONE, null, null, false);
+                    fuerVerbrauchRegeln(ereignisse), ViertelstundeRegeln.FAKTOR_DER_FASSUNG,
+                    null, null, false);
         } else {
             // Zustands-, Bitfeld- und Textreihen haben keine Regel von AP-08: kein Mittel, keine
             // Menge. Die Abdeckung aber gibt es — sie wird AUFGERUFEN, nicht nachgerechnet.
@@ -482,6 +508,15 @@ public class ViertelstundeVerdichter {
         werteJeSpalte.put("letzter_wert", letzter == null ? null : letzter.zahl());
         werteJeSpalte.put("letzter_text", letzter == null ? null : letzter.wort());
         werteJeSpalte.put("letzter_zeit", letzter == null ? null : Timestamp.from(letzter.zeit()));
+        // AP-08 IP-2: die MENGE, ihr Zustand und die Klartext-Kennzeichen — genau das, was die
+        // Regel ohnehin schon ausgerechnet hat und was bis hierher weggeworfen wurde. NULL heißt
+        // „keine Menge bildbar", nie 0; ohne Regel (state/bitfield/text) gibt es gar keine
+        // Aussage — dann steht auch kein Zustand da, statt „unvollständig" zu behaupten.
+        werteJeSpalte.put("menge", regel == null ? null : e.menge());
+        werteJeSpalte.put("menge_zustand", regel == null ? null : e.zustand());
+        werteJeSpalte.put("kennzeichen",
+                ViertelstundeRegeln.kennzeichenJson(regel == null ? List.of() : e.kennzeichen()));
+        werteJeSpalte.put("faktor", ViertelstundeRegeln.FAKTOR_DER_FASSUNG);
         werteJeSpalte.put("erhalten", e.erhalten());
         werteJeSpalte.put("erwartet", e.erwartet());
         werteJeSpalte.put("abdeckung_prozent", e.abdeckungProzent());
@@ -892,7 +927,8 @@ public class ViertelstundeVerdichter {
         }
         StringBuilder platz = new StringBuilder();
         for (String s : SPALTEN) {
-            platz.append(platz.length() == 0 ? "" : ", ").append("ereignisse".equals(s) ? "?::jsonb" : "?");
+            platz.append(platz.length() == 0 ? "" : ", ")
+                    .append(JSONB_SPALTEN.contains(s) ? "?::jsonb" : "?");
         }
         return "INSERT INTO messreihe_viertelstunde (" + String.join(", ", SPALTEN) + ") VALUES ("
                 + platz + ") ON CONFLICT (" + String.join(", ", SCHLUESSEL) + ") DO UPDATE SET "

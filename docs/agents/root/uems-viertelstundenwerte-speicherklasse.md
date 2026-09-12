@@ -43,11 +43,14 @@ Die Brücke zwischen den Vokabularen steht an EINER Stelle (`ViertelstundeRegeln
 Rohwerte (`device_measurement_sample.value_kind`, IP-6) **kein Wort hat**. Die Spalte `summe`
 steht bereit und der Weg dorthin ist verdrahtet; heute entsteht keine solche Reihe.
 
-**Es gibt KEINE `menge`-Spalte.** Gespeichert werden `stand_anfang`/`stand_ende` (Z1: letzter guter
-Wert in `(t − Kadenz, t]`, nie fortgeschrieben), `summe`, `mittel`/`min`/`max` und immer erster und
-letzter Wert. Die Differenz über die Intervallgrenze bildet AP-08 (A5: „die Strecke rechnet keine
-Differenz"). Ebenso wird der **Faktor** einer Einstellungs-Fassung hier nie angewendet: gespeichert
-ist der Wert, wie die Box ihn geliefert hat, und `fassung` ist der Anker dazu.
+**Diese Stufe hatte KEINE `menge`-Spalte.** Gespeichert werden `stand_anfang`/`stand_ende` (Z1:
+letzter guter Wert in `(t − Kadenz, t]`, nie fortgeschrieben), `summe`, `mittel`/`min`/`max` und
+immer erster und letzter Wert. Die Differenz über die Intervallgrenze bildete AP-08 (A5: „die
+Strecke rechnet keine Differenz") — **seit AP-08 IP-2 (`V20260912180000`) tut sie das, und die
+Spalten `menge`/`menge_zustand`/`kennzeichen`/`faktor` stehen da**: `uems-viertelstundenmenge.md`.
+Ebenso wird der **Faktor** einer Einstellungs-Fassung hier nie angewendet — auch in IP-2 nicht, weil
+er beim Erfassen wirkt: gespeichert ist der Wert, wie die Box ihn geliefert hat, und `fassung` ist
+der Anker dazu.
 
 Die **Abdeckung** kommt aus der Kadenz, die **ZUM INTERVALL** galt (`KadenzRegeln.wirksam` mit der
 Fassung zu `intervall_beginn`, IP-10) — nie der von „jetzt"; `kadenz_s` und `kadenz_herkunft`

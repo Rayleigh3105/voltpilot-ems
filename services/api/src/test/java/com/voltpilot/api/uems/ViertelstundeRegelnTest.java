@@ -68,4 +68,34 @@ class ViertelstundeRegelnTest {
         // Kein Wert trägt eine Zustellart: `null` heißt „nicht nachgeschlagen", nie „direkt".
         assertThat(ViertelstundeRegeln.zustellart(List.of())).isNull();
     }
+
+    // ------------------------------------------------------------------ AP-08 IP-2
+
+    /**
+     * Die Kennzeichen reisen als ARRAY — Wortlaut UND Reihenfolge sind Vertrag. Sie werden
+     * durchgereicht, nicht umformuliert; Anführungszeichen und Gedankenstriche überleben.
+     */
+    @Test
+    void dieKennzeichenBehaltenWortlautUndReihenfolge() {
+        assertThat(ViertelstundeRegeln.kennzeichenJson(List.of())).isEqualTo("[]");
+        assertThat(ViertelstundeRegeln.kennzeichenJson(null)).isEqualTo("[]");
+        assertThat(ViertelstundeRegeln.kennzeichenJson(List.of(
+                "Anfang nicht gemessen (kein Stand an der Periodengrenze)",
+                "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt")))
+                .isEqualTo("[\"Anfang nicht gemessen (kein Stand an der Periodengrenze)\","
+                        + "\"Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt\"]");
+        assertThat(ViertelstundeRegeln.kennzeichenJson(List.of("Wert \"roh\" \\ ab\nzu")))
+                .isEqualTo("[\"Wert \\\"roh\\\" \\\\ ab\\nzu\"]");
+    }
+
+    /**
+     * Z8 — der Faktor der Fassung wirkt beim ERFASSEN, nicht in der Cloud
+     * ({@code quelle-einstellung.md} §3). Eine Verdopplung wäre der Fehler; darum steht die 1
+     * benannt an EINER Stelle.
+     */
+    @Test
+    void derFaktorDerFassungIstEinsUndStehtAnEinerStelle() {
+        assertThat(ViertelstundeRegeln.FAKTOR_DER_FASSUNG)
+                .isEqualByComparingTo(java.math.BigDecimal.ONE);
+    }
 }
