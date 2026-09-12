@@ -40,6 +40,14 @@ import org.springframework.web.server.ResponseStatusException;
  * Auswahl- und Budget-API eines Geraets. Tenant isolation is intentionally the
  * normal device/RLS path: a foreign device is 404 before catalog or state data
  * is returned, and platform admins use the existing X-Tenant-Id switcher.
+ *
+ * <p>Seit UEMS AP-07 IP-14 traegt dieser Controller den LESEPFAD der Messdatenstrecke
+ * (Verlauf mit Herkunft, Rueckfall auf die Speicherklassen, Export mit Herkunfts-Spalten).
+ * Damit gilt fuer ihn die Rechte-Regel der UEMS-Arbeitsregeln: jede Route nennt direkt
+ * darueber ihr Recht mit einer Kennung aus {@code docs/contracts/v2/rechte-matrix.json}
+ * ({@code RechteKennungenDerRoutenTest} erzwingt es). AP-03 ist NICHT gebaut - durchgesetzt
+ * wird heute {@code authenticated()} plus die Zeilen-Abschirmung des Kundenbereichs; ein
+ * fremdes Geraet ist 404, nie 403. Eine Durchsetzung je Standort entsteht erst mit AP-03.
  */
 @RestController
 @RequestMapping("/api/v1/devices/{deviceId}/measurement-selection")
@@ -77,6 +85,10 @@ public class DeviceMeasurementSelectionController {
         this.history = history;
     }
 
+    /**
+     * Recht: {@code messwerte.ansehen}; die Marken des Verlaufs zusaetzlich
+     * {@code ereignisse.ansehen} (AP-07 §4.10 „Ereignisse einsehen: wie Verlauf").
+     */
     @GetMapping("/{pointKey}/history")
     public MeasurementHistoryService.History history(@PathVariable UUID deviceId,
             @PathVariable String pointKey, @RequestParam(defaultValue = "24h") String range,
@@ -89,6 +101,10 @@ public class DeviceMeasurementSelectionController {
                 entityId);
     }
 
+    /**
+     * Recht: {@code export.standort} (AP-07 §4.10 „Export mit Herkunfts-Spalten"); der
+     * gelesene Inhalt ist der des Verlaufs, also zusaetzlich {@code messwerte.ansehen}.
+     */
     @GetMapping(value = "/{pointKey}/export", produces = "text/csv")
     public ResponseEntity<byte[]> export(@PathVariable UUID deviceId,
             @PathVariable String pointKey, @RequestParam(defaultValue = "24h") String range,
@@ -112,6 +128,8 @@ public class DeviceMeasurementSelectionController {
      * this device; without it the answer is the whole device, which before
      * Stufe 3b was the only thing a selection could belong to. The revision and
      * the volume estimate stay device-wide either way.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten} - dies ist ihre Lese-Haelfte.
      */
     @GetMapping
     public State state(@PathVariable UUID deviceId,
@@ -123,6 +141,8 @@ public class DeviceMeasurementSelectionController {
      * Full generated catalog, paged and searchable by German/source label,
      * selector/address/API key/measurand, unit, group and point key. Facet counts
      * in the response drive the group and semantic-status filters.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten} - die Auswahlliste dazu.
      */
     @GetMapping("/catalog")
     public MeasurementCatalog.SearchResult catalog(
@@ -150,7 +170,11 @@ public class DeviceMeasurementSelectionController {
         }
     }
 
-    /** Volume/device-load preview before the confirmation click; writes nothing. */
+    /**
+     * Volume/device-load preview before the confirmation click; writes nothing.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten} - die Vorschau vor ihrem Schreibvorgang.
+     */
     @GetMapping("/estimate")
     public MeasurementBudget.Estimate estimate(
             @PathVariable UUID deviceId,
@@ -161,7 +185,11 @@ public class DeviceMeasurementSelectionController {
         return selections.preview(deviceId, entityId, pointKey, enabled, cadenceS);
     }
 
-    /** The same preview for a not-yet-created free register. */
+    /**
+     * The same preview for a not-yet-created free register.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten} - dieselbe Vorschau, sie schreibt nichts.
+     */
     @PostMapping("/custom/estimate")
     public MeasurementBudget.Estimate estimateCustom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
@@ -169,7 +197,11 @@ public class DeviceMeasurementSelectionController {
         return selections.previewCustom(deviceId, entityId, definition);
     }
 
-    /** Revisioned enable/disable. Disabling is an update, never a delete. */
+    /**
+     * Revisioned enable/disable. Disabling is an update, never a delete.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten}.
+     */
     @PutMapping("/{pointKey}")
     public State change(@PathVariable UUID deviceId, @PathVariable String pointKey,
             @RequestParam(required = false) UUID entityId,
@@ -182,7 +214,11 @@ public class DeviceMeasurementSelectionController {
         return state;
     }
 
-    /** “Eigenen Messwert hinzufügen”: validated, read-only free register. */
+    /**
+     * “Eigenen Messwert hinzufügen”: validated, read-only free register.
+     *
+     * <p>Recht: {@code mess_selektion.bearbeiten}.
+     */
     @PostMapping("/custom")
     public State custom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
