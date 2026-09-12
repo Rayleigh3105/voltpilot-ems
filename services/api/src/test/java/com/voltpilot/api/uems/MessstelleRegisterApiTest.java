@@ -364,9 +364,62 @@ class MessstelleRegisterApiTest {
             // Zustand und die ehrlichen Lücken.
             assertThat(zeile.get("lebenszyklus").asText()).as(kz)
                     .isEqualTo("berechnet".equals(soll.get("art").asText()) ? "entwurf" : "aktiv");
-            assertThat(zeile.get("beobachtung").isNull()).as(kz + " Beobachtung (IP-15)").isTrue();
-            assertThat(zeile.get("letzter_wert").isNull()).as(kz + " letzter Wert (IP-15)").isTrue();
+
+            // Beobachtung (IP-15): ohne einen einzigen Wert wartet jede gebundene Größe, und eine
+            // ohne Quelle sagt das — nie ein Fehler, nie eine 0.
+            JsonNode beobachtung = zeile.get("beobachtung");
+            if ("berechnet".equals(soll.get("art").asText())) {
+                assertThat(beobachtung.isNull()).as(kz + " berechnet hat keine Beobachtung (AP-10)").isTrue();
+            } else if (quelleSoll == null) {
+                assertThat(beobachtung.get("zustand").asText()).as(kz).isEqualTo("keine_datenquelle");
+                assertThat(beobachtung.get("text").asText()).as(kz).isEqualTo("Keine Datenquelle");
+                assertThat(beobachtung.get("geraet").isNull()).as(kz).isTrue();
+                assertThat(beobachtung.get("kadenz_s").isNull()).as(kz + " ohne Kanal keine Kadenz").isTrue();
+                assertThat(beobachtung.get("toleranz_s").isNull()).as(kz + " ohne Kanal kein Fenster").isTrue();
+            } else {
+                String einbau = ah.geraete().get(quelleSoll.get("komponente").asText())[1];
+                assertThat(beobachtung.get("zustand").asText()).as(kz).isEqualTo("wartet_auf_erste_daten");
+                assertThat(beobachtung.get("text").asText()).as(kz)
+                        .isEqualTo("Wartet auf erste Daten von " + einbau);
+                assertThat(beobachtung.get("geraet").asText()).as(kz).isEqualTo(einbau);
+                assertThat(beobachtung.get("seit").isNull()).as(kz + " wartet ohne Zeitpunkt").isTrue();
+                assertThat(beobachtung.get("kadenz_s").asLong()).as(kz).isEqualTo(60);
+                assertThat(beobachtung.get("toleranz_s").asLong()).as(kz + " min(max(3x60,300),86400)")
+                        .isEqualTo(300);
+            }
+            assertThat(zeile.get("letzter_wert").isNull()).as(kz + " letzter Wert ohne Werte").isTrue();
+            // Jede Nebengröße sagt dasselbe über ihre EIGENE führende Quelle (hier: keine).
+            assertThat(zeile.get("nebengroessen")).as(kz + " Nebengrößen")
+                    .hasSize(soll.get("nebengroessen").size());
+            for (JsonNode n : zeile.get("nebengroessen")) {
+                assertThat(n.get("letzter_wert").isNull()).as(kz + " Nebengröße").isTrue();
+                assertThat("berechnet".equals(soll.get("art").asText())
+                        ? n.get("beobachtung").isNull()
+                        : "keine_datenquelle".equals(n.at("/beobachtung/zustand").asText())).as(kz).isTrue();
+            }
         }
+
+        // Das Aggregat „x von y“ — nur die GEMESSENEN stehen im Nenner (berechnete kommen mit AP-10).
+        Map<String, Integer> jeStandort = new LinkedHashMap<>();
+        int gemessen = 0;
+        for (JsonNode soll : referenz.get("messstellen")) {
+            if ("berechnet".equals(soll.get("art").asText())) {
+                continue;
+            }
+            gemessen++;
+            String st = standortVon(ortAm(soll.get("kennzeichen").asText(), tag));
+            if (st != null) {
+                jeStandort.merge(st, 1, Integer::sum);
+            }
+        }
+        assertThat(antwort.at("/aggregat/unternehmen/gesamt").asInt()).isEqualTo(gemessen);
+        assertThat(antwort.at("/aggregat/unternehmen/erfuellt").asInt()).isZero();
+        assertThat(antwort.at("/aggregat/unternehmen/text").asText())
+                .isEqualTo("0 von " + gemessen + " Messstellen liefern Daten");
+        Map<String, Integer> gezaehlt = new LinkedHashMap<>();
+        antwort.get("aggregat").get("standorte").forEach(a -> gezaehlt.put(a.get("kurzzeichen").asText(),
+                a.get("gesamt").asInt()));
+        assertThat(gezaehlt).isEqualTo(jeStandort);
 
         // MS-06 nennt nach dem Wechsel seinen Vorgänger, MS-01 hat keinen.
         assertThat(zeile(antwort, "MS-06").at("/quelle/davor/geraet/einbau").asText()).isEqualTo("Z-5a");
@@ -530,6 +583,319 @@ class MessstelleRegisterApiTest {
      * Messstelle — der Ortsbaum kommt aus dem festen Lesezug des Standort-Lesemodells. Und sie sind
      * in weniger als 300 ms da.
      */
+    // ---- IP-15: die Beobachtung ----------------------------------------------------------------
+
+    /**
+     * Die Vertragskante: die Toleranz ist {@code min(max(3 x Kadenz, 300 s), 86 400 s)} und sie
+     * gehört zu „liefert“ ({@code <=}). Bei 3 600 s Kadenz sind das 10 800 s — Sekunde 10 800
+     * liefert noch, Sekunde 10 801 nicht mehr, und dann NENNT der Satz den Zeitpunkt.
+     *
+     * <p>⚠ 2 x Kadenz wäre die LÜCKE (AP-07 IP-9) — eine andere Aussage, die hier nichts entscheidet.
+     */
+    @Test
+    void dieKanteDerToleranzGehoertZuLiefert() {
+        Buehne b = buehne("Kante", 3600);
+        wert(b, "2026-05-01T08:00:00Z", 1000.0, "good");
+
+        JsonNode innen = zeile(register(b.wer(), "?stichtag=2026-05-01T11:00:00Z"), "MS-0001");
+        assertThat(innen.at("/beobachtung/toleranz_s").asLong()).isEqualTo(10_800);
+        assertThat(innen.at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+        assertThat(innen.at("/beobachtung/text").asText()).isEqualTo("Liefert Daten");
+        assertThat(innen.at("/beobachtung/seit").isNull()).as("„liefert“ nennt keinen Zeitpunkt").isTrue();
+        assertThat(innen.at("/letzter_wert/wert").asDouble()).isEqualTo(1000.0);
+        assertThat(innen.at("/letzter_wert/einheit").asText()).as("die Einheit des Katalogs, nie umgerechnet")
+                .isEqualTo("Wh");
+        assertThat(innen.at("/letzter_wert/zeitpunkt").asText()).isEqualTo("2026-05-01T10:00:00+02:00");
+
+        JsonNode draussen = zeile(register(b.wer(), "?stichtag=2026-05-01T11:00:01Z"), "MS-0001");
+        assertThat(draussen.at("/beobachtung/zustand").asText()).isEqualTo("liefert_nicht_seit");
+        assertThat(draussen.at("/beobachtung/seit").asText()).isEqualTo("2026-05-01T10:00:00+02:00");
+        assertThat(draussen.at("/beobachtung/text").asText())
+                .isEqualTo("Liefert keine Daten seit 10:00 Uhr");
+        // Der letzte Wert bleibt, was er ist — er wird nicht verschwiegen, weil er alt ist.
+        assertThat(draussen.at("/letzter_wert/wert").asDouble()).isEqualTo(1000.0);
+
+        // Und am nächsten Tag trägt der Satz das Datum (Zeitzone des Standorts).
+        assertThat(zeile(register(b.wer(), "?stichtag=2026-05-02T08:00:00Z"), "MS-0001")
+                .at("/beobachtung/text").asText()).isEqualTo("Liefert keine Daten seit 01.05.2026 10:00 Uhr");
+    }
+
+    /**
+     * Der Fall, den man falsch erwartet (Vektor {@code mindestfenster-schlaegt-drei-kadenzen}):
+     * 60 s Kadenz, 190 s Alter — 3 x Kadenz ist überschritten, das Mindestfenster von 300 s nicht.
+     * Es gilt „Liefert Daten“. Der Deckel greift umgekehrt bei sehr trägen Reihen.
+     */
+    @Test
+    void dasMindestfensterSchlaegtDreiKadenzenUndDerDeckelEinenTag() {
+        Buehne schnell = buehne("Mindestfenster", 60);
+        wert(schnell, "2026-05-01T08:00:00Z", 5.0, "good");
+        JsonNode z = zeile(register(schnell.wer(), "?stichtag=2026-05-01T08:03:10Z"), "MS-0001");
+        assertThat(z.at("/beobachtung/kadenz_s").asLong()).isEqualTo(60);
+        assertThat(z.at("/beobachtung/toleranz_s").asLong()).isEqualTo(300);
+        assertThat(z.at("/beobachtung/zustand").asText()).as("190 s > 3 x 60 s, aber < 300 s")
+                .isEqualTo("liefert");
+
+        Buehne traege = buehne("Deckel", 40_000);
+        wert(traege, "2026-05-01T00:00:00Z", 7.0, "good");
+        assertThat(zeile(register(traege.wer(), "?stichtag=2026-05-02T00:00:00Z"), "MS-0001")
+                .at("/beobachtung/toleranz_s").asLong()).as("3 x 40 000 s, gedeckelt auf einen Tag")
+                .isEqualTo(86_400);
+        assertThat(zeile(register(traege.wer(), "?stichtag=2026-05-02T00:00:00Z"), "MS-0001")
+                .at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+        assertThat(zeile(register(traege.wer(), "?stichtag=2026-05-02T00:00:01Z"), "MS-0001")
+                .at("/beobachtung/zustand").asText()).isEqualTo("liefert_nicht_seit");
+    }
+
+    /**
+     * Gezählt werden nur Werte mit Qualität „gut“ (AP-07 E9): kamen nur unsichere an, wartet die
+     * Messstelle weiter auf ihre ERSTEN Daten — ein eigenes Wort dafür wäre ein geratener Zustand,
+     * und ein Fehler wäre es erst recht nicht.
+     */
+    @Test
+    void nurGuteWerteZaehlenSonstWartetSieWeiter() {
+        Buehne b = buehne("Nur schlechte", 60);
+        wert(b, "2026-05-01T08:00:00Z", 1.0, "uncertain");
+        wert(b, "2026-05-01T08:01:00Z", 2.0, "device_error");
+
+        JsonNode z = zeile(register(b.wer(), "?stichtag=2026-05-01T08:01:30Z"), "MS-0001");
+        assertThat(z.at("/beobachtung/zustand").asText()).isEqualTo("wartet_auf_erste_daten");
+        assertThat(z.at("/letzter_wert").isNull()).as("ein unsicherer Wert ist kein letzter Wert").isTrue();
+
+        wert(b, "2026-05-01T08:02:00Z", 3.0, "good");
+        assertThat(zeile(register(b.wer(), "?stichtag=2026-05-01T08:02:30Z"), "MS-0001")
+                .at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+    }
+
+    /**
+     * <b>MS-06 des Referenzunternehmens</b> (§5.13): am 18.11.2026 10:40 löst Z-5b den Zähler Z-5a
+     * ab. Bis 10:47 sagt die Zeile „Wartet auf erste Daten von Z-5b“ — obwohl Z-5a bis 10:39
+     * geliefert hat: dessen Werte gehören zu SEINER Bindung, nicht zur neuen. Ab dem ersten Wert
+     * von Z-5b heißt es wieder „Liefert Daten“.
+     */
+    @Test
+    void ms06WartetNachDemZaehlerwechselAufErsteDatenVonZ5b() {
+        JsonNode gr4 = element(referenz.get("geraete"), "GR-4");
+        String wechsel = element(gr4.get("einbauten"), "Z-5b").get("gueltig_ab").asText();
+        String vorher = element(gr4.get("einbauten"), "Z-5a").get("gueltig_ab").asText();
+        Buehne b = buehne("Zählerwechsel", 60, "MS-06", vorher);
+        wert(b, "2026-11-18T09:39:00Z", 1_083_415.2, "good"); // 10:39 Ortszeit, noch Z-5a
+
+        // Der Wechsel: Z-5a ausgebaut, Z-5b eingebaut, die Bindung endet und beginnt zum selben
+        // Zeitpunkt — genau wie der Zeitstrahl der Vektor-Datei.
+        einbauWechsel(b, "Z-5a", "Z-5b", wechsel);
+
+        JsonNode wartet = zeile(register(b.wer(), "?stichtag=2026-11-18T09:45:00Z"), "MS-06");
+        assertThat(wartet.at("/quelle/fuehrend/geraet/einbau").asText()).isEqualTo("Z-5b");
+        assertThat(wartet.at("/beobachtung/zustand").asText()).isEqualTo("wartet_auf_erste_daten");
+        assertThat(wartet.at("/beobachtung/text").asText()).isEqualTo("Wartet auf erste Daten von Z-5b");
+        assertThat(wartet.at("/beobachtung/geraet").asText()).isEqualTo("Z-5b");
+        assertThat(wartet.at("/letzter_wert").isNull()).as("der Endstand von Z-5a ist nicht ihr Wert").isTrue();
+        assertThat(wartet.at("/aggregat/unternehmen").isMissingNode()).isTrue();
+
+        // 10:47: die ersten Werte von Z-5b treffen ein (§5.13, Protokoll 18.11.2026 10:47).
+        wert(b, "2026-11-18T09:47:00Z", 0.0, "good");
+        JsonNode liefert = zeile(register(b.wer(), "?stichtag=2026-11-18T09:47:30Z"), "MS-06");
+        assertThat(liefert.at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+        assertThat(liefert.at("/beobachtung/text").asText()).isEqualTo("Liefert Daten");
+        assertThat(liefert.at("/letzter_wert/zeitpunkt").asText()).isEqualTo("2026-11-18T10:47:00+01:00");
+        assertThat(liefert.at("/letzter_wert/wert").asDouble()).isZero();
+    }
+
+    /**
+     * <b>MS-21</b> (E8): eine Messstelle OHNE Datenquelle sagt genau das — auch wenn unter ihrer
+     * früheren Bindung längst Werte liegen. Ein bekannter Grund ist nie eine Störung, und
+     * „keine Datenquelle“ schlägt jeden alten Wert.
+     */
+    @Test
+    void ohneDatenquelleSchlaegtDerGrundJedenAltenWert() {
+        Buehne b = buehne("Ohne Quelle", 60);
+        wert(b, "2026-05-01T08:00:00Z", 1240.0, "good");
+        root.update("UPDATE messstelle_quelle SET gueltig_bis = ? WHERE messstelle_id = ?",
+                Timestamp.from(Instant.parse("2026-05-01T09:00:00Z")), b.messstelle());
+
+        JsonNode z = zeile(register(b.wer(), "?stichtag=2026-05-01T10:00:00Z"), "MS-0001");
+        assertThat(z.at("/quelle/stand").asText()).isEqualTo("keine_datenquelle");
+        assertThat(z.at("/beobachtung/zustand").asText()).isEqualTo("keine_datenquelle");
+        assertThat(z.at("/beobachtung/text").asText()).isEqualTo("Keine Datenquelle");
+        assertThat(z.at("/beobachtung/geraet").isNull()).isTrue();
+        assertThat(z.at("/beobachtung/kadenz_s").isNull()).as("ohne Kanal keine Kadenz, nie eine erfundene")
+                .isTrue();
+        assertThat(z.at("/letzter_wert").isNull()).as("kein Wert ohne Quelle — nie ein alter").isTrue();
+        // Und sie zählt im Nenner, nie im Zähler.
+        assertThat(register(b.wer(), "?stichtag=2026-05-01T10:00:00Z").at("/aggregat/unternehmen/text").asText())
+                .isEqualTo("0 von 1 Messstelle liefern Daten");
+    }
+
+    /**
+     * Das Aggregat „x von y Messstellen liefern Daten“ — je Standort und für das Unternehmen,
+     * serverseitig aus der Ableitung {@code aggregat} des Vertrags. Nur „liefert“ zählt im Zähler;
+     * ein Filter schneidet auch das Aggregat, weil es GENAU die gezeigten Zeilen zählt.
+     */
+    @Test
+    void dasAggregatZaehltJeStandortUndFuerDasUnternehmen() {
+        Buehne b = buehne("Aggregat", 60);
+        UUID zweiter = standort(b, "ST-2", "Werk Zwei");
+        messstelle(b, "MS-0002", b.standort(), 60, "2026-01-01T00:00:00Z");
+        messstelle(b, "MS-0003", zweiter, 60, "2026-01-01T00:00:00Z");
+        wert(b, "MS-0001", "2026-05-01T08:00:00Z", 1.0, "good");
+        wert(b, "MS-0003", "2026-05-01T08:00:00Z", 3.0, "good");
+
+        JsonNode antwort = register(b.wer(), "?stichtag=2026-05-01T08:01:00Z");
+        assertThat(antwort.at("/aggregat/unternehmen/text").asText())
+                .isEqualTo("2 von 3 Messstellen liefern Daten");
+        assertThat(antwort.at("/aggregat/unternehmen/erfuellt").asInt()).isEqualTo(2);
+        Map<String, String> jeStandort = new LinkedHashMap<>();
+        antwort.at("/aggregat/standorte").forEach(a -> jeStandort.put(a.get("kurzzeichen").asText(),
+                a.get("text").asText()));
+        assertThat(jeStandort).containsExactly(
+                org.assertj.core.api.Assertions.entry("ST-1", "1 von 2 Messstellen liefert Daten"),
+                org.assertj.core.api.Assertions.entry("ST-2", "1 von 1 Messstelle liefert Daten"));
+        assertThat(antwort.at("/aggregat/standorte/1/name").asText()).isEqualTo("Werk Zwei");
+
+        // Der Filter schneidet die Zeilen UND das Aggregat.
+        assertThat(register(b.wer(), "?stichtag=2026-05-01T08:01:00Z&standort=ST-2")
+                .at("/aggregat/unternehmen/text").asText()).isEqualTo("1 von 1 Messstelle liefert Daten");
+    }
+
+    /** Der Zaun gilt auch für die Werte: ein fremder Kundenbereich sieht weder Zeile noch Wert. */
+    @Test
+    void dieWerteBleibenImEigenenKundenbereich() {
+        Buehne b = buehne("Zaun Werte", 60);
+        wert(b, "2026-05-01T08:00:00Z", 42.0, "good");
+
+        assertThat(register(b.wer(), "?stichtag=2026-05-01T08:01:00Z").at("/register/0/letzter_wert/wert")
+                .asDouble()).isEqualTo(42.0);
+        JsonNode fremd = register(DEMO2, "?stichtag=2026-05-01T08:01:00Z");
+        assertThat(fremd.get("register")).isEmpty();
+        assertThat(fremd.at("/aggregat/unternehmen/text").asText()).isEqualTo("Noch keine Messstellen");
+    }
+
+    // ---- Gerüst: die Bühne der Beobachtung -------------------------------------------------------
+
+    /**
+     * Ein eigener Kundenbereich mit einem Standort, einer Anlage und Messstellen. JEDE bekommt ihre
+     * EIGENE Box: die Messreihe ist heute (Box, Kanal) — ohne {@code entity_id} am Wert (AP-07
+     * IP-6/IP-7) läsen zwei Komponentenderselben Box unter demselben Kanal dieselben Werte.
+     */
+    private record Buehne(Anrufer wer, UUID standort, UUID anlage, Map<String, UUID> messstellen,
+            Map<String, UUID> komponenten, Map<String, UUID> boxen) {
+
+        UUID messstelle() {
+            return messstellen.values().iterator().next();
+        }
+
+        String erste() {
+            return messstellen.keySet().iterator().next();
+        }
+    }
+
+    private Buehne buehne(String name, int kadenzS) {
+        return buehne(name, kadenzS, "MS-0001", "2026-01-01T00:00:00Z");
+    }
+
+    /** Bühne mit EINER Messstelle unter {@code kennzeichen}, deren führende Quelle ab {@code ab} gilt. */
+    private Buehne buehne(String name, int kadenzS, String kennzeichen, String ab) {
+        UUID t = neuerKundenbereich(name);
+        Anrufer wer = new Anrufer("admin", t);
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, t, name, Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")));
+        Buehne b = new Buehne(wer, null, anlage, new LinkedHashMap<>(), new LinkedHashMap<>(),
+                new LinkedHashMap<>());
+        UUID standort = standort(b, "ST-1", name);
+        Buehne fertig = new Buehne(wer, standort, anlage, b.messstellen(), b.komponenten(), b.boxen());
+        messstelle(fertig, kennzeichen, standort, kadenzS, ab);
+        return fertig;
+    }
+
+    /** Ein weiterer Standort desselben Kundenbereichs (über die Route, damit das Kurzzeichen zählt). */
+    private UUID standort(Buehne b, String kurzzeichen, String name) {
+        standortService.uhrStellen(uhr("2019-01-01T09:00:00+01:00"));
+        try {
+            return UUID.fromString(ok201(rufe(HttpMethod.POST, "/standorte", b.wer(),
+                    Map.of("name", name, "kurzzeichen", kurzzeichen, "zeitzone", "Europe/Berlin", "adresse",
+                            Map.of("strasse", "Gewerbering 7", "plz", "12345", "ort", "Ahrenberg", "land", "DE"))))
+                    .get("id").asText());
+        } finally {
+            standortService.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    /** Komponente (mit ihrem Gerät), Mess-Selektion, Messstelle, Ort und führende Quelle ab {@code ab}. */
+    private UUID messstelle(Buehne b, String kennzeichen, UUID standort, int kadenzS, String ab) {
+        UUID t = b.wer().kundenbereich();
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, t, b.anlage(), "VP-BOX-" + kennzeichen + "-" + b.anlage());
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, communication, connection_json, created_at) VALUES (?, ?, "
+                + "'modbus-generic', ?, 'modbus-generic', ?, 'modbus_tcp', '{\"unit_id\":1}'::jsonb, ?) "
+                + "RETURNING id", UUID.class, t, b.anlage(), "Zähler " + kennzeichen, box,
+                Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")));
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, "
+                + "point_key, enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, "
+                + "apply_status, retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, true, ?, 1, now(), "
+                + "'2026.08.26.3', 'test', 'pending_edge', 'energy_counter', 'fifteen_minute')",
+                t, b.anlage(), box, komponente, ENERGIE_BEZUG, kadenzS);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ?",
+                UUID.class, komponente);
+        UUID messstelle = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, "
+                + "groesse, richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', "
+                + "'Bezug', 'kWh', 'Zählerstand') RETURNING id", UUID.class, t, kennzeichen, "Zähler " + kennzeichen);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) "
+                + "VALUES (?,?,?,?)", t, messstelle, standort, LocalDate.parse("2020-01-01"));
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, "
+                + "actor_name, actor_art) VALUES (?,?,'Wirkenergie','Bezug',?,?,?,'counter','zaehlerstand',"
+                + "'fuehrend',?,false,?,'test','voltpilot')", t, messstelle, komponente, geraet, ENERGIE_BEZUG,
+                Timestamp.from(Instant.parse(ab)), Timestamp.from(Instant.parse(ab).plusSeconds(60)));
+        b.messstellen().put(kennzeichen, messstelle);
+        b.komponenten().put(kennzeichen, komponente);
+        b.boxen().put(kennzeichen, box);
+        return messstelle;
+    }
+
+    /**
+     * Der Zählerwechsel auf der Bühne: derselbe Einbau-Wechsel wie im Referenzunternehmen — Gerät
+     * und Kanal bleiben, nur der Einbau und die Bindung wechseln zum selben Zeitpunkt.
+     */
+    private void einbauWechsel(Buehne b, String alt, String neu, String zeitpunkt) {
+        UUID t = b.wer().kundenbereich();
+        Timestamp wann = Timestamp.from(OffsetDateTime.parse(zeitpunkt).toInstant());
+        UUID komponente = b.komponenten().values().iterator().next();
+        UUID vorher = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_bis IS NULL", UUID.class, komponente);
+        root.update("UPDATE geraet SET einbau_kennzeichen = ?, ausgebaut_am = ? WHERE id = ?", alt, wann, vorher);
+        root.update("UPDATE geraet_komponente SET gueltig_bis = ? WHERE geraet_id = ?", wann, vorher);
+        String kennzeichen = root.queryForObject("SELECT kennzeichen FROM geraet WHERE id = ?", String.class,
+                vorher);
+        UUID nachher = root.queryForObject("INSERT INTO geraet (tenant_id, site_id, kennzeichen, "
+                + "einbau_kennzeichen, geraeteart, eingebaut_am) VALUES (?, ?, ?, ?, 'zaehler', ?) RETURNING id",
+                UUID.class, t, b.anlage(), kennzeichen, neu, wann);
+        root.update("INSERT INTO geraet_komponente (tenant_id, geraet_id, entity_id, gueltig_ab) VALUES (?,?,?,?)",
+                t, nachher, komponente, wann);
+        UUID messstelle = b.messstelle();
+        root.update("UPDATE messstelle_quelle SET gueltig_bis = ? WHERE messstelle_id = ? AND gueltig_bis IS NULL",
+                wann, messstelle);
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, "
+                + "actor_name, actor_art) VALUES (?,?,'Wirkenergie','Bezug',?,?,?,'counter','zaehlerstand',"
+                + "'fuehrend',?,false,?,'test','voltpilot')", t, messstelle, komponente, nachher, ENERGIE_BEZUG,
+                wann, Timestamp.from(wann.toInstant().plusSeconds(1500)));
+    }
+
+    private void wert(Buehne b, String zeit, double zahl, String qualitaet) {
+        wert(b, b.erste(), zeit, zahl, qualitaet);
+    }
+
+    /** EIN Messwert, wie ihn der Writer ablegt — je Box und Kanal, nie je Messstelle. */
+    private void wert(Buehne b, String kennzeichen, String zeit, double zahl, String qualitaet) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (?,?,?,?,?,?,?,?,'2026.08.26.3',?,'counter')",
+                Timestamp.from(Instant.parse(zeit)), b.wer().kundenbereich(), b.anlage(),
+                b.boxen().get(kennzeichen), ENERGIE_BEZUG, zahl, zahl, qualitaet,
+                Math.abs(zeit.hashCode()) % 100000);
+    }
+
     @Test
     void hundertMessstellenKostenEineAbfrageUndBleibenUnter300ms() {
         Anrufer eine = werk("Laufzeit 1", 1);

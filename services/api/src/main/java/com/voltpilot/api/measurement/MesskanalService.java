@@ -147,6 +147,37 @@ public class MesskanalService {
         return katalogName(catalog.resolve(pointKey));
     }
 
+    /**
+     * Die Einheit eines Kanals, nach derselben Regel wie {@link #anzeigename}: aus der eigenen
+     * Definition (Selbstbau) oder aus dem Katalog; {@code null}, wenn keine von beiden eine nennt.
+     * Das Messstellen-Register (IP-15) nennt den letzten Wert in genau dieser Einheit — es rechnet
+     * nie um.
+     */
+    public String einheit(String pointKey, JsonNode eigeneDefinition) {
+        if (eigeneDefinition != null && !eigeneDefinition.isNull()) {
+            return text(eigeneDefinition, "unit");
+        }
+        MeasurementCatalog.Point p = catalog.resolve(pointKey);
+        return p == null ? null : p.unit();
+    }
+
+    /**
+     * Die WIRKSAME Kadenz eines Kanals in Sekunden — dieselbe Regel wie im Read-Model
+     * ({@code MeasurementCatalog.Point.view}): die der Mess-Selektion, sonst die Vorgabe des
+     * Katalogs ({@code default_cadence_s}), sonst 300 s. Die Beobachtung (IP-15) misst ihre
+     * Toleranz daran.
+     */
+    public int kadenzS(String pointKey, Integer selektion) {
+        if (selektion != null) {
+            return selektion;
+        }
+        MeasurementCatalog.Point p = catalog.resolve(pointKey);
+        return p == null || p.defaultCadenceS() == null ? VORGABE_KADENZ_S : p.defaultCadenceS();
+    }
+
+    /** Die Kadenz, wenn weder Selektion noch Katalog eine nennt (der Stand von {@code Point.view}). */
+    public static final int VORGABE_KADENZ_S = 300;
+
     private static String katalogName(MeasurementCatalog.Point p) {
         return p == null ? null : p.labelDe() == null ? p.labelSource() : p.labelDe();
     }

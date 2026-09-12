@@ -2482,9 +2482,48 @@ export interface MessstelleRegisterQuelle {
 }
 
 /**
+ * Die Beobachtung EINER Größe (AP-04 IP-15) — abgeleitet, nie gespeichert und nie geraten.
+ * `zustand` ist eines der vier Wörter des Zustandsvertrags (`uemsZustand.ts`), `text` der
+ * Kundensatz; `seit` trägt nur `liefert_nicht_seit`. `toleranz_s` ist das angewandte Fenster
+ * `min(max(3 × kadenz_s, 300), 86400)` — die Kante gehört zu „liefert“.
+ *
+ * ⚠ 3 × Kadenz ist die BEOBACHTUNG; 2 × Kadenz ist die LÜCKE, eine ANDERE Aussage ohne Boden und
+ * Deckel (AP-07 IP-9), die hier nicht vorkommt. Es gibt keinen Fehler- und keinen
+ * Störungszustand: Schweigen ist nie ein bewiesener Fehlschlag.
+ */
+export interface MessstelleRegisterBeobachtung {
+  zustand: 'liefert' | 'liefert_nicht_seit' | 'wartet_auf_erste_daten' | 'keine_datenquelle';
+  text: string;
+  seit: string | null;
+  toleranz_s: number | null;
+  kadenz_s: number | null;
+  geraet: string | null;
+}
+
+/**
+ * Der letzte Wert mit Qualität „gut“ der führenden Quelle. Genau eines von `wert` und `text` ist
+ * gesetzt; `einheit` ist die des Messkanals — ohne jede Umrechnung.
+ */
+export interface MessstelleRegisterWert {
+  wert: number | null;
+  text: string | null;
+  einheit: string | null;
+  zeitpunkt: string;
+}
+
+/** Eine Nebengröße mit ihrer eigenen Beobachtung über ihre eigene führende Quelle. */
+export interface MessstelleRegisterNebengroesse {
+  id: string;
+  groesse: { groesse: string; richtung: string; einheit: string; wertart: string };
+  beobachtung: MessstelleRegisterBeobachtung | null;
+  letzter_wert: MessstelleRegisterWert | null;
+}
+
+/**
  * Eine Zeile des Registers zum Stichtag. `lebenszyklus` ist der HEUTIGE (ein Stichtag verschiebt
- * Ort, Stellung und Quelle, nicht ihn); `beobachtung` und `letzter_wert` sind bis AP-04 IP-15
- * IMMER `null` — nie geraten, nie eine 0.
+ * Ort, Stellung und Quelle, nicht ihn); `beobachtung` und `letzter_wert` gelten der Hauptgröße
+ * über ihre führende Quelle — `null` nur bei einer BERECHNETEN Messstelle (AP-10), nie geraten,
+ * nie eine 0.
  */
 export interface MessstelleRegisterZeile {
   id: string;
@@ -2500,8 +2539,33 @@ export interface MessstelleRegisterZeile {
   fehlt: string[];
   angehalten_ab: string | null;
   archiviert_am: string | null;
-  beobachtung: null;
-  letzter_wert: null;
+  beobachtung: MessstelleRegisterBeobachtung | null;
+  letzter_wert: MessstelleRegisterWert | null;
+  nebengroessen: MessstelleRegisterNebengroesse[];
+}
+
+/** „x von y Messstellen liefern Daten“ — nur `liefert` zählt im Zähler. */
+export interface MessstelleRegisterAbdeckung {
+  erfuellt: number;
+  gesamt: number;
+  text: string;
+}
+
+/** Dieselbe Zählung je Standort, mit Kurzzeichen und Namen. */
+export interface MessstelleRegisterStandortAbdeckung extends MessstelleRegisterAbdeckung {
+  id: string | null;
+  kurzzeichen: string;
+  name: string | null;
+}
+
+/**
+ * Das Aggregat der Antwort: gezählt werden GENAU die gezeigten Zeilen mit einer Beobachtung
+ * (die Filter gelten also auch hier); eine berechnete Messstelle steht in keinem Nenner, eine
+ * Zeile ohne Standort nur beim Unternehmen.
+ */
+export interface MessstelleRegisterAggregat {
+  unternehmen: MessstelleRegisterAbdeckung;
+  standorte: MessstelleRegisterStandortAbdeckung[];
 }
 
 /**
@@ -2516,6 +2580,7 @@ export interface MessstellenRegister {
   stichtag: string;
   zeitpunkt: string;
   teilansicht: boolean;
+  aggregat: MessstelleRegisterAggregat;
 }
 
 // ---- Vorschlagsliste der Bestandsübernahme (UEMS AP-04 IP-16) ---------------

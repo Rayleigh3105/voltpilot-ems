@@ -10,9 +10,17 @@ import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.uems.MessstelleRepository.Nebengroesse;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.OrtZeile;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.StellungZeile;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -44,6 +52,34 @@ public class MessstelleRegisterRepository {
     /** Eine Messstelle mit allem, woraus ihre Register-Zeile und ihre Vertrags-Form entstehen. */
     public record Bestand(Messstelle messstelle, List<Nebengroesse> nebengroessen, List<OrtZeile> orte,
             List<StellungZeile> stellungen, List<QuelleZeile> quellen) {}
+
+    /**
+     * Der Messwert EINER führenden Bindung: Komponente + Kanal (unter diesem Paar kommen die Werte
+     * an — {@code device_measurement_selection} sagt, welche Box ihn liest) und {@code ab}, der
+     * Beginn der Bindung.
+     *
+     * <p><b>{@code ab} gehört zum Schlüssel, nicht zur Verzierung.</b> Ein Zählerwechsel tauscht
+     * das Gerät, aber weder Komponente noch Kanal: die Werte von Z-5a und Z-5b liegen unter
+     * derselben (Box, Kanal). Nur der Beginn der Bindung trennt sie — ohne ihn hielte der alte
+     * Zähler die neue Bindung am Leben, statt „wartet auf erste Daten von Z-5b“ zu sagen
+     * (AP-04 §5.13, Regel 4: ein Wert bleibt bei dem Gerät, unter dem er erfasst wurde).
+     */
+    public record Messwert(UUID komponente, String kanal, Instant ab) {}
+
+    /**
+     * Was über die Werte EINES Messwerts bis zu einem Zeitpunkt bekannt ist — die Eingänge von
+     * {@link ZustandAbleitung#liefertDaten}, mehr nicht.
+     *
+     * @param kadenzS die Kadenz der Mess-Selektion; {@code null} = keine eigene (dann entscheidet
+     *     der Katalog, dieselbe Regel wie im Messkanal-Read-Model)
+     * @param letzterGuterWert Zeit des letzten Wertes mit Qualität „gut“; {@code null} = nie einer
+     * @param zahl sein Zahlenwert (dekodiert, sonst roh); {@code null} bei einem Text-Kanal
+     * @param text sein Textwert; {@code null} bei einem Zahlen-Kanal
+     * @param jeEinWert ob überhaupt je ein Wert ankam — auch ein schlechter (ändert den Zustand
+     *     NICHT, gezählt werden nur gute; der Vertrag will den Eingang trotzdem ehrlich)
+     */
+    public record Werte(Integer kadenzS, Instant letzterGuterWert, Double zahl, String text,
+            boolean jeEinWert) {}
 
     /**
      * Die Abfrage. Je Tabelle EIN Durchgang, gruppiert je Messstelle (Hash-Verbund statt einer
@@ -137,6 +173,97 @@ public class MessstelleRegisterRepository {
     /** Alle Messstellen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen — in EINER Abfrage. */
     public List<Bestand> alle() {
         return List.copyOf(jdbc.query(ABFRAGE, this::bestand));
+    }
+
+    /**
+     * Der EINE zusätzliche Lesezug der Beobachtung (IP-15): je Messwert (Komponente + Kanal +
+     * Beginn der Bindung) die Kadenz seiner Mess-Selektion, sein letzter GUTER Wert SEIT dem
+     * Beginn und bis {@code bis} und ob überhaupt je einer ankam. Die drei Felder kommen als
+     * Felder herein ({@code unnest}) — die Abfrage rührt deshalb KEINE
+     * Messstellen-Tabelle an, und ihre Zahl wächst nicht mit der Zahl der Messstellen (die
+     * Eine-Abfrage-Zusage von IP-4 bleibt: 1 Abfrage auf den Messstellen-Tabellen, 1 hier).
+     *
+     * <p>Liest mehr als eine Box denselben Messwert, gilt der JÜNGSTE gute Wert (und die Kadenz
+     * seiner Zeile) — nie eine Summe, nie ein Mittel. Ohne Zeile der Mess-Selektion fehlt der
+     * Messwert in der Antwort: dann gibt es weder Kadenz noch Wert, und die Ableitung sagt
+     * „wartet auf erste Daten“ statt eine 0 zu raten.
+     */
+    static final String WERTE = """
+            WITH paare AS (
+                SELECT DISTINCT komponente, kanal, ab
+                  FROM unnest(?::uuid[], ?::text[], ?::timestamptz[]) AS p(komponente, kanal, ab)),
+            lesend AS (
+                SELECT p.komponente, p.kanal, p.ab, d.device_id, d.cadence_s
+                  FROM paare p
+                  JOIN device_measurement_selection d
+                    ON d.entity_id = p.komponente AND d.point_key = p.kanal),
+            gemessen AS (
+                SELECT l.komponente, l.kanal, l.ab, l.device_id, l.cadence_s,
+                       g.zeit, g.zahl, g.text, j.gab_es
+                  FROM lesend l
+                  LEFT JOIN LATERAL (
+                      SELECT s.time AS zeit,
+                             coalesce(s.decoded_numeric, s.raw_numeric) AS zahl,
+                             coalesce(s.decoded_text, s.raw_text) AS text
+                        FROM device_measurement_sample s
+                       WHERE s.device_id = l.device_id AND s.point_key = l.kanal
+                         AND s.quality = 'good' AND s.time >= l.ab AND s.time <= ?
+                       ORDER BY s.time DESC
+                       LIMIT 1) g ON TRUE
+                  LEFT JOIN LATERAL (
+                      SELECT true AS gab_es
+                        FROM device_measurement_sample s
+                       WHERE s.device_id = l.device_id AND s.point_key = l.kanal
+                         AND s.time >= l.ab AND s.time <= ?
+                       LIMIT 1) j ON TRUE),
+            je_bindung AS (
+                SELECT komponente, kanal, ab, bool_or(gab_es IS NOT NULL) AS je_ein_wert
+                  FROM gemessen GROUP BY komponente, kanal, ab),
+            juengste AS (
+                SELECT DISTINCT ON (komponente, kanal, ab)
+                       komponente, kanal, ab, cadence_s, zeit, zahl, text
+                  FROM gemessen
+                 ORDER BY komponente, kanal, ab, zeit DESC NULLS LAST, device_id)
+            SELECT j.komponente, j.kanal, j.ab, j.cadence_s, j.zeit, j.zahl, j.text, k.je_ein_wert
+              FROM juengste j
+              JOIN je_bindung k
+                ON k.komponente = j.komponente AND k.kanal = j.kanal AND k.ab = j.ab
+            """;
+
+    /**
+     * Die Werte-Fakten zu genau diesen Messwerten, bis zum Zeitpunkt {@code bis} — in EINER
+     * Abfrage. Ein Messwert ohne Mess-Selektion (und ein leeres Feld) fehlt in der Karte; der
+     * Aufrufer liest das als „nichts bekannt“, nie als 0.
+     */
+    public Map<Messwert, Werte> werte(Collection<Messwert> messwerte, Instant bis) {
+        if (messwerte.isEmpty()) {
+            return Map.of();
+        }
+        List<Messwert> paare = List.copyOf(new LinkedHashSet<>(messwerte));
+        UUID[] komponenten = paare.stream().map(Messwert::komponente).toArray(UUID[]::new);
+        String[] kanaele = paare.stream().map(Messwert::kanal).toArray(String[]::new);
+        Timestamp[] ab = paare.stream().map(m -> Timestamp.from(m.ab())).toArray(Timestamp[]::new);
+        Map<Messwert, Werte> out = new HashMap<>();
+        jdbc.query(con -> {
+            PreparedStatement ps = con.prepareStatement(WERTE);
+            ps.setArray(1, con.createArrayOf("uuid", komponenten));
+            ps.setArray(2, con.createArrayOf("text", kanaele));
+            ps.setArray(3, con.createArrayOf("timestamptz", ab));
+            ps.setTimestamp(4, Timestamp.from(bis));
+            ps.setTimestamp(5, Timestamp.from(bis));
+            return ps;
+        }, (ResultSet rs) -> {
+            Timestamp zeit = rs.getTimestamp("zeit");
+            double zahl = rs.getDouble("zahl");
+            boolean textwert = rs.wasNull();
+            out.put(new Messwert(rs.getObject("komponente", UUID.class), rs.getString("kanal"),
+                            rs.getTimestamp("ab").toInstant()),
+                    new Werte((Integer) rs.getObject("cadence_s"),
+                            zeit == null ? null : zeit.toInstant(),
+                            textwert ? null : zahl, rs.getString("text"),
+                            rs.getBoolean("je_ein_wert")));
+        });
+        return Map.copyOf(out);
     }
 
     private Bestand bestand(ResultSet rs, int n) throws SQLException {

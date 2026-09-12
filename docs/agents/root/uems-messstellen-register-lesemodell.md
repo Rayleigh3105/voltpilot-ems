@@ -8,7 +8,7 @@ je Messstelle zum Stichtag), `stichtag`, `zeitpunkt` und `teilansicht`. Arbeit:
 `MessstelleRegisterRepository` (die EINE Abfrage), Formen in `web/dto/MessstelleDto`
 (`RegisterZeile`, `RegisterOrt`, `RegisterStellung`, `RegisterQuelle`, `RegisterBindung`,
 `RegisterGeraet`), Route in `web/MessstelleController`. Beweise: `MessstelleRegisterApiTest`
-(8 Fälle, Keycloak + Timescale: §5.16 Zeile für Zeile, A17, jeder Filter, Mandantenzaun, Laufzeit)
+(15 Fälle, Keycloak + Timescale: §5.16 Zeile für Zeile, A17, jeder Filter, Mandantenzaun, Laufzeit, IP-15)
 und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
 
 ## Die Zeile und was sie NICHT sagt
@@ -27,9 +27,12 @@ und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
 - `lebenszyklus`/`fehlt`: die der Messstellen-Antwort — der HEUTIGE Zustand. Gespeichert ist nur
   der heutige Eingang (`angehalten_ab`/`archiviert_am`); ein Stichtag verschiebt Ort, Stellung und
   Quelle, NICHT den Zustand.
-- `beobachtung` und `letzter_wert`: benannte Platzhalter, IMMER `null` bis IP-15 — nie geraten.
-  `teilansicht` bleibt `false`, bis AP-03 Rechte je Standort durchsetzt; Prozess- und
-  Kostenstellen-Filter fehlen, solange ihre Objekte fehlen.
+- `beobachtung`, `letzter_wert`, `nebengroessen` und `aggregat`: **seit IP-15 gefüllt** (die
+  Platzhalter-Zusage „IMMER `null`“ ist damit eingelöst, nicht mehr gültig) — Einzelheiten und
+  Fallen in [`uems-messstellen-beobachtung-letzter-wert.md`](uems-messstellen-beobachtung-letzter-wert.md).
+  `null` bleibt die Beobachtung nur bei einer BERECHNETEN Messstelle (AP-10). `teilansicht` bleibt
+  `false`, bis AP-03 Rechte je Standort durchsetzt; Prozess- und Kostenstellen-Filter fehlen,
+  solange ihre Objekte fehlen.
 
 ## ⚠ Die Fallen
 
@@ -50,7 +53,10 @@ und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
   Fehler, kein stilles Feld). Dazu kommt der feste Lesezug des Standort-Lesemodells für den
   Ortsbaum (`StandortService.baum`) — eine Zahl, die NICHT mit der Zahl der Messstellen wächst.
   `MessstelleRegisterApiTest` zählt am DataSource-Umhang nach: 100 Messstellen = 1 Abfrage auf den
-  Messstellen-Tabellen und insgesamt so viele wie 1 Messstelle, gemessen ~210 ms (< 300 ms).
+  Messstellen-Tabellen und insgesamt so viele wie 1 Messstelle (< 300 ms). Seit IP-15 kommt EIN
+  weiterer Zug für die Werte dazu (`MessstelleRegisterRepository.WERTE`) — er bekommt alle
+  Messwerte als Feld und rührt KEINE Messstellen-Tabelle an, die Zusage „eine Abfrage mit
+  ‚messstelle‘ im Text“ hält also weiter.
 - **Zwei Lesewege, EINE Wahrheit.** Die Liste baut ihre Vertrags-Objekte über dieselbe
   `MessstelleService.darstellung(…)` wie `GET …/{id}`; `dieListeUndDieEinzelneMessstelleSagenDasselbe`
   hält beide zusammen. Wer `messstelle_quelle` & Co. um eine Spalte erweitert, muss sie in der
