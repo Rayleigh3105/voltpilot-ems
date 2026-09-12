@@ -60,6 +60,11 @@
           "minimum": 0,
           "maximum": 9,
           "description": "Auf so viele Stellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12)."
+        },
+        "teilperioden": {
+          "type": "string",
+          "const": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
+          "description": "P7/§4.5 (AP-08 IP-5). Additiv: eine gröbere Periode wird aus den Periodenständen ihrer gespeicherten Teilperioden gebildet, nie als Summe ihrer (gerundeten) Teilmengen. Randkennzeichen an inneren Grenzen entfallen, Abdeckung = Summe erhalten ÷ Summe erwartet."
         }
       }
     },

@@ -42,15 +42,15 @@ class VerbrauchVectorsTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // Arbeitsverzeichnis ist services/api; das Repo-Wurzelverzeichnis liegt zwei Ebenen darüber.
-    private static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
-    private static final Path VECTORS = V2.resolve("verbrauch-vectors.json");
+    static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
+    static final Path VECTORS = V2.resolve("verbrauch-vectors.json");
     private static final Path SCHEMA = V2.resolve("verbrauch.schema.json");
     private static final Path PROSA = V2.resolve("verbrauch.md");
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
     private static final Path PYTHON_ZWILLING =
             Path.of("..", "..", "services", "optimization", "voltpilot_optimization", "verbrauch.py");
 
-    private static JsonNode lies(Path p) throws Exception {
+    static JsonNode lies(Path p) throws Exception {
         return MAPPER.readTree(Files.readString(p));
     }
 
@@ -192,7 +192,7 @@ class VerbrauchVectorsTest {
         }
     }
 
-    private static void zahl(String was, JsonNode soll, BigDecimal ist) {
+    static void zahl(String was, JsonNode soll, BigDecimal ist) {
         if (soll.isMissingNode()) {
             return;
         }
@@ -206,7 +206,7 @@ class VerbrauchVectorsTest {
 
     // ------------------------------------------------------------ Die Vektor-Form lesen
 
-    private static JsonNode reihe(JsonNode fall, JsonNode erwartung) {
+    static JsonNode reihe(JsonNode fall, JsonNode erwartung) {
         JsonNode eingang = fall.path("input");
         if (eingang.has("reihe")) {
             return eingang.path("reihe");
@@ -220,7 +220,7 @@ class VerbrauchVectorsTest {
      * {@code {t, v, q}} übernommen; {@code luecken} entfernen anschließend Werte in
      * {@code [von, bis)}.
      */
-    private static List<Rohwert> rohwerte(JsonNode reihe) {
+    static List<Rohwert> rohwerte(JsonNode reihe) {
         List<Rohwert> out = new ArrayList<>();
         for (JsonNode a : reihe.path("rohwerte")) {
             boolean gut = !"bad".equals(a.path("q").asText("good"));
@@ -252,7 +252,7 @@ class VerbrauchVectorsTest {
         return out;
     }
 
-    private static List<Ereignis> ereignisse(JsonNode array) {
+    static List<Ereignis> ereignisse(JsonNode array) {
         List<Ereignis> out = new ArrayList<>();
         array.forEach(e -> out.add(new Ereignis(
                 e.path("art").asText(),
@@ -266,7 +266,7 @@ class VerbrauchVectorsTest {
     }
 
     /** Jede Zahl über ihre Textform - so erbt die Rechnung keine Binärbruch-Fehler. */
-    private static BigDecimal dezimal(JsonNode n, BigDecimal vorgabe) {
+    static BigDecimal dezimal(JsonNode n, BigDecimal vorgabe) {
         if (n.isMissingNode() || n.isNull()) {
             return vorgabe;
         }

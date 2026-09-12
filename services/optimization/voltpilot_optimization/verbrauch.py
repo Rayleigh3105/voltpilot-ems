@@ -60,6 +60,15 @@ VOLLSTAENDIG = "vollständig"
 UNVOLLSTAENDIG = "unvollständig"
 KEINE_WERTE = "keine Werte"
 
+# Die Kennzeichen, die die Zusammensetzung aus Teilperioden (P7, §4.5) wiedererkennen muss - an
+# EINER Stelle, damit Erzeugen und Wiedererkennen nicht auseinanderlaufen.
+ANFANG_NICHT_GEMESSEN = "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+ENDE_NICHT_GEMESSEN = "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+NUR_EIN_STAND = "nur ein Stand in der Periode — keine Menge bildbar"
+ZUWACHS_NICHT_MESSBAR = "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)"
+RUECKSETZUNG = "Rücksetzung "
+NEUSTART = "Neustart "
+
 _D = Decimal
 
 
@@ -212,7 +221,7 @@ def menge_zaehlerstand(
         return _leer(
             UNVOLLSTAENDIG,
             len(gute),
-            ["nur ein Stand in der Periode — keine Menge bildbar"],
+            [NUR_EIN_STAND],
         )
 
     grenzen = [e for e in ereignisse if e["art"] == "device_boundary" and von < _zeit(e["t"]) <= bis]
@@ -223,76 +232,19 @@ def menge_zaehlerstand(
     unvollstaendig = False
     if stand_anfang is None:
         unvollstaendig = True
-        kennzeichen.append("Anfang nicht gemessen (kein Stand an der Periodengrenze)")
+        kennzeichen.append(ANFANG_NICHT_GEMESSEN)
     if stand_ende is None:
         unvollstaendig = True
-        kennzeichen.append("Ende nicht gemessen (kein Stand an der Periodengrenze)")
+        kennzeichen.append(ENDE_NICHT_GEMESSEN)
 
     for vorher, nachher in zip(folge, folge[1:]):
-        grenze = next((e for e in grenzen if vorher.zeit < _zeit(e["t"]) <= nachher.zeit), None)
-        if grenze is not None:
-            endstand = _dez(grenze["endstand"]) if grenze.get("endstand") is not None else None
-            anfangsstand = _dez(grenze["anfangsstand"]) if grenze.get("anfangsstand") is not None else None
-            alt = (endstand - vorher.wert) if endstand is not None else _D(0)
-            neu = (nachher.wert - anfangsstand) if anfangsstand is not None else _D(0)
-            menge += alt + neu
-            mit = endstand is not None and anfangsstand is not None
-            kennzeichen.append(
-                "Gerätegrenze " + grenze["t"][11:16] + (" mit Ablesestände" if mit else " ohne Ablesestände")
-            )
-            if not mit:
-                unvollstaendig = True
-                kennzeichen.append("Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)")
-            if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
-                kennzeichen.append(
-                    "Lücke am Wechsel " + _uhr(vorher.zeit) + "–" + _uhr(nachher.zeit) + " (nicht aufgefüllt)"
-                )
-            continue
-
-        zuwachs = nachher.wert - vorher.wert
-        if zuwachs < 0:
-            ueberlauf = (
-                wertebereich_modul is not None
-                and hoechstzuwachs_je_kadenz is not None
-                and (wertebereich_modul - vorher.wert + nachher.wert)
-                <= hoechstzuwachs_je_kadenz * _dez((nachher.zeit - vorher.zeit) / kadenz)
-            )
-            if ueberlauf:
-                ueber = wertebereich_modul - vorher.wert + nachher.wert
-                menge += ueber
-                kennzeichen.append(
-                    "Überlauf " + _uhr(nachher.zeit) + " (Wertebereich " + str(wertebereich_modul) + ")"
-                )
-            else:
-                # Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
-                # nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
-                unvollstaendig = True
-                kennzeichen.append(
-                    "Rücksetzung " + _uhr(nachher.zeit) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt"
-                )
-            continue
-
-        if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
-            kennzeichen.append(
-                "Lücke "
-                + _uhr(vorher.zeit)
-                + "–"
-                + _uhr(nachher.zeit)
-                + ": Zuwachs "
-                + str(_runde(zuwachs * faktor))
-                + " gemessen, nicht auf Viertelstunden verteilbar"
-            )
-        menge += zuwachs
-
-    for neustart in neustarts:
-        unvollstaendig = True
-        kennzeichen.append(
-            "Neustart "
-            + neustart["t"][11:16]
-            + ": bis zu "
-            + str(neustart.get("verlust_s", 255))
-            + " s Zählung möglicherweise verloren"
+        beitrag, offen = _paar(
+            vorher, nachher, grenzen, kadenz, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz, kennzeichen
         )
+        menge += beitrag
+        unvollstaendig |= offen
+
+    unvollstaendig |= _neustart_kennzeichen(neustarts, kennzeichen)
 
     return {
         "menge": _runde(menge * faktor),
@@ -302,8 +254,285 @@ def menge_zaehlerstand(
     }
 
 
+def _paar(
+    vorher: Rohwert,
+    nachher: Rohwert,
+    grenzen: Sequence[dict],
+    kadenz: timedelta,
+    faktor: Decimal,
+    wertebereich_modul: Decimal | None,
+    hoechstzuwachs_je_kadenz: Decimal | None,
+    kennzeichen: list[str],
+) -> tuple[Decimal, bool]:
+    """Z2/Z4/Z5/Z6 — eine Nachbarschaft ``vorher → nachher`` einordnen, ihr Kennzeichen anhängen.
+
+    Die EINE Stelle dafür: die Rohwert-Regel und die Zusammensetzung aus Teilperioden rufen
+    beide hier an. Geliefert wird der Beitrag in Rohwert-Einheit (vor dem Faktor) und ob die
+    Nachbarschaft die Periode unvollständig macht.
+    """
+    grenze = next((e for e in grenzen if vorher.zeit < _zeit(e["t"]) <= nachher.zeit), None)
+    if grenze is not None:
+        endstand = _dez(grenze["endstand"]) if grenze.get("endstand") is not None else None
+        anfangsstand = _dez(grenze["anfangsstand"]) if grenze.get("anfangsstand") is not None else None
+        alt = (endstand - vorher.wert) if endstand is not None else _D(0)
+        neu = (nachher.wert - anfangsstand) if anfangsstand is not None else _D(0)
+        mit = endstand is not None and anfangsstand is not None
+        kennzeichen.append(
+            "Gerätegrenze " + grenze["t"][11:16] + (" mit Ablesestände" if mit else " ohne Ablesestände")
+        )
+        if not mit:
+            kennzeichen.append(ZUWACHS_NICHT_MESSBAR)
+        if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
+            kennzeichen.append(
+                "Lücke am Wechsel " + _uhr(vorher.zeit) + "–" + _uhr(nachher.zeit) + " (nicht aufgefüllt)"
+            )
+        return alt + neu, not mit
+
+    zuwachs = nachher.wert - vorher.wert
+    if zuwachs < 0:
+        ueberlauf = (
+            wertebereich_modul is not None
+            and hoechstzuwachs_je_kadenz is not None
+            and (wertebereich_modul - vorher.wert + nachher.wert)
+            <= hoechstzuwachs_je_kadenz * _dez((nachher.zeit - vorher.zeit) / kadenz)
+        )
+        if ueberlauf:
+            kennzeichen.append("Überlauf " + _uhr(nachher.zeit) + " (Wertebereich " + str(wertebereich_modul) + ")")
+            return wertebereich_modul - vorher.wert + nachher.wert, False
+        # Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
+        # nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
+        kennzeichen.append(RUECKSETZUNG + _uhr(nachher.zeit) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt")
+        return _D(0), True
+
+    if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
+        kennzeichen.append(
+            "Lücke "
+            + _uhr(vorher.zeit)
+            + "–"
+            + _uhr(nachher.zeit)
+            + ": Zuwachs "
+            + str(_runde(zuwachs * faktor))
+            + " gemessen, nicht auf Viertelstunden verteilbar"
+        )
+    return zuwachs, False
+
+
+def _neustart_kennzeichen(neustarts: Sequence[dict], kennzeichen: list[str]) -> bool:
+    """Z7 — je Neustart ein Kennzeichen, zuletzt; ``True``, wenn es einen gab."""
+    for neustart in neustarts:
+        kennzeichen.append(
+            NEUSTART
+            + neustart["t"][11:16]
+            + ": bis zu "
+            + str(neustart.get("verlust_s", 255))
+            + " s Zählung möglicherweise verloren"
+        )
+    return bool(neustarts)
+
+
 def _leer(zustand: str, erhalten: int, kennzeichen: list[str] | None = None) -> dict:
     return {"menge": None, "zustand": zustand, "kennzeichen": list(kennzeichen or []), "erhalten": erhalten}
+
+
+# ------------------------------------------- Zählerstand aus Teilperioden (P7, §4.5)
+
+
+@dataclass(frozen=True)
+class Teilperiode:
+    """Eine gebildete Periode, wie eine GRÖBERE sie braucht: ihr Ergebnis und ihre Stützstellen.
+
+    Genau das trägt eine gespeicherte Viertelstunde, ein Tag, ein Monat. ``stand_anfang`` und
+    ``stand_ende`` sind ``Stand(von)``/``Stand(bis)`` nach Z1 (``None`` = an dieser Grenze nicht
+    gemessen), ``erster``/``letzter`` der erste und letzte gute Wert in ``[von, bis)``,
+    ``ergebnis`` das Wörterbuch mit ``menge``, ``zustand``, ``erhalten``, ``erwartet``,
+    ``abdeckung_prozent`` und ``kennzeichen``.
+    """
+
+    von: datetime
+    bis: datetime
+    stand_anfang: Rohwert | None
+    stand_ende: Rohwert | None
+    erster: Rohwert | None
+    letzter: Rohwert | None
+    ergebnis: dict
+
+
+def _mit_abdeckung(out: dict, erwartet: int) -> dict:
+    out["erwartet"] = erwartet
+    out["abdeckung_prozent"] = int(_D(out["erhalten"]) * 100 / _D(erwartet)) if erwartet else None
+    return out
+
+
+def teilperiode(
+    werte: Sequence[Rohwert],
+    von: datetime,
+    bis: datetime,
+    kadenz: timedelta,
+    ereignisse: Iterable[dict] = (),
+    faktor: Decimal = _D(1),
+    wertebereich_modul: Decimal | None = None,
+    hoechstzuwachs_je_kadenz: Decimal | None = None,
+) -> Teilperiode:
+    """Eine Periode aus Rohwerten als :class:`Teilperiode` — die Form, in der sie gespeichert wird."""
+    out = menge_zaehlerstand(werte, von, bis, kadenz, ereignisse, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz)
+    gute = _gute_in(werte, von, bis)
+    return Teilperiode(
+        von,
+        bis,
+        periodenstand(werte, von, kadenz),
+        periodenstand(werte, bis, kadenz),
+        gute[0] if gute else None,
+        gute[-1] if gute else None,
+        _mit_abdeckung(out, int((bis - von) / kadenz)),
+    )
+
+
+def _stand_an_grenze(alle: Sequence[Teilperiode], t: datetime, kadenz: timedelta) -> Rohwert | None:
+    """Z1 an einer Grenze ``t`` der gröberen Periode — aus den Teilperioden.
+
+    Die Teilperiode, die dort beginnt oder endet, hat ihren Stand schon gebildet; sonst hatte an
+    ``t`` keine einen Rohwert, und der Stand ist der letzte gute Wert davor, sofern er im Fenster
+    ``(t − Kadenz, t]`` liegt.
+    """
+    for p in alle:
+        if p.von == t:
+            return p.stand_anfang
+    for p in alle:
+        if p.bis == t:
+            return p.stand_ende
+    kandidat = None
+    for p in alle:
+        if p.bis > t:
+            continue
+        for r in (p.letzter, p.stand_ende):
+            if r is not None and r.zeit <= t and (kandidat is None or r.zeit > kandidat.zeit):
+                kandidat = r
+    return kandidat if kandidat is not None and kandidat.zeit > t - kadenz else None
+
+
+def erwartet_aus_teilperioden(innen: Sequence[Teilperiode], von: datetime, bis: datetime, kadenz: timedelta) -> int:
+    """§4.5 — Summe der Erwartungen der Teilperioden, für die Zeit ohne Teilperiode ``Länge ÷ Kadenz``."""
+    bedeckt = sum((t.bis - t.von for t in innen), timedelta(0))
+    frei = (bis - von) - bedeckt
+    return sum(t.ergebnis["erwartet"] for t in innen) + (int(frei / kadenz) if frei > timedelta(0) else 0)
+
+
+def zaehlerstand_aus_teilperioden(
+    teile: Sequence[Teilperiode],
+    von: datetime,
+    bis: datetime,
+    kadenz: timedelta,
+    ereignisse: Iterable[dict] = (),
+    faktor: Decimal = _D(1),
+    wertebereich_modul: Decimal | None = None,
+    hoechstzuwachs_je_kadenz: Decimal | None = None,
+) -> Teilperiode:
+    """P7/§4.5 — die Menge einer GRÖBEREN Periode aus ihren Teilperioden, aus den PERIODENSTÄNDEN.
+
+    Nie als Summe der Teilmengen: gerechnet wird ``Stand am Kettenende − Stand am Kettenanfang``,
+    dazu je Teilperiode ihr BRUCH (was ihre Menge von ihrer eigenen Standdifferenz trennt —
+    Gerätegrenze, Überlauf, Rücksetzung; ohne solche genau 0) und je Grenze ohne gemessenen Stand
+    die Nachbarschaft ``letzter Wert davor → erster Wert danach``, eingeordnet wie jede andere.
+    Randkennzeichen an INNEREN Grenzen entfallen, Neustarts kommen aus den Ereignissen der
+    gröberen Periode, die Abdeckung ist Summe erhalten ÷ Summe erwartet.
+
+    Das Ergebnis ist dasselbe wie :func:`menge_zaehlerstand` über alle Rohwerte der Periode — der
+    Lockstep in ``tests/test_verbrauch.py`` hält das an jedem Zählerstand-Fall der Vektor-Datei
+    fest (der Java-Zwilling: ``VerbrauchTeilperiodenTest``).
+    """
+    ereignisse = list(ereignisse)
+    alle = sorted(teile, key=lambda t: t.von)
+    innen: list[Teilperiode] = []
+    bisher = von
+    for t in alle:
+        drin = t.von >= von and t.bis <= bis
+        if t.von < bis and t.bis > von and not drin:
+            raise ValueError(f"Teilperiode {t.von}–{t.bis} ragt über die Periode {von}–{bis}")
+        if drin:
+            if t.von < bisher:
+                raise ValueError(f"Teilperioden überlappen bei {t.von}")
+            innen.append(t)
+            bisher = t.bis
+
+    stand_anfang = _stand_an_grenze(alle, von, kadenz)
+    stand_ende = _stand_an_grenze(alle, bis, kadenz)
+    erhalten = sum(t.ergebnis["erhalten"] for t in innen)
+    erwartet = erwartet_aus_teilperioden(innen, von, bis, kadenz)
+    erster = next((t.erster for t in innen if t.erster is not None), None)
+    letzter = next((t.letzter for t in reversed(innen) if t.letzter is not None), None)
+
+    def ergebnis(out: dict) -> Teilperiode:
+        return Teilperiode(von, bis, stand_anfang, stand_ende, erster, letzter, _mit_abdeckung(out, erwartet))
+
+    if erster is None and ((bis - von) < kadenz or stand_ende is None):
+        return ergebnis(_leer(KEINE_WERTE, 0))
+
+    # Die Kette: Stand(von) → je Teilperiode ihre Strecke → Stand(bis). ueber[i] ist die
+    # Teilperiode, deren Strecke von punkte[i] nach punkte[i+1] führt; None heißt: diese
+    # Nachbarschaft liegt über einer Grenze ohne gemessenen Stand und wird hier eingeordnet.
+    punkte: list[Rohwert] = []
+    ueber: list[Teilperiode | None] = []
+
+    def anhaengen(punkt: Rohwert | None, teil: Teilperiode | None) -> None:
+        if punkt is None or (punkte and punkt.zeit <= punkte[-1].zeit):
+            return
+        if punkte:
+            ueber.append(teil)
+        punkte.append(punkt)
+
+    anhaengen(stand_anfang, None)
+    for t in innen:
+        a = t.stand_anfang if t.stand_anfang is not None else t.erster
+        e = t.stand_ende if t.stand_ende is not None else t.letzter
+        a, e = (a if a is not None else e), (e if e is not None else a)
+        if a is None:
+            continue
+        anhaengen(a, None)
+        anhaengen(e, t)
+    anhaengen(stand_ende, None)
+
+    if len(punkte) < 2:
+        return ergebnis(_leer(UNVOLLSTAENDIG, erhalten, [NUR_EIN_STAND]))
+
+    grenzen = [e for e in ereignisse if e["art"] == "device_boundary" and von < _zeit(e["t"]) <= bis]
+    neustarts = [e for e in ereignisse if e["art"] == "device_restart" and von < _zeit(e["t"]) <= bis]
+    kennzeichen: list[str] = []
+    unvollstaendig = False
+    if stand_anfang is None:
+        unvollstaendig = True
+        kennzeichen.append(ANFANG_NICHT_GEMESSEN)
+    if stand_ende is None:
+        unvollstaendig = True
+        kennzeichen.append(ENDE_NICHT_GEMESSEN)
+
+    menge = (punkte[-1].wert - punkte[0].wert) * faktor
+    for (vorher, nachher), t in zip(zip(punkte, punkte[1:]), ueber):
+        differenz = nachher.wert - vorher.wert
+        if t is None:
+            beitrag, offen = _paar(
+                vorher, nachher, grenzen, kadenz, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz, kennzeichen
+            )
+            menge += (beitrag - differenz) * faktor
+            unvollstaendig |= offen
+            continue
+        # Der BRUCH der Teilperiode — ohne Gerätegrenze, Überlauf und Rücksetzung genau 0.
+        teilmenge = t.ergebnis["menge"] if t.ergebnis["menge"] is not None else _D(0)
+        menge += teilmenge - _runde(differenz * faktor)
+        for k in t.ergebnis["kennzeichen"]:
+            if k in (ANFANG_NICHT_GEMESSEN, ENDE_NICHT_GEMESSEN, NUR_EIN_STAND) or k.startswith(NEUSTART):
+                continue
+            kennzeichen.append(k)
+            unvollstaendig |= k == ZUWACHS_NICHT_MESSBAR or k.startswith(RUECKSETZUNG)
+
+    unvollstaendig |= _neustart_kennzeichen(neustarts, kennzeichen)
+    return ergebnis(
+        {
+            "menge": _runde(menge),
+            "zustand": UNVOLLSTAENDIG if unvollstaendig else VOLLSTAENDIG,
+            "kennzeichen": kennzeichen,
+            "erhalten": erhalten,
+        }
+    )
 
 
 # ------------------------------------------------------------------ Intervallmenge (I)
