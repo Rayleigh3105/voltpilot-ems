@@ -44,7 +44,7 @@ Höchstzuwachs wird `regel_verletzt`). Gleichzeitig geweitet: DB-Funktion `messr
 (Writer-Art). ⚠ Die Meldung ist die Rechnung zum Nachlesen, **nie die Quelle der Menge**. ⚠ Der Bestand
 (`device_measurement_event`) kennt das Wort nicht und schreibt für denselben Sprung weiter
 `counter_reset` (Spiegel `aus_bestand`, ohne Komponente) — ein Leser, der beides sieht, nimmt die
-Writer-Meldung. Der Lesepfad (`SpeicherklasseHistorie.MARKER_ARTEN`) zeigt sie noch nicht.
+Writer-Meldung — so tut es der Lesepfad (`uems-lesepfad-verlauf-herkunft-rueckfall.md` §8).
 
 ## ⚠ Ein Fehler in der Überlauf-Erkennung kostet NIE einen Messwert
 
@@ -74,5 +74,5 @@ unbemerkt — die Menge stimmt trotzdem.
 - **Tag, Monat, Jahr, freier Zeitraum:** `ViertelstundenTeile` liest Deklaration + Ereignisse und gibt
   sie an `zaehlerstandAusTeilperioden` — der Test prüft jede Periode gegen die Regel über ALLE Rohwerte.
 
-Grenzen: keine Korrektur/Kaskade/Version (IP-12 ff.), keine Ersatzwerte (E7), kein Lesepfad, keine
+Grenzen: keine Korrektur/Kaskade/Version (IP-12 ff.), keine Ersatzwerte (E7), keine
 Route/Fläche, kein Edge-Release, keine Umklassifizierung Rücksetzung ↔ Überlauf (Korrektur).

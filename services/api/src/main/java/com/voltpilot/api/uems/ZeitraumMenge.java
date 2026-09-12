@@ -1,9 +1,14 @@
 package com.voltpilot.api.uems;
 
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -67,6 +72,59 @@ public class ZeitraumMenge {
             String zustand = TagRegeln.zustand(v.vorhanden(), v.endgueltig(), TagRegeln.endgueltigAb(bis), jetzt);
             return new Zeitraum(von, bis, VerbrauchRegeln.stunden(von, bis), v.wertart(), v.kadenzS(), menge,
                     erhalten, erwartet, abdeckung, v.vorhanden(), v.endgueltig(), zustand);
+        });
+    }
+
+    /**
+     * Ein Schritt eines gröberen Rasters im Lesepfad (AP-07 IP-14): was die Regel über die gespeicherten
+     * Viertelstunden für ihn sagt.
+     *
+     * @param menge Zählerstand: die Menge aus den Periodenständen — {@code null} = keine bildbar, nie 0
+     * @param mengeZustand vollständig · unvollständig · keine Werte (beim Momentanwert: seine
+     *     Vollständigkeit, M3); {@code null} für eine Wertart ohne Regel
+     * @param kennzeichen die Kennzeichen der Regel, Wortlaut und Reihenfolge wie im Vertrag
+     * @param energie Momentanwert mit Integration: die Energie UNGERUNDET wie in der Spalte
+     *     {@code energie}; sie steht nur, wenn {@code kennzeichen} „aus Leistung integriert" trägt
+     */
+    public record Schritt(Instant von, Instant bis, String wertart, BigDecimal menge, String mengeZustand,
+            List<String> kennzeichen, BigDecimal energie) {}
+
+    /**
+     * Die Schritte eines Rasters — je Beginn dieselbe Regel wie {@link #zeitraum} über
+     * {@code [Beginn, Beginn + Raster)}, NIE die Summe der Viertelstunden-Mengen: sie verlöre den
+     * gemessenen Zuwachs über jede Lücke im Schritt (eine Viertelstunde ohne Rohwert hat keine Zeile)
+     * und wäre schon ohne Lücke eine Summe gerundeter Teilmengen. Für Momentanwerte dieselbe Regel wie
+     * am Tag ({@link VerbrauchRegeln#momentanwertAusTeilperioden}).
+     *
+     * <p>Über die App-Verbindung hinter RLS: eine fremde Reihe liefert keinen Schritt.
+     *
+     * @return je Beginn mit Viertelstunden ein Schritt; ein Beginn ohne eine einzige fehlt
+     */
+    public Map<Instant, Schritt> raster(UUID tenantId, UUID entityId, String messkanal, Collection<Instant> beginne,
+            int rasterS) {
+        if (rasterS < 900 || rasterS % 900 != 0) {
+            throw new IllegalArgumentException("ein Raster besteht aus ganzen Viertelstunden: " + rasterS + " s");
+        }
+        for (Instant b : beginne) {
+            if (b.getEpochSecond() % 900 != 0 || b.getNano() != 0) {
+                throw new IllegalArgumentException("ein Schritt beginnt im Viertelstunden-Raster: " + b);
+            }
+        }
+        return jdbc.execute((Connection con) -> {
+            Map<Instant, Schritt> aus = new LinkedHashMap<>();
+            for (ViertelstundenTeile.Schritt s : ViertelstundenTeile.schritte(con, tenantId, entityId, messkanal,
+                    beginne, Duration.ofSeconds(rasterS))) {
+                if (s.menge() != null) {
+                    VerbrauchRegeln.Ergebnis e = s.menge().ergebnis();
+                    aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), e.menge(), e.zustand(),
+                            e.kennzeichen(), null));
+                } else if (s.werte() != null) {
+                    VerbrauchRegeln.Ergebnis e = s.werte().teil().ergebnis();
+                    aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), null, e.zustand(), e.kennzeichen(),
+                            s.werte().energie()));
+                }
+            }
+            return aus;
         });
     }
 }

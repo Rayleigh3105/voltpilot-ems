@@ -1,14 +1,19 @@
 package com.voltpilot.api.measurement;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.LesepfadQuelle;
 import com.voltpilot.api.uems.LesepfadQuelle.Quelle;
+import com.voltpilot.api.uems.ZeitraumMenge;
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -28,12 +33,18 @@ import org.springframework.stereotype.Component;
  * Komponente kommt aus der Anfrage oder aus der Mess-Selektion und wird nie geraten: ohne sie
  * gibt es keinen Rückfall (und die Antwort bleibt die des bestehenden Wegs).
  *
- * <p><b>Was hier NICHT gerechnet wird:</b> die Menge einer Viertelstunde steht schon in der
- * Spalte {@code menge} (AP-08 IP-2) — dieser Leser summiert sie nur und lässt die Summe LEER,
- * sobald eine einzige Viertelstunde des Rasters keine bildbare Menge hat (eine zu kleine Summe
- * wäre schlimmer als keine). Die Tagesklasse hat ausdrücklich KEINE Menge (AP-08 IP-5 bildet
- * sie aus den Periodenständen); für einen Zählerstand bleibt der Tageswert deshalb ohne
- * Kurvenwert und trägt stattdessen Anfangs- und Endstand in der Herkunft.
+ * <p><b>Was hier NICHT gerechnet wird:</b> die Menge steht gespeichert da — je Viertelstunde in
+ * {@code messreihe_viertelstunde.menge} (AP-08 IP-2), je Tag in {@code messreihe_tag.menge} aus den
+ * Periodenständen (AP-08 IP-5) — und wird GELESEN, mit {@code menge_zustand} und {@code kennzeichen}.
+ * Ein Raster GRÖBER als die Viertelstunde ist dagegen ein freier Zeitraum je Schritt und wird von
+ * {@link ZeitraumMenge#raster} nach der Regel des Vertrags gebildet, NIE als Summe der
+ * Viertelstunden: die Summe verlöre den gemessenen Zuwachs über jede Lücke im Schritt (eine
+ * Viertelstunde ohne Rohwert hat gar keine Zeile) und wäre schon ohne Lücke eine Summe gerundeter
+ * Teilmengen. Ein Tag, der vor IP-5 gebildet wurde, hat keine Menge und bleibt ohne Kurvenwert.
+ *
+ * <p><b>Die Energie aus Leistung</b> (AP-08 IP-3) reist nur MIT ihrem Kennzeichen „aus Leistung
+ * integriert" ({@link MeasurementHistoryService.EnergieAusLeistung}) — sie ist interpoliert und darf
+ * nie wie eine gemessene Menge aussehen. Die Datenbank hält das per Prüfregel, dieser Leser genauso.
  */
 @Component
 public class SpeicherklasseHistorie {
@@ -43,17 +54,35 @@ public class SpeicherklasseHistorie {
 
     /**
      * Die Ereignisarten, die als Marker in den Verlauf gehören (Auftrag IP-14: Lücke,
-     * Rücksetzung, Gerätegrenze, Übergabe, Doppelzustellung, Spätankunft). Alles andere des
-     * Vokabulars (§4.8) bleibt draußen — ein Verlauf mit 23 Markerarten erklärt nichts mehr.
+     * Rücksetzung, Gerätegrenze, Übergabe, Doppelzustellung, Spätankunft; AP-08 IP-4: Überlauf).
+     * Alles andere des Vokabulars (§4.8) bleibt draußen — ein Verlauf mit 24 Markerarten erklärt
+     * nichts mehr.
      */
     private static final String MARKER_ARTEN =
-            "'data_gap','counter_reset','device_boundary','handover','duplicate_conflict',"
-                    + "'late_arrival'";
+            "'data_gap','counter_reset','counter_overflow','device_boundary','handover',"
+                    + "'duplicate_conflict','late_arrival'";
+
+    /**
+     * Die Rücksetzung, die in Wahrheit ein ÜBERLAUF war (AP-08 IP-4): der Bestand kennt das Wort
+     * {@code counter_overflow} nicht und schreibt für denselben Sprung weiter {@code counter_reset};
+     * der Writer meldet daneben den Überlauf — an derselben Komponente, demselben Messkanal und
+     * derselben Messzeit. Gezeigt wird die Writer-Meldung, sonst stünden für EINEN Vorgang zwei
+     * widersprüchliche Marken da. Ein Prädikat über {@code device_measurement_event} (Bestand) mit
+     * genau einem Parameter: die Komponente der Reihe.
+     */
+    public static final String RUECKSETZUNG_OHNE_UEBERLAUF = "NOT (event_kind='counter_reset' AND EXISTS ("
+            + "SELECT 1 FROM messreihe_ereignis u WHERE u.tenant_id=device_measurement_event.tenant_id "
+            + "AND u.entity_id=? AND u.messkanal=device_measurement_event.point_key "
+            + "AND u.art='counter_overflow' AND u.zeit=device_measurement_event.occurred_at))";
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JdbcTemplate jdbc;
+    private final ZeitraumMenge zeitraum;
 
     public SpeicherklasseHistorie(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.zeitraum = new ZeitraumMenge(jdbc);
     }
 
     /**
@@ -81,6 +110,12 @@ public class SpeicherklasseHistorie {
     /**
      * Eine Zeile je Raster-Schritt aus {@code messreihe_viertelstunde}. Das Raster ist nie
      * feiner als die Viertelstunde selbst und nie so fein, dass die Zeilenbremse schneidet.
+     *
+     * <p>Im Viertelstunden-Raster ist der Schritt die gespeicherte Viertelstunde (Menge, Zustand,
+     * Kennzeichen, Energie wie gespeichert). Gröber bildet {@link ZeitraumMenge#raster} je Schritt
+     * Menge bzw. Energie mit Zustand und Kennzeichen aus den Periodenständen — je Messkanal; ein
+     * Platzhalter über mehrere Kanäle summiert deren Mengen nur, wenn JEDER eine hat, und nennt
+     * Zustand, Kennzeichen und Energie nur für genau einen.
      */
     public List<Zeile> viertelstunden(UUID tenantId, UUID entityId, String messkanal, Instant von,
             Instant bis, int rasterS) {
@@ -89,7 +124,8 @@ public class SpeicherklasseHistorie {
                 + " AND intervall_beginn>=? AND intervall_beginn<=?),"
                 + "b AS (SELECT time_bucket(CAST(? AS interval),intervall_beginn) bucket,"
                 + "wertart aggregation_kind,"
-                // Eine zu kleine Summe wäre eine Behauptung: fehlt EINE Menge, fehlt die Summe.
+                // Eine zu kleine Summe wäre eine Behauptung: fehlt EINE Menge, fehlt die Summe. Nur
+                // im Viertelstunden-Raster gelesen (EINE Zeile je Kanal) — gröber gilt der Zeitraum.
                 + "CASE WHEN count(*)=count(menge) THEN sum(menge) END menge_summe,"
                 + "sum(mittel*erhalten)/NULLIF(sum(erhalten),0) avg_value,"
                 + "min(min_wert) min_value,max(max_wert) max_value,"
@@ -108,12 +144,65 @@ public class SpeicherklasseHistorie {
                 + "max(letzte_eingangszeit) h_eingang,"
                 + anker()
                 + "(array_agg(stand_anfang ORDER BY intervall_beginn))[1] h_stand_anfang,"
-                + "last(stand_ende,intervall_beginn) h_stand_ende FROM v GROUP BY 1,2) "
+                + "last(stand_ende,intervall_beginn) h_stand_ende,"
+                + "CASE WHEN count(*)=1 THEN max(menge_zustand) END h_menge_zustand,"
+                + "CASE WHEN count(*)=1 THEN max(kennzeichen::text) END h_kennzeichen,"
+                + "CASE WHEN count(*)=1 THEN max(energie) END h_energie,"
+                + "array_agg(DISTINCT messkanal) h_kanaele FROM v GROUP BY 1,2) "
                 + "SELECT *,CASE WHEN aggregation_kind='counter' THEN menge_summe "
                 + "WHEN aggregation_kind='gauge' THEN avg_value ELSE last_numeric END chart_value "
                 + "FROM b ORDER BY bucket LIMIT " + HOECHSTENS_ZEILEN;
-        return jdbc.query(sql, (rs, n) -> zeile(rs, Quelle.VIERTELSTUNDE), tenantId, entityId,
-                wert(messkanal), Timestamp.from(von), Timestamp.from(bis), rasterS + " seconds");
+        List<Map.Entry<Zeile, List<String>>> gelesen = jdbc.query(sql,
+                (rs, n) -> Map.entry(zeile(rs, Quelle.VIERTELSTUNDE),
+                        List.of((String[]) rs.getArray("h_kanaele").getArray())),
+                tenantId, entityId, wert(messkanal), Timestamp.from(von), Timestamp.from(bis),
+                rasterS + " seconds");
+        if (rasterS <= 900) {
+            return gelesen.stream().map(Map.Entry::getKey).toList();
+        }
+        return ausDemZeitraum(tenantId, entityId, rasterS, gelesen);
+    }
+
+    /**
+     * Das grobe Raster: Menge bzw. Energie mit Zustand und Kennzeichen je Schritt aus der Regel des
+     * Vertrags ({@link ZeitraumMenge#raster}) — alles andere der Zeile (Mittel, Min/Max, Abdeckung,
+     * Qualität, Anker) bleibt, wie die Viertelstunden es tragen.
+     */
+    private List<Zeile> ausDemZeitraum(UUID tenantId, UUID entityId, int rasterS,
+            List<Map.Entry<Zeile, List<String>>> gelesen) {
+        Map<String, List<Instant>> beginneJeKanal = new LinkedHashMap<>();
+        for (Map.Entry<Zeile, List<String>> g : gelesen) {
+            if ("counter".equals(g.getKey().wertart()) || "gauge".equals(g.getKey().wertart())) {
+                g.getValue().forEach(k -> beginneJeKanal.computeIfAbsent(k, x -> new ArrayList<>())
+                        .add(g.getKey().zeit()));
+            }
+        }
+        Map<String, Map<Instant, ZeitraumMenge.Schritt>> schritte = new LinkedHashMap<>();
+        beginneJeKanal.forEach((kanal, beginne) ->
+                schritte.put(kanal, zeitraum.raster(tenantId, entityId, kanal, beginne, rasterS)));
+
+        List<Zeile> out = new ArrayList<>();
+        for (Map.Entry<Zeile, List<String>> g : gelesen) {
+            Zeile z = g.getKey();
+            if (!"counter".equals(z.wertart()) && !"gauge".equals(z.wertart())) {
+                out.add(z);
+                continue;
+            }
+            List<ZeitraumMenge.Schritt> jeKanal = g.getValue().stream()
+                    .map(k -> schritte.get(k).get(z.zeit())).toList();
+            BigDecimal wert = z.wert();
+            if ("counter".equals(z.wertart())) {
+                wert = jeKanal.stream().anyMatch(s -> s == null || s.menge() == null) ? null
+                        : jeKanal.stream().map(ZeitraumMenge.Schritt::menge)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            }
+            ZeitraumMenge.Schritt einer = jeKanal.size() == 1 ? jeKanal.get(0) : null;
+            out.add(z.mitMenge(wert, einer == null ? null : einer.mengeZustand(),
+                    einer == null ? null : einer.kennzeichen(),
+                    einer == null ? null : MeasurementHistoryService.EnergieAusLeistung.aus(
+                            einer.energie(), einer.kennzeichen())));
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -124,8 +213,9 @@ public class SpeicherklasseHistorie {
     public List<Zeile> tage(UUID tenantId, UUID entityId, String messkanal, Instant von,
             Instant bis) {
         String sql = "SELECT beginn bucket,wertart aggregation_kind,"
-                // Die Tagesklasse hat KEINE Menge (AP-08 IP-5) — ein Zähler bleibt ohne Kurve.
-                + "NULL::numeric menge_summe,mittel avg_value,min_wert min_value,"
+                // Die Tagesmenge aus den Periodenständen (AP-08 IP-5), NIE die Summe der
+                // Viertelstunden. Ein Tag, der vor IP-5 gebildet wurde, hat keine — und keine Kurve.
+                + "menge menge_summe,mittel avg_value,min_wert min_value,"
                 + "max_wert max_value,letzter_wert last_numeric,letzter_text last_text,"
                 + "erhalten::bigint samples,(erhalten<erwartet) has_gap,"
                 + "erhalten h_erhalten,erwartet h_erwartet,n_good h_good,n_uncertain h_uncertain,"
@@ -135,8 +225,10 @@ public class SpeicherklasseHistorie {
                 + "letzte_eingangszeit h_eingang,geraet_einbau h_geraet,"
                 + "geraet_einbau_2 h_geraet_2,box h_box,box_2 h_box_2,fassung h_fassung,"
                 + "katalog h_katalog,rolle h_rolle,stand_anfang h_stand_anfang,"
-                + "stand_ende h_stand_ende,CASE WHEN wertart='gauge' THEN mittel "
-                + "WHEN wertart='counter' THEN NULL ELSE letzter_wert END chart_value "
+                + "stand_ende h_stand_ende,menge_zustand h_menge_zustand,"
+                + "kennzeichen::text h_kennzeichen,energie h_energie,"
+                + "CASE WHEN wertart='gauge' THEN mittel "
+                + "WHEN wertart='counter' THEN menge ELSE letzter_wert END chart_value "
                 + "FROM messreihe_tag WHERE tenant_id=? AND entity_id=? AND "
                 + praedikat("messkanal", messkanal) + " AND beginn>=? AND beginn<=? "
                 + "ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
@@ -149,10 +241,12 @@ public class SpeicherklasseHistorie {
      * ihrer Anzahl — damit ein Sprung in der Kurve erklärbar ist, ohne dass eine Flut von
      * Einzelmarken die Kurve zudeckt.
      *
-     * <p>Zwei Fallen sind hier eingebaut: {@code aus_bestand} bleibt draußen (das sind die
+     * <p>Drei Fallen sind hier eingebaut: {@code aus_bestand} bleibt draußen (das sind die
      * gespiegelten Zeilen aus {@code device_measurement_event}, die der bestehende Marker-Weg
-     * schon zeigt — sonst stünde jede Lücke doppelt), und eine Fortschreibung ist KEIN zweites
-     * Ereignis (append-only, gleiche {@code ereignis_id}, jüngste Zeile gewinnt).
+     * schon zeigt — sonst stünde jede Lücke doppelt), eine Fortschreibung ist KEIN zweites
+     * Ereignis (append-only, gleiche {@code ereignis_id}, jüngste Zeile gewinnt), und eine
+     * Rücksetzung, für die an derselben Messzeit ein Überlauf gemeldet ist, IST dieser Überlauf
+     * (dieselbe Regel wie {@link #RUECKSETZUNG_OHNE_UEBERLAUF} im Bestands-Weg).
      */
     public List<Ereignis> ereignisse(UUID tenantId, UUID entityId, String messkanal, Instant von,
             Instant bis, int rasterS) {
@@ -165,7 +259,7 @@ public class SpeicherklasseHistorie {
         // liefe die Abfrage an den Indizes `idx_messreihe_ereignis_reihe` und
         // `…_quelle` vorbei, die IP-8 genau für diesen Leser gebaut hat.
         String sql = "WITH e AS (SELECT DISTINCT ON (ereignis_id) ereignis_id,art,"
-                + "zeit beginn,bis FROM messreihe_ereignis WHERE tenant_id=? "
+                + "zeit beginn,bis,entity_id,messkanal FROM messreihe_ereignis WHERE tenant_id=? "
                 + "AND NOT aus_bestand AND art IN (" + MARKER_ARTEN + ") AND ("
                 + "(entity_id=? AND (messkanal IS NULL OR " + praedikat("messkanal", messkanal)
                 + ")) OR (entity_id IS NULL AND data_source_id=(SELECT data_source_id "
@@ -173,14 +267,17 @@ public class SpeicherklasseHistorie {
                 + "AND zeit<=? AND COALESCE(bis,zeit)>=? "
                 + "ORDER BY ereignis_id,eingang DESC) "
                 + "SELECT art,min(beginn) beginn,max(COALESCE(bis,beginn)) ende,count(*) anzahl "
-                + "FROM e GROUP BY art,time_bucket(CAST(? AS interval),beginn) "
+                + "FROM e WHERE NOT (e.art='counter_reset' AND EXISTS (SELECT 1 FROM messreihe_ereignis u "
+                + "WHERE u.tenant_id=? AND u.entity_id=e.entity_id AND u.messkanal=e.messkanal "
+                + "AND u.art='counter_overflow' AND u.zeit=e.beginn)) "
+                + "GROUP BY art,time_bucket(CAST(? AS interval),beginn) "
                 + "ORDER BY 2 LIMIT 200";
         return jdbc.query(sql, (rs, n) -> new Ereignis(rs.getString("art"),
                         rs.getTimestamp("beginn").toInstant(),
                         rs.getTimestamp("ende") == null ? null : rs.getTimestamp("ende").toInstant(),
                         rs.getInt("anzahl")),
                 tenantId, entityId, wert(messkanal), tenantId, entityId, Timestamp.from(bis),
-                Timestamp.from(von), rasterS + " seconds");
+                Timestamp.from(von), tenantId, rasterS + " seconds");
     }
 
     /** Die je Wert GESPEICHERTEN Katalogfassungen des Zeitraums — nie die heutige. */
@@ -209,6 +306,7 @@ public class SpeicherklasseHistorie {
     }
 
     private static Zeile zeile(ResultSet rs, Quelle quelle) throws SQLException {
+        List<String> kennzeichen = kennzeichen(rs.getString("h_kennzeichen"));
         Integer erhalten = nullableInt(rs, "h_erhalten");
         Integer erwartet = nullableInt(rs, "h_erwartet");
         return new Zeile(rs.getTimestamp("bucket").toInstant(), rs.getBigDecimal("chart_value"),
@@ -224,7 +322,23 @@ public class SpeicherklasseHistorie {
                 rs.getObject("h_geraet_2", UUID.class), rs.getObject("h_box", UUID.class),
                 rs.getObject("h_box_2", UUID.class), nullableLong(rs, "h_fassung"),
                 rs.getString("h_katalog"), rs.getString("h_rolle"),
-                rs.getBigDecimal("h_stand_anfang"), rs.getBigDecimal("h_stand_ende"));
+                rs.getBigDecimal("h_stand_anfang"), rs.getBigDecimal("h_stand_ende"),
+                rs.getString("h_menge_zustand"), kennzeichen, MeasurementHistoryService.EnergieAusLeistung
+                        .aus(rs.getBigDecimal("h_energie"), kennzeichen));
+    }
+
+    /** Die gespeicherten Kennzeichen (jsonb-Array von Sätzen) — {@code null}, wo keine gelesen sind. */
+    private static List<String> kennzeichen(String json) {
+        if (json == null) {
+            return null;
+        }
+        try {
+            List<String> aus = new ArrayList<>();
+            JSON.readTree(json).forEach(n -> aus.add(n.asText()));
+            return List.copyOf(aus);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Kennzeichen sind kein JSON-Array: " + json, e);
+        }
     }
 
     /**
@@ -278,7 +392,20 @@ public class SpeicherklasseHistorie {
             String zustand, Instant endgueltigAb, Integer version, Integer nachgeliefert,
             String zustellart, Instant letzteEingangszeit, UUID geraetEinbau,
             UUID geraetEinbauZwei, UUID box, UUID boxZwei, Long fassung, String katalogVersion,
-            String rolle, BigDecimal standAnfang, BigDecimal standEnde) {}
+            String rolle, BigDecimal standAnfang, BigDecimal standEnde, String mengeZustand,
+            List<String> kennzeichen, MeasurementHistoryService.EnergieAusLeistung energie) {
+
+        /** Dieselbe Zeile mit Kurvenwert, Zustand, Kennzeichen und Energie aus dem Zeitraum. */
+        Zeile mitMenge(BigDecimal neuerWert, String neuerZustand, List<String> neueKennzeichen,
+                MeasurementHistoryService.EnergieAusLeistung neueEnergie) {
+            return new Zeile(zeit, neuerWert, minimum, maximum, text, anzahl, luecke, quelle, wertart,
+                    abdeckungProzent, erhalten, erwartet, nGood, nUncertain, nInvalid, nStale,
+                    nDeviceError, zustand, endgueltigAb, version, nachgeliefert, zustellart,
+                    letzteEingangszeit, geraetEinbau, geraetEinbauZwei, box, boxZwei, fassung,
+                    katalogVersion, rolle, standAnfang, standEnde, neuerZustand, neueKennzeichen,
+                    neueEnergie);
+        }
+    }
 
     /** Ein gebündeltes Ereignis des Zeitraums. */
     public record Ereignis(String art, Instant von, Instant bis, int anzahl) {}

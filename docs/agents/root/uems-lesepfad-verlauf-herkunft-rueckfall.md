@@ -60,16 +60,15 @@ Jedes Feld kommt aus einer Spalte, die PR 691/694/698/700/702 gefüllt hat:
 Boxen, Fassungen oder Katalogstände, bleibt der Anker `null` — der WECHSEL steht als Marker da.
 Ein Raster-Schritt ist `endgueltig` nur, wenn JEDE seiner Viertelstunden es ist.
 
-⚠ **Der Kurvenwert eines Zählerstands:** in der Viertelstunde die Summe der gespeicherten
-`menge` (AP-08 IP-2) — und **leer, sobald eine einzige Viertelstunde keine bildbare Menge hat**
-(eine zu kleine Summe wäre schlimmer als keine). In der **Tagesklasse bleibt er leer**:
-`messreihe_tag` hat ausdrücklich KEINE `menge`/`summe`, die Tagesmenge bildet AP-08 IP-5 aus den
-Periodenständen. Statt einer geratenen Zahl reisen `standAnfang`/`standEnde` in der Herkunft mit.
+⚠ **Der Kurvenwert eines Zählerstands** ist seit der Nacharbeit (§8) die GESPEICHERTE Menge bzw.
+im groben Raster die Regel des Vertrags — nie eine Summe von Viertelstunden. `standAnfang`/
+`standEnde` reisen weiter in der Herkunft mit.
 
 ## 3. Die MARKEN: ein Sprung wird erklärbar
 
-Sechs Arten des Ereignis-Vokabulars (§4.8) treten zu den bestehenden Markern: `data_gap`,
-`counter_reset`, `device_boundary`, `handover`, `duplicate_conflict`, `late_arrival`. Gebündelt je
+Sieben Arten des Ereignis-Vokabulars (§4.8) treten zu den bestehenden Markern: `data_gap`,
+`counter_reset`, `counter_overflow` (seit §8), `device_boundary`, `handover`, `duplicate_conflict`,
+`late_arrival`. Gebündelt je
 Art und Raster-Schritt, mit `count` und optionalem `until` — sparsam, nie als Flut. Gelesen über
 `idx_messreihe_ereignis_reihe` / `…_quelle`, die IP-8 für genau diesen Leser gebaut hat; `zeit` IST
 der Beginn (der Vertrag verlangt `zeit = von`), darum kein `COALESCE` in der Bedingung.
@@ -124,6 +123,32 @@ bestehender Test angefasst werden muss.
 ## 7. Was dieses Paket NICHT tut
 
 Keine Lücken-Meldung als Job (IP-9), keine Löschwege (IP-11), keine versionierten Korrekturen und
-keine Kaskade (AP-08 IP-12 ff.), keine Tages-/Monatsmengen aus Periodenständen (AP-08 IP-5), keine
-Rechte-Durchsetzung je Standort (AP-03), keine Portal-Fläche (IP-15 — `api.ts` bekommt nur die
-Typen).
+keine Kaskade (AP-08 IP-12 ff.), keine Rechte-Durchsetzung je Standort (AP-03), keine Portal-Fläche
+(IP-15 — `api.ts` bekommt nur die Typen).
+
+## 8. Nacharbeit: Perioden-Mengen, Energie aus Leistung, Überlauf (nach AP-08 IP-3/IP-4/IP-5)
+
+Test: `uems/UemsLesepfadMengenTest` (Testcontainers, gebildet von den ECHTEN Läufen). Keine
+Migration, keine Rechenregel — gelesen bzw. AUFGERUFEN.
+
+1. **Menge.** Tagesklasse: `messreihe_tag.menge` mit `menge_zustand`/`kennzeichen` (F8 03.11.2026:
+   2 304,0 kWh vollständig — vorher leer; die Summe der Viertelstunden wäre 1 966,4). Viertelstunden-
+   Raster: die gespeicherte Zeile wie vorher. ⚠ **Gröber als 15 min ist jeder Schritt ein freier
+   Zeitraum** (`ZeitraumMenge.raster` → `ViertelstundenTeile.schritte`, dieselbe Regel wie
+   `ZeitraumMenge.zeitraum`, ein Lesezug für alle Schritte; Lockstep im Test): eine Viertelstunde OHNE
+   Rohwert hat KEINE Zeile, `count(*)=count(menge)` war darum auch über einer Lücke „vollständig"
+   (Stunde mit 35 min Lücke: 40,0 statt 96,0 kWh). Platzhalter-Kanäle: Summe der Kanal-Mengen nur,
+   wenn jeder eine hat; Zustand/Kennzeichen/Energie nur bei genau einem Kanal. Das Mittel im groben
+   Raster bleibt das bisherige (Befund: Mittel gerundeter Mittel, nicht Teil dieser Nacharbeit).
+2. **Energie aus Leistung** steht nur als `herkunft.energieAusLeistung {wert, kennzeichen}` —
+   `EnergieAusLeistung` verweigert einen Wert ohne den Satz „aus Leistung integriert …" (wie die
+   Prüfregel `messreihe_energie_gekennzeichnet`). Nie Kurvenwert, nie im Export.
+3. **Überlauf.** `counter_overflow` („Zähler übergelaufen") ist Marke; ⚠ der Bestand schreibt für
+   denselben Sprung weiter `counter_reset` — eine Rücksetzung an Komponente + Messkanal + Messzeit
+   eines Überlaufs wird NICHT gezeigt, im Bestands-Weg (`SpeicherklasseHistorie.RUECKSETZUNG_OHNE_UEBERLAUF`,
+   nur mit Reihe; ohne Reihe ist die Abfrage die alte) wie an der Reihe.
+
+⚠ **Bestandsschutz:** die drei neuen Herkunfts-Felder sind `@JsonInclude(NON_NULL)` — die Antwort
+des Rohwert-Wegs und der Export bleiben Zeichen für Zeichen (md5-Karte, aufgenommen auf dem Stand
+davor, verglichen mit `Bestandsschutz.abweichungen`). Die Export-Spalten sind unverändert; eine
+Tagesmenge steht dort in `value`.

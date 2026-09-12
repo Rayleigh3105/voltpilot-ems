@@ -77,5 +77,5 @@ seinem jüngsten Monat). Die Stundenzahl eines Tages kommt weiter aus `TagRegeln
 
 Keine Korrektur/Kaskade/Version > 1 (IP-12 ff.), keine Ersatzwerte (IP-9/E7), keine Route,
 keine Portal-Fläche. Momentanwert-/Intervall-Reihen über Perioden (Mittel, Energie,
-`menge_zustand`) kamen mit IP-3 — `uems-intervall-momentanwert.md`. Der Lesepfad (PR 703) zeigt die Tagesmenge noch nicht:
-`SpeicherklasseHistorie.tage` setzt `menge_summe` und `chart_value` für Zähler fest auf NULL.
+`menge_zustand`) kamen mit IP-3 — `uems-intervall-momentanwert.md`. Der Lesepfad zeigt die Tagesmenge und bildet
+das grobe Raster über `ZeitraumMenge.raster` — `uems-lesepfad-verlauf-herkunft-rueckfall.md` §8.
