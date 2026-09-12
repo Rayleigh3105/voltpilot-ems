@@ -78,7 +78,8 @@ import org.testcontainers.utility.DockerImageName;
  *       {@code teilansicht} ist {@code false} (AP-03);</li>
  *   <li><b>EINE Abfrage</b>: 100 Messstellen mit Ort, Stellung und Quelle kosten genau EINE
  *       Abfrage auf den Messstellen-Tabellen und insgesamt dieselbe Zahl an Abfragen wie EINE
- *       Messstelle (keine N+1) — unter 300 ms;</li>
+ *       Messstelle (keine N+1) — unter 300 ms; die Kadenz-Fassungen (AP-07 IP-10) kommen als EIN
+ *       weiterer Zug dazu, nie je Zeile;</li>
  *   <li>der Mandantenzaun: ein fremder Kundenbereich sieht nichts, ein fremder Filterwert findet
  *       nichts (leer, nie 403); die Form der Anfrage ist streng (400);</li>
  *   <li>Liste und Einzelabruf sagen dasselbe: {@code messstellen[i]} ist {@code GET …/{id}}.</li>
@@ -896,6 +897,12 @@ class MessstelleRegisterApiTest {
                 Math.abs(zeit.hashCode()) % 100000);
     }
 
+    /**
+     * ⚠ Seit AP-07 IP-10 kommt EINE weitere Abfrage dazu: die Kadenz-Fassungen aller führenden
+     * Bindungen zum Zeitpunkt ({@code quelle_kadenz}, ein Zug für alle — kein N+1). Die Zusage
+     * bleibt, was sie war: die MESSSTELLEN-Daten kosten genau EINE Abfrage, und 100 Messstellen
+     * kosten so viele Abfragen wie eine.
+     */
     @Test
     void hundertMessstellenKostenEineAbfrageUndBleibenUnter300ms() {
         Anrufer eine = werk("Laufzeit 1", 1);
@@ -906,8 +913,11 @@ class MessstelleRegisterApiTest {
         List<String> abfragenEine = abfragen(() -> register(eine, ""));
         List<String> abfragenHundert = abfragen(() -> register(hundert, ""));
 
-        assertThat(abfragenHundert.stream().filter(s -> s.contains("messstelle")).toList())
+        assertThat(abfragenHundert.stream().filter(s -> s.contains("FROM messstelle ")).toList())
                 .as(String.join("\n", abfragenHundert)).hasSize(1);
+        assertThat(abfragenHundert.stream().filter(s -> s.contains("FROM quelle_kadenz")).toList())
+                .as("die Kadenz-Fassungen: EIN Zug für alle Bindungen (AP-07 IP-10)")
+                .hasSize(1);
         assertThat(abfragenHundert).as("keine N+1: dieselbe Zahl wie bei einer Messstelle")
                 .hasSameSizeAs(abfragenEine);
 

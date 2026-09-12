@@ -201,7 +201,7 @@ public class TenantRepository {
                     st.executeUpdate();
                 }
                 for (String table : new String[] {
-                        "messstelle_quelle", "quelle_einstellung",
+                        "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "data_source_assignment", "data_source", "data_source_kennzeichen_seq",
                         "messstelle_ort", "messstelle_stellung",

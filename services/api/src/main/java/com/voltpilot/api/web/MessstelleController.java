@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.voltpilot.api.uems.KadenzAbgelehnt;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.MessstelleQuelleService;
 import com.voltpilot.api.uems.MessstelleRegeln;
@@ -14,6 +15,8 @@ import com.voltpilot.api.uems.MessstelleService;
 import com.voltpilot.api.uems.MessstelleZuordnungService;
 import com.voltpilot.api.uems.ZaehlerwechselService;
 import com.voltpilot.api.uems.ProtokollAkteur;
+import com.voltpilot.api.uems.QuelleKadenzService;
+import com.voltpilot.api.web.dto.KadenzDto;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
@@ -72,16 +75,18 @@ public class MessstelleController {
     private final MessstelleRegisterService register;
     private final MessstelleZuordnungService zuordnungen;
     private final MessstelleQuelleService quellen;
+    private final QuelleKadenzService kadenzen;
     private final ZaehlerwechselService wechsel;
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
             MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
-            ZaehlerwechselService wechsel, ObjectMapper json) {
+            QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, ObjectMapper json) {
         this.messstellen = messstellen;
         this.register = register;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
+        this.kadenzen = kadenzen;
         this.wechsel = wechsel;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
@@ -294,6 +299,45 @@ public class MessstelleController {
         return quellen.beenden(id, quelleId, b, akteur(auth));
     }
 
+    // ------------------------------------------------ Erwartete Kadenz (AP-07 IP-10)
+
+    /**
+     * Recht: {@code messstelle.ansehen}. Was die Bindung zum {@code stichtag} erwartet (Zeitpunkt
+     * mit Versatz oder Tag; fehlend = jetzt), woher die Zahl kommt, was ohne eingetragene Fassung
+     * gälte — und die ganze Historie der Fassungen.
+     */
+    @GetMapping("/{id}/quellen/{quelleId}/kadenz")
+    public KadenzDto.Kadenz kadenz(@PathVariable UUID id, @PathVariable UUID quelleId,
+            @RequestParam(required = false) String stichtag) {
+        return kadenzen.kadenz(id, quelleId, stichtag(stichtag));
+    }
+
+    /**
+     * Recht: {@code messstelle.quelle}; mit einem „gültig ab“ vor jetzt zusätzlich
+     * {@code aenderung.rueckwirkend}. Trägt eine neue Kadenz-Fassung ein: sie gilt AB ihrem
+     * Zeitpunkt, die dort geltende endet genau dort, alles davor bleibt, wie es war. Die Box
+     * bekommt dieselbe Nachricht wie bisher — nur mit dieser Zahl in {@code cadence_s}.
+     */
+    @PostMapping("/{id}/quellen/{quelleId}/kadenz")
+    @ResponseStatus(HttpStatus.CREATED)
+    public KadenzDto.Vorgang kadenzEintragen(@PathVariable UUID id, @PathVariable UUID quelleId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        if (body == null || !body.isObject()) {
+            throw KadenzAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
+        }
+        KadenzDto.Eintragen e;
+        try {
+            e = streng.treeToValue(body, KadenzDto.Eintragen.class);
+        } catch (UnrecognizedPropertyException ex) {
+            throw KadenzAbgelehnt.anfrage(pfad(ex), "„" + pfad(ex) + "“ gibt es hier nicht.");
+        } catch (JsonMappingException ex) {
+            throw KadenzAbgelehnt.anfrage(pfad(ex), "„" + pfad(ex) + "“ hat nicht die erwartete Form.");
+        } catch (JsonProcessingException ex) {
+            throw KadenzAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
+        }
+        return kadenzen.eintragen(id, quelleId, e, akteur(auth));
+    }
+
     // ---------------------------------------------------------------- Gerüst
 
     private static ProtokollAkteur akteur(Authentication auth) {
@@ -337,6 +381,16 @@ public class MessstelleController {
             }
         }
         return s.toString();
+    }
+
+    /** Dieselbe Form für die Kadenz-Schnittstelle (AP-07 IP-10) — eigenes Vokabular, gleicher Körper. */
+    @ExceptionHandler(KadenzAbgelehnt.class)
+    public ResponseEntity<Map<String, Object>> kadenzAbgelehnt(KadenzAbgelehnt e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", e.code());
+        body.put("message", e.getMessage());
+        body.putAll(e.fakten());
+        return ResponseEntity.status(e.status()).body(body);
     }
 
     /** {@code {code, message, …Fakten}} — Code und Status wie der Vertrag (bzw. die Schnittstelle) sie nennt. */
