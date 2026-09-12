@@ -117,6 +117,7 @@ public class ViertelstundeVerdichter {
         "summe", "mittel", "min_wert", "max_wert",
         "erster_wert", "erster_text", "erster_zeit", "letzter_wert", "letzter_text", "letzter_zeit",
         "menge", "menge_zustand", "kennzeichen", "faktor",
+        "energie", "gemessen_s", "luecke_innen",
         "erhalten", "erwartet", "abdeckung_prozent", "kadenz_s", "kadenz_herkunft",
         "n_good", "n_uncertain", "n_invalid", "n_stale", "n_device_error",
         "geraet_einbau", "geraet_einbau_2", "geraet_einbau_weitere",
@@ -428,6 +429,8 @@ public class ViertelstundeVerdichter {
         // 2. Die Rohwerte, je Auftrag mit dem Rückblick einer Kadenz (Z1 braucht ihn für den
         //    Stand an der Anfangsgrenze).
         Map<Integer, List<Roh>> rohe = rohwerte(con, stapel, kadenzen);
+        //    … und ob eine Quellenbindung die Reihe als Energie liest (Herleitung `integration`, E5).
+        Set<Integer> integrieren = integrationJeAuftrag(con, stapel);
         // 3. Die Ereignisse im Intervall …
         Map<Integer, List<Ereignis>> ereignisse = ereignisse(con, stapel);
         // … und die Einbau-Kennzeichen, die sie nennen, als Einbau aufgelöst (A5).
@@ -438,7 +441,7 @@ public class ViertelstundeVerdichter {
             for (int i = 0; i < stapel.size(); i++) {
                 Object[] werte = zeile(stapel.get(i), kadenzen.get(i),
                         rohe.getOrDefault(i, List.of()), ereignisse.getOrDefault(i, List.of()),
-                        einbauten, jetzt);
+                        einbauten, integrieren.contains(i), jetzt);
                 if (werte == null) {
                     continue;
                 }
@@ -457,7 +460,7 @@ public class ViertelstundeVerdichter {
      * keinen einzigen Rohwert hat: eine Lücke ist keine Null und wird nicht geschrieben.
      */
     private Object[] zeile(Auftrag a, KadenzRegeln.Wirksam kadenz, List<Roh> fenster,
-            List<Ereignis> ereignisse, Map<String, UUID> einbauten, Instant jetzt) {
+            List<Ereignis> ereignisse, Map<String, UUID> einbauten, boolean integrieren, Instant jetzt) {
         Instant von = a.beginn();
         Instant bis = ViertelstundeRegeln.ende(von);
         List<Roh> imIntervall = fenster.stream()
@@ -472,14 +475,28 @@ public class ViertelstundeVerdichter {
         String wertart = wertart(bezug);
         Duration kadenzD = Duration.ofSeconds(kadenz.erwartetS());
 
-        // Die Rechenregel von AP-08 wird AUFGERUFEN, nie nachgebaut.
+        // Die Rechenregel von AP-08 wird AUFGERUFEN, nie nachgebaut. Das Fenster reicht zwei
+        // Kadenzen über das Intervall hinaus (M4: ein Wert hält bis zum nächsten, höchstens zwei
+        // Kadenzen); die Zählerstand- und Intervall-Regeln sehen weiter genau (Beginn − Kadenz, Ende].
+        String regel = ViertelstundeRegeln.regelWort(wertart);
+        boolean momentan = "momentanwert".equals(regel);
+        Instant regelVon = von.minus(kadenzD);
         List<VerbrauchRegeln.Rohwert> werte = fenster.stream()
                 .filter(r -> r.zahl() != null)
+                .filter(r -> momentan || (r.zeit().isAfter(regelVon) && !r.zeit().isAfter(bis)))
                 .map(r -> new VerbrauchRegeln.Rohwert(r.zeit(), r.zahl(), r.gut()))
                 .toList();
-        String regel = ViertelstundeRegeln.regelWort(wertart);
         VerbrauchRegeln.Ergebnis e;
-        if (regel != null) {
+        // AP-08 IP-3: Momentanwert und Intervallmenge in der Form, die Tag, Monat und Jahr brauchen
+        // (ungerundete Summe, Energie, gemessene Zeit, Lücke im Intervall) — dieselbe Regel.
+        VerbrauchRegeln.Werteteil teil = null;
+        if (momentan) {
+            teil = VerbrauchRegeln.momentanwertTeil(werte, von, bis, kadenzD, integrieren);
+            e = teil.teil().ergebnis();
+        } else if ("intervallmenge".equals(regel)) {
+            teil = VerbrauchRegeln.intervallmengeTeil(werte, von, bis, kadenzD, ViertelstundeRegeln.FAKTOR_DER_FASSUNG);
+            e = teil.teil().ergebnis();
+        } else if (regel != null) {
             e = VerbrauchRegeln.ergebnis(regel, werte, von, bis, kadenzD,
                     fuerVerbrauchRegeln(ereignisse), ViertelstundeRegeln.FAKTOR_DER_FASSUNG,
                     null, null, false);
@@ -540,7 +557,7 @@ public class ViertelstundeVerdichter {
         werteJeSpalte.put("stand_anfang_zeit", standAnfang == null ? null : Timestamp.from(standAnfang.zeit()));
         werteJeSpalte.put("stand_ende", standEnde == null ? null : standEnde.wert());
         werteJeSpalte.put("stand_ende_zeit", standEnde == null ? null : Timestamp.from(standEnde.zeit()));
-        werteJeSpalte.put("summe", "intervallmenge".equals(regel) ? e.menge() : null);
+        werteJeSpalte.put("summe", teil == null ? null : teil.summe());
         werteJeSpalte.put("mittel", e.mittel());
         werteJeSpalte.put("min_wert", e.min());
         werteJeSpalte.put("max_wert", e.max());
@@ -559,6 +576,11 @@ public class ViertelstundeVerdichter {
         werteJeSpalte.put("kennzeichen",
                 ViertelstundeRegeln.kennzeichenJson(regel == null ? List.of() : e.kennzeichen()));
         werteJeSpalte.put("faktor", ViertelstundeRegeln.FAKTOR_DER_FASSUNG);
+        // E5: die Energie aus Leistung — nur mit Bindung `integration`, nur mit Kennzeichen (das die
+        // Regel schon in `kennzeichen` gesetzt hat), nie in `menge` (M6).
+        werteJeSpalte.put("energie", teil == null ? null : teil.energie());
+        werteJeSpalte.put("gemessen_s", momentan ? (int) teil.gemessenS() : null);
+        werteJeSpalte.put("luecke_innen", momentan ? teil.lueckeInnen() : null);
         werteJeSpalte.put("erhalten", e.erhalten());
         werteJeSpalte.put("erwartet", e.erwartet());
         werteJeSpalte.put("abdeckung_prozent", e.abdeckungProzent());
@@ -687,6 +709,45 @@ public class ViertelstundeVerdichter {
     }
 
     /**
+     * Die Aufträge, deren Reihe eine Quellenbindung als ENERGIE AUS LEISTUNG liest (Herleitung
+     * {@code integration}, AP-04 Regel 7 — für AP-08 gekennzeichnet): nur für sie wird integriert
+     * (E5). Ohne eine solche Bindung entsteht keine Energie — eine Spannung oder Temperatur wird nie
+     * „integriert", bloß weil sie ein Momentanwert ist. Es genügt eine Bindung, deren Gültigkeit das
+     * Intervall berührt (halboffen, auf die Minute).
+     */
+    private Set<Integer> integrationJeAuftrag(Connection con, List<Auftrag> stapel) throws SQLException {
+        Set<Integer> aus = new java.util.HashSet<>();
+        String sql = """
+                WITH frage(nr, tenant_id, entity_id, messkanal, von, bis) AS (VALUES %s)
+                SELECT DISTINCT f.nr
+                  FROM frage f
+                  JOIN messstelle_quelle q
+                    ON q.tenant_id = f.tenant_id AND q.entity_id = f.entity_id AND q.kanal = f.messkanal
+                   AND q.herleitung = 'integration'
+                   AND q.gueltig_ab < f.bis AND (q.gueltig_bis IS NULL OR q.gueltig_bis > f.von)
+                """.formatted(werteListe(stapel.size(),
+                        "?::int, ?::uuid, ?::uuid, ?::text, ?::timestamptz, ?::timestamptz", 6));
+        try (PreparedStatement ps = con.prepareStatement(sql)) {
+            int p = 1;
+            for (int i = 0; i < stapel.size(); i++) {
+                Auftrag a = stapel.get(i);
+                ps.setInt(p++, i);
+                ps.setObject(p++, a.tenant());
+                ps.setObject(p++, a.entity());
+                ps.setString(p++, a.kanal());
+                ps.setTimestamp(p++, Timestamp.from(a.beginn()));
+                ps.setTimestamp(p++, Timestamp.from(ViertelstundeRegeln.ende(a.beginn())));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    aus.add(rs.getInt(1));
+                }
+            }
+        }
+        return aus;
+    }
+
+    /**
      * Die zum INTERVALLBEGINN geltende Kadenz-Fassung je Auftrag — Spiegelbild von
      * {@code QuelleKadenzRepository.jeKanal}, nur über die BYPASSRLS-Verbindung und je Zeitpunkt:
      * lesen mehrere Bindungen denselben Messkanal, gilt die SCHNELLSTE ihrer Fassungen.
@@ -761,9 +822,11 @@ public class ViertelstundeVerdichter {
     }
 
     /**
-     * Die Rohwerte je Auftrag: {@code (Beginn − Kadenz, Ende]}. Der Rückblick einer Kadenz ist
-     * Z1 ({@code Stand(t)} ist der letzte gute Wert in {@code (t − Kadenz, t]}), das Ende
-     * einschließlich ebenso — {@code Stand(bis)} liegt genau auf der Grenze.
+     * Die Rohwerte je Auftrag: {@code (Beginn − 2 × Kadenz, Ende + 2 × Kadenz]}. Der Rückblick einer
+     * Kadenz ist Z1 ({@code Stand(t)} ist der letzte gute Wert in {@code (t − Kadenz, t]}), das Ende
+     * einschließlich ebenso — {@code Stand(bis)} liegt genau auf der Grenze. Die zweite Kadenz
+     * davor und die zwei danach braucht seit AP-08 IP-3 nur der Momentanwert (M4: ein Wert hält bis
+     * zum nächsten guten Wert, höchstens zwei Kadenzen, auch über die Grenze).
      */
     private Map<Integer, List<Roh>> rohwerte(Connection con, List<Auftrag> stapel,
             Map<Integer, KadenzRegeln.Wirksam> kadenzen) throws SQLException {
@@ -773,8 +836,9 @@ public class ViertelstundeVerdichter {
         List<Instant[]> fenster = new ArrayList<>();
         for (int i = 0; i < stapel.size(); i++) {
             Instant b = stapel.get(i).beginn();
-            Instant f0 = b.minusSeconds(kadenzen.get(i).erwartetS());
-            Instant f1 = ViertelstundeRegeln.ende(b);
+            long reichweite = (long) VerbrauchRegeln.HALTEN_FAKTOR * kadenzen.get(i).erwartetS();
+            Instant f0 = b.minusSeconds(reichweite);
+            Instant f1 = ViertelstundeRegeln.ende(b).plusSeconds(reichweite);
             fenster.add(new Instant[] {f0, f1});
             von = von == null || f0.isBefore(von) ? f0 : von;
             bis = bis == null || f1.isAfter(bis) ? f1 : bis;

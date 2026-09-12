@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP
 from typing import Iterable, Sequence
 from zoneinfo import ZoneInfo
 
@@ -626,7 +626,7 @@ def momentanwerte(
         "kennzeichen": kennzeichen,
     }
     if integrieren:
-        ergebnis["energie_kwh"] = _runde(_integriere(werte, von, bis, kadenz))
+        ergebnis["energie_kwh"] = _runde_energie(_integriere(werte, von, bis, kadenz))
         kennzeichen.append(AUS_LEISTUNG_INTEGRIERT)
     return ergebnis
 
@@ -654,6 +654,15 @@ def _integriere(werte: Sequence[Rohwert], von: datetime, bis: datetime, kadenz: 
         if ende > start:
             energie += vorher.wert * _dez((ende - start).total_seconds()) / _D(3600)
     return energie
+
+
+#: Unter so vielen Stellen trägt eine ungerundete Energie nur Rechenrauschen (28-stellige Divisionen
+#: durch 3 600); es wird vor der Rundung entfernt, sonst kippte F3 (24,1125) als 24,11249…9 auf 24,112.
+ENERGIE_RAUSCHEN_STELLEN = 15
+
+
+def _runde_energie(energie: Decimal) -> Decimal:
+    return _runde(energie.quantize(_D(1).scaleb(-ENERGIE_RAUSCHEN_STELLEN), rounding=ROUND_HALF_EVEN))
 
 
 def _fehlende_intervallmengen(fehlend: int, erwartet: int) -> list[str]:
@@ -848,7 +857,7 @@ def momentanwert_aus_teilperioden(
         "mittel": _runde(summe / erhalten, 1),
         "min": min(w.teil.ergebnis["min"] for w in gut),
         "max": max(w.teil.ergebnis["max"] for w in gut),
-        "energie_kwh": _runde(energie) if energie is not None else None,
+        "energie_kwh": _runde_energie(energie) if energie is not None else None,
         "zustand": VOLLSTAENDIG if vollstaendig else UNVOLLSTAENDIG,
         "erhalten": erhalten,
         "kennzeichen": kennzeichen,

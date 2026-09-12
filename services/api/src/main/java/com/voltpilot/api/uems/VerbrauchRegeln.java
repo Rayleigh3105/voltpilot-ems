@@ -757,7 +757,7 @@ public final class VerbrauchRegeln {
         }
         BigDecimal energie = null;
         if (integrieren) {
-            energie = runde(integriere(werte, von, bis, kadenz), NACHKOMMASTELLEN);
+            energie = rundeEnergie(integriere(werte, von, bis, kadenz));
             kennzeichen.add(AUS_LEISTUNG_INTEGRIERT);
         }
 
@@ -822,6 +822,18 @@ public final class VerbrauchRegeln {
 
     /** Das Wort des Kennzeichen-Vokabulars, mit dem {@link #AUS_LEISTUNG_INTEGRIERT} beginnt. */
     public static final String AUS_LEISTUNG_INTEGRIERT_WORT = "aus Leistung integriert";
+
+    /**
+     * Die Stellen, unter denen eine ungerundete Energie nur Rechenrauschen trägt: jede Teil-Energie ist
+     * eine 28-stellige Division durch 3 600, ihre Summe weicht darum im Bereich 10⁻²⁰ vom wahren Wert
+     * ab. Vor der Rundung auf {@link #NACHKOMMASTELLEN} wird dieses Rauschen entfernt — sonst kippte
+     * eine Summe genau auf der Rundungsgrenze (F3: 24,1125 kWh) als 24,11249…9 auf 24,112.
+     */
+    static final int ENERGIE_RAUSCHEN_STELLEN = 15;
+
+    static BigDecimal rundeEnergie(BigDecimal energie) {
+        return runde(energie.setScale(ENERGIE_RAUSCHEN_STELLEN, RoundingMode.HALF_EVEN), NACHKOMMASTELLEN);
+    }
 
     /** I2 — das Kennzeichen einer Periode, der Intervallmengen fehlen (leer, wenn keine fehlt). */
     private static List<String> fehlendeIntervallmengen(int fehlend, int erwartet) {
@@ -1043,7 +1055,7 @@ public final class VerbrauchRegeln {
                 runde(summe.divide(BigDecimal.valueOf(erhalten), RECHNUNG), 1),
                 min,
                 max,
-                energie == null ? null : runde(energie, NACHKOMMASTELLEN),
+                energie == null ? null : rundeEnergie(energie),
                 vollstaendig ? VOLLSTAENDIG : UNVOLLSTAENDIG,
                 erhalten,
                 0,

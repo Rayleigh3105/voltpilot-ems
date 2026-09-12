@@ -475,3 +475,10 @@ def test_integrieren_verlangt_die_energie_jedes_teils():
     ohne = verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz, False)
     with pytest.raises(ValueError, match="Energie"):
         verbrauch.momentanwert_aus_teilperioden([ohne], von, von + timedelta(hours=1), kadenz, True)
+
+
+def test_rechenrauschen_kippt_keine_rundungsgrenze():
+    """Die Summe 28-stelliger Teil-Energien trägt Rauschen: 24,11249…9 darf nicht auf 24,112 kippen (F3)."""
+    assert verbrauch._runde_energie(Decimal("24.11249999999999999999999999")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11250000000000000000000001")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11244444444444444444444444")) == Decimal("24.112")

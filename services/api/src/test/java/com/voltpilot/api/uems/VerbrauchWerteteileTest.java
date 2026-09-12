@@ -196,6 +196,21 @@ class VerbrauchWerteteileTest {
         assertThat(stunde.teil().ergebnis().mittel()).isEqualByComparingTo("10.1");
     }
 
+    /**
+     * Die Summe 28-stelliger Teil-Energien trägt Rechenrauschen: genau auf der Rundungsgrenze (F3:
+     * 24,1125 kWh) darf eine Summe 24,11249…9 nicht auf 24,112 kippen. Echte Energien (Wert × Sekunden
+     * ÷ 3 600) haben nie eine Neunerkette, das Entfernen des Rauschens ist darum exakt.
+     */
+    @Test
+    void rechenrauschenKipptKeineRundungsgrenze() {
+        assertThat(VerbrauchRegeln.rundeEnergie(new BigDecimal("24.11249999999999999999999999")))
+                .isEqualByComparingTo("24.113");
+        assertThat(VerbrauchRegeln.rundeEnergie(new BigDecimal("24.11250000000000000000000001")))
+                .isEqualByComparingTo("24.113");
+        assertThat(VerbrauchRegeln.rundeEnergie(new BigDecimal("24.11244444444444444444444444")))
+                .isEqualByComparingTo("24.112");
+    }
+
     /** Ohne einen guten Wert gibt es keine Energie — nie 0, nie Mittel × Länge, kein Kennzeichen. */
     @Test
     void ohneEinenGutenWertGibtEsKeineEnergie() {
