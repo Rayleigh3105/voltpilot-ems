@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/netzanschluss.schema.json",
+  "title": "Netzanschluss: Objekt am Standort und zeitgültige Bindung an eine Anlage",
+  "description": "Der Vertrag des NETZANSCHLUSSES (UEMS AP-10 E8, Prosa: netzanschluss.md): Kennzeichen, Marktlokation, Netzbetreiber, Anschluss- und vereinbarte Leistung, Messung — und die zeitgültige Bindung an genau eine Anlage je Tag. Er beschreibt netzanschluss-vectors.json, gegen die Java services/api .../uems/NetzanschlussRegeln und TypeScript frontend/portal/src/uemsNetzanschluss.ts gefahren werden. Preis- und Grenzspalten der Anlage bleiben unverändert (W9); die Grenzprüfung ist AP-15.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "herkunft",
+    "zeitzone",
+    "referenzunternehmen",
+    "vokabulare",
+    "kennzeichen_regel",
+    "regeln",
+    "saetze",
+    "zwillinge",
+    "cases"
+  ],
+  "properties": {
+    "_comment": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "Die Regel in Prosa — dieselbe wie in der .md-Datei."
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv."
+    },
+    "$schema_datei": {
+      "type": "string"
+    },
+    "herkunft": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Konzeptpaket, Regelnummern und Entscheide."
+    },
+    "zeitzone": {
+      "type": "string",
+      "const": "Europe/Berlin",
+      "description": "Die Zeitzone des Standorts, in der ein Tag um 00:00 beginnt. Ahrenberg liegt in Europe/Berlin; das Feld ist die Zeitzone DIESER Fälle, keine Festlegung für jeden Kunden."
+    },
+    "referenzunternehmen": {
+      "type": "string",
+      "const": "./uems-referenzunternehmen.json",
+      "description": "Die EINE Beispielwelt."
+    },
+    "referenz_stand": {
+      "type": "string"
+    },
+    "titel": {
+      "type": "string"
+    },
+    "regeln_kurz": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "Die Kurzfassung der Regeln aus AP-10."
+    },
+    "plan_abnahmen": {
+      "type": "object",
+      "description": "Die Plan-Abnahme des Programms und der Fall, der sie trägt."
+    },
+    "vokabulare": {
+      "type": "object",
+      "description": "Die geschlossenen Wortlisten dieses Vertrags."
+    },
+    "regeln": {
+      "type": "object",
+      "description": "Die Schwellen und Formate, die BEIDE Zwillinge lesen."
+    },
+    "saetze": {
+      "type": "object",
+      "description": "Die Kundensätze als Vorlagen mit Platzhaltern."
+    },
+    "zwillinge": {
+      "type": "object",
+      "description": "Je Regel: WER sie prüft (java · ts).",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "java",
+            "ts"
+          ]
+        }
+      }
+    },
+    "zwillinge_grund": {
+      "type": "object",
+      "description": "Je Regel ohne TS-Zwilling: der Grund. Ohne Grund keine Lücke.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 20
+      }
+    },
+    "_abweichungen": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/abweichung"
+      }
+    },
+    "_nicht_geprueft": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nicht_geprueft"
+      }
+    },
+    "kennzeichen_regel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "praefix",
+        "stellen",
+        "muster",
+        "min_zeichen",
+        "max_zeichen"
+      ],
+      "properties": {
+        "praefix": {
+          "type": "string",
+          "const": "NA-"
+        },
+        "stellen": {
+          "type": "integer"
+        },
+        "muster": {
+          "type": "string"
+        },
+        "min_zeichen": {
+          "type": "integer"
+        },
+        "max_zeichen": {
+          "type": "integer"
+        }
+      },
+      "description": "Dieselbe Form wie beim Messstellen-Kennzeichen (AP-00 E10, messstelle.md §1) — nur mit eigenem Präfix und eigenem Zähler."
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fall"
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "betrag": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+      "description": "Ein Betrag als DEZIMALTEXT — nie Gleitkomma. Verglichen wird numerisch."
+    },
+    "tag": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "abweichung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fall",
+        "feld",
+        "grund"
+      ],
+      "properties": {
+        "fall": {
+          "type": "string"
+        },
+        "feld": {
+          "type": "string"
+        },
+        "vorlage": {},
+        "statt": {},
+        "grund": {
+          "type": "string",
+          "minLength": 20
+        }
+      },
+      "description": "Eine bewusste Abweichung von `referenzfaelle.json` — mit Grund, nie stillschweigend."
+    },
+    "nicht_geprueft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fall",
+        "feld",
+        "warum"
+      ],
+      "properties": {
+        "fall": {
+          "type": "string"
+        },
+        "feld": {
+          "type": "string"
+        },
+        "warum": {
+          "type": "string",
+          "minLength": 20
+        }
+      },
+      "description": "Eine Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet."
+    },
+    "pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regel",
+        "name",
+        "eingang",
+        "ergebnis"
+      ],
+      "properties": {
+        "regel": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eingang": {},
+        "ergebnis": {}
+      },
+      "description": "Eine Prüfung: ihre Regel, ihr Eingang und das Ergebnis, das beide Zwillinge liefern."
+    },
+    "fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "id",
+        "familie",
+        "abnahme",
+        "titel",
+        "why",
+        "schritte",
+        "pruefungen"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^F[0-9]{1,2}$"
+        },
+        "familie": {
+          "type": "string",
+          "enum": [
+            "gebaeude",
+            "korrektur",
+            "live",
+            "netzanschluss",
+            "rechte",
+            "rest",
+            "saldo",
+            "summe",
+            "versorgung",
+            "verteilung",
+            "zeit",
+            "zustand"
+          ]
+        },
+        "abnahme": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "titel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anlage": {
+          "type": "string"
+        },
+        "periode": {
+          "type": "string"
+        },
+        "einheit": {
+          "type": "string"
+        },
+        "schritte": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "pruefungen": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pruefung"
+          }
+        },
+        "beschreibend": {
+          "type": "object"
+        },
+        "annahmen": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Ein handgerechneter Referenzfall aus AP-10 §7."
+    }
+  }
+}

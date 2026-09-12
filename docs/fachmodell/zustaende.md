@@ -99,3 +99,6 @@ AP-01 E8 bildet die drei Wörter des Programm-Plans darauf ab: **sichtbar** = ke
 | 12.09.2026 | AP-09 E1/E2 | Option A — Geltungsbereich einer Bezugsgröße = genau eines von SIEBEN Fachobjekten (AP-00 nannte vier, AP-09 W7); Betriebszeit als Periodenreihe |
 | 12.09.2026 | AP-09 E3 | Option A — Bezugsdaten bekommen einen EIGENEN Herkunftsvertrag; der Messwert-Herkunftsvertrag (AP-07) wird dafür nicht erweitert |
 | 12.09.2026 | AP-09 E17 | Option A — die Bezugsfläche wird nur aus der Ortsstruktur GELESEN, zum Stichtag der Periode (letzter Tag); es gibt keine zweite Flächen-Eingabe |
+| 12.09.2026 | AP-10 E1 | Option A — zwei neue Formel-Typen `rest` und `saldo`; die Ergebnis-Richtung ist JE TYP eine Regel (Bezug − Bezug bleibt Bezug), nicht eine Ableitung aus Vorzeichen |
+| 12.09.2026 | AP-10 E8 (W9) | Option A — der Netzanschluss bekommt sein Objekt am Standort und die zeitgültige Bindung; die Preis- und Grenzspalten der Anlage ziehen erst mit dem Folgepaket „Netzanschluss-Preisblatt“ um |
+| 12.09.2026 | AP-10 E11/E13 | Option A — eine feste Verteilung ist eine eigene zeitgültige Beziehung mit Anteil; die Herkunft eines berechneten oder verteilten Werts bekommt einen EIGENEN additiven Vertrag (der Messwert-Herkunftsvertrag bleibt unberührt) |

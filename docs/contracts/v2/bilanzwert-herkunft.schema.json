@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/bilanzwert-herkunft.schema.json",
+  "title": "Herkunft eines berechneten oder verteilten Werts",
+  "description": "Der EIGENE, additive Herkunftsvertrag der Bilanzwerte (UEMS AP-10 §4.7, E13; Prosa: bilanzwert-herkunft.md). Der Messwert-Herkunftsvertrag (messwert-herkunft.schema.json) beschreibt einen GEMESSENEN Wert und bleibt unberührt — dieser hier beschreibt den Satz, der an einem BERECHNETEN oder VERTEILTEN Wert hängt. Er wird von `BilanzwertHerkunft` gebaut und von den Vektor-Tests beider Verträge (bilanz, verteilung) gegen dieses Schema gehalten.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "art",
+    "messstelle",
+    "periode",
+    "eingaenge",
+    "berechnet_am",
+    "version",
+    "menge",
+    "zustand",
+    "kennzeichen"
+  ],
+  "properties": {
+    "art": {
+      "type": "string",
+      "enum": [
+        "berechnet",
+        "verteilt"
+      ],
+      "description": "Die dritte und vierte der drei Herkunfts-Arten; „gemessen“ trägt messwert-herkunft.md."
+    },
+    "messstelle": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Wessen Wert das ist — bei `verteilt` das ZIEL (die Kostenstelle)."
+    },
+    "periode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "art",
+        "schluessel"
+      ],
+      "properties": {
+        "art": {
+          "type": "string",
+          "enum": [
+            "viertelstunde",
+            "tag",
+            "monat",
+            "jahr"
+          ]
+        },
+        "schluessel": {
+          "type": "string"
+        }
+      }
+    },
+    "formel_typ": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "gewichtete_summe",
+            "rest",
+            "saldo"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Nur bei `berechnet`; bei `verteilt` immer `null`."
+    },
+    "formel_fassung": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Die Nummer der Formel-Fassung — oder der Satz, mit dem der Typ `rest` seine Fassung je Tag aus der Stellung ableitet."
+    },
+    "periode_ende": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "berechnet_am": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ausloeser": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Ab Version 2 Pflicht: was die Neuberechnung ausgelöst hat (`correction`, Stellung/Formel/Verteilung geändert)."
+    },
+    "verteilung": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fassung",
+            "ziel",
+            "anteil_prozent"
+          ],
+          "properties": {
+            "fassung": {
+              "type": "integer"
+            },
+            "ziel": {
+              "type": "string"
+            },
+            "anteil_prozent": {
+              "type": "string",
+              "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+              "description": "Ein Betrag als DEZIMALTEXT — nie Gleitkomma. Verglichen wird numerisch."
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "eingaenge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "messstelle",
+          "menge",
+          "zustand",
+          "abdeckung_prozent",
+          "version",
+          "kennzeichen"
+        ],
+        "properties": {
+          "messstelle": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bilanz_rolle": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "zufluss",
+                  "abfluss",
+                  "zugeordnet",
+                  "ausserhalb"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "anteil": {
+            "type": "string",
+            "enum": [
+              "gesamt",
+              "positiv",
+              "negativ"
+            ]
+          },
+          "menge": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+                "description": "Ein Betrag als DEZIMALTEXT — nie Gleitkomma. Verglichen wird numerisch."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zustand": {
+            "type": "string",
+            "enum": [
+              "vollständig",
+              "unvollständig",
+              "keine Werte",
+              "mit Ersatzwert"
+            ]
+          },
+          "abdeckung_prozent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kennzeichen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "minItems": 1,
+      "description": "Jeder Eingang mit seiner Menge, seinem Zustand, seiner Abdeckung und seiner VERSION — `null` heißt „keine Werte“, nie „gemessen 0“."
+    },
+    "menge": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+          "description": "Ein Betrag als DEZIMALTEXT — nie Gleitkomma. Verglichen wird numerisch."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "zustand": {
+      "type": "string",
+      "enum": [
+        "vollständig",
+        "unvollständig",
+        "keine Werte",
+        "mit Ersatzwert"
+      ]
+    },
+    "abdeckung_prozent": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "kennzeichen": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

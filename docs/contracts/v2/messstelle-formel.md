@@ -1,8 +1,33 @@
-# Formel-Vertrag der berechneten Messstelle (UEMS AP-10, Typ „gewichtete Summe")
+# Formel-Vertrag der berechneten Messstelle (UEMS AP-10)
 
-Stand 12.09.2026 · Vertrag 1.0 (additiv zum Messstellen-Vertrag
-[`messstelle.md`](./messstelle.md)) · Captain-Rahmenentscheide aus dem Konzept
-`vp-helfer-konzept-h1`.
+Stand 12.09.2026 · Vertrag 1.0, **additiv erweitert 12.09.2026 (AP-10 IP-1)** (additiv zum
+Messstellen-Vertrag [`messstelle.md`](./messstelle.md)) · Captain-Rahmenentscheide aus dem Konzept
+`vp-helfer-konzept-h1`, Erweiterung aus `data/vp-uems-ap10-bilanzen` (Entscheide E1, E4, E5, E11
+vom 12.09.2026).
+
+> **Was die Erweiterung ändert — und was nicht.** Alles unter §1 bis §5 gilt UNVERÄNDERT weiter:
+> die gewichtete Summe bleibt der Typ 1 mit ihrer Richtungsregel, ihren Fehlern und ihren Vektoren
+> (`messstelle-formel-vectors.json`). Dazu kommen additiv: **§0** die drei Formel-Typen, **§2.1**
+> die Ergebnis-Richtung je Typ, **§1.1** die Term-Art `verteilung` und das Feld `anteil`, **§6**
+> die Fassungen je Tag. Es entsteht KEIN zweites Modell und kein zweiter Assistent. Die Regeln der
+> neuen Typen stehen in [`bilanz.md`](./bilanz.md) (`bilanz-vectors.json`), die der Verteilung in
+> [`verteilung.md`](./verteilung.md); der Code zieht mit AP-10 IP-3, IP-4 und IP-5 nach — dieser
+> Abschnitt ist bis dahin die VEREINBARUNG, nicht der Stand.
+
+## 0. Die drei Formel-Typen (AP-10 E1)
+
+Eine berechnete Messstelle hat genau EINEN Typ, und der Typ entscheidet die Richtungsregel:
+
+| `formel_typ` | Was er rechnet | Gespeichert? |
+|---|---|---|
+| `gewichtete_summe` | die Terme dieses Vertrags (§1), mit Vorzeichen und Faktor | ja, als Terme |
+| `rest` | die Bilanzdifferenz eines Hauptzählers: Zufluss − Abfluss − zugeordnet | **nein** — je Tag aus der STELLUNG abgeleitet (AP-10 E3) |
+| `saldo` | Bezug − Abgabe derselben Grenze | ja, als zwei Terme |
+
+`rest` speichert keine Terme: zieht ein Unterzähler in ein anderes System um, ändern sich beide
+Reste am selben Tag, ohne dass jemand eine Formel anfasst. Die Fassung eines `rest` ist deshalb
+nicht eine Nummer, sondern der Satz „aus der Stellung, Stand T“ (siehe
+[`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md)).
 
 Dieser Vertrag löst die im Messstellen-Vertrag reservierte AP-10-Stelle ein: die **Formel**
 einer Messstelle mit `art = berechnet` (messstelle.md:39 „`berechnet` (E9)", :108 „Formel +
@@ -44,7 +69,21 @@ Messstelle (Trigger `messstelle_formel_term_nur_berechnet`):
 Die Terme sind die AKTUELLE Definition (keine Historie): die App-Rolle darf sie ersetzen; das
 Ändern schreibt `messstelle_aenderung`. `→ messstelle` ist `ON DELETE RESTRICT`
 (archivieren statt löschen), `→ measurement_point` ist `ON DELETE CASCADE` wie jede Tabelle an
-einer Komponente.
+einer Komponente. Mit §6 wird „aktuell“ zu „die Fassung des Tages“; der Bestand ist Fassung 1.
+
+### 1.1 Zwei additive Felder am Term (AP-10 E4, E11)
+
+Beide Felder sind optional; ein Term ohne sie verhält sich genau wie heute.
+
+| Feld | Regel |
+|---|---|
+| `eingang_art` = `verteilung` | eine dritte Art neben `messkanal` und `messstelle`: der Term meint den ANTEIL einer Kostenstelle an einer Messstelle („4100 von MS-07“) und trägt dafür `verteilung_ziel` (die Kostenstelle) + `quell_messstelle_id`. Er liest den Anteil des TAGES aus der Verteilung ([`verteilung.md`](./verteilung.md)) — er kopiert ihn nie als `faktor`. Ein solcher Term mit einem Faktor ≠ 1 wird abgelehnt (`verteilungs_term_ohne_faktor`): er liefe der Verteilung davon, sobald sie sich ändert. Seine Größe und Richtung sind die seiner Quell-Messstelle. |
+| `anteil` | `gesamt` (Vorgabe) \| `positiv` \| `negativ` — welcher Anteil eines Messwerts eingeht. Eine Speicher-Messstelle mit der Richtung „Laden / Entladen“ geht mit ZWEI Termen ein: dem positiven (Laden) und dem negativen (Entladen), nie als Saldo und nie nur mit einer Hälfte. |
+
+Die Schreibweise ist die von `MessstelleFormelDto`: **snake_case in der Schnittstelle**
+(`terme[].entity_id`, `terme[].point_key`, `terme[].quell_messstelle_id`, neu
+`terme[].verteilung_ziel` und `terme[].anteil`), camelCase nur im Java-Record. Das Portal wandelt
+nichts um — ein camelCase-Feld wäre dort still `undefined`.
 
 ## 2. Die abgeleitete Hauptgröße (`formelGroesse`)
 
@@ -62,6 +101,21 @@ ist sie sofort katalogkonform:
 - Ein Messwert **ohne Vertrags-Richtung** (ein Vorzeichen-Wert `import_export`, oder ein Kanal,
   dem der Katalog keine Richtung gibt) ist kein Term — seine Aufteilung wartet auf AP-08 (wie im
   Messstellen-Vertrag §5).
+
+### 2.1 Die Ergebnis-Richtung je Typ (AP-10 E1)
+
+Die Richtung ist **je Typ eine Regel**, keine Ableitung aus Vorzeichen — 100 kWh Bezug minus 60
+minus 30 ergibt 10 kWh **Bezug**, nicht „richtungslos“:
+
+| `formel_typ` | Ergebnis |
+|---|---|
+| `gewichtete_summe` | unverändert §2 (gemeinsame Richtung, sonst `richtungslos`, sonst `groessen_gemischt`) |
+| `rest` | **fest** Wirkenergie · Bezug · kWh. Der Live-Wert ist ein Momentanwert und trägt die Katalog-Richtung der Wirkleistung (`richtungslos`) — E1 greift nur auf der Mengen-Ebene. |
+| `saldo` | **fest** Wirkenergie · `saldiert` · kWh — ein additiver Katalog-Eintrag, zulässig NUR für `art = berechnet` und nie an einem Messkanal bindbar (`saldiert_nur_berechnet`). |
+
+Der Eintrag `Wirkenergie · saldiert` wandert mit AP-10 IP-4 in [`messstelle.md`](./messstelle.md)
+§2 und `MessstelleRegeln.GROESSEN_KATALOG`; bis dahin steht er in
+[`bilanz-vectors.json`](./bilanz-vectors.json) (`vokabulare.richtung_berechnet_additiv`).
 
 ## 3. Die Berechnung (Cloud, `MessstelleFormelBerechnung`/`gewichteteSumme`)
 
@@ -94,6 +148,26 @@ berechnete Messstelle braucht keinen Ort).
 | `anfrage_ungueltig` | 400 | `feld` | ein Feld fehlt, ist leer oder ohne Vertrags-Messgröße |
 
 Eine fremde Messstelle ist 404, nie 403 (AP-03).
+
+## 6. Fassungen: die Formel ist tagesgenau zeitgültig (AP-10 E5)
+
+Eine Formel-**Fassung** ist der vollständige Termsatz einer berechneten Messstelle, gültig ab einem
+Tag (00:00 Uhr in der Zeitzone des Standorts, Muster A wie jede zeitgültige UEMS-Beziehung):
+
+- Fassung n + 1 beendet Fassung n am **Vortag**; nichts wird überschrieben, Fassung n bleibt
+  lesbar. Eine Fassung, die vor dem Beginn der laufenden beginnt, überlappt und wird abgelehnt
+  (`formel_fassung_ueberlappt`).
+- Eine rückwirkend eingetragene Fassung ist erlaubt, aber nie unsichtbar: sie trägt ihr Abzeichen
+  samt Zahl der Tage und löst für die betroffenen Tage dieselbe Neuberechnung aus wie eine
+  `correction` an einem Eingang.
+- Die Berechnung liest die Fassung DES TAGES. Ohne `am=` liefert `GET …/{id}/formel` weiter die
+  heutigen Terme — für den Bestand ist das Fassung 1 („gilt seit Anlage“), und das Portal aus
+  PR #689 liest unverändert weiter.
+- Beim Typ `rest` gibt es keine gespeicherte Fassung: sie wird je Tag aus der Stellung abgeleitet.
+
+Migration, Route (`POST …/messstellen/{id}/formel/fassungen`, `GET …/formel?am=`) und Backfill
+„Fassung 1 = die heutigen Terme“ baut AP-10 IP-3; die Rechte der Routen wechseln dort nach AP-10
+E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehen`).
 
 ## Prüfen
 
