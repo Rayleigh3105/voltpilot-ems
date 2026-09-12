@@ -9,6 +9,7 @@ import type {
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
+import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type { EigeneAuswertungWerte } from './eigeneAuswertung';
 import type {
   ChargingBoostResult,
@@ -2004,6 +2005,98 @@ export interface MessstelleFormelFassungEintragen {
   formel_typ?: 'gewichtete_summe';
   terme: BerechneteMessstelleAnlegen['terme'];
   begruendung?: string;
+}
+
+/**
+ * Eine Bezugsgröße (UEMS AP-09 IP-5, `/api/v1/bezugsgroessen`, snake_case wie der
+ * Bezugsdaten-Vertrag). Die Wörter sind die Vokabulare von
+ * `docs/contracts/v2/bezugsdaten-vectors.json`; `hat_werte` sagt, ob die Bedeutung
+ * schon fest ist (M1) und ob sie noch löschbar ist (M6).
+ */
+export interface Bezugsgroesse {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  wertart: 'periodenwert' | 'stand' | 'stammdatum';
+  einheit: string;
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr' | null;
+  geltung_art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'messstelle';
+  geltung_id: string;
+  geltung_name: string;
+  hat_werte: boolean;
+  archiviert_am: string | null;
+  angelegt_am: string;
+}
+
+/**
+ * Der Körper von `POST /api/v1/bezugsgroessen` (ohne `kennzeichen` vergibt der Server
+ * BZ-0001 …) und `PUT …/{id}` (die GANZE Bezugsgröße, mit Kennzeichen). Streng gelesen.
+ */
+export interface BezugsgroesseAnfrage {
+  kennzeichen?: string;
+  name: string;
+  wertart: Bezugsgroesse['wertart'];
+  einheit: string;
+  periode_art?: Bezugsgroesse['periode_art'];
+  geltung_art: Bezugsgroesse['geltung_art'] | 'prozess' | 'kostenstelle';
+  geltung_id: string;
+}
+
+/** Wer eine Fassung eingetragen oder freigegeben hat. */
+export interface BezugsgroessePerson {
+  name: string;
+  rolle: string | null;
+  art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall';
+}
+
+/** Eine Fassung eines Werts mit ihrer Herkunft; `stand` ist null, solange `stand_offen`. */
+export interface BezugsgroesseFassung {
+  fassung: number;
+  vorgang: 'erstwert' | 'berichtigung' | 'ruecknahme';
+  status: 'wirksam' | 'vorschlag' | 'zurueckgenommen' | 'abgelehnt';
+  stand: string | null;
+  /** Dezimaltext in der Einheit der Bezugsgröße — nie als Gleitkommazahl rechnen. */
+  betrag: string | null;
+  ersetzt_fassung: number | null;
+  begruendung: string | null;
+  kennzeichen: string[];
+  herkunft: {
+    art: 'eingabe' | 'import' | 'messkanal';
+    von_hand: boolean;
+    import_kennung: string | null;
+    import_zeile: number | null;
+    geliefert_text: string | null;
+    geliefert_einheit: string | null;
+  };
+  urheber: BezugsgroessePerson;
+  freigeber: BezugsgroessePerson | null;
+  eingetragen_am: string;
+}
+
+/** Ein Wert: eine Periode (letzter Tag einschließlich) oder ein Zeitpunkt, mit seinen Fassungen. */
+export interface BezugsgroesseWert {
+  periode_von: string | null;
+  periode_bis: string | null;
+  zeitpunkt: string | null;
+  zeitzone: string;
+  /** null nach einer Rücknahme (nie 0) und solange `stand_offen`. */
+  wirksamer_betrag: string | null;
+  wirksame_fassung: number | null;
+  stand_offen: boolean;
+  fassungen: BezugsgroesseFassung[];
+}
+
+/** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
+export interface BezugsgroesseWerte {
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  wertart: string;
+  einheit: string;
+  periode_art: string | null;
+  von: string | null;
+  bis: string | null;
+  fassungen: BezugsgroesseLesart;
+  werte: BezugsgroesseWert[];
 }
 
 /**
@@ -5463,4 +5556,37 @@ export const api = {
   /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
   messstelleArchivieren: (id: string) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
+  /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5). */
+  bezugsgroessen: () => request<{ bezugsgroessen: Bezugsgroesse[] }>(`/api/v1/bezugsgroessen`),
+
+  bezugsgroesse: (id: string) => request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}`),
+
+  /** Legt eine Bezugsgröße an; eine Ablehnung trägt `code` aus `bezugsgroesse.ts` (`ABLEHNUNGEN`). */
+  bezugsgroesseAnlegen: (body: BezugsgroesseAnfrage) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Ändert die GANZE Bezugsgröße (mit Kennzeichen); nach dem ersten Wert nur Name und Kennzeichen. */
+  bezugsgroesseAendern: (id: string, body: BezugsgroesseAnfrage & { kennzeichen: string }) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Archiviert eine Bezugsgröße — die Werte bleiben lesbar, das Kennzeichen belegt. */
+  bezugsgroesseArchivieren: (id: string) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}/archivieren`, { method: 'POST' }),
+
+  /** Löscht eine Bezugsgröße ohne einen einzigen Wert (sonst 409 `hat_werte`). */
+  bezugsgroesseLoeschen: (id: string) =>
+    request<void>(`/api/v1/bezugsgroessen/${id}`, { method: 'DELETE' }),
+
+  /**
+   * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage
+   * (JJJJ-MM-TT, der letzte einschließlich); `fassungen` `wirksam` (Vorgabe) oder `alle`.
+   */
+  bezugsgroesseWerte: (id: string, abfrage: { von?: string; bis?: string; fassungen?: BezugsgroesseLesart } = {}) => {
+    const q = new URLSearchParams();
+    if (abfrage.von) q.set('von', abfrage.von);
+    if (abfrage.bis) q.set('bis', abfrage.bis);
+    if (abfrage.fassungen) q.set('fassungen', abfrage.fassungen);
+    const s = q.toString();
+    return request<BezugsgroesseWerte>(`/api/v1/bezugsgroessen/${id}/werte${s ? `?${s}` : ''}`);
+  },
 };

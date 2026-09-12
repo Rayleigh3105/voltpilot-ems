@@ -228,6 +228,20 @@ tags:
       Zeile dort `geraet.einrichten`; bis AP-03 durchsetzt, gilt authenticated().
       Push an die Box (IP-6), Übergabe zum Zeitpunkt (IP-7), Budget (IP-10) und die
       Bestands-Vorschlagsliste (IP-4) kommen mit ihren Paketen.
+  - name: bezugsgroessen
+    description: >
+      UEMS-Bezugsgrößen (AP-09 IP-5): die Zahl, mit der Energie verglichen wird
+      (Produktionsmenge, Gutteile, Betriebszeit, Ablesung …) anlegen, lesen, ändern,
+      archivieren und - nur ohne einen einzigen Wert - löschen; dazu das Lesemodell der
+      Werte mit ihren Fassungen und der Herkunft je Fassung. Die Regeln M1–M6 und der
+      GESCHLOSSENE Satz der Ablehnungen (Code, Status, Kundensatz) stehen im Vertrag
+      docs/contracts/v2/bezugsdaten-vectors.json, Block `verwalten` (Java-Zwilling
+      uems/BezugsgroesseRegeln, TS bezugsgroesse.ts); snake_case wie der Vertrag.
+      Mandanten-Zaun ist die RLS (fremd = 404 `nicht_gefunden`, nie 403). Rechte
+      (AP-09 §4.11, W8): `bezugsgroesse.verwalten` für die Schreibwege,
+      `messwerte.ansehen` fürs Lesen - noch nicht durchgesetzt (AP-03), es gilt
+      authenticated(). Werte eingeben/berichtigen (IP-7), Import (IP-11 ff.) und
+      Kanalbindung (IP-17) kommen mit ihren Paketen.
   - name: geraete
     description: >
       UEMS-Geräte (AP-04 IP-10): das physische Kästchen hinter der VoltPilot-Box
@@ -8991,6 +9005,161 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/MessstelleAbgelehnt" }
         "422": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+  /api/v1/bezugsgroessen:
+    get:
+      tags: [bezugsgroessen]
+      summary: Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
+      description: Recht `messwerte.ansehen` (AP-09 §4.11).
+      responses:
+        "200":
+          description: Die Bezugsgrößen (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [bezugsgroessen]
+      summary: Legt eine Bezugsgröße an; ohne Kennzeichen vergibt der Server BZ-0001 … (M2).
+      description: >
+        Recht `bezugsgroesse.verwalten` (AP-09 §4.11, W8). Geprüft in der Reihenfolge
+        `verwalten.pruefreihenfolge.anlegen` des Vertrags, danach ob das Objekt des
+        Geltungsbereichs im Kundenbereich da ist (`geltung_unbekannt`, ein fremdes
+        antwortet gleich). Ohne Kennzeichen folgt die Nummer der HÖCHSTEN je belegten
+        (auch einer gelöschten Bezugsgröße) - ein Kennzeichen wird nie weitergegeben
+        (409 `kennzeichen_belegt`). Prozess und Kostenstelle sind noch nicht wählbar
+        (422 `geltung_nicht_waehlbar`), eine Fläche wird am Gebäude gepflegt (422
+        `flaeche_aus_struktur`). Die Anfrage wird streng gelesen: ein unbekanntes Feld
+        (auch camelCase), ein Feld, das kein Text ist, eine `geltung_id`, die keine ID
+        ist → 400 `anfrage_ungueltig` mit `feld`. GENAU EIN Protokolleintrag
+        `angelegt`; eine Ablehnung schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsgroesseAnfrage" }
+            example:
+              name: Produktionsmenge Spritzguss
+              wertart: periodenwert
+              einheit: kg
+              periode_art: monat
+              geltung_art: standort
+              geltung_id: 5b0d6f0e-8a3c-4f5e-9d2a-2f6f0c1b7a11
+      responses:
+        "201":
+          description: Angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsgroesse" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Eine Bezugsgröße.
+      description: Recht `messwerte.ansehen`. Fremd oder nicht da = 404 `nicht_gefunden`.
+      responses:
+        "200":
+          description: Die Bezugsgröße.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsgroesse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+    put:
+      tags: [bezugsgroessen]
+      summary: Ändert die ganze Bezugsgröße - nach dem ersten Wert nur noch Name und Kennzeichen (M1).
+      description: >
+        Recht `bezugsgroesse.verwalten`. Der Körper ist die GANZE Bezugsgröße mit
+        Kennzeichen. Nach dem ersten Wert bleiben Wertart, Einheit, Periodenart und
+        Geltungsbereich fest (422 `bedeutung_fest` mit `felder`); eine archivierte wird
+        nicht mehr geändert (409 `archiviert`); ein neues Kennzeichen, das eine andere
+        trägt oder trug, ist 409 `kennzeichen_belegt` - die eigene darf zu ihrem
+        früheren zurück. GENAU EIN Protokolleintrag `bearbeitet` mit den geänderten
+        Feldern in `alt`/`neu`; ein unverändertes PUT schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsgroesseAnfrage" }
+      responses:
+        "200":
+          description: Geändert (oder unverändert).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsgroesse" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+    delete:
+      tags: [bezugsgroessen]
+      summary: Löscht eine Bezugsgröße OHNE einen einzigen Wert (M6); ihr Kennzeichen bleibt belegt.
+      description: >
+        Recht `bezugsgroesse.verwalten`. Trägt sie eine Wert-Zeile - auch eine
+        Rücknahme ist eine Fassung -, ist die Antwort 409 `hat_werte` (`werte`) und der
+        Weg ist das Archivieren. Die Datenbank hält dieselbe Regel (Trigger
+        `bezugsgroesse_nur_ohne_wert_loeschen`, V20260913120000); das Kennzeichen
+        bleibt als Grabstein im Kennzeichen-Verlauf belegt. Protokolleintrag
+        `geloescht` mit dem letzten Stand in `alt`.
+      responses:
+        "204": { description: Gelöscht. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}/archivieren:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [bezugsgroessen]
+      summary: Archiviert eine Bezugsgröße - ihre Werte bleiben lesbar, ihr Kennzeichen belegt (M6).
+      description: Recht `bezugsgroesse.verwalten`. Einmal; ein zweites Mal ist 409 `archiviert`. Protokolleintrag `archiviert`.
+      responses:
+        "200":
+          description: Archiviert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsgroesse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}/werte:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: von, in: query, required: false, schema: { type: string, format: date }, description: "Erster Tag (einschließlich)." }
+      - { name: bis, in: query, required: false, schema: { type: string, format: date }, description: "Letzter Tag (EINSCHLIESSLICH)." }
+      - { name: fassungen, in: query, required: false, schema: { type: string, enum: [wirksam, alle], default: wirksam } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Die Werte im Zeitraum mit ihren Fassungen und der Herkunft je Fassung.
+      description: >
+        Recht `messwerte.ansehen` („Werte, Herkunft, Fassungen ansehen“). Ein Wert ist
+        ein Schlüssel - eine Periode (`periode_von`/`periode_bis`, der letzte Tag
+        einschließlich) oder ein Zeitpunkt (Stand) - mit seinen Fassungen, älteste
+        zuerst. Ein Periodenwert gehört dazu, wenn seine Periode den Zeitraum berührt;
+        ein Stand, wenn sein Tag in SEINER Zone (`zeitzone`) darin liegt. `fassungen=wirksam`
+        (Vorgabe) zeigt je Schlüssel die Fassung, die den wirksamen Betrag trägt, mit
+        ihrer Herkunft; `alle` die ganze Kette. Den Stand jeder Fassung („wirksam bis
+        Fassung 2“) und den wirksamen Betrag rechnet die Regel `fassung` des Vertrags
+        (BezugsdatenRegeln.fassungen). Nach einer Rücknahme ist `wirksamer_betrag` null,
+        nie 0. Trägt eine Kette eine Vier-Augen-Fassung (Vorschlag, Ablehnung,
+        Freigeber), ist `stand_offen` true, `stand` und `wirksamer_betrag` null und alle
+        Fassungen werden gezeigt - wie eine freigegebene Berichtigung zählt, legt AP-09
+        IP-7 fest. `von` nach `bis` = 400 `zeitraum_ungueltig`; ein unbekanntes Wort in
+        `fassungen` = 400 `wort_unbekannt`.
+      responses:
+        "200":
+          description: Die Werte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseWerte" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -9076,6 +9245,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleFehler" }
+    BezugsgroesseAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
+        deutsche `message`-Satz kommen aus dem geschlossenen Satz des Vertrags
+        (bezugsdaten-vectors.json → verwalten.ablehnungen); dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BezugsgroesseFehler" }
     MessstelleFormelAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -16863,6 +17040,124 @@ components:
               vorzeichen: { type: string, enum: ["+", "-"] }
               faktor: { type: number, description: "Fehlend = 1, nie 0." }
         begruendung: { type: string, maxLength: 500 }
+    BezugsgroesseFehler:
+      type: object
+      description: >
+        Die Ablehnung der Bezugsgrößen-Schnittstelle - der geschlossene Satz
+        `verwalten.ablehnungen` des Bezugsdaten-Vertrags: 400 `anfrage_ungueltig`
+        (`feld`), `wort_unbekannt` (`feld`, `erlaubt`), `einheit_unbekannt`,
+        `kennzeichen_format`, `zeitraum_ungueltig`; 404 `nicht_gefunden`; 409
+        `kennzeichen_belegt`, `archiviert`, `hat_werte` (`werte`); 422
+        `periode_passt_nicht_zur_wertart`, `flaeche_aus_struktur`,
+        `geltung_nicht_waehlbar`, `geltung_unbekannt`, `bedeutung_fest` (`felder`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, wort_unbekannt, einheit_unbekannt, kennzeichen_format, zeitraum_ungueltig, periode_passt_nicht_zur_wertart, flaeche_aus_struktur, geltung_nicht_waehlbar, geltung_unbekannt, bedeutung_fest, kennzeichen_belegt, archiviert, hat_werte, nicht_gefunden]
+        message: { type: string }
+        feld: { type: string }
+        erlaubt: { type: array, items: { type: string } }
+        felder: { type: array, items: { type: string, enum: [wertart, einheit, periode_art, geltung_art, geltung_id] } }
+        werte: { type: integer }
+    BezugsgroesseAnfrage:
+      type: object
+      additionalProperties: false
+      description: >
+        Der Körper von POST (ohne `kennzeichen` vergibt der Server) und PUT (die ganze
+        Bezugsgröße, mit Kennzeichen). Jedes Feld ist Text oder null; die Wörter sind die
+        Vokabulare des Bezugsdaten-Vertrags. `periode_art` genau beim Periodenwert.
+      required: [name, wertart, einheit, geltung_art, geltung_id]
+      properties:
+        kennzeichen: { type: string, nullable: true, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string }
+        wertart: { type: string, enum: [periodenwert, stand, stammdatum] }
+        einheit: { type: string, description: "Aus `einheiten` des Vertrags (kg, t, Stück, h, min, m³, l, Personen, Schichten, Kd, °C; m² nicht - Flächen stehen am Gebäude)." }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle], description: "Prozess und Kostenstelle sind noch nicht wählbar (422 `geltung_nicht_waehlbar`)." }
+        geltung_id: { type: string, format: uuid }
+    Bezugsgroesse:
+      type: object
+      required: [id, kennzeichen, name, wertart, einheit, periode_art, geltung_art, geltung_id, geltung_name, hat_werte, archiviert_am, angelegt_am]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        wertart: { type: string, enum: [periodenwert, stand, stammdatum] }
+        einheit: { type: string }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, messstelle] }
+        geltung_id: { type: string, format: uuid }
+        geltung_name: { type: string, description: "Name des Objekts; bei einer Messstelle ohne Namen ihr Kennzeichen." }
+        hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile? Dann gilt M1 und sie ist nicht löschbar (M6)." }
+        archiviert_am: { type: string, format: date-time, nullable: true }
+        angelegt_am: { type: string, format: date-time }
+    BezugsgroesseListe:
+      type: object
+      required: [bezugsgroessen]
+      properties:
+        bezugsgroessen: { type: array, items: { $ref: "#/components/schemas/Bezugsgroesse" } }
+    BezugsgroessePerson:
+      type: object
+      required: [name, rolle, art]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    BezugsgroesseHerkunft:
+      type: object
+      description: Die Herkunft EINER Fassung (Invariante 7).
+      required: [art, von_hand, import_kennung, import_zeile, geliefert_text, geliefert_einheit]
+      properties:
+        art: { type: string, enum: [eingabe, import, messkanal] }
+        von_hand: { type: boolean, description: "Von Hand eingetragen (`art` = eingabe)." }
+        import_kennung: { type: string, nullable: true }
+        import_zeile: { type: integer, nullable: true }
+        geliefert_text: { type: string, nullable: true }
+        geliefert_einheit: { type: string, nullable: true }
+    BezugsgroesseFassung:
+      type: object
+      required: [fassung, vorgang, status, stand, betrag, ersetzt_fassung, begruendung, kennzeichen, herkunft, urheber, freigeber, eingetragen_am]
+      properties:
+        fassung: { type: integer, minimum: 1 }
+        vorgang: { type: string, enum: [erstwert, berichtigung, ruecknahme] }
+        status: { type: string, enum: [wirksam, vorschlag, zurueckgenommen, abgelehnt], description: "Das Wort bei Entstehen (gespeichert)." }
+        stand: { type: string, nullable: true, description: "Die Lesart der Regel `fassung`: „wirksam“, „wirksam bis Fassung n“, „zurueckgenommen“; null bei `stand_offen`." }
+        betrag: { type: string, nullable: true, description: "Dezimaltext in der Einheit der Bezugsgröße; null bei einer Rücknahme ohne Vorfassung." }
+        ersetzt_fassung: { type: integer, nullable: true }
+        begruendung: { type: string, nullable: true }
+        kennzeichen: { type: array, items: { type: string } }
+        herkunft: { $ref: "#/components/schemas/BezugsgroesseHerkunft" }
+        urheber: { $ref: "#/components/schemas/BezugsgroessePerson" }
+        freigeber:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/BezugsgroessePerson" }]
+        eingetragen_am: { type: string, format: date-time }
+    BezugsgroesseWert:
+      type: object
+      required: [periode_von, periode_bis, zeitpunkt, zeitzone, wirksamer_betrag, wirksame_fassung, stand_offen, fassungen]
+      properties:
+        periode_von: { type: string, format: date, nullable: true }
+        periode_bis: { type: string, format: date, nullable: true, description: "Der LETZTE Tag der Periode, einschließlich." }
+        zeitpunkt: { type: string, format: date-time, nullable: true }
+        zeitzone: { type: string }
+        wirksamer_betrag: { type: string, nullable: true, description: "null nach einer Rücknahme (nie 0) und bei `stand_offen`." }
+        wirksame_fassung: { type: integer, nullable: true }
+        stand_offen: { type: boolean }
+        fassungen: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseFassung" } }
+    BezugsgroesseWerte:
+      type: object
+      required: [bezugsgroesse_id, kennzeichen, wertart, einheit, periode_art, von, bis, fassungen, werte]
+      properties:
+        bezugsgroesse_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        wertart: { type: string }
+        einheit: { type: string }
+        periode_art: { type: string, nullable: true }
+        von: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, nullable: true }
+        fassungen: { type: string, enum: [wirksam, alle] }
+        werte: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseWert" } }
     MessstelleFormelFehler:
       type: object
       description: >

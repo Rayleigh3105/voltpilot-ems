@@ -30,6 +30,7 @@ import {
   type Dez,
   type Umrechnung,
 } from './bezugsdaten';
+import { ABLEHNUNGEN, LESARTEN } from './bezugsgroesse';
 
 /**
  * Die Regeln der BEZUGSDATEN (UEMS AP-09 IP-1) gegen die EINE geteilte
@@ -134,6 +135,16 @@ describe('Bezugsdaten-Vertrag: Form der Vektor-Datei', () => {
     const befunde: string[] = vectors.vokabulare.befunde;
     expect(Object.keys(vectors.befund_saetze).sort()).toEqual([...befunde].sort());
     for (const b of befunde) expect(satz(b, vectors.befund_saetze)).toBeTruthy();
+  });
+
+  it('der geschlossene Satz der Ablehnungen des Verwaltens ist der der Datei (AP-09 IP-5)', () => {
+    const datei = vectors.verwalten.ablehnungen.map(
+      (a: Json) => `${a.code} · ${a.status} · ${a.satz}`,
+    );
+    const portal = Object.entries(ABLEHNUNGEN).map(([code, a]) => `${code} · ${a.status} · ${a.satz}`);
+    expect(portal).toEqual(datei);
+    expect(ABLEHNUNGEN.einheit_unbekannt.satz).toBe(vectors.befund_saetze.einheit_unbekannt);
+    expect([...LESARTEN]).toEqual(vectors.verwalten.lesarten);
   });
 
   it('jede Regel ist deklariert, und jede Lücke im Portal ist begründet', () => {

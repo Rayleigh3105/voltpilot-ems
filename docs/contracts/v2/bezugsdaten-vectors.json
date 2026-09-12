@@ -16,7 +16,9 @@
     "Aussage wären genau die Drift, die diese Verträge verhindern sollen.",
     "Erzeugt aus data/vp-uems-ap09-bezugsgroessen/referenzfaelle.json; _abweichungen nennt jede",
     "Stelle, an der diese Datei bewusst von der Vorlage abweicht, _nicht_geprueft jede",
-    "Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet."
+    "Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet.",
+    "Seit AP-09 IP-5 (13.09.2026): `verwalten` trägt M1–M6 und den GESCHLOSSENEN Satz der Ablehnungen",
+    "mit Status und Kundensatz (Java uems/BezugsgroesseRegeln, TS bezugsgroesse.ts); Regel `verwalten`."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./bezugsdaten.schema.json",
@@ -214,6 +216,159 @@
     "zahlformat_vorgabe": "de",
     "vier_augen_vorgabe": false
   },
+  "verwalten": {
+    "herkunft": "UEMS AP-09 §4.2 M1–M6, §4.10 Invariante 6, §4.11 (Rechte, W8), §6.2 (Fehlerform `{code, message, Fakten}`, 400 Form, 422 Regel) — nachgetragen mit AP-09 IP-5 am 13.09.2026",
+    "kennzeichen": {
+      "praefix": "BZ-",
+      "stellen": 4,
+      "muster": "^[A-Z0-9./-]{2,16}$",
+      "regel": "M2: ohne Kennzeichen vergibt der Server BZ- und die nächste Nummer nach der HÖCHSTEN, die je ein Kennzeichen der Form BZ-<Ziffern> im Kundenbereich getragen hat (auch ein früheres oder das einer gelöschten Bezugsgröße) — vierstellig mit führenden Nullen. Ein Kennzeichen wird nie an eine andere Bezugsgröße weitergegeben; die eigene darf zu ihrem früheren zurück."
+    },
+    "fest_nach_erstem_wert": [
+      "wertart",
+      "einheit",
+      "periode_art",
+      "geltung_art",
+      "geltung_id"
+    ],
+    "immer_aenderbar": [
+      "kennzeichen",
+      "name"
+    ],
+    "pruefreihenfolge": {
+      "anlegen": [
+        "name",
+        "kennzeichen_format",
+        "wertart",
+        "geltung_art",
+        "geltung_id",
+        "einheit",
+        "periode_art",
+        "periode_zur_wertart",
+        "flaeche",
+        "geltung_waehlbar",
+        "kennzeichen_belegt"
+      ],
+      "aendern": [
+        "archiviert",
+        "name",
+        "kennzeichen_format",
+        "wertart",
+        "geltung_art",
+        "geltung_id",
+        "einheit",
+        "periode_art",
+        "periode_zur_wertart",
+        "flaeche",
+        "bedeutung_fest",
+        "geltung_waehlbar",
+        "kennzeichen_belegt"
+      ],
+      "archivieren": [
+        "archiviert"
+      ],
+      "loeschen": [
+        "hat_werte"
+      ]
+    },
+    "lesarten": [
+      "wirksam",
+      "alle"
+    ],
+    "ablehnungen": [
+      {
+        "code": "anfrage_ungueltig",
+        "status": 400,
+        "regel": "Form",
+        "satz": "Die Anfrage ist unvollständig oder nennt ein Feld, das es hier nicht gibt."
+      },
+      {
+        "code": "wort_unbekannt",
+        "status": 400,
+        "regel": "Invariante 6",
+        "satz": "Dieses Wort ist hier nicht vorgesehen — erlaubt sind die Wörter der Liste."
+      },
+      {
+        "code": "einheit_unbekannt",
+        "status": 400,
+        "regel": "U2 · Invariante 6",
+        "satz": "Unbekannte Einheit — erlaubt sind die Einheiten dieser Größe."
+      },
+      {
+        "code": "kennzeichen_format",
+        "status": 400,
+        "regel": "M2",
+        "satz": "Ein Kennzeichen hat 2 bis 16 Zeichen: Großbuchstaben, Ziffern, Punkt, Bindestrich oder Schrägstrich."
+      },
+      {
+        "code": "zeitraum_ungueltig",
+        "status": 400,
+        "regel": "Lesemodell",
+        "satz": "Der Zeitraum endet vor seinem Beginn."
+      },
+      {
+        "code": "periode_passt_nicht_zur_wertart",
+        "status": 422,
+        "regel": "M1",
+        "satz": "Nur ein Periodenwert hat eine Periode (Tag, Woche, Monat oder Jahr); ein Stand und ein Stammdatum haben keine."
+      },
+      {
+        "code": "flaeche_aus_struktur",
+        "status": 422,
+        "regel": "M4 · E17",
+        "satz": "Flächen pflegen Sie am Gebäude."
+      },
+      {
+        "code": "geltung_nicht_waehlbar",
+        "status": 422,
+        "regel": "E1",
+        "satz": "Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar."
+      },
+      {
+        "code": "geltung_unbekannt",
+        "status": 422,
+        "regel": "E1",
+        "satz": "Den gewählten Geltungsbereich gibt es nicht."
+      },
+      {
+        "code": "bedeutung_fest",
+        "status": 422,
+        "regel": "M1",
+        "satz": "Nach dem ersten Wert bleiben Wertart, Einheit, Periode und Geltungsbereich fest. Legen Sie dafür eine neue Bezugsgröße an."
+      },
+      {
+        "code": "kennzeichen_belegt",
+        "status": 409,
+        "regel": "M2",
+        "satz": "Dieses Kennzeichen trägt oder trug schon eine andere Bezugsgröße."
+      },
+      {
+        "code": "archiviert",
+        "status": 409,
+        "regel": "M6",
+        "satz": "Diese Bezugsgröße ist archiviert und wird nicht mehr geändert."
+      },
+      {
+        "code": "hat_werte",
+        "status": 409,
+        "regel": "M6 · Invariante 1",
+        "satz": "Eine Bezugsgröße mit Werten wird nicht gelöscht. Archivieren Sie sie stattdessen."
+      },
+      {
+        "code": "nicht_gefunden",
+        "status": 404,
+        "regel": "Mandantenzaun",
+        "satz": "Diese Bezugsgröße gibt es nicht."
+      }
+    ],
+    "hinweis": [
+      "Die Ablehnungen der Schnittstelle sind ein GESCHLOSSENER Satz: jede nennt ihren Status und ihren Kundensatz HIER, keine Umsetzung schreibt einen eigenen Fehlertext. Eine Ablehnung schreibt nichts.",
+      "`einheit_unbekannt` ist dasselbe Wort mit demselben Satz wie der Befund in `befund_saetze` — die Tests halten beide gleich.",
+      "`geltung_nicht_waehlbar` spricht, solange Prozess und Kostenstelle keine Objekte haben (Tabellen AP-09 IP-4: keine Verweis-Spalte). Welche Geltungsbereiche wählbar sind, ist darum ein EINGANG der Regel (`waehlbar`), kein Wort des Vokabulars.",
+      "`geltung_unbekannt` antwortet gleich für ein Objekt, das es nicht gibt, und für eines eines anderen Kundenbereichs — die Antwort verrät nichts.",
+      "`lesarten`: `GET …/{id}/werte?fassungen=` — `wirksam` (Vorgabe) liefert je Schlüssel die wirksame Fassung mit ihrer Herkunft, `alle` die ganze Kette; die Kette und ihr Stand kommen aus der Regel `fassung`."
+    ]
+  },
   "zwillinge": {
     "zahl": [
       "java",
@@ -262,13 +417,17 @@
     ],
     "kanal": [
       "java"
+    ],
+    "verwalten": [
+      "java"
     ]
   },
   "zwillinge_grund": {
     "menge": "Die Menge eines Ablesezeitraums rechnet die Verbrauchsregel AP-08 (VerbrauchRegeln.mengeZaehlerstand). Sie lebt in Java und Python, nicht im Portal — das Portal zeigt die Zahl, es bildet sie nicht.",
     "fassung": "Fassungen, Vier-Augen und Rücknahme sind der Schreibweg des Servers (F1–F4, C7). Das Portal zeigt den Verlauf, es bildet ihn nicht.",
     "stammdatum": "Der Stichtag eines zeitgültigen Stammdatums wird im Lesemodell gelesen (E17); das Portal bekommt den Wert fertig.",
-    "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht."
+    "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht.",
+    "verwalten": "Anlegen, Ändern, Archivieren und Löschen einer Bezugsgröße sind der Schreibweg des Servers (M1–M6 brauchen die gespeicherten Werte und die je belegten Kennzeichen). Das Portal zeigt die Ablehnung mit ihrem Kundensatz — den geschlossenen Satz `verwalten.ablehnungen` prüft der TS-Test gegen `bezugsgroesse.ts`."
   },
   "_abweichungen": [
     {
@@ -295,6 +454,13 @@
       "vorlage": "monatlich (Soll)",
       "statt": 2592000,
       "grund": "Die Verbrauchsregel AP-08 braucht die Kadenz als Zahl (Fenster des Periodenstands, Lückenschwelle). „Monatlich“ steht hier als 30 Tage. Das Ergebnis ist davon unberührt: die beiden Ablesungen liegen GENAU auf den Rändern des Ablesezeitraums, also im Fenster jeder Kadenz ≥ 0."
+    },
+    {
+      "fall": "B4, B5, B6, B7, B8, B13, B14 · Regel verwalten",
+      "feld": "pruefungen (regel `verwalten`)",
+      "vorlage": null,
+      "statt": "dreizehn Prüfungen der Regel `verwalten` (M1–M6)",
+      "grund": "Die Vorlage rechnet Werte, nicht das Verwalten der Bezugsgröße; M1–M6 standen nur in §4.2 des Konzepts. AP-09 IP-5 trägt sie als Prüfungen in die Fälle nach, in deren Bezugsgröße sie spielen — keine bestehende Prüfung, kein Betrag und kein Ergebnis der Vorlage ändert sich."
     }
   ],
   "_nicht_geprueft": [
@@ -1106,6 +1272,35 @@
             "ereignisse": [],
             "wirksamer_betrag": "48200"
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Gutteile Montage gilt für den Prozess P-2 — Prozesse sind noch kein wählbarer Geltungsbereich (E1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": "BZ-2",
+                "name": "Gutteile Montage",
+                "wertart": "periodenwert",
+                "einheit": "Stück",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-2"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": []
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "geltung_nicht_waehlbar"
+          }
         }
       ],
       "beschreibend": {
@@ -1447,6 +1642,99 @@
             "wirksamer_betrag": "4820",
             "abgelehnt": "begruendung_zu_kurz"
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Nach dem ersten Wert (Fassung 1 = 4 820 Stück) bleibt die Einheit fest (M1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "aendern",
+              "bestand": {
+                "kennzeichen": "BZ-2",
+                "name": "Gutteile Montage",
+                "wertart": "periodenwert",
+                "einheit": "Stück",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-2"
+              },
+              "entwurf": {
+                "kennzeichen": "BZ-2",
+                "name": "Gutteile Montage",
+                "wertart": "periodenwert",
+                "einheit": "t",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-2"
+              },
+              "archiviert": false,
+              "werte": 2,
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "bedeutung_fest",
+            "ablehnung_felder": [
+              "einheit"
+            ]
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Name und Kennzeichen bleiben nach dem ersten Wert änderbar (M1) — der Prozess wird dabei nicht neu gewählt",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "aendern",
+              "bestand": {
+                "kennzeichen": "BZ-2",
+                "name": "Gutteile Montage",
+                "wertart": "periodenwert",
+                "einheit": "Stück",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-2"
+              },
+              "entwurf": {
+                "kennzeichen": "BZ-2",
+                "name": "Gutteile Montage Linie 2",
+                "wertart": "periodenwert",
+                "einheit": "Stück",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-2"
+              },
+              "archiviert": false,
+              "werte": 2,
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
         }
       ],
       "beschreibend": {
@@ -1481,7 +1769,8 @@
       },
       "annahmen": [
         "Der Tippfehler 4 820 und die Zeitpunkte sind Annahmen.",
-        "Die zu kurze Begründung „Tipp“ (4 von 10 Pflichtzeichen) und die Selbst-Freigabe sind zwei Gegenproben zu F2/F3; die Vorlage nennt die Regeln, nicht diese beiden Eingaben."
+        "Die zu kurze Begründung „Tipp“ (4 von 10 Pflichtzeichen) und die Selbst-Freigabe sind zwei Gegenproben zu F2/F3; die Vorlage nennt die Regeln, nicht diese beiden Eingaben.",
+        "Die Umbenennung „Gutteile Montage Linie 2“ und die Einheit „t“ sind Gegenproben zu M1 (AP-09 IP-5)."
       ]
     },
     {
@@ -1596,6 +1885,41 @@
               "bezug_unbekannt"
             ]
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Die Fläche von Halle 2 ist keine Bezugsgröße, die hier angelegt wird — sie steht am Gebäude (M4, E17)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": null,
+                "name": "Bezugsfläche Halle 2",
+                "wertart": "stammdatum",
+                "einheit": "m²",
+                "periode_art": null,
+                "geltung_art": "gebaeude",
+                "geltung_id": "G-2"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "flaeche_aus_struktur"
+          }
         }
       ],
       "beschreibend": {
@@ -1623,7 +1947,8 @@
         "hinweis_halle": "Der Brief nennt „Halle 1“; das Referenzunternehmen 1.1 und AP-02 A3 legen den Anbau an Halle 2 (G-2). Der Katalog folgt der Quelle."
       },
       "annahmen": [
-        "Uhrzeit des Eintrags 14:40 aus AP-02 §4.4; alle Flächen, Gültigkeiten und der Oktober-Verbrauch sind Referenzwerte."
+        "Uhrzeit des Eintrags 14:40 aus AP-02 §4.4; alle Flächen, Gültigkeiten und der Oktober-Verbrauch sind Referenzwerte.",
+        "Der Name „Bezugsfläche Halle 2“ der Verwalten-Prüfung ist eine Annahme (AP-09 IP-5)."
       ]
     },
     {
@@ -1767,6 +2092,133 @@
           "ergebnis": {
             "stunden": 24
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "BZ-5 an der Messstelle MS-14 ist anlegbar; ohne Kennzeichen folgt die nächste Nummer nach der höchsten je belegten (M2)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": null,
+                "name": "Ladezeit Ladepunkt Halle 2",
+                "wertart": "periodenwert",
+                "einheit": "h",
+                "periode_art": "tag",
+                "geltung_art": "messstelle",
+                "geltung_id": "MS-14"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null,
+            "kennzeichen_vorschlag": "BZ-0005"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Ein Kennzeichen, das eine andere Bezugsgröße trägt oder trug, wird nie weitergegeben (M2)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": "BZ-2",
+                "name": "Ladezeit Ladepunkt Halle 2",
+                "wertart": "periodenwert",
+                "einheit": "h",
+                "periode_art": "tag",
+                "geltung_art": "messstelle",
+                "geltung_id": "MS-14"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "kennzeichen_belegt"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Vor dem ersten Wert sind Periode und Einheit noch frei (M1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "aendern",
+              "bestand": {
+                "kennzeichen": "BZ-5",
+                "name": "Ladezeit Ladepunkt Halle 2",
+                "wertart": "periodenwert",
+                "einheit": "h",
+                "periode_art": "tag",
+                "geltung_art": "messstelle",
+                "geltung_id": "MS-14"
+              },
+              "entwurf": {
+                "kennzeichen": "BZ-5",
+                "name": "Ladezeit Ladepunkt Halle 2",
+                "wertart": "periodenwert",
+                "einheit": "min",
+                "periode_art": "woche",
+                "geltung_art": "messstelle",
+                "geltung_id": "MS-14"
+              },
+              "archiviert": false,
+              "werte": 0,
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Ohne einen einzigen Wert ist BZ-5 löschbar (M6)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "loeschen",
+              "werte": 0
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
         }
       ],
       "beschreibend": {
@@ -1803,7 +2255,8 @@
       },
       "annahmen": [
         "Alle Statuswechsel, die Lücke und der Ableitungszeitpunkt sind Annahmen; K-9/MS-14/Box Halle 2 sind Referenzobjekte.",
-        "Der Zustand VOR dem ersten Wechsel („Available“) steht in der Vorlage nicht; ohne ihn wären die 298 min und die 23 von 24 gemessenen Stunden der Vorlage nicht nachrechenbar. Er ist deshalb ein ausdrücklicher Eingang und in _abweichungen genannt."
+        "Der Zustand VOR dem ersten Wechsel („Available“) steht in der Vorlage nicht; ohne ihn wären die 298 min und die 23 von 24 gemessenen Stunden der Vorlage nicht nachrechenbar. Er ist deshalb ein ausdrücklicher Eingang und in _abweichungen genannt.",
+        "Die Einheit „min“ und die Periode „woche“ der Verwalten-Prüfung sind eine Gegenprobe zu M1 (AP-09 IP-5)."
       ]
     },
     {
@@ -1975,6 +2428,41 @@
               "konflikt_anderer_wert"
             ]
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Eine Ablesung ist ein Stand — ein Stand hat keine Periode (M1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": null,
+                "name": "Gaszähler Ablesung",
+                "wertart": "stand",
+                "einheit": "m³",
+                "periode_art": "monat",
+                "geltung_art": "messstelle",
+                "geltung_id": "MS-21"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "periode_passt_nicht_zur_wertart"
+          }
         }
       ],
       "beschreibend": {
@@ -2020,7 +2508,8 @@
       },
       "annahmen": [
         "Erfassungszeitpunkt 07:44 ist eine Annahme; Stände, Zeitpunkte und die Person stammen aus dem Referenzunternehmen bzw. AP-08 F17.",
-        "Die Kadenz der Ablesungs-Reihe ist ein SOLL („monatlich“, AP-07 E9); als Zahl für die Verbrauchsregel steht hier 30 Tage (2 592 000 s). Sie berührt das Ergebnis nicht: der Ablesezeitraum trägt seine beiden Stände an den Rändern."
+        "Die Kadenz der Ablesungs-Reihe ist ein SOLL („monatlich“, AP-07 E9); als Zahl für die Verbrauchsregel steht hier 30 Tage (2 592 000 s). Sie berührt das Ergebnis nicht: der Ablesezeitraum trägt seine beiden Stände an den Rändern.",
+        "Der Name „Gaszähler Ablesung“ und die Periode „monat“ der Verwalten-Prüfung sind eine Gegenprobe zu M1 (AP-09 IP-5)."
       ]
     },
     {
@@ -2868,6 +3357,41 @@
             "aenderungen": 0,
             "befunde": []
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "„Paletten“ ist auch beim Anlegen kein Wort des Einheiten-Vokabulars (U2)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "anlegen",
+              "entwurf": {
+                "kennzeichen": null,
+                "name": "Paletten Spritzguss",
+                "wertart": "periodenwert",
+                "einheit": "Paletten",
+                "periode_art": "monat",
+                "geltung_art": "standort",
+                "geltung_id": "ST-1"
+              },
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-1",
+                "BZ-2",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "einheit_unbekannt"
+          }
         }
       ],
       "beschreibend": {
@@ -2884,7 +3408,8 @@
         "anzeige": "„Unbekannte Einheit »lbs« — erlaubt sind kg, t.“"
       },
       "annahmen": [
-        "Die Zeilen 3 und 4 sind Annahmen."
+        "Die Zeilen 3 und 4 sind Annahmen.",
+        "Der Geltungsbereich ST-1 der Verwalten-Prüfung ist eine Annahme — P-1 ist noch nicht wählbar (AP-09 IP-5)."
       ]
     },
     {
@@ -3155,6 +3680,77 @@
             ],
             "wirksamer_betrag": "312400.0"
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Eine Rücknahme löscht nichts: BZ-1 trägt drei Fassungen und bleibt darum unlöschbar (M6, Invariante 1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "loeschen",
+              "werte": 3
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "hat_werte"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Eine archivierte Bezugsgröße wird nicht mehr geändert (M6)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "aendern",
+              "bestand": {
+                "kennzeichen": "BZ-1",
+                "name": "Produktionsmenge Spritzguss",
+                "wertart": "periodenwert",
+                "einheit": "kg",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-1"
+              },
+              "entwurf": {
+                "kennzeichen": "BZ-1",
+                "name": "Produktionsmenge Spritzguss alt",
+                "wertart": "periodenwert",
+                "einheit": "kg",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-1"
+              },
+              "archiviert": true,
+              "werte": 3,
+              "waehlbar": [
+                "unternehmen",
+                "standort",
+                "gebaeude",
+                "bereich",
+                "messstelle"
+              ],
+              "belegt": [
+                "BZ-2",
+                "BZ-3",
+                "BZ-4",
+                "BZ-5"
+              ]
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "archiviert"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Archivieren ist einmal — ein zweites Mal ist abgelehnt (M6)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "archivieren",
+              "archiviert": true
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "archiviert"
+          }
         }
       ],
       "beschreibend": {
@@ -3193,7 +3789,8 @@
       },
       "annahmen": [
         "Anlass und Zeitpunkt der Rücknahme sind Annahmen.",
-        "Der dritte Vorgang (derselbe Import nach der Rücknahme, I-2026-0004) und sein Zeitpunkt sind Annahmen; die Vorlage nennt das Ergebnis „Fassung 3 = 312 400 kg“."
+        "Der dritte Vorgang (derselbe Import nach der Rücknahme, I-2026-0004) und sein Zeitpunkt sind Annahmen; die Vorlage nennt das Ergebnis „Fassung 3 = 312 400 kg“.",
+        "Dass BZ-1 später archiviert wird, ist eine Annahme der beiden Verwalten-Prüfungen (AP-09 IP-5)."
       ]
     }
   ]

@@ -566,7 +566,9 @@ class UemsBezugsgroesseMigrationTest {
 
     @Test
     void dieRechteSindBeschnitten() {
-        assertThat(rechte(APP_USER, "bezugsgroesse")).isEqualTo("SI");
+        // Seit V20260913120000 (AP-09 IP-5) darf die Anwendung eine Bezugsgröße OHNE Wert löschen (M6) —
+        // nur dort; ein Trigger lehnt das Löschen mit Werten ab (UemsBezugsgroesseLoeschenMigrationTest).
+        assertThat(rechte(APP_USER, "bezugsgroesse")).isEqualTo("SID");
         assertThat(rechte(APP_USER, "bezugsgroesse_kennzeichen_verlauf")).isEqualTo("S");
         assertThat(rechte(APP_USER, "bezugsgroesse_wert")).isEqualTo("S");
         assertThat(rechte(APP_USER, "bezugsgroesse_aenderung")).isEqualTo("SI");

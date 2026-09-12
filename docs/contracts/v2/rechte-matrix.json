@@ -1102,6 +1102,23 @@
         "voltpilot_betrieb": "-"
       },
       "anmerkung": "AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`."
+    },
+    {
+      "kennung": "bezugsgroesse.verwalten",
+      "gruppe": "messdaten",
+      "kundenwort": "Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen",
+      "herkunft": "AP-09 §4.11 (W8)",
+      "nachtrag": "AP-09 §4.11",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-09 W8: „U U S - - - -“ — Bearbeiter nur für Geltungsbereiche seines Standorts, nie Unterstützer. Seit AP-09 IP-5 nennen `POST /api/v1/bezugsgroessen`, `PUT`/`DELETE …/{id}` und `POST …/{id}/archivieren` die Kennung; auch das Löschen einer Bezugsgröße ohne Wert (M6)."
     }
   ],
   "nachtraege": [
@@ -1339,6 +1356,67 @@
         {
           "wortlaut": "Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen)",
           "wo": "keine eigene Zeile — der Unterstützer-Umfang der Matrix (`umfaenge`); in `messstelle.formel` die Zelle Ei"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-09 §4.11",
+      "titel": "Rechte (AP-03)",
+      "konzept": "UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Bezugsgrößen und Werte, Herkunft, Fassungen, Importe ansehen",
+          "wer": "Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer ab „Ansehen“",
+          "recht": "`messwerte.ansehen` (Zuordnung wie AP-07 „Herkunft eines Werts sehen“)",
+          "kennungen": [
+            "messwerte.ansehen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Seit AP-09 IP-5 nennen `GET /api/v1/bezugsgroessen`, `GET …/{id}` und `GET …/{id}/werte` die Kennung."
+        },
+        {
+          "handlung": "Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen",
+          "wer": "Kundenadministrator · Energiemanager (U) · Bearbeiter (S, nur Geltungsbereiche seines Standorts)",
+          "recht": "`bezugsgroesse.verwalten` (Nachtrag, W8)",
+          "kennungen": [
+            "bezugsgroesse.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "W8: neue Zeile „U U S - - - -“. Das Binden eines Messkanals kommt mit AP-09 IP-17 an dieselbe Kennung."
+        },
+        {
+          "handlung": "Wert eingeben · berichtigen · Zuordnung ändern",
+          "wer": "KA · EM (U) · Bearbeiter (S) — nie Unterstützer",
+          "recht": "`bezugsgroesse.eingeben` (vorhanden)",
+          "kennungen": [
+            "bezugsgroesse.eingeben"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Route kommt mit AP-09 IP-7."
+        },
+        {
+          "handlung": "CSV hochladen · Vorschau · übernehmen · zurücknehmen · Vorlagen pflegen",
+          "wer": "wie oben",
+          "recht": "`bezugsgroesse.importieren` (vorhanden; Rücknahme und Vorlagen zugeordnet)",
+          "kennungen": [
+            "bezugsgroesse.importieren"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "W8: Rücknahme und Vorlagen gehören zur bestehenden Zeile; die Routen kommen mit AP-09 IP-12 ff."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Ablesung an einer Messstelle erfassen · berichtigen — `ablesung.erfassen` (Nachtrag, W8: „U U S - - - -“)",
+          "wo": "noch keine Zeile — sie entsteht mit dem Bau-Paket, das ihre Route baut: AP-09 IP-8"
+        },
+        {
+          "wortlaut": "Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08)",
+          "wo": "noch keine Zeile — sie entstehen mit AP-08 IP-15; die Freigabe an Bezugsgrößen mit AP-09 IP-7"
+        },
+        {
+          "wortlaut": "Werte, Fassungen, Importe löschen — niemand (Offboarding ausgenommen)",
+          "wo": "keine Zeile — die Tabellen lassen es nicht zu (V20260913104500: Werte append-only); V20260913120000 öffnet nur das Löschen einer Bezugsgröße OHNE Wert (M6)"
         }
       ]
     }

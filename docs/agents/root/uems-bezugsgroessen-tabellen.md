@@ -20,8 +20,8 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
   Bezugsgröße, Herkunft (`herkunft_art`, `import_kennung`, `import_zeile`, geliefert), `kennzeichen`
   (jsonb-Array), Urheber `actor_*`, Freigeber `freigeber_*`, `created_at`.
 - `bezugsgroesse_aenderung`: das Protokoll der Bezugsgröße (`angelegt` · `bearbeitet` · `archiviert`).
-- Keine Route, kein Lesemodell (IP-5), keine Stammdaten mit Gültigkeit (IP-6), keine Eingabe/
-  Vier-Augen (IP-7), kein Import (IP-11 ff.), keine Kanalbindung (IP-17). Kein Aufrufer.
+- Routen und Lesemodell seit IP-5 (`uems-bezugsgroessen-routen.md`); keine Stammdaten mit Gültigkeit (IP-6), keine Eingabe/
+  Vier-Augen (IP-7), kein Import (IP-11 ff.), keine Kanalbindung (IP-17).
 
 ## ⚠ Die Fassungs-Eigenschaft
 
@@ -29,8 +29,10 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
   UPDATE ab — auch der Verwaltungsrolle MIT Recht und dem Eigentümer (der Test gibt das Recht in
   einer zurückgerollten Transaktion). Eine Berichtigung ist Fassung n + 1, eine Rücknahme Fassung
   n + 1 `ruecknahme` (E11), nach einer Rücknahme darf wieder ein `erstwert` folgen (Vertrag B14).
-  Fassungen je Schlüssel lückenlos (`bezugsgroesse_wert_fassung_lueckenlos`). DELETE nur die
-  Verwaltungsrolle, benutzt nur vom Offboarding.
+  Fassungen je Schlüssel lückenlos (`bezugsgroesse_wert_fassung_lueckenlos`). DELETE auf Werten nur die
+  Verwaltungsrolle, benutzt nur vom Offboarding. Seit AP-09 IP-5 (`V20260913120000`) darf die
+  Anwendung eine Bezugsgröße OHNE Wert löschen — Grabstein im Verlauf, siehe
+  `uems-bezugsgroessen-routen.md`.
 - **`status` ist das Wort bei Entstehen, der Stand ist eine Ableitung.** „wirksam bis Fassung 2"
   ist die Lesart des Vertrags und nie gespeichert; eine Entscheidung (Freigabe) ist wieder eine
   Zeile. Wirksamer Betrag = höchste Fassung mit `wirksam`/`zurueckgenommen`.

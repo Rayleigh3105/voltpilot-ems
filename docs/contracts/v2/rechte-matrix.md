@@ -89,7 +89,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Nachträge der später konzipierten Pakete
 
-AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026). Die 6 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026). Die 7 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
@@ -102,6 +102,7 @@ AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Capt
 | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 | U | U | S | S | S | A | - | AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““. |
 | **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
 | Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 (E15) | U | U | S | - | - | Ei | - | AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`. |
+| Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | AP-09 §4.11 (W8) | U | U | S | - | - | - | - | AP-09 W8: „U U S - - - -“ — Bearbeiter nur für Geltungsbereiche seines Standorts, nie Unterstützer. Seit AP-09 IP-5 nennen `POST /api/v1/bezugsgroessen`, `PUT`/`DELETE …/{id}` und `POST …/{id}/archivieren` die Kennung; auch das Löschen einer Bezugsgröße ohne Wert (M6). |
 
 ### Jede Handlung der Rechte-Abschnitte
 
@@ -125,6 +126,10 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-07 §4.10 | Datenaufzeichnungen löschen (Purge) | Kundenadministrator; für Messstellen-gebundene Reihen gesperrt (E8) | Kundenadministrator | `aufzeichnungen.loeschen` | bestehende Zeile | Die Sperre für Messstellen-gebundene Reihen (AP-07 E8) ist eine Regel des Objekts, keine Zelle — sie gilt auch für den Kundenadministrator und wird im Löschweg geprüft, nicht in `darf`. |
 | AP-10 §4.10 | berechnete Messstelle anlegen, Fassung ändern | Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst − | `messstelle.formel` | `messstelle.formel` | neue Zeile | Seit AP-10 IP-3 nennen `POST /api/v1/messstellen/berechnet` und `POST …/messstellen/{id}/formel/fassungen` die Kennung (davor `messstelle.bearbeiten`). |
 | AP-10 §4.10 | Lesen der Bilanz, Verteilung und Herkunft | über `messstelle.ansehen` | `messstelle.ansehen` | `messstelle.ansehen` | bestehende Zeile | Auch die Formel zu einem Tag (`GET …/formel?am=`); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`. |
+| AP-09 §4.11 | Bezugsgrößen und Werte, Herkunft, Fassungen, Importe ansehen | Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer ab „Ansehen“ | `messwerte.ansehen` (Zuordnung wie AP-07 „Herkunft eines Werts sehen“) | `messwerte.ansehen` | bestehende Zeile | Seit AP-09 IP-5 nennen `GET /api/v1/bezugsgroessen`, `GET …/{id}` und `GET …/{id}/werte` die Kennung. |
+| AP-09 §4.11 | Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | Kundenadministrator · Energiemanager (U) · Bearbeiter (S, nur Geltungsbereiche seines Standorts) | `bezugsgroesse.verwalten` (Nachtrag, W8) | `bezugsgroesse.verwalten` | neue Zeile | W8: neue Zeile „U U S - - - -“. Das Binden eines Messkanals kommt mit AP-09 IP-17 an dieselbe Kennung. |
+| AP-09 §4.11 | Wert eingeben · berichtigen · Zuordnung ändern | KA · EM (U) · Bearbeiter (S) — nie Unterstützer | `bezugsgroesse.eingeben` (vorhanden) | `bezugsgroesse.eingeben` | bestehende Zeile | Die Route kommt mit AP-09 IP-7. |
+| AP-09 §4.11 | CSV hochladen · Vorschau · übernehmen · zurücknehmen · Vorlagen pflegen | wie oben | `bezugsgroesse.importieren` (vorhanden; Rücknahme und Vorlagen zugeordnet) | `bezugsgroesse.importieren` | bestehende Zeile | W8: Rücknahme und Vorlagen gehören zur bestehenden Zeile; die Routen kommen mit AP-09 IP-12 ff. |
 
 ### Regeln ohne eigene Zeile
 
@@ -140,6 +145,9 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | AP-05 §6 | „AP-05 sagt nur, wer den Bogen ausfüllt, wer die Karte einstellt und wer die Vorlage freigibt“ (§6.1) | Bogen → `datenquelle.bearbeiten`; die Karte stellt der Installateur AM GERÄT ein (WAGO-I/O-CHECK, §4.7) — keine Portal-Handlung, die Einstellungs-Fassung trägt `messstelle.quelle` (Wandlerfaktoren, AP-04); Vorlage → `plattform.betrieb` |
 | AP-10 §4.10 | `messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`) | noch keine Zeile — jede entsteht mit dem Bau-Paket, das ihre Route baut: AP-10 IP-8 (Verteilung), IP-7 (Kostenstelle, Prozess), IP-6 (Netzanschluss) |
 | AP-10 §4.10 | Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen) | keine eigene Zeile — der Unterstützer-Umfang der Matrix (`umfaenge`); in `messstelle.formel` die Zelle Ei |
+| AP-09 §4.11 | Ablesung an einer Messstelle erfassen · berichtigen — `ablesung.erfassen` (Nachtrag, W8: „U U S - - - -“) | noch keine Zeile — sie entsteht mit dem Bau-Paket, das ihre Route baut: AP-09 IP-8 |
+| AP-09 §4.11 | Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08) | noch keine Zeile — sie entstehen mit AP-08 IP-15; die Freigabe an Bezugsgrößen mit AP-09 IP-7 |
+| AP-09 §4.11 | Werte, Fassungen, Importe löschen — niemand (Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (V20260913104500: Werte append-only); V20260913120000 öffnet nur das Löschen einer Bezugsgröße OHNE Wert (M6) |
 
 ## Kennungen
 
@@ -201,3 +209,4 @@ Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor ver
 | `datenquelle.zustaendigkeit` | Datenquellen und Boxen (AP-06) | Zuständige Box wechseln · Box tauschen | AP-06 §4.8 |
 | `datenquelle.ansehen` | Datenquellen und Boxen (AP-06) | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 |
 | `messstelle.formel` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 |
+| `bezugsgroesse.verwalten` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | AP-09 §4.11 |
