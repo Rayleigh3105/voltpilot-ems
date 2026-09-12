@@ -1,0 +1,40 @@
+# Gesamtwert / berechnete Messstelle (UEMS AP-10, Formel-Typ „gewichtete Summe")
+
+Der „Gesamtwert" (Kundenwort erst im Frontend) IST eine Messstelle mit `art = berechnet`, deren
+**Formel** eine **gewichtete Summe** ihrer **Terme** ist — die im Messstellen-Vertrag
+reservierte AP-10-Stelle, kein zweites Modell. Backend-Fundament (12.09.2026); der
+Kunden-Assistent folgt als eigene Aufgabe.
+
+**Vertrag + Zwillinge:** `docs/contracts/v2/messstelle-formel.md` mit den geteilten Vektoren
+`messstelle-formel-vectors.json` (Familien `groesse` · `zyklus` · `summe`), dem Java-Zwilling
+`services/api/.../uems/MessstelleFormelRegeln.java` und dem TS-Zwilling
+`frontend/portal/src/uemsMessstelleFormel.ts`. Beide stützen sich auf `MessstelleRegeln`s
+Größen-Katalog (erweitern statt duplizieren).
+
+**Datenmodell:** `messstelle_formel_term` (`V20260912093000`) — ein Term je Zeile, RLS/FORCE wie
+alle UEMS-Tabellen: `eingang_art` (`messkanal` = `entity_id` + `point_key` wie IP-13, ODER
+`messstelle` = `quell_messstelle_id` als Baustein), `position`, `vorzeichen`, `faktor`. Trigger
+`messstelle_formel_term_nur_berechnet`; CHECKs binden ENTWEDER Messkanal ODER Messstelle und nie
+sich selbst; `→ messstelle` RESTRICT, `→ measurement_point` CASCADE.
+
+**Ableitung (`formelGroesse`):** die Hauptgröße kommt aus den Termen (alle dieselbe
+Vertrags-Größe, sonst `groessen_gemischt`); Richtung = gemeinsame Richtung bei allen `+`, sonst
+`richtungslos`. ⚠ Ein Kanal OHNE Vertrags-Richtung (`generator-power` im Katalog `direction:
+null`, oder ein `import_export`-Vorzeichen-Wert) ist KEIN Term — daher ist der Anker im Test die
+drei MPPT-Tracker `deye.hybrid_3p.pv.pv1-power … pv3-power` (Wirkleistung · Erzeugung · kW), nicht
+der Generator.
+
+**Berechnung (Cloud, `MessstelleFormelService`):** Live-Wert aus den frischesten Samples
+(`device_measurement_sample`), Verlauf je 15-min-Bucket aus `device_measurement_rollup_15m`; die
+lesende Box wird zur Rechenzeit über `device_measurement_selection` aufgelöst (Term speichert kein
+Gerät). ⚠ **`null` statt Teilsumme:** fehlt/veraltet EIN Pflicht-Term → Ergebnis `null`
+(„unvollständig", der fehlende Term wird genannt), nie eine stille reduzierte Summe. Der
+Edge-Vertrag bleibt unangetastet.
+
+⚠ Der Formel-Stand geht in `MessstelleService.darstellung`/`lebenszyklus` ein (das generische
+`GET /api/v1/messstellen/{id}` zeigt eine fertige berechnete Messstelle ehrlich als `aktiv`, nicht
+mehr `entwurf`); das Register (IP-4) batcht die Formel noch nicht und lässt sie dort Entwurf.
+
+**Endpunkte:** `POST /api/v1/messstellen/berechnet`, `GET …/{id}/formel|wert|verlauf`
+(`MessstelleFormelController`). Prüfen: `MessstelleFormelRegelnVectorsTest` (rein),
+`MessstelleFormelTermMigrationTest` + `MessstelleFormelApiTest` (DB), `uemsMessstelleFormel.test.ts`.

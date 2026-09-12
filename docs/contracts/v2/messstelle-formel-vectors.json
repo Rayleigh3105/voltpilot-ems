@@ -1,0 +1,266 @@
+{
+  "_comment": [
+    "UEMS AP-10, Formel-Typ 'gewichtete Summe' der berechneten Messstelle (art=berechnet).",
+    "Die EINE geteilte Vektor-Datei der Zwillinge: Java services/api/.../uems/MessstelleFormelRegeln",
+    "(+ MessstelleFormelBerechnung fuer die Summe) und TS frontend/portal/src/uemsMessstelleFormel.ts.",
+    "Beide fahren DIESE Datei; wer eine Regel aendert, aendert beide Seiten UND diese Datei.",
+    "Bezug: docs/contracts/v2/messstelle-formel.md; Konzept vp-helfer-konzept-h1 §2.2/§2.3.",
+    "Der Groessen-Katalog und die umrechenbaren Einheiten sind die des Messstellen-Vertrags",
+    "(messstelle.md §2 / MessstelleRegeln.GROESSEN_KATALOG + KANAL_EINHEITEN) - additiv, nie dupliziert.",
+    "Ankerfall: deye.hybrid_3p.pv.pv1-power + pv2-power + pv3-power +",
+    "generator-smartload-microinverter.generator-power = Gesamt-PV (Wirkleistung / Erzeugung / kW)."
+  ],
+  "schema_version": "1.0",
+  "herkunft": "UEMS AP-10 (Formel-Typ gewichtete Summe); Captain-Rahmenentscheide vp-helfer-konzept-h1.",
+  "fehler": [
+    {"code": "groessen_gemischt", "status": 422, "geprueft_von": "MessstelleFormelRegeln"},
+    {"code": "formel_zyklus", "status": 422, "geprueft_von": "MessstelleFormelRegeln"}
+  ],
+  "einheiten_normierung": {
+    "Wirkenergie": ["Wh", "kWh", "MWh"],
+    "Wirkleistung": ["W", "kW", "MW"],
+    "Blindenergie": ["varh", "kvarh"],
+    "Scheinleistung": ["VA", "kVA"],
+    "Ladestand": ["%"]
+  },
+  "summe_nachkommastellen": 6,
+  "cases": {
+    "groesse": [
+      {
+        "name": "anker-gesamt-pv-vier-erzeuger-terme",
+        "why": "Der Ankerfall: PV1+PV2+PV3 (Wechselrichter) + Mikrowechselrichter, alle Wirkleistung / Erzeugung / kW / Momentanwert, alle mit '+'. Die Hauptgroesse der berechneten Messstelle wird daraus abgeleitet und ist damit sofort katalogkonform.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "hauptgroesse": {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert"}
+        }
+      },
+      {
+        "name": "ein-einziger-term",
+        "why": "Eine Formel darf aus einem einzigen Term bestehen; die Hauptgroesse ist die seine.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "hauptgroesse": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"}
+        }
+      },
+      {
+        "name": "umrechenbare-einheiten-derselben-groesse-erlaubt",
+        "why": "Terme in W und kW mischen ist erlaubt (umrechenbar, messstelle.md §2); die Hauptgroesse traegt die Katalog-Einheit der Groesse (kW).",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "W", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "hauptgroesse": {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert"}
+        }
+      },
+      {
+        "name": "gemischte-richtung-wird-richtungslos",
+        "why": "Bezug + Abgabe derselben Wirkleistung ergibt eine Netto-Groesse: die Richtung wird 'richtungslos' (der Katalog der Wirkleistung kennt sie).",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Abgabe", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "hauptgroesse": {"groesse": "Wirkleistung", "richtung": "richtungslos", "einheit": "kW", "wertart": "Momentanwert"}
+        }
+      },
+      {
+        "name": "gemischtes-vorzeichen-wird-richtungslos",
+        "why": "Erzeugung minus Erzeugung ist ein Netto (ein Vorzeichen -): die Richtung wird 'richtungslos'.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "-"}
+          ]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "hauptgroesse": {"groesse": "Wirkleistung", "richtung": "richtungslos", "einheit": "kW", "wertart": "Momentanwert"}
+        }
+      },
+      {
+        "name": "gemischte-groesse-abgelehnt",
+        "why": "Aepfel und Birnen: Wirkleistung und Wirkenergie lassen sich nicht summieren. Der erste verletzte Merkmal-Grund ist 'groesse'.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkleistung", "richtung": "Erzeugung", "einheit": "kW", "wertart": "Momentanwert", "vorzeichen": "+"},
+            {"groesse": "Wirkenergie", "richtung": "Erzeugung", "einheit": "kWh", "wertart": "Zählerstand", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": "groessen_gemischt",
+          "grund": "groesse",
+          "hauptgroesse": null
+        }
+      },
+      {
+        "name": "gemischte-wertart-abgelehnt",
+        "why": "Dieselbe Groesse, aber ein Zaehlerstand und eine Intervallmenge summieren sich nicht sinnvoll. Grund 'wertart'.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Zählerstand", "vorzeichen": "+"},
+            {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": "groessen_gemischt",
+          "grund": "wertart",
+          "hauptgroesse": null
+        }
+      },
+      {
+        "name": "netto-ohne-richtungslos-im-katalog-abgelehnt",
+        "why": "Wirkenergie kennt keine Richtung 'richtungslos' (messstelle.md §2). Ein Bezug+Abgabe-Netto der Wirkenergie ist deshalb keine Katalog-Groesse: Grund 'richtung'.",
+        "input": {
+          "terme": [
+            {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge", "vorzeichen": "+"},
+            {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Intervallmenge", "vorzeichen": "+"}
+          ]
+        },
+        "expected": {
+          "fehler": "groessen_gemischt",
+          "grund": "richtung",
+          "hauptgroesse": null
+        }
+      },
+      {
+        "name": "keine-terme-keine-hauptgroesse",
+        "why": "Ohne Term gibt es keine Formel und keine Hauptgroesse (die Messstelle bleibt Entwurf, fehlt: formel). Kein Fehler, nur nichts abzuleiten.",
+        "input": {"terme": []},
+        "expected": {"fehler": null, "grund": null, "hauptgroesse": null}
+      }
+    ],
+    "zyklus": [
+      {
+        "name": "kette-ohne-kreis",
+        "why": "MS-10 verkettet MS-08, MS-08 nur Messkanaele: kein Kreis.",
+        "input": {"kennzeichen": "MS-10", "verweise": ["MS-08"], "bestehende": {"MS-08": []}},
+        "expected": {"zyklus": false, "kette": []}
+      },
+      {
+        "name": "selbstverweis",
+        "why": "Eine Formel, die sich selbst als Term traegt, ist ein Kreis (schon an der Datenbankgrenze verboten; der Zwilling nennt die Kette).",
+        "input": {"kennzeichen": "MS-10", "verweise": ["MS-10"], "bestehende": {}},
+        "expected": {"zyklus": true, "kette": ["MS-10", "MS-10"]}
+      },
+      {
+        "name": "zweier-kreis",
+        "why": "MS-10 verkettet MS-08, MS-08 verkettet schon MS-10: der Kreis MS-10 -> MS-08 -> MS-10.",
+        "input": {"kennzeichen": "MS-10", "verweise": ["MS-08"], "bestehende": {"MS-08": ["MS-10"]}},
+        "expected": {"zyklus": true, "kette": ["MS-10", "MS-08", "MS-10"]}
+      },
+      {
+        "name": "dreier-kreis",
+        "why": "MS-10 -> MS-08 -> MS-07 -> MS-10.",
+        "input": {"kennzeichen": "MS-10", "verweise": ["MS-08"], "bestehende": {"MS-08": ["MS-07"], "MS-07": ["MS-10"]}},
+        "expected": {"zyklus": true, "kette": ["MS-10", "MS-08", "MS-07", "MS-10"]}
+      },
+      {
+        "name": "raute-ohne-kreis",
+        "why": "MS-10 verkettet MS-08 und MS-09, beide verketten MS-07 (ein Baustein doppelt genutzt) - keine Rueckkante, kein Kreis.",
+        "input": {"kennzeichen": "MS-10", "verweise": ["MS-08", "MS-09"], "bestehende": {"MS-08": ["MS-07"], "MS-09": ["MS-07"], "MS-07": []}},
+        "expected": {"zyklus": false, "kette": []}
+      }
+    ],
+    "summe": [
+      {
+        "name": "anker-summe-zwei-terme",
+        "why": "PV gesamt (Wechselrichter) 12,4 + Mikrowechselrichter 3,1 = 15,5 kW.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 1, "wert": 12.4, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": 3.1, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": 15.5, "unvollstaendig": false, "fehlende": []}
+      },
+      {
+        "name": "einheiten-normierung-w-und-kw",
+        "why": "12400 W + 3,1 kW = 15,5 kW: jeder Term wird auf die Ziel-Einheit normiert.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 1, "wert": 12400, "einheit": "W"},
+            {"vorzeichen": "+", "faktor": 1, "wert": 3.1, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": 15.5, "unvollstaendig": false, "fehlende": []}
+      },
+      {
+        "name": "ehrlich-null-statt-teilsumme",
+        "why": "DIE harte Ehrlichkeitsregel: fehlt EIN Pflicht-Term (wert null), ist das Ergebnis null ('unvollstaendig'), NIE eine stillschweigend reduzierte Teilsumme. Der fehlende Term wird genannt.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 1, "wert": 12.4, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": null, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": 3.1, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": null, "unvollstaendig": true, "fehlende": [1]}
+      },
+      {
+        "name": "negatives-vorzeichen-netto",
+        "why": "Ein Term mit '-' wird abgezogen: 10 - 4 = 6.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 1, "wert": 10, "einheit": "kW"},
+            {"vorzeichen": "-", "faktor": 1, "wert": 4, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": 6, "unvollstaendig": false, "fehlende": []}
+      },
+      {
+        "name": "faktor-skaliert-den-term",
+        "why": "Ein Faktor wirkt vor dem Vorzeichen: 2 * 5 + 3 = 13.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 2, "wert": 5, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": 3, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": 13, "unvollstaendig": false, "fehlende": []}
+      },
+      {
+        "name": "mehrere-fehlende-terme-alle-genannt",
+        "why": "Fehlen mehrere Terme, nennt die Antwort alle - das Ergebnis bleibt null.",
+        "input": {
+          "ziel_einheit": "kW",
+          "terme": [
+            {"vorzeichen": "+", "faktor": 1, "wert": null, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": 3.1, "einheit": "kW"},
+            {"vorzeichen": "+", "faktor": 1, "wert": null, "einheit": "kW"}
+          ]
+        },
+        "expected": {"wert": null, "unvollstaendig": true, "fehlende": [0, 2]}
+      }
+    ]
+  }
+}

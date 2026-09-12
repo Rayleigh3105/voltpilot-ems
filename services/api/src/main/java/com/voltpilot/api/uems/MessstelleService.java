@@ -112,19 +112,21 @@ public class MessstelleService {
     private final MessstelleZuordnungRepository zuordnungen;
     private final MessstelleQuelleRepository quellen;
     private final MessstelleQuelleService quellenDienst;
+    private final MessstelleFormelTermRepository formelTerme;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleService(MessstelleRepository messstellen, MessstelleAenderungRepository aenderungen,
             MessstelleZuordnungRepository zuordnungen, MessstelleQuelleRepository quellen,
-            MessstelleQuelleService quellenDienst, PlatformTransactionManager transactionManager,
-            ObjectMapper json) {
+            MessstelleQuelleService quellenDienst, MessstelleFormelTermRepository formelTerme,
+            PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
         this.quellenDienst = quellenDienst;
+        this.formelTerme = formelTerme;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
@@ -496,8 +498,18 @@ public class MessstelleService {
     }
 
     private MessstelleDto.Messstelle darstellung(Messstelle m) {
+        // Die Formel (AP-10) einer berechneten Messstelle geht ehrlich in den Lebenszyklus ein:
+        // ohne Term ist sie Entwurf (fehlt: formel), mit unauflösbarem Term (fehlt: eingaenge).
+        boolean formelVorhanden = false;
+        boolean eingaengeEingerichtet = false;
+        if (MessstelleRegeln.BERECHNET.equals(m.art())) {
+            MessstelleFormelTermRepository.FormelStand stand = formelTerme.stand(m.id());
+            formelVorhanden = stand.vorhanden();
+            eingaengeEingerichtet = stand.eingerichtet();
+        }
         return darstellung(m, messstellen.nebengroessen(m.id()), zuordnungen.orte(m.id()),
-                zuordnungen.stellungen(m.id()), quellen.derMessstelle(m.id()));
+                zuordnungen.stellungen(m.id()), quellen.derMessstelle(m.id()),
+                formelVorhanden, eingaengeEingerichtet);
     }
 
     /**
@@ -507,14 +519,26 @@ public class MessstelleService {
      * eingeschlossen, nach Beginn. Die Formel (AP-10) gibt es noch nicht — genau so geht sie in
      * {@link MessstelleRegeln#lebenszyklus} ein.
      */
-    /** Die Vertrags-Form aus den gelesenen Zeilen — für {@link #eine} wie für das Register. */
+    /**
+     * Die Vertrags-Form aus den gelesenen Zeilen — für das Register (AP-04 IP-4), das die Formel
+     * (AP-10) noch nicht batcht: eine berechnete Messstelle bleibt hier Entwurf, bis die
+     * Formel-Fläche folgt. {@link #eine} liest die Formel und ruft die Überladung mit ihrem Stand.
+     */
     MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
             List<StellungZeile> stellungen, List<Quelle> alle) {
+        return darstellung(m, neben, orte, stellungen, alle, false, false);
+    }
+
+    /** Dieselbe Vertrags-Form, mit dem Formel-Stand (AP-10) im Lebenszyklus. */
+    MessstelleDto.Messstelle darstellung(Messstelle m, List<Nebengroesse> neben, List<OrtZeile> orte,
+            List<StellungZeile> stellungen, List<Quelle> alle, boolean formelVorhanden,
+            boolean eingaengeEingerichtet) {
         Groesse h = m.hauptgroesse();
         List<QuelleZeitraum> fuehrendHaupt = derGroesse(alle, h, "fuehrend").stream()
                 .map(q -> new QuelleZeitraum(q.entityId().toString(), q.kanal(), q.geraet(), q.einbau(),
                         zeit(q.gueltigAb()), zeit(q.gueltigBis()))).toList();
         LebenszyklusErgebnis z = lebenszyklus(m, ortVorhanden(orte), fuehrendHaupt,
+                formelVorhanden, eingaengeEingerichtet,
                 OffsetDateTime.ofInstant(uhr.instant(), ZEITZONE));
         List<MessstelleDto.Nebengroesse> nebengroessen = neben.stream().map(n -> new MessstelleDto.Nebengroesse(
                 n.groesse().groesse(), n.groesse().richtung(), n.groesse().einheit(), n.groesse().wertart(),
@@ -564,9 +588,15 @@ public class MessstelleService {
     /** Mit den führenden Quellen der Hauptgröße (IP-13) — der Eingang von {@code quelleVorhanden}. */
     static LebenszyklusErgebnis lebenszyklus(Messstelle m, boolean ortVorhanden, List<QuelleZeitraum> fuehrend,
             OffsetDateTime jetzt) {
+        return lebenszyklus(m, ortVorhanden, fuehrend, false, false, jetzt);
+    }
+
+    /** Mit dem Formel-Stand (AP-10): {@code formelVorhanden}/{@code eingaengeEingerichtet}. */
+    static LebenszyklusErgebnis lebenszyklus(Messstelle m, boolean ortVorhanden, List<QuelleZeitraum> fuehrend,
+            boolean formelVorhanden, boolean eingaengeEingerichtet, OffsetDateTime jetzt) {
         return MessstelleRegeln.lebenszyklus(new LebenszyklusEingang(
                 m.art(), m.medium(), m.kennzeichen(), m.name(), m.hauptgroesse(),
-                ortVorhanden, false, false,
+                ortVorhanden, formelVorhanden, eingaengeEingerichtet,
                 m.angehaltenAb() != null, m.archiviertAm() != null,
                 fuehrend, jetzt));
     }
