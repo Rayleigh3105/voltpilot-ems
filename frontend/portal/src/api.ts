@@ -1914,7 +1914,29 @@ export interface MessstelleFormelTerm {
   eingerichtet: boolean;
 }
 
-/** Die Formel einer berechneten Messstelle (`GET …/{id}/formel`, snake_case). */
+/**
+ * Eine Fassung der Formel (AP-10 IP-3, `messstelle-formel.md` §6), snake_case wie
+ * `MessstelleFormelDto.Fassung`. `gueltig_ab` null = gilt seit Beginn (Fassung 1
+ * des Bestands und des Anlegens); `gueltig_bis` ist der LETZTE Tag, einschließlich.
+ */
+export interface MessstelleFormelFassung {
+  nummer: number;
+  formel_typ: 'gewichtete_summe';
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  herkunft: 'bestand' | 'anlage' | 'eintrag';
+  rueckwirkend: boolean;
+  /** „rückwirkend (5 Tage)“ — null, wenn nicht rückwirkend. */
+  abzeichen: string | null;
+  begruendung: string | null;
+  eingetragen_am: string;
+}
+
+/**
+ * Die Formel einer berechneten Messstelle (`GET …/{id}/formel`, snake_case): die
+ * Terme der Fassung, die am Tag gilt. `fassung_am` steht NUR in der Antwort, wenn
+ * `am` gefragt war — ohne Tag ist die Antwort die von vor AP-10 IP-3.
+ */
 export interface MessstelleFormel {
   messstelle_id: string;
   schema_version: string;
@@ -1922,6 +1944,7 @@ export interface MessstelleFormel {
   terme: MessstelleFormelTerm[];
   formel_vorhanden: boolean;
   eingaenge_eingerichtet: boolean;
+  fassung_am?: { tag: string; fassung: MessstelleFormelFassung | null };
 }
 
 /** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
@@ -1967,6 +1990,15 @@ export interface BerechneteMessstelleAnlegen {
     vorzeichen: '+' | '-';
     faktor: number;
   }>;
+}
+
+/** Der Körper von `POST /api/v1/messstellen/{id}/formel/fassungen` (AP-10 IP-3, streng, snake_case). */
+export interface MessstelleFormelFassungEintragen {
+  /** Der erste Tag der neuen Fassung (JJJJ-MM-TT); die laufende endet am Vortag. */
+  gueltig_ab: string;
+  formel_typ?: 'gewichtete_summe';
+  terme: BerechneteMessstelleAnlegen['terme'];
+  begruendung?: string;
 }
 
 /**
@@ -5381,9 +5413,19 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** Die Formel (Terme + abgeleitete Hauptgröße) einer berechneten Messstelle. */
-  messstelleFormel: (id: string) =>
-    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel`),
+  /**
+   * Die Formel (Terme + abgeleitete Hauptgröße) einer berechneten Messstelle —
+   * ohne `am` die von heute (unverändert), mit `am` (JJJJ-MM-TT) die Fassung des Tages.
+   */
+  messstelleFormel: (id: string, am?: string) =>
+    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel${am ? `?am=${am}` : ''}`),
+
+  /** Trägt eine neue Fassung der Formel ab einem Tag ein (AP-10 IP-3). */
+  messstelleFormelFassungEintragen: (id: string, body: MessstelleFormelFassungEintragen) =>
+    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel/fassungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /** Der Live-Wert einer berechneten Messstelle (null, wenn unvollständig). */
   messstelleWert: (id: string) => request<MessstelleWert>(`/api/v1/messstellen/${id}/wert`),

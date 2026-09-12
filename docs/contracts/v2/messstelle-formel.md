@@ -12,7 +12,8 @@ vom 12.09.2026).
 > die Fassungen je Tag. Es entsteht KEIN zweites Modell und kein zweiter Assistent. Die Regeln der
 > neuen Typen stehen in [`bilanz.md`](./bilanz.md) (`bilanz-vectors.json`), die der Verteilung in
 > [`verteilung.md`](./verteilung.md); der Code zieht mit AP-10 IP-3, IP-4 und IP-5 nach — dieser
-> Abschnitt ist bis dahin die VEREINBARUNG, nicht der Stand.
+> Abschnitt ist bis dahin die VEREINBARUNG, nicht der Stand. **§6 (Fassungen) ist seit AP-10 IP-3
+> gebaut**; §0 `rest`/`saldo` (IP-4) und §1.1 (IP-5) sind es noch nicht.
 
 ## 0. Die drei Formel-Typen (AP-10 E1)
 
@@ -46,9 +47,10 @@ Liste von **Termen**, je Term ein vorhandener Messkanal (oder eine andere Messst
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> **Wer anruft (Stand AP-10):** die Tabelle `messstelle_formel_term`
-> (`V20260912093000`), der Dienst `MessstelleFormelService` und die Endpunkte
-> `POST /api/v1/messstellen/berechnet`, `GET …/{id}/formel`, `…/{id}/wert`,
+> **Wer anruft (Stand AP-10 IP-3):** die Tabellen `messstelle_formel_term`
+> (`V20260912093000`) und `messstelle_formel_fassung` (`V20260912210000`), der Dienst
+> `MessstelleFormelService` und die Endpunkte `POST /api/v1/messstellen/berechnet`,
+> `GET …/{id}/formel` (mit `?am=`), `POST …/{id}/formel/fassungen`, `…/{id}/wert`,
 > `…/{id}/verlauf`. Die Box kennt keine berechnete Messstelle; der Edge-Vertrag bleibt
 > unverändert. Das Kundenwort („Gesamtwert") kommt erst mit dem Frontend-Assistenten.
 
@@ -144,7 +146,7 @@ berechnete Messstelle braucht keinen Ort).
 | Code | Status | Fakten | Wann |
 |---|---|---|---|
 | `groessen_gemischt` | 422 | `grund` (`groesse` · `wertart` · `richtung`) | die Terme tragen nicht dieselbe Vertrags-Größe |
-| `formel_zyklus` | 422 | `kette` | ein `messstelle`-Term verkettet im Kreis (beim Bearbeiten) |
+| `formel_zyklus` | 422 | `kette` | ein `messstelle`-Term verkettet im Kreis (beim Bearbeiten, seit IP-3: beim Eintragen einer Fassung) |
 | `anfrage_ungueltig` | 400 | `feld` | ein Feld fehlt, ist leer oder ohne Vertrags-Messgröße |
 
 Eine fremde Messstelle ist 404, nie 403 (AP-03).
@@ -169,10 +171,41 @@ Migration, Route (`POST …/messstellen/{id}/formel/fassungen`, `GET …/formel?
 „Fassung 1 = die heutigen Terme“ baut AP-10 IP-3; die Rechte der Routen wechseln dort nach AP-10
 E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehen`).
 
+### 6.1 Wie IP-3 es gebaut hat (Stand 12.09.2026)
+
+- **Tabelle** `messstelle_formel_fassung` (`V20260912210000`): `nummer`, `formel_typ` (heute nur
+  `gewichtete_summe`), `gueltig_ab`/`gueltig_bis` als TAGE (`daterange(ab, bis, '[]')`, Exklusion je
+  Messstelle), `aufgehoben_am`, `herkunft` (`bestand` · `anlage` · `eintrag`), `rueckwirkend`, Urheber.
+  Jeder Term trägt `fassung_id` (Pflicht); die Terme sind Historie ihrer Fassung (die App-Rolle hat
+  kein UPDATE/DELETE mehr).
+- ⚠ **„gilt seit Anlage“ heißt: Fassung 1 hat KEINEN ersten Tag** (`gueltig_ab` = `null`). Die Terme
+  von PR #688 hatten keine Zeit — die Cloud rechnete sie auch für Tage vor dem Anlegen, und der
+  Verlauf über 7/30 Tage zeigt diese Tage. Ein erster Tag = Anlagetag hätte diese Tage nach der
+  Migration leer gemacht. Darum ist Fassung 1 des Bestands UND des Anlegens (`POST …/berechnet`)
+  „gilt seit Beginn“; jede weitere Fassung (und eine Fassung 1, die über die Fassungs-Route an einer
+  Messstelle ohne Formel entsteht) beginnt an ihrem Tag und gilt nie rückwärts.
+- **Regel** `MessstelleFormelRegeln.fassungEintrag`: eine neue Fassung muss NACH dem Beginn der
+  jüngsten beginnen (sonst `formel_fassung_ueberlappt` 422 mit `fassung` und `gueltig_ab`), beendet die
+  laufende am Vortag, trägt `rueckwirkend` samt `abzeichen` („rückwirkend (5 Tage)“, die Wörter von
+  `OrtsbaumAbleitung.rueckwirkung`). Die abgeleitete Hauptgröße muss die der Messstelle bleiben
+  (`groessen_gemischt` mit `grund`). Der Code steht NICHT in `Fehler` (die Tabelle von
+  `messstelle-formel-vectors.json`, unberührt), sondern in `FassungFehler`.
+- **Lesen:** `GET …/formel?am=JJJJ-MM-TT` liefert die Terme der Fassung des Tages plus den Block
+  `fassung_am {tag, fassung}`; OHNE `am` fehlt der Block, und die Antwort ist Zeichen für Zeichen die
+  von vor IP-3.
+- **Rechnen:** der Live-Wert liest die Fassung von heute, der Verlauf je 15-min-Bucket die Fassung
+  des Tages, an dem der Bucket beginnt (Zeitzone des Standorts), ein Baustein die Fassung SEINER
+  Messstelle am selben Tag. Die „Neuberechnung wie nach einer `correction`“ entfällt, solange die
+  Werte on-the-fly gerechnet werden (gespeicherte Werte: AP-08 IP-9 / AP-10 IP-10).
+- **Protokoll:** eine eingetragene Fassung schreibt GENAU EINEN Eintrag `formel_geaendert`
+  (`alt` = beendete Fassung, `neu` = Nummer, Typ, erster Tag, Terme).
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelRegelnVectorsTest')          # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsMessstelleFormel.test.ts)
+(cd services/api && ./mvnw test -Dtest='MessstelleFormelFassungRegelnTest,MessstelleFormelSchnittstelleVertragTest')  # rein
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelTermMigrationTest,MessstelleFormelApiTest')  # gegen die DB
+(cd services/api && ./mvnw test -Dtest='MessstelleFormelFassungMigrationTest,MessstelleFormelFassungApiTest')  # Fassungen, DB
 ```

@@ -503,7 +503,10 @@ public class MessstelleService {
         boolean formelVorhanden = false;
         boolean eingaengeEingerichtet = false;
         if (MessstelleRegeln.BERECHNET.equals(m.art())) {
-            MessstelleFormelTermRepository.FormelStand stand = formelTerme.stand(m.id());
+            // Der Stand der Fassung von HEUTE (AP-10 IP-3). Die zulässigen Zeitzonen der Standorte
+            // haben dieselben Regeln wie ZEITZONE — der Tag ist derselbe.
+            MessstelleFormelTermRepository.FormelStand stand =
+                    formelTerme.stand(m.id(), uhr.instant().atZone(ZEITZONE).toLocalDate());
             formelVorhanden = stand.vorhanden();
             eingaengeEingerichtet = stand.eingerichtet();
         }

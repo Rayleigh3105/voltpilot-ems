@@ -7,6 +7,8 @@ import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
 import com.voltpilot.api.measurement.MesskanalAbbildung;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.MessstelleAenderungRepository.NeuerEintrag;
+import com.voltpilot.api.uems.MessstelleFormelFassungRepository.FassungZeile;
+import com.voltpilot.api.uems.MessstelleFormelRegeln.FassungUrteil;
 import com.voltpilot.api.uems.MessstelleFormelRegeln.SummeUrteil;
 import com.voltpilot.api.uems.MessstelleFormelRegeln.Summand;
 import com.voltpilot.api.uems.MessstelleFormelTermRepository.FormelStand;
@@ -21,7 +23,9 @@ import com.voltpilot.api.web.dto.MessstelleFormelDto;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -32,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -50,6 +55,12 @@ import org.springframework.web.server.ResponseStatusException;
  * bleibt unangetastet. <b>Ehrlichkeit hart:</b> fehlt/veraltet EIN Pflicht-Term, ist das Ergebnis
  * {@code null} („unvollständig"), nie eine stillschweigend reduzierte Teilsumme.
  *
+ * <p><b>Fassungen je Tag (AP-10 IP-3, E5).</b> Die Formel ist tagesgenau zeitgültig: jede Rechnung
+ * liest die Terme der Fassung DES TAGES — der Live-Wert die von heute, der Verlauf je 15-min-Bucket
+ * die des Tages, an dem der Bucket beginnt (in der Zeitzone des Standorts), ein Baustein die Fassung
+ * SEINER Messstelle an demselben Tag. Fassung 1 des Bestands und des Anlegens gilt seit Beginn;
+ * darum rechnet eine Messstelle mit einer einzigen Fassung genau wie vor IP-3.
+ *
  * <p>Der Mandant ist die RLS: eine fremde Messstelle/Komponente ist nicht da (404, nie 403).
  */
 @Service
@@ -63,30 +74,39 @@ public class MessstelleFormelService {
     private static final String MESSSTELLE = "messstelle";
     private static final String FUEHREND = "fuehrend";
     private static final int MAX_TIEFE = 16;
+    private static final String HERKUNFT_ANLAGE = "anlage";
+    private static final String HERKUNFT_EINTRAG = "eintrag";
+    /** Die Art des Protokolleintrags einer eingetragenen Fassung ({@code messstelle_aenderung}). */
+    static final String PROTOKOLL_ART = "formel_geaendert";
 
     private final MessstelleRepository messstellen;
     private final MessstelleAenderungRepository aenderungen;
     private final MessstelleFormelTermRepository terme;
+    private final MessstelleFormelFassungRepository fassungen;
     private final MessstelleFormelWerteRepository werte;
     private final MessstelleQuelleRepository quellen;
     private final MessstelleService messstellenDienst;
     private final MeasurementCatalog katalog;
+    private final UnternehmenRepository unternehmen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
             MessstelleAenderungRepository aenderungen, MessstelleFormelTermRepository terme,
+            MessstelleFormelFassungRepository fassungen,
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
-            MessstelleService messstellenDienst, MeasurementCatalog katalog,
+            MessstelleService messstellenDienst, MeasurementCatalog katalog, UnternehmenRepository unternehmen,
             PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
+        this.fassungen = fassungen;
         this.werte = werte;
         this.quellen = quellen;
         this.messstellenDienst = messstellenDienst;
         this.katalog = katalog;
+        this.unternehmen = unternehmen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
@@ -106,6 +126,8 @@ public class MessstelleFormelService {
      * Legt eine berechnete Messstelle mit ihrer Formel an — in EINER Transaktion mit dem
      * Kennzeichen (automatisch, E7) und dem Protokolleintrag „angelegt". Die Hauptgröße wird aus
      * den Termen abgeleitet (nie gewählt); gemischte Größen lehnt {@link MessstelleFormelRegeln} ab.
+     * Die Terme sind Fassung 1 (Herkunft {@code anlage}) OHNE ersten Tag — sie gilt wie vor AP-10
+     * IP-3 für jeden Tag, bis eine Fassung 2 sie ablöst.
      */
     public MessstelleDto.Messstelle anlegen(MessstelleFormelDto.Anlegen a, ProtokollAkteur wer) {
         UUID tenant = TenantContext.get();
@@ -137,11 +159,9 @@ public class MessstelleFormelService {
         UUID id = transaktion.execute(s -> {
             Messstelle m = messstellen.anlegen(new NeueMessstelle(tenant, null, name, "berechnet",
                     medium, haupt, notiz));
-            for (int i = 0; i < bindungen.size(); i++) {
-                Bindung b = bindungen.get(i);
-                terme.anlegen(m.id(), i, b.eingangArt(), b.entityId(), b.pointKey(),
-                        b.quellMessstelleId(), b.vorzeichen(), b.faktor());
-            }
+            UUID fassung = fassungen.anlegen(m.id(), 1, MessstelleFormelRegeln.GEWICHTETE_SUMME, null,
+                    HERKUNFT_ANLAGE, false, null, uhr.instant(), wer);
+            termeAnlegen(fassung, m.id(), bindungen);
             protokoll(m.id(), name, medium, haupt, bindungen, notiz, jetzt, wer);
             return m.id();
         });
@@ -190,20 +210,172 @@ public class MessstelleFormelService {
 
     // ------------------------------------------------------------------ lesen
 
-    /** Die Formel einer berechneten Messstelle: ihre Terme in Reihenfolge und ihr Stand. */
-    public MessstelleFormelDto.Formel formel(UUID id) {
+    /**
+     * Die Formel einer berechneten Messstelle AN EINEM TAG: die Terme der Fassung, die an dem Tag
+     * gilt, in Reihenfolge, und ihr Stand. {@code am == null} heißt heute (in der Zeitzone des
+     * Standorts) — und die Antwort ist dann Zeichen für Zeichen die von vor AP-10 IP-3: dieselben
+     * Felder, dieselben Terme (für den Bestand ist die heutige Fassung Fassung 1 = seine Terme),
+     * OHNE den Block {@code fassung_am}. Mit {@code am} kommt {@code fassung_am} dazu: der Tag
+     * und die Fassung, die an ihm gilt ({@code null}, wenn an dem Tag keine gilt — dann ohne Terme).
+     */
+    public MessstelleFormelDto.Formel formel(UUID id, LocalDate am) {
         Messstelle m = berechnete(id);
-        FormelStand stand = terme.stand(id);
+        ZoneId zone = zone();
+        LocalDate tag = am != null ? am : heute(zone);
+        Optional<FassungZeile> fassung = fassungAm(fassungen.wirksame(id), tag);
+        FormelStand stand = terme.stand(id, tag);
         List<MessstelleFormelDto.Term> aus = new ArrayList<>();
-        for (TermZeile t : terme.derMessstelle(id)) {
+        for (TermZeile t : fassung.map(f -> terme.derFassung(f.id())).orElse(List.of())) {
             aus.add(new MessstelleFormelDto.Term(t.position(), t.eingangArt(), t.entityId(),
                     t.pointKey(), t.quellMessstelleId(), t.vorzeichen(), t.faktor(),
                     dtoGroesse(groesse(t)), eingerichtet(t)));
         }
         Groesse h = m.hauptgroesse();
+        MessstelleFormelDto.FassungAm fassungAm = am == null ? null
+                : new MessstelleFormelDto.FassungAm(tag, fassung.map(f -> fassungDto(f, zone)).orElse(null));
         return new MessstelleFormelDto.Formel(id, SCHEMA_VERSION,
                 new MessstelleFormelDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                aus, stand.vorhanden(), stand.eingerichtet());
+                aus, stand.vorhanden(), stand.eingerichtet(), fassungAm);
+    }
+
+    private MessstelleFormelDto.Fassung fassungDto(FassungZeile f, ZoneId zone) {
+        String abzeichen = null;
+        if (f.rueckwirkend()) {
+            abzeichen = OrtsbaumAbleitung.rueckwirkung(new OrtsbaumAbleitung.RueckwirkungEingang(
+                    OffsetDateTime.ofInstant(f.eingetragenAm(), zone), f.gueltigAb(), f.gueltigBis(), zone, null))
+                    .abzeichen();
+        }
+        return new MessstelleFormelDto.Fassung(f.nummer(), f.formelTyp(), f.gueltigAb(), f.gueltigBis(),
+                f.herkunft(), f.rueckwirkend(), abzeichen, f.begruendung(), zeit(f.eingetragenAm()));
+    }
+
+    // -------------------------------------------------------- Fassung eintragen
+
+    /**
+     * Trägt eine neue Fassung der Formel ab einem Tag ein (AP-10 IP-3, Vertrag §6): die Terme
+     * werden geprüft wie beim Anlegen (Form, Größe, Zyklus), die abgeleitete Hauptgröße muss die der
+     * Messstelle bleiben; das Urteil über die Tage fällt {@link MessstelleFormelRegeln#fassungEintrag}
+     * (Vortag beendet, Überlappung 422, rückwirkend gekennzeichnet). In EINER Transaktion unter der
+     * Zeilensperre der Messstelle: die laufende Fassung beenden, die neue mit ihren Terme anlegen,
+     * GENAU EIN Protokolleintrag {@code formel_geaendert}. Eine Ablehnung schreibt nichts. Antwort:
+     * die Formel am ersten Tag der neuen Fassung.
+     */
+    public MessstelleFormelDto.Formel fassungEintragen(UUID id, MessstelleFormelDto.FassungEintragen a,
+            ProtokollAkteur wer) {
+        Messstelle m = berechnete(id);
+        if (a == null) {
+            throw MessstelleFormelAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
+        }
+        if (a.gueltigAb() == null) {
+            throw MessstelleFormelAbgelehnt.anfrage("gueltig_ab",
+                    "„gültig ab“ fehlt: der Tag (JJJJ-MM-TT), ab dem die neue Formel gilt.");
+        }
+        String typ = a.formelTyp() == null ? MessstelleFormelRegeln.GEWICHTETE_SUMME : a.formelTyp();
+        if (!MessstelleFormelRegeln.GEWICHTETE_SUMME.equals(typ)) {
+            throw MessstelleFormelAbgelehnt.anfrage("formel_typ",
+                    "Eine Formel ist heute eine gewichtete Summe („gewichtete_summe“).");
+        }
+        String begruendung = leerAlsNull(a.begruendung());
+        if (begruendung != null && begruendung.length() > 500) {
+            throw MessstelleFormelAbgelehnt.anfrage("begruendung", "Die Begründung hat höchstens 500 Zeichen.");
+        }
+        if (a.terme() == null || a.terme().isEmpty()) {
+            throw MessstelleFormelAbgelehnt.anfrage("terme", "Eine Formel braucht mindestens einen Term.");
+        }
+        if (m.archiviertAm() != null) {
+            throw MessstelleAbgelehnt.schnittstelle(MessstelleAbgelehnt.Schnittstelle.ZUSTAND_PASST_NICHT,
+                    m.kennzeichen() + " ist archiviert — eine archivierte Messstelle bleibt, wie sie ist.",
+                    Map.of("archiviert_am", zeit(m.archiviertAm())));
+        }
+        List<Bindung> bindungen = new ArrayList<>();
+        List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
+        List<String> verweise = new ArrayList<>();
+        for (int i = 0; i < a.terme().size(); i++) {
+            Bindung b = bindung(a.terme().get(i), i);
+            bindungen.add(b);
+            fuerAbleitung.add(new MessstelleFormelRegeln.Term(b.groesse().groesse(), b.groesse().richtung(),
+                    b.groesse().einheit(), b.groesse().wertart(), b.vorzeichen()));
+            if (b.quellMessstelleId() != null) {
+                verweise.add(messstellen.finde(b.quellMessstelleId()).map(Messstelle::kennzeichen)
+                        .orElse(b.quellMessstelleId().toString()));
+            }
+        }
+        MessstelleFormelRegeln.GroesseUrteil urteil = MessstelleFormelRegeln.formelGroesse(fuerAbleitung);
+        if (urteil.fehler() != null) {
+            throw MessstelleFormelAbgelehnt.regel(urteil.fehler(),
+                    "Die Terme tragen nicht dieselbe Messgröße — sie lassen sich nicht summieren.",
+                    Map.of("grund", urteil.grund()));
+        }
+        String abweichung = MessstelleFormelRegeln.hauptgroesseAbweichung(m.hauptgroesse(), urteil.hauptgroesse());
+        if (abweichung != null) {
+            throw MessstelleFormelAbgelehnt.regel(MessstelleFormelRegeln.Fehler.GROESSEN_GEMISCHT,
+                    "Die neue Formel ergibt eine andere Messgröße als " + m.kennzeichen()
+                            + " — eine andere Größe ist eine andere Messstelle.",
+                    Map.of("grund", abweichung));
+        }
+        ZoneId zone = zone();
+        Instant jetzt = uhr.instant();
+        LocalDate ab = a.gueltigAb();
+        try {
+            transaktion.executeWithoutResult(tx -> {
+                fassungen.sperre(id);
+                Map<String, List<String>> bestehende = new LinkedHashMap<>(fassungen.verkettungen(ab));
+                bestehende.remove(m.kennzeichen());
+                MessstelleFormelRegeln.ZyklusUrteil zyklus =
+                        MessstelleFormelRegeln.zyklus(m.kennzeichen(), verweise, bestehende);
+                if (zyklus.zyklus()) {
+                    throw MessstelleFormelAbgelehnt.regel(MessstelleFormelRegeln.Fehler.FORMEL_ZYKLUS,
+                            "Die Formel verkettet sich im Kreis: " + String.join(" → ", zyklus.kette()) + ".",
+                            Map.of("kette", zyklus.kette()));
+                }
+                List<FassungZeile> wirksam = fassungen.wirksame(id);
+                FassungUrteil u = MessstelleFormelRegeln.fassungEintrag(
+                        wirksam.stream().map(FassungZeile::alsRegel).toList(), ab,
+                        OffsetDateTime.ofInstant(jetzt, zone), zone);
+                if (u.fehler() != null) {
+                    throw ueberlappt(u.satz(), u.konflikt());
+                }
+                FassungZeile alt = null;
+                if (u.beenden() != null) {
+                    alt = wirksam.stream().filter(f -> f.nummer() == u.beenden().nummer()).findFirst().orElseThrow();
+                    fassungen.beenden(alt.id(), u.beendenAm());
+                }
+                // Die Nummer wird nie wiederverwendet — auch nicht die einer aufgehobenen Fassung.
+                int nummer = Math.max(u.nummer(), fassungen.hoechsteNummer(id) + 1);
+                UUID neu = fassungen.anlegen(id, nummer, typ, ab, HERKUNFT_EINTRAG, u.rueckwirkend(),
+                        begruendung, jetzt, wer);
+                termeAnlegen(neu, id, bindungen);
+                fassungProtokoll(id, alt, u, nummer, typ, bindungen, zone, jetzt, begruendung, wer);
+            });
+        } catch (DataIntegrityViolationException e) {
+            // Das eine Rennen, das die Sperre nicht ausschließt (ein Schreiber ohne sie): die
+            // Datenbank lehnt die Überlappung ab (23P01) oder die doppelte Nummer (23505) — nie 500.
+            String state = sqlState(e);
+            if ("23P01".equals(state) || "23505".equals(state)) {
+                throw ueberlappt("Für diesen Tag wurde soeben eine andere Fassung eingetragen. "
+                        + "Laden Sie die Formel neu.", null);
+            }
+            throw e;
+        }
+        return formel(id, ab);
+    }
+
+    private static MessstelleFormelAbgelehnt ueberlappt(String satz, MessstelleFormelRegeln.Fassung konflikt) {
+        Map<String, Object> fakten = new LinkedHashMap<>();
+        if (konflikt != null) {
+            fakten.put("fassung", konflikt.nummer());
+            fakten.put("gueltig_ab", konflikt.ab() == null ? null : konflikt.ab().toString());
+        }
+        return MessstelleFormelAbgelehnt.fassung(MessstelleFormelRegeln.FassungFehler.FORMEL_FASSUNG_UEBERLAPPT,
+                satz, fakten);
+    }
+
+    private void termeAnlegen(UUID fassung, UUID messstelle, List<Bindung> bindungen) {
+        for (int i = 0; i < bindungen.size(); i++) {
+            Bindung b = bindungen.get(i);
+            terme.anlegen(fassung, messstelle, i, b.eingangArt(), b.entityId(), b.pointKey(),
+                    b.quellMessstelleId(), b.vorzeichen(), b.faktor());
+        }
     }
 
     // ------------------------------------------------------------- Live-Wert
@@ -212,21 +384,23 @@ public class MessstelleFormelService {
     private record RohWert(Double wert, Instant stand, String einheit,
             List<MessstelleFormelDto.FehlenderTerm> fehlende) {}
 
+    /** Der Live-Wert: gerechnet mit der Fassung von HEUTE (in der Zeitzone des Standorts). */
     public MessstelleFormelDto.Wert wert(UUID id) {
         Messstelle m = berechnete(id);
         Instant cutoff = uhr.instant().minus(FRISCHE);
-        RohWert r = liveWert(m, cutoff, new HashSet<>(List.of(id)), 0);
+        LocalDate heute = heute(zone());
+        RohWert r = liveWert(m, cutoff, heute, new HashSet<>(List.of(id)), 0);
         return new MessstelleFormelDto.Wert(r.wert(), r.einheit(), r.wert() == null, r.fehlende(),
                 r.stand() == null ? null : zeit(r.stand()));
     }
 
-    private RohWert liveWert(Messstelle m, Instant cutoff, Set<UUID> besucht, int tiefe) {
+    private RohWert liveWert(Messstelle m, Instant cutoff, LocalDate tag, Set<UUID> besucht, int tiefe) {
         Groesse haupt = m.hauptgroesse();
         String ziel = haupt.einheit();
         List<Summand> summanden = new ArrayList<>();
         List<MessstelleFormelDto.FehlenderTerm> fehlende = new ArrayList<>();
         Instant stand = null;
-        for (TermZeile t : terme.derMessstelle(m.id())) {
+        for (TermZeile t : termeAm(m.id(), tag)) {
             Double wert = null;
             String einheit = ziel;
             if (MESSKANAL.equals(t.eingangArt())) {
@@ -246,7 +420,7 @@ public class MessstelleFormelService {
                     }
                 }
             } else {
-                RohWert sub = bausteinWert(t.quellMessstelleId(), cutoff, besucht, tiefe);
+                RohWert sub = bausteinWert(t.quellMessstelleId(), cutoff, tag, besucht, tiefe);
                 if (sub == null || sub.wert() == null) {
                     fehlende.add(fehlt(t, "unvollstaendig"));
                 } else {
@@ -263,7 +437,7 @@ public class MessstelleFormelService {
 
     /** Der Live-Wert eines Baustein-Terms: bei einer berechneten Messstelle rekursiv, bei einer
      * gemessenen aus ihrer führenden Quelle. Ein Kreis (bereits besucht, oder zu tief) fehlt. */
-    private RohWert bausteinWert(UUID quellId, Instant cutoff, Set<UUID> besucht, int tiefe) {
+    private RohWert bausteinWert(UUID quellId, Instant cutoff, LocalDate tag, Set<UUID> besucht, int tiefe) {
         if (tiefe >= MAX_TIEFE || !besucht.add(quellId)) {
             return null;
         }
@@ -273,7 +447,7 @@ public class MessstelleFormelService {
                 return null;
             }
             if (MessstelleRegeln.BERECHNET.equals(q.art())) {
-                return liveWert(q, cutoff, besucht, tiefe + 1);
+                return liveWert(q, cutoff, tag, besucht, tiefe + 1);
             }
             KanalRef ref = fuehrenderKanal(q);
             if (ref == null) {
@@ -293,37 +467,67 @@ public class MessstelleFormelService {
 
     // --------------------------------------------------------------- Verlauf
 
+    /**
+     * Der Verlauf: je 15-min-Bucket die Summe der Fassung, die am Tag des Buckets gilt — {@code null},
+     * wenn in ihm nicht ALLE Terme dieser Fassung einen Wert haben (nie eine Teilsumme).
+     */
     public MessstelleFormelDto.Verlauf verlauf(UUID id, String range) {
         Messstelle m = berechnete(id);
         Instant bis = viertelstunde(uhr.instant());
         Instant von = bis.minus(zeitraum(range));
         List<MessstelleFormelDto.VerlaufPunkt> punkte = new ArrayList<>();
-        List<Map<Instant, Double>> proTerm = termVerlaeufe(m, von, bis, new HashSet<>(List.of(id)), 0);
-        // Ein Bucket zählt nur, wenn ALLE Terme in ihm einen Wert haben — sonst null (nie Teilsumme).
-        Set<Instant> alle = new java.util.TreeSet<>();
-        proTerm.forEach(map -> alle.addAll(map.keySet()));
-        for (Instant b : alle) {
-            boolean vollstaendig = proTerm.stream().allMatch(map -> map.containsKey(b));
-            Double summe = null;
-            if (vollstaendig) {
-                double s = 0;
-                for (Map<Instant, Double> map : proTerm) {
-                    s += map.get(b);
-                }
-                summe = runde(s);
-            }
-            punkte.add(new MessstelleFormelDto.VerlaufPunkt(zeit(b), summe));
+        for (Map.Entry<Instant, Double> e : summenVerlauf(m, von, bis, zone(), new HashSet<>(List.of(id)), 0)
+                .entrySet()) {
+            punkte.add(new MessstelleFormelDto.VerlaufPunkt(zeit(e.getKey()),
+                    e.getValue() == null ? null : runde(e.getValue())));
         }
         return new MessstelleFormelDto.Verlauf(id, m.hauptgroesse().einheit(), punkte);
     }
 
-    /** Je Term eine Bucket→Wert-Karte (Vorzeichen · Faktor · normiert), nur wo es einen Wert gibt. */
-    private List<Map<Instant, Double>> termVerlaeufe(Messstelle m, Instant von, Instant bis,
+    /**
+     * Je Bucket in {@code [von, bis)} die Summe der Terme der Fassung DES TAGES, an dem der Bucket
+     * beginnt; {@code null}, wenn in ihm nicht alle Terme dieser Fassung einen Wert haben. Nur
+     * Buckets, in denen mindestens ein Term einen Wert hat. Jede Fassung liest nur die Buckets
+     * IHRER Tage — eine Fassung gilt ab ihrem Tag und nie rückwärts.
+     */
+    private TreeMap<Instant, Double> summenVerlauf(Messstelle m, Instant von, Instant bis, ZoneId zone,
             Set<UUID> besucht, int tiefe) {
+        TreeMap<Instant, Double> out = new TreeMap<>();
+        for (FassungZeile f : fassungen.wirksame(m.id())) {
+            Instant a = f.gueltigAb() == null ? von : spaeter(von, f.gueltigAb().atStartOfDay(zone).toInstant());
+            Instant e = f.gueltigBis() == null ? bis
+                    : frueher(bis, f.gueltigBis().plusDays(1).atStartOfDay(zone).toInstant());
+            if (!a.isBefore(e)) {
+                continue;
+            }
+            List<Map<Instant, Double>> proTerm = termVerlaeufe(m, terme.derFassung(f.id()), a, e, zone, besucht,
+                    tiefe);
+            // Ein Bucket zählt nur, wenn ALLE Terme in ihm einen Wert haben — sonst null (nie Teilsumme).
+            Set<Instant> alle = new java.util.TreeSet<>();
+            proTerm.forEach(map -> alle.addAll(map.keySet()));
+            for (Instant b : alle) {
+                boolean vollstaendig = proTerm.stream().allMatch(map -> map.containsKey(b));
+                Double summe = null;
+                if (vollstaendig) {
+                    double s = 0;
+                    for (Map<Instant, Double> map : proTerm) {
+                        s += map.get(b);
+                    }
+                    summe = s;
+                }
+                out.put(b, summe);
+            }
+        }
+        return out;
+    }
+
+    /** Je Term eine Bucket→Wert-Karte (Vorzeichen · Faktor · normiert), nur wo es einen Wert gibt. */
+    private List<Map<Instant, Double>> termVerlaeufe(Messstelle m, List<TermZeile> zeilen, Instant von,
+            Instant bis, ZoneId zone, Set<UUID> besucht, int tiefe) {
         String ziel = m.hauptgroesse().einheit();
         String wertart = m.hauptgroesse().wertart();
         List<Map<Instant, Double>> out = new ArrayList<>();
-        for (TermZeile t : terme.derMessstelle(m.id())) {
+        for (TermZeile t : zeilen) {
             double vz = ("-".equals(t.vorzeichen()) ? -1 : 1) * t.faktor();
             Map<Instant, Double> roh;
             String von_einheit = ziel;
@@ -332,7 +536,7 @@ public class MessstelleFormelService {
                 roh = q.isEmpty() ? Map.of() : werte.verlauf15m(q.get(), t.pointKey(), wertart, von, bis);
                 von_einheit = kanalEinheit(t.pointKey(), ziel);
             } else {
-                roh = bausteinVerlauf(t.quellMessstelleId(), wertart, von, bis, besucht, tiefe);
+                roh = bausteinVerlauf(t.quellMessstelleId(), wertart, von, bis, zone, besucht, tiefe);
             }
             Map<Instant, Double> gewichtet = new TreeMap<>();
             for (Map.Entry<Instant, Double> e : roh.entrySet()) {
@@ -343,9 +547,12 @@ public class MessstelleFormelService {
         return out;
     }
 
-    /** Der Verlauf eines Baustein-Terms: nur VOLLSTÄNDIGE Buckets (Bucket→Summe), sonst fehlt er. */
+    /**
+     * Der Verlauf eines Baustein-Terms: nur VOLLSTÄNDIGE Buckets (Bucket→Summe), sonst fehlt er.
+     * Eine berechnete Quelle rechnet mit IHREN Fassungen je Tag.
+     */
     private Map<Instant, Double> bausteinVerlauf(UUID quellId, String wertart, Instant von, Instant bis,
-            Set<UUID> besucht, int tiefe) {
+            ZoneId zone, Set<UUID> besucht, int tiefe) {
         if (tiefe >= MAX_TIEFE || !besucht.add(quellId)) {
             return Map.of();
         }
@@ -355,19 +562,12 @@ public class MessstelleFormelService {
                 return Map.of();
             }
             if (MessstelleRegeln.BERECHNET.equals(q.art())) {
-                List<Map<Instant, Double>> proTerm = termVerlaeufe(q, von, bis, besucht, tiefe + 1);
-                Set<Instant> alle = new java.util.TreeSet<>();
-                proTerm.forEach(map -> alle.addAll(map.keySet()));
                 Map<Instant, Double> out = new TreeMap<>();
-                for (Instant b : alle) {
-                    if (proTerm.stream().allMatch(map -> map.containsKey(b))) {
-                        double s = 0;
-                        for (Map<Instant, Double> map : proTerm) {
-                            s += map.get(b);
-                        }
-                        out.put(b, s);
+                summenVerlauf(q, von, bis, zone, besucht, tiefe + 1).forEach((b, summe) -> {
+                    if (summe != null) {
+                        out.put(b, summe);
                     }
-                }
+                });
                 return out;
             }
             KanalRef ref = fuehrenderKanal(q);
@@ -498,6 +698,13 @@ public class MessstelleFormelService {
         neu.put("medium", medium);
         neu.put("hauptgroesse", Map.of("groesse", haupt.groesse(), "richtung", haupt.richtung(),
                 "einheit", haupt.einheit(), "wertart", haupt.wertart()));
+        neu.put("formel", termeJson(bindungen));
+        neu.put("notiz", notiz);
+        aenderungen.eintragen(new NeuerEintrag(TenantContext.get(), id, "angelegt", null, alsJson(neu),
+                jetzt, false, null, wer.sub(), wer.name(), wer.rolle(), wer.art()));
+    }
+
+    private static List<Map<String, Object>> termeJson(List<Bindung> bindungen) {
         List<Map<String, Object>> formel = new ArrayList<>();
         for (Bindung b : bindungen) {
             Map<String, Object> term = new LinkedHashMap<>();
@@ -510,10 +717,7 @@ public class MessstelleFormelService {
             term.put("faktor", b.faktor());
             formel.add(term);
         }
-        neu.put("formel", formel);
-        neu.put("notiz", notiz);
-        aenderungen.eintragen(new NeuerEintrag(TenantContext.get(), id, "angelegt", null, alsJson(neu),
-                jetzt, false, null, wer.sub(), wer.name(), wer.rolle(), wer.art()));
+        return formel;
     }
 
     private String alsJson(Object o) {
@@ -531,6 +735,71 @@ public class MessstelleFormelService {
             case "30d" -> Duration.ofDays(30);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unbekannter Zeitraum.");
         };
+    }
+
+    /** Die Terme der Fassung, die an dem Tag gilt — leer, wenn an dem Tag keine gilt. */
+    private List<TermZeile> termeAm(UUID messstelleId, LocalDate tag) {
+        return fassungAm(fassungen.wirksame(messstelleId), tag).map(f -> terme.derFassung(f.id())).orElse(List.of());
+    }
+
+    private static Optional<FassungZeile> fassungAm(List<FassungZeile> wirksam, LocalDate tag) {
+        return MessstelleFormelRegeln.fassungAm(wirksam.stream().map(FassungZeile::alsRegel).toList(), tag)
+                .flatMap(r -> wirksam.stream().filter(f -> f.nummer() == r.nummer()).findFirst());
+    }
+
+    /**
+     * Die Zeitzone, in der die Tage zählen: die des Unternehmens (die zulässigen Zeitzonen der
+     * Standorte haben dieselben Regeln, {@link MessstelleService#ZEITZONE}) — ohne Unternehmen-Zeile
+     * die Vorgabe.
+     */
+    private ZoneId zone() {
+        return unternehmen.desKundenbereichs().map(u -> ZoneId.of(u.zeitzone())).orElse(MessstelleService.ZEITZONE);
+    }
+
+    private LocalDate heute(ZoneId zone) {
+        return uhr.instant().atZone(zone).toLocalDate();
+    }
+
+    private static Instant spaeter(Instant a, Instant b) {
+        return b.isAfter(a) ? b : a;
+    }
+
+    private static Instant frueher(Instant a, Instant b) {
+        return b.isBefore(a) ? b : a;
+    }
+
+    private static String sqlState(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof java.sql.SQLException q && q.getSQLState() != null) {
+                return q.getSQLState();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * GENAU EIN Eintrag je eingetragener Fassung: {@code alt} = die beendete Fassung (Nummer, Tage),
+     * {@code neu} = die neue mit ihren Termen; {@code gilt_ab} ist Mitternacht ihres ersten Tages,
+     * {@code rueckwirkend} das Urteil der Regel.
+     */
+    private void fassungProtokoll(UUID id, FassungZeile alt, FassungUrteil u, int nummer, String typ,
+            List<Bindung> bindungen,
+            ZoneId zone, Instant jetzt, String begruendung, ProtokollAkteur wer) {
+        Map<String, Object> vorher = null;
+        if (alt != null) {
+            vorher = new LinkedHashMap<>();
+            vorher.put("fassung", alt.nummer());
+            vorher.put("gueltig_ab", alt.gueltigAb() == null ? null : alt.gueltigAb().toString());
+            vorher.put("gueltig_bis", u.beendenAm().toString());
+        }
+        Map<String, Object> neu = new LinkedHashMap<>();
+        neu.put("fassung", nummer);
+        neu.put("formel_typ", typ);
+        neu.put("gueltig_ab", u.ab().toString());
+        neu.put("formel", termeJson(bindungen));
+        aenderungen.eintragen(new NeuerEintrag(TenantContext.get(), id, PROTOKOLL_ART,
+                vorher == null ? null : alsJson(vorher), alsJson(neu), u.ab().atStartOfDay(zone).toInstant(),
+                u.rueckwirkend(), begruendung, wer.sub(), wer.name(), wer.rolle(), wer.art()));
     }
 
     private static Instant juenger(Instant a, Instant b) {

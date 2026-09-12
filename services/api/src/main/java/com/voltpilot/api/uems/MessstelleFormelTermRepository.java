@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import com.voltpilot.api.tenant.TenantContext;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,37 +29,63 @@ public class MessstelleFormelTermRepository {
     /** Ob eine Formel Terme hat und ob JEDER Term-Eingang eingerichtet ist (fehlt: eingaenge). */
     public record FormelStand(boolean vorhanden, boolean eingerichtet) {}
 
+    /** Alle Terme der Messstelle über ALLE ihre Fassungen, nach Fassung und Reihenfolge. */
     public List<TermZeile> derMessstelle(UUID messstelleId) {
-        return jdbc.query("SELECT id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
-                + "vorzeichen, faktor FROM messstelle_formel_term WHERE messstelle_id = ? ORDER BY position",
-                (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
-                        rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
-                        rs.getString("point_key"), rs.getObject("quell_messstelle_id", UUID.class),
-                        rs.getString("vorzeichen"), rs.getDouble("faktor")),
-                messstelleId);
+        return jdbc.query("SELECT t.id, t.position, t.eingang_art, t.entity_id, t.point_key, "
+                + "t.quell_messstelle_id, t.vorzeichen, t.faktor FROM messstelle_formel_term t "
+                + "JOIN messstelle_formel_fassung f ON f.id = t.fassung_id "
+                + "WHERE t.messstelle_id = ? ORDER BY f.nummer, t.position",
+                TERM, messstelleId);
     }
 
-    /** Legt einen Term an; {@code tenant_id} aus dem {@link TenantContext} (die Policy prüft ihn). */
-    public void anlegen(UUID messstelleId, int position, String eingangArt, UUID entityId,
+    /** Die Terme EINER Fassung in Reihenfolge — die Formel eines Tages (AP-10 IP-3). */
+    public List<TermZeile> derFassung(UUID fassungId) {
+        return jdbc.query("SELECT id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
+                + "vorzeichen, faktor FROM messstelle_formel_term WHERE fassung_id = ? ORDER BY position",
+                TERM, fassungId);
+    }
+
+    private static final org.springframework.jdbc.core.RowMapper<TermZeile> TERM =
+            (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
+                    rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
+                    rs.getString("point_key"), rs.getObject("quell_messstelle_id", UUID.class),
+                    rs.getString("vorzeichen"), rs.getDouble("faktor"));
+
+    /** Legt einen Term in seiner Fassung an; {@code tenant_id} aus dem {@link TenantContext}. */
+    public void anlegen(UUID fassungId, UUID messstelleId, int position, String eingangArt, UUID entityId,
             String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor) {
-        jdbc.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, "
+        jdbc.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, "
                 + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor) "
-                + "VALUES (?,?,?,?,?,?,?,?,?)",
-                TenantContext.get(), messstelleId, position, eingangArt, entityId, pointKey,
+                + "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                TenantContext.get(), messstelleId, fassungId, position, eingangArt, entityId, pointKey,
                 quellMessstelleId, vorzeichen, faktor);
     }
 
     /**
-     * Der Stand der Formel für den Lebenszyklus: {@code vorhanden} = mindestens ein Term;
+     * Legt einen Term OHNE Fassung an (der Schreibweg von PR #688): die Datenbank legt ihn in die
+     * EINZIGE Fassung der Messstelle, gibt es keine, entsteht Fassung 1 ohne ersten Tag
+     * (Trigger {@code messstelle_formel_term_zu_fassung}, V20260912210000). Hat die Messstelle
+     * mehrere Fassungen, lehnt sie ab — dann {@link #anlegen(UUID, UUID, int, String, UUID, String,
+     * UUID, String, double)}.
+     */
+    public void anlegen(UUID messstelleId, int position, String eingangArt, UUID entityId,
+            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor) {
+        anlegen(null, messstelleId, position, eingangArt, entityId, pointKey, quellMessstelleId, vorzeichen,
+                faktor);
+    }
+
+    /**
+     * Der Stand der Formel AN DEM TAG für den Lebenszyklus — gezählt werden nur die Terme der
+     * Fassung, die an dem Tag gilt (AP-10 IP-3): {@code vorhanden} = mindestens ein Term;
      * {@code eingerichtet} = jeder Term-Eingang ist noch da — ein Messkanal-Term über eine
      * bekannte Mess-Selektion der Komponente ({@code device_measurement_selection}), ein
      * messstelle-Term über eine noch nicht archivierte Quell-Messstelle. Sonst {@code fehlt:
      * eingaenge} (§2.2 „Komponente/Kanal nicht mehr da"). Alles RLS-scoped.
      */
-    public FormelStand stand(UUID messstelleId) {
+    public FormelStand stand(UUID messstelleId, LocalDate tag) {
         Integer gesamt = jdbc.queryForObject(
-                "SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ?",
-                Integer.class, messstelleId);
+                "SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ? AND " + FASSUNG_AM,
+                Integer.class, messstelleId, tag, tag);
         if (gesamt == null || gesamt == 0) {
             return new FormelStand(false, false);
         }
@@ -66,6 +93,7 @@ public class MessstelleFormelTermRepository {
         Integer unaufloesbar = jdbc.queryForObject("""
                 SELECT count(*) FROM messstelle_formel_term t
                  WHERE t.messstelle_id = ?
+                """ + " AND t." + FASSUNG_AM + """
                    AND (
                      (t.eingang_art = 'messkanal' AND NOT EXISTS (
                         SELECT 1 FROM device_measurement_selection s
@@ -74,7 +102,12 @@ public class MessstelleFormelTermRepository {
                         SELECT 1 FROM messstelle q
                          WHERE q.id = t.quell_messstelle_id AND q.archiviert_am IS NULL))
                    )
-                """, Integer.class, messstelleId);
+                """, Integer.class, messstelleId, tag, tag);
         return new FormelStand(true, unaufloesbar == null || unaufloesbar == 0);
     }
+
+    /** Der Term gehört zur Fassung, die an dem Tag gilt (zwei Parameter: der Tag, zweimal). */
+    private static final String FASSUNG_AM = "fassung_id IN (SELECT f.id FROM messstelle_formel_fassung f "
+            + "WHERE f.aufgehoben_am IS NULL AND (f.gueltig_ab IS NULL OR f.gueltig_ab <= ?) "
+            + "AND (f.gueltig_bis IS NULL OR f.gueltig_bis >= ?))";
 }

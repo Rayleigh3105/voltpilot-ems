@@ -28,6 +28,12 @@ public final class MessstelleFormelAbgelehnt extends RuntimeException {
         return new MessstelleFormelAbgelehnt(fehler.code(), fehler.status(), satz, fakten);
     }
 
+    /** Ein Urteil über die Tage einer Fassung (AP-10 IP-3): Code und Status aus {@link MessstelleFormelRegeln.FassungFehler}. */
+    public static MessstelleFormelAbgelehnt fassung(MessstelleFormelRegeln.FassungFehler fehler, String satz,
+            Map<String, Object> fakten) {
+        return new MessstelleFormelAbgelehnt(fehler.code(), fehler.status(), satz, fakten);
+    }
+
     /** Ein Feld fehlt, hat die falsche Form oder ist nicht auflösbar (400). */
     public static MessstelleFormelAbgelehnt anfrage(String feld, String satz) {
         return new MessstelleFormelAbgelehnt("anfrage_ungueltig", 400, satz, Map.of("feld", feld));

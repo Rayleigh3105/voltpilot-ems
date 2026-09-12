@@ -2,11 +2,19 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
 import com.voltpilot.api.uems.MessstelleRegeln.KatalogEintrag;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.Rueckwirkung;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungEingang;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungErgebnis;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -24,7 +32,7 @@ import java.util.Set;
  * {@link MessstelleRegeln#groessePruefen}) — der Helfer ist der erste AP-10-Formel-Typ, kein
  * zweites Modell.
  *
- * <h2>Die drei Regeln</h2>
+ * <h2>Die vier Regeln</h2>
  *
  * <ul>
  *   <li><b>Größe ableiten</b> ({@link #formelGroesse}): alle Terme tragen dieselbe
@@ -35,6 +43,9 @@ import java.util.Set;
  *       (Bausteine), aber nie im Kreis.
  *   <li><b>Gewichtete Summe</b> ({@link #gewichteteSumme}): der Wert selbst — mit
  *       Einheiten-Normierung und der harten Ehrlichkeitsregel {@code null} statt Teilsumme.
+ *   <li><b>Fassungen je Tag</b> ({@link #fassungEintrag}, {@link #fassungAm}, AP-10 IP-3, §6): eine
+ *       neue Fassung beendet die laufende am Vortag, eine Überlappung wird abgelehnt, eine
+ *       rückwirkende trägt ihr Kennzeichen; gerechnet wird mit der Fassung DES TAGES.
  * </ul>
  */
 public final class MessstelleFormelRegeln {
@@ -242,6 +253,121 @@ public final class MessstelleFormelRegeln {
             }
         }
         return wert;
+    }
+
+    // ------------------------------------------------- Fassungen je Tag (§6, AP-10 IP-3)
+
+    /** Der Formel-Typ von PR #688 — heute der einzige; {@code rest} und {@code saldo} kommen mit IP-4. */
+    public static final String GEWICHTETE_SUMME = "gewichtete_summe";
+
+    /**
+     * Die Fehler der Fassungen. Eine EIGENE Tabelle neben {@link Fehler}: die schreibt
+     * {@code messstelle-formel-vectors.json} Zeile für Zeile fest, und die Vektor-Datei bleibt mit
+     * AP-10 unberührt. Der Code steht im Vertrag {@code bilanz-vectors.json} ({@code fehler_neu}).
+     */
+    public enum FassungFehler {
+        /** Die neue Fassung beginnt nicht nach dem Beginn der jüngsten. */
+        FORMEL_FASSUNG_UEBERLAPPT("formel_fassung_ueberlappt", 422);
+
+        private final String code;
+        private final int status;
+
+        FassungFehler(String code, int status) {
+            this.code = code;
+            this.status = status;
+        }
+
+        public String code() {
+            return code;
+        }
+
+        public int status() {
+            return status;
+        }
+    }
+
+    /**
+     * Eine wirksame (nicht aufgehobene) Fassung: Nummer, erster Tag ({@code null} = gilt seit
+     * Beginn — nur Fassung 1, der Bestand von PR #688) und letzter Tag einschließlich
+     * ({@code null} = bis auf Weiteres).
+     */
+    public record Fassung(int nummer, LocalDate ab, LocalDate bis) {
+
+        /** Gilt diese Fassung an dem Tag? Beide Enden einschließlich (Muster A). */
+        public boolean deckt(LocalDate tag) {
+            return (ab == null || !tag.isBefore(ab)) && (bis == null || !tag.isAfter(bis));
+        }
+    }
+
+    /**
+     * Die Fassung, die an dem Tag gilt — höchstens eine, weil sich wirksame Fassungen nie
+     * überlappen. Leer vor dem ersten Tag der ersten Fassung (eine Fassung gilt nie rückwärts).
+     */
+    public static Optional<Fassung> fassungAm(List<Fassung> wirksam, LocalDate tag) {
+        return wirksam.stream().filter(f -> f.deckt(tag)).findFirst();
+    }
+
+    /**
+     * Das Urteil über eine neue Fassung. {@code fehler == null} heißt: sie darf entstehen, als
+     * Fassung {@code nummer} ab {@code ab} (offen); {@code beenden} ist die Fassung, die dafür am
+     * Vortag endet ({@code null}: keine). {@code rueckwirkend}/{@code tage}/{@code abzeichen} sind
+     * das Rückwirkend-Kennzeichen ({@link OrtsbaumAbleitung#rueckwirkung}, dieselben Wörter wie am
+     * Ortsbaum). Bei {@code fehler} nennt {@code konflikt} die Fassung, an der er hängt.
+     */
+    public record FassungUrteil(FassungFehler fehler, String satz, Fassung konflikt, int nummer,
+            LocalDate ab, Fassung beenden, LocalDate beendenAm, boolean rueckwirkend, long tage,
+            String abzeichen) {}
+
+    /**
+     * Eine neue Fassung ab dem Tag {@code ab} (§6): sie beendet die laufende am VORTAG und gilt
+     * bis auf Weiteres; nichts wird überschrieben. Beginnt sie nicht NACH dem Beginn der jüngsten
+     * Fassung (am selben Tag oder davor), überlappt sie und wird abgelehnt
+     * ({@code formel_fassung_ueberlappt}) — Fassungen reihen sich nur hinten an, damit ihre Nummer
+     * die Reihenfolge der Tage bleibt. Die jüngste Fassung ohne ersten Tag (Bestand) endet an
+     * jedem Vortag. Eine Fassung vor dem Eintragstag (in der Zeitzone des Standorts) ist erlaubt,
+     * aber nie unsichtbar: sie trägt das Rückwirkend-Kennzeichen samt Zahl der Tage.
+     */
+    public static FassungUrteil fassungEintrag(List<Fassung> wirksam, LocalDate ab,
+            OffsetDateTime eingetragenUm, ZoneId zone) {
+        if (ab == null) {
+            throw new IllegalArgumentException("Eine eingetragene Fassung hat einen ersten Tag");
+        }
+        Fassung juengste = wirksam.stream().max(Comparator.comparingInt(Fassung::nummer)).orElse(null);
+        if (juengste != null && juengste.ab() != null && !ab.isAfter(juengste.ab())) {
+            String satz = ab.equals(juengste.ab())
+                    ? "Ab diesem Tag gilt schon Fassung " + juengste.nummer() + "."
+                    : "Ab dem " + OrtsbaumAbleitung.datumText(juengste.ab()) + " gilt schon Fassung "
+                            + juengste.nummer() + " — eine neue Fassung beginnt nach diesem Tag.";
+            return new FassungUrteil(FassungFehler.FORMEL_FASSUNG_UEBERLAPPT, satz, juengste, 0, null, null,
+                    null, false, 0, null);
+        }
+        Fassung beenden = juengste != null && (juengste.bis() == null || !ab.isAfter(juengste.bis()))
+                ? juengste : null;
+        RueckwirkungErgebnis r = OrtsbaumAbleitung.rueckwirkung(
+                new RueckwirkungEingang(eingetragenUm, ab, null, zone, null));
+        boolean rueckwirkend = r.art() == Rueckwirkung.RUECKWIRKEND;
+        return new FassungUrteil(null, null, null, juengste == null ? 1 : juengste.nummer() + 1, ab, beenden,
+                beenden == null ? null : ab.minusDays(1), rueckwirkend, rueckwirkend ? r.tage() : 0,
+                r.abzeichen());
+    }
+
+    /**
+     * Bleibt die Hauptgröße der Messstelle mit der Formel einer neuen Fassung dieselbe? Die
+     * Hauptgröße ist identitätsstiftend (eine andere Größe ist eine andere Messstelle) — eine
+     * Fassung, deren abgeleitete Größe abweicht, ist {@code groessen_gemischt} mit dem ersten
+     * verletzten Merkmal ({@code groesse} → {@code wertart} → {@code richtung}); sonst {@code null}.
+     */
+    public static String hauptgroesseAbweichung(Groesse messstelle, Groesse formel) {
+        if (!messstelle.groesse().equals(formel.groesse())) {
+            return "groesse";
+        }
+        if (!messstelle.wertart().equals(formel.wertart())) {
+            return "wertart";
+        }
+        if (!messstelle.richtung().equals(formel.richtung())) {
+            return "richtung";
+        }
+        return null;
     }
 
     private static double runde(double wert) {

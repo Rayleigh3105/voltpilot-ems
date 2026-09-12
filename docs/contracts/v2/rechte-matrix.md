@@ -89,7 +89,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Nachträge der später konzipierten Pakete
 
-AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026). Die 5 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026). Die 6 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
@@ -100,6 +100,8 @@ AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Capt
 | Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 | U | U | S | - | - | Ei | - | Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10). |
 | Zuständige Box wechseln · Box tauschen | AP-06 §4.8 | U | - | S | - | - | Ei | - | Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9). |
 | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 | U | U | S | S | S | A | - | AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““. |
+| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
+| Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 (E15) | U | U | S | - | - | Ei | - | AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`. |
 
 ### Jede Handlung der Rechte-Abschnitte
 
@@ -121,6 +123,8 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-07 §4.10 | Ereignisse einsehen | wie Verlauf | Standortleser | `ereignisse.ansehen` | neue Zeile |  |
 | AP-07 §4.10 | Korrektur nach `late_arrival` anstoßen | Messdatenpflege (AP-03 Achse Messdaten), Ablauf AP-08 | Bearbeiter | `korrektur.erfassen` | bestehende Zeile | Der Anstoß öffnet den Korrektur-Ablauf von AP-08; das Recht ist die Messdatenpflege dieser Zeile — nie der Unterstützer. |
 | AP-07 §4.10 | Datenaufzeichnungen löschen (Purge) | Kundenadministrator; für Messstellen-gebundene Reihen gesperrt (E8) | Kundenadministrator | `aufzeichnungen.loeschen` | bestehende Zeile | Die Sperre für Messstellen-gebundene Reihen (AP-07 E8) ist eine Regel des Objekts, keine Zelle — sie gilt auch für den Kundenadministrator und wird im Löschweg geprüft, nicht in `darf`. |
+| AP-10 §4.10 | berechnete Messstelle anlegen, Fassung ändern | Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst − | `messstelle.formel` | `messstelle.formel` | neue Zeile | Seit AP-10 IP-3 nennen `POST /api/v1/messstellen/berechnet` und `POST …/messstellen/{id}/formel/fassungen` die Kennung (davor `messstelle.bearbeiten`). |
+| AP-10 §4.10 | Lesen der Bilanz, Verteilung und Herkunft | über `messstelle.ansehen` | `messstelle.ansehen` | `messstelle.ansehen` | bestehende Zeile | Auch die Formel zu einem Tag (`GET …/formel?am=`); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`. |
 
 ### Regeln ohne eigene Zeile
 
@@ -134,6 +138,8 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | AP-04 §6.7 | Aggregate („x von y Messstellen liefern Daten“) serverseitig über die sichtbare Menge mit `teilansicht` | rechte-vectors.json, Familie teilansicht (Ableitungen `teilansicht` und `summe`) |
 | AP-05 §6 | Pilot-Protokolle als Verlauf-Einträge mit Urheber | keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur) |
 | AP-05 §6 | „AP-05 sagt nur, wer den Bogen ausfüllt, wer die Karte einstellt und wer die Vorlage freigibt“ (§6.1) | Bogen → `datenquelle.bearbeiten`; die Karte stellt der Installateur AM GERÄT ein (WAGO-I/O-CHECK, §4.7) — keine Portal-Handlung, die Einstellungs-Fassung trägt `messstelle.quelle` (Wandlerfaktoren, AP-04); Vorlage → `plattform.betrieb` |
+| AP-10 §4.10 | `messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`) | noch keine Zeile — jede entsteht mit dem Bau-Paket, das ihre Route baut: AP-10 IP-8 (Verteilung), IP-7 (Kostenstelle, Prozess), IP-6 (Netzanschluss) |
+| AP-10 §4.10 | Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen) | keine eigene Zeile — der Unterstützer-Umfang der Matrix (`umfaenge`); in `messstelle.formel` die Zelle Ei |
 
 ## Kennungen
 
@@ -194,3 +200,4 @@ Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor ver
 | `datenquelle.bearbeiten` | Datenquellen und Boxen (AP-06) | Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 |
 | `datenquelle.zustaendigkeit` | Datenquellen und Boxen (AP-06) | Zuständige Box wechseln · Box tauschen | AP-06 §4.8 |
 | `datenquelle.ansehen` | Datenquellen und Boxen (AP-06) | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 |
+| `messstelle.formel` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 |

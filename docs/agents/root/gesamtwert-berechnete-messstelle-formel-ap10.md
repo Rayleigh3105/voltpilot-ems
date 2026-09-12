@@ -35,6 +35,11 @@ Edge-Vertrag bleibt unangetastet.
 `GET /api/v1/messstellen/{id}` zeigt eine fertige berechnete Messstelle ehrlich als `aktiv`, nicht
 mehr `entwurf`); das Register (IP-4) batcht die Formel noch nicht und lässt sie dort Entwurf.
 
+**Seit AP-10 IP-3 (Fassungen je Tag):** die Terme gehören zu einer Fassung
+(`messstelle_formel_fassung`, Fassung 1 ohne ersten Tag), gerechnet wird mit der Fassung des Tages,
+`GET …/formel?am=` und `POST …/formel/fassungen` kommen dazu, das Anlegen trägt das Recht
+`messstelle.formel` — Details und Fallen in `uems-formel-fassungen-je-tag.md`.
+
 **Endpunkte:** `POST /api/v1/messstellen/berechnet`, `GET …/{id}/formel|wert|verlauf`
 (`MessstelleFormelController`). Prüfen: `MessstelleFormelRegelnVectorsTest` (rein),
 `MessstelleFormelTermMigrationTest` + `MessstelleFormelApiTest` (DB), `uemsMessstelleFormel.test.ts`.
