@@ -16,6 +16,10 @@ die IP-3 … IP-19 gebaut werden).
   `BezugsdatenVectorsTest` (`@TestFactory`, Schema über den geteilten `uems/UemsSchemaLaeufer`).
 - **TypeScript:** `frontend/portal/src/bezugsdaten.ts` + `bezugsdaten.test.ts` (Schema über
   `src/test/uemsSchemaLaeufer.ts`).
+- ⚠ **Seit AP-09 IP-3 wohnen die Regeln `einheit` und `periode`/`zeit`/`stunden` in eigenen
+  Modulen** (`uems/BezugsEinheit`, `uems/BezugsPeriode` ⟷ `bezugsEinheit.ts`, `bezugsPeriode.ts`);
+  die beiden Dateien oben RUFEN sie an. Details, Fallen und die Umrechnungsgrenze:
+  [`uems-einheiten-perioden-module.md`](./uems-einheiten-perioden-module.md).
 
 ## `zwillinge` ist Teil des Vertrags
 
