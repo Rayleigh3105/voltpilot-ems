@@ -122,6 +122,60 @@ class DataRetentionPolicyTest {
         }
     }
 
+    /**
+     * AP-07 IP-12 (Entscheid E6/E7): die Speicherklasse Viertelstundenwerte behält JEDE Reihe
+     * ZEHN JAHRE - Retention genau 3 653 Tage, und keine Kompression, weil sie RLS/FORCE ist.
+     * Das Kompressions-LAYOUT ist trotzdem festgelegt und abrufbar, damit ein späterer Umbau
+     * (E7-B, nach der Messung aus IP-16) die Daten nicht wandern lassen muss.
+     */
+    @Test
+    void theQuarterHourClassKeepsTenYearsWithoutCompressionButWithAPreparedLayout() throws Exception {
+        assertThat(hasJob("policy_retention", "messreihe_viertelstunde"))
+                .as("messreihe_viertelstunde retention policy").isTrue();
+        assertThat(hasRetentionOf("messreihe_viertelstunde", 3653))
+                .as("messreihe_viertelstunde retention is exactly 3653 days (ten years)").isTrue();
+        assertThat(hasJob("policy_compression", "messreihe_viertelstunde"))
+                .as("messreihe_viertelstunde must have NO compression policy").isFalse();
+        assertThat(compressionEnabled("messreihe_viertelstunde"))
+                .as("messreihe_viertelstunde must NOT be compression-enabled (RLS/FORCE, E7)").isFalse();
+
+        try (Connection c = admin();
+                PreparedStatement ps = c.prepareStatement(
+                        "SELECT segmentby, orderby FROM messreihe_viertelstunde_kompression_layout()");
+                ResultSet rs = ps.executeQuery()) {
+            assertThat(rs.next()).as("the prepared layout is retrievable").isTrue();
+            assertThat(rs.getString("segmentby")).isEqualTo("tenant_id, entity_id, messkanal");
+            assertThat(rs.getString("orderby")).isEqualTo("intervall_beginn DESC");
+        }
+
+        // Die Arbeitsliste und der Laufzustand sind keine Hypertables - sie tragen also weder
+        // Retention noch Kompression, und das soll auch so bleiben.
+        for (String table : new String[] {
+                "messreihe_viertelstunde_arbeit", "messreihe_viertelstunde_lauf"}) {
+            try (Connection c = admin();
+                    PreparedStatement ps = c.prepareStatement("SELECT count(*) FROM "
+                            + "timescaledb_information.hypertables WHERE hypertable_name = ?")) {
+                ps.setString(1, table);
+                try (ResultSet rs = ps.executeQuery()) {
+                    rs.next();
+                    assertThat(rs.getLong(1)).as(table + " is a plain table").isZero();
+                }
+            }
+        }
+    }
+
+    /**
+     * Der Rohwert bleibt bei seinen 90 Tagen: die Viertelstundenklasse tritt NEBEN ihn, nicht an
+     * seine Stelle (§4.3). Fiele diese Zusicherung, verlöre A2 seinen Sinn.
+     */
+    @Test
+    void theRawClassKeepsItsNinetyDays() throws Exception {
+        assertThat(hasRetentionOf("device_measurement_sample", 90))
+                .as("device_measurement_sample retention is still exactly 90 days").isTrue();
+        assertThat(compressionEnabled("device_measurement_sample"))
+                .as("device_measurement_sample must NOT be compression-enabled").isFalse();
+    }
+
     @Test
     void rawTelemetryAndTheRollupsAreNeverTouched() throws Exception {
         // The regression heart: the raw v1 ML corpus and the permanent reporting
