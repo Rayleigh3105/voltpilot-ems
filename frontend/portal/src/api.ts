@@ -1820,6 +1820,121 @@ export interface EntityHistory {
   channels: Record<string, EntityHistoryBucket[]>;
 }
 
+// --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert", AP-04 IP-13 / AP-10) ---
+
+/**
+ * Ein Messkanal einer Komponente, wie ihn das Read-Model
+ * `GET …/komponenten/{entityId}/messkanaele` nennt: sein Kanal (`point_key`),
+ * Anzeigename und seine Vertrags-Größe/Wertart/Richtung. Der Assistent für den
+ * Gesamtwert liest daraus, welche Werte zueinander passen.
+ */
+export interface Messkanal {
+  kanal: string;
+  anzeigename: string | null;
+  einheit: string | null;
+  wertart: string | null;
+  groesse: string | null;
+  richtung: string | null;
+  quantity: string | null;
+  direction: string | null;
+  kadenzS: number | null;
+  aktiv: boolean;
+}
+
+export interface MesskanalListe {
+  siteId: string;
+  komponente: string;
+  inhaltsstand: string | null;
+  messkanaele: Messkanal[];
+}
+
+/** Eine Messgröße wie im Messstellen-Vertrag (Größe · Richtung · Einheit · Wertart). */
+export interface MessstelleGroesse {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  wertart: string;
+}
+
+/** Eine Messstelle, so wie die Liste/Detail-Route sie nennt (nur die hier gebrauchten Felder). */
+export interface Messstelle {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+  art: string;
+  medium: string | null;
+  lebenszyklus: string;
+  fehlt: string[];
+}
+
+/** Ein Term der Formel, so wie ihn `GET …/{id}/formel` nennt. */
+export interface MessstelleFormelTerm {
+  position: number;
+  eingangArt: string;
+  entityId: string | null;
+  pointKey: string | null;
+  quellMessstelleId: string | null;
+  vorzeichen: string;
+  faktor: number;
+  groesse: MessstelleGroesse | null;
+  eingerichtet: boolean;
+}
+
+/** Die Formel einer berechneten Messstelle (`GET …/{id}/formel`). */
+export interface MessstelleFormel {
+  messstelleId: string;
+  schemaVersion: string;
+  hauptgroesse: MessstelleGroesse | null;
+  terme: MessstelleFormelTerm[];
+  formelVorhanden: boolean;
+  eingaengeEingerichtet: boolean;
+}
+
+/** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
+export interface MessstelleWertFehlend {
+  position: number;
+  grund: string;
+}
+
+/**
+ * Der Live-Wert einer berechneten Messstelle (`GET …/{id}/wert`): die gewichtete
+ * Summe der frischesten Eingänge. Fehlt/veraltet EIN Term, ist `wert` null
+ * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme.
+ */
+export interface MessstelleWert {
+  wert: number | null;
+  einheit: string | null;
+  unvollstaendig: boolean;
+  fehlende: MessstelleWertFehlend[];
+  stand: string | null;
+}
+
+/** Ein 15-min-Zeitraster des Verlaufs; `wert` null = unvollständig (nie 0). */
+export interface MessstelleVerlaufPunkt {
+  zeit: string;
+  wert: number | null;
+}
+
+/** Der Verlauf einer berechneten Messstelle (`GET …/{id}/verlauf`). */
+export interface MessstelleVerlauf {
+  messstelleId: string;
+  einheit: string | null;
+  punkte: MessstelleVerlaufPunkt[];
+}
+
+/** Der Körper von `POST /api/v1/messstellen/berechnet`. */
+export interface BerechneteMessstelleAnlegen {
+  name: string;
+  terme: Array<{
+    eingang_art: 'messkanal' | 'messstelle';
+    entity_id?: string;
+    point_key?: string;
+    quell_messstelle_id?: string;
+    vorzeichen: '+' | '-';
+    faktor: number;
+  }>;
+}
+
 /**
  * Mapped MaStR record for confirmation ("Anlage verknüpfen" step 2). Nothing
  * is persisted until mastrApply; null fields mean "nicht im Register
@@ -5095,4 +5210,63 @@ export const api = {
     }),
   simulationStatus: (siteId: string, simulationId: string) =>
     request<SimulationStatus>(`/api/v1/sites/${siteId}/simulation/${simulationId}`),
+
+  // --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert") ---
+
+  /** Die Messkanäle einer Komponente mit ihrer Vertrags-Größe (Read-Model AP-04). */
+  komponenteMesskanaele: (siteId: string, entityId: string) =>
+    request<MesskanalListe>(`/api/v1/sites/${siteId}/komponenten/${entityId}/messkanaele`),
+
+  /** Alle Messstellen des Kundenbereichs (für die Auswahl der berechneten). */
+  messstellen: () => request<{ messstellen: Messstelle[] }>(`/api/v1/messstellen`),
+
+  /** Eine einzelne Messstelle. */
+  messstelle: (id: string) => request<Messstelle>(`/api/v1/messstellen/${id}`),
+
+  /** Der Vorschlag für das nächste Kennzeichen (MS-…), unaufdringlich gezeigt. */
+  kennzeichenVorschlag: () =>
+    request<{ kennzeichen: string }>(`/api/v1/messstellen/kennzeichen-vorschlag`),
+
+  /** Legt eine berechnete Messstelle (Gesamtwert) mit ihrer gewichteten Summe an. */
+  berechneteMessstelleAnlegen: (body: BerechneteMessstelleAnlegen) =>
+    request<Messstelle>(`/api/v1/messstellen/berechnet`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Die Formel (Terme + abgeleitete Hauptgröße) einer berechneten Messstelle. */
+  messstelleFormel: (id: string) =>
+    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel`),
+
+  /** Der Live-Wert einer berechneten Messstelle (null, wenn unvollständig). */
+  messstelleWert: (id: string) => request<MessstelleWert>(`/api/v1/messstellen/${id}/wert`),
+
+  /** Der Verlauf einer berechneten Messstelle (je 15 min die Summe, sonst null). */
+  messstelleVerlauf: (id: string, range?: string) =>
+    request<MessstelleVerlauf>(
+      `/api/v1/messstellen/${id}/verlauf${range ? `?range=${range}` : ''}`,
+    ),
+
+  /**
+   * Bearbeitet die drei änderbaren Felder einer Messstelle (Kennzeichen · Name ·
+   * Notiz) — der Server ersetzt sie GANZ, ein fehlendes Feld wird leer. Zum
+   * Umbenennen also das bestehende Kennzeichen mitschicken.
+   */
+  messstelleBearbeiten: (id: string, body: { kennzeichen?: string; name: string; notiz?: string }) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  /** Hält eine Messstelle an (behält ihre Definition). */
+  messstelleAnhalten: (id: string) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/anhalten`, { method: 'POST' }),
+
+  /** Setzt eine angehaltene Messstelle fort. */
+  messstelleFortsetzen: (id: string) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/fortsetzen`, { method: 'POST' }),
+
+  /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
+  messstelleArchivieren: (id: string) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
 };

@@ -134,6 +134,7 @@ Bereiche: `../../docs/agents/README.md`.
 - **VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr** — Picker … eigene Komponenten erstellen wo man drin … · `vppicker-ein-picker-fuer-die-ganze-platt.md`
 - **Cockpit anpassen: die Fläche des Layout-Speichers (Anwendungs-Programm Stufe 3)** — Die Portal-Hälfte des Layout-Speichers (Backend, Schema … · `cockpit-anpassen-die-flaeche-des-layout.md`
 - **Eigene Auswertung: die Fläche der Kunden-Kennzahl (Anwendungs-Programm Stufe 5)** — Der Kunde baut sich aus einem Messwert seiner Anlage … · `eigene-auswertung-die-flaeche-der-kunden.md`
+- **Der „Gesamtwert"-Assistent und seine Anzeige (berechnete Messwerte, AP-10)** — 5-Schritt-`Modal` (Geschwister von `EigeneAuswertungDialog`, Baum aus `measurementTree`, `VpPicker`-Mehrfachauswahl mit Live-Wert+Status, `null` statt Teilsumme); reine Hälfte `src/gesamtwert.ts`; Anzeige als Cockpit-Karte + eigener Verlauf-Ast; Kundenwort `GESAMTWERT` in `glossar.ts` · `gesamtwert-assistent-und-anzeige.md`
 - **Das PORTFOLIO-COCKPIT: die Flotten-Fläche (Stufe 4, **Revision 2**)** — der Revision 2 (Scout data/vp-portfolio-konzept-r2 … · `das-portfolio-cockpit-die-flotten-flaech.md`
 - **Steuerung Stufen 1+2: die Jetzt-Zone und die Regel-Karten** — Reine Portal-Arbeit auf bestehenden Endpunkten — es … · `steuerung-stufen-1-2-die-jetzt-zone-und.md`
 - **Steuerung Stufe 5: die Betriebsmodell-Zone ist eine RADIOGRUPPE** — Zone ③ der Steuerung (Konzept data/vp-steuerung-konzept … · `steuerung-stufe-5-die-betriebsmodell-zon.md`

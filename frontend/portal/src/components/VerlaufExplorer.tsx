@@ -9,20 +9,28 @@ import {
   type EntityHistory,
   type History,
   type HistoryRange,
+  type MessstelleFormel,
+  type MessstelleVerlauf,
   type Site,
 } from '../api';
 import { fmtNum } from '../format';
+import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
+import type { ComponentRole } from '../komponenten';
 import { isoDate } from '../periodNav';
 import {
+  berechneteGruppe,
+  berechneteMessstelleId,
   findItem,
   findItems,
   firstTarget,
   isSelected,
+  istBerechnet,
   MAX_SELECTED,
   measurementTree,
   parseVerlaufParams,
   selectionNote,
   seriesFromEntityHistory,
+  seriesFromMessstelleVerlauf,
   toggleTarget,
   v1FallbackTree,
   v1SeriesFromHistory,
@@ -212,6 +220,23 @@ export function VerlaufExplorer({
         if (tree.length > 0) {
           setGroups(tree);
           setIsV1(false);
+          // Der Ast „Berechnete Werte" (Gesamtwerte) hängt sich nach — er ist ein
+          // eigener Ast neben den gemessenen Komponenten, und sein Nachladen darf
+          // den gemessenen Baum nicht aufhalten.
+          ladeSiteGesamtwerte(site.id)
+            .then((quellen) => {
+              if (!active) return;
+              const gruppe = berechneteGruppe(
+                quellen.map((q) => ({
+                  id: q.messstelle.id,
+                  name: q.messstelle.name || 'Gesamtwert',
+                  einheit: q.formel?.hauptgroesse?.einheit ?? '',
+                  role: rolleVon(q.formel),
+                })),
+              );
+              if (gruppe) setGroups((g) => (g ? [...g, gruppe] : [gruppe]));
+            })
+            .catch(() => undefined);
         } else {
           setGroups(v1FallbackTree());
           setIsV1(true);
@@ -273,6 +298,7 @@ export function VerlaufExplorer({
   const entityKey = entityIds.join('|');
 
   const [entHist, setEntHist] = useState<Record<string, EntityHistory>>({});
+  const [compHist, setCompHist] = useState<Record<string, MessstelleVerlauf>>({});
   const [siteHist, setSiteHist] = useState<History | null>(null);
   const [loading, setLoading] = useState(false);
   const [dataErr, setDataErr] = useState<string | null>(null);
@@ -282,19 +308,31 @@ export function VerlaufExplorer({
     let active = true;
     setLoading(true);
     setDataErr(null);
+    // Ein berechneter Wert (Gesamtwert) liest seinen Verlauf über die Messstelle,
+    // ein gemessener über die Komponenten-Historie — beide fließen in dieselbe
+    // Auswahl.
+    const realIds = entityIds.filter((id) => !istBerechnet(id));
+    const compIds = entityIds.filter(istBerechnet).map(berechneteMessstelleId);
     const p = isV1
       ? api.history(site.id, range, at).then((h) => {
           if (!active) return;
           setSiteHist(h);
           setEntHist({});
+          setCompHist({});
         })
-      : Promise.all(
-          entityIds.map((id) =>
-            api.entityHistory(site.id, id, range, at).then((h) => [id, h] as const),
+      : Promise.all([
+          Promise.all(
+            realIds.map((id) =>
+              api.entityHistory(site.id, id, range, at).then((h) => [id, h] as const),
+            ),
           ),
-        ).then((pairs) => {
+          Promise.all(
+            compIds.map((id) => api.messstelleVerlauf(id, range).then((v) => [id, v] as const)),
+          ),
+        ]).then(([entPairs, compPairs]) => {
           if (!active) return;
-          setEntHist(Object.fromEntries(pairs));
+          setEntHist(Object.fromEntries(entPairs));
+          setCompHist(Object.fromEntries(compPairs));
           setSiteHist(null);
         });
     p.catch((e) => active && setDataErr(e instanceof ApiError ? e.message : 'Fehler')).finally(
@@ -317,8 +355,12 @@ export function VerlaufExplorer({
     const out: VerlaufSelection[] = [];
     for (const it of items) {
       let series: VerlaufSeries | null = null;
-      if (isV1) series = siteHist ? v1SeriesFromHistory(siteHist, it.channel) : null;
-      else {
+      if (istBerechnet(it.entityId)) {
+        const v = compHist[berechneteMessstelleId(it.entityId)];
+        series = v ? seriesFromMessstelleVerlauf(v, range) : null;
+      } else if (isV1) {
+        series = siteHist ? v1SeriesFromHistory(siteHist, it.channel) : null;
+      } else {
         const h = entHist[it.entityId];
         series = h ? seriesFromEntityHistory(h, it.channel) : null;
       }
@@ -332,7 +374,7 @@ export function VerlaufExplorer({
       });
     }
     return out;
-  }, [groups, items, ambiguous, isV1, siteHist, entHist]);
+  }, [groups, items, ambiguous, isV1, siteHist, entHist, compHist, range]);
 
   const withData = selections?.filter((s) => !s.series.empty) ?? [];
   const empty = selections != null && withData.length === 0;
@@ -541,6 +583,18 @@ const ROLE_ICON: Record<string, IconName> = {
   house: 'home',
   consumer: 'zap',
 };
+
+/**
+ * Die Chart-Rolle (Farbe/Icon) eines berechneten Werts aus seiner Hauptgröße:
+ * eine PV-Erzeugung liest sich als PV (orange), ein Ladestand als Speicher,
+ * sonst neutral. Rein für die Darstellung — die Rechnung bleibt beim Server.
+ */
+function rolleVon(formel: MessstelleFormel | null): ComponentRole {
+  const g = formel?.hauptgroesse;
+  if (g?.groesse === 'Wirkleistung' && g?.richtung === 'Erzeugung') return 'pv';
+  if (g?.groesse === 'Ladestand') return 'storage';
+  return 'consumer';
+}
 
 /** A short German time/date note for a stat's extreme. */
 function atTime(iso: string, range: HistoryRange): string {

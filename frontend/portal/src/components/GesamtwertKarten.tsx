@@ -1,0 +1,271 @@
+import { useEffect, useState } from 'react';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { api, type Messstelle, type MessstelleFormel, type MessstelleWert } from '../api';
+import { fmtNum } from '../format';
+import { GESAMTWERT } from '../gesamtwert';
+import { istGesamtPv, setzeGesamtPv } from '../gesamtwertCanonical';
+import { ladeSiteGesamtwerte as ladeQuellen } from '../gesamtwertQuelle';
+import { ConfirmDialog } from './ConfirmDialog';
+import { RowMenu, type RowMenuItem } from './RowMenu';
+import './Gesamtwert.css';
+
+/**
+ * Die COCKPIT-Fläche der Gesamtwerte (Konzept `vp-helfer-konzept-h1` §2.5): ein
+ * berechneter Wert erscheint auf „Meine Anlage" mit seinem Live-Wert wie ein
+ * gemessener — nur trägt er ein dezentes „berechnet". Von hier laufen auch die
+ * Lebenszyklus-Wege (umbenennen · anhalten/fortsetzen · archivieren statt hartem
+ * Löschen) und die Anzeige-Rolle „gilt als Gesamt-PV".
+ *
+ * Render-only. Der Wert selbst kommt vom Server (`GET …/wert`); ist EIN Term
+ * unvollständig, steht das da — nie eine heimlich kleinere Summe. Ohne einen
+ * einzigen Gesamtwert rendert die Fläche nichts (kein leerer Kasten).
+ */
+
+interface GwZeile {
+  messstelle: Messstelle;
+  formel: MessstelleFormel | null;
+  wert: MessstelleWert | null;
+}
+
+export function GesamtwertKarten({
+  siteId,
+  version,
+  onNeu,
+}: {
+  siteId: string;
+  /** Erhöht sich, wenn ein neuer Gesamtwert angelegt wurde — dann neu laden. */
+  version: number;
+  /** Öffnet den Assistenten für einen weiteren Gesamtwert. */
+  onNeu?: () => void;
+}) {
+  const [zeilen, setZeilen] = useState<GwZeile[] | null>(null);
+  const [umbenennen, setUmbenennen] = useState<{ id: string; name: string } | null>(null);
+  const [archivieren, setArchivieren] = useState<GwZeile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [neuLaden, setNeuLaden] = useState(0);
+
+  useEffect(() => {
+    let aktiv = true;
+    setZeilen(null);
+    ladeSiteGesamtwerte(siteId)
+      .then((zs) => aktiv && setZeilen(zs))
+      .catch(() => aktiv && setZeilen([]));
+    return () => {
+      aktiv = false;
+    };
+  }, [siteId, version, neuLaden]);
+
+  const auffrischen = () => setNeuLaden((n) => n + 1);
+
+  const anhalten = async (z: GwZeile, an: boolean) => {
+    setBusy(true);
+    try {
+      if (an) await api.messstelleAnhalten(z.messstelle.id);
+      else await api.messstelleFortsetzen(z.messstelle.id);
+      auffrischen();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const alsPv = (z: GwZeile) => {
+    setzeGesamtPv(siteId, istGesamtPv(siteId, z.messstelle.id) ? null : z.messstelle.id);
+    auffrischen();
+  };
+
+  const speichereName = async () => {
+    if (!umbenennen) return;
+    setBusy(true);
+    try {
+      const z = zeilen?.find((x) => x.messstelle.id === umbenennen.id);
+      await api.messstelleBearbeiten(umbenennen.id, {
+        kennzeichen: z?.messstelle.kennzeichen,
+        name: umbenennen.name.trim(),
+      });
+      setUmbenennen(null);
+      auffrischen();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bestaetigeArchiv = async () => {
+    if (!archivieren) return;
+    setBusy(true);
+    try {
+      await api.messstelleArchivieren(archivieren.messstelle.id);
+      if (istGesamtPv(siteId, archivieren.messstelle.id)) setzeGesamtPv(siteId, null);
+      setArchivieren(null);
+      auffrischen();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Kein leerer Kasten: ohne einen einzigen Gesamtwert rendert die Fläche nichts.
+  if (zeilen == null || zeilen.length === 0) return null;
+
+  return (
+    <section className="vp-gwk" aria-label={`${GESAMTWERT}e`}>
+      <div className="vp-gwk-head">
+        <h3>Zusammengestellte Werte</h3>
+        {onNeu && (
+          <button type="button" className="vp-gwk-neu" onClick={onNeu}>
+            <Icon name="plus" size={15} /> {GESAMTWERT}
+          </button>
+        )}
+      </div>
+      <div className="vp-gwk-grid">
+        {zeilen.map((z) => (
+          <Karte
+            key={z.messstelle.id}
+            zeile={z}
+            istPv={istGesamtPv(siteId, z.messstelle.id)}
+            pvMoeglich={
+              z.formel?.hauptgroesse?.groesse === 'Wirkleistung' &&
+              z.formel?.hauptgroesse?.richtung === 'Erzeugung'
+            }
+            bearbeiten={umbenennen?.id === z.messstelle.id ? umbenennen : null}
+            busy={busy}
+            onNameEntwurf={(name) => setUmbenennen({ id: z.messstelle.id, name })}
+            onNameSpeichern={speichereName}
+            onNameAbbrechen={() => setUmbenennen(null)}
+            onAnhalten={() => anhalten(z, z.messstelle.lebenszyklus !== 'angehalten')}
+            onAlsPv={() => alsPv(z)}
+            onUmbenennen={() => setUmbenennen({ id: z.messstelle.id, name: z.messstelle.name ?? '' })}
+            onArchivieren={() => setArchivieren(z)}
+          />
+        ))}
+      </div>
+
+      <ConfirmDialog
+        open={archivieren != null}
+        title={`„${archivieren?.messstelle.name ?? GESAMTWERT}" archivieren?`}
+        intro="Der Wert verschwindet aus Übersicht und Verlauf — seine bisherige Definition und sein Verlauf bleiben aber erhalten."
+        consequences={[
+          'Das Kennzeichen bleibt belegt und wird nie neu vergeben.',
+          'Sie können jederzeit einen neuen Gesamtwert zusammenstellen.',
+        ]}
+        confirmLabel="Archivieren"
+        tone="danger"
+        busy={busy}
+        onConfirm={bestaetigeArchiv}
+        onCancel={() => setArchivieren(null)}
+      />
+    </section>
+  );
+}
+
+function Karte({
+  zeile,
+  istPv,
+  pvMoeglich,
+  bearbeiten,
+  busy,
+  onNameEntwurf,
+  onNameSpeichern,
+  onNameAbbrechen,
+  onAnhalten,
+  onAlsPv,
+  onUmbenennen,
+  onArchivieren,
+}: {
+  zeile: GwZeile;
+  istPv: boolean;
+  pvMoeglich: boolean;
+  bearbeiten: { id: string; name: string } | null;
+  busy: boolean;
+  onNameEntwurf: (name: string) => void;
+  onNameSpeichern: () => void;
+  onNameAbbrechen: () => void;
+  onAnhalten: () => void;
+  onAlsPv: () => void;
+  onUmbenennen: () => void;
+  onArchivieren: () => void;
+}) {
+  const { messstelle: m, wert } = zeile;
+  const angehalten = m.lebenszyklus === 'angehalten';
+  const menu: RowMenuItem[] = [
+    { label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
+    ...(pvMoeglich
+      ? [{ label: istPv ? 'Nicht mehr als Gesamt-PV' : 'Als Gesamt-PV meiner Anlage', icon: 'sun' as const, onClick: onAlsPv }]
+      : []),
+    { label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
+    { label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
+  ];
+
+  return (
+    <div className={`vp-gwk-card${angehalten ? ' is-angehalten' : ''}`}>
+      <div className="vp-gwk-card-top">
+        <span className="vp-gwk-ic">
+          <Icon name={istPv ? 'sun' : 'sliders'} size={16} />
+        </span>
+        {bearbeiten ? (
+          <span className="vp-gwk-rename">
+            <input
+              autoFocus
+              value={bearbeiten.name}
+              maxLength={80}
+              onChange={(e) => onNameEntwurf(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onNameSpeichern();
+                if (e.key === 'Escape') onNameAbbrechen();
+              }}
+              aria-label="Name"
+            />
+            <button type="button" aria-label="Speichern" disabled={busy || !bearbeiten.name.trim()} onClick={onNameSpeichern}>
+              <Icon name="check" size={16} />
+            </button>
+            <button type="button" aria-label="Abbrechen" onClick={onNameAbbrechen}>
+              <Icon name="x" size={16} />
+            </button>
+          </span>
+        ) : (
+          <span className="vp-gwk-name">{m.name || GESAMTWERT}</span>
+        )}
+        {!bearbeiten && <span className="vp-gwk-chip calc">berechnet</span>}
+        {!bearbeiten && istPv && <span className="vp-gwk-chip solar">gilt als PV</span>}
+        {!bearbeiten && (
+          <span className="vp-gwk-menu">
+            <RowMenu items={menu} />
+          </span>
+        )}
+      </div>
+      <div className="vp-gwk-value">
+        {angehalten ? (
+          <span className="vp-gwk-paused">angehalten</span>
+        ) : wert == null ? (
+          <span className="vp-gwk-unknown">—</span>
+        ) : wert.unvollstaendig ? (
+          <span className="vp-gwk-incomplete">unvollständig</span>
+        ) : (
+          <span className="vp-gwk-big">{fmtNum(wert.wert, wert.einheit ?? '', stellen(wert.wert))}</span>
+        )}
+      </div>
+      {!angehalten && wert?.unvollstaendig && (
+        <p className="vp-gwk-note">Ein Wert fehlt gerade — der Gesamtwert bleibt leer statt zu klein.</p>
+      )}
+    </div>
+  );
+}
+
+function stellen(wert: number | null): number {
+  if (wert == null) return 1;
+  const a = Math.abs(wert);
+  return a >= 100 ? 0 : a >= 10 ? 1 : 2;
+}
+
+/**
+ * Die Gesamtwerte DIESER Anlage samt ihrem Live-Wert. Die Zuordnung (welche
+ * berechnete Messstelle zu dieser Anlage gehört) kommt aus `gesamtwertQuelle`;
+ * hier kommt je Zeile nur noch ihr aktueller Wert (`GET …/wert`) dazu.
+ */
+async function ladeSiteGesamtwerte(siteId: string): Promise<GwZeile[]> {
+  const quellen = await ladeQuellen(siteId);
+  return Promise.all(
+    quellen.map(async ({ messstelle, formel }): Promise<GwZeile> => {
+      const wert = await api.messstelleWert(messstelle.id).catch(() => null);
+      return { messstelle, formel, wert };
+    }),
+  );
+}

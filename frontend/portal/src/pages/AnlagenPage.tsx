@@ -77,6 +77,8 @@ import {
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
 import { EigeneAuswertungDialog } from '../components/EigeneAuswertungDialog';
+import { GesamtwertDialog } from '../components/GesamtwertDialog';
+import { GesamtwertKarten } from '../components/GesamtwertKarten';
 import {
   AnpassenHuelle,
   AnpassenLeiste,
@@ -1494,6 +1496,10 @@ export function AnlageSeite({
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
   >(null);
+  // Der Gesamtwert-Assistent (berechnete Messstelle, AP-10). Ein Speichern
+  // erhöht die Version, an der die Anzeige-Flächen (Cockpit, Verlauf) hängen.
+  const [gesamtwertOffen, setGesamtwertOffen] = useState(false);
+  const [gesamtwertVersion, setGesamtwertVersion] = useState(0);
   // ⚠ Der Abruf hängt an den GESPEICHERTEN Auswertungen, nicht am Entwurf: der
   // Server beantwortet genau die gespeicherten, und der Schlüssel ändert sich
   // damit exakt dann, wenn ein Speichern gelandet ist. Am Entwurf zu hängen
@@ -1753,6 +1759,14 @@ export function AnlageSeite({
           onAbbrechen={() => setEigenDialog(null)}
         />
       )}
+      {gesamtwertOffen && (
+        <GesamtwertDialog
+          open
+          siteId={site.id}
+          onClose={() => setGesamtwertOffen(false)}
+          onGespeichert={() => setGesamtwertVersion((v) => v + 1)}
+        />
+      )}
       {/* Der Link „‹ Alle Anlagen" ist mit der Navigations-Runde „zwei
           Ebenen" ERSATZLOS entfallen (E3): der Pfad in der Kopfzeile
           („Portfolio › Solarpark Dachau ▾") IST der Rückweg, und zwei
@@ -1948,6 +1962,9 @@ export function AnlageSeite({
               >
                 + Eigene Auswertung
               </Button>
+              <Button variant="ghost" onClick={() => setGesamtwertOffen(true)}>
+                + Gesamtwert
+              </Button>
               <p className="vp-eigen-hinweis">
                 {eigenDeckelSatz(layout.eigene.length) ??
                   (layout.eigene.length === 0 ? EIGEN_LEER_SATZ : null)}
@@ -2006,6 +2023,17 @@ export function AnlageSeite({
               onSichtbar={layout.setSichtbar}
               onLead={layout.setLead}
               extra={eigenStift}
+            />
+          )}
+
+          {/* Die zusammengestellten Werte (berechnete Messstellen, AP-10):
+              erscheinen wie gemessene, mit dezentem „berechnet". Ohne einen
+              einzigen rendert die Fläche nichts. */}
+          {!layout.anpassen && (
+            <GesamtwertKarten
+              siteId={site.id}
+              version={gesamtwertVersion}
+              onNeu={() => setGesamtwertOffen(true)}
             />
           )}
         </div>
