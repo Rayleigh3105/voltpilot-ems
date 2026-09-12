@@ -695,6 +695,525 @@ class WriterPipeTest {
                 .as("each refused mirror counted with its constraint").isEqualTo(2.0);
     }
 
+    // ======================================================================================
+    // UEMS AP-07 IP-7: die Herkunft je Messwert ZUR MESSZEIT
+    // ======================================================================================
+
+    private static final String UEMS_CATALOG = "2026.09.12.1";
+    private static final String PUNKT = "ahr.zaehler.energie-bezug";
+
+    /**
+     * A12 + Nachlieferung: ein gespeicherter Wert trägt seine sieben Herkunftsspalten, und JEDE
+     * ist die ZUR MESSZEIT gültige — nicht die von jetzt. Der Beweis ist der zweite Wert: er kommt
+     * in derselben Sekunde an wie der erste, wurde aber 13 Tage früher gemessen, als noch Fassung 1
+     * galt; er bekommt Fassung 1 und die Zustellart {@code nachgeliefert}, der erste Fassung 2 und
+     * {@code direkt}.
+     */
+    @Test
+    void dieHerkunftEinesWertsIstDieZurMesszeitGueltige() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000001";
+        String entity = "71000000-0000-0000-0000-000000000001";
+        String quelle = "72000000-0000-0000-0000-000000000001";
+        String geraet = "73000000-0000-0000-0000-000000000001";
+        String messstelle = "74000000-0000-0000-0000-000000000001";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, quelle, "DQ-1", geraet, "Z-5a",
+                    "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+            bindung(st, messstelle, entity, geraet, "fuehrend", "2026-11-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:30Z", 1);
+            // Die ZWEITE Fassung der Zustellung, angewendet am 10.11. - sie gilt NICHT rückwirkend.
+            st.execute("INSERT INTO device_measurement_selection_event(tenant_id,site_id,device_id,"
+                    + "point_key,desired_revision,event_kind,requested_at,requested_enabled,"
+                    + "catalog_version,actor,apply_status,applied_at,retention_class,"
+                    + "raw_retention_days,long_term_strategy,entity_id) VALUES ('" + TENANT_A + "','"
+                    + SITE + "','" + device + "','" + PUNKT + "',2,'selection_requested',"
+                    + "'2026-11-10T00:00:00Z',"
+                    + "true,'" + UEMS_CATALOG + "','test','applied','2026-11-10T00:00:00Z',"
+                    + "'energy_counter',90,'fifteen_minute','" + entity + "')");
+        }
+        senden(device,
+                wert(device, 48213, "2026-11-18T09:39:00Z", "2026-11-18T09:39:07Z", PUNKT,
+                        "10834152", "1083415.2"),
+                // Ein gepufferter Wert vom 05.11., eingegangen JETZT.
+                wert(device, 48214, "2026-11-05T08:00:00Z", "2026-11-18T09:39:08Z", PUNKT,
+                        "10800000", "1080000.0"));
+        awaitMeasurementRows(device, 2);
+
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time='2026-11-18T09:39:00Z' AND entity_id='" + entity
+                + "' AND device_install_id='" + geraet + "' AND applied_revision=2 "
+                + "AND value_kind='counter' AND role='fuehrend' AND delivery='direkt' AND delay_s=7"))
+                .as("der frische Wert: Fassung 2, führend, direkt, 7 s").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time='2026-11-05T08:00:00Z' AND entity_id='" + entity
+                + "' AND applied_revision=1 AND role='fuehrend' AND delivery='nachgeliefert' "
+                + "AND delay_s=1129148"))
+                .as("der Nachzügler sieht die Fassung, die zu SEINER Messzeit galt").isOne();
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device + "'"))
+                .as("ein sauberer Umschlag meldet nichts — auch keinen clock_jump (der gehört "
+                        + "der Datenannahme)").isZero();
+        assertThat(writerEreignis("fremder_urheber"))
+                .as("der Zeitsprung der beiden Umschläge ist gesehen und gezählt, nicht gemeldet")
+                .isGreaterThanOrEqualTo(1.0);
+        assertThat(measurementRowsVisible(TENANT_B, device))
+                .as("der Mandantenzaun steht auch über den neuen Spalten").isZero();
+        assertThat(measurementRowsVisible(TENANT_A, device)).isEqualTo(2);
+    }
+
+    /**
+     * A1 und A11 (E3): dasselbe Paket zweimal ist EIN Wert, gezählt und ohne Ereignis. Ein
+     * ABWEICHENDER Wert zur selben Messzeit wird abgewiesen, der erste bleibt stehen, und die
+     * Abweisung steht als {@code duplicate_conflict} in der Ereignis-Tabelle.
+     */
+    @Test
+    void dasselbePaketZweimalIstEinWertEinWiderspruchIstEinEreignis() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000002";
+        String entity = "71000000-0000-0000-0000-000000000002";
+        String quelle = "72000000-0000-0000-0000-000000000002";
+        String geraet = "73000000-0000-0000-0000-000000000002";
+        String messstelle = "74000000-0000-0000-0000-000000000002";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, quelle, "DQ-2", geraet, "Z-6a",
+                    "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+            bindung(st, messstelle, entity, geraet, "fuehrend", "2026-11-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:30Z", 1);
+        }
+        String paket = wert(device, 48213, "2026-11-18T09:39:00Z", "2026-11-18T09:39:07Z", PUNKT,
+                "10834152", "1083415.2");
+        senden(device, paket, paket);
+        awaitMeasurementRows(device, 1);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device + "'"))
+                .as("A1: eine Wiederholung ist kein Ereignis").isZero();
+
+        senden(device, wert(device, 48214, "2026-11-18T09:39:00Z", "2026-11-18T09:39:12Z", PUNKT,
+                "10834153", "1083415.3"));
+        warte("der Widerspruch ist festgehalten",
+                () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device
+                        + "' AND art='duplicate_conflict'"), 1);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "'")).as("A11: der zweite Wert wird NICHT gespeichert").isOne();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND raw_numeric=10834152 AND edge_sequence=48213"))
+                .as("A11: der ERSTE bleibt, nie still überschrieben").isOne();
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device
+                + "' AND art='duplicate_conflict' AND urheber='writer' AND entity_id='" + entity
+                + "' AND messstelle_id='" + messstelle + "' AND messkanal='" + PUNKT + "' "
+                + "AND nutzlast->'sequenzen'='[48213,48214]'::jsonb "
+                + "AND nutzlast->>'messzeit'='2026-11-18T09:39:00Z' "
+                + "AND (nutzlast->'gespeicherter_wert'->>'raw')='10834152' "
+                + "AND (nutzlast->'abgewiesener_wert'->>'raw')='10834153'"))
+                .as("beide Werte und beide Sequenzen reisen mit").isOne();
+        assertThat(ereignisseVisible(TENANT_B, device))
+                .as("die Meldung liegt hinter dem Mandantenzaun").isZero();
+    }
+
+    /**
+     * A6 + A9 + der Zeitstrahl 07:31:40 des Konzepts (AP-07 §5): nach der Übergabe von DQ-3 am
+     * 10.04.2027 07:30 liefert die alte Box drei gepufferte Werte mit Messzeit 07:29:30–07:29:50 —
+     * sie war ZUR MESSZEIT zuständig, also sind sie FÜHREND (W8). Ein Wert derselben Box mit
+     * Messzeit 07:32 ist ein SPIEGEL: gespeichert, nie führend, mit HÖCHSTENS EINEM
+     * {@code unassigned_reader}. Und A9: derselbe Zeitpunkt aus der zuständigen Box verdrängt den
+     * Spiegel nicht und wird von ihm nicht verdrängt.
+     */
+    @Test
+    void derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String alt = "70000000-0000-0000-0000-000000000003";     // E-1
+        String neu = "70000000-0000-0000-0000-000000000004";     // E-2′
+        String entity = "71000000-0000-0000-0000-000000000003";  // K-5
+        String quelle = "72000000-0000-0000-0000-000000000003";  // DQ-3
+        String geraet = "73000000-0000-0000-0000-000000000003";
+        String messstelle = "74000000-0000-0000-0000-000000000003";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, alt, entity, quelle, "DQ-3", geraet, "Z-7a",
+                    "2027-04-01T00:00:00Z", "2027-04-01T00:00:00Z");
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + neu + "','" + TENANT_A
+                    + "','" + SITE + "')");
+            // Die Übergabe: bis 07:30 liest E-1, danach E-2′.
+            st.execute("UPDATE data_source_assignment SET effective_to='2027-04-10T07:30:00Z' "
+                    + "WHERE data_source_id='" + quelle + "'");
+            st.execute("INSERT INTO data_source_assignment(tenant_id,data_source_id,device_id,"
+                    + "effective_from) VALUES ('" + TENANT_A + "','" + quelle + "','" + neu
+                    + "','2027-04-10T07:30:00Z')");
+            bindung(st, messstelle, entity, geraet, "fuehrend", "2027-04-01T00:00:00Z");
+            auswahl(st, alt, entity, PUNKT, "counter", "2027-04-01T00:00:00Z",
+                    "2027-04-01T00:00:30Z", 1);
+            auswahl(st, neu, entity, PUNKT, "counter", "2027-04-01T00:00:00Z",
+                    "2027-04-01T00:00:30Z", 1);
+        }
+        senden(alt,
+                wert(alt, 100, "2027-04-10T07:29:30Z", "2027-04-10T07:31:40Z", PUNKT, "500", "50.0"),
+                wert(alt, 101, "2027-04-10T07:29:40Z", "2027-04-10T07:31:40Z", PUNKT, "501", "50.1"),
+                wert(alt, 102, "2027-04-10T07:29:50Z", "2027-04-10T07:31:40Z", PUNKT, "502", "50.2"));
+        awaitMeasurementRows(alt, 3);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + alt
+                + "' AND role='fuehrend' AND entity_id='" + entity + "'"))
+                .as("A6/W8: zuständig ZUR MESSZEIT — also führend, nicht verworfen").isEqualTo(3);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + alt + "'"))
+                .as("ein Nachzügler ist kein Ereignis").isZero();
+
+        senden(alt,
+                wert(alt, 103, "2027-04-10T07:32:00Z", "2027-04-10T07:32:05Z", PUNKT, "510", "51.0"),
+                wert(alt, 104, "2027-04-10T07:33:00Z", "2027-04-10T07:33:05Z", PUNKT, "511", "51.1"));
+        awaitMeasurementRows(alt, 5);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + alt
+                + "' AND role='spiegel'"))
+                .as("nie verworfen: der Wert der nicht zuständigen Box wird GESPEICHERT")
+                .isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + alt
+                + "' AND art='unassigned_reader'"))
+                .as("höchstens EINES je Stunde je Box und Datenquelle").isOne();
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + alt
+                + "' AND art='unassigned_reader' AND data_source_id='" + quelle + "' "
+                + "AND entity_id='" + entity + "' AND von='2027-04-10T07:32:00Z' "
+                + "AND bis='2027-04-10T07:32:00Z' AND (nutzlast->>'anzahl')='1' "
+                + "AND nutzlast->>'zustaendige_box'='" + neu + "'"))
+                .as("die Meldung nennt die Box, die wirklich zuständig war").isOne();
+
+        // A9: die ZUSTÄNDIGE Box schickt denselben Zeitpunkt mit einem anderen Wert.
+        senden(neu, wert(neu, 1, "2027-04-10T07:32:00Z", "2027-04-10T07:32:09Z", PUNKT, "999",
+                "99.9"));
+        awaitMeasurementRows(neu, 1);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE entity_id='" + entity
+                + "' AND time='2027-04-10T07:32:00Z'"))
+                .as("A9: beide Spuren stehen nebeneinander").isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE entity_id='" + entity
+                + "' AND time='2027-04-10T07:32:00Z' AND role='fuehrend' AND device_id='" + neu
+                + "'")).as("die zuständige Spur trägt die Reihe").isOne();
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE art='duplicate_conflict' "
+                + "AND entity_id='" + entity + "'"))
+                .as("A9: ein Spiegel ist weder Wiederholung noch Widerspruch").isZero();
+    }
+
+    /**
+     * W8: die Nachlieferungs-Sperre über eine ÜBERGABE hinweg ist aufgelöst. Ein Wert, der GENAU
+     * 90 Tage alt ist und aus einer Box kommt, die HEUTE nicht mehr zuständig ist, wird
+     * gespeichert und ist FÜHREND — weil seine Box ZUR MESSZEIT zuständig war. Zugleich der
+     * Bestandsschutz der anderen Kante: der {@code enabled_at}-Riegel („war der Punkt damals
+     * überhaupt gewählt?") steht unverändert, für beide Spuren.
+     */
+    @Test
+    void nachlieferungBis90TageIstWillkommenUeberEineUebergabeHinweg() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String uems = "70000000-0000-0000-0000-000000000005";
+        String bestand = "70000000-0000-0000-0000-000000000006";
+        String entity = "71000000-0000-0000-0000-000000000005";
+        String quelle = "72000000-0000-0000-0000-000000000005";
+        String geraet = "73000000-0000-0000-0000-000000000005";
+        String heute = "70000000-0000-0000-0000-00000000000c";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            // Die Quelle las bis zum 10.01. über `uems`, seitdem über `heute`.
+            uemsKomponente(st, uems, entity, quelle, "DQ-5", geraet, "Z-8a",
+                    "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z");
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + heute + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            st.execute("UPDATE data_source_assignment SET effective_to='2027-01-10T00:00:00Z' "
+                    + "WHERE data_source_id='" + quelle + "'");
+            st.execute("INSERT INTO data_source_assignment(tenant_id,data_source_id,device_id,"
+                    + "effective_from) VALUES ('" + TENANT_A + "','" + quelle + "','" + heute
+                    + "','2027-01-10T00:00:00Z')");
+            auswahl(st, uems, entity, PUNKT, "counter", "2026-09-01T00:00:00Z",
+                    "2026-09-01T00:00:30Z", 1);
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + bestand + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            auswahl(st, bestand, null, PUNKT, "counter", "2027-01-10T00:00:00Z",
+                    "2027-01-10T00:00:30Z", 1);
+        }
+        senden(uems,
+                // GENAU 90 Tage alt (die angenommene Kante des Vertrags) und aus einer Box, die
+                // HEUTE nicht mehr zuständig ist - zur Messzeit war sie es.
+                wert(uems, 7, "2026-10-17T12:00:00Z", "2027-01-15T12:00:00Z", PUNKT, "42", "4.2"),
+                // Und die andere Kante: vor `enabled_at` gewählt wurde der Punkt damals nicht.
+                wert(uems, 8, "2026-08-20T12:00:00Z", "2027-01-15T12:00:01Z", PUNKT, "41", "4.1"));
+        // Dieselbe Reise für einen Bestandswert - und hinterher eine Kontroll-Zustellung, deren
+        // Messzeit NACH dem Einschalten liegt: sie beweist, dass die Partition den ersten
+        // Umschlag wirklich gesehen und ihn VERWORFEN hat (gleicher Schlüssel, gleiche Folge).
+        senden(bestand,
+                wert(bestand, 7, "2027-01-05T12:00:00Z", "2027-01-15T12:00:00Z", PUNKT, "42", "4.2"),
+                wert(bestand, 8, "2027-01-15T12:00:00Z", "2027-01-15T12:00:05Z", PUNKT, "43",
+                        "4.3"));
+        awaitMeasurementRows(uems, 1);
+        awaitMeasurementRows(bestand, 1);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + uems
+                + "' AND time='2026-10-17T12:00:00Z' AND delivery='nachgeliefert' "
+                + "AND delay_s=7776000 AND role='beobachtung' AND entity_id='" + entity + "'"))
+                .as("90 Tage Nachlieferung über eine Übergabe hinweg: gespeichert, nicht "
+                        + "verworfen; ohne Quellenbindung ist die Rolle Beobachtung").isOne();
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + uems
+                + "' AND art='unassigned_reader'"))
+                .as("zur Messzeit zuständig - kein Spiegel, keine Meldung").isZero();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + uems
+                + "' AND time='2026-08-20T12:00:00Z'"))
+                .as("der enabled_at-Riegel steht auch für eine UEMS-Komponente").isZero();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='"
+                + bestand + "' AND time='2027-01-05T12:00:00Z'"))
+                .as("kein Backfill für einen Bestandswert - die alte Regel steht").isZero();
+    }
+
+    /**
+     * Die Zahl der Abfragen wächst NICHT mit der Zahl der Werte: die Zeitleisten liegen im
+     * Speicher, aufgelöst wird die Messzeit dort. 20 Umschläge derselben Komponente kosten je
+     * Nachschlag GENAU EINE Abfrage.
+     */
+    @Test
+    void dieZahlDerAbfragenWaechstNichtMitDerZahlDerWerte() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000007";
+        String entity = "71000000-0000-0000-0000-000000000007";
+        String quelle = "72000000-0000-0000-0000-000000000007";
+        String geraet = "73000000-0000-0000-0000-000000000007";
+        String messstelle = "74000000-0000-0000-0000-000000000007";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, quelle, "DQ-7", geraet, "Z-9a",
+                    "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+            bindung(st, messstelle, entity, geraet, "fuehrend", "2026-11-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:30Z", 1);
+        }
+        // Dieselbe Last EINMAL ohne Herkunft (Bestandsweg = der Stand vor IP-7) und einmal mit.
+        String bestand = "70000000-0000-0000-0000-00000000000d";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + bestand + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            auswahl(st, bestand, null, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:30Z", 1);
+        }
+        long ohneMs = durchsatz(bestand);
+
+        double[] vorher = {abfragen("reihe"), abfragen("einbau"), abfragen("zustaendigkeit"),
+                abfragen("bindung"), abfragen("fassung")};
+        double konfliktVorher = abfragen("konflikt");
+        long dauerMs = durchsatz(device);
+
+        double[] nachher = {abfragen("reihe"), abfragen("einbau"), abfragen("zustaendigkeit"),
+                abfragen("bindung"), abfragen("fassung")};
+        for (int i = 0; i < vorher.length; i++) {
+            assertThat(nachher[i] - vorher[i])
+                    .as("20 Werte, eine Abfrage je Nachschlag (Zeitleiste im Speicher)")
+                    .isEqualTo(1.0);
+        }
+        assertThat(abfragen("konflikt") - konfliktVorher)
+                .as("ohne Doppelwert fragt niemand nach schon Gespeichertem").isZero();
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND role='fuehrend'")).isEqualTo(20);
+        System.out.println("[IP-7] 20 Umschläge: Bestandsweg " + ohneMs + " ms, "
+                + "UEMS-Weg " + dauerMs + " ms (5 Nachschlag-Abfragen, nicht 100)");
+    }
+
+    /**
+     * ⚠ Ein Fehler im Nachschlag kostet NIE einen Messwert. Wird dem Writer das Lesen der
+     * Gerät-Historie entzogen, rollt nur sein Savepoint zurück: der Wert wird als BESTANDSWERT
+     * gespeichert (alle sieben Herkunftsspalten leer), und die Schreib-Transaktion committet.
+     */
+    @Test
+    void einFehlerImNachschlagKostetKeinenMesswert() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000008";
+        String entity = "71000000-0000-0000-0000-000000000008";
+        String quelle = "72000000-0000-0000-0000-000000000008";
+        String geraet = "73000000-0000-0000-0000-000000000008";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, quelle, "DQ-8", geraet, "Z-10a",
+                    "2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                    "2026-11-01T00:00:30Z", 1);
+            st.execute("REVOKE SELECT ON geraet_komponente FROM voltpilot_app");
+        }
+        try {
+            senden(device, wert(device, 300, "2026-11-20T10:00:00Z", "2026-11-20T10:00:05Z", PUNKT,
+                    "77", "7.7"));
+            awaitMeasurementRows(device, 1);
+            assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='"
+                    + device + "' AND entity_id IS NULL AND device_install_id IS NULL "
+                    + "AND applied_revision IS NULL AND value_kind IS NULL AND role IS NULL "
+                    + "AND delivery IS NULL AND delay_s IS NULL"))
+                    .as("der Wert ist da — ohne nachgeschlagene Herkunft, nie verloren").isOne();
+        } finally {
+            try (Connection c = admin(); Statement st = c.createStatement()) {
+                st.execute("GRANT SELECT ON geraet_komponente TO voltpilot_app");
+            }
+        }
+    }
+
+    /**
+     * Bestandsschutz: ein Wert ohne eindeutige Komponente oder ohne Datenquelle geht Zeichen für
+     * Zeichen den alten Weg. Der Fingerabdruck seiner Bestandsspalten ist nach einer erneuten
+     * Zustellung derselbe, die sieben neuen Spalten bleiben leer, und der ALTE Schlüssel fängt die
+     * Wiederholung weiter — er ist für diese Zeilen der einzige, den es gibt.
+     */
+    @Test
+    void einBestandswertGehtWeiterDenAltenWeg() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000009";
+        String a = "71000000-0000-0000-0000-00000000000a";
+        String b = "71000000-0000-0000-0000-00000000000b";
+        String quelle = "72000000-0000-0000-0000-000000000009";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + device + "','"
+                    + TENANT_A + "','" + SITE + "')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('" + UEMS_CATALOG
+                    + "','" + PUNKT + "','counter',900) ON CONFLICT DO NOTHING");
+            st.execute("INSERT INTO data_source(id,tenant_id,kennzeichen,kadenz_s) VALUES ('"
+                    + quelle + "','" + TENANT_A + "','DQ-9',60)");
+            // Zwei baugleiche Geräte hinter EINER Box: die Komponente folgt NICHT eindeutig.
+            for (String e : new String[] {a, b}) {
+                st.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,device_id,"
+                        + "data_source_id) VALUES ('" + e + "','" + TENANT_A + "','" + SITE
+                        + "','grid','" + device + "','" + quelle + "')");
+                auswahl(st, device, e, PUNKT, "counter", "2026-11-01T00:00:00Z",
+                        "2026-11-01T00:00:30Z", 1);
+            }
+        }
+        String paket = wert(device, 400, "2026-11-21T10:00:00Z", "2026-11-21T10:00:05Z", PUNKT,
+                "88", "8.8");
+        senden(device, paket);
+        awaitMeasurementRows(device, 1);
+        String fingerabdruck = fingerabdruck(device, "2026-11-21T10:00:00Z");
+        // Dasselbe Paket noch einmal - und danach eine Kontroll-Zustellung, an der das Warten
+        // sieht, dass die Wiederholung wirklich durch war.
+        senden(device, paket,
+                wert(device, 401, "2026-11-21T10:01:00Z", "2026-11-21T10:01:05Z", PUNKT, "89",
+                        "8.9"));
+        awaitMeasurementRows(device, 2);
+        assertThat(fingerabdruck(device, "2026-11-21T10:00:00Z"))
+                .as("derselbe Fingerabdruck der Bestandsspalten").isEqualTo(fingerabdruck);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND entity_id IS NULL AND role IS NULL AND delivery IS NULL"))
+                .as("keine geratene Komponente, keine geratene Rolle").isEqualTo(2);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE device_id='" + device + "'"))
+                .as("ein Bestandswert löst kein UEMS-Ereignis aus").isZero();
+    }
+
+    // ---- Werkzeug für die UEMS-Fälle ----------------------------------------------------
+
+    /** Box, Datenquelle mit ihrer Zuständigkeit, Komponente an der Quelle und ihr Gerät-Einbau. */
+    private void uemsKomponente(Statement st, String device, String entity, String quelle,
+            String kennzeichen, String geraet, String einbau, String zustaendigAb, String einbauAb)
+            throws Exception {
+        st.execute("INSERT INTO device(id,tenant_id,site_id) VALUES ('" + device + "','" + TENANT_A
+                + "','" + SITE + "') ON CONFLICT DO NOTHING");
+        st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('" + UEMS_CATALOG + "','"
+                + PUNKT + "','counter',900) ON CONFLICT DO NOTHING");
+        st.execute("INSERT INTO data_source(id,tenant_id,kennzeichen,kadenz_s) VALUES ('" + quelle
+                + "','" + TENANT_A + "','" + kennzeichen + "',60)");
+        st.execute("INSERT INTO data_source_assignment(tenant_id,data_source_id,device_id,"
+                + "effective_from) VALUES ('" + TENANT_A + "','" + quelle + "','" + device + "','"
+                + zustaendigAb + "')");
+        st.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,device_id,"
+                + "data_source_id) VALUES ('" + entity + "','" + TENANT_A + "','" + SITE
+                + "','grid','" + device + "','" + quelle + "')");
+        st.execute("INSERT INTO geraet(id,tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                + "seriennummer,eingebaut_am) VALUES ('" + geraet + "','" + TENANT_A + "','" + SITE
+                + "','" + einbau.substring(0, einbau.length() - 1) + "','" + einbau + "','SN-"
+                + einbau + "','" + einbauAb + "')");
+        st.execute("INSERT INTO geraet_komponente(tenant_id,geraet_id,entity_id,gueltig_ab) VALUES ('"
+                + TENANT_A + "','" + geraet + "','" + entity + "','" + einbauAb + "')");
+    }
+
+    private void bindung(Statement st, String messstelle, String entity, String geraet,
+            String rolle, String ab) throws Exception {
+        st.execute("INSERT INTO messstelle_quelle(tenant_id,messstelle_id,entity_id,geraet_id,"
+                + "kanal,rolle,gueltig_ab) VALUES ('" + TENANT_A + "','" + messstelle + "','"
+                + entity + "','" + geraet + "','" + PUNKT + "','" + rolle + "','" + ab + "')");
+    }
+
+    private void auswahl(Statement st, String device, String entity, String punkt, String art,
+            String enabledAt, String appliedAt, long revision) throws Exception {
+        st.execute("INSERT INTO device_measurement_selection(tenant_id,site_id,device_id,point_key,"
+                + "enabled,cadence_s,desired_revision,enabled_at,catalog_version,changed_by,"
+                + "apply_status,applied_at,retention_class,raw_retention_days,long_term_cadence_s,"
+                + "long_term_strategy,entity_id) VALUES ('" + TENANT_A + "','" + SITE + "','"
+                + device + "','" + punkt + "',true,60," + revision + ",'" + enabledAt + "','"
+                + UEMS_CATALOG + "','test','applied','" + appliedAt + "','energy_counter',90,900,"
+                + "'fifteen_minute'," + (entity == null ? "NULL" : "'" + entity + "'") + ")");
+    }
+
+    /** Ein Umschlag mit EINEM Wert. */
+    private static String wert(String device, long sequence, String observedAt, String ingestedAt,
+            String punkt, String raw, String decoded) {
+        return "{\"schema_version\":\"1.0\",\"event_id\":\"" + UUID.randomUUID()
+                + "\",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + device + "\",\"catalog_version\":\"" + UEMS_CATALOG
+                + "\",\"sequence\":" + sequence + ",\"observed_at\":\"" + observedAt
+                + "\",\"ingested_at\":\"" + ingestedAt + "\",\"source_topic\":\"ems/" + TENANT_A
+                + "/" + SITE + "/" + device + "/v2/measurement-samples\",\"gap\":false,"
+                + "\"dropped_samples\":0,\"samples\":[{\"point_key\":\"" + punkt + "\",\"raw\":"
+                + raw + ",\"decoded\":" + decoded + ",\"quality\":\"good\"}]}";
+    }
+
+    private void senden(String device, String... pakete) throws Exception {
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE + ":" + device;
+            for (String paket : pakete) {
+                producer.send(new ProducerRecord<>(MEASUREMENTS_RAW_TOPIC, key, paket)).get();
+            }
+            producer.flush();
+        }
+    }
+
+    /** 20 Umschläge einer Box senden und warten, bis alle 20 Werte liegen; Dauer in ms. */
+    private long durchsatz(String device) throws Exception {
+        String[] pakete = new String[20];
+        for (int i = 0; i < pakete.length; i++) {
+            pakete[i] = wert(device, 200 + i, "2026-11-19T10:" + (i < 10 ? "0" + i : i) + ":00Z",
+                    "2026-11-19T10:" + (i < 10 ? "0" + i : i) + ":05Z", PUNKT,
+                    Integer.toString(1000 + i), Integer.toString(100 + i) + ".0");
+        }
+        long start = System.nanoTime();
+        senden(device, pakete);
+        awaitMeasurementRows(device, 20);
+        return Duration.ofNanos(System.nanoTime() - start).toMillis();
+    }
+
+    /** md5 über die BESTANDSSPALTEN einer Box — die Spalten, die es vor IP-7 schon gab. */
+    private String fingerabdruck(String device, String zeit) throws Exception {
+        try (Connection c = admin(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT md5(string_agg(z,'|' ORDER BY z)) FROM ("
+                        + "SELECT concat_ws('~',time,received_at,tenant_id,site_id,device_id,"
+                        + "point_key,raw_numeric,raw_text,decoded_numeric,decoded_text,quality,"
+                        + "catalog_version,edge_sequence,aggregation_kind,long_term_cadence_s,gap,"
+                        + "dropped_samples,signed_data,signed_data_format) AS z "
+                        + "FROM device_measurement_sample WHERE device_id='" + device
+                        + "' AND time='" + zeit + "') s")) {
+            rs.next();
+            return rs.getString(1);
+        }
+    }
+
+    private double writerEreignis(String ergebnis) {
+        Counter c = meters.find(MessreiheEreignisRepository.WRITER_METRIK)
+                .tag("ergebnis", ergebnis).tag("grund", "").counter();
+        return c == null ? 0 : c.count();
+    }
+
+    private double abfragen(String nachschlag) {
+        Counter c = meters.find(HerkunftNachschlag.METRIK).tag("nachschlag", nachschlag)
+                .tag("ergebnis", "abfrage").counter();
+        return c == null ? 0 : c.count();
+    }
+
+    /** Wartet, bis eine Zählung ihren Wert erreicht (der Listener arbeitet nebenläufig). */
+    private void warte(String was, Zaehlung zaehlung, long erwartet) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        long ist = -1;
+        while (System.nanoTime() < deadline) {
+            ist = zaehlung.zaehle();
+            if (ist == erwartet) {
+                return;
+            }
+            Thread.sleep(250);
+        }
+        throw new AssertionError(was + ": " + ist + " statt " + erwartet);
+    }
+
+    private interface Zaehlung {
+        long zaehle() throws Exception;
+    }
+
     private double spiegel(String ergebnis, String grund) {
         Counter c = meters.find(MessreiheEreignisRepository.SPIEGEL_METRIK).tag("ergebnis", ergebnis)
                 .tag("grund", grund).counter();

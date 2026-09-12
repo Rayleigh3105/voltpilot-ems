@@ -3,12 +3,18 @@ package com.voltpilot.writer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +27,60 @@ import org.springframework.transaction.annotation.Transactional;
  * MessreiheEreignisRepository#spiegeln}, UEMS AP-07 IP-8) - the Bestand table stays exactly as
  * it was, its readers see nothing new, and a failing mirror is rolled back alone (logged,
  * counted) instead of taking this write with it.
+ *
+ * <h2>UEMS AP-07 IP-7: die Herkunft wird ZUR MESSZEIT nachgeschlagen</h2>
+ *
+ * Seit IP-7 hat dieser Weg ZWEI Spuren, und welche gilt, entscheidet EIN Fakt: hat die Komponente
+ * des Messkanals eine Datenquelle?
+ *
+ * <ul>
+ *   <li><b>Bestandswert</b> (keine eindeutige Komponente oder keine Datenquelle): Zeichen für
+ *       Zeichen wie vorher - dieselben Spalten, derselbe alte Schlüssel
+ *       {@code (device_id, point_key, time, edge_sequence)}, dieselben Nachwirkungen, kein
+ *       Ereignis. Cockpit, Erlöse, Fahrplan, Verlauf, Verdichtungen und Registry-Push sehen
+ *       nichts Neues.
+ *   <li><b>UEMS-Messwert</b>: {@link HerkunftNachschlag} holt Gerät-Einbau, Fassung, Wertart und
+ *       Rolle ZUR MESSZEIT (gecachte Zeitleisten), {@link MesswertHerkunft#stelleFest} fällt das
+ *       Urteil des Vertrags, und die Zeile trägt ihre sieben Herkunftsspalten. Sie liegt damit im
+ *       neuen Schlüssel {@code (tenant_id, entity_id, point_key, time)} - der Spiegel ausdrücklich
+ *       ausserhalb.
+ * </ul>
+ *
+ * <p><b>⚠ Ein Wert geht NIE verloren.</b> Scheitert ein Nachschlag, gibt er {@code null} zurück
+ * (eigener Savepoint, geloggt, gezählt) und der Wert wird als Bestandswert gespeichert. Weist der
+ * Vertrag ihn als {@code rejected} ab (Herkunft unvollständig), wird er ebenfalls als Bestandswert
+ * gespeichert und die Abweisung nur BERICHTET: „kein Messwert des Unternehmens-Energiemanagements"
+ * heißt „nicht in der Reihe", nie „gelöscht". Nur der eine Fall, den E3 dafür vorsieht, schreibt
+ * wirklich nichts: derselbe Schlüssel mit einem ABWEICHENDEN Wert - dort bleibt der erste stehen
+ * und der zweite wird als {@code duplicate_conflict} festgehalten.
  */
 @Repository
 public class MeasurementWriteRepository {
+
+    /** Die Metrik, an der das Urteil des Herkunftsvertrags je Wert ablesbar ist. */
+    static final String URTEIL_METRIK = "voltpilot.writer.herkunft.urteil";
+
+    /** Wie viele Boxen ihren zuletzt gesehenen Umschlag im Speicher behalten (LRU). */
+    static final int UMSCHLAEGE = 4_096;
+
     private final JdbcTemplate jdbc;
     private final MessreiheEreignisRepository ereignisse;
+    private final HerkunftNachschlag nachschlag;
+    private final MeterRegistry meters;
+
+    /**
+     * Der zuletzt gesehene Umschlag JE BOX (Vertrag §3 Regel 2). Er lebt im Speicher: das kostet
+     * keine einzige Abfrage, und nach einem Neustart urteilt der erste Umschlag einer Box gar
+     * nicht über die Sequenz - lieber KEIN Ereignis als eine erfundene Lücke.
+     */
+    private final Map<UUID, MesswertHerkunft.VorherigerUmschlag> umschlaege =
+            Collections.synchronizedMap(new LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(
+                        Map.Entry<UUID, MesswertHerkunft.VorherigerUmschlag> eldest) {
+                    return size() > UMSCHLAEGE;
+                }
+            });
 
     record Meta(String selectionKey, boolean enabled, Instant enabledAt, Instant disabledAt,
             String applyStatus, Instant appliedAt, String aggregationKind, Integer cadence) {}
@@ -39,9 +94,12 @@ public class MeasurementWriteRepository {
         }
     }
 
-    public MeasurementWriteRepository(JdbcTemplate jdbc, MessreiheEreignisRepository ereignisse) {
+    public MeasurementWriteRepository(JdbcTemplate jdbc, MessreiheEreignisRepository ereignisse,
+            HerkunftNachschlag nachschlag, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.ereignisse = ereignisse;
+        this.nachschlag = nachschlag;
+        this.meters = meters;
     }
 
     @Transactional
@@ -55,12 +113,28 @@ public class MeasurementWriteRepository {
             return 0;
         }
         Instant purgedBefore = purgeRows.get(0);
+        // Der zuletzt gesehene Umschlag DIESER Box - und ab jetzt ist es dieser.
+        MesswertHerkunft.VorherigerUmschlag vorher = umschlaege.put(event.device_id(),
+                new MesswertHerkunft.VorherigerUmschlag(event.sequence(), event.observed_at()));
+        MesswertEreignisse sammler = new MesswertEreignisse(event);
 
         int rows = 0;
         for (JsonNode sample : event.samples()) {
             String pointKey = sample.path("point_key").asText();
             Instant observedAt = sampleTime(sample, event.observed_at());
             Meta meta = metadata(event, pointKey);
+            // Die Reihe (E2): Komponente + Datenquelle des Messkanals. EIN gecachter Nachschlag
+            // je Messkanal - er wächst mit der Zahl der Kanäle, nie mit der Zahl der Werte.
+            HerkunftNachschlag.Reihe reihe = meta == null ? null
+                    : nachschlag.reihe(event, pointKey, templateKey(pointKey));
+            boolean uems = reihe != null && reihe.uems();
+            // ⚠ Diese Prüfung ist UNVERÄNDERT, und das ist die Auflösung von W8, nicht ihr
+            // Gegenteil: `enabled_at`, `disabled_at` und das Purge-Wasserzeichen werden schon
+            // immer gegen die MESSZEIT geprüft - sie sind die Frage "war der Punkt damals
+            // gewählt?". Was IP-7 dazunimmt, ist die Zuständigkeit ZUR MESSZEIT, und die
+            // verwirft NIE: sie entscheidet nur die Rolle. Ein Puffer, der Stunden nach einer
+            // Übergabe eintrifft, ist deshalb willkommen (bis 90 Tage zurück) und führend,
+            // wenn seine Box damals zuständig war.
             if (meta == null || observedAt == null || atOrBefore(observedAt, purgedBefore)
                     || meta.enabledAt() == null
                     || observedAt.isBefore(meta.enabledAt()) || !withinCutover(meta, observedAt)) {
@@ -75,23 +149,41 @@ public class MeasurementWriteRepository {
             Value raw = value(rawNode);
             Value decoded = decodedNode != null && scalar(decodedNode)
                     ? value(decodedNode) : new Value(null, null);
-            int inserted = jdbc.update("INSERT INTO device_measurement_sample "
-                            + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
-                            + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
-                            + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
-                            + "signed_data,signed_data_format) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
-                            + "ON CONFLICT DO NOTHING",
-                    Timestamp.from(observedAt), Timestamp.from(event.ingested_at()),
-                    event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                    raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
-                    sample.path("quality").asText(), event.catalog_version(), event.sequence(),
-                    meta.aggregationKind(), meta.cadence(), event.gap(), event.dropped_samples(),
-                    text(sample, "signed_data"), text(sample, "signed_data_format"));
+            String quality = sample.path("quality").asText();
+
+            HerkunftNachschlag.Urteil urteil = uems
+                    ? nachschlag.beurteilen(eingang(event, reihe, pointKey, observedAt, raw,
+                            decoded, quality, meta, vorher, List.of()))
+                    : null;
+            MesswertHerkunft.Herkunft herkunft = gespeicherteHerkunft(urteil);
+            if (urteil != null) {
+                sammler.sammeln(urteil, pointKey, observedAt);
+            }
+            int inserted = schreiben(event, sample, pointKey, observedAt, raw, decoded, quality,
+                    meta, urteil, herkunft);
+            HerkunftNachschlag.Urteil endgueltig = urteil;
+            if (inserted == 0 && herkunft != null) {
+                // E3 am lebenden Schlüssel: die Datenbank hat abgewiesen. Liegt dort DERSELBE
+                // Wert (Wiederholung - gezählt, kein Ereignis) oder ein WIDERSPRUCH
+                // (duplicate_conflict)? Das ist die EINZIGE Abfrage je Wert in diesem Paket,
+                // und sie entsteht nur, wenn wirklich schon etwas liegt.
+                HerkunftNachschlag.Urteil zweit = nachschlag.beurteilen(eingang(event, reihe,
+                        pointKey, observedAt, raw, decoded, quality, meta, null,
+                        nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey,
+                                observedAt)));
+                if (zweit != null) {
+                    sammler.sammelnNurKonflikt(zweit, pointKey);
+                    // Gezählt wird das ENDGÜLTIGE Urteil: der erste Durchgang wusste noch nicht,
+                    // dass dort schon etwas liegt.
+                    endgueltig = zweit;
+                }
+            }
+            if (endgueltig != null) {
+                urteilGezaehlt(endgueltig, gespeicherteHerkunft(endgueltig));
+            }
             if (inserted > 0) {
-                updatePointState(event, pointKey, observedAt, raw, decoded,
-                        sample.path("quality").asText());
-                appendTransitions(event, pointKey, observedAt, raw, decoded,
-                        sample.path("quality").asText(), meta);
+                updatePointState(event, pointKey, observedAt, raw, decoded, quality);
+                appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta);
                 markFirstSample(event, meta.selectionKey(), observedAt);
                 rows++;
             }
@@ -100,7 +192,97 @@ public class MeasurementWriteRepository {
                 && !atOrBefore(event.observed_at(), purgedBefore)) {
             insertGap(event);
         }
+        melden(event, sammler);
         return rows;
+    }
+
+    /** Die Herkunft, die WIRKLICH in die Zeile gehört - nur bei Urteil „gespeichert". */
+    private static MesswertHerkunft.Herkunft gespeicherteHerkunft(HerkunftNachschlag.Urteil u) {
+        return u != null && u.ergebnis().urteil() == MesswertHerkunft.Urteil.GESPEICHERT
+                ? u.ergebnis().herkunft() : null;
+    }
+
+    private HerkunftNachschlag.Eingang eingang(MeasurementRawEvent event,
+            HerkunftNachschlag.Reihe reihe, String pointKey, Instant observedAt, Value raw,
+            Value decoded, String quality, Meta meta,
+            MesswertHerkunft.VorherigerUmschlag vorher,
+            List<MesswertHerkunft.Gespeichert> gespeichert) {
+        return new HerkunftNachschlag.Eingang(event, reihe, pointKey, templateKey(pointKey),
+                observedAt, drahtwert(raw), drahtwert(decoded), quality, meta.aggregationKind(),
+                vorher, gespeichert);
+    }
+
+    /** Der Wert, wie er am Draht stand: die Zahl, sonst der Text, sonst nichts. */
+    private static Object drahtwert(Value v) {
+        return v.numeric() != null ? v.numeric() : v.text();
+    }
+
+    /**
+     * Schreibt EINE Zeile. Ohne Herkunft sind die sieben neuen Spalten {@code null} - das ist
+     * dieselbe Zeile wie vor IP-7, nur ausdrücklich hingeschrieben. {@code ON CONFLICT DO NOTHING}
+     * ohne Ziel sieht BEIDE Schlüssel: den alten (Bestand, Spiegel-Spur) und den neuen
+     * (Reihe + Messzeit der zuständigen Spur) - er ist der Wettlauf-Schutz unter dem Urteil.
+     */
+    private int schreiben(MeasurementRawEvent event, JsonNode sample, String pointKey,
+            Instant observedAt, Value raw, Value decoded, String quality, Meta meta,
+            HerkunftNachschlag.Urteil urteil, MesswertHerkunft.Herkunft herkunft) {
+        return jdbc.update("INSERT INTO device_measurement_sample "
+                        + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                        + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
+                        + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
+                        + "signed_data,signed_data_format,entity_id,device_install_id,"
+                        + "applied_revision,value_kind,role,delivery,delay_s) "
+                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        + "ON CONFLICT DO NOTHING",
+                Timestamp.from(observedAt), Timestamp.from(event.ingested_at()),
+                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
+                quality, event.catalog_version(), event.sequence(),
+                meta.aggregationKind(), meta.cadence(), event.gap(), event.dropped_samples(),
+                text(sample, "signed_data"), text(sample, "signed_data_format"),
+                herkunft == null ? null : urteil.entityId(),
+                herkunft == null ? null : urteil.geraetId(),
+                herkunft == null ? null : (long) herkunft.einstellungsFassung().fassung(),
+                herkunft == null ? null : herkunft.wertart(),
+                herkunft == null ? null : herkunft.rolle().code(),
+                herkunft == null ? null : herkunft.zustellart().art().code(),
+                herkunft == null ? null : sekunden(herkunft.zustellart().verzoegerungS()));
+    }
+
+    /** Die Verzögerung als {@code integer} der Spalte; sie liegt immer zwischen -300 s und 90 Tagen. */
+    private static int sekunden(long verzoegerung) {
+        return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, verzoegerung));
+    }
+
+    /**
+     * Hängt die Meldungen dieses Umschlags an - jede in ihrem eigenen Savepoint, keine kann den
+     * Schreibweg mitreissen. Ein angehängter {@code unassigned_reader} startet zugleich die Stunde
+     * seiner Drossel.
+     */
+    private void melden(MeasurementRawEvent event, MesswertEreignisse sammler) {
+        if (sammler.fremdeArten() > 0) {
+            ereignisse.nichtVomWriter(sammler.fremdeArten());
+        }
+        for (ObjectNode meldung : sammler.meldungen()) {
+            ereignisse.vomWriter(event.tenant_id(), event.site_id(), meldung, event.ingested_at());
+            if ("unassigned_reader".equals(meldung.path("art").asText())) {
+                nachschlag.unassignedReaderGemerkt(event.tenant_id(), event.device_id(),
+                        UUID.fromString(meldung.path("datenquelle").asText()),
+                        event.ingested_at());
+            }
+        }
+    }
+
+    private void urteilGezaehlt(HerkunftNachschlag.Urteil urteil,
+            MesswertHerkunft.Herkunft herkunft) {
+        Counter.builder(URTEIL_METRIK)
+                .description("Urteil des Herkunftsvertrags je Messwert (AP-07 IP-7)")
+                .tag("urteil", urteil.ergebnis().urteil().code())
+                .tag("grund", urteil.ergebnis().grund() == null ? ""
+                        : urteil.ergebnis().grund().code())
+                .tag("rolle", herkunft == null ? "" : herkunft.rolle().code())
+                .register(meters)
+                .increment();
     }
 
     private void updatePointState(MeasurementRawEvent event, String pointKey, Instant observedAt,

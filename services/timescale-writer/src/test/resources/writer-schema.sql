@@ -83,7 +83,10 @@ CREATE TABLE IF NOT EXISTS measurement_point (
     device_id   UUID,
     control     BOOLEAN NOT NULL DEFAULT FALSE,
     entity_type TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- UEMS AP-06 (V20260911150000): die Datenquelle, über die diese Komponente
+    -- gelesen wird. Sie ist die Weiche des Writers: NULL = Bestandswert.
+    data_source_id UUID
 );
 
 GRANT SELECT ON measurement_point TO voltpilot_app;
@@ -141,7 +144,15 @@ CREATE TABLE device_measurement_selection (
     apply_status TEXT NOT NULL, apply_reason TEXT, applied_at TIMESTAMPTZ,
     custom_definition JSONB, retention_class TEXT NOT NULL, raw_retention_days INTEGER NOT NULL,
     long_term_cadence_s INTEGER, long_term_strategy TEXT NOT NULL,
-    PRIMARY KEY(device_id,point_key),
+    -- V20260855000000: die Komponente, für die der Punkt gewählt wurde; NULL =
+    -- "die Auswahl gehört dem Gerät als Ganzem", ausdrücklich nicht "unbekannt".
+    entity_id UUID,
+    -- Der Schlüssel ist seit V20260855000000 (device_id, entity_id, point_key)
+    -- mit NULLS NOT DISTINCT, keine PK: NULL ist hier eine Aussage. Zwei
+    -- baugleiche Geräte hinter EINER Box haben damit zwei Zeilen je Messkanal -
+    -- genau der Fall, in dem die Komponente NICHT eindeutig folgt.
+    CONSTRAINT uq_device_measurement_selection_point
+        UNIQUE NULLS NOT DISTINCT (device_id, entity_id, point_key),
     FOREIGN KEY(device_id,tenant_id,site_id) REFERENCES device(id,tenant_id,site_id)
 );
 GRANT SELECT,UPDATE ON device_measurement_selection TO voltpilot_app;
@@ -160,6 +171,8 @@ CREATE TABLE device_measurement_selection_event (
     apply_status TEXT NOT NULL, apply_reason TEXT, applied_at TIMESTAMPTZ,
     custom_definition JSONB, retention_class TEXT NOT NULL, raw_retention_days INTEGER NOT NULL,
     long_term_cadence_s INTEGER, long_term_strategy TEXT NOT NULL,
+    -- V20260855000000, wie an der Auswahl: eine reine Zuordnungsnotiz.
+    entity_id UUID,
     UNIQUE(device_id,desired_revision,event_kind)
 );
 GRANT SELECT,INSERT ON device_measurement_selection_event TO voltpilot_app;
@@ -184,15 +197,26 @@ CREATE TABLE device_measurement_sample (
     -- zeichengleich weiterschreibt.
     entity_id UUID, device_install_id UUID, applied_revision BIGINT,
     value_kind TEXT, role TEXT, delivery TEXT, delay_s INTEGER,
-    CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
+    CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1),
+    -- Die geschlossenen Vokabulare und die Paar-Regel der Zustellart, wörtlich
+    -- aus V20260912140000: ein fremdes Wort wird abgewiesen, nie aufgelöst.
+    CONSTRAINT device_measurement_sample_value_kind_ck
+        CHECK (value_kind IS NULL OR value_kind IN ('counter','gauge','state','bitfield','text')),
+    CONSTRAINT device_measurement_sample_role_ck
+        CHECK (role IS NULL OR role IN ('fuehrend','vergleich','spiegel','beobachtung')),
+    CONSTRAINT device_measurement_sample_delivery_ck
+        CHECK (delivery IS NULL OR delivery IN ('direkt','nachgeliefert')),
+    CONSTRAINT device_measurement_sample_delay_ck
+        CHECK ((delivery IS NULL) = (delay_s IS NULL)),
+    CONSTRAINT device_measurement_sample_applied_revision_ck
+        CHECK (applied_revision IS NULL OR applied_revision >= 0)
 );
 SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
 CREATE UNIQUE INDEX uq_device_measurement_sample_idempotency
     ON device_measurement_sample(device_id,point_key,time,edge_sequence);
--- Der neue Doppel-Erkennungsschlüssel (Reihe + Messzeit) liegt ab IP-6 daneben.
--- Der Writer schreibt ohne `entity_id` und trifft ihn deshalb nie: sein
--- `ON CONFLICT DO NOTHING` ohne Ziel sieht alle Unique-Indexe der Tabelle, und
--- dieser darf keine Zeile abweisen, die vorher gespeichert wurde.
+-- Der neue Doppel-Erkennungsschlüssel (Reihe + Messzeit, IP-6). Seit IP-7 ist er
+-- der Schlüssel JEDES Werts mit nachgeschlagener Herkunft; der ALTE Index darüber
+-- bleibt der Schlüssel jedes Bestandswerts (ohne Komponente) und jedes Spiegels.
 CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
     ON device_measurement_sample(tenant_id,entity_id,point_key,time)
     WHERE entity_id IS NOT NULL AND role IS DISTINCT FROM 'spiegel';
@@ -266,7 +290,11 @@ END $$;
 
 CREATE TABLE data_source (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
-    kennzeichen TEXT NOT NULL, UNIQUE (tenant_id, kennzeichen)
+    kennzeichen TEXT NOT NULL,
+    -- Der Lesetakt der Quelle (V20260911150000). Die Zustellart des Herkunfts-
+    -- vertrags rechnet mit ihm: nachgeliefert ab max(300 s, 3 x Kadenz).
+    kadenz_s INTEGER NOT NULL DEFAULT 60,
+    UNIQUE (tenant_id, kennzeichen)
 );
 GRANT SELECT ON data_source TO voltpilot_app;
 ALTER TABLE data_source ENABLE ROW LEVEL SECURITY;
@@ -283,5 +311,73 @@ GRANT SELECT ON messstelle_kennzeichen TO voltpilot_app;
 ALTER TABLE messstelle_kennzeichen ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messstelle_kennzeichen FORCE ROW LEVEL SECURITY;
 CREATE POLICY messstelle_kennzeichen_tenant_isolation ON messstelle_kennzeichen
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- ---------------------------------------------------------------------------
+-- UEMS AP-07 IP-7: die vier Zeitleisten, die der Writer ZUR MESSZEIT liest.
+-- Gespiegelt sind nur die Spalten, die HerkunftNachschlag anfasst; die
+-- vollständige DDL steht in den api-Migrationen daneben. Rechte und RLS wie
+-- dort: die App-Rolle darf lesen, die Mandanten-Policy ist der Zaun.
+--   data_source_assignment  V20260911150000  (Zuständigkeit je Box, halboffen)
+--   geraet / geraet_komponente  V20260911200000  (Einbau und Speisung)
+--   messstelle_quelle       V20260911250000  (führend / Vergleich)
+-- ---------------------------------------------------------------------------
+CREATE TABLE data_source_assignment (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+    data_source_id UUID NOT NULL, device_id UUID NOT NULL,
+    protokoll TEXT NOT NULL DEFAULT 'modbus_tcp', adresse TEXT NOT NULL DEFAULT '-',
+    effective_from TIMESTAMPTZ NOT NULL, effective_to TIMESTAMPTZ,
+    CHECK (effective_to IS NULL OR effective_to > effective_from)
+);
+CREATE INDEX idx_data_source_assignment_quelle
+    ON data_source_assignment (data_source_id, effective_from);
+GRANT SELECT ON data_source_assignment TO voltpilot_app;
+ALTER TABLE data_source_assignment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE data_source_assignment FORCE ROW LEVEL SECURITY;
+CREATE POLICY data_source_assignment_tenant_isolation ON data_source_assignment
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE geraet (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+    site_id UUID NOT NULL, kennzeichen TEXT NOT NULL, einbau_kennzeichen TEXT NOT NULL,
+    geraeteart TEXT NOT NULL DEFAULT 'zaehler', seriennummer TEXT,
+    eingebaut_am TIMESTAMPTZ NOT NULL, ausgebaut_am TIMESTAMPTZ
+);
+GRANT SELECT ON geraet TO voltpilot_app;
+ALTER TABLE geraet ENABLE ROW LEVEL SECURITY;
+ALTER TABLE geraet FORCE ROW LEVEL SECURITY;
+CREATE POLICY geraet_tenant_isolation ON geraet
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE geraet_komponente (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+    geraet_id UUID NOT NULL, entity_id UUID NOT NULL,
+    gueltig_ab TIMESTAMPTZ NOT NULL, gueltig_bis TIMESTAMPTZ,
+    CHECK (gueltig_bis IS NULL OR gueltig_bis > gueltig_ab)
+);
+CREATE INDEX idx_geraet_komponente_entity ON geraet_komponente (entity_id, gueltig_ab);
+GRANT SELECT ON geraet_komponente TO voltpilot_app;
+ALTER TABLE geraet_komponente ENABLE ROW LEVEL SECURITY;
+ALTER TABLE geraet_komponente FORCE ROW LEVEL SECURITY;
+CREATE POLICY geraet_komponente_tenant_isolation ON geraet_komponente
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+CREATE TABLE messstelle_quelle (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+    messstelle_id UUID NOT NULL, entity_id UUID NOT NULL, geraet_id UUID NOT NULL,
+    kanal TEXT NOT NULL, rolle TEXT NOT NULL,
+    gueltig_ab TIMESTAMPTZ NOT NULL, gueltig_bis TIMESTAMPTZ,
+    CHECK (rolle IN ('fuehrend', 'vergleich')),
+    CHECK (gueltig_bis IS NULL OR gueltig_bis > gueltig_ab)
+);
+CREATE INDEX idx_messstelle_quelle_kanal ON messstelle_quelle (entity_id, kanal, gueltig_ab);
+GRANT SELECT ON messstelle_quelle TO voltpilot_app;
+ALTER TABLE messstelle_quelle ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messstelle_quelle FORCE ROW LEVEL SECURITY;
+CREATE POLICY messstelle_quelle_tenant_isolation ON messstelle_quelle
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

@@ -17,6 +17,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -62,6 +63,7 @@ public class MessreiheEreignisRepository {
 
     private static final Logger log = LoggerFactory.getLogger(MessreiheEreignisRepository.class);
     static final String SPIEGEL_METRIK = "voltpilot.writer.events.mirror";
+    static final String WRITER_METRIK = "voltpilot.writer.events.writer";
     /** TimescaleDB names a chunk's copy of a FK "<hypertable>_<n>_<name>" - the label keeps <name>. */
     private static final Pattern CONSTRAINT =
             Pattern.compile("constraint \"(?:[0-9]+_[0-9]+_)?([a-z][a-z0-9_]*)\"");
@@ -160,6 +162,64 @@ public class MessreiheEreignisRepository {
     private void spiegelZaehler(String ergebnis, String grund) {
         Counter.builder(SPIEGEL_METRIK)
                 .description("Bestand events mirrored into messreihe_ereignis, by outcome")
+                .tag("ergebnis", ergebnis)
+                .tag("grund", grund)
+                .register(meters)
+                .increment();
+    }
+
+    // ---- an event the writer itself judged (AP-07 IP-7) --------------------------------
+
+    /**
+     * Appends ONE report the writer itself produced while judging a measurement (UEMS AP-07 IP-7:
+     * {@code sequence_gap}, {@code sequence_reset}, {@code rejected}, {@code unassigned_reader},
+     * {@code duplicate_conflict}). It takes the SAME way in as a box report - {@link #anhaengen},
+     * so {@link EreignisVokabular} is the gate and the closed vocabulary is the only vocabulary -
+     * but inside its OWN SAVEPOINT and it NEVER throws: a refused or failing report is rolled back
+     * alone, logged and counted in
+     * {@code voltpilot_writer_events_writer_total&#123;ergebnis,grund&#125;}, and the measurement
+     * write commits. An event is a statement ABOUT a value; losing the statement must never cost
+     * the value.
+     */
+    void vomWriter(UUID tenantId, UUID siteId, JsonNode ereignis, Instant eingang) {
+        String art = ereignis.path("art").asText("");
+        try {
+            Ergebnis e = savepoint.execute(status ->
+                    anhaengen(tenantId, siteId, Urheber.WRITER, ereignis, eingang));
+            if (e == null) {
+                return;
+            }
+            writerZaehler(e.ausgang().name().toLowerCase(Locale.ROOT),
+                    e.grund() == null ? "" : e.grund());
+            if (e.ausgang() == Ausgang.VERWORFEN) {
+                log.warn("Writer report {} refused by the vocabulary ({}: {}); the measurement "
+                        + "write is untouched", art, e.grund(), e.hinweis());
+            }
+        } catch (RuntimeException ex) {
+            String grund = grund(ex);
+            log.error("Writer report {} could not be appended to messreihe_ereignis ({}); rolled "
+                    + "back to its savepoint, the measurement write goes on", art, grund, ex);
+            writerZaehler("fehler", grund);
+        }
+    }
+
+    /**
+     * Zählt die Meldungen, die die Ableitung erzeugt hat, deren Urheber laut Vokabular aber NICHT
+     * der Writer ist ({@code clock_ahead}, {@code too_old}, {@code clock_jump} — sie gehören der
+     * Datenannahme). Der Writer meldet sie nie; still verschwinden sollen sie trotzdem nicht.
+     */
+    void nichtVomWriter(int anzahl) {
+        Counter.builder(WRITER_METRIK)
+                .description("Reports the writer produced while judging measurements, by outcome")
+                .tag("ergebnis", "fremder_urheber")
+                .tag("grund", "")
+                .register(meters)
+                .increment(anzahl);
+    }
+
+    private void writerZaehler(String ergebnis, String grund) {
+        Counter.builder(WRITER_METRIK)
+                .description("Reports the writer produced while judging measurements, by outcome")
                 .tag("ergebnis", ergebnis)
                 .tag("grund", grund)
                 .register(meters)
