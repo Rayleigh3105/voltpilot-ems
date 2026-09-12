@@ -448,7 +448,7 @@ class MessstelleMigrationTest {
                 alsTue(t, () -> assertThat(messstellen.nebengroesseHinzufuegen(id, groesse(ng))).isPresent());
             }
         }
-        assertThat(ids).hasSize(21);
+        assertThat(ids).hasSize(22);
 
         alsTue(t, () -> {
             Map<String, Messstelle> gespeichert = messstellen.alle().stream()
@@ -466,7 +466,7 @@ class MessstelleMigrationTest {
                                 ms.get("nebengroessen").spliterator(), false)
                                 .map(MessstelleMigrationTest::groesse).toList());
             }
-            assertThat(messstellen.vergeben()).hasSize(21)
+            assertThat(messstellen.vergeben()).hasSize(22)
                     .allSatisfy(v -> assertThat(v.frueher() || v.archiviert()).isFalse());
         });
 

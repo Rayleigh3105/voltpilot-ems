@@ -1,7 +1,7 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS). Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-11",
+  "stand": "2026-09-12",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -42,7 +42,31 @@
     "",
     "Alle Zeitpunkte sind ISO 8601 mit dem Versatz der Zeitzone Europe/Berlin",
     "(+01:00 Winterzeit, +02:00 Sommerzeit). `genauigkeit` sagt, ob die Quelle nur",
-    "einen Tag oder eine Minute nennt — eine Tagesangabe behauptet nie eine Uhrzeit."
+    "einen Tag oder eine Minute nennt — eine Tagesangabe behauptet nie eine Uhrzeit.",
+    "",
+    "FASSUNG 1.2 (12.09.2026) — additiv, aus AP-09 IP-2 (Entscheide E1–E17, W5) und",
+    "AP-10 IP-2 (Entscheid E19 = A). Jede Angabe der Fassung 1.1 behält ihren Wert;",
+    "neu sind nur Felder, eine Bezugsgröße und eine Messstelle:",
+    "  BEZUGSGRÖSSEN: `einheit_code`, `periode_code`, `wertart` und `messstelle`",
+    "  tragen die GESCHLOSSENEN Vokabulare des Bezugsdaten-Vertrags neben dem",
+    "  freien Text der Fassung 1.1 (`einheit` „kg Granulat“ bleibt, `einheit_code`",
+    "  ist `kg`); `geltung_art` nimmt zusätzlich die übrigen Geltungsbereiche des",
+    "  Entscheids AP-09 E1 an. Neu ist BZ-5 „Ladezeit Ladepunkt Halle 2“.",
+    "  MS-21: `ablesungen[]` — die beiden manuellen Gas-Ablesungen (AP-09 W5); die",
+    "  Zuordnung zu einem Kalendermonat steht an der SCHLIESSENDEN Ablesung.",
+    "  MESSSTELLEN: `formel_typ` je berechneter Messstelle (Vokabular aus",
+    "  messstelle-formel.md §0), `beispielwerte.tag_2026_10_18_kwh` an MS-16/17/18",
+    "  und MS-22 sowie `oktober_2026_laden_kwh`/`_entladen_kwh` an MS-04 — deren",
+    "  `oktober_2026_kwh` bleibt `null`, weil ein Speicher keine EINE Monatsmenge",
+    "  hat: er geht mit ZWEI Anteilen in eine Bilanz ein, nie als Saldo. Neu ist",
+    "  MS-22 „Lindach nicht zugeordnet“, der Rest der Bilanz von AN-3.",
+    "ZWEI ENTSCHIEDENE BERICHTIGUNGEN der Fassung 1.1 (AP-10 E19 = A):",
+    "  MS-09 Oktober 52 600 → 54 580 kWh — die eigenen Eingänge der Formel ergeben",
+    "  54 580, nicht 52 600 (Befund AP-10 W10; der Abnahmefall F4 ist der Nachweis).",
+    "  Die Anteile auf die Kostenstelle 9000 (MS-02, MS-03, MS-04, MS-09) bekommen",
+    "  `gueltig_bis: 2026-12-31`: kein Anteil gilt über das Bestehen seines Ziels",
+    "  hinaus (Befund AP-10 W8). Nachfolge-Anteile bleiben offen — „nicht verteilt“",
+    "  ist die ehrliche Antwort, nicht ein stilles Umhängen auf 9010/9020."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -58,6 +82,7 @@
     "geraete": "AP-00 §4.4 · Einbauten Z-5a/Z-5b mit Seriennummern und Endstand (AP-04 §4.2, E2), WAGO-Controller-Kenndaten (AP-05 §4.1/§4.2)",
     "komponenten": "AP-00 §4.4 (E12: eine Komponente je Energiekarte) · Steckplätze und Stromwandler der Energiekarten (AP-05 Erhebungsbogen B1–B3, E4)",
     "messstellen": "AP-00 §4.4 · Hauptgröße + Nebengrößen (AP-04 E1), Kennzeichen-Format (AP-04 E7), elektrische Stellung „Unterzähler von“ (AP-04 E12), zeitgültige führende Quelle (AP-04 §4.2), Kadenz je Quellenbindung und Wertart je Kanal (AP-07 E9/E12), Vergleichsquelle an MS-01 aus der AP-04-Feldtabelle §4.1 (E3) ab dem Zeitpunkt des AP-04-Protokolls 20.11.2026 08:30 — eingetragen von Ines Kaltenbach an MS-01 (das Protokoll nennt MS-06 und Elektro Brunner, dessen Unterstützung erst am 24.11.2026 beginnt; Entscheid firstmate 11.09.2026)",
+    "fassung_1_2": "AP-09 IP-2 (W5: `einheit_code`, `periode_code`, `wertart`, `geltung_art`, `messstelle`, BZ-5, `MS-21.ablesungen[]`) und AP-10 IP-2 (E19 = A: MS-22, `tag_2026_10_18_kwh`, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, Ende der 9000-Anteile, `formel_typ`) — beide am 12.09.2026 entschieden",
     "personen": "AP-00 §4.4 (vier Personen) · vollständiger Personen-Satz mit Rollen, Geltungsbereichen und Unterstützungszugriffen aus AP-03 §4.1",
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
     "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei."
@@ -548,7 +573,7 @@
       "ort": { "art": "standort", "kennzeichen": "ST-1", "hinweis": "Zählerplatz" },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "Hauptzähler", "unterzaehler_von": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null } ],
       "prozesse": [],
-      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": null } ],
+      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": "2026-12-31" } ],
       "kostenstellen_beschreibung": "9000",
       "fuehrende_quelle": [ { "komponente": "K-3", "kanal": "Wirkenergie Abgabe", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
@@ -567,7 +592,7 @@
       "ort": { "art": "gebaeude", "kennzeichen": "G-1", "hinweis": "Dach" },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "Erzeuger", "unterzaehler_von": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null } ],
       "prozesse": [],
-      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": null } ],
+      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": "2026-12-31" } ],
       "kostenstellen_beschreibung": "9000",
       "fuehrende_quelle": [ { "komponente": "K-1", "kanal": "PV-Leistung", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
@@ -586,7 +611,7 @@
       "ort": { "art": "bereich", "kennzeichen": "B-2", "hinweis": null },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "Speicher", "unterzaehler_von": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null } ],
       "prozesse": [],
-      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": null } ],
+      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": "2026-12-31" } ],
       "kostenstellen_beschreibung": "9000",
       "fuehrende_quelle": [ { "komponente": "K-1", "kanal": "Speicherleistung", "geraet": "GR-1", "einbau": "GR-1", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
@@ -594,6 +619,7 @@
       "beispielwerte": {
         "jahr_2025_kwh": null, "jahr_2025_beschreibung": "88 400 geladen / 79 900 entladen",
         "oktober_2026_kwh": null, "oktober_2026_beschreibung": "7 900 geladen / 7 100 entladen",
+        "oktober_2026_laden_kwh": 7900, "oktober_2026_entladen_kwh": 7100,
         "momentanleistung_kw": -40.0, "momentanwert_beschreibung": "−40,0 kW (entlädt) · Ladestand 62 %",
         "ladestand_prozent": 62
       },
@@ -687,14 +713,14 @@
       "ort": { "art": "gebaeude", "kennzeichen": "G-1", "hinweis": null },
       "elektrische_stellung": [ { "anlage": "AN-1", "stellung": "keine", "unterzaehler_von": null, "gueltig_ab": "2026-10-01", "gueltig_bis": null } ],
       "prozesse": [],
-      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": null } ],
+      "kostenstellen_anteile": [ { "kostenstelle": "9000", "anteil_prozent": 100, "gueltig_ab": "2026-10-01", "gueltig_bis": "2026-12-31" } ],
       "kostenstellen_beschreibung": "9000",
       "fuehrende_quelle": [],
       "vergleichsquellen": [],
       "kadenz_s": null, "kadenz_beschreibung": "abgeleitet je Viertelstunde (AP-10), keine Quellenbindung",
-      "formel": "MS-01 + MS-03 + MS-04 (entladen) − MS-02 − MS-04 (laden) − MS-05 − MS-06 − MS-07 − MS-08",
+      "formel": "MS-01 + MS-03 + MS-04 (entladen) − MS-02 − MS-04 (laden) − MS-05 − MS-06 − MS-07 − MS-08", "formel_typ": "rest",
       "quelle_hinweis": "Rest der Bilanz (AN-1) — die elektrische Stellung ist „keine“, weil eine Differenz keinen Zählerplatz hat",
-      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 52600, "momentanleistung_kw": null },
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 54580, "oktober_2026_beschreibung": "128 400 + 14 900 + 7 100 − 3 120 − 7 900 − 7 600 − 55 100 − 15 900 − 6 200 = 54 580 (Fassung 1.2 berichtigt die 52 600 der Fassung 1.1, AP-10 W10/E19)", "momentanleistung_kw": null },
       "zustand": "berechnet"
     },
     {
@@ -787,7 +813,7 @@
       "fuehrende_quelle": [],
       "vergleichsquellen": [],
       "kadenz_s": null, "kadenz_beschreibung": "abgeleitet je Viertelstunde (AP-10), keine Quellenbindung",
-      "formel": "MS-10 − MS-11 − MS-12 − MS-13 − MS-14",
+      "formel": "MS-10 − MS-11 − MS-12 − MS-13 − MS-14", "formel_typ": "rest",
       "quelle_hinweis": "Rest der Bilanz (AN-2)",
       "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 3800, "momentanleistung_kw": null },
       "zustand": "berechnet"
@@ -803,7 +829,7 @@
       "fuehrende_quelle": [ { "komponente": "K-11", "kanal": "Wirkenergie Bezug", "geraet": "GR-10", "einbau": "GR-10", "kanal_wertart": "counter", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
       "kadenz_s": 10, "kadenz_beschreibung": null, "formel": null, "quelle_hinweis": null,
-      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 9100, "oktober_2026_beschreibung": "ab 15.10.2026 (Standort erst dann eingerichtet)", "momentanleistung_kw": 38.7 },
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 9100, "oktober_2026_beschreibung": "ab 15.10.2026 (Standort erst dann eingerichtet)", "tag_2026_10_18_kwh": 100, "momentanleistung_kw": 38.7 },
       "zustand": "liefert Daten"
     },
     {
@@ -818,7 +844,7 @@
       "fuehrende_quelle": [ { "komponente": "K-10.1", "kanal": "Wirkenergie Bezug", "geraet": "GR-9", "einbau": "C-2", "kanal_wertart": "counter", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
       "kadenz_s": 60, "kadenz_beschreibung": null, "formel": null, "quelle_hinweis": null,
-      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 4300, "oktober_2026_beschreibung": "ab 15.10.2026", "momentanleistung_kw": 17.2 },
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 4300, "oktober_2026_beschreibung": "ab 15.10.2026", "tag_2026_10_18_kwh": 60, "momentanleistung_kw": 17.2 },
       "zustand": "liefert Daten"
     },
     {
@@ -833,7 +859,7 @@
       "fuehrende_quelle": [ { "komponente": "K-10.2", "kanal": "Wirkenergie Bezug", "geraet": "GR-9", "einbau": "C-2", "kanal_wertart": "counter", "gueltig_ab": "2026-10-15T00:00:00+02:00", "gueltig_bis": null } ],
       "vergleichsquellen": [],
       "kadenz_s": 60, "kadenz_beschreibung": null, "formel": null, "quelle_hinweis": null,
-      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 3600, "oktober_2026_beschreibung": "ab 15.10.2026", "momentanleistung_kw": 15.1 },
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 3600, "oktober_2026_beschreibung": "ab 15.10.2026", "tag_2026_10_18_kwh": 30, "momentanleistung_kw": 15.1 },
       "zustand": "liefert Daten"
     },
     {
@@ -847,7 +873,7 @@
       "fuehrende_quelle": [],
       "vergleichsquellen": [],
       "kadenz_s": null, "kadenz_beschreibung": "abgeleitet je Viertelstunde (AP-10), keine Quellenbindung",
-      "formel": "MS-01 + MS-10 + MS-16",
+      "formel": "MS-01 + MS-10 + MS-16", "formel_typ": "gewichtete_summe",
       "quelle_hinweis": "drei getrennte elektrische Systeme — deshalb ohne elektrische Stellung",
       "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 174400, "oktober_2026_beschreibung": "Lindach ab 15.10.2026", "momentanleistung_kw": null },
       "zustand": "berechnet"
@@ -864,7 +890,7 @@
       "fuehrende_quelle": [],
       "vergleichsquellen": [],
       "kadenz_s": null, "kadenz_beschreibung": "abgeleitet je Viertelstunde (AP-10), keine Quellenbindung",
-      "formel": "MS-06 + MS-11 + 70 % × MS-07",
+      "formel": "MS-06 + MS-11 + 70 % × MS-07", "formel_typ": "gewichtete_summe",
       "quelle_hinweis": "läuft über AN-1 und AN-2 — deshalb ohne elektrische Stellung und ohne Ort (AP-00 §4.4; die Ort-Pflicht der Invariante 2 gilt der gemessenen Messstelle)",
       "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 88630, "momentanleistung_kw": null },
       "zustand": "berechnet"
@@ -880,11 +906,31 @@
       "kostenstellen_beschreibung": "9100",
       "fuehrende_quelle": [],
       "vergleichsquellen": [],
+      "ablesungen": [
+        { "zeitpunkt": "2026-10-01T07:15:00+02:00", "stand": 48211, "einheit": "m³", "abgelesen_von": "JW", "zuordnung_monat": null, "hinweis": "Anfangsstand — er eröffnet den ersten Ablesezeitraum und schließt keinen" },
+        { "zeitpunkt": "2026-11-02T07:40:00+01:00", "stand": 49451, "einheit": "m³", "abgelesen_von": "JW", "zuordnung_monat": "2026-10", "hinweis": "schließt den Ablesezeitraum 01.10. 07:15 – 02.11. 07:40: 49 451 − 48 211 = 1 240 m³; der Zeitraum berührt zwei Monate, der Kunde hat ihn dem Oktober 2026 zugeordnet (Anteil 95,9 %)" }
+      ],
       "kadenz_s": null, "kadenz_beschreibung": "monatlich (manuelle Ablesung, AP-09) — Abdeckung 1 von 1",
       "formel": null,
       "quelle_hinweis": "keine Datenquelle — manuelle Ablesung (AP-09); Medium im Modell vorbereitet, Auswertung nicht ausgebaut. Kein elektrisches System, deshalb keine elektrische Stellung (AP-00 §4.5 Regel 6).",
       "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": null, "oktober_2026_m3": 1240, "oktober_2026_beschreibung": "1 240 m³, manuell abgelesen", "momentanleistung_kw": null },
       "zustand": "eingerichtet · liefert keine Daten (kein Kanal)"
+    },
+    {
+      "kennzeichen": "MS-22", "name": "Lindach nicht zugeordnet", "art": "berechnet", "art_beschreibung": "berechnet (Differenz, AP-10)", "medium": "Strom",
+      "hauptgroesse": { "groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge", "wertart_beschreibung": "15-min-Menge" },
+      "nebengroessen": [],
+      "ort": { "art": "keiner", "kennzeichen": null, "hinweis": "Rest über beide Gebäude des Werks Lindach (G-4 und G-5) — wie MS-20 ohne Ort" },
+      "elektrische_stellung": [ { "anlage": "AN-3", "stellung": "keine", "unterzaehler_von": null, "gueltig_ab": "2026-10-15", "gueltig_bis": null } ],
+      "prozesse": [],
+      "kostenstellen_anteile": [], "kostenstellen_beschreibung": "—",
+      "fuehrende_quelle": [],
+      "vergleichsquellen": [],
+      "kadenz_s": null, "kadenz_beschreibung": "abgeleitet je Viertelstunde (AP-10), keine Quellenbindung",
+      "formel": "MS-16 − MS-17 − MS-18", "formel_typ": "rest",
+      "quelle_hinweis": "Rest der Bilanz (AN-3) — die elektrische Stellung ist „keine“, weil eine Differenz keinen Zählerplatz hat",
+      "beispielwerte": { "jahr_2025_kwh": null, "oktober_2026_kwh": 1200, "oktober_2026_beschreibung": "ab 15.10.2026 (Standort erst dann eingerichtet): 9 100 − 4 300 − 3 600 = 1 200", "tag_2026_10_18_kwh": 10, "momentanleistung_kw": null },
+      "zustand": "berechnet"
     }
   ],
 
@@ -949,18 +995,21 @@
   ],
 
   "bezugsgroessen": [
-    { "kennzeichen": "BZ-1", "name": "Produktionsmenge Spritzguss", "einheit": "kg Granulat", "periode": "monatlich",
-      "herkunft": "CSV aus dem ERP (AP-09)", "geltung_art": "prozess", "geltung": "P-1",
+    { "kennzeichen": "BZ-1", "name": "Produktionsmenge Spritzguss", "einheit": "kg Granulat", "einheit_code": "kg", "periode": "monatlich", "periode_code": "monat", "wertart": "periodenwert",
+      "herkunft": "CSV aus dem ERP (AP-09)", "geltung_art": "prozess", "geltung": "P-1", "messstelle": null,
       "oktober_2026_wert": 312400, "oktober_2026_beschreibung": null },
-    { "kennzeichen": "BZ-2", "name": "Gutteile Montage", "einheit": "Stück", "periode": "monatlich",
-      "herkunft": "manuelle Eingabe (AP-09)", "geltung_art": "prozess", "geltung": "P-2",
+    { "kennzeichen": "BZ-2", "name": "Gutteile Montage", "einheit": "Stück", "einheit_code": "Stück", "periode": "monatlich", "periode_code": "monat", "wertart": "periodenwert",
+      "herkunft": "manuelle Eingabe (AP-09)", "geltung_art": "prozess", "geltung": "P-2", "messstelle": null,
       "oktober_2026_wert": 48200, "oktober_2026_beschreibung": null },
-    { "kennzeichen": "BZ-3", "name": "Betriebsstunden Spritzguss", "einheit": "h", "periode": "monatlich",
-      "herkunft": "manuelle Eingabe", "geltung_art": "prozess", "geltung": "P-1",
+    { "kennzeichen": "BZ-3", "name": "Betriebsstunden Spritzguss", "einheit": "h", "einheit_code": "h", "periode": "monatlich", "periode_code": "monat", "wertart": "periodenwert",
+      "herkunft": "manuelle Eingabe", "geltung_art": "prozess", "geltung": "P-1", "messstelle": null,
       "oktober_2026_wert": 4980, "oktober_2026_beschreibung": null },
-    { "kennzeichen": "BZ-4", "name": "Bezugsfläche", "einheit": "m²", "periode": "Stammdatum (zeitlich gültig)",
-      "herkunft": "Standort-/Gebäudestammdaten (AP-02)", "geltung_art": "ort", "geltung": null,
-      "oktober_2026_wert": null, "oktober_2026_beschreibung": "Halle 1 4 200 · Halle 2 3 100 · Verwaltung 1 150 · Lagerhalle Lindach 1 800 · Montagehalle Lindach 800 — die Zahlen stehen zeitgültig an den Gebäuden (`gebaeude[].bezugsflaechen`)" }
+    { "kennzeichen": "BZ-4", "name": "Bezugsfläche", "einheit": "m²", "einheit_code": "m²", "periode": "Stammdatum (zeitlich gültig)", "periode_code": null, "wertart": "stammdatum",
+      "herkunft": "Standort-/Gebäudestammdaten (AP-02)", "geltung_art": "ort", "geltung": null, "messstelle": null,
+      "oktober_2026_wert": null, "oktober_2026_beschreibung": "Halle 1 4 200 · Halle 2 3 100 · Verwaltung 1 150 · Lagerhalle Lindach 1 800 · Montagehalle Lindach 800 — die Zahlen stehen zeitgültig an den Gebäuden (`gebaeude[].bezugsflaechen`)" },
+    { "kennzeichen": "BZ-5", "name": "Ladezeit Ladepunkt Halle 2", "einheit": "h", "einheit_code": "h", "periode": "täglich", "periode_code": "tag", "wertart": "periodenwert",
+      "herkunft": "Messkanal K-9 · OCPP-Status „Charging“ (AP-09 §4.9)", "geltung_art": "messstelle", "geltung": null, "messstelle": "MS-14",
+      "oktober_2026_wert": null, "oktober_2026_beschreibung": "keine Werte im Oktober 2026 — der Zustands-Kanal ist noch nicht gebunden; den Tageswert 4,9667 h für den 02.12.2026 rechnet der Abnahmefall B7 in `bezugsdaten-vectors.json`" }
   ],
 
   "kennzahl_beispiel": {

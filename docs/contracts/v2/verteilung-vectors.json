@@ -19,7 +19,7 @@
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
   "referenzunternehmen": "./uems-referenzunternehmen.json",
-  "referenz_stand": "Fassung vom 11.09.2026 (1.1). Die Ergänzung 1.2 (E19 = A, entschieden 12.09.2026) — MS-22 „Lindach nicht zugeordnet“, die Tageswerte des 18.10.2026, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, das Ende der 9000-Anteile am 31.12.2026 und `formel_typ` je berechneter Messstelle — trägt AP-10 IP-2 dort nach. Bis dahin stehen diese Angaben NUR hier und sind je Fall unter „annahmen“ gekennzeichnet; die Fälle rechnen nach der Ergänzung unverändert weiter.",
+  "referenz_stand": "Fassung 1.2 vom 12.09.2026. Die Ergänzung (E19 = A, entschieden 12.09.2026) — MS-22 „Lindach nicht zugeordnet“, die Tageswerte des 18.10.2026, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, das Ende der 9000-Anteile am 31.12.2026 und `formel_typ` je berechneter Messstelle — ist mit AP-10 IP-2 in der Referenzdatei nachgetragen. Die Fälle rechnen unverändert weiter; ihre „annahmen“ bleiben stehen und sagen nun, WOHER die Angabe kommt.",
   "titel": "Feste Verteilung einer Messstelle auf Kostenstellen: Satz, Fassung, Tagesanteile, Erbe",
   "regeln_kurz": [
     "Die Anlage ist das elektrische System und die Bilanzgrenze; ihr Netzanschluss ist ein eigenes Objekt am Standort (E8/E9). Standort und Unternehmen bilanzieren als SUMME über Systeme mit „x von y“ (F8); ein Gebäude ist eine SICHT Ort × Stellung (F17).",
