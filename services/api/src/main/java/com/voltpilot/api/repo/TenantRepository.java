@@ -216,7 +216,14 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // The Bezugsgroessen (V20260913104500) go first: a value's Fassungen and
+                // the Kennzeichen occupancy before their Bezugsgroesse, the Bezugsgroesse
+                // before the Messstelle, Ort, Standort or Unternehmen it applies to. Its
+                // protocol has no FK to the Bezugsgroesse but holds the tenant (RESTRICT),
+                // so - unlike the older journals - it goes with the company.
                 for (String table : new String[] {
+                        "bezugsgroesse_wert", "bezugsgroesse_kennzeichen_verlauf", "bezugsgroesse",
+                        "bezugsgroesse_aenderung",
                         "messstelle_formel_term", "messstelle_formel_fassung",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
