@@ -307,6 +307,18 @@
         "typ": "zeit",
         "beschreibung": "Die Messzeit des letzten Stands davor."
       },
+      "wertebereich_modul": {
+        "typ": "stand",
+        "beschreibung": "Der deklarierte Wertebereich des Zählers (Modul): bei diesem Stand beginnt er wieder bei 0 (AP-08 Z6, E4)."
+      },
+      "hoechstzuwachs_je_kadenz": {
+        "typ": "stand",
+        "beschreibung": "Der deklarierte größte plausible Zuwachs je Kadenz (AP-08 Z6, E4)."
+      },
+      "kadenz_s": {
+        "typ": "sekunden",
+        "beschreibung": "Die Kadenz, auf die sich der Höchstzuwachs bezieht."
+      },
       "anlass": {
         "typ": "wort",
         "beschreibung": "Warum die Grenze bzw. der Wechsel entstand."
@@ -705,6 +717,53 @@
         "bestand": true,
         "nie_geloescht": true,
         "herkunft": "AP-07 §4.8 (Writer, wie heute); AP-05 E6, A8"
+      },
+      {
+        "art": "counter_overflow",
+        "name": "Zähler übergelaufen",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "stand_alt",
+          "stand_neu",
+          "messzeit_alt",
+          "wertebereich_modul",
+          "hoechstzuwachs_je_kadenz",
+          "kadenz_s"
+        ],
+        "felder": [
+          "einheit"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Zähler am {zeitpunkt} über das Ende seines Wertebereichs ({wertebereich_modul}) gelaufen: von {stand_alt} auf {stand_neu} — der Verbrauch dazwischen ist mitgezählt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist die Messzeit des ersten Stands unter dem vorigen, `messzeit_alt` liegt davor; `stand_neu` < `stand_alt`.",
+          "Nur mit deklariertem Wertebereich UND Höchstzuwachs (AP-08 E4): `wertebereich_modul − stand_alt + stand_neu ≤ hoechstzuwachs_je_kadenz × (zeitpunkt − messzeit_alt) ÷ kadenz_s` — dieselbe Entscheidung wie Z6 im Verbrauchsvertrag; sonst ist es kein Überlauf, sondern eine Rücksetzung.",
+          "Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge: die Menge bildet der Verdichtungs-Lauf aus den Werten und der Deklaration der Reihe."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.3, Z6, E4 (Writer, Lieferpaket IP-4)"
       },
       {
         "art": "device_boundary",
@@ -2601,6 +2660,70 @@
           "stand_neu": 6190.0,
           "messzeit_alt": "2026-11-02T08:11:00Z",
           "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ek4-impulszaehler-druckluft-uebergelaufen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.3 counter_overflow, Z6, E4; Referenzfall F7 (MS-07)",
+      "why": "Der 16-bit-Impulszähler von K-6 läuft um 10:03 von 64 954 über 65 535 auf 185. Wertebereich und Höchstzuwachs sind deklariert, und 65 536 − 64 954 + 185 = 767 ≤ 1 667 × 1 Kadenz: ein Überlauf, lückenlos gezählt — keine Rücksetzung.",
+      "annahme": "F7 nennt die Deklaration an der Vorlage (Wertebereich 0 … 65 535, Höchstzuwachs 1 667 Impulse je Minute aus 100 kW Anschlussleistung); die Felder dafür baut AP-08 IP-7. Die Meldung trägt die Zahlen, mit denen der Writer entschieden hat.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000086",
+          "art": "counter_overflow",
+          "zeitpunkt": "2026-10-20T08:03:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug",
+          "stand_alt": 64954,
+          "stand_neu": 185,
+          "messzeit_alt": "2026-10-20T08:02:00Z",
+          "wertebereich_modul": 65536,
+          "hoechstzuwachs_je_kadenz": 1667,
+          "kadenz_s": 60,
+          "messstelle": "MS-07",
+          "einheit": "Impulse"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zähler am 20.10.2026 10:03 über das Ende seines Wertebereichs (65.536 Impulse) gelaufen: von 64.954 Impulse auf 185 Impulse — der Verbrauch dazwischen ist mitgezählt"
+        ]
+      }
+    },
+    {
+      "name": "ek4-sprung-ueber-dem-hoechstzuwachs-ist-kein-ueberlauf-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.3 counter_overflow, Z6, E4; Referenzfall F7 10:20",
+      "why": "Um 10:20 fällt derselbe Zähler von 12 457 auf 100: 65 536 − 12 457 + 100 = 53 179 > 1 667. Das wäre fiktiver Verbrauch — es ist eine Rücksetzung, und eine Überlauf-Meldung dafür wird abgewiesen.",
+      "annahme": "Wie der Fall davor; der Writer meldet einen solchen Sprung gar nicht erst als Überlauf, der Fall prüft die Grenze des Vokabulars.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000087",
+          "art": "counter_overflow",
+          "zeitpunkt": "2026-10-20T08:20:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug",
+          "stand_alt": 12457,
+          "stand_neu": 100,
+          "messzeit_alt": "2026-10-20T08:19:00Z",
+          "wertebereich_modul": 65536,
+          "hoechstzuwachs_je_kadenz": 1667,
+          "kadenz_s": 60,
+          "messstelle": "MS-07",
+          "einheit": "Impulse"
         }
       },
       "expected": {

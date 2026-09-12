@@ -57,8 +57,8 @@ public class ZeitraumMenge {
         }
         return jdbc.execute((Connection con) -> {
             ViertelstundenTeile.Geladen v = ViertelstundenTeile.laden(con, tenantId, entityId, messkanal, von, bis);
-            Teilperiode menge = ViertelstundenTeile.zaehlerstand(v.teile(), v.ereignisse(), v.wertart(),
-                    v.kadenzS(), von, bis);
+            Teilperiode menge = ViertelstundenTeile.zaehlerstand(v.teile(), v.ereignisse(), v.deklaration(),
+                    v.wertart(), v.kadenzS(), von, bis);
             int erhalten = v.innen(von, bis).stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
             int erwartet = v.kadenzS() == null ? 0
                     : VerbrauchRegeln.erwartetAusTeilperioden(v.innen(von, bis), von, bis,

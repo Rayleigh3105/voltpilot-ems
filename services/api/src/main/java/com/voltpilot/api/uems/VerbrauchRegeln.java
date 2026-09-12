@@ -362,6 +362,31 @@ public final class VerbrauchRegeln {
                 .divide(BigDecimal.valueOf(kadenz.toNanos()), RECHNUNG);
     }
 
+    /**
+     * Z6 (E4) — ist der fallende Stand {@code vorher → nachher} ein Überlauf? Die EINE Entscheidung:
+     * die Mengenregel ({@link #paar}), die Prüfung der Meldung {@code counter_overflow}
+     * ({@link EreignisVokabular}) und — als Zwilling {@code UeberlaufRegel} — die Erkennung im
+     * Writer fragen hier.
+     *
+     * <p>Ein Überlauf ist es nur, wenn der Stand FÄLLT, der Wertebereich (Modul) UND der
+     * Höchstzuwachs je Kadenz deklariert sind und {@code Modul − vorher + nachher} die Schranke
+     * {@code Höchstzuwachs × (Zeitabstand ÷ Kadenz)} nicht überschreitet. Fehlt eine der beiden
+     * Angaben, wird nichts geraten: die Antwort ist {@code null}, und der Sprung bleibt eine
+     * Rücksetzung (Z5).
+     *
+     * @return der Zuwachs über den Überlauf (in Rohwert-Einheit, vor dem Faktor), sonst {@code null}
+     */
+    public static BigDecimal ueberlauf(Rohwert vorher, Rohwert nachher, Duration kadenz,
+            BigDecimal wertebereichModul, BigDecimal hoechstzuwachsJeKadenz) {
+        if (wertebereichModul == null || hoechstzuwachsJeKadenz == null
+                || nachher.wert().compareTo(vorher.wert()) >= 0) {
+            return null;
+        }
+        BigDecimal ueber = wertebereichModul.subtract(vorher.wert()).add(nachher.wert());
+        BigDecimal schranke = hoechstzuwachsJeKadenz.multiply(kadenzen(vorher.zeit(), nachher.zeit(), kadenz));
+        return ueber.compareTo(schranke) <= 0 ? ueber : null;
+    }
+
     private static Ergebnis leer(String zustand, int erhalten, List<String> kennzeichen) {
         return new Ergebnis(null, null, null, null, null, zustand, erhalten, 0, null, List.copyOf(kennzeichen));
     }
@@ -400,13 +425,8 @@ public final class VerbrauchRegeln {
 
         BigDecimal zuwachs = nachher.wert().subtract(vorher.wert());
         if (zuwachs.signum() < 0) {
-            BigDecimal ueber = wertebereichModul == null
-                    ? null
-                    : wertebereichModul.subtract(vorher.wert()).add(nachher.wert());
-            BigDecimal schranke = hoechstzuwachsJeKadenz == null
-                    ? null
-                    : hoechstzuwachsJeKadenz.multiply(kadenzen(vorher.zeit(), nachher.zeit(), kadenz));
-            if (ueber != null && schranke != null && ueber.compareTo(schranke) <= 0) {
+            BigDecimal ueber = ueberlauf(vorher, nachher, kadenz, wertebereichModul, hoechstzuwachsJeKadenz);
+            if (ueber != null) {
                 kennzeichen.add("Überlauf " + uhr(nachher.zeit())
                         + " (Wertebereich " + wertebereichModul.toPlainString() + ")");
                 return new Paar(ueber, false);
