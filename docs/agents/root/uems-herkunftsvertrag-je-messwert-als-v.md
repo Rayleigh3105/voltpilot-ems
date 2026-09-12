@@ -16,12 +16,14 @@ an dem Datenannahme und Writer später hängen).
   `uems/UemsSchemaLaeufer` (auch vom Referenzunternehmen-Test benutzt). Der TS-Zwilling folgt
   mit IP-6.
 
-## ⚠ Noch ruft niemand an
+## Wer anruft
 
-Datenannahme (`services/ingest`) und Writer (`services/timescale-writer`) sind unverändert:
-`ON CONFLICT DO NOTHING` auf `(device_id, point_key, time, edge_sequence)`, kein Wert trägt
-Komponente, Gerät oder Fassung. IP-5 (Datenannahme), IP-6 (Rohtabelle) und IP-7 (Writer) bauen
-gegen diesen Vertrag.
+Seit **IP-7** der WRITER: `services/timescale-writer` hält einen Zwilling dieser Klasse
+(`MesswertHerkunftZwillingTest` spielt dieselbe Vektor-Datei) und ruft `stelleFest` je Wert, mit
+den Fakten, die `HerkunftNachschlag` ZUR MESSZEIT nachschlägt —
+[`uems-writer-herkunft-zur-messzeit.md`](uems-writer-herkunft-zur-messzeit.md). Die Datenannahme
+(`services/ingest`) prüft seit IP-5 die Messzeit selbst (E13); ihre Zeit-Ereignisse gehören ihr,
+nicht dem Writer.
 
 ## Die Fakten, die man ohne Nachlesen braucht
 

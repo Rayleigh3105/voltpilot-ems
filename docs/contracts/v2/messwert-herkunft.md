@@ -18,10 +18,12 @@ den Ereignissen, die dabei entstehen.
 Der TS-Zwilling folgt mit der Rohtabelle (AP-07 IP-6). **Wer die Regel ändert, ändert die
 Java-Klasse UND die Vektor-Datei.**
 
-> ⚠ **Noch ruft niemand an.** Datenannahme und Writer sind unverändert: heute gilt
-> `ON CONFLICT DO NOTHING` auf `(device_id, point_key, time, edge_sequence)`, und kein Wert trägt
-> Komponente, Gerät oder Fassung (AP-07 §2.2–§2.4). Dieser Vertrag ist das Ziel, gegen das
-> IP-5 (Datenannahme), IP-6 (Rohtabelle) und IP-7 (Writer) bauen — nicht ihr Vollzug.
+> **Wer anruft.** Seit IP-7 der Writer (`services/timescale-writer`): er hält einen Zwilling von
+> `MesswertHerkunft` (`MesswertHerkunftZwillingTest` spielt diese Vektor-Datei) und ruft
+> `stelleFest` je Wert mit den Fakten, die er ZUR MESSZEIT nachschlägt. Die Datenannahme prüft
+> seit IP-5 die Messzeit selbst (§3 Regel 1). ⚠ `measurements.raw` 1.0 trägt weder `entity_id`
+> noch `applied_revision` — Komponente und Fassung kommen deshalb heute IMMER aus dem Nachschlag
+> (`quelle: zustellung`); das Durchreichen der 2.1-Felder ist IP-18.
 
 ## 1. Die Reihe und die Spur
 

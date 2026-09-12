@@ -1,4 +1,4 @@
-package com.voltpilot.api.uems;
+package com.voltpilot.writer;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -14,20 +14,23 @@ import java.util.Map;
  * kein Wert), die Ereignisse, die dabei entstehen, und — für einen gespeicherten Wert — die
  * fünfzehn Angaben, die er bis in den Viertelstundenwert trägt.
  *
- * <p>Ohne Spring, ohne Repository, ohne Uhr (das {@link ZustandAbleitung}-Muster): jeder
+ * <p>Ohne Spring, ohne Repository, ohne Uhr (das {@code ZustandAbleitung}-Muster): jeder
  * Nachschlag (Gerät-Historie, Zuständigkeit, Quellenbindung, Katalog, schon gespeicherte Werte)
  * kommt als FAKT herein. Die Vektoren {@code docs/contracts/v2/messwert-herkunft-vectors.json}
  * pinnen die Regel; der TS-Zwilling folgt mit der Rohtabelle (AP-07 IP-6).
  * <b>Wer die Regel ändert, ändert diese Klasse und die Vektor-Datei.</b>
  *
- * <h2>Wer anruft</h2>
+ * <h2>⚠ Der WRITER-ZWILLING (AP-07 IP-7)</h2>
  *
- * Seit AP-07 IP-7 der WRITER: {@code services/timescale-writer} hält einen ZWILLING dieser Klasse
- * ({@code MesswertHerkunftZwillingTest} spielt dieselbe Vektor-Datei) und ruft {@link #stelleFest}
- * je Wert mit den Fakten, die er ZUR MESSZEIT nachschlägt. Die Datenannahme prüft seit IP-5 die
- * Messzeit selbst (E13). ⚠ {@code measurements.raw} 1.0 trägt weder {@code entity_id} noch
- * {@code applied_revision} — Komponente und Fassung kommen heute deshalb IMMER aus dem Nachschlag
- * ({@link FassungQuelle#ZUSTELLUNG}); das Durchreichen der 2.1-Felder ist IP-18.
+ * Diese Klasse ist die Kopie von {@code services/api/.../uems/MesswertHerkunft.java} — Zeile für
+ * Zeile dieselbe Ableitung; nur der javadoc-Verweis auf {@code ZustandAbleitung} steht hier als
+ * {@code @code}, weil die api-Klasse im Writer fehlt. Seit IP-7 ist der Writer ihr ERSTER
+ * Aufrufer: {@link HerkunftNachschlag} schlägt die Fakten ZUR MESSZEIT nach (gecacht), {@link
+ * MeasurementWriteRepository} ruft {@link #stelleFest} je Wert und schreibt Urteil, Herkunft und
+ * Ereignisse. {@code MesswertHerkunftZwillingTest} spielt alle Fälle der Vektor-Datei {@code
+ * docs/contracts/v2/messwert-herkunft-vectors.json} — dieselbe Datei, an der die api-Klasse
+ * hängt: der Beweis, dass die Zwillinge nicht auseinanderlaufen.
+ * <b>Wer die Regel ändert, ändert beide Klassen und die Vektor-Datei.</b>
  *
  * <h2>Die Reihenfolge der Prüfungen</h2>
  *

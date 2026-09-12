@@ -25,12 +25,13 @@ CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
 - **`entity_id IS NOT NULL`** hält den Index auf den Werten, die eine Reihe HABEN; eine Zeile
   ohne Komponente wäre darin ohnehin nie ein Konflikt (NULL ist verschieden von NULL).
 - ⚠ **Der ALTE Index `uq_device_measurement_sample_idempotency`
-  `(device_id, point_key, time, edge_sequence)` BLEIBT STEHEN** — er ist bis zur Umschaltung
-  (IP-7) der Schlüssel, unter dem der Writer schreibt, und trägt bis dahin die Wiederholung
-  desselben Pakets. Wer ihn entfernt, nimmt dem heutigen Writer seine Idempotenz.
-- ⚠ Die **Spiegel-Spur je lesender Box** hat noch KEINEN eigenen Schlüssel: zwei Spiegelwerte
-  derselben Reihe und Messzeit aus zwei Boxen sind beide erlaubt. Bis zur Umschaltung fängt der
-  alte Index die echte Wiederholung (gleiche Box, gleiche Sequenz); danach entscheidet IP-7.
+  `(device_id, point_key, time, edge_sequence)` BLEIBT STEHEN** — auch nach der Umschaltung
+  (IP-7): er ist der Schlüssel JEDES Bestandswerts ohne Komponente und JEDES Spiegels, denn beide
+  liegen ausserhalb des partiellen Index oben. Wer ihn entfernt, nimmt ihnen ihre Idempotenz.
+- ⚠ Die **Spiegel-Spur je lesender Box** hat weiter KEINEN eigenen Schlüssel: zwei Spiegelwerte
+  derselben Reihe und Messzeit aus zwei Boxen sind beide erlaubt. Den Doppel-Schutz trägt für sie
+  der alte Index (gleiche Box, gleiche Sequenz); IP-7 hat daran nichts geändert und entscheidet die
+  Wiederholung zusätzlich im Code (E3, je Spur).
 
 ## Der Nachtrag im Bestand — nie geraten
 
@@ -57,11 +58,11 @@ und ist nicht die Wertart des Vertrags (E12). Nachgeschlagen wird ab IP-7, **zur
 
 ## Was offen ist (IP-7 und IP-11)
 
-- **Nichts ist umgeschaltet.** Die Box schickt unverändert, `services/ingest` ist unberührt, und
-  `services/timescale-writer` schreibt Zeichen für Zeichen wie vorher (sein
-  `ON CONFLICT DO NOTHING` ohne Ziel sieht den neuen Index, weist unter ihm aber keine Zeile ab,
-  weil er ohne `entity_id` schreibt). Das Anreichern der Herkunft, `duplicate_conflict`,
-  `sequence_gap`/`sequence_reset` sind **IP-7**.
+- **Umgeschaltet hat IP-7** ([`uems-writer-herkunft-zur-messzeit.md`](uems-writer-herkunft-zur-messzeit.md)):
+  der Writer schlägt die Herkunft ZUR MESSZEIT nach und schreibt sie, die Box und `services/ingest`
+  bleiben unberührt. Der ALTE Index bleibt trotzdem stehen — jeder Bestandswert ohne Komponente und
+  jeder Spiegel liegt ausserhalb des neuen partiellen Index, und für sie ist er der einzige
+  Doppel-Schutz.
 - **Kein Fremdschlüssel** auf `entity_id`/`device_install_id`: die Löschwege der Messreihen
   gehören **IP-11** (`ON DELETE RESTRICT`, Unclaim/Purge). Ein CASCADE-Verweis würde HEUTE einen
   neuen Löschweg für Kundenmesswerte aufmachen, ein RESTRICT-Verweis das heutige Löschen einer
@@ -88,7 +89,7 @@ und ist nicht die Wertart des Vertrags (E12). Nachgeschlagen wird ab IP-7, **zur
 ```bash
 (cd services/api && ./mvnw test -Dtest='UemsMesswertRohtabelleMigrationTest')   # 30 Tage Bestand
 (cd services/api && ./mvnw test -Dtest='DataRetentionPolicyTest,MesswertHerkunftVectorsTest')
-(cd services/timescale-writer && ./mvnw test -Dtest=WriterPipeTest)   # Writer unverändert
+(cd services/timescale-writer && ./mvnw test -Dtest=WriterPipeTest)   # Writer: IP-7
 ```
 
 Der Migrationstest vergleicht die Messwert- und Auswahl-Tabellen per **Fingerabdruck vor und
