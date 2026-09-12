@@ -4,7 +4,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, type Messkanal, type Messstelle } from '../api';
 import { measurementTree, type VerlaufGroup } from '../verlauf';
-import { setzeGesamtPv } from '../gesamtwertCanonical';
 import {
   GESAMTWERT,
   KEINE_WERTE,
@@ -16,7 +15,6 @@ import {
   alsAnfrage,
   entwurfFehler,
   frischeVon,
-  giltAlsPvMoeglich,
   leererEntwurf,
   nameVorschlag,
   punkt,
@@ -166,7 +164,6 @@ export function GesamtwertDialog({
 
   const groesse = abgeleiteteGroesse(entwurf.terme);
   const vorschauWert = vorschau(entwurf.terme);
-  const pvMoeglich = giltAlsPvMoeglich(entwurf.terme);
   const verlaufPunkte = useMemo(
     () => tagesverlauf(entwurf.terme, reihen),
     [entwurf.terme, reihen],
@@ -179,7 +176,6 @@ export function GesamtwertDialog({
     setServerFehler(null);
     try {
       const neu = await api.berechneteMessstelleAnlegen(alsAnfrage(entwurf));
-      if (entwurf.giltAlsPv && pvMoeglich) setzeGesamtPv(siteId, neu.id);
       setErgebnis(neu);
       onGespeichert?.(neu);
       setSchritt(5);
@@ -398,20 +394,6 @@ export function GesamtwertDialog({
               {kennzeichen && <span className="vp-gw-kz">{kennzeichen}</span>}
             </div>
           </div>
-          {pvMoeglich && (
-            <label className="vp-gw-toggle-row">
-              <input
-                type="checkbox"
-                checked={entwurf.giltAlsPv}
-                onChange={(e) => setEntwurf((s) => ({ ...s, giltAlsPv: e.target.checked }))}
-              />
-              <span className="vp-gw-switch" aria-hidden="true" />
-              <span className="vp-gw-toggle-tx">
-                <b>Das ist die gesamte PV-Erzeugung meiner Anlage</b>
-                <small>Übersicht &amp; Energiefluss zeigen dann diesen Wert als PV.</small>
-              </span>
-            </label>
-          )}
         </div>
       </>
     );
@@ -428,7 +410,6 @@ export function GesamtwertDialog({
           <div className="vp-gw-preview">
             <div className="vp-gw-preview-top">
               <span className="vp-gw-chip calc">berechnet</span>
-              {entwurf.giltAlsPv && pvMoeglich && <span className="vp-gw-chip solar">gilt als Gesamt-PV</span>}
             </div>
             {vorschauWert.unvollstaendig ? (
               <div className="vp-gw-big leer">unvollständig</div>

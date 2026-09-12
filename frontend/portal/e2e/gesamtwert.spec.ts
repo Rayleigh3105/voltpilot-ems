@@ -113,12 +113,13 @@ async function mock(page: Page) {
       return route.fulfill({ json: { messstellen: state.created ? [state.created] : [] } });
     }
     if (/\/messstellen\/[^/]+\/formel$/.test(path)) {
+      // ⚠ snake_case wie das echte Backend #688 (MessstelleFormelDto, @JsonNaming).
       return route.fulfill({
         json: {
-          messstelleId: 'gw-1', schemaVersion: '1.0',
+          messstelle_id: 'gw-1', schema_version: '1.0',
           hauptgroesse: { groesse: 'Wirkleistung', richtung: 'Erzeugung', einheit: 'kW', wertart: 'Momentanwert' },
-          terme: KANAELE.map((k, i) => ({ position: i, eingangArt: 'messkanal', entityId: 'inv', pointKey: k.kanal, quellMessstelleId: null, vorzeichen: '+', faktor: 1, groesse: null, eingerichtet: true })),
-          formelVorhanden: true, eingaengeEingerichtet: true,
+          terme: KANAELE.map((k, i) => ({ position: i, eingang_art: 'messkanal', entity_id: 'inv', point_key: k.kanal, quell_messstelle_id: null, vorzeichen: '+', faktor: 1, groesse: null, eingerichtet: true })),
+          formel_vorhanden: true, eingaenge_eingerichtet: true,
         },
       });
     }
@@ -128,7 +129,7 @@ async function mock(page: Page) {
     if (/\/messstellen\/[^/]+\/verlauf/.test(path)) {
       return route.fulfill({
         json: {
-          messstelleId: 'gw-1', einheit: 'kW',
+          messstelle_id: 'gw-1', einheit: 'kW',
           punkte: [
             { zeit: '2026-09-12T08:00:00Z', wert: 4.2 },
             { zeit: '2026-09-12T09:00:00Z', wert: 11.8 },
@@ -169,13 +170,9 @@ test('SUN-30K: der Assistent stellt Gesamt-PV zusammen und der Wert erscheint in
   await expect(dialog.getByText('Wie zählen wir sie?')).toBeVisible();
   await dialog.getByRole('button', { name: 'Weiter' }).click();
 
-  // Schritt 3: Name-Vorschlag + PV-Schalter
+  // Schritt 3: Name-Vorschlag „Gesamt-PV" + Kennzeichen
   await expect(dialog.getByLabel('Name')).toHaveValue('Gesamt-PV');
   await expect(dialog.getByText('MS-0007')).toBeVisible();
-  // Der Schalter „gilt als Gesamt-PV" — sein Kontrollkästchen ist optisch der
-  // Schieber, deshalb über die Beschriftung umgelegt.
-  await dialog.getByText('gesamte PV-Erzeugung meiner Anlage').click();
-  await expect(dialog.getByRole('checkbox')).toBeChecked();
   await dialog.getByRole('button', { name: 'Weiter' }).click();
 
   // Schritt 4: Vorschau — die grosse Zahl ist 15,5 (kW), die Rechenzeile zeigt
@@ -191,11 +188,11 @@ test('SUN-30K: der Assistent stellt Gesamt-PV zusammen und der Wert erscheint in
   await dialog.getByRole('button', { name: 'Fertig' }).click({ force: true });
   await expect(dialog).toBeHidden();
 
-  // Übersicht: die Kachel „Gesamt-PV" mit „berechnet" + Live-Wert
+  // Übersicht: die Kachel „Gesamt-PV" mit „berechnet" + Live-Wert (dies beweist
+  // zugleich, dass der snake_case-Formel-Read die Site-Zuordnung findet — B1).
   const uebersicht = page.getByRole('region', { name: 'Übersicht' });
   await expect(uebersicht.getByText('Gesamt-PV')).toBeVisible();
   await expect(uebersicht.getByText('berechnet')).toBeVisible();
-  await expect(uebersicht.getByText('gilt als PV')).toBeVisible();
   await expect(uebersicht.locator('.vp-gwk-big')).toContainText('15,5');
 
   // Verlauf: der eigene Ast „Berechnete Werte" mit dem wählbaren Gesamt-PV.

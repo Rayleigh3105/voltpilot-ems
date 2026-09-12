@@ -6,7 +6,7 @@ import {
   alsAnfrage,
   entwurfFehler,
   frischeVon,
-  giltAlsPvMoeglich,
+  istPvErzeugung,
   groessenGemischt,
   leererEntwurf,
   nameVorschlag,
@@ -154,11 +154,11 @@ describe('gesamtwert · Ableitung von Größe und Vorschau', () => {
   });
 });
 
-describe('gesamtwert · „gilt als Gesamt-PV"', () => {
-  it('nur bei Wirkleistung · Erzeugung möglich', () => {
-    expect(giltAlsPvMoeglich([termAus(q())])).toBe(true);
-    expect(giltAlsPvMoeglich([termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug' }))])).toBe(false);
-    expect(giltAlsPvMoeglich([])).toBe(false);
+describe('gesamtwert · reine PV-Erzeugung (für den Namensvorschlag)', () => {
+  it('nur bei Wirkleistung · Erzeugung', () => {
+    expect(istPvErzeugung([termAus(q())])).toBe(true);
+    expect(istPvErzeugung([termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug' }))])).toBe(false);
+    expect(istPvErzeugung([])).toBe(false);
   });
 });
 

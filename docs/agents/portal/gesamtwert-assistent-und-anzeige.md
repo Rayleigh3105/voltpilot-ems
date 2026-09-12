@@ -43,14 +43,29 @@ Die Live-Werte + Vertrags-Größen kommen aus `ladeQuellen`: je Komponente `mess
 (Größe/Richtung/Einheit/Wertart) + `entityHistory('day')` (zuletzt gemessener Wert + Frische).
 Nur v2-Anlagen (echte Komponenten) tragen Gesamtwerte.
 
+## ⚠ Der Vertrag ist snake_case (Backend #688)
+
+Die Formel-DTOs (`MessstelleFormelDto`) tragen `@JsonNaming(SnakeCaseStrategy)`; das JSON heißt
+also `terme[].entity_id` / `point_key` / `eingang_art` / `quell_messstelle_id`,
+`formel_vorhanden`, `messstelle_id` (belegt in `MessstelleFormelApiTest`). `request()` wandelt
+NICHT snake→camel um — die api.ts-Interfaces (`MessstelleFormel`, `MessstelleFormelTerm`,
+`MessstelleVerlauf`) und ihre Leser (`gesamtwertQuelle.ts`) sprechen deshalb snake_case. Ein
+camelCase-Feld wäre still `undefined` → die Site-Zuordnung fände nie einen Term (Review-Blocker
+B1). `src/gesamtwertQuelle.test.ts` ist der Kontrakttest gegen die echte snake_case-Form;
+Mocks (Unit + E2E) MÜSSEN snake_case liefern, sonst grünen sie am falschen Vertrag vorbei.
+
 ## Die Anzeige danach
 
 - **Cockpit-Karten** `src/components/GesamtwertKarten.tsx`: auf „Meine Anlage" unter dem
   Baustein-Stapel (`pages/AnlagenPage.tsx`, nur wenn ≥1 Gesamtwert). Live-Wert aus
   `GET …/{id}/wert`, dezentes „berechnet", Lebenszyklus über `RowMenu` (umbenennen via
-  `PUT …/{id}` mit Kennzeichen; anhalten/fortsetzen; archivieren statt hartem Löschen via
-  `ConfirmDialog`). „gilt als Gesamt-PV" persistiert je Standort im Browser
-  (`src/gesamtwertCanonical.ts`, `localStorage`) — es gibt (noch) kein Server-Feld dafür.
+  `PUT …/{id}` mit Kennzeichen + Notiz; anhalten/fortsetzen; archivieren statt hartem Löschen
+  via `ConfirmDialog`).
+- ⚠ **„gilt als Gesamt-PV" (Konzept §2.2) ist NICHT gebaut**: die Anzeige-Rolle bräuchte ein
+  server-persistiertes Feld (Backend-Umbau, ausserhalb dieser Frontend-Aufgabe) UND ein echtes
+  Umlenken der Cockpit-PV/des Energieflusses. Ein Schalter, der nur `localStorage` schreibt und
+  nur seine eigene Karte färbt, wäre ein wirkungsloser Knopf mit falschem Versprechen — deshalb
+  weggelassen (Hausregel „kein Knopf ohne Wirkung"), bis ein Backend-Inkrement die Rolle trägt.
 - **Verlauf-Ast** in `src/components/VerlaufExplorer.tsx`: ein eigener Ast „Berechnete Werte"
   neben den gemessenen Komponenten; die synthetische `entityId` `berechnet-<uuid>` trägt KEINEN
   Doppelpunkt (Deep-Link `m={entityId}:{channel}` trennt am ersten). Reine Helfer in
@@ -64,7 +79,7 @@ Nur v2-Anlagen (echte Komponenten) tragen Gesamtwerte.
 ## Prüfen
 
 ```bash
-npx vitest run src/gesamtwert.test.ts src/verlauf.test.ts src/components/GesamtwertDialog.test.ts src/copy.test.ts
+npx vitest run src/gesamtwert.test.ts src/gesamtwertQuelle.test.ts src/verlauf.test.ts src/components/GesamtwertDialog.test.tsx src/copy.test.ts
 npx playwright test e2e/gesamtwert.spec.ts   # SUN-30K durchspielen + Anzeige, Layout 375/768/1440
 ```
 

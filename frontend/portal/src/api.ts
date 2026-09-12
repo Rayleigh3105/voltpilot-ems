@@ -1827,6 +1827,10 @@ export interface EntityHistory {
  * `GET …/komponenten/{entityId}/messkanaele` nennt: sein Kanal (`point_key`),
  * Anzeigename und seine Vertrags-Größe/Wertart/Richtung. Der Assistent für den
  * Gesamtwert liest daraus, welche Werte zueinander passen.
+ *
+ * ⚠ Die Felder heißen wie im echten Backend-JSON (`MesskanalDto`, `@JsonNaming`
+ * = SnakeCase). Wer eines multi-wortig macht (`kadenz_s`), muss es hier
+ * snake_case schreiben — `request()` wandelt NICHT um.
  */
 export interface Messkanal {
   kanal: string;
@@ -1835,14 +1839,11 @@ export interface Messkanal {
   wertart: string | null;
   groesse: string | null;
   richtung: string | null;
-  quantity: string | null;
-  direction: string | null;
-  kadenzS: number | null;
   aktiv: boolean;
 }
 
 export interface MesskanalListe {
-  siteId: string;
+  site_id: string;
   komponente: string;
   inhaltsstand: string | null;
   messkanaele: Messkanal[];
@@ -1865,29 +1866,36 @@ export interface Messstelle {
   medium: string | null;
   lebenszyklus: string;
   fehlt: string[];
+  notiz: string | null;
 }
 
-/** Ein Term der Formel, so wie ihn `GET …/{id}/formel` nennt. */
+/**
+ * Ein Term der Formel (`GET …/{id}/formel`). ⚠ snake_case wie das echte Backend
+ * (`MessstelleFormelDto.Term`, `@JsonNaming` = SnakeCase; belegt in
+ * `MessstelleFormelApiTest`: `/terme/0/point_key`, `/eingang_art`,
+ * `/quell_messstelle_id`). `request()` wandelt NICHT um — ein camelCase-Feld
+ * wäre hier immer `undefined`, und die Site-Zuordnung fände nie einen Term.
+ */
 export interface MessstelleFormelTerm {
   position: number;
-  eingangArt: string;
-  entityId: string | null;
-  pointKey: string | null;
-  quellMessstelleId: string | null;
+  eingang_art: string;
+  entity_id: string | null;
+  point_key: string | null;
+  quell_messstelle_id: string | null;
   vorzeichen: string;
   faktor: number;
   groesse: MessstelleGroesse | null;
   eingerichtet: boolean;
 }
 
-/** Die Formel einer berechneten Messstelle (`GET …/{id}/formel`). */
+/** Die Formel einer berechneten Messstelle (`GET …/{id}/formel`, snake_case). */
 export interface MessstelleFormel {
-  messstelleId: string;
-  schemaVersion: string;
+  messstelle_id: string;
+  schema_version: string;
   hauptgroesse: MessstelleGroesse | null;
   terme: MessstelleFormelTerm[];
-  formelVorhanden: boolean;
-  eingaengeEingerichtet: boolean;
+  formel_vorhanden: boolean;
+  eingaenge_eingerichtet: boolean;
 }
 
 /** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
@@ -1915,9 +1923,9 @@ export interface MessstelleVerlaufPunkt {
   wert: number | null;
 }
 
-/** Der Verlauf einer berechneten Messstelle (`GET …/{id}/verlauf`). */
+/** Der Verlauf einer berechneten Messstelle (`GET …/{id}/verlauf`, snake_case). */
 export interface MessstelleVerlauf {
-  messstelleId: string;
+  messstelle_id: string;
   einheit: string | null;
   punkte: MessstelleVerlaufPunkt[];
 }

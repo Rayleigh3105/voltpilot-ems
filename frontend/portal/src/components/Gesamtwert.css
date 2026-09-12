@@ -53,10 +53,6 @@
   background: #eef2ff;
   color: #4338ca;
 }
-.vp-gw-chip.solar {
-  background: #fff3e0;
-  color: #b25200;
-}
 
 /* --- Status-Punkt --- */
 .vp-gw-dot {
@@ -266,65 +262,6 @@
   padding: 5px 9px;
   border-radius: 6px;
   white-space: nowrap;
-}
-.vp-gw-toggle-row {
-  display: flex;
-  gap: var(--vp-c-space-3);
-  align-items: flex-start;
-  padding: 12px;
-  border: 1px solid var(--vp-c-border);
-  border-radius: 12px;
-  background: var(--vp-c-bg);
-  cursor: pointer;
-}
-.vp-gw-switch {
-  flex: 0 0 auto;
-  width: 42px;
-  height: 24px;
-  border-radius: 999px;
-  background: #cbd5e1;
-  position: relative;
-  transition: background var(--vp-motion-fast, 0.12s) var(--vp-ease-out, ease);
-  margin-top: 2px;
-}
-.vp-gw-switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform var(--vp-motion-fast, 0.12s) var(--vp-ease-out, ease);
-}
-.vp-gw-toggle-row input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.vp-gw-toggle-row input:checked + .vp-gw-switch {
-  background: var(--vp-c-primary);
-}
-.vp-gw-toggle-row input:checked + .vp-gw-switch::after {
-  transform: translateX(18px);
-}
-.vp-gw-toggle-row input:focus-visible + .vp-gw-switch {
-  outline: 2px solid var(--vp-c-primary);
-  outline-offset: 2px;
-}
-.vp-gw-toggle-tx {
-  font-size: var(--vp-c-fs-14);
-  min-width: 0;
-}
-.vp-gw-toggle-tx b {
-  font-weight: var(--vp-c-fw-700);
-}
-.vp-gw-toggle-tx small {
-  display: block;
-  color: var(--vp-c-muted-fg);
-  margin-top: 2px;
 }
 
 /* --- Schritt 4: Vorschau --- */
@@ -542,10 +479,6 @@
   background: #eef2ff;
   color: #4338ca;
   white-space: nowrap;
-}
-.vp-gwk-chip.solar {
-  background: #fff3e0;
-  color: #b25200;
 }
 .vp-gwk-menu {
   margin-left: auto;

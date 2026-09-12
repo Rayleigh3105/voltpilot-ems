@@ -143,14 +143,12 @@ describe('GesamtwertDialog', () => {
     await waitFor(() => expect(document.body.textContent).toContain('Wie zählen wir sie?'));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    // Schritt 3: Name-Vorschlag „Gesamt-PV", Kennzeichen, PV-Schalter
+    // Schritt 3: Name-Vorschlag „Gesamt-PV" + Kennzeichen
     await waitFor(() => {
       const feld = screen.getByLabelText('Name') as HTMLInputElement;
       expect(feld.value).toBe('Gesamt-PV');
     });
     expect(document.body.textContent).toContain('MS-0007');
-    expect(document.body.textContent).toContain('gesamte PV-Erzeugung meiner Anlage');
-    fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Schritt 4: Vorschau 15,5 kW + Rechenzeile

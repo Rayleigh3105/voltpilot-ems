@@ -3,7 +3,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Messstelle, type MessstelleFormel, type MessstelleWert } from '../api';
 import { fmtNum } from '../format';
 import { GESAMTWERT } from '../gesamtwert';
-import { istGesamtPv, setzeGesamtPv } from '../gesamtwertCanonical';
 import { ladeSiteGesamtwerte as ladeQuellen } from '../gesamtwertQuelle';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RowMenu, type RowMenuItem } from './RowMenu';
@@ -68,19 +67,17 @@ export function GesamtwertKarten({
     }
   };
 
-  const alsPv = (z: GwZeile) => {
-    setzeGesamtPv(siteId, istGesamtPv(siteId, z.messstelle.id) ? null : z.messstelle.id);
-    auffrischen();
-  };
-
   const speichereName = async () => {
     if (!umbenennen) return;
     setBusy(true);
     try {
       const z = zeilen?.find((x) => x.messstelle.id === umbenennen.id);
+      // PUT ersetzt alle drei Felder — Kennzeichen UND Notiz mitschicken, sonst
+      // würde eine bestehende Notiz beim Umbenennen geleert (Review-Nebenbefund).
       await api.messstelleBearbeiten(umbenennen.id, {
         kennzeichen: z?.messstelle.kennzeichen,
         name: umbenennen.name.trim(),
+        notiz: z?.messstelle.notiz ?? undefined,
       });
       setUmbenennen(null);
       auffrischen();
@@ -94,7 +91,6 @@ export function GesamtwertKarten({
     setBusy(true);
     try {
       await api.messstelleArchivieren(archivieren.messstelle.id);
-      if (istGesamtPv(siteId, archivieren.messstelle.id)) setzeGesamtPv(siteId, null);
       setArchivieren(null);
       auffrischen();
     } finally {
@@ -120,18 +116,12 @@ export function GesamtwertKarten({
           <Karte
             key={z.messstelle.id}
             zeile={z}
-            istPv={istGesamtPv(siteId, z.messstelle.id)}
-            pvMoeglich={
-              z.formel?.hauptgroesse?.groesse === 'Wirkleistung' &&
-              z.formel?.hauptgroesse?.richtung === 'Erzeugung'
-            }
             bearbeiten={umbenennen?.id === z.messstelle.id ? umbenennen : null}
             busy={busy}
             onNameEntwurf={(name) => setUmbenennen({ id: z.messstelle.id, name })}
             onNameSpeichern={speichereName}
             onNameAbbrechen={() => setUmbenennen(null)}
             onAnhalten={() => anhalten(z, z.messstelle.lebenszyklus !== 'angehalten')}
-            onAlsPv={() => alsPv(z)}
             onUmbenennen={() => setUmbenennen({ id: z.messstelle.id, name: z.messstelle.name ?? '' })}
             onArchivieren={() => setArchivieren(z)}
           />
@@ -158,28 +148,22 @@ export function GesamtwertKarten({
 
 function Karte({
   zeile,
-  istPv,
-  pvMoeglich,
   bearbeiten,
   busy,
   onNameEntwurf,
   onNameSpeichern,
   onNameAbbrechen,
   onAnhalten,
-  onAlsPv,
   onUmbenennen,
   onArchivieren,
 }: {
   zeile: GwZeile;
-  istPv: boolean;
-  pvMoeglich: boolean;
   bearbeiten: { id: string; name: string } | null;
   busy: boolean;
   onNameEntwurf: (name: string) => void;
   onNameSpeichern: () => void;
   onNameAbbrechen: () => void;
   onAnhalten: () => void;
-  onAlsPv: () => void;
   onUmbenennen: () => void;
   onArchivieren: () => void;
 }) {
@@ -187,9 +171,6 @@ function Karte({
   const angehalten = m.lebenszyklus === 'angehalten';
   const menu: RowMenuItem[] = [
     { label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
-    ...(pvMoeglich
-      ? [{ label: istPv ? 'Nicht mehr als Gesamt-PV' : 'Als Gesamt-PV meiner Anlage', icon: 'sun' as const, onClick: onAlsPv }]
-      : []),
     { label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
     { label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
   ];
@@ -198,7 +179,7 @@ function Karte({
     <div className={`vp-gwk-card${angehalten ? ' is-angehalten' : ''}`}>
       <div className="vp-gwk-card-top">
         <span className="vp-gwk-ic">
-          <Icon name={istPv ? 'sun' : 'sliders'} size={16} />
+          <Icon name="sliders" size={16} />
         </span>
         {bearbeiten ? (
           <span className="vp-gwk-rename">
@@ -224,7 +205,6 @@ function Karte({
           <span className="vp-gwk-name">{m.name || GESAMTWERT}</span>
         )}
         {!bearbeiten && <span className="vp-gwk-chip calc">berechnet</span>}
-        {!bearbeiten && istPv && <span className="vp-gwk-chip solar">gilt als PV</span>}
         {!bearbeiten && (
           <span className="vp-gwk-menu">
             <RowMenu items={menu} />

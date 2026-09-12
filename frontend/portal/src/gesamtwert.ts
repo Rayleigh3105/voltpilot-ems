@@ -143,12 +143,10 @@ export interface Entwurf {
   id: string | null;
   name: string;
   terme: TermEntwurf[];
-  /** „gilt als Gesamt-PV meiner Anlage" — setzt die Anzeige-Rolle (nur wenn möglich). */
-  giltAlsPv: boolean;
 }
 
 export function leererEntwurf(): Entwurf {
-  return { id: null, name: '', terme: [], giltAlsPv: false };
+  return { id: null, name: '', terme: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -188,11 +186,10 @@ export function zielEinheit(terme: TermEntwurf[]): string {
 }
 
 /**
- * „gilt als Gesamt-PV" ist nur sinnvoll, wenn der Gesamtwert eine
- * Erzeugungs-Leistung ist (Wirkleistung · Erzeugung). Sonst wäre der Schalter
- * ein Knopf ohne Wirkung — er wird dann gar nicht angeboten.
+ * Ist der Gesamtwert eine reine Erzeugungs-Leistung (Wirkleistung · Erzeugung)?
+ * Genutzt für den Namensvorschlag „Gesamt-PV" (`nameVorschlag`).
  */
-export function giltAlsPvMoeglich(terme: TermEntwurf[]): boolean {
+export function istPvErzeugung(terme: TermEntwurf[]): boolean {
   const g = abgeleiteteGroesse(terme);
   return g?.groesse === 'Wirkleistung' && g?.richtung === 'Erzeugung';
 }
@@ -274,7 +271,7 @@ export function wertText(wert: number | null | undefined, einheit: string): stri
  */
 export function nameVorschlag(terme: TermEntwurf[]): string {
   if (terme.length === 0) return '';
-  if (giltAlsPvMoeglich(terme)) return 'Gesamt-PV';
+  if (istPvErzeugung(terme)) return 'Gesamt-PV';
   const namen = terme.map((t) => t.quelle.name);
   const roh = `${GESAMTWERT}: ${namen.slice(0, 3).join(' + ')}${namen.length > 3 ? ' …' : ''}`;
   return roh.length <= MAX_NAME ? roh : roh.slice(0, MAX_NAME).trimEnd();
