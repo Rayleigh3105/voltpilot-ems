@@ -66,6 +66,7 @@ public class MeasurementWriteRepository {
     private final JdbcTemplate jdbc;
     private final MessreiheEreignisRepository ereignisse;
     private final HerkunftNachschlag nachschlag;
+    private final UeberlaufErkennung ueberlauf;
     private final MeterRegistry meters;
 
     /**
@@ -95,10 +96,11 @@ public class MeasurementWriteRepository {
     }
 
     public MeasurementWriteRepository(JdbcTemplate jdbc, MessreiheEreignisRepository ereignisse,
-            HerkunftNachschlag nachschlag, MeterRegistry meters) {
+            HerkunftNachschlag nachschlag, UeberlaufErkennung ueberlauf, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.ereignisse = ereignisse;
         this.nachschlag = nachschlag;
+        this.ueberlauf = ueberlauf;
         this.meters = meters;
     }
 
@@ -184,6 +186,17 @@ public class MeasurementWriteRepository {
             if (inserted > 0) {
                 updatePointState(event, pointKey, observedAt, raw, decoded, quality);
                 appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta);
+                // AP-08 IP-4: Überlauf (Z6) nur an einem GUTEN Zählerstand der Reihe, der als
+                // führend oder Vergleich gespeichert ist. Eigener Savepoint, wirft nie - ein Fehler
+                // der Erkennung kostet diesen Wert nicht (UeberlaufErkennung).
+                if (herkunft != null && "counter".equals(meta.aggregationKind()) && "good".equals(quality)
+                        && herkunft.rolle() != MesswertHerkunft.Rolle.SPIEGEL) {
+                    UeberlaufErkennung.Ueberlauf u = ueberlauf.pruefen(event.tenant_id(), urteil.entityId(),
+                            pointKey, observedAt, Value.prefer(decoded, raw).numeric());
+                    if (u != null) {
+                        sammler.ueberlauf(urteil, pointKey, observedAt, Value.prefer(decoded, raw).numeric(), u);
+                    }
+                }
                 markFirstSample(event, meta.selectionKey(), observedAt);
                 rows++;
             }

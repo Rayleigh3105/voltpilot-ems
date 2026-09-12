@@ -30,6 +30,7 @@ export const EREIGNIS_ARTEN = [
   'sequence_reset',
   'late_arrival',
   'counter_reset',
+  'counter_overflow',
   'device_boundary',
   'handover',
   'unassigned_reader',
@@ -118,6 +119,9 @@ export const FELDTYP: Record<string, Feldtyp> = {
   stand_alt: 'stand',
   stand_neu: 'stand',
   messzeit_alt: 'zeit',
+  wertebereich_modul: 'stand',
+  hoechstzuwachs_je_kadenz: 'stand',
+  kadenz_s: 'sekunden',
   anlass: 'wort',
   eingetragen_am: 'zeit',
   endstand: 'stand',
@@ -223,6 +227,16 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     zeitraum: false,
     varianteNach: null,
     saetze: { standard: 'Zähler zurückgesetzt am {zeitpunkt}: von {stand_alt} auf {stand_neu} (Ursache unbekannt)' },
+    zusaetze: {},
+  },
+  counter_overflow: {
+    name: 'Zähler übergelaufen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: {
+      standard:
+        'Zähler am {zeitpunkt} über das Ende seines Wertebereichs ({wertebereich_modul}) gelaufen: von {stand_alt} auf {stand_neu} — der Verbrauch dazwischen ist mitgezählt',
+    },
     zusaetze: {},
   },
   device_boundary: {

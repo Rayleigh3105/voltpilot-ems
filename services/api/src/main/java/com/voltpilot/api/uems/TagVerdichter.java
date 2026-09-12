@@ -213,6 +213,22 @@ public class TagVerdichter {
                 ps.setTimestamp(3, Timestamp.from(jetzt.minus(ZEIGER_TIEFE)));
                 n = ps.executeUpdate();
             }
+            // AP-08 IP-4: ein Bruch, der SEIT DEM ZEIGER eingegangen ist, bildet seinen Tag neu — auch
+            // wenn keine Viertelstunde sich ändert (F4/F5: die Gerätegrenze liegt in der Lücke
+            // 10:39–10:47 und wirkt erst über die Viertelstundengrenze, also erst im Tag).
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO messreihe_tag_arbeit
+                           (tenant_id, entity_id, messkanal, utc_tag, grund)
+                    SELECT DISTINCT tenant_id, entity_id, messkanal, (beginn AT TIME ZONE 'UTC')::date, 'ereignis'
+                      FROM (""" + BruchEreignisse.VIERTELSTUNDEN + """
+                           ) betroffen
+                    ON CONFLICT DO NOTHING
+                    """)) {
+                ps.setTimestamp(1, Timestamp.from(von));
+                ps.setTimestamp(2, Timestamp.from(bis));
+                ps.setTimestamp(3, Timestamp.from(jetzt.minus(ZEIGER_TIEFE)));
+                n += ps.executeUpdate();
+            }
             standSetzen(con, ZEIGER, bis, n, null);
             return n;
         });
@@ -660,7 +676,7 @@ public class TagVerdichter {
         // Viertelstunden: gerechnet von VerbrauchRegeln, hier nur angerufen. Für eine Reihe ohne
         // Zählerstand gibt es keine Periodenregel über Ständen (null).
         VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(teile.teile(), teile.ereignisse(),
-                wertart, teile.kadenzS(), beginn, ende);
+                teile.deklaration(), wertart, teile.kadenzS(), beginn, ende);
         // §4.5: Summe erhalten ÷ Summe erwartet — eine Viertelstunde OHNE Zeile zählt mit ihrer
         // Erwartung (F8: 85 %, nicht 98 %). Vor IP-5 zählten nur die vorhandenen.
         if (teile.kadenzS() != null) {

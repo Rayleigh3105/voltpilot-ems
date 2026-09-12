@@ -63,6 +63,22 @@ wird **nicht** aus einem älteren Wert fortgeschrieben. Gerätegrenze (Z4), Rüc
 Überlauf (Z6) und Neustart (Z7) unterbrechen die Differenzbildung, statt einen fiktiven
 Verbrauch zu erzeugen.
 
+Die vier Brüche und ihre Kennzeichen (AP-08 IP-4 verdrahtet sie in der Strecke):
+
+| Bruch | Woran erkannt | Mit der Angabe | Ohne die Angabe |
+|---|---|---|---|
+| Gerätegrenze (Z4) | `device_boundary` in `(vorher, nachher]` | Ablesestände: `(Endstand − vorher) + (nachher − Anfangsstand)`, „Gerätegrenze HH:MM mit Ablesestände“ | Beitrag 0, unvollständig: „Gerätegrenze HH:MM ohne Ablesestände“ + „Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)“ |
+| Rücksetzung (Z5) | Stand fällt, kein Überlauf | nachgetragener Endstand macht sie zur Gerätegrenze (E3, F12) | Beitrag 0, unvollständig: „Rücksetzung HH:MM ohne Endstand — bis zu 1 Kadenz nicht gezählt“ |
+| Überlauf (Z6) | Stand fällt UND `ueberlauf(...)` antwortet | Wertebereich + Höchstzuwachs: `Modul − vorher + nachher`, lückenlos, „Überlauf HH:MM (Wertebereich M)“ | keine Deklaration → kein Überlauf, sondern die Rücksetzung (E4) |
+| Neustart (Z7) | `device_restart` in `(von, bis]` | „Neustart HH:MM: bis zu n s Zählung möglicherweise verloren“ mit dem deklarierten `n` | dasselbe mit `n = 255` (AP-05); die Zahl wird nie hochgerechnet |
+
+**Die EINE Überlauf-Entscheidung** ist `VerbrauchRegeln.ueberlauf` ⟷ `verbrauch.ueberlauf`: nur ein
+FALLENDER Stand, nur mit Wertebereich UND Höchstzuwachs, nur wenn
+`Modul − vorher + nachher ≤ Höchstzuwachs × (Zeitabstand ÷ Kadenz)`. Die Mengenregel, die Prüfung
+der Meldung `counter_overflow` und die Erkennung im Writer (`UeberlaufRegel`) fragen dieselbe
+Entscheidung; alle drei prüfen sie gegen diese Datei (jeder fallende Nachbar steht genau dort, wo
+eine Erwartung „Überlauf HH:MM“ nennt).
+
 **Intervallmenge** (I1–I5) — Summe der guten Intervallmengen, deren **Ende** in
 `(von, bis]` liegt. Hier ist jede fehlende Intervallmenge verlorene **Menge**, nicht nur
 verlorene Zeit: schon ein fehlender Wert macht die Periode unvollständig, ohne

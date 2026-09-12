@@ -259,6 +259,29 @@ def menge_zaehlerstand(
     }
 
 
+def ueberlauf(
+    vorher: Rohwert,
+    nachher: Rohwert,
+    kadenz: timedelta,
+    wertebereich_modul: Decimal | None,
+    hoechstzuwachs_je_kadenz: Decimal | None,
+) -> Decimal | None:
+    """Z6 (E4) — ist der fallende Stand ``vorher → nachher`` ein Überlauf?
+
+    Die EINE Entscheidung: die Mengenregel (``_paar``) fragt hier, der Java-Zwilling
+    ``VerbrauchRegeln.ueberlauf`` und die Erkennung im Writer (``UeberlaufRegel``) antworten gleich.
+    Nur wenn der Stand FÄLLT, Wertebereich UND Höchstzuwachs deklariert sind und
+    ``Modul − vorher + nachher ≤ Höchstzuwachs × (Zeitabstand ÷ Kadenz)`` gilt; fehlt eine Angabe,
+    wird nichts geraten (``None`` — der Sprung bleibt eine Rücksetzung, Z5).
+    """
+    if wertebereich_modul is None or hoechstzuwachs_je_kadenz is None or nachher.wert >= vorher.wert:
+        return None
+    ueber = wertebereich_modul - vorher.wert + nachher.wert
+    if ueber <= hoechstzuwachs_je_kadenz * _dez((nachher.zeit - vorher.zeit) / kadenz):
+        return ueber
+    return None
+
+
 def _paar(
     vorher: Rohwert,
     nachher: Rohwert,
@@ -295,15 +318,10 @@ def _paar(
 
     zuwachs = nachher.wert - vorher.wert
     if zuwachs < 0:
-        ueberlauf = (
-            wertebereich_modul is not None
-            and hoechstzuwachs_je_kadenz is not None
-            and (wertebereich_modul - vorher.wert + nachher.wert)
-            <= hoechstzuwachs_je_kadenz * _dez((nachher.zeit - vorher.zeit) / kadenz)
-        )
-        if ueberlauf:
+        ueber = ueberlauf(vorher, nachher, kadenz, wertebereich_modul, hoechstzuwachs_je_kadenz)
+        if ueber is not None:
             kennzeichen.append("Überlauf " + _uhr(nachher.zeit) + " (Wertebereich " + str(wertebereich_modul) + ")")
-            return wertebereich_modul - vorher.wert + nachher.wert, False
+            return ueber, False
         # Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
         # nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
         kennzeichen.append(RUECKSETZUNG + _uhr(nachher.zeit) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt")

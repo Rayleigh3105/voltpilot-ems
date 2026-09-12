@@ -61,7 +61,7 @@ final class ViertelstundenTeile {
      */
     record Geladen(List<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse, int vorhanden,
             int endgueltig, int nachgeliefert, Integer kadenzS, String wertart, UUID siteId,
-            boolean siteEindeutig, List<Werteteil> werteteile) {
+            boolean siteEindeutig, List<Werteteil> werteteile, ZaehlerDeklaration deklaration) {
 
         /** Nur die Viertelstunden IN {@code [von, bis)}. */
         List<Teilperiode> innen(Instant von, Instant bis) {
@@ -151,8 +151,12 @@ final class ViertelstundenTeile {
                 }
             }
         }
-        return new Geladen(teile, ereignisse(con, tenant, entity, kanal, von, bis), vorhanden, endgueltig,
-                nachgeliefert, kadenzS, wertart, site, siteEindeutig, List.copyOf(werteteile));
+        // AP-08 IP-4: Wertebereich, Höchstzuwachs und Neustart-Verlust der Reihe zum Periodenbeginn —
+        // dieselbe Quelle wie im Viertelstunden-Lauf und im Writer.
+        ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, tenant, entity, kanal, von);
+        return new Geladen(teile, ereignisse(con, tenant, entity, kanal, von, bis, deklaration), vorhanden,
+                endgueltig, nachgeliefert, kadenzS, wertart, site, siteEindeutig, List.copyOf(werteteile),
+                deklaration);
     }
 
     /** Eine gelesene Viertelstunde (Spalten wie in {@link #laden}) als {@link Teilperiode}. */
@@ -185,26 +189,32 @@ final class ViertelstundenTeile {
 
     /**
      * Die Gerätegrenzen und Neustarts der Reihe in {@code (von, bis]} — dieselbe Auswahl und
-     * dieselbe Umwandlung wie im Verdichtungs-Lauf ({@link ViertelstundeVerdichter#fuerVerbrauchRegeln}).
+     * dieselbe Umwandlung wie im Verdichtungs-Lauf ({@link ViertelstundeVerdichter#fuerVerbrauchRegeln}):
+     * eine Gerätegrenze an der Komponente, ein Neustart an der DATENQUELLE, die die Komponente liest
+     * (die Box meldet ihn je Datenquelle, AP-08 IP-4).
      */
     static List<VerbrauchRegeln.Ereignis> ereignisse(Connection con, UUID tenant, UUID entity, String kanal,
-            Instant von, Instant bis) throws SQLException {
+            Instant von, Instant bis, ZaehlerDeklaration deklaration) throws SQLException {
         List<ViertelstundeVerdichter.Ereignis> roh = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT e.art, e.zeit, e.nutzlast->>'endstand', e.nutzlast->>'anfangsstand',
                        e.nutzlast->>'verlust_s'
                   FROM messreihe_ereignis e
-                 WHERE e.tenant_id = ? AND e.entity_id = ?
-                   AND (e.messkanal IS NULL OR e.messkanal = ?)
+                 WHERE e.tenant_id = ?
                    AND e.zeit > ? AND e.zeit <= ?
                    AND e.art IN ('device_boundary', 'device_restart')
+                   AND ((e.entity_id = ? AND (e.messkanal IS NULL OR e.messkanal = ?))
+                        OR (e.art = 'device_restart' AND e.data_source_id IS NOT NULL
+                            AND e.data_source_id = (SELECT mp.data_source_id FROM measurement_point mp
+                                                     WHERE mp.id = ? AND mp.tenant_id = e.tenant_id)))
                  ORDER BY e.zeit
                 """)) {
             ps.setObject(1, tenant, Types.OTHER);
-            ps.setObject(2, entity, Types.OTHER);
-            ps.setString(3, kanal);
-            ps.setTimestamp(4, Timestamp.from(von));
-            ps.setTimestamp(5, Timestamp.from(bis));
+            ps.setTimestamp(2, Timestamp.from(von));
+            ps.setTimestamp(3, Timestamp.from(bis));
+            ps.setObject(4, entity, Types.OTHER);
+            ps.setString(5, kanal);
+            ps.setObject(6, entity, Types.OTHER);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     roh.add(new ViertelstundeVerdichter.Ereignis(rs.getString(1), zeit(rs, 2),
@@ -214,7 +224,7 @@ final class ViertelstundenTeile {
                 }
             }
         }
-        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(roh));
+        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(roh, deklaration));
     }
 
     /** Die Kennzeichen einer gespeicherten Zeile — ein jsonb-Array von Sätzen. */
@@ -278,11 +288,14 @@ final class ViertelstundenTeile {
      * Zählerstand ist (für sie hat AP-08 keine Periodenregel über Ständen).
      */
     static Teilperiode zaehlerstand(Collection<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse,
-            String wertart, Integer kadenzS, Instant von, Instant bis) {
+            ZaehlerDeklaration deklaration, String wertart, Integer kadenzS, Instant von, Instant bis) {
         if (!"counter".equals(wertart) || kadenzS == null) {
             return null;
         }
-        return VerbrauchRegeln.zaehlerstandAusTeilperioden(List.copyOf(teile), von, bis,
-                Duration.ofSeconds(kadenzS), ereignisse, ViertelstundeRegeln.FAKTOR_DER_FASSUNG, null, null);
+        Duration kadenz = Duration.ofSeconds(kadenzS);
+        // Z6 auch über eine Grenze ohne Stand (die Nachbarschaft, die erst die gröbere Periode sieht).
+        return VerbrauchRegeln.zaehlerstandAusTeilperioden(List.copyOf(teile), von, bis, kadenz, ereignisse,
+                ViertelstundeRegeln.FAKTOR_DER_FASSUNG, deklaration.modulFuer(kadenz),
+                deklaration.hoechstzuwachsFuer(kadenz));
     }
 }

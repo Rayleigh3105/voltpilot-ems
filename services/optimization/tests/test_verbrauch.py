@@ -482,3 +482,52 @@ def test_rechenrauschen_kippt_keine_rundungsgrenze():
     assert verbrauch._runde_energie(Decimal("24.11249999999999999999999999")) == Decimal("24.113")
     assert verbrauch._runde_energie(Decimal("24.11250000000000000000000001")) == Decimal("24.113")
     assert verbrauch._runde_energie(Decimal("24.11244444444444444444444444")) == Decimal("24.112")
+
+
+# ------------------------------------------------ Z6: die EINE Überlauf-Entscheidung (AP-08 IP-4)
+
+
+def _faelle_mit_fallendem_stand():
+    """Jeder fallende Nachbar guter Werte in jeder Zählerstand-Reihe, samt der Zeiten, an denen die
+    Erwartungen des Falls einen Überlauf nennen. Eine Gerätegrenze dazwischen ist Z4, nie Z6."""
+    for case in CASES:
+        reihe = case["input"].get("reihe")
+        if case["familie"] != "zaehlerstand" or reihe is None:
+            continue
+        gute = [r for r in verbrauch.rohwerte(reihe) if r.gut]
+        grenzen = [verbrauch._zeit(e["t"]) for e in reihe.get("ereignisse", []) if e["art"] == "device_boundary"]
+        genannt = {
+            k.split(" ")[1]
+            for erwartung in case["expected"]
+            for k in erwartung.get("kennzeichen", [])
+            if k.startswith("Überlauf ")
+        }
+        for vorher, nachher in zip(gute, gute[1:]):
+            if nachher.wert < vorher.wert and not any(vorher.zeit < g <= nachher.zeit for g in grenzen):
+                yield case["name"], reihe, vorher, nachher, genannt
+
+
+def test_die_ueberlauf_entscheidung_steht_genau_dort_wo_die_erwartung_einen_ueberlauf_nennt():
+    """F7: 65 536 − 64 954 + 185 = 767 ≤ 1 667 ist ein Überlauf, 65 536 − 12 457 + 100 = 53 179 nicht.
+
+    Die Writer-Erkennung (``UeberlaufRegel``) prüft dieselbe Ableitung aus derselben Datei."""
+    gesehen = set()
+    for name, reihe, vorher, nachher, genannt in _faelle_mit_fallendem_stand():
+        kadenz = timedelta(seconds=reihe["kadenz_s"])
+        modul = verbrauch._dez(reihe["wertebereich_modul"]) if reihe.get("wertebereich_modul") else None
+        hoechst = verbrauch._dez(reihe["hoechstzuwachs_je_kadenz"]) if reihe.get("hoechstzuwachs_je_kadenz") else None
+        ueber = verbrauch.ueberlauf(vorher, nachher, kadenz, modul, hoechst)
+        uhr = verbrauch._uhr(nachher.zeit)
+        assert (ueber is not None) == (uhr in genannt), f"{name} {uhr}"
+        if ueber is not None:
+            assert ueber == modul - vorher.wert + nachher.wert
+            gesehen.add((name, uhr))
+        # Ohne Deklaration wird nie ein Überlauf geraten (E4).
+        assert verbrauch.ueberlauf(vorher, nachher, kadenz, None, hoechst) is None
+        assert verbrauch.ueberlauf(vorher, nachher, kadenz, modul, None) is None
+    assert any(n.startswith("f7-") for n, _ in gesehen)
+    # Ein steigender Stand ist nie ein Überlauf, auch nicht mit Deklaration.
+    t = verbrauch._zeit("2026-10-20T10:00:00+02:00")
+    assert verbrauch.ueberlauf(
+        verbrauch.Rohwert(t, Decimal(100)), verbrauch.Rohwert(t + timedelta(minutes=1), Decimal(101)),
+        timedelta(minutes=1), Decimal(65536), Decimal(1667)) is None

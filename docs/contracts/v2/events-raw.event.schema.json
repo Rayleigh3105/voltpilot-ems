@@ -301,6 +301,9 @@
           "$ref": "#/$defs/art_counter_reset"
         },
         {
+          "$ref": "#/$defs/art_counter_overflow"
+        },
+        {
           "$ref": "#/$defs/art_device_boundary"
         },
         {
@@ -678,6 +681,68 @@
         },
         "messzeit_alt": {
           "$ref": "#/$defs/zeit_utc"
+        },
+        "einheit": {
+          "$ref": "#/$defs/einheit"
+        }
+      }
+    },
+    "art_counter_overflow": {
+      "type": "object",
+      "description": "counter_overflow — Zähler übergelaufen. Urheber: writer.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "komponente",
+        "messkanal",
+        "stand_alt",
+        "stand_neu",
+        "messzeit_alt",
+        "wertebereich_modul",
+        "hoechstzuwachs_je_kadenz",
+        "kadenz_s"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "counter_overflow"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "stand_alt": {
+          "$ref": "#/$defs/stand"
+        },
+        "stand_neu": {
+          "$ref": "#/$defs/stand"
+        },
+        "messzeit_alt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "wertebereich_modul": {
+          "$ref": "#/$defs/stand"
+        },
+        "hoechstzuwachs_je_kadenz": {
+          "$ref": "#/$defs/stand"
+        },
+        "kadenz_s": {
+          "$ref": "#/$defs/sekunden"
+        },
+        "box": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
         },
         "einheit": {
           "$ref": "#/$defs/einheit"

@@ -1040,6 +1040,128 @@ class WriterPipeTest {
     }
 
     /**
+     * AP-08 IP-4, Z6/E4 (Referenzfall F7): mit deklariertem Wertebereich 65 536 und Höchstzuwachs
+     * 1 667 je 60 s meldet der Writer den Sprung 64 954 → 185 als {@code counter_overflow} mit der
+     * Rechnung — 65 536 − 64 954 + 185 = 767 ≤ 1 667. Der Sprung 12 457 → 100 (53 179) bleibt eine
+     * Rücksetzung. Der Bestand schreibt für BEIDE Sprünge weiter {@code counter_reset} (unverändert).
+     */
+    @Test
+    void einDeklarierterUeberlaufWirdGemeldetEinSprungUeberDemHoechstzuwachsNicht() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000011";
+        String entity = "71000000-0000-0000-0000-000000000011";
+        String quelle = "72000000-0000-0000-0000-000000000011";
+        String geraet = "73000000-0000-0000-0000-000000000011";
+        String messstelle = "74000000-0000-0000-0000-000000000011";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, quelle, "DQ-11", geraet, "K-6a",
+                    "2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z");
+            bindung(st, messstelle, entity, geraet, "fuehrend", "2026-10-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:30Z", 1);
+            deklaration(st, "SELECT 65536::numeric, 1667::numeric, 60, NULL::integer WHERE p_entity = '"
+                    + entity + "'");
+        }
+        double ueberlaeufe = ueberlaufErkennung("ueberlauf");
+        try {
+            senden(device,
+                    wert(device, 1, "2026-10-20T08:02:00Z", "2026-10-20T08:02:05Z", PUNKT, "64954", "64954"),
+                    wert(device, 2, "2026-10-20T08:03:00Z", "2026-10-20T08:03:05Z", PUNKT, "185", "185"),
+                    wert(device, 3, "2026-10-20T08:04:00Z", "2026-10-20T08:04:05Z", PUNKT, "12457", "12457"),
+                    wert(device, 4, "2026-10-20T08:05:00Z", "2026-10-20T08:05:05Z", PUNKT, "100", "100"));
+            awaitMeasurementRows(device, 4);
+            warte("der Überlauf ist gemeldet",
+                    () -> zaehle("SELECT count(*) FROM messreihe_ereignis WHERE entity_id='" + entity
+                            + "' AND art='counter_overflow'"), 1);
+            assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE entity_id='" + entity
+                    + "' AND art='counter_overflow' AND urheber='writer' AND NOT aus_bestand"
+                    + " AND zeit='2026-10-20T08:03:00Z' AND messkanal='" + PUNKT + "'"
+                    + " AND messstelle_id='" + messstelle + "' AND device_id='" + device + "'"
+                    + " AND nutzlast = '{\"stand_alt\":64954,\"stand_neu\":185,"
+                    + "\"messzeit_alt\":\"2026-10-20T08:02:00Z\",\"wertebereich_modul\":65536,"
+                    + "\"hoechstzuwachs_je_kadenz\":1667,\"kadenz_s\":60}'::jsonb"))
+                    .as("die Rechnung steht in der Meldung").isOne();
+            assertThat(zaehle("SELECT count(*) FROM device_measurement_event WHERE device_id='" + device
+                    + "' AND event_kind='counter_reset'"))
+                    .as("der Bestand ist unverändert: beide Sprünge sind dort counter_reset").isEqualTo(2);
+            assertThat(ueberlaufErkennung("ueberlauf") - ueberlaeufe).isEqualTo(1.0);
+        } finally {
+            try (Connection c = admin(); Statement st = c.createStatement()) {
+                deklaration(st, "SELECT NULL::numeric, NULL::numeric, NULL::integer, NULL::integer WHERE false");
+            }
+        }
+    }
+
+    /** AP-08 IP-4, E4: ohne Deklaration wird kein Höchstwert geraten — kein Überlauf, nur die Rücksetzung. */
+    @Test
+    void ohneDeklarationBleibtJederFallendeStandEineRuecksetzung() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000012";
+        String entity = "71000000-0000-0000-0000-000000000012";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, "72000000-0000-0000-0000-000000000012", "DQ-12",
+                    "73000000-0000-0000-0000-000000000012", "K-7a", "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:30Z", 1);
+        }
+        double nichtDeklariert = ueberlaufErkennung("nicht_deklariert");
+        senden(device,
+                wert(device, 1, "2026-10-20T08:02:00Z", "2026-10-20T08:02:05Z", PUNKT, "64954", "64954"),
+                wert(device, 2, "2026-10-20T08:03:00Z", "2026-10-20T08:03:05Z", PUNKT, "185", "185"));
+        awaitMeasurementRows(device, 2);
+        warte("der Bestand hat den Sprung", () -> zaehle("SELECT count(*) FROM device_measurement_event "
+                + "WHERE device_id='" + device + "' AND event_kind='counter_reset'"), 1);
+        assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE entity_id='" + entity
+                + "' AND art='counter_overflow'")).isZero();
+        assertThat(ueberlaufErkennung("nicht_deklariert") - nichtDeklariert).isGreaterThanOrEqualTo(2.0);
+    }
+
+    /**
+     * ⚠ AP-08 IP-4: ein Fehler in der Überlauf-Erkennung kostet NIE einen Messwert. Wirft die
+     * Deklaration, rollt nur der Savepoint der Erkennung zurück: beide Werte sind gespeichert, der
+     * Bestand meldet den Sprung wie immer als {@code counter_reset}, es entsteht KEINE
+     * Überlauf-Meldung, und der Fehler ist gezählt.
+     */
+    @Test
+    void einFehlerInDerUeberlaufErkennungKostetKeinenMesswert() throws Exception {
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-000000000013";
+        String entity = "71000000-0000-0000-0000-000000000013";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            uemsKomponente(st, device, entity, "72000000-0000-0000-0000-000000000013", "DQ-13",
+                    "73000000-0000-0000-0000-000000000013", "K-8a", "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:00Z");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:30Z", 1);
+            st.execute("CREATE OR REPLACE FUNCTION messreihe_zaehler_deklaration(p_tenant UUID, p_entity UUID, "
+                    + "p_messkanal TEXT, p_zeit TIMESTAMPTZ) RETURNS TABLE (wertebereich_modul NUMERIC, "
+                    + "hoechstzuwachs_je_kadenz NUMERIC, kadenz_s INTEGER, neustart_verlust_s INTEGER) "
+                    + "LANGUAGE plpgsql STABLE AS $$ BEGIN RAISE EXCEPTION 'Deklaration kaputt'; END $$");
+        }
+        double fehler = ueberlaufErkennungFehler();
+        try {
+            senden(device,
+                    wert(device, 1, "2026-10-20T08:02:00Z", "2026-10-20T08:02:05Z", PUNKT, "64954", "64954"),
+                    wert(device, 2, "2026-10-20T08:03:00Z", "2026-10-20T08:03:05Z", PUNKT, "185", "185"));
+            awaitMeasurementRows(device, 2);
+            warte("der Bestand hat den Sprung", () -> zaehle("SELECT count(*) FROM device_measurement_event "
+                    + "WHERE device_id='" + device + "' AND event_kind='counter_reset'"), 1);
+            assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                    + "' AND entity_id='" + entity + "' AND role IS NOT NULL"))
+                    .as("beide Werte sind da, mit ihrer Herkunft — nie verloren").isEqualTo(2);
+            assertThat(zaehle("SELECT count(*) FROM messreihe_ereignis WHERE entity_id='" + entity
+                    + "' AND art='counter_overflow'")).isZero();
+            assertThat(ueberlaufErkennungFehler() - fehler).as("jeder Fehler gezählt").isGreaterThanOrEqualTo(2.0);
+        } finally {
+            try (Connection c = admin(); Statement st = c.createStatement()) {
+                st.execute("DROP FUNCTION messreihe_zaehler_deklaration(UUID, UUID, TEXT, TIMESTAMPTZ)");
+                deklaration(st, "SELECT NULL::numeric, NULL::numeric, NULL::integer, NULL::integer WHERE false");
+            }
+        }
+    }
+
+    /**
      * Bestandsschutz: ein Wert ohne eindeutige Komponente oder ohne Datenquelle geht Zeichen für
      * Zeichen den alten Weg. Der Fingerabdruck seiner Bestandsspalten ist nach einer erneuten
      * Zustellung derselbe, die sieben neuen Spalten bleiben leer, und der ALTE Schlüssel fängt die
@@ -1188,6 +1310,24 @@ class WriterPipeTest {
         Counter c = meters.find(MessreiheEreignisRepository.WRITER_METRIK)
                 .tag("ergebnis", ergebnis).tag("grund", "").counter();
         return c == null ? 0 : c.count();
+    }
+
+    /** Ersetzt den Rumpf der Deklaration (V20260912220000) — die Tür, die AP-08 IP-7 füllt. */
+    private static void deklaration(Statement st, String rumpf) throws Exception {
+        st.execute("CREATE OR REPLACE FUNCTION messreihe_zaehler_deklaration(p_tenant UUID, p_entity UUID, "
+                + "p_messkanal TEXT, p_zeit TIMESTAMPTZ) RETURNS TABLE (wertebereich_modul NUMERIC, "
+                + "hoechstzuwachs_je_kadenz NUMERIC, kadenz_s INTEGER, neustart_verlust_s INTEGER) "
+                + "LANGUAGE sql STABLE PARALLEL SAFE AS $$ " + rumpf + " $$");
+    }
+
+    private double ueberlaufErkennung(String ergebnis) {
+        Counter c = meters.find(UeberlaufErkennung.METRIK).tag("ergebnis", ergebnis).tag("grund", "").counter();
+        return c == null ? 0 : c.count();
+    }
+
+    private double ueberlaufErkennungFehler() {
+        return meters.find(UeberlaufErkennung.METRIK).tag("ergebnis", "fehler").counters().stream()
+                .mapToDouble(Counter::count).sum();
     }
 
     private double abfragen(String nachschlag) {

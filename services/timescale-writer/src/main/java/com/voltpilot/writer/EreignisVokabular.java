@@ -228,6 +228,9 @@ public final class EreignisVokabular {
         f.put("stand_alt", Typ.STAND);
         f.put("stand_neu", Typ.STAND);
         f.put("messzeit_alt", Typ.ZEIT);
+        f.put("wertebereich_modul", Typ.STAND);
+        f.put("hoechstzuwachs_je_kadenz", Typ.STAND);
+        f.put("kadenz_s", Typ.SEKUNDEN);
         f.put("anlass", Typ.WORT);
         f.put("eingetragen_am", Typ.ZEIT);
         f.put("endstand", Typ.STAND);
@@ -328,6 +331,11 @@ public final class EreignisVokabular {
                 List.of("komponente", "messkanal"), List.of("box", "messstelle"),
                 List.of("stand_alt", "stand_neu"), List.of("messzeit_alt", "einheit"), List.of(),
                 null, null),
+        COUNTER_OVERFLOW("counter_overflow", EnumSet.of(WRITER), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("box", "messstelle"),
+                List.of("stand_alt", "stand_neu", "messzeit_alt", "wertebereich_modul",
+                        "hoechstzuwachs_je_kadenz", "kadenz_s"),
+                List.of("einheit"), List.of(), null, null),
         DEVICE_BOUNDARY("device_boundary", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
                 List.of("komponente"), List.of("messkanal", "messstelle"),
                 List.of("anlass", "einbau_alt", "einbau_neu", "eingetragen_am"),
@@ -876,6 +884,21 @@ public final class EreignisVokabular {
                         || (e.has("messzeit_alt")
                                 && !zeit(e, "messzeit_alt").isBefore(zeit(e, "zeitpunkt")))) {
                     throw nein(Grund.REGEL_VERLETZT, "Stand fällt nicht");
+                }
+            }
+            case COUNTER_OVERFLOW -> {
+                // Z6 (AP-08 E4): dieselbe Entscheidung wie die Mengenregel - nur ein fallender Stand
+                // mit Deklaration und plausiblem Zuwachs ist ein Überlauf, alles andere eine Rücksetzung.
+                Instant alt = zeit(e, "messzeit_alt");
+                Instant neu = zeit(e, "zeitpunkt");
+                long kadenzS = e.get("kadenz_s").asLong();
+                if (!alt.isBefore(neu) || kadenzS < 1
+                        || zahl(e, "wertebereich_modul").signum() <= 0
+                        || zahl(e, "hoechstzuwachs_je_kadenz").signum() <= 0
+                        || UeberlaufRegel.ueberlauf(zahl(e, "stand_alt"), alt, zahl(e, "stand_neu"), neu,
+                        Duration.ofSeconds(kadenzS), zahl(e, "wertebereich_modul"),
+                        zahl(e, "hoechstzuwachs_je_kadenz")) == null) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein plausibler Überlauf");
                 }
             }
             case DEVICE_BOUNDARY -> {

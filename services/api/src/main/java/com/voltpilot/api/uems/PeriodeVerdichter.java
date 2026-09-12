@@ -256,7 +256,8 @@ public class PeriodeVerdichter {
                 ? TagRegeln.zustand(tage.vorhanden(), tage.endgueltig(), TagRegeln.endgueltigAb(ende), jetzt)
                 : ViertelstundeRegeln.VORLAEUFIG;
         return zeile(a, erster, zone, tage, beginn, ende, erster.lengthOfMonth(),
-                tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.wertart(), v.kadenzS(),
+                tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.deklaration(), v.wertart(),
+                v.kadenzS(),
                 v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand,
                 ViertelstundenTeile.werte(v.werteteile(), v.wertart(), v.kadenzS(), beginn, ende), jetzt);
     }
@@ -332,20 +333,23 @@ public class PeriodeVerdichter {
         }
         // Ein Monat einer anderen Zone kachelt dieses Jahr nicht — die Regel weist ihn ab, statt
         // ihn still zu kappen. Heute tragen alle zugelassenen Zonen denselben Versatz.
+        ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, a.tenant(), a.entity(), a.kanal(), beginn);
         List<VerbrauchRegeln.Ereignis> ereignisse = ViertelstundenTeile.ereignisse(con, a.tenant(), a.entity(),
-                a.kanal(), beginn, ende);
+                a.kanal(), beginn, ende, deklaration);
         String zustand = TagRegeln.zustand(monate.vorhanden(), monate.endgueltig(), TagRegeln.endgueltigAb(ende),
                 jetzt);
         return zeile(a, erster, zone, monate, beginn, ende, 12, monate.endgueltig(), innen, teile, ereignisse,
-                wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand,
+                deklaration, wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand,
                 ViertelstundenTeile.werte(werteteile, wertart, kadenzS, beginn, ende), jetzt);
     }
 
     private static Object[] zeile(Auftrag a, LocalDate erster, ZoneId zone, Teile teile, Instant beginn,
             Instant ende, int teileErwartet, int teileEndgueltig, List<Teilperiode> innen,
-            List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, String wertart, Integer kadenzS,
+            List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, ZaehlerDeklaration deklaration,
+            String wertart, Integer kadenzS,
             int nachgeliefert, UUID site, String zustand, VerbrauchRegeln.Werteteil werteteil, Instant jetzt) {
-        Teilperiode menge = ViertelstundenTeile.zaehlerstand(alle, ereignisse, wertart, kadenzS, beginn, ende);
+        Teilperiode menge = ViertelstundenTeile.zaehlerstand(alle, ereignisse, deklaration, wertart, kadenzS,
+                beginn, ende);
         // Zählerstand aus den Periodenständen (IP-5), Momentanwert/Intervallmenge aus der Regel von
         // IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.
         Ergebnis mengeErgebnis = menge != null ? menge.ergebnis()

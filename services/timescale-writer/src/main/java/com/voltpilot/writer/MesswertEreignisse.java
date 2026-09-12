@@ -124,6 +124,31 @@ final class MesswertEreignisse {
         s.anzahl++;
     }
 
+    /**
+     * Ein erkannter Überlauf (AP-08 IP-4) — EINE Meldung je Wert, mit der Rechnung als Nutzlast. Die
+     * Kennung hängt an Reihe und Messzeit: ein erneut zugestellter Umschlag meldet ihn nicht zweimal.
+     */
+    void ueberlauf(HerkunftNachschlag.Urteil urteil, String pointKey, Instant messzeit, BigDecimal standNeu,
+            UeberlaufErkennung.Ueberlauf u) {
+        ObjectNode n = kopf("counter_overflow", UUID.nameUUIDFromBytes(("writer|counter_overflow|"
+                + event.tenant_id() + "|" + urteil.entityId() + "|" + pointKey + "|" + messzeit)
+                .getBytes(StandardCharsets.UTF_8)));
+        setzen(n, "zeitpunkt", messzeit);
+        n.put("komponente", urteil.entityId().toString());
+        n.put("messkanal", pointKey);
+        setzen(n, "stand_alt", u.standAlt());
+        setzen(n, "stand_neu", standNeu);
+        setzen(n, "messzeit_alt", u.messzeitAlt());
+        setzen(n, "wertebereich_modul", u.wertebereichModul());
+        setzen(n, "hoechstzuwachs_je_kadenz", u.hoechstzuwachsJeKadenz());
+        n.put("kadenz_s", u.kadenzS());
+        n.put("box", event.device_id().toString());
+        if (urteil.messstelleId() != null) {
+            n.put("messstelle", urteil.messstelleId().toString());
+        }
+        fertig.add(n);
+    }
+
     /** Wie viele Meldungen die Datenannahme geschickt hat, die dem Writer nicht gehören. */
     int fremdeArten() {
         return fremd;

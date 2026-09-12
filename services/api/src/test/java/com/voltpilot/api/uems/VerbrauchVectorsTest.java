@@ -222,6 +222,60 @@ class VerbrauchVectorsTest {
      * {@code {t, v, q}} übernommen; {@code luecken} entfernen anschließend Werte in
      * {@code [von, bis)}.
      */
+    /**
+     * Z6 (AP-08 IP-4) — die EINE Überlauf-Entscheidung {@link VerbrauchRegeln#ueberlauf} steht genau
+     * dort, wo eine Erwartung des Falls „Überlauf HH:MM" nennt: an jedem fallenden Nachbarn guter
+     * Werte jeder Zählerstand-Reihe (eine Gerätegrenze dazwischen ist Z4). F7: 767 ≤ 1 667 ist ein
+     * Überlauf, 53 179 nicht. Ohne Wertebereich oder ohne Höchstzuwachs wird nie einer geraten (E4).
+     * Der Python-Zwilling und die Writer-Erkennung prüfen dieselbe Ableitung aus derselben Datei.
+     */
+    @Test
+    void dieUeberlaufEntscheidungStehtGenauDortWoDieErwartungEinenUeberlaufNennt() throws Exception {
+        int ueberlaeufe = 0;
+        int ruecksetzungen = 0;
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            JsonNode reihe = fall.path("input").path("reihe");
+            if (!"zaehlerstand".equals(fall.path("familie").asText()) || reihe.isMissingNode()) {
+                continue;
+            }
+            List<Rohwert> gute = rohwerte(reihe).stream().filter(Rohwert::gut).toList();
+            List<Instant> grenzen = ereignisse(reihe.path("ereignisse")).stream()
+                    .filter(e -> Ereignis.GERAETEGRENZE.equals(e.art())).map(Ereignis::zeit).toList();
+            List<String> genannt = new ArrayList<>();
+            fall.path("expected").forEach(e -> e.path("kennzeichen").forEach(k -> {
+                if (k.asText().startsWith("Überlauf ")) {
+                    genannt.add(k.asText().split(" ")[1]);
+                }
+            }));
+            Duration kadenz = Duration.ofSeconds(reihe.path("kadenz_s").asLong());
+            BigDecimal modul = dezimal(reihe.path("wertebereich_modul"), null);
+            BigDecimal hoechst = dezimal(reihe.path("hoechstzuwachs_je_kadenz"), null);
+            for (int i = 0; i + 1 < gute.size(); i++) {
+                Rohwert vorher = gute.get(i);
+                Rohwert nachher = gute.get(i + 1);
+                if (nachher.wert().compareTo(vorher.wert()) >= 0 || grenzen.stream()
+                        .anyMatch(g -> g.isAfter(vorher.zeit()) && !g.isAfter(nachher.zeit()))) {
+                    continue;
+                }
+                String uhr = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                        .format(nachher.zeit().atZone(VerbrauchRegeln.ANZEIGE_ZEITZONE));
+                BigDecimal ueber = VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, modul, hoechst);
+                assertThat(ueber != null).as(fall.path("name").asText() + " " + uhr)
+                        .isEqualTo(genannt.contains(uhr));
+                if (ueber != null) {
+                    assertThat(ueber).isEqualByComparingTo(modul.subtract(vorher.wert()).add(nachher.wert()));
+                    ueberlaeufe++;
+                } else {
+                    ruecksetzungen++;
+                }
+                assertThat(VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, null, hoechst)).isNull();
+                assertThat(VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, modul, null)).isNull();
+            }
+        }
+        assertThat(ueberlaeufe).as("F7 10:03").isPositive();
+        assertThat(ruecksetzungen).as("F6, F7 10:20, F12").isPositive();
+    }
+
     static List<Rohwert> rohwerte(JsonNode reihe) {
         List<Rohwert> out = new ArrayList<>();
         for (JsonNode a : reihe.path("rohwerte")) {
