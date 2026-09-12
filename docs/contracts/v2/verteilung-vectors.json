@@ -1,0 +1,1295 @@
+{
+  "_comment": [
+    "Die EINE Wahrheit der FESTEN VERTEILUNG (UEMS AP-10 IP-1): die Referenzfälle F3, F6, F10–F13",
+    "des Referenzunternehmens Ahrenberg. Die Prosa steht in verteilung.md, die Regeln selbst",
+    "stehen HIER — wer die Regel ändert, ändert diese Datei UND beide Zwillinge: Java",
+    "services/api .../uems/VerteilungRegeln (Test VerteilungVectorsTest) und TypeScript",
+    "frontend/portal/src/uemsVerteilung.ts (Test uemsVerteilung.test.ts), beide PER PFAD.",
+    "Eine Verteilung ist eine eigene ZEITGÜLTIGE Beziehung Messstelle → Kostenstelle (Tage,",
+    "Muster A) mit Anteil; an jedem Tag mit Zeilen sind es genau 100 %, sonst „nicht verteilt“.",
+    "Sie wirkt JE TAG auf die Tagesmenge — kein Stichtag, kein Mittel, keine Interpolation; ein",
+    "Periodenbetrag wird über einen Fassungswechsel NICHT geteilt, sondern verlangt Tagesmengen.",
+    "Keine dynamischen Schlüssel: kein Anteil aus Messwerten, Flächen, Stückzahlen oder",
+    "Betriebsstunden (Grenze des Captains, AP-09 S2).",
+    "Erzeugt aus data/vp-uems-ap10-bilanzen/referenzfaelle.json; _abweichungen nennt jede bewusste",
+    "Abweichung von der Vorlage, _nicht_geprueft jede Erwartung ohne Zwilling."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./verteilung.schema.json",
+  "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
+  "zeitzone": "Europe/Berlin",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "referenz_stand": "Fassung vom 11.09.2026 (1.1). Die Ergänzung 1.2 (E19 = A, entschieden 12.09.2026) — MS-22 „Lindach nicht zugeordnet“, die Tageswerte des 18.10.2026, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, das Ende der 9000-Anteile am 31.12.2026 und `formel_typ` je berechneter Messstelle — trägt AP-10 IP-2 dort nach. Bis dahin stehen diese Angaben NUR hier und sind je Fall unter „annahmen“ gekennzeichnet; die Fälle rechnen nach der Ergänzung unverändert weiter.",
+  "titel": "Feste Verteilung einer Messstelle auf Kostenstellen: Satz, Fassung, Tagesanteile, Erbe",
+  "regeln_kurz": [
+    "Die Anlage ist das elektrische System und die Bilanzgrenze; ihr Netzanschluss ist ein eigenes Objekt am Standort (E8/E9). Standort und Unternehmen bilanzieren als SUMME über Systeme mit „x von y“ (F8); ein Gebäude ist eine SICHT Ort × Stellung (F17).",
+    "Die Bilanz eines Hauptzählers entsteht aus der zeitgültigen STELLUNG (E3): Hauptzähler Bezug/Erzeuger/Speicher-Entladen = Zufluss, Hauptzähler Abgabe/Speicher-Laden = Abfluss, „Unterzähler von“ = zugeordnet, Abzweig ohne Vorgänger = außerhalb der Bilanz (benannt), berechnet/keine = nie.",
+    "Der Rest = Zufluss − Abfluss − zugeordnet ist eine berechnete Messstelle vom Typ `rest` mit Richtung Bezug und Kennzeichen „berechnet (Differenz) · nicht zugeordnet“ (E1). Er darf negativ sein („Messwerte passen nicht zusammen (−x kWh)“), nie 0 statt null, nie eine Ursache (F6).",
+    "Drei Wörter, nie vermischt: gemessen (führende Quelle) · berechnet (Summe · Differenz · Saldo, mit Formel-Fassung und Eingängen) · verteilt (n % von MS-xx, mit Verteilungs-Fassung). Jeder Wert trägt Zustand, Abdeckung, Kennzeichen, Version (AP-08) und seine Herkunft (E13).",
+    "Fortpflanzung (E2): Summe = Summe der vorhandenen Eingänge mit Zustand „schlechtester Eingang“ und Nennung der fehlenden („mindestens …“); Differenz und Saldo bei einem nicht vollständigen Eingang = „keine Werte“; Verteilung erbt; der Live-Wert bleibt `null` statt Teilsumme.",
+    "Eine Verteilung ist eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage, Muster A), Summe je Tag genau 100 % an jedem Tag mit Zeilen, sonst „nicht verteilt“; sie wirkt je Tag (Tagesanteile, nie Stichtag) und endet mit ihrem Ziel (E11/E12). Keine dynamischen Schlüssel.",
+    "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14)."
+  ],
+  "vokabulare": {
+    "term_art": [
+      "messkanal",
+      "messstelle",
+      "verteilung"
+    ],
+    "anteil": [
+      "gesamt",
+      "positiv",
+      "negativ"
+    ],
+    "zustand": [
+      "vollständig",
+      "unvollständig",
+      "keine Werte",
+      "mit Ersatzwert"
+    ],
+    "verteilung_zustand": [
+      "verteilt",
+      "nicht verteilt"
+    ],
+    "fehler_neu": [
+      "verteilung_summe",
+      "ziel_besteht_nicht",
+      "richtung_unbestimmt",
+      "rest_ohne_hauptzaehler",
+      "formel_fassung_ueberlappt"
+    ],
+    "fehler": [
+      "verteilung_summe",
+      "ziel_besteht_nicht",
+      "anteil_ungueltig",
+      "formel_fassung_ueberlappt",
+      "tagesmengen_noetig",
+      "verteilungs_term_ohne_faktor",
+      "nicht_verteilt"
+    ],
+    "erbe_grund": [
+      "rest_unplausibel",
+      "quelle_keine_werte"
+    ]
+  },
+  "regeln": {
+    "summe_prozent": 100,
+    "anteil_min_ausschliesslich": 0,
+    "anteil_max": 100,
+    "anteil_nachkommastellen": 1,
+    "menge_nachkommastellen": 6,
+    "ziel_art": "kostenstelle"
+  },
+  "saetze": {
+    "rest_zugeordnet": "{menge} {einheit} sind keiner Messstelle zugeordnet",
+    "rest_negativ": "Messwerte passen nicht zusammen ({menge} {einheit})",
+    "rest_keine_werte": "nicht zugeordnet: keine Werte",
+    "summe_mindestens": "mindestens {menge} {einheit} ({fehlend} fehlt)",
+    "summe_mindestens_mehrere": "mindestens {menge} {einheit} ({fehlend} fehlen)",
+    "ebene_x_von_y": "{mit_werten} von {gesamt} {wort}",
+    "nicht_verteilt": "nicht verteilt",
+    "verteilt": "verteilt ({anteil} % von {quelle})",
+    "erbe_rest_unplausibel": "keine Werte (Rest unplausibel)"
+  },
+  "zwillinge": {
+    "satz": [
+      "java",
+      "ts"
+    ],
+    "am_tag": [
+      "java",
+      "ts"
+    ],
+    "fassung": [
+      "java",
+      "ts"
+    ],
+    "mengen": [
+      "java",
+      "ts"
+    ],
+    "erbe": [
+      "java",
+      "ts"
+    ],
+    "term": [
+      "java",
+      "ts"
+    ],
+    "herkunft": [
+      "java"
+    ]
+  },
+  "zwillinge_grund": {
+    "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel."
+  },
+  "_abweichungen": [
+    {
+      "fall": "F13 · herkunft.ausloeser",
+      "feld": "herkunft.ausloeser",
+      "vorlage": null,
+      "statt": "Verteilung geändert am 15.01.2027, rückwirkend eingetragen am 20.01.2027",
+      "grund": "Die Vorlage nennt die Version 2, aber kein Auslöser-Feld; ihr Schritt 4 sagt wörtlich, dass die Tage 15.–19.01. „per `correction` neu gerechnet“ werden (rückwirkende Eintragung). Eine Version > 1 ohne Auslöser wäre eine Herkunft, die ihre eigene Ursache verschweigt — der Auslöser steht deshalb als Satz da."
+    },
+    {
+      "fall": "F3, F10, F12 · Bestehen der Kostenstellen",
+      "feld": "ziele[].gueltig_ab",
+      "vorlage": null,
+      "statt": "2019-01-01",
+      "grund": "Die Vorlage nennt für 4100, 4200 und 4300 kein Anlegedatum. Die Prüfung „das Ziel besteht an jedem Tag des Intervalls“ braucht eines; gewählt ist ein Tag deutlich vor allen Fällen, damit er nie das Ergebnis trägt. Das ENDE der Kostenstelle 9000 (31.12.2026) steht dagegen in der Vorlage und ist ergebnisrelevant (F12)."
+    }
+  ],
+  "_nicht_geprueft": [
+    {
+      "fall": "F13 · Gegenprobe „Stichtag“",
+      "feld": "beschreibend.nicht.stichtag_4100_kwh (9 300)",
+      "warum": "Die Zahl zeigt, was ein Stichtag-Lesen ergäbe — sie ist die VERWORFENE Lesart (W3). Der Vertrag kennt keinen Stichtag für Verteilungen; es gibt deshalb nichts zu rechnen, nur etwas zu unterlassen."
+    },
+    {
+      "fall": "F12 · Nachfolger 9010/9020",
+      "feld": "beschreibend.nachfolger",
+      "warum": "Dass Ines für 2027 (noch) keine Anteile einträgt, ist eine Annahme der Vorlage; ein nicht eingetragener Anteil ist kein Rechenfall, sondern genau der Zustand „nicht verteilt“, den `am_tag` prüft."
+    }
+  ],
+  "plan_abnahmen": {
+    "plan": "F1 — 100 kWh Hauptzähler, 60 und 30 kWh Unterzähler ergeben 100 kWh Gesamtverbrauch und 10 kWh Bilanzdifferenz (Werk Lindach, 18.10.2026)"
+  },
+  "cases": [
+    {
+      "name": "f3-rest-ms15-zu-100-prozent-an-4300",
+      "id": "F3",
+      "familie": "rest",
+      "abnahme": null,
+      "titel": "Halle 2, Oktober 2026 — der Rest MS-15 (3 800 kWh) ist zu 100 % der Kostenstelle 4300 zugeteilt",
+      "why": "Die Form der Plan-Abnahme am Bestand der Referenzdatei (ein Hauptzähler, vier Unterzähler, Rest) — und der Rest darf VERTEILT werden, ohne dass er dadurch ein gemessener Wert wird.",
+      "anlage": "AN-2 Halle 2 (System hinter NA-2)",
+      "periode": "Monat 2026-10",
+      "einheit": "kWh",
+      "schritte": [
+        "Σ Unterzähler = 22 400 + 6 100 + 3 500 + 1 100 = 33 100 kWh.",
+        "Rest MS-15 = 36 900 − 33 100 = 3 800 kWh (= Referenzwert), Richtung Bezug, Kennzeichen „berechnet (Differenz) · nicht zugeordnet“.",
+        "Verteilung: 100 % an 4300 Logistik → 4300 erhält 3 800 kWh mit Kennzeichen „verteilt (100 % von MS-15)“ UND „berechnet (Differenz)“ — der Kostenstellen-Wert erbt beides (AP-08 §6.3 „feste Verteilung erbt“).",
+        "Die Kostenstelle 4300 zeigt damit: gemessen 3 500 (MS-13) + 4 300 (MS-17) … und verteilt 3 800 (aus MS-15, berechnet) — drei Wörter, drei Zeilen, nie eine Summe ohne Kennzeichen."
+      ],
+      "pruefungen": [
+        {
+          "regel": "satz",
+          "name": "Ein Ziel mit 100 % ist ein gültiger Satz",
+          "eingang": {
+            "tag": "2026-10-01",
+            "messstelle": "MS-15",
+            "zeilen": [
+              {
+                "kostenstelle": "4300",
+                "anteil_prozent": "100"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "summe": "100",
+            "fehler": null,
+            "fakten": {}
+          }
+        },
+        {
+          "regel": "erbe",
+          "name": "Der verteilte Wert erbt „berechnet (Differenz)“ — er wird durch die Verteilung nicht gemessen",
+          "eingang": {
+            "quelle": {
+              "messstelle": "MS-15",
+              "menge": "3800",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100,
+              "version": 1,
+              "kennzeichen": [
+                "berechnet (Differenz)",
+                "nicht zugeordnet"
+              ]
+            },
+            "anteil_prozent": "100",
+            "fassung": 1,
+            "ziel": "4300",
+            "einheit": "kWh"
+          },
+          "ergebnis": {
+            "menge": "3800",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": [
+              "verteilt (100 % von MS-15)",
+              "berechnet (Differenz)",
+              "nicht zugeordnet"
+            ],
+            "grund": null
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Halle 2 · Oktober 2026 · 36 900 kWh · zugeordnet 33 100 kWh (4 Unterzähler) · nicht zugeordnet 3 800 kWh (MS-15 → 100 % Kostenstelle 4300, verteilt)"
+      },
+      "annahmen": []
+    },
+    {
+      "name": "f6-verteilung-eines-negativen-rests-wird-ausgesetzt",
+      "id": "F6",
+      "familie": "zustand",
+      "abnahme": null,
+      "titel": "Negativer Rest — „Messwerte passen nicht zusammen (−5 kWh)“: ausgewiesen, nicht geklemmt, keine Ursache",
+      "why": "Die Ehrlichkeitsregel der Verbraucher-Zone auf die Bilanz übertragen: ein negativer Rest ist ein Befund, keine 0 (stille Zuschreibungen 1 und 5).",
+      "anlage": "AN-3",
+      "periode": "Tag 2026-11-08",
+      "einheit": "kWh",
+      "schritte": [
+        "Rest = 100 − 60 − 45 = -5 kWh.",
+        "Der Wert wird negativ gespeichert und angezeigt, Zustand vollständig, Kennzeichen „berechnet (Differenz) · unplausibel (negativ)“; Kundensatz: „Messwerte passen nicht zusammen (−5 kWh)“.",
+        "Keine Deutung: weder „Zählerfehler“ noch „Verluste“ noch „Rückspeisung“ — die Fläche nennt nur die Beobachtung (Hausregel: eine Ursache braucht einen exportierten Fakt).",
+        "Die Verteilung eines negativen Rests wird ausgesetzt: das Ziel erhält „keine Werte (Rest unplausibel)“, nie einen negativen Kostenstellen-Wert."
+      ],
+      "pruefungen": [
+        {
+          "regel": "erbe",
+          "name": "Ein negativer Rest wird nicht verteilt — das Ziel bekommt „keine Werte (Rest unplausibel)“",
+          "eingang": {
+            "quelle": {
+              "messstelle": "MS-22",
+              "menge": "-5",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100,
+              "version": 1,
+              "kennzeichen": [
+                "berechnet (Differenz)",
+                "unplausibel (negativ)"
+              ]
+            },
+            "anteil_prozent": "100",
+            "fassung": 1,
+            "ziel": "4300",
+            "einheit": "kWh"
+          },
+          "ergebnis": {
+            "menge": null,
+            "zustand": "keine Werte",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": [
+              "keine Werte (Rest unplausibel)"
+            ],
+            "grund": "rest_unplausibel"
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Werk Lindach · 08.11.2026 · 100 kWh · zugeordnet 105 kWh · Messwerte passen nicht zusammen (−5 kWh)"
+      },
+      "annahmen": [
+        "Tag 2026-11-08 und die Werte sind Annahmen."
+      ]
+    },
+    {
+      "name": "f10-druckluft-70-30-summe-100",
+      "id": "F10",
+      "familie": "verteilung",
+      "abnahme": null,
+      "titel": "Druckluft (MS-07) fest 70 % an 4100 Spritzguss, 30 % an 4200 Montage — Summe 100 %, Kennzeichen „verteilt“",
+      "why": "Die feste Verteilung als eigene zeitgültige Beziehung (E11): das Ziel bekommt eine Menge mit dem Kennzeichen „verteilt (70 % von MS-07)“, die Quelle bleibt gemessen.",
+      "anlage": "AN-1",
+      "periode": "Monat 2026-10",
+      "einheit": "kWh",
+      "schritte": [
+        "4100 ← 15 900 × 70 % = 11 130 kWh; 4200 ← 15 900 × 30 % = 4 770 kWh; Summe 15 900 = MS-07 ✔.",
+        "Beide Zielwerte tragen „verteilt (70 % bzw. 30 % von MS-07, Verteilung Fassung 1)“ und erben Zustand/Abdeckung/Version von MS-07.",
+        "Kostenstelle 4100 im Oktober: gemessen 55 100 (MS-06) + 22 400 (MS-11) + 6 200 (MS-08) · verteilt 11 130 (MS-07) — zwei Zeilen, beide sichtbar.",
+        "Eine Verteilung mit Summe 110 % oder mit einem Ziel, das am Tag nicht besteht, wird abgelehnt (422 `verteilung_summe` / `ziel_besteht_nicht`)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "satz",
+          "name": "70 % + 30 % = 100 % — der Satz gilt",
+          "eingang": {
+            "tag": "2026-10-01",
+            "messstelle": "MS-07",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "summe": "100",
+            "fehler": null,
+            "fakten": {}
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "70 % + 40 % = 110 % wird abgelehnt, nie stillschweigend normiert",
+          "eingang": {
+            "tag": "2026-10-01",
+            "messstelle": "MS-07",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "summe": "110",
+            "fehler": "verteilung_summe",
+            "fakten": {
+              "summe": "110",
+              "tag": "2026-10-01"
+            }
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "Ein Anteil von 0 % ist keine Zeile, sondern ein Fehler",
+          "eingang": {
+            "tag": "2026-10-01",
+            "messstelle": "MS-07",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "100"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "0"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "summe": "100",
+            "fehler": "anteil_ungueltig",
+            "fakten": {
+              "kostenstelle": "4200",
+              "anteil_prozent": "0"
+            }
+          }
+        },
+        {
+          "regel": "mengen",
+          "name": "Oktober: 15 900 × 70 % = 11 130 · × 30 % = 4 770 · Summe wieder 15 900",
+          "eingang": {
+            "einheit": "kWh",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "periode_menge": "15900",
+            "tage": null,
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "je_ziel": {
+              "4100": "11130.0",
+              "4200": "4770.0"
+            },
+            "summe": "15900.0",
+            "nicht_verteilt": "0",
+            "fehler": null
+          }
+        },
+        {
+          "regel": "erbe",
+          "name": "Das Ziel 4100 erbt Zustand, Abdeckung und Version von MS-07",
+          "eingang": {
+            "quelle": {
+              "messstelle": "MS-07",
+              "menge": "15900",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100,
+              "version": 1,
+              "kennzeichen": []
+            },
+            "anteil_prozent": "70",
+            "fassung": 1,
+            "ziel": "4100",
+            "einheit": "kWh"
+          },
+          "ergebnis": {
+            "menge": "11130.0",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": [
+              "verteilt (70 % von MS-07)"
+            ],
+            "grund": null
+          }
+        },
+        {
+          "regel": "herkunft",
+          "name": "Die Herkunft eines VERTEILTEN Werts nennt Fassung, Ziel und Anteil",
+          "eingang": {
+            "art": "verteilt",
+            "messstelle": "4100",
+            "periode": {
+              "art": "monat",
+              "schluessel": "2026-10"
+            },
+            "formel_typ": null,
+            "formel_fassung": null,
+            "periode_ende": null,
+            "berechnet_am": "2026-11-01T00:15:00+01:00",
+            "version": 1,
+            "ausloeser": null,
+            "verteilung": {
+              "fassung": 1,
+              "ziel": "4100",
+              "anteil_prozent": "70"
+            },
+            "eingaenge": [
+              {
+                "messstelle": "MS-07",
+                "bilanz_rolle": null,
+                "anteil": "gesamt",
+                "menge": "15900",
+                "zustand": "vollständig",
+                "abdeckung_prozent": 100,
+                "version": 1,
+                "kennzeichen": []
+              }
+            ],
+            "ergebnis": {
+              "menge": "11130.0",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100,
+              "kennzeichen": [
+                "verteilt (70 % von MS-07)"
+              ]
+            }
+          },
+          "ergebnis": {
+            "satz": {
+              "art": "verteilt",
+              "messstelle": "4100",
+              "periode": {
+                "art": "monat",
+                "schluessel": "2026-10"
+              },
+              "formel_typ": null,
+              "formel_fassung": null,
+              "periode_ende": null,
+              "berechnet_am": "2026-11-01T00:15:00+01:00",
+              "version": 1,
+              "ausloeser": null,
+              "verteilung": {
+                "fassung": 1,
+                "ziel": "4100",
+                "anteil_prozent": "70"
+              },
+              "eingaenge": [
+                {
+                  "messstelle": "MS-07",
+                  "bilanz_rolle": null,
+                  "anteil": "gesamt",
+                  "menge": "15900",
+                  "zustand": "vollständig",
+                  "abdeckung_prozent": 100,
+                  "version": 1,
+                  "kennzeichen": []
+                }
+              ],
+              "kennzeichen": [
+                "verteilt (70 % von MS-07)"
+              ],
+              "menge": "11130.0",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100
+            },
+            "fehlt": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Kostenstelle 4100 Spritzguss · Oktober 2026 · gemessen 83 700 kWh · verteilt 11 130 kWh (70 % von MS-07 Druckluft)",
+        "invariante": "Summe je Tag = 100 %"
+      },
+      "annahmen": []
+    },
+    {
+      "name": "f11-term-verweist-auf-die-verteilung",
+      "id": "F11",
+      "familie": "verteilung",
+      "abnahme": null,
+      "titel": "Prozess Spritzguss gesamt (MS-20) = MS-06 + MS-11 + Anteil 4100 von MS-07 — der Term verweist auf die Verteilung, nicht auf einen Faktor 0,7",
+      "why": "Term-Art `verteilung` (E11): ändert Ines die Verteilung von MS-07, zieht MS-20 nach; ein Faktor 0,7 in der Formel wüsste davon nichts.",
+      "anlage": "Prozess P-1 (zwei Gebäude, zwei Systeme)",
+      "periode": "Monat 2026-10",
+      "einheit": "kWh",
+      "schritte": [
+        "MS-20 = 55 100 + 22 400 + 11 130 = 88 630 kWh (Referenzwert), Richtung Bezug, Kennzeichen „berechnet (Summe) · enthält verteilt (70 % von MS-07)“.",
+        "Kennzahl AP-11: 88 630 ÷ 312 400 = 0,28 kWh/kg — unverändert gegenüber `kennzahl_beispiel`.",
+        "Würde die Verteilung ab 15.01.2027 auf 60/40 gehen (F13), rechnet MS-20 ab diesem Tag mit 60 % — ohne Formel-Änderung, mit Kennzeichen „Verteilung geändert am 15.01.2027“."
+      ],
+      "pruefungen": [
+        {
+          "regel": "term",
+          "name": "Der Term „4100 von MS-07“ liest den Anteil des Tages — er kopiert keinen Faktor",
+          "eingang": {
+            "term": {
+              "art": "verteilung",
+              "verteilung_ziel": "4100",
+              "quell_messstelle": "MS-07",
+              "anteil": "gesamt",
+              "faktor": "1",
+              "vorzeichen": "+"
+            },
+            "tag": "2026-10-01",
+            "quelle_menge": "15900",
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "menge": "11130.0",
+            "anteil_prozent": "70",
+            "kennzeichen": [
+              "verteilt (70 % von MS-07)"
+            ],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "term",
+          "name": "Ein Faktor 0,7 statt des Verweises wird abgelehnt — sonst liefe er der Verteilung davon",
+          "eingang": {
+            "term": {
+              "art": "verteilung",
+              "verteilung_ziel": "4100",
+              "quell_messstelle": "MS-07",
+              "anteil": "gesamt",
+              "faktor": "0.7",
+              "vorzeichen": "+"
+            },
+            "tag": "2026-10-01",
+            "quelle_menge": "15900",
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "menge": null,
+            "anteil_prozent": null,
+            "kennzeichen": [],
+            "fehler": "verteilungs_term_ohne_faktor"
+          }
+        },
+        {
+          "regel": "term",
+          "name": "Ohne Verteilungszeile am Tag gibt es keinen Anteil — nie einen geratenen",
+          "eingang": {
+            "term": {
+              "art": "verteilung",
+              "verteilung_ziel": "4100",
+              "quell_messstelle": "MS-07",
+              "anteil": "gesamt",
+              "faktor": "1",
+              "vorzeichen": "+"
+            },
+            "tag": "2027-01-01",
+            "quelle_menge": "15900",
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "menge": null,
+            "anteil_prozent": null,
+            "kennzeichen": [],
+            "fehler": "nicht_verteilt"
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Prozess Spritzguss gesamt · Oktober 2026 · 88 630 kWh (gemessen 77 500 + verteilt 11 130)",
+        "ms20_kwh": 88630.0
+      },
+      "annahmen": []
+    },
+    {
+      "name": "f12-kostenstelle-9000-endet-31-12-2026",
+      "id": "F12",
+      "familie": "zeit",
+      "abnahme": null,
+      "titel": "Kostenstelle 9000 endet am 31.12.2026 — die Anteile von MS-03 enden mit ihr; Januar 2027 ist „nicht verteilt“, nie still auf 9010/9020",
+      "why": "Eine Verteilung darf nicht über das Bestehen ihres Ziels hinaus gelten (W8); ohne Zeile ist eine Messstelle ehrlich „nicht verteilt“.",
+      "anlage": "AN-1",
+      "periode": "Monate 2026-12 und 2027-01",
+      "einheit": "kWh",
+      "schritte": [
+        "Dezember 2026: MS-03 (PV 100 % → 9000) verteilt, Kennzeichen „verteilt (100 % von MS-03)“.",
+        "Januar 2027: keine gültige Verteilungszeile → MS-03 „nicht verteilt“; die Kostenstellen-Sicht 2027 zeigt 9010/9020 ohne PV-Anteil und nennt „1 Messstelle nicht verteilt (MS-03)“.",
+        "Berichte 2026 behalten 9000 (Referenzdatei-Hinweis); nichts wird rückwirkend umgehängt.",
+        "Referenzdatei 1.2: `gueltig_bis: 2026-12-31` an allen 9000-Anteilen (MS-02, MS-03, MS-04, MS-09); die Nachfolge-Anteile bleiben offen, bis Ines sie einträgt (keine Annahme im Katalog)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "am_tag",
+          "name": "Dezember 2026: MS-03 ist zu 100 % an 9000 verteilt",
+          "eingang": {
+            "tag": "2026-12-01",
+            "messstelle": "MS-03",
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": "2026-12-31"
+              }
+            ]
+          },
+          "ergebnis": {
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100"
+              }
+            ],
+            "zustand": "verteilt"
+          }
+        },
+        {
+          "regel": "am_tag",
+          "name": "Januar 2027: keine gültige Zeile → „nicht verteilt“, nie still auf 9010/9020",
+          "eingang": {
+            "tag": "2027-01-01",
+            "messstelle": "MS-03",
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "aufgehoben_am": null
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": "2026-12-31"
+              }
+            ]
+          },
+          "ergebnis": {
+            "zeilen": [],
+            "zustand": "nicht verteilt"
+          }
+        },
+        {
+          "regel": "satz",
+          "name": "Eine Verteilung auf 9000 ab 2027 wird abgelehnt: das Ziel besteht nicht mehr",
+          "eingang": {
+            "tag": "2027-01-01",
+            "messstelle": "MS-03",
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": "2026-12-31"
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "summe": "100",
+            "fehler": "ziel_besteht_nicht",
+            "fakten": {
+              "kostenstelle": "9000",
+              "tag": "2027-01-01"
+            }
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Kostenstellen 2027 · Januar · 9010 Druckluft 0 kWh verteilt · 9020 Kühlung 0 kWh verteilt · nicht verteilt: MS-03 PV-Erzeugung (14 900 kWh im Vormonat)",
+        "nachfolger": [
+          "9010 Druckluft",
+          "9020 Kühlung"
+        ],
+        "erwartet": {
+          "2026-12": {
+            "ms03_ziel": "9000",
+            "kennzeichen": [
+              "verteilt (100 % von MS-03)"
+            ]
+          },
+          "2027-01": {
+            "ms03_ziel": null,
+            "zustand_verteilung": "nicht verteilt"
+          },
+          "abgelehnt": {
+            "verteilung_auf_9000_ab_2027": "422 ziel_besteht_nicht"
+          }
+        }
+      },
+      "annahmen": [
+        "Dass Ines für 2027 (noch) keine Anteile einträgt, ist eine Annahme."
+      ]
+    },
+    {
+      "name": "f13-verteilung-aendert-sich-mitten-im-monat",
+      "id": "F13",
+      "familie": "zeit",
+      "abnahme": null,
+      "titel": "Verteilung ändert sich mitten im Monat (15.01.2027: 70/30 → 60/40) — Tagesanteile, nicht Stichtag",
+      "why": "E12: eine Verteilung wirkt je Tag auf die Tagesmenge; der Monatswert je Ziel ist die Summe der verteilten Tage — kein Stichtag, kein Mittelwert.",
+      "anlage": "AN-1",
+      "periode": "Monat 2027-01",
+      "einheit": "kWh",
+      "schritte": [
+        "MS-07 Januar = 31 × 500 = 15 500 kWh.",
+        "4100 = 14 × 500 × 70 % + 17 × 500 × 60 % = 4 900 + 5 100 = 10 000 kWh; 4200 = 14 × 500 × 30 % + 17 × 500 × 40 % = 2 100 + 3 400 = 5 500 kWh; Summe 15 500 ✔.",
+        "Stichtag-Lesen (AP-09 §4.3 für Stammdaten) ergäbe 60 % auf den ganzen Monat = 9 300 kWh für 4100 — falsch um 700 kWh; deshalb gilt für Verteilungen die Tagesregel (W3).",
+        "Kennzeichen am Januar-Wert beider Ziele: „verteilt · Verteilung geändert am 15.01.2027 (70 → 60 %)“; die Tage 15.–19.01. werden per `correction` neu gerechnet (rückwirkende Eintragung)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "fassung",
+          "name": "Die neue Fassung ab 15.01. beendet die laufende am 14.01. — rückwirkend 5 Tage",
+          "eingang": {
+            "heute": "2027-01-20",
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "gueltig_ab": "2027-01-15",
+              "zeilen": [
+                {
+                  "kostenstelle": "4100",
+                  "anteil_prozent": "60"
+                },
+                {
+                  "kostenstelle": "4200",
+                  "anteil_prozent": "40"
+                }
+              ]
+            }
+          },
+          "ergebnis": {
+            "beendet": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_bis": "2027-01-14"
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_bis": "2027-01-14"
+              }
+            ],
+            "neu": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              }
+            ],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 5,
+            "fehler": null
+          }
+        },
+        {
+          "regel": "fassung",
+          "name": "Eine Fassung, die VOR der laufenden beginnt, überlappt und wird abgelehnt",
+          "eingang": {
+            "heute": "2027-01-20",
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "gueltig_ab": "2026-09-01",
+              "zeilen": [
+                {
+                  "kostenstelle": "4100",
+                  "anteil_prozent": "60"
+                },
+                {
+                  "kostenstelle": "4200",
+                  "anteil_prozent": "40"
+                }
+              ]
+            }
+          },
+          "ergebnis": {
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 141,
+            "fehler": "formel_fassung_ueberlappt"
+          }
+        },
+        {
+          "regel": "mengen",
+          "name": "14 Tage × 500 × 70 % + 17 Tage × 500 × 60 % = 10 000 kWh — Tagesanteile, nie Stichtag",
+          "eingang": {
+            "einheit": "kWh",
+            "von": "2027-01-01",
+            "bis": "2027-01-31",
+            "periode_menge": null,
+            "tage": [
+              {
+                "tag": "2027-01-01",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-02",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-03",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-04",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-05",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-06",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-07",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-08",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-09",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-10",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-11",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-12",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-13",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-14",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-15",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-16",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-17",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-18",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-19",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-20",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-21",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-22",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-23",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-24",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-25",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-26",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-27",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-28",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-29",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-30",
+                "menge": "500"
+              },
+              {
+                "tag": "2027-01-31",
+                "menge": "500"
+              }
+            ],
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              },
+              {
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "60"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "40"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "je_ziel": {
+              "4100": "10000.0",
+              "4200": "5500.0"
+            },
+            "summe": "15500",
+            "nicht_verteilt": "0",
+            "fehler": null
+          }
+        },
+        {
+          "regel": "mengen",
+          "name": "Ohne Tagesmengen wird ein Periodenbetrag über einen Fassungswechsel NICHT geteilt",
+          "eingang": {
+            "einheit": "kWh",
+            "von": "2027-01-01",
+            "bis": "2027-01-31",
+            "periode_menge": "15500",
+            "tage": null,
+            "verteilung": [
+              {
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30"
+                  }
+                ]
+              },
+              {
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "zeilen": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "60"
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "40"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "je_ziel": {},
+            "summe": null,
+            "nicht_verteilt": null,
+            "fehler": "tagesmengen_noetig"
+          }
+        },
+        {
+          "regel": "herkunft",
+          "name": "Die Herkunft nennt beide Verteilungs-Fassungen und den Auslöser",
+          "eingang": {
+            "art": "verteilt",
+            "messstelle": "4100",
+            "periode": {
+              "art": "monat",
+              "schluessel": "2027-01"
+            },
+            "formel_typ": null,
+            "formel_fassung": null,
+            "periode_ende": null,
+            "berechnet_am": "2027-02-01T00:15:00+01:00",
+            "version": 2,
+            "ausloeser": "Verteilung geändert am 15.01.2027, rückwirkend eingetragen am 20.01.2027",
+            "verteilung": {
+              "fassung": 2,
+              "ziel": "4100",
+              "anteil_prozent": "60"
+            },
+            "eingaenge": [
+              {
+                "messstelle": "MS-07",
+                "bilanz_rolle": null,
+                "anteil": "gesamt",
+                "menge": "15500",
+                "zustand": "vollständig",
+                "abdeckung_prozent": 100,
+                "version": 1,
+                "kennzeichen": []
+              }
+            ],
+            "ergebnis": {
+              "menge": "10000.0",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100,
+              "kennzeichen": [
+                "verteilt",
+                "Verteilung geändert am 15.01.2027"
+              ]
+            }
+          },
+          "ergebnis": {
+            "satz": {
+              "art": "verteilt",
+              "messstelle": "4100",
+              "periode": {
+                "art": "monat",
+                "schluessel": "2027-01"
+              },
+              "formel_typ": null,
+              "formel_fassung": null,
+              "periode_ende": null,
+              "berechnet_am": "2027-02-01T00:15:00+01:00",
+              "version": 2,
+              "ausloeser": "Verteilung geändert am 15.01.2027, rückwirkend eingetragen am 20.01.2027",
+              "verteilung": {
+                "fassung": 2,
+                "ziel": "4100",
+                "anteil_prozent": "60"
+              },
+              "eingaenge": [
+                {
+                  "messstelle": "MS-07",
+                  "bilanz_rolle": null,
+                  "anteil": "gesamt",
+                  "menge": "15500",
+                  "zustand": "vollständig",
+                  "abdeckung_prozent": 100,
+                  "version": 1,
+                  "kennzeichen": []
+                }
+              ],
+              "kennzeichen": [
+                "verteilt",
+                "Verteilung geändert am 15.01.2027"
+              ],
+              "menge": "10000.0",
+              "zustand": "vollständig",
+              "abdeckung_prozent": 100
+            },
+            "fehlt": []
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Kostenstelle 4100 · Januar 2027 · verteilt 10 000 kWh (MS-07: 70 % bis 14.01., 60 % ab 15.01.)",
+        "nicht": {
+          "stichtag_4100_kwh": 9300.0
+        },
+        "kennzeichen": [
+          "verteilt",
+          "Verteilung geändert am 15.01.2027 (70 → 60 %)",
+          "korrigiert (Version 2, rückwirkend 5 Tage)"
+        ]
+      },
+      "annahmen": [
+        "Die Änderung der Verteilung, der 20.01.2027 und die Tagesmenge 500 kWh sind Annahmen."
+      ]
+    }
+  ]
+}

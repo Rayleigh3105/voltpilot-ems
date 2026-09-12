@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 7 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 11 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -40,6 +40,10 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Import](#import) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
 - [Zuordnungs-Vorlage](#zuordnungs-vorlage) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
 - [Befund](#befund) — Sicht Erfassung · Nachtrag AP-09 §6.2 (W7)
+- [Energiebilanz](#energiebilanz) — Sicht Elektrisch · Nachtrag AP-10 §4.1 (E9)
+- [Bilanzdifferenz](#bilanzdifferenz) — Sicht Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)
+- [Feste Verteilung](#feste-verteilung) — Sicht Organisation · Nachtrag AP-10 §4.6 (E11, E12)
+- [Berechnete Messstelle](#berechnete-messstelle) — Sicht Zustand · Nachtrag AP-10 §4.1 (E1, E5)
 
 ## Kundenbereich
 
@@ -168,6 +172,8 @@ Das elektrische System ist die fachliche Definition dessen, was eine Anlage elek
 **Heute im Code.** Heute nicht als Objekt, sondern implizit die Anlage mit ihrem einen maßgeblichen Netzpunkt: Rolle `grid` ist „die maßgebliche Messung, nie eine Summe“ (docs/contracts/v2/topology-read-model.md:14-21), 0–1 Netz je Anlage, 409 beim zweiten (docs/agents/root/multi-source-anlage-phase-1-n-erzeuger-p.md:24-29); Energiefluss aus Rollen pv|storage|grid|consumer|charging (docs/contracts/v2/edge-entity.schema.json:348-353).
 
 **Abgrenzung.** Nicht der Ortsbaum (AP-02: „Elektrische Versorgung wird nicht aus dem Ortsbaum abgeleitet“), nicht die Box (mehrere Boxen können in einem System lesen).
+
+> **Verfeinert durch AP-10 E9:** Das elektrische System ist die BILANZGRENZE und im Code die Anlage: je System genau ein Netzanschluss und je Richtung höchstens ein Hauptzähler. Standort und Unternehmen bilanzieren als Summe über ihre Systeme mit „x von y“ und haben keinen eigenen Rest; ein Gebäude ist eine SICHT (Ort × Stellung), keine Bilanzgrenze. Regeln: `docs/contracts/v2/bilanz.md` §4.8.
 
 ## Netzanschluss
 
@@ -372,6 +378,8 @@ Kostenstellen sind flach und kommen aus der Buchhaltung des Kunden. Eine Messste
 **Heute im Code.** Heute nicht vorhanden (`grep -rni 'kostenstelle|cost_center' MIG` → 0).
 
 **Abgrenzung.** Nicht der Prozess (Tätigkeit), nicht der Bereich (Raum). Prozess und Kostenstelle sind zwei getrennte Achsen (E5).
+
+> **Verfeinert durch AP-10 E11/E12:** Die „festen Prozentanteile“ aus AP-00 werden eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage): an jedem Tag mit Zeilen genau 100 %, sonst „nicht verteilt“. Sie wirkt je Tag auf die Tagesmenge (kein Stichtag), endet mit der Kostenstelle und kennt keine dynamischen Schlüssel. Regeln: `docs/contracts/v2/verteilung.md`.
 
 ## Betriebsmodell (übernommen)
 
@@ -594,3 +602,59 @@ Befunde sind ein geschlossenes Vokabular mit einem Kundensatz je Eintrag. Drei v
 **Heute im Code.** Das Muster gibt es schon bei den Ablehnungsgründen der Schreibwege (`MessstelleAbgelehnt`, `DatenquelleAbgelehnt`); das Vokabular der Bezugsdaten steht in `docs/contracts/v2/bezugsdaten.schema.json`.
 
 **Abgrenzung.** Nicht das Ereignis (das beschreibt, was an einer Messreihe geschehen ist), nicht die Fehlermeldung einer Route (die sagt, warum eine ANFRAGE abgelehnt wurde).
+
+## Energiebilanz
+
+*Sicht: Elektrisch · Nachtrag AP-10 §4.1 (E9)*
+
+**Was in ein elektrisches System hineinfließt, was es verlässt und was an Unterzählern gemessen ist — für einen Zeitraum.**
+
+Die Bilanzgrenze ist die Anlage, nie ein Gebäude und nie ein Standort: nur hinter einem Netzanschluss hängt alles elektrisch zusammen. Zufluss ist, was hereinkommt (Netzbezug, Erzeugung, Speicher-Entladen); Abfluss ist, was das System verlässt, ohne verbraucht zu werden (Netzabgabe, Speicher-Laden); zugeordnet ist, was an Unterzählern gemessen wurde. Was eine Messstelle in der Bilanz tut, wird aus ihrer STELLUNG abgeleitet und nie gewählt. Standort und Unternehmen summieren ihre Systeme mit „x von y“ und haben keinen eigenen Rest.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Werk Lindach am 18.10.2026: Hauptzähler 100 kWh, Unterzähler 60 und 30 kWh — Gesamtverbrauch 100 kWh, zugeordnet 90 kWh.
+
+**Heute im Code.** Heute nicht vorhanden. Die Regeln stehen als Vertrag in `docs/contracts/v2/bilanz.md` samt Vektoren (`bilanz-vectors.json`, AP-10 IP-1); Lesemodell und Fläche kommen mit AP-10 IP-9/IP-14.
+
+**Abgrenzung.** Nicht die Erlösbilanz (die rechnet Geld, nicht Energie), nicht der Fahrplan (der plant, statt zu bilanzieren), nicht die Verdichtung (die bildet Mengen, nicht Rollen).
+
+## Bilanzdifferenz
+
+*Sicht: Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)*
+
+**Zufluss minus Abfluss minus zugeordnet — der Teil des Verbrauchs, der keiner Messstelle zugeordnet ist.**
+
+Die Bilanzdifferenz ist eine DIFFERENZ und sonst nichts. Sie heißt dem Kunden gegenüber „nicht zugeordnet“ und wird nie einem Gerät, einem Gebäude, einem Prozess oder einer Ursache zugeschrieben — kein Verlust, kein Schwund. Ihre Richtung ist fest Wirkenergie · Bezug: 100 minus 60 minus 30 ergibt 10 kWh Bezug, nicht „richtungslos“. Sie darf negativ sein; dann heißt der Satz „Messwerte passen nicht zusammen (−x kWh)“, und es wird nichts geklemmt und nichts gedeutet. Fehlt EIN Eingang, gibt es keine Differenz („keine Werte“) — eine verkleinerte Differenz wäre zu hoch.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Werk Lindach am 18.10.2026: 100 − 60 − 30 = 10 kWh sind keiner Messstelle zugeordnet.
+
+**Heute im Code.** Heute nicht vorhanden; die Box rechnet mit `house = pv + grid − battery` ein namenloses Äquivalent ohne Unterzähler. Der benannte Fall steht in `docs/contracts/v2/bilanz-vectors.json` (F1–F7).
+
+**Abgrenzung.** Nicht ein Messfehler (den behauptet niemand), nicht der Hausverbrauch des Cockpits (der ist die Box-Rechnung ohne Unterzähler), nicht ein Ersatzwert.
+
+## Feste Verteilung
+
+*Sicht: Organisation · Nachtrag AP-10 §4.6 (E11, E12)*
+
+**Eine zeitgültige Beziehung Messstelle → Kostenstelle mit Anteil; alle Zeilen eines Tages ergeben genau 100 %.**
+
+Eine Verteilung teilt MENGEN, nie Stammdaten, und sie wirkt je Tag auf die Tagesmenge — kein Stichtag, kein Mittel, keine Interpolation. Sie wird als Satz geschrieben (alle Ziele eines Tages in einer Anfrage), sonst wären die 100 % nicht prüfbar. Ohne Zeile an einem Tag ist die Messstelle „nicht verteilt“; das ist ein Zustand, kein Fehler. Sie endet mit ihrem Ziel und wandert nie still auf einen Nachfolger. Es gibt keine dynamischen Schlüssel: kein Anteil aus Messwerten, Flächen, Stückzahlen oder Betriebsstunden.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Druckluft MS-07 im Oktober 2026: 70 % an 4100 Spritzguss (11 130 kWh), 30 % an 4200 Montage (4 770 kWh).
+
+**Heute im Code.** Heute nicht vorhanden (`kostenstellen_anteile` steht bisher nur im Referenzunternehmen). Die Regeln stehen als Vertrag in `docs/contracts/v2/verteilung.md` samt Vektoren; Tabelle und Dialog kommen mit AP-10 IP-8/IP-15.
+
+**Abgrenzung.** Nicht die Prozess-Zuordnung (die hat keinen Anteil), nicht die Formel einer berechneten Messstelle (die summiert, statt zu teilen), nicht eine Umlage nach Schlüssel.
+
+## Berechnete Messstelle
+
+*Sicht: Zustand · Nachtrag AP-10 §4.1 (E1, E5)*
+
+**Eine Messstelle, deren Wert aus anderen Werten entsteht — mit genau einem Formel-Typ und einer tagesgenau gültigen Fassung.**
+
+Drei Typen: die gewichtete Summe (Terme mit Vorzeichen und Faktor), der Rest (die Bilanzdifferenz eines Hauptzählers, je Tag aus der Stellung abgeleitet) und der Saldo (Bezug minus Abgabe derselben Grenze). Der Typ entscheidet die Richtung des Ergebnisses; sie wird nie aus Vorzeichen abgeleitet. Ein berechneter Wert trägt dieselben vier Angaben wie ein gemessener — Zustand, Abdeckung, Kennzeichen, Version — und zusätzlich seine Herkunft mit jedem Eingang. Die Formel ist zeitgültig in Tagesfassungen; Fassung n + 1 beendet Fassung n am Vortag, nichts wird überschrieben.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-19 „Netzbezug gesamt Unternehmen“ = MS-01 + MS-10 + MS-16 = 174 400 kWh im Oktober 2026 (3 von 3 Systemen).
+
+**Heute im Code.** Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.
+
+**Abgrenzung.** Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert).

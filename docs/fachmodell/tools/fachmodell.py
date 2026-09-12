@@ -217,6 +217,30 @@ GLOSSAR += [
      "beispiel": "„Unbekannte Einheit »lbs« — erlaubt sind kg, t.“ · „25.10.2026 02:30 gibt es an diesem Tag zweimal (Zeitumstellung). Geben Sie die Zone an.“",
      "heute": "Das Muster gibt es schon bei den Ablehnungsgründen der Schreibwege (`MessstelleAbgelehnt`, `DatenquelleAbgelehnt`); das Vokabular der Bezugsdaten steht in `docs/contracts/v2/bezugsdaten.schema.json`.",
      "abgrenzung": "Nicht das Ereignis (das beschreibt, was an einer Messreihe geschehen ist), nicht die Fehlermeldung einer Route (die sagt, warum eine ANFRAGE abgelehnt wurde)."},
+    {"id": "energiebilanz", "sicht": "el", "begriff": "Energiebilanz", "nachtrag": "AP-10 §4.1 (E9)",
+     "kurz": "Was in ein elektrisches System hineinfließt, was es verlässt und was an Unterzählern gemessen ist — für einen Zeitraum.",
+     "lang": "Die Bilanzgrenze ist die Anlage, nie ein Gebäude und nie ein Standort: nur hinter einem Netzanschluss hängt alles elektrisch zusammen. Zufluss ist, was hereinkommt (Netzbezug, Erzeugung, Speicher-Entladen); Abfluss ist, was das System verlässt, ohne verbraucht zu werden (Netzabgabe, Speicher-Laden); zugeordnet ist, was an Unterzählern gemessen wurde. Was eine Messstelle in der Bilanz tut, wird aus ihrer STELLUNG abgeleitet und nie gewählt. Standort und Unternehmen summieren ihre Systeme mit „x von y“ und haben keinen eigenen Rest.",
+     "beispiel": "Werk Lindach am 18.10.2026: Hauptzähler 100 kWh, Unterzähler 60 und 30 kWh — Gesamtverbrauch 100 kWh, zugeordnet 90 kWh.",
+     "heute": "Heute nicht vorhanden. Die Regeln stehen als Vertrag in `docs/contracts/v2/bilanz.md` samt Vektoren (`bilanz-vectors.json`, AP-10 IP-1); Lesemodell und Fläche kommen mit AP-10 IP-9/IP-14.",
+     "abgrenzung": "Nicht die Erlösbilanz (die rechnet Geld, nicht Energie), nicht der Fahrplan (der plant, statt zu bilanzieren), nicht die Verdichtung (die bildet Mengen, nicht Rollen)."},
+    {"id": "bilanzdifferenz", "sicht": "el", "begriff": "Bilanzdifferenz", "nachtrag": "AP-10 §4.3 (E1, E3)",
+     "kurz": "Zufluss minus Abfluss minus zugeordnet — der Teil des Verbrauchs, der keiner Messstelle zugeordnet ist.",
+     "lang": "Die Bilanzdifferenz ist eine DIFFERENZ und sonst nichts. Sie heißt dem Kunden gegenüber „nicht zugeordnet“ und wird nie einem Gerät, einem Gebäude, einem Prozess oder einer Ursache zugeschrieben — kein Verlust, kein Schwund. Ihre Richtung ist fest Wirkenergie · Bezug: 100 minus 60 minus 30 ergibt 10 kWh Bezug, nicht „richtungslos“. Sie darf negativ sein; dann heißt der Satz „Messwerte passen nicht zusammen (−x kWh)“, und es wird nichts geklemmt und nichts gedeutet. Fehlt EIN Eingang, gibt es keine Differenz („keine Werte“) — eine verkleinerte Differenz wäre zu hoch.",
+     "beispiel": "Werk Lindach am 18.10.2026: 100 − 60 − 30 = 10 kWh sind keiner Messstelle zugeordnet.",
+     "heute": "Heute nicht vorhanden; die Box rechnet mit `house = pv + grid − battery` ein namenloses Äquivalent ohne Unterzähler. Der benannte Fall steht in `docs/contracts/v2/bilanz-vectors.json` (F1–F7).",
+     "abgrenzung": "Nicht ein Messfehler (den behauptet niemand), nicht der Hausverbrauch des Cockpits (der ist die Box-Rechnung ohne Unterzähler), nicht ein Ersatzwert."},
+    {"id": "verteilung", "sicht": "org", "begriff": "Feste Verteilung", "nachtrag": "AP-10 §4.6 (E11, E12)",
+     "kurz": "Eine zeitgültige Beziehung Messstelle → Kostenstelle mit Anteil; alle Zeilen eines Tages ergeben genau 100 %.",
+     "lang": "Eine Verteilung teilt MENGEN, nie Stammdaten, und sie wirkt je Tag auf die Tagesmenge — kein Stichtag, kein Mittel, keine Interpolation. Sie wird als Satz geschrieben (alle Ziele eines Tages in einer Anfrage), sonst wären die 100 % nicht prüfbar. Ohne Zeile an einem Tag ist die Messstelle „nicht verteilt“; das ist ein Zustand, kein Fehler. Sie endet mit ihrem Ziel und wandert nie still auf einen Nachfolger. Es gibt keine dynamischen Schlüssel: kein Anteil aus Messwerten, Flächen, Stückzahlen oder Betriebsstunden.",
+     "beispiel": "Druckluft MS-07 im Oktober 2026: 70 % an 4100 Spritzguss (11 130 kWh), 30 % an 4200 Montage (4 770 kWh).",
+     "heute": "Heute nicht vorhanden (`kostenstellen_anteile` steht bisher nur im Referenzunternehmen). Die Regeln stehen als Vertrag in `docs/contracts/v2/verteilung.md` samt Vektoren; Tabelle und Dialog kommen mit AP-10 IP-8/IP-15.",
+     "abgrenzung": "Nicht die Prozess-Zuordnung (die hat keinen Anteil), nicht die Formel einer berechneten Messstelle (die summiert, statt zu teilen), nicht eine Umlage nach Schlüssel."},
+    {"id": "berechnete_messstelle", "sicht": "zustand", "begriff": "Berechnete Messstelle", "nachtrag": "AP-10 §4.1 (E1, E5)",
+     "kurz": "Eine Messstelle, deren Wert aus anderen Werten entsteht — mit genau einem Formel-Typ und einer tagesgenau gültigen Fassung.",
+     "lang": "Drei Typen: die gewichtete Summe (Terme mit Vorzeichen und Faktor), der Rest (die Bilanzdifferenz eines Hauptzählers, je Tag aus der Stellung abgeleitet) und der Saldo (Bezug minus Abgabe derselben Grenze). Der Typ entscheidet die Richtung des Ergebnisses; sie wird nie aus Vorzeichen abgeleitet. Ein berechneter Wert trägt dieselben vier Angaben wie ein gemessener — Zustand, Abdeckung, Kennzeichen, Version — und zusätzlich seine Herkunft mit jedem Eingang. Die Formel ist zeitgültig in Tagesfassungen; Fassung n + 1 beendet Fassung n am Vortag, nichts wird überschrieben.",
+     "beispiel": "MS-19 „Netzbezug gesamt Unternehmen“ = MS-01 + MS-10 + MS-16 = 174 400 kWh im Oktober 2026 (3 von 3 Systemen).",
+     "heute": "Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.",
+     "abgrenzung": "Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert)."},
 ]
 
 # ---------------------------------------------------------------------------------------------
@@ -357,6 +381,31 @@ ENTSCHEIDUNGSLOG = [
 # Der AP-00-Text darüber bleibt byte-verbatim; hier steht, was heute zusätzlich gilt.
 # ---------------------------------------------------------------------------------------------
 VERFEINERUNGEN = {
+    'netzanschluss': [
+        ('AP-10 E8 (W9)',
+         'Der Netzanschluss wird ein eigenes OBJEKT am Standort — Kennzeichen (`NA-`, Form wie beim '
+         'Messstellen-Kennzeichen), Name, Marktlokation (elf Ziffern, nie aufgefüllt), Netzbetreiber, '
+         'Anschlussleistung in kVA, vereinbarte Leistung in kW und Messung RLM · SLP — und eine Anlage '
+         'verweist ZEITGÜLTIG auf ihn (Tage; je Tag höchstens einer je Anlage und eine Anlage je '
+         'Anschluss). Preis-, Vergütungs- und Grenzspalten ziehen dabei NICHT mit: sie bleiben an der '
+         'Anlage (`site_supply_price`, `tarif_art`, `max_feed_in_kw` …), bis das Folgepaket '
+         '„Netzanschluss-Preisblatt“ sie zeitgültig übernimmt. Die vereinbarte Leistung wird gezeigt, '
+         'nicht geprüft — die Grenzprüfung ist AP-15. Regeln: `docs/contracts/v2/netzanschluss.md`.'),
+    ],
+    'elsystem': [
+        ('AP-10 E9',
+         'Das elektrische System ist die BILANZGRENZE und im Code die Anlage: je System genau ein '
+         'Netzanschluss und je Richtung höchstens ein Hauptzähler. Standort und Unternehmen bilanzieren '
+         'als Summe über ihre Systeme mit „x von y“ und haben keinen eigenen Rest; ein Gebäude ist eine '
+         'SICHT (Ort × Stellung), keine Bilanzgrenze. Regeln: `docs/contracts/v2/bilanz.md` §4.8.'),
+    ],
+    'kostenstelle': [
+        ('AP-10 E11/E12',
+         'Die „festen Prozentanteile“ aus AP-00 werden eine eigene zeitgültige Beziehung Messstelle → '
+         'Kostenstelle (Tage): an jedem Tag mit Zeilen genau 100 %, sonst „nicht verteilt“. Sie wirkt je '
+         'Tag auf die Tagesmenge (kein Stichtag), endet mit der Kostenstelle und kennt keine dynamischen '
+         'Schlüssel. Regeln: `docs/contracts/v2/verteilung.md`.'),
+    ],
     'bezugsgroesse': [
         ('AP-09 E1/E2/E4/E17',
          'Der Geltungsbereich ist genau EINES von sieben Fachobjekten — Unternehmen · Standort · '
@@ -494,4 +543,7 @@ ENTSCHEIDUNGSLOG_NACHBARN = [
     ('12.09.2026', 'AP-09 E1/E2', 'Option A — Geltungsbereich einer Bezugsgröße = genau eines von SIEBEN Fachobjekten (AP-00 nannte vier, AP-09 W7); Betriebszeit als Periodenreihe'),
     ('12.09.2026', 'AP-09 E3', 'Option A — Bezugsdaten bekommen einen EIGENEN Herkunftsvertrag; der Messwert-Herkunftsvertrag (AP-07) wird dafür nicht erweitert'),
     ('12.09.2026', 'AP-09 E17', 'Option A — die Bezugsfläche wird nur aus der Ortsstruktur GELESEN, zum Stichtag der Periode (letzter Tag); es gibt keine zweite Flächen-Eingabe'),
+    ('12.09.2026', 'AP-10 E1', 'Option A — zwei neue Formel-Typen `rest` und `saldo`; die Ergebnis-Richtung ist JE TYP eine Regel (Bezug − Bezug bleibt Bezug), nicht eine Ableitung aus Vorzeichen'),
+    ('12.09.2026', 'AP-10 E8 (W9)', 'Option A — der Netzanschluss bekommt sein Objekt am Standort und die zeitgültige Bindung; die Preis- und Grenzspalten der Anlage ziehen erst mit dem Folgepaket „Netzanschluss-Preisblatt“ um'),
+    ('12.09.2026', 'AP-10 E11/E13', 'Option A — eine feste Verteilung ist eine eigene zeitgültige Beziehung mit Anteil; die Herkunft eines berechneten oder verteilten Werts bekommt einen EIGENEN additiven Vertrag (der Messwert-Herkunftsvertrag bleibt unberührt)'),
 ]

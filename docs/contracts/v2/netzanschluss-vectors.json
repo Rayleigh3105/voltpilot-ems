@@ -1,0 +1,632 @@
+{
+  "_comment": [
+    "Die EINE Wahrheit des NETZANSCHLUSSES (UEMS AP-10 IP-1): Referenzfall F16 des",
+    "Referenzunternehmens Ahrenberg mit seinen drei Anschlüssen NA-1, NA-2, NA-3.",
+    "Die Prosa steht in netzanschluss.md, die Regeln selbst stehen HIER — wer die Regel ändert,",
+    "ändert diese Datei UND beide Zwillinge: Java services/api .../uems/NetzanschlussRegeln",
+    "(Test NetzanschlussVectorsTest) und TypeScript frontend/portal/src/uemsNetzanschluss.ts",
+    "(Test uemsNetzanschluss.test.ts), beide PER PFAD.",
+    "Der Netzanschluss ist ein Objekt am STANDORT; eine Anlage verweist zeitgültig darauf",
+    "(Tage, Muster A) — je Tag höchstens eine Bindung je Anlage UND je Anschluss.",
+    "Preis- und Grenzspalten der Anlage (`site.max_feed_in_kw`, `site_supply_price` …) bleiben",
+    "unverändert an der Anlage; ihr Umzug ist ein eigenes Folgepaket (W9). Die Kopfzeile ZEIGT",
+    "die vereinbarte Leistung — sie PRÜFT nichts; die Grenzprüfung ist AP-15.",
+    "Werte aus uems-referenzunternehmen.json; _abweichungen nennt jede bewusste Abweichung."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./netzanschluss.schema.json",
+  "herkunft": "UEMS AP-10 §4.1/§4.2 (Objekt und Bindung), E8 vom 12.09.2026, AP-00 E6/E10.",
+  "zeitzone": "Europe/Berlin",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "referenz_stand": "Fassung vom 11.09.2026 (1.1). Die Ergänzung 1.2 (E19 = A, entschieden 12.09.2026) — MS-22 „Lindach nicht zugeordnet“, die Tageswerte des 18.10.2026, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, das Ende der 9000-Anteile am 31.12.2026 und `formel_typ` je berechneter Messstelle — trägt AP-10 IP-2 dort nach. Bis dahin stehen diese Angaben NUR hier und sind je Fall unter „annahmen“ gekennzeichnet; die Fälle rechnen nach der Ergänzung unverändert weiter.",
+  "titel": "Netzanschluss: Kennzeichen, Marktlokation, Felder und die zeitgültige Bindung an eine Anlage",
+  "regeln_kurz": [
+    "Die Anlage ist das elektrische System und die Bilanzgrenze; ihr Netzanschluss ist ein eigenes Objekt am Standort (E8/E9). Standort und Unternehmen bilanzieren als SUMME über Systeme mit „x von y“ (F8); ein Gebäude ist eine SICHT Ort × Stellung (F17).",
+    "Die Bilanz eines Hauptzählers entsteht aus der zeitgültigen STELLUNG (E3): Hauptzähler Bezug/Erzeuger/Speicher-Entladen = Zufluss, Hauptzähler Abgabe/Speicher-Laden = Abfluss, „Unterzähler von“ = zugeordnet, Abzweig ohne Vorgänger = außerhalb der Bilanz (benannt), berechnet/keine = nie.",
+    "Der Rest = Zufluss − Abfluss − zugeordnet ist eine berechnete Messstelle vom Typ `rest` mit Richtung Bezug und Kennzeichen „berechnet (Differenz) · nicht zugeordnet“ (E1). Er darf negativ sein („Messwerte passen nicht zusammen (−x kWh)“), nie 0 statt null, nie eine Ursache (F6).",
+    "Drei Wörter, nie vermischt: gemessen (führende Quelle) · berechnet (Summe · Differenz · Saldo, mit Formel-Fassung und Eingängen) · verteilt (n % von MS-xx, mit Verteilungs-Fassung). Jeder Wert trägt Zustand, Abdeckung, Kennzeichen, Version (AP-08) und seine Herkunft (E13).",
+    "Fortpflanzung (E2): Summe = Summe der vorhandenen Eingänge mit Zustand „schlechtester Eingang“ und Nennung der fehlenden („mindestens …“); Differenz und Saldo bei einem nicht vollständigen Eingang = „keine Werte“; Verteilung erbt; der Live-Wert bleibt `null` statt Teilsumme.",
+    "Eine Verteilung ist eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage, Muster A), Summe je Tag genau 100 % an jedem Tag mit Zeilen, sonst „nicht verteilt“; sie wirkt je Tag (Tagesanteile, nie Stichtag) und endet mit ihrem Ziel (E11/E12). Keine dynamischen Schlüssel.",
+    "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14)."
+  ],
+  "vokabulare": {
+    "messung": [
+      "RLM",
+      "SLP"
+    ],
+    "fehler": [
+      "kennzeichen_format",
+      "kennzeichen_belegt",
+      "malo_form",
+      "anfrage_ungueltig",
+      "bindung_ueberlappt",
+      "anschluss_belegt"
+    ],
+    "hinweise": [
+      "vereinbart_ueber_anschluss"
+    ]
+  },
+  "kennzeichen_regel": {
+    "praefix": "NA-",
+    "stellen": 4,
+    "muster": "^[A-Z0-9./-]{2,16}$",
+    "min_zeichen": 2,
+    "max_zeichen": 16
+  },
+  "regeln": {
+    "malo_muster": "^[0-9]{11}$",
+    "pflichtfelder": [
+      "name",
+      "standort"
+    ],
+    "zahlen_groesser_null": [
+      "anschluss_kva",
+      "vereinbart_kw"
+    ],
+    "kopfzeile_trenner": " · ",
+    "leistung_nachkommastellen": 1
+  },
+  "saetze": {
+    "kopfzeile_vereinbart": "vereinbart {wert} kW",
+    "kopfzeile_anschluss": "Anschluss {wert} kVA",
+    "kopfzeile_momentan": "Momentan {wert} kW",
+    "nicht_angelegt": "Netzanschluss: nicht angelegt"
+  },
+  "zwillinge": {
+    "kennzeichen": [
+      "java",
+      "ts"
+    ],
+    "malo": [
+      "java",
+      "ts"
+    ],
+    "felder": [
+      "java",
+      "ts"
+    ],
+    "bindung": [
+      "java",
+      "ts"
+    ],
+    "kopfzeile": [
+      "java",
+      "ts"
+    ]
+  },
+  "zwillinge_grund": {},
+  "_abweichungen": [
+    {
+      "fall": "F16 · Ort der Vektoren",
+      "feld": "Datei",
+      "vorlage": "ortsbaum-vectors.json, Familie `netzanschluss`",
+      "statt": "netzanschluss-vectors.json (eigene Datei, eigenes Schema, eigene Zwillinge)",
+      "grund": "Der Konzept-Schnitt legte die Familie in die Ortsbaum-Datei. Diese Datei gehört AP-02 und wird von `OrtsbaumAbleitung` ⟷ `uemsOrtsbaum.ts` gefahren; eine Netzanschluss-Familie dort hieße, eine fremde, schon gemergte Ableitung um Regeln eines anderen Pakets zu erweitern. Der Hausstandard aus PR #693/#695 ist ein Vertrag = eine Prosa + ein Schema + eine Vektor-Datei + zwei reine Zwillinge; dem folgt diese Datei. Das Feld `netzanschluss` der Anlage im Standort-Lesemodell füllt weiterhin IP-6 — es liest dann diese Regeln."
+    },
+    {
+      "fall": "F16 · Anlegetag der Objekte",
+      "feld": "bindung[].gueltig_ab",
+      "vorlage": "„Der Anlegetag der Objekte (01.10.2026) ist eine Annahme“",
+      "statt": {
+        "AN-1": "NA-1 ab 2024-03-12",
+        "AN-2": "NA-2 ab 2026-10-01",
+        "AN-3": "NA-3 ab 2026-10-15"
+      },
+      "grund": "Die Vorlage nennt unter `erwartet.bindung` je Anlage einen eigenen Tag (dem Bestehen der Anlage folgend) und unter `annahmen` einen gemeinsamen Anlegetag der Objekte. Die Vektoren nehmen die BINDUNGS-Tage der Vorlage, weil genau sie das Ergebnis tragen; der Anlegetag der Objekte trägt keines."
+    }
+  ],
+  "_nicht_geprueft": [
+    {
+      "fall": "F16 · Grenzprüfung",
+      "feld": "vereinbart_kw gegen die Momentanleistung",
+      "warum": "Die Kopfzeile ZEIGT beide Zahlen; geprüft wird die Grenze erst in AP-15 (`grenze_geprueft` ist deshalb in jedem Fall `false`). Eine Anzeige, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie trägt."
+    },
+    {
+      "fall": "F16 · Preisfelder",
+      "feld": "arbeitspreis_ct_kwh · leistungspreis_eur_kw_a · ladepark_rahmen",
+      "warum": "W9: der Netzanschluss bekommt in AP-10 nur den Träger; Preis- und Grenzspalten bleiben unverändert an der Anlage (`site_supply_price`), ihr Umzug ist ein eigenes Folgepaket. Die Werte stehen unter `beschreibend.referenz`, damit das Folgepaket sie vorfindet."
+    }
+  ],
+  "plan_abnahmen": {
+    "plan": "F1 — 100 kWh Hauptzähler, 60 und 30 kWh Unterzähler ergeben 100 kWh Gesamtverbrauch und 10 kWh Bilanzdifferenz (Werk Lindach, 18.10.2026)"
+  },
+  "cases": [
+    {
+      "name": "f16-drei-netzanschluesse-als-objekte",
+      "id": "F16",
+      "familie": "netzanschluss",
+      "abnahme": null,
+      "titel": "Drei Netzanschlüsse als Objekte — Marktlokation, vereinbarte Leistung, zeitgültig an je einer Anlage",
+      "why": "E8: der Netzanschluss ist ein Objekt am Standort (AP-00 E6); die Anlage verweist zeitgültig darauf; die Preisspalten der Anlage bleiben lesbar (W9).",
+      "anlage": "NA-1/AN-1, NA-2/AN-2, NA-3/AN-3",
+      "periode": "Stichtag 2026-10-20",
+      "einheit": "kW / kVA",
+      "schritte": [
+        "Je Anlage genau ein Netzanschluss zum Stichtag (Exklusion je Anlage, tagesgenau); der Hauptzähler bleibt die Stellung an der Anlage — der Netzanschluss trägt keinen zweiten Zähler-Verweis.",
+        "Die Bilanz-Sicht zeigt am Kopf „System Halle 1 · Netzanschluss NA-1 · vereinbart 550 kW · Momentanleistung 312,4 kW (MS-01)“ — eine Anzeige, keine Prüfung (AP-01 E10 bekommt damit ihren Träger, prüft aber erst AP-15).",
+        "`site.max_feed_in_kw`, `site_supply_price` usw. bleiben an der Anlage lesbar; der Netzanschluss bekommt nur den Verweis `site.netzanschluss_id`; der Preis-Umzug ist ein eigenes Paket (W9)."
+      ],
+      "pruefungen": [
+        {
+          "regel": "kennzeichen",
+          "name": "NA-1 hält die Form und ist im Unternehmen frei",
+          "eingang": {
+            "kandidat": "NA-1",
+            "belegt": [
+              "NA-2",
+              "NA-3"
+            ],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "vorschlag": null
+          }
+        },
+        {
+          "regel": "kennzeichen",
+          "name": "NA-2 hält die Form und ist im Unternehmen frei",
+          "eingang": {
+            "kandidat": "NA-2",
+            "belegt": [
+              "NA-1",
+              "NA-3"
+            ],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "vorschlag": null
+          }
+        },
+        {
+          "regel": "kennzeichen",
+          "name": "NA-3 hält die Form und ist im Unternehmen frei",
+          "eingang": {
+            "kandidat": "NA-3",
+            "belegt": [
+              "NA-1",
+              "NA-2"
+            ],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "vorschlag": null
+          }
+        },
+        {
+          "regel": "kennzeichen",
+          "name": "Ein schon vergebenes Kennzeichen wird nie ein zweites Mal ausgegeben",
+          "eingang": {
+            "kandidat": "NA-1",
+            "belegt": [
+              "NA-1",
+              "NA-2",
+              "NA-3"
+            ],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "fehler": "kennzeichen_belegt",
+            "vorschlag": null
+          }
+        },
+        {
+          "regel": "kennzeichen",
+          "name": "Kleinbuchstaben und Leerzeichen sind kein Kennzeichen",
+          "eingang": {
+            "kandidat": "na 1",
+            "belegt": [],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "fehler": "kennzeichen_format",
+            "vorschlag": null
+          }
+        },
+        {
+          "regel": "kennzeichen",
+          "name": "Die automatische Vergabe zählt weiter und überspringt Belegtes",
+          "eingang": {
+            "kandidat": null,
+            "belegt": [
+              "NA-0001"
+            ],
+            "zaehler": 0
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "vorschlag": {
+              "kennzeichen": "NA-0002",
+              "zaehler": 2
+            }
+          }
+        },
+        {
+          "regel": "malo",
+          "name": "Die Marktlokation 47110000001 hat elf Ziffern",
+          "eingang": {
+            "text": "47110000001"
+          },
+          "ergebnis": {
+            "malo": "47110000001",
+            "fehler": null
+          }
+        },
+        {
+          "regel": "malo",
+          "name": "Eine zehnstellige Nummer wird abgelehnt, nie aufgefüllt",
+          "eingang": {
+            "text": "4711000000"
+          },
+          "ergebnis": {
+            "malo": null,
+            "fehler": "malo_form"
+          }
+        },
+        {
+          "regel": "malo",
+          "name": "Ohne Marktlokation ist der Anschluss anlegbar — `null` ist nicht „unbekannt 0“",
+          "eingang": {
+            "text": null
+          },
+          "ergebnis": {
+            "malo": null,
+            "fehler": null
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "NA-1 · Hauptanschluss Halle 1: 630 kVA, vereinbart 550 kW, RLM",
+          "eingang": {
+            "name": "Hauptanschluss Halle 1",
+            "standort": "ST-1",
+            "malo": "47110000001",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": "630",
+            "vereinbart_kw": "550",
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "feld": null,
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "NA-2 · Anschluss Halle 2: 250 kVA, vereinbart 200 kW, RLM",
+          "eingang": {
+            "name": "Anschluss Halle 2",
+            "standort": "ST-1",
+            "malo": "47110000002",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": "250",
+            "vereinbart_kw": "200",
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "feld": null,
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "NA-3 · Anschluss Lindach: 160 kVA, vereinbart 120 kW, RLM",
+          "eingang": {
+            "name": "Anschluss Lindach",
+            "standort": "ST-2",
+            "malo": "47110000003",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": "160",
+            "vereinbart_kw": "120",
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "feld": null,
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "Ohne Namen ist es kein Anschluss",
+          "eingang": {
+            "name": "  ",
+            "standort": "ST-1",
+            "malo": null,
+            "netzbetreiber": null,
+            "anschluss_kva": null,
+            "vereinbart_kw": null,
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "fehler": "anfrage_ungueltig",
+            "feld": "name",
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "Eine Messung außerhalb von RLM · SLP wird verworfen, nie geraten",
+          "eingang": {
+            "name": "Hauptanschluss Halle 1",
+            "standort": "ST-1",
+            "malo": null,
+            "netzbetreiber": null,
+            "anschluss_kva": null,
+            "vereinbart_kw": null,
+            "messung": "Smart"
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "fehler": "anfrage_ungueltig",
+            "feld": "messung",
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "0 kVA ist keine Anschlussleistung",
+          "eingang": {
+            "name": "Hauptanschluss Halle 1",
+            "standort": "ST-1",
+            "malo": null,
+            "netzbetreiber": null,
+            "anschluss_kva": "0",
+            "vereinbart_kw": null,
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "fehler": "anfrage_ungueltig",
+            "feld": "anschluss_kva",
+            "hinweise": []
+          }
+        },
+        {
+          "regel": "felder",
+          "name": "Vereinbart über Anschluss ist ein HINWEIS, keine Ablehnung — der Netzbetreiber hat recht, nicht wir",
+          "eingang": {
+            "name": "Hauptanschluss Halle 1",
+            "standort": "ST-1",
+            "malo": "47110000001",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": "200",
+            "vereinbart_kw": "550",
+            "messung": "RLM"
+          },
+          "ergebnis": {
+            "gueltig": true,
+            "fehler": null,
+            "feld": null,
+            "hinweise": [
+              "vereinbart_ueber_anschluss"
+            ]
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Drei Anlagen, drei Anschlüsse — je Tag genau eine Bindung je Seite",
+          "eingang": {
+            "bestehend": [],
+            "neu": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-1",
+              "gueltig_ab": "2024-03-12",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-01"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-1",
+              "gueltig_ab": "2024-03-12",
+              "gueltig_bis": null
+            },
+            "fehler": null,
+            "rueckwirkend": true
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Eine zweite Bindung derselben Anlage am selben Tag ist ein Konflikt",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-1",
+                "netzanschluss": "NA-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-2",
+              "gueltig_ab": "2024-03-12",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-01"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "bindung_ueberlappt",
+            "rueckwirkend": true
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Ein Wechsel beendet die laufende Bindung am Vortag — nie überschrieben",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-1",
+                "netzanschluss": "NA-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-2",
+              "gueltig_ab": "2027-01-01",
+              "gueltig_bis": null
+            },
+            "heute": "2027-01-01"
+          },
+          "ergebnis": {
+            "beendet": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-1",
+              "gueltig_ab": "2024-03-12",
+              "gueltig_bis": "2026-12-31"
+            },
+            "eintrag": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-2",
+              "gueltig_ab": "2027-01-01",
+              "gueltig_bis": null
+            },
+            "fehler": null,
+            "rueckwirkend": false
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Ein Anschluss, der schon an einer anderen Anlage hängt, ist belegt",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-1",
+                "netzanschluss": "NA-1",
+                "gueltig_ab": "2024-03-12",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-2",
+              "netzanschluss": "NA-1",
+              "gueltig_ab": "2027-01-01",
+              "gueltig_bis": null
+            },
+            "heute": "2027-01-01"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "anschluss_belegt",
+            "rueckwirkend": false
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Die Kopfzeile der Bilanz nennt Vereinbartes, Anschluss und Momentanleistung",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": "312.4"
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW",
+            "grenze_geprueft": false
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Ohne Momentanwert bleibt die Stelle leer — nie 0 kW",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA",
+            "grenze_geprueft": false
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "System Halle 1 · Netzanschluss NA-1 (MaLo 47110000001, Netzgesellschaft Ahrental) · vereinbart 550 kW",
+        "objekte": 3,
+        "bindung": {
+          "AN-1": "NA-1 ab 2024-03-12",
+          "AN-2": "NA-2 ab 2026-10-01",
+          "AN-3": "NA-3 ab 2026-10-15"
+        },
+        "referenz": {
+          "NA-1": {
+            "kennzeichen": "NA-1",
+            "standort": "ST-1",
+            "name": "Hauptanschluss Halle 1",
+            "malo": "47110000001",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": 630,
+            "vereinbart_kw": 550,
+            "messung": "RLM",
+            "arbeitspreis_ct_kwh": 22.4,
+            "leistungspreis_eur_kw_a": 96,
+            "versorgt": "Halle 1 + Verwaltung",
+            "ladepark_rahmen": null
+          },
+          "NA-2": {
+            "kennzeichen": "NA-2",
+            "standort": "ST-1",
+            "name": "Anschluss Halle 2",
+            "malo": "47110000002",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": 250,
+            "vereinbart_kw": 200,
+            "messung": "RLM",
+            "arbeitspreis_ct_kwh": 23.1,
+            "leistungspreis_eur_kw_a": 96,
+            "versorgt": "Halle 2 (2019 zugekauft, eigener Anschluss)",
+            "ladepark_rahmen": {
+              "leistung_kw": 200,
+              "hausreserve_kw": 30,
+              "gueltig_ab": "2026-12-01T00:00:00+01:00"
+            }
+          },
+          "NA-3": {
+            "kennzeichen": "NA-3",
+            "standort": "ST-2",
+            "name": "Anschluss Lindach",
+            "malo": "47110000003",
+            "netzbetreiber": "Netzgesellschaft Ahrental (fiktiv)",
+            "anschluss_kva": 160,
+            "vereinbart_kw": 120,
+            "messung": "RLM",
+            "arbeitspreis_ct_kwh": 23.8,
+            "leistungspreis_eur_kw_a": 88,
+            "versorgt": "Werk Lindach",
+            "ladepark_rahmen": null
+          }
+        },
+        "anlagen_seit": {
+          "AN-1": "2024-03-12T00:00:00+01:00",
+          "AN-2": "2026-10-01T00:00:00+02:00",
+          "AN-3": "2026-10-15T00:00:00+02:00"
+        }
+      },
+      "annahmen": [
+        "Der Anlegetag der Objekte (01.10.2026) ist eine Annahme; die Bindungsdaten folgen dem Bestehen der Anlagen."
+      ]
+    }
+  ]
+}
