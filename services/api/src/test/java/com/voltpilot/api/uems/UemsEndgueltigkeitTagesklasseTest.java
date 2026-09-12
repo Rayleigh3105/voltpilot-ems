@@ -295,14 +295,19 @@ class UemsEndgueltigkeitTagesklasseTest {
                 .hasMessageContaining("abdeckung_chk");
     }
 
-    /** Und die Tagesklasse trägt AUSDRÜCKLICH keine Menge — die gehört AP-08 IP-5. */
+    /**
+     * Die Tagesklasse trägt KEINE Summe — und ihre Menge kam nicht mit dieser Migration, sondern mit
+     * AP-08 IP-5 ({@code V20260912205000}), aus den Periodenständen gebildet.
+     */
     @Test
-    void dieTagesklasseTraegtKeineMengeUndKeineSumme() {
+    void dieTagesklasseTraegtKeineSummeUndIhreMengeKommtAusIp5() {
         List<String> spalten = root.queryForList("SELECT column_name FROM information_schema.columns "
                 + "WHERE table_name = 'messreihe_tag' ORDER BY column_name", String.class);
         assertThat(spalten)
-                .as("Tages- und Monatsmengen bildet AP-08 IP-5 aus den Periodenständen")
-                .doesNotContain("menge", "menge_zustand", "summe", "kennzeichen", "faktor")
+                .as("eine Summe der Viertelstunden gibt es nie, einen Faktor nur an der Viertelstunde")
+                .doesNotContain("summe", "faktor")
+                .as("die Menge bildet AP-08 IP-5 aus den Periodenständen")
+                .contains("menge", "menge_zustand", "kennzeichen", "kadenz_s")
                 .as("die FAKTEN, aus denen IP-5 sie bildet, stehen da")
                 .contains("stand_anfang", "stand_anfang_zeit", "stand_ende", "stand_ende_zeit",
                         "slots_erwartet", "slots_vorhanden", "slots_endgueltig", "zeitzone",
@@ -561,17 +566,22 @@ class UemsEndgueltigkeitTagesklasseTest {
                 IDS.get("OKT"), "energy_kwh_okt");
         assertThat(((Number) t.get("erhalten")).longValue())
                 .isEqualTo(((Number) summen.get("e")).longValue());
-        assertThat(((Number) t.get("erwartet")).longValue())
-                .isEqualTo(((Number) summen.get("w")).longValue());
+        // Seit AP-08 IP-5 zählt eine Viertelstunde OHNE Zeile mit ihrer Erwartung (§4.5): der Tag
+        // erwartet 1 440 Werte, nicht nur die der neun vorhandenen Viertelstunden.
+        assertThat(((Number) summen.get("w")).longValue()).isEqualTo(135L);
+        assertThat(((Number) t.get("erwartet")).longValue()).isEqualTo(1440L);
         assertThat(((Number) t.get("n_good")).longValue())
                 .isEqualTo(((Number) summen.get("g")).longValue());
         assertThat(((Number) t.get("slots_vorhanden")).intValue())
                 .isEqualTo(((Number) summen.get("n")).intValue());
-        // Die Periodenstände: der erste Stand des Tages und der letzte — GENAU das, woraus
-        // AP-08 IP-5 später die Tagesmenge bildet.
-        assertThat((BigDecimal) t.get("stand_anfang")).isNotNull();
-        assertThat((BigDecimal) t.get("stand_ende")).isNotNull()
-                .isGreaterThan((BigDecimal) t.get("stand_anfang"));
+        // Die Periodenstände stehen an den TAGESGRENZEN (AP-08 IP-5): gemessen wurde nur 10–12 Uhr,
+        // also gibt es um Mitternacht keinen Stand — und keiner wird erfunden. Die Menge ist der
+        // gemessene Teil, ausdrücklich unvollständig.
+        assertThat(t.get("stand_anfang")).isNull();
+        assertThat(t.get("stand_ende")).isNull();
+        assertThat((BigDecimal) t.get("letzter_wert")).isGreaterThan((BigDecimal) t.get("erster_wert"));
+        assertThat((BigDecimal) t.get("menge")).isEqualByComparingTo("288.0");
+        assertThat(t.get("menge_zustand")).isEqualTo("unvollständig");
     }
 
     /** Wiederholbar: derselbe Tageslauf noch einmal schreibt NICHTS. */

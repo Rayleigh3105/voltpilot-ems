@@ -49,7 +49,8 @@ import java.util.Locale;
  * nicht gemessener Rand ist nie ein gemessener, und wo keine Menge bildbar ist, steht
  * {@code null} — nie {@code 0}.
  *
- * <p>Noch ruft kein Produktionsweg an — der Verdichtungs-Job bekommt die Regel mit AP-08 IP-2.
+ * <p>Wer anruft: der Verdichtungs-Lauf je Viertelstunde (AP-08 IP-2) und — über
+ * {@link #zaehlerstandAusTeilperioden} — Tag, Monat, Jahr und freier Zeitraum (AP-08 IP-5).
  */
 public final class VerbrauchRegeln {
 

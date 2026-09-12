@@ -181,6 +181,10 @@ public class TenantRepository {
                 deleteByTenant(con, "messreihe_tag", tenantId);
                 deleteByTenant(con, "messreihe_tag_arbeit", tenantId);
                 deleteByTenant(con, "messreihe_korrektur_vorschlag", tenantId);
+                // Month and year values and their work list (AP-08 IP-5): hypertable + queue,
+                // no FK — the same one way out.
+                deleteByTenant(con, "messreihe_periode", tenantId);
+                deleteByTenant(con, "messreihe_periode_arbeit", tenantId);
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

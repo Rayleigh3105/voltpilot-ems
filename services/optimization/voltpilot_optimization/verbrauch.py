@@ -29,7 +29,9 @@ steht ``None`` — nie ``0``.
 
 Das Modul ist rein: keine Uhr, keine Datenbank, kein Netz. Es liest die Vektor-Datei
 nicht selbst; die Aufrufer (heute nur der Test) reichen die Reihe als Wörterbuch herein.
-Noch ruft kein Produktionsweg an — der Verdichtungs-Job bekommt die Regel mit AP-08 IP-2.
+Seit AP-08 IP-5 gehört die Zusammensetzung aus Teilperioden dazu
+(:func:`zaehlerstand_aus_teilperioden`): Tag, Monat, Jahr und freier Zeitraum aus den
+Periodenständen ihrer gespeicherten Teile, nie als Summe der Teilmengen.
 """
 
 from __future__ import annotations

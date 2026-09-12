@@ -841,6 +841,8 @@ class UemsViertelstundeMengeTest {
                         // (V20260912190000), die es zum Zeitpunkt der ersten Messung noch gar
                         // nicht gab.
                         + "AND table_name NOT LIKE 'messreihe_tag%' "
+                        // … ebenso Monat und Jahr aus AP-08 IP-5 (V20260912205000).
+                        + "AND table_name NOT LIKE 'messreihe_periode%' "
                         + "AND table_name <> 'messreihe_korrektur_vorschlag' "
                         + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
                 String.class);

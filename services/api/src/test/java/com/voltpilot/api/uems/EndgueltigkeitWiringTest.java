@@ -46,7 +46,7 @@ class EndgueltigkeitWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, EndgueltigkeitLauf.class, TagVerdichter.class,
-                    EndgueltigkeitLaeufer.class, EndgueltigkeitSchedulingConfig.class);
+                    PeriodeVerdichter.class, EndgueltigkeitLaeufer.class, EndgueltigkeitSchedulingConfig.class);
 
     @Test
     void derTaktVerdrahtetSichMitBeidenLaeufen() {
@@ -55,6 +55,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLaeufer.class);
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
+            assertThat(context).hasSingleBean(PeriodeVerdichter.class);
             assertThat(context).hasSingleBean(EndgueltigkeitSchedulingConfig.class);
         });
     }
@@ -68,6 +69,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).doesNotHaveBean(EndgueltigkeitSchedulingConfig.class);
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
+            assertThat(context).hasSingleBean(PeriodeVerdichter.class);
         });
     }
 
