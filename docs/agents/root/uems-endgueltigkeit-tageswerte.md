@@ -85,7 +85,8 @@ der Rohwerte** — ein wiederholter Lauf schreibt denselben Inhalt.
 
 **AP-07 schreibt hier nur `offen`.** `zustand`/`erledigt_am`/`erledigt_notiz` sind die Hälfte von
 AP-08; von dieser Liste aus führt **kein Weg** zu einer Zeile der Viertelstunden- oder
-Tagesklasse. Die versionierte Korrektur ist **AP-08 IP-12 ff.**
+Tagesklasse. Die versionierte Korrektur ist **AP-08 IP-12 ff.** — seit 13.09.2026 die Tabelle
+`messreihe_korrektur` (der Vorgang; diese Liste bleibt die Erkennung), siehe `uems-korrektur-ersatzwert.md`.
 
 ## Die Tagesklasse `messreihe_tag`
 

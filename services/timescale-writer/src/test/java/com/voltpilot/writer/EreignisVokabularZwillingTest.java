@@ -81,6 +81,14 @@ class EreignisVokabularZwillingTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        // AP-08 IP-12 (additiv): die Wörter von Ersatzwert und Korrektur.
+        assertThat(texte(w.path("ersatzwert_methode"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
+                .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
+        assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();
         assertThat(texte(w.path("einheit_zuwachs"))).containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         Map<String, String> erkannt = new LinkedHashMap<>();
         w.path("erkannt_aus").forEach(e -> erkannt.put(e.path("code").asText(), e.path("urheber").asText()));

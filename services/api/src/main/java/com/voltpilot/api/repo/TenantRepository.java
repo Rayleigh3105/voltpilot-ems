@@ -181,6 +181,11 @@ public class TenantRepository {
                 deleteByTenant(con, "messreihe_tag", tenantId);
                 deleteByTenant(con, "messreihe_tag_arbeit", tenantId);
                 deleteByTenant(con, "messreihe_korrektur_vorschlag", tenantId);
+                // Corrections and substitute values (AP-08 IP-12) are receipts: append-only, never
+                // deleted, the tenant held by RESTRICT. Offboarding is the ONE way out - the
+                // correction first, it holds its substitute value by FK.
+                deleteByTenant(con, "messreihe_korrektur", tenantId);
+                deleteByTenant(con, "messreihe_ersatzwert", tenantId);
                 // Month and year values and their work list (AP-08 IP-5): hypertable + queue,
                 // no FK — the same one way out.
                 deleteByTenant(con, "messreihe_periode", tenantId);

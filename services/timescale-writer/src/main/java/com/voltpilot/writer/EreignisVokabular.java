@@ -255,6 +255,12 @@ public final class EreignisVokabular {
         f.put("zuwachs", Typ.STAND);
         f.put("stand_vor", Typ.STAND);
         f.put("stand_nach", Typ.STAND);
+        // AP-08 IP-12 (additiv): Ersatzwert und Korrektur.
+        f.put("ersatzwert", Typ.KENNUNG);
+        f.put("methode", Typ.WORT);
+        f.put("status", Typ.WORT);
+        f.put("korrektur", Typ.KENNUNG);
+        f.put("korrektur_art", Typ.WORT);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -302,6 +308,33 @@ public final class EreignisVokabular {
 
     /** AP-08 IP-6 — die Felder des Zuwachses über eine Lücke; sie stehen nur zusammen. */
     public static final List<String> ZUWACHS_FELDER = List.of("zuwachs", "einheit", "stand_vor", "stand_nach");
+
+    /**
+     * AP-08 IP-12 — die sieben Methoden eines Ersatzwerts (E7, a–g in dieser Reihenfolge;
+     * {@code vokabular.ersatzwert_methode}). Welche davon einen gemessenen Zuwachs verteilen und
+     * welche nur ohne ihn stehen dürfen, hält die Tabelle {@code messreihe_ersatzwert} über
+     * {@code messreihe_korrektur_vokabular()} — die Meldung nennt nur die Methode.
+     */
+    public static final List<String> ERSATZWERT_METHODE = List.of("gleichmaessig_verteilen",
+            "profil_vorperiode", "profil_vergleichsquelle", "ablesestand_nachtragen", "wert_eingeben",
+            "vorperiode_uebernehmen", "vergleichsquelle_uebernehmen");
+
+    /** AP-08 IP-12 — der Stand eines Ersatzwerts: nie gelöscht, nur zurückgenommen. */
+    public static final List<String> ERSATZWERT_STATUS = List.of("wirksam", "zurueckgenommen");
+
+    /** AP-08 IP-12 — die fünf Arten einer Korrektur (§4.6). */
+    public static final List<String> KORREKTUR_ART = List.of("nachlieferung_nach_endgueltigkeit",
+            "ablesestaende_nachgetragen", "umklassifizierung", "ersatzwert", "wert_berichtigt");
+
+    /** AP-08 IP-12 — die Art einer Korrektur, die genau einen Ersatzwert nennt. */
+    public static final String KORREKTUR_ART_ERSATZWERT = "ersatzwert";
+
+    /** AP-08 IP-12 — der Stand einer Korrektur; der Anfang ist {@code vorschlag} (E14). */
+    public static final List<String> KORREKTUR_STATUS =
+            List.of("vorschlag", "freigegeben", "abgelehnt", "zurueckgenommen");
+
+    private static final Pattern ERSATZWERT_KENNUNG = Pattern.compile("^EW-[0-9]{4}-[0-9]{4,}$");
+    private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
 
     /**
      * Die Fehlerklassen je Datenquelle (AP-06 E5) — im api-Zwilling aus {@code
@@ -416,7 +449,16 @@ public final class EreignisVokabular {
         ERROR_CHANGE("error_change"),
         STATE_CHANGE("state_change"),
         BITFIELD_CHANGE("bitfield_change"),
-        TEXT_CHANGE("text_change");
+        TEXT_CHANGE("text_change"),
+        // AP-08 IP-12 (additiv): der Ersatzwert und die Korrektur — nur aus der Cloud, je
+        // Statuswechsel eine neue Meldung, nie fortgeschrieben.
+        SUBSTITUTE("substitute", EnumSet.of(KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("messstelle"),
+                List.of("ersatzwert", "methode", "status"), List.of(), List.of(), null, null),
+        CORRECTION("correction", EnumSet.of(CLOUD, KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("messstelle"),
+                List.of("korrektur", "korrektur_art", "status"), List.of("ersatzwert"), List.of(),
+                null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -819,6 +861,9 @@ public final class EreignisVokabular {
         wort(e, "erkannt_aus", List.copyOf(ERKANNT_AUS.keySet()));
         wort(e, "fehlerklasse", FEHLERKLASSEN);
         wort(e, "anlass", art == Art.DEVICE_BOUNDARY ? ANLASS_GERAETEGRENZE : ANLASS_UEBERGABE);
+        wort(e, "methode", ERSATZWERT_METHODE);
+        wort(e, "korrektur_art", KORREKTUR_ART);
+        wort(e, "status", art == Art.SUBSTITUTE ? ERSATZWERT_STATUS : KORREKTUR_STATUS);
         if (art == Art.DATA_GAP) {
             wort(e, "einheit", EINHEITEN_ZUWACHS);
         }
@@ -855,6 +900,11 @@ public final class EreignisVokabular {
                         || Duration.between(von, bis).getSeconds() != VIERTELSTUNDE_S)) {
                     throw nein(Grund.ZEIT_UNGUELTIG, "keine Viertelstunde im Raster");
                 }
+            }
+            if ((art == Art.SUBSTITUTE || art == Art.CORRECTION)
+                    && (von.getEpochSecond() % VIERTELSTUNDE_S != 0
+                            || zeit(e, "bis").getEpochSecond() % VIERTELSTUNDE_S != 0)) {
+                throw nein(Grund.ZEIT_UNGUELTIG, "nicht im Viertelstunden-Raster");
             }
             if (art == Art.HANDOVER && von.getEpochSecond() % 60 != 0) {
                 throw nein(Grund.ZEIT_UNGUELTIG, "von nicht auf der Minute");
@@ -975,6 +1025,27 @@ public final class EreignisVokabular {
             case LAYOUT_CHANGED -> {
                 paar(e, "fassung_erwartet", "fassung_gelesen");
                 paar(e, "karten_erwartet", "karten_gelesen");
+            }
+            case SUBSTITUTE -> {
+                if (!ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
+            }
+            case CORRECTION -> {
+                if (!KORREKTUR_KENNUNG.matcher(e.get("korrektur").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Korrektur-Kennung");
+                }
+                // E14: nie automatisch — über Freigabe, Ablehnung und Rücknahme entscheidet ein Mensch.
+                if (u == CLOUD && !KORREKTUR_STATUS.get(0).equals(e.get("status").asText())) {
+                    throw nein(Grund.REGEL_VERLETZT, "die Cloud schlägt nur vor");
+                }
+                boolean mitErsatzwert = KORREKTUR_ART_ERSATZWERT.equals(e.get("korrektur_art").asText());
+                if (mitErsatzwert != e.has("ersatzwert")) {
+                    throw nein(Grund.REGEL_VERLETZT, "Ersatzwert passt nicht zur Art");
+                }
+                if (mitErsatzwert && !ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
             }
             case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {
                 if (gleich(e.get("alt"), e.get("neu"))) {

@@ -278,6 +278,45 @@
         "box_tausch"
       ]
     },
+    "ersatzwert_methode": {
+      "type": "string",
+      "enum": [
+        "gleichmaessig_verteilen",
+        "profil_vorperiode",
+        "profil_vergleichsquelle",
+        "ablesestand_nachtragen",
+        "wert_eingeben",
+        "vorperiode_uebernehmen",
+        "vergleichsquelle_uebernehmen"
+      ],
+      "description": "Die sieben Methoden eines Ersatzwerts (AP-08 E7) — vokabular.ersatzwert_methode."
+    },
+    "ersatzwert_status": {
+      "type": "string",
+      "enum": [
+        "wirksam",
+        "zurueckgenommen"
+      ]
+    },
+    "korrektur_art": {
+      "type": "string",
+      "enum": [
+        "nachlieferung_nach_endgueltigkeit",
+        "ablesestaende_nachgetragen",
+        "umklassifizierung",
+        "ersatzwert",
+        "wert_berichtigt"
+      ]
+    },
+    "korrektur_status": {
+      "type": "string",
+      "enum": [
+        "vorschlag",
+        "freigegeben",
+        "abgelehnt",
+        "zurueckgenommen"
+      ]
+    },
     "urheber": {
       "type": "string",
       "enum": [
@@ -362,6 +401,12 @@
         },
         {
           "$ref": "#/$defs/art_text_change"
+        },
+        {
+          "$ref": "#/$defs/art_substitute"
+        },
+        {
+          "$ref": "#/$defs/art_correction"
         }
       ]
     },
@@ -1419,6 +1464,105 @@
           "$ref": "#/$defs/kennung"
         },
         "messstelle": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_substitute": {
+      "type": "object",
+      "description": "substitute — Ersatzwert. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "komponente",
+        "messkanal",
+        "ersatzwert",
+        "methode",
+        "status"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "substitute"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "ersatzwert": {
+          "$ref": "#/$defs/kennung"
+        },
+        "methode": {
+          "$ref": "#/$defs/ersatzwert_methode"
+        },
+        "status": {
+          "$ref": "#/$defs/ersatzwert_status"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_correction": {
+      "type": "object",
+      "description": "correction — Korrektur. Urheber: cloud, kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "komponente",
+        "messkanal",
+        "korrektur",
+        "korrektur_art",
+        "status"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "correction"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "korrektur": {
+          "$ref": "#/$defs/kennung"
+        },
+        "korrektur_art": {
+          "$ref": "#/$defs/korrektur_art"
+        },
+        "status": {
+          "$ref": "#/$defs/korrektur_status"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ersatzwert": {
           "$ref": "#/$defs/kennung"
         }
       }

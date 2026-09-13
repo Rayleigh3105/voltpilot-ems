@@ -47,6 +47,8 @@ export const EREIGNIS_ARTEN = [
   'state_change',
   'bitfield_change',
   'text_change',
+  'substitute',
+  'correction',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -145,6 +147,11 @@ export const FELDTYP: Record<string, Feldtyp> = {
   zuwachs: 'stand',
   stand_vor: 'stand',
   stand_nach: 'stand',
+  ersatzwert: 'kennung',
+  methode: 'wort',
+  status: 'wort',
+  korrektur: 'kennung',
+  korrektur_art: 'wort',
 };
 
 export interface ArtText {
@@ -351,6 +358,51 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
   state_change: UEBERGANG('Zustand', 'Zustand geändert: {alt} → {neu}'),
   bitfield_change: UEBERGANG('Statusbits', 'Statusbits geändert: {alt} → {neu}'),
   text_change: UEBERGANG('Text', 'Text geändert: {alt} → {neu}'),
+  substitute: {
+    name: 'Ersatzwert',
+    zeitraum: true,
+    varianteNach: 'status',
+    saetze: {
+      wirksam: 'Ersatzwert {ersatzwert} für {von} bis {bis}: {methode} — kein gemessener Wert',
+      zurueckgenommen: 'Ersatzwert {ersatzwert} für {von} bis {bis} zurückgenommen: {methode}',
+    },
+    zusaetze: {},
+  },
+  correction: {
+    name: 'Korrektur',
+    zeitraum: true,
+    varianteNach: 'status',
+    saetze: {
+      vorschlag:
+        'Korrektur {korrektur} vorgeschlagen für {von} bis {bis}: {korrektur_art} — die Werte bleiben bis zur Freigabe unverändert',
+      freigegeben: 'Korrektur {korrektur} freigegeben für {von} bis {bis}: {korrektur_art}',
+      abgelehnt: 'Korrektur {korrektur} abgelehnt für {von} bis {bis}: {korrektur_art} — die Werte bleiben unverändert',
+      zurueckgenommen: 'Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}',
+    },
+    zusaetze: { ersatzwert: ' ({ersatzwert})' },
+  },
+};
+
+/**
+ * AP-08 IP-12 — die Namen der Ersatzwert-Methoden (E7, a–g) und der Korrektur-Arten (§4.6) in
+ * Kundensprache; der Satz spricht nie das Vertragswort.
+ */
+export const METHODE_TEXT: Record<string, string> = {
+  gleichmaessig_verteilen: 'Zuwachs gleichmäßig verteilen',
+  profil_vorperiode: 'Zuwachs nach dem Profil der Vorperiode verteilen',
+  profil_vergleichsquelle: 'Zuwachs nach dem Profil der Vergleichsquelle verteilen',
+  ablesestand_nachtragen: 'Ablesestand nachtragen',
+  wert_eingeben: 'Wert eingeben (mit Beleg)',
+  vorperiode_uebernehmen: 'Vorperiode übernehmen',
+  vergleichsquelle_uebernehmen: 'Vergleichsquelle übernehmen',
+};
+
+export const KORREKTUR_ART_TEXT: Record<string, string> = {
+  nachlieferung_nach_endgueltigkeit: 'Nachlieferung nach Endgültigkeit',
+  ablesestaende_nachgetragen: 'Ablesestände nachgetragen',
+  umklassifizierung: 'Rücksetzung und Überlauf umklassifiziert',
+  ersatzwert: 'Ersatzwert',
+  wert_berichtigt: 'Wert berichtigt (mit Beleg)',
 };
 
 /** Die Hauptwörter, die `{anzahl_…}` zu `anzahl` spricht. */
@@ -448,7 +500,10 @@ function feldText(feld: string, e: Ereignis, namen: Namen, zone: string): string
       return typeof x === 'number' ? `${zahlText(x)}${einheit(e)}` : wertText(x);
     }
     case 'wort':
-      return feld === 'grund' ? (GRUND_TEXT[w as Grund] ?? String(w)) : String(w);
+      if (feld === 'grund') return GRUND_TEXT[w as Grund] ?? String(w);
+      if (feld === 'methode') return METHODE_TEXT[String(w)] ?? String(w);
+      if (feld === 'korrektur_art') return KORREKTUR_ART_TEXT[String(w)] ?? String(w);
+      return String(w);
     default:
       return wertText(w);
   }
