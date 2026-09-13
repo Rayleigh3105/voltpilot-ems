@@ -386,8 +386,11 @@ class UemsMessstelleVerteilungMigrationTest {
                 .replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER);
         root.execute(sql);
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
+        // Nur die Tabellen bis zu dieser Migration zählen: spätere Pakete hängen denselben Trigger an ihre
+        // eigenen Zuordnungen (AP-10 IP-6 an `anlage_netzanschluss`).
         assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid = "
-                + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal", Long.class))
+                + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal AND tgrelid IN "
+                + "('messstelle_prozess'::regclass, 'prozess'::regclass, 'messstelle_verteilung'::regclass)", Long.class))
                 .as("messstelle_prozess, prozess.eltern_id und jetzt messstelle_verteilung").isEqualTo(3);
         assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = ?", Long.class, HUNDERT)).isOne();
     }

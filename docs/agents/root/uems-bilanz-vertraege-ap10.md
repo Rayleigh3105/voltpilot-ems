@@ -2,7 +2,7 @@
 
 Das ERSTE Bau-Paket der Energiebilanzen. Es legt die Verträge, gegen die alle folgenden AP-10-Pakete
 gebaut werden, und **ändert kein Verhalten**: keine Migration, keine Tabelle, keine Route, keine
-Portal-Fläche, kein Produktionsweg. Niemand ruft die neuen Regeln an.
+Portal-Fläche, kein Produktionsweg. Niemand ruft die neuen Regeln an. (Seit AP-10 IP-6 ruft `NetzanschlussService` die Netzanschluss-Regeln an — `uems-netzanschluss.md`.)
 
 | Was | Wo |
 |---|---|

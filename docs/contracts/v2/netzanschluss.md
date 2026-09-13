@@ -18,10 +18,10 @@ genau eine Anlage je Tag.
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
-> **Wer anruft (Stand AP-10 IP-1): niemand.** Die Tabellen `netzanschluss` und
-> `anlage_netzanschluss`, die Routen unter `/api/v1/standorte/{id}/netzanschluesse` und der Reiter
-> im Portal kommen mit IP-6 und IP-13; erst dann füllt das Standort-Lesemodell das Feld
-> `netzanschluss` einer Anlage.
+> **Wer anruft (Stand AP-10 IP-6):** `NetzanschlussService` — die Tabellen `netzanschluss` und
+> `anlage_netzanschluss` (`V20260913235000`), die Routen unter `/api/v1/standorte/{id}/netzanschluesse`,
+> und das Standort-Lesemodell füllt das Feld `netzanschluss` einer Anlage. Der Reiter im Portal kommt
+> mit IP-13. Wegweiser: `docs/agents/root/uems-netzanschluss.md`.
 
 ## 1. Die fünf Regeln
 
@@ -49,7 +49,10 @@ genau eine Anlage je Tag.
 5. **Je Tag höchstens eine Bindung je Anlage UND je Anschluss.** Ein Wechsel beendet die laufende
    Bindung am VORTAG — nichts wird überschrieben. Eine zweite Bindung derselben Anlage am selben
    Tag ist `bindung_ueberlappt`; ein Anschluss, der an dem Tag schon an einer anderen Anlage hängt,
-   ist `anschluss_belegt`.
+   ist `anschluss_belegt`. Die Regel sieht ALLE Tage der neuen Bindung (seit AP-10 IP-6): ein
+   früherer Beginn vor einer späteren Bindung derselben Anlage ist ebenfalls `bindung_ueberlappt`,
+   ein Anschluss, der an einem späteren Tag an einer anderen Anlage hängt, ebenfalls
+   `anschluss_belegt` — nur die LAUFENDE wird am Vortag beendet.
 6. **Die Kopfzeile ZEIGT, sie prüft nicht.** „vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan
    312,4 kW“ ist eine Anzeige (Zahlform aus [`ergebnis-zustand.md`](./ergebnis-zustand.md) §3, E11:
    Leistung kW/kVA eine Stelle, U+00A0 vor der Einheit); die Grenzprüfung ist AP-15. `grenze_geprueft` ist deshalb in jedem

@@ -265,6 +265,19 @@ tags:
       gilt nie länger als seine Kostenstelle. Sie wirkt je TAG auf die Tagesmenge (E12).
       Mandanten-Zaun ist die RLS (fremd = 404 `nicht_gefunden`, nie 403). Rechte (AP-10 §4.10,
       E15): `messstelle.verteilung`, lesen `messstelle.ansehen` - noch nicht durchgesetzt (AP-03).
+  - name: netzanschluesse
+    description: >
+      UEMS-Netzanschlüsse (AP-10 IP-6, Konzept §4.2/§5.1, Entscheid E8 = A): der Netzanschluss
+      ist ein eigenes Objekt am STANDORT (Kennzeichen wie AP-00 E10 - nie weitergegeben, auch
+      nicht nach dem Beenden; Marktlokation elf Ziffern; Messung RLM · SLP) und hängt je Tag an
+      höchstens EINER Anlage - und eine Anlage an jedem Tag an genau EINEM Anschluss: eine zweite
+      Bindung derselben Anlage am selben Tag ist 409 `bindung_ueberlappt`, ein Wechsel beendet
+      die laufende Bindung am Vortag. Beendet, nie gelöscht - es gibt keine DELETE-Route. Regeln
+      aus uems/NetzanschlussRegeln (Vertrag docs/contracts/v2/netzanschluss.md). Mandanten-Zaun
+      ist die RLS (fremder Standort oder Anschluss eines anderen Standorts = 404
+      `nicht_gefunden`, nie 403). Recht `netzanschluss.verwalten` (AP-10 §4.10, E15) - noch nicht
+      durchgesetzt (AP-03), es gilt authenticated(). Die Preis- und Grenzspalten der Anlage
+      bleiben an der Anlage (W9, eigenes Folgepaket).
   - name: geraete
     description: >
       UEMS-Geräte (AP-04 IP-10): das physische Kästchen hinter der VoltPilot-Box
@@ -9458,6 +9471,137 @@ paths:
         "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/standorte/{standortId}/netzanschluesse:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [netzanschluesse]
+      summary: Die Netzanschlüsse des Standorts; mit `stichtag` nur die an dem Tag bestehenden.
+      description: >
+        Heute lesend - keine eigene Kennung (wie das Standort-Lesemodell). Ohne Stichtag alle,
+        beendete eingeschlossen, nach Kennzeichen; mit Stichtag je Anschluss nur die Bindungen
+        des Tages. `kennzeichen_vorschlag` ist das nächste automatische Kennzeichen (vergeben
+        erst beim Anlegen). Fremder Standort = 404.
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Liste (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzanschlussListe" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+    post:
+      tags: [netzanschluesse]
+      summary: Legt einen Netzanschluss am Standort an.
+      description: >
+        Recht `netzanschluss.verwalten` (AP-10 §4.10, E15). Reihenfolge: Standort da (404) →
+        Form (400) → Felder des Vertrags (400 `anfrage_ungueltig` mit `feld`; Marktlokation 422
+        `malo_form`) → Zeitraum (422 `zeitraum_ungueltig`) → Kennzeichen (422
+        `kennzeichen_format`, 409 `kennzeichen_belegt`). Ohne `kennzeichen` vergibt die Regel das
+        nächste freie (`NA-0001`). Vereinbart über Anschluss ist ein HINWEIS (`hinweise`), keine
+        Ablehnung.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetzanschlussAnschluss" }
+            example:
+              kennzeichen: NA-1
+              name: Hauptanschluss Halle 1
+              malo: "47110000001"
+              netzbetreiber: Netzgesellschaft Ahrental (fiktiv)
+              anschluss_kva: 630
+              vereinbart_kw: 550
+              messung: RLM
+      responses:
+        "201":
+          description: Angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Netzanschluss" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "409": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+  /api/v1/standorte/{standortId}/netzanschluesse/{id}:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [netzanschluesse]
+      summary: Ein Netzanschluss mit allen wirksamen Bindungen.
+      description: Heute lesend - keine eigene Kennung. Fremd, unbekannt oder an einem anderen Standort = 404 `nicht_gefunden`.
+      responses:
+        "200":
+          description: Der Netzanschluss.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Netzanschluss" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+    put:
+      tags: [netzanschluesse]
+      summary: Bearbeitet - die ganze Menge; ein fehlendes Feld ist leer.
+      description: >
+        Recht `netzanschluss.verwalten`. Ein neues Kennzeichen ist frei, wenn kein ANDERER
+        Anschluss es trägt oder trug (409 `kennzeichen_belegt`); ein Ende wird nur vorgezogen
+        (409 `bereits_beendet`); Tage, die eine Bindung abschnitten, sind 409 `bindung_besteht`
+        mit `bindungen`. Beenden = `gueltig_bis` setzen. Ohne Änderung: kein Protokolleintrag.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetzanschlussAnschluss" }
+      responses:
+        "200":
+          description: Bearbeitet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Netzanschluss" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "409": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+  /api/v1/standorte/{standortId}/netzanschluesse/{id}/anlagen:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [netzanschluesse]
+      summary: Bindet eine Anlage ab einem Tag an diesen Netzanschluss.
+      description: >
+        Recht `netzanschluss.verwalten`; mit „gültig ab“ vor heute zusätzlich
+        `aenderung.rueckwirkend`. Urteil aus NetzanschlussRegeln.bindung über alle wirksamen
+        Bindungen der Anlage und des Anschlusses: eine zweite Bindung derselben Anlage am selben
+        Tag → 409 `bindung_ueberlappt`; ein Anschluss, der an einem der Tage an einer anderen
+        Anlage hängt → 409 `anschluss_belegt`; beginnt die neue nach der laufenden, endet die
+        laufende am VORTAG. Die neue Bindung endet mit ihrem Anschluss (422
+        `netzanschluss_besteht_nicht`, wenn er am Tag nicht besteht). Die Anlage kommt aus dem
+        Kundenbereich (422 `anlage_unbekannt`). Genau ein Protokolleintrag `gebunden`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetzanschlussBinden" }
+            example:
+              anlage_id: 7d0e9c7e-2f6b-4a3a-9d61-0a9d7c3e5b11
+              gueltig_ab: "2024-03-12"
+      responses:
+        "201":
+          description: Gebunden - der Netzanschluss mit seinen Bindungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Netzanschluss" }
+        "400": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "409": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
+        "422": { $ref: "#/components/responses/NetzanschlussAbgelehnt" }
   /api/v1/messstellen/{kennzeichen}/werte:
     parameters:
       - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-10 }, description: "Das Kennzeichen, das die Messstelle HEUTE trägt." }
@@ -9718,6 +9862,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/VerteilungFehler" }
+    NetzanschlussAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
+        deutsche `message`-Satz kommen aus dem geschlossenen Satz
+        (uems/NetzanschlussAbgelehnt); dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NetzanschlussFehler" }
     MessstelleFormelAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -15936,12 +16088,23 @@ components:
         land: { type: string, nullable: true, enum: [DE, AT, CH] }
     StandortAnlage:
       type: object
-      description: Eine Anlage am Standort mit dem am Stichtag gültigen Intervall (`gueltigBis` einschließlich).
+      description: Eine Anlage am Standort mit dem am Stichtag gültigen Intervall (`gueltigBis` einschließlich) und ihrem Netzanschluss an dem Tag.
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         gueltigAb: { type: string, format: date }
         gueltigBis: { type: string, format: date, nullable: true }
+        netzanschluss:
+          nullable: true
+          description: >
+            Additiv (AP-10 IP-6) - der Netzanschluss, an dem die Anlage am Stichtag hängt, mit den
+            Tagen der Bindung; null, wenn keiner gebunden ist (nie erfunden).
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            kennzeichen: { type: string, example: NA-1 }
+            gueltigAb: { type: string, format: date }
+            gueltigBis: { type: string, format: date, nullable: true }
     NochNichtZugeordnet:
       type: object
       properties:
@@ -17567,6 +17730,115 @@ components:
               kennzeichen: { type: string, nullable: true }
               gueltig_ab: { type: string, format: date }
               gueltig_bis: { type: string, format: date, nullable: true }
+    NetzanschlussFehler:
+      type: object
+      description: >
+        Die Ablehnung der Netzanschluss-Schnittstelle (AP-10 IP-6): 400 `anfrage_ungueltig`
+        (`feld`); 404 `nicht_gefunden`; 409 `kennzeichen_belegt` (`feld`, `kennzeichen`),
+        `bereits_beendet` (`kennzeichen`, `gueltig_bis`), `bindung_besteht` (`kennzeichen`,
+        `bindungen`), `bindung_ueberlappt` und `anschluss_belegt` (`anlage_id`, `netzanschluss`,
+        `gueltig_ab`, `bindungen`); 422 `kennzeichen_format` (`feld`, `kennzeichen`), `malo_form`
+        (`feld`), `zeitraum_ungueltig` (`gueltig_ab`, `gueltig_bis`), `anlage_unbekannt` (`feld`),
+        `netzanschluss_besteht_nicht` (`kennzeichen`, `besteht_ab`, `besteht_bis`, `gueltig_ab`).
+        Die Codes des Vertrags (`kennzeichen_*`, `malo_form`, `anfrage_ungueltig`,
+        `bindung_ueberlappt`, `anschluss_belegt`) sind die von netzanschluss-vectors.json.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, kennzeichen_format, kennzeichen_belegt, malo_form, zeitraum_ungueltig, bereits_beendet, bindung_besteht, anlage_unbekannt, netzanschluss_besteht_nicht, bindung_ueberlappt, anschluss_belegt]
+        message: { type: string }
+        feld: { type: string }
+        kennzeichen: { type: string, nullable: true }
+        anlage_id: { type: string, format: uuid }
+        netzanschluss: { type: string }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        besteht_ab: { type: string, format: date, nullable: true }
+        besteht_bis: { type: string, format: date, nullable: true }
+        bindungen:
+          type: array
+          items:
+            type: object
+            required: [anlage_id, anlage_name, netzanschluss, gueltig_ab, gueltig_bis]
+            properties:
+              anlage_id: { type: string, format: uuid }
+              anlage_name: { type: string, nullable: true }
+              netzanschluss: { type: string }
+              gueltig_ab: { type: string, format: date }
+              gueltig_bis: { type: string, format: date, nullable: true }
+    NetzanschlussAnschluss:
+      type: object
+      additionalProperties: false
+      description: >
+        POST und PUT (die ganze Menge). Jedes Feld Text oder null; die Leistungen Zahl oder
+        Dezimaltext. Beim Anlegen heißt `kennzeichen` null: automatisch vergeben.
+      required: [name, messung]
+      properties:
+        kennzeichen: { type: string, nullable: true, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string }
+        malo: { type: string, nullable: true, pattern: "^[0-9]{11}$", description: "Marktlokation - null = nicht erhoben, nie 0." }
+        netzbetreiber: { type: string, nullable: true }
+        anschluss_kva: { type: number, nullable: true, exclusiveMinimum: 0 }
+        vereinbart_kw: { type: number, nullable: true, exclusiveMinimum: 0 }
+        messung: { type: string, enum: [RLM, SLP] }
+        gueltig_ab: { type: string, format: date, nullable: true, description: "Erster Tag; null = kein erster Tag erhoben." }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE gültige Tag, einschließlich." }
+    NetzanschlussBinden:
+      type: object
+      additionalProperties: false
+      required: [anlage_id, gueltig_ab]
+      properties:
+        anlage_id: { type: string, format: uuid }
+        gueltig_ab: { type: string, format: date }
+        grund: { type: string, nullable: true }
+    NetzanschlussStandort:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string }
+    NetzanschlussAnlage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true, description: "null, wenn die Anlage gelöscht ist - die Bindung bleibt (W5)." }
+    NetzanschlussBindung:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        anlage: { $ref: "#/components/schemas/NetzanschlussAnlage" }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+    Netzanschluss:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: NA-1 }
+        name: { type: string }
+        standort: { $ref: "#/components/schemas/NetzanschlussStandort" }
+        malo: { type: string, nullable: true }
+        netzbetreiber: { type: string, nullable: true }
+        anschluss_kva: { type: number, nullable: true }
+        vereinbart_kw: { type: number, nullable: true }
+        messung: { type: string, enum: [RLM, SLP] }
+        gueltig_ab: { type: string, format: date, nullable: true }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        hinweise:
+          type: array
+          items: { type: string, enum: [vereinbart_ueber_anschluss] }
+        anlagen:
+          type: array
+          items: { $ref: "#/components/schemas/NetzanschlussBindung" }
+        angelegt_am: { type: string, format: date-time }
+    NetzanschlussListe:
+      type: object
+      properties:
+        standort: { $ref: "#/components/schemas/NetzanschlussStandort" }
+        stichtag: { type: string, format: date, nullable: true }
+        kennzeichen_vorschlag: { type: string, example: NA-0001 }
+        netzanschluesse:
+          type: array
+          items: { $ref: "#/components/schemas/Netzanschluss" }
     KostenstelleProzessAnlegen:
       type: object
       additionalProperties: false

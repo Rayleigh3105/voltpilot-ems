@@ -84,6 +84,18 @@ public final class StandortLesemodell {
     public record Anlage(UUID id, String name) {}
 
     /**
+     * Eine wirksame Bindung Anlage ↔ Netzanschluss (UEMS AP-10 IP-6, {@code anlage_netzanschluss}):
+     * Tage, {@code gueltigBis} der letzte einschließlich, {@code null} = offen.
+     */
+    public record NetzanschlussBindung(UUID siteId, UUID netzanschlussId, String kennzeichen,
+            LocalDate gueltigAb, LocalDate gueltigBis) {
+
+        boolean laeuftAm(LocalDate tag) {
+            return !tag.isBefore(gueltigAb) && (gueltigBis == null || !tag.isAfter(gueltigBis));
+        }
+    }
+
+    /**
      * Alle Zeilen, aus denen das Lesemodell lebt — unter RLS gelesen, also genau
      * die des Mandanten. {@code unternehmen} ist {@code null} für einen
      * Kundenbereich ohne Unternehmen-Zeile.
@@ -96,7 +108,8 @@ public final class StandortLesemodell {
             List<AnlageStandortRepository.Zuordnung> anlageZuordnungen,
             List<FlaecheRepository.Flaeche> flaechen,
             List<Anlage> anlagen,
-            List<OrtAenderungRepository.ArchivSchritt> standortArchiv) {
+            List<OrtAenderungRepository.ArchivSchritt> standortArchiv,
+            List<NetzanschlussBindung> netzanschluesse) {
 
         public Zeilen {
             standorte = List.copyOf(standorte);
@@ -106,6 +119,21 @@ public final class StandortLesemodell {
             flaechen = List.copyOf(flaechen);
             anlagen = List.copyOf(anlagen);
             standortArchiv = standortArchiv == null ? List.of() : List.copyOf(standortArchiv);
+            netzanschluesse = netzanschluesse == null ? List.of() : List.copyOf(netzanschluesse);
+        }
+
+        /** Ohne Netzanschluss-Bindungen (der Stand vor AP-10 IP-6). */
+        public Zeilen(
+                UnternehmenRepository.Unternehmen unternehmen,
+                List<StandortRepository.Standort> standorte,
+                List<OrtRepository.Ort> orte,
+                List<OrtZuordnungRepository.Zuordnung> ortZuordnungen,
+                List<AnlageStandortRepository.Zuordnung> anlageZuordnungen,
+                List<FlaecheRepository.Flaeche> flaechen,
+                List<Anlage> anlagen,
+                List<OrtAenderungRepository.ArchivSchritt> standortArchiv) {
+            this(unternehmen, standorte, orte, ortZuordnungen, anlageZuordnungen, flaechen, anlagen,
+                    standortArchiv, List.of());
         }
 
         /** Ohne Archiv-Schritte: nie archiviert und wiederhergestellt (der Stand von IP-3). */
@@ -118,7 +146,7 @@ public final class StandortLesemodell {
                 List<FlaecheRepository.Flaeche> flaechen,
                 List<Anlage> anlagen) {
             this(unternehmen, standorte, orte, ortZuordnungen, anlageZuordnungen, flaechen, anlagen,
-                    List.of());
+                    List.of(), List.of());
         }
 
         /** Die Zeitzonen-Vorgabe des Unternehmens; ohne Unternehmen die feste von heute. */
@@ -168,8 +196,15 @@ public final class StandortLesemodell {
         return strasse != null && ort != null && land != null;
     }
 
-    /** Eine Anlage am Standort mit dem Intervall, das am Stichtag gilt ({@code gueltigBis} einschließlich). */
-    public record ZugeordneteAnlage(UUID id, String name, LocalDate gueltigAb, LocalDate gueltigBis) {}
+    /**
+     * Eine Anlage am Standort mit dem Intervall, das am Stichtag gilt ({@code gueltigBis} einschließlich),
+     * und dem Netzanschluss, an dem sie an dem Tag hängt ({@code null}: keiner gebunden — nie erfunden).
+     */
+    public record ZugeordneteAnlage(UUID id, String name, LocalDate gueltigAb, LocalDate gueltigBis,
+            NetzanschlussBezug netzanschluss) {}
+
+    /** Der Netzanschluss einer Anlage am Stichtag (UEMS AP-10 IP-6): ID, Kennzeichen, die Tage der Bindung. */
+    public record NetzanschlussBezug(UUID id, String kennzeichen, LocalDate gueltigAb, LocalDate gueltigBis) {}
 
     /**
      * Ein Standort zum Stichtag. {@code bestand} ist {@code vorhanden},
@@ -304,7 +339,7 @@ public final class StandortLesemodell {
             Map<String, OrtArt> art) {}
 
     private static Auswertung auswerten(Zeilen z, LocalDate stichtag) {
-        StandAm stand = OrtsbaumAbleitung.standAm(baum(z), stichtag);
+        StandAm stand = OrtsbaumAbleitung.standAm(baum(z, stichtag), stichtag);
         Map<String, OrtAmStichtag> orte = new HashMap<>();
         stand.orte().forEach(o -> orte.put(o.kennzeichen(), o));
         Map<String, NichtGezeigt> nicht = new HashMap<>();
@@ -334,8 +369,11 @@ public final class StandortLesemodell {
             if (k.equals(a.standortDerAnlage().get(key(an.id())))) {
                 AnlageStandortRepository.Zuordnung iv =
                         intervallAm(a.zeilen(), an.id(), s.id(), a.stichtag());
+                NetzanschlussBindung na = netzanschlussAm(a.zeilen(), an.id(), a.stichtag());
                 anlagen.add(new ZugeordneteAnlage(an.id(), an.name(),
-                        iv == null ? null : iv.gueltigAb(), iv == null ? null : iv.gueltigBis()));
+                        iv == null ? null : iv.gueltigAb(), iv == null ? null : iv.gueltigBis(),
+                        na == null ? null : new NetzanschlussBezug(na.netzanschlussId(), na.kennzeichen(),
+                                na.gueltigAb(), na.gueltigBis())));
             }
         }
         int gebaeude = zaehle(a, k, OrtArt.GEBAEUDE);
@@ -369,8 +407,20 @@ public final class StandortLesemodell {
                 .findFirst().orElse(null);
     }
 
-    /** Die Zeilen als Ortsbaum des Vertrags; Kennzeichen = ID der Zeile. */
+    /**
+     * Die Zeilen als Ortsbaum des Vertrags; Kennzeichen = ID der Zeile. Ohne Tag trägt jede Anlage den
+     * Netzanschluss ihrer JÜNGSTEN Bindung — der Baum hat für ihn keine Zeitachse; wer einen Tag hat,
+     * nimmt {@link #baum(Zeilen, LocalDate)}.
+     */
     static Ortsbaum baum(Zeilen z) {
+        return baum(z, null);
+    }
+
+    /**
+     * Die Zeilen als Ortsbaum des Vertrags; jede Anlage trägt das KENNZEICHEN des Netzanschlusses, an dem
+     * sie am {@code tag} hängt (AP-10 IP-6, E8: je Tag genau einer) — {@code null}, wenn keiner.
+     */
+    static Ortsbaum baum(Zeilen z, LocalDate tag) {
         Map<UUID, LocalDate> frueheste = fruehesteBindung(z);
         Map<UUID, List<OrtAenderungRepository.ArchivSchritt>> archiv = new HashMap<>();
         z.standortArchiv().forEach(x -> archiv.computeIfAbsent(x.objektId(), k -> new ArrayList<>()).add(x));
@@ -407,7 +457,8 @@ public final class StandortLesemodell {
                     iv.gueltigAb(), iv.gueltigBis(), key(iv.standortId()), iv.aufgehoben()));
         }
         List<OrtsbaumAbleitung.Anlage> anlagen = z.anlagen().stream()
-                .map(an -> new OrtsbaumAbleitung.Anlage(key(an.id()), an.name(), null,
+                .map(an -> new OrtsbaumAbleitung.Anlage(key(an.id()), an.name(),
+                        netzanschlussKennzeichen(z, an.id(), tag),
                         ObjektZustand.AKTIV, anlageIntervalle.getOrDefault(an.id(), List.of())))
                 .toList();
         return new Ortsbaum(z.zeitzone(), orte, anlagen, List.of());
@@ -439,6 +490,25 @@ public final class StandortLesemodell {
         }
         out.add(new Intervall(ab, ende, null));
         return List.copyOf(out);
+    }
+
+    /** Die Bindung, an der die Anlage am Tag hängt — ohne Tag die jüngste; {@code null}, wenn keine. */
+    private static NetzanschlussBindung netzanschlussAm(Zeilen z, UUID anlage, LocalDate tag) {
+        NetzanschlussBindung treffer = null;
+        for (NetzanschlussBindung b : z.netzanschluesse()) {
+            if (!b.siteId().equals(anlage) || (tag != null && !b.laeuftAm(tag))) {
+                continue;
+            }
+            if (treffer == null || b.gueltigAb().isAfter(treffer.gueltigAb())) {
+                treffer = b;
+            }
+        }
+        return treffer;
+    }
+
+    private static String netzanschlussKennzeichen(Zeilen z, UUID anlage, LocalDate tag) {
+        NetzanschlussBindung b = netzanschlussAm(z, anlage, tag);
+        return b == null ? null : b.kennzeichen();
     }
 
     /** Je Standort der früheste Tag, an dem etwas wirksam an ihm hängt (Anlage, Ort, Fläche). */
