@@ -24,8 +24,9 @@ ohne Zustand, Abdeckung und Kennzeichen.** Keine Migration, keine Rechenregel: g
 2. **Tag, Monat, Jahr kommen aus den Periodenständen**, nie als Summe: Tag aus `messreihe_tag`, Monat
    und Jahr aus `messreihe_periode`. Gegenprobe im Test: F8 Tag 2 304 kWh, die Summe der Viertelstunden
    derselben Route 1 966,4. Die STUNDE ist keine Speicherklasse: Menge/Zustand/Kennzeichen je Schritt
-   aus `ZeitraumMenge.raster` (über den Lesepfad), die Abdeckung als Summe ihrer vier Viertelstunden
-   (eine fehlende zählt mit ihren erwarteten Werten — F8 17:00: 29 von 60), vorläufig/endgültig über
+   aus `ZeitraumMenge.raster` (über den Lesepfad), ⚠ die Abdeckung ebenso — der Lesepfad bildet sie im
+   groben Raster aus Zeitraum und Kadenz zur Messzeit (eine fehlende Viertelstunde zählt mit ihren
+   erwarteten Werten — F8 17:00: 29 von 60), die Route rechnet sie nicht nach; vorläufig/endgültig über
    `TagRegeln.zustand` mit der Frist des Stunden-Endes (`gebildet_aus` `zeitraum`).
 3. **`zustand` ist NICHT `fassung`.** Die Antwort nennt das Wort des Ergebnis-Zustands-Vertrags
    (Spalte `menge_zustand`) `zustand` und vorläufig/endgültig (Spalte `zustand`!) `fassung` — genau
@@ -69,6 +70,6 @@ Regel der Viertelstunde.
 
 `messwerte.ansehen` als Route-Kommentar und Nachtrag AP-08 §4.8 in `rechte-matrix.json` (zugeordnet),
 KEINE Durchsetzung (AP-03). Keine Portal-Fläche (IP-10/11), keine Ersatzwerte (IP-13), keine Korrekturen
-(IP-12 ff.), nur die Hauptgröße. Befunde: `ZeitraumMenge.raster` gibt `erhalten`/`erwartet` nicht mit —
-darum liest die Stunde ihre Viertelstunden ein zweites Mal; das Mittel im groben Raster bleibt das des
-Lesepfads (gewichtetes Mittel gespeicherter Mittel).
+(IP-12 ff.), nur die Hauptgröße. Die Stunde liest ihre Viertelstunden nur noch für „noch nicht gebildet",
+Version und vorläufig/endgültig, NICHT für die Abdeckung (der Umweg aus PR 725 ist entfallen). Befund: das
+Mittel im groben Raster bleibt das des Lesepfads (gewichtetes Mittel gespeicherter Mittel).

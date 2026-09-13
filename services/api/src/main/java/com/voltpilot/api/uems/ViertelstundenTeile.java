@@ -315,8 +315,120 @@ final class ViertelstundenTeile {
     /**
      * Ein Schritt eines gröberen Rasters: Zählerstand-Menge ({@link #zaehlerstand}) bzw. Momentanwert
      * ({@link #werte}) von {@code [von, bis)} — je {@code null} für die andere Wertart.
+     *
+     * @param innen die gespeicherten Viertelstunden IN {@code [von, bis)}, für Abdeckung und Erwartung
+     *     ({@link #erwartet}); eine ohne Rohwert fehlt hier, wie überall
      */
-    record Schritt(Instant von, Instant bis, String wertart, Teilperiode menge, Werteteil werte) {}
+    record Schritt(Instant von, Instant bis, String wertart, Teilperiode menge, Werteteil werte,
+            List<Teilperiode> innen) {}
+
+    /**
+     * Die Kadenz-Kette einer Reihe über eine Zeitspanne (AP-07 IP-10, E9): Fassung der Quellenbindung →
+     * Mess-Selektion → Katalog → 300 s ({@link KadenzRegeln#wirksam}), ausgewertet ZU JEDEM ZEITPUNKT
+     * ({@link #am}) statt einmal für die Spanne. Spiegel von {@code ViertelstundeVerdichter.kadenzJeAuftrag}:
+     * lesen mehrere Bindungen denselben Messkanal, gilt die SCHNELLSTE ihrer Fassungen, von der Mess-Selektion
+     * die kleinste Kadenz — eine Viertelstunde ohne Zeile erwartet so viel, wie ihre Zeile erwartet hätte.
+     *
+     * @param fassungen die Fassungen der Bindungen des Messkanals, je auf die Gültigkeit ihrer Bindung
+     *     geschnitten
+     */
+    record Kadenzkette(List<KadenzRegeln.Fassung> fassungen, Integer auswahlS, Integer katalogS) {
+
+        /** Die Kadenz, die zu {@code t} gilt — nie die von jetzt, nie die der jüngsten Zeile. */
+        Duration am(Instant t) {
+            Integer fassungS = null;
+            for (KadenzRegeln.Fassung f : fassungen) {
+                if (!f.gueltigAb().isAfter(t) && (f.gueltigBis() == null || t.isBefore(f.gueltigBis()))
+                        && (fassungS == null || f.erwartetS() < fassungS)) {
+                    fassungS = f.erwartetS();
+                }
+            }
+            return Duration.ofSeconds(KadenzRegeln.wirksam(fassungS, auswahlS, katalogS).erwartetS());
+        }
+    }
+
+    /**
+     * Die Kadenz-Kette der Reihe für {@code [von, bis)} in zwei Abfragen, über die Verbindung des Aufrufers
+     * (hinter RLS: eine fremde Reihe hat weder Fassung noch Selektion, es bleibt der Katalog).
+     *
+     * @param katalogS die Vorgabe des Katalogs für den Messkanal, {@code null} ohne eine
+     */
+    static Kadenzkette kadenzkette(Connection con, UUID tenant, UUID entity, String kanal, Integer katalogS,
+            Instant von, Instant bis) throws SQLException {
+        List<KadenzRegeln.Fassung> fassungen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT k.id::text, k.erwartet_s, greatest(q.gueltig_ab, k.gueltig_ab),
+                       least(q.gueltig_bis, k.gueltig_bis)
+                  FROM messstelle_quelle q
+                  JOIN quelle_kadenz k ON k.messstelle_quelle_id = q.id AND k.tenant_id = q.tenant_id
+                 WHERE q.tenant_id = ? AND q.entity_id = ? AND q.kanal = ?
+                   AND q.gueltig_ab < ? AND (q.gueltig_bis IS NULL OR q.gueltig_bis > ?)
+                   AND k.gueltig_ab < ? AND (k.gueltig_bis IS NULL OR k.gueltig_bis > ?)
+                """)) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            for (int p = 4; p <= 7; p += 2) {
+                ps.setTimestamp(p, Timestamp.from(bis));
+                ps.setTimestamp(p + 1, Timestamp.from(von));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Instant ab = zeit(rs, 3);
+                    Instant endet = zeit(rs, 4);
+                    // LEAST übergeht NULL: offen ist nur, was Bindung UND Fassung offen lassen.
+                    if (endet == null || endet.isAfter(ab)) {
+                        fassungen.add(new KadenzRegeln.Fassung(rs.getString(1), rs.getInt(2), ab, endet));
+                    }
+                }
+            }
+        }
+        Integer auswahlS = null;
+        try (PreparedStatement ps = con.prepareStatement("SELECT min(cadence_s) FROM device_measurement_selection"
+                + " WHERE tenant_id = ? AND entity_id = ? AND point_key = ?")) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    auswahlS = (Integer) rs.getObject(1);
+                }
+            }
+        }
+        return new Kadenzkette(List.copyOf(fassungen), auswahlS, katalogS);
+    }
+
+    /**
+     * §4.5 ZUR MESSZEIT — die erwarteten Werte von {@code [von, bis)} aus den gespeicherten Viertelstunden
+     * und der Kadenz-Kette, nie aus der Zahl der vorhandenen Zeilen. Die Zeit wird an jedem Kadenz-Wechsel
+     * geteilt (geprüft je Viertelstunden-Beginn — dort nimmt auch der Viertelstunden-Lauf seine Kadenz), und
+     * je Stück gilt {@link VerbrauchRegeln#erwartetAusTeilperioden} mit der Kadenz DIESES Stücks: eine
+     * Viertelstunde mit Zeile zählt mit ihrer gespeicherten Erwartung, eine ohne mit {@code Länge ÷ Kadenz}
+     * zu ihrer Zeit. Ohne Wechsel ist es genau ein Aufruf der Regel.
+     *
+     * @param innen die Viertelstunden IN {@code [von, bis)}; {@code von} und {@code bis} liegen im
+     *     Viertelstunden-Raster
+     */
+    static int erwartet(List<Teilperiode> innen, Instant von, Instant bis, Kadenzkette kette) {
+        int summe = 0;
+        Instant stueck = von;
+        Duration kadenz = kette.am(von);
+        for (Instant q = von.plus(VIERTELSTUNDE); q.isBefore(bis); q = q.plus(VIERTELSTUNDE)) {
+            Duration hier = kette.am(q);
+            if (!hier.equals(kadenz)) {
+                summe += erwartetIm(innen, stueck, q, kadenz);
+                stueck = q;
+                kadenz = hier;
+            }
+        }
+        return summe + erwartetIm(innen, stueck, bis, kadenz);
+    }
+
+    private static int erwartetIm(List<Teilperiode> innen, Instant von, Instant bis, Duration kadenz) {
+        return VerbrauchRegeln.erwartetAusTeilperioden(
+                innen.stream().filter(t -> !t.von().isBefore(von) && !t.bis().isAfter(bis)).toList(),
+                von, bis, kadenz);
+    }
 
     /**
      * Die Schritte eines Rasters aus EINEM Lesezug (Lesepfad, AP-07 IP-14): je Beginn genau das, was
@@ -364,6 +476,7 @@ final class ViertelstundenTeile {
         for (Instant von : reihenfolge) {
             Instant bis = von.plus(raster);
             List<Teilperiode> teile = new ArrayList<>();
+            List<Teilperiode> innen = new ArrayList<>();
             List<Werteteil> werteteile = new ArrayList<>();
             Gelesen davor = null;
             Gelesen danach = null;
@@ -381,6 +494,7 @@ final class ViertelstundenTeile {
                     teile.add(z.teil());
                     werteteile.add(z.werteteil());
                     if (z.beginn().isBefore(bis)) {
+                        innen.add(z.teil());
                         kadenzS = z.kadenzS();
                         wertart = z.wertart() != null ? z.wertart() : wertart;
                     }
@@ -404,7 +518,7 @@ final class ViertelstundenTeile {
                     List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(imSchritt, deklaration));
             aus.add(new Schritt(von, bis, wertart,
                     zaehlerstand(reihe, teile, fuerRegel, deklaration, wertart, kadenzS, von, bis),
-                    werte(werteteile, wertart, kadenzS, von, bis)));
+                    werte(werteteile, wertart, kadenzS, von, bis), List.copyOf(innen)));
         }
         return aus;
     }

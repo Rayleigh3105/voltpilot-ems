@@ -52,8 +52,9 @@ import org.springframework.web.server.ResponseStatusException;
  *       Jahr aus {@code messreihe_periode} — Tag, Monat und Jahr also aus den PERIODENSTÄNDEN, nie
  *       als Summe der Viertelstunden (F8: 2 304 kWh, die Summe wäre 1 966,4).</li>
  *   <li>Die Stunde ist keine Speicherklasse: sie ist je Schritt der freie Zeitraum der Regel
- *       ({@code ZeitraumMenge.raster} über den Lesepfad), ihre Abdeckung die Summe „erhalten ÷
- *       erwartet“ ihrer vier Viertelstunden (§4.5), vorläufig/endgültig {@link TagRegeln#zustand}.</li>
+ *       ({@code ZeitraumMenge.raster} über den Lesepfad), mit ihrer Abdeckung aus Zeitraum und
+ *       Kadenz zur Messzeit (§4.5, eine fehlende Viertelstunde zählt mit), vorläufig/endgültig
+ *       {@link TagRegeln#zustand}.</li>
  *   <li>Eine Periode OHNE Zeile hat „keine Werte“ — mit 0 erhaltenen von so vielen erwarteten Werten,
  *       wie die Kadenz-Kette zu ihrem Beginn sagt ({@link KadenzRegeln#wirksam}), nie 0 kWh. Liegen
  *       darunter aber Rohwerte oder Viertelstunden, ist sie nur noch nicht gebildet und sagt das.</li>
@@ -228,15 +229,14 @@ public class MessstelleWerteService {
     }
 
     /**
-     * Die Stunde: Menge, Zustand und Kennzeichen aus der Regel über ihre Viertelstunden (der Lesepfad
-     * bildet sie je Schritt), die Abdeckung als Summe ihrer vier Viertelstunden — eine fehlende zählt
-     * mit so vielen erwarteten Werten, wie die Kadenz-Kette sagt —, vorläufig/endgültig nach
-     * {@link TagRegeln#zustand} mit der Frist des Stunden-Endes.
+     * Die Stunde: Menge, Zustand, Kennzeichen UND Abdeckung aus dem Lesepfad (er bildet sie je Schritt aus
+     * Zeitraum und Kadenz zur Messzeit — eine fehlende Viertelstunde zählt mit ihrer Erwartung, F8 17:00:
+     * 29 von 60). Die Viertelstunden liest diese Route nur noch für das, was die Stundenzeile nicht sagt:
+     * ob eine davon erst Rohwerte hat (noch nicht gebildet), ob alle dieselbe Version tragen, und
+     * vorläufig/endgültig nach {@link TagRegeln#zustand} mit der Frist des Stunden-Endes.
      */
     private MessstelleWerteDto.Wert stunde(Rahmen r, Schritt s, Bindung b, Zeile zeile, Gelesen g, Zeitraum z,
             Integer version, Instant jetzt, List<MessstelleWerteDto.Ereignis> ereignisse) {
-        int erhalten = 0;
-        int erwartet = 0;
         int vorhanden = 0;
         int endgueltig = 0;
         Set<Integer> versionen = new HashSet<>();
@@ -249,13 +249,10 @@ public class MessstelleWerteService {
                         null, null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse);
             }
             if (v == null) {
-                erwartet += erwartetOhneZeile(b, g, q, q.plusSeconds(900));
                 continue;
             }
             vorhanden++;
             endgueltig += ViertelstundeRegeln.ENDGUELTIG.equals(v.zustand()) ? 1 : 0;
-            erhalten += v.erhalten() == null ? 0 : v.erhalten();
-            erwartet += v.erwartet() == null ? 0 : v.erwartet();
             versionen.add(v.version());
         }
         if (version != null && !(versionen.size() == 1 && versionen.contains(version))) {
@@ -265,15 +262,15 @@ public class MessstelleWerteService {
         Instant endgueltigAb = TagRegeln.endgueltigAb(s.bis());
         if (zeile.mengeZustand() == null) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
-                    null, null, null, null, null, List.of(), erhalten, erwartet,
-                    SpeicherklasseHistorie.abdeckung(erhalten, erwartet), fassung, iso(endgueltigAb, z.zone()),
+                    null, null, null, null, null, List.of(), zeile.erhalten(), zeile.erwartet(),
+                    zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
                     versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(),
                     OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse);
         }
         Zahlen n = zahlen(b, zeile);
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
-                n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile), erhalten, erwartet,
-                SpeicherklasseHistorie.abdeckung(erhalten, erwartet), fassung, iso(endgueltigAb, z.zone()),
+                n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile), zeile.erhalten(),
+                zeile.erwartet(), zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
                 versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(), null, ereignisse);
     }
 

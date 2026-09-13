@@ -58,6 +58,17 @@ public class ZeitraumMenge {
     }
 
     /**
+     * Die Kadenz-Kette der Reihe über {@code [von, bis)} — für die Erwartung ZUR MESSZEIT
+     * ({@link ViertelstundenTeile#erwartet}), nie die Kadenz der jüngsten Viertelstunde für den ganzen Zeitraum.
+     */
+    private ViertelstundenTeile.Kadenzkette kadenzkette(Connection con, UUID tenantId, UUID entityId,
+            String messkanal, Instant von, Instant bis) throws SQLException {
+        MeasurementCatalog.Point p = katalog.resolve(messkanal);
+        return ViertelstundenTeile.kadenzkette(con, tenantId, entityId, messkanal,
+                p == null ? null : p.defaultCadenceS(), von, bis);
+    }
+
+    /**
      * Die Antwort für einen Zeitraum.
      *
      * @param menge die Menge samt Periodenständen — {@code null}, wenn die Reihe kein Zählerstand ist
@@ -84,9 +95,8 @@ public class ZeitraumMenge {
             Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe(con, tenantId, entityId, messkanal, von),
                     v.teile(), v.ereignisse(), v.deklaration(), v.wertart(), v.kadenzS(), von, bis);
             int erhalten = v.innen(von, bis).stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
-            int erwartet = v.kadenzS() == null ? 0
-                    : VerbrauchRegeln.erwartetAusTeilperioden(v.innen(von, bis), von, bis,
-                            Duration.ofSeconds(v.kadenzS()));
+            int erwartet = ViertelstundenTeile.erwartet(v.innen(von, bis), von, bis,
+                    kadenzkette(con, tenantId, entityId, messkanal, von, bis));
             Integer abdeckung = erwartet == 0 ? null : Math.min(100, (int) (100L * erhalten / erwartet));
             String zustand = TagRegeln.zustand(v.vorhanden(), v.endgueltig(), TagRegeln.endgueltigAb(bis), jetzt);
             return new Zeitraum(von, bis, VerbrauchRegeln.stunden(von, bis), v.wertart(), v.kadenzS(), menge,
@@ -104,9 +114,13 @@ public class ZeitraumMenge {
      * @param kennzeichen die Kennzeichen der Regel, Wortlaut und Reihenfolge wie im Vertrag
      * @param energie Momentanwert mit Integration: die Energie UNGERUNDET wie in der Spalte
      *     {@code energie}; sie steht nur, wenn {@code kennzeichen} „aus Leistung integriert" trägt
+     * @param erhalten die guten Werte seiner Viertelstunden
+     * @param erwartet die Erwartung des SCHRITTS zur Messzeit ({@link ViertelstundenTeile#erwartet}): eine
+     *     Viertelstunde ohne Zeile zählt mit {@code Länge ÷ Kadenz zu ihrer Zeit} — nie die Summe über die
+     *     vorhandenen Zeilen (F8 17:00: 29 von 60, nicht 29 von 30)
      */
     public record Schritt(Instant von, Instant bis, String wertart, BigDecimal menge, String mengeZustand,
-            List<String> kennzeichen, BigDecimal energie) {}
+            List<String> kennzeichen, BigDecimal energie, int erhalten, int erwartet) {}
 
     /**
      * Die Schritte eines Rasters — je Beginn dieselbe Regel wie {@link #zeitraum} über
@@ -114,6 +128,10 @@ public class ZeitraumMenge {
      * gemessenen Zuwachs über jede Lücke im Schritt (eine Viertelstunde ohne Rohwert hat keine Zeile)
      * und wäre schon ohne Lücke eine Summe gerundeter Teilmengen. Für Momentanwerte dieselbe Regel wie
      * am Tag ({@link VerbrauchRegeln#momentanwertAusTeilperioden}).
+     *
+     * <p>{@code erhalten} und {@code erwartet} sind ein ERGEBNIS des Schritts und reisen mit ihm nach oben —
+     * für jede Wertart, auch ohne Mengenregel (Zustand, Text). Sie gehören nicht in {@link ReihenKontext}: der
+     * trägt, was über die Reihe VOR der Rechnung feststeht, nicht was sie ergibt.
      *
      * <p>Über die App-Verbindung hinter RLS: eine fremde Reihe liefert keinen Schritt.
      *
@@ -134,17 +152,26 @@ public class ZeitraumMenge {
             if (beginne.isEmpty()) {
                 return aus;
             }
-            ReihenKontext reihe = reihe(con, tenantId, entityId, messkanal, Collections.min(beginne));
+            Instant erster = Collections.min(beginne);
+            ReihenKontext reihe = reihe(con, tenantId, entityId, messkanal, erster);
+            ViertelstundenTeile.Kadenzkette kette = kadenzkette(con, tenantId, entityId, messkanal, erster,
+                    Collections.max(beginne).plusSeconds(rasterS));
             for (ViertelstundenTeile.Schritt s : ViertelstundenTeile.schritte(con, reihe, tenantId, entityId,
                     messkanal, beginne, Duration.ofSeconds(rasterS))) {
+                int erhalten = s.innen().stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
+                int erwartet = ViertelstundenTeile.erwartet(s.innen(), s.von(), s.bis(), kette);
                 if (s.menge() != null) {
                     VerbrauchRegeln.Ergebnis e = s.menge().ergebnis();
                     aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), e.menge(), e.zustand(),
-                            e.kennzeichen(), null));
+                            e.kennzeichen(), null, erhalten, erwartet));
                 } else if (s.werte() != null) {
                     VerbrauchRegeln.Ergebnis e = s.werte().teil().ergebnis();
                     aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), null, e.zustand(), e.kennzeichen(),
-                            s.werte().energie()));
+                            s.werte().energie(), erhalten, erwartet));
+                } else if (!s.innen().isEmpty()) {
+                    // Eine Wertart ohne Mengenregel (Zustand, Text): keine Menge, aber dieselbe Abdeckung.
+                    aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), null, null, List.of(), null,
+                            erhalten, erwartet));
                 }
             }
             return aus;

@@ -42,6 +42,9 @@ import org.springframework.stereotype.Component;
  * Viertelstunden: die Summe verlöre den gemessenen Zuwachs über jede Lücke im Schritt (eine
  * Viertelstunde ohne Rohwert hat gar keine Zeile) und wäre schon ohne Lücke eine Summe gerundeter
  * Teilmengen. Ein Tag, der vor IP-5 gebildet wurde, hat keine Menge und bleibt ohne Kurvenwert.
+ * Dasselbe gilt für die ABDECKUNG daneben: {@code erwartet} des Schritts kommt aus seinem Zeitraum
+ * und der Kadenz zur Messzeit, nie aus den vorhandenen Zeilen — sonst sähe eine Stunde, der die
+ * halbe Zeit fehlt, fast vollständig aus.
  *
  * <p><b>Die Energie aus Leistung</b> (AP-08 IP-3) reist nur MIT ihrem Kennzeichen „aus Leistung
  * integriert" ({@link MeasurementHistoryService.EnergieAusLeistung}) — sie ist interpoliert und darf
@@ -133,6 +136,7 @@ public class SpeicherklasseHistorie {
                 + "last(letzter_wert,intervall_beginn) last_numeric,"
                 + "last(letzter_text,intervall_beginn) last_text,"
                 + "sum(erhalten)::bigint samples,bool_or(erhalten<erwartet) has_gap,"
+                // Nur im Viertelstunden-Raster wahr: gröber zählt die Zeit OHNE Zeile mit (ausDemZeitraum).
                 + "sum(erhalten)::int h_erhalten,sum(erwartet)::int h_erwartet,"
                 + "sum(n_good)::int h_good,sum(n_uncertain)::int h_uncertain,"
                 + "sum(n_invalid)::int h_invalid,sum(n_stale)::int h_stale,"
@@ -166,17 +170,17 @@ public class SpeicherklasseHistorie {
 
     /**
      * Das grobe Raster: Menge bzw. Energie mit Zustand und Kennzeichen je Schritt aus der Regel des
-     * Vertrags ({@link ZeitraumMenge#raster}) — alles andere der Zeile (Mittel, Min/Max, Abdeckung,
-     * Qualität, Anker) bleibt, wie die Viertelstunden es tragen.
+     * Vertrags ({@link ZeitraumMenge#raster}), dazu für JEDE Wertart die Abdeckung des Schritts aus
+     * seinem Zeitraum und der Kadenz zur Messzeit — eine Viertelstunde ohne Zeile zählt mit ihrer
+     * Erwartung (F8 17:00: 29 von 60 = 48 %, nie 29 von 30 = 96 %). Alles andere der Zeile (Mittel,
+     * Min/Max, Qualität, Anker) bleibt, wie die Viertelstunden es tragen.
      */
     private List<Zeile> ausDemZeitraum(UUID tenantId, UUID entityId, int rasterS,
             List<Map.Entry<Zeile, List<String>>> gelesen) {
         Map<String, List<Instant>> beginneJeKanal = new LinkedHashMap<>();
         for (Map.Entry<Zeile, List<String>> g : gelesen) {
-            if ("counter".equals(g.getKey().wertart()) || "gauge".equals(g.getKey().wertart())) {
-                g.getValue().forEach(k -> beginneJeKanal.computeIfAbsent(k, x -> new ArrayList<>())
-                        .add(g.getKey().zeit()));
-            }
+            g.getValue().forEach(k -> beginneJeKanal.computeIfAbsent(k, x -> new ArrayList<>())
+                    .add(g.getKey().zeit()));
         }
         Map<String, Map<Instant, ZeitraumMenge.Schritt>> schritte = new LinkedHashMap<>();
         beginneJeKanal.forEach((kanal, beginne) ->
@@ -184,13 +188,18 @@ public class SpeicherklasseHistorie {
 
         List<Zeile> out = new ArrayList<>();
         for (Map.Entry<Zeile, List<String>> g : gelesen) {
-            Zeile z = g.getKey();
+            List<ZeitraumMenge.Schritt> jeKanal = g.getValue().stream()
+                    .map(k -> schritte.get(k).get(g.getKey().zeit())).toList();
+            // Ein Platzhalter über mehrere Kanäle erwartet, was jeder Kanal erwartet; fehlt einem der
+            // Schritt, ist die Abdeckung unbekannt — nie die der übrigen.
+            boolean alle = jeKanal.stream().allMatch(s -> s != null);
+            Zeile z = g.getKey().mitAbdeckung(
+                    alle ? jeKanal.stream().mapToInt(ZeitraumMenge.Schritt::erhalten).sum() : null,
+                    alle ? jeKanal.stream().mapToInt(ZeitraumMenge.Schritt::erwartet).sum() : null);
             if (!"counter".equals(z.wertart()) && !"gauge".equals(z.wertart())) {
                 out.add(z);
                 continue;
             }
-            List<ZeitraumMenge.Schritt> jeKanal = g.getValue().stream()
-                    .map(k -> schritte.get(k).get(z.zeit())).toList();
             BigDecimal wert = z.wert();
             if ("counter".equals(z.wertart())) {
                 wert = jeKanal.stream().anyMatch(s -> s == null || s.menge() == null) ? null
@@ -499,6 +508,20 @@ public class SpeicherklasseHistorie {
                     letzteEingangszeit, geraetEinbau, geraetEinbauZwei, box, boxZwei, fassung,
                     katalogVersion, rolle, standAnfang, standEnde, neuerZustand, neueKennzeichen,
                     neueEnergie);
+        }
+
+        /**
+         * Dieselbe Zeile mit erhalten/erwartet des Schritts ({@link ZeitraumMenge.Schritt}) und der daraus
+         * gebildeten Abdeckung; {@code null} = unbekannt. Eine Lücke, die schon eine Viertelstunde meldete,
+         * bleibt eine — dazu kommt die Zeit ohne Zeile.
+         */
+        Zeile mitAbdeckung(Integer neuErhalten, Integer neuErwartet) {
+            boolean neueLuecke = luecke || (neuErhalten != null && neuErwartet != null && neuErhalten < neuErwartet);
+            return new Zeile(zeit, wert, minimum, maximum, text, anzahl, neueLuecke, quelle, wertart,
+                    abdeckung(neuErhalten, neuErwartet), neuErhalten, neuErwartet, nGood, nUncertain, nInvalid,
+                    nStale, nDeviceError, zustand, endgueltigAb, version, nachgeliefert, zustellart,
+                    letzteEingangszeit, geraetEinbau, geraetEinbauZwei, box, boxZwei, fassung,
+                    katalogVersion, rolle, standAnfang, standEnde, mengeZustand, kennzeichen, energie);
         }
     }
 
