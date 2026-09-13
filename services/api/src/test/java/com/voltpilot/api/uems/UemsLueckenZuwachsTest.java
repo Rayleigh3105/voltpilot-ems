@@ -84,7 +84,8 @@ class UemsLueckenZuwachsTest {
     private static final String LUECKE_F8 = "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar";
     private static final String LUECKE_F20 = "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
     private static final String LUECKE_MG = "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
-    private static final String LUECKE_SZ = "Lücke 01:30–02:30: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
+    // Die zweite 02:30 des Tages — ohne MEZ wäre sie von der ersten nicht zu unterscheiden (E10).
+    private static final String LUECKE_SZ = "Lücke 01:30–02:30 MEZ: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

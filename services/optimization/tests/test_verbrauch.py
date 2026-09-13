@@ -644,3 +644,36 @@ def test_der_kleinste_ganz_enthaltende_zeitraum(zuordnung: dict):
             verbrauch._dez(reihe.get("faktor", 1)),
         )
         assert [(l.messzeit_vor, l.messzeit_nach) for l in alle] == [(vor, nach)]
+
+
+# ---------------------------------------------- die alten Kundensätze (PR 721, ergebnis-zustand 1.1)
+
+
+def test_der_alte_dativ_wird_nie_mehr_gesprochen():
+    """Befund Dativ: nach „mit“ steht „Ableseständen“ — die Form bis Fassung 1.0 spricht kein Zwilling mehr."""
+    t = datetime(2026, 11, 19, 9, 45, tzinfo=timezone.utc)
+    werte = [
+        verbrauch.Rohwert(t - timedelta(seconds=60), Decimal("100")),
+        verbrauch.Rohwert(t, Decimal("3")),
+    ]
+    grenze = {"art": "device_boundary", "t": "2026-11-19T10:45:00+01:00", "endstand": "100.5", "anfangsstand": "2.5"}
+    ergebnis = verbrauch.menge_zaehlerstand(werte, t - timedelta(seconds=60), t, timedelta(seconds=60), [grenze])
+    assert ergebnis["kennzeichen"] == ["Gerätegrenze 10:45 mit Ableseständen"]
+    assert "Gerätegrenze 10:45 mit Ablesestände" not in ergebnis["kennzeichen"]
+
+
+def test_eine_ruecksetzung_in_der_doppelten_stunde_ist_eindeutig():
+    """Befund Sommerzeit: am 25.10.2026 gibt es 02:30 zweimal — die zweite heißt „02:30 MEZ“, nie „02:30“."""
+    zweite = datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    werte = [
+        verbrauch.Rohwert(zweite - minute, Decimal("101")),
+        verbrauch.Rohwert(zweite, Decimal("5")),
+        verbrauch.Rohwert(zweite + minute, Decimal("6")),
+    ]
+    ergebnis = verbrauch.menge_zaehlerstand(werte, zweite - minute, zweite + minute, minute)
+    assert "Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt" in ergebnis["kennzeichen"]
+    assert "Rücksetzung 02:30 ohne Endstand — bis zu 1 Kadenz nicht gezählt" not in ergebnis["kennzeichen"]
+    assert verbrauch._uhr(zweite - timedelta(hours=1)) == "02:30 MESZ"
+    assert verbrauch._uhr(datetime(2026, 10, 25, 2, 0, tzinfo=timezone.utc)) == "03:00"
+    assert verbrauch._uhr(datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc), "Europe/London") == "01:30 UTC+01:00"

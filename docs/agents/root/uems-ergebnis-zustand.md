@@ -19,8 +19,9 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   `zustand` vorläufig/endgültig der Speicherklassen.
 - **Die Kennzeichen-Liste ist die Inventur** aller Sätze, die `VerbrauchRegeln` ⟷ `verbrauch.py`
   heute sprechen: 17 Muster mit Platzhaltern, Wort, Rang, Fehlbestand. Ein Satz ist genau dann ein
-  Kennzeichen, wenn er auf genau EIN Muster passt — auch eine gut gemeinte Korrektur („mit
-  Ableseständen“) ist ein unbekannter Satz. Die übrigen Vokabular-Wörter (nachgeliefert,
+  Kennzeichen, wenn er auf genau EIN Muster passt — auch eine gut gemeinte Umformulierung ist ein
+  unbekannter Satz. Ein geänderter Wortlaut ist eine neue Fassung: der alte kommt nach
+  `fruehere_fassungen` (erkannt, nie mehr gesprochen), weil er schon gespeichert ist. Die übrigen Vokabular-Wörter (nachgeliefert,
   korrigiert (Version n), vorläufig/endgültig, Ablesezeitraum, mit Ersatzwert (Methode …)) sind
   `kennzeichen_vorgesehen`: ihren Wortlaut legt das erzeugende Paket fest.
 - **Die Reihenfolge ist Vertrag:** der Rang steigt nie (Anteil 10 → Rand 20–22 → Strecke 30 →
@@ -41,7 +42,10 @@ mit `ergebnis-zustand-vectors.json` und Schema.
    Offset; die fehlende Stunde erscheint nicht; `von` ist ISO-8601 mit Offset (Export).
    `tagesdauer` sagt „25 Stunden (Zeitumstellung)“ / „23 Stunden (Zeitumstellung)“ — die
    Stundenzahl kommt aus `BezugsPeriode.stundenDesTages` → `VerbrauchRegeln.stunden`, nie neu
-   gezählt. Die letzte Stunde heißt „23:00–00:00“ (keine 24:00-Sonderregel).
+   gezählt. Die letzte Stunde heißt „23:00–00:00“ (keine 24:00-Sonderregel). Die Uhrzeit IN einem
+   Kennzeichen spricht `ErgebnisZustand.uhr(zeit, zone)` ⟷ `uemsErgebnis.uhr` ⟷ `verbrauch._uhr`
+   mit derselben Regel („Rücksetzung 02:30 MEZ …“) — ⚠ die Zone ist dort noch die FESTE
+   `VerbrauchRegeln.ANZEIGE_ZEITZONE`, nicht die des Standorts.
 3. **Sprechen prüft keine Werte.** Die Sprech-Funktionen liegen im Rechenweg der Verdichtung; ein
    ungewöhnlicher Wert (`Wertebereich 65536.000`) wird gesprochen, nie mit einer Ausnahme
    bezahlt. Ob jeder Satz passt, beweisen die Vektor-Tests. `satz(ergebnis)` dagegen spricht nur
@@ -54,9 +58,9 @@ mit `ergebnis-zustand-vectors.json` und Schema.
 
 ## Befunde (benannt, nicht umformuliert)
 
-Block `befunde` der Vektor-Datei: „Zuwachs 337.600“ (Punkt, ohne Einheit — liest sich als 337 600),
-„mit Ablesestände“ (Dativ), „Rechteck-Halten ≤ 2 × Kadenz“ (Methodenwort; der DB-CHECK prüft nur
-den Anfang), sechs Satzformen ohne Vokabular-Wort, Kennzeichen-Uhrzeiten fest in Europe/Berlin
-ohne MESZ/MEZ, `BilanzAbleitung.zahlDe` mit Leerzeichen-Tausendern, F17 „1 240 m³“ gegen E11
+Block `befunde` der Vektor-Datei: „Zuwachs 337.600“ (Punkt, ohne Einheit — liest sich als 337 600;
+die Einheit kennt die Verdichtung von Tag/Monat/Jahr nicht), „Rechteck-Halten ≤ 2 × Kadenz“ (Methodenwort; der DB-CHECK prüft nur
+den Anfang), sechs Satzformen ohne Vokabular-Wort, Kennzeichen-Uhrzeiten fest in Europe/Berlin (MESZ/MEZ seit 1.1), `BilanzAbleitung.zahlDe` mit Leerzeichen-Tausendern, F17 „1 240 m³“ gegen E11
 „m³ 1 Nachkommastelle“, E10 „23 Stunden“ gelesen wie F14. Eine Umformulierung ist eine neue
-Fassung von `verbrauch-vectors.json` (+ Python-Zwilling, gespeicherte Zeilen) — nicht still.
+Fassung beider Vektor-Dateien (+ Python-Zwilling, `fruehere_fassungen` für gespeicherte Zeilen) — nicht still.
+„mit Ablesestände“ (Dativ) ist so in 1.1 erledigt.

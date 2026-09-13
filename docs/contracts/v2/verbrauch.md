@@ -67,7 +67,7 @@ Die vier Brüche und ihre Kennzeichen (AP-08 IP-4 verdrahtet sie in der Strecke)
 
 | Bruch | Woran erkannt | Mit der Angabe | Ohne die Angabe |
 |---|---|---|---|
-| Gerätegrenze (Z4) | `device_boundary` in `(vorher, nachher]` | Ablesestände: `(Endstand − vorher) + (nachher − Anfangsstand)`, „Gerätegrenze HH:MM mit Ablesestände“ | Beitrag 0, unvollständig: „Gerätegrenze HH:MM ohne Ablesestände“ + „Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)“ |
+| Gerätegrenze (Z4) | `device_boundary` in `(vorher, nachher]` | Ablesestände: `(Endstand − vorher) + (nachher − Anfangsstand)`, „Gerätegrenze HH:MM mit Ableseständen“ | Beitrag 0, unvollständig: „Gerätegrenze HH:MM ohne Ablesestände“ + „Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)“ |
 | Rücksetzung (Z5) | Stand fällt, kein Überlauf | nachgetragener Endstand macht sie zur Gerätegrenze (E3, F12) | Beitrag 0, unvollständig: „Rücksetzung HH:MM ohne Endstand — bis zu 1 Kadenz nicht gezählt“ |
 | Überlauf (Z6) | Stand fällt UND `ueberlauf(...)` antwortet | Wertebereich + Höchstzuwachs: `Modul − vorher + nachher`, lückenlos, „Überlauf HH:MM (Wertebereich M)“ | keine Deklaration → kein Überlauf, sondern die Rücksetzung (E4) |
 | Neustart (Z7) | `device_restart` in `(von, bis]` | „Neustart HH:MM: bis zu n s Zählung möglicherweise verloren“ mit dem deklarierten `n` | dasselbe mit `n = 255` (AP-05); die Zahl wird nie hochgerechnet |
@@ -124,7 +124,10 @@ entsteht erst mit AP-08 IP-13; bis dahin kommt es in keinem Fall vor.
 in der die Regel es feststellt**: erst die nicht gemessenen Ränder, dann je Nachbarschaft der
 Wertfolge Gerätegrenze, Überlauf, Rücksetzung oder Lücke, zuletzt die Neustarts. Text und
 Reihenfolge sind Teil des Vertrags; beide Zwillinge werden exakt darauf geprüft. Die
-Kundensätze daraus baut AP-08 IP-8, nicht dieser Vertrag.
+Kundensätze daraus baut AP-08 IP-8, nicht dieser Vertrag. Den Wortlaut jedes Satzes hält
+[`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json); dort stehen auch die
+gespeicherten Wortlaute früherer Fassungen („mit Ablesestände“ bis 1.0). Eine Uhrzeit `HH:MM`
+trägt an der doppelten Stunde des Sommerzeit-Endes den Zusatz MESZ/MEZ („Rücksetzung 02:30 MEZ …“).
 
 Gerechnet wird **ungerundet**; verglichen wird auf drei Nachkommastellen
 (`regeln.vergleich_nachkommastellen`). Gerundet wird erst bei Anzeige und Export (E11).

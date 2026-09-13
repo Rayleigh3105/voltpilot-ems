@@ -47,7 +47,7 @@ export const ZUSTAENDE: Zustand[] = [
 
 /** Je Platzhalter-Art der Ausdruck, der den eingesetzten Text erkennt (ohne fangende Gruppe). */
 export const PLATZHALTER: Record<string, string> = {
-  uhr: '(?:[01][0-9]|2[0-3]):[0-5][0-9]',
+  uhr: '(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?',
   text: '.+',
   ganzzahl: '(?:0|[1-9][0-9]*)',
   ganzzahl_ab_2: '(?:[2-9]|[1-9][0-9]+)',
@@ -91,7 +91,7 @@ export const KENNZEICHEN: Muster[] = [
   m('anfang_nicht_gemessen', 'Anfang nicht gemessen (kein Stand an der Periodengrenze)', {}, null, 20, true, true),
   m('ende_nicht_gemessen', 'Ende nicht gemessen (kein Stand an der Periodengrenze)', {}, null, 21, true, true),
   m('nur_ein_stand', 'nur ein Stand in der Periode — keine Menge bildbar', {}, null, 22, true, true),
-  m('geraetegrenze_mit', 'Gerätegrenze {uhr} mit Ablesestände', { uhr: 'uhr' }, 'Gerätegrenze', 30, false, false),
+  m('geraetegrenze_mit', 'Gerätegrenze {uhr} mit Ableseständen', { uhr: 'uhr' }, 'Gerätegrenze', 30, false, false),
   m('geraetegrenze_ohne', 'Gerätegrenze {uhr} ohne Ablesestände', { uhr: 'uhr' }, 'Gerätegrenze', 30, false, false,
     null, 'zuwachs_nicht_messbar'),
   m('zuwachs_nicht_messbar', 'Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)', {}, 'Gerätegrenze', 30,
@@ -116,6 +116,23 @@ export const KENNZEICHEN: Muster[] = [
     'aus Leistung integriert', 60, false, true),
 ];
 
+/**
+ * Ein Wortlaut, den eine frühere Fassung sprach und der gespeichert sein kann.
+ * Er wird als das Muster `schluessel` ERKANNT, aber nie mehr gesprochen.
+ */
+export type FruehereFassung = {
+  schluessel: string;
+  muster: string;
+  platzhalter: Record<string, string>;
+  /** Die letzte Fassung des Vertrags, die ihn sprach. */
+  bisFassung: string;
+};
+
+export const FRUEHERE_FASSUNGEN: FruehereFassung[] = [
+  // Falscher Dativ; in endgültigen Viertelstunden gespeichert und von Tag/Monat/Jahr übernommen.
+  { schluessel: 'geraetegrenze_mit', muster: 'Gerätegrenze {uhr} mit Ablesestände', platzhalter: { uhr: 'uhr' }, bisFassung: '1.0' },
+];
+
 export type Vorgesehen = { wort: string; anfang: string; wortlautMit: string };
 
 /** Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. */
@@ -132,19 +149,28 @@ const PLATZ = /\{([a-z_]+)\}/g;
 
 const woertlich = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const ERKENNER = KENNZEICHEN.map((k) => {
+const erkenner = (k: Muster, text: string, platzhalter: Record<string, string>, fruehereFassung: boolean) => {
   const namen: string[] = [];
   let ausdruck = '^';
   let stelle = 0;
-  for (const treffer of k.muster.matchAll(PLATZ)) {
-    ausdruck += woertlich(k.muster.slice(stelle, treffer.index));
+  for (const treffer of text.matchAll(PLATZ)) {
+    ausdruck += woertlich(text.slice(stelle, treffer.index));
     namen.push(treffer[1]);
-    ausdruck += `(${PLATZHALTER[k.platzhalter[treffer[1]]]})`;
+    ausdruck += `(${PLATZHALTER[platzhalter[treffer[1]]]})`;
     stelle = (treffer.index ?? 0) + treffer[0].length;
   }
-  ausdruck += `${woertlich(k.muster.slice(stelle))}$`;
-  return { muster: k, ausdruck: new RegExp(ausdruck, 'u'), namen };
-});
+  ausdruck += `${woertlich(text.slice(stelle))}$`;
+  return { muster: k, ausdruck: new RegExp(ausdruck, 'u'), namen, fruehereFassung };
+};
+
+const ERKENNER = [
+  ...KENNZEICHEN.map((k) => erkenner(k, k.muster, k.platzhalter, false)),
+  ...FRUEHERE_FASSUNGEN.map((f) => {
+    const k = KENNZEICHEN.find((x) => x.schluessel === f.schluessel);
+    if (!k) throw new Error(`frühere Fassung ohne Muster ${f.schluessel}`);
+    return erkenner(k, f.muster, f.platzhalter, true);
+  }),
+];
 
 /** Das Muster zu einem Schlüssel; ein unbekannter Schlüssel ist ein Programmfehler. */
 export const muster = (schluessel: string): Muster => {
@@ -169,7 +195,8 @@ export const anfang = (schluessel: string): string => {
   return platz < 0 ? text : text.slice(0, platz);
 };
 
-export type Erkannt = { muster: Muster; werte: Record<string, string> };
+/** `fruehereFassung`: der Satz trägt den Wortlaut einer früheren Fassung (gespeichert, nie mehr gesprochen). */
+export type Erkannt = { muster: Muster; werte: Record<string, string>; fruehereFassung: boolean };
 
 /** Welches Muster ein Satz trägt, oder `null`. Zwei Treffer wären ein Fehler der LISTE. */
 export const erkenne = (satz: string): Erkannt | null => {
@@ -182,7 +209,7 @@ export const erkenne = (satz: string): Erkannt | null => {
     e.namen.forEach((name, i) => {
       werte[name] = treffer[i + 1];
     });
-    gefunden = { muster: e.muster, werte };
+    gefunden = { muster: e.muster, werte, fruehereFassung: e.fruehereFassung };
   }
   return gefunden;
 };
@@ -412,6 +439,23 @@ const zusatz = (normalzeit: number, offset: number): string => {
   if (normalzeit === 60 && (offset === 60 || offset === 120)) return offset === 60 ? 'MEZ' : 'MESZ';
   const abs = Math.abs(offset);
   return `UTC${offset < 0 ? '-' : '+'}${zwei(Math.floor(abs / 60))}:${zwei(abs % 60)}`;
+};
+
+/**
+ * E10 — die Uhrzeit IN einem Kennzeichen: Wanduhr `HH:MM` in `zone`. Gibt es
+ * diese Wanduhr an dem Tag zweimal (Sommerzeit-Ende), trägt sie denselben
+ * Zusatz wie `raster`: „02:30 MESZ“ bzw. „02:30 MEZ“, sonst den Offset.
+ */
+export const uhr = (zeit: number, zone: string): string => {
+  const offset = offsetMinuten(zeit, zone);
+  const wand = zeit + offset * 60000;
+  const text = wanduhr(wand);
+  // Zweimal gibt es die Wanduhr, wenn ein anderer Offset der Nachbarschaft sie ebenfalls trifft.
+  const doppelt = [offsetMinuten(zeit - 3 * 3600000, zone), offsetMinuten(zeit + 3 * 3600000, zone)]
+    .some((anderer) => anderer !== offset && offsetMinuten(wand - anderer * 60000, zone) === anderer);
+  if (!doppelt) return text;
+  const normalzeit = offsetMinuten(Date.UTC(new Date(wand).getUTCFullYear(), 0, 1), zone);
+  return `${text} ${zusatz(normalzeit, offset)}`;
 };
 
 /**

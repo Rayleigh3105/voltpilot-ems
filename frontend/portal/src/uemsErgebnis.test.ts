@@ -5,6 +5,7 @@ import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
 import {
   DEZIMAL,
   EBENEN,
+  FRUEHERE_FASSUNGEN,
   KENNZEICHEN,
   MINUS,
   OHNE_ZAHL,
@@ -27,6 +28,7 @@ import {
   satz,
   sprich,
   tagesdauer,
+  uhr,
   vorgesehen,
   zahl,
   type Ergebnis,
@@ -73,6 +75,14 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
         verlangtDanach: k.verlangt_danach,
       })),
     );
+    expect(FRUEHERE_FASSUNGEN).toEqual(
+      vektoren.fruehere_fassungen.map((f: Json) => ({
+        schluessel: f.schluessel,
+        muster: f.muster,
+        platzhalter: f.platzhalter,
+        bisFassung: f.bis_fassung,
+      })),
+    );
     expect(VORGESEHEN).toEqual(
       vektoren.kennzeichen_vorgesehen.map((w: Json) => ({ wort: w.wort, anfang: w.anfang, wortlautMit: w.wortlaut_mit })),
     );
@@ -95,13 +105,20 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
       expect(e?.muster.schluessel, k.beispiel).toBe(k.schluessel);
       expect(sprich(k.schluessel, e!.werte)).toBe(k.beispiel);
     }
+    for (const f of vektoren.fruehere_fassungen as Json[]) {
+      const e = erkenne(f.beispiel);
+      expect(e?.muster.schluessel, f.beispiel).toBe(f.schluessel);
+      expect(e?.fruehereFassung).toBe(true);
+      // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut.
+      expect(sprich(f.schluessel, e!.werte)).not.toBe(f.beispiel);
+    }
     expect(anfang('ruecksetzung')).toBe('Rücksetzung ');
     expect(() => sprich('neustart', { uhr: '10:22' })).toThrow();
   });
 
   it('jede Familie, jedes Zustandswort und jeder Verstoß ist abgedeckt', () => {
     expect(new Set(faelle.map((f) => f.familie))).toEqual(
-      new Set(['zahl', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'rundungsdifferenz']),
+      new Set(['zahl', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz']),
     );
     const gesprochen = faelle.filter((f) => f.familie === 'ergebnis' && f.erwartet.satz !== null).map((f) => f.eingang.zustand);
     for (const z of ZUSTAENDE) expect(gesprochen).toContain(z.wort);
@@ -126,7 +143,8 @@ describe('uemsErgebnis — jeder Satz der Verbrauchsregel steht in der Liste', (
 
   for (const { fall, e } of erwartungen) {
     it(`${fall.name} · ${e.name}`, () => {
-      for (const k of e.kennzeichen as string[]) expect(erkenne(k), k).not.toBeNull();
+      // Die Verbrauchsregel spricht nur den HEUTIGEN Wortlaut — nie den einer früheren Fassung.
+      for (const k of e.kennzeichen as string[]) expect(erkenne(k)?.fruehereFassung, k).toBe(false);
       const wert = e.menge ?? e.mittel ?? null;
       const ergebnis: Ergebnis = {
         wert: wert === null ? null : String(wert),
@@ -171,6 +189,7 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
           const e = erkenne(ein.satz);
           expect(e?.muster.schluessel ?? null).toBe(erw.schluessel);
           if (e) expect(e.werte).toEqual(erw.werte);
+          if (e) expect(e.fruehereFassung).toBe(erw.fruehere_fassung ?? false);
           expect(vorgesehen(ein.satz)).toBe(erw.vorgesehen);
           break;
         }
@@ -185,6 +204,10 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
           const ab = fall.ausschnitt_ab ?? 0;
           expect(felder.slice(ab, ab + erw.felder.length)).toEqual(erw.felder);
           if (fall.ausschnitt_ab === undefined) expect(erw.felder).toHaveLength(felder.length);
+          break;
+        }
+        case 'uhr': {
+          expect(uhr(Date.parse(ein.zeit), ein.zeitzone)).toBe(erw.text);
           break;
         }
         case 'rundungsdifferenz': {
@@ -214,5 +237,21 @@ describe('uemsErgebnis — was nur der TS-Zwilling braucht', () => {
 
   it('eine sehr kleine Zahl in Exponentschreibweise wird nicht falsch gelesen', () => {
     expect(zahl(1e-7, 'kWh', 'tag')).toBe(`0${VOR_EINHEIT}kWh`);
+  });
+});
+
+/** Die drei Befunde aus PR 721, gegen die ALTEN Wortlaute — damit sie nicht zurückkommen. */
+describe('uemsErgebnis — die alten Kundensätze kommen nicht zurück', () => {
+  it('Dativ: „mit Ablesestände“ wird nie mehr gesprochen', () => {
+    expect(sprich('geraetegrenze_mit', { uhr: '10:40' })).toBe('Gerätegrenze 10:40 mit Ableseständen');
+    expect(erkenne('Gerätegrenze 10:40 mit Ablesestände')?.fruehereFassung).toBe(true);
+  });
+
+  it('Sommerzeit: 02:30 am 25.10.2026 ist nie mehr ohne Zusatz', () => {
+    const erste = uhr(Date.parse('2026-10-25T00:30:00Z'), 'Europe/Berlin');
+    const zweite = uhr(Date.parse('2026-10-25T01:30:00Z'), 'Europe/Berlin');
+    expect(erste).not.toBe('02:30');
+    expect(zweite).not.toBe('02:30');
+    expect(erste).not.toBe(zweite);
   });
 });

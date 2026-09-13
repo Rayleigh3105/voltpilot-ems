@@ -695,9 +695,9 @@ public class ViertelstundeVerdichter {
         return aus;
     }
 
+    /** Die Uhrzeit eines Kennzeichens — mit MESZ/MEZ an der doppelten Stunde (E10). */
     private static String uhr(Instant t) {
-        return java.time.format.DateTimeFormatter.ofPattern("HH:mm")
-                .format(t.atZone(VerbrauchRegeln.ANZEIGE_ZEITZONE));
+        return ErgebnisZustand.uhr(t, VerbrauchRegeln.ANZEIGE_ZEITZONE);
     }
 
     /** Die Zählung je Art als jsonb-Text; eine Art ohne Ereignis steht gar nicht erst darin. */

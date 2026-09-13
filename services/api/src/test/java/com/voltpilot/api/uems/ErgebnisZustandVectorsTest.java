@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.ErgebnisZustand.Erkannt;
 import com.voltpilot.api.uems.ErgebnisZustand.Ergebnis;
 import com.voltpilot.api.uems.ErgebnisZustand.Feld;
+import com.voltpilot.api.uems.ErgebnisZustand.FruehereFassung;
 import com.voltpilot.api.uems.ErgebnisZustand.Muster;
 import com.voltpilot.api.uems.ErgebnisZustand.Rundungsdifferenz;
 import com.voltpilot.api.uems.ErgebnisZustand.Stellen;
@@ -16,6 +17,8 @@ import com.voltpilot.api.uems.ErgebnisZustand.Zustand;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -102,6 +105,15 @@ class ErgebnisZustandVectorsTest {
         });
         assertThat(ErgebnisZustand.KENNZEICHEN).containsExactlyElementsOf(muster);
 
+        List<FruehereFassung> frueher = new ArrayList<>();
+        v.path("fruehere_fassungen").forEach(f -> {
+            Map<String, String> arten = new LinkedHashMap<>();
+            f.path("platzhalter").fields().forEachRemaining(e -> arten.put(e.getKey(), e.getValue().asText()));
+            frueher.add(new FruehereFassung(f.path("schluessel").asText(), f.path("muster").asText(),
+                    Map.copyOf(arten), f.path("bis_fassung").asText()));
+        });
+        assertThat(ErgebnisZustand.FRUEHERE_FASSUNGEN).containsExactlyElementsOf(frueher);
+
         List<Vorgesehen> vorgesehen = new ArrayList<>();
         v.path("kennzeichen_vorgesehen").forEach(w -> vorgesehen.add(new Vorgesehen(
                 w.path("wort").asText(), w.path("anfang").asText(), w.path("wortlaut_mit").asText())));
@@ -144,7 +156,17 @@ class ErgebnisZustandVectorsTest {
             Erkannt e = ErgebnisZustand.erkenne(beispiel);
             assertThat(e).as(beispiel).isNotNull();
             assertThat(e.muster().schluessel()).isEqualTo(k.path("schluessel").asText());
+            assertThat(e.fruehereFassung()).isFalse();
             assertThat(ErgebnisZustand.sprich(e.muster().schluessel(), e.werte())).isEqualTo(beispiel);
+        }
+        for (JsonNode f : lies(VECTORS).path("fruehere_fassungen")) {
+            String beispiel = f.path("beispiel").asText();
+            Erkannt e = ErgebnisZustand.erkenne(beispiel);
+            assertThat(e).as(beispiel).isNotNull();
+            assertThat(e.muster().schluessel()).isEqualTo(f.path("schluessel").asText());
+            assertThat(e.fruehereFassung()).isTrue();
+            // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut.
+            assertThat(ErgebnisZustand.sprich(e.muster().schluessel(), e.werte())).isNotEqualTo(beispiel);
         }
     }
 
@@ -167,6 +189,8 @@ class ErgebnisZustandVectorsTest {
                     List<String> kennzeichen = texte(erw.path("kennzeichen"));
                     for (String k : kennzeichen) {
                         assertThat(ErgebnisZustand.erkenne(k)).as(k).isNotNull();
+                        // Die Verbrauchsregel spricht nur den HEUTIGEN Wortlaut.
+                        assertThat(ErgebnisZustand.erkenne(k).fruehereFassung()).as(k).isFalse();
                     }
                     Ergebnis e = new Ergebnis(wert, "kWh", "viertelstunde", erw.path("zustand").asText(), null,
                             kennzeichen);
@@ -231,6 +255,7 @@ class ErgebnisZustandVectorsTest {
                     Map<String, String> werte = new LinkedHashMap<>();
                     erw.path("werte").fields().forEachRemaining(x -> werte.put(x.getKey(), x.getValue().asText()));
                     assertThat(e.werte()).isEqualTo(werte);
+                    assertThat(e.fruehereFassung()).isEqualTo(erw.path("fruehere_fassung").asBoolean(false));
                 }
                 assertThat(ErgebnisZustand.vorgesehen(satz)).isEqualTo(erw.path("vorgesehen").asBoolean());
             }
@@ -255,6 +280,9 @@ class ErgebnisZustandVectorsTest {
                     assertThat(erwartet).hasSize(felder.size());
                 }
             }
+            case "uhr" -> assertThat(ErgebnisZustand.uhr(
+                            VerbrauchRegeln.zeit(ein.path("zeit").asText()), ZoneId.of(ein.path("zeitzone").asText())))
+                    .isEqualTo(erw.path("text").asText());
             case "rundungsdifferenz" -> {
                 List<BigDecimal> teile = new ArrayList<>();
                 ein.path("teile").forEach(t -> teile.add(new BigDecimal(t.asText())));
@@ -283,7 +311,7 @@ class ErgebnisZustandVectorsTest {
                 gesprocheneZustaende.add(fall.path("eingang").path("zustand").asText());
             }
         }
-        assertThat(familien).contains("zahl", "ergebnis", "erkennen", "tagesdauer", "raster", "rundungsdifferenz");
+        assertThat(familien).contains("zahl", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr", "rundungsdifferenz");
         assertThat(gesprocheneZustaende).containsAll(
                 ErgebnisZustand.ZUSTAENDE.stream().map(Zustand::wort).toList());
         // Jeder Verstoß des Vokabulars fliegt in mindestens einem Fall auf.
@@ -331,5 +359,35 @@ class ErgebnisZustandVectorsTest {
         assertThatThrownBy(() -> ErgebnisZustand.muster("gibt_es_nicht")).isInstanceOf(IllegalArgumentException.class);
         assertThat(ErgebnisZustand.anfang("ruecksetzung")).isEqualTo("Rücksetzung ");
         assertThat(ErgebnisZustand.anfang("aus_leistung_integriert")).isEqualTo(ErgebnisZustand.AUS_LEISTUNG_INTEGRIERT);
+    }
+
+    // ---------------------------------------------------------- die alten Kundensätze (PR 721)
+
+    /** Befund Dativ: „mit Ablesestände“ spricht keine Sprech-Funktion mehr — nur noch gespeichert lesbar. */
+    @Test
+    void derAlteDativWirdNieMehrGesprochen() {
+        assertThat(ErgebnisZustand.geraetegrenze("10:40", true)).isEqualTo("Gerätegrenze 10:40 mit Ableseständen");
+        Erkannt alt = ErgebnisZustand.erkenne("Gerätegrenze 10:40 mit Ablesestände");
+        assertThat(alt.muster().schluessel()).isEqualTo("geraetegrenze_mit");
+        assertThat(alt.fruehereFassung()).isTrue();
+    }
+
+    /**
+     * Befund Sommerzeit: am 25.10.2026 gibt es 02:30 zweimal. Die Verbrauchsregel spricht die
+     * Rücksetzung der zweiten 02:30 nie mehr als bloßes „02:30“.
+     */
+    @Test
+    void eineRuecksetzungInDerDoppeltenStundeIstEindeutig() {
+        Instant zweite = Instant.parse("2026-10-25T01:30:00Z");
+        List<VerbrauchRegeln.Rohwert> werte = List.of(
+                new VerbrauchRegeln.Rohwert(zweite.minusSeconds(60), new BigDecimal("101")),
+                new VerbrauchRegeln.Rohwert(zweite, new BigDecimal("5")),
+                new VerbrauchRegeln.Rohwert(zweite.plusSeconds(60), new BigDecimal("6")));
+        VerbrauchRegeln.Ergebnis e = VerbrauchRegeln.mengeZaehlerstand(werte, zweite.minusSeconds(60),
+                zweite.plusSeconds(60), Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
+        assertThat(e.kennzeichen()).contains("Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt")
+                .doesNotContain("Rücksetzung 02:30 ohne Endstand — bis zu 1 Kadenz nicht gezählt");
+        assertThat(ErgebnisZustand.uhr(zweite.minusSeconds(3600), VerbrauchRegeln.ANZEIGE_ZEITZONE))
+                .isEqualTo("02:30 MESZ");
     }
 }

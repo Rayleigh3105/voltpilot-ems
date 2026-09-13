@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 13.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 13.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -15,7 +15,7 @@ die Datei.
 
 | Datei | Rolle |
 |---|---|
-| [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) | **die eine Wahrheit**: Vokabular, Kennzeichen-Liste, Rundung, Sommerzeit, Befunde und 66 Fälle |
+| [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) | **die eine Wahrheit**: Vokabular, Kennzeichen-Liste, frühere Fassungen, Rundung, Sommerzeit, Befunde und die Fälle |
 | [`ergebnis-zustand.schema.json`](./ergebnis-zustand.schema.json) | das Schema der Vektor-Datei (JSON-Schema 2020-12) |
 | `services/api/.../uems/ErgebnisZustand.java` | der **Java-Zwilling**; `VerbrauchRegeln` ruft ihn für jeden Satz an |
 | `frontend/portal/src/uemsErgebnis.ts` | der **TS-Zwilling** für die Flächen (AP-08 IP-10/IP-11) |
@@ -53,7 +53,7 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 20 | Anfang nicht gemessen (kein Stand an der Periodengrenze) | — | ja |
 | 21 | Ende nicht gemessen (kein Stand an der Periodengrenze) | — | ja |
 | 22 | nur ein Stand in der Periode — keine Menge bildbar | — | ja |
-| 30 | Gerätegrenze {uhr} mit/ohne Ablesestände | Gerätegrenze | nein |
+| 30 | Gerätegrenze {uhr} mit Ableseständen / ohne Ablesestände | Gerätegrenze | nein |
 | 30 | Zuwachs am Wechsel nicht messbar (Ablesestände fehlen) — **unmittelbar nach „ohne“** | Gerätegrenze | ja |
 | 30 | Lücke am Wechsel {von}–{bis} (nicht aufgefüllt) — nach „mit“ oder „nicht messbar“ | Gerätegrenze | nein |
 | 30 | Überlauf {uhr} (Wertebereich {modul}) | Überlauf | nein |
@@ -69,6 +69,15 @@ Gerätegrenze stehen in fester Folge (`kennzeichen_folge`); ein einmaliges Kennz
 doppelt. Innerhalb von Rang 30 stehen die Sätze in zeitlicher Folge — die Uhrzeit HH:MM allein
 beweist das über Tagesgrenzen nicht (ein Monat kann zwei Rücksetzungen um 09:12 haben) und wird
 darum **nicht** verglichen.
+
+**Frühere Fassungen (seit 1.1).** Ein geänderter Wortlaut ist schon gespeichert: `kennzeichen`
+der Speicherklassen hält jeden Satz, eine endgültige Viertelstunde wird nie neu geschrieben, und
+Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Die Liste `fruehere_fassungen` hält darum den
+alten Wortlaut je Muster: er wird als dieses Muster **erkannt** (gleicher Rang, gleiches Wort,
+`fruehere_fassung = true`), `pruefe` lässt ihn zu und `satz` spricht ihn, wie er gespeichert ist —
+aber **keine Sprech-Funktion erzeugt ihn mehr**, und keine Erwartung von `verbrauch-vectors.json`
+trägt ihn. Eine vorläufige Zeile bekommt den neuen Wortlaut beim nächsten Verdichtungslauf, eine
+endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände“ (bis 1.0).
 
 **Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · korrigiert (Version n) ·
 vorläufig · endgültig · Ablesezeitraum · mit Ersatzwert (Methode …). Ihren Wortlaut legt das
@@ -110,6 +119,11 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
   anderen Zone ihren Offset („01:00–02:00 UTC+01:00“). Die fehlende Stunde am 28.03.2027
   **erscheint nicht** (nach „01:00–02:00“ folgt „03:00–04:00“, F14).
 - `von` jedes Feldes ist ISO-8601 **mit Offset** — die Form des Exports.
+- `uhr(zeit, zone)` ist dieselbe Regel für die Uhrzeit **in einem Kennzeichen** (seit 1.1): „02:30“
+  am 25.10.2026 gibt es zweimal, also heißt es „Rücksetzung 02:30 MESZ …“ bzw. „… 02:30 MEZ …“;
+  „03:00“ und jede Uhrzeit eines anderen Tages bleiben ohne Zusatz. Der Platzhalter `uhr` erkennt
+  den Zusatz mit. ⚠ Die Verbrauchsregel übergibt heute die feste Zone Europe/Berlin
+  (`VerbrauchRegeln.ANZEIGE_ZEITZONE`), nicht die des Standorts — siehe Befunde.
 - `tagesdauer(tag, zone)` sagt „25 Stunden (Zeitumstellung)“ bzw. „23 Stunden (Zeitumstellung)“
   und an einem 24-Stunden-Tag nichts. Die Stundenzahl wird bei `BezugsPeriode.stundenDesTages`
   (→ `VerbrauchRegeln.stunden`) bzw. `bezugsPeriode.ts` bestellt, nie hier gezählt.
@@ -133,13 +147,19 @@ heutige Wortlaut schon Vertrag von `verbrauch-vectors.json` und in den Speicherk
 ist. Die wichtigsten:
 
 - **„Zuwachs 337.600“** steht mit Punkt, drei Stellen und ohne Einheit — ein de-DE-Leser liest
-  337 600. E11 verlangte „337,6 kWh“.
-- **„mit Ablesestände“** — nach „mit“ steht der Dativ („Ableseständen“).
+  337 600. E11 verlangte „337,6 kWh“. In 1.1 bewusst offen: die Rechenregel kennt die Einheit
+  nicht (Durchreichen bis Tag/Monat/Jahr ist ein Folgepaket mit Datenbank-Lauf). Anzeige-Einheit
+  als Ableitung aus E11: gespeichert bleibt die Zähler-Einheit, angezeigt kWh/kvarh/m³ mit den
+  Stellen von E11 (wie „1.482.300 kWh“ statt „1.482,3 MWh“).
 - **„Rechteck-Halten ≤ 2 × Kadenz“** ist Rechenmethode, kein Kundenwort.
 - Sechs Satzformen haben **kein Wort** im Kennzeichen-Vokabular (Anfang/Ende nicht gemessen, nur
   ein Stand, fehlende Intervallmengen, gemessene Zeit).
-- Die Uhrzeiten der Kennzeichen stehen in der festen Zone Europe/Berlin und ohne MESZ/MEZ, nicht
-  in der Zone des Standorts.
+- Die Uhrzeiten der Kennzeichen stehen in der festen Zone Europe/Berlin, nicht in der Zone des
+  Standorts. Seit 1.1 tragen sie an der doppelten Stunde MESZ/MEZ und sind damit eindeutig; die
+  Standort-Zone müssten `ViertelstundeVerdichter` und `ViertelstundenTeile` (Tag, Monat, Jahr,
+  freier Zeitraum) laden und bis `VerbrauchRegeln.uhr` durchreichen.
+- **Erledigt in 1.1:** „mit Ablesestände“ (Dativ) → „mit Ableseständen“, alte Form als frühere
+  Fassung lesbar.
 - Die Bilanz-Sätze (`BilanzAbleitung.zahlDe`) schreiben Tausender mit Leerzeichen und ungerundet.
 - F17 zeigt „1 240 m³“ am Monat; der Vertrag folgt dem Wortlaut von E11 („1.240,0 m³“). E10
   schreibt „23 Stunden“; der Vertrag liest es wie F14 als „23 Stunden (Zeitumstellung)“.

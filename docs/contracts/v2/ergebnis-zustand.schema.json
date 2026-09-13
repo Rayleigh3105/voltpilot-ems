@@ -5,10 +5,10 @@
   "description": "Der Vertrag, wie eine abgeleitete Zahl sagt, wie belastbar sie ist (UEMS AP-08 IP-8, Prosa: ergebnis-zustand.md): das geschlossene Zustands-Vokabular, die geschlossene Liste der Kennzeichen-Sätze mit Rang, die Rundung je Ebene (E11) und die Sommerzeit-Beschriftung (E10). Er beschreibt ergebnis-zustand-vectors.json, gegen die BEIDE Zwillinge gefahren werden: Java services/api .../uems/ErgebnisZustand und TypeScript frontend/portal/src/uemsErgebnis.ts. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "befunde", "cases"],
+  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv." },
+    "schema_version": { "type": "string", "const": "1.1", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -40,6 +40,23 @@
       "minItems": 1,
       "description": "Die geschlossene Liste der Kennzeichen-Sätze. Ein Satz ist genau dann ein Kennzeichen, wenn er auf GENAU EIN Muster passt.",
       "items": { "$ref": "#/$defs/muster" }
+    },
+    "fruehere_fassungen": {
+      "type": "array",
+      "description": "Wortlaute, die eine frühere Fassung sprach und die gespeichert sein können. Sie werden als ihr Muster ERKANNT (gleicher Rang, gleiches Wort), aber nie mehr GESPROCHEN.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schluessel", "muster", "platzhalter", "bis_fassung", "beispiel", "warum"],
+        "properties": {
+          "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Das heutige Muster, als das der Satz erkannt wird." },
+          "muster": { "type": "string", "minLength": 1 },
+          "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext"] } },
+          "bis_fassung": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "Die letzte Fassung, die diesen Wortlaut sprach." },
+          "beispiel": { "type": "string", "minLength": 1 },
+          "warum": { "type": "string", "minLength": 1 }
+        }
+      }
     },
     "kennzeichen_vorgesehen": {
       "type": "array",
@@ -147,6 +164,7 @@
         { "$ref": "#/$defs/fall_erkennen" },
         { "$ref": "#/$defs/fall_tagesdauer" },
         { "$ref": "#/$defs/fall_raster" },
+        { "$ref": "#/$defs/fall_uhr" },
         { "$ref": "#/$defs/fall_rundungsdifferenz" }
       ] }
     }
@@ -257,8 +275,32 @@
           "properties": {
             "schluessel": { "type": ["string", "null"] },
             "werte": { "anyOf": [{ "type": "null" }, { "type": "object", "additionalProperties": { "type": "string" } }] },
+            "fruehere_fassung": { "type": "boolean", "description": "Der Satz ist als Wortlaut einer früheren Fassung erkannt (gespeichert, nie mehr gesprochen). Ohne Angabe false." },
             "vorgesehen": { "type": "boolean" }
           }
+        }
+      }
+    },
+    "fall_uhr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "uhr" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeit", "zeitzone"],
+          "properties": { "zeit": { "type": "string", "minLength": 1, "description": "ISO-8601 mit Offset." }, "zeitzone": { "type": "string", "minLength": 1 } }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": "string", "minLength": 1 } }
         }
       }
     },
