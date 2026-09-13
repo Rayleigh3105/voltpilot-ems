@@ -149,6 +149,16 @@ public class MessstelleRepository {
                 MessstelleRepository::map, id).stream().findFirst();
     }
 
+    /**
+     * Die Messstelle, die HEUTE dieses Kennzeichen trägt, im Zaun (AP-08 IP-9) — leer, wenn es sie
+     * nicht gibt ODER sie einem anderen Mandanten gehört. Ein früher getragenes Kennzeichen findet
+     * nichts: es ist belegt, aber es benennt keine Messstelle mehr.
+     */
+    public Optional<Messstelle> findeNachKennzeichen(String kennzeichen) {
+        return jdbc.query("SELECT " + SPALTEN + " FROM messstelle WHERE kennzeichen = ?",
+                MessstelleRepository::map, kennzeichen).stream().findFirst();
+    }
+
     /** Alle Messstellen des Mandanten, archivierte eingeschlossen, nach Kennzeichen. */
     public List<Messstelle> alle() {
         return List.copyOf(jdbc.query("SELECT " + SPALTEN + " FROM messstelle ORDER BY kennzeichen",

@@ -89,7 +89,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Nachträge der später konzipierten Pakete
 
-AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026). Die 9 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026) · AP-08 §4.8 (UEMS AP-08 Verbrauch — report.md §4.8, abgenommen mit E1–E15 = A am 11.09.2026). Die 9 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
@@ -135,6 +135,9 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-09 §4.11 | Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | Kundenadministrator · Energiemanager (U) · Bearbeiter (S, nur Geltungsbereiche seines Standorts) | `bezugsgroesse.verwalten` (Nachtrag, W8) | `bezugsgroesse.verwalten` | neue Zeile | W8: neue Zeile „U U S - - - -“. Das Binden eines Messkanals kommt mit AP-09 IP-17 an dieselbe Kennung. |
 | AP-09 §4.11 | Wert eingeben · berichtigen · Zuordnung ändern | KA · EM (U) · Bearbeiter (S) — nie Unterstützer | `bezugsgroesse.eingeben` (vorhanden) | `bezugsgroesse.eingeben` | bestehende Zeile | Die Route kommt mit AP-09 IP-7. |
 | AP-09 §4.11 | CSV hochladen · Vorschau · übernehmen · zurücknehmen · Vorlagen pflegen | wie oben | `bezugsgroesse.importieren` (vorhanden; Rücknahme und Vorlagen zugeordnet) | `bezugsgroesse.importieren` | bestehende Zeile | W8: Rücknahme und Vorlagen gehören zur bestehenden Zeile; die Routen kommen mit AP-09 IP-12 ff. |
+| AP-08 §4.8 | Werte, Zustände, Kennzeichen, Versionen ansehen | Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer (Ansehen) | AP-03 Matrix „Messwerte ansehen“ | `messwerte.ansehen` | bestehende Zeile | Seit AP-08 IP-9 nennt `GET /api/v1/messstellen/{kennzeichen}/werte` die Kennung; die Durchsetzung bringt AP-03. |
+| AP-08 §4.8 | Ersatzwert erfassen / zurücknehmen | Bearbeiter (je Standort) · Energiemanager · Kundenadministrator — nie Unterstützer | AP-03 Z. 202 | `korrektur.erfassen` | bestehende Zeile | Die Route kommt mit AP-08 IP-13. |
+| AP-08 §4.8 | Korrektur vorschlagen (Ablesestände, Umklassifizierung, Wert berichtigen) | Bearbeiter · Energiemanager · Kundenadministrator | AP-03 Z. 202 | `korrektur.erfassen` | bestehende Zeile | Die Routen kommen mit AP-08 IP-12 ff. |
 
 ### Regeln ohne eigene Zeile
 
@@ -153,6 +156,9 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | AP-09 §4.11 | Ablesung an einer Messstelle erfassen · berichtigen — `ablesung.erfassen` (Nachtrag, W8: „U U S - - - -“) | noch keine Zeile — sie entsteht mit dem Bau-Paket, das ihre Route baut: AP-09 IP-8 |
 | AP-09 §4.11 | Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08) | noch keine Zeile — sie entstehen mit AP-08 IP-15; die Freigabe an Bezugsgrößen mit AP-09 IP-7 |
 | AP-09 §4.11 | Werte, Fassungen, Importe löschen — niemand (Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (V20260913104500: Werte append-only); V20260913120000 öffnet nur das Löschen einer Bezugsgröße OHNE Wert (M6) |
+| AP-08 §4.8 | Korrektur prüfen und freigeben — Energiemanager · Kundenadministrator; Bearbeiter nur, wenn Vier-Augen aus (E8); Ersteller ≠ Freigeber bei Vier-Augen an | noch keine Zeile — `korrektur.freigeben` entsteht mit AP-08 IP-15 (dieselbe Regel steht unter AP-09 §4.11) |
+| AP-08 §4.8 | Vier-Augen-Einstellung ändern — Kundenadministrator (E8) | noch keine Zeile — `vieraugen.einstellen` entsteht mit AP-08 IP-15 |
+| AP-08 §4.8 | Rohwerte, Ereignisse, Korrekturen löschen — niemand (AP-07 E8/E11; Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (`messreihe_ereignis` append-only; der Purge lehnt Messstellen-gebundene Reihen ab, AP-07 IP-11) |
 
 ## Kennungen
 
