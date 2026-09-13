@@ -61,7 +61,7 @@
           "type": "array", "minItems": 1,
           "items": {
             "type": "object", "additionalProperties": false, "required": ["code", "urheber", "text"],
-            "properties": { "code": { "$ref": "#/$defs/code" }, "urheber": { "$ref": "#/$defs/code" }, "text": { "type": "string", "minLength": 1 } }
+            "properties": { "code": { "$ref": "#/$defs/code" }, "urheber": { "$ref": "#/$defs/code" }, "auch_urheber": { "type": "array", "minItems": 1, "uniqueItems": true, "description": "Weitere Urheber, die dasselbe feststellen dürfen (additiv, AP-07 IP-9: die Kadenz-Lücke auch von `cloud`).", "items": { "$ref": "#/$defs/code" } }, "text": { "type": "string", "minLength": 1 } }
           }
         },
         "anlass_geraetegrenze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },

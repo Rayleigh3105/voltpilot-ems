@@ -185,6 +185,10 @@ public class TenantRepository {
                 // no FK — the same one way out.
                 deleteByTenant(con, "messreihe_periode", tenantId);
                 deleteByTenant(con, "messreihe_periode_arbeit", tenantId);
+                // The gap detector's state and work list (AP-07 IP-9): an operational queue, no
+                // FK — the same one way out. Its gaps live in messreihe_ereignis (above); the
+                // run-state row is not tenant-bound and stays.
+                deleteByTenant(con, "messreihe_luecke_stand", tenantId);
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

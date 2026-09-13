@@ -412,7 +412,7 @@
     },
     "art_backfill": {
       "type": "object",
-      "description": "backfill — Nachlieferung. Urheber: writer.",
+      "description": "backfill — Nachlieferung. Urheber: writer, cloud.",
       "additionalProperties": false,
       "required": [
         "ereignis_id",

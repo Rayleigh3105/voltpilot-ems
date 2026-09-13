@@ -16,7 +16,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * <p>Then the migration that widens the vocabulary by {@code counter_overflow} and adds the
  * declaration {@code messreihe_zaehler_deklaration()} the overflow detection reads (UEMS AP-08
  * IP-4, V20260912220000) - it rewrites the whole vocabulary function, so the writer sees the
- * CURRENT vocabulary, not the one of the first migration.
+ * CURRENT vocabulary, not the one of the first migration. And the one that lets {@code backfill}
+ * come from {@code cloud} too (UEMS AP-07 IP-9, V20260913130000) - again the whole function.
  */
 final class EreignisTabelleImTest {
 
@@ -24,6 +25,7 @@ final class EreignisTabelleImTest {
     static final Path MIGRATION = Path.of("..", "api", "src", "main", "resources", "db", "migration",
             "V20260911260000__uems_messreihe_ereignis.sql");
     static final Path UEBERLAUF = MIGRATION.resolveSibling("V20260912220000__uems_zaehler_ueberlauf.sql");
+    static final Path LUECKEN = MIGRATION.resolveSibling("V20260913130000__uems_luecken_vokabular.sql");
 
     private EreignisTabelleImTest() {}
 
@@ -31,7 +33,7 @@ final class EreignisTabelleImTest {
     static void anlegen(PostgreSQLContainer<?> db, String... tenants) throws Exception {
         try (Connection c = DriverManager.getConnection(db.getJdbcUrl(), db.getUsername(),
                 db.getPassword()); Statement st = c.createStatement()) {
-            for (Path migration : new Path[] {MIGRATION, UEBERLAUF}) {
+            for (Path migration : new Path[] {MIGRATION, UEBERLAUF, LUECKEN}) {
                 st.execute(Files.readString(migration)
                         .replace("${appDbUser}", "voltpilot_app")
                         .replace("${adminDbUser}", "voltpilot_admin"));

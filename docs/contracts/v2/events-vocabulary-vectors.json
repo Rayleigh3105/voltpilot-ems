@@ -127,7 +127,10 @@
       {
         "code": "kadenz",
         "urheber": "writer",
-        "text": "kein guter Wert über 2 × Kadenz"
+        "text": "kein guter Wert über 2 × Kadenz",
+        "auch_urheber": [
+          "cloud"
+        ]
       },
       {
         "code": "verdraengung",
@@ -469,20 +472,21 @@
         },
         "regeln": [
           "`von` ist der erste Zeitpunkt ohne erwarteten Wert (Kadenz) bzw. der letzte Herzschlag (Herzschlag); `bis` die Messzeit des ersten Werts danach; die Lücke ist [von, bis).",
-          "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer, verdraengung ↔ box, herzschlag ↔ cloud.",
+          "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer (seit AP-07 IP-9 auch cloud — der Lücken-Melder der api, `auch_urheber`), verdraengung ↔ box, herzschlag ↔ cloud.",
           "Eine Box meldet nur eine geschlossene Lücke (was sie verdrängt hat, weiß sie hinterher).",
           "`fehlerklasse` `box_meldet_sich_nicht` nur mit `erkannt_aus` herzschlag; eine Herzschlag-Lücke trägt keine andere Klasse — solange die Box schweigt, kennt niemand ihren Grund.",
           "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6)."
         ],
         "bestand": true,
         "nie_geloescht": true,
-        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers"
+        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers; Kadenz-Lücke auch von `cloud` seit AP-07 IP-9"
       },
       {
         "art": "backfill",
         "name": "Nachlieferung",
         "urheber": [
-          "writer"
+          "writer",
+          "cloud"
         ],
         "zeit": {
           "form": "zeitraum",
@@ -516,7 +520,7 @@
         ],
         "bestand": false,
         "nie_geloescht": true,
-        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8"
+        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8; von `cloud` seit AP-07 IP-9 (Lücken-Melder der api)"
       },
       {
         "art": "duplicate_conflict",
@@ -1786,6 +1790,136 @@
         "saetze": [
           "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
         ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-je-reihe-ms10-offen-von-der-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 data_gap (aus Kadenz), E9; Lieferpaket IP-9 (services/api)",
+      "why": "Dieselbe Reihen-Lücke, gestellt von dem Lauf, der sie wirklich feststellt: der Lücken-Melder ist ein Lauf der api, und dort heißt Weg 2 `cloud`. Die Ursache bleibt die Kadenz — die Herkunft der Aussage ändert sich nicht, nur ihr Absender.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 03.11.2026 14:00 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-ms10-nachgeliefert-von-der-cloud",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §4.8 data_gap (MS-10 14:00–17:30, nachgeliefert 17:31), §4.5 Nachlieferung Nr. 2; Lieferpaket IP-9",
+      "why": "Der Melder schließt seine eigene Reihen-Lücke bei der Rückkehr: `bis`, die gezählten fehlenden Werte und `nachgeliefert_am` gehen in EINER Fortschreibung von leer auf einen Wert — gleicher Urheber, gleiches `von`.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13. `erwartet_fehlend` = 210 ist die Kadenz 60 s über 14:00–17:30.",
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "nachgeliefert_am": "2026-11-03T16:31:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-nachlieferung-von-der-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8 backfill; Lieferpaket IP-9 (services/api)",
+      "why": "Die Nachlieferung je Box und Quelle, gemeldet vom Lücken-Melder der api: Messzeiten des ersten und letzten nachgelieferten Werts (beide enthalten), Eingangszeiten, Anzahl — und `erwartet`, wenn die Kadenz-Lücken der Reihen es zählen.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13. `erwartet` = 3 640 nimmt an, dass die Reihen-Lücken genau so viele Werte zählen.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000032",
+          "art": "backfill",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "eingang_von": "2026-11-03T16:31:00Z",
+          "eingang_bis": "2026-11-03T16:34:00Z",
+          "anzahl": 3640,
+          "erwartet": 3640
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nachgeliefert: 3.640 Werte von 03.11.2026 14:00 bis 17:30, eingegangen 03.11.2026 17:31 bis 17:34"
+        ]
+      }
+    },
+    {
+      "name": "verdraengung-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 data_gap; `erkannt_aus` gehört zum Urheber (auch nach IP-9)",
+      "why": "Die Weitung aus IP-9 ist schmal: die Cloud darf eine Lücke aus der Kadenz melden, aber nie behaupten, die Box habe ihren Puffer verdrängt — das weiß nur die Box.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000033",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T13:14:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "verdraengung",
+          "erwartet_fehlend": 14
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
       }
     },
     {

@@ -261,6 +261,13 @@
                              Vorgabe AN ist, prueft EndgueltigkeitWiringTest an
                              der echten application.yml. -->
                         <voltpilot.uems.endgueltigkeit.enabled>false</voltpilot.uems.endgueltigkeit.enabled>
+                        <!-- Der Luecken-Melder (AP-07 IP-9) ist dieselbe
+                             @Scheduled-Falle: im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer ihn prueft,
+                             ruft LueckenMelder.lauf() selbst; dass die
+                             AUSGELIEFERTE Vorgabe AN ist, prueft
+                             LueckenWiringTest an der echten application.yml. -->
+                        <voltpilot.uems.luecken.enabled>false</voltpilot.uems.luecken.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

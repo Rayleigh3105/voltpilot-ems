@@ -102,12 +102,14 @@ class UemsViertelstundeMengeTest {
             "device_command_log", "site_plan_run");
 
     /**
-     * Nicht Teil des Bestands-Fingerabdrucks: die Tabellen, die dieses Paket bearbeitet, und der
-     * Laufzustand der Tagesklasse — {@code V20260912190000} (AP-07 IP-13) legt ihn MIT seiner
-     * Startzeile an; das ist neuer Inhalt einer späteren Migration, kein Bestand. Alle anderen
-     * später angelegten Tabellen misst {@link Bestandsschutz} mit: sie müssen leer bleiben.
+     * Nicht Teil des Bestands-Fingerabdrucks: die Tabellen, die dieses Paket bearbeitet, und die
+     * Laufzustände späterer Läufe — {@code V20260912190000} (AP-07 IP-13, Tagesklasse) und
+     * {@code V20260913130500} (AP-07 IP-9, Lücken-Melder) legen sie MIT ihrer Startzeile an; das ist
+     * neuer Inhalt einer späteren Migration, kein Bestand. Alle anderen später angelegten Tabellen
+     * misst {@link Bestandsschutz} mit: sie müssen leer bleiben.
      */
-    private static final List<String> AUSNAHMEN = List.of("messreihe_viertelstunde%", "messreihe_tag_lauf");
+    private static final List<String> AUSNAHMEN =
+            List.of("messreihe_viertelstunde%", "messreihe_tag_lauf", "messreihe_luecke_lauf");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

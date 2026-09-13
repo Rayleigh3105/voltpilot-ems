@@ -140,6 +140,17 @@ class EreignisVokabularVectorsTest {
         Map<String, String> javaErkannt = new LinkedHashMap<>();
         EreignisVokabular.ERKANNT_AUS.forEach((k, u) -> javaErkannt.put(k, u.code()));
         assertThat(erkannt).containsExactlyEntriesOf(javaErkannt);
+        // Additiv (AP-07 IP-9): wer dasselbe ZUSÄTZLICH feststellen darf — Vektor-Datei `auch_urheber`.
+        Map<String, String> auch = new LinkedHashMap<>();
+        w.path("erkannt_aus").forEach(e -> {
+            if (e.has("auch_urheber")) {
+                auch.put(e.path("code").asText(), String.join(",", texte(e.path("auch_urheber"))));
+            }
+        });
+        Map<String, String> auchKlasse = new LinkedHashMap<>();
+        EreignisVokabular.ERKANNT_AUS_AUCH.forEach((k, us) -> auchKlasse.put(k,
+                String.join(",", us.stream().map(u -> u.code()).toList())));
+        assertThat(auch).isEqualTo(auchKlasse);
         w.path("grund").forEach(g -> assertThat(g.path("von").asText())
                 .as(g.path("code").asText())
                 .isEqualTo(Grund.HERKUNFT_UNVOLLSTAENDIG.code().equals(g.path("code").asText())
