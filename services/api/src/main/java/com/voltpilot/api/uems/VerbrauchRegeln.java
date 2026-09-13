@@ -11,7 +11,9 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Die REINEN Rechenregeln der Verbrauchsbildung — UEMS AP-08 §4 (Prosa in
@@ -1328,6 +1330,463 @@ public final class VerbrauchRegeln {
         kennzeichen.addAll(e.kennzeichen());
         return new Ergebnis(e.menge(), e.mittel(), e.min(), e.max(), e.energieKwh(), e.zustand(), e.erhalten(),
                 e.erwartet(), e.abdeckungProzent(), List.copyOf(kennzeichen));
+    }
+
+    // ------------------------------------------------- Ersatzwert-Methoden (E7, AP-08 IP-13)
+
+    public static final String GLEICHMAESSIG_VERTEILEN = "gleichmaessig_verteilen";
+    public static final String PROFIL_VORPERIODE = "profil_vorperiode";
+    public static final String PROFIL_VERGLEICHSQUELLE = "profil_vergleichsquelle";
+    public static final String ABLESESTAND_NACHTRAGEN = "ablesestand_nachtragen";
+    public static final String WERT_EINGEBEN = "wert_eingeben";
+    public static final String VORPERIODE_UEBERNEHMEN = "vorperiode_uebernehmen";
+    public static final String VERGLEICHSQUELLE_UEBERNEHMEN = "vergleichsquelle_uebernehmen";
+
+    /** a–c verteilen einen GEMESSENEN Zuwachs; f und g übernehmen die Werte ihres Bezugs. */
+    public static final List<String> VERTEILEN = List.of(GLEICHMAESSIG_VERTEILEN, PROFIL_VORPERIODE,
+            PROFIL_VERGLEICHSQUELLE);
+    public static final List<String> UEBERNEHMEN = List.of(VORPERIODE_UEBERNEHMEN, VERGLEICHSQUELLE_UEBERNEHMEN);
+
+    /** Nur ein wirksamer Ersatzwert wirkt; ein zurückgenommener hinterlässt keine Spur in den Zahlen. */
+    public static final String WIRKSAM = "wirksam";
+
+    public static final String MIT_ERSATZWERT = ErgebnisZustand.MIT_ERSATZWERT;
+
+    /**
+     * Ein verteilter Anteil wird zum Speichern auf so viele Nachkommastellen ABGESCHNITTEN; den Rest
+     * bekommt die letzte Viertelstunde ({@link #verteilen}). Gerechnet wird davor ungerundet (E11).
+     */
+    public static final int ERSATZWERT_STELLEN = 9;
+
+    /** Die Genauigkeit der Division vor dem Abschneiden — dieselbe wie im Python-Zwilling. */
+    private static final MathContext VERTEILEN_GENAUIGKEIT = new MathContext(40, RoundingMode.HALF_EVEN);
+
+    /**
+     * Die geschlossene Liste der benannten Ablehnungen ({@code regeln.ersatzwert_ablehnungen}). Eine
+     * Methode, die nicht rechnen kann, lehnt mit ihrem Grund ab — sie weicht nie still auf eine andere aus.
+     */
+    public static final List<String> ERSATZWERT_ABLEHNUNGEN = List.of(
+            "wertart_passt_nicht",
+            "kein_gemessener_zuwachs",
+            "zeitraum_nicht_die_luecke",
+            "vorperiode_fehlt",
+            "vergleichsquelle_fehlt",
+            "profil_negativ",
+            "profil_ohne_verbrauch",
+            "betrag_fuer_mehrere_viertelstunden",
+            "einheit_passt_nicht",
+            "endstand_unter_letztem_wert",
+            "anfangsstand_ueber_naechstem_wert",
+            "ueberschneidet_ersatzwert");
+
+    private static final long VIERTELSTUNDE_S = 900;
+
+    /** Eine BENANNTE Ablehnung ({@link #grund()} aus {@link #ERSATZWERT_ABLEHNUNGEN}) — nie ein stiller Rückfall. */
+    public static final class ErsatzwertAbgelehnt extends RuntimeException {
+
+        private final String grund;
+
+        public ErsatzwertAbgelehnt(String grund, String was) {
+            super(grund + (was == null || was.isEmpty() ? "" : ": " + was));
+            if (!ERSATZWERT_ABLEHNUNGEN.contains(grund)) {
+                throw new IllegalArgumentException("unbekannte Ablehnung " + grund);
+            }
+            this.grund = grund;
+        }
+
+        public String grund() {
+            return grund;
+        }
+    }
+
+    /** Ein Wert des Bezugs einer Viertelstunde (Vorperiode oder Vergleichsquelle): Menge und Zustand. */
+    public record Profilwert(BigDecimal menge, String zustand) {}
+
+    /**
+     * Ein Ersatzwert, wie die Rechenregel ihn braucht — die anlegende Fassung und ihr heutiger Status.
+     *
+     * @param von Beginn im Viertelstunden-Raster (bei d die Viertelstunde des Ablesestands)
+     * @param luecke a–c: der GEMESSENE Zuwachs der Lücke ({@code data_gap}), {@code null} = keiner
+     * @param lueckeVon a–c: die erste fehlende Messzeit der Lücke ({@code data_gap.von})
+     * @param profil b, c, f, g: je Viertelstunde von {@code [von, bis)} in Zeitfolge der Wert des Bezugs
+     *     ({@code null}-Eintrag = dort kein Wert); {@code null} = kein Bezug
+     * @param profilEinheit g: die Einheit der Vergleichsquelle
+     * @param betrag e: der eingegebene Wert in {@code einheit}
+     * @param zeitpunkt d: der Ablesestand mit {@code endstand} und/oder {@code anfangsstand}
+     */
+    public record Ersatzwert(
+            String kennung,
+            String methode,
+            Instant von,
+            Instant bis,
+            String status,
+            LueckenZuwachs luecke,
+            Instant lueckeVon,
+            List<Profilwert> profil,
+            String profilEinheit,
+            BigDecimal betrag,
+            String einheit,
+            Instant zeitpunkt,
+            BigDecimal endstand,
+            BigDecimal anfangsstand) {}
+
+    /** Der Wert, den ein Ersatzwert in EINER Viertelstunde setzt. */
+    public record Anteil(Instant beginn, BigDecimal menge) {}
+
+    /** Ein geltender Ersatzwert mit seinen Anteilen (d: keine). */
+    public record Geltend(Ersatzwert ersatzwert, List<Anteil> anteile) {}
+
+    /** Die geltenden Ersatzwerte einer Reihe und je abgelehnter Kennung ihr Grund. */
+    public record Geltende(List<Geltend> gelten, Map<String, String> abgelehnt) {}
+
+    /** Eine Version mit Ersatzwerten: das Ergebnis und die benannten Ablehnungen. */
+    public record Version(Ergebnis ergebnis, Map<String, String> abgelehnt) {}
+
+    private static Instant raster(Instant t, boolean auf) {
+        long s = t.getEpochSecond();
+        long k = Math.floorDiv(s, VIERTELSTUNDE_S) * VIERTELSTUNDE_S;
+        if (auf && (k != s || t.getNano() != 0)) {
+            k += VIERTELSTUNDE_S;
+        }
+        return Instant.ofEpochSecond(k);
+    }
+
+    /** Die Beginne der Viertelstunden in {@code [von, bis)} (UTC-Raster). */
+    public static List<Instant> viertelstunden(Instant von, Instant bis) {
+        List<Instant> out = new ArrayList<>();
+        for (Instant t = raster(von, true); t.isBefore(bis); t = t.plusSeconds(VIERTELSTUNDE_S)) {
+            out.add(t);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Die Viertelstunden, in denen ein Zuwachs anfiel: {@code [Boden(erste fehlende Messzeit), Decke(Messzeit
+     * danach))} — dieselbe Rechnung wie der Datenbank-Auslöser {@code messreihe_ersatzwert_luecke}.
+     */
+    public static Zeitraum viertelstundenDerLuecke(Instant lueckeVon, Instant lueckeBis) {
+        return new Zeitraum("luecke", raster(lueckeVon, false), raster(lueckeBis, true));
+    }
+
+    /**
+     * Die Invariante „Summe = gemessener Zuwachs“ — für a, b und c die EINE Stelle.
+     *
+     * <p>Jeder Anteil außer dem letzten ist {@code Zuwachs × Gewicht ÷ Summe der Gewichte}, ungerundet
+     * gerechnet und erst dann auf {@link #ERSATZWERT_STELLEN} Nachkommastellen ABGESCHNITTEN (nie aufgerundet,
+     * darum nie negativ). Der letzte ist der Zuwachs minus alle anderen: die Summe der gespeicherten Anteile
+     * ist EXAKT der Zuwachs, und der Rest aus dem Abschneiden (kleiner als n × 10⁻⁹) steht in der LETZTEN
+     * Viertelstunde — dort, wo der Stand nach der Lücke den Zuwachs abschließt.
+     */
+    public static List<BigDecimal> verteilen(BigDecimal zuwachs, List<BigDecimal> gewichte) {
+        if (gewichte.isEmpty()) {
+            throw new IllegalArgumentException("ein Zuwachs braucht mindestens eine Viertelstunde");
+        }
+        BigDecimal summe = gewichte.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<BigDecimal> out = new ArrayList<>();
+        BigDecimal verteilt = BigDecimal.ZERO;
+        for (int i = 0; i + 1 < gewichte.size(); i++) {
+            BigDecimal a = zuwachs.multiply(gewichte.get(i)).divide(summe, VERTEILEN_GENAUIGKEIT)
+                    .setScale(ERSATZWERT_STELLEN, RoundingMode.DOWN);
+            out.add(a);
+            verteilt = verteilt.add(a);
+        }
+        out.add(zuwachs.subtract(verteilt));
+        return List.copyOf(out);
+    }
+
+    private static List<BigDecimal> profil(Ersatzwert ew, int n) {
+        String grund = PROFIL_VORPERIODE.equals(ew.methode()) || VORPERIODE_UEBERNEHMEN.equals(ew.methode())
+                ? "vorperiode_fehlt" : "vergleichsquelle_fehlt";
+        if (ew.profil() == null || ew.profil().size() != n) {
+            throw new ErsatzwertAbgelehnt(grund, ew.kennung());
+        }
+        List<BigDecimal> out = new ArrayList<>();
+        for (Profilwert p : ew.profil()) {
+            if (p == null || p.menge() == null || !VOLLSTAENDIG.equals(p.zustand())) {
+                throw new ErsatzwertAbgelehnt(grund, ew.kennung());
+            }
+            out.add(p.menge());
+        }
+        return out;
+    }
+
+    /**
+     * E7 — die Werte je Viertelstunde, die ein Ersatzwert setzt (a, b, c, e, f, g), in Zeitfolge.
+     *
+     * <p>a–c verteilen den GEMESSENEN Zuwachs genau über die Viertelstunden seiner Lücke ({@link #verteilen});
+     * b und c brauchen ein vollständiges Profil ohne negative Werte und mit Verbrauch. e setzt den Betrag EINER
+     * Viertelstunde, f und g übernehmen die Werte ihres Bezugs. Methode d setzt keine Werte
+     * ({@link #ablesestandEreignisse}). Kann eine Methode nicht rechnen, lehnt sie benannt ab.
+     *
+     * @param regel die Rechenregel der Reihe ({@code zaehlerstand} · {@code intervallmenge} · {@code momentanwert})
+     * @param einheit die gespeicherte Einheit der Reihe
+     */
+    public static List<Anteil> ersatzwertAnteile(Ersatzwert ew, String regel, String einheit) {
+        String m = ew.methode();
+        if (!ErgebnisZustand.ERSATZWERT_METHODE_NAME.containsKey(m) || ABLESESTAND_NACHTRAGEN.equals(m)) {
+            throw new IllegalArgumentException(m + " ist keine Methode mit Anteilen je Viertelstunde");
+        }
+        List<Instant> beginne = viertelstunden(ew.von(), ew.bis());
+        if ("momentanwert".equals(regel) || (VERTEILEN.contains(m) && !"zaehlerstand".equals(regel))) {
+            throw new ErsatzwertAbgelehnt("wertart_passt_nicht", m + " an " + regel);
+        }
+        List<BigDecimal> werte;
+        if (VERTEILEN.contains(m)) {
+            if (ew.luecke() == null || ew.luecke().zuwachs() == null || ew.lueckeVon() == null) {
+                throw new ErsatzwertAbgelehnt("kein_gemessener_zuwachs", ew.kennung());
+            }
+            Zeitraum luecke = viertelstundenDerLuecke(ew.lueckeVon(), ew.luecke().messzeitNach());
+            if (!luecke.von().equals(ew.von()) || !luecke.bis().equals(ew.bis())) {
+                throw new ErsatzwertAbgelehnt("zeitraum_nicht_die_luecke", ew.kennung());
+            }
+            List<BigDecimal> gewichte;
+            if (GLEICHMAESSIG_VERTEILEN.equals(m)) {
+                gewichte = beginne.stream().map(t -> BigDecimal.ONE).toList();
+            } else {
+                gewichte = profil(ew, beginne.size());
+                if (gewichte.stream().anyMatch(g -> g.signum() < 0)) {
+                    throw new ErsatzwertAbgelehnt("profil_negativ", ew.kennung());
+                }
+                if (gewichte.stream().reduce(BigDecimal.ZERO, BigDecimal::add).signum() == 0) {
+                    throw new ErsatzwertAbgelehnt("profil_ohne_verbrauch", ew.kennung());
+                }
+            }
+            werte = verteilen(ew.luecke().zuwachs(), gewichte);
+        } else if (WERT_EINGEBEN.equals(m)) {
+            if (beginne.size() != 1) {
+                throw new ErsatzwertAbgelehnt("betrag_fuer_mehrere_viertelstunden", ew.kennung());
+            }
+            if (einheit == null || !einheit.equals(ew.einheit())) {
+                throw new ErsatzwertAbgelehnt("einheit_passt_nicht", ew.einheit() + " an " + einheit);
+            }
+            werte = List.of(ew.betrag());
+        } else {
+            werte = profil(ew, beginne.size());
+            if (VERGLEICHSQUELLE_UEBERNEHMEN.equals(m) && (einheit == null || !einheit.equals(ew.profilEinheit()))) {
+                throw new ErsatzwertAbgelehnt("einheit_passt_nicht", ew.profilEinheit() + " an " + einheit);
+            }
+        }
+        List<Anteil> out = new ArrayList<>();
+        for (int i = 0; i < beginne.size(); i++) {
+            out.add(new Anteil(beginne.get(i), werte.get(i)));
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * E7 d — ein Ablesestand passt zu den Werten um seinen Zeitpunkt, sonst benannte Ablehnung: der Endstand
+     * liegt nicht unter dem letzten guten Wert VOR dem Zeitpunkt, der Anfangsstand nicht über dem ersten guten
+     * Wert AB dem Zeitpunkt (dieselbe Nachbarschaft {@code (vorher, nachher]} wie Z4).
+     */
+    public static void ablesestandPruefen(List<Rohwert> werte, Ersatzwert ew) {
+        Rohwert vorher = null;
+        Rohwert nachher = null;
+        for (Rohwert w : werte.stream().filter(Rohwert::gut).sorted(Comparator.comparing(Rohwert::zeit)).toList()) {
+            if (w.zeit().isBefore(ew.zeitpunkt())) {
+                vorher = w;
+            } else if (nachher == null) {
+                nachher = w;
+            }
+        }
+        if (ew.endstand() != null && vorher != null && ew.endstand().compareTo(vorher.wert()) < 0) {
+            throw new ErsatzwertAbgelehnt("endstand_unter_letztem_wert", ew.kennung());
+        }
+        if (ew.anfangsstand() != null && nachher != null && ew.anfangsstand().compareTo(nachher.wert()) > 0) {
+            throw new ErsatzwertAbgelehnt("anfangsstand_ueber_naechstem_wert", ew.kennung());
+        }
+    }
+
+    /**
+     * E7 d — die Gerätegrenze zum Zeitpunkt mit den nachgetragenen Ableseständen; Z4 rechnet danach. Eine
+     * Gerätegrenze genau zu diesem Zeitpunkt wird ersetzt, sonst entsteht sie (die Rücksetzung von F6 ist nur
+     * aus den Werten erkannt). Kein Rohwert wird angefasst.
+     */
+    public static List<Ereignis> ablesestandEreignisse(Collection<Ereignis> ereignisse, Ersatzwert ew) {
+        List<Ereignis> out = new ArrayList<>(ereignisse.stream()
+                .filter(e -> !(Ereignis.GERAETEGRENZE.equals(e.art()) && e.zeit().equals(ew.zeitpunkt())))
+                .toList());
+        out.add(new Ereignis(Ereignis.GERAETEGRENZE, ew.zeitpunkt(), ew.endstand(), ew.anfangsstand(), 0));
+        return List.copyOf(out);
+    }
+
+    private static long[] kennungFolge(String kennung) {
+        String[] teile = kennung.split("-");
+        return new long[] {Long.parseLong(teile[1]), Long.parseLong(teile[2])};
+    }
+
+    /**
+     * Welche Ersatzwerte einer Reihe gelten — und welche benannt abgelehnt sind.
+     *
+     * <p>Nur WIRKSAME zählen; ein zurückgenommener ist, als hätte es ihn nie gegeben. In der Folge ihrer
+     * Kennung (Jahr, Nummer) hält der frühere seine Viertelstunden: ein späterer, der eine davon berührt, ist
+     * {@code ueberschneidet_ersatzwert} — zwei Verteilungen desselben Zuwachses ergäben die doppelte Summe.
+     * Ein abgelehnter hält keine Viertelstunde.
+     *
+     * @param vorabAbgelehnt die Ablehnungen, die nur mit den Rohwerten prüfbar sind (d,
+     *     {@link #ablesestandPruefen})
+     */
+    public static Geltende geltende(List<Ersatzwert> ersatzwerte, String regel, String einheit,
+            Map<String, String> vorabAbgelehnt) {
+        List<Ersatzwert> wirksam = ersatzwerte.stream()
+                .filter(e -> WIRKSAM.equals(e.status()))
+                .sorted(Comparator.<Ersatzwert>comparingLong(e -> kennungFolge(e.kennung())[0])
+                        .thenComparingLong(e -> kennungFolge(e.kennung())[1]))
+                .toList();
+        List<Geltend> gelten = new ArrayList<>();
+        Map<String, String> abgelehnt = new LinkedHashMap<>();
+        for (Ersatzwert ew : wirksam) {
+            if (vorabAbgelehnt.containsKey(ew.kennung())) {
+                abgelehnt.put(ew.kennung(), vorabAbgelehnt.get(ew.kennung()));
+                continue;
+            }
+            if (gelten.stream().anyMatch(g -> g.ersatzwert().von().isBefore(ew.bis())
+                    && ew.von().isBefore(g.ersatzwert().bis()))) {
+                abgelehnt.put(ew.kennung(), "ueberschneidet_ersatzwert");
+                continue;
+            }
+            try {
+                if (ABLESESTAND_NACHTRAGEN.equals(ew.methode()) && !"zaehlerstand".equals(regel)) {
+                    throw new ErsatzwertAbgelehnt("wertart_passt_nicht", ew.methode() + " an " + regel);
+                }
+                gelten.add(new Geltend(ew, ABLESESTAND_NACHTRAGEN.equals(ew.methode())
+                        ? List.of() : ersatzwertAnteile(ew, regel, einheit)));
+            } catch (ErsatzwertAbgelehnt x) {
+                abgelehnt.put(ew.kennung(), x.grund());
+            }
+        }
+        return new Geltende(List.copyOf(gelten), java.util.Collections.unmodifiableMap(abgelehnt));
+    }
+
+    /**
+     * E7 — die Periode {@code [von, bis)} mit ihren geltenden Ersatzwerten: die neue Version über dem Bestand.
+     *
+     * <p>{@code basis} ist das Ergebnis aus den Rohwerten (Version 1, bei d schon mit dem Ablesestand gerechnet),
+     * {@code standAnfang}/{@code standEnde} sagen, ob Z1 an den Grenzen einen Stand fand. Gerechnet wird IMMER
+     * vom Bestand aus — nie auf dem Ergebnis einer früheren Version.
+     *
+     * <ul>
+     *   <li>a–c: Enthält die Periode die Lücke ganz, steckt der Zuwachs schon in der Menge (E2) — sie bleibt,
+     *       und der Satz „nicht auf Viertelstunden verteilbar“ weicht dem Ersatzwert. Schneidet sie die Lücke
+     *       an, kommen die Anteile ihrer Viertelstunden zur gemessenen Menge ({@code null} hieß hier: kein
+     *       gemessener Teil außerhalb der Lücke). Ein Rand IN der Lücke ist gedeckt, einer außerhalb bleibt
+     *       „nicht gemessen“.
+     *   <li>e–g gelten nur für die Viertelstunde selbst: ihr Wert IST die Menge (die gröbere Periode bildet
+     *       die Kaskade, IP-17).
+     *   <li>d: der Ablesestand wirkt schon in {@code basis} (Z4); hier kommt nur sein Kennzeichen dazu.
+     * </ul>
+     *
+     * <p>Der Zustand ist „mit Ersatzwert“, sobald einer wirkt und eine Zahl dasteht; die Abdeckung des Verlaufs
+     * bleibt die der Rohwerte. Kennzeichen: Ränder (Rang 20/21), die übrigen Sätze, zuletzt je Ersatzwert sein
+     * Satz (Rang 70).
+     */
+    public static Ergebnis mitErsatzwerten(ReihenKontext reihe, Ergebnis basis, boolean standAnfang,
+            boolean standEnde, Instant von, Instant bis, List<Geltend> gelten) {
+        BigDecimal menge = basis.menge();
+        List<String> kennzeichen = new ArrayList<>(basis.kennzeichen());
+        boolean anfangGedeckt = false;
+        boolean endeGedeckt = false;
+        boolean ersetzt = false;
+        boolean angeschnitten = false;
+        List<String> saetze = new ArrayList<>();
+        for (Geltend g : gelten) {
+            Ersatzwert ew = g.ersatzwert();
+            if (ABLESESTAND_NACHTRAGEN.equals(ew.methode())) {
+                if (ew.zeitpunkt().isAfter(von) && !ew.zeitpunkt().isAfter(bis)) {
+                    saetze.add(ErgebnisZustand.ersatzwert(ew.methode(), ew.kennung()));
+                }
+                continue;
+            }
+            List<BigDecimal> innen = g.anteile().stream()
+                    .filter(a -> !a.beginn().isBefore(von) && a.beginn().isBefore(bis))
+                    .map(Anteil::menge)
+                    .toList();
+            if (innen.isEmpty()) {
+                continue;
+            }
+            if (VERTEILEN.contains(ew.methode())) {
+                Instant lv = ew.lueckeVon();
+                Instant lb = ew.luecke().messzeitNach();
+                if (lv.isAfter(von) && !lb.isAfter(bis)) {
+                    String satz = lueckenKennzeichen(ew.luecke(), reihe);
+                    kennzeichen.removeIf(satz::equals);
+                } else {
+                    menge = (menge == null ? BigDecimal.ZERO : menge)
+                            .add(innen.stream().reduce(BigDecimal.ZERO, BigDecimal::add));
+                    angeschnitten = true;
+                    anfangGedeckt |= !lv.isAfter(von) && von.isBefore(lb);
+                    endeGedeckt |= !lv.isAfter(bis) && bis.isBefore(lb);
+                }
+            } else {
+                if (innen.size() != 1 || !Duration.between(von, bis).equals(Duration.ofSeconds(VIERTELSTUNDE_S))) {
+                    throw new IllegalArgumentException(
+                            "e–g bilden die Viertelstunde; die gröbere Periode bildet die Kaskade (IP-17)");
+                }
+                menge = innen.get(0);
+                ersetzt = true;
+                kennzeichen.clear();
+            }
+            saetze.add(ErgebnisZustand.ersatzwert(ew.methode(), ew.kennung()));
+        }
+        if (saetze.isEmpty()) {
+            return basis;
+        }
+        if (ersetzt || angeschnitten) {
+            // Die Ränder neu sagen: gedeckt ist, was in der Lücke liegt; „nur ein Stand“ war ein Rand.
+            List<String> vorn = new ArrayList<>();
+            if (!ersetzt && !standAnfang && !anfangGedeckt) {
+                vorn.add(ANFANG_NICHT_GEMESSEN);
+            }
+            if (!ersetzt && !standEnde && !endeGedeckt) {
+                vorn.add(ENDE_NICHT_GEMESSEN);
+            }
+            kennzeichen.removeIf(k -> k.equals(ANFANG_NICHT_GEMESSEN) || k.equals(ENDE_NICHT_GEMESSEN)
+                    || k.equals(NUR_EIN_STAND));
+            kennzeichen.addAll(0, vorn);
+        }
+        kennzeichen.addAll(saetze);
+        return new Ergebnis(menge, basis.mittel(), basis.min(), basis.max(), basis.energieKwh(),
+                menge != null ? MIT_ERSATZWERT : basis.zustand(), basis.erhalten(), basis.erwartet(),
+                basis.abdeckungProzent(), List.copyOf(kennzeichen));
+    }
+
+    /**
+     * Der Eingang einer Version mit Ersatzwerten: dieselbe Regel wie {@link #ergebnis}, darüber die geltenden
+     * Ersatzwerte ({@link #geltende}, {@link #mitErsatzwerten}). Ein Ablesestand (d) wird vorab an den Rohwerten
+     * geprüft und wirkt als Gerätegrenze mit Ableseständen in der Rechnung selbst.
+     */
+    public static Version version(ReihenKontext reihe, String wertart, List<Rohwert> werte, Instant von,
+            Instant bis, Duration kadenz, Collection<Ereignis> ereignisse, BigDecimal faktor,
+            BigDecimal wertebereichModul, BigDecimal hoechstzuwachsJeKadenz, boolean integrieren,
+            List<Ersatzwert> ersatzwerte) {
+        Map<String, String> vorab = new LinkedHashMap<>();
+        for (Ersatzwert ew : ersatzwerte) {
+            if (WIRKSAM.equals(ew.status()) && ABLESESTAND_NACHTRAGEN.equals(ew.methode())) {
+                try {
+                    ablesestandPruefen(werte, ew);
+                } catch (ErsatzwertAbgelehnt x) {
+                    vorab.put(ew.kennung(), x.grund());
+                }
+            }
+        }
+        Geltende g = geltende(ersatzwerte, wertart, reihe.einheit(), vorab);
+        List<Ereignis> mitAblesestand = new ArrayList<>(ereignisse);
+        if ("zaehlerstand".equals(wertart)) {
+            for (Geltend x : g.gelten()) {
+                if (ABLESESTAND_NACHTRAGEN.equals(x.ersatzwert().methode())) {
+                    mitAblesestand = new ArrayList<>(ablesestandEreignisse(mitAblesestand, x.ersatzwert()));
+                }
+            }
+        }
+        Ergebnis basis = ergebnis(reihe, wertart, werte, von, bis, kadenz, mitAblesestand, faktor,
+                wertebereichModul, hoechstzuwachsJeKadenz, integrieren);
+        if (g.gelten().isEmpty()) {
+            return new Version(basis, g.abgelehnt());
+        }
+        boolean zaehler = "zaehlerstand".equals(wertart);
+        return new Version(mitErsatzwerten(reihe, basis,
+                !zaehler || periodenstand(werte, von, kadenz) != null,
+                !zaehler || periodenstand(werte, bis, kadenz) != null,
+                von, bis, g.gelten()), g.abgelehnt());
     }
 
     // ---------------------------------------------------------------------- Der Eingang

@@ -22,8 +22,9 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   Kennzeichen, wenn er auf genau EIN Muster passt — auch eine gut gemeinte Umformulierung ist ein
   unbekannter Satz. Ein geänderter Wortlaut ist eine neue Fassung: der alte kommt nach
   `fruehere_fassungen` (erkannt, nie mehr gesprochen), weil er schon gespeichert ist. Die übrigen Vokabular-Wörter (nachgeliefert,
-  korrigiert (Version n), vorläufig/endgültig, Ablesezeitraum, mit Ersatzwert (Methode …)) sind
-  `kennzeichen_vorgesehen`: ihren Wortlaut legt das erzeugende Paket fest.
+  korrigiert (Version n), vorläufig/endgültig, Ablesezeitraum) sind `kennzeichen_vorgesehen`: ihren
+  Wortlaut legt das erzeugende Paket fest. Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
+  aktiv — Rang 70, Methodenname in Kundensprache (`uems-ersatzwert-methoden.md`).
 - **Die Reihenfolge ist Vertrag:** der Rang steigt nie (Anteil 10 → Rand 20–22 → Strecke 30 →
   Neustart 40 → Werte 50 → Integration 60), die Sätze der Gerätegrenze stehen in fester Folge.
   In Rang 30 wird die zeitliche Folge NICHT an HH:MM geprüft (ein Monat hat zwei Tage 09:12).

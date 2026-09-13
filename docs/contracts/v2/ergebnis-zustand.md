@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 13.09.2026 · Vertrag 1.3 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 13.09.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -31,7 +31,7 @@ die Datei.
 | vollständig | Pflicht | kein Fehlbestand | jede Kilowattstunde der Periode ist gezählt und zugeordnet |
 | unvollständig | erlaubt | **mindestens ein** Fehlbestand | ein Teil ist nachweislich nicht gezählt; die Zahl ist der gemessene Teil und sagt, was fehlt |
 | keine Werte | **verboten** | kein Fehlbestand | kein guter Wert: kein Wert, keine Null, keine Linie |
-| mit Ersatzwert | Pflicht | frei | mindestens ein Ersatzwert (E7); Methode und Kennung spricht AP-08 IP-13 |
+| mit Ersatzwert | Pflicht | frei | mindestens ein Ersatzwert (E7); Methode und Kennung sagt das Kennzeichen `mit_ersatzwert` (Rang 70, seit 1.4) |
 
 Der Zustand wird **berechnet, nie gesetzt**. `pruefe` meldet, wenn Zahl, Zustand und Kennzeichen
 nicht zusammenpassen: „keine Werte“ mit `0` ist `zahl_verboten` (unbekannt ist keine Null),
@@ -64,6 +64,7 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 50 | 1 von {erwartet} Intervallmengen fehlt / {fehlend ≥ 2} von {erwartet} … fehlen — … | — | ja |
 | 50 | gemessene Zeit {minuten}:{sekunden} min von {periode_min} min | — | ja |
 | 60 | aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit) | aus Leistung integriert | nein |
+| 70 | mit Ersatzwert (Methode „{methode}“, {kennung}) — `{methode}` ist der Name in Kundensprache (`vokabular.ersatzwert_methode[].name` der Ereignis-Vektoren), `{kennung}` EW-<Jahr>-<Nr.>; zuletzt, nach allem, was gemessen ist (seit 1.4, AP-08 IP-13) | mit Ersatzwert (Methode …) | nein |
 
 **Reihenfolge:** der Rang steigt in einer Liste nie (`kennzeichen_reihenfolge`); die Sätze der
 Gerätegrenze stehen in fester Folge (`kennzeichen_folge`); ein einmaliges Kennzeichen steht nie
@@ -83,7 +84,7 @@ endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände�
 Text, anderer Platzhalter: das heutige Muster nimmt „337.600“ nicht an.
 
 **Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · korrigiert (Version n) ·
-vorläufig · endgültig · Ablesezeitraum · mit Ersatzwert (Methode …). Ihren Wortlaut legt das
+vorläufig · endgültig · Ablesezeitraum. Ihren Wortlaut legt das
 Paket fest, das sie erzeugt (`kennzeichen_vorgesehen.wortlaut_mit`); bis dahin ist ein solcher
 Satz `kennzeichen_vorgesehen`, kein Kennzeichen.
 

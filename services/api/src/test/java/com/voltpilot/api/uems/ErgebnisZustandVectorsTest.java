@@ -192,7 +192,11 @@ class ErgebnisZustandVectorsTest {
     @TestFactory
     List<DynamicTest> jederSatzDerVerbrauchsregelStehtInDerListe() throws Exception {
         List<DynamicTest> tests = new ArrayList<>();
-        for (JsonNode fall : lies(VERBRAUCH).path("cases")) {
+        // Seit 1.4 auch die Versionen mit Ersatzwerten (Block `ersatzwerte`, AP-08 IP-13).
+        List<JsonNode> faelle = new ArrayList<>();
+        lies(VERBRAUCH).path("cases").forEach(faelle::add);
+        lies(VERBRAUCH).path("ersatzwerte").forEach(faelle::add);
+        for (JsonNode fall : faelle) {
             for (JsonNode erw : fall.path("expected")) {
                 if (!erw.has("kennzeichen")) {
                     continue;

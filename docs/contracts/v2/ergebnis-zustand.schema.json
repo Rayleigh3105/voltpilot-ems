@@ -8,7 +8,7 @@
   "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.3", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "schema_version": { "type": "string", "const": "1.4", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -51,7 +51,7 @@
         "properties": {
           "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Das heutige Muster, als das der Satz erkannt wird." },
           "muster": { "type": "string", "minLength": 1 },
-          "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge"] } },
+          "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge", "ersatzwert_methode", "ersatzwert_kennung"] } },
           "bis_fassung": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "Die letzte Fassung, die diesen Wortlaut sprach." },
           "beispiel": { "type": "string", "minLength": 1 },
           "warum": { "type": "string", "minLength": 1 }
@@ -203,7 +203,7 @@
       "properties": {
         "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$" },
         "muster": { "type": "string", "minLength": 1, "description": "Der Wortlaut; {name} ist ein Platzhalter aus `platzhalter`." },
-        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge"] } },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge", "ersatzwert_methode", "ersatzwert_kennung"] } },
         "wort": { "type": ["string", "null"], "description": "Das Wort des Kennzeichen-Vokabulars (verbrauch-vectors.json kennzeichen); null = kein Wort (siehe befunde)." },
         "rang": { "type": "integer", "minimum": 1 },
         "fehlbestand": { "type": "boolean" },

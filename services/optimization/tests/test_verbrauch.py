@@ -754,3 +754,149 @@ def test_ein_standort_ausserhalb_von_berlin_zeigt_seine_eigene_uhrzeit():
         "Neustart 09:12: bis zu 120 s Zählung möglicherweise verloren",
     ]
     assert lissabon["menge"] == berlin["menge"]
+
+
+# ---------------------------------------------------- Ersatzwert-Methoden (E7, AP-08 IP-13)
+
+EREIGNIS_VEKTOREN = VECTORS.parent / "events-vocabulary-vectors.json"
+_F11, _F21 = "f11-begr-ndeter-ersatzwert", "f21-widerruf-und-ersatz-durch-eine-bessere-methode"
+_FAELLE = {c["name"]: c for c in CASES}
+
+ERSATZWERT_ERWARTUNGEN = [
+    pytest.param(eintrag, erwartung, id=f"{eintrag['name']}::{erwartung['name']}")
+    for eintrag in DOC["ersatzwerte"]
+    for erwartung in eintrag["expected"]
+]
+
+
+def _mit_status(eintrag: dict) -> list[dict]:
+    return [{**e, "status": eintrag["status"][e["kennung"]]} for e in eintrag["ersatzwerte"]]
+
+
+def test_die_methoden_und_ablehnungen_sind_die_des_vertrags():
+    """Sieben Methoden in der Reihenfolge und mit dem Kundennamen des Ereignis-Vokabulars; die Ablehnungen aus der Datei."""
+    regeln = DOC["regeln"]
+    assert regeln["ersatzwert_stellen"] == verbrauch.ERSATZWERT_STELLEN
+    assert tuple(regeln["ersatzwert_ablehnungen"]) == verbrauch.ERSATZWERT_ABLEHNUNGEN
+    methoden = json.loads(EREIGNIS_VEKTOREN.read_text(encoding="utf-8"))["vokabular"]["ersatzwert_methode"]
+    assert list(verbrauch.ERSATZWERT_METHODEN.items()) == [(m["code"], m["name"]) for m in methoden]
+    assert verbrauch.VERTEILEN == tuple(m["code"] for m in methoden if m["zuwachs"] == "gemessen")
+    assert verbrauch.UEBERNEHMEN == tuple(
+        m["code"] for m in methoden if m["zuwachs"] == "keiner" and m["bezug"] in ("vorperiode", "vergleichsquelle")
+    )
+
+
+def test_f11_und_f21_und_jede_methode_und_ablehnung_sind_vertreten():
+    """Die Abnahme von IP-13 hängt an F11 und F21; jede Methode rechnet und jede Ablehnung steht mindestens einmal da."""
+    eintraege = DOC["ersatzwerte"]
+    assert {e["fall"] for e in eintraege} >= {_F11, _F21}
+    assert {ew["methode"] for e in eintraege if not e["abgelehnt"] for ew in e["ersatzwerte"]} == set(
+        verbrauch.ERSATZWERT_METHODEN
+    )
+    assert {g for e in eintraege for g in e["abgelehnt"].values()} == set(verbrauch.ERSATZWERT_ABLEHNUNGEN)
+
+
+@pytest.mark.parametrize("eintrag,erwartung", ERSATZWERT_ERWARTUNGEN)
+def test_ersatzwert_vektor(eintrag: dict, erwartung: dict):
+    """Jede Version mit Ersatzwerten, Feld für Feld — und genau die benannten Ablehnungen."""
+    ist = verbrauch.ergebnis(
+        _FAELLE[eintrag["fall"]]["input"]["reihe"], erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag)
+    )
+    for feld in GERECHNET:
+        if feld not in erwartung:
+            continue
+        if feld == "menge":
+            soll = erwartung["menge"]
+            assert (ist["menge"] is None) == (soll is None), eintrag["why"]
+            if soll is not None:
+                assert ist["menge"] == Decimal(str(soll)), f"menge: {eintrag['why']}"
+        else:
+            assert ist.get(feld) == erwartung[feld], f"{feld}: {eintrag['why']}"
+    assert ist.get("ersatzwert_abgelehnt", {}) == eintrag["abgelehnt"], eintrag["why"]
+
+
+@pytest.mark.parametrize("eintrag", [e for e in DOC["ersatzwerte"] if e["verteilung"]], ids=lambda e: e["name"])
+def test_die_verteilung_der_datei(eintrag: dict):
+    """Anzahl, erster und letzter Anteil, Summe je Tag — und die Summe EXAKT der gemessene Zuwachs."""
+    reihe = _FAELLE[eintrag["fall"]]["input"]["reihe"]
+    for soll in eintrag["verteilung"]:
+        roh = next(e for e in eintrag["ersatzwerte"] if e["kennung"] == soll["kennung"])
+        ew = verbrauch.ersatzwert_aus({**roh, "status": verbrauch.WIRKSAM}, reihe)
+        anteile = verbrauch.ersatzwert_anteile(ew, reihe["wertart"], reihe["einheit"])
+        assert len(anteile) == soll["anzahl"]
+        assert sum((a for _, a in anteile), Decimal(0)) == ew.luecke.zuwachs == Decimal(str(soll["summe"]))
+        assert anteile[0][1] == Decimal(str(soll["erster"]))
+        assert anteile[-1][1] == Decimal(str(soll["letzter"]))
+        je_tag: dict[str, Decimal] = {}
+        for t, a in anteile:
+            tag = t.astimezone(ZoneInfo(reihe["zeitzone"])).date().isoformat()
+            je_tag[tag] = je_tag.get(tag, Decimal(0)) + a
+        assert je_tag == {k: Decimal(str(x)) for k, x in soll["je_tag"].items()}
+
+
+def test_ein_zurueckgenommener_ersatzwert_hinterlaesst_keine_spur_in_den_zahlen():
+    """F21: nur zurückgenommene Ersatzwerte → jede Periode ist Zeichen für Zeichen Version 1."""
+    geprueft = 0
+    for eintrag in DOC["ersatzwerte"]:
+        if set(eintrag["status"].values()) != {"zurueckgenommen"}:
+            continue
+        reihe = _FAELLE[eintrag["fall"]]["input"]["reihe"]
+        for erwartung in eintrag["expected"]:
+            mit = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag))
+            assert mit == verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"])
+            geprueft += 1
+    assert geprueft >= 3
+
+
+def test_die_bessere_methode_rechnet_vom_bestand_aus():
+    """F21: Version 3 mit Methode c ist dieselbe Zahl, ob Version 2 (Methode a) je bestand oder nicht."""
+    reihe = _FAELLE[_F21]["input"]["reihe"]
+    eintrag = next(e for e in DOC["ersatzwerte"] if e["status"] == {"EW-2026-0003": "zurueckgenommen", "EW-2026-0005": "wirksam"})
+    nur_c = [e for e in _mit_status(eintrag) if e["kennung"] == "EW-2026-0005"]
+    for erwartung in eintrag["expected"]:
+        mit_widerruf = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag))
+        assert mit_widerruf == verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=nur_c)
+
+
+# Die Invariante „Summe = gemessener Zuwachs“ (a, b, c) — an vielen Lückenlängen und mit Rundungsrest.
+
+_LAENGEN = [1, 2, 3, 7, 38, 40, 78, 96, 100, 2976]
+_ZUWAECHSE = ["1872.0", "100", "1", "0.001", "337.6", "1000000", "0", "2.000000001", "418537600"]
+
+
+def _profile(n: int) -> dict[str, list[Decimal]]:
+    return {
+        "gleichmaessig": [Decimal(1)] * n,
+        "steigend": [Decimal(i + 1) for i in range(n)],
+        "mit_nullen": [Decimal(3) if i % 2 == 0 else Decimal(0) for i in range(n)],
+        "letzte_null": [Decimal(5)] * (n - 1) + [Decimal(0)] if n > 1 else [Decimal(5)],
+        "unregelmaessig": [Decimal("0.37") * (i % 7 + 1) for i in range(n)],
+    }
+
+
+@pytest.mark.parametrize("n", _LAENGEN)
+@pytest.mark.parametrize("zuwachs", _ZUWAECHSE)
+def test_invariante_summe_gleich_gemessenem_zuwachs(n: int, zuwachs: str):
+    """a–c: die Summe der GESPEICHERTEN Anteile ist EXAKT der Zuwachs — auch wo ein Anteil ein unendlicher Bruch ist."""
+    z = Decimal(zuwachs)
+    stelle = Decimal(1).scaleb(-verbrauch.ERSATZWERT_STELLEN)
+    for art, gewichte in _profile(n).items():
+        anteile = verbrauch.verteilen(z, gewichte)
+        assert len(anteile) == n
+        assert sum(anteile, Decimal(0)) == z, f"{art}: Summe {sum(anteile)} statt {z}"
+        assert all(a >= 0 for a in anteile), art
+        summe = sum(gewichte, Decimal(0))
+        for g, a in zip(gewichte[:-1], anteile[:-1]):
+            genau = z * g / summe
+            assert a == a.quantize(stelle) and 0 <= genau - a < stelle, f"{art}: {a} ist nicht {genau} abgeschnitten"
+        # Der Rest aus dem Abschneiden steht in der LETZTEN Viertelstunde und ist kleiner als n × 10⁻⁹.
+        rest = anteile[-1] - z * gewichte[-1] / summe
+        assert Decimal(0) <= rest.quantize(stelle) < n * stelle, f"{art}: Rest {rest}"
+
+
+def test_die_invariante_haelt_auch_mit_rest_an_einer_echten_luecke():
+    """Konstruiert: 100 kWh über drei Viertelstunden — 33,333333333 + 33,333333333 + 33,333333334 = 100 exakt."""
+    anteile = verbrauch.verteilen(Decimal(100), [Decimal(1)] * 3)
+    assert anteile == [Decimal("33.333333333"), Decimal("33.333333333"), Decimal("33.333333334")]
+    gerundet = [(Decimal(100) / 3).quantize(Decimal("0.000000001"))] * 3
+    assert sum(gerundet) != Decimal(100), "Gegenprobe: jeden Anteil zu runden verlöre den Rest"

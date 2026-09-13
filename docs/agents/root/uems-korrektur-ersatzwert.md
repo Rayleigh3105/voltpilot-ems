@@ -13,8 +13,8 @@ Ein Ersatzwert ist eine Zahl, die ein Mensch setzt, weil der Zähler sie nie gel
 steht er **nie** in `device_measurement_sample`, `messreihe_viertelstunde` oder einer Periode, sondern
 in seiner eigenen Tabelle: mit Kennung `EW-<Jahr>-<lfd. Nr.>`, Methode, **Pflicht-Begründung**
 (10–500 Zeichen), Urheber — und **widerrufbar** (Rücknahme als Fortschreibung, nie gelöscht). Kein
-Rohwert wird angefasst. Die Rechnung (Werte je Viertelstunde, Kennzeichen „mit Ersatzwert (Methode …)“,
-Versionen) ist IP-13/IP-17 — die Tabelle trägt die Methode, sie wendet sie nicht an.
+Rohwert wird angefasst. Die Tabelle trägt die Methode, sie wendet sie nicht an: die Rechnung (Werte je
+Viertelstunde, Kennzeichen, Versionen) ist seit IP-13 `uems-ersatzwert-methoden.md`, die Kaskade IP-17.
 
 ## Die sieben Methoden (E7) und die Unterscheidung in der Datenbank
 

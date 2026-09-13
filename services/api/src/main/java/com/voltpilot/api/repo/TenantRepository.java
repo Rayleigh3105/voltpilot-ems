@@ -186,6 +186,10 @@ public class TenantRepository {
                 // correction first, it holds its substitute value by FK.
                 deleteByTenant(con, "messreihe_korrektur", tenantId);
                 deleteByTenant(con, "messreihe_ersatzwert", tenantId);
+                // The quarter-hour versions with substitute values and the run's per-value state
+                // (AP-08 IP-13): append-only versions + a work state, the tenant held by RESTRICT.
+                deleteByTenant(con, "messreihe_viertelstunde_version", tenantId);
+                deleteByTenant(con, "messreihe_ersatzwert_wirkung", tenantId);
                 // Month and year values and their work list (AP-08 IP-5): hypertable + queue,
                 // no FK — the same one way out.
                 deleteByTenant(con, "messreihe_periode", tenantId);

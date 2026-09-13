@@ -26,6 +26,7 @@
 
 import { iso, mitternacht, offsetMinuten, stundenDesTages, tagPlus, zwei } from './bezugsPeriode';
 import { dez, dezRunde, dezText, type Dez } from './dez';
+import { METHODE_TEXT } from './uemsEreignis';
 
 // ------------------------------------------------------------------ Zustände (§4.5)
 
@@ -56,6 +57,12 @@ export const PLATZHALTER: Record<string, string> = {
   dezimal_klartext: '(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?',
   // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
   menge: '(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00a0(?:kWh|kvarh|m³)',
+  // Seit 1.4 (AP-08 IP-13): der Name einer Ersatzwert-Methode in Kundensprache und die Kennung.
+  ersatzwert_methode:
+    '(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen'
+    + '|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen'
+    + '|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)',
+  ersatzwert_kennung: 'EW-[0-9]{4}-[0-9]{4,}',
 };
 
 export type Muster = {
@@ -118,6 +125,9 @@ export const KENNZEICHEN: Muster[] = [
     { minuten: 'ganzzahl', sekunden: 'sekunden', periode_min: 'ganzzahl' }, null, 50, true, true),
   m('aus_leistung_integriert', 'aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)', {},
     'aus Leistung integriert', 60, false, true),
+  // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
+  m('mit_ersatzwert', 'mit Ersatzwert (Methode „{methode}“, {kennung})',
+    { methode: 'ersatzwert_methode', kennung: 'ersatzwert_kennung' }, 'mit Ersatzwert (Methode …)', 70, false, false),
 ];
 
 /**
@@ -153,7 +163,6 @@ export const VORGESEHEN: Vorgesehen[] = [
   { wort: 'vorläufig', anfang: 'vorläufig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
   { wort: 'endgültig', anfang: 'endgültig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
   { wort: 'Ablesezeitraum', anfang: 'Ablesezeitraum', wortlautMit: 'AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)' },
-  { wort: 'mit Ersatzwert (Methode …)', anfang: 'mit Ersatzwert (', wortlautMit: 'AP-08 IP-13 (Ersatzwert-Methoden)' },
 ];
 
 const PLATZ = /\{([a-z_]+)\}/g;
@@ -197,6 +206,16 @@ export const sprich = (schluessel: string, werte: Record<string, string>): strin
   const ist = Object.keys(werte).sort().join(',');
   if (soll !== ist) throw new Error(`Kennzeichen ${schluessel} braucht [${soll}], bekam [${ist}]`);
   return k.muster.replace(PLATZ, (_, name: string) => werte[name]);
+};
+
+/**
+ * „mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)“ — Rang 70, seit 1.4. Die Methode
+ * spricht ihren Namen in Kundensprache (`METHODE_TEXT`), nie das Vertragswort.
+ */
+export const ersatzwert = (methode: string, kennung: string): string => {
+  const name = METHODE_TEXT[methode];
+  if (name === undefined) throw new Error(`unbekannte Ersatzwert-Methode ${methode}`);
+  return sprich('mit_ersatzwert', { methode: name, kennung });
 };
 
 /** Der feste Anfang eines Musters bis zum ersten Platzhalter. */
