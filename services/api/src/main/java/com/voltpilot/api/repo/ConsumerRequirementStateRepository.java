@@ -53,10 +53,26 @@ public class ConsumerRequirementStateRepository {
     /**
      * The MEASURED/INTEGRATED energy of an entity over a period, from
      * telemetry_v2 (RLS-scoped). {@code integrated}=true integrates a power
-     * channel (left-Riemann, kWh); false sums an energy channel as a delta
-     * (max-min, for a cumulative kWh channel). Null when no telemetry covers the
+     * channel (left-Riemann, kWh); false sums the GROWTH of a cumulative kWh
+     * counter. Null when no telemetry covers the
      * period - the caller then downgrades the confirmation to ASSUMED (§9.4), so
      * a "measured" label is never claimed without data.
+     *
+     * <p><b>Zählerstand mit Rücksprung (AP-08 IP-21).</b> {@code max − min} galt nur
+     * für einen monoton steigenden Zähler: einer, der auf 950 läuft und bei 5 neu
+     * anfängt, ergab 945 statt 57. Die Reihe wird deshalb an jeder RÜCKSETZUNG in
+     * Abschnitte geteilt - ein Stand unter der Hälfte seines positiven Vorgängers.
+     * Der erste Abschnitt zählt {@code max − min} wie bisher (ohne Rücksetzung ist
+     * das Ergebnis dieselbe Zahl), jeder weitere zählt ab 0 bis zu seinem
+     * Höchststand. Ein kleinerer Rückschritt (Rundung, erneute Meldung) bleibt im
+     * Abschnitt und verschiebt nichts. Bewusst NICHT erkannt: Überlauf am
+     * Wertebereich (zählt nur den Stand nach dem Überlauf), Gerätetausch auf einen
+     * Stand über der Hälfte oder über dem alten (zählt als Zuwachs bzw. fehlt),
+     * ein einzelner Ausreißer nach oben (sein Abfall wirkt wie eine Rücksetzung).
+     * Die UEMS-Messreihen rechnen getrennt davon in {@code VerbrauchRegeln}.
+     *
+     * <p>{@code telemetry_v2.entity_id} ist TEXT - die UUID geht als Text hinein;
+     * als UUID gebunden scheiterte die Abfrage an {@code text = uuid}.
      */
     public BigDecimal energyOverPeriod(UUID entityId, String channel, Instant from, Instant to,
             boolean integrated) {
@@ -68,11 +84,17 @@ public class ConsumerRequirementStateRepository {
                         + "  SELECT time, value, lead(time) OVER (ORDER BY time) AS next_t "
                         + "  FROM telemetry_v2 WHERE entity_id = ? AND channel = ? "
                         + "    AND time >= ? AND time < ?) s WHERE next_t IS NOT NULL"
-                : "SELECT max(value) - min(value) AS kwh FROM telemetry_v2 "
-                        + "WHERE entity_id = ? AND channel = ? AND time >= ? AND time < ?";
+                : "SELECT sum(CASE WHEN abschnitt = 0 THEN hoch - tief ELSE hoch END) AS kwh FROM ("
+                        + "  SELECT abschnitt, max(value) AS hoch, min(value) AS tief FROM ("
+                        + "    SELECT value, count(*) FILTER (WHERE vorher > 0 AND value < vorher / 2)"
+                        + "      OVER (ORDER BY time) AS abschnitt FROM ("
+                        + "      SELECT time, value, lag(value) OVER (ORDER BY time) AS vorher"
+                        + "      FROM telemetry_v2 WHERE entity_id = ? AND channel = ? "
+                        + "        AND time >= ? AND time < ?) s) g"
+                        + "  GROUP BY abschnitt) a";
         List<BigDecimal> rows = jdbc.query(sql,
                 (rs, i) -> rs.getBigDecimal("kwh"),
-                entityId, channel, Timestamp.from(from), Timestamp.from(to));
+                entityId.toString(), channel, Timestamp.from(from), Timestamp.from(to));
         if (rows.isEmpty() || rows.get(0) == null || rows.get(0).signum() < 0) {
             return null;
         }
