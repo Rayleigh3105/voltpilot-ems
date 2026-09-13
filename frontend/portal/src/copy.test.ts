@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -758,5 +759,92 @@ describe('K4 · Klartext-Wächter über den Chart-Beschriftungen', () => {
     // schmale Fassung, die die Einheit hinter einem `narrow ?` allein trägt.
     expect(BARE_UNIT_AXIS.test("name: 'Leistung (kW)',")).toBe(false);
     expect(BARE_UNIT_AXIS.test("name: narrow ? 'kW' : 'Leistung (kW)',")).toBe(false);
+  });
+});
+
+/**
+ * UEMS · AP-08 IP-8 — die Sätze des Ergebnis-Zustands.
+ *
+ * Sie wohnen im VERTRAG (`docs/contracts/v2/ergebnis-zustand-vectors.json`)
+ * und im Modul `uemsErgebnis.ts`, nicht in einer Fläche — der Dateiwächter
+ * oben sieht darum nur die Hälfte. Dieser Abschnitt liest jeden Kundensatz des
+ * Vertrags (Zustandswörter, Kennzeichen, Tagesdauer, Raster, Rundungsdifferenz
+ * und jeden erwarteten Satz) und prüft ihn gegen beide Wörterbücher und gegen
+ * die Werkstatt-Schrift DIESES Vertrags: Schlüssel in snake_case, Umlaute als
+ * Umschrift, die englischen Ereignis-Arten, ein ASCII-Minus, ein normales
+ * Leerzeichen vor der Einheit oder als Tausendertrenner (E11).
+ *
+ * ⚠ Bekannt und benannt, NICHT durchgelassen aus Versehen: „Zuwachs 337.600“
+ * (Punkt als Dezimalzeichen) und „Rechteck-Halten“ sind heutiger Wortlaut der
+ * Verbrauchsregel und stehen als Befund in der Vektor-Datei.
+ */
+const ERGEBNIS_INTERN: Array<{ re: RegExp; why: string; beispiel: string }> = [
+  { re: /\b[a-z]+_[a-z0-9_]+\b/, why: 'IP-8: ein Vertragsschlüssel ist kein Kundenwort', beispiel: '36,0 kWh · keine_werte' },
+  {
+    re: /\b(vollstaendig|unvollstaendig|Geraetegrenze|Ruecksetzung|Ueberlauf|Luecke|Zaehlung)\b/i,
+    why: 'IP-8: Umlaut-Umschrift ist Schlüsselschrift',
+    beispiel: '2.304 kWh · vollstaendig',
+  },
+  {
+    re: /\b(device|counter|restart|boundary|overflow|reset|gap|substitute|correction)\b/i,
+    why: 'IP-8: die Ereignis-Art ist kein Kundenwort („Gerätegrenze“, „Rücksetzung“ …)',
+    beispiel: 'counter reset 09:12',
+  },
+  { re: /\b(null|undefined|NaN|Infinity)\b/, why: 'IP-8: kein Wert ist „—“', beispiel: 'undefined · keine Werte' },
+  { re: /(^|[\s(])-\d/, why: 'E11: Minus ist U+2212, nicht der Bindestrich', beispiel: '-34,2 kW' },
+  { re: /\d (kWh|kW|%|m³)(?![\w])/, why: 'E11: geschütztes Leerzeichen vor der Einheit', beispiel: '2.304 kWh' },
+  { re: /\d \d{3}(?!\d)/, why: 'E11: Tausenderpunkt statt Leerzeichen', beispiel: '1 240 m³' },
+];
+
+describe('UEMS AP-08 IP-8 · die Ergebnis-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vertrag = JSON.parse(
+    readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'),
+  );
+
+  /** Jeder Kundensatz des Vertrags und des Moduls; Platzhalter stehen als „X“. */
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const z of ZUSTAENDE) out.push({ wo: 'Zustand', text: z.wort });
+    for (const k of KENNZEICHEN) {
+      out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster) });
+      if (k.wort) out.push({ wo: `Wort ${k.schluessel}`, text: k.wort });
+    }
+    for (const w of VORGESEHEN) out.push({ wo: 'vorgesehen', text: w.wort });
+    for (const t of Object.values(TAGESDAUER)) out.push({ wo: 'Tagesdauer', text: t });
+    for (const k of vertrag.kennzeichen) out.push({ wo: `Beispiel ${k.schluessel}`, text: k.beispiel });
+    out.push({ wo: 'Rundungsdifferenz', text: ohnePlatz(vertrag.rundung.differenz_satz) });
+    out.push({ wo: 'Verlauf', text: ohnePlatz(vertrag.satz.abdeckung) });
+    for (const f of vertrag.cases) {
+      const e = f.erwartet;
+      for (const t of [e.satz, e.text, e.summe_der_angezeigten, e.differenz]) {
+        if (typeof t === 'string') out.push({ wo: `Fall ${f.name}`, text: t });
+      }
+      for (const feld of e.felder ?? []) out.push({ wo: `Raster ${f.name}`, text: feld.beschriftung });
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(150);
+  });
+
+  it('kein Kundensatz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beisst wirklich (jedes Muster gegen seinen eigenen Fall)', () => {
+    for (const { re, beispiel } of ERGEBNIS_INTERN) expect(re.test(beispiel), beispiel).toBe(true);
+    // …und lässt die richtige Schreibweise durch.
+    for (const gut of ['2.304\u00a0kWh · vollständig', '−34,2\u00a0kW', '02:00–03:00 MESZ', '— · keine Werte']) {
+      expect(ERGEBNIS_INTERN.filter(({ re }) => re.test(gut)).map(({ why }) => why), gut).toEqual([]);
+    }
   });
 });

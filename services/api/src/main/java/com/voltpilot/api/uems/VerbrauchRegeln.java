@@ -71,18 +71,20 @@ public final class VerbrauchRegeln {
     /** Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen. */
     public static final ZoneId ANZEIGE_ZEITZONE = ZoneId.of("Europe/Berlin");
 
-    public static final String VOLLSTAENDIG = "vollständig";
-    public static final String UNVOLLSTAENDIG = "unvollständig";
-    public static final String KEINE_WERTE = "keine Werte";
+    // Zustandswörter und Kennzeichen-Sätze sind der Vertrag ergebnis-zustand (AP-08 IP-8): diese
+    // Klasse formuliert keinen Satz selbst, sie ruft ErgebnisZustand an.
+    public static final String VOLLSTAENDIG = ErgebnisZustand.VOLLSTAENDIG;
+    public static final String UNVOLLSTAENDIG = ErgebnisZustand.UNVOLLSTAENDIG;
+    public static final String KEINE_WERTE = ErgebnisZustand.KEINE_WERTE;
 
     // Die Kennzeichen, die die Zusammensetzung aus Teilperioden (P7, §4.5) wiedererkennen muss —
     // an EINER Stelle, damit Erzeugen und Wiedererkennen nicht auseinanderlaufen.
-    static final String ANFANG_NICHT_GEMESSEN = "Anfang nicht gemessen (kein Stand an der Periodengrenze)";
-    static final String ENDE_NICHT_GEMESSEN = "Ende nicht gemessen (kein Stand an der Periodengrenze)";
-    static final String NUR_EIN_STAND = "nur ein Stand in der Periode — keine Menge bildbar";
-    static final String ZUWACHS_NICHT_MESSBAR = "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)";
-    static final String RUECKSETZUNG = "Rücksetzung ";
-    static final String NEUSTART = "Neustart ";
+    static final String ANFANG_NICHT_GEMESSEN = ErgebnisZustand.ANFANG_NICHT_GEMESSEN;
+    static final String ENDE_NICHT_GEMESSEN = ErgebnisZustand.ENDE_NICHT_GEMESSEN;
+    static final String NUR_EIN_STAND = ErgebnisZustand.NUR_EIN_STAND;
+    static final String ZUWACHS_NICHT_MESSBAR = ErgebnisZustand.ZUWACHS_NICHT_MESSBAR;
+    static final String RUECKSETZUNG = ErgebnisZustand.anfang("ruecksetzung");
+    static final String NEUSTART = ErgebnisZustand.anfang("neustart");
 
     /** Dieselbe Rechengenauigkeit wie der Python-Zwilling (Decimal-Vorgabe: 28 Stellen, half-even). */
     private static final MathContext RECHNUNG = new MathContext(28, RoundingMode.HALF_EVEN);
@@ -413,14 +415,12 @@ public final class VerbrauchRegeln {
             BigDecimal neu =
                     grenze.anfangsstand() != null ? nachher.wert().subtract(grenze.anfangsstand()) : BigDecimal.ZERO;
             boolean mit = grenze.endstand() != null && grenze.anfangsstand() != null;
-            kennzeichen.add("Gerätegrenze " + grenze.uhrzeit()
-                    + (mit ? " mit Ablesestände" : " ohne Ablesestände"));
+            kennzeichen.add(ErgebnisZustand.geraetegrenze(grenze.uhrzeit(), mit));
             if (!mit) {
                 kennzeichen.add(ZUWACHS_NICHT_MESSBAR);
             }
             if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
-                kennzeichen.add("Lücke am Wechsel " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
-                        + " (nicht aufgefüllt)");
+                kennzeichen.add(ErgebnisZustand.lueckeAmWechsel(uhr(vorher.zeit()), uhr(nachher.zeit())));
             }
             return new Paar(alt.add(neu), !mit);
         }
@@ -429,14 +429,12 @@ public final class VerbrauchRegeln {
         if (zuwachs.signum() < 0) {
             BigDecimal ueber = ueberlauf(vorher, nachher, kadenz, wertebereichModul, hoechstzuwachsJeKadenz);
             if (ueber != null) {
-                kennzeichen.add("Überlauf " + uhr(nachher.zeit())
-                        + " (Wertebereich " + wertebereichModul.toPlainString() + ")");
+                kennzeichen.add(ErgebnisZustand.ueberlauf(uhr(nachher.zeit()), wertebereichModul));
                 return new Paar(ueber, false);
             }
             // Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
             // nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
-            kennzeichen.add(RUECKSETZUNG + uhr(nachher.zeit())
-                    + " ohne Endstand — bis zu 1 Kadenz nicht gezählt");
+            kennzeichen.add(ErgebnisZustand.ruecksetzung(uhr(nachher.zeit())));
             return new Paar(BigDecimal.ZERO, true);
         }
 
@@ -450,8 +448,7 @@ public final class VerbrauchRegeln {
     /** Z7 — je Neustart ein Kennzeichen, zuletzt; {@code true}, wenn es einen gab. */
     private static boolean neustartKennzeichen(List<Ereignis> neustarts, List<String> kennzeichen) {
         for (Ereignis neustart : neustarts) {
-            kennzeichen.add(NEUSTART + neustart.uhrzeit() + ": bis zu " + neustart.verlustS()
-                    + " s Zählung möglicherweise verloren");
+            kennzeichen.add(ErgebnisZustand.neustart(neustart.uhrzeit(), neustart.verlustS()));
         }
         return !neustarts.isEmpty();
     }
@@ -541,9 +538,8 @@ public final class VerbrauchRegeln {
      * („Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar“).
      */
     public static String lueckenKennzeichen(LueckenZuwachs luecke) {
-        return "Lücke " + uhr(luecke.messzeitVor()) + "–" + uhr(luecke.messzeitNach())
-                + ": Zuwachs " + runde(luecke.zuwachs(), NACHKOMMASTELLEN).toPlainString()
-                + " gemessen, nicht auf Viertelstunden verteilbar";
+        return ErgebnisZustand.lueckeZuwachs(uhr(luecke.messzeitVor()), uhr(luecke.messzeitNach()),
+                runde(luecke.zuwachs(), NACHKOMMASTELLEN));
     }
 
     /**
@@ -969,11 +965,11 @@ public final class VerbrauchRegeln {
      * E5/M4 — eine Energie aus Leistung steht NIE ohne dieses Kennzeichen. Der Wortlaut ist Vertrag;
      * {@code kennzeichen} der Vektor-Datei nennt seinen Anfang {@link #AUS_LEISTUNG_INTEGRIERT_WORT}.
      */
-    public static final String AUS_LEISTUNG_INTEGRIERT =
-            "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)";
+    public static final String AUS_LEISTUNG_INTEGRIERT = ErgebnisZustand.AUS_LEISTUNG_INTEGRIERT;
 
     /** Das Wort des Kennzeichen-Vokabulars, mit dem {@link #AUS_LEISTUNG_INTEGRIERT} beginnt. */
-    public static final String AUS_LEISTUNG_INTEGRIERT_WORT = "aus Leistung integriert";
+    public static final String AUS_LEISTUNG_INTEGRIERT_WORT =
+            ErgebnisZustand.muster("aus_leistung_integriert").wort();
 
     /**
      * Die Stellen, unter denen eine ungerundete Energie nur Rechenrauschen trägt: jede Teil-Energie ist
@@ -991,14 +987,12 @@ public final class VerbrauchRegeln {
     private static List<String> fehlendeIntervallmengen(int fehlend, int erwartet) {
         return fehlend == 0
                 ? List.of()
-                : List.of(fehlend + " von " + erwartet + " Intervallmengen "
-                        + (fehlend == 1 ? "fehlt" : "fehlen") + " — Menge ist die Summe der gemessenen");
+                : List.of(ErgebnisZustand.intervallmengenFehlen(fehlend, erwartet));
     }
 
     /** M3 — das Kennzeichen einer unvollständigen Momentanwert-Periode. */
     private static String gemesseneZeit(long gemessenS, Instant von, Instant bis) {
-        return String.format(Locale.ROOT, "gemessene Zeit %d:%02d min von %d min",
-                gemessenS / 60, gemessenS % 60, Duration.between(von, bis).toMinutes());
+        return ErgebnisZustand.gemesseneZeit(gemessenS, Duration.between(von, bis).toMinutes());
     }
 
     // ------------------ Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
@@ -1314,7 +1308,7 @@ public final class VerbrauchRegeln {
      * @param quelle wie die Quelle heißt: Komponente · Messwert
      */
     public static String anteilKennzeichen(String anteil, String quelle) {
-        return (positiv(anteil) ? "positiver Anteil von " : "negativer Anteil von ") + quelle;
+        return ErgebnisZustand.anteil(positiv(anteil), quelle);
     }
 
     /**
