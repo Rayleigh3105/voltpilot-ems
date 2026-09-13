@@ -119,10 +119,13 @@ class MessstelleFormelTermVerteilungMigrationTest {
             TERME_VORHER.put(m, root.queryForList("SELECT concat_ws('~', id, fassung_id, position, eingang_art, "
                     + "entity_id, point_key, quell_messstelle_id, vorzeichen, faktor) FROM messstelle_formel_term "
                     + "WHERE messstelle_id = ? ORDER BY position", String.class, m));
-            UUID tenant = m.equals(pvB) ? mandantB : mandantA;
-            MessstelleFormelTermRepository.FormelStand s = als(tenant, () -> terme.stand(m, java.time.LocalDate.now()));
-            STAND_VORHER.put(m, List.of(s.vorhanden(), s.eingerichtet()));
         }
+        // Der Stand des Lebenszyklus VOR der Migration: die Erwartung des Bestands, ausgeschrieben. Er lässt
+        // sich hier nicht mehr mit dem Repository von heute lesen — dessen Abfrage filtert seit AP-07 IP-11
+        // (PR #716) `device.ausgebaut_am`, eine Spalte, die es auf dieser Fassung noch nicht gibt.
+        STAND_VORHER.put(pvSumme, List.of(true, false));
+        STAND_VORHER.put(baustein, List.of(true, true));
+        STAND_VORHER.put(pvB, List.of(true, false));
         fingerVorher = Bestandsschutz.fingerabdruck(root, List.of());
 
         flyway().target(DIESE).load().migrate();
@@ -182,7 +185,8 @@ class MessstelleFormelTermVerteilungMigrationTest {
     @Test
     void dieDatenbankHaeltDieNeueTermArt() {
         UUID ms = messstelle(mandantA, "MS-0010", "berechnet", WIRKLEISTUNG);
-        UUID kostenstelle = UUID.randomUUID();
+        // Seit AP-10 IP-7 zeigt das Ziel per Fremdschlüssel auf eine Kostenstelle desselben Kundenbereichs.
+        UUID kostenstelle = kostenstelle(mandantA);
         // Ein Verteilungs-Term: Quell-Messstelle + Ziel, Faktor 1 — die Datenbank nimmt ihn an (die
         // Schnittstelle speichert ihn erst, wenn AnteilLeseweg ihn lesen kann).
         alsTue(mandantA, () -> terme.anlegen(null, ms, 0, "verteilung", null, null, gemessenA, "+", 1.0,
@@ -227,7 +231,7 @@ class MessstelleFormelTermVerteilungMigrationTest {
     void derZaunStehtUndDieRechteBleiben() {
         UUID ms = messstelle(mandantA, "MS-0020", "berechnet", WIRKLEISTUNG);
         alsTue(mandantA, () -> terme.anlegen(null, ms, 0, "verteilung", null, null, gemessenA, "+", 1.0,
-                UUID.randomUUID(), null));
+                kostenstelle(mandantA), null));
         assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
                 + "WHERE relname = 'messstelle_formel_term'", Boolean.class)).isTrue();
         assertThat(app.queryForObject("SELECT count(*) FROM messstelle_formel_term", Long.class))
@@ -253,8 +257,8 @@ class MessstelleFormelTermVerteilungMigrationTest {
                 + "AND indexname = 'idx_messstelle_formel_term_verteilung_ziel'", Long.class)).isOne();
         assertThat(root.queryForObject("SELECT count(*) FROM pg_constraint WHERE conrelid = "
                 + "'messstelle_formel_term'::regclass AND contype = 'f' AND pg_get_constraintdef(oid) LIKE "
-                + "'%verteilung_ziel%'", Long.class)).as("noch kein Fremdschlüssel — kostenstelle kommt mit IP-7")
-                .isZero();
+                + "'%verteilung_ziel%'", Long.class)).as("der Fremdschlüssel, den AP-10 IP-7 nachgezogen hat")
+                .isOne();
     }
 
     /** {@code out-of-order: true}: dieselbe Datei ein zweites Mal auf dem neuesten Stand ändert nichts. */
@@ -277,12 +281,13 @@ class MessstelleFormelTermVerteilungMigrationTest {
         UUID t = mandant("Offboarding");
         UUID gem = messstelle(t, "MS-0001", "gemessen", GEMESSEN);
         UUID ms = messstelle(t, "MS-0002", "berechnet", WIRKLEISTUNG);
-        alsTue(t, () -> terme.anlegen(null, ms, 0, "verteilung", null, null, gem, "+", 1.0, UUID.randomUUID(), null));
+        alsTue(t, () -> terme.anlegen(null, ms, 0, "verteilung", null, null, gem, "+", 1.0, kostenstelle(t), null));
         alsTue(t, () -> terme.anlegen(null, ms, 1, "messstelle", null, null, gem, "-", 1.0, null, "negativ"));
 
         new TenantRepository(new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))).offboard(t);
 
-        for (String tabelle : List.of("messstelle_formel_term", "messstelle_formel_fassung", "messstelle", "tenant")) {
+        for (String tabelle : List.of("messstelle_formel_term", "messstelle_formel_fassung", "messstelle", "kostenstelle",
+                "tenant")) {
             String spalte = tabelle.equals("tenant") ? "id" : "tenant_id";
             assertThat(root.queryForObject("SELECT count(*) FROM " + tabelle + " WHERE " + spalte + " = ?",
                     Integer.class, t)).as(tabelle).isZero();
@@ -303,6 +308,15 @@ class MessstelleFormelTermVerteilungMigrationTest {
 
     private static UUID mandant(String name) {
         return root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, name);
+    }
+
+    /** Eine Kostenstelle (AP-10 IP-7) im Kundenbereich — mit seinem Unternehmen, falls der Test keins angelegt hat. */
+    private static UUID kostenstelle(UUID tenant) {
+        root.update("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, 'Unternehmen', 'Europe/Berlin') "
+                + "ON CONFLICT (tenant_id) DO NOTHING", tenant);
+        return root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, gueltig_ab) "
+                + "SELECT u.tenant_id, u.id, 'K-' || (SELECT count(*) + 1 FROM kostenstelle k WHERE k.tenant_id = u.tenant_id), "
+                + "'Spritzguss', DATE '2026-10-01' FROM unternehmen u WHERE u.tenant_id = ? RETURNING id", UUID.class, tenant);
     }
 
     private static UUID komponente(UUID tenant, int nr) {

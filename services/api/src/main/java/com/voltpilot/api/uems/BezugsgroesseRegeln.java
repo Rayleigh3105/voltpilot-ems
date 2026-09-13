@@ -102,11 +102,12 @@ public final class BezugsgroesseRegeln {
 
     /**
      * E1 „wählbar, sobald gebaut“: die Geltungsbereich-Arten, für die es ein Objekt (und in der
-     * Tabelle eine Verweis-Spalte) gibt. Prozess und Kostenstelle fehlen, bis ihr Paket sie baut —
-     * es ergänzt sie HIER und in {@code bezugsgroesse_geltung_objekt_chk}.
+     * Tabelle eine Verweis-Spalte) gibt. Seit AP-10 IP-7 ({@code V20260913160000}) sind es alle sieben
+     * des Vokabulars — Prozess und Kostenstelle haben ihre Tabellen. Die Regel bleibt ein Eingang: eine
+     * künftige Art ohne Objekt fehlt hier und antwortet {@code geltung_nicht_waehlbar}.
      */
     public static final List<String> GELTUNG_WAEHLBAR =
-            List.of("unternehmen", "standort", "gebaeude", "bereich", "messstelle");
+            List.of("unternehmen", "standort", "gebaeude", "bereich", "prozess", "kostenstelle", "messstelle");
 
     /** Wertart mit Periode (M1, CHECK {@code bezugsgroesse_periode_je_wertart_chk}). */
     static final String PERIODENWERT = "periodenwert";

@@ -242,6 +242,19 @@ tags:
       `messwerte.ansehen` fürs Lesen - noch nicht durchgesetzt (AP-03), es gilt
       authenticated(). Werte eingeben/berichtigen (IP-7), Import (IP-11 ff.) und
       Kanalbindung (IP-17) kommen mit ihren Paketen.
+  - name: kostenstellen-prozesse
+    description: >
+      UEMS-Kostenstellen und -Prozesse (AP-10 IP-7, Konzept §4.2/§5.7, AP-00 E5): die
+      Kostenstelle ist FLACH, der Prozess hat höchstens ein Elternteil und nur EINE Ebene
+      (Trigger `prozess_eine_ebene`); beide bestehen von `gueltig_ab` bis `gueltig_bis`
+      (Tage, der letzte einschließlich) und werden BEENDET, nie gelöscht - es gibt keine
+      DELETE-Route. Eine Messstelle gehört je Tag zu 0..n Prozessen (ohne Anteil); eine
+      Zuordnung gilt nie länger als ihr Ziel, und ein Ende, das eine Zuordnung abschneiden
+      würde, ist 409 `zuordnung_besteht` mit der Liste. Mandanten-Zaun ist die RLS (fremd =
+      404 `nicht_gefunden`, nie 403). Rechte (AP-10 §4.10, E15): `kostenstelle.verwalten`,
+      `prozess.verwalten`, die Zuordnung `messstelle.bearbeiten` - noch nicht durchgesetzt
+      (AP-03), es gilt authenticated(). Die Verteilung auf Kostenstellen (IP-8) und das
+      Kostenstellen-Lesemodell (IP-11) kommen mit ihren Paketen.
   - name: geraete
     description: >
       UEMS-Geräte (AP-04 IP-10): das physische Kästchen hinter der VoltPilot-Box
@@ -9085,8 +9098,8 @@ paths:
         Geltungsbereichs im Kundenbereich da ist (`geltung_unbekannt`, ein fremdes
         antwortet gleich). Ohne Kennzeichen folgt die Nummer der HÖCHSTEN je belegten
         (auch einer gelöschten Bezugsgröße) - ein Kennzeichen wird nie weitergegeben
-        (409 `kennzeichen_belegt`). Prozess und Kostenstelle sind noch nicht wählbar
-        (422 `geltung_nicht_waehlbar`), eine Fläche wird am Gebäude gepflegt (422
+        (409 `kennzeichen_belegt`). Prozess und Kostenstelle sind seit AP-10 IP-7 wählbar
+        (eine Art ohne Objekt wäre 422 `geltung_nicht_waehlbar`), eine Fläche wird am Gebäude gepflegt (422
         `flaeche_aus_struktur`). Die Anfrage wird streng gelesen: ein unbekanntes Feld
         (auch camelCase), ein Feld, das kein Text ist, eine `geltung_id`, die keine ID
         ist → 400 `anfrage_ungueltig` mit `feld`. GENAU EIN Protokolleintrag
@@ -9219,6 +9232,269 @@ paths:
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/unternehmen/kostenstellen:
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Die Kostenstelle-Objekte des Unternehmens; mit `stichtag` nur die an dem Tag bestehenden.
+      description: Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Liste (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KostenstelleListe" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [kostenstellen-prozesse]
+      summary: Legt an (Kennzeichen, Name, gültig ab, wahlweise gültig bis).
+      description: >
+        Recht `kostenstelle.verwalten` (AP-10 §4.10, E15). Reihenfolge: Form (400) → Kennzeichen-Form
+        (422 `kennzeichen_format`) → Zeitraum (422 `zeitraum_ungueltig`) → Unternehmen da
+        (409 `unternehmen_nicht_angelegt`) → Kennzeichen frei (409 `kennzeichen_belegt`,
+        auch das eines beendeten Objekts).
+        Die Kostenstelle ist flach: `eltern_id` gibt es an ihr nicht (400 `anfrage_ungueltig`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessAnlegen" }
+            example:
+              kennzeichen: "9010"
+              name: Druckluft
+              gueltig_ab: "2026-10-01"
+      responses:
+        "201":
+          description: Angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kostenstelle" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/kostenstellen/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Ein Objekt.
+      description: Heute lesend - keine eigene Kennung. Fremd oder unbekannt = 404 `nicht_gefunden`.
+      responses:
+        "200":
+          description: Das Objekt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kostenstelle" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+    put:
+      tags: [kostenstellen-prozesse]
+      summary: Benennt um - Kennzeichen, Beginn und Elternteil bleiben.
+      description: Recht `kostenstelle.verwalten`. Nur `name`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessUmbenennen" }
+      responses:
+        "200":
+          description: Umbenannt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kostenstelle" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/kostenstellen/{id}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kostenstellen-prozesse]
+      summary: Beendet (der letzte Tag) - beenden statt löschen.
+      description: >
+        Recht `kostenstelle.verwalten`. Ein Ende wird nur vorgezogen: ein späteres oder gleiches Ende eines
+        beendeten Objekts ist 409 `bereits_beendet` (Muster „nur verkürzt“). Ein Tag
+        vor dem Beginn ist 422 `zeitraum_ungueltig`. Gelten Zuordnungen über das Ende hinaus
+        (Messstellen, Unterprozesse - und mit IP-8 die Anteile einer Verteilung), antwortet
+        409 `zuordnung_besteht` mit `zuordnungen` - gekürzt oder gelöscht wird nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessBeenden" }
+            example:
+              gueltig_bis: "2026-12-31"
+      responses:
+        "200":
+          description: Beendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kostenstelle" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/prozesse:
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Die Prozess-Objekte des Unternehmens; mit `stichtag` nur die an dem Tag bestehenden.
+      description: Heute lesend - keine eigene Kennung (wie das Unternehmen). Ohne Stichtag alle, beendete eingeschlossen, nach Kennzeichen.
+      parameters:
+        - { name: stichtag, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Liste (ein Objekt, kein nacktes Array - additiv erweiterbar).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProzessListe" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [kostenstellen-prozesse]
+      summary: Legt an (Kennzeichen, Name, gültig ab, wahlweise gültig bis).
+      description: >
+        Recht `prozess.verwalten` (AP-10 §4.10, E15). Reihenfolge: Form (400) → Kennzeichen-Form
+        (422 `kennzeichen_format`) → Zeitraum (422 `zeitraum_ungueltig`) → Unternehmen da
+        (409 `unternehmen_nicht_angelegt`) → Kennzeichen frei (409 `kennzeichen_belegt`,
+        auch das eines beendeten Objekts).
+        Beim Prozess wählt `eltern_id` den übergeordneten Prozess: gibt es ihn nicht,
+        422 `eltern_unbekannt`; hat er selbst ein Elternteil, 422 `eine_ebene`; besteht er
+        nicht an jedem Tag des neuen Prozesses, 422 `ziel_besteht_nicht`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessAnlegen" }
+            example:
+              kennzeichen: "P-1"
+              name: Spritzguss
+              gueltig_ab: "2026-10-01"
+      responses:
+        "201":
+          description: Angelegt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prozess" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/prozesse/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Ein Objekt.
+      description: Heute lesend - keine eigene Kennung. Fremd oder unbekannt = 404 `nicht_gefunden`.
+      responses:
+        "200":
+          description: Das Objekt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prozess" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+    put:
+      tags: [kostenstellen-prozesse]
+      summary: Benennt um - Kennzeichen, Beginn und Elternteil bleiben.
+      description: Recht `prozess.verwalten`. Nur `name`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessUmbenennen" }
+      responses:
+        "200":
+          description: Umbenannt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prozess" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/prozesse/{id}/beenden:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [kostenstellen-prozesse]
+      summary: Beendet (der letzte Tag) - beenden statt löschen.
+      description: >
+        Recht `prozess.verwalten`. Ein Ende wird nur vorgezogen: ein späteres oder gleiches Ende eines
+        beendeten Objekts ist 409 `bereits_beendet` (Muster „nur verkürzt“). Ein Tag
+        vor dem Beginn ist 422 `zeitraum_ungueltig`. Gelten Zuordnungen über das Ende hinaus
+        (Messstellen, Unterprozesse - und mit IP-8 die Anteile einer Verteilung), antwortet
+        409 `zuordnung_besteht` mit `zuordnungen` - gekürzt oder gelöscht wird nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KostenstelleProzessBeenden" }
+            example:
+              gueltig_bis: "2026-12-31"
+      responses:
+        "200":
+          description: Beendet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Prozess" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/messstellen/{id}/prozesse:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Die Prozesse einer Messstelle - alle wirksamen Intervalle, mit `am` die an dem Tag geltenden.
+      description: Recht `messstelle.ansehen`.
+      parameters:
+        - { name: am, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Intervalle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleProzesse" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+    put:
+      tags: [kostenstellen-prozesse]
+      summary: Ab einem Tag gehört die Messstelle zu GENAU diesen Prozessen (leer = zu keinem).
+      description: >
+        Recht `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“); mit
+        `gueltig_ab` vor heute zusätzlich `aenderung.rueckwirkend`. Was am Tag läuft und
+        bleibt, läuft weiter; was am Tag läuft und nicht mehr gilt, endet am VORTAG; was an
+        oder nach dem Tag beginnt und nicht passt, wird aufgehoben (lesbar). Ein neues
+        Intervall endet mit seinem Prozess (`endet_mit_prozess`). Unbekannter Prozess 422
+        `prozess_unbekannt`, ein Prozess, der am Tag nicht besteht, 422 `ziel_besteht_nicht`,
+        archivierte Messstelle 409 `messstelle_archiviert`. GENAU EIN Protokolleintrag
+        `prozesse_zugeordnet`, wenn sich etwas ändert; eine Ablehnung schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleProzesseSetzen" }
+            example:
+              gueltig_ab: "2026-10-01"
+              prozesse: ["5b0d6f0e-8a3c-4f5e-9d2a-2f6f0c1b7a11"]
+      responses:
+        "200":
+          description: Die Intervalle danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleProzesse" }
+        "400": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+        "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -9312,6 +9588,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/BezugsgroesseFehler" }
+    KostenstelleProzessAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
+        deutsche `message`-Satz kommen aus dem geschlossenen Satz
+        (uems/KostenstelleProzessAbgelehnt); dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/KostenstelleProzessFehler" }
     MessstelleFormelAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -17118,6 +17402,132 @@ components:
                   `anteil_wartet_auf_ap08` ab, `eingang_art` = verteilung bis AP-10 IP-8 mit 422
                   `verteilung_wartet_auf_ip8` (Vertrag verteilung-vectors.json, Block `leseweg`).
         begruendung: { type: string, maxLength: 500 }
+    KostenstelleProzessFehler:
+      type: object
+      description: >
+        Die Ablehnung der Kostenstellen- und Prozess-Schnittstelle (AP-10 IP-7): 400
+        `anfrage_ungueltig` (`feld`); 404 `nicht_gefunden`; 409 `unternehmen_nicht_angelegt`,
+        `kennzeichen_belegt` (`kennzeichen`), `bereits_beendet` (`kennzeichen`, `gueltig_bis`),
+        `zuordnung_besteht` (`kennzeichen`, `gueltig_bis`, `zuordnungen`),
+        `messstelle_archiviert` (`kennzeichen`), `zuordnung_ueberlappt`; 422
+        `kennzeichen_format`, `zeitraum_ungueltig` (`gueltig_ab`, `gueltig_bis`), `eine_ebene`
+        (`eltern`, `eltern_von`), `eltern_unbekannt`, `prozess_unbekannt` (`prozess_id`),
+        `ziel_besteht_nicht` (`kennzeichen`, `besteht_ab`, `besteht_bis`, `gueltig_ab`, `gueltig_bis`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, unternehmen_nicht_angelegt, kennzeichen_format, kennzeichen_belegt, zeitraum_ungueltig, bereits_beendet, zuordnung_besteht, eine_ebene, eltern_unbekannt, prozess_unbekannt, ziel_besteht_nicht, messstelle_archiviert, zuordnung_ueberlappt]
+        message: { type: string }
+        feld: { type: string }
+        kennzeichen: { type: string }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        besteht_ab: { type: string, format: date }
+        besteht_bis: { type: string, format: date, nullable: true }
+        eltern: { type: string }
+        eltern_von: { type: string }
+        prozess_id: { type: string, format: uuid }
+        zuordnungen:
+          type: array
+          items:
+            type: object
+            required: [art, kennzeichen, gueltig_ab, gueltig_bis]
+            properties:
+              art: { type: string, description: "`messstelle` · `unterprozess` - eine Tabelle eines späteren Pakets nennt sich selbst." }
+              kennzeichen: { type: string, nullable: true }
+              gueltig_ab: { type: string, format: date }
+              gueltig_bis: { type: string, format: date, nullable: true }
+    KostenstelleProzessAnlegen:
+      type: object
+      additionalProperties: false
+      description: Jedes Feld Text oder null. `eltern_id` nur beim Prozess.
+      required: [kennzeichen, name, gueltig_ab]
+      properties:
+        kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$" }
+        name: { type: string }
+        eltern_id: { type: string, format: uuid, nullable: true }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE gültige Tag, einschließlich." }
+    KostenstelleProzessUmbenennen:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string }
+    KostenstelleProzessBeenden:
+      type: object
+      additionalProperties: false
+      required: [gueltig_bis]
+      properties:
+        gueltig_bis: { type: string, format: date, description: "Der LETZTE gültige Tag, einschließlich." }
+    Kostenstelle:
+      type: object
+      description: Eine Kostenstelle - flach, ohne Elternteil.
+      required: [id, kennzeichen, name, gueltig_ab, gueltig_bis, angelegt_am]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        angelegt_am: { type: string, format: date-time }
+    KostenstelleListe:
+      type: object
+      required: [stichtag, kostenstellen]
+      properties:
+        stichtag: { type: string, format: date, nullable: true }
+        kostenstellen: { type: array, items: { $ref: "#/components/schemas/Kostenstelle" } }
+    KostenstelleProzessVerweis:
+      type: object
+      required: [id, kennzeichen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+    Prozess:
+      type: object
+      description: Ein Prozess; `eltern` ist der übergeordnete Prozess (eine Ebene) oder null.
+      required: [id, kennzeichen, name, eltern, gueltig_ab, gueltig_bis, angelegt_am]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        eltern: { allOf: [{ $ref: "#/components/schemas/KostenstelleProzessVerweis" }], nullable: true }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        angelegt_am: { type: string, format: date-time }
+    ProzessListe:
+      type: object
+      required: [stichtag, prozesse]
+      properties:
+        stichtag: { type: string, format: date, nullable: true }
+        prozesse: { type: array, items: { $ref: "#/components/schemas/Prozess" } }
+    MessstelleProzesseSetzen:
+      type: object
+      additionalProperties: false
+      required: [gueltig_ab, prozesse]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        prozesse: { type: array, items: { type: string, format: uuid }, description: "Die IDs der Prozesse ab dem Tag; leer = keiner." }
+        grund: { type: string, nullable: true }
+    MessstelleProzessZuordnung:
+      type: object
+      required: [id, prozess, name, gueltig_ab, gueltig_bis, endet_mit_prozess]
+      properties:
+        id: { type: string, format: uuid }
+        prozess: { $ref: "#/components/schemas/KostenstelleProzessVerweis" }
+        name: { type: string, description: Name des Prozesses. }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        endet_mit_prozess: { type: boolean, description: "Der letzte Tag ist der des Prozesses - die Zuordnung gilt nie länger als er." }
+    MessstelleProzesse:
+      type: object
+      required: [messstelle_id, kennzeichen, am, prozesse]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        am: { type: string, format: date, nullable: true }
+        prozesse: { type: array, items: { $ref: "#/components/schemas/MessstelleProzessZuordnung" } }
     BezugsgroesseFehler:
       type: object
       description: >
@@ -17152,7 +17562,7 @@ components:
         wertart: { type: string, enum: [periodenwert, stand, stammdatum] }
         einheit: { type: string, description: "Aus `einheiten` des Vertrags (kg, t, Stück, h, min, m³, l, Personen, Schichten, Kd, °C; m² nicht - Flächen stehen am Gebäude)." }
         periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
-        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle], description: "Prozess und Kostenstelle sind noch nicht wählbar (422 `geltung_nicht_waehlbar`)." }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle], description: "Alle sieben sind seit AP-10 IP-7 wählbar (Prozess und Kostenstelle haben ihre Tabellen)." }
         geltung_id: { type: string, format: uuid }
     Bezugsgroesse:
       type: object
@@ -17164,7 +17574,7 @@ components:
         wertart: { type: string, enum: [periodenwert, stand, stammdatum] }
         einheit: { type: string }
         periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr] }
-        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, messstelle] }
+        geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
         geltung_id: { type: string, format: uuid }
         geltung_name: { type: string, description: "Name des Objekts; bei einer Messstelle ohne Namen ihr Kennzeichen." }
         hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile? Dann gilt M1 und sie ist nicht löschbar (M6)." }

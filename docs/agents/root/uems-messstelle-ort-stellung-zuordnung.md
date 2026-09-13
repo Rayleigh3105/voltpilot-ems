@@ -9,8 +9,9 @@ Lesen in `uems/MessstelleService` (`orte`, `elektrische_stellung` der Antwort),
 `GET /api/v1/standorte/{id}/orte`). Beweis: `uems/MessstelleZuordnungApiTest` (baut das ganze
 Referenzunternehmen über die Schnittstelle), `uems/MessstelleZuordnungMigrationTest`,
 `MessstelleSchnittstelleVertragTest` (DTO ⟷ OpenAPI ⟷ `$defs/ortZuordnung|stellungZuordnung`).
-**Offen:** Prozess- und Kostenstellen-Zuordnung (`messstelle_prozess`, `messstelle_kostenstelle`)
-warten auf die Prozess-/Kostenstellen-OBJEKTE — kein Freitext-Provisorium.
+**Prozess-Zuordnung** seit AP-10 IP-7: `messstelle_prozess` + `PUT …/messstellen/{id}/prozesse`
+(`uems-kostenstelle-prozess.md`). Die Kostenstellen-„Zuordnung“ ist die Verteilung (AP-10 IP-8,
+`messstelle_verteilung`) — eine `messstelle_kostenstelle` gibt es nicht.
 
 ## ⚠ Die Fallen
 

@@ -233,10 +233,24 @@ public class TenantRepository {
                 // before the Messstelle, Ort, Standort or Unternehmen it applies to. Its
                 // protocol has no FK to the Bezugsgroesse but holds the tenant (RESTRICT),
                 // so - unlike the older journals - it goes with the company.
+                // Kostenstelle and Prozess (V20260913160000) follow everything that points at
+                // them (Bezugsgroessen, Verteilungs-Terme, the Messstelle's Prozess intervals);
+                // sub-processes go before their parent (the self reference is RESTRICT, checked
+                // row by row).
                 for (String table : new String[] {
                         "bezugsgroesse_wert", "bezugsgroesse_kennzeichen_verlauf", "bezugsgroesse",
                         "bezugsgroesse_aenderung",
                         "messstelle_formel_term", "messstelle_formel_fassung",
+                        "messstelle_prozess"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                try (java.sql.PreparedStatement st = con.prepareStatement(
+                        "DELETE FROM prozess WHERE tenant_id = ? AND eltern_id IS NOT NULL")) {
+                    st.setObject(1, tenantId);
+                    st.executeUpdate();
+                }
+                for (String table : new String[] {
+                        "prozess", "kostenstelle",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "data_source_assignment", "data_source", "data_source_kennzeichen_seq",

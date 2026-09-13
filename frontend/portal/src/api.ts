@@ -2031,7 +2031,7 @@ export interface Bezugsgroesse {
   wertart: 'periodenwert' | 'stand' | 'stammdatum';
   einheit: string;
   periode_art: 'tag' | 'woche' | 'monat' | 'jahr' | null;
-  geltung_art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'messstelle';
+  geltung_art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'prozess' | 'kostenstelle' | 'messstelle';
   geltung_id: string;
   geltung_name: string;
   hat_werte: boolean;
@@ -2049,7 +2049,7 @@ export interface BezugsgroesseAnfrage {
   wertart: Bezugsgroesse['wertart'];
   einheit: string;
   periode_art?: Bezugsgroesse['periode_art'];
-  geltung_art: Bezugsgroesse['geltung_art'] | 'prozess' | 'kostenstelle';
+  geltung_art: Bezugsgroesse['geltung_art'];
   geltung_id: string;
 }
 
@@ -2096,6 +2096,84 @@ export interface BezugsgroesseWert {
   stand_offen: boolean;
   fassungen: BezugsgroesseFassung[];
 }
+
+/**
+ * Eine Kostenstelle (UEMS AP-10 IP-7, `/api/v1/unternehmen/kostenstellen`) — FLACH, ohne
+ * Elternteil. `gueltig_bis` ist der LETZTE gültige Tag (einschließlich), `null` = offen; beendet,
+ * nie gelöscht.
+ */
+export interface Kostenstelle {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  angelegt_am: string;
+}
+
+/** Ein Verweis auf eine Kostenstelle oder einen Prozess. */
+export interface KostenstelleProzessVerweis {
+  id: string;
+  kennzeichen: string;
+}
+
+/** Ein Prozess (AP-10 IP-7, `/api/v1/unternehmen/prozesse`) — höchstens ein Elternteil, nur eine Ebene. */
+export interface Prozess {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  eltern: KostenstelleProzessVerweis | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  angelegt_am: string;
+}
+
+/** Der Körper von `POST …/kostenstellen` und `POST …/prozesse`; `eltern_id` nur beim Prozess. */
+export interface KostenstelleProzessAnlegen {
+  kennzeichen: string;
+  name: string;
+  eltern_id?: string | null;
+  gueltig_ab: string;
+  gueltig_bis?: string | null;
+}
+
+/** Ein Intervall Messstelle → Prozess; `endet_mit_prozess`: der letzte Tag ist der des Prozesses. */
+export interface MessstelleProzessZuordnung {
+  id: string;
+  prozess: KostenstelleProzessVerweis;
+  name: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  endet_mit_prozess: boolean;
+}
+
+/** Die Antwort von `GET/PUT /api/v1/messstellen/{id}/prozesse`. */
+export interface MessstelleProzesse {
+  messstelle_id: string;
+  kennzeichen: string;
+  am: string | null;
+  prozesse: MessstelleProzessZuordnung[];
+}
+
+/**
+ * Die Ablehnungen der Kostenstellen- und Prozess-Schnittstelle — der geschlossene Satz aus
+ * `uems/KostenstelleProzessAbgelehnt` (gepinnt gegen OpenAPI `KostenstelleProzessFehler`).
+ */
+export type KostenstelleProzessFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'unternehmen_nicht_angelegt'
+  | 'kennzeichen_format'
+  | 'kennzeichen_belegt'
+  | 'zeitraum_ungueltig'
+  | 'bereits_beendet'
+  | 'zuordnung_besteht'
+  | 'eine_ebene'
+  | 'eltern_unbekannt'
+  | 'prozess_unbekannt'
+  | 'ziel_besteht_nicht'
+  | 'messstelle_archiviert'
+  | 'zuordnung_ueberlappt';
 
 /** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
 export interface BezugsgroesseWerte {
@@ -5567,6 +5645,51 @@ export const api = {
   /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
   messstelleArchivieren: (id: string) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
+  /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
+  kostenstellen: (stichtag?: string) =>
+    request<{ stichtag: string | null; kostenstellen: Kostenstelle[] }>(
+      `/api/v1/unternehmen/kostenstellen${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
+  kostenstelleAnlegen: (body: KostenstelleProzessAnlegen) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  kostenstelleUmbenennen: (id: string, name: string) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+
+  /** Beendet (der letzte Tag) — beenden statt löschen; 409 `zuordnung_besteht` nennt, was länger gilt. */
+  kostenstelleBeenden: (id: string, gueltig_bis: string) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen/${id}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify({ gueltig_bis }),
+    }),
+
+  /** Die Prozesse des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
+  prozesse: (stichtag?: string) =>
+    request<{ stichtag: string | null; prozesse: Prozess[] }>(
+      `/api/v1/unternehmen/prozesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
+  prozessAnlegen: (body: KostenstelleProzessAnlegen) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse`, { method: 'POST', body: JSON.stringify(body) }),
+
+  prozessUmbenennen: (id: string, name: string) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+
+  prozessBeenden: (id: string, gueltig_bis: string) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse/${id}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify({ gueltig_bis }),
+    }),
+
+  /** Die Prozesse einer Messstelle: alle wirksamen Intervalle, mit `am` die an dem Tag geltenden. */
+  messstelleProzesse: (id: string, am?: string) =>
+    request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+
+  /** Ab `gueltig_ab` gehört die Messstelle zu GENAU diesen Prozessen (leer = zu keinem). */
+  messstelleProzesseSetzen: (id: string, body: { gueltig_ab: string; prozesse: string[]; grund?: string | null }) =>
+    request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse`, { method: 'PUT', body: JSON.stringify(body) }),
+
   /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5). */
   bezugsgroessen: () => request<{ bezugsgroessen: Bezugsgroesse[] }>(`/api/v1/bezugsgroessen`),
 

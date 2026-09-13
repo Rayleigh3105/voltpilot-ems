@@ -55,10 +55,10 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
   `bezugsgroesse_wert_genau_eine_periode_chk` (der Test fordert eine Beispielperiode).
 - Nicht Vertragswörter und darum Literale: Urheber-Art/-Rolle (AP-03, wie `messstelle_aenderung`),
   `bezugsgroesse_aenderung.art` (§6.1), Zeitzonen (wie `standort`).
-- **Prozess und Kostenstelle** stehen im Vokabular, haben aber keine Tabelle → keine Verweis-Spalte →
-  `bezugsgroesse_geltung_objekt_chk` lehnt ab (E1 „wählbar, sobald gebaut"). Ahrenbergs BZ-1…BZ-3
-  (P-1/P-2) passen darum noch nicht; BZ-5 (MS-14) passt. Der Test wird rot, sobald `prozess` oder
-  `kostenstelle` als Tabelle existiert.
+- **Prozess und Kostenstelle**: seit AP-10 IP-7 (`V20260913160000`) mit Tabelle und Verweis-Spalte
+  `prozess_id`/`kostenstelle_id` — CHECK, `bezugsgroesse_geltung_uq` und `bezugsgroesse_identitaet_bleibt`
+  sind dort abgeschrieben und geweitet; Ahrenbergs BZ-1…BZ-3 (P-1/P-2) passen jetzt (vorher lehnte der
+  CHECK ab). Eintrag `uems-kostenstelle-prozess.md`.
 - **Keine Art-Spalte** („Produktionsmenge", „Gutteile"): das Vokabular steht seit 13.09.2026 im
   Vertrag (Block `arten`, `uems-bezugsdaten-vertrag-java-ts-zwill.md`); die Spalte legt das Paket
   additiv an, das sie braucht — mit EINER erzeugten Funktion wie `bezugsdaten_vokabular()`.

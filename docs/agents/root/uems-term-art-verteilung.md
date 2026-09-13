@@ -27,7 +27,7 @@ dieses Pakets eine **benannte Ablehnung**, die stehen bleiben darf. Vertrag: `me
 |---|---|---|---|
 | Teil eines Messwerts | `anteil_wartet_auf_ap08` (`feld` `terme[i].anteil`, `wartet_auf` „AP-08 IP-7“) | AP-08 IP-7 (Quellenbindung mit `anteil`) | den Zweig `anteil` in `AnteilLeseweg#lies` |
 | Anteil des Tages | `verteilung_wartet_auf_ip8` (`feld` `terme[i].eingang_art`, „AP-10 IP-8“) | AP-10 IP-8 (`messstelle_verteilung`) | den Zweig `verteilung`: Abschnitte lesen → `tagesanteil(term, tag, abschnitte)` |
-| Kostenstelle als Objekt | — (`verteilung_ziel` ist heute eine UUID ohne Ziel) | AP-10 IP-7 | ⚠ **Fremdschlüssel nachziehen:** `(verteilung_ziel, tenant_id) → kostenstelle (id, tenant_id)` |
+| Kostenstelle als Objekt | — | ✅ AP-10 IP-7 (`V20260913160000`) | Fremdschlüssel `messstelle_formel_term_verteilung_ziel_fk`: `(verteilung_ziel, tenant_id) → kostenstelle (id, tenant_id)`, RESTRICT — Tests brauchen eine echte Kostenstelle |
 
 Mehr ändert sich dort nicht: die Anwendung des Anteils im Live-Wert und je Bucket ist schon verdrahtet
 (`Lesung.urteil` → `VerteilungRegeln.term`). Beweis: `MessstelleFormelVerteilungsTermApiTest` ersetzt
@@ -59,7 +59,7 @@ gestern und heute 60 %, vor der Verteilung keinen Wert.
 
 ## Nicht dieses Paket
 
-Kein Anteils-Leseweg (AP-08 IP-7), keine Verteilung/Kostenstelle (IP-8/IP-7), keine dynamischen
+Kein Anteils-Leseweg (AP-08 IP-7), keine Verteilung (IP-8), keine dynamischen
 Umlageschlüssel (ein Anteil ist eine gepflegte Zahl mit Gültigkeit), keine Verlaufsquelle (IP-10),
 kein Netzanschluss (IP-6), keine Route, keine Portal-Fläche über die Typen hinaus, keine
 Rechte-Durchsetzung (`messstelle.formel` bleibt Kommentar).

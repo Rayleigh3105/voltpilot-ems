@@ -233,8 +233,11 @@ class BezugsgroesseApiTest {
                 w.standort()), "periode_passt_nicht_zur_wertart");
         abgelehnt(w, HttpMethod.POST, gut, anfrage(null, "Fläche Halle 2", "stammdatum", "m²", null, "gebaeude",
                 w.gebaeude()), "flaeche_aus_struktur");
+        // Seit AP-10 IP-7 ist der Prozess wählbar — ein unbekannter ist so unbekannt wie jedes andere Objekt.
         abgelehnt(w, HttpMethod.POST, gut, anfrage(null, "Gutteile Montage", "periodenwert", "Stück", "monat", "prozess",
-                UUID.randomUUID()), "geltung_nicht_waehlbar");
+                UUID.randomUUID()), "geltung_unbekannt");
+        abgelehnt(w, HttpMethod.POST, gut, anfrage(null, "Gutteile Montage", "periodenwert", "Stück", "monat",
+                "kostenstelle", UUID.randomUUID()), "geltung_unbekannt");
         abgelehnt(w, HttpMethod.POST, gut, anfrage(null, "X", "periodenwert", "kg", "monat", "standort",
                 UUID.randomUUID()), "geltung_unbekannt");
         // Ein Bereich ist kein Gebäude — und ein fremdes Objekt ist so unbekannt wie keins.
@@ -274,9 +277,15 @@ class BezugsgroesseApiTest {
         abgelehnt(w, HttpMethod.GET, gut + "/keine-id", null, "nicht_gefunden");
         assertThat(ruf(fremd, HttpMethod.GET, gut, null).body().get("bezugsgroessen")).isEmpty();
 
-        // Der geschlossene Satz ist ganz geprüft: jeder Code des Vertrags kam hier als Antwort.
-        assertThat(GESEHEN).containsExactlyInAnyOrderElementsOf(
-                vertrag.path("verwalten").path("ablehnungen").findValuesAsText("code"));
+        // Der geschlossene Satz ist ganz geprüft: jeder Code des Vertrags kam hier als Antwort — bis auf
+        // `geltung_nicht_waehlbar`: seit AP-10 IP-7 ist jede Geltungsbereich-Art des Vokabulars wählbar,
+        // die Schnittstelle KANN ihn nicht antworten. Die Regel prüfen weiter die Vektoren (Eingang
+        // `waehlbar`, BezugsdatenVectorsTest); hier steht, dass die Lücke genau diese Ursache hat.
+        List<String> vertragsCodes = new ArrayList<>(vertrag.path("verwalten").path("ablehnungen").findValuesAsText("code"));
+        assertThat(BezugsgroesseRegeln.GELTUNG_WAEHLBAR).as("alle Arten wählbar")
+                .containsExactlyInAnyOrderElementsOf(texte(vertrag.path("vokabulare").path("geltung_art")));
+        assertThat(vertragsCodes.remove("geltung_nicht_waehlbar")).isTrue();
+        assertThat(GESEHEN).containsExactlyInAnyOrderElementsOf(vertragsCodes);
     }
 
     // ================================================================ ändern, archivieren, löschen
@@ -464,7 +473,43 @@ class BezugsgroesseApiTest {
                 .isEmpty();
     }
 
+    /**
+     * Die wartende Stelle aus IP-5 ist eingelöst (AP-10 IP-7): BZ-2 „Gutteile Montage“ hängt am Prozess
+     * P-2, und eine Bezugsgröße kann an einer Kostenstelle hängen — mit Namen im Lesemodell.
+     */
+    @Test
+    void prozessUndKostenstelleSindAlsGeltungsbereichWaehlbar() throws Exception {
+        Welt w = welt();
+        UUID p2 = root.queryForObject("INSERT INTO prozess (tenant_id, unternehmen_id, kennzeichen, name, gueltig_ab) "
+                + "VALUES (?, ?, 'P-2', 'Montage', DATE '2026-10-01') RETURNING id", UUID.class, w.mandant(), w.unternehmen());
+        UUID k4200 = root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, "
+                + "gueltig_ab) VALUES (?, ?, '4200', 'Montage', DATE '2026-10-01') RETURNING id", UUID.class, w.mandant(),
+                w.unternehmen());
+        Antwort a = ruf(w, HttpMethod.POST, PFAD, anfrage("BZ-2", "Gutteile Montage", "periodenwert", "Stück", "monat",
+                "prozess", p2));
+        assertThat(a.status()).as(a.body().toString()).isEqualTo(201);
+        assertThat(a.body().get("geltung_art").asText()).isEqualTo("prozess");
+        assertThat(a.body().get("geltung_id").asText()).isEqualTo(p2.toString());
+        assertThat(a.body().get("geltung_name").asText()).isEqualTo("Montage");
+        Antwort b = ruf(w, HttpMethod.PUT, PFAD + "/" + a.body().get("id").asText(), anfrage("BZ-2", "Gutteile Montage",
+                "periodenwert", "Stück", "monat", "kostenstelle", k4200));
+        assertThat(b.status()).as(b.body().toString()).isEqualTo(200);
+        assertThat(b.body().get("geltung_art").asText()).isEqualTo("kostenstelle");
+        assertThat(root.queryForObject("SELECT prozess_id IS NULL AND kostenstelle_id = ? FROM bezugsgroesse WHERE id = ?",
+                Boolean.class, k4200, UUID.fromString(a.body().get("id").asText()))).isTrue();
+        // Ein Prozess eines anderen Kundenbereichs ist unbekannt, nie 403.
+        Welt fremd = welt();
+        abgelehnt(fremd, HttpMethod.POST, PFAD, anfrage(null, "X", "periodenwert", "kg", "monat", "prozess", p2),
+                "geltung_unbekannt");
+    }
+
     // ================================================================ Gerüst
+
+    private static List<String> texte(JsonNode liste) {
+        List<String> aus = new ArrayList<>();
+        liste.forEach(x -> aus.add(x.asText()));
+        return aus;
+    }
 
     private Welt welt() {
         int nr = NR.incrementAndGet();

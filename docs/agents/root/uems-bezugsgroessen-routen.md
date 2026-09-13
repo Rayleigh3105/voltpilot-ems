@@ -20,8 +20,8 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   `bezugsgroesse.ts` sind Zeile für Zeile daran gepinnt. Eine neue Ablehnung = Vertrag + beide +
   OpenAPI; der API-Test verlangt JEDEN Code als echte Antwort.
 - **Das Vokabular kommt aus `bezugsdaten_vokabular()`** (die EINE Stelle der DB), nicht aus einer
-  Java-Liste. **Wählbar** ist ein Eingang: `BezugsgroesseRegeln.GELTUNG_WAEHLBAR` ohne Prozess und
-  Kostenstelle — wer ihre Objekte baut, ergänzt sie DORT und in `bezugsgroesse_geltung_objekt_chk`.
+  Java-Liste. **Wählbar** ist ein Eingang: `BezugsgroesseRegeln.GELTUNG_WAEHLBAR` — seit AP-10 IP-7 alle
+  sieben (Prozess und Kostenstelle haben ihre Tabellen); `geltung_nicht_waehlbar` bleibt im Satz für eine Art ohne Objekt.
 - **Die Anfrage wird STRENG gelesen:** unbekanntes Feld (auch camelCase), ein Feld, das kein Text
   ist, eine `geltung_id`, die keine UUID ist → 400 `anfrage_ungueltig` mit `feld`. `PUT` ist die
   GANZE Bezugsgröße mit Kennzeichen; ein unverändertes `PUT` schreibt nichts.
@@ -51,7 +51,7 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   `rechte-vectors.json`) für die Schreibwege, `messwerte.ansehen` fürs Lesen — keine Durchsetzung,
   fremd = 404 `nicht_gefunden`. `ablesung.erfassen` bekommt seine Zeile erst mit IP-8.
 - **Nicht gebaut:** Werte schreiben (IP-7 — die Tests schreiben Fassungen direkt in die Tabelle),
-  keine Art-Spalte (Vokabular seit 13.09.2026 im Block `arten`, noch ohne Spalte), kein Prozess/keine Kostenstelle, kein Import,
+  keine Art-Spalte (Vokabular seit 13.09.2026 im Block `arten`, noch ohne Spalte), kein Import,
   keine Kanalbindung (M5 = IP-17), keine Portal-Fläche.
 
 ## Prüfen

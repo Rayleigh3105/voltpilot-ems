@@ -215,8 +215,9 @@ Die Regel **`verwalten`** in den Fällen B4, B5, B6, B7, B8, B13 und B14 prüft 
 Java-Zwilling `uems/BezugsgroesseRegeln`; das Portal hat dafür keinen Zwilling
 (`zwillinge_grund`), aber `frontend/portal/src/bezugsgroesse.ts` spricht den Satz der
 Ablehnungen und wird gegen diese Datei geprüft. ⚠ Welche Geltungsbereiche **wählbar** sind,
-ist ein Eingang (`waehlbar`), kein Vokabular: Prozess und Kostenstelle stehen im Vokabular,
-haben aber noch kein Objekt (E1 „wählbar, sobald gebaut“). ⚠ Die **Art** („Produktionsmenge“,
+ist ein Eingang (`waehlbar`), kein Vokabular (E1 „wählbar, sobald gebaut“): seit AP-10 IP-7
+haben auch Prozess und Kostenstelle ihr Objekt, die Schnittstelle wählt alle sieben; die Fälle mit
+`waehlbar` ohne sie bleiben gültige Prüfungen der Regel. ⚠ Die **Art** („Produktionsmenge“,
 „Gutteile“) prüft `verwalten` nicht: ihr Vokabular steht seit dem 13.09.2026 im Block `arten`
 (§8), eine Spalte und ein Feld der Schnittstelle dafür gibt es nicht.
 

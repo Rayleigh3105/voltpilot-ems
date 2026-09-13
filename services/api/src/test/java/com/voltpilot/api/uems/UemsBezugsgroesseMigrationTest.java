@@ -127,6 +127,8 @@ class UemsBezugsgroesseMigrationTest {
     private static Map<String, String> fingerVorher;
     private static Map<String, String> fingerNachMigration;
 
+    private static final java.util.concurrent.atomic.AtomicInteger OBJEKT_NR = new java.util.concurrent.atomic.AtomicInteger(1000);
+
     private record Kunde(UUID tenant, UUID unternehmen, UUID standort, UUID gebaeude, UUID bereich, UUID messstelle) {
     }
 
@@ -226,18 +228,10 @@ class UemsBezugsgroesseMigrationTest {
         abgelehnt("bezugsgroesse_periode_art_chk", () -> zurueckgerollt(root,
                 () -> bezugsgroesse(root, k, "P.1", "periodenwert", "kg", "quartal", "unternehmen")));
 
-        // E1: jedes Objekt, das es gibt; Prozess und Kostenstelle haben noch keine Tabelle und darum
-        // keine Verweis-Spalte — „wählbar, sobald ihre Objekte gebaut sind".
+        // E1: jedes Objekt des Vokabulars — seit AP-10 IP-7 (V20260913160000) haben auch Prozess und
+        // Kostenstelle ihre Tabelle und ihre Verweis-Spalte.
         for (String geltung : liste("geltung_art")) {
-            if (Set.of("prozess", "kostenstelle").contains(geltung)) {
-                assertThat(root.queryForObject("SELECT to_regclass(?) IS NULL", Boolean.class, geltung))
-                        .as("die Tabelle %s ist gebaut: bezugsgroesse bekommt ihre Verweis-Spalte, und "
-                                + "bezugsgroesse_geltung_objekt_chk wird abgeschrieben", geltung).isTrue();
-                abgelehnt("bezugsgroesse_geltung_objekt_chk", () -> zurueckgerollt(root,
-                        () -> bezugsgroesse(root, k, "G.1", "periodenwert", "kg", "monat", geltung)));
-            } else {
-                zurueckgerollt(root, () -> bezugsgroesse(root, k, "G.1", "periodenwert", "kg", "monat", geltung));
-            }
+            zurueckgerollt(root, () -> bezugsgroesse(root, k, "G.1", "periodenwert", "kg", "monat", geltung));
         }
         // „ort" steht im Referenzunternehmen an der Bezugsfläche (BZ-4), ist aber kein Wort des Vertrags.
         abgelehnt("bezugsgroesse_geltung_art_chk", () -> zurueckgerollt(root, () -> root.update(
@@ -466,15 +460,14 @@ class UemsBezugsgroesseMigrationTest {
                 assertThat(kz).isEqualTo("BZ-4");
                 continue;
             }
-            if (geltung.equals("prozess")) {
-                abgelehnt("bezugsgroesse_geltung_objekt_chk", () -> bezugsgroesse(root, k, kz,
-                        bz.path("wertart").asText(), bz.path("einheit_code").asText(), periode, geltung));
-            } else {
-                bezugsgroesse(root, k, kz, bz.path("wertart").asText(), bz.path("einheit_code").asText(), periode, geltung);
-            }
+            // Seit AP-10 IP-7 passen auch BZ-1 … BZ-3 (Geltungsbereich Prozess P-1/P-2).
+            bezugsgroesse(root, k, kz, bz.path("wertart").asText(), bz.path("einheit_code").asText(), periode, geltung);
         }
-        assertThat(root.queryForList("SELECT kennzeichen FROM bezugsgroesse WHERE tenant_id = ?", String.class, k.tenant()))
-                .containsExactly("BZ-5");
+        assertThat(root.queryForList("SELECT kennzeichen FROM bezugsgroesse WHERE tenant_id = ? ORDER BY kennzeichen",
+                String.class, k.tenant())).containsExactly("BZ-1", "BZ-2", "BZ-3", "BZ-5");
+        assertThat(root.queryForList("SELECT b.kennzeichen FROM bezugsgroesse b JOIN prozess p ON p.id = b.prozess_id "
+                + "WHERE b.tenant_id = ? ORDER BY b.kennzeichen", String.class, k.tenant()))
+                .containsExactly("BZ-1", "BZ-2", "BZ-3");
     }
 
     // ============================================================ nie überschrieben
@@ -839,7 +832,14 @@ class UemsBezugsgroesseMigrationTest {
             case "gebaeude" -> spalten.put("ort_id", k.gebaeude());
             case "bereich" -> spalten.put("ort_id", k.bereich());
             case "messstelle" -> spalten.put("messstelle_id", k.messstelle());
-            default -> { } // Prozess, Kostenstelle: noch kein Objekt
+            // Prozess und Kostenstelle (AP-10 IP-7) entstehen erst nach der Migration — je Aufruf ein eigenes.
+            case "prozess" -> spalten.put("prozess_id", db.queryForObject("INSERT INTO prozess (tenant_id, unternehmen_id, "
+                    + "kennzeichen, name, gueltig_ab) VALUES (?, ?, ?, 'Spritzguss', DATE '2026-10-01') RETURNING id",
+                    UUID.class, k.tenant(), k.unternehmen(), "P-" + OBJEKT_NR.incrementAndGet()));
+            case "kostenstelle" -> spalten.put("kostenstelle_id", db.queryForObject("INSERT INTO kostenstelle (tenant_id, "
+                    + "unternehmen_id, kennzeichen, name, gueltig_ab) VALUES (?, ?, ?, 'Spritzguss', DATE '2026-10-01') "
+                    + "RETURNING id", UUID.class, k.tenant(), k.unternehmen(), "K" + OBJEKT_NR.incrementAndGet()));
+            default -> { }
         }
         return db.queryForObject("INSERT INTO bezugsgroesse (" + String.join(", ", spalten.keySet()) + ") VALUES ("
                 + String.join(", ", java.util.Collections.nCopies(spalten.size(), "?")) + ") RETURNING id",

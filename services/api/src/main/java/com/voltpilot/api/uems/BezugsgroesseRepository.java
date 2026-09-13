@@ -72,14 +72,17 @@ public class BezugsgroesseRepository {
             Instant createdAt) {}
 
     private static final String SPALTEN = "b.id, b.kennzeichen, b.name, b.wertart, b.einheit, b.periode_art, "
-            + "b.geltung_art, coalesce(b.unternehmen_id, b.standort_id, b.ort_id, b.messstelle_id) AS geltung_id, "
-            + "coalesce(u.name, s.name, o.name, m.name, m.kennzeichen) AS geltung_name, "
+            + "b.geltung_art, coalesce(b.unternehmen_id, b.standort_id, b.ort_id, b.prozess_id, b.kostenstelle_id, "
+            + "b.messstelle_id) AS geltung_id, "
+            + "coalesce(u.name, s.name, o.name, p.name, k.name, m.name, m.kennzeichen) AS geltung_name, "
             + "EXISTS (SELECT 1 FROM bezugsgroesse_wert w WHERE w.bezugsgroesse_id = b.id "
             + "AND w.tenant_id = b.tenant_id) AS hat_werte, b.archiviert_am, b.created_at "
             + "FROM bezugsgroesse b "
             + "LEFT JOIN unternehmen u ON u.id = b.unternehmen_id AND u.tenant_id = b.tenant_id "
             + "LEFT JOIN standort s ON s.id = b.standort_id AND s.tenant_id = b.tenant_id "
             + "LEFT JOIN ort o ON o.id = b.ort_id AND o.tenant_id = b.tenant_id "
+            + "LEFT JOIN prozess p ON p.id = b.prozess_id AND p.tenant_id = b.tenant_id "
+            + "LEFT JOIN kostenstelle k ON k.id = b.kostenstelle_id AND k.tenant_id = b.tenant_id "
             + "LEFT JOIN messstelle m ON m.id = b.messstelle_id AND m.tenant_id = b.tenant_id ";
 
     private static final RowMapper<Zeile> ZEILE = (rs, n) -> new Zeile(
@@ -158,6 +161,8 @@ public class BezugsgroesseRepository {
             case "unternehmen" -> "SELECT EXISTS (SELECT 1 FROM unternehmen WHERE id = ?)";
             case "standort" -> "SELECT EXISTS (SELECT 1 FROM standort WHERE id = ?)";
             case "gebaeude", "bereich" -> "SELECT EXISTS (SELECT 1 FROM ort WHERE id = ? AND art = '" + art + "')";
+            case "prozess" -> "SELECT EXISTS (SELECT 1 FROM prozess WHERE id = ?)";
+            case "kostenstelle" -> "SELECT EXISTS (SELECT 1 FROM kostenstelle WHERE id = ?)";
             case "messstelle" -> "SELECT EXISTS (SELECT 1 FROM messstelle WHERE id = ?)";
             default -> null;
         };
@@ -168,17 +173,19 @@ public class BezugsgroesseRepository {
     public UUID anlegen(UUID tenant, BezugsgroesseRegeln.Entwurf e, UUID geltungId) {
         UUID[] verweis = verweis(e.geltungArt(), geltungId);
         return jdbc.queryForObject("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, "
-                + "periode_art, geltung_art, unternehmen_id, standort_id, ort_id, messstelle_id) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id", UUID.class, tenant, e.kennzeichen(), e.name(),
-                e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(), verweis[0], verweis[1], verweis[2], verweis[3]);
+                + "periode_art, geltung_art, unternehmen_id, standort_id, ort_id, messstelle_id, prozess_id, "
+                + "kostenstelle_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id", UUID.class, tenant,
+                e.kennzeichen(), e.name(), e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(), verweis[0],
+                verweis[1], verweis[2], verweis[3], verweis[4], verweis[5]);
     }
 
     public void aendern(UUID id, BezugsgroesseRegeln.Entwurf e, UUID geltungId) {
         UUID[] verweis = verweis(e.geltungArt(), geltungId);
         jdbc.update("UPDATE bezugsgroesse SET kennzeichen = ?, name = ?, wertart = ?, einheit = ?, periode_art = ?, "
                 + "geltung_art = ?, unternehmen_id = ?, standort_id = ?, ort_id = ?, messstelle_id = ?, "
-                + "updated_at = now() WHERE id = ?", e.kennzeichen(), e.name(), e.wertart(), e.einheit(),
-                e.periodeArt(), e.geltungArt(), verweis[0], verweis[1], verweis[2], verweis[3], id);
+                + "prozess_id = ?, kostenstelle_id = ?, updated_at = now() WHERE id = ?", e.kennzeichen(), e.name(),
+                e.wertart(), e.einheit(), e.periodeArt(), e.geltungArt(), verweis[0], verweis[1], verweis[2],
+                verweis[3], verweis[4], verweis[5], id);
     }
 
     public void archivieren(UUID id) {
@@ -246,7 +253,9 @@ public class BezugsgroesseRepository {
             "unternehmen".equals(art) ? id : null,
             "standort".equals(art) ? id : null,
             "gebaeude".equals(art) || "bereich".equals(art) ? id : null,
-            "messstelle".equals(art) ? id : null
+            "messstelle".equals(art) ? id : null,
+            "prozess".equals(art) ? id : null,
+            "kostenstelle".equals(art) ? id : null
         };
     }
 
