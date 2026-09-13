@@ -164,8 +164,10 @@ export const entitiesApi = {
    * (vp-bereinigung-ui-k3). Removes the measurement point outright: its kWp is
    * released from the plant total and its device becomes free, so it reappears
    * as "Neues Gerät gefunden" and can be assigned to the right component.
-   * RLS-fenced to the caller's own site; the platform-composed base components
-   * (battery-hybrid / house-load) and unpinned rows are refused with 422.
+   * RLS-fenced to the caller's own site; the platform-composed types
+   * (battery-hybrid / house-load) are refused with 422, and so is a pinless
+   * SYNTHESIZED base row (grid-meter / house-load). A customer-created component
+   * without a pin is deletable (Captain-Entscheid E2, vp-komp-loeschen).
    */
   removeComponent: (siteId: string, entityId: string) =>
     request<void>(`/api/v1/sites/${siteId}/v2-entities/${entityId}`, { method: 'DELETE' }),

@@ -67,6 +67,18 @@ public class SiteEntityAdoptController {
     /** Composed by the platform from the plant's master data - never customer-edited. */
     private static final Set<String> PLATFORM_MANAGED = Set.of("battery-hybrid", "house-load");
 
+    /**
+     * The measurement-point roles the platform SYNTHESIZES from the gateway
+     * ({@code createComposedPoint}: grid-meter + house-load). A pinless row of
+     * one of these roles is ALWAYS the plant's Grundausstattung - there is no
+     * customer path to a pinless grid-meter (adopted meters carry a pin; the
+     * manual flows create producer / modbus-generic). This is the durable pin
+     * guard: {@code source_kind = 'composed'} is stamped only at create time and
+     * a legacy composed row keeps it NULL (never back-filled), so guarding by
+     * the role too protects those older rows without a data migration.
+     */
+    private static final Set<String> COMPOSED_BASE_ROLES = Set.of("grid-meter", "house-load");
+
     private final SiteRepository sites;
     private final EntityRegistryService service;
     private final EntityTypeCatalog catalog;
@@ -240,11 +252,10 @@ public class SiteEntityAdoptController {
      *   <li>the platform-composed base components (battery-hybrid / house-load)
      *       are refused by {@link #requireCustomerManaged} - deleting one would
      *       only make the composition recreate it;</li>
-     *   <li>a platform-SYNTHESIZED base row without a device pin
-     *       ({@code source_kind = 'composed'}, the grid-meter / house-load
-     *       {@code EntityRegistryService} derives from the gateway) is its
-     *       Grundausstattung, not something a customer adopted by mistake, and
-     *       stays refused.</li>
+     *   <li>a platform-SYNTHESIZED base row without a device pin (the grid-meter
+     *       / house-load {@code EntityRegistryService} derives from the gateway)
+     *       is its Grundausstattung, not something a customer adopted by mistake,
+     *       and stays refused.</li>
      * </ul>
      *
      * <p><b>A customer-created component with NO pin is now deletable</b>
@@ -252,10 +263,15 @@ public class SiteEntityAdoptController {
      * edgeSourceId == null} row was refused as "Grundausstattung" - too coarse:
      * a producer a customer created by mistake and never connected (freshly
      * added or MaStR-imported) could never be removed, and a producer whose pin
-     * was released by a swap got stranded as a nameless row. Those rows carry
-     * no {@code source_kind = 'composed'} marker, so narrowing the pin guard to
-     * exactly the synthesized base rows frees them while keeping the plant's
-     * derived grid-meter / house-load protected.
+     * was released by a swap got stranded as a nameless row.
+     *
+     * <p>The pinless guard therefore fires only for the SYNTHESIZED base rows,
+     * and it recognises them by TWO signals: the {@code source_kind = 'composed'}
+     * marker AND the composed base ROLE ({@link #COMPOSED_BASE_ROLES}). The role
+     * is load-bearing, not redundant: {@code source_kind} is stamped only at
+     * create time, so a grid-meter composed before that column existed carries
+     * {@code source_kind = NULL} (never back-filled) - guarding by role too keeps
+     * those legacy rows protected without a data migration.
      */
     @DeleteMapping("/{entityId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -270,7 +286,8 @@ public class SiteEntityAdoptController {
         }
         requireCustomerManaged(row.entityType());
         if (row.edgeSourceId() == null
-                && EntityRegistryRepository.SOURCE_KIND_COMPOSED.equals(row.sourceKind())) {
+                && (EntityRegistryRepository.SOURCE_KIND_COMPOSED.equals(row.sourceKind())
+                        || COMPOSED_BASE_ROLES.contains(row.role()))) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
                             + "entfernt werden.");

@@ -932,6 +932,18 @@ describe('componentActions — die Bereinigung hängt an der Komponente', () => 
     });
   });
 
+  it('keeps a legacy synthesized grid-meter protected even with sourceKind NULL (SF-1)', () => {
+    // A grid-meter composed BEFORE source_kind existed carries sourceKind
+    // undefined/null (never back-filled). It has no pin, so it must stay
+    // protected by its TYPE, not only by the marker.
+    const legacy = entity('netz', 'grid-meter', { label: 'Netzanschluss' });
+    const m = plantModel([legacy], null, []);
+    expect(componentActions(m.components[0], legacy)).toEqual({
+      canRepin: true,
+      canDelete: false,
+    });
+  });
+
   it('deletes a customer-created component that was never connected (E2)', () => {
     // A producer the customer added and never pinned carries no 'composed'
     // marker - after E2 it is removable, not stuck as "Grundausstattung".

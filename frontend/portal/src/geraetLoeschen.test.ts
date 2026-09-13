@@ -89,6 +89,14 @@ describe('gefahrenzone — was die Geräteseite anbietet', () => {
     expect(z.grund).toMatch(/Grundausstattung/);
   });
 
+  it('protects a legacy synthesized grid-meter even without a sourceKind marker (SF-1)', () => {
+    // No pin, no 'composed' marker (composed before the column existed): the
+    // role alone must keep it in the protected state, never offered for delete.
+    const legacy = entity('netz', 'grid-meter', { label: 'Netzanschluss' });
+    const { components, entityOf } = plant([legacy]);
+    expect(gefahrenzone(components, entityOf)?.kind).toBe('geschuetzt');
+  });
+
   it('offers nothing on the bare box (no components)', () => {
     expect(gefahrenzone([], () => undefined)).toBeNull();
   });

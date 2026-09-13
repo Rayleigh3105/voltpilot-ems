@@ -829,6 +829,90 @@ class ComponentAdoptionApiTest {
         }
     }
 
+    /**
+     * SF-1: ein VOR der {@code source_kind}-Spalte komponierter Netz-Zähler
+     * trägt {@code source_kind = NULL} (nie nachgestempelt) und keinen Pin. Er
+     * muss trotzdem geschützt bleiben - der Zaun greift über die ROLLE, nicht nur
+     * über den Marker, sonst würde eine Altanlage ihren Netzknoten verlieren.
+     */
+    @Test
+    void aLegacyComposedGridMeterWithoutSourceKindStaysProtected() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "SF1-Altbestand-Netz");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + pid + "','" + TENANT_A
+                    + "','" + site + "','grid-meter','Netzanschluss', FALSE, 'grid-meter', "
+                    + "'{\"measure\":[{\"channel\":\"power_kw\"}]}'::jsonb, '{}'::jsonb)");
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("pinloser synthetisierter Netz-Zähler bleibt geschützt, auch ohne "
+                            + "source_kind (SF-1)")
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
+                    .isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * SF-2: der allgemeine Löschweg (E2) räumt die {@code flow_claim}-Waise auf.
+     * E2 öffnet ihn neu für pinlose STEUERBARE Entitäten (Wallbox usw.), die eine
+     * Beanspruchung tragen können; ohne Aufräumen läse der Optimierer die
+     * gelöschte Komponente weiter als „von einer Regel gehalten".
+     */
+    @Test
+    void deletingAControllablePinlessEntityCleansItsFlowClaimOrphan() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "SF2-Regel-Waise");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + pid + "','" + TENANT_A
+                    + "','" + site + "','wallbox','Wallbox', TRUE, 'wallbox', "
+                    + "'{\"actuate\":[{\"command\":\"on_off\"}]}'::jsonb, '{}'::jsonb)");
+            exec("INSERT INTO flow_claim (entity_id, command, tenant_id, site_id, flow_id, "
+                    + "flow_version, flow_name) VALUES ('" + pid + "','on_off','" + TENANT_A + "','"
+                    + site + "','" + UUID.randomUUID() + "', 1, 'Wallbox-Regel')");
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("pinlose steuerbare Komponente ist löschbar (E2)")
+                    .isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(count("SELECT count(*) FROM flow_claim WHERE entity_id = '" + pid + "'"))
+                    .as("Regel-Beanspruchung aufgeräumt (SF-2)").isZero();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * NIT-2: der neue Weg {@code DELETE /sites/{id}/battery} ist mandanten-
+     * gefenced wie der Rest der Anlagen-API - eine fremde Anlage ist 404, nie ein
+     * Cross-Tenant-Löschen.
+     */
+    @Test
+    void unregisteringABatteryOfAForeignTenantIs404() {
+        String owner = token("demo", "demo");
+        UUID site = createSite(owner, "NIT2-Fremdmandant");
+        try {
+            claim(owner, site, "edge-nit2-1");
+            saveBattery(owner, site);
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'")).isEqualTo(1);
+
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/battery"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode())
+                    .as("fremder Mandant sieht die Anlage nicht (RLS 404)")
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'"))
+                    .as("die Batterie des Eigentümers bleibt unangetastet").isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
     /** Ein Zähler über den Superuser (RLS-frei) für Aufbau und Prüfung. */
     private void exec(String sql) {
         try (Connection c = superuser(); Statement st = c.createStatement()) {

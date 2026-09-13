@@ -741,6 +741,13 @@ public class EntityRegistryService {
             return false;
         }
         if (purgePoint) {
+            // The purge fully removes the entity, so its flow_claim would dangle
+            // (no FK, report §4b) and the optimizer would read a deleted
+            // component as "von einer Regel gehalten". Clean it here too, exactly
+            // like unregisterBattery - E2 newly opens this path to pinless
+            // CONTROLLABLE entities (wallbox/heating-rod/generic-load) that can
+            // actually carry a claim.
+            claims.deleteForEntity(siteId, pointId);
             releaseStalePoint(TenantContext.get(), siteId, row);
         } else if ("pv-generation".equals(row.role()) || "grid-meter".equals(row.role())) {
             repo.clearEntityConfig(pointId);
