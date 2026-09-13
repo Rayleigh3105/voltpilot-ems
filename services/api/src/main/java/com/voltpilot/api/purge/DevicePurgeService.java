@@ -4,8 +4,11 @@ import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.MessreihenBelege;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +42,11 @@ import org.springframework.stereotype.Service;
  *       command doubles as the device's confirmation signal.</li>
  * </ol>
  *
+ * <p><b>Belege first</b> (UEMS AP-07 E8, IP-11): a box whose series were ever bound to a
+ * Messstelle is refused with the list of those Messstellen ({@link BelegeImWeg}) BEFORE the lock,
+ * the watermark or any delete - both entry points, nothing written. A box without Belege purges
+ * exactly as before.
+ *
  * <p>The device row itself is untouched apart from the watermark: claim,
  * enrollment, certificates, ACL grants and the retained schedule all stay
  * intact, and new data (observed after the watermark) flows and charts
@@ -57,13 +65,16 @@ public class DevicePurgeService {
     private final SeriesRepository series;
     private final DeviceDataLock dataLock;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
+    private final MessreihenBelege belege;
 
     public DevicePurgeService(DeviceRepository devices, SeriesRepository series,
-            DeviceDataLock dataLock, ObjectProvider<ProvisioningPublisher> provisioning) {
+            DeviceDataLock dataLock, ObjectProvider<ProvisioningPublisher> provisioning,
+            MessreihenBelege belege) {
         this.devices = devices;
         this.series = series;
         this.dataLock = dataLock;
         this.provisioning = provisioning;
+        this.belege = belege;
     }
 
     /**
@@ -71,9 +82,16 @@ public class DevicePurgeService {
      * resolved through the RLS-scoped repository, proving tenant ownership).
      * Requires the tenant context to be set - every statement here runs through
      * the RLS-scoped app datasource.
+     *
+     * @throws BelegeImWeg when the box carries series that were ever bound to a Messstelle -
+     *     thrown before anything is locked or written
      */
     public Result purge(DeviceDto device) {
         UUID tenantId = TenantContext.get();
+        List<MessreihenBelege.Beleg> imWeg = belege.derBox(device.id());
+        if (!imWeg.isEmpty()) {
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.BOX, imWeg);
+        }
         Instant purgedBefore;
         long purgedRows;
         // This spans two commits on purpose: telemetry needs the watermark

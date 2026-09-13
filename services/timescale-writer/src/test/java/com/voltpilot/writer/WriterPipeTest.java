@@ -203,6 +203,55 @@ class WriterPipeTest {
     }
 
     /**
+     * UEMS AP-07 IP-11: an ausgebaut box keeps every value measured BEFORE its Ausbau - also one
+     * still in flight - but no value measured at or after it is written, on the v1 telemetry path
+     * and on the measurement pipeline. Sent newest first, so the one accepted value is the marker
+     * that the two refused ones were processed.
+     */
+    @Test
+    void eineAusgebauteBoxNimmtNurWerteVorIhremAusbauAn() throws Exception {
+        createTopic();
+        createTopic(MEASUREMENTS_RAW_TOPIC);
+        String device = "70000000-0000-0000-0000-00000000001b";
+        String entity = "71000000-0000-0000-0000-00000000001b";
+        String ausbau = "2026-11-04T09:38:00Z";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device (id, tenant_id, site_id, ausgebaut_am) VALUES ('" + device + "', '"
+                    + TENANT_A + "', '" + SITE + "', '" + ausbau + "')");
+            st.execute("INSERT INTO measurement_catalog_point_metadata VALUES ('" + UEMS_CATALOG
+                    + "','" + PUNKT + "','counter',900) ON CONFLICT DO NOTHING");
+            st.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,device_id) VALUES ('" + entity
+                    + "','" + TENANT_A + "','" + SITE + "','grid','" + device + "')");
+            auswahl(st, device, entity, PUNKT, "counter", "2026-11-01T00:00:00Z", "2026-11-01T00:00:30Z", 1);
+        }
+
+        String nach = "2026-11-04T09:39:00Z";
+        String vor = "2026-11-04T09:37:00Z";
+        senden(device, wert(device, 600, nach, "2026-11-04T09:39:05Z", PUNKT, "91", "9.1"),
+                wert(device, 601, ausbau, "2026-11-04T09:39:06Z", PUNKT, "90", "9.0"),
+                wert(device, 602, vor, "2026-11-04T09:39:07Z", PUNKT, "89", "8.9"));
+        awaitMeasurementRows(device, 1);
+        assertThat(zaehle("SELECT count(*) FROM device_measurement_sample WHERE device_id='" + device
+                + "' AND time = '" + vor + "'")).as("der Wert vor dem Ausbau bleibt nicht draußen").isOne();
+
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE;
+            for (String ts : new String[] {"2026-11-04T09:39:00.000Z", "2026-11-04T09:38:00.000Z",
+                    "2026-11-04T09:37:00.000Z"}) {
+                producer.send(new ProducerRecord<>(RAW_TOPIC, key, eventFor(TENANT_A, device, ts))).get();
+            }
+            producer.flush();
+        }
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        while (System.nanoTime() < deadline && rowsForDevice(device) < 1) {
+            Thread.sleep(500);
+        }
+        assertThat(rowsForDevice(device)).isEqualTo(1);
+        assertThat(zaehle("SELECT count(*) FROM telemetry WHERE device_id='" + device + "' AND time = '"
+                + vor + "'")).isOne();
+    }
+
+    /**
      * Audit B7: the guarded {@code WHERE NOT EXISTS} keeps sequential Kafka
      * redeliveries idempotent, but only the UNIQUE index on
      * {@code (device_id, time)} (api migration V20260712000000, mirrored in

@@ -108,13 +108,18 @@ public class MeasurementWriteRepository {
     public int insert(MeasurementRawEvent event) {
         jdbc.queryForObject("SELECT set_config('app.tenant_id', ?, true)", String.class,
                 event.tenant_id().toString());
-        List<Instant> purgeRows = jdbc.query("SELECT data_purged_before FROM device "
+        // Neben dem Purge-Wasserzeichen der Ausbau (api V20260913150000, AP-07 IP-11): eine
+        // ausgebaute Box behält jeden Wert, der VOR ihrem Ausbau gemessen wurde (auch einen, der
+        // noch unterwegs war) - einen Wert ab dem Ausbau nimmt sie nicht mehr an.
+        List<Instant[]> purgeRows = jdbc.query("SELECT data_purged_before, ausgebaut_am FROM device "
                         + "WHERE id=? FOR SHARE",
-                (rs, row) -> instant(rs.getTimestamp(1)), event.device_id());
+                (rs, row) -> new Instant[] {instant(rs.getTimestamp(1)), instant(rs.getTimestamp(2))},
+                event.device_id());
         if (purgeRows.isEmpty()) {
             return 0;
         }
-        Instant purgedBefore = purgeRows.get(0);
+        Instant purgedBefore = purgeRows.get(0)[0];
+        Instant ausgebautAm = purgeRows.get(0)[1];
         // Der zuletzt gesehene Umschlag DIESER Box - und ab jetzt ist es dieser.
         MesswertHerkunft.VorherigerUmschlag vorher = umschlaege.put(event.device_id(),
                 new MesswertHerkunft.VorherigerUmschlag(event.sequence(), event.observed_at()));
@@ -138,6 +143,7 @@ public class MeasurementWriteRepository {
             // Übergabe eintrifft, ist deshalb willkommen (bis 90 Tage zurück) und führend,
             // wenn seine Box damals zuständig war.
             if (meta == null || observedAt == null || atOrBefore(observedAt, purgedBefore)
+                    || abAusbau(observedAt, ausgebautAm)
                     || meta.enabledAt() == null
                     || observedAt.isBefore(meta.enabledAt()) || !withinCutover(meta, observedAt)) {
                 continue;
@@ -202,7 +208,8 @@ public class MeasurementWriteRepository {
             }
         }
         if ((event.gap() || event.dropped_samples() > 0)
-                && !atOrBefore(event.observed_at(), purgedBefore)) {
+                && !atOrBefore(event.observed_at(), purgedBefore)
+                && !abAusbau(event.observed_at(), ausgebautAm)) {
             insertGap(event);
         }
         melden(event, sammler);
@@ -490,6 +497,11 @@ public class MeasurementWriteRepository {
 
     private static boolean atOrBefore(Instant value, Instant watermark) {
         return watermark != null && !value.isAfter(watermark);
+    }
+
+    /** Gemessen am oder nach dem Ausbau der Box. */
+    private static boolean abAusbau(Instant value, Instant ausgebautAm) {
+        return ausgebautAm != null && !value.isBefore(ausgebautAm);
     }
 
     private static String bitfieldDetails(BigDecimal previous, BigDecimal current) {

@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS device (
     id                 UUID PRIMARY KEY,
     tenant_id          UUID NOT NULL,
     site_id            UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000002',
-    data_purged_before TIMESTAMPTZ
+    data_purged_before TIMESTAMPTZ,
+    -- api V20260913150000 (AP-07 IP-11): Werte ab dem Ausbau der Box nimmt der Writer nicht an.
+    ausgebaut_am       TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX uq_device_tenant_site_identity ON device(id, tenant_id, site_id);
 

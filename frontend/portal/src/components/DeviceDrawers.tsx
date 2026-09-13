@@ -245,7 +245,7 @@ export function unclaimConsequences(device: Device): string[] {
   const name = device.name || device.externalRef;
   return [
     `Das Gerät „${name}" wird von Ihrem Konto getrennt`,
-    'Alle aufgezeichneten Messdaten dieses Geräts werden gelöscht',
+    'Die aufgezeichneten Messdaten bleiben erhalten – das Gerät wird als ausgebaut geführt',
     'Das physische Gerät verliert seinen Fahrplan und fällt in den sicheren Standardbetrieb zurück',
   ];
 }

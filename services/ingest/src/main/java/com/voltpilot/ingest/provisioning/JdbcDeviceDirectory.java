@@ -36,7 +36,9 @@ public class JdbcDeviceDirectory implements DeviceDirectory {
 
     @Override
     public Optional<DeviceIdentity> findByRef(String externalRef) {
-        String sql = "SELECT tenant_id, site_id, id FROM device WHERE external_ref = ?";
+        // An ausgebaut box (api migration V20260913150000) keeps its row and ref as the
+        // provenance of its recordings; only the box that is not ausgebaut answers a hello.
+        String sql = "SELECT tenant_id, site_id, id FROM device WHERE external_ref = ? AND ausgebaut_am IS NULL";
         try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
                 PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, externalRef);

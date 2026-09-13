@@ -156,7 +156,7 @@ public class MeasurementConfigStatusListener {
             }
             TenantContext.set(tenant);
             try {
-                var scope = repository.deviceScope(device);
+                var scope = repository.aktiverDeviceScope(device);
                 if (scope == null || !site.equals(scope.siteId())
                         || revision > repository.revision(device)
                         || revision < repository.acknowledgedRevision(device)) {

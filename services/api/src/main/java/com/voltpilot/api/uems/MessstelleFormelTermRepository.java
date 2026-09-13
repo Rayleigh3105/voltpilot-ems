@@ -115,6 +115,7 @@ public class MessstelleFormelTermRepository {
                    AND (
                      (t.eingang_art = 'messkanal' AND NOT EXISTS (
                         SELECT 1 FROM device_measurement_selection s
+                          JOIN device d ON d.id = s.device_id AND d.ausgebaut_am IS NULL
                          WHERE s.entity_id = t.entity_id AND s.point_key = t.point_key))
                      OR (t.eingang_art IN ('messstelle', 'verteilung') AND NOT EXISTS (
                         SELECT 1 FROM messstelle q

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
@@ -181,6 +182,12 @@ public class PurgeRequestListener {
             }
             DevicePurgeService.Result r = purgeService.purge(device.get());
             log.info("Device-initiated purge completed for device {} ({} rows)", deviceId, r.purgedRows());
+        } catch (BelegeImWeg e) {
+            // UEMS AP-07 E8: the box's series are Belege of Messstellen - refused like the
+            // portal path, nothing written. The contract has no "refused" answer, so the box
+            // keeps its intent and asks again on its next connect (known, see IP-11 notes).
+            log.warn("Device-initiated purge for device {} (tenant {}) refused: {}", deviceId, tenantId,
+                    e.getMessage());
         } finally {
             TenantContext.clear();
         }

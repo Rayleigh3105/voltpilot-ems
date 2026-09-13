@@ -107,7 +107,7 @@ public class EdgeVersionRepository {
                         + "FROM device d "
                         + "LEFT JOIN device_update_status u ON u.device_id = d.id "
                         + "LEFT JOIN device_edge_version e ON e.device_id = d.id "
-                        + "WHERE COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
+                        + "WHERE d.ausgebaut_am IS NULL AND COALESCE(NULLIF(u.version, ''), NULLIF(u.current_version, ''), "
                         + "e.core_version, e.palette_version) IS NOT NULL "
                         + "ORDER BY reported_at DESC",
                 (rs, i) -> new EdgeVersion(

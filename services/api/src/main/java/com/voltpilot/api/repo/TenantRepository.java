@@ -189,6 +189,14 @@ public class TenantRepository {
                 // FK — the same one way out. Its gaps live in messreihe_ereignis (above); the
                 // run-state row is not tenant-bound and stays.
                 deleteByTenant(con, "messreihe_luecke_stand", tenantId);
+                // The measurement pipeline (device_measurement_*, AP-07 IP-11): since
+                // V20260913150000 its FKs to device and site RESTRICT, so the tenant's cascade
+                // below would be refused. The admin role holds no DELETE on the selection
+                // history - one narrow SECURITY DEFINER function, executable only by it.
+                try (var ps = con.prepareStatement("SELECT uems_messwerte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,

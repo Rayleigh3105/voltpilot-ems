@@ -138,6 +138,7 @@ public class AdminFleetRepository {
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
+                        + "WHERE d.ausgebaut_am IS NULL "
                         + "GROUP BY d.site_id",
                 rs -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");

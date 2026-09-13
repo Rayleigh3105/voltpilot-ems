@@ -48,7 +48,9 @@ public class MessstelleFormelWerteRepository {
     /**
      * Löst {@code (entity_id, point_key)} auf die lesende Box + Anlage auf. {@code site_id} kommt
      * aus der RLS-geschützten {@code measurement_point} (eine fremde Komponente → leer), die Box
-     * aus der Mess-Selektion. Leer, wenn kein Gerät den Kanal der Komponente liest.
+     * aus der Mess-Selektion. Leer, wenn kein Gerät den Kanal der Komponente liest. Eine Box, die
+     * nicht ausgebaut ist, geht vor (UEMS AP-07 IP-11): die Auswahl einer ausgebauten Box bleibt
+     * gespeichert, liefert aber keinen Live-Wert mehr, solange eine andere Box den Kanal liest.
      */
     public Optional<Quelle> quelle(UUID entityId, String pointKey) {
         return jdbc.query("""
@@ -56,8 +58,9 @@ public class MessstelleFormelWerteRepository {
                   FROM measurement_point mp
                   JOIN device_measurement_selection sel
                     ON sel.entity_id = mp.id AND sel.point_key = ?
+                  JOIN device d ON d.id = sel.device_id
                  WHERE mp.id = ?
-                 ORDER BY sel.device_id
+                 ORDER BY (d.ausgebaut_am IS NOT NULL), sel.device_id
                  LIMIT 1
                 """, (rs, n) -> new Quelle(rs.getObject("site_id", UUID.class),
                         rs.getObject("device_id", UUID.class)), pointKey, entityId)

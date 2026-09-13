@@ -135,7 +135,9 @@ public class AdminComponentFleetRepository {
                         rs.getString("held_revision"), instant(rs, "reported_at"))),
                 "SELECT DISTINCT ON (site_id) site_id, authority, applied_revision, "
                         + "refused_revision, refused_reason, held_revision, reported_at "
-                        + "FROM device_component_apply ORDER BY site_id, reported_at DESC");
+                        + "FROM device_component_apply a WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = a.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC");
         return out;
     }
 
@@ -159,7 +161,7 @@ public class AdminComponentFleetRepository {
     public Map<UUID, Integer> activationsPerSite() {
         Map<UUID, Integer> out = new HashMap<>();
         each(countHandler(out), "SELECT d.site_id, count(*) AS n "
-                + "FROM device_control_activation a JOIN device d ON d.id = a.device_id "
+                + "FROM device_control_activation a JOIN device d ON d.id = a.device_id AND d.ausgebaut_am IS NULL "
                 + "GROUP BY d.site_id");
         return out;
     }

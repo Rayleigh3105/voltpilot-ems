@@ -1115,10 +1115,12 @@ paths:
       tags: [sites]
       summary: Delete a site (guarded; cascades assets + series data).
       description: >
-        Refused (409) while the site still has devices - they must be removed
-        first. On success the site's assets cascade by FK and its series data
-        (telemetry, rollups, forecast, schedule, weather, forecast-quality rows)
-        is deleted in the same transaction. Use the deletion-preview endpoint to
+        Refused (409) while the site still has devices that are not ausgebaut -
+        they must be removed first. Refused (409 `messstellen_belege`, with the
+        list) when the site's measurements are Belege of Messstellen. On success
+        the site's assets cascade by FK and its series data (telemetry, rollups,
+        forecast, schedule, weather, forecast-quality rows, the measurement
+        pipeline, its ausgebaut boxes) is deleted in the same transaction. Use the deletion-preview endpoint to
         show the concrete consequences before confirming. Its Standort
         assignment is not deleted (UEMS AP-02 W5): it ends today and stays as an
         ended interval with a log entry (`geloescht`) at the Standort.
@@ -1128,6 +1130,31 @@ paths:
         "204": { description: Site and its recorded data deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+        "409":
+          description: >
+            Still has devices (plain `message`), or its measurements are Belege of Messstellen (UEMS AP-07 E8/IP-11): a series
+            that was EVER bound to a Messstelle (binding, its log entry
+            `quelle_gebunden`, or a formula term) is never deleted. Nothing was
+            written; the body names every Messstelle in the way.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message, messstellen]
+                properties:
+                  code: { type: string, enum: [messstellen_belege] }
+                  message: { type: string, description: "Kundensatz, z. B. „… sind Belege von 5 Messstellen und werden nicht gelöscht: MS-01 Netzbezug Halle 1, …“" }
+                  messstellen:
+                    type: array
+                    minItems: 1
+                    items:
+                      type: object
+                      required: [id, kennzeichen, name]
+                      properties:
+                        id: { type: string, format: uuid }
+                        kennzeichen: { type: string }
+                        name: { type: string }
+
         "409": { description: The site still has devices; remove them first. }
   /api/v1/sites/{siteId}/deletion-preview:
     get:
@@ -1184,26 +1211,33 @@ paths:
         "404": { description: Device not found for this tenant. }
     delete:
       tags: [devices]
-      summary: Unclaim (delete) a device incl. its telemetry + MQTT cleanup.
+      summary: Unclaim a device - the box is ausgebaut, nothing recorded is deleted.
       description: >
-        Removes the device row AND its telemetry, and clears the broker's
-        retained `provision/{ref}/config` and schedule topics (best-effort,
-        like the on-claim publish) so the physical device falls back to its
-        watchdog default. The ref becomes claimable again; a sticker ID stays
-        registered in the manufacturing registry.
+        UEMS AP-07 E8/IP-11 (AP-06 E7): the box is kept as ausgebaut
+        (`status: ausgebaut`) with its identity, and its raw telemetry, OCPP
+        recordings, measurements and events stay - the history keeps naming
+        it. It takes no part in operation anymore (every device route answers
+        404, no list shows it, components and the site no longer point at it).
+        The broker's retained `provision/{ref}/config` and schedule topics are
+        cleared (best-effort, like the on-claim publish) so the physical device
+        falls back to its watchdog default. The ref becomes claimable again (as
+        a new device); a sticker ID stays registered in the manufacturing
+        registry.
       parameters:
         - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        "204": { description: Device unclaimed; its telemetry deleted. }
+        "204": { description: Device unclaimed (ausgebaut); nothing recorded deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
   /api/v1/devices/{deviceId}/purge-data:
     post:
       tags: [devices]
-      summary: Purge ALL recorded data of a device WITHOUT unclaiming it.
+      summary: Purge the recorded data of a device WITHOUT unclaiming it.
       description: >
-        "Datenaufzeichnungen löschen": irreversibly deletes every recorded
-        timeseries datapoint of this device - raw telemetry plus the site's
+        "Datenaufzeichnungen löschen": irreversibly deletes every recording of
+        this device that is not a Beleg of a Messstelle (UEMS AP-07 W6) - a box
+        carrying a series ever bound to a Messstelle is refused (409) before
+        anything is written. Deleted are raw telemetry plus the site's
         derived rollups, which are rebuilt from the remaining devices - while
         the device itself stays claimed and fully operational (enrollment,
         certificates, config and the retained schedule are untouched). A purge
@@ -1224,6 +1258,31 @@ paths:
               schema: { $ref: "#/components/schemas/DevicePurgeResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
+        "409":
+          description: >
+            The box's recordings are Belege of Messstellen (UEMS AP-07 E8/IP-11): a series
+            that was EVER bound to a Messstelle (binding, its log entry
+            `quelle_gebunden`, or a formula term) is never deleted. Nothing was
+            written; the body names every Messstelle in the way.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, message, messstellen]
+                properties:
+                  code: { type: string, enum: [messstellen_belege] }
+                  message: { type: string, description: "Kundensatz, z. B. „… sind Belege von 5 Messstellen und werden nicht gelöscht: MS-01 Netzbezug Halle 1, …“" }
+                  messstellen:
+                    type: array
+                    minItems: 1
+                    items:
+                      type: object
+                      required: [id, kennzeichen, name]
+                      properties:
+                        id: { type: string, format: uuid }
+                        kennzeichen: { type: string }
+                        name: { type: string }
+
   /api/v1/devices/{deviceId}/measurement-selection:
     get:
       tags: [measurements]

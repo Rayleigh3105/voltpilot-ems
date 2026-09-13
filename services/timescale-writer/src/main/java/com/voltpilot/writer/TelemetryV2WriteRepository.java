@@ -129,12 +129,13 @@ public class TelemetryV2WriteRepository {
                 WHERE NOT EXISTS (
                     SELECT 1 FROM telemetry_v2 WHERE entity_id = ? AND channel = ? AND time = ?)
                 AND NOT EXISTS (
-                    SELECT 1 FROM device WHERE id = ? AND data_purged_before >= ?)
+                    SELECT 1 FROM device WHERE id = ?
+                       AND (data_purged_before >= ? OR ausgebaut_am <= ?))
                 """,
                 Timestamp.from(observedAt), Timestamp.from(receivedAt),
                 tenantId, siteId, deviceId, entityId, channel, value,
                 entityId, channel, Timestamp.from(observedAt),
-                deviceId, Timestamp.from(observedAt));
+                deviceId, Timestamp.from(observedAt), Timestamp.from(observedAt));
     }
 
     /** The entity's own ts when present and parseable, else the event's. */

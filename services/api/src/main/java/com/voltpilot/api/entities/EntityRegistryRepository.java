@@ -453,7 +453,7 @@ public class EntityRegistryRepository {
 
     /** Ids of the site's claimed devices, stable order. */
     public List<UUID> siteDeviceIds(UUID siteId) {
-        return jdbc.query("SELECT id FROM device WHERE site_id = ? ORDER BY created_at, id",
+        return jdbc.query("SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY created_at, id",
                 (rs, n) -> rs.getObject("id", UUID.class), siteId);
     }
 

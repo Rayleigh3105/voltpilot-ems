@@ -3,11 +3,12 @@
 Ausgelagert aus `AGENTS.md` am 05.09.2026 (Abschnitt Nr. 33).
 
 
-Delete ALL recorded timeseries data of one device - portal-side AND device-side - WITHOUT unclaiming it: claim/enrollment/certs/ACL/config stay intact and new data flows normally afterwards.
+Delete the recorded v1 telemetry and OCPP recordings of one device - portal-side AND device-side - WITHOUT unclaiming it: claim/enrollment/certs/ACL/config stay intact and new data flows normally afterwards. **Präzisiert (UEMS AP-07 W6/E8):** gelöscht werden alle Aufzeichnungen, die nicht Beleg einer Messstelle sind — trägt die Box eine Messreihe, die JE an eine Messstelle gebunden war, wird der Purge auf BEIDEN Einstiegen VOR Sperre und Wasserzeichen mit `409 {code: "messstellen_belege", messstellen: [...]}` abgelehnt und schreibt nichts (`uems-loeschwege.md`). Die Messwert-Strecke (`device_measurement_*`) war nie Teil des Purge.
 Contract: `docs/contracts/mqtt-data-purge.schema.json` (additive; reuses the existing `status` up- and `command` down-topics, so NO broker-ACL change).
 ONE purge authority: `services/api` `purge/DevicePurgeService` - both entry points run through it.
 
 - **What a cloud purge does, in order** (the ordering is load-bearing):
+  0. **Belege first** (`MessreihenBelege.derBox` → `uems_messreihen_belege`): a box with series ever bound to a Messstelle is refused with the list, nothing locked or written. The MQTT `purge_request` path logs the refusal; the contract has no "refused" answer, so the edge keeps its intent and re-publishes on its next connect (known, see `uems-loeschwege.md`).
   1. **Per-device database lock first:** `DeviceDataLock` holds a PostgreSQL advisory SESSION lock across the separately committed watermark and the full series sweep. `OcppRepository.ingest` takes the SAME key transactionally and reads the watermark only after acquiring it. Across API replicas an OCPP event therefore commits entirely before the purge (and is swept) or entirely after it (and survives); no mixed generation across the OCPP tables and no cloud-side silent drop.
   2. **Watermark first**: `device.data_purged_before = now()` (migration `V20260706000000`), committed as its own statement.
      The timescale-writer's insert refuses any sample whose OBSERVATION `time` is `<=` the watermark (extra `NOT EXISTS` on `device`), so a store-and-forward edge replaying old buffer entries can NEVER resurrect purged history - correctness does not depend on the device cooperating.

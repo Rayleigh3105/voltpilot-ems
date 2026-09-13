@@ -36,8 +36,10 @@ public class OcppActionRepository {
         this.mapper = mapper;
     }
 
+    /** The station a command goes to - never one behind an ausgebaut box (UEMS AP-07 IP-11: its row stays as history). */
     public Optional<StationTarget> target(UUID siteId, String chargePointId) {
-        return jdbc.query("SELECT device_id, connected FROM ocpp_station WHERE site_id=? AND charge_point_id=?",
+        return jdbc.query("SELECT s.device_id, s.connected FROM ocpp_station s WHERE s.site_id=? AND s.charge_point_id=? "
+                        + "AND EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL)",
                 (rs, n) -> new StationTarget(rs.getObject(1, UUID.class), rs.getBoolean(2)),
                 siteId, chargePointId).stream().findFirst();
     }

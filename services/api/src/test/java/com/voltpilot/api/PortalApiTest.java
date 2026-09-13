@@ -862,17 +862,19 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // Unclaim the device, then the delete goes through...
+        // Unclaim the device, then the delete goes through... Since UEMS AP-07 IP-11 the
+        // unclaim keeps the box (ausgebaut) and its OCPP recordings: the SITE path itself must
+        // sweep all eleven tables, and an ausgebaut box no longer guards the site.
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
         // Legacy-defense proof for the SITE path itself: the published
         // foundation briefly allowed orphan OCPP rows. Bypass FK triggers only
-        // while seeding that pre-hardening state; the real endpoint must sweep
-        // all eleven tables even though no device remains.
-        seedLegacyOrphanOcpp(tenantA, siteId, deviceId);
-        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
+        // while seeding that pre-hardening state (for a box that no longer
+        // exists at all); the real endpoint must sweep them too.
+        seedLegacyOrphanOcpp(tenantA, siteId, UUID.randomUUID().toString());
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(22);
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
@@ -887,7 +889,7 @@ class PortalApiTest {
     }
 
     @Test
-    void deviceEditAndUnclaimDeleteTelemetryAndAllowReclaim() {
+    void deviceEditAndUnclaimKeepRecordingsAndAllowReclaim() {
         String demo = token("demo", "demo");
         String tenantA = "00000000-0000-0000-0000-000000000001";
 
@@ -940,15 +942,20 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo2)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // Unclaim: the device row AND its telemetry are gone.
+        // Unclaim (UEMS AP-07 IP-11): the box is ausgebaut - its row, its telemetry and its OCPP
+        // recordings stay; no route reaches it anymore.
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
-        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
-        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isOne();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
+        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId
+                + "' AND status = 'ausgebaut' AND ausgebaut_am IS NOT NULL")).isOne();
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // The freed ref is claimable again (fresh row, fresh id).
+        // The ref is claimable again (fresh row, fresh id) - the ausgebaut row keeps it as provenance.
         ResponseEntity<Map<String, Object>> reclaimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
