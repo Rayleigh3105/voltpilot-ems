@@ -1,0 +1,152 @@
+/*
+ * Die Gefahrenzone der Geräteseite (vp-loeschen-konzept-l3, E4). Ein ruhiger,
+ * rot getönter Kasten am Seitenende - dieselbe destruktive Tinte, die das Haus
+ * schon führt (`--vp-industry-end`, `.vp-btn-danger`), nie eine zweite Palette.
+ * Die weichen Flächen sind aus dieser einen Farbe gemischt, damit sie mit dem
+ * Token wandern.
+ */
+.vp-gz {
+  margin-top: var(--vp-space-6);
+  padding: var(--vp-space-5);
+  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 24%, var(--vp-surface));
+  border-radius: var(--vp-radius-md);
+  background: color-mix(in srgb, var(--vp-industry-end) 5%, var(--vp-surface));
+}
+
+.vp-gz-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  color: var(--vp-industry-end);
+  font-weight: 700;
+}
+
+.vp-gz-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-4);
+  margin-top: var(--vp-space-3);
+  flex-wrap: wrap;
+}
+
+.vp-gz-row p,
+.vp-gz-blocked p {
+  margin: 0;
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-sm);
+  max-width: 60ch;
+}
+
+/* Grund UND Weg für den geschützten Speicher - nie ein toter Knopf. */
+.vp-gz-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-3);
+  padding: var(--vp-space-4);
+  border: 1px solid color-mix(in srgb, var(--vp-industry-end) 18%, var(--vp-surface));
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  color: var(--vp-industry-end);
+}
+
+.vp-gz-blocked > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.vp-gz-blocked .vp-btn {
+  margin-top: var(--vp-space-3);
+}
+
+/* ---- Die Rückfrage (Modal am Rechner, Bottom-Sheet am Telefon) ---- */
+.vp-gz-intro {
+  margin: 0;
+  color: var(--vp-text-gray);
+}
+
+.vp-gz-folgen {
+  margin-top: var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  overflow: hidden;
+}
+
+.vp-gz-folgen-h {
+  padding: var(--vp-space-2) var(--vp-space-3);
+  background: var(--vp-surface-alt, var(--vp-bg-light));
+  font-size: var(--vp-text-xs, 0.75rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vp-text-gray);
+}
+
+.vp-gz-folgen ul {
+  list-style: none;
+  margin: 0;
+  padding: var(--vp-space-1) 0;
+}
+
+.vp-gz-folge {
+  display: flex;
+  gap: var(--vp-space-3);
+  align-items: flex-start;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+}
+
+.vp-gz-marker {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.vp-gz-folge--keep .vp-gz-marker {
+  color: var(--vp-ok-ink);
+  background: color-mix(in srgb, var(--vp-ok-ink) 12%, var(--vp-surface));
+}
+
+.vp-gz-folge--gone .vp-gz-marker {
+  color: var(--vp-industry-end);
+  background: color-mix(in srgb, var(--vp-industry-end) 12%, var(--vp-surface));
+}
+
+.vp-gz-folge--info .vp-gz-marker {
+  color: var(--vp-action);
+  background: color-mix(in srgb, var(--vp-action) 12%, var(--vp-surface));
+}
+
+.vp-gz-field {
+  margin-top: var(--vp-space-4);
+}
+
+/* Der rot gefüllte Bestätigungsknopf - dieselbe Tinte wie `.vp-btn-danger`,
+   nur als Fläche (Konzept: „eine klare rote Primäraktion"). */
+.vp-gz-danger-fill.vp-btn--primary {
+  background: var(--vp-industry-end);
+  border-color: var(--vp-industry-end);
+  box-shadow: none;
+}
+.vp-gz-danger-fill.vp-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vp-industry-end) 85%, #000);
+  border-color: color-mix(in srgb, var(--vp-industry-end) 85%, #000);
+}
+
+@media (max-width: 720px) {
+  .vp-gz-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .vp-gz-row .vp-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -18,6 +18,7 @@ import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
@@ -659,16 +660,14 @@ class ComponentAdoptionApiTest {
      *       richtigen Gerät.</li>
      * </ol>
      *
-     * <p><b>⚠ Die REIHENFOLGE ist heute nicht frei, und dieser Test hält das
-     * fest statt es zu verschweigen:</b> nach einem Tausch trägt die
-     * freigegebene Doppelte KEINEN Pin mehr, und der Grundausstattungs-Zaun des
-     * Kunden-Löschens (`SiteEntityAdoptController.delete`) verweigert dann das
-     * Entfernen - sie bleibt als namenlose Zeile stehen. Wer aufräumen will,
-     * löscht ZUERST (Weg 1). Den Zaun auf die plattform-komponierten Zeilen zu
-     * verengen wäre ein Einzeiler, ändert aber eine ausdrücklich geprüfte Regel
-     * eines Nachbar-Features
-     * ({@code PortalApiTest.customerSwapsCrossedAssignmentsAndDeletesTheGhostComponent})
-     * - das ist ein Captain-Entscheid, kein Implementierungsdetail.
+     * <p><b>⚠ Die REIHENFOLGE war früher nicht frei, jetzt ist sie es</b>
+     * (Captain-Entscheid E2, vp-komp-loeschen): nach einem Tausch trägt die
+     * freigegebene Doppelte KEINEN Pin mehr. Der Grundausstattungs-Zaun des
+     * Kunden-Löschens (`SiteEntityAdoptController.delete`) verweigerte deshalb
+     * jede pinlose Zeile - zu grob, denn ein vom Kunden angelegter Erzeuger ist
+     * keine Grundausstattung. Der Zaun ist auf die plattform-SYNTHETISIERTEN
+     * Zeilen verengt ({@code source_kind = 'composed'}), also lässt sich die
+     * Doppelte jetzt auch nach dem Tausch entfernen.
      */
     @Test
     void theStrandedCustomerNameComesBackOnBothRepairPathsWithoutRetyping() throws Exception {
@@ -715,16 +714,231 @@ class ComponentAdoptionApiTest {
             assertThat(componentIdOfSource(site, customer, "src-67w4nbhh")).isEqualTo(wr2);
             assertThat(labelOf(site, customer, wr2)).isEqualTo("Dach Nord");
 
-            // ⚠ Und die bekannte Grenze, festgehalten statt verschwiegen: die
-            // freigegebene Doppelte lässt sich DANACH nicht mehr entfernen.
+            // ⚠ Und die frühere Grenze, jetzt aufgehoben (E2): die freigegebene,
+            // pinlose Doppelte lässt sich DANACH ebenfalls entfernen - sie ist
+            // kein synthetisierter Grundausstattungs-Zähler.
             assertThat(deleteComponent(site, customer, dup2).getStatusCode())
-                    .as("ohne Pin greift der Grundausstattungs-Zaun - erst löschen, dann tauschen")
-                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    .as("ein pinloser Kunden-Erzeuger ist löschbar (E2)")
+                    .isEqualTo(HttpStatus.NO_CONTENT);
             assertThat(labelOf(site, customer, wr1))
                     .as("beide Kundennamen sind zurück")
                     .isEqualTo("Fronius Anlage WR1");
         } finally {
             deleteSite(site);
+        }
+    }
+
+    // ---- Löschen: die vier Captain-Entscheide (vp-komp-loeschen) -----------
+
+    /**
+     * E2: ein vom Kunden angelegter, NIE verbundener Erzeuger ist löschbar.
+     * Früher wies der Grundausstattungs-Zaun jede pinlose Zeile mit 422 ab; jetzt
+     * greift er nur noch für die plattform-synthetisierten Zeilen
+     * ({@code source_kind = 'composed'}). Ein Erzeuger trägt diesen Stempel nie.
+     */
+    @Test
+    void aCustomerProducerWithoutADevicePinIsNowDeletable() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "E2-Erzeuger-ohne-Pin");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + pid + "','" + TENANT_A
+                    + "','" + site + "','pv-generation','PV Scheune', FALSE, 'producer', "
+                    + "'{\"measure\":[{\"channel\":\"pv_power_kw\"}]}'::jsonb, '{}'::jsonb)");
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
+                    .isEqualTo(1);
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("nie verbundener Kunden-Erzeuger ist löschbar (E2)")
+                    .isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
+                    .isZero();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * E1 + E3: „Batterie am Standort abmelden" entfernt die drei Dinge zusammen -
+     * den {@code asset}-Nennwert (den der Optimierer liest), die {@code
+     * flow_claim}-Waise und die Entität -, lässt die aufgezeichneten Messwerte
+     * aber STEHEN. Ohne den asset-Rückbau plante der Optimierer eine
+     * Phantom-Batterie weiter (Report §4c); ohne die Messwerte verlöre die Anlage
+     * ihre Historie (E3, „Ehrlichkeit der Zahlen").
+     */
+    @Test
+    void unregisteringTheBatteryDropsAssetAndClaimButKeepsTheRecordedTelemetry() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "E1-Batterie-abmelden");
+        try {
+            UUID device = claim(customer, site, "edge-e1-1");
+            saveBattery(customer, site); // komponiert die battery-hybrid-Zeile
+            String hybrid = entityIdByRole(site, "battery-hybrid");
+            assertThat(hybrid).as("die Batterie ist komponiert").isNotNull();
+
+            // Eine Regel hält den Speicher, und es liegen Messwerte vor.
+            exec("INSERT INTO flow_claim (entity_id, command, tenant_id, site_id, flow_id, "
+                    + "flow_version, flow_name) VALUES ('" + hybrid + "','setpoint_kw','" + TENANT_A
+                    + "','" + site + "','" + UUID.randomUUID() + "', 1, 'Speicherregel')");
+            exec("INSERT INTO telemetry_v2 (time, tenant_id, site_id, device_id, entity_id, "
+                    + "channel, value) VALUES (now(), '" + TENANT_A + "','" + site + "','" + device
+                    + "','" + hybrid + "','soc_pct', 55.0)");
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'")).isEqualTo(1);
+
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/battery"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'"))
+                    .as("Nennwerte weg - keine Phantom-Batterie im Optimierer").isZero();
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + hybrid + "'"))
+                    .as("Entität entfernt").isZero();
+            assertThat(count("SELECT count(*) FROM flow_claim WHERE entity_id = '" + hybrid + "'"))
+                    .as("Regel-Beanspruchung aufgeräumt").isZero();
+            assertThat(count("SELECT count(*) FROM telemetry_v2 WHERE entity_id = '" + hybrid + "'"))
+                    .as("aufgezeichnete Messwerte bleiben (E3)").isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * E1-Grenze: nur {@code battery-hybrid} bekommt den neuen Weg. Der
+     * Hausverbrauch bleibt für den Kunden geschützt (er ist aus den Stammdaten
+     * synthetisiert), der Entitäts-Löschweg weist ihn weiter mit 422 ab.
+     */
+    @Test
+    void theHouseLoadStaysProtectedFromCustomerDelete() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "E1-Hausverbrauch-geschuetzt");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, source_kind, capabilities, guard_config) VALUES ('" + pid
+                    + "','" + TENANT_A + "','" + site + "','house-load','Hausverbrauch', FALSE, "
+                    + "'house-load','composed', '{\"measure\":[{\"channel\":\"power_kw\"}]}'::jsonb, "
+                    + "'{}'::jsonb)");
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("house-load bleibt geschützt").isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
+                    .isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * SF-1: ein VOR der {@code source_kind}-Spalte komponierter Netz-Zähler
+     * trägt {@code source_kind = NULL} (nie nachgestempelt) und keinen Pin. Er
+     * muss trotzdem geschützt bleiben - der Zaun greift über die ROLLE, nicht nur
+     * über den Marker, sonst würde eine Altanlage ihren Netzknoten verlieren.
+     */
+    @Test
+    void aLegacyComposedGridMeterWithoutSourceKindStaysProtected() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "SF1-Altbestand-Netz");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + pid + "','" + TENANT_A
+                    + "','" + site + "','grid-meter','Netzanschluss', FALSE, 'grid-meter', "
+                    + "'{\"measure\":[{\"channel\":\"power_kw\"}]}'::jsonb, '{}'::jsonb)");
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("pinloser synthetisierter Netz-Zähler bleibt geschützt, auch ohne "
+                            + "source_kind (SF-1)")
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(count("SELECT count(*) FROM measurement_point WHERE id = '" + pid + "'"))
+                    .isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * SF-2: der allgemeine Löschweg (E2) räumt die {@code flow_claim}-Waise auf.
+     * E2 öffnet ihn neu für pinlose STEUERBARE Entitäten (Wallbox usw.), die eine
+     * Beanspruchung tragen können; ohne Aufräumen läse der Optimierer die
+     * gelöschte Komponente weiter als „von einer Regel gehalten".
+     */
+    @Test
+    void deletingAControllablePinlessEntityCleansItsFlowClaimOrphan() {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "SF2-Regel-Waise");
+        try {
+            UUID pid = UUID.randomUUID();
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + pid + "','" + TENANT_A
+                    + "','" + site + "','wallbox','Wallbox', TRUE, 'wallbox', "
+                    + "'{\"actuate\":[{\"command\":\"on_off\"}]}'::jsonb, '{}'::jsonb)");
+            exec("INSERT INTO flow_claim (entity_id, command, tenant_id, site_id, flow_id, "
+                    + "flow_version, flow_name) VALUES ('" + pid + "','on_off','" + TENANT_A + "','"
+                    + site + "','" + UUID.randomUUID() + "', 1, 'Wallbox-Regel')");
+            assertThat(deleteComponent(site, customer, pid.toString()).getStatusCode())
+                    .as("pinlose steuerbare Komponente ist löschbar (E2)")
+                    .isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(count("SELECT count(*) FROM flow_claim WHERE entity_id = '" + pid + "'"))
+                    .as("Regel-Beanspruchung aufgeräumt (SF-2)").isZero();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * NIT-2: der neue Weg {@code DELETE /sites/{id}/battery} ist mandanten-
+     * gefenced wie der Rest der Anlagen-API - eine fremde Anlage ist 404, nie ein
+     * Cross-Tenant-Löschen.
+     */
+    @Test
+    void unregisteringABatteryOfAForeignTenantIs404() {
+        String owner = token("demo", "demo");
+        UUID site = createSite(owner, "NIT2-Fremdmandant");
+        try {
+            claim(owner, site, "edge-nit2-1");
+            saveBattery(owner, site);
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'")).isEqualTo(1);
+
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/battery"), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode())
+                    .as("fremder Mandant sieht die Anlage nicht (RLS 404)")
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(count("SELECT count(*) FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'battery'"))
+                    .as("die Batterie des Eigentümers bleibt unangetastet").isEqualTo(1);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Ein Zähler über den Superuser (RLS-frei) für Aufbau und Prüfung. */
+    private void exec(String sql) {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private long count(String sql) {
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private String entityIdByRole(UUID site, String role) {
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery("SELECT id FROM measurement_point WHERE site_id = '"
+                        + site + "' AND role = '" + role + "'")) {
+            return rs.next() ? rs.getString(1) : null;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
         }
     }
 

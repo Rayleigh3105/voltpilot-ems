@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.entities.EntityAutoComposer;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,13 +44,16 @@ public class SiteBatteryController {
     private final AssetRepository assets;
     private final DeviceRepository devices;
     private final EntityAutoComposer autoCompose;
+    private final EntityRegistryService registry;
 
     public SiteBatteryController(SiteRepository sites, AssetRepository assets,
-            DeviceRepository devices, EntityAutoComposer autoCompose) {
+            DeviceRepository devices, EntityAutoComposer autoCompose,
+            EntityRegistryService registry) {
         this.sites = sites;
         this.assets = assets;
         this.devices = devices;
         this.autoCompose = autoCompose;
+        this.registry = registry;
     }
 
     /**
@@ -95,6 +100,28 @@ public class SiteBatteryController {
         // Transaktion - eine Ausnahme im Modell-Aufbau darf den Speicher-
         // Schreibvorgang niemals zurückrollen.
         autoCompose.ensureComposed(siteId);
+        return assets.findForSite(siteId);
+    }
+
+    /**
+     * "Batterie am Standort abmelden" (vp-komp-loeschen E1): the customer-facing
+     * way to remove a {@code battery-hybrid} the platform otherwise hard-blocks.
+     * It removes the three things that make up the battery TOGETHER - the {@code
+     * asset} nameplate the optimizer reads, the battery entity's {@code
+     * flow_claim} orphan, and the entity/measurement point (its recorded
+     * telemetry is KEPT, only the live visibility goes) - and re-pushes the
+     * registry so the edge forgets the source. See {@link
+     * EntityRegistryService#unregisterBattery}.
+     *
+     * <p>Returns the site's remaining assets like {@link #saveBattery}, so the
+     * drawer re-renders from one shape. Idempotent: a site without a battery is
+     * a no-op that returns the unchanged list.
+     */
+    @Transactional
+    @DeleteMapping("/battery")
+    public List<SiteAssetDto> unregisterBattery(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        registry.unregisterBattery(siteId);
         return assets.findForSite(siteId);
     }
 

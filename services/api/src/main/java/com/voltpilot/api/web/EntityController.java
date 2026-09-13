@@ -58,11 +58,16 @@ public class EntityController {
      *  reported yet (never claim an orphan the report cannot prove).
      *  {@code capacityKwp}: the adopted producer's nameplate, which sums into
      *  the plant total - the delete dialog names what gets subtracted instead
-     *  of a vague warning (vp-bereinigung-ui-k3). */
+     *  of a vague warning (vp-bereinigung-ui-k3).
+     *  {@code sourceKind}: {@code "composed"} marks a platform-SYNTHESIZED base
+     *  row (grid-meter / house-load derived from the gateway). The customer
+     *  delete gate mirrors the server (vp-komp-loeschen E2): a null-pin row is
+     *  deletable UNLESS it carries this marker, so a never-connected producer
+     *  can be removed while the plant's derived base stays protected. */
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
             String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
-            java.math.BigDecimal capacityKwp) {}
+            java.math.BigDecimal capacityKwp, String sourceKind) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -188,7 +193,7 @@ public class EntityController {
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
                                     parse(obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
-                    row.edgeSourceId(), orphanedPin, row.capacityKwp()));
+                    row.edgeSourceId(), orphanedPin, row.capacityKwp(), row.sourceKind()));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());
