@@ -160,6 +160,16 @@ class AenderungSatzTest {
         assertThat(satz("messstelle", "formel_geaendert", null, null)).isEqualTo("Formel geändert");
     }
 
+    /** AP-10 IP-7: die Prozess-Zuordnung nennt die Prozesse ab dem Tag. */
+    @Test
+    void eineProzessZuordnungNenntDieProzesse() throws Exception {
+        assertThat(satz("messstelle", "prozesse_zugeordnet", "{\"gueltig_ab\": \"2026-10-01\", \"prozesse\": []}",
+                "{\"gueltig_ab\": \"2026-10-01\", \"prozesse\": [\"P-1\", \"P-3\"]}"))
+                .isEqualTo("Prozesse zugeordnet: P-1, P-3");
+        assertThat(satz("messstelle", "prozesse_zugeordnet", null, "{\"gueltig_ab\": \"2027-01-01\", \"prozesse\": []}"))
+                .isEqualTo("Prozesse zugeordnet: keine");
+    }
+
     // ---- Vollständigkeit ----------------------------------------------------------------------
 
     /**

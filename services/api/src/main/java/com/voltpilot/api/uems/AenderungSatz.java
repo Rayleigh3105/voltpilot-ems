@@ -93,6 +93,7 @@ public final class AenderungSatz {
                     text(neu, "einbau"), "");
             case "formel_geaendert" -> "Formel geändert" + zusatz(text(neu, "fassung") == null ? null
                     : "Fassung " + text(neu, "fassung"));
+            case "prozesse_zugeordnet" -> "Prozesse zugeordnet" + prozesse(neu);
             case "erreichbarkeit_geprueft" -> "Erreichbarkeit geprüft" + zusatz(ergebnis);
             case "zustaendigkeit_begonnen" -> "Zuständigkeit begonnen";
             case "zustaendigkeit_gewechselt" -> "Zuständigkeit gewechselt";
@@ -192,6 +193,16 @@ public final class AenderungSatz {
             return ": von " + vorher + einheit;
         }
         return ": " + vorher + einheit + " → " + nachher + einheit;
+    }
+
+    /** Die Kennzeichen der Prozesse ab dem Tag — „keine“, wenn die Liste leer ist (AP-10 IP-7). */
+    private static String prozesse(JsonNode neu) {
+        if (neu == null || !neu.isObject() || !neu.path("prozesse").isArray()) {
+            return "";
+        }
+        java.util.List<String> kennzeichen = new java.util.ArrayList<>();
+        neu.path("prozesse").forEach(p -> kennzeichen.add(p.asText()));
+        return zusatz(kennzeichen.isEmpty() ? "keine" : String.join(", ", kennzeichen));
     }
 
     private static String zusatz(String wert) {

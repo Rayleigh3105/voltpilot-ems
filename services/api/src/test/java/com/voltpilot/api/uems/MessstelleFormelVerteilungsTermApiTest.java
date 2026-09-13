@@ -267,7 +267,7 @@ class MessstelleFormelVerteilungsTermApiTest {
         UUID quelle = anlegen(w, term(w, PV3, "+"));
 
         UUID verteilt = anlegen(w, term(w, PV1, "+"));
-        UUID ziel = UUID.randomUUID();
+        UUID ziel = kostenstelle(w);
         root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
                 + "quell_messstelle_id, vorzeichen, faktor, verteilung_ziel) SELECT tenant_id, messstelle_id, "
                 + "fassung_id, 1, 'verteilung', ?, '+', 1, ? FROM messstelle_formel_term WHERE messstelle_id = ?",
@@ -331,7 +331,7 @@ class MessstelleFormelVerteilungsTermApiTest {
         }
         probe(w, PV1, 10000);
         UUID quelle = anlegen(w, term(w, PV1, "+"));
-        UUID kostenstelle = UUID.randomUUID();
+        UUID kostenstelle = kostenstelle(w);
         GEBAUT.put(kostenstelle, List.of(
                 new VerteilungRegeln.Abschnitt(vorgestern, vorgestern, List.of(
                         new VerteilungRegeln.Zeile(kostenstelle.toString(), new BigDecimal("70")),
@@ -362,6 +362,16 @@ class MessstelleFormelVerteilungsTermApiTest {
     // ================================================================ die Welt
 
     private record Welt(UUID mandant, UUID anlage, UUID box, UUID komponente) {}
+
+    /** Das Ziel eines Verteilungs-Terms ist seit AP-10 IP-7 eine echte Kostenstelle des Kundenbereichs (Fremdschlüssel). */
+    private UUID kostenstelle(Welt w) {
+        root.update("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, 'Unternehmen', 'Europe/Berlin') "
+                + "ON CONFLICT (tenant_id) DO NOTHING", w.mandant());
+        return root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, gueltig_ab) "
+                + "SELECT u.tenant_id, u.id, 'K-' || (SELECT count(*) + 1 FROM kostenstelle k WHERE k.tenant_id = u.tenant_id), "
+                + "'Spritzguss', DATE '2026-01-01' FROM unternehmen u WHERE u.tenant_id = ? RETURNING id", UUID.class,
+                w.mandant());
+    }
 
     private Welt welt() {
         int nr = NR.incrementAndGet();

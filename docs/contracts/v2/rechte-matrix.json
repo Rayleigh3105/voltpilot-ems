@@ -1104,6 +1104,42 @@
       "anmerkung": "AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`."
     },
     {
+      "kennung": "kostenstelle.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Kostenstelle anlegen · umbenennen · beenden",
+      "herkunft": "AP-10 §4.10 (E15)",
+      "nachtrag": "AP-10 §4.10",
+      "wie": "unternehmen.bearbeiten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/kostenstellen`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung."
+    },
+    {
+      "kennung": "prozess.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Prozess anlegen · umbenennen · beenden",
+      "herkunft": "AP-10 §4.10 (E15)",
+      "nachtrag": "AP-10 §4.10",
+      "wie": "unternehmen.bearbeiten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/prozesse`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. Eine Messstelle einem Prozess zuordnen bleibt `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“)."
+    },
+    {
       "kennung": "bezugsgroesse.verwalten",
       "gruppe": "messdaten",
       "kundenwort": "Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen",
@@ -1346,12 +1382,23 @@
           ],
           "zuordnung": "zugeordnet",
           "anmerkung": "Auch die Formel zu einem Tag (`GET …/formel?am=`); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`."
+        },
+        {
+          "handlung": "Kostenstellen und Prozesse verwalten",
+          "wer": "Zellen wie `unternehmen.bearbeiten`: KA U · EM U",
+          "recht": "`kostenstelle.verwalten` · `prozess.verwalten`",
+          "kennungen": [
+            "kostenstelle.verwalten",
+            "prozess.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Seit AP-10 IP-7 (Tabellen `kostenstelle`, `prozess`, `messstelle_prozess`); die Durchsetzung bringt AP-03."
         }
       ],
       "regeln": [
         {
           "wortlaut": "`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`)",
-          "wo": "noch keine Zeile — jede entsteht mit dem Bau-Paket, das ihre Route baut: AP-10 IP-8 (Verteilung), IP-7 (Kostenstelle, Prozess), IP-6 (Netzanschluss)"
+          "wo": "`kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen; die übrigen entstehen mit dem Bau-Paket, das ihre Route baut: AP-10 IP-8 (Verteilung), IP-6 (Netzanschluss)"
         },
         {
           "wortlaut": "Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen)",
