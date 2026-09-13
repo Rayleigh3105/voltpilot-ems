@@ -88,6 +88,13 @@ class MessstelleApiTest {
     private static final String BASIS = "/api/v1/messstellen";
     private static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
     private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
+    /**
+     * Größen-Fälle, die der Katalog zulässt, die sich aber noch nicht speichern lassen: {@code saldiert}
+     * an einer berechneten Messstelle (AP-10 IP-4). Anlegen prüft ohne Art, und die Datenbank-Funktion
+     * {@code messstelle_groesse_im_katalog} kennt das Wort nicht — erst der erste saldo-Schreibweg
+     * (IP-9 / IP-16) bringt die Migration dafür.
+     */
+    private static final Set<String> GROESSE_OHNE_SCHREIBWEG = Set.of("saldiert-an-berechneter-messstelle");
     /** Was die Schnittstelle zur Messstelle des Vertrags hinzufügt. */
     private static final List<String> NUR_SCHNITTSTELLE =
             List.of("id", "fehlt", "angehalten_ab", "archiviert_am");
@@ -303,19 +310,33 @@ class MessstelleApiTest {
      * Jeder Fall der Familie {@code groesse} als Hauptgröße einer neuen Messstelle: im Katalog →
      * angelegt; sonst 400 {@code groesse_ungueltig} mit dem Grund des Falls — und nichts
      * gespeichert. Gas/Volumen (MS-21) ist anlegbar; Wasser hat noch keine Größe.
+     *
+     * <p>Die Art kommt aus dem Fall. Ein Fall ohne Art fährt als {@code gemessen} — die
+     * Schnittstelle verlangt eine Art, und ohne Art urteilt der Katalog wie bei einer gemessenen.
      */
     @TestFactory
     Stream<DynamicTest> groesseDieFaelleDerVektorDateiUeberDieSchnittstelle() {
+        assertThat(faelle("groesse").map(f -> f.get("name").asText())).as("die wartenden Fälle stehen in der Datei")
+                .containsAll(GROESSE_OHNE_SCHREIBWEG);
         return faelle("groesse").map(fall -> DynamicTest.dynamicTest(fall.get("name").asText(), () -> {
             JsonNode in = fall.get("input");
             JsonNode soll = fall.get("expected");
             UUID t = neuerKundenbereich("Größen-Fall " + fall.get("name").asText());
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("art", "gemessen");
+            body.put("art", in.path("art").asText("gemessen"));
             body.put("medium", in.get("medium").asText());
             body.put("hauptgroesse", in.get("groesse"));
             ResponseEntity<JsonNode> antwort = rufe(HttpMethod.POST, "", admin(t), body);
-            if (soll.get("fehler").isNull()) {
+            if (GROESSE_OHNE_SCHREIBWEG.contains(fall.get("name").asText())) {
+                // Wartende Stelle: der Katalog lässt den Fall zu, gespeichert werden kann er noch
+                // nicht (uems-formel-typen-rest-saldo.md). Wird dieser Test rot, weil der Fall
+                // angelegt wird, gehört er aus GROESSE_OHNE_SCHREIBWEG heraus.
+                assertThat(soll.get("fehler").isNull()).as("der Katalog lässt den Fall zu").isTrue();
+                assertThat(antwort.getStatusCode().value()).as(String.valueOf(antwort.getBody()))
+                        .isEqualTo(Fehler.GROESSE_UNGUELTIG.status());
+                assertThat(antwort.getBody().get("grund").asText()).isEqualTo("richtung");
+                assertThat(messstellen(t)).isZero();
+            } else if (soll.get("fehler").isNull()) {
                 assertThat(antwort.getStatusCode().value()).as(String.valueOf(antwort.getBody())).isEqualTo(201);
                 assertThat(antwort.getBody().get("hauptgroesse")).isEqualTo(in.get("groesse"));
                 assertThat(antwort.getBody().get("medium").asText()).isEqualTo(in.get("medium").asText());
