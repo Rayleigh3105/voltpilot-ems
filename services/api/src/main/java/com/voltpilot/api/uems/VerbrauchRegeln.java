@@ -43,7 +43,8 @@ import java.util.Locale;
  *       Menge, nie nur verlorene Zeit (I1–I5).
  *   <li><b>Momentanwert</b> ({@link #momentanwerte}): Mittel/Min/Max über die guten Werte in
  *       {@code [von, bis)}; Energie daraus nur gekennzeichnet, mit Rechteck-Halten über
- *       höchstens zwei Kadenzen (M1–M6).
+ *       höchstens zwei Kadenzen (M1–M6). Ein Vorzeichen-Wert, den eine Bindung mit Anteil liest,
+ *       wird VORHER je Rohwert geteilt ({@link #anteilJeRohwert}, M5/E15).
  * </ul>
  *
  * <p>Die Hausregel der Zahlen-Ehrlichkeit gilt wörtlich: eine Lücke ist nie eine Null, ein
@@ -1256,6 +1257,84 @@ public final class VerbrauchRegeln {
                 gut.get(gut.size() - 1).teil().letzter(), ergebnis), summe, null, 0, false);
     }
 
+    // ------------------------------------------ Anteil eines Vorzeichen-Werts (AP-08 IP-7, M5/E15)
+
+    /** Der positive Teil eines Vorzeichen-Werts, je Rohwert {@code max(0, P)} — speist Bezug. */
+    public static final String ANTEIL_POSITIV = "positiv";
+    /** Der Betrag des negativen Teils, je Rohwert {@code max(0, −P)} — speist Abgabe. */
+    public static final String ANTEIL_NEGATIV = "negativ";
+
+    /**
+     * M5/E15 — DIE EINE STELLE, an der ein Vorzeichen-Wert in seinen Anteil geteilt wird: JE ROHWERT,
+     * vor jeder Verdichtung. Erst daraus entstehen Mittel, Min, Max (die Nullen des anderen Anteils
+     * zählen mit) und die Energie je Anteil.
+     *
+     * <p>Nie umgekehrt: das Mittel des ganzen Werts nach seinem Vorzeichen zuzuordnen (E15 Option C,
+     * verworfen) ließe an F19 aus 12,8 kW Bezug und 22,8 kW Abgabe nur „Abgabe 10,0“ übrig. Das
+     * Vorzeichen der Box ist schon im Rohwert (AP-04 E5) — hier wird es nie ein zweites Mal
+     * angewendet, und ein Saldo entsteht hier nie (E12).
+     *
+     * @param anteil {@link #ANTEIL_POSITIV}, {@link #ANTEIL_NEGATIV} oder {@code null} = der ganze Wert
+     *     (dann kommt {@code werte} unverändert zurück)
+     */
+    public static List<Rohwert> anteilJeRohwert(List<Rohwert> werte, String anteil) {
+        if (anteil == null) {
+            return werte;
+        }
+        boolean positiv = positiv(anteil);
+        return werte.stream().map(r -> new Rohwert(r.zeit(), anteilDesWerts(r.wert(), positiv), r.gut())).toList();
+    }
+
+    /** Der Anteil EINES Werts: {@code max(0, P)} oder {@code max(0, −P)}; kein Wert bleibt kein Wert. */
+    public static BigDecimal anteilDesWerts(BigDecimal wert, String anteil) {
+        return anteilDesWerts(wert, positiv(anteil));
+    }
+
+    private static BigDecimal anteilDesWerts(BigDecimal wert, boolean positiv) {
+        if (wert == null) {
+            return null;
+        }
+        BigDecimal teil = positiv ? wert : wert.negate();
+        return teil.signum() > 0 ? teil : BigDecimal.ZERO;
+    }
+
+    private static boolean positiv(String anteil) {
+        return switch (anteil) {
+            case ANTEIL_POSITIV -> true;
+            case ANTEIL_NEGATIV -> false;
+            default -> throw new IllegalArgumentException("unbekannter Anteil " + anteil
+                    + " — bekannt sind positiv, negativ");
+        };
+    }
+
+    /**
+     * Die Kennzeichnung, die mit dem Anteil reist — Wortlaut UND Stelle (zuerst) sind Vertrag:
+     * „positiver Anteil von K-3 · Wirkleistung“.
+     *
+     * @param quelle wie die Quelle heißt: Komponente · Messwert
+     */
+    public static String anteilKennzeichen(String anteil, String quelle) {
+        return (positiv(anteil) ? "positiver Anteil von " : "negativer Anteil von ") + quelle;
+    }
+
+    /**
+     * M1–M5 — {@link #momentanwerte} über den ANTEIL {@code anteil} der Rohwerte; das
+     * Anteil-Kennzeichen steht vor allen anderen (es wird zuerst festgestellt). Ohne Anteil genau
+     * {@link #momentanwerte}.
+     */
+    public static Ergebnis momentanwerteAnteil(List<Rohwert> werte, Instant von, Instant bis, Duration kadenz,
+            boolean integrieren, String anteil, String quelle) {
+        Ergebnis e = momentanwerte(anteilJeRohwert(werte, anteil), von, bis, kadenz, integrieren);
+        if (anteil == null) {
+            return e;
+        }
+        List<String> kennzeichen = new ArrayList<>();
+        kennzeichen.add(anteilKennzeichen(anteil, quelle));
+        kennzeichen.addAll(e.kennzeichen());
+        return new Ergebnis(e.menge(), e.mittel(), e.min(), e.max(), e.energieKwh(), e.zustand(), e.erhalten(),
+                e.erwartet(), e.abdeckungProzent(), List.copyOf(kennzeichen));
+    }
+
     // ---------------------------------------------------------------------- Der Eingang
 
     /**
@@ -1274,12 +1353,40 @@ public final class VerbrauchRegeln {
             BigDecimal wertebereichModul,
             BigDecimal hoechstzuwachsJeKadenz,
             boolean integrieren) {
+        return ergebnis(wertart, werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
+                hoechstzuwachsJeKadenz, integrieren, null, null);
+    }
+
+    /**
+     * Der Eingang mit Anteil (AP-08 IP-7): ein Anteil gibt es nur für einen Momentanwert — ein
+     * Zählerstand oder eine Intervallmenge mit Anteil ist ein Fehler des Aufrufers (Regel 7 lässt
+     * die Bindung gar nicht zu).
+     *
+     * @param anteil {@code positiv} | {@code negativ} | {@code null} = der ganze Wert
+     * @param quelle Komponente · Messwert, wie das Anteil-Kennzeichen sie nennt
+     */
+    public static Ergebnis ergebnis(
+            String wertart,
+            List<Rohwert> werte,
+            Instant von,
+            Instant bis,
+            Duration kadenz,
+            Collection<Ereignis> ereignisse,
+            BigDecimal faktor,
+            BigDecimal wertebereichModul,
+            BigDecimal hoechstzuwachsJeKadenz,
+            boolean integrieren,
+            String anteil,
+            String quelle) {
+        if (anteil != null && !"momentanwert".equals(wertart)) {
+            throw new IllegalArgumentException("einen Anteil hat nur ein Momentanwert, nicht " + wertart);
+        }
         return switch (wertart) {
             case "zaehlerstand" -> mengeZaehlerstand(
                             werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul, hoechstzuwachsJeKadenz)
                     .mitAbdeckung(erwarteteWerte(von, bis, kadenz));
             case "intervallmenge" -> mengeIntervall(werte, von, bis, kadenz, faktor);
-            case "momentanwert" -> momentanwerte(werte, von, bis, kadenz, integrieren);
+            case "momentanwert" -> momentanwerteAnteil(werte, von, bis, kadenz, integrieren, anteil, quelle);
             default -> throw new IllegalArgumentException("unbekannte Wertart " + wertart
                     + " — bekannt sind zaehlerstand, intervallmenge, momentanwert");
         };

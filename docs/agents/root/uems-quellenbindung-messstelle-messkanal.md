@@ -35,11 +35,11 @@ CHECKs, „nur einmal beendet“, Offboarding), `MessstelleRegelnVectorsTest`,
 - **MS-06: die sieben Minuten 10:40–10:47 sind KEINE Bindungslücke** (Vertrag §9 Nr. 2,
   Referenzdatei 1.1: Z-5b ab 10:40) — sie sind die Werte-Lücke der Beobachtung (IP-15). Eine Lücke
   im Zeitstrahl entsteht nur durch ausdrückliches Beenden (MS-07).
-- **Der Vorzeichen-Wert wartet auf AP-08.** Die Wirkleistung am Zweirichtungszähler
-  (`sunspec.model_203.w`, Katalog `import_export`) hat keine Vertrags-Richtung → 422
-  `quelle_passt_nicht` Grund `richtung`, auch für die Nebengröße „Wirkleistung · Bezug“ von MS-01,
-  die die Referenzdatei aus K-3 speist (Vektor `ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`).
-  Kein Feld, keine Aufteilung erfinden — AP-08 entscheidet die Rechenregel.
+- **Der Vorzeichen-Wert bindet nur mit `anteil` (AP-08 IP-7).** Die Wirkleistung am
+  Zweirichtungszähler (`sunspec.model_203.w`, Katalog `import_export`) hat keine Vertrags-Richtung:
+  ohne Anteil 422 `quelle_passt_nicht` Grund `richtung` (Vektor `ms-01-nebengroesse-vorzeichen-ohne-anteil`),
+  mit `anteil` positiv → Bezug, negativ → Abgabe; `kanal_bereits_fuehrend` gilt je Anteil. Alles
+  Weitere in `uems-quelle-anteil.md`.
 - **„rückwirkend“ gegen die Uhr des Dienstes.** `eingetragen_am` (Tabelle) und `created_at` des
   Protokolls (`MessstelleAenderungRepository.eintragen(e, eingetragenAm)`) sind das „jetzt“ des
   Schreibwegs — so hält der CHECK `gilt_ab < created_at` auch mit einer Test-Uhr in der Zukunft

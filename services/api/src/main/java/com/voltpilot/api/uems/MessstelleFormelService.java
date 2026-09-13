@@ -707,7 +707,7 @@ public class MessstelleFormelService {
 
     /**
      * Die Vertrags-Größe eines Messwerts aus dem Katalog; {@code null}, wenn er keine trägt
-     * (keine Größe, keine Richtung — z. B. ein Vorzeichen-Wert wartet auf AP-08). Die Wertart ist
+     * (keine Größe, keine Richtung — z. B. ein Vorzeichen-Wert, dessen Anteil nur eine Quellenbindung liest). Die Wertart ist
      * die VERTRAGS-Wertart (Momentanwert · Zählerstand · Intervallmenge), abgeleitet aus der Größe
      * und der Wertart des KANALS ({@code gauge}/{@code counter}) — nicht die des Kanals selbst.
      */

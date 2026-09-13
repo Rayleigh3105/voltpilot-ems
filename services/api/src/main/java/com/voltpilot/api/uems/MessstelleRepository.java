@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
 import com.voltpilot.api.uems.MessstelleRegeln.Vergeben;
 import com.voltpilot.api.uems.MessstelleRegeln.Vorschlag;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -37,7 +38,18 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class MessstelleRepository {
 
     private static final String SPALTEN = "id, kennzeichen, name, art, medium, groesse, richtung, "
-            + "einheit, wertart, notiz, angehalten_ab, archiviert_am";
+            + "einheit, wertart, notiz, angehalten_ab, archiviert_am, " + anschlussleistung("messstelle");
+
+    /**
+     * Die Anschlussleistung (AP-08 IP-7, V20260913180000) über die ZEILE gelesen, nicht über die Spalte:
+     * Migrationstests legen Messstellen mit diesem Repository auf einer Fassung VOR der Spalte an —
+     * eine Spalten-Referenz bräche dort mit „column does not exist“, der Schlüssel der Zeile fehlt nur
+     * ({@code NULL}). Geschrieben wird sie darum auch nicht im INSERT, sondern mit
+     * {@link #anschlussleistungSetzen}.
+     */
+    static String anschlussleistung(String zeile) {
+        return "(to_jsonb(" + zeile + ") ->> 'anschlussleistung_kw')::numeric AS anschlussleistung_kw";
+    }
 
     private final JdbcTemplate jdbc;
 
@@ -53,8 +65,10 @@ public class MessstelleRepository {
     public record NeueMessstelle(UUID tenantId, String kennzeichen, String name, String art,
             String medium, Groesse hauptgroesse, String notiz) {}
 
+    /** {@code anschlussleistungKw}: optional (AP-08 IP-7), {@code null} = nicht deklariert. */
     public record Messstelle(UUID id, String kennzeichen, String name, String art, String medium,
-            Groesse hauptgroesse, String notiz, Instant angehaltenAb, Instant archiviertAm) {}
+            Groesse hauptgroesse, String notiz, Instant angehaltenAb, Instant archiviertAm,
+            BigDecimal anschlussleistungKw) {}
 
     /** {@code archiviertAm} {@code null} = aktiv. */
     public record Nebengroesse(UUID id, UUID messstelleId, Groesse groesse, Instant archiviertAm) {}
@@ -161,6 +175,15 @@ public class MessstelleRepository {
                 kennzeichen, name, notiz, id) == 1;
     }
 
+    /**
+     * Setzt die Anschlussleistung (AP-08 IP-7); {@code null} nimmt sie zurück. {@code false}: nicht da
+     * oder archiviert.
+     */
+    public boolean anschlussleistungSetzen(UUID id, BigDecimal kw) {
+        return jdbc.update("UPDATE messstelle SET anschlussleistung_kw = ?, updated_at = now() "
+                + "WHERE id = ? AND archiviert_am IS NULL", kw, id) == 1;
+    }
+
     /** Archiviert die Messstelle; ihr Kennzeichen bleibt belegt. {@code false}: nicht da oder schon archiviert. */
     public boolean archivieren(UUID id, Instant am) {
         return jdbc.update("UPDATE messstelle SET archiviert_am = ?, updated_at = now() "
@@ -238,7 +261,8 @@ public class MessstelleRepository {
                 groesse(rs),
                 rs.getString("notiz"),
                 instant(rs.getTimestamp("angehalten_ab")),
-                instant(rs.getTimestamp("archiviert_am")));
+                instant(rs.getTimestamp("archiviert_am")),
+                rs.getBigDecimal("anschlussleistung_kw"));
     }
 
     private static Groesse groesse(ResultSet rs) throws SQLException {

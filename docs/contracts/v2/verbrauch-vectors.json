@@ -25,7 +25,10 @@
   "und F23 nennen je Erwartung in `luecken_zuwachs`, welche Lücken ihr Zuwachs ZÄHLT (leer = die Periode schneidet",
   "sie nur an); `luecken_zuordnung` hält den kleinsten ganz enthaltenden Zeitraum der Kette",
   "regeln.luecke_zeitraeume fest (null = nur ein freier Zeitraum). Dieselben vier Felder",
-  "(zuwachs, einheit, stand_vor, stand_nach) trägt die Lücke als Ereignis (events-vocabulary, data_gap)."
+  "(zuwachs, einheit, stand_vor, stand_nach) trägt die Lücke als Ereignis (events-vocabulary, data_gap).",
+  "AP-08 IP-7: ein Vorzeichen-Wert (Katalog import_export) speist Bezug UND Abgabe — geteilt JE ROHWERT, nie je",
+  "Mittelwert (regeln.anteil, E15 = A). F19 trägt dafür die Reihe `wirkleistung` von K-3 und je Anteil eine",
+  "Erwartung mit `anteil` und `quelle`; `gegenprobe` hält die verworfene Rechnung (erst mitteln, dann zuordnen) fest."
  ],
  "schema_version": "1.0",
  "$schema_datei": "./verbrauch.schema.json",
@@ -40,6 +43,7 @@
   "teilperioden": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
   "werte_teilperioden": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge",
   "luecke_zuwachs": "Zuwachs über eine Lücke = Stand nach − Stand vor zweier guter Nachbarn über luecke_faktor × Kadenz (nicht fallend, keine Gerätegrenze dazwischen); er zählt zu [von, bis) genau dann, wenn die Periode die Lücke ganz enthält: Messzeit vor > von − Kadenz und Messzeit nach ≤ bis; nie verteilt, nie in einer Periode, die sie nur anschneidet",
+  "anteil": "Anteil eines Vorzeichen-Werts JE ROHWERT, vor jeder Verdichtung: positiv = max(0, P), negativ = max(0, −P); daraus Mittel/Min/Max (die Nullen zählen mit) und die Energie je Anteil; das Kennzeichen „positiver Anteil von <Quelle>“ bzw. „negativer Anteil von <Quelle>“ steht zuerst; nie das Mittel des Vorzeichen-Werts nach seinem Vorzeichen zugeordnet",
   "luecke_zeitraeume": [
    "viertelstunde",
    "stunde",
@@ -1601,7 +1605,7 @@
    "familie": "mehrere-reihen",
    "ableitung": "reihen",
    "abnahme": null,
-   "why": "Zwei Größen, zwei Mengen; ein Saldo entsteht nur als berechnete Messstelle mit Kennzeichen „saldiert“ (E12, AP-10).",
+   "why": "Zwei Größen, zwei Mengen; ein Saldo entsteht nur als berechnete Messstelle mit Kennzeichen „saldiert“ (E12, AP-10). Seit AP-08 IP-7 (E15): die Wirkleistung von K-3 ist EIN Vorzeichen-Wert und speist MS-01 mit ihrem positiven und MS-02 mit ihrem negativen Anteil — geteilt je Rohwert, darum Mittel 12,8 kW · 3,2 kWh Bezug und 22,8 kW · 5,7 kWh Abgabe, vereinbar mit den Zählerständen; nie 3,2 − 5,7 = −2,5.",
    "messstelle": "MS-01 / MS-02",
    "input": {
     "reihen": {
@@ -1648,8 +1652,40 @@
         "zuwachs_je_kadenz": 0.57
        }
       ]
+     },
+     "wirkleistung": {
+      "wertart": "momentanwert",
+      "einheit": "kW",
+      "kadenz_s": 60,
+      "zeitzone": "Europe/Berlin",
+      "integrieren": true,
+      "rohwerte": [
+       {
+        "von": "2026-10-20T12:00:00+02:00",
+        "bis": "2026-10-20T12:04:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": 38.4,
+        "zuwachs_je_kadenz": 0.0
+       },
+       {
+        "von": "2026-10-20T12:05:00+02:00",
+        "bis": "2026-10-20T12:15:00+02:00",
+        "kadenz_s": 60,
+        "stand_von": -34.2,
+        "zuwachs_je_kadenz": 0.0
+       }
+      ]
      }
     }
+   },
+   "gegenprobe": {
+    "reihe": "wirkleistung",
+    "von": "2026-10-20T12:00:00+02:00",
+    "bis": "2026-10-20T12:15:00+02:00",
+    "mittel_vorzeichen": -10.0,
+    "falsch_bezug": 0.0,
+    "falsch_abgabe": 10.0,
+    "warum": "E15 Option C (verworfen): erst mitteln, dann nach Vorzeichen zuordnen — (5 × 38,4 − 10 × 34,2) ÷ 15 = −10,0 kW, also nur Abgabe 10,0 und Bezug 0,0. Beide Anteile verschwinden teilweise; unvereinbar mit den Zählerständen (3,2 kWh Bezug UND 5,7 kWh Abgabe)."
    },
    "expected": [
     {
@@ -1675,6 +1711,46 @@
      "erwartet": 15,
      "abdeckung_prozent": 100,
      "kennzeichen": []
+    },
+    {
+     "name": "MS-01 Wirkleistung · Bezug (positiver Anteil von K-3) · Viertelstunde 12:00–12:15",
+     "von": "2026-10-20T12:00:00+02:00",
+     "bis": "2026-10-20T12:15:00+02:00",
+     "reihe": "wirkleistung",
+     "anteil": "positiv",
+     "quelle": "K-3 · Wirkleistung",
+     "mittel": 12.8,
+     "min": 0.0,
+     "max": 38.4,
+     "energie_kwh": 3.2,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "positiver Anteil von K-3 · Wirkleistung",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    },
+    {
+     "name": "MS-02 Wirkleistung · Abgabe (negativer Anteil von K-3) · Viertelstunde 12:00–12:15",
+     "von": "2026-10-20T12:00:00+02:00",
+     "bis": "2026-10-20T12:15:00+02:00",
+     "reihe": "wirkleistung",
+     "anteil": "negativ",
+     "quelle": "K-3 · Wirkleistung",
+     "mittel": 22.8,
+     "min": 0.0,
+     "max": 34.2,
+     "energie_kwh": 5.7,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "negativer Anteil von K-3 · Wirkleistung",
+      "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
     }
    ]
   },

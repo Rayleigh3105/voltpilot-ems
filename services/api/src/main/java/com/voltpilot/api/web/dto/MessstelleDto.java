@@ -1,7 +1,9 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -40,7 +42,8 @@ public final class MessstelleDto {
             OffsetDateTime gueltigAb,
             OffsetDateTime gueltigBis,
             Stand anfangsstand,
-            Stand endstand) {}
+            Stand endstand,
+            String anteil) {}
 
     /** Eine Vergleichsquelle wie {@code $defs/vergleichsbindung} (IP-13), mit Zweck. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -82,7 +85,8 @@ public final class MessstelleDto {
             List<String> fehlt,
             String notiz,
             OffsetDateTime angehaltenAb,
-            OffsetDateTime archiviertAm) {}
+            OffsetDateTime archiviertAm,
+            BigDecimal anschlussleistungKw) {}
 
     /**
      * Ein Ort mit Gültigkeit wie {@code $defs/ortZuordnung}: {@code ort_art} unternehmen · standort ·
@@ -270,10 +274,27 @@ public final class MessstelleDto {
             String medium,
             Groesse hauptgroesse,
             List<Groesse> nebengroessen,
-            String notiz) {}
+            String notiz,
+            @JsonProperty("anschlussleistung_kw") BigDecimal anschlussleistungKw) {
 
-    /** {@code PUT /api/v1/messstellen/{id}}: die drei änderbaren Felder, ganz (fehlend = leer). */
-    public record Bearbeiten(String kennzeichen, String name, String notiz) {}
+        /** Ohne Anschlussleistung — die Form von vor AP-08 IP-7. */
+        public Anlegen(String kennzeichen, String name, String art, String medium, Groesse hauptgroesse,
+                List<Groesse> nebengroessen, String notiz) {
+            this(kennzeichen, name, art, medium, hauptgroesse, nebengroessen, notiz, null);
+        }
+    }
+
+    /**
+     * {@code PUT /api/v1/messstellen/{id}}: die änderbaren Felder, ganz (fehlend = leer) — seit AP-08
+     * IP-7 auch die optionale {@code anschlussleistung_kw}.
+     */
+    public record Bearbeiten(String kennzeichen, String name, String notiz,
+            @JsonProperty("anschlussleistung_kw") BigDecimal anschlussleistungKw) {
+
+        public Bearbeiten(String kennzeichen, String name, String notiz) {
+            this(kennzeichen, name, notiz, null);
+        }
+    }
 
     /**
      * {@code POST …/anhalten|fortsetzen|archivieren}. {@code zeitpunkt} auf die Minute mit

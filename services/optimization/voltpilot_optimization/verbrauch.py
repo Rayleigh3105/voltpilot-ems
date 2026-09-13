@@ -21,7 +21,9 @@ Drei Wertarten (AP-07 E12), je eine Rechenregel:
 * ``intervallmenge`` — Summe der guten Intervallmengen, deren Ende in ``(von, bis]`` liegt;
   jede fehlende Intervallmenge ist verlorene Menge, nie nur verlorene Zeit (I1–I5).
 * ``momentanwert`` — Mittel/Min/Max über die guten Werte in ``[von, bis)``; Energie daraus
-  nur gekennzeichnet, mit Rechteck-Halten über höchstens zwei Kadenzen (M1–M6).
+  nur gekennzeichnet, mit Rechteck-Halten über höchstens zwei Kadenzen (M1–M6). Ein
+  Vorzeichen-Wert, den eine Bindung mit Anteil liest, wird VORHER je Rohwert geteilt
+  (:func:`anteil_je_rohwert`, M5/E15, AP-08 IP-7).
 
 Die harte Hausregel der Zahlen-Ehrlichkeit gilt hier wörtlich: eine Lücke ist nie eine
 Null, ein nicht gemessener Rand ist nie ein gemessener, und wo keine Menge bildbar ist,
@@ -1039,10 +1041,76 @@ def intervallmenge_aus_teilperioden(
     )
 
 
+# ------------------------------------------- Anteil eines Vorzeichen-Werts (AP-08 IP-7, M5/E15)
+
+ANTEIL_POSITIV = "positiv"
+ANTEIL_NEGATIV = "negativ"
+
+
+def _positiv(anteil: str) -> bool:
+    if anteil == ANTEIL_POSITIV:
+        return True
+    if anteil == ANTEIL_NEGATIV:
+        return False
+    raise ValueError(f"unbekannter Anteil {anteil!r} — bekannt sind positiv, negativ")
+
+
+def anteil_des_werts(wert: Decimal | None, anteil: str) -> Decimal | None:
+    """Der Anteil EINES Werts: ``max(0, P)`` oder ``max(0, −P)``; kein Wert bleibt kein Wert."""
+    if wert is None:
+        return None
+    teil = wert if _positiv(anteil) else -wert
+    return teil if teil > 0 else _D(0)
+
+
+def anteil_je_rohwert(werte: Sequence[Rohwert], anteil: str | None) -> list[Rohwert]:
+    """M5/E15 — DIE EINE STELLE, an der ein Vorzeichen-Wert in seinen Anteil geteilt wird: JE ROHWERT,
+    vor jeder Verdichtung. Erst daraus entstehen Mittel, Min, Max (die Nullen des anderen Anteils
+    zählen mit) und die Energie je Anteil.
+
+    Nie umgekehrt: das Mittel des ganzen Werts nach seinem Vorzeichen zuzuordnen (E15 Option C,
+    verworfen) ließe an F19 aus 12,8 kW Bezug und 22,8 kW Abgabe nur „Abgabe 10,0“ übrig. Das
+    Vorzeichen der Box ist schon im Rohwert (AP-04 E5) und wird hier nie ein zweites Mal angewendet.
+    ``anteil`` ``None`` = der ganze Wert.
+    """
+    if anteil is None:
+        return list(werte)
+    _positiv(anteil)
+    return [Rohwert(r.zeit, anteil_des_werts(r.wert, anteil), r.guete) for r in werte]
+
+
+def anteil_kennzeichen(anteil: str, quelle: str) -> str:
+    """Die Kennzeichnung, die mit dem Anteil reist — Wortlaut UND Stelle (zuerst) sind Vertrag."""
+    return ("positiver Anteil von " if _positiv(anteil) else "negativer Anteil von ") + quelle
+
+
+def momentanwerte_anteil(
+    werte: Sequence[Rohwert],
+    von: datetime,
+    bis: datetime,
+    kadenz: timedelta,
+    integrieren: bool,
+    anteil: str | None,
+    quelle: str | None,
+) -> dict:
+    """M1–M5 — :func:`momentanwerte` über den ANTEIL der Rohwerte; das Anteil-Kennzeichen zuerst."""
+    out = momentanwerte(anteil_je_rohwert(werte, anteil), von, bis, kadenz, integrieren)
+    if anteil is not None:
+        out["kennzeichen"] = [anteil_kennzeichen(anteil, quelle), *out["kennzeichen"]]
+    return out
+
+
 # ------------------------------------------------------------------------ Der Eingang
 
 
-def ergebnis(reihe: dict, von: str, bis: str, ereignisse_zusatz: Iterable[dict] = ()) -> dict:
+def ergebnis(
+    reihe: dict,
+    von: str,
+    bis: str,
+    ereignisse_zusatz: Iterable[dict] = (),
+    anteil: str | None = None,
+    quelle: str | None = None,
+) -> dict:
     """Der EINE Eingang: eine Reihe, eine Periode → das Ergebnis der Vektor-Datei.
 
     ``reihe`` ist die Reihenbeschreibung eines Falls (``wertart``, ``kadenz_s``, ``rohwerte``,
@@ -1060,6 +1128,8 @@ def ergebnis(reihe: dict, von: str, bis: str, ereignisse_zusatz: Iterable[dict] 
     a, b = _zeit(von), _zeit(bis)
     faktor = _dez(reihe.get("faktor", 1))
     wertart = reihe["wertart"]
+    if anteil is not None and wertart != "momentanwert":
+        raise ValueError(f"einen Anteil hat nur ein Momentanwert, nicht {wertart!r}")
 
     if wertart == "zaehlerstand":
         ereignisse = list(reihe.get("ereignisse", [])) + list(ereignisse_zusatz)
@@ -1077,7 +1147,7 @@ def ergebnis(reihe: dict, von: str, bis: str, ereignisse_zusatz: Iterable[dict] 
     elif wertart == "intervallmenge":
         out = menge_intervall(werte, a, b, kadenz, faktor)
     elif wertart == "momentanwert":
-        out = momentanwerte(werte, a, b, kadenz, reihe.get("integrieren", False))
+        out = momentanwerte_anteil(werte, a, b, kadenz, reihe.get("integrieren", False), anteil, quelle)
     else:
         raise ValueError(f"unbekannte Wertart {wertart!r} — bekannt sind zaehlerstand, intervallmenge, momentanwert")
 

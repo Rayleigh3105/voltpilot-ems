@@ -28,7 +28,8 @@ Jeder Eintrag besitzt mindestens:
   `value_type`, `signed`, `endian`, `scale`;
 - Bedeutung: `unit`, `group`, deutsches `label_de`, originales
   `label_source`, `semantic_status`, `aggregation_kind`, Größe `quantity` und
-  Richtung `direction` (Abschnitt „Größe und Richtung“);
+  Richtung `direction` (Abschnitt „Größe und Richtung“); optional am Zähler
+  `wertebereich_modul` und `laeuft_ueber` (Abschnitt „Wertebereich eines Zählers“);
 - Last/Aufbewahrung: `default_cadence_s`, `min_cadence_s`,
   `long_term_cadence_s`, `poll_group`;
 - Provenienz: `source_url`, `source_commit` oder `source_revision` und
@@ -103,6 +104,29 @@ Vertrags-Größe „Volumen“ (Gas) erreicht der Katalog nicht, weil er keine G
 | `direction` | `charge_discharge` | Laden / Entladen | Speicherleistung mit Vorzeichen |
 | `direction` | `none` | richtungslos | |
 | `direction` | `import_export` | — | Vorzeichen-Wert am Netzpunkt; Bezug und Abgabe sind zwei Messstellen |
+
+## Wertebereich eines Zählers
+
+Die Überlauf-Erkennung (AP-08 Z6, `messreihe_zaehler_deklaration()`) rechnet nur mit einem
+deklarierten Wertebereich. Der Katalog trägt ihn als zwei optionale Punktfelder:
+
+| Feld | Typ | Bedeutung |
+|---|---|---|
+| `wertebereich_modul` | Ganzzahl ≥ 2 | bei diesem Stand beginnt der Zähler wieder bei 0 (16-Bit-Impulszähler: 65536, 32 Bit: 4294967296) |
+| `laeuft_ueber` | Boolean | `true`: der Zähler läuft bei `wertebereich_modul` wirklich über; `false`: Bereich belegt, Überlauf nicht |
+
+- Fehlen die Felder, ist nichts deklariert — nie `null`, nie ein Vorgabewert, nie aus `width_bits`
+  geraten. Erlaubt sind sie nur bei `aggregation_kind: counter`; `laeuft_ueber` braucht
+  `wertebereich_modul`. Schema und `validate.py` lehnen jede andere Form ab.
+- Heute reicht nur die VoltPilot-eigene Quelle `sources/builtin/inverter-runtime.json` eine
+  Deklaration je Punkt durch; Hersteller-Snapshots bleiben unverändert. Die Felder gehören nicht
+  zu `RUNTIME_FIELDS`: eine Deklaration hebt nur den Inhaltsstand.
+- Die Zähler OHNE Wertebereich listet (nach der Validierung, tabgetrennt Familie, Point-Key,
+  `source_kind`, Einheit, dann eine Zählzeile; Exit 0, ein Bericht):
+
+  ```bash
+  python3 catalog/measurement-points/tools/validate.py --ohne-wertebereich
+  ```
 
 ## Inhaltsstand und Laufzeitstand
 

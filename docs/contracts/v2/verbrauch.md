@@ -141,7 +141,7 @@ Zustand und Abdeckung der Vorlage bleiben unberührt).
 
 Ersatzwerte und ihre Methoden, Korrekturen und Versionierung (§4.6, ab IP-12), die
 Fortpflanzung über berechnete Messstellen (§4.5, AP-10), der gröbere Eingang und das Intervall
-über die Grenze (I3/I4), die Vorzeichen-Aufteilung (M5, IP-7), die Kundensätze (IP-8), die
+über die Grenze (I3/I4), die Kundensätze (IP-8), die
 Zustandsart `state` (S1/S2)
 und die Bildung der Perioden selbst — eine Erwartung nennt ihre Periode als `von`/`bis`, sie
 wird hier nicht erzeugt. All das kommt in eigenen
@@ -243,3 +243,27 @@ dann zählt der Zuwachs nur in einem freien Zeitraum, der die Lücke umfasst.
 Ersatzwert (E7 a–c, IP-13) — nie hier, nie automatisch. Die Lücke trägt denselben Zuwachs als
 Nutzlast von `data_gap` (`events-vocabulary.md`, „Zuwachs über eine Lücke“).
 
+## 10. Der Anteil eines Vorzeichen-Werts: je Rohwert, nie je Mittelwert (AP-08 IP-7, M5/E15)
+
+Ein Kanal mit Vorzeichen (Katalog `import_export`, etwa K-3 · Wirkleistung) speist die
+Bezug-Messstelle mit seinem **positiven** und die Abgabe-Messstelle mit seinem **negativen**
+Anteil — die Quellenbindung nennt ihn (`anteil`, `messstelle.md` §5). Die Regel steht in
+`regeln.anteil`: geteilt wird **JE ROHWERT, vor jeder Verdichtung** — positiv = `max(0, P)`,
+negativ = `max(0, −P)`; erst daraus entstehen Mittel, Min, Max (die Nullen des anderen Anteils
+zählen mit) und die Energie je Anteil (wie jede Energie aus Leistung nur mit „aus Leistung
+integriert“ und nie über eine Lücke). Das Kennzeichen „positiver Anteil von K-3 · Wirkleistung“
+steht **zuerst** — es wird zuerst festgestellt.
+
+Eine Erwartung mit `anteil` (und `quelle`, wie das Kennzeichen sie nennt) liest nur diesen Anteil
+ihrer Reihe. F19 trägt dafür die Reihe `wirkleistung` (12:00–12:04 +38,4 kW, 12:05–12:15
+−34,2 kW): **MS-01 Mittel 12,8 kW · 3,2 kWh, MS-02 Mittel 22,8 kW · 5,7 kWh** — vereinbar mit den
+Zählerständen desselben Falls. `gegenprobe` hält die verworfene Rechnung fest (E15 Option C,
+erst mitteln, dann nach Vorzeichen zuordnen): (5 × 38,4 − 10 × 34,2) ÷ 15 = −10,0 → nur
+„Abgabe 10,0“; beide Zwillinge prüfen, dass sie herauskommt UND von den Anteilen abweicht.
+
+Zwei Grenzen: das **Box-Vorzeichen** ist schon im Rohwert (AP-04 E5) — es wird hier nie ein
+zweites Mal angewendet; und ein **Saldo** entsteht hier nie (E12) — Bezug und Abgabe bleiben
+zwei Mengen, „saldiert“ gibt es nur als berechnete Messstelle (AP-10). Die Stelle:
+`VerbrauchRegeln.anteilJeRohwert`/`momentanwerteAnteil` ⟷ `verbrauch.anteil_je_rohwert`/
+`momentanwerte_anteil`; einen Anteil hat nur ein Momentanwert (ein Zählerstand mit Anteil ist ein
+Fehler des Aufrufers).

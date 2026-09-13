@@ -740,7 +740,9 @@ public class ViertelstundeVerdichter {
      * {@code integration}, AP-04 Regel 7 — für AP-08 gekennzeichnet): nur für sie wird integriert
      * (E5). Ohne eine solche Bindung entsteht keine Energie — eine Spannung oder Temperatur wird nie
      * „integriert", bloß weil sie ein Momentanwert ist. Es genügt eine Bindung, deren Gültigkeit das
-     * Intervall berührt (halboffen, auf die Minute).
+     * Intervall berührt (halboffen, auf die Minute). ⚠ Eine Bindung mit ANTEIL (AP-08 IP-7) zählt
+     * nicht: die Reihe ist der ganze Vorzeichen-Wert, und seine Energie wäre ein stiller Saldo (E12) —
+     * die Energie je Anteil entsteht nur je Rohwert ({@link QuelleAnteilWerte}).
      */
     private Set<Integer> integrationJeAuftrag(Connection con, List<Auftrag> stapel) throws SQLException {
         Set<Integer> aus = new java.util.HashSet<>();
@@ -750,7 +752,7 @@ public class ViertelstundeVerdichter {
                   FROM frage f
                   JOIN messstelle_quelle q
                     ON q.tenant_id = f.tenant_id AND q.entity_id = f.entity_id AND q.kanal = f.messkanal
-                   AND q.herleitung = 'integration'
+                   AND q.herleitung = 'integration' AND q.anteil IS NULL
                    AND q.gueltig_ab < f.bis AND (q.gueltig_bis IS NULL OR q.gueltig_bis > f.von)
                 """.formatted(werteListe(stapel.size(),
                         "?::int, ?::uuid, ?::uuid, ?::text, ?::timestamptz, ?::timestamptz", 6));

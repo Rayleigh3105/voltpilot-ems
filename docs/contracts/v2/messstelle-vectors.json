@@ -70,7 +70,9 @@
     "                   aus Leistung; die Katalog-Quelle verlangt eine andere Wertart",
     "         groesse:  der Messwert misst etwas, das die Größe nicht speisen darf",
     "         einheit:  die Einheit lässt sich nicht umrechnen",
-    "         richtung: Bezug ist nicht Abgabe",
+    "         richtung: Bezug ist nicht Abgabe; mit Anteil: die Richtung des Anteils",
+    "         anteil:   ein Anteil an einem Messwert ohne Vorzeichen oder an einem",
+    "                   Zählerstand (AP-08 IP-7)",
     "    4. Ende nicht nach Beginn                 → 400 zeitraum_ungueltig",
     "    5. Kein Gerät zum Zeitpunkt: kein Einbau speist die Komponente zu Beginn, oder",
     "       die Quelle reicht über das Ende dieser Speisung hinaus (ein Messkanal gehört",
@@ -78,6 +80,8 @@
     "                                                den ersten Zeitpunkt ohne Gerät)",
     "    6. Führend, und derselbe Messwert speist im Zeitraum schon eine ANDERE",
     "       Messstelle führend                     → 409 kanal_bereits_fuehrend",
+    "       (AP-08 E15: der positive und der negative Anteil sind zwei Messwerte; der",
+    "       ganze Wert schließt jeden Anteil aus)",
     "    7. Wechsel, dessen Zeitpunkt nicht nach dem Beginn der laufenden Quelle liegt,",
     "       oder ein Zeitpunkt vor dem Beginn der Messstelle",
     "                                              → 422 zeitpunkt_vor_vorgaenger",
@@ -85,8 +89,14 @@
     "       desselben Messwerts)                   → 409 bindung_ueberlappt (nennt die",
     "                                                früheste berührte Quelle)",
     "  ⚠ Ein Vorzeichen-Wert (Katalog import_export, etwa die Wirkleistung am Netzzähler)",
-    "  hat KEINE Vertrags-Richtung: er passt streng nach Regel 7 nicht (Grund richtung),",
-    "  bis AP-08 die Aufteilung in Bezug und Abgabe als Rechenregel entscheidet.",
+    "  hat KEINE Vertrags-Richtung: OHNE Anteil passt er nach Regel 7 nicht (Grund richtung).",
+    "  Ausnahme „Anteil“ (AP-08 E15, W8): mit anteil positiv speist er Bezug, mit anteil",
+    "  negativ Abgabe (anteil_richtungen) — aufgeteilt JE ROHWERT, max(0, P) bzw.",
+    "  max(0, −P), vor jeder Verdichtung (VerbrauchRegeln ⟷ verbrauch.py, Vektor F19).",
+    "  Das Box-Vorzeichen ist schon im Rohwert (AP-04 E5) und wirkt hier nie ein zweites Mal.",
+    "  Anschlussleistung (AP-08 IP-7, optional an der Messstelle): Höchstzuwachs je Kadenz =",
+    "  kW × Kadenz in der Einheit des Zählerstands (Wh · kWh · MWh), auf 3 Stellen AUFgerundet;",
+    "  ohne Anschlussleistung oder ohne Energie-Einheit leer — nie geraten.",
     "  Die EINZIGE Änderung an Bestehendem: eine neue, offene führende Quelle beendet die",
     "  laufende genau zu ihrem Beginn (Regel 2), wenn sie nach deren Beginn liegt.",
     "  Bereits beendete Quellen werden nie verschoben; eine begrenzte Quelle passt nur in",
@@ -231,7 +241,9 @@
   "vergleich_zwecke": ["Plausibilität", "Ersatz bei Ausfall", "Abrechnungszähler"],
   "stellungen": ["Hauptzähler", "Unterzähler", "Erzeuger", "Speicher", "Abzweig", "keine"],
   "stellung_gruende": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"],
-  "passung_gruende": ["wertart", "groesse", "einheit", "richtung"],
+  "passung_gruende": ["wertart", "groesse", "einheit", "richtung", "anteil"],
+  "anteile": ["positiv", "negativ"],
+  "anteil_richtungen": {"import_export": {"positiv": "Bezug", "negativ": "Abgabe"}},
   "fehler": [
     {"code": "kennzeichen_format", "status": 400, "geprueft_von": "MessstelleRegeln"},
     {"code": "kennzeichen_belegt", "status": 409, "geprueft_von": "MessstelleRegeln"},
@@ -977,6 +989,134 @@
           "kanal": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "counter"}
         },
         "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "herleitung": null}
+      },
+      {
+        "name": "vorzeichen-wert-ohne-anteil",
+        "herkunft": "AP-04 Regel 7 · AP-08 W8",
+        "why": "Ein Vorzeichen-Wert hat keine EINE Richtung. OHNE Anteil passt er an keine Größe mit Richtung — der 422 bleibt für die Bindung ohne Anteil (W8).",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": null, "einheit": "W", "wertart": "gauge", "direction": "import_export"},
+          "anteil": null
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "herleitung": null}
+      },
+      {
+        "name": "positiver-anteil-speist-bezug",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“)",
+        "why": "Der positive Anteil eines import_export-Werts ist Bezug: je Rohwert max(0, P). Aus einer Leistung wird ein Momentanwert, wie gelesen.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": null, "einheit": "W", "wertart": "gauge", "direction": "import_export"},
+          "anteil": "positiv"
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "momentanwert"}
+      },
+      {
+        "name": "negativer-anteil-speist-abgabe-integriert",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“)",
+        "why": "Der negative Anteil ist Abgabe: je Rohwert max(0, −P). Eine Menge daraus wird integriert und gekennzeichnet — wie aus jeder Leistung.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Abgabe", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": null, "einheit": "W", "wertart": "gauge", "direction": "import_export"},
+          "anteil": "negativ"
+        },
+        "expected": {"fehler": null, "grund": null, "herleitung": "integration"}
+      },
+      {
+        "name": "positiver-anteil-nie-abgabe",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“)",
+        "why": "Der positive Anteil ist Bezug, nie Abgabe — die Richtung des Anteils zählt wie die Richtung eines Messwerts.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Abgabe", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": null, "einheit": "W", "wertart": "gauge", "direction": "import_export"},
+          "anteil": "positiv"
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "herleitung": null}
+      },
+      {
+        "name": "anteil-nur-am-vorzeichen-wert",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“)",
+        "why": "Ein Messwert mit EINER Richtung hat keinen Anteil: nichts wird aufgeteilt, was schon getrennt gemessen ist.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "gauge", "direction": "import"},
+          "anteil": "positiv"
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "anteil", "herleitung": null}
+      },
+      {
+        "name": "anteil-nie-aus-zaehlerstand",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“)",
+        "why": "max(0, P) eines Zählerstands ist keine Menge: ein Anteil gilt nur für einen Momentanwert-Messwert (Leistung), nie für einen Stand.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkenergie", "richtung": "Bezug", "einheit": "kWh", "wertart": "Intervallmenge"},
+          "kanal": {"groesse": "Wirkenergie", "richtung": null, "einheit": "kWh", "wertart": "counter", "direction": "import_export"},
+          "anteil": "positiv"
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "anteil", "herleitung": null}
+      },
+      {
+        "name": "laden-entladen-hat-keinen-anteil",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · E15 nennt nur import_export",
+        "why": "Entschieden ist die Aufteilung für Bezug und Abgabe (E15). Ein Speicher-Vorzeichen-Wert (charge_discharge) steht nicht in anteil_richtungen und hat darum keinen Anteil.",
+        "input": {
+          "medium": "Strom",
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Laden", "einheit": "kW", "wertart": "Momentanwert"},
+          "kanal": {"groesse": "Wirkleistung", "richtung": null, "einheit": "kW", "wertart": "gauge", "direction": "charge_discharge"},
+          "anteil": "positiv"
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "anteil", "herleitung": null}
+      }
+    ],
+    "anschlussleistung": [
+      {
+        "name": "hundert-kw-je-minute-in-kwh",
+        "herkunft": "AP-08 IP-7 · Z6 · E4 (Höchstwert nie geraten) · F7 (100 kW Anschlussleistung)",
+        "why": "100 kW eine Minute lang sind 1,666… kWh; AUFgerundet 1,667 — ein echter Zuwachs an der Grenze wird nie als Überlauf gelesen.",
+        "input": {"anschlussleistung_kw": 100, "einheit": "kWh", "kadenz_s": 60},
+        "expected": {"hoechstzuwachs_je_kadenz": 1.667}
+      },
+      {
+        "name": "hundert-kw-je-minute-in-wh",
+        "herkunft": "AP-08 IP-7 · Z6 · E4 (Höchstwert nie geraten) · F7",
+        "why": "Dieselbe Grenze in der Einheit eines Wh-Zählers: 1 666,667 Wh.",
+        "input": {"anschlussleistung_kw": 100, "einheit": "Wh", "kadenz_s": 60},
+        "expected": {"hoechstzuwachs_je_kadenz": 1666.667}
+      },
+      {
+        "name": "viertelstunde-glatt",
+        "herkunft": "AP-08 IP-7 · Z6 · E4 (Höchstwert nie geraten)",
+        "why": "250 kW eine Viertelstunde lang: 62,5 kWh — eine glatte Zahl bleibt glatt.",
+        "input": {"anschlussleistung_kw": 250, "einheit": "kWh", "kadenz_s": 900},
+        "expected": {"hoechstzuwachs_je_kadenz": 62.5}
+      },
+      {
+        "name": "megawattstunden-aufgerundet",
+        "herkunft": "AP-08 IP-7 · Z6 · E4 (Höchstwert nie geraten)",
+        "why": "100 kW eine Minute in MWh sind 0,001 666… — aufgerundet 0,002.",
+        "input": {"anschlussleistung_kw": 100, "einheit": "MWh", "kadenz_s": 60},
+        "expected": {"hoechstzuwachs_je_kadenz": 0.002}
+      },
+      {
+        "name": "ohne-anschlussleistung-nicht-deklariert",
+        "herkunft": "AP-08 IP-7 · E4",
+        "why": "Ohne Anschlussleistung gibt es keinen Höchstzuwachs — nie eine geratene Zahl; ein fallender Stand bleibt dann eine Rücksetzung.",
+        "input": {"anschlussleistung_kw": null, "einheit": "kWh", "kadenz_s": 60},
+        "expected": {"hoechstzuwachs_je_kadenz": null}
+      },
+      {
+        "name": "keine-elektrische-energie",
+        "herkunft": "AP-08 IP-7",
+        "why": "Eine Anschlussleistung in kW sagt nichts über einen Wasser- oder Gaszähler in m³ — leer statt umgerechnet.",
+        "input": {"anschlussleistung_kw": 100, "einheit": "m³", "kadenz_s": 60},
+        "expected": {"hoechstzuwachs_je_kadenz": null}
       }
     ],
     "bindung": [
@@ -2405,10 +2545,10 @@
         }
       },
       {
-        "name": "ms-01-nebengroesse-vorzeichen-wartet-auf-ap08",
-        "herkunft": "Befund AP-04 IP-9 (Katalog 2026.09.11.1: sunspec.model_203.w trägt direction import_export) · Regel 7 · E1 · wartet auf AP-08 (Vorzeichen-Aufteilung)",
+        "name": "ms-01-nebengroesse-vorzeichen-ohne-anteil",
+        "herkunft": "Befund AP-04 IP-9 (Katalog 2026.09.11.1: sunspec.model_203.w trägt direction import_export) · Regel 7 · E1 · AP-08 W8: der 422 bleibt für die Bindung OHNE Anteil (bis AP-08 IP-7: ms-01-nebengroesse-vorzeichen-wartet-auf-ap08)",
         "referenz": "MS-01",
-        "why": "Das Referenzunternehmen speist die Nebengröße „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung des Netzzählers K-3. Dieser Messwert ist ein Vorzeichen-Wert am Zählpunkt: der Katalog nennt nur „Leistung am Netzpunkt“ (import_export) und damit KEINE Vertrags-Richtung — Bezug und Abgabe sind zwei Messstellen (E1), nicht eine mit Vorzeichen. Streng nach Regel 7 passt er deshalb nicht: 422 quelle_passt_nicht, Grund „richtung“. Die Aufteilung eines Vorzeichen-Werts in Bezug und Abgabe ist eine Rechenregel; sie wird in AP-08 (Verbrauchsbildung) entschieden. Bis dahin ist diese Bindung nicht möglich — kein neues Feld, keine erfundene Aufteilung.",
+        "why": "Das Referenzunternehmen speist die Nebengröße „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung des Netzzählers K-3. Dieser Messwert ist ein Vorzeichen-Wert am Zählpunkt: der Katalog nennt nur „Leistung am Netzpunkt“ (import_export) und damit KEINE Vertrags-Richtung — Bezug und Abgabe sind zwei Messstellen (E1), nicht eine mit Vorzeichen. OHNE Anteil passt er nach Regel 7 nicht: 422 quelle_passt_nicht, Grund „richtung“ (W8). Mit Anteil passt er — Fall ms-01-nebengroesse-positiver-anteil.",
         "input": {
           "vorgang": "binden",
           "jetzt": "2026-10-01T09:14:00+02:00",
@@ -2452,7 +2592,9 @@
             "gueltig_ab": "2024-03-12T00:00:00+01:00",
             "gueltig_bis": null,
             "endstand_vorgaenger": null,
-            "anfangsstand": null
+            "anfangsstand": null,
+            "kanal_direction": "import_export",
+            "anteil": null
           },
           "kanal_fuehrend_anderswo": []
         },
@@ -2470,6 +2612,136 @@
           "zeitstrahl": null,
           "ohne_geraet_ab": null
         }
+      },
+      {
+        "name": "ms-01-nebengroesse-positiver-anteil",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · Regel 6 je Anteil · Referenzunternehmen MS-01 Nebengröße Wirkleistung",
+        "referenz": "MS-01",
+        "ergebnis_wie_referenz": true,
+        "why": "Die Nebengröße „Wirkleistung · Bezug“ von MS-01 liest die Wirkleistung von K-3 mit ihrem POSITIVEN Anteil: je Rohwert max(0, P). Die Bindung nennt den Anteil selbst und ist damit ein Fakt; die Richtung Bezug kommt aus anteil_richtungen, nicht aus dem Vorzeichen eines Mittels. Ergebnis wie in der Referenzdatei: K-3 · Wirkleistung ab 12.03.2024.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {"rolle": "fuehrend", "zweck": null, "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_groesse": "Wirkleistung", "kanal_richtung": null, "kanal_einheit": "W", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "endstand_vorgaenger": null, "anfangsstand": null, "kanal_direction": "import_export", "anteil": "positiv"},
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "momentanwert",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2"}
+            }
+          ],
+          "ohne_geraet_ab": null
+        }
+      },
+      {
+        "name": "ms-02-nebengroesse-negativer-anteil-neben-ms-01",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · Regel 6 je Anteil",
+        "annahme": "MS-02 trägt in der Referenzdatei 1.2 keine Nebengröße — die Nebengröße „Wirkleistung · Abgabe“ aus K-3 ist der Abgabe-Zwilling der Nebengröße von MS-01 (AP-08 E15, Viertelstunde F19).",
+        "why": "Derselbe Messwert speist MS-02 mit seinem NEGATIVEN Anteil (Abgabe, max(0, −P)), während MS-01 den positiven führt: zwei Anteile sind zwei Messwerte, kein kanal_bereits_fuehrend. Ein Saldo entsteht dabei nicht — Bezug und Abgabe bleiben getrennte Größen (E12).",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {"kennzeichen": "MS-02", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Abgabe", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Abgabe", "komponente": "K-3", "kanal": "Wirkenergie Abgabe", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {"rolle": "fuehrend", "zweck": null, "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_groesse": "Wirkleistung", "kanal_richtung": null, "kanal_einheit": "W", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "endstand_vorgaenger": null, "anfangsstand": null, "kanal_direction": "import_export", "anteil": "negativ"},
+          "kanal_fuehrend_anderswo": [{"messstelle": "MS-01", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "anteil": "positiv"}]
+        },
+        "expected": {
+          "fehler": null,
+          "grund": null,
+          "bestehend": null,
+          "messstelle": null,
+          "beendet": null,
+          "status": "gilt",
+          "rueckwirkend": true,
+          "angekuendigt": false,
+          "herleitung": "momentanwert",
+          "hinweise": [],
+          "zeitstrahl": [
+            {
+              "von": "2024-03-12T00:00:00+01:00",
+              "bis": null,
+              "quelle": {"komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2"}
+            }
+          ],
+          "ohne_geraet_ab": null
+        }
+      },
+      {
+        "name": "ms-02-anteil-neben-dem-ganzen-wert",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · Regel 6 je Anteil",
+        "annahme": "Eine Messstelle, die K-3 · Wirkleistung als ganzen Wert führt, kennt die Referenzdatei nicht — neutraler Bestand für Regel 6 je Anteil.",
+        "why": "Führt derselbe Messwert eine andere Messstelle als GANZER Wert, schließt das jeden Anteil aus — sonst zählte er doppelt. 409, die Antwort nennt die Messstelle.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {"kennzeichen": "MS-02", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Abgabe", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Abgabe", "komponente": "K-3", "kanal": "Wirkenergie Abgabe", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {"rolle": "fuehrend", "zweck": null, "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_groesse": "Wirkleistung", "kanal_richtung": null, "kanal_einheit": "W", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "endstand_vorgaenger": null, "anfangsstand": null, "kanal_direction": "import_export", "anteil": "negativ"},
+          "kanal_fuehrend_anderswo": [{"messstelle": "MS-01", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "anteil": null}]
+        },
+        "expected": {"fehler": "kanal_bereits_fuehrend", "grund": null, "bestehend": null, "messstelle": "MS-01", "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
+      },
+      {
+        "name": "ms-01-gleicher-anteil-fuehrt-schon",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · Regel 6 je Anteil",
+        "referenz": "MS-01",
+        "annahme": "Dass MS-06 den positiven Anteil von K-3 führt, kennt die Referenzdatei nicht — neutraler Platzhalter für Regel 6 je Anteil.",
+        "why": "Denselben Anteil desselben Messwerts führt nur EINE Messstelle: der positive Anteil von K-3 speist schon MS-06 — 409, die Antwort nennt sie.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {"rolle": "fuehrend", "zweck": null, "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_groesse": "Wirkleistung", "kanal_richtung": null, "kanal_einheit": "W", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "endstand_vorgaenger": null, "anfangsstand": null, "kanal_direction": "import_export", "anteil": "positiv"},
+          "kanal_fuehrend_anderswo": [{"messstelle": "MS-06", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "anteil": "positiv"}]
+        },
+        "expected": {"fehler": "kanal_bereits_fuehrend", "grund": null, "bestehend": null, "messstelle": "MS-06", "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
+      },
+      {
+        "name": "ms-01-negativer-anteil-nie-bezug",
+        "herkunft": "AP-08 E15 · W8 · AP-04 Regel 7 (Ausnahme „Anteil“) · Regel 6 je Anteil",
+        "referenz": "MS-01",
+        "why": "Der negative Anteil ist Abgabe — an die Bezug-Größe von MS-01 passt er nicht: 422 quelle_passt_nicht, Grund „richtung“. Aus einem Abgabe-Anteil wird nie still ein Bezug.",
+        "input": {
+          "vorgang": "binden",
+          "jetzt": "2026-10-01T09:14:00+02:00",
+          "messstelle": {"kennzeichen": "MS-01", "medium": "Strom", "beginn": "2024-03-12T00:00:00+01:00"},
+          "ziel": {"groesse": "Wirkleistung", "richtung": "Bezug", "einheit": "kW", "wertart": "Momentanwert"},
+          "bestehende": [
+            {"rolle": "fuehrend", "groesse": "Wirkenergie", "richtung": "Bezug", "komponente": "K-3", "kanal": "Wirkenergie Bezug", "geraet": "GR-2", "einbau": "GR-2", "kanal_wertart": "counter", "zweck": null, "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null}
+          ],
+          "neu": {"rolle": "fuehrend", "zweck": null, "komponente": "K-3", "kanal": "Wirkleistung", "geraet": "GR-2", "einbau": "GR-2", "kanal_groesse": "Wirkleistung", "kanal_richtung": null, "kanal_einheit": "W", "kanal_wertart": "gauge", "gueltig_ab": "2024-03-12T00:00:00+01:00", "gueltig_bis": null, "endstand_vorgaenger": null, "anfangsstand": null, "kanal_direction": "import_export", "anteil": "negativ"},
+          "kanal_fuehrend_anderswo": []
+        },
+        "expected": {"fehler": "quelle_passt_nicht", "grund": "richtung", "bestehend": null, "messstelle": null, "beendet": null, "status": null, "rueckwirkend": false, "angekuendigt": false, "herleitung": null, "hinweise": [], "zeitstrahl": null, "ohne_geraet_ab": null}
       }
     ],
     "zeitstrahl": [
@@ -3558,7 +3830,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3566,7 +3838,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3574,7 +3846,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3582,7 +3854,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3590,7 +3862,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],
@@ -3735,7 +4007,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3743,7 +4015,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3751,7 +4023,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3759,7 +4031,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -3767,7 +4039,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],
@@ -4027,7 +4299,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4035,7 +4307,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4043,7 +4315,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4051,7 +4323,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4059,7 +4331,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],
@@ -4329,7 +4601,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4337,7 +4609,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4345,7 +4617,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4353,7 +4625,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4361,7 +4633,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],
@@ -4643,7 +4915,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4651,7 +4923,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4659,7 +4931,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4667,7 +4939,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4675,7 +4947,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],
@@ -4917,7 +5189,7 @@
               "kanal": "Netzleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Netzleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Netzleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4942,7 +5214,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4950,7 +5222,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4958,7 +5230,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4966,7 +5238,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {
               "anlage": "AN-1",
@@ -4974,7 +5246,7 @@
               "kanal": "Wirkleistung",
               "grund": "vorzeichen_wert",
               "zu": null,
-              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle."
+              "text": "„Wirkleistung“ trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe."
             },
             {"anlage": "AN-1", "komponente": "K-HAUS", "kanal": null, "grund": "abgeleitet", "zu": null, "text": "„Hausverbrauch“ ist keine Messung, sondern eine Ableitung der Box — eine berechnete Messstelle kommt später."}
           ],

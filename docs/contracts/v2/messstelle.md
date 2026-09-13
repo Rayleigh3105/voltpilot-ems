@@ -148,7 +148,9 @@ gewinnt:
      Zählerstand aus einer Leistung; die Katalog-Quelle verlangt eine andere Wertart
    - `groesse`: der Messwert misst etwas, das die Größe nicht speisen darf
    - `einheit`: die Einheit lässt sich nicht umrechnen
-   - `richtung`: Bezug ist nicht Abgabe
+   - `richtung`: Bezug ist nicht Abgabe — mit Anteil: die Richtung des Anteils (s. u.)
+   - `anteil` (AP-08 IP-7): ein Anteil an einem Messwert, der kein Vorzeichen-Wert ist
+     (sein Katalogwort steht nicht in `anteil_richtungen`), oder an einem Zählerstand
 4. Ende nicht nach Beginn → 400 `zeitraum_ungueltig`
 5. Kein Gerät zum Zeitpunkt (Regel 6, W2 — ein Messkanal gehört genau einem Gerät): kein
    Einbau speist die Komponente zu Beginn der Quelle, oder die Quelle reicht über das Ende
@@ -156,7 +158,9 @@ gewinnt:
    Gerät: den Beginn oder das Ende der Speisung). Das Gerät wird nie geraten; welcher Einbau
    zu Beginn speist, sagt `geraet_komponente` (IP-10).
 6. Führend, und derselbe Messwert speist im Zeitraum eine ANDERE Messstelle führend →
-   409 `kanal_bereits_fuehrend` (nennt sie)
+   409 `kanal_bereits_fuehrend` (nennt sie). Je Anteil (AP-08 E15): der positive und der
+   negative Anteil sind zwei Messwerte und führen je eine Messstelle; der ganze Wert (kein
+   Anteil) schließt jeden Anteil aus.
 7. `wechsel` mit einem Zeitpunkt nicht nach dem Beginn der laufenden Quelle, oder ein
    Zeitpunkt vor dem Beginn der Messstelle (Beginn ihres ersten Orts) → 422
    `zeitpunkt_vor_vorgaenger` (Regel 5; nennt die laufende Quelle). Der Beginn ist
@@ -164,13 +168,26 @@ gewinnt:
 8. Überlappung mit einer Quelle derselben Größe und Rolle — beim Vergleich: desselben
    Messwerts — → 409 `bindung_ueberlappt` (nennt die früheste berührte Quelle)
 
-⚠ **Ein Vorzeichen-Wert hat keine Richtung.** Die Wirkleistung am Zweirichtungszähler (Katalog
-`import_export`) nennt nur „Leistung am Netzpunkt“; Bezug und Abgabe sind zwei Messstellen
-(E1). Streng nach Regel 7 passt sie deshalb an keine Größe mit Richtung (Grund `richtung`) —
-auch nicht an die Nebengröße „Wirkleistung · Bezug“ von MS-01, die die Referenzdatei aus K-3
-speist. Die Aufteilung ist eine Rechenregel und wird in AP-08 (Verbrauchsbildung) entschieden;
-bis dahin gibt es dafür weder ein Feld noch eine Aufteilung. Fall
-`ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`.
+⚠ **Ein Vorzeichen-Wert hat keine Richtung — er bindet nur mit Anteil** (Regel 7, Ausnahme
+„Anteil“, AP-08 E15 = A, W8). Die Wirkleistung am Zweirichtungszähler (Katalog `import_export`)
+nennt nur „Leistung am Netzpunkt“; Bezug und Abgabe sind zwei Messstellen (E1). OHNE Anteil
+passt sie an keine Größe mit Richtung (Grund `richtung`, Fall
+`ms-01-nebengroesse-vorzeichen-ohne-anteil` — bis AP-08 IP-7 hieß er
+`…-wartet-auf-ap08`). MIT `anteil` sagt die Bindung selbst, welchen Teil sie speist:
+`positiv` = je Rohwert `max(0, P)` → Bezug, `negativ` = je Rohwert `max(0, −P)` → Abgabe
+(`anteil_richtungen`; nur für `import_export` entschieden — ein Speicher-Vorzeichen
+`charge_discharge` hat keinen Anteil). So speist K-3 die Nebengröße „Wirkleistung · Bezug“ von
+MS-01 UND „Wirkleistung · Abgabe“ von MS-02 (Fälle `ms-01-nebengroesse-positiver-anteil`,
+`ms-02-nebengroesse-negativer-anteil-neben-ms-01`). Geteilt wird beim Lesen JE ROHWERT, nie je
+Mittelwert (`verbrauch-vectors.json` `regeln.anteil`, Vektor F19); das Box-Vorzeichen ist
+schon im Rohwert (AP-04 E5) und wirkt nie ein zweites Mal; ein Saldo entsteht daraus nie (E12).
+
+**Anschlussleistung** (AP-08 IP-7, optional an der Messstelle, `anschlussleistung_kw` > 0):
+daraus der größte plausible Zuwachs eines Energie-Zählerstands je Kadenz — kW × Kadenz in der
+Einheit des Zählerstands (Wh · kWh · MWh), auf drei Stellen AUFgerundet; ohne Anschlussleistung
+oder ohne Energie-Einheit leer, nie geraten (Familie `anschlussleistung`, 100 kW · 60 s =
+1,667 kWh). Die Messstellen-Seite der Überlauf-Deklaration (Z6); den Wertebereich nennt der
+Messwert (Katalog `wertebereich_modul`).
 
 **Die einzige Änderung an Bestehendem** (Regel 2): eine neue, offene führende Quelle beendet
 die laufende genau zu ihrem Beginn, wenn sie nach deren Beginn liegt. Bereits beendete Quellen
@@ -255,8 +272,9 @@ Regeln.
 | `kennzeichen_pruefen` | 13 — kürzen MS-0006 → MS-06, eigener Nummernkreis, belegt (MS-01), archiviert (MS-13), früheres Kennzeichen, eigenes früheres zurück, unverändert, fünf Formfehler, Kante 16 Zeichen | E7, A12, §5.12, Regel 9 |
 | `groesse` | 9 — MS-06, MS-21 Gas, MS-04 „Laden / Entladen“, Ladestand; vier Merkmale abgelehnt, Wasser noch ohne Größe | §4.1, E1, AP-00 E11 |
 | `lebenszyklus` | 8 — MS-06 aktiv, MS-21 ohne Quelle, neuer Entwurf, MS-20 ohne Formel, MS-19 mit Formel und ohne Eingang, angehalten, MS-13 archiviert | §4.5, E8, E9, A10, A13 |
-| `passung` | 13 — Regel 7 als Tabelle ohne Anlage: vier erlaubte Herleitungen, Wh umrechenbar, Gas, Zustand, Momentanwert aus Zählerstand, Zählerstand aus Leistung, Energie als Momentanwert, Ladestand speist keine Energie, kW statt kWh, Abgabe statt Bezug | Regel 7, Regel 11 |
-| `bindung` | 29 — **MS-06-Zeitstrahl** (A1), angekündigt (A3), Nebengröße mit eigener Quelle, **Überlappung**, Wechsel vor und genau beim Einbau (A15), **Lücke** (MS-07), MS-08-Umzug K-7 → K-8.7, Leistung integriert (MS-03), vier Passungsgründe, Gas ohne Quelle, Messwert speist schon MS-06, Vergleich mit/ohne Zweck und derselbe Messwert doppelt, Ablesestand-Hinweise (gleiches Gerät, ohne Einheit) und die Gegenprobe (anderes Gerät), Zeitraum verkehrt und null Minuten, vor Beginn der Messstelle; „jetzt“ auf die Minute; **kein Gerät zum Zeitpunkt** (EK-7 steckt noch nicht, Z-5a offen über den Wechsel) und die Gegenprobe bis genau zum Ausbau; **Vorzeichen-Wert wartet auf AP-08** (MS-01) | Regeln 1, 2, 5–7, E1–E3 |
+| `passung` | 20 — Regel 7 als Tabelle ohne Anlage: vier erlaubte Herleitungen, Wh umrechenbar, Gas, Zustand, Momentanwert aus Zählerstand, Zählerstand aus Leistung, Energie als Momentanwert, Ladestand speist keine Energie, kW statt kWh, Abgabe statt Bezug; AP-08 IP-7: Vorzeichen-Wert ohne Anteil, positiver Anteil → Bezug, negativer Anteil integriert → Abgabe, positiver Anteil nie Abgabe, Anteil nur am Vorzeichen-Wert, nie aus Zählerstand, Laden/Entladen ohne Anteil | Regel 7, Regel 11, AP-08 E15 |
+| `anschlussleistung` | 6 — 100 kW je Minute in kWh (1,667) und Wh, eine glatte Viertelstunde, MWh aufgerundet, ohne Anschlussleistung, ohne Energie-Einheit | AP-08 IP-7, Z6 |
+| `bindung` | 34 — **MS-06-Zeitstrahl** (A1), angekündigt (A3), Nebengröße mit eigener Quelle, **Überlappung**, Wechsel vor und genau beim Einbau (A15), **Lücke** (MS-07), MS-08-Umzug K-7 → K-8.7, Leistung integriert (MS-03), vier Passungsgründe, Gas ohne Quelle, Messwert speist schon MS-06, Vergleich mit/ohne Zweck und derselbe Messwert doppelt, Ablesestand-Hinweise (gleiches Gerät, ohne Einheit); AP-08 IP-7: Vorzeichen-Wert ohne Anteil (vorher „wartet auf AP-08“), MS-01 positiver Anteil, MS-02 negativer Anteil neben MS-01, Anteil neben dem ganzen Wert, derselbe Anteil doppelt, negativer Anteil nie Bezug und die Gegenprobe (anderes Gerät), Zeitraum verkehrt und null Minuten, vor Beginn der Messstelle; „jetzt“ auf die Minute; **kein Gerät zum Zeitpunkt** (EK-7 steckt noch nicht, Z-5a offen über den Wechsel) und die Gegenprobe bis genau zum Ausbau; **Vorzeichen-Wert wartet auf AP-08** (MS-01) | Regeln 1, 2, 5–7, E1–E3 |
 | `zeitstrahl` | 3 — MS-06 ohne Fuge, MS-21 ein offener Abschnitt ohne Quelle, MS-07 „keine Quelle seit 07:00“ | Regel 2, E8 |
 | `beenden` | 8 — Z-5a endet mit Endstand 1 083 415,2 kWh (A1), angekündigt am Vortag, beendete Quelle nie erneut, Ende vor und genau am Beginn, Endstand ohne Einheit, MS-07 zur Prüfung abgeklemmt, Vergleichsquelle vor Beginn begrenzt | Regel 2, E2, E3 |
 | `rueckwirkung` | 8 — 25 min (§5.14), 933 Tage (Bestandsübernahme), Sekunden zählen nicht, angekündigt, 2 h 5 min, volle Stunden, ein Tag, Sommerzeit | E2, Regel 5 |
@@ -323,11 +341,14 @@ die Referenzdatei, für Regeln der Entscheid-Wortlaut.
     gültigen Tag (MS-08: AN-1 „bis 2027-02-28“); die Zwillinge vergleichen ohne Umrechnung. Der
     `beginn` einer Messstelle bleibt ein Zeitpunkt: Mitternacht des ersten Tages ihres ersten
     Orts am Standort.
-14. **Die Vorzeichen-Wirkleistung der Referenzdatei (IP-13).** Die Datei speist die Nebengröße
-    „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung von K-3; der Katalog (2026.09.11.1,
-    IP-9) führt diesen Messwert als Vorzeichen-Wert `import_export`. Der Vertrag bleibt streng:
-    422 `quelle_passt_nicht`, Grund `richtung`, bis AP-08 die Aufteilung entscheidet. Fall
-    `ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`.
+14. **Die Vorzeichen-Wirkleistung der Referenzdatei (IP-13, eingelöst mit AP-08 IP-7).** Die
+    Datei speist die Nebengröße „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung von K-3;
+    der Katalog (2026.09.11.1, IP-9) führt diesen Messwert als Vorzeichen-Wert `import_export`.
+    Bis AP-08 IP-7 lehnte der Vertrag das mit 422 `quelle_passt_nicht`, Grund `richtung`, ab;
+    seit E15 = A bindet er mit `anteil` `positiv` (Fall `ms-01-nebengroesse-positiver-anteil`),
+    ohne Anteil bleibt der 422 (W8). Die Datei nennt den Anteil (noch) nicht — sie trägt die
+    Bindung von vor E15; MS-02 hat in der Datei keine Nebengröße, der Abgabe-Zwilling ist
+    darum eine benannte `annahme`.
 15. **Die NAMEN der Vorschlagsliste (IP-16).** §5.15 zeigt die Zeilen mit den Namen, die die
     Messstellen am Ende TRAGEN („Netzbezug Halle 1“, „Verwaltung gesamt“) — die entstehen erst
     beim Umbenennen („der Kunde bestätigt, benennt um, lässt weg“). Der Vorschlag selbst kann nur
@@ -398,7 +419,7 @@ Komponenten und ihrer Messkanäle):
 | `keine_messgroesse` | keine Vertrags-Größe (Spannung, Strom, Selbstbau) | „Spannung L1“ |
 | `ohne_richtung` | eine Wirkgröße, deren Richtung der Katalog nicht nennt | Nenn- und Grenzwerte |
 | `weitere_groesse` | eine andere Vertrags-Größe (Blindenergie, Scheinleistung) | kommt als Nebengröße von Hand dazu |
-| `vorzeichen_wert` | Bezug UND Abgabe in einem Vorzeichen (`import_export`) | die Wirkleistung der Zähler — ihre Aufteilung wartet auf AP-08 |
+| `vorzeichen_wert` | Bezug UND Abgabe in einem Vorzeichen (`import_export`) | die Wirkleistung der Zähler — keine eigene Messstelle; ihr positiver und negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe (AP-08 IP-7) |
 | `vergleich_kandidat` | dasselbe misst schon der Hauptzähler | die Netzleistung am Wechselrichter → Vergleichsquelle an MS-0001 (E3) |
 | `gleicher_fluss` | ein zweiter Messwert desselben Flusses | die Leistung neben dem Zählerstand |
 | `passt_nicht` | Regel 7 lehnt ab (mit ihrem Grund) | eine Gesamterzeugung in „0,1 kWh“ |

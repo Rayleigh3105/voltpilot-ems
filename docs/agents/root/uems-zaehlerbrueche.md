@@ -24,10 +24,14 @@ Fehlt eine Angabe, entsteht **keine Zahl für den Bruch**, sondern die benannte 
 
 `messreihe_zaehler_deklaration(tenant, entity, messkanal, zeit)` → `wertebereich_modul`,
 `hoechstzuwachs_je_kadenz`, `kadenz_s`, `neustart_verlust_s` — die EINE Stelle, aus der Writer,
-Viertelstunden-, Tages-, Monats-/Jahres-Lauf und freier Zeitraum lesen. Die Felder dahinter baut
-**AP-08 IP-7** (Vorlage `wertebereich_modul`/`laeuft_ueber`, Messstelle `anschlussleistung_kw`); IP-7
-ersetzt NUR den Rumpf (gleiche Signatur). Bis dahin: jeder fallende Stand ist eine Rücksetzung, jeder
-Neustart „bis zu 255 s“. Tests ersetzen den Rumpf (`deklarieren()` / `deklaration(...)`). ⚠ Der
+Viertelstunden-, Tages-, Monats-/Jahres-Lauf und freier Zeitraum lesen. **AP-08 IP-7 hat die Türen
+gebaut, den Rumpf NICHT gefüllt:** Katalog-Felder `wertebereich_modul`/`laeuft_ueber` (nur an
+Zählerpunkten, `validate.py --ohne-wertebereich` listet die 224 ohne) und Messstelle
+`anschlussleistung_kw` (`MessstelleRegeln.hoechstzuwachsJeKadenz`, V20260913180000). Ein Überlauf
+braucht Wertebereich UND Höchstzuwachs — und der Wertebereich hat noch keinen Weg in die Datenbank
+(er steht nur im gepackten Katalog, nicht in `measurement_catalog_point_metadata`); ein Rumpf nur mit
+dem Höchstzuwachs änderte nichts. Wer ihn füllt, ersetzt NUR den Rumpf (gleiche Signatur). Bis dahin:
+jeder fallende Stand ist eine Rücksetzung, jeder Neustart „bis zu 255 s“. Tests ersetzen den Rumpf (`deklarieren()` / `deklaration(...)`). ⚠ Der
 Höchstzuwachs gilt je `kadenz_s`; `ZaehlerDeklaration.hoechstzuwachsFuer(kadenz)` rechnet ihn auf die
 Kadenz der Rechnung um. `verlust_s` steht NICHT im Vokabular von `device_restart` (Box-Draht-Vertrag
 unverändert); die Strecke liest die Nutzlast trotzdem zuerst — sie ist heute immer leer.

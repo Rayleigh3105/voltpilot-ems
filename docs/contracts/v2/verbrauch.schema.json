@@ -76,6 +76,11 @@
           "const": "Zuwachs über eine Lücke = Stand nach − Stand vor zweier guter Nachbarn über luecke_faktor × Kadenz (nicht fallend, keine Gerätegrenze dazwischen); er zählt zu [von, bis) genau dann, wenn die Periode die Lücke ganz enthält: Messzeit vor > von − Kadenz und Messzeit nach ≤ bis; nie verteilt, nie in einer Periode, die sie nur anschneidet",
           "description": "Z2/E2 (AP-08 IP-6). Additiv: der Zuwachs über eine Lücke ist GEMESSEN, aber NICHT VERTEILBAR. Er steht genau einmal je Stufe — in der Periode, die die Lücke ganz enthält; die Viertelstunden der Lücke bleiben „keine Werte“, eine angeschnittene Periode ist „Anfang/Ende nicht gemessen“."
         },
+        "anteil": {
+          "type": "string",
+          "const": "Anteil eines Vorzeichen-Werts JE ROHWERT, vor jeder Verdichtung: positiv = max(0, P), negativ = max(0, −P); daraus Mittel/Min/Max (die Nullen zählen mit) und die Energie je Anteil; das Kennzeichen „positiver Anteil von <Quelle>“ bzw. „negativer Anteil von <Quelle>“ steht zuerst; nie das Mittel des Vorzeichen-Werts nach seinem Vorzeichen zugeordnet",
+          "description": "M5/E15 (AP-08 IP-7). Additiv: eine Quellenbindung mit `anteil` liest nur den positiven oder nur den negativen Teil eines Vorzeichen-Werts (Katalog import_export). Geteilt wird JE ROHWERT — Option C (erst mitteln, dann nach Vorzeichen zuordnen) hat der Captain verworfen: an F19 ergäbe sie 12,8 − 22,8 = −10,0 und damit nur Abgabe 10,0. Das Box-Vorzeichen ist schon im Rohwert (AP-04 E5) und wirkt hier nie ein zweites Mal."
+        },
         "luecke_zeitraeume": {
           "type": "array",
           "const": ["viertelstunde", "stunde", "tag", "monat", "jahr"],
@@ -251,6 +256,8 @@
         "von": { "$ref": "#/$defs/zeitpunkt" },
         "bis": { "$ref": "#/$defs/zeitpunkt" },
         "reihe": { "type": "string", "minLength": 1, "description": "Nur bei mehreren Reihen: welche gemeint ist." },
+        "anteil": { "type": "string", "enum": ["positiv", "negativ"], "description": "AP-08 IP-7 (regeln.anteil): die Erwartung liest nur diesen Anteil der Reihe, geteilt JE ROHWERT. Fehlt = der ganze Wert." },
+        "quelle": { "type": "string", "minLength": 1, "description": "Nur mit anteil: wie das Kennzeichen die Quelle nennt („K-3 · Wirkleistung“)." },
         "menge": { "type": ["number", "null"], "description": "Die Menge der Periode in der Einheit der Reihe. null heißt „keine Menge bildbar“ — nie 0." },
         "mittel": { "type": ["number", "null"], "description": "Momentanwert: arithmetisches Mittel der guten Werte (M2)." },
         "min": { "type": ["number", "null"] },
@@ -341,6 +348,21 @@
         "abnahme": { "type": ["string", "null"], "enum": ["1", "2", null], "description": "Bezug auf eine Plan-Abnahme des Programms, sonst null." },
         "messstelle": { "type": "string", "minLength": 1, "description": "Die Messstelle des Referenzunternehmens, in der der Fall spielt." },
         "input": { "$ref": "#/$defs/eingang" },
+        "gegenprobe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reihe", "von", "bis", "mittel_vorzeichen", "falsch_bezug", "falsch_abgabe", "warum"],
+          "description": "AP-08 IP-7: die verworfene Rechnung (E15 Option C) als benannte Gegenprobe — das Mittel des GANZEN Vorzeichen-Werts, danach nach seinem Vorzeichen zugeordnet. Beide Zwillinge prüfen, dass sie herauskommt UND von den Anteil-Erwartungen abweicht.",
+          "properties": {
+            "reihe": { "type": "string", "minLength": 1 },
+            "von": { "$ref": "#/$defs/zeitpunkt" },
+            "bis": { "$ref": "#/$defs/zeitpunkt" },
+            "mittel_vorzeichen": { "type": "number", "description": "Mittel des ganzen Werts." },
+            "falsch_bezug": { "type": "number", "description": "max(0, Mittel) — was Option C als Bezug zeigte." },
+            "falsch_abgabe": { "type": "number", "description": "max(0, −Mittel) — was Option C als Abgabe zeigte." },
+            "warum": { "type": "string", "minLength": 1 }
+          }
+        },
         "expected": {
           "type": "array",
           "minItems": 1,

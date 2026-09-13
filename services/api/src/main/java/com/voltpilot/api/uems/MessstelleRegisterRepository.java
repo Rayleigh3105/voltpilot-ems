@@ -134,7 +134,7 @@ public class MessstelleRegisterRepository {
                                'endstand', CASE WHEN q.endstand IS NOT NULL THEN json_build_object(
                                    'wert', q.endstand, 'einheit', q.endstand_einheit) END,
                                'rueckwirkend', q.rueckwirkend, 'eingetragenAm', q.eingetragen_am,
-                               'eingetragenVon', q.actor_name),
+                               'eingetragenVon', q.actor_name, 'anteil', q.anteil),
                            'geraetBezeichnung', g.bezeichnung,
                            'kanalDefinition', (SELECT d.custom_definition FROM device_measurement_selection d
                                                 JOIN device b ON b.id = d.device_id
@@ -148,6 +148,7 @@ public class MessstelleRegisterRepository {
                  GROUP BY q.messstelle_id)
             SELECT m.id, m.kennzeichen, m.name, m.art, m.medium, m.groesse, m.richtung, m.einheit,
                    m.wertart, m.notiz, m.angehalten_ab, m.archiviert_am,
+                   (to_jsonb(m) ->> 'anschlussleistung_kw')::numeric AS anschlussleistung_kw,
                    coalesce(n.j, '[]') AS neben, coalesce(o.j, '[]') AS orte,
                    coalesce(s.j, '[]') AS stellungen, coalesce(q.j, '[]') AS quellen
               FROM messstelle m

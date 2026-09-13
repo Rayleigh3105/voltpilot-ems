@@ -25,7 +25,7 @@ dieses Pakets eine **benannte Ablehnung**, die stehen bleiben darf. Vertrag: `me
 
 | Fehlt | Ablehnung (422, Kundensatz im Vertrag) | Liefert | Was das Paket ändert |
 |---|---|---|---|
-| Teil eines Messwerts | `anteil_wartet_auf_ap08` (`feld` `terme[i].anteil`, `wartet_auf` „AP-08 IP-7“) | AP-08 IP-7 (Quellenbindung mit `anteil`) | den Zweig `anteil` in `AnteilLeseweg#lies` |
+| Teil eines Messwerts | `anteil_wartet_auf_ap08` (`feld` `terme[i].anteil`, `wartet_auf` „AP-08 IP-7“) | ✅ AP-08 IP-7 lieferte Quellenbindung mit `anteil` + `VerbrauchRegeln.anteilJeRohwert` — ⚠ der Zweig bleibt benannt: der Formel-Verlauf liest `device_measurement_rollup_15m.avg_numeric`, ein Anteil DARAUS wäre je Mittelwert (E15 Option C, verworfen) | den Zweig `anteil` in `AnteilLeseweg#lies` — erst wenn der Verlauf je Term aus Rohwerten rechnet (`uems-quelle-anteil.md`) |
 | Anteil des Tages | `verteilung_wartet_auf_ip8` (`feld` `terme[i].eingang_art`, „AP-10 IP-8“) | AP-10 IP-8 (`messstelle_verteilung`) | den Zweig `verteilung`: Abschnitte lesen → `tagesanteil(term, tag, abschnitte)` |
 | Kostenstelle als Objekt | — | ✅ AP-10 IP-7 (`V20260913160000`) | Fremdschlüssel `messstelle_formel_term_verteilung_ziel_fk`: `(verteilung_ziel, tenant_id) → kostenstelle (id, tenant_id)`, RESTRICT — Tests brauchen eine echte Kostenstelle |
 

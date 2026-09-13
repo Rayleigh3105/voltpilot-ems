@@ -166,6 +166,10 @@
         "label_source": {"$ref": "#/$defs/nullableString"},
         "label_source_sha256": {"$ref": "#/$defs/sha256"},
         "label_source_url": {"type": "string", "pattern": "^https://"},
+        "laeuft_ueber": {
+          "type": "boolean",
+          "description": "Nur am Zähler und nur mit wertebereich_modul: true = der Stand beginnt bei wertebereich_modul wirklich wieder bei 0, false = belegt kein Überlauf. Fehlt das Feld, ist nichts deklariert."
+        },
         "long_term_cadence_s": {"$ref": "#/$defs/nullableInteger"},
         "mandatory": {"type": "boolean"},
         "min_cadence_s": {"$ref": "#/$defs/nullableInteger"},
@@ -199,8 +203,18 @@
         "source_url": {"type": "string", "pattern": "^https://"},
         "unit": {"$ref": "#/$defs/nullableString"},
         "value_type": {"type": "string", "minLength": 1},
+        "wertebereich_modul": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Nur am Zähler: bei diesem Stand beginnt der Zähler wieder bei 0 (z. B. 65536 für einen 16-Bit-Impulszähler). Fehlt das Feld, ist nichts deklariert — nie null, nie ein Vorgabewert."
+        },
         "width_bits": {"$ref": "#/$defs/nullableInteger"}
-      }
+      },
+      "allOf": [
+        {"if": {"required": ["laeuft_ueber"]}, "then": {"required": ["wertebereich_modul"]}},
+        {"if": {"required": ["laeuft_ueber"]}, "then": {"properties": {"aggregation_kind": {"const": "counter"}}}},
+        {"if": {"required": ["wertebereich_modul"]}, "then": {"properties": {"aggregation_kind": {"const": "counter"}}}}
+      ]
     }
   }
 }
