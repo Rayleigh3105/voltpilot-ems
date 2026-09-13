@@ -26,7 +26,8 @@ import org.springframework.stereotype.Component;
  * <p><b>⚠ Wie jeder {@code @Scheduled} ist er im TESTLAUF AUS</b> (surefire-Systemeigenschaft) und
  * in PRODUKTION AN ({@code application.yml}, {@code matchIfMissing}) — die dokumentierte Falle mit
  * den zwischengespeicherten Testkontexten und den gestoppten Testcontainern. Wer ihn prüft, ruft
- * {@code EndgueltigkeitLauf.umschalten(...)} und {@code TagVerdichter.lauf(...)} selbst. Dass die
+ * {@code EndgueltigkeitLauf.umschalten(...)} und {@code TagVerdichter.lauf(...)} selbst — oder den ganzen Takt
+ * über {@link #takt(Instant)}. Dass die
  * AUSGELIEFERTE Vorgabe AN ist, prüft {@code EndgueltigkeitWiringTest} an der echten
  * {@code application.yml}.
  *
@@ -57,7 +58,14 @@ public class EndgueltigkeitLaeufer {
     @Scheduled(fixedDelayString = "${voltpilot.uems.endgueltigkeit.interval-ms:3600000}",
             initialDelayString = "${voltpilot.uems.endgueltigkeit.initial-delay-ms:120000}")
     public void takt() {
-        Instant jetzt = Instant.now();
+        takt(Instant.now());
+    }
+
+    /**
+     * Derselbe Takt mit der Uhr des Aufrufers — die Tür, durch die ein Test (AP-08 IP-19) GENAU diese Reihenfolge
+     * fährt, statt sie nachzubauen.
+     */
+    void takt(Instant jetzt) {
         try {
             endgueltigkeit.umschalten(jetzt);
         } catch (RuntimeException e) {

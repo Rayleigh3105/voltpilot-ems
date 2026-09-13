@@ -62,6 +62,14 @@ in der Arbeitsliste landen (die Überlappung des Zeigers, ein Betriebs-Anstoß, 
 dann ist das Bilden harmlos — es entsteht dieselbe Zeile, und eine endgültige rührt der Schreibsatz
 ohnehin nicht an. Verboten ist genau das eine: einen zu spät eingetroffenen Wert ANWENDEN.
 
+⚠ **Die Frist fragt JEDEN Grund, nicht nur `eingang`** (AP-08 IP-19): vor der Frist wird eine
+Nachlieferung automatisch neu gebildet (F9), nach der Frist gemeldet und über IP-14 vorgeschlagen (F10)
+— auch wenn der Eintrag aus der Rückrechnung oder einem Bruch stammt oder der Eingang einen schon
+belegten Schlüssel fand (`ON CONFLICT DO NOTHING`). Die Vorprüfung ist EINE Abfrage je Stapel
+(`SpaetankunftMelder.mitNachzueglern`). Auch die Rückrechnung bildet ein geschlossenes Intervall
+mit Nachzügler darum NICHT (keine Zeile, Vorschau „alt“ = keine Werte), sondern meldet es. Paar-Test:
+`UemsFristVorschlagTest`.
+
 ⚠ **Die Ereignis-Kennung ist ABGELEITET** (aus Reihe, Intervall, letzter Eingangszeit und Anzahl),
 nicht gewürfelt: eine Wiederholung trifft denselben Idempotenz-Schlüssel und schreibt nichts,
 eine ZWEITE Welle ist ein anderes Ereignis. Eine zufällige Kennung hinterließe bei jedem Takt ein

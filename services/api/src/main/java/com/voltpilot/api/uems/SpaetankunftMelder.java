@@ -13,6 +13,9 @@ import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -94,6 +97,63 @@ public class SpaetankunftMelder {
                 + "vorgeschlagen, NICHT angewendet",
                 n.anzahl(), messkanal, intervallBeginn, frist);
         return new Ergebnis(gemeldet, true, n.anzahl());
+    }
+
+    /** Ein Intervall einer Reihe — was die Vorprüfung eines Stapels braucht. */
+    public record Intervall(UUID tenantId, UUID entityId, String messkanal, Instant beginn) {}
+
+    /**
+     * AP-08 IP-19: welche dieser Intervalle haben NACHZÜGLER? Dieselbe Bedingung wie die Zählung von
+     * {@link #melden}, aber für einen ganzen Stapel in EINER Abfrage — die Verdichtung fragt damit jedes
+     * geschlossene Intervall, gleich aus welchem Grund es in der Arbeitsliste steht (auch die Rückrechnung mit
+     * ihren vielen Tausend geschlossenen Intervallen), und zählt genau nur dort nach, wo es etwas zu melden gibt.
+     */
+    public Set<Intervall> mitNachzueglern(Connection con, List<Intervall> intervalle) throws SQLException {
+        Set<Intervall> aus = new HashSet<>();
+        if (intervalle.isEmpty()) {
+            return aus;
+        }
+        Instant von = null;
+        Instant bis = null;
+        StringBuilder werte = new StringBuilder();
+        for (int i = 0; i < intervalle.size(); i++) {
+            Instant b = intervalle.get(i).beginn();
+            von = von == null || b.isBefore(von) ? b : von;
+            bis = bis == null || b.isAfter(bis) ? b : bis;
+            werte.append(i == 0 ? "(?::int, ?::uuid, ?::uuid, ?::text, ?::timestamptz, ?::timestamptz, ?::timestamptz)"
+                    : ", (?, ?, ?, ?, ?, ?, ?)");
+        }
+        try (PreparedStatement ps = con.prepareStatement("""
+                WITH intervall(nr, tenant_id, entity_id, messkanal, von, bis, frist) AS (VALUES %s)
+                SELECT i.nr FROM intervall i
+                 WHERE EXISTS (SELECT 1 FROM device_measurement_sample s
+                                WHERE s.tenant_id = i.tenant_id AND s.entity_id = i.entity_id
+                                  AND s.point_key = i.messkanal
+                                  AND s.time >= i.von AND s.time < i.bis
+                                  AND s.time >= ? AND s.time < ?
+                                  AND s.role IS DISTINCT FROM 'spiegel'
+                                  AND s.received_at > i.frist)
+                """.formatted(werte))) {
+            int p = 1;
+            for (int i = 0; i < intervalle.size(); i++) {
+                Intervall iv = intervalle.get(i);
+                ps.setInt(p++, i);
+                setzeUuid(ps, p++, iv.tenantId());
+                setzeUuid(ps, p++, iv.entityId());
+                ps.setString(p++, iv.messkanal());
+                ps.setTimestamp(p++, Timestamp.from(iv.beginn()));
+                ps.setTimestamp(p++, Timestamp.from(ViertelstundeRegeln.ende(iv.beginn())));
+                ps.setTimestamp(p++, Timestamp.from(ViertelstundeRegeln.endgueltigAb(iv.beginn())));
+            }
+            ps.setTimestamp(p++, Timestamp.from(von));
+            ps.setTimestamp(p, Timestamp.from(ViertelstundeRegeln.ende(bis)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    aus.add(intervalle.get(rs.getInt(1)));
+                }
+            }
+        }
+        return aus;
     }
 
     // ------------------------------------------------------------------- Die Zählung

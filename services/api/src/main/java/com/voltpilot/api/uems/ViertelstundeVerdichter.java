@@ -331,16 +331,16 @@ public class ViertelstundeVerdichter {
      * Ein Eintrag der Arbeitsliste — genau eine Reihe und genau ein Intervall, samt dem GRUND,
      * aus dem er eingetragen wurde.
      *
-     * <p>Der Grund entscheidet über die Spätankunft (AP-07 IP-13): {@code eingang} heißt „ein
-     * Rohwert ist eingetroffen" — liegt sein Intervall hinter der Frist, wird es NICHT gebildet,
-     * sondern gemeldet und vorgeschlagen. {@code rueckrechnung} ist die einmalige ERSTE Bildung
-     * der Vergangenheit; für sie gilt die Frist nicht, sonst bliebe die Vergangenheit für immer
-     * leer.
+     * <p>⚠ Der Grund entscheidet NICHT über die Frist (AP-08 IP-19). Ob {@code eingang}, {@code ereignis}
+     * oder {@code rueckrechnung}: ein geschlossenes Intervall mit Nachzügler wird gemeldet und vorgeschlagen,
+     * nie gebildet. Sonst bildete ein Eintrag, der den Schlüssel schon belegt ({@code ON CONFLICT DO NOTHING}
+     * verschluckt dann den Eingang), einen zu spät eingetroffenen Wert still in eine Lücke. Die Rückrechnung
+     * bleibt die ERSTE Bildung der Vergangenheit — geschlossene Intervalle ohne Nachzügler bildet sie weiter.
      */
     record Auftrag(UUID tenant, UUID entity, String kanal, Instant beginn, String grund) {
 
-        boolean ausEingang() {
-            return "eingang".equals(grund);
+        SpaetankunftMelder.Intervall intervall() {
+            return new SpaetankunftMelder.Intervall(tenant, entity, kanal, beginn);
         }
     }
 
@@ -367,10 +367,18 @@ public class ViertelstundeVerdichter {
             // Bilden harmlos: es entsteht dieselbe Zeile, und eine endgültige rührt der
             // Schreibsatz ohnehin nicht an. Was E5 verbietet, ist genau das eine — einen zu
             // spät eingetroffenen Wert ANWENDEN.
+            //
+            // AP-08 IP-19: gefragt wird JEDES geschlossene Intervall, nicht nur eines aus dem Eingang —
+            // vor der Frist rechnet das System nach, nach der Frist fragt es, gleich aus welchem Grund
+            // das Intervall in der Liste steht. Die Vorprüfung ist EINE Abfrage je Stapel.
+            Set<SpaetankunftMelder.Intervall> mitNachzueglern = melder.mitNachzueglern(con, stapel.stream()
+                    .filter(a -> TagRegeln.geschlossen(a.beginn(), jetzt))
+                    .map(Auftrag::intervall)
+                    .toList());
             List<Auftrag> offen = new ArrayList<>();
             int spaet = 0;
             for (Auftrag a : stapel) {
-                if (a.ausEingang() && TagRegeln.geschlossen(a.beginn(), jetzt)
+                if (mitNachzueglern.contains(a.intervall())
                         && melder.melden(con, a.tenant(), a.entity(), a.kanal(), a.beginn())
                                 .vorgeschlagen()) {
                     spaet++;

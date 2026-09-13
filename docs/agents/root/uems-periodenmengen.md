@@ -54,7 +54,10 @@ seinem jüngsten Monat). Die Stundenzahl eines Tages kommt weiter aus `TagRegeln
 
 - **vorläufig/endgültig:** ein Monat ist vorläufig, solange ein Tag oder eine Viertelstunde
   vorläufig ist oder seine Frist (Ende + 7 Tage) läuft; ein Jahr ebenso über seine Monate
-  (`TagRegeln.zustand`). `teile_vorhanden`/`teile_endgueltig` sagen, wie viele.
+  (`TagRegeln.zustand`). `teile_vorhanden`/`teile_endgueltig` sagen, wie viele. AP-08 IP-19 (F16):
+  der Oktober ist bis 08.11. 00:00 MEZ vorläufig — eine einzige vorläufige Viertelstunde (die
+  letzte) hält ihn vorläufig, mit ihr wird er endgültig, `endgueltig_ab` = ihre Frist
+  (`UemsFristVorschlagTest`).
 - **Abdeckung** = Summe erhalten ÷ Summe erwartet — eine Viertelstunde OHNE Zeile zählt mit
   `Länge ÷ Kadenz`. ⚠ Das gilt seit IP-5 auch für `messreihe_tag.erwartet`/`abdeckung_prozent`
   (F8: 85 %, vorher 98 %).
