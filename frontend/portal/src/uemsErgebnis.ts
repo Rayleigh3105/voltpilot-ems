@@ -317,6 +317,8 @@ export const KWH = 'kWh';
 export const KW = 'kW';
 export const PROZENT = '%';
 export const KUBIKMETER = 'm³';
+/** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
+export const KVA = 'kVA';
 
 export type Stellen = { einheit: string; ebene: string | null; stellen: number };
 
@@ -330,6 +332,7 @@ export const STELLEN: Stellen[] = [
   { einheit: KW, ebene: null, stellen: 1 },
   { einheit: PROZENT, ebene: null, stellen: 0 },
   { einheit: KUBIKMETER, ebene: null, stellen: 1 },
+  { einheit: KVA, ebene: null, stellen: 1 },
 ];
 
 export const TAUSENDER = '.';

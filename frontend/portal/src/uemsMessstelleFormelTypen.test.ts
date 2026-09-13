@@ -92,7 +92,7 @@ describe('Formel-Typen: die Plan-Abnahme des Captains wird gerechnet', () => {
 
     const ms22 = messstelle('MS-22');
     expect(ms22.formel_typ).toBe('rest');
-    const wert = periodenwert(ms22.formel_typ, ms22.art, 'kWh', 1, [], eingaenge);
+    const wert = periodenwert(ms22.formel_typ, ms22.art, 'kWh', 'tag', 1, [], eingaenge);
     betragGleich(wert.menge, ms22.beispielwerte.tag_2026_10_18_kwh, 'MS-22 am 18.10.2026');
     betragGleich(wert.menge, '10', 'die Abnahme');
     expect(wert.zustand).toBe(VOLLSTAENDIG);
@@ -100,7 +100,7 @@ describe('Formel-Typen: die Plan-Abnahme des Captains wird gerechnet', () => {
     const f1 = bilanz.cases.find((c: Json) => c.id === 'F1');
     const kundensatz = f1.pruefungen.find((p: Json) => p.regel === 'rest').ergebnis.kundensatz;
     expect(wert.satz).toBe(kundensatz);
-    expect(wert.satz).toBe('10 kWh sind keiner Messstelle zugeordnet');
+    expect(wert.satz).toBe('10\u00a0kWh sind keiner Messstelle zugeordnet');
     for (const wort of VERBOTENE_WOERTER) expect(wert.satz).not.toContain(wort);
 
     expect(hauptgroesse(ms22.formel_typ, ms22.art, 'Intervallmenge', null).hauptgroesse).toEqual({
@@ -158,7 +158,15 @@ describe('Formel-Typen: der Bilanz-Vertrag durch die Verzweigung', () => {
       version: e.version,
       kennzeichen: e.kennzeichen,
     }));
-    const ist = periodenwert(typ, ein.art ?? 'berechnet', ein.einheit, ein.version ?? 1, ein.vermerke ?? [], eingaenge);
+    const ist = periodenwert(
+      typ,
+      ein.art ?? 'berechnet',
+      ein.einheit,
+      ein.zahl_ebene ?? null,
+      ein.version ?? 1,
+      ein.vermerke ?? [],
+      eingaenge,
+    );
     expect(ist.typ).toBe(typ);
     betragGleich(ist.menge, soll.menge, `${why} · Menge`);
     expect(ist.zustand, `${why} · Zustand`).toBe(soll.zustand);

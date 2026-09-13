@@ -179,15 +179,14 @@
     "menge_nachkommastellen": 6,
     "abdeckung_nachkommastellen": 0,
     "live_nachkommastellen": 6,
-    "tausender_trennzeichen": " ",
-    "minuszeichen": "−"
+    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): Zahl und Einheit eines Kundensatzes schreibt ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl; die Ebene der Periode (zahl_ebene) bestimmt die Stellen"
   },
   "saetze": {
-    "rest_zugeordnet": "{menge} {einheit} sind keiner Messstelle zugeordnet",
-    "rest_negativ": "Messwerte passen nicht zusammen ({menge} {einheit})",
+    "rest_zugeordnet": "{zahl} sind keiner Messstelle zugeordnet",
+    "rest_negativ": "Messwerte passen nicht zusammen ({zahl})",
     "rest_keine_werte": "nicht zugeordnet: keine Werte",
-    "summe_mindestens": "mindestens {menge} {einheit} ({fehlend} fehlt)",
-    "summe_mindestens_mehrere": "mindestens {menge} {einheit} ({fehlend} fehlen)",
+    "summe_mindestens": "mindestens {zahl} ({fehlend} fehlt)",
+    "summe_mindestens_mehrere": "mindestens {zahl} ({fehlend} fehlen)",
     "ebene_x_von_y": "{mit_werten} von {gesamt} {wort}",
     "nicht_verteilt": "nicht verteilt",
     "verteilt": "verteilt ({anteil} % von {quelle})",
@@ -337,6 +336,13 @@
       "vorlage": "„Netz-Saldo Halle 1“ (keine Kennung in der Referenzdatei)",
       "statt": "MS-Saldo-H1",
       "grund": "Die Vorlage kennzeichnet die Saldo-Messstelle nicht (sie ist dort ausdrücklich eine Annahme). Der Vertrag braucht eine Kennung; sie ist als solche erkennbar und wird von der Referenzdatei-Ergänzung 1.2 nicht vergeben."
+    },
+    {
+      "fall": "F1–F7, F14 · Kundensätze",
+      "feld": "pruefungen[rest|summe].ergebnis.kundensatz / anzeige",
+      "vorlage": "„1 200 kWh sind keiner Messstelle zugeordnet“, „mindestens 1 055 kWh (MS-14 fehlt)“",
+      "statt": "„1.200 kWh sind keiner Messstelle zugeordnet“, „mindestens 1.055 kWh (MS-14 fehlt)“ — Tausenderpunkt, ganze kWh an Tag und Monat, geschütztes Leerzeichen U+00A0 vor der Einheit",
+      "grund": "Entscheid E11 (AP-08, 11.09.2026): „das Konzept schreibt aus Lesbarkeit „2 304 kWh“, das Produkt „2.304 kWh““, feste Stellen je Ebene. Die Zahl kommt aus ergebnis-zustand-vectors.json (ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl); die beschreibenden `anzeige`-Texte je Fall bleiben im Wortlaut der Vorlage."
     }
   ],
   "_nicht_geprueft": [
@@ -452,6 +458,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -503,7 +510,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -699,7 +706,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -797,6 +804,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -851,7 +859,7 @@
               "nicht zugeordnet",
               "ab 15.10.2026"
             ],
-            "kundensatz": "1 200 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.200 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -966,7 +974,7 @@
                 "nicht zugeordnet",
                 "ab 15.10.2026"
               ],
-              "kundensatz": "1 200 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "1.200 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -1060,6 +1068,7 @@
           "name": "Σ der vier Unterzähler = 33 100 kWh",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "eingaenge": [
               {
                 "messstelle": "MS-11",
@@ -1122,6 +1131,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -1193,7 +1203,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "3 800 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "3.800 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -1325,7 +1335,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "3 800 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "3.800 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -1507,6 +1517,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -1622,7 +1633,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "54 580 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "54.580 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -1828,7 +1839,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "54 580 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "54.580 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -1985,6 +1996,7 @@
           "name": "Summe = 1 055 kWh, Zustand „unvollständig“, Anzeige „mindestens …“",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "eingaenge": [
               {
                 "messstelle": "MS-11",
@@ -2040,7 +2052,7 @@
             "kennzeichen": [
               "berechnet (Summe)"
             ],
-            "anzeige": "mindestens 1 055 kWh (MS-14 fehlt)"
+            "anzeige": "mindestens 1.055 kWh (MS-14 fehlt)"
           }
         },
         {
@@ -2049,6 +2061,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -2392,6 +2405,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -2443,7 +2457,7 @@
               "berechnet (Differenz)",
               "unplausibel (negativ)"
             ],
-            "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+            "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
           }
         },
         {
@@ -2559,7 +2573,7 @@
                 "berechnet (Differenz)",
                 "unplausibel (negativ)"
               ],
-              "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+              "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
             }
           },
           "ergebnis": {
@@ -2627,7 +2641,7 @@
           "geklemmt_auf_0": false,
           "ursache_behauptet": false
         },
-        "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+        "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
       },
       "annahmen": [
         "Tag 2026-11-08 und die Werte sind Annahmen."
@@ -2656,6 +2670,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -2767,7 +2782,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "1 610 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.610 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -2776,6 +2791,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
@@ -2880,7 +2896,7 @@
               "nicht zugeordnet",
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
             ],
-            "kundensatz": "1 810 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.810 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -2889,6 +2905,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
@@ -2973,7 +2990,7 @@
               "nicht zugeordnet",
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
             ],
-            "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -3232,7 +3249,7 @@
                 "nicht zugeordnet",
                 "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
               ],
-              "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -3929,6 +3946,7 @@
           "name": "55 100 + 22 400 + 11 130 = 88 630 kWh · „enthält verteilt (70 % von MS-07)“",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "eingaenge": [
               {
                 "messstelle": "MS-06",
@@ -4129,6 +4147,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -4180,7 +4199,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -4189,6 +4208,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 2,
             "vermerke": [],
             "eingaenge": [
@@ -4243,7 +4263,7 @@
               "nicht zugeordnet",
               "korrigiert (Version 2)"
             ],
-            "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -4314,7 +4334,7 @@
                 "nicht zugeordnet",
                 "korrigiert (Version 2)"
               ],
-              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -4424,7 +4444,7 @@
                 "nicht zugeordnet",
                 "korrigiert (Version 2)"
               ],
-              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {

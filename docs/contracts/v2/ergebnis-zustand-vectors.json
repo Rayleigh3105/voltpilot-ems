@@ -10,9 +10,10 @@
     "kennzeichen_vorgesehen: Wörter des Vokabulars (verbrauch-vectors.json kennzeichen), deren Wortlaut das erzeugende Paket festlegt. Bis dahin sind sie kein Satz dieses Vertrags.",
     "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; die Ebene bestimmt die Stellen, nie die Fläche. Kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
     "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es. Dieselbe Regel gilt für die Uhrzeit IN einem Kennzeichen (familie uhr, seit 1.1): „Rücksetzung 02:30 MEZ …“.",
+    "1.2 (additiv): die Einheit kVA (Anschluss-Scheinleistung) mit der Stelle der Leistung; Bilanz- und Netzanschluss-Sätze rufen zahl() an, statt selbst zu formatieren.",
     "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -356,7 +357,8 @@
       {"einheit": "kWh", "ebene": "jahr", "stellen": 0},
       {"einheit": "kW", "ebene": null, "stellen": 1},
       {"einheit": "%", "ebene": null, "stellen": 0},
-      {"einheit": "m³", "ebene": null, "stellen": 1}
+      {"einheit": "m³", "ebene": null, "stellen": 1},
+      {"einheit": "kVA", "ebene": null, "stellen": 1}
     ],
     "differenz_satz": "Summe der angezeigten Werte {summe} · Rundungsdifferenz {differenz}",
     "export": "CSV ungerundet, Punkt als Dezimalzeichen, Zeit ISO-8601 mit Offset"
@@ -396,8 +398,8 @@
     },
     {
       "stelle": "BilanzAbleitung.zahlDe (bilanz-vectors.json)",
-      "befund": "Die Zahlen der Bilanz-Sätze stehen mit Leerzeichen als Tausendertrenner und ungerundet (TAUSENDER_TRENNZEICHEN = \" \") — E11 verlangt Tausenderpunkt und feste Stellen je Ebene.",
-      "warum_so_aufgenommen": "Eigener Vertrag (AP-10); dort nicht angefasst. Die Bilanz-Kennzeichen (berechnet (…), nicht zugeordnet, unplausibel (negativ), saldiert, korrigiert (Version n)) sind nicht Teil dieser Liste."
+      "befund": "Erledigt in 1.2: die Zahlen der Bilanz-Sätze standen mit Leerzeichen als Tausendertrenner, ungerundet und mit normalem Leerzeichen vor der Einheit („mindestens 1 055 kWh“, Netzanschluss „vereinbart 550 kW“). BilanzAbleitung.zahlDe ist entfernt; rest/summe/periodenwert nehmen die Ebene der Periode und rufen zahl() an, NetzanschlussRegeln.kopfzeile ebenso (kW/kVA).",
+      "warum_so_aufgenommen": "Eigener Vertrag (AP-10), in 1.1 nur benannt. Die Bilanz-Kennzeichen (berechnet (…), nicht zugeordnet, unplausibel (negativ), saldiert, korrigiert (Version n)) sind nicht Teil dieser Liste."
     },
     {
       "stelle": "AP-08 F17 Anzeige",
@@ -519,6 +521,22 @@
       "why": "E11: m³ 1 Nachkommastelle — auch am Monat (die Anzeige in F17 schreibt „1 240 m³“, siehe befunde).",
       "eingang": {"wert": "1240.000", "einheit": "m³", "ebene": "monat"},
       "erwartet": {"verstoesse": [], "text": "1.240,0 m³"}
+    },
+    {
+      "name": "kVA eine Nachkommastelle (seit 1.2)",
+      "familie": "zahl",
+      "fall": "AP-10 F16",
+      "why": "E11: Leistung 1 Nachkommastelle — die Anschlussleistung NA-1 630 kVA ist Scheinleistung und folgt kW: „Anschluss 630,0 kVA“ (netzanschluss-vectors.json kopfzeile).",
+      "eingang": {"wert": "630", "einheit": "kVA", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "630,0 kVA"}
+    },
+    {
+      "name": "Bilanz-Tag: Tausenderpunkt und ganze kWh",
+      "familie": "zahl",
+      "fall": "AP-10 F5",
+      "why": "Die Summe am 04.11.2026 heißt „mindestens 1.055 kWh (MS-14 fehlt)“ (bilanz-vectors.json) — nicht mehr „1 055 kWh“ mit Leerzeichen; 1054,6 am Tag ist 1.055.",
+      "eingang": {"wert": "1054.6", "einheit": "kWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "1.055 kWh"}
     },
     {
       "name": "kein Wert ist ein Strich, nie 0",

@@ -473,16 +473,18 @@ public final class MessstelleFormelRegeln {
      * bei einem nicht vollständigen Eingang gar nicht („keine Werte“). Gerechnet wird in
      * {@link BilanzAbleitung} ({@code summe}, {@code rest}, {@code saldo}) — hier wird nur verzweigt.
      *
+     * @param zahlEbene die Ebene der Periode — sie bestimmt die Stellen des Kundensatzes (E11); für
+     *     {@code saldo} ohne Satz ohne Bedeutung
      * @param version die Version des berechneten Werts (&gt; 1 nach einer Korrektur eines Eingangs)
      * @param vermerke was an dieser Periode zusätzlich zu sagen ist (etwa „Stellung geändert (…)“) —
      *     hereingereicht, nie erraten; nur der {@code rest} trägt sie
      */
     public static Periodenwert periodenwert(
-            String typ, String art, String einheit, int version, List<String> vermerke,
+            String typ, String art, String einheit, String zahlEbene, int version, List<String> vermerke,
             List<Periodeneingang> eingaenge) {
         return switch (bekannterTyp(typ)) {
             case GEWICHTETE_SUMME -> {
-                BilanzAbleitung.SummeUrteil u = BilanzAbleitung.summe(einheit, eingaenge.stream()
+                BilanzAbleitung.SummeUrteil u = BilanzAbleitung.summe(einheit, zahlEbene, eingaenge.stream()
                         .map(e -> new BilanzAbleitung.Summand(e.messstelle(), e.menge(), e.zustand(),
                                 e.abdeckungProzent(), e.version(), e.kennzeichen(), e.vorzeichen(), e.faktor()))
                         .toList());
@@ -497,7 +499,7 @@ public final class MessstelleFormelRegeln {
                         .findFirst()
                         .orElse(null);
                 BilanzAbleitung.RestUrteil u =
-                        BilanzAbleitung.rest(hauptzaehler, einheit, version, vermerke, bilanz);
+                        BilanzAbleitung.rest(hauptzaehler, einheit, zahlEbene, version, vermerke, bilanz);
                 yield new Periodenwert(typ, u.menge(), u.zustand(), u.abdeckungProzent(), u.fehlend(),
                         u.kennzeichen(), u.kundensatz(), null, null);
             }

@@ -32,7 +32,7 @@ mit `ergebnis-zustand-vectors.json` und Schema.
 
 1. **Gerechnet ungerundet, gerundet nur angezeigt (E11).** `zahl(wert, einheit, ebene)` — die
    EBENE bestimmt die Stellen, nie die Fläche: kWh Viertelstunde/Stunde 1, Tag/Monat/Jahr 0; kW 1;
-   % 0; m³ 1. Kaufmännisch, Tausenderpunkt, geschütztes Leerzeichen U+00A0, Minus U+2212, kein Wert
+   % 0; m³ 1; kVA 1 (seit 1.2). Bilanz und Netzanschluss rufen `zahl` an. Kaufmännisch, Tausenderpunkt, geschütztes Leerzeichen U+00A0, Minus U+2212, kein Wert
    „—“. TS rundet den Dezimaltext (`dez.ts`), nie den Binärbruch. Export bleibt ungerundet mit
    Punkt. Eine Rundungsdifferenz wird genannt (`rundungsdifferenz`), nie in einen Teil gedrückt.
    Die alten Portal-Helfer (`energyLabel` ≥ 1 000 kWh → MWh, `fmtNum`) sind NICHT E11 — die
@@ -60,7 +60,7 @@ mit `ergebnis-zustand-vectors.json` und Schema.
 
 Block `befunde` der Vektor-Datei: „Zuwachs 337.600“ (Punkt, ohne Einheit — liest sich als 337 600;
 die Einheit kennt die Verdichtung von Tag/Monat/Jahr nicht), „Rechteck-Halten ≤ 2 × Kadenz“ (Methodenwort; der DB-CHECK prüft nur
-den Anfang), sechs Satzformen ohne Vokabular-Wort, Kennzeichen-Uhrzeiten fest in Europe/Berlin (MESZ/MEZ seit 1.1), `BilanzAbleitung.zahlDe` mit Leerzeichen-Tausendern, F17 „1 240 m³“ gegen E11
+den Anfang), sechs Satzformen ohne Vokabular-Wort, Kennzeichen-Uhrzeiten fest in Europe/Berlin (MESZ/MEZ seit 1.1), F17 „1 240 m³“ gegen E11
 „m³ 1 Nachkommastelle“, E10 „23 Stunden“ gelesen wie F14. Eine Umformulierung ist eine neue
 Fassung beider Vektor-Dateien (+ Python-Zwilling, `fruehere_fassungen` für gespeicherte Zeilen) — nicht still.
 „mit Ablesestände“ (Dativ) ist so in 1.1 erledigt.

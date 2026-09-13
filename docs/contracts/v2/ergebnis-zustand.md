@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 13.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 13.09.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -97,6 +97,7 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 | kW | 1 („96,5 kW“) — jede Ebene | | | | |
 | % | 0 („85 %“) — jede Ebene | | | | |
 | m³ | 1 („1.240,0 m³“) — jede Ebene | | | | |
+| kVA | 1 („630,0 kVA“) — jede Ebene; Anschluss-Scheinleistung = „Leistung“ in E11 (seit 1.2) | | | | |
 
 - Kaufmännisch (halbe Stelle von der Null weg, wie `BigDecimal.HALF_UP`): 96,45 kW → „96,5 kW“.
   Der TS-Zwilling rundet den **Dezimaltext** (`dez.ts`), nie den Binärbruch — `0.15` wird „0,2“.
@@ -160,7 +161,10 @@ ist. Die wichtigsten:
   freier Zeitraum) laden und bis `VerbrauchRegeln.uhr` durchreichen.
 - **Erledigt in 1.1:** „mit Ablesestände“ (Dativ) → „mit Ableseständen“, alte Form als frühere
   Fassung lesbar.
-- Die Bilanz-Sätze (`BilanzAbleitung.zahlDe`) schreiben Tausender mit Leerzeichen und ungerundet.
+- **Erledigt in 1.2:** die Bilanz- und Netzanschluss-Sätze schrieben „mindestens 1 055 kWh“ und
+  „vereinbart 550 kW“ (Leerzeichen-Tausender, ungerundet, normales Leerzeichen). `BilanzAbleitung.zahlDe`
+  ist entfernt; `rest`/`summe`/`periodenwert` nehmen die Ebene der Periode und rufen `zahl` an,
+  `NetzanschlussRegeln.kopfzeile` ebenso.
 - F17 zeigt „1 240 m³“ am Monat; der Vertrag folgt dem Wortlaut von E11 („1.240,0 m³“). E10
   schreibt „23 Stunden“; der Vertrag liest es wie F14 als „23 Stunden (Zeitumstellung)“.
 

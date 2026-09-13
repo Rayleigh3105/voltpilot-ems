@@ -50,8 +50,9 @@ genau eine Anlage je Tag.
    Bindung am VORTAG — nichts wird überschrieben. Eine zweite Bindung derselben Anlage am selben
    Tag ist `bindung_ueberlappt`; ein Anschluss, der an dem Tag schon an einer anderen Anlage hängt,
    ist `anschluss_belegt`.
-6. **Die Kopfzeile ZEIGT, sie prüft nicht.** „vereinbart 550 kW · Anschluss 630 kVA · Momentan
-   312,4 kW“ ist eine Anzeige; die Grenzprüfung ist AP-15. `grenze_geprueft` ist deshalb in jedem
+6. **Die Kopfzeile ZEIGT, sie prüft nicht.** „vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan
+   312,4 kW“ ist eine Anzeige (Zahlform aus [`ergebnis-zustand.md`](./ergebnis-zustand.md) §3, E11:
+   Leistung kW/kVA eine Stelle, U+00A0 vor der Einheit); die Grenzprüfung ist AP-15. `grenze_geprueft` ist deshalb in jedem
    Fall `false` — eine Fläche, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie
    trägt. Was fehlt, steht nicht da: ein fehlender Momentanwert wird nie zu „0 kW“.
 7. **Die Preisspalten ziehen NICHT mit (W9).** `site.max_feed_in_kw`, `site_supply_price` und die
