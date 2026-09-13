@@ -9448,6 +9448,39 @@ paths:
         "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/messstellen/{kennzeichen}/werte:
+    parameters:
+      - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-10 }, description: "Das Kennzeichen, das die Messstelle HEUTE trägt." }
+      - { name: raster, in: query, required: true, schema: { type: string, enum: [viertelstunde, stunde, tag, monat, jahr] } }
+      - { name: von, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Ein Tag (JJJJ-MM-TT, sein Beginn in der Zeitzone des Standorts) oder ein Zeitpunkt mit Versatz - auf einer Grenze des Rasters." }
+      - { name: bis, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Ein Tag = der LETZTE Tag einschließlich; ein Zeitpunkt mit Versatz = ausschließlich. Auf einer Grenze des Rasters." }
+      - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Nur Schritte dieser Version tragen eine Zahl; frühere Fassungen liest erst AP-08 IP-18." }
+    get:
+      tags: [messstellen]
+      summary: Die Werte je Messstelle - Menge bzw. Mittel/Min/Max je Schritt, nie ohne Zustand, Abdeckung und Kennzeichen.
+      description: >
+        Recht `messwerte.ansehen` (AP-08 §4.8, keine Durchsetzung bis AP-03). UEMS AP-08 IP-9.
+        Nur die FÜHRENDEN Bindungen der Hauptgröße liefern (eine Vergleichsquelle oder eine
+        Nebengröße nie). Gelesen wird aus den Speicherklassen: Viertelstunde
+        `messreihe_viertelstunde`, Tag `messreihe_tag`, Monat und Jahr `messreihe_periode` -
+        Tag, Monat und Jahr also aus den Periodenständen, nie als Summe der Viertelstunden. Die
+        Stunde ist je Schritt der freie Zeitraum der Verbrauchsregel über ihre Viertelstunden,
+        ihre Abdeckung die Summe ihrer Viertelstunden. Jedes Feld steht immer da; `null` heißt
+        unbekannt oder nicht gebildet, nie 0. `zustand` ist das Wort des Ergebnis-Zustands
+        (docs/contracts/v2/ergebnis-zustand.md), `fassung` vorläufig/endgültig - zwei Aussagen.
+        Eine Periode ohne gespeicherte Zeile hat `keine Werte` mit 0 von den erwarteten Werten
+        der Kadenz-Kette; liegen darunter schon Rohwerte oder Viertelstunden, sagt `grund`
+        `noch_nicht_gebildet`. Ein Schritt ohne Zustand nennt immer `grund`. Eine fremde
+        Messstelle ist 404, nie 403.
+      responses:
+        "200":
+          description: Die Werte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleWerte" }
+        "400": { $ref: "#/components/responses/MessstelleWerteAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/messstellen/{id}/prozesse:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9582,6 +9615,13 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/MessstelleFehler" }
+    MessstelleWerteAbgelehnt:
+      description: >
+        Die Anfrage an das Lese-Modell ist abgelehnt, nichts ist gelesen: `code`
+        `anfrage_ungueltig`, ein deutscher `message`-Satz, `feld` und `grund`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/MessstelleWerteFehler" }
     BezugsgroesseAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Code, Status und der
@@ -17654,6 +17694,99 @@ components:
         bis: { type: string, format: date, nullable: true }
         fassungen: { type: string, enum: [wirksam, alle] }
         werte: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseWert" } }
+    MessstelleWerte:
+      type: object
+      description: Das Lese-Modell „Werte je Messstelle“ (AP-08 IP-9). Jede Zahl steht in `messstelle.einheit`.
+      required: [messstelle, raster, von, bis, zeitzone, zeitzone_herkunft, version, quellen, werte]
+      properties:
+        messstelle: { $ref: "#/components/schemas/MessstelleWerteMessstelle" }
+        raster: { type: string, enum: [viertelstunde, stunde, tag, monat, jahr] }
+        von: { type: string, description: "ISO-8601 mit Versatz in der Zeitzone des Standorts." }
+        bis: { type: string, description: "ISO-8601 mit Versatz, ausschließlich." }
+        zeitzone: { type: string, enum: [Europe/Berlin, Europe/Vienna, Europe/Zurich] }
+        zeitzone_herkunft: { type: string, enum: [standort, unternehmen, vorgabe] }
+        version: { type: integer, nullable: true }
+        quellen: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteQuelle" } }
+        werte: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteWert" } }
+    MessstelleWerteMessstelle:
+      type: object
+      required: [id, kennzeichen, name, art, groesse, richtung, einheit, wertart]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string, nullable: true }
+        art: { type: string }
+        groesse: { type: string }
+        richtung: { type: string }
+        einheit: { type: string }
+        wertart: { type: string }
+    MessstelleWerteQuelle:
+      type: object
+      description: Eine FÜHRENDE Bindung der Hauptgröße, die den Zeitraum berührt.
+      required: [id, komponente, kanal, herleitung, anteil, gueltig_ab, gueltig_bis]
+      properties:
+        id: { type: string, format: uuid }
+        komponente: { type: string, format: uuid }
+        kanal: { type: string }
+        herleitung: { type: string, enum: [zaehlerstand, differenzen, integration, momentanwert] }
+        anteil: { type: string, enum: [positiv, negativ], nullable: true }
+        gueltig_ab: { type: string }
+        gueltig_bis: { type: string, nullable: true }
+    MessstelleWerteWert:
+      type: object
+      description: >
+        Ein Schritt des Rasters. `menge` trägt ein Zählerstand und eine Integration (nur mit
+        dem Kennzeichen „aus Leistung integriert“), `mittel`/`min`/`max` ein Momentanwert - nie
+        beides. Ungerundet; gerundet wird nur angezeigt (E11).
+      required: [von, bis, beschriftung, stunden, tagesdauer, menge, mittel, min, max, zustand, kennzeichen,
+        erhalten, erwartet, abdeckung_prozent, fassung, endgueltig_ab, version, gebildet_aus, quelle, grund, ereignisse]
+      properties:
+        von: { type: string }
+        bis: { type: string }
+        beschriftung: { type: string, nullable: true, description: "Viertelstunde und Stunde: die Beschriftung aus ErgebnisZustand.raster (E10, „02:00–03:00 MESZ“)." }
+        stunden: { type: integer, nullable: true, description: "Tag, Monat, Jahr: die Stunden der Periode (23 · 24 · 25 am Tag)." }
+        tagesdauer: { type: string, nullable: true, description: "Tag: ErgebnisZustand.tagesdauer („25 Stunden (Zeitumstellung)“), an einem 24-Stunden-Tag null." }
+        menge: { type: number, nullable: true }
+        mittel: { type: number, nullable: true }
+        min: { type: number, nullable: true }
+        max: { type: number, nullable: true }
+        zustand: { type: string, nullable: true, enum: [vollständig, unvollständig, keine Werte, mit Ersatzwert] }
+        kennzeichen: { type: array, items: { type: string }, description: "Die gespeicherten Sätze der geschlossenen Liste, Wortlaut und Reihenfolge wie im Vertrag." }
+        erhalten: { type: integer, nullable: true }
+        erwartet: { type: integer, nullable: true }
+        abdeckung_prozent: { type: integer, nullable: true, description: "Abgeschnitten, nie auf 100 gerundet." }
+        fassung: { type: string, nullable: true, enum: [vorlaeufig, endgueltig] }
+        endgueltig_ab: { type: string, nullable: true }
+        version: { type: integer, nullable: true }
+        gebildet_aus: { type: string, nullable: true, enum: [viertelstunde, zeitraum, tag, monat, jahr] }
+        quelle: { type: string, format: uuid, nullable: true, description: "Die Bindung, deren Reihe den Schritt beantwortet." }
+        grund:
+          type: string
+          nullable: true
+          enum: [keine_quelle, quelle_teilweise, anteil_nicht_gespeichert, berechnet, noch_nicht_gebildet,
+            ohne_menge_gespeichert, version_nicht_gespeichert]
+          description: Warum der Schritt keine Zahl trägt, obwohl die Anfrage gültig ist.
+        ereignisse: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteEreignis" } }
+    MessstelleWerteEreignis:
+      type: object
+      description: Ein Verweis auf eine Meldung des Ereignis-Vertrags - der Inhalt bleibt dort.
+      required: [id, art, von, bis]
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string }
+        von: { type: string }
+        bis: { type: string, nullable: true }
+    MessstelleWerteFehler:
+      type: object
+      required: [code, message, feld, grund]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig] }
+        message: { type: string }
+        feld: { type: string, enum: [raster, von, bis, version] }
+        grund:
+          type: string
+          enum: [fehlt, raster_unbekannt, form, nicht_im_raster, von_nicht_vor_bis, ausserhalb, zu_viele_schritte,
+            version_ungueltig]
     MessstelleFormelFehler:
       type: object
       description: >

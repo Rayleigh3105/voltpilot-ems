@@ -1466,6 +1466,57 @@
           "wo": "keine Zeile — die Tabellen lassen es nicht zu (V20260913104500: Werte append-only); V20260913120000 öffnet nur das Löschen einer Bezugsgröße OHNE Wert (M6)"
         }
       ]
+    },
+    {
+      "abschnitt": "AP-08 §4.8",
+      "titel": "Rechte (AP-03)",
+      "konzept": "UEMS AP-08 Verbrauch — report.md §4.8, abgenommen mit E1–E15 = A am 11.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Werte, Zustände, Kennzeichen, Versionen ansehen",
+          "wer": "Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer (Ansehen)",
+          "recht": "AP-03 Matrix „Messwerte ansehen“",
+          "kennungen": [
+            "messwerte.ansehen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Seit AP-08 IP-9 nennt `GET /api/v1/messstellen/{kennzeichen}/werte` die Kennung; die Durchsetzung bringt AP-03."
+        },
+        {
+          "handlung": "Ersatzwert erfassen / zurücknehmen",
+          "wer": "Bearbeiter (je Standort) · Energiemanager · Kundenadministrator — nie Unterstützer",
+          "recht": "AP-03 Z. 202",
+          "kennungen": [
+            "korrektur.erfassen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Route kommt mit AP-08 IP-13."
+        },
+        {
+          "handlung": "Korrektur vorschlagen (Ablesestände, Umklassifizierung, Wert berichtigen)",
+          "wer": "Bearbeiter · Energiemanager · Kundenadministrator",
+          "recht": "AP-03 Z. 202",
+          "kennungen": [
+            "korrektur.erfassen"
+          ],
+          "zuordnung": "zugeordnet",
+          "anmerkung": "Die Routen kommen mit AP-08 IP-12 ff."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Korrektur prüfen und freigeben — Energiemanager · Kundenadministrator; Bearbeiter nur, wenn Vier-Augen aus (E8); Ersteller ≠ Freigeber bei Vier-Augen an",
+          "wo": "noch keine Zeile — `korrektur.freigeben` entsteht mit AP-08 IP-15 (dieselbe Regel steht unter AP-09 §4.11)"
+        },
+        {
+          "wortlaut": "Vier-Augen-Einstellung ändern — Kundenadministrator (E8)",
+          "wo": "noch keine Zeile — `vieraugen.einstellen` entsteht mit AP-08 IP-15"
+        },
+        {
+          "wortlaut": "Rohwerte, Ereignisse, Korrekturen löschen — niemand (AP-07 E8/E11; Offboarding ausgenommen)",
+          "wo": "keine Zeile — die Tabellen lassen es nicht zu (`messreihe_ereignis` append-only; der Purge lehnt Messstellen-gebundene Reihen ab, AP-07 IP-11)"
+        }
+      ]
     }
   ]
 }

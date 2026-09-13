@@ -238,6 +238,99 @@ public class SpeicherklasseHistorie {
     }
 
     /**
+     * Eine Zeile je MONAT oder JAHR aus {@code messreihe_periode} (AP-08 IP-5) — für das Lese-Modell
+     * je Messstelle (AP-08 IP-9); der Verlauf fragt sie nicht. Die Menge ist die aus den
+     * Periodenständen (Monat aus Viertelstunden, Jahr aus Monaten), NIE eine Summe der Tage. Die
+     * Periode trägt keine Anker, keine Qualitätszähler und keinen Text — die bleiben leer, nie geraten.
+     *
+     * @param art {@code monat} oder {@code jahr}
+     */
+    public List<Zeile> perioden(UUID tenantId, UUID entityId, String messkanal, String art, Instant von,
+            Instant bis) {
+        if (!"monat".equals(art) && !"jahr".equals(art)) {
+            throw new IllegalArgumentException("eine Periode ist ein Monat oder ein Jahr: " + art);
+        }
+        String sql = "SELECT beginn bucket,wertart aggregation_kind,"
+                + "min_wert min_value,max_wert max_value,NULL::text last_text,"
+                + "erhalten::bigint samples,(erhalten<erwartet) has_gap,"
+                + "erhalten h_erhalten,erwartet h_erwartet,NULL::int h_good,NULL::int h_uncertain,"
+                + "NULL::int h_invalid,NULL::int h_stale,NULL::int h_device_error,"
+                + "zustand h_zustand,endgueltig_ab h_endgueltig_ab,version h_version,"
+                + "n_nachgeliefert h_nachgeliefert,NULL::text h_zustellart,NULL::timestamptz h_eingang,"
+                + "NULL::uuid h_geraet,NULL::uuid h_geraet_2,NULL::uuid h_box,NULL::uuid h_box_2,"
+                + "NULL::bigint h_fassung,NULL::text h_katalog,NULL::text h_rolle,"
+                + "stand_anfang h_stand_anfang,stand_ende h_stand_ende,menge_zustand h_menge_zustand,"
+                + "kennzeichen::text h_kennzeichen,energie h_energie,"
+                + "CASE WHEN wertart='gauge' THEN mittel WHEN wertart='counter' THEN menge END chart_value "
+                + "FROM messreihe_periode WHERE tenant_id=? AND entity_id=? AND messkanal=? AND art=? "
+                + "AND beginn>=? AND beginn<? ORDER BY beginn LIMIT " + HOECHSTENS_ZEILEN;
+        // `quelle` bleibt leer: sie ist ein Wort der Quellenwahl des Verlaufs (LesepfadQuelle), und
+        // die wählt Monat und Jahr nie.
+        return jdbc.query(sql, (rs, n) -> zeile(rs, null), tenantId, entityId, messkanal, art,
+                Timestamp.from(von), Timestamp.from(bis));
+    }
+
+    /**
+     * Die Ereignisse der Reihe als VERWEISE (AP-08 IP-9): je Ereignis seine Kennung, Art und Zeit —
+     * ungebündelt, damit ein Wert sagen kann, WELCHE Meldung ihn erklärt; der Inhalt bleibt im
+     * Ereignis-Vertrag. Dieselben Arten und dieselben drei Fallen wie {@link #ereignisse}
+     * ({@code aus_bestand} draußen, eine Fortschreibung ist kein zweites Ereignis, die Rücksetzung
+     * eines Überlaufs ist dieser Überlauf) und derselbe zweite Zweig für die Übergabe an der Datenquelle.
+     */
+    public List<Verweis> ereignisVerweise(UUID tenantId, UUID entityId, String messkanal, Instant von,
+            Instant bis) {
+        String sql = "WITH e AS (SELECT DISTINCT ON (ereignis_id) ereignis_id,art,"
+                + "zeit beginn,bis,entity_id,messkanal FROM messreihe_ereignis WHERE tenant_id=? "
+                + "AND NOT aus_bestand AND art IN (" + MARKER_ARTEN + ") AND ("
+                + "(entity_id=? AND (messkanal IS NULL OR messkanal=?)) OR (entity_id IS NULL AND "
+                + "data_source_id=(SELECT data_source_id FROM measurement_point WHERE tenant_id=? AND id=?))) "
+                + "AND zeit<=? AND COALESCE(bis,zeit)>=? "
+                + "ORDER BY ereignis_id,eingang DESC) "
+                + "SELECT ereignis_id,art,beginn,bis FROM e WHERE NOT (e.art='counter_reset' AND EXISTS ("
+                + "SELECT 1 FROM messreihe_ereignis u WHERE u.tenant_id=? AND u.entity_id=e.entity_id "
+                + "AND u.messkanal=e.messkanal AND u.art='counter_overflow' AND u.zeit=e.beginn)) "
+                + "ORDER BY beginn,ereignis_id LIMIT " + HOECHSTENS_ZEILEN;
+        return jdbc.query(sql, (rs, n) -> new Verweis(rs.getObject("ereignis_id", UUID.class), rs.getString("art"),
+                        rs.getTimestamp("beginn").toInstant(), instant(rs, "bis")),
+                tenantId, entityId, messkanal, tenantId, entityId, Timestamp.from(bis), Timestamp.from(von), tenantId);
+    }
+
+    /** Der Verweis auf ein Ereignis: Kennung, Art, Beginn und — bei einem Zeitraum — Ende. */
+    public record Verweis(UUID ereignisId, String art, Instant von, Instant bis) {}
+
+    /**
+     * Welche dieser Spannen schon Rohwerte oder Viertelstunden der Reihe tragen (AP-08 IP-9): eine
+     * Periode OHNE gespeicherte Zeile ist nur dann „keine Werte“, wenn auch darunter nichts liegt —
+     * sonst ist sie noch nicht gebildet (der nächste Lauf kommt). Ein Spiegel-Rohwert zählt nicht
+     * (der Viertelstunden-Lauf liest ihn auch nicht). Eine Abfrage für alle Spannen.
+     *
+     * @return die Beginne der Spannen, unter denen etwas liegt
+     */
+    public List<Instant> mitDaten(UUID tenantId, UUID entityId, String messkanal, List<Instant> beginne,
+            List<Instant> enden) {
+        if (beginne.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT s.von FROM unnest(?::timestamptz[], ?::timestamptz[]) AS s(von, bis) "
+                    + "WHERE EXISTS (SELECT 1 FROM messreihe_viertelstunde v WHERE v.tenant_id=? AND v.entity_id=? "
+                    + "AND v.messkanal=? AND v.intervall_beginn>=s.von AND v.intervall_beginn<s.bis) "
+                    + "OR EXISTS (SELECT 1 FROM device_measurement_sample r WHERE r.tenant_id=? AND r.entity_id=? "
+                    + "AND r.point_key=? AND r.time>=s.von AND r.time<s.bis AND r.role IS DISTINCT FROM 'spiegel') "
+                    + "ORDER BY s.von");
+            ps.setArray(1, con.createArrayOf("timestamptz", beginne.stream().map(Timestamp::from).toArray()));
+            ps.setArray(2, con.createArrayOf("timestamptz", enden.stream().map(Timestamp::from).toArray()));
+            ps.setObject(3, tenantId);
+            ps.setObject(4, entityId);
+            ps.setString(5, messkanal);
+            ps.setObject(6, tenantId);
+            ps.setObject(7, entityId);
+            ps.setString(8, messkanal);
+            return ps;
+        }, (rs, n) -> rs.getTimestamp(1).toInstant());
+    }
+
+    /**
      * Die Ereignisse der Reihe als GEBÜNDELTE Marken: je Art und Raster-Schritt eine Marke mit
      * ihrer Anzahl — damit ein Sprung in der Kurve erklärbar ist, ohne dass eine Flut von
      * Einzelmarken die Kurve zudeckt.
