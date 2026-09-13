@@ -467,6 +467,10 @@ class UemsIntervallMomentanwertTest {
     void derBestandsvergleichFaengtEineGeaenderteZeile() {
         Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
                 "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, UemsIntervallMomentanwertTest::rohwerteFinger, "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
+        Bestandsschutz.inhaltsprobe(root, UemsIntervallMomentanwertTest::werteFinger, "messreihe_tag",
+                "UPDATE messreihe_tag SET berechnet_am = berechnet_am + interval '1 second'");
     }
 
     @Test
@@ -794,8 +798,7 @@ class UemsIntervallMomentanwertTest {
     private static String werteFinger() {
         StringBuilder b = new StringBuilder();
         for (String tabelle : List.of("messreihe_viertelstunde", "messreihe_tag", "messreihe_periode")) {
-            b.append(root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') "
-                    + "FROM " + tabelle + " t", String.class)).append(';');
+            b.append(Bestandsschutz.inhalt(root, tabelle, null)).append(';');
         }
         return b.toString();
     }
@@ -805,8 +808,7 @@ class UemsIntervallMomentanwertTest {
     }
 
     private static String rohwerteFinger() {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') "
-                + "FROM device_measurement_sample t", String.class);
+        return Bestandsschutz.inhalt(root, "device_measurement_sample", null);
     }
 
     private static String letzteFassungVorDieser() {

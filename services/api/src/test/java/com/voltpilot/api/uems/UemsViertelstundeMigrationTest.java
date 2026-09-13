@@ -239,6 +239,13 @@ class UemsViertelstundeMigrationTest {
         assertThat(fingerVorher).containsKeys(BESTAND.toArray(String[]::new));
     }
 
+    /** Der Vergleich beißt noch: ein geänderter Messpunkt fällt auf, eine leere neue Spalte nicht. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.inhaltsprobe(root, UemsViertelstundeMigrationTest::fingerabdruck, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
+    }
+
     @Test
     void dieTabelleIstEineHypertableMitDreissigTageChunksUndZehnJahrenOhneKompression() {
         assertThat(root.queryForObject("SELECT time_interval FROM timescaledb_information.dimensions "
@@ -845,19 +852,14 @@ class UemsViertelstundeMigrationTest {
     }
 
     /**
-     * Je Bestandstabelle ein Wert über ihre Zeilen — jede Zeile als jsonb-Objekt OHNE ihre SQL-NULL-Spalten
-     * (dieselbe Zeilenform wie {@link Bestandsschutz}): eine spätere Migration, die eine überall leere
-     * Spalte ergänzt (AP-08 IP-7: {@code messstelle.anschlussleistung_kw}, {@code messstelle_quelle.anteil}),
-     * ändert keine Bestandszeile; ein Wert in einer Spalte bleibt eine Abweichung.
+     * Je Bestandstabelle ein Wert über ihre Zeilen ({@link Bestandsschutz#inhalt}): eine spätere Migration,
+     * die eine überall leere Spalte ergänzt (AP-08 IP-7: {@code messstelle.anschlussleistung_kw},
+     * {@code messstelle_quelle.anteil}), ändert keine Bestandszeile; ein Wert in einer Spalte bleibt eine Abweichung.
      */
     private static Map<String, String> fingerabdruck() {
-        String zeile = "(SELECT coalesce(jsonb_object_agg(e.key, e.value), '{}'::jsonb) "
-                + "FROM jsonb_each(to_jsonb(t)) e WHERE e.value <> 'null'::jsonb)::text";
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : BESTAND) {
-            aus.put(tabelle, root.queryForObject(
-                    "SELECT coalesce(md5(string_agg(" + zeile + ", '|' ORDER BY " + zeile + ")), 'leer') FROM "
-                            + tabelle + " t", String.class));
+            aus.put(tabelle, Bestandsschutz.inhalt(root, tabelle, null));
         }
         return aus;
     }

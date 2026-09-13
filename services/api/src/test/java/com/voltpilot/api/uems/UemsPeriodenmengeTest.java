@@ -432,6 +432,8 @@ class UemsPeriodenmengeTest {
     void derBestandsvergleichFaengtEineGeaenderteZeile() {
         Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
                 "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, UemsPeriodenmengeTest::rohwerteFinger, "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
     }
 
     @Test
@@ -716,8 +718,7 @@ class UemsPeriodenmengeTest {
 
     /** Die pünktlichen Rohwerte — der Nachzügler vom April kommt dazu, keine bestehende Zeile ändert sich. */
     private static String rohwerteFinger() {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') "
-                + "FROM device_measurement_sample t WHERE t.received_at < ?", String.class,
+        return Bestandsschutz.inhalt(root, "device_measurement_sample", "t.received_at < ?",
                 Timestamp.from(T_SPAETER));
     }
 

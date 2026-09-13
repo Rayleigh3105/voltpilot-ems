@@ -445,6 +445,8 @@ class UemsZaehlerbruecheTest {
     void derBestandsvergleichFaengtEineGeaenderteZeile() {
         Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
                 "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, UemsZaehlerbruecheTest::rohwerteFinger, "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
     }
 
     /** Die Migration: `ereignis` ist ein Grund beider Arbeitslisten, und die Deklaration antwortet LEER. */
@@ -778,8 +780,7 @@ class UemsZaehlerbruecheTest {
     }
 
     private static String rohwerteFinger() {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') "
-                + "FROM device_measurement_sample t", String.class);
+        return Bestandsschutz.inhalt(root, "device_measurement_sample", null);
     }
 
     private static String letzteFassungVorDieser() {
