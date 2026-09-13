@@ -84,6 +84,7 @@ def test_die_regeln_der_datei_sind_die_regeln_des_moduls():
     assert regeln["integration_halten_faktor"] == verbrauch.HALTEN_FAKTOR
     assert regeln["vergleich_nachkommastellen"] == verbrauch.NACHKOMMASTELLEN
     assert tuple(regeln["luecke_zeitraeume"]) == verbrauch.LUECKE_ZEITRAEUME
+    assert "JE ROHWERT" in regeln["anteil"]
     assert set(DOC["zustaende"]) >= {
         verbrauch.VOLLSTAENDIG,
         verbrauch.UNVOLLSTAENDIG,
@@ -116,6 +117,8 @@ def test_vektor(case: dict, erwartung: dict):
         erwartung["von"],
         erwartung["bis"],
         erwartung.get("ereignisse_zusatz", ()),
+        erwartung.get("anteil"),
+        erwartung.get("quelle"),
     )
     for feld in GERECHNET:
         if feld not in erwartung:
@@ -129,6 +132,42 @@ def test_vektor(case: dict, erwartung: dict):
                 assert float(gerechnet) == pytest.approx(float(soll), abs=1e-9), f"{feld}: {case['why']}"
         else:
             assert gerechnet == soll, f"{feld}: {case['why']}"
+
+
+def test_erst_mitteln_dann_zuordnen_ist_falsch():
+    """AP-08 IP-7, E15 Option C als benannte Gegenprobe: das Mittel des ganzen Vorzeichen-Werts,
+    danach nach seinem Vorzeichen zugeordnet, ergibt genau die verworfene Zahl der Datei — und weicht
+    von beiden Anteil-Erwartungen ab, die JE ROHWERT geteilt sind."""
+    faelle = [c for c in CASES if "gegenprobe" in c]
+    assert [c["name"] for c in faelle] == ["f19-richtung"]
+    case = faelle[0]
+    g = case["gegenprobe"]
+    reihe = case["input"]["reihen"][g["reihe"]]
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    von, bis = datetime.fromisoformat(g["von"]), datetime.fromisoformat(g["bis"])
+    mittel = verbrauch.momentanwerte(verbrauch.rohwerte(reihe), von, bis, kadenz)["mittel"]
+    assert float(mittel) == pytest.approx(g["mittel_vorzeichen"])
+    falsch = {
+        "positiv": verbrauch.anteil_des_werts(mittel, "positiv"),
+        "negativ": verbrauch.anteil_des_werts(mittel, "negativ"),
+    }
+    assert float(falsch["positiv"]) == pytest.approx(g["falsch_bezug"])
+    assert float(falsch["negativ"]) == pytest.approx(g["falsch_abgabe"])
+    anteile = [e for e in case["expected"] if e.get("anteil")]
+    assert len(anteile) == 2
+    for e in anteile:
+        assert float(falsch[e["anteil"]]) != pytest.approx(e["mittel"]), e["name"]
+
+
+def test_der_anteil_wird_je_rohwert_geteilt_und_das_vorzeichen_nie_zweimal():
+    """max(0, P) / max(0, −P) je Wert; ein schon vorzeichenrichtiger Rohwert wird nicht noch einmal gedreht."""
+    t = datetime(2026, 10, 20, 10, 7, tzinfo=timezone.utc)
+    werte = [verbrauch.Rohwert(t, Decimal("-10.0"))]
+    assert verbrauch.anteil_je_rohwert(werte, "positiv")[0].wert == 0
+    assert verbrauch.anteil_je_rohwert(werte, "negativ")[0].wert == Decimal("10.0")
+    assert verbrauch.anteil_je_rohwert(werte, None) == werte
+    with pytest.raises(ValueError):
+        verbrauch.anteil_je_rohwert(werte, "gesamt")
 
 
 # ------------------------------------------------- Die Eigenschaften, die die Regel tragen

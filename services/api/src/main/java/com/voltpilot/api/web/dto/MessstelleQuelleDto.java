@@ -24,7 +24,9 @@ public final class MessstelleQuelleDto {
      * {@code POST …/quellen}. {@code gueltig_ab} auf die Minute mit Versatz (E2), fehlend = jetzt;
      * die Vergangenheit ist erlaubt und wird „rückwirkend“ markiert, die Zukunft „angekündigt“.
      * {@code zweck} nur und immer bei {@code vergleich}. {@code endstand_vorgaenger} nur, wenn die
-     * neue offene führende Quelle die laufende beendet (Regel 2).
+     * neue offene führende Quelle die laufende beendet (Regel 2). {@code anteil} (AP-08 IP-7):
+     * {@code positiv} | {@code negativ} liest nur diesen Teil eines Vorzeichen-Werts, fehlend = der
+     * ganze Wert.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Binden(
@@ -37,7 +39,17 @@ public final class MessstelleQuelleDto {
             OffsetDateTime gueltigBis,
             Stand anfangsstand,
             Stand endstandVorgaenger,
-            String grund) {}
+            String grund,
+            String anteil) {
+
+        /** Eine Bindung ohne Anteil — die Form von vor AP-08 IP-7. */
+        public Binden(GroesseWahl groesse, UUID komponente, String kanal, String rolle, String zweck,
+                OffsetDateTime gueltigAb, OffsetDateTime gueltigBis, Stand anfangsstand, Stand endstandVorgaenger,
+                String grund) {
+            this(groesse, komponente, kanal, rolle, zweck, gueltigAb, gueltigBis, anfangsstand, endstandVorgaenger,
+                    grund, null);
+        }
+    }
 
     /** {@code PUT …/quellen/{qid}/beenden}: das Ende auf die Minute (fehlend = jetzt), optional der Endstand. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -51,7 +63,8 @@ public final class MessstelleQuelleDto {
      * Eine Quellenbindung. {@code status} gegen „jetzt“ (geplant · gilt · beendet);
      * {@code rueckwirkend} sagt, ob der Beginn beim Eintragen schon vorbei war, {@code herkunft}
      * woher sie stammt: {@code null} = von Hand gebunden, {@code bestandsuebernahme} = aus der
-     * Vorschlagsliste des Standorts übernommen (IP-16, E6).
+     * Vorschlagsliste des Standorts übernommen (IP-16, E6). {@code anteil}: {@code null} = der ganze
+     * Wert, sonst der Teil eines Vorzeichen-Werts, den die Bindung liest (AP-08 IP-7).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Quelle(
@@ -76,7 +89,8 @@ public final class MessstelleQuelleDto {
             boolean rueckwirkend,
             String herkunft,
             OffsetDateTime eingetragenAm,
-            String eingetragenVon) {}
+            String eingetragenVon,
+            String anteil) {}
 
     /**
      * Wie weit das eingetragene „gültig ab“ bzw. „gültig bis“ von jetzt entfernt ist (E2), auf die

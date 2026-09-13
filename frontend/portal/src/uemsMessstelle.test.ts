@@ -9,6 +9,7 @@ import {
   GROESSEN_KATALOG,
   HERLEITUNGEN,
   HINWEISE,
+  hoechstzuwachsJeKadenz,
   KANAL_EINHEITEN,
   KENNZEICHEN_MAX_ZEICHEN,
   KENNZEICHEN_MIN_ZEICHEN,
@@ -19,6 +20,8 @@ import {
   MEDIEN,
   MEDIEN_WAEHLBAR,
   PASSUNG_GRUENDE,
+  ANTEILE,
+  ANTEIL_RICHTUNGEN,
   RUECKWIRKUNG_ARTEN,
   STELLUNGEN,
   STELLUNG_GRUENDE,
@@ -154,11 +157,15 @@ const bindungEingang = (i: Json): BindungEingang => ({
     anfangsstand: stand(i.neu.anfangsstand),
     // Fehlt das Feld, speist der Einbau bis auf Weiteres (der Stand vor IP-13).
     geraetBis: i.neu.geraet_bis ?? null,
+    // Fehlen die Felder, ist es eine Bindung ohne Anteil (der Stand vor AP-08 IP-7).
+    kanalDirection: i.neu.kanal_direction ?? null,
+    anteil: i.neu.anteil ?? null,
   },
   kanalFuehrendAnderswo: i.kanal_fuehrend_anderswo.map((f: Json) => ({
     messstelle: f.messstelle,
     gueltigAb: f.gueltig_ab,
     gueltigBis: f.gueltig_bis,
+    anteil: f.anteil ?? null,
   })),
 });
 
@@ -297,6 +304,8 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
     expect(vectors.stellungen).toEqual([...STELLUNGEN]);
     expect(vectors.stellung_gruende).toEqual([...STELLUNG_GRUENDE]);
     expect(vectors.passung_gruende).toEqual([...PASSUNG_GRUENDE]);
+    expect(vectors.anteile).toEqual([...ANTEILE]);
+    expect(vectors.anteil_richtungen).toEqual(ANTEIL_RICHTUNGEN);
     expect(vectors.hinweise).toEqual([...HINWEISE]);
     expect(vectors.rueckwirkung_arten).toEqual([...RUECKWIRKUNG_ARTEN]);
     expect(vectors.vorschlag_fluesse).toEqual([...VORSCHLAG_FLUESSE]);
@@ -348,6 +357,13 @@ describe('Messstellen-Vertrag — die Fälle', () => {
     expect(groessePruefen(c.input.medium, c.input.groesse, c.input.art)).toEqual(c.expected);
   });
 
+  it.each(faelle('anschlussleistung'))('Anschlussleistung: $name', (c) => {
+    const ist = hoechstzuwachsJeKadenz(c.input.anschlussleistung_kw, c.input.einheit, c.input.kadenz_s);
+    const soll = c.expected.hoechstzuwachs_je_kadenz;
+    if (soll === null) expect(ist).toBeNull();
+    else expect(ist).toBeCloseTo(soll, 9);
+  });
+
   it.each(faelle('lebenszyklus'))('Lebenszyklus: $name', (c) => {
     const r = lebenszyklus(lebenszyklusEingang(c.input));
     expect({
@@ -360,7 +376,18 @@ describe('Messstellen-Vertrag — die Fälle', () => {
 
   it.each(faelle('passung'))('Passung: $name', (c) => {
     const k = c.input.kanal;
-    expect(passung(c.input.medium, c.input.ziel, k.groesse, k.richtung, k.einheit, k.wertart)).toEqual(c.expected);
+    expect(
+      passung(
+        c.input.medium,
+        c.input.ziel,
+        k.groesse,
+        k.richtung,
+        k.einheit,
+        k.wertart,
+        k.direction ?? null,
+        c.input.anteil ?? null,
+      ),
+    ).toEqual(c.expected);
   });
 
   it.each(faelle('vorschlag'))('Vorschlag Bestand: $name', (c) => {

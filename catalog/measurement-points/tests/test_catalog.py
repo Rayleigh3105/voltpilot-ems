@@ -4,6 +4,7 @@ import collections
 import copy
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,7 +19,7 @@ TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
 from cataloglib import canonical_json_bytes  # noqa: E402
-from generate import build_catalog, generate_deye_points, load_deye_document  # noqa: E402
+from generate import build_catalog, generate_builtin_inverter, generate_deye_points, load_deye_document  # noqa: E402
 from jsonschema_validator import SchemaValidationError, validate_json_schema  # noqa: E402
 from update_deye_key_lock import reconcile_deye_key_lock  # noqa: E402
 from validate import validate_catalog  # noqa: E402
@@ -414,6 +415,139 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(len(unknown), 5)
         self.assertTrue(all(point["label_de"] is None for point in unknown))
         self.assertGreater(sum(point["semantic_status"] == "vendor_label_only" for point in self.points), 0)
+
+
+class CounterRangeTest(unittest.TestCase):
+    """Z6-Deklaration am Katalog (AP-08 IP-7): `wertebereich_modul`/`laeuft_ueber`."""
+
+    COUNTER = "sunspec.model_203.totwhimp"
+    OTHER_COUNTER = "sunspec.model_203.totwhexp"
+    GAUGE = "sunspec.model_203.phv"
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.catalog = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+        cls.schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
+        by_key = {point["point_key"]: point for point in cls.catalog["points"]}
+        assert by_key[cls.COUNTER]["aggregation_kind"] == "counter"
+        assert by_key[cls.OTHER_COUNTER]["aggregation_kind"] == "counter"
+        assert by_key[cls.GAUGE]["aggregation_kind"] != "counter"
+
+    def mutated(self, mutate) -> dict:
+        document = copy.deepcopy(self.catalog)
+        mutate({point["point_key"]: point for point in document["points"]})
+        return document
+
+    def validation_error(self, mutate) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            path.write_bytes(canonical_json_bytes(self.mutated(mutate)))
+            with self.assertRaises(ValueError) as raised:
+                validate_catalog(path)
+        return str(raised.exception)
+
+    def test_declarations_are_on_counters_only_and_never_null(self) -> None:
+        for point in self.catalog["points"]:
+            declared = [field for field in ("wertebereich_modul", "laeuft_ueber") if field in point]
+            if declared:
+                self.assertEqual(point["aggregation_kind"], "counter", point["point_key"])
+                self.assertTrue(all(point[field] is not None for field in declared), point["point_key"])
+
+    def test_declared_counter_validates_and_the_listing_names_the_rest(self) -> None:
+        def declare(points):
+            points[self.COUNTER]["wertebereich_modul"] = 4294967296
+            points[self.COUNTER]["laeuft_ueber"] = True
+            points[self.OTHER_COUNTER]["wertebereich_modul"] = 65536
+        document = self.mutated(declare)
+        validate_json_schema(document, self.schema)
+        counters = sum(point["aggregation_kind"] == "counter" for point in document["points"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            path.write_bytes(canonical_json_bytes(document))
+            validate_catalog(path)
+            result = subprocess.run(
+                [sys.executable, str(TOOLS / "validate.py"), str(path), "--ohne-wertebereich"],
+                check=False, cwd=ROOT, capture_output=True, text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = result.stdout.splitlines()
+        self.assertEqual(
+            lines[-1],
+            f"{counters - 2} of {counters} counter points without wertebereich_modul "
+            f"in catalog {document['catalog_version']}",
+        )
+        rows = [line.split("\t") for line in lines[:-1]]
+        self.assertEqual(len(rows), counters - 2)
+        self.assertEqual(rows, sorted(rows, key=lambda row: (row[0], row[1])))
+        listed = {row[1] for row in rows}
+        self.assertNotIn(self.COUNTER, listed)
+        self.assertNotIn(self.OTHER_COUNTER, listed)
+        self.assertIn(["goe.api_v2", "goe.api_v2.eto", "http_api_key", "-"], rows)
+
+    def test_listing_of_the_committed_catalog_names_every_undeclared_counter(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(TOOLS / "validate.py"), "--ohne-wertebereich"],
+            check=True, cwd=ROOT, capture_output=True, text=True,
+        )
+        points = self.catalog["points"]
+        counters = sum(point["aggregation_kind"] == "counter" for point in points)
+        undeclared = sum(point["aggregation_kind"] == "counter" and "wertebereich_modul" not in point
+                         for point in points)
+        self.assertEqual(len(result.stdout.splitlines()), undeclared + 1)
+        self.assertTrue(result.stdout.splitlines()[-1].startswith(f"{undeclared} of {counters} counter points"))
+
+    def test_validator_and_schema_reject_dishonest_ranges(self) -> None:
+        def field(key, **values):
+            def mutate(points):
+                points[key].update(values)
+            return mutate
+
+        cases = [
+            (field(self.COUNTER, laeuft_ueber=True),
+             f"{self.COUNTER}: laeuft_ueber needs wertebereich_modul", "required property 'wertebereich_modul'"),
+            (field(self.GAUGE, wertebereich_modul=65536),
+             f"{self.GAUGE}: wertebereich_modul only on a counter point", "expected constant 'counter'"),
+            (field(self.GAUGE, wertebereich_modul=65536, laeuft_ueber=False),
+             f"{self.GAUGE}: wertebereich_modul/laeuft_ueber only on a counter point", "expected constant 'counter'"),
+            (field(self.COUNTER, wertebereich_modul=1),
+             f"{self.COUNTER}: wertebereich_modul must be an integer >= 2", "below minimum 2"),
+            (field(self.COUNTER, wertebereich_modul=65536.0),
+             f"{self.COUNTER}: wertebereich_modul must be an integer >= 2", "expected type"),
+            (field(self.COUNTER, wertebereich_modul=True),
+             f"{self.COUNTER}: wertebereich_modul must be an integer >= 2", "expected type"),
+            (field(self.COUNTER, wertebereich_modul=None),
+             f"{self.COUNTER}: wertebereich_modul must be an integer >= 2", "expected type"),
+            (field(self.COUNTER, wertebereich_modul=65536, laeuft_ueber="ja"),
+             f"{self.COUNTER}: laeuft_ueber must be boolean", "expected type"),
+        ]
+        for mutate, validator_message, schema_message in cases:
+            with self.subTest(validator_message=validator_message, schema_message=schema_message):
+                self.assertIn(validator_message, self.validation_error(mutate))
+                with self.assertRaisesRegex(SchemaValidationError, re.escape(schema_message)):
+                    validate_json_schema(self.mutated(mutate), self.schema)
+
+    def test_builtin_source_passes_a_declaration_through_only_when_present(self) -> None:
+        item = {
+            "selector": "/status#eto", "group": "Zähler", "label_de": "Gesamterzeugung",
+            "label_source": "eto", "unit": "Wh", "value_type": "uint32", "signed": False,
+            "scale": {"kind": "none"}, "aggregation_kind": "counter", "cadence_s": 300,
+        }
+        source_document = {"schema_version": "1.0", "families": [{
+            "family": "selbstbau_test", "source_url": "https://example.invalid/", "source_revision": "r1",
+            "points": [
+                {**item, "key": "declared", "wertebereich_modul": 65536, "laeuft_ueber": True},
+                {**item, "key": "undeclared", "selector": "/status#eto2"},
+            ],
+        }]}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "source.json"
+            path.write_text(json.dumps(source_document), encoding="utf-8")
+            points = {point["point_key"]: point for point in generate_builtin_inverter(
+                {"path": str(path), "source_sha256": "0" * 64})}
+        declared = points["selbstbau_test.declared"]
+        self.assertEqual((declared["wertebereich_modul"], declared["laeuft_ueber"]), (65536, True))
+        self.assertNotIn("wertebereich_modul", points["selbstbau_test.undeclared"])
+        self.assertNotIn("laeuft_ueber", points["selbstbau_test.undeclared"])
 
 
 if __name__ == "__main__":

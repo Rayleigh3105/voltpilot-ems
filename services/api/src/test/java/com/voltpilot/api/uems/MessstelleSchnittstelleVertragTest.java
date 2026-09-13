@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -10,6 +11,7 @@ import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -48,6 +50,12 @@ class MessstelleSchnittstelleVertragTest {
         vertrag = MAPPER.readTree(CONTRACTS.resolve("v2").resolve("messstelle.schema.json").toFile());
     }
 
+    /** Der Name im JSON: {@code @JsonProperty} der Komponente, sonst ihr Name (AP-08 IP-7: `anschlussleistung_kw`). */
+    private static String jsonName(RecordComponent c) {
+        JsonProperty p = c.getAccessor().getAnnotation(JsonProperty.class);
+        return p == null ? c.getName() : p.value();
+    }
+
     @Test
     void dieFehlerCodesSindDieDesVertragsUndDieDerSchnittstelle() {
         List<String> openapi = liste(schema("MessstelleFehler"), "properties", "code", "enum");
@@ -67,8 +75,10 @@ class MessstelleSchnittstelleVertragTest {
 
     @Test
     void dieAntwortIstDieMessstelleDesVertragsPlusVierFelderDerSchnittstelle() {
+        // Jede Eigenschaft des Vertrags — die Pflichtfelder UND die optionalen, die die Antwort immer
+        // trägt (AP-08 IP-7: `anschlussleistung_kw`, leer = nicht deklariert).
         Set<String> soll = new LinkedHashSet<>();
-        vertrag.at("/$defs/messstelle/required").forEach(n -> soll.add(n.asText()));
+        vertrag.at("/$defs/messstelle/properties").fieldNames().forEachRemaining(soll::add);
         soll.addAll(NUR_SCHNITTSTELLE);
 
         Set<String> dto = new LinkedHashSet<>();
@@ -92,9 +102,11 @@ class MessstelleSchnittstelleVertragTest {
     @Test
     void dieAnfragenTragenGenauDieFelderDerOpenApi() {
         assertThat(map(schema("MessstelleAnlegen"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(MessstelleDto.Anlegen.class.getRecordComponents()).map(c -> c.getName()).toList());
+                Arrays.stream(MessstelleDto.Anlegen.class.getRecordComponents()).map(MessstelleSchnittstelleVertragTest::jsonName)
+                        .toList());
         assertThat(map(schema("MessstelleBearbeiten"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(MessstelleDto.Bearbeiten.class.getRecordComponents()).map(c -> c.getName()).toList());
+                Arrays.stream(MessstelleDto.Bearbeiten.class.getRecordComponents())
+                        .map(MessstelleSchnittstelleVertragTest::jsonName).toList());
         assertThat(map(schema("MessstelleUebergang"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(MessstelleDto.Uebergang.class.getRecordComponents()).map(c -> c.getName()).toList());
         // Der Größen-Katalog der OpenAPI benutzt dieselben Wörter wie der Vertrag.

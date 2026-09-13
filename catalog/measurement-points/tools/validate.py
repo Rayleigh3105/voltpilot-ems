@@ -16,6 +16,7 @@ from cataloglib import (
     POINT_KEY_RE,
     ROOT,
     RUNTIME_CATALOG_VERSION,
+    ZAEHLER_DEKLARATION_FIELDS,
     read_json,
     runtime_projection,
     sha256,
@@ -202,6 +203,47 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
         errors.check(point.get("unit") is None, f"{prefix}: go-e unit must stay unknown instead of inferred")
     validate_address(errors, point, prefix)
     validate_semantics(errors, point, prefix)
+    validate_counter_range(errors, point, prefix)
+
+
+def validate_counter_range(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
+    """Z6-Deklaration: Wertebereich und Überlauf stehen nur am Zähler und werden nie geraten.
+
+    Fehlen beide Felder, ist nichts deklariert. Ein null oder ein Vorgabewert ist keine
+    Deklaration und wird abgelehnt — so bleibt „nicht deklariert“ genau eine Form.
+    """
+    declared = [field for field in ZAEHLER_DEKLARATION_FIELDS if field in point]
+    if not declared:
+        return
+    kind = point.get("aggregation_kind")
+    errors.check(
+        kind == "counter",
+        f"{prefix}: {'/'.join(declared)} only on a counter point (aggregation_kind {kind!r})",
+    )
+    if "wertebereich_modul" in point:
+        modul = point["wertebereich_modul"]
+        errors.check(
+            isinstance(modul, int) and not isinstance(modul, bool) and modul >= 2,
+            f"{prefix}: wertebereich_modul must be an integer >= 2, got {modul!r} (absent = not declared, never null)",
+        )
+    if "laeuft_ueber" in point:
+        errors.check(
+            isinstance(point["laeuft_ueber"], bool),
+            f"{prefix}: laeuft_ueber must be boolean, got {point['laeuft_ueber']!r}",
+        )
+        errors.check(
+            "wertebereich_modul" in point,
+            f"{prefix}: laeuft_ueber needs wertebereich_modul (a wrap without a declared range is guessed)",
+        )
+
+
+def counter_points_without_range(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Die Zähler ohne deklarierten Wertebereich, stabil nach Familie und Point-Key."""
+    return sorted(
+        (point for point in document["points"]
+         if point.get("aggregation_kind") == "counter" and "wertebereich_modul" not in point),
+        key=lambda point: (point["family"], point["point_key"]),
+    )
 
 
 def validate_semantics(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
@@ -416,8 +458,21 @@ def validate_catalog(path: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("catalog", type=Path, nargs="?", default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--ohne-wertebereich", action="store_true",
+        help="after validation, list every counter point without wertebereich_modul "
+             "(family, point_key, source_kind, unit; tab-separated) and a count; a report, exit 0",
+    )
     args = parser.parse_args()
     document = validate_catalog(args.catalog)
+    if args.ohne_wertebereich:
+        counters = sum(point.get("aggregation_kind") == "counter" for point in document["points"])
+        without = counter_points_without_range(document)
+        for point in without:
+            print("\t".join((point["family"], point["point_key"], point["source_kind"], point["unit"] or "-")))
+        print(f"{len(without)} of {counters} counter points without wertebereich_modul "
+              f"in catalog {document['catalog_version']}")
+        return 0
     print(f"validated {len(document['points'])} points in catalog {document['catalog_version']}")
     return 0
 

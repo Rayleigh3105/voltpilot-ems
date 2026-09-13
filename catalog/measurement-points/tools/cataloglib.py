@@ -29,6 +29,10 @@ EDGE_FIELDS = (
 )
 # ... und was der Writer je Punkt nachschlägt (die Metadaten-Migration).
 RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
+# Z6-Deklaration eines Zählers (AP-08 IP-7, README „Wertebereich eines Zählers“): optional, nur
+# am Zähler, nur aus einer Quelle übernommen. Fehlt ein Feld, ist nichts deklariert — der
+# Generator schreibt nie null oder einen Vorgabewert.
+ZAEHLER_DEKLARATION_FIELDS = ("wertebereich_modul", "laeuft_ueber")
 
 
 def runtime_projection(catalog: dict[str, Any], version: str) -> list[dict[str, Any]]:

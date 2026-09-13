@@ -22,6 +22,7 @@ import com.voltpilot.api.uems.MessstelleZuordnungRepository.OrtZeile;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.StellungZeile;
 import com.voltpilot.api.uems.MessstelleZuordnungRepository.Tagesintervall;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
@@ -204,12 +205,16 @@ public class MessstelleService {
 
         String name = text(a.name());
         String notiz = text(a.notiz());
+        BigDecimal anschlussleistung = anschlussleistung(a.anschlussleistungKw());
         Instant jetzt = minute(uhr.instant());
         UUID id = schreibe(kennzeichen, null, () -> transaktion.execute(s -> {
             Messstelle m = messstellen.anlegen(new NeueMessstelle(tenant, kennzeichen, name, a.art(),
                     a.medium(), haupt, notiz));
             for (Groesse g : neben) {
                 messstellen.nebengroesseHinzufuegen(m.id(), g).orElseThrow();
+            }
+            if (anschlussleistung != null) {
+                messstellen.anschlussleistungSetzen(m.id(), anschlussleistung);
             }
             Map<String, Object> neu = new LinkedHashMap<>();
             neu.put("kennzeichen", m.kennzeichen());
@@ -219,6 +224,9 @@ public class MessstelleService {
             neu.put("hauptgroesse", groesseAlsMap(haupt));
             neu.put("nebengroessen", neben.stream().map(MessstelleService::groesseAlsMap).toList());
             neu.put("notiz", notiz);
+            if (anschlussleistung != null) {
+                neu.put("anschlussleistung_kw", anschlussleistung);
+            }
             if (herkunft != null) {
                 neu.put("herkunft", herkunft);
             }
@@ -246,17 +254,25 @@ public class MessstelleService {
 
         String name = text(b.name());
         String notiz = text(b.notiz());
+        BigDecimal anschlussleistung = anschlussleistung(b.anschlussleistungKw());
         Map<String, Object> alt = new LinkedHashMap<>();
         Map<String, Object> neu = new LinkedHashMap<>();
         vergleiche("kennzeichen", m.kennzeichen(), kennzeichen, alt, neu);
         vergleiche("name", m.name(), name, alt, neu);
         vergleiche("notiz", m.notiz(), notiz, alt, neu);
+        boolean anschlussleistungNeu = m.anschlussleistungKw() == null ? anschlussleistung != null
+                : anschlussleistung == null || m.anschlussleistungKw().compareTo(anschlussleistung) != 0;
+        if (anschlussleistungNeu) {
+            alt.put("anschlussleistung_kw", m.anschlussleistungKw());
+            neu.put("anschlussleistung_kw", anschlussleistung);
+        }
         if (neu.isEmpty()) {
             return darstellung(m);
         }
         Instant jetzt = minute(uhr.instant());
         schreibe(kennzeichen, m.kennzeichen(), () -> transaktion.execute(s -> {
-            if (!messstellen.bearbeiten(id, kennzeichen, name, notiz)) {
+            if (!messstellen.bearbeiten(id, kennzeichen, name, notiz)
+                    || anschlussleistungNeu && !messstellen.anschlussleistungSetzen(id, anschlussleistung)) {
                 throw zustandPasstNicht(finde(id), "wurde soeben archiviert.");
             }
             protokoll(id, "bearbeitet", alt, neu, jetzt, false, null, wer);
@@ -497,6 +513,15 @@ public class MessstelleService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
     }
 
+    /** Die Anschlussleistung (AP-08 IP-7): optional, sonst größer 0 — {@code null} bleibt „nicht deklariert“. */
+    private static BigDecimal anschlussleistung(BigDecimal kw) {
+        if (kw != null && kw.signum() <= 0) {
+            throw MessstelleAbgelehnt.anfrage("anschlussleistung_kw", "Die Anschlussleistung ist größer als "
+                    + "0 kW — ohne Angabe bleibt sie leer.");
+        }
+        return kw;
+    }
+
     private MessstelleDto.Messstelle darstellung(Messstelle m) {
         // Die Formel (AP-10) einer berechneten Messstelle geht ehrlich in den Lebenszyklus ein:
         // ohne Term ist sie Entwurf (fehlt: formel), mit unauflösbarem Term (fehlt: eingaenge).
@@ -552,7 +577,8 @@ public class MessstelleService {
                 fuehrend(alle, h), vergleich(alle, h), nebengroessen,
                 wirksam(orte).stream().map(MessstelleService::ortZuordnung).toList(),
                 wirksam(stellungen).stream().map(MessstelleService::stellungZuordnung).toList(), null,
-                z.lebenszyklus(), z.fehlt(), m.notiz(), zeit(m.angehaltenAb()), zeit(m.archiviertAm()));
+                z.lebenszyklus(), z.fehlt(), m.notiz(), zeit(m.angehaltenAb()), zeit(m.archiviertAm()),
+                m.anschlussleistungKw());
     }
 
     private static List<Quelle> derGroesse(List<Quelle> alle, Groesse g, String rolle) {
@@ -565,7 +591,8 @@ public class MessstelleService {
     private static List<MessstelleDto.Quellenbindung> fuehrend(List<Quelle> alle, Groesse g) {
         return derGroesse(alle, g, "fuehrend").stream().map(q -> new MessstelleDto.Quellenbindung(
                 q.entityId().toString(), q.kanal(), q.geraet(), q.einbau(), q.kanalWertart(),
-                zeit(q.gueltigAb()), zeit(q.gueltigBis()), stand(q.anfangsstand()), stand(q.endstand()))).toList();
+                zeit(q.gueltigAb()), zeit(q.gueltigBis()), stand(q.anfangsstand()), stand(q.endstand()),
+                q.anteil())).toList();
     }
 
     /** Die Vergleichsquellen einer Größe in der Form von {@code $defs/vergleichsbindung}. */

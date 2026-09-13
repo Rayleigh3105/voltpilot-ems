@@ -104,6 +104,7 @@ class VerbrauchVectorsTest {
         List<String> zeitraeume = new ArrayList<>();
         regeln.path("luecke_zeitraeume").forEach(z -> zeitraeume.add(z.asText()));
         assertThat(zeitraeume).isEqualTo(VerbrauchRegeln.LUECKE_ZEITRAEUME);
+        assertThat(regeln.path("anteil").asText()).contains("JE ROHWERT");
     }
 
     /**
@@ -165,7 +166,9 @@ class VerbrauchVectorsTest {
                 dezimal(reihe.path("faktor"), BigDecimal.ONE),
                 dezimal(reihe.path("wertebereich_modul"), null),
                 dezimal(reihe.path("hoechstzuwachs_je_kadenz"), null),
-                reihe.path("integrieren").asBoolean(false));
+                reihe.path("integrieren").asBoolean(false),
+                erwartung.hasNonNull("anteil") ? erwartung.path("anteil").asText() : null,
+                erwartung.hasNonNull("quelle") ? erwartung.path("quelle").asText() : null);
 
         zahl(why + " · menge", erwartung.path("menge"), ist.menge());
         zahl(why + " · mittel", erwartung.path("mittel"), ist.mittel());
@@ -315,6 +318,45 @@ class VerbrauchVectorsTest {
         }
         assertThat(ist).as(was).isNotNull();
         assertThat(ist).as(was).usingComparator(BigDecimal::compareTo).isEqualTo(soll.decimalValue());
+    }
+
+    /**
+     * AP-08 IP-7, E15 Option C als benannte Gegenprobe: ERST MITTELN, DANN NACH VORZEICHEN ZUORDNEN
+     * IST FALSCH. Das Mittel des ganzen Werts ergibt genau die Zahl der Datei (−10,0 → nur Abgabe
+     * 10,0) — und sie weicht von beiden Anteil-Erwartungen ab, die je Rohwert geteilt sind.
+     */
+    @Test
+    void erstMittelnDannZuordnenIstFalsch() throws Exception {
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            JsonNode g = fall.path("gegenprobe");
+            if (g.isMissingNode()) {
+                continue;
+            }
+            JsonNode reihe = fall.path("input").path("reihen").path(g.path("reihe").asText());
+            Instant von = VerbrauchRegeln.zeit(g.path("von").asText());
+            Instant bis = VerbrauchRegeln.zeit(g.path("bis").asText());
+            Duration kadenz = Duration.ofSeconds(reihe.path("kadenz_s").asLong());
+            BigDecimal mittel = VerbrauchRegeln.momentanwerte(rohwerte(reihe), von, bis, kadenz, false).mittel();
+            assertThat(mittel).isEqualByComparingTo(g.path("mittel_vorzeichen").decimalValue());
+            BigDecimal falschBezug = VerbrauchRegeln.anteilDesWerts(mittel, VerbrauchRegeln.ANTEIL_POSITIV);
+            BigDecimal falschAbgabe = VerbrauchRegeln.anteilDesWerts(mittel, VerbrauchRegeln.ANTEIL_NEGATIV);
+            assertThat(falschBezug).isEqualByComparingTo(g.path("falsch_bezug").decimalValue());
+            assertThat(falschAbgabe).isEqualByComparingTo(g.path("falsch_abgabe").decimalValue());
+            int anteile = 0;
+            for (JsonNode e : fall.path("expected")) {
+                if (!e.hasNonNull("anteil")) {
+                    continue;
+                }
+                anteile++;
+                BigDecimal falsch = VerbrauchRegeln.ANTEIL_POSITIV.equals(e.path("anteil").asText())
+                        ? falschBezug : falschAbgabe;
+                assertThat(falsch).as(e.path("name").asText() + ": die verworfene Rechnung darf nicht stimmen")
+                        .isNotEqualByComparingTo(e.path("mittel").decimalValue());
+            }
+            assertThat(anteile).as("die Gegenprobe steht neben beiden Anteilen").isEqualTo(2);
+            return;
+        }
+        throw new AssertionError("kein Fall mit gegenprobe — F19 trägt sie (AP-08 IP-7)");
     }
 
     // ------------------------------------------------------------ Die Vektor-Form lesen

@@ -24,7 +24,8 @@
         "elektrische_stellung": { "type": "array", "items": { "$ref": "#/$defs/stellungZuordnung" }, "description": "Wo die Messstelle im elektrischen Baum steht, tagesgenau gültig. Berechnete und nicht-elektrische Messstellen tragen höchstens die Stellung „keine“." },
         "kadenz_s": { "type": ["integer", "null"], "minimum": 1, "description": "Wie oft ein Wert erwartet wird, in Sekunden — abgeleitet aus der führenden Quelle. Leer, wenn keine Quelle einen Takt vorgibt (abgelesen oder berechnet)." },
         "lebenszyklus": { "$ref": "#/$defs/lebenszyklus" },
-        "notiz": { "type": ["string", "null"], "description": "Freie Notiz des Kunden, etwa der Zählerplatz." }
+        "notiz": { "type": ["string", "null"], "description": "Freie Notiz des Kunden, etwa der Zählerplatz." },
+        "anschlussleistung_kw": { "type": ["number", "null"], "exclusiveMinimum": 0, "description": "Optional (AP-08 IP-7): die Anschlussleistung am Messort in kW. Daraus der größte plausible Zuwachs eines Energie-Zählerstands je Kadenz (Z6, Regel `anschlussleistung`) — die Messstellen-Seite der Überlauf-Deklaration. Fehlt oder leer = nicht deklariert, nie geraten." }
       }
     },
 
@@ -113,7 +114,8 @@
         "gueltig_ab": { "$ref": "#/$defs/zeitpunkt", "description": "Ab wann diese Quelle gilt, auf die Minute." },
         "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann; leer heißt „bis auf Weiteres“. Die nächste Quelle beginnt genau hier, oder es bleibt eine sichtbare Lücke." },
         "anfangsstand": { "$ref": "#/$defs/stand", "description": "Der Stand des Zählers zu Beginn, wenn er abgelesen wurde." },
-        "endstand": { "$ref": "#/$defs/stand", "description": "Der Stand des Zählers am Ende, wenn er abgelesen wurde." }
+        "endstand": { "$ref": "#/$defs/stand", "description": "Der Stand des Zählers am Ende, wenn er abgelesen wurde." },
+        "anteil": { "anyOf": [{ "$ref": "#/$defs/anteil" }, { "type": "null" }], "description": "AP-08 IP-7 (E15): liest die Bindung nur den positiven (Bezug) oder nur den negativen Anteil (Abgabe) eines Vorzeichen-Werts, steht er hier — die Bindung sagt selbst, welchen Anteil sie speist. Geteilt wird je Rohwert, nie je Mittelwert. Fehlt oder leer = der ganze Wert." }
       }
     },
     "vergleichsbindung": {
@@ -177,7 +179,7 @@
       "type": "object",
       "additionalProperties": false,
       "description": "Die geteilte Vektor-Datei messstelle-vectors.json: Vokabular, Größen-Katalog, Fehlertabelle und die Fälle, gegen die beide Zwillinge laufen.",
-      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "fehler", "hinweise", "rueckwirkung_arten", "vorschlag_fluesse", "vorschlag_rollen", "vorschlag_gruende", "vorschlag_hinweise", "vorschlag_leer", "attribut_kanaele", "attribut_praefix", "cases"],
+      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "kennzeichen_regel", "medien", "medien_waehlbar", "groessen_katalog", "kanal_einheiten", "lebenszyklus", "fehlt", "bindung_status", "herleitungen", "vergleich_zwecke", "stellungen", "stellung_gruende", "passung_gruende", "anteile", "anteil_richtungen", "fehler", "hinweise", "rueckwirkung_arten", "vorschlag_fluesse", "vorschlag_rollen", "vorschlag_gruende", "vorschlag_hinweise", "vorschlag_leer", "attribut_kanaele", "attribut_praefix", "cases"],
       "properties": {
         "_comment": { "type": "array", "items": { "type": "string" }, "description": "Die Regeln in Prosa — dieselben wie in messstelle.md." },
         "schema_version": { "type": "string", "const": "1.0", "description": "Fassung der Vektor-Datei." },
@@ -213,6 +215,15 @@
         "stellungen": { "type": "array", "items": { "$ref": "#/$defs/stellung" }, "description": "Das Vokabular der elektrischen Stellung." },
         "stellung_gruende": { "type": "array", "items": { "$ref": "#/$defs/stellungGrund" }, "description": "Warum eine Stellung abgelehnt wird, in der Reihenfolge der Prüfung." },
         "passung_gruende": { "type": "array", "items": { "$ref": "#/$defs/passungGrund" }, "description": "Warum ein Messwert nicht zur Größe passt, in der Reihenfolge der Prüfung." },
+        "anteile": { "type": "array", "items": { "$ref": "#/$defs/anteil" }, "description": "Das Vokabular `anteil` der Quellenbindung (AP-08 IP-7, E15); kein Anteil ist leer = der ganze Wert." },
+        "anteil_richtungen": {
+          "type": "object",
+          "description": "Regel 7, Ausnahme „Anteil“ (AP-08 E15, W8): je Katalogwort eines Vorzeichen-Werts die Richtung, die sein positiver und sein negativer Anteil speist. Ein Katalogwort, das fehlt, hat keinen Anteil.",
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["positiv", "negativ"],
+            "properties": { "positiv": { "$ref": "#/$defs/richtung" }, "negativ": { "$ref": "#/$defs/richtung" } }
+          }
+        },
         "fehler": { "type": "array", "items": { "$ref": "#/$defs/fehlerEintrag" }, "description": "Die Fehlertabelle: Code, Status und wer prüft." },
         "hinweise": { "type": "array", "items": { "$ref": "#/$defs/hinweisCode" }, "description": "Hinweise, die das Speichern nicht verhindern." },
         "rueckwirkung_arten": { "type": "array", "items": { "$ref": "#/$defs/rueckwirkungArt" }, "description": "Wo ein Zeitpunkt gegen „jetzt“ steht, in dieser Reihenfolge (E2)." },
@@ -234,6 +245,7 @@
             "groesse": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallGroesse" } },
             "lebenszyklus": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallLebenszyklus" } },
             "passung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallPassung" } },
+            "anschlussleistung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallAnschlussleistung" } },
             "bindung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallBindung" } },
             "zeitstrahl": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallZeitstrahl" } },
             "stellung": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fallStellung" } },
@@ -282,7 +294,8 @@
     "vorschlagLeer": { "type": "string", "enum": ["alle_zugeordnet", "keine_komponente"], "description": "Warum die Liste leer ist: alles übernommen, oder es gibt nichts zu übernehmen." },
     "herleitung": { "type": "string", "enum": ["zaehlerstand", "differenzen", "integration", "momentanwert"], "description": "Zählerstand wie gelesen · Menge aus den Differenzen eines Zählerstands · Menge aus einer Leistung integriert (gekennzeichnet) · Momentanwert wie gelesen." },
     "stellungGrund": { "type": "string", "enum": ["nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst", "fremde_anlage", "zyklus"], "description": "Warum eine Stellung abgelehnt wird." },
-    "passungGrund": { "type": "string", "enum": ["wertart", "groesse", "einheit", "richtung"], "description": "Woran ein Messwert an der Größe scheitert." },
+    "passungGrund": { "type": "string", "enum": ["wertart", "groesse", "einheit", "richtung", "anteil"], "description": "Woran ein Messwert an der Größe scheitert; `anteil` (AP-08 IP-7): ein Anteil an einem Messwert, der kein Vorzeichen-Wert ist, oder an einem Zählerstand." },
+    "anteil": { "type": "string", "enum": ["positiv", "negativ"], "description": "Welchen Teil eines Vorzeichen-Werts eine Quellenbindung liest — je Rohwert max(0, P) bzw. max(0, −P), vor jeder Verdichtung (AP-08 E15). Kein Anteil = der ganze Wert." },
     "groesseGrund": { "type": "string", "enum": ["groesse", "medium", "einheit", "richtung", "wertart"], "description": "Woran eine Größe am Katalog scheitert." },
     "fehlerCode": { "type": "string", "enum": ["kennzeichen_format", "kennzeichen_belegt", "groesse_ungueltig", "medium_ohne_quelle", "vergleich_ohne_zweck", "quelle_passt_nicht", "kanal_bereits_fuehrend", "zeitraum_ungueltig", "zeitpunkt_vor_vorgaenger", "bindung_ueberlappt", "hauptzaehler_vorhanden", "stellung_ungueltig", "anteile_summe", "ort_ungueltig", "kein_geraet_zum_zeitpunkt", "bindung_bereits_beendet"], "description": "Ein Fehler-Code." },
     "hinweisCode": { "type": "string", "enum": ["ablesestand_pruefen"], "description": "Ein Hinweis-Code." },
@@ -503,25 +516,28 @@
                 "geraet": { "anyOf": [{ "$ref": "#/$defs/verweis" }, { "type": "null" }], "description": "Das Gerät, dessen Einbau die Komponente zu Beginn speist; leer (mit dem Einbau): keine Speisung zu diesem Zeitpunkt." },
                 "einbau": { "anyOf": [{ "$ref": "#/$defs/verweis" }, { "type": "null" }] },
                 "kanal_groesse": { "type": "string", "description": "Was der Messwert misst — aus dem Messwert-Katalog." },
-                "kanal_richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "type": "null" }], "description": "Leer, wenn der Katalog keine EINE Richtung kennt — der Vorzeichen-Wert eines Zweirichtungszählers (import_export); seine Aufteilung ist Sache von AP-08." },
+                "kanal_richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "type": "null" }], "description": "Leer, wenn der Katalog keine EINE Richtung kennt — der Vorzeichen-Wert eines Zweirichtungszählers (import_export); er bindet nur mit `anteil`." },
                 "kanal_einheit": { "type": "string" },
                 "kanal_wertart": { "$ref": "#/$defs/kanalWertart" },
                 "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
                 "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" },
                 "endstand_vorgaenger": { "$ref": "#/$defs/stand" },
                 "anfangsstand": { "$ref": "#/$defs/stand" },
-                "geraet_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann dieser Einbau die Komponente speist; fehlt oder leer heißt „bis auf Weiteres“." }
+                "geraet_bis": { "$ref": "#/$defs/zeitpunkt_offen", "description": "Bis wann dieser Einbau die Komponente speist; fehlt oder leer heißt „bis auf Weiteres“." },
+                "kanal_direction": { "type": ["string", "null"], "description": "Das Katalogwort `direction` des Messwerts (import_export …); nur mit `anteil` gelesen. Fehlt = leer." },
+                "anteil": { "anyOf": [{ "$ref": "#/$defs/anteil" }, { "type": "null" }], "description": "Der Teil des Vorzeichen-Werts, den die Bindung liest (AP-08 IP-7). Fehlt oder leer = der ganze Wert." }
               }
             },
             "kanal_fuehrend_anderswo": {
               "type": "array",
-              "description": "Wo derselbe Messwert schon eine ANDERE Messstelle führend speist.",
+              "description": "Wo derselbe Messwert schon eine ANDERE Messstelle führend speist — je Anteil (AP-08 E15).",
               "items": {
                 "type": "object", "additionalProperties": false, "required": ["messstelle", "gueltig_ab", "gueltig_bis"],
                 "properties": {
                   "messstelle": { "type": "string" },
                   "gueltig_ab": { "$ref": "#/$defs/zeitpunkt" },
-                  "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" }
+                  "gueltig_bis": { "$ref": "#/$defs/zeitpunkt_offen" },
+                  "anteil": { "anyOf": [{ "$ref": "#/$defs/anteil" }, { "type": "null" }], "description": "Fehlt oder leer = der ganze Wert — er schließt jeden Anteil aus." }
                 }
               }
             }
@@ -675,9 +691,33 @@
       "required": ["groesse", "richtung", "einheit", "wertart"],
       "properties": {
         "groesse": { "type": "string", "description": "Was der Messwert misst — offen, denn der Katalog kennt mehr als die Messgrößen." },
-        "richtung": { "$ref": "#/$defs/richtung" },
+        "richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "type": "null" }], "description": "Leer beim Vorzeichen-Wert (kein EINE Richtung)." },
+        "direction": { "type": "string", "description": "Das Katalogwort `direction` (AP-08 IP-7); nur mit `anteil` gelesen." },
         "einheit": { "type": "string", "description": "Einheit des Messwerts, wie der Katalog sie nennt." },
         "wertart": { "$ref": "#/$defs/kanalWertart" }
+      }
+    },
+    "fallAnschlussleistung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "why", "input", "expected"],
+      "description": "AP-08 IP-7: der Höchstzuwachs je Kadenz aus der Anschlussleistung einer Messstelle — Anschlussleistung × Kadenz, in der Einheit des Zählerstands, auf 3 Stellen AUFgerundet (eine Grenze darf einen echten Zuwachs nie abschneiden). Leer ohne Anschlussleistung oder ohne elektrische Energie-Einheit.",
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "type": "string" },
+        "input": {
+          "type": "object", "additionalProperties": false, "required": ["anschlussleistung_kw", "einheit", "kadenz_s"],
+          "properties": {
+            "anschlussleistung_kw": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+            "einheit": { "type": "string", "description": "Die Einheit des Zählerstands." },
+            "kadenz_s": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false, "required": ["hoechstzuwachs_je_kadenz"],
+          "properties": { "hoechstzuwachs_je_kadenz": { "type": ["number", "null"] } }
+        }
       }
     },
     "fallPassung": {
@@ -693,7 +733,8 @@
           "properties": {
             "medium": { "$ref": "#/$defs/medium" },
             "ziel": { "$ref": "#/$defs/groesse" },
-            "kanal": { "$ref": "#/$defs/kanalArt" }
+            "kanal": { "$ref": "#/$defs/kanalArt" },
+            "anteil": { "anyOf": [{ "$ref": "#/$defs/anteil" }, { "type": "null" }], "description": "Ausnahme „Anteil“ (AP-08 IP-7). Fehlt oder leer = der ganze Wert." }
           }
         },
         "expected": {

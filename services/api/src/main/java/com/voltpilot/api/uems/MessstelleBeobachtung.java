@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.QuelleZeile;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
 
@@ -55,7 +56,7 @@ final class MessstelleBeobachtung {
         MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
                 e.zustand().code(), satz(e, einbau), MessstelleService.zeit(e.seit()),
                 fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau);
-        return new Ergebnis(b, wert(werte, einheit));
+        return new Ergebnis(b, wert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
     }
 
     /**
@@ -70,12 +71,18 @@ final class MessstelleBeobachtung {
                 : e.text();
     }
 
-    /** Der letzte gute Wert; {@code null}, solange es keinen gibt — nie eine 0. */
-    private static MessstelleDto.RegisterWert wert(Werte werte, String einheit) {
+    /**
+     * Der letzte gute Wert; {@code null}, solange es keinen gibt — nie eine 0. Liest die Bindung einen
+     * Anteil (AP-08 IP-7), ist der Wert der Anteil DIESES Rohwerts ({@link VerbrauchRegeln#anteilDesWerts}):
+     * −10,0 kW an K-3 zeigt MS-01 als 0,0 kW Bezug und MS-02 als 10,0 kW Abgabe.
+     */
+    private static MessstelleDto.RegisterWert wert(Werte werte, String einheit, String anteil) {
         if (werte == null || werte.letzterGuterWert() == null) {
             return null;
         }
-        return new MessstelleDto.RegisterWert(werte.zahl(), werte.text(), einheit,
+        Double zahl = anteil == null || werte.zahl() == null ? werte.zahl()
+                : VerbrauchRegeln.anteilDesWerts(BigDecimal.valueOf(werte.zahl()), anteil).doubleValue();
+        return new MessstelleDto.RegisterWert(zahl, werte.text(), einheit,
                 MessstelleService.zeit(werte.letzterGuterWert()));
     }
 }

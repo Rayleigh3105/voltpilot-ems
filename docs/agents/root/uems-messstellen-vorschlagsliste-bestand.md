@@ -22,7 +22,7 @@ Migration `V20260911310000` (nur die Spalte `messstelle_quelle.herkunft`). Bewei
   der Ladestand ist NEBENGRÖSSE des Speicher-Flusses derselben Komponente. Alles andere steht mit
   Grund unter `ausgelassen` — `attribut_kanal` (`soc_source_code`, Namensraum `bms_`, Grenzen,
   Freigaben), `abgeleitet` (Haus), `vergleich_kandidat` (die Netzleistung am Wechselrichter zum
-  Hauptzähler, E3), `vorzeichen_wert` (`import_export` wartet auf AP-08), `gleicher_fluss`,
+  Hauptzähler, E3), `vorzeichen_wert` (`import_export` — keine eigene Messstelle, sein Anteil kommt von Hand an Bezug und Abgabe, AP-08 IP-7), `gleicher_fluss`,
   `passt_nicht` (Regel 7), `ohne_messkanal`, `ohne_geraet`, `keine_messgroesse`, `ohne_richtung`,
   `weitere_groesse`.
 - **Die Stellung kommt aus der Topologie, nie aus einem Namen:** maßgebliche Netzmessung =

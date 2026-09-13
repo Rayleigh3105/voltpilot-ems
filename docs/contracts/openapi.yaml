@@ -8346,10 +8346,12 @@ paths:
         wird in der Reihenfolge des Vertrags (docs/contracts/v2/messstelle.md §5):
         Medium (422 `medium_ohne_quelle`) → Zweck (400 `vergleich_ohne_zweck`) →
         Passung Regel 7 (422 `quelle_passt_nicht` mit `grund` wertart · groesse ·
-        einheit · richtung; ein Vorzeichen-Wert wie die Wirkleistung am
-        Zweirichtungszähler hat keine Richtung und wartet auf AP-08) → Zeitraum (400
+        einheit · richtung · anteil; ein Vorzeichen-Wert wie die Wirkleistung am
+        Zweirichtungszähler hat keine Richtung — er bindet nur mit `anteil`: positiv an
+        Bezug, negativ an Abgabe, AP-08 IP-7) → Zeitraum (400
         `zeitraum_ungueltig`) → Gerät zum Zeitpunkt → Messwert führt schon eine andere
-        Messstelle (409 `kanal_bereits_fuehrend`) → vor dem Beginn der Messstelle (422
+        Messstelle (409 `kanal_bereits_fuehrend`, je Anteil: der positive und der negative
+        Anteil führen je eine Messstelle, der ganze Wert schließt jeden aus) → vor dem Beginn der Messstelle (422
         `zeitpunkt_vor_vorgaenger`) → Überlappung derselben Größe und Rolle, beim
         Vergleich desselben Messwerts (409 `bindung_ueberlappt`). Vergleichsquellen
         stehen überlappend nebeneinander; Lücken sind erlaubt. Eine neue offene
@@ -16466,7 +16468,7 @@ components:
         die Stufe.
       required: [id, schema_version, kennzeichen, name, art, medium, hauptgroesse, fuehrende_quelle,
         vergleichsquellen, nebengroessen, orte, elektrische_stellung, kadenz_s, lebenszyklus, fehlt,
-        notiz, angehalten_ab, archiviert_am]
+        notiz, angehalten_ab, archiviert_am, anschlussleistung_kw]
       properties:
         id: { type: string, format: uuid }
         schema_version: { type: string, enum: ["1.0"] }
@@ -16512,6 +16514,7 @@ components:
         notiz: { type: string, nullable: true }
         angehalten_ab: { type: string, format: date-time, nullable: true, description: "Auf die Minute, Versatz Europe/Berlin." }
         archiviert_am: { type: string, format: date-time, nullable: true, description: "Auf die Minute, Versatz Europe/Berlin." }
+        anschlussleistung_kw: { type: number, nullable: true, description: "Additiv (AP-08 IP-7): die Anschlussleistung am Messort; daraus der Höchstzuwachs je Kadenz (Z6). null = nicht deklariert." }
     MessstelleListe:
       type: object
       description: >
@@ -16794,6 +16797,7 @@ components:
         gueltig_bis: { type: string, format: date-time, nullable: true }
         anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
         endstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
+        anteil: { type: string, nullable: true, enum: [positiv, negativ, null], description: "Additiv (AP-08 IP-7): positiv/negativ eines Vorzeichen-Werts; leer = der ganze Wert." }
     MessstelleVergleichsbindung:
       type: object
       description: "Eine Vergleichsquelle in der Form von $defs/vergleichsbindung des Messstellen-Vertrags."
@@ -16832,6 +16836,7 @@ components:
         anfangsstand: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }] }
         endstand_vorgaenger: { nullable: true, allOf: [{ $ref: "#/components/schemas/MessstelleStand" }], description: "Nur, wenn die neue offene führende Quelle die laufende beendet (Regel 2)." }
         grund: { type: string, nullable: true, description: "Frei; steht im Änderungsprotokoll." }
+        anteil: { type: string, nullable: true, enum: [positiv, negativ, null], description: "AP-08 IP-7 (E15): nur den positiven (Bezug) oder nur den negativen Anteil (Abgabe) eines Vorzeichen-Werts lesen — geteilt je Rohwert, nie je Mittelwert. Fehlend = der ganze Wert. Ein anderes Wort ist 400." }
     MessstelleQuelleBeenden:
       type: object
       additionalProperties: false
@@ -16875,6 +16880,7 @@ components:
         herkunft: { type: string, nullable: true, enum: [bestandsuebernahme, null], description: "Woher die Bindung stammt: leer = von Hand gebunden, `bestandsuebernahme` = aus der Vorschlagsliste des Standorts übernommen (IP-16, E6)." }
         eingetragen_am: { type: string, format: date-time }
         eingetragen_von: { type: string }
+        anteil: { type: string, nullable: true, enum: [positiv, negativ, null], description: "Additiv (AP-08 IP-7): der Teil des Vorzeichen-Werts, den die Bindung liest; leer = der ganze Wert." }
     MessstelleQuelleRueckwirkung:
       type: object
       description: "Wie weit das eingetragene „gültig ab“ bzw. „gültig bis“ von jetzt entfernt ist, auf die Minute (E2)."
@@ -17033,6 +17039,7 @@ components:
           description: "Je (Größe, Richtung) einmal und nie die Hauptgröße."
           items: { $ref: "#/components/schemas/MessGroesse" }
         notiz: { type: string, nullable: true }
+        anschlussleistung_kw: { type: number, nullable: true, exclusiveMinimum: 0, description: "Optional (AP-08 IP-7), größer 0; sonst 400." }
     MessstelleBearbeiten:
       type: object
       additionalProperties: false
@@ -17041,6 +17048,7 @@ components:
         kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$" }
         name: { type: string, nullable: true }
         notiz: { type: string, nullable: true }
+        anschlussleistung_kw: { type: number, nullable: true, exclusiveMinimum: 0, description: "Optional (AP-08 IP-7); die ganze Menge wie die übrigen Felder — fehlend = leer." }
     MessstelleUebergang:
       type: object
       additionalProperties: false
@@ -17687,7 +17695,7 @@ components:
         `stellung_ungueltig` 422 (`grund`, `tag`, `bestehend`, `kette` oder
         `betroffen`) und `hauptzaehler_vorhanden` 409 (`bestehend`, `tag`); aus der
         Quellenbindung (IP-13) `medium_ohne_quelle` 422, `vergleich_ohne_zweck` 400,
-        `quelle_passt_nicht` 422 (`grund` wertart · groesse · einheit · richtung, `kanal`),
+        `quelle_passt_nicht` 422 (`grund` wertart · groesse · einheit · richtung · anteil, `kanal`),
         `zeitraum_ungueltig` 400, `kein_geraet_zum_zeitpunkt` 422 (`zeitpunkt`,
         `komponente`), `kanal_bereits_fuehrend` 409 (`bestehende_messstelle`),
         `bindung_ueberlappt` 409 (`bestehend`) und `bindung_bereits_beendet` 409

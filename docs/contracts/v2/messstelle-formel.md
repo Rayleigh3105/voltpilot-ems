@@ -101,8 +101,8 @@ ist sie sofort katalogkonform:
   kennt (z. B. ein Netto einer Größe ohne `richtungslos`), ist das ebenfalls `groessen_gemischt`
   (Grund `richtung`).
 - Ein Messwert **ohne Vertrags-Richtung** (ein Vorzeichen-Wert `import_export`, oder ein Kanal,
-  dem der Katalog keine Richtung gibt) ist kein Term — seine Aufteilung wartet auf AP-08 (wie im
-  Messstellen-Vertrag §5).
+  dem der Katalog keine Richtung gibt) ist kein Term — sein Anteil (Messstellen-Vertrag §5, seit
+  AP-08 IP-7 an der Quellenbindung) ist als Term-Feld `anteil` noch benannt abgelehnt (§1.1).
 
 ### 2.1 Die Ergebnis-Richtung je Typ (AP-10 E1)
 

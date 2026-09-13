@@ -78,8 +78,20 @@ export const STELLUNG_GRUENDE = [
 export type StellungGrund = (typeof STELLUNG_GRUENDE)[number];
 
 /** Woran ein Messwert an der Größe scheitert — in der Reihenfolge der Prüfung. */
-export const PASSUNG_GRUENDE = ['wertart', 'groesse', 'einheit', 'richtung'] as const;
+export const PASSUNG_GRUENDE = ['wertart', 'groesse', 'einheit', 'richtung', 'anteil'] as const;
 export type PassungGrund = (typeof PASSUNG_GRUENDE)[number];
+
+/** Das Vokabular `anteil` der Quellenbindung (AP-08 IP-7, E15); kein Anteil ist `null`. */
+export const ANTEILE = ['positiv', 'negativ'] as const;
+export type Anteil = (typeof ANTEILE)[number];
+
+/**
+ * Regel 7, Ausnahme „Anteil“ (AP-08 E15, W8): welche Richtung der Anteil eines Vorzeichen-Werts
+ * speist — je Katalogwort. Ein Katalogwort, das hier fehlt, hat keinen Anteil.
+ */
+export const ANTEIL_RICHTUNGEN: Readonly<Record<string, Readonly<Record<Anteil, string>>>> = {
+  import_export: { positiv: 'Bezug', negativ: 'Abgabe' },
+};
 
 export type GroesseGrund = 'groesse' | 'medium' | 'einheit' | 'richtung' | 'wertart';
 
@@ -425,7 +437,7 @@ export interface NeueBindung {
   geraet: string | null;
   einbau: string | null;
   kanalGroesse: string | null;
-  /** `null`, wenn der Katalog keine EINE Vertrags-Richtung kennt (Vorzeichen-Wert `import_export` — AP-08). */
+  /** `null`, wenn der Katalog keine EINE Vertrags-Richtung kennt (Vorzeichen-Wert `import_export` — bindet nur mit `anteil`). */
   kanalRichtung: string | null;
   kanalEinheit: string | null;
   kanalWertart: string | null;
@@ -435,13 +447,19 @@ export interface NeueBindung {
   anfangsstand: Stand | null;
   /** Bis wann dieser Einbau die Komponente speist; `null` = bis auf Weiteres. */
   geraetBis: string | null;
+  /** Das Katalogwort `direction` des Messwerts (`import_export` …); ohne Anteil nicht gelesen. */
+  kanalDirection?: string | null;
+  /** `positiv` | `negativ` | `null` = der ganze Wert (AP-08 IP-7). */
+  anteil?: Anteil | null;
 }
 
-/** Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend. */
+/** Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend — mit seinem Anteil. */
 export interface FremdeFuehrung {
   messstelle: string;
   gueltigAb: string;
   gueltigBis: string | null;
+  /** `null` = der ganze Wert. */
+  anteil?: Anteil | null;
 }
 
 export interface BindungEingang {
@@ -497,11 +515,35 @@ const passtNicht = (grund: PassungGrund): Passung => ({
   herleitung: null,
 });
 
+/** Die Einheiten eines Energie-Zählerstands und wie viele davon eine kWh sind (AP-08 IP-7). */
+const JE_KWH: Readonly<Record<string, number>> = { Wh: 1000, kWh: 1, MWh: 0.001 };
+
+/**
+ * AP-08 IP-7 (Z6, E4): der größte plausible Zuwachs eines Energie-Zählerstands je Kadenz aus der
+ * Anschlussleistung — kW × Kadenz in der Einheit des Zählerstands, auf drei Stellen AUFgerundet.
+ * `null` ohne Anschlussleistung oder ohne elektrische Energie-Einheit — nie geraten.
+ */
+export function hoechstzuwachsJeKadenz(
+  anschlussleistungKw: number | null,
+  einheit: string,
+  kadenzS: number,
+): number | null {
+  const jeKwh = JE_KWH[einheit];
+  if (anschlussleistungKw === null || jeKwh === undefined || anschlussleistungKw <= 0 || kadenzS < 1) return null;
+  // Erst auf neun Stellen glätten, dann aufrunden — sonst kippte ein glattes 62,5 als 62,500000001 auf 62,501.
+  const tausendstel = Math.round(((anschlussleistungKw * kadenzS * jeKwh) / 3600) * 1e9) / 1e6;
+  return Math.ceil(tausendstel) / 1000;
+}
+
 /**
  * Passt der Messwert zur Größe (Regel 7)? Medium Strom; dann die Wertart
  * (state/bitfield/text nie; Momentanwert nie aus Zählerstand; Zählerstand nie
  * aus Leistung), die Größe laut Katalog, eine umrechenbare Einheit, dieselbe
  * Richtung. Bei Erfolg sagt `herleitung`, wie aus dem Messwert die Größe wird.
+ *
+ * Ausnahme „Anteil“ (AP-08 E15, W8): mit `anteil` gilt an der Stelle der Richtung — ein Anteil nur
+ * an einem Momentanwert-Messwert, dessen Katalogwort in `ANTEIL_RICHTUNGEN` steht (sonst Grund
+ * `anteil`), und die Richtung des Anteils ist die Richtung der Größe (sonst Grund `richtung`).
  */
 export function passung(
   medium: string,
@@ -510,6 +552,8 @@ export function passung(
   kanalRichtung: string | null,
   kanalEinheit: string | null,
   kanalWertart: string | null,
+  kanalDirection: string | null = null,
+  anteil: Anteil | null = null,
 ): Passung {
   if (medium !== STROM) return { fehler: 'medium_ohne_quelle', grund: null, herleitung: null };
   if (kanalWertart !== 'counter' && kanalWertart !== 'gauge') return passtNicht('wertart');
@@ -522,7 +566,14 @@ export function passung(
   );
   if (!wertartPasst) return passtNicht('wertart');
   if (!(KANAL_EINHEITEN[kanalGroesse ?? ''] ?? []).includes(kanalEinheit ?? '')) return passtNicht('einheit');
-  if (ziel.richtung !== kanalRichtung) return passtNicht('richtung');
+  if (anteil !== null) {
+    const richtungen = kanalDirection === null ? undefined : ANTEIL_RICHTUNGEN[kanalDirection];
+    const richtungDesAnteils = richtungen === undefined || kanalWertart !== 'gauge' ? undefined : richtungen[anteil];
+    if (richtungDesAnteils === undefined) return passtNicht('anteil');
+    if (ziel.richtung !== richtungDesAnteils) return passtNicht('richtung');
+  } else if (ziel.richtung !== kanalRichtung) {
+    return passtNicht('richtung');
+  }
   const herleitung: Herleitung =
     kanalWertart === 'counter'
       ? ziel.wertart === ZAEHLERSTAND
@@ -570,7 +621,16 @@ export function bindungPruefen(e: BindungEingang): BindungUrteil {
   if (vergleich && !(VERGLEICH_ZWECKE as readonly (string | null)[]).includes(n.zweck)) {
     return abgelehnt('vergleich_ohne_zweck');
   }
-  const p = passung(e.medium, e.ziel, n.kanalGroesse, n.kanalRichtung, n.kanalEinheit, n.kanalWertart);
+  const p = passung(
+    e.medium,
+    e.ziel,
+    n.kanalGroesse,
+    n.kanalRichtung,
+    n.kanalEinheit,
+    n.kanalWertart,
+    n.kanalDirection ?? null,
+    n.anteil ?? null,
+  );
   if (p.fehler) return abgelehnt(p.fehler, p.grund);
   const ab = zeit(n.gueltigAb);
   const bis = n.gueltigBis === null ? null : zeit(n.gueltigBis);
@@ -585,7 +645,13 @@ export function bindungPruefen(e: BindungEingang): BindungUrteil {
         : null;
   if (ohneGeraet !== null) return { ...abgelehnt('kein_geraet_zum_zeitpunkt'), ohneGeraetAb: ohneGeraet };
   if (!vergleich) {
-    const f = e.kanalFuehrendAnderswo.find((x) => ueberschneiden(ab, bis, zeit(x.gueltigAb), ende(x.gueltigBis)));
+    // AP-08 E15: der positive und der negative Anteil führen je eine Messstelle; der ganze Wert schließt jeden aus.
+    const anteil = n.anteil ?? null;
+    const f = e.kanalFuehrendAnderswo.find(
+      (x) =>
+        !(anteil !== null && (x.anteil ?? null) !== null && x.anteil !== anteil) &&
+        ueberschneiden(ab, bis, zeit(x.gueltigAb), ende(x.gueltigBis)),
+    );
     if (f) return abgelehnt('kanal_bereits_fuehrend', null, null, f.messstelle);
   }
 
@@ -1589,7 +1655,7 @@ function ausgelassenText(x: RohAusgelassen, zu: string | null): string {
     case 'weitere_groesse':
       return `${was} misst eine weitere Größe — sie kommt als Nebengröße von Hand dazu.`;
     case 'vorzeichen_wert':
-      return `${was} trägt Bezug und Abgabe in einem Vorzeichen — bis die Aufteilung da ist, wird daraus keine Messstelle.`;
+      return `${was} trägt Bezug und Abgabe in einem Vorzeichen — er wird keine eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand an Bezug und Abgabe.`;
     case 'vergleich_kandidat':
       return `${was} misst den Netzanschluss ein zweites Mal — ein Kandidat für eine Vergleichsquelle an ${zu}, nie eine eigene Messstelle.`;
     case 'gleicher_fluss':

@@ -15,6 +15,7 @@ from cataloglib import (
     EDGE_MIN_VERSION,
     ROOT,
     RUNTIME_CATALOG_VERSION,
+    ZAEHLER_DEKLARATION_FIELDS,
     base_point,
     canonical_json_bytes,
     read_json,
@@ -746,6 +747,8 @@ def generate_builtin_inverter(source: dict[str, Any]) -> Iterable[dict[str, Any]
                         "source_revision": family["source_revision"]},
                 **({"decoder": {"byte_order": family["byte_order"]}}
                    if item.get("width_words", 0) > 1 and family.get("byte_order") else {}),
+                # Z6-Deklaration nur, wenn die Quelle sie nennt; sonst fehlt das Feld (nie null).
+                **{field: item[field] for field in ZAEHLER_DEKLARATION_FIELDS if field in item},
                 dynamic=item.get("dynamic", False),
                 point_key_template=item.get("dynamic", False),
                 recommended=item.get("recommended", False),

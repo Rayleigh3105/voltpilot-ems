@@ -367,7 +367,8 @@ public class ZaehlerwechselService {
             UUID neueQuelle = quellen.anlegen(new NeueQuelle(tenant, z.messstelle().id(), z.ziel().groesse(),
                     z.ziel().richtung(), z.alt().entityId(), neuId, z.alt().kanal(), z.kanal().wertart(),
                     z.urteil().herleitung(), z.alt().rolle(), z.alt().zweck(), a.zeitpunkt(), null,
-                    repoStand(z.anfangsstand()), z.urteil().rueckwirkend(), null, a.jetzt(), wer));
+                    repoStand(z.anfangsstand()), z.urteil().rueckwirkend(), null, a.jetzt(), wer,
+                    z.alt().anteil()));
             bindungen.add(new ZaehlerwechselDto.Bindung(z.messstelle().id(), z.messstelle().kennzeichen(),
                     z.ziel().groesse(), z.ziel().richtung(), z.alt().rolle(),
                     darstellung(quellen.eine(z.messstelle().id(), z.alt().id()).orElseThrow(), a.jetzt()),
@@ -424,9 +425,10 @@ public class ZaehlerwechselService {
                 quellen.derMessstelle(m.id()).stream().map(ZaehlerwechselService::bindung).toList(),
                 new NeueBindung(q.rolle(), q.zweck(), q.entityId().toString(), q.kanal(), alt.kennzeichen(),
                         neuesKennzeichen, kanal.groesse(), kanal.richtung(), kanal.einheit(), kanal.wertart(),
-                        zeit(a.zeitpunkt()), null, endstand, anfangsstand, null),
+                        zeit(a.zeitpunkt()), null, endstand, anfangsstand, null, kanal.direction(), q.anteil()),
                 quellen.fuehrendAnderswo(q.entityId(), q.kanal(), m.id()).stream()
-                        .map(f -> new FremdeFuehrung(f.messstelle(), zeit(f.gueltigAb()), zeit(f.gueltigBis())))
+                        .map(f -> new FremdeFuehrung(f.messstelle(), zeit(f.gueltigAb()), zeit(f.gueltigBis()),
+                                f.anteil()))
                         .toList()));
         if (u.fehler() != null) {
             throw bindungAbgelehnt(u, m, ziel, q, alt, a);
@@ -744,7 +746,7 @@ public class ZaehlerwechselService {
                 q.herleitung(), new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau()),
                 zeit(q.gueltigAb()), zeit(q.gueltigBis()), status, dtoStand(q.anfangsstand()),
                 dtoStand(q.endstand()), q.rueckwirkend(), q.herkunft(), zeit(q.eingetragenAm()),
-                q.eingetragenVon());
+                q.eingetragenVon(), q.anteil());
     }
 
     private static MessstelleQuelleDto.Stand dtoStand(MessstelleQuelleRepository.Stand s) {

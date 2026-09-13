@@ -41,6 +41,7 @@ import com.voltpilot.api.uems.MessstelleRegeln.VorschlagStandort;
 import com.voltpilot.api.uems.MessstelleRegeln.VorschlagZeile;
 import com.voltpilot.api.uems.MessstelleRegeln.WechselEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.WechselUrteil;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -50,6 +51,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
@@ -161,6 +163,9 @@ class MessstelleRegelnVectorsTest {
         assertThat(texte(v.path("stellungen"))).isEqualTo(MessstelleRegeln.STELLUNGEN);
         assertThat(texte(v.path("stellung_gruende"))).isEqualTo(MessstelleRegeln.STELLUNG_GRUENDE);
         assertThat(texte(v.path("passung_gruende"))).isEqualTo(MessstelleRegeln.PASSUNG_GRUENDE);
+        assertThat(texte(v.path("anteile"))).isEqualTo(MessstelleRegeln.ANTEILE);
+        assertThat(MAPPER.convertValue(v.path("anteil_richtungen"), Map.class))
+                .isEqualTo(MessstelleRegeln.ANTEIL_RICHTUNGEN);
         assertThat(texte(v.path("hinweise"))).isEqualTo(MessstelleRegeln.HINWEISE);
         assertThat(texte(v.path("rueckwirkung_arten"))).isEqualTo(MessstelleRegeln.RUECKWIRKUNG_ARTEN);
         assertThat(texte(v.path("vorschlag_fluesse"))).isEqualTo(MessstelleRegeln.VORSCHLAG_FLUESSE);
@@ -249,6 +254,28 @@ class MessstelleRegelnVectorsTest {
         });
     }
 
+    /** AP-08 IP-7: der Höchstzuwachs je Kadenz aus der Anschlussleistung — numerisch verglichen. */
+    @TestFactory
+    List<DynamicTest> anschlussleistung() throws Exception {
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode c : faelle("anschlussleistung")) {
+            tests.add(DynamicTest.dynamicTest(c.path("name").asText(), () -> {
+                JsonNode in = c.path("input");
+                BigDecimal ist = MessstelleRegeln.hoechstzuwachsJeKadenz(
+                        in.path("anschlussleistung_kw").isNull() ? null : in.path("anschlussleistung_kw").decimalValue(),
+                        in.path("einheit").asText(), in.path("kadenz_s").asInt());
+                JsonNode soll = c.at("/expected/hoechstzuwachs_je_kadenz");
+                if (soll.isNull()) {
+                    assertThat(ist).as(c.path("why").asText()).isNull();
+                } else {
+                    assertThat(ist).as(c.path("why").asText()).isEqualByComparingTo(soll.decimalValue());
+                }
+            }));
+        }
+        assertThat(tests).isNotEmpty();
+        return tests;
+    }
+
     @TestFactory
     List<DynamicTest> lebenszyklus() throws Exception {
         return fuerJedenFall("lebenszyklus", c -> {
@@ -268,8 +295,9 @@ class MessstelleRegelnVectorsTest {
         return fuerJedenFall("passung", c -> {
             JsonNode k = c.at("/input/kanal");
             MessstelleRegeln.Passung p = MessstelleRegeln.passung(c.at("/input/medium").asText(),
-                    groesse(c.at("/input/ziel")), k.path("groesse").asText(), k.path("richtung").asText(),
-                    k.path("einheit").asText(), k.path("wertart").asText());
+                    groesse(c.at("/input/ziel")), k.path("groesse").asText(), text(k.path("richtung")),
+                    k.path("einheit").asText(), k.path("wertart").asText(), text(k.path("direction")),
+                    text(c.at("/input/anteil")));
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", p.fehler() == null ? null : p.fehler().code());
             out.put("grund", p.grund());
@@ -907,10 +935,12 @@ class MessstelleRegelnVectorsTest {
                 text(n.path("einbau")), text(n.path("kanal_groesse")), text(n.path("kanal_richtung")),
                 text(n.path("kanal_einheit")), text(n.path("kanal_wertart")),
                 zeit(n.path("gueltig_ab")), zeit(n.path("gueltig_bis")),
-                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")), zeit(n.path("geraet_bis")));
+                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")), zeit(n.path("geraet_bis")),
+                text(n.path("kanal_direction")), text(n.path("anteil")));
         List<FremdeFuehrung> anderswo = new ArrayList<>();
         in.path("kanal_fuehrend_anderswo").forEach(f -> anderswo.add(new FremdeFuehrung(
-                f.path("messstelle").asText(), zeit(f.path("gueltig_ab")), zeit(f.path("gueltig_bis")))));
+                f.path("messstelle").asText(), zeit(f.path("gueltig_ab")), zeit(f.path("gueltig_bis")),
+                text(f.path("anteil")))));
         return new BindungEingang(in.path("vorgang").asText(), zeit(in.path("jetzt")),
                 in.at("/messstelle/medium").asText(), zeit(in.at("/messstelle/beginn")),
                 groesse(in.path("ziel")), bestehende, neu, anderswo);
