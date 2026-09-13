@@ -99,7 +99,7 @@ public class TelemetryWriteRepository {
                         + "WHERE NOT EXISTS ("
                         + "  SELECT 1 FROM telemetry WHERE device_id = ? AND time = ?) "
                         + "AND NOT EXISTS ("
-                        + "  SELECT 1 FROM device WHERE id = ? AND data_purged_before >= ?)",
+                        + "  SELECT 1 FROM device WHERE id = ? AND (data_purged_before >= ? OR ausgebaut_am <= ?))",
                 Timestamp.from(event.observed_at()),
                 receivedAt,
                 event.tenant_id(),
@@ -113,6 +113,7 @@ public class TelemetryWriteRepository {
                 event.device_id(),
                 Timestamp.from(event.observed_at()),
                 event.device_id(),
+                Timestamp.from(event.observed_at()),
                 Timestamp.from(event.observed_at()));
         return rows > 0;
     }

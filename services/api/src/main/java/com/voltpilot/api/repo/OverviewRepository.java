@@ -236,6 +236,7 @@ public class OverviewRepository {
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
+                        + "WHERE d.ausgebaut_am IS NULL "
                         + "GROUP BY d.site_id",
                 rs -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
@@ -251,15 +252,19 @@ public class OverviewRepository {
     /**
      * The newest telemetry row per site (the fleet cards' live snapshot) - a
      * top-1 LATERAL per site so the (site_id, time DESC) index answers it
-     * without scanning history.
+     * without scanning history. A row of an ausgebaut box (UEMS AP-07 IP-11) stays as history but
+     * is no live snapshot - the card shows what the site's boxes report, as before the rows were
+     * kept.
      */
     public Map<UUID, LiveRow> latestLivePerSite() {
         Map<UUID, LiveRow> live = new HashMap<>();
         jdbc.query(
                 "SELECT s.id AS site_id, t.time, t.pv_power_kw, t.load_kw, t.power_kw, t.soc_pct "
                         + "FROM site s "
-                        + "JOIN LATERAL (SELECT time, pv_power_kw, load_kw, power_kw, soc_pct"
-                        + "  FROM telemetry WHERE site_id = s.id ORDER BY time DESC LIMIT 1) t ON true",
+                        + "JOIN LATERAL (SELECT x.time, x.pv_power_kw, x.load_kw, x.power_kw, x.soc_pct"
+                        + "  FROM telemetry x WHERE x.site_id = s.id AND NOT EXISTS (SELECT 1 FROM device d"
+                        + "    WHERE d.id = x.device_id AND d.ausgebaut_am IS NOT NULL)"
+                        + "  ORDER BY x.time DESC LIMIT 1) t ON true",
                 rs -> {
                     live.put(rs.getObject("site_id", UUID.class), new LiveRow(
                             rs.getTimestamp("time").toInstant(),

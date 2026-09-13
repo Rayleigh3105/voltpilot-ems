@@ -907,8 +907,11 @@ public class LueckenMelder {
             }
         }
         Integer auswahl = null;
-        try (PreparedStatement ps = con.prepareStatement("SELECT min(cadence_s) FROM "
-                + "device_measurement_selection WHERE tenant_id = ? AND entity_id = ? AND point_key = ?")) {
+        // Die Auswahl einer ausgebauten Box (AP-07 IP-11) zählt nur, wenn keine andere den Kanal liest.
+        try (PreparedStatement ps = con.prepareStatement("SELECT COALESCE(min(s.cadence_s) FILTER "
+                + "(WHERE d.ausgebaut_am IS NULL), min(s.cadence_s)) FROM device_measurement_selection s "
+                + "LEFT JOIN device d ON d.id = s.device_id "
+                + "WHERE s.tenant_id = ? AND s.entity_id = ? AND s.point_key = ?")) {
             ps.setObject(1, e.tenant);
             ps.setObject(2, e.entity);
             ps.setString(3, e.kanal);
@@ -923,13 +926,20 @@ public class LueckenMelder {
         return new Zeitleiste(fassungen, auswahl, p == null ? null : p.defaultCadenceS());
     }
 
-    /** Wird die Reihe gerade erwartet? Eine eingeschaltete Mess-Auswahl — sonst, seit wann nicht. */
+    /**
+     * Wird die Reihe gerade erwartet? Eine eingeschaltete Mess-Auswahl einer Box, die nicht
+     * ausgebaut ist — sonst, seit wann nicht: die eingeschaltete Auswahl einer ausgebauten Box
+     * endet mit ihrem Ausbau (AP-07 IP-11), sie ist keine Erwartung mehr.
+     */
     private Auswahl auswahl(Connection con, Einheit e) throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT COALESCE(bool_or(enabled), false), max(disabled_at)
-                  FROM device_measurement_selection
-                 WHERE tenant_id = ? AND point_key = ?
-                   AND (entity_id = ? OR (entity_id IS NULL AND device_id = ?))
+                SELECT COALESCE(bool_or(s.enabled AND d.ausgebaut_am IS NULL), false),
+                       max(CASE WHEN s.enabled AND d.ausgebaut_am IS NOT NULL THEN d.ausgebaut_am
+                                ELSE s.disabled_at END)
+                  FROM device_measurement_selection s
+                  LEFT JOIN device d ON d.id = s.device_id
+                 WHERE s.tenant_id = ? AND s.point_key = ?
+                   AND (s.entity_id = ? OR (s.entity_id IS NULL AND s.device_id = ?))
                 """)) {
             ps.setObject(1, e.tenant);
             ps.setString(2, e.kanal);

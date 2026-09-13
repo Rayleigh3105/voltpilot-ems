@@ -371,7 +371,7 @@ public class ChargingConfigRepository {
 
     /** Die Geräte dieser Anlage - die Empfänger des retained Dokuments. */
     public List<UUID> deviceIds(UUID siteId) {
-        return new ArrayList<>(jdbc.query("SELECT id FROM device WHERE site_id = ? ORDER BY id",
+        return new ArrayList<>(jdbc.query("SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY id",
                 (rs, n) -> rs.getObject("id", UUID.class), siteId));
     }
 }

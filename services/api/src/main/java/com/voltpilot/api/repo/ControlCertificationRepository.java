@@ -111,7 +111,7 @@ public class ControlCertificationRepository {
                    t.name AS tenant_name, d.external_ref,
                    a.activated_at, a.activated_by, a.note
               FROM device_control_activation a
-              JOIN device d ON d.id = a.device_id
+              JOIN device d ON d.id = a.device_id AND d.ausgebaut_am IS NULL
               JOIN site   s ON s.id = d.site_id
               JOIN tenant t ON t.id = d.tenant_id
             """;
@@ -173,6 +173,7 @@ public class ControlCertificationRepository {
                   JOIN tenant t ON t.id = d.tenant_id
                   LEFT JOIN device_control_activation a ON a.device_id = d.id
                   LEFT JOIN device_control_status     cs ON cs.device_id = d.id
+                 WHERE d.ausgebaut_am IS NULL
                  ORDER BY (a.device_id IS NOT NULL) DESC, s.name ASC
                 """, (rs, i) -> new Candidate(
                         rs.getObject("id", UUID.class),
@@ -206,6 +207,7 @@ public class ControlCertificationRepository {
                        (a.device_id IS NOT NULL) AS activated
                   FROM device d
                   LEFT JOIN device_control_activation a ON a.device_id = d.id
+                 WHERE d.ausgebaut_am IS NULL
                  ORDER BY d.id
                 """, (rs, i) -> new DeviceIdentity(
                         rs.getObject("id", UUID.class),
@@ -221,7 +223,7 @@ public class ControlCertificationRepository {
                        (a.device_id IS NOT NULL) AS activated
                   FROM device d
                   LEFT JOIN device_control_activation a ON a.device_id = d.id
-                 WHERE d.id = ?
+                 WHERE d.id = ? AND d.ausgebaut_am IS NULL
                 """, (rs, i) -> new DeviceIdentity(
                         rs.getObject("id", UUID.class),
                         rs.getObject("tenant_id", UUID.class),

@@ -82,6 +82,11 @@ public class SeriesRepository {
         // Zeilen des Mandanten aus app.tenant_id - der Zaun ist DB-erzwungen,
         // und die Kaskade bleibt in der EINEN Transaktion des Aufrufers.
         jdbc.queryForObject("SELECT purge_forecast_for_site(?)", Long.class, siteId);
+        // Die Messwert-Strecke (UEMS AP-07 IP-11): seit V20260913150000 schlägt das Löschen der
+        // Anlage nicht mehr per Kaskade auf sie durch. Die Funktion räumt die Zeilen der Anlage
+        // und ihrer (ausgebauten) Boxen ab - und lehnt selbst ab, wenn eine Messstelle an ihnen
+        // hängt; der Schreibweg hat das mit Liste vorher geprüft.
+        jdbc.queryForObject("SELECT uems_messwerte_der_anlage_entfernen(?)", Long.class, siteId);
     }
 
     /**
@@ -93,8 +98,9 @@ public class SeriesRepository {
      * site-scoped rebuild is the only way one device's contribution truly
      * disappears. Runs through the RLS-scoped app datasource: the deletes are
      * transparently limited to the caller's tenant, and the rollup re-inserts
-     * pass the same WITH CHECK. Unclaim reuses this so a removed device's data
-     * never lingers in the Historie week/month/year buckets either.
+     * pass the same WITH CHECK. Unclaim no longer calls this (UEMS AP-07 IP-11:
+     * the box is ausgebaut and keeps its recordings; a {@code null} watermark
+     * still means "everything").
      *
      * <p>The delete is bounded by the purge watermark (audit B6a): a
      * legitimately NEW sample - observed after the watermark - that arrives

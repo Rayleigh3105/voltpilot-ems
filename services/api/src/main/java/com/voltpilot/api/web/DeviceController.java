@@ -12,9 +12,9 @@ import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
-import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,7 +55,6 @@ public class DeviceController {
 
     private final DeviceRepository devices;
     private final SiteRepository sites;
-    private final SeriesRepository series;
     private final AssetRepository assets;
     private final ProvisionedDeviceRepository provisioned;
     private final DevicePurgeService purge;
@@ -68,7 +68,7 @@ public class DeviceController {
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
-            SeriesRepository series, AssetRepository assets,
+            AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
@@ -81,7 +81,6 @@ public class DeviceController {
             com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides) {
         this.devices = devices;
         this.sites = sites;
-        this.series = series;
         this.assets = assets;
         this.provisioned = provisioned;
         this.purge = purge;
@@ -206,8 +205,9 @@ public class DeviceController {
     }
 
     /**
-     * Purge ALL recorded data of a device ("Datenaufzeichnungen löschen")
-     * WITHOUT unclaiming it: raw telemetry goes, the site's rollups are rebuilt
+     * Purge the recorded data of a device ("Datenaufzeichnungen löschen")
+     * WITHOUT unclaiming it - refused with the list of Messstellen (409) when
+     * the box carries Belege (UEMS AP-07 E8): raw telemetry goes, the site's rollups are rebuilt
      * without it, the writer refuses replayed old samples via the purge
      * watermark, and the device is told (retained {@code purge_data} command)
      * to wipe its local buffers. Claim/enrollment/config stay intact; new data
@@ -224,12 +224,17 @@ public class DeviceController {
     }
 
     /**
-     * Unclaim (delete) a device: removes the device row AND its telemetry, and
-     * cleans the broker - the retained {@code provision/{ref}/config} and the
-     * retained schedule topic are cleared (best-effort, like the on-claim
-     * publish), so the physical device falls back to its watchdog default and
-     * the ref becomes claimable again. A sticker ref stays registered in the
-     * manufacturing registry, so re-claiming it later just works.
+     * Unclaim ("Gerät entfernen") = the box is AUSGEBAUT (UEMS AP-07 E8 / IP-11, AP-06 E7;
+     * Captain 13.09.2026: beim Abmelden und beim Tausch geht kein Datenbestand verloren).
+     * NOTHING recorded is deleted: the device row stays with its identity, and so do its raw
+     * telemetry, OCPP recordings, additional measurements, events, measurement selection and
+     * approvals - the history keeps naming the box that read it. What ends is the box's part in
+     * operation: every live surface filters on {@code device.ausgebaut_am}, the topology loses
+     * its pointers to the box (what the FK {@code SET NULL} did when the row was deleted), and
+     * the broker is cleaned as before - the retained {@code provision/{ref}/config} and schedule
+     * topic are cleared (best-effort), so the physical device falls back to its watchdog
+     * default. The sticker ref is claimable again (a new box, like before); it stays registered
+     * in the manufacturing registry.
      */
     @DeleteMapping("/{deviceId}")
     @Transactional
@@ -237,13 +242,13 @@ public class DeviceController {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        series.purgeDeviceRecordings(deviceId, device.siteId(), null);
-        if (!devices.delete(deviceId)) {
+        if (!devices.ausbauen(deviceId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
+        devices.ausDerTopologieLoesen(deviceId);
         provisioning.ifAvailable(p ->
                 p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
-        // v2 hygiene: the retained entity-registry slot dies with the device
+        // v2 hygiene: the retained entity-registry slot ends with the box
         // (a re-claim mints a NEW device id, so the old subtree would otherwise
         // keep an orphaned retained push forever). Best-effort like the rest.
         entityRegistry.ifAvailable(p ->
@@ -276,6 +281,15 @@ public class DeviceController {
         // also derselben Verbindung wie das Unclaim - kein Selbst-Blockade-Risiko.
         deviceOverrides.clearSite(device.siteId());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * The purge of a box whose series are Belege of Messstellen (UEMS AP-07 E8): 409 with the
+     * list of those Messstellen - nothing was written.
+     */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     /**

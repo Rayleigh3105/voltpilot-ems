@@ -76,10 +76,11 @@ public class MesskanalService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         List<Zeile> zeilen = jdbc.query("""
-                SELECT device_id, point_key, enabled, cadence_s, custom_definition::text AS custom
-                  FROM device_measurement_selection
-                 WHERE entity_id = ?
-                 ORDER BY point_key, device_id
+                SELECT s.device_id, s.point_key, s.enabled, s.cadence_s, s.custom_definition::text AS custom
+                  FROM device_measurement_selection s
+                  JOIN device d ON d.id = s.device_id AND d.ausgebaut_am IS NULL
+                 WHERE s.entity_id = ?
+                 ORDER BY s.point_key, s.device_id
                 """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
                         rs.getString("point_key"), rs.getBoolean("enabled"),
                         (Integer) rs.getObject("cadence_s"), rs.getString("custom")), komponente);
@@ -105,10 +106,11 @@ public class MesskanalService {
      */
     public Optional<MesskanalDto.Messkanal> kanal(UUID komponente, String pointKey) {
         return jdbc.query("""
-                SELECT device_id, point_key, enabled, cadence_s, custom_definition::text AS custom
-                  FROM device_measurement_selection
-                 WHERE entity_id = ? AND point_key = ?
-                 ORDER BY device_id
+                SELECT s.device_id, s.point_key, s.enabled, s.cadence_s, s.custom_definition::text AS custom
+                  FROM device_measurement_selection s
+                  JOIN device d ON d.id = s.device_id AND d.ausgebaut_am IS NULL
+                 WHERE s.entity_id = ? AND s.point_key = ?
+                 ORDER BY s.device_id
                  LIMIT 1
                 """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
                         rs.getString("point_key"), rs.getBoolean("enabled"),

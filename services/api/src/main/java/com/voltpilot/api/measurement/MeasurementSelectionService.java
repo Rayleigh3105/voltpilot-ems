@@ -81,7 +81,7 @@ public class MeasurementSelectionService {
     }
 
     public DeviceScope requireDevice(UUID deviceId) {
-        DeviceScope scope = repository.deviceScope(deviceId);
+        DeviceScope scope = repository.aktiverDeviceScope(deviceId);
         if (scope == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
         }

@@ -64,7 +64,8 @@ und ist nicht die Wertart des Vertrags (E12). Nachgeschlagen wird ab IP-7, **zur
   jeder Spiegel liegt ausserhalb des neuen partiellen Index, und für sie ist er der einzige
   Doppel-Schutz.
 - **Kein Fremdschlüssel** auf `entity_id`/`device_install_id`: die Löschwege der Messreihen
-  gehören **IP-11** (`ON DELETE RESTRICT`, Unclaim/Purge). Ein CASCADE-Verweis würde HEUTE einen
+  gehören **IP-11** (`ON DELETE RESTRICT`, Unclaim/Purge — gebaut, [`uems-loeschwege.md`](uems-loeschwege.md);
+  auch dort bekam `entity_id` keinen Verweis). Ein CASCADE-Verweis würde HEUTE einen
   neuen Löschweg für Kundenmesswerte aufmachen, ein RESTRICT-Verweis das heutige Löschen einer
   Komponente brechen. Es ist dasselbe Muster wie bei `device_measurement_selection_event`.
 - Aufbewahrung (90 Tage) und Verdichtung sind **unberührt**; die Tabelle ist wegen RLS nie

@@ -226,8 +226,10 @@ public class ComponentAdoptionRunner {
                         + "JOIN measurement_point mp ON mp.site_id = s.id "
                         + "  AND mp.edge_source_id IS NOT NULL "
                         + "WHERE EXISTS (SELECT 1 FROM entity_observed_state o "
+                        + "  JOIN device d ON d.id = o.device_id AND d.ausgebaut_am IS NULL "
                         + "  WHERE o.site_id = s.id AND o.source = 'local') "
                         + "AND NOT EXISTS (SELECT 1 FROM entity_observed_state o2 "
+                        + "  JOIN device d2 ON d2.id = o2.device_id AND d2.ausgebaut_am IS NULL "
                         + "  WHERE o2.site_id = s.id AND o2.source = 'local' "
                         + "  AND o2.entity_id = 'local:' || mp.edge_source_id) "
                         + "ORDER BY s.created_at, s.id",

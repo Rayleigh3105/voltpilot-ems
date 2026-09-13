@@ -558,10 +558,13 @@ class UemsDatenquelleMigrationTest {
         assertThat(als(p.tenant, () -> app.update(
                 "UPDATE site SET lead_device_id = ? WHERE id = ?", box, p.site))).isOne();
 
-        // Der Datenbank-Schritt des Unclaim (DeviceController#unclaim → DeviceRepository#delete).
-        assertThat(als(p.tenant, () -> new DeviceRepository(app).delete(box))).isTrue();
+        // Der Datenbank-Schritt des Unclaim (DeviceController#unclaim): seit AP-07 IP-11 wird die
+        // Box ausgebaut statt gelöscht, und die Verweise, die das FK-SET-NULL löste, löst der Weg.
+        DeviceRepository boxen = new DeviceRepository(app);
+        assertThat(als(p.tenant, () -> boxen.ausbauen(box))).isTrue();
+        alsTue(p.tenant, () -> boxen.ausDerTopologieLoesen(box));
 
-        assertThat(anzahl("SELECT count(*) FROM device WHERE id = ?", box)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM device WHERE id = ? AND ausgebaut_am IS NOT NULL", box)).isOne();
         // Die Anlage bleibt, nur ihre führende Box ist NULL — tenant_id bleibt stehen.
         assertThat(root.queryForMap("SELECT tenant_id, lead_device_id FROM site WHERE id = ?",
                 p.site)).containsEntry("tenant_id", p.tenant).containsEntry("lead_device_id", null);

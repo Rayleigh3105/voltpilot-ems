@@ -76,10 +76,24 @@ public class MeasurementSelectionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * The RLS-visible device that takes part in operation (not ausgebaut, UEMS AP-07 IP-11) - the
+     * gate of the selection API and of the box's acknowledgements. History reads of an ausgebaut
+     * box keep using {@link #deviceScope}.
+     */
+    public DeviceScope aktiverDeviceScope(UUID deviceId) {
+        List<DeviceScope> rows = jdbc.query(
+                "SELECT tenant_id, site_id, id FROM device WHERE id = ? AND ausgebaut_am IS NULL",
+                (rs, n) -> new DeviceScope(rs.getObject("tenant_id", UUID.class),
+                        rs.getObject("site_id", UUID.class), rs.getObject("id", UUID.class)),
+                deviceId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** Locks the RLS-visible device, serializing revision checks per device. */
     public DeviceScope lockDevice(UUID deviceId) {
         List<DeviceScope> rows = jdbc.query(
-                "SELECT tenant_id, site_id, id FROM device WHERE id = ? FOR UPDATE",
+                "SELECT tenant_id, site_id, id FROM device WHERE id = ? AND ausgebaut_am IS NULL FOR UPDATE",
                 (rs, n) -> new DeviceScope(rs.getObject("tenant_id", UUID.class),
                         rs.getObject("site_id", UUID.class), rs.getObject("id", UUID.class)),
                 deviceId);

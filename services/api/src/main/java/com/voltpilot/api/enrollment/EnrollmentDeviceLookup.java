@@ -30,7 +30,7 @@ public class EnrollmentDeviceLookup {
 
     public Optional<DeviceIdentity> findByRef(String externalRef) {
         return jdbc.query(
-                "SELECT tenant_id, site_id, id FROM device WHERE external_ref = ?",
+                "SELECT tenant_id, site_id, id FROM device WHERE external_ref = ? AND ausgebaut_am IS NULL",
                 (rs, rowNum) -> new DeviceIdentity(
                         rs.getObject("tenant_id", UUID.class),
                         rs.getObject("site_id", UUID.class),
@@ -54,7 +54,7 @@ public class EnrollmentDeviceLookup {
         return jdbc.query(
                 "SELECT d.tenant_id, d.site_id, d.id "
                         + "FROM device_enrollment e "
-                        + "JOIN device d ON d.id = e.device_id "
+                        + "JOIN device d ON d.id = e.device_id AND d.ausgebaut_am IS NULL "
                         + "WHERE e.cert_pem IS NOT NULL",
                 (rs, rowNum) -> new DeviceIdentity(
                         rs.getObject("tenant_id", UUID.class),

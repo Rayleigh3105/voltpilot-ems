@@ -137,8 +137,9 @@ public class MessstelleRegisterRepository {
                                'eingetragenVon', q.actor_name),
                            'geraetBezeichnung', g.bezeichnung,
                            'kanalDefinition', (SELECT d.custom_definition FROM device_measurement_selection d
+                                                JOIN device b ON b.id = d.device_id
                                                 WHERE d.entity_id = q.entity_id AND d.point_key = q.kanal
-                                                ORDER BY d.device_id LIMIT 1))
+                                                ORDER BY (b.ausgebaut_am IS NOT NULL), d.device_id LIMIT 1))
                            ORDER BY q.groesse, q.richtung, q.rolle, q.gueltig_ab, q.id) AS j
                   FROM messstelle_quelle q
                   JOIN messstelle m ON m.id = q.messstelle_id

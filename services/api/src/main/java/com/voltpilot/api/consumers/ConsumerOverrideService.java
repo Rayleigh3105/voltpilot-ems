@@ -197,7 +197,7 @@ public class ConsumerOverrideService {
             return row.deviceId();
         }
         List<UUID> devices = jdbc.queryForList(
-                "SELECT id FROM device WHERE site_id = ? ORDER BY id LIMIT 2", UUID.class, siteId);
+                "SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY id LIMIT 2", UUID.class, siteId);
         return devices.size() == 1 ? devices.get(0) : null; // never guess on a multi-device site
     }
 

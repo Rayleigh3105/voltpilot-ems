@@ -161,7 +161,7 @@ public class AssetRepository {
         // it unambiguous); Postgres has no max(uuid) to select it directly.
         return jdbc.update(
                 "UPDATE asset SET device_id = single.device_id "
-                        + "FROM (SELECT (array_agg(id))[1] AS device_id FROM device WHERE site_id = ? "
+                        + "FROM (SELECT (array_agg(id))[1] AS device_id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL "
                         + "  HAVING count(*) = 1) single "
                         + "WHERE asset.site_id = ? AND asset.type = 'battery' AND asset.is_primary "
                         + "  AND asset.device_id IS NULL",

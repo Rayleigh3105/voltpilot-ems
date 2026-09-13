@@ -19,6 +19,8 @@ import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.MessreihenBelege;
 import com.voltpilot.api.uems.OrtAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
@@ -94,6 +96,7 @@ public class SiteController {
     private final CockpitLayoutRepository cockpitLayouts;
     private final StandortLesemodellService standortLesemodell;
     private final AnlageStandortService anlageStandort;
+    private final MessreihenBelege belege;
 
     public SiteController(
             SiteRepository sites,
@@ -112,7 +115,8 @@ public class SiteController {
             ForecastModelService forecastModels,
             CockpitLayoutRepository cockpitLayouts,
             StandortLesemodellService standortLesemodell,
-            AnlageStandortService anlageStandort) {
+            AnlageStandortService anlageStandort,
+            MessreihenBelege belege) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -130,6 +134,7 @@ public class SiteController {
         this.cockpitLayouts = cockpitLayouts;
         this.standortLesemodell = standortLesemodell;
         this.anlageStandort = anlageStandort;
+        this.belege = belege;
     }
 
     @GetMapping
@@ -242,6 +247,12 @@ public class SiteController {
      * today and stays as an ended interval with a "geloescht" log entry, in the
      * same transaction (V20260911290000 let the row outlive the site).
      */
+    /** Das Entfernen einer Anlage mit Belegen: 409 mit der Liste der Messstellen - nichts geschrieben. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @DeleteMapping("/{siteId}")
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
@@ -253,6 +264,12 @@ public class SiteController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Der Standort hat noch " + deviceCount + " Gerät(e). "
                             + "Bitte entfernen Sie zuerst alle Geräte dieses Standorts.");
+        }
+        // UEMS AP-07 E8: Messwerte, die je an eine Messstelle gebunden waren, sind Belege -
+        // abgelehnt MIT der Liste, bevor irgendetwas geschrieben wird.
+        List<MessreihenBelege.Beleg> imWeg = belege.derAnlage(siteId);
+        if (!imWeg.isEmpty()) {
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.ANLAGE, imWeg);
         }
         series.deleteForSite(siteId);
         // Das Cockpit-Layout haengt bewusst OHNE Fremdschluessel an der Anlage

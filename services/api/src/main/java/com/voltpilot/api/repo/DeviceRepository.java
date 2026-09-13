@@ -18,6 +18,9 @@ public class DeviceRepository {
     }
 
     public List<DeviceDto> findAll() {
+        // Only boxes that take part in operation: an ausgebaut box (UEMS AP-07
+        // IP-11) keeps its row and its recordings, but is no device of the
+        // tenant anymore - no list, no scope, no route reaches it.
         // last_seen = newest telemetry ARRIVAL per device (received_at, not the
         // observation time: a reconnecting edge replays buffered samples with old
         // observation timestamps, so arrival is the only correct liveness signal -
@@ -27,17 +30,17 @@ public class DeviceRepository {
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
-                        + "FROM device d ORDER BY d.created_at",
+                        + "FROM device d WHERE d.ausgebaut_am IS NULL ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
 
-    /** The current tenant's device, or empty when RLS hides it (=> 404). */
+    /** The current tenant's active device, or empty when RLS hides it or it is ausgebaut (=> 404). */
     public Optional<DeviceDto> findById(UUID deviceId) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
-                        + "FROM device d WHERE d.id = ?",
+                        + "FROM device d WHERE d.id = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
 
@@ -53,7 +56,7 @@ public class DeviceRepository {
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
                         + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
-                        + "WHERE d.external_ref = ?",
+                        + "WHERE d.external_ref = ? AND d.ausgebaut_am IS NULL",
                 DeviceRepository::mapDevice,
                 externalRef).stream().findFirst();
     }
@@ -84,7 +87,7 @@ public class DeviceRepository {
      */
     public Optional<DeviceDto> update(UUID deviceId, String kind, String name) {
         return jdbc.query(
-                "UPDATE device SET kind = ?, name = ? WHERE id = ? "
+                "UPDATE device SET kind = ?, name = ? WHERE id = ? AND ausgebaut_am IS NULL "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "lan_host, lan_seen_at, lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
@@ -97,9 +100,29 @@ public class DeviceRepository {
                 "site-topology:" + siteId);
     }
 
-    /** Delete (unclaim) a device row. False when RLS hides it (=> 404). */
-    public boolean delete(UUID deviceId) {
-        return jdbc.update("DELETE FROM device WHERE id = ?", deviceId) > 0;
+    /**
+     * Unclaim = the box is ausgebaut (UEMS AP-07 E8, AP-06 E7): the row stays with its
+     * identity, so every recording keeps naming the box that read it; the sticker ref is
+     * claimable again (the unique index only covers boxes that are not ausgebaut). Final -
+     * a trigger refuses to undo it. False when RLS hides the box or it is ausgebaut already
+     * (=> 404).
+     */
+    public boolean ausbauen(UUID deviceId) {
+        return jdbc.update("UPDATE device SET status = 'ausgebaut', ausgebaut_am = now() "
+                + "WHERE id = ? AND ausgebaut_am IS NULL", deviceId) > 0;
+    }
+
+    /**
+     * What the foreign keys {@code ON DELETE SET NULL} did when unclaim still deleted the row:
+     * components, assets, the entity registry state and the site's stored lead box no longer
+     * point at an ausgebaut box, so no push, command or gateway choice reaches it. Same
+     * transaction as {@link #ausbauen}, RLS-scoped.
+     */
+    public void ausDerTopologieLoesen(UUID deviceId) {
+        jdbc.update("UPDATE measurement_point SET device_id = NULL WHERE device_id = ?", deviceId);
+        jdbc.update("UPDATE asset SET device_id = NULL WHERE device_id = ?", deviceId);
+        jdbc.update("UPDATE entity_registry_state SET device_id = NULL WHERE device_id = ?", deviceId);
+        jdbc.update("UPDATE site SET lead_device_id = NULL WHERE lead_device_id = ?", deviceId);
     }
 
     /**
@@ -129,7 +152,6 @@ public class DeviceRepository {
                 (rs, n) -> rs.getTimestamp(1).toInstant(), deviceId).stream().findFirst();
     }
 
-    /** Devices at a site (for the site-delete guard/preview), RLS-scoped. */
     /**
      * Records the box's OWN reachability (Anlagen-Zentrale Stufe 2, D5) - the
      * one fact the box reports about ITSELF. Replaced on every heartbeat that
@@ -147,9 +169,10 @@ public class DeviceRepository {
                 deviceId) > 0;
     }
 
+    /** Active devices at a site (for the site-delete guard/preview), RLS-scoped; an ausgebaut box does not count. */
     public int countForSite(UUID siteId) {
         Integer count = jdbc.queryForObject(
-                "SELECT count(*) FROM device WHERE site_id = ?", Integer.class, siteId);
+                "SELECT count(*) FROM device WHERE site_id = ? AND ausgebaut_am IS NULL", Integer.class, siteId);
         return count == null ? 0 : count;
     }
 

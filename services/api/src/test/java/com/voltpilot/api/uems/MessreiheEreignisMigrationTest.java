@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
@@ -511,9 +512,12 @@ class MessreiheEreignisMigrationTest {
 
         alsTue(w, () -> new SeriesRepository(app).purgeDeviceRecordings(box, site, null));
         assertThat(als(w, () -> app.update("DELETE FROM measurement_point WHERE id = ?", komponente))).isOne();
-        assertThat(als(w, () -> app.update("DELETE FROM device WHERE id = ?", box))).as("Unclaim").isOne();
+        // Unclaim baut die Box aus (AP-07 IP-11): der Bestand der Messwert-Strecke bleibt mit ihr.
+        assertThat(als(w, () -> new DeviceRepository(app).ausbauen(box))).as("Unclaim").isTrue();
         assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_event WHERE device_id = ?",
-                Long.class, box)).as("der Bestand geht mit der Box").isZero();
+                Long.class, box)).as("der Bestand bleibt mit der ausgebauten Box").isOne();
+        // Die Anlage ohne Belege wird wie im SiteController entfernt: erst ihre Serien, dann sie selbst.
+        alsTue(w, () -> new SeriesRepository(app).deleteForSite(site));
         assertThat(als(w, () -> app.update("DELETE FROM site WHERE id = ?", site))).isOne();
         assertThat(root.queryForObject(ereignisseVonW, Long.class, w)).as("die Ereignisse bleiben").isEqualTo(2);
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? AND "

@@ -55,7 +55,8 @@ public class MeasurementConfigReconciler {
         return adminJdbc.query("""
                 SELECT d.tenant_id,d.site_id,d.id
                   FROM device d
-                 WHERE EXISTS (SELECT 1 FROM device_measurement_selection s WHERE s.device_id=d.id)
+                 WHERE d.ausgebaut_am IS NULL
+                   AND EXISTS (SELECT 1 FROM device_measurement_selection s WHERE s.device_id=d.id)
                    AND COALESCE((SELECT max(e.desired_revision)
                                    FROM device_measurement_selection_event e
                                   WHERE e.device_id=d.id),0)
