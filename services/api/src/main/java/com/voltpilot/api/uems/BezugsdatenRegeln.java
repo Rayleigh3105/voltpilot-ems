@@ -87,7 +87,7 @@ public final class BezugsdatenRegeln {
     public static final String DATUM_UNLESBAR = BezugsPeriode.DATUM_UNLESBAR;
     public static final String WERT_NEGATIV = "wert_negativ";
     public static final String WERT_UNPLAUSIBEL = "wert_unplausibel";
-    public static final String KEINE_DATENZEILEN = "keine_datenzeilen";
+    public static final String KEINE_DATENZEILEN = CsvLeser.KEINE_DATENZEILEN;
 
     /** C8: die Befunde, die eine Zeile NICHT verhindern. Alle anderen tun es. */
     public static final List<String> HINWEIS_BEFUNDE = List.of(DATEI_BEKANNT, EINHEIT_UMGERECHNET, WERT_UNPLAUSIBEL);
