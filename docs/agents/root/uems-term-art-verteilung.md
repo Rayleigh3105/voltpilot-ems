@@ -3,8 +3,8 @@
 Ein Formel-Term nimmt den ganzen Wert seines Eingangs, nur den positiven/negativen **Teil** eines
 Messwerts (`anteil`, E4: Laden/Entladen als ZWEI Terme, nie Saldo) oder den **Anteil DES TAGES** einer
 Kostenstelle an einer Messstelle (`eingang_art = verteilung`, E11: „4100 von MS-07“ statt Faktor 0,7).
-Gebaut sind Speicher, Schnittstelle und Rechenweg. **Beide Lesewege fehlen noch** — darum ist der Kern
-dieses Pakets eine **benannte Ablehnung**, die stehen bleiben darf. Vertrag: `messstelle-formel.md`
+Gebaut sind Speicher, Schnittstelle und Rechenweg. Der Leseweg der **Verteilung** ist seit AP-10 IP-8
+eingelöst (`uems-verteilung.md`); der Teil eines Messwerts wartet weiter als **benannte Ablehnung**. Vertrag: `messstelle-formel.md`
 §1.1/§6.3, `verteilung.md` §2.1, Block `leseweg` in `verteilung-vectors.json`.
 
 | Was | Wo |
@@ -26,13 +26,13 @@ dieses Pakets eine **benannte Ablehnung**, die stehen bleiben darf. Vertrag: `me
 | Fehlt | Ablehnung (422, Kundensatz im Vertrag) | Liefert | Was das Paket ändert |
 |---|---|---|---|
 | Teil eines Messwerts | `anteil_wartet_auf_ap08` (`feld` `terme[i].anteil`, `wartet_auf` „AP-08 IP-7“) | ✅ AP-08 IP-7 lieferte Quellenbindung mit `anteil` + `VerbrauchRegeln.anteilJeRohwert` — ⚠ der Zweig bleibt benannt: der Formel-Verlauf liest `device_measurement_rollup_15m.avg_numeric`, ein Anteil DARAUS wäre je Mittelwert (E15 Option C, verworfen) | den Zweig `anteil` in `AnteilLeseweg#lies` — erst wenn der Verlauf je Term aus Rohwerten rechnet (`uems-quelle-anteil.md`) |
-| Anteil des Tages | `verteilung_wartet_auf_ip8` (`feld` `terme[i].eingang_art`, „AP-10 IP-8“) | AP-10 IP-8 (`messstelle_verteilung`) | den Zweig `verteilung`: Abschnitte lesen → `tagesanteil(term, tag, abschnitte)` |
+| Anteil des Tages | ✅ eingelöst — `verteilung_wartet_auf_ip8` gibt es nicht mehr | ✅ AP-10 IP-8 (`V20260913230000`, `messstelle_verteilung`) | der Zweig `verteilung` liest die Zeilen am Tag (`VerteilungRepository.stand` → `VerteilungRegeln.amTag`) → `tagesanteil(term, tag, abschnitte)`; ohne Zeile `nicht_verteilt`; der Schreibweg prüft an der alten Stelle „Kostenstelle da“ (404) |
 | Kostenstelle als Objekt | — | ✅ AP-10 IP-7 (`V20260913160000`) | Fremdschlüssel `messstelle_formel_term_verteilung_ziel_fk`: `(verteilung_ziel, tenant_id) → kostenstelle (id, tenant_id)`, RESTRICT — Tests brauchen eine echte Kostenstelle |
 
 Mehr ändert sich dort nicht: die Anwendung des Anteils im Live-Wert und je Bucket ist schon verdrahtet
-(`Lesung.urteil` → `VerteilungRegeln.term`). Beweis: `MessstelleFormelVerteilungsTermApiTest` ersetzt
-per `@Primary` NUR `lies` für ein Ziel — dieselbe Kette speichert den Term und rechnet vorgestern 70 %,
-gestern und heute 60 %, vor der Verteilung keinen Wert.
+(`Lesung.urteil` → `VerteilungRegeln.term`). Beweis: `MessstelleFormelVerteilungsTermApiTest` schreibt
+seit IP-8 die Verteilung über `PUT …/verteilung` — dieselbe Kette speichert den Term und rechnet vorgestern
+70 %, gestern und heute 60 %, vor der Verteilung keinen Wert.
 
 ## Fallen
 
@@ -49,8 +49,8 @@ gestern und heute 60 %, vor der Verteilung keinen Wert.
    Record-Bestandteil, optional in `api.ts`, nicht `required` in der OpenAPI; das Protokoll-JSON trägt
    sie nur, wenn gesetzt. `gesamtwert.ts`, `gesamtwertQuelle.ts`, `GesamtwertDialog.tsx` sind unverändert.
 5. **Prüfreihenfolge im Schreibweg:** Form 400 → Eingang da (404, fremd ist nicht da) →
-   `verteilungs_term_ohne_faktor` → `anteil_wartet_auf_ap08` → `verteilung_wartet_auf_ip8` (erst der
-   Teil, dann die Verteilung dieses Teils). Nichts wird geschrieben, auch keine Fassung.
+   `verteilungs_term_ohne_faktor` → `anteil_wartet_auf_ap08` → Kostenstelle da (404, seit IP-8 an der
+   Stelle von `verteilung_wartet_auf_ip8`). Nichts wird geschrieben, auch keine Fassung.
 6. **Ein Verteilungs-Term ist eine Kante** für `formel_zyklus` (`verkettungen` liest `messstelle` UND
    `verteilung`) und zählt im Lebenszyklus über seine Quell-Messstelle (`stand`).
 7. **Postgres prüft CHECKs in Namensreihenfolge** (`anteil_chk` < `bindung_chk` < … <
@@ -59,7 +59,7 @@ gestern und heute 60 %, vor der Verteilung keinen Wert.
 
 ## Nicht dieses Paket
 
-Kein Anteils-Leseweg (AP-08 IP-7), keine Verteilung (IP-8), keine dynamischen
+Kein Anteils-Leseweg (AP-08 IP-7), keine Verteilung (seit IP-8 gebaut: `uems-verteilung.md`), keine dynamischen
 Umlageschlüssel (ein Anteil ist eine gepflegte Zahl mit Gültigkeit), keine Verlaufsquelle (IP-10),
 kein Netzanschluss (IP-6), keine Route, keine Portal-Fläche über die Typen hinaus, keine
 Rechte-Durchsetzung (`messstelle.formel` bleibt Kommentar).

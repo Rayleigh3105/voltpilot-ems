@@ -31,7 +31,12 @@
     "Cloud (kunde bzw. kunde/cloud), je Statuswechsel eine NEUE Meldung, nie fortgeschrieben. Ihre",
     "Wörter stehen in vokabular.ersatzwert_methode (a–g, E7), ersatzwert_status, korrektur_art und",
     "korrektur_status — dieselben Wörter, mit denen die Tabellen messreihe_ersatzwert und",
-    "messreihe_korrektur sie über messreihe_korrektur_vokabular() prüfen (Zeile für Zeile)."
+    "messreihe_korrektur sie über messreihe_korrektur_vokabular() prüfen (Zeile für Zeile).",
+    "",
+    "AP-10 IP-8 (additiv): verteilung_geaendert — die Verteilung einer Messstelle auf Kostenstellen gilt ab",
+    "einem Tag anders. Nur kunde, Zeitpunkt = Beginn des ersten Tags (00:00 in der Zeitzone des",
+    "Unternehmens), Bezug NUR die Messstelle (eine Verteilung hängt an keiner Reihe); die Zeilen selbst",
+    "stehen in messstelle_verteilung."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./events-vocabulary.schema.json",
@@ -1767,6 +1772,42 @@
         "bestand": false,
         "nie_geloescht": true,
         "herkunft": "AP-08 §4.4, §4.6, E8, E9, E14 (Tabelle messreihe_korrektur, Lieferpaket IP-12)"
+      },
+      {
+        "art": "verteilung_geaendert",
+        "name": "Verteilung geändert",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "messstelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "eingetragen_am"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Verteilung auf Kostenstellen geändert ab {zeitpunkt} (eingetragen am {eingetragen_am})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist der Beginn des ersten Tags der neuen Verteilung (00:00 in der Zeitzone des Unternehmens); `eingetragen_am` darf davor (rückwirkend) oder danach (im Voraus eingetragen) liegen.",
+          "Bezug ist NUR die Messstelle — eine Verteilung hängt an keiner Reihe, darum weder komponente noch messkanal. Die Zeilen selbst (Kostenstelle, Anteil, Tage) stehen in messstelle_verteilung; die Meldung sagt nur, DASS und AB WANN sich etwas geändert hat.",
+          "Eine Meldung je Schreibvorgang (Satz ab Tag, E11), nie fortgeschrieben; derselbe Satz noch einmal meldet nichts. Die Neuberechnung der verteilten Werte ab dem Zeitpunkt ist AP-10 IP-11."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-10 §4.6, §4.7 (Auslöser „Verteilung geändert“), §5 (messreihe_ereignis + Art verteilung_geaendert, Urheber kunde); Lieferpaket IP-8"
       }
     ]
   },
@@ -4516,6 +4557,104 @@
         "schema": true,
         "urteil": "verworfen",
         "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "verteilung-ms07-ab-15-01-2027",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Ines Kaltenbach trägt am 20.01.2027 rückwirkend ein, dass MS-07 ab dem 15.01. zu 60 % an 4100 und zu 40 % an 4200 geht — eine Meldung, Bezug die Messstelle.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a0",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Verteilung auf Kostenstellen geändert ab 15.01.2027 00:00 (eingetragen am 20.01.2027 10:12)"
+        ]
+      }
+    },
+    {
+      "name": "verteilung-im-voraus-eingetragen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Die Verteilung ab dem 01.02.2027 wird schon am 20.01. eingetragen — eingetragen_am darf vor dem Zeitpunkt liegen.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a1",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-31T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Verteilung auf Kostenstellen geändert ab 01.02.2027 00:00 (eingetragen am 20.01.2027 10:12)"
+        ]
+      }
+    },
+    {
+      "name": "verteilung-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Eine Verteilung trägt ein Mensch ein; die Cloud rechnet mit ihr, ändert sie aber nie.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a2",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "verteilung-an-einer-reihe-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Eine Verteilung hängt an der Messstelle, nicht an einer Reihe — Komponente und Messkanal gehören nicht in die Meldung.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a3",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
         "saetze": []
       }
     }

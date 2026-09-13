@@ -234,9 +234,11 @@ wird **abgelehnt, nie geraten**.
   vom aktuellen Stand abgeschrieben und geweitet: `eingang_art` + `verteilung`, die Bindung
   `verteilung` = Quell-Messstelle UND Ziel (kein Messkanal), ein Verteilungs-Term trägt Faktor 1.
 - **Die EINE Stelle** `uems/AnteilLeseweg#lies`: Schreibweg, Live-Wert und Verlauf fragen nur sie.
-  Heute lehnt sie ab; wird AP-08 IP-7 bzw. AP-10 IP-8 gebaut, wird aus GENAU ihrem Zweig ein Aufruf —
-  für die Verteilung `AnteilLeseweg.tagesanteil(term, tag, abschnitte)`, das die Regel `term` aus
-  [`verteilung-vectors.json`](./verteilung-vectors.json) (`VerteilungRegeln.term`) aufruft.
+  **Seit AP-10 IP-8 (13.09.2026) ist der Zweig `verteilung` eingelöst:** er liest die Zeilen von
+  `messstelle_verteilung` am Tag, wählt über `VerteilungRegeln.amTag` die geltenden und rechnet über
+  `AnteilLeseweg.tagesanteil(term, tag, abschnitte)` die Regel `term` aus
+  [`verteilung-vectors.json`](./verteilung-vectors.json) (`VerteilungRegeln.term`). Ohne Zeile am Tag ist
+  das Urteil `nicht_verteilt` (ein Zustand, nie eine Null). Der Zweig `anteil` wartet weiter.
 - **Die Ablehnungen stehen im Vertrag**, Block `leseweg` von `verteilung-vectors.json`, mit Status,
   Feld, Paket und Kundensatz — in Prüfreihenfolge:
 
@@ -244,10 +246,11 @@ wird **abgelehnt, nie geraten**.
   |---|---|---|---|
   | `verteilungs_term_ohne_faktor` | 422 | `feld` | ein Verteilungs-Term mit Faktor ≠ 1 (Vertragsregel, wartet nie) |
   | `anteil_wartet_auf_ap08` | 422 | `feld`, `wartet_auf` | `anteil` = `positiv`/`negativ` |
-  | `verteilung_wartet_auf_ip8` | 422 | `feld`, `wartet_auf` | `eingang_art` = `verteilung` |
 
   Form (400) und „fremd ist nicht da“ (404) gehen voraus. Nie `nicht_verteilt` oder
-  `ziel_besteht_nicht`: die sagen etwas über eine VORHANDENE Verteilung.
+  `ziel_besteht_nicht`: die sagen etwas über eine VORHANDENE Verteilung. `verteilung_wartet_auf_ip8`
+  (bis 13.09.2026 an dritter Stelle) ist mit AP-10 IP-8 eingelöst; an seiner Stelle prüft der
+  Schreibweg, dass die Kostenstelle des Terms da ist (404 — nie der Fremdschlüssel als 500).
 - **Rechnen:** steht ein solcher Term doch in der Datenbank, fehlt er — im Live-Wert unter
   `fehlende[]` mit dem Code als `grund`, im Verlauf ist der Bucket `null`. Der Anteil gilt je TAG: im
   Live-Wert der von heute, im Verlauf der des Tages, an dem der Bucket beginnt.

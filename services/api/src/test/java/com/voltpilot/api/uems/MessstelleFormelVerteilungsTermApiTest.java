@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.voltpilot.api.tenant.TenantContext;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -29,9 +27,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,18 +43,20 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Die Term-Art {@code verteilung} und der {@code anteil} (UEMS AP-10 IP-5) gegen die echte Kette:
- * {@code POST …/berechnet}, {@code POST …/formel/fassungen}, {@code GET …/formel|wert|verlauf}.
+ * Die Term-Art {@code verteilung} und der {@code anteil} (UEMS AP-10 IP-5, eingelöst mit IP-8) gegen die
+ * echte Kette: {@code POST …/berechnet}, {@code POST …/formel/fassungen}, {@code GET …/formel|wert|verlauf}
+ * und — seit AP-10 IP-8 — {@code PUT …/verteilung}.
  *
  * <ul>
- *   <li>Die benannte Ablehnung ist ein vollwertiger Weg: 422 mit dem Code und dem Kundensatz AUS DEM
+ *   <li>Der Teil eines Messwerts wartet weiter benannt: 422 mit dem Code und dem Kundensatz AUS DEM
  *       VERTRAG ({@code verteilung-vectors.json}, Block {@code leseweg}), und es wird nichts
  *       gespeichert — beim Anlegen nicht und bei einer neuen Fassung nicht.</li>
- *   <li>Steht ein solcher Term doch in der Datenbank, nennen Wert und Verlauf ihn als fehlend (Grund =
- *       Code) — nie eine Zahl, nie eine Teilsumme.</li>
- *   <li>Die EINE Stelle: tauscht ein Test nur {@link AnteilLeseweg#lies} gegen den Aufruf, den IP-8
- *       dort einsetzt, rechnet dieselbe Kette den Anteil JE TAG des Buckets — der alte Tag mit dem
- *       Anteil von damals.</li>
+ *   <li>Ein Verteilungs-Term wird gespeichert (die Ablehnung {@code verteilung_wartet_auf_ip8} ist
+ *       eingelöst); eine Kostenstelle, die es nicht gibt, ist 404 — nie der Fremdschlüssel als 500.</li>
+ *   <li>Ohne Zeile der Verteilung am Tag nennen Wert und Verlauf den Term als fehlend
+ *       ({@code nicht_verteilt}) — nie eine Zahl, nie eine Teilsumme, nie 0 %.</li>
+ *   <li>Die EINE Stelle {@link AnteilLeseweg#lies} liest die echte Verteilung: dieselbe Kette rechnet den
+ *       Anteil JE TAG des Buckets — der alte Tag mit dem Anteil von damals.</li>
  *   <li>Bestand zeichengleich, fremd ist 404.</li>
  * </ul>
  *
@@ -80,9 +77,6 @@ class MessstelleFormelVerteilungsTermApiTest {
     private static final String PV1 = "deye.hybrid_3p.pv.pv1-power";
     private static final String PV2 = "deye.hybrid_3p.pv.pv2-power";
     private static final String PV3 = "deye.hybrid_3p.pv.pv3-power";
-
-    /** Die Verteilungen, die der Test-Leseweg „schon lesen kann“ — je Ziel (Kostenstelle). */
-    static final Map<UUID, List<VerteilungRegeln.Abschnitt>> GEBAUT = new ConcurrentHashMap<>();
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -106,29 +100,6 @@ class MessstelleFormelVerteilungsTermApiTest {
                 () -> "http://127.0.0.1:9/realms/voltpilot");
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
                 () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
-    }
-
-    /**
-     * Der Leseweg, wie IP-8 ihn bauen wird — aber NUR für die Ziele in {@link #GEBAUT}; für alles
-     * andere ist er der echte (und lehnt ab). Genau diese eine Methode wird ersetzt.
-     */
-    @TestConfiguration
-    static class LesewegMitVerteilung {
-        @Bean
-        @Primary
-        AnteilLeseweg lesewegMitVerteilung() {
-            return new AnteilLeseweg() {
-                @Override
-                public Lesung lies(String eingangArt, String anteil, UUID quell, UUID ziel, LocalDate tag) {
-                    List<VerteilungRegeln.Abschnitt> verteilung = ziel == null ? null : GEBAUT.get(ziel);
-                    if (VERTEILUNG.equals(eingangArt) && anteil == null && verteilung != null) {
-                        return tagesanteil(new VerteilungRegeln.VerteilungsTerm(VERTEILUNG, ziel.toString(),
-                                quell.toString(), GESAMT, BigDecimal.ONE, "+"), tag, verteilung);
-                    }
-                    return super.lies(eingangArt, anteil, quell, ziel, tag);
-                }
-            };
-        }
     }
 
     @Autowired
@@ -155,26 +126,34 @@ class MessstelleFormelVerteilungsTermApiTest {
         return LocalDate.now(BERLIN);
     }
 
-    // ======================================================== die benannte Ablehnung
+    // ======================================== eingelöst: der Verteilungs-Term wird gespeichert
 
+    /**
+     * Seit AP-10 IP-8 lehnt der Schreibweg einen Verteilungs-Term nicht mehr ab: er wird angelegt und in
+     * einer neuen Fassung eingetragen. An der Stelle der eingelösten Ablehnung steht „die Kostenstelle ist
+     * da“ — eine unbekannte ist 404 und es wird nichts gespeichert.
+     */
     @Test
-    void einVerteilungsTermWirdBenanntAbgelehntUndNichtsGespeichert() throws Exception {
+    void einVerteilungsTermWirdGespeichertEineUnbekannteKostenstelleIst404() throws Exception {
         Welt w = welt();
         UUID quelle = anlegen(w, term(w, PV1, "+"));
         long messstellenVorher = messstellen(w);
 
-        Antwort anlegen = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+        Antwort unbekannt = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
                 berechnet(vterm(quelle, UUID.randomUUID())));
-        pruefeAblehnung(anlegen, "verteilung_wartet_auf_ip8", "terme[0].eingang_art");
+        assertThat(unbekannt.status()).as("Antwort " + unbekannt.body()).isEqualTo(404);
+        assertThat(unbekannt.text()).doesNotContain("verteilung_wartet_auf_ip8");
         assertThat(messstellen(w)).as("nichts angelegt").isEqualTo(messstellenVorher);
 
+        UUID kostenstelle = kostenstelle(w);
+        UUID anteil = anlegen(w, vterm(quelle, kostenstelle));
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ? "
+                + "AND eingang_art = 'verteilung' AND verteilung_ziel = ?", Long.class, anteil, kostenstelle)).isOne();
+
         long fassungenVorher = fassungen(quelle);
-        Antwort fassung = ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + quelle + "/formel/fassungen",
-                fassung(heute(), term(w, PV1, "+"), vterm(anlegen(w, term(w, PV2, "+")), UUID.randomUUID())));
-        pruefeAblehnung(fassung, "verteilung_wartet_auf_ip8", "terme[1].eingang_art");
-        assertThat(fassungen(quelle)).as("keine Fassung eingetragen").isEqualTo(fassungenVorher);
-        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_formel_term WHERE tenant_id = ? "
-                + "AND (eingang_art = 'verteilung' OR anteil IS NOT NULL)", Long.class, w.mandant())).isZero();
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + quelle + "/formel/fassungen",
+                fassung(heute(), term(w, PV1, "+"), vterm(anlegen(w, term(w, PV2, "+")), kostenstelle))), 201);
+        assertThat(fassungen(quelle)).as("die Fassung ist eingetragen").isEqualTo(fassungenVorher + 1);
     }
 
     @Test
@@ -253,10 +232,11 @@ class MessstelleFormelVerteilungsTermApiTest {
     /**
      * Ein Term, dessen Anteil wartet, steht doch in der Datenbank (ein Schreiber ohne die Schnittstelle):
      * Wert und Verlauf nennen ihn als fehlend mit dem Code als Grund — nie eine Zahl, nie eine
-     * Teilsumme aus den übrigen Termen.
+     * Teilsumme aus den übrigen Termen. Ein Verteilungs-Term ohne Zeile der Verteilung am Tag ebenso:
+     * {@code nicht_verteilt}, nie 0 %.
      */
     @Test
-    void wertUndVerlaufNennenDenWartendenTermStattEinerZahl() throws Exception {
+    void wertUndVerlaufNennenDenFehlendenTermStattEinerZahl() throws Exception {
         Welt w = welt();
         LocalDate gestern = heute().minusDays(1);
         Instant mittag = gestern.atTime(12, 0).atZone(BERLIN).toInstant();
@@ -272,7 +252,7 @@ class MessstelleFormelVerteilungsTermApiTest {
                 + "quell_messstelle_id, vorzeichen, faktor, verteilung_ziel) SELECT tenant_id, messstelle_id, "
                 + "fassung_id, 1, 'verteilung', ?, '+', 1, ? FROM messstelle_formel_term WHERE messstelle_id = ?",
                 quelle, ziel, verteilt);
-        pruefeWartend(w, verteilt, mittag, "verteilung_wartet_auf_ip8");
+        pruefeWartend(w, verteilt, mittag, "nicht_verteilt");
         JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + verteilt + "/formel", null), 200);
         assertThat(formel.at("/terme/1/eingang_art").asText()).isEqualTo("verteilung");
         assertThat(formel.at("/terme/1/verteilung_ziel").asText()).isEqualTo(ziel.toString());
@@ -315,10 +295,10 @@ class MessstelleFormelVerteilungsTermApiTest {
     // ================================================ die EINE Stelle: Anteil je Tag
 
     /**
-     * Wird aus der Ablehnung in {@link AnteilLeseweg#lies} der Aufruf (hier: ein Test-Leseweg für genau
-     * ein Ziel), speichert dieselbe Schnittstelle den Term und rechnet ihn — ohne jede andere Änderung —
-     * mit dem Anteil DES TAGES: vorgestern 70 %, ab gestern 60 %, heute 60 %; vor der Verteilung hat
-     * der Term keinen Anteil und der Bucket keinen Wert (nie ein geratener Anteil).
+     * Die EINE Stelle {@link AnteilLeseweg#lies} liest die echte Verteilung ({@code PUT …/verteilung}):
+     * dieselbe Schnittstelle speichert den Term und rechnet ihn mit dem Anteil DES TAGES — vorgestern
+     * 70 %, ab gestern 60 %, heute 60 %; vor der Verteilung hat der Term keinen Anteil und der Bucket keinen
+     * Wert (nie ein geratener Anteil).
      */
     @Test
     void derAufrufAnDerEinenStelleRechnetDenAnteilDesTages() throws Exception {
@@ -332,31 +312,30 @@ class MessstelleFormelVerteilungsTermApiTest {
         probe(w, PV1, 10000);
         UUID quelle = anlegen(w, term(w, PV1, "+"));
         UUID kostenstelle = kostenstelle(w);
-        GEBAUT.put(kostenstelle, List.of(
-                new VerteilungRegeln.Abschnitt(vorgestern, vorgestern, List.of(
-                        new VerteilungRegeln.Zeile(kostenstelle.toString(), new BigDecimal("70")),
-                        new VerteilungRegeln.Zeile("andere", new BigDecimal("30")))),
-                new VerteilungRegeln.Abschnitt(gestern, null, List.of(
-                        new VerteilungRegeln.Zeile(kostenstelle.toString(), new BigDecimal("60")),
-                        new VerteilungRegeln.Zeile("andere", new BigDecimal("40"))))));
-        try {
-            UUID anteil = anlegen(w, vterm(quelle, kostenstelle));
-            assertThat(root.queryForObject("SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ? "
-                    + "AND eingang_art = 'verteilung' AND verteilung_ziel = ? AND quell_messstelle_id = ?",
-                    Long.class, anteil, kostenstelle, quelle)).isOne();
+        UUID andere = kostenstelle(w);
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/messstellen/" + quelle + "/verteilung",
+                satz(vorgestern, kostenstelle, "70", andere, "30")), 200);
+        ok(ruf(w, HttpMethod.PUT, "/api/v1/messstellen/" + quelle + "/verteilung",
+                satz(gestern, kostenstelle, "60", andere, "40")), 200);
 
-            Map<String, Double> punkte = verlauf(w, anteil);
-            assertThat(punkte).containsEntry(mittag(vorgestern), 7.0);
-            assertThat(punkte).as("der alte Tag behält seinen Anteil").containsEntry(mittag(gestern), 6.0);
-            assertThat(punkte).as("ohne Verteilung am Tag kein Wert").doesNotContainKey(mittag(vorvorgestern));
-            assertThat(verlauf(w, quelle)).containsEntry(mittag(vorvorgestern), 10.0);
+        UUID anteil = anlegen(w, vterm(quelle, kostenstelle));
+        Map<String, Double> punkte = verlauf(w, anteil);
+        assertThat(punkte).containsEntry(mittag(vorgestern), 7.0);
+        assertThat(punkte).as("der alte Tag behält seinen Anteil").containsEntry(mittag(gestern), 6.0);
+        assertThat(punkte).as("ohne Verteilung am Tag kein Wert").doesNotContainKey(mittag(vorvorgestern));
+        assertThat(verlauf(w, quelle)).containsEntry(mittag(vorvorgestern), 10.0);
 
-            JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + anteil + "/wert", null), 200);
-            assertThat(wert.get("wert").asDouble()).as("heute gilt 60 %").isEqualTo(6.0);
-            assertThat(wert.get("fehlende")).isEmpty();
-        } finally {
-            GEBAUT.remove(kostenstelle);
-        }
+        JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + anteil + "/wert", null), 200);
+        assertThat(wert.get("wert").asDouble()).as("heute gilt 60 %").isEqualTo(6.0);
+        assertThat(wert.get("fehlende")).isEmpty();
+    }
+
+    private static Map<String, Object> satz(LocalDate ab, UUID k1, String a1, UUID k2, String a2) {
+        Map<String, Object> s = new LinkedHashMap<>();
+        s.put("gueltig_ab", ab.toString());
+        s.put("zeilen", List.of(Map.of("kostenstelle_id", k1.toString(), "anteil_prozent", a1),
+                Map.of("kostenstelle_id", k2.toString(), "anteil_prozent", a2)));
+        return s;
     }
 
     // ================================================================ die Welt

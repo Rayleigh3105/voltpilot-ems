@@ -407,6 +407,9 @@
         },
         {
           "$ref": "#/$defs/art_correction"
+        },
+        {
+          "$ref": "#/$defs/art_verteilung_geaendert"
         }
       ]
     },
@@ -1564,6 +1567,35 @@
         },
         "ersatzwert": {
           "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_verteilung_geaendert": {
+      "type": "object",
+      "description": "verteilung_geaendert — Verteilung geändert. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "messstelle",
+        "eingetragen_am"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "verteilung_geaendert"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "eingetragen_am": {
+          "$ref": "#/$defs/zeit_utc"
         }
       }
     }

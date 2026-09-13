@@ -14,6 +14,7 @@ import {
   fassung,
   mengen,
   satz,
+  satzAbTag,
   term,
   type Abschnitt,
   type Bestandszeile,
@@ -176,6 +177,32 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
         expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
         break;
       }
+      case 'satz_ab_tag': {
+        const ist = satzAbTag(
+          ein.heute,
+          ein.tag,
+          zeilen(ein.zeilen),
+          ziele(ein.ziele),
+          bestand(ein.bestehend),
+          ein.korrektur === true,
+        );
+        expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
+        betragGleich(ist.summe, soll.summe, `${why} · Summe`);
+        expect(ist.fakten, `${why} · Fakten`).toEqual(soll.fakten);
+        expect(ist.aufgehoben, `${why} · aufgehoben`).toEqual(soll.aufgehoben);
+        expect(ist.beendet, `${why} · beendet`).toEqual(soll.beendet);
+        expect(
+          ist.neu.map((n) => `${n.kostenstelle}@${n.gueltig_ab}..${n.gueltig_bis}`),
+          `${why} · neue Zeilen (enden mit ihrem Ziel)`,
+        ).toEqual(soll.neu.map((n: Json) => `${n.kostenstelle}@${n.gueltig_ab}..${n.gueltig_bis}`));
+        ist.neu.forEach((n, i) =>
+          betragGleich(n.anteil_prozent, soll.neu[i].anteil_prozent, `${why} · Anteil ${n.kostenstelle}`),
+        );
+        expect(ist.rueckwirkend, `${why} · rückwirkend`).toBe(soll.rueckwirkend);
+        expect(ist.tage_rueckwirkend, `${why} · Tage rückwirkend`).toBe(soll.tage_rueckwirkend);
+        expect(ist.unveraendert, `${why} · unverändert`).toBe(soll.unveraendert);
+        break;
+      }
       case 'mengen': {
         const tage = ein.tage === null ? null : ein.tage.map((t: Json) => ({ tag: t.tag, menge: betrag(t.menge) }));
         const ist = mengen(ein.von, ein.bis, betrag(ein.periode_menge), tage, abschnitte(ein.verteilung));
@@ -252,9 +279,14 @@ describe('Verteilungs-Vertrag: der Leseweg des Formel-Terms', () => {
     expect(block.zwillinge).toEqual(['java']);
     expect(block.zwillinge_grund.length).toBeGreaterThan(20);
     expect(block.pruefreihenfolge).toEqual(block.ablehnungen.map((a: Json) => a.code));
+    // AP-10 IP-8 hat die Verteilung gebaut: nur der Teil des Messwerts wartet noch.
     expect(block.ablehnungen.filter((a: Json) => a.wartet_auf !== null).map((a: Json) => a.code)).toEqual([
       'anteil_wartet_auf_ap08',
-      'verteilung_wartet_auf_ip8',
+    ]);
+    expect(JSON.stringify(vectors)).not.toContain('verteilung_wartet_auf_ip8"');
+    expect(apiTs).not.toContain("'verteilung_wartet_auf_ip8'");
+    expect(block.faelle.filter((f: Json) => f.ergebnis.lesung === 'tagesanteil').map((f: Json) => f.fall)).toEqual([
+      'F11',
     ]);
   });
 

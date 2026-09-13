@@ -98,6 +98,7 @@ public class MessstelleFormelService {
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private final AnteilLeseweg leseweg;
+    private final KostenstelleProzessRepository kostenstellen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
@@ -105,7 +106,8 @@ public class MessstelleFormelService {
             MessstelleFormelFassungRepository fassungen,
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
             MessstelleService messstellenDienst, MeasurementCatalog katalog, UnternehmenRepository unternehmen,
-            PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg) {
+            PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg,
+            KostenstelleProzessRepository kostenstellen) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -118,6 +120,7 @@ public class MessstelleFormelService {
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
         this.leseweg = leseweg;
+        this.kostenstellen = kostenstellen;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -221,6 +224,12 @@ public class MessstelleFormelService {
                 leseweg.lies(b.eingangArt(), b.anteil(), b.quellMessstelleId(), b.verteilungZiel(), ab);
         if (lesung.wartet() != null) {
             throw MessstelleFormelAbgelehnt.leseweg(lesung.wartet(), feld);
+        }
+        // AP-10 IP-8: an der Stelle der eingelösten Ablehnung `verteilung_wartet_auf_ip8` — die Kostenstelle
+        // des Terms ist da (fremd ist nicht da: 404, nie der Fremdschlüssel als 500).
+        if (VERTEILUNG.equals(b.eingangArt())
+                && kostenstellen.finde(KostenstelleProzessRepository.Art.KOSTENSTELLE, b.verteilungZiel()).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Kostenstelle nicht gefunden.");
         }
         return b;
     }

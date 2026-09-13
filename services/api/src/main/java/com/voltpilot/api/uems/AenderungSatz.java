@@ -94,6 +94,8 @@ public final class AenderungSatz {
             case "formel_geaendert" -> "Formel geändert" + zusatz(text(neu, "fassung") == null ? null
                     : "Fassung " + text(neu, "fassung"));
             case "prozesse_zugeordnet" -> "Prozesse zugeordnet" + prozesse(neu);
+            case "verteilung_geaendert" -> (neu != null && neu.path("korrektur").asBoolean()
+                    ? "Verteilung auf Kostenstellen berichtigt" : "Verteilung auf Kostenstellen geändert") + anteile(neu);
             case "erreichbarkeit_geprueft" -> "Erreichbarkeit geprüft" + zusatz(ergebnis);
             case "zustaendigkeit_begonnen" -> "Zuständigkeit begonnen";
             case "zustaendigkeit_gewechselt" -> "Zuständigkeit gewechselt";
@@ -203,6 +205,17 @@ public final class AenderungSatz {
         java.util.List<String> kennzeichen = new java.util.ArrayList<>();
         neu.path("prozesse").forEach(p -> kennzeichen.add(p.asText()));
         return zusatz(kennzeichen.isEmpty() ? "keine" : String.join(", ", kennzeichen));
+    }
+
+    /** „: 70 % 4100, 30 % 4200“ — oder „: nicht verteilt“, nie „0 %“ (AP-10 IP-8). */
+    private static String anteile(JsonNode neu) {
+        if (neu == null || !neu.isObject() || !neu.path("zeilen").isArray()) {
+            return "";
+        }
+        java.util.List<String> teile = new java.util.ArrayList<>();
+        neu.path("zeilen").forEach(z -> teile.add(z.path("anteil_prozent").asText().replace('.', ',')
+                + "\u00a0% " + z.path("kostenstelle").asText()));
+        return zusatz(teile.isEmpty() ? VerteilungRegeln.NICHT_VERTEILT : String.join(", ", teile));
     }
 
     private static String zusatz(String wert) {

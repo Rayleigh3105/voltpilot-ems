@@ -2000,8 +2000,8 @@ export interface BerechneteMessstelleAnlegen {
     vorzeichen: '+' | '-';
     faktor: number;
     /**
-     * AP-10 IP-5: die Kostenstelle eines Verteilungs-Terms. Bis zur Verteilung lehnt der Server
-     * ab (422 `verteilung_wartet_auf_ip8`, mit Kundensatz in `message`).
+     * AP-10 IP-5: die Kostenstelle eines Verteilungs-Terms; seit AP-10 IP-8 liest der Term den Anteil
+     * des Tages aus der Verteilung (eine unbekannte Kostenstelle ist 404).
      */
     verteilung_ziel?: string;
     /** AP-10 IP-5: fehlt = gesamt; `positiv`/`negativ` lehnt der Server ab (422 `anteil_wartet_auf_ap08`). */
@@ -2173,6 +2173,51 @@ export type KostenstelleProzessFehlerCode =
   | 'prozess_unbekannt'
   | 'ziel_besteht_nicht'
   | 'messstelle_archiviert'
+  | 'zuordnung_ueberlappt';
+
+/** Eine Zeile des Verteilungs-Satzes (AP-10 IP-8): die Kostenstelle und ihr Anteil als Dezimaltext. */
+export interface VerteilungZeileEingabe {
+  kostenstelle_id: string;
+  anteil_prozent: string;
+}
+
+/** Ein Anteil der Messstelle an einer Kostenstelle über Tage; `endet_mit_kostenstelle`: gilt nie länger als sie. */
+export interface MessstelleVerteilungAnteil {
+  id: string;
+  kostenstelle: { id: string; kennzeichen: string };
+  name: string;
+  anteil_prozent: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  endet_mit_kostenstelle: boolean;
+}
+
+/**
+ * Die Antwort von `GET/PUT /api/v1/messstellen/{id}/verteilung`: mit `am` der Zustand des Tages —
+ * `verteilt` oder ausdrücklich `nicht verteilt` (nie „zu 0 % verteilt“); ohne `am` `null`.
+ */
+export interface MessstelleVerteilung {
+  messstelle_id: string;
+  kennzeichen: string;
+  am: string | null;
+  zustand: 'verteilt' | 'nicht verteilt' | null;
+  anteile: MessstelleVerteilungAnteil[];
+}
+
+/**
+ * Die Ablehnungen der Verteilungs-Schnittstelle — der geschlossene Satz aus `uems/VerteilungAbgelehnt`
+ * (gepinnt gegen OpenAPI `VerteilungFehler`).
+ */
+export type VerteilungFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'unternehmen_nicht_angelegt'
+  | 'messstelle_archiviert'
+  | 'kostenstelle_unbekannt'
+  | 'anteil_ungueltig'
+  | 'ziel_besteht_nicht'
+  | 'verteilung_summe'
+  | 'formel_fassung_ueberlappt'
   | 'zuordnung_ueberlappt';
 
 /** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
@@ -5689,6 +5734,16 @@ export const api = {
   /** Ab `gueltig_ab` gehört die Messstelle zu GENAU diesen Prozessen (leer = zu keinem). */
   messstelleProzesseSetzen: (id: string, body: { gueltig_ab: string; prozesse: string[]; grund?: string | null }) =>
     request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Verteilung einer Messstelle auf Kostenstellen (AP-10 IP-8): alle Anteile, mit `am` die des Tages. */
+  messstelleVerteilung: (id: string, am?: string) =>
+    request<MessstelleVerteilung>(`/api/v1/messstellen/${id}/verteilung${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+
+  /** Ab `gueltig_ab` gilt GENAU dieser Satz (alle Ziele des Tages; leer = nicht verteilt); `korrektur` ersetzt den vom selben Tag. */
+  messstelleVerteilungSetzen: (
+    id: string,
+    body: { gueltig_ab: string; zeilen: VerteilungZeileEingabe[]; korrektur?: boolean | null; grund?: string | null },
+  ) => request<MessstelleVerteilung>(`/api/v1/messstellen/${id}/verteilung`, { method: 'PUT', body: JSON.stringify(body) }),
 
   /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5). */
   bezugsgroessen: () => request<{ bezugsgroessen: Bezugsgroesse[] }>(`/api/v1/bezugsgroessen`),

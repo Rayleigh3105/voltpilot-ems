@@ -49,6 +49,7 @@ export const EREIGNIS_ARTEN = [
   'text_change',
   'substitute',
   'correction',
+  'verteilung_geaendert',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -380,6 +381,13 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
       zurueckgenommen: 'Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}',
     },
     zusaetze: { ersatzwert: ' ({ersatzwert})' },
+  },
+  verteilung_geaendert: {
+    name: 'Verteilung geändert',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Verteilung auf Kostenstellen geändert ab {zeitpunkt} (eingetragen am {eingetragen_am})' },
+    zusaetze: {},
   },
 };
 

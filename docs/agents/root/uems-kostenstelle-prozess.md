@@ -25,9 +25,10 @@ gelöscht**. Eine Messstelle gehört je Tag zu 0..n Prozessen, ohne Anteil. Konz
   `uems_ziel_deckt_zuordnungen(constraint)` hängt am Ziel (`prozess`, `kostenstelle`) und lehnt ein Ende
   ab, das eine Zuordnung abschneiden würde. Welche Tabellen Zuordnungen eines Ziels sind, liest
   `uems_zuordnungen_ausserhalb()` aus **`pg_trigger`** — dieselbe Funktion füllt die 409-Liste.
-- ⚠ **Die Verteilung (IP-8) hängt nur ihre Hälfte an:** `CREATE TRIGGER … EXECUTE FUNCTION
+- ✅ **Die Verteilung (IP-8, `V20260913230000`) hängt nur ihre Hälfte an:** `CREATE TRIGGER … EXECUTE FUNCTION
   uems_zuordnung_im_ziel('kostenstelle', 'kostenstelle_id', 'messstelle_verteilung_kostenstelle_besteht')`
-  — dann gilt „ein Anteil gilt nie länger als seine Kostenstelle“ an beiden Seiten, ohne zweite Liste.
+  — „ein Anteil gilt nie länger als seine Kostenstelle“ gilt an beiden Seiten, ohne zweite Liste; die
+  409-Liste nennt sie als `art` = `verteilung` (`uems-verteilung.md`). Drei Zuordnungs-Trigger heute.
   Konvention der Zuordnungs-Tabelle: `tenant_id`, `gueltig_ab`, `gueltig_bis`, wahlweise
   `aufgehoben_am`. Die Migrationsprobe `einAnteilGiltNieLaengerAlsSeineKostenstelle` tut genau das
   gegen alle Anteile des Referenzunternehmens.
@@ -42,7 +43,7 @@ gelöscht**. Eine Messstelle gehört je Tag zu 0..n Prozessen, ohne Anteil. Konz
 2. **Routen der Bezugsgrößen** (AP-09 IP-5): `BezugsgroesseRegeln.GELTUNG_WAEHLBAR` = alle sieben;
    `geltung_nicht_waehlbar` bleibt im geschlossenen Satz des Vertrags (Regel mit Eingang `waehlbar`).
 3. **`verteilung_ziel`** (AP-10 IP-5): Fremdschlüssel `(verteilung_ziel, tenant_id) → kostenstelle`.
-   Die 422 `verteilung_wartet_auf_ip8` BLEIBT — sie wartet auf die Verteilung, nicht auf das Objekt.
+   Die 422 `verteilung_wartet_auf_ip8` blieb bis AP-10 IP-8 — dort eingelöst (`uems-verteilung.md`).
 
 ## Fallen im Schreibweg
 
@@ -65,4 +66,5 @@ gelöscht**. Eine Messstelle gehört je Tag zu 0..n Prozessen, ohne Anteil. Konz
   P-1 endet 31.12.2026 — ein Wert für März 2027 bleibt speicherbar, das Beenden meldet nichts (die
   Bezugsgröße hat keine Tage, ihre Werte schon). Entscheidung bei AP-10 IP-11 bzw. AP-09 IP-7.
 
-**Nicht gebaut:** Verteilung (IP-8), Kostenstellen-Lesemodell (IP-11), Portal (IP-15), Durchsetzung (AP-03).
+**Nicht gebaut:** Kostenstellen-Lesemodell (IP-11), Portal (IP-15), Durchsetzung (AP-03). Die Verteilung
+steht seit IP-8 (`uems-verteilung.md`).

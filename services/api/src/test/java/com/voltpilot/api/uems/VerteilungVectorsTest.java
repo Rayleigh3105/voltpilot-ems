@@ -201,6 +201,35 @@ class VerteilungVectorsTest {
                         .isEqualTo(soll.path("tage_rueckwirkend").asLong());
                 assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
             }
+            case "satz_ab_tag" -> {
+                VerteilungRegeln.SatzAbTagUrteil ist = VerteilungRegeln.satzAbTag(tag(ein.path("heute")),
+                        tag(ein.path("tag")), zeilen(ein.path("zeilen")), ziele(ein.path("ziele")),
+                        bestand(ein.path("bestehend")), ein.path("korrektur").asBoolean());
+                assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
+                betragGleich(ist.summe(), soll.path("summe"), why + " · Summe");
+                Map<String, String> sollFakten = new LinkedHashMap<>();
+                soll.path("fakten").fields().forEachRemaining(e -> sollFakten.put(e.getKey(), e.getValue().asText()));
+                assertThat(ist.fakten()).as(why + " · Fakten").isEqualTo(sollFakten);
+                assertThat(ist.aufgehoben().stream().map(a -> a.kostenstelle() + "@" + a.gueltigAb()).toList())
+                        .as(why + " · aufgehoben").isEqualTo(paare(soll.path("aufgehoben"), "gueltig_ab"));
+                assertThat(ist.beendet().stream().map(b -> b.kostenstelle() + "@" + b.gueltigBis()).toList())
+                        .as(why + " · beendet").isEqualTo(paare(soll.path("beendet"), "gueltig_bis"));
+                List<String> neu = ist.neu().stream()
+                        .map(n -> n.kostenstelle() + "=" + n.anteilProzent().stripTrailingZeros().toPlainString()
+                                + "@" + n.gueltigAb() + ".." + n.gueltigBis())
+                        .toList();
+                List<String> sollNeu = new ArrayList<>();
+                soll.path("neu").forEach(n -> sollNeu.add(n.path("kostenstelle").asText() + "="
+                        + new BigDecimal(n.path("anteil_prozent").asText()).stripTrailingZeros().toPlainString()
+                        + "@" + n.path("gueltig_ab").asText() + ".." + str(n.path("gueltig_bis"))));
+                assertThat(neu).as(why + " · neue Zeilen (enden mit ihrem Ziel)").isEqualTo(sollNeu);
+                assertThat(ist.rueckwirkend()).as(why + " · rückwirkend")
+                        .isEqualTo(soll.path("rueckwirkend").asBoolean());
+                assertThat(ist.tageRueckwirkend()).as(why + " · Tage rückwirkend")
+                        .isEqualTo(soll.path("tage_rueckwirkend").asLong());
+                assertThat(ist.unveraendert()).as(why + " · unverändert")
+                        .isEqualTo(soll.path("unveraendert").asBoolean());
+            }
             case "mengen" -> {
                 List<VerteilungRegeln.Tagesmenge> tage = null;
                 if (ein.path("tage").isArray()) {
@@ -265,6 +294,12 @@ class VerteilungVectorsTest {
             }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    private static List<String> paare(JsonNode n, String tagFeld) {
+        List<String> raus = new ArrayList<>();
+        n.forEach(x -> raus.add(x.path("kostenstelle").asText() + "@" + x.path(tagFeld).asText()));
+        return raus;
     }
 
     private static List<String> namen(JsonNode obj) {

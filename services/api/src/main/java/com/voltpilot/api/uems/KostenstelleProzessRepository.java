@@ -124,6 +124,8 @@ public class KostenstelleProzessRepository {
                 + "  WHEN 'messstelle_prozess' THEN (SELECT m.kennzeichen FROM messstelle_prozess z "
                 + "       JOIN messstelle m ON m.id = z.messstelle_id AND m.tenant_id = z.tenant_id WHERE z.id = a.zeile_id) "
                 + "  WHEN 'prozess' THEN (SELECT p.kennzeichen FROM prozess p WHERE p.id = a.zeile_id) "
+                + "  WHEN 'messstelle_verteilung' THEN (SELECT m.kennzeichen FROM messstelle_verteilung z "
+                + "       JOIN messstelle m ON m.id = z.messstelle_id AND m.tenant_id = z.tenant_id WHERE z.id = a.zeile_id) "
                 + "END AS kennzeichen "
                 + "FROM uems_zuordnungen_ausserhalb(?, ?, ?, ?, ?) a",
                 (rs, n) -> new Ausserhalb(rs.getString("tabelle"), rs.getObject("zeile_id", UUID.class),

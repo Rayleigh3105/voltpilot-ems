@@ -253,8 +253,18 @@ tags:
       würde, ist 409 `zuordnung_besteht` mit der Liste. Mandanten-Zaun ist die RLS (fremd =
       404 `nicht_gefunden`, nie 403). Rechte (AP-10 §4.10, E15): `kostenstelle.verwalten`,
       `prozess.verwalten`, die Zuordnung `messstelle.bearbeiten` - noch nicht durchgesetzt
-      (AP-03), es gilt authenticated(). Die Verteilung auf Kostenstellen (IP-8) und das
-      Kostenstellen-Lesemodell (IP-11) kommen mit ihren Paketen.
+      (AP-03), es gilt authenticated(). Die Verteilung auf Kostenstellen steht seit AP-10 IP-8
+      unter dem Tag `verteilung`; das Kostenstellen-Lesemodell (IP-11) kommt mit seinem Paket.
+  - name: verteilung
+    description: >
+      UEMS-Verteilung einer Messstelle auf Kostenstellen (AP-10 IP-8, Konzept §4.6, E11 = A,
+      E12 = A; Vertrag docs/contracts/v2/verteilung.md, Regel `satz_ab_tag`): eine eigene
+      zeitgültige Beziehung Messstelle → Kostenstelle mit Anteil, geschrieben als SATZ je Tag.
+      An jedem Tag mit Zeilen sind es GENAU 100 % (die Datenbank prüft es zur Commit-Zeit); ohne
+      Zeile ist die Messstelle ausdrücklich „nicht verteilt“ - nie „zu 0 % verteilt“. Ein Anteil
+      gilt nie länger als seine Kostenstelle. Sie wirkt je TAG auf die Tagesmenge (E12).
+      Mandanten-Zaun ist die RLS (fremd = 404 `nicht_gefunden`, nie 403). Rechte (AP-10 §4.10,
+      E15): `messstelle.verteilung`, lesen `messstelle.ansehen` - noch nicht durchgesetzt (AP-03).
   - name: geraete
     description: >
       UEMS-Geräte (AP-04 IP-10): das physische Kästchen hinter der VoltPilot-Box
@@ -9320,7 +9330,7 @@ paths:
         Recht `kostenstelle.verwalten`. Ein Ende wird nur vorgezogen: ein späteres oder gleiches Ende eines
         beendeten Objekts ist 409 `bereits_beendet` (Muster „nur verkürzt“). Ein Tag
         vor dem Beginn ist 422 `zeitraum_ungueltig`. Gelten Zuordnungen über das Ende hinaus
-        (Messstellen, Unterprozesse - und mit IP-8 die Anteile einer Verteilung), antwortet
+        (Messstellen, Unterprozesse - und seit IP-8 die Anteile einer Verteilung, `art` verteilung), antwortet
         409 `zuordnung_besteht` mit `zuordnungen` - gekürzt oder gelöscht wird nichts.
       requestBody:
         required: true
@@ -9530,6 +9540,68 @@ paths:
         "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/messstellen/{id}/verteilung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [verteilung]
+      summary: Die Verteilung einer Messstelle - alle wirksamen Anteile, mit `am` die an dem Tag geltenden und der Zustand.
+      description: >
+        Recht `messstelle.ansehen`. Mit `am`: `zustand` = `verteilt` oder ausdrücklich
+        `nicht verteilt` (keine Zeile an dem Tag - nie „zu 0 % verteilt“); ohne `am` ist
+        `zustand` null. Ein Anteil, dessen Kostenstelle endet, endet mit ihr
+        (`endet_mit_kostenstelle`).
+      parameters:
+        - { name: am, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Anteile.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleVerteilung" }
+        "400": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+    put:
+      tags: [verteilung]
+      summary: Ab einem Tag gilt GENAU dieser Satz (alle Ziele eines Tages in einer Anfrage; leer = ab dem Tag nicht verteilt).
+      description: >
+        Recht `messstelle.verteilung`; mit `gueltig_ab` vor heute zusätzlich
+        `aenderung.rueckwirkend`. Die Regel ist `VerteilungRegeln.satzAbTag` (Vertrag
+        verteilung-vectors.json, Regel `satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens
+        einer Nachkommastelle (422 `anteil_ungueltig`), jede Kostenstelle besteht am Tag (422
+        `ziel_besteht_nicht`), die Summe ist genau 100 % - auch an jedem Tag nach dem Ende einer
+        der Kostenstellen (422 `verteilung_summe` mit `summe` und `tag`); ein neuer Anteil endet mit
+        seiner Kostenstelle. Die laufende Verteilung endet am VORTAG; beginnt am Tag oder danach
+        schon eine, ist das 422 `formel_fassung_ueberlappt` - außer `korrektur` = true: dann wird
+        die Verteilung, die GENAU an dem Tag beginnt, aufgehoben (lesbar) und ersetzt. Derselbe
+        Satz noch einmal ändert nichts. Unbekannte Kostenstelle 422 `kostenstelle_unbekannt`,
+        archivierte Messstelle 409 `messstelle_archiviert`. Alles in EINER Transaktion; die
+        Datenbank prüft die 100 % zur Commit-Zeit. GENAU EIN Protokolleintrag
+        `verteilung_geaendert` und GENAU EIN Ereignis `verteilung_geaendert`, wenn sich etwas
+        ändert; eine Ablehnung schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessstelleVerteilungSetzen" }
+            example:
+              gueltig_ab: "2027-01-15"
+              zeilen:
+                - { kostenstelle_id: "5b0d6f0e-8a3c-4f5e-9d2a-2f6f0c1b7a11", anteil_prozent: "60" }
+                - { kostenstelle_id: "7c1e2a3b-4d5f-4a6b-8c9d-0e1f2a3b4c5d", anteil_prozent: "40" }
+              korrektur: false
+      responses:
+        "200":
+          description: Alle wirksamen Anteile danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleVerteilung" }
+        "400": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+        "409": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+        "422": { $ref: "#/components/responses/VerteilungAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -9638,6 +9710,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/KostenstelleProzessFehler" }
+    VerteilungAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben - auch kein Protokolleintrag und kein Ereignis. Code,
+        Status und der deutsche `message`-Satz kommen aus dem geschlossenen Satz
+        (uems/VerteilungAbgelehnt); dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/VerteilungFehler" }
     MessstelleFormelAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -17447,8 +17527,9 @@ components:
                 enum: [gesamt, positiv, negativ]
                 description: >
                   Fehlend = gesamt. `positiv`/`negativ` lehnt die Schnittstelle bis AP-08 IP-7 mit 422
-                  `anteil_wartet_auf_ap08` ab, `eingang_art` = verteilung bis AP-10 IP-8 mit 422
-                  `verteilung_wartet_auf_ip8` (Vertrag verteilung-vectors.json, Block `leseweg`).
+                  `anteil_wartet_auf_ap08` ab (Vertrag verteilung-vectors.json, Block `leseweg`). Ein Term
+                  mit `eingang_art` = verteilung liest seit AP-10 IP-8 den Anteil des Tages; eine
+                  Kostenstelle, die es nicht gibt, ist 404.
         begruendung: { type: string, maxLength: 500 }
     KostenstelleProzessFehler:
       type: object
@@ -17576,6 +17657,69 @@ components:
         kennzeichen: { type: string }
         am: { type: string, format: date, nullable: true }
         prozesse: { type: array, items: { $ref: "#/components/schemas/MessstelleProzessZuordnung" } }
+    VerteilungFehler:
+      type: object
+      description: >
+        Die Ablehnung der Verteilungs-Schnittstelle (AP-10 IP-8): 400 `anfrage_ungueltig` (`feld`);
+        404 `nicht_gefunden`; 409 `unternehmen_nicht_angelegt`, `messstelle_archiviert`
+        (`kennzeichen`), `zuordnung_ueberlappt`; 422 `kostenstelle_unbekannt` (`kostenstelle_id`),
+        `anteil_ungueltig` (`kostenstelle_id`, `kennzeichen`, `anteil_prozent`),
+        `ziel_besteht_nicht` (`kostenstelle_id`, `kennzeichen`, `tag`), `verteilung_summe`
+        (`summe`, `tag`), `formel_fassung_ueberlappt` (`gueltig_ab`, `laufend_ab`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, unternehmen_nicht_angelegt, messstelle_archiviert, kostenstelle_unbekannt, anteil_ungueltig, ziel_besteht_nicht, verteilung_summe, formel_fassung_ueberlappt, zuordnung_ueberlappt]
+        message: { type: string }
+        feld: { type: string }
+        summe: { type: string }
+        tag: { type: string, format: date }
+    MessstelleVerteilungSetzen:
+      type: object
+      additionalProperties: false
+      required: [gueltig_ab, zeilen]
+      properties:
+        gueltig_ab: { type: string, format: date }
+        zeilen:
+          type: array
+          description: "Alle Ziele des Tages; leer = ab dem Tag nicht verteilt. Jede Kostenstelle höchstens einmal."
+          items: { $ref: "#/components/schemas/MessstelleVerteilungZeile" }
+        korrektur: { type: boolean, nullable: true, description: "true = ersetzt die Verteilung, die genau an diesem Tag beginnt." }
+        grund: { type: string, nullable: true }
+    MessstelleVerteilungZeile:
+      type: object
+      additionalProperties: false
+      required: [kostenstelle_id, anteil_prozent]
+      properties:
+        kostenstelle_id: { type: string, format: uuid }
+        anteil_prozent: { type: string, description: "Dezimaltext in Prozent: (0, 100], höchstens eine Nachkommastelle (sonst 422 anteil_ungueltig)." }
+    VerteilungKostenstelle:
+      type: object
+      required: [id, kennzeichen]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+    MessstelleVerteilungAnteil:
+      type: object
+      required: [id, kostenstelle, name, anteil_prozent, gueltig_ab, gueltig_bis, endet_mit_kostenstelle]
+      properties:
+        id: { type: string, format: uuid }
+        kostenstelle: { $ref: "#/components/schemas/VerteilungKostenstelle" }
+        name: { type: string, description: Name der Kostenstelle. }
+        anteil_prozent: { type: string, description: "Dezimaltext in Prozent." }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+        endet_mit_kostenstelle: { type: boolean, description: "Der letzte Tag ist der der Kostenstelle - der Anteil gilt nie länger als sie." }
+    MessstelleVerteilung:
+      type: object
+      required: [messstelle_id, kennzeichen, am, zustand, anteile]
+      properties:
+        messstelle_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        am: { type: string, format: date, nullable: true }
+        zustand: { type: string, enum: [verteilt, nicht verteilt], nullable: true, description: "Nur mit `am` - nie „zu 0 % verteilt“." }
+        anteile: { type: array, items: { $ref: "#/components/schemas/MessstelleVerteilungAnteil" } }
     BezugsgroesseFehler:
       type: object
       description: >
@@ -17795,11 +17939,12 @@ components:
         wertart · richtung), `formel_zyklus` 422 (`kette`), `formel_fassung_ueberlappt` 422
         (`fassung`, `gueltig_ab` der jüngsten Fassung). AP-10 IP-5 (Vertrag verteilung-vectors.json,
         Block `leseweg`, mit Kundensatz): `verteilungs_term_ohne_faktor` 422 (`feld`),
-        `anteil_wartet_auf_ap08` 422 und `verteilung_wartet_auf_ip8` 422 (`feld`, `wartet_auf`) -
-        der Anteil ist noch nicht lesbar, der Term wird nicht gespeichert, nichts wird geschätzt.
+        `anteil_wartet_auf_ap08` 422 (`feld`, `wartet_auf`) - der Teil eines Messwerts ist noch
+        nicht lesbar, der Term wird nicht gespeichert, nichts wird geschätzt. Die Ablehnung
+        `verteilung_wartet_auf_ip8` ist mit AP-10 IP-8 eingelöst.
       required: [code, message]
       properties:
-        code: { type: string, enum: [anfrage_ungueltig, groessen_gemischt, formel_zyklus, formel_fassung_ueberlappt, verteilungs_term_ohne_faktor, anteil_wartet_auf_ap08, verteilung_wartet_auf_ip8] }
+        code: { type: string, enum: [anfrage_ungueltig, groessen_gemischt, formel_zyklus, formel_fassung_ueberlappt, verteilungs_term_ohne_faktor, anteil_wartet_auf_ap08] }
         message: { type: string }
         feld: { type: string }
         wartet_auf: { type: string, example: "AP-08 IP-7" }

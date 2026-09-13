@@ -21,19 +21,42 @@ import org.springframework.stereotype.Component;
  *       Messstelle („4100 von MS-07“). Die Verteilung baut AP-10 IP-8.</li>
  * </ul>
  *
- * <p>Beides gibt es noch nicht. {@link #lies} lehnt darum BENANNT ab — mit Code und Kundensatz aus
- * dem Vertrag, nie mit einer geratenen Zahl, nie mit einer Null und nie mit {@code nicht_verteilt}
- * oder {@code ziel_besteht_nicht} (die sagen etwas über eine VORHANDENE Verteilung). Schreibweg,
- * Live-Wert und Verlauf von {@link MessstelleFormelService} fragen ausschließlich diese Methode:
- * wird ein Leseweg gebaut, wird aus GENAU seinem Zweig ein Aufruf, und nichts anderes ändert sich.
- * Der Anteil des Tages wird dann über {@link #tagesanteil} von {@link VerteilungRegeln#term}
- * gerechnet — aufgerufen, nie nachgebaut.
+ * <p>Der Anteil des Tages ist seit AP-10 IP-8 lesbar: {@link #lies} liest die Zeilen der Verteilung am Tag
+ * ({@link Verteilungen}, Tabelle {@code messstelle_verteilung}), wählt über {@link VerteilungRegeln#amTag}
+ * die geltenden und rechnet über {@link #tagesanteil} mit {@link VerteilungRegeln#term} — aufgerufen, nie
+ * nachgebaut. Ohne Zeile am Tag ist das Urteil {@code nicht_verteilt}: ein Zustand, keine Zahl, keine
+ * Null. Der Teil eines Messwerts wartet weiter: {@link #lies} lehnt ihn BENANNT ab — mit Code und
+ * Kundensatz aus dem Vertrag, nie mit einer geratenen Zahl. Schreibweg, Live-Wert und Verlauf von
+ * {@link MessstelleFormelService} fragen ausschließlich diese Methode.
  *
  * <p>Keine dynamischen Umlageschlüssel (Grenze des Captains): ein Anteil ist eine gepflegte Zahl mit
  * Gültigkeit, nie eine aus Messwerten gerechnete Quote.
  */
 @Component
 public class AnteilLeseweg {
+
+    /**
+     * Woher der Leseweg die Verteilung einer Messstelle nimmt (AP-10 IP-8, Tabelle
+     * {@code messstelle_verteilung}; {@link VerteilungRepository}).
+     */
+    @FunctionalInterface
+    public interface Verteilungen {
+        /** Die wirksamen Zeilen der Messstelle, die am Tag gelten könnten, samt ihren Zielen. */
+        Stand stand(UUID messstelle, LocalDate tag);
+    }
+
+    /**
+     * Die Verteilung einer Messstelle, wie der Leseweg sie braucht: ihr Kennzeichen (für „verteilt (70 %
+     * von MS-07)“), die Zeilen und die Ziele — Schlüssel der Kostenstelle ist ihre ID als Text.
+     */
+    public record Stand(String kennzeichen, List<VerteilungRegeln.Bestandszeile> zeilen,
+            List<VerteilungRegeln.Ziel> ziele) {}
+
+    private final Verteilungen verteilungen;
+
+    public AnteilLeseweg(Verteilungen verteilungen) {
+        this.verteilungen = verteilungen;
+    }
 
     /** Der ganze Wert — die Vorgabe; gespeichert als {@code NULL} (V20260913143000). */
     public static final String GESAMT = "gesamt";
@@ -57,11 +80,7 @@ public class AnteilLeseweg {
         ANTEIL_WARTET_AUF_AP08("anteil_wartet_auf_ap08", 422, "AP-08 IP-7", "anteil",
                 "Nur den positiven oder nur den negativen Teil eines Messwerts (etwa Laden oder Entladen) "
                         + "kann eine Formel noch nicht lesen. Der Term wird darum nicht gespeichert — "
-                        + "geschätzt wird nichts."),
-        /** Der Anteil des Tages eines Verteilungs-Terms — wartet auf die Verteilung. */
-        VERTEILUNG_WARTET_AUF_IP8("verteilung_wartet_auf_ip8", 422, "AP-10 IP-8", "eingang_art",
-                "Anteile aus der Verteilung auf Kostenstellen kann eine Formel noch nicht lesen. "
-                        + "Der Term wird darum nicht gespeichert — geschätzt wird nichts.");
+                        + "geschätzt wird nichts.");
 
         private final String code;
         private final int status;
@@ -153,8 +172,8 @@ public class AnteilLeseweg {
 
     /**
      * DIE EINE STELLE: wie ein Term an einem Tag seinen Anteil liest. Erst der Teil des Messwerts,
-     * dann die Verteilung dieses Teils ({@code leseweg.pruefreihenfolge}). Heute lehnt jeder Zweig,
-     * der einen Anteil bräuchte, benannt ab; ein Term ohne beides nimmt den ganzen Wert.
+     * dann die Verteilung dieses Teils ({@code leseweg.pruefreihenfolge}). Der Teil wartet benannt; ein
+     * Verteilungs-Term liest den Anteil DES TAGES; ein Term ohne beides nimmt den ganzen Wert.
      *
      * @param anteil {@code null} = {@link #GESAMT}
      * @param tag der Tag, dessen Anteil gilt — beim Live-Wert heute, im Verlauf der Tag des Buckets,
@@ -168,10 +187,19 @@ public class AnteilLeseweg {
             return Lesung.wartetAuf(Ablehnung.ANTEIL_WARTET_AUF_AP08);
         }
         if (VERTEILUNG.equals(eingangArt)) {
-            // ⚠ AP-10 IP-8: HIER wird aus der Ablehnung der Aufruf — die Abschnitte der Verteilung
-            // von `quellMessstelleId` lesen und `tagesanteil(term, tag, abschnitte)` zurückgeben
-            // (Ziel `verteilungZiel`). Bis dahin: benannt, nie `nicht_verteilt`, nie geraten.
-            return Lesung.wartetAuf(Ablehnung.VERTEILUNG_WARTET_AUF_IP8);
+            // AP-10 IP-8: die Zeilen der Verteilung von `quellMessstelleId` am Tag, das Ziel ist
+            // `verteilungZiel` (Schlüssel: die ID der Kostenstelle). Ohne Zeile → nicht_verteilt.
+            Stand stand = quellMessstelleId == null
+                    ? new Stand(null, List.of(), List.of())
+                    : verteilungen.stand(quellMessstelleId, tag);
+            VerteilungRegeln.AmTagUrteil am = VerteilungRegeln.amTag(tag, stand.zeilen(), stand.ziele());
+            VerteilungRegeln.VerteilungsTerm term = new VerteilungRegeln.VerteilungsTerm(VERTEILUNG,
+                    verteilungZiel == null ? null : verteilungZiel.toString(),
+                    stand.kennzeichen() == null ? String.valueOf(quellMessstelleId) : stand.kennzeichen(),
+                    GESAMT, BigDecimal.ONE, "+");
+            return tagesanteil(term, tag, am.zeilen().isEmpty()
+                    ? List.of()
+                    : List.of(new VerteilungRegeln.Abschnitt(tag, tag, am.zeilen())));
         }
         return Lesung.GANZ;
     }

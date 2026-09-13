@@ -189,6 +189,131 @@ public final class VerteilungRegeln {
         return new FassungUrteil(beendet, neu, rueckwirkend, tage, null);
     }
 
+    // ------------------------------------------------------------------------------- Satz ab Tag
+
+    /** Eine Zeile, die eine Korrektur aufhebt: sie bleibt lesbar, gilt aber nie mehr. */
+    public record Aufgehoben(String kostenstelle, LocalDate gueltigAb) {}
+
+    /**
+     * {@code fehler != null}: nichts wird geschrieben ({@code fakten} nennt die Zahlen). Sonst sagen
+     * {@code aufgehoben}, {@code beendet} und {@code neu}, was geschrieben wird; {@code unveraendert}
+     * heißt: derselbe Stand steht schon da — nichts wird geschrieben, auch kein Protokoll.
+     */
+    public record SatzAbTagUrteil(
+            String fehler,
+            BigDecimal summe,
+            Map<String, String> fakten,
+            List<Aufgehoben> aufgehoben,
+            List<Beendet> beendet,
+            List<NeueZeile> neu,
+            boolean rueckwirkend,
+            long tageRueckwirkend,
+            boolean unveraendert) {}
+
+    /**
+     * AP-10 IP-8 — der Schreibweg {@code PUT …/verteilung} als EINE Regel: ab {@code tag} gilt GENAU
+     * dieser Satz ({@code zeilen} leer = ab dem Tag „nicht verteilt“). Reihenfolge:
+     * <ol>
+     *   <li>jeder Anteil in (0, 100] mit höchstens {@link #ANTEIL_NACHKOMMASTELLEN} Nachkommastelle
+     *       ({@code anteil_ungueltig} — nie still gerundet), dann {@link #satz} (Ziel besteht, 100 %);</li>
+     *   <li>eine neue Zeile endet mit ihrem Ziel (F12) — und an keinem Tag danach bleibt ein Rest
+     *       ≠ 100 % ({@code verteilung_summe} mit dem ersten solchen Tag);</li>
+     *   <li>steht derselbe Stand ab dem Tag schon da, ist nichts zu tun ({@code unveraendert});</li>
+     *   <li>mit {@code korrektur} werden die Zeilen, die GENAU am Tag beginnen, aufgehoben;</li>
+     *   <li>der Rest folgt {@link #fassung}: die laufende endet am Vortag, eine Fassung am oder nach dem
+     *       Tag überlappt ({@code formel_fassung_ueberlappt}).</li>
+     * </ol>
+     * Rückwirkend ist ein Tag vor {@code heute} — mit der Zahl der Tage, nie unsichtbar.
+     */
+    public static SatzAbTagUrteil satzAbTag(LocalDate heute, LocalDate tag, List<Zeile> zeilen, List<Ziel> ziele,
+            List<Bestandszeile> bestehend, boolean korrektur) {
+        boolean rueckwirkend = tag.isBefore(heute);
+        long tage = rueckwirkend ? ChronoUnit.DAYS.between(tag, heute) : 0;
+        BigDecimal summe = BigDecimal.ZERO;
+        for (Zeile z : zeilen) {
+            summe = summe.add(z.anteilProzent());
+        }
+        summe = summe.setScale(ANTEIL_NACHKOMMASTELLEN, RoundingMode.HALF_UP).stripTrailingZeros();
+        for (Zeile z : zeilen) {
+            BigDecimal a = z.anteilProzent();
+            if (a.signum() <= 0 || a.compareTo(SUMME_PROZENT) > 0
+                    || a.stripTrailingZeros().scale() > ANTEIL_NACHKOMMASTELLEN) {
+                return abgelehnt(FEHLER_ANTEIL, summe, Map.of("kostenstelle", z.kostenstelle(),
+                        "anteil_prozent", a.stripTrailingZeros().toPlainString()), rueckwirkend, tage);
+            }
+        }
+        if (!zeilen.isEmpty()) {
+            SatzUrteil s = satz(tag, null, zeilen, ziele);
+            if (!s.gueltig()) {
+                return abgelehnt(s.fehler(), summe, s.fakten(), rueckwirkend, tage);
+            }
+        }
+        List<NeueZeile> neu = new ArrayList<>();
+        for (Zeile z : zeilen) {
+            LocalDate ende = ziele.stream().filter(y -> y.kostenstelle().equals(z.kostenstelle()))
+                    .findFirst().map(Ziel::gueltigBis).orElse(null);
+            neu.add(new NeueZeile(z.kostenstelle(), z.anteilProzent(), tag, ende));
+        }
+        // Ein Rest am Tag nach dem Ende eines Ziels: die übrigen Zeilen ergäben weniger als 100 %.
+        List<LocalDate> enden = neu.stream().map(NeueZeile::gueltigBis).filter(e -> e != null)
+                .distinct().sorted().toList();
+        for (LocalDate ende : enden) {
+            LocalDate danach = ende.plusDays(1);
+            BigDecimal rest = neu.stream().filter(n -> gilt(danach, n.gueltigAb(), n.gueltigBis()))
+                    .map(NeueZeile::anteilProzent).reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (rest.signum() > 0 && rest.compareTo(SUMME_PROZENT) != 0) {
+                return abgelehnt(FEHLER_SUMME, summe, Map.of("summe", rest.stripTrailingZeros().toPlainString(),
+                        "tag", danach.toString()), rueckwirkend, tage);
+            }
+        }
+        List<Bestandszeile> wirksam = bestehend.stream().filter(b -> b.aufgehobenAm() == null).toList();
+        if (unveraendert(tag, neu, wirksam)) {
+            return new SatzAbTagUrteil(null, summe, Map.of(), List.of(), List.of(), List.of(), rueckwirkend, tage,
+                    true);
+        }
+        List<Aufgehoben> aufgehoben = new ArrayList<>();
+        List<Bestandszeile> rest = new ArrayList<>();
+        for (Bestandszeile b : wirksam) {
+            if (korrektur && tag.equals(b.gueltigAb())) {
+                aufgehoben.add(new Aufgehoben(b.kostenstelle(), b.gueltigAb()));
+            } else {
+                rest.add(b);
+            }
+        }
+        FassungUrteil f = fassung(heute, rest, tag, zeilen);
+        if (f.fehler() != null) {
+            LocalDate laufend = rest.stream().map(Bestandszeile::gueltigAb).max(LocalDate::compareTo).orElseThrow();
+            return abgelehnt(f.fehler(), summe, Map.of("gueltig_ab", tag.toString(), "laufend_ab", laufend.toString()),
+                    rueckwirkend, tage);
+        }
+        return new SatzAbTagUrteil(null, summe, Map.of(), List.copyOf(aufgehoben), f.beendet(), List.copyOf(neu),
+                rueckwirkend, tage, false);
+    }
+
+    /** Gilt ab dem Tag schon GENAU dieser Stand — dieselben Ziele, Anteile und Enden, nichts danach? */
+    private static boolean unveraendert(LocalDate tag, List<NeueZeile> neu, List<Bestandszeile> wirksam) {
+        if (wirksam.stream().anyMatch(b -> b.gueltigAb() != null && b.gueltigAb().isAfter(tag))) {
+            return false;
+        }
+        List<String> vorher = wirksam.stream()
+                .filter(b -> gilt(tag, b.gueltigAb(), b.gueltigBis()))
+                .map(b -> stand(b.kostenstelle(), b.anteilProzent(), b.gueltigBis()))
+                .sorted().toList();
+        List<String> nachher = neu.stream().map(n -> stand(n.kostenstelle(), n.anteilProzent(), n.gueltigBis()))
+                .sorted().toList();
+        return vorher.equals(nachher);
+    }
+
+    private static String stand(String kostenstelle, BigDecimal anteil, LocalDate bis) {
+        return kostenstelle + "=" + anteil.stripTrailingZeros().toPlainString() + "@" + bis;
+    }
+
+    private static SatzAbTagUrteil abgelehnt(String fehler, BigDecimal summe, Map<String, String> fakten,
+            boolean rueckwirkend, long tage) {
+        return new SatzAbTagUrteil(fehler, summe, new LinkedHashMap<>(fakten), List.of(), List.of(), List.of(),
+                rueckwirkend, tage, false);
+    }
+
     // ------------------------------------------------------------------------------- Mengen
 
     /** Eine Tagesmenge der Quelle; {@code menge == null} heißt „keine Werte“. */
