@@ -464,7 +464,13 @@ public final class EreignisVokabular {
         CORRECTION("correction", EnumSet.of(CLOUD, KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
                 List.of("komponente", "messkanal"), List.of("messstelle"),
                 List.of("korrektur", "korrektur_art", "status"), List.of("ersatzwert"), List.of(),
-                null, null);
+                null, null),
+        // AP-10 IP-8 (additiv): die Verteilung einer Messstelle auf Kostenstellen hat sich ab einem
+        // Tag geändert — Bezug NUR die Messstelle (eine Verteilung hängt an keiner Reihe), nur aus
+        // der Cloud von einem Menschen.
+        VERTEILUNG_GEAENDERT("verteilung_geaendert", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messstelle"), List.of(), List.of("eingetragen_am"), List.of(), List.of(), null,
+                null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -921,8 +927,11 @@ public final class EreignisVokabular {
     }
 
     private static void pruefeRegeln(JsonNode e, Art art, Urheber u) {
+        // Eine Messstelle an einer Reihe braucht die ganze Reihe — außer die Art bezieht sich auf
+        // die Messstelle selbst (AP-10 IP-8: verteilung_geaendert).
         if ((e.has("messkanal") && !e.has("komponente"))
-                || (e.has("messstelle") && !(e.has("komponente") && e.has("messkanal")))) {
+                || (e.has("messstelle") && !art.bezugPflicht().contains("messstelle")
+                        && !(e.has("komponente") && e.has("messkanal")))) {
             throw nein(Grund.REGEL_VERLETZT, "Reihe unvollständig");
         }
         switch (art) {

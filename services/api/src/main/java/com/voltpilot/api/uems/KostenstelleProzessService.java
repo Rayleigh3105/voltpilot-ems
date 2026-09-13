@@ -373,6 +373,7 @@ public class KostenstelleProzessService {
             z.put("art", switch (x.tabelle()) {
                 case "messstelle_prozess" -> "messstelle";
                 case "prozess" -> "unterprozess";
+                case "messstelle_verteilung" -> "verteilung";
                 default -> x.tabelle();
             });
             z.put("kennzeichen", x.kennzeichen());

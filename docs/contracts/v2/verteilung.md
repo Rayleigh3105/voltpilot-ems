@@ -1,6 +1,6 @@
 # Verteilungs-Vertrag: eine Messstelle auf Kostenstellen (UEMS AP-10)
 
-Stand 12.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, Entscheide E4, E11,
+Stand 13.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, Entscheide E4, E11,
 E12, E13 vom 12.09.2026.
 
 Eine **feste Verteilung** ist eine eigene zeitgültige Beziehung **Messstelle → Kostenstelle** mit
@@ -17,16 +17,19 @@ Tagesmenge.
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
-> **Wer anruft (Stand AP-10 IP-1): niemand.** Die Tabelle `messstelle_verteilung`, die Routen und
-> der Verteilen-Dialog kommen mit IP-7, IP-8, IP-11 und IP-15.
+> **Wer anruft (Stand AP-10 IP-8):** der Schreibweg `PUT /api/v1/messstellen/{id}/verteilung`
+> (`uems/VerteilungService` → `satz_ab_tag`), das Lesen `GET …/verteilung?am=` (`am_tag`) und der Leseweg
+> des Formel-Terms (`AnteilLeseweg#lies` → `am_tag` + `term`). Tabelle `messstelle_verteilung`
+> (`V20260913230000`). Kostenstellen-Lesemodell, Kaskade und Verteilen-Dialog kommen mit IP-11 und IP-15.
 
-## 1. Die sieben Regeln
+## 1. Die acht Regeln
 
 | Regel | Was sie beantwortet |
 |---|---|
 | `satz` | §4.6: Darf dieser Verteilungs-Satz an diesem Tag geschrieben werden? |
 | `am_tag` | §4.6/F12: Welche Zeilen gelten an diesem Tag — und was heißt „keine“? |
 | `fassung` | §4.6: Was passiert mit der laufenden Fassung, wenn ab einem Tag eine neue gilt? |
+| `satz_ab_tag` | AP-10 IP-8: Was schreibt `PUT …/verteilung` — ab einem Tag GENAU dieser Satz (Anteil, Ziel, Summe, Ende mit dem Ziel, Wiederholung, Korrektur, Fassung)? |
 | `mengen` | E12/F13: Wie viel bekommt jedes Ziel über eine Periode? |
 | `erbe` | §4.5: Was erbt der verteilte Wert von seiner Quelle? |
 | `term` | E11/F11: Wie liest ein Formel-Term „Anteil 4100 von MS-07“? |
@@ -60,23 +63,31 @@ Tagesmenge.
 8. **Rückwirkend ist erlaubt, aber nie unsichtbar.** Eine Fassung mit Beginn vor heute trägt ihr
    Abzeichen samt Zahl der Tage; eine Fassung, die vor der laufenden beginnt, überlappt und wird
    abgelehnt.
+9. **Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`, AP-10 IP-8).** Reihenfolge: jeder Anteil
+   in (0, 100] mit höchstens EINER Nachkommastelle (33,33 % ist `anteil_ungueltig`, nie still
+   gerundet) → `satz` (Ziel besteht, 100 %) → jede neue Zeile endet mit ihrem Ziel, und an keinem Tag
+   danach bleibt ein Rest ≠ 100 % (50 % an 9000 + 50 % an 9100 ab 01.12.2026 ergäben ab 01.01.2027 nur
+   50 % → `verteilung_summe` mit diesem Tag) → steht derselbe Stand schon da, ändert sich nichts
+   (`unveraendert`: kein Protokoll, kein Ereignis) → mit `korrektur` werden die Zeilen, die GENAU am Tag
+   beginnen, aufgehoben → `fassung`. Ein **leerer Satz** heißt ab dem Tag „nicht verteilt“ — nie
+   „zu 0 % verteilt“. Die Datenbank hält die 100 % noch einmal **zur Commit-Zeit**: ein Satz mit zwei
+   Zielen verschiebt Anteile zwischen ihnen und ist zwischen zwei Anweisungen nie 100 %.
 
-## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5)
+## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5, eingelöst mit IP-8)
 
 Ein Term der Art `verteilung` („4100 von MS-07“, `messstelle-formel.md` §1.1) liest den Anteil des
-TAGES aus dieser Verteilung — über EINE Stelle, `uems/AnteilLeseweg#lies`. Solange die Verteilung
-selbst nicht gebaut ist (IP-8), und solange der Teil eines Messwerts (`anteil` = `positiv`/`negativ`)
-nicht lesbar ist (AP-08 IP-7), lehnt sie **benannt** ab. Der Block `leseweg` der Vektor-Datei trägt die
-geschlossene Menge dieser Ablehnungen mit Kundensatz, ihre Prüfreihenfolge und je Referenzfall (F1,
-F4, F11) das erwartete Urteil. Zwei fehlende Fähigkeiten, zwei Sätze: `anteil_wartet_auf_ap08` und
-`verteilung_wartet_auf_ip8` — nie `nicht_verteilt` (ein Zustand einer VORHANDENEN Verteilung), nie
-eine geratene Zahl. Der TS-Zwilling bildet die Ablehnung nicht (`zwillinge_grund`).
+TAGES aus dieser Verteilung — über EINE Stelle, `uems/AnteilLeseweg#lies`. Seit AP-10 IP-8 liest sie die
+Zeilen von `messstelle_verteilung` am Tag (`am_tag`) und rechnet `term`; ohne Zeile ist das Urteil
+`nicht_verteilt`. Solange der Teil eines Messwerts (`anteil` = `positiv`/`negativ`) nicht lesbar ist
+(AP-08 IP-7), lehnt sie **benannt** ab. Der Block `leseweg` der Vektor-Datei trägt die geschlossene Menge
+dieser Ablehnungen mit Kundensatz, ihre Prüfreihenfolge und je Referenzfall (F1, F4, F11) das erwartete
+Urteil samt `lesung` (`ganz` · `tagesanteil`). `verteilung_wartet_auf_ip8` gibt es nicht mehr. Der
+TS-Zwilling bildet die Ablehnung nicht (`zwillinge_grund`).
 
 ## 3. Was hier NICHT steht
 
-Die Tabelle mit ihrem Commit-Zeit-Trigger für die 100 %, die Routen `PUT …/messstellen/{id}/verteilung`
-und `GET …/verteilung?am=`, das Kostenstellen-Lesemodell und die Korrektur-Kaskade. Sie kommen mit
-IP-8 und IP-11 — gegen diesen Vertrag.
+Die Tabelle und die Routen (gebaut mit IP-8 gegen diesen Vertrag, Wegweiser
+`docs/agents/root/uems-verteilung.md`), das Kostenstellen-Lesemodell und die Korrektur-Kaskade (IP-11).
 
 ## 4. Herkunft der Zahlen
 
@@ -88,6 +99,7 @@ ohne Zwilling.
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,AnteilLesewegVectorsTest')  # rein, kein Docker
+(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,AnteilLesewegVectorsTest,VerteilungSchnittstelleVertragTest')  # rein, kein Docker
+(cd services/api && ./mvnw test -Dtest='UemsMessstelleVerteilungMigrationTest,VerteilungApiTest,MessstelleFormelVerteilungsTermApiTest')  # Docker
 (cd frontend/portal && npx vitest run src/uemsVerteilung.test.ts)
 ```

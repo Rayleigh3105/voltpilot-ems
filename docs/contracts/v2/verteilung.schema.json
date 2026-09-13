@@ -27,7 +27,7 @@
     },
     "schema_version": {
       "type": "string",
-      "const": "1.0",
+      "const": "1.1",
       "description": "Fassung dieses Vertrags. Bleibt; Erweiterungen sind additiv."
     },
     "$schema_datei": {
@@ -289,7 +289,8 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
-                  "ablehnung"
+                  "ablehnung",
+                  "lesung"
                 ],
                 "properties": {
                   "ablehnung": {
@@ -297,6 +298,18 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "lesung": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "ganz",
+                      "tagesanteil",
+                      null
+                    ],
+                    "description": "Wie der Term liest, wenn er nicht abgelehnt wird: der ganze Wert oder der Anteil des Tages aus der Verteilung (AP-10 IP-8); null bei einer Ablehnung."
                   }
                 }
               }

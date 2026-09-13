@@ -203,7 +203,8 @@ class UemsKorrekturErsatzwertMigrationTest {
     @Test
     void dasEreignisVokabularKenntErsatzwertUndKorrektur() {
         assertThat(root.queryForList("SELECT art FROM messreihe_ereignis_vokabular()", String.class))
-                .endsWith("substitute", "correction")
+                // AP-10 IP-8 hängt verteilung_geaendert dahinter an — additiv, die Reihenfolge bleibt.
+                .containsSubsequence("substitute", "correction")
                 .containsExactlyElementsOf(Arrays.stream(EreignisVokabular.Art.values())
                         .map(EreignisVokabular.Art::code).toList());
         Map<String, Object> ew = root.queryForMap("SELECT array_to_string(urheber, ',') AS u, array_to_string(pflicht, ',') "

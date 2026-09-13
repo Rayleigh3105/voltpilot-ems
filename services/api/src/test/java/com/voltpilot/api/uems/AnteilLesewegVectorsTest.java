@@ -36,16 +36,19 @@ import org.junit.jupiter.api.TestFactory;
  *   <li>Familie {@code anteil} (F4, Laden/Entladen): jede Speicher-Rolle mit einem Teil des Messwerts
  *       ist ein Anteil-Wort des Terms, wird HEUTE benannt abgelehnt, und die Bilanz mit beiden Teilen
  *       rechnet über die Verzweigung des Formel-Moduls 54 580 kWh;</li>
- *   <li>Familie {@code verteilungs_term} (F11): der Verteilungs-Term lehnt HEUTE benannt ab
- *       ({@code verteilung_wartet_auf_ip8}, nie {@code nicht_verteilt}); der Aufruf, zu dem IP-8 die
- *       Ablehnung macht ({@link AnteilLeseweg#tagesanteil}), rechnet jede {@code term}-Prüfung;</li>
+ *   <li>Familie {@code verteilungs_term} (F11): seit AP-10 IP-8 liest der Verteilungs-Term den Anteil
+ *       des Tages über DIE EINE Stelle {@link AnteilLeseweg#lies} (Zeilen der Verteilung am Tag →
+ *       {@link VerteilungRegeln#amTag} → {@link AnteilLeseweg#tagesanteil}) und rechnet jede
+ *       {@code term}-Prüfung — ohne Zeile {@code nicht_verteilt}, nie geraten;</li>
  *   <li>der Anteil eines alten Tages ist der von damals (F13: 70 % vor, 60 % ab dem 15.01.2027).</li>
  * </ul>
  */
 class AnteilLesewegVectorsTest {
 
     private static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
-    private static final AnteilLeseweg LESEWEG = new AnteilLeseweg();
+    /** Die Verteilung, die der Leseweg liest — je Prüfung aus dem Vertrag gesetzt (rein, ohne Datenbank). */
+    private static volatile AnteilLeseweg.Stand stand = new AnteilLeseweg.Stand("MS-07", List.of(), List.of());
+    private static final AnteilLeseweg LESEWEG = new AnteilLeseweg((messstelle, tag) -> stand);
 
     private static JsonNode verteilung() throws Exception {
         return lies(V2.resolve("verteilung-vectors.json"));
@@ -74,18 +77,25 @@ class AnteilLesewegVectorsTest {
         assertThat(block.path("grund_im_wert").asText()).isEqualTo("fehlende[].grund");
     }
 
-    /** Zwei fehlende Fähigkeiten, zwei Sätze — und keiner borgt ein Wort einer VORHANDENEN Verteilung. */
+    /**
+     * Eine fehlende Fähigkeit, ein Satz — und er borgt kein Wort einer VORHANDENEN Verteilung. Die zweite
+     * ({@code verteilung_wartet_auf_ip8}) ist mit AP-10 IP-8 eingelöst und steht nirgends mehr.
+     */
     @Test
     void jedeWartendeAblehnungNenntIhrPaketUndBorgtKeinWort() throws Exception {
         JsonNode v = verteilung();
         List<String> wartende = Arrays.stream(Ablehnung.values()).filter(a -> a.wartetAuf() != null)
                 .map(Ablehnung::code).toList();
-        assertThat(wartende).containsExactly("anteil_wartet_auf_ap08", "verteilung_wartet_auf_ip8");
+        assertThat(wartende).containsExactly("anteil_wartet_auf_ap08");
         assertThat(Ablehnung.ANTEIL_WARTET_AUF_AP08.wartetAuf()).isEqualTo("AP-08 IP-7");
-        assertThat(Ablehnung.VERTEILUNG_WARTET_AUF_IP8.wartetAuf()).isEqualTo("AP-10 IP-8");
         assertThat(wartende).doesNotContainAnyElementsOf(texte(v.path("vokabulare").path("fehler")));
         assertThat(texte(v.path("vokabulare").path("fehler"))).contains(Ablehnung.VERTEILUNGS_TERM_OHNE_FAKTOR.code());
-        assertThat(Ablehnung.ANTEIL_WARTET_AUF_AP08.satz()).isNotEqualTo(Ablehnung.VERTEILUNG_WARTET_AUF_IP8.satz());
+        assertThat(Arrays.stream(Ablehnung.values()).map(Ablehnung::code)).doesNotContain("verteilung_wartet_auf_ip8");
+        List<String> codes = new ArrayList<>();
+        v.path("leseweg").path("ablehnungen").forEach(a -> codes.add(a.path("code").asText()));
+        v.path("leseweg").path("faelle").forEach(f -> codes.add(str(f.path("ergebnis").path("ablehnung"))));
+        assertThat(codes).as("eingelöst: der Vertrag nennt die wartende Verteilung nicht mehr")
+                .doesNotContain("verteilung_wartet_auf_ip8");
     }
 
     /** Kundensprache: kein Paket, kein Code, kein internes Wort — und nie eine Ursache (bilanz verbotene_woerter). */
@@ -118,9 +128,20 @@ class AnteilLesewegVectorsTest {
                 String soll = str(fall.path("ergebnis").path("ablehnung"));
                 assertThat(ablehnung(t, LocalDate.parse(fall.path("tag").asText())).map(Ablehnung::code).orElse(null))
                         .isEqualTo(soll);
+                String wie = str(fall.path("ergebnis").path("lesung"));
                 if (soll == null) {
                     Lesung l = lesung(t, LocalDate.parse(fall.path("tag").asText()));
-                    assertThat(l.ganz()).as("ohne Anteil nimmt der Term den ganzen Wert").isTrue();
+                    if ("tagesanteil".equals(wie)) {
+                        assertThat(l.ganz()).as("ein Verteilungs-Term nimmt nie den ganzen Wert").isFalse();
+                        assertThat(l.wartet()).as("seit AP-10 IP-8 wartet er nicht mehr").isNull();
+                        assertThat(l.term()).isNotNull();
+                        assertThat(l.tag()).isEqualTo(LocalDate.parse(fall.path("tag").asText()));
+                    } else {
+                        assertThat(wie).isEqualTo("ganz");
+                        assertThat(l.ganz()).as("ohne Anteil nimmt der Term den ganzen Wert").isTrue();
+                    }
+                } else {
+                    assertThat(wie).as("eine Ablehnung liest nichts").isNull();
                 }
             }));
         }
@@ -193,11 +214,10 @@ class AnteilLesewegVectorsTest {
     // ---------------------------------------------------- Familie verteilungs_term (F11)
 
     /**
-     * F11 „4100 von MS-07“: HEUTE lehnt der Leseweg benannt ab — und die Vertragsregel
-     * {@code verteilungs_term_ohne_faktor} geht ihm voraus. Der Aufruf, den IP-8 an seine Stelle setzt
-     * ({@link AnteilLeseweg#tagesanteil} mit der Verteilung des Tages), rechnet jede Prüfung
-     * {@code term} des Vertrags: 11 130 kWh, 70 %, „verteilt (70 % von MS-07)“ — oder
-     * {@code nicht_verteilt} ohne Zeile am Tag, nie ein geratener Anteil.
+     * F11 „4100 von MS-07“: die Vertragsregel {@code verteilungs_term_ohne_faktor} geht dem Leseweg voraus;
+     * sonst liest {@link AnteilLeseweg#lies} — DIE EINE Stelle, seit AP-10 IP-8 ohne Ablehnung — die Zeilen
+     * der Verteilung am Tag und rechnet jede Prüfung {@code term} des Vertrags: 11 130 kWh, 70 %,
+     * „verteilt (70 % von MS-07)“ — oder {@code nicht_verteilt} ohne Zeile am Tag, nie ein geratener Anteil.
      */
     @TestFactory
     List<DynamicTest> f11DerVerteilungsTerm() throws Exception {
@@ -214,16 +234,16 @@ class AnteilLesewegVectorsTest {
                     LocalDate tag = LocalDate.parse(ein.path("tag").asText());
 
                     Optional<Ablehnung> heute = ablehnung(t, tag);
-                    assertThat(heute).isPresent();
+                    VerteilungRegeln.TermUrteil ist;
                     if ("verteilungs_term_ohne_faktor".equals(str(soll.path("fehler")))) {
                         assertThat(heute).contains(Ablehnung.VERTEILUNGS_TERM_OHNE_FAKTOR);
+                        ist = AnteilLeseweg.tagesanteil(verteilungsTerm(t), tag,
+                                abschnitte(ein.path("verteilung"))).urteil(bd(ein.path("quelle_menge")));
                     } else {
-                        assertThat(heute).as("benannt — nie nicht_verteilt, nie geraten")
-                                .contains(Ablehnung.VERTEILUNG_WARTET_AUF_IP8);
+                        assertThat(heute).as("eingelöst — keine Ablehnung mehr").isEmpty();
+                        stand = standAus(t.path("quell_messstelle").asText(), abschnitte(ein.path("verteilung")));
+                        ist = lesung(t, tag).urteil(bd(ein.path("quelle_menge")));
                     }
-
-                    VerteilungRegeln.TermUrteil ist = AnteilLeseweg.tagesanteil(verteilungsTerm(t), tag,
-                            abschnitte(ein.path("verteilung"))).urteil(bd(ein.path("quelle_menge")));
                     betragGleich(ist.menge(), soll.path("menge"), "Menge");
                     betragGleich(ist.anteilProzent(), soll.path("anteil_prozent"), "Anteil");
                     assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
@@ -306,6 +326,23 @@ class AnteilLesewegVectorsTest {
     private static Lesung lesung(JsonNode t, LocalDate tag) {
         return LESEWEG.lies(t.path("art").asText(), str(t.path("anteil")), id(str(t.path("quell_messstelle"))),
                 id(str(t.path("verteilung_ziel"))), tag);
+    }
+
+    /**
+     * Die Verteilung als das, was die Datenbank dem Leseweg gibt: Zeilen und Ziele, Schlüssel der Kostenstelle
+     * ist ihre ID (hier aus dem Kennzeichen abgeleitet, wie {@link #id}).
+     */
+    private static AnteilLeseweg.Stand standAus(String messstelle, List<VerteilungRegeln.Abschnitt> abschnitte) {
+        List<VerteilungRegeln.Bestandszeile> zeilen = new ArrayList<>();
+        List<VerteilungRegeln.Ziel> ziele = new ArrayList<>();
+        for (VerteilungRegeln.Abschnitt a : abschnitte) {
+            for (VerteilungRegeln.Zeile z : a.zeilen()) {
+                String k = id(z.kostenstelle()).toString();
+                zeilen.add(new VerteilungRegeln.Bestandszeile(k, z.anteilProzent(), a.gueltigAb(), a.gueltigBis(), null));
+                ziele.add(new VerteilungRegeln.Ziel(k, null, null));
+            }
+        }
+        return new AnteilLeseweg.Stand(messstelle, zeilen, ziele);
     }
 
     private static UUID id(String kennzeichen) {

@@ -1104,6 +1104,24 @@
       "anmerkung": "AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`."
     },
     {
+      "kennung": "messstelle.verteilung",
+      "gruppe": "messdaten",
+      "kundenwort": "Messstelle auf Kostenstellen verteilen · Verteilung ab einem Tag ändern oder berichtigen",
+      "herkunft": "AP-10 §4.10 (E15)",
+      "nachtrag": "AP-10 §4.10",
+      "wie": "messstelle.bearbeiten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "Ei",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-10 E15: „`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`)“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Seit AP-10 IP-8 nennt `PUT /api/v1/messstellen/{id}/verteilung` die Kennung; gelesen wird über `messstelle.ansehen`. Die Durchsetzung bringt AP-03."
+    },
+    {
       "kennung": "kostenstelle.verwalten",
       "gruppe": "struktur",
       "kundenwort": "Kostenstelle anlegen · umbenennen · beenden",
@@ -1393,12 +1411,22 @@
           ],
           "zuordnung": "neu",
           "anmerkung": "Seit AP-10 IP-7 (Tabellen `kostenstelle`, `prozess`, `messstelle_prozess`); die Durchsetzung bringt AP-03."
+        },
+        {
+          "handlung": "Messstelle auf Kostenstellen verteilen (Satz ab einem Tag)",
+          "wer": "Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −",
+          "recht": "`messstelle.verteilung`",
+          "kennungen": [
+            "messstelle.verteilung"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Seit AP-10 IP-8 (Tabelle `messstelle_verteilung`, `PUT /api/v1/messstellen/{id}/verteilung`); gelesen wird über `messstelle.ansehen` (`GET …/verteilung?am=`). Die Durchsetzung bringt AP-03."
         }
       ],
       "regeln": [
         {
           "wortlaut": "`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`)",
-          "wo": "`kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen; die übrigen entstehen mit dem Bau-Paket, das ihre Route baut: AP-10 IP-8 (Verteilung), IP-6 (Netzanschluss)"
+          "wo": "`kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen, `messstelle.verteilung` seit AP-10 IP-8; `netzanschluss.verwalten` entsteht mit dem Bau-Paket, das seine Route baut: AP-10 IP-6"
         },
         {
           "wortlaut": "Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen)",

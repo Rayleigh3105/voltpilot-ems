@@ -207,6 +207,134 @@ export function fassung(
   };
 }
 
+// ------------------------------------------------------------------------------ Satz ab Tag
+
+/** Eine Zeile, die eine Korrektur aufhebt: sie bleibt lesbar, gilt aber nie mehr. */
+export interface Aufgehoben {
+  kostenstelle: string;
+  gueltig_ab: string;
+}
+
+export interface SatzAbTagUrteil {
+  fehler: string | null;
+  summe: Dez;
+  fakten: Record<string, string>;
+  aufgehoben: Aufgehoben[];
+  beendet: Beendet[];
+  neu: NeueZeile[];
+  rueckwirkend: boolean;
+  tage_rueckwirkend: number;
+  unveraendert: boolean;
+}
+
+/**
+ * AP-10 IP-8 — der Schreibweg `PUT …/verteilung` als EINE Regel: ab `tag` gilt GENAU dieser Satz
+ * (`zeilen` leer = ab dem Tag „nicht verteilt"). Reihenfolge: Anteil in (0, 100] mit höchstens einer
+ * Nachkommastelle → `satz` → neue Zeilen enden mit ihrem Ziel, danach kein Rest ≠ 100 % →
+ * derselbe Stand steht schon da (`unveraendert`) → Korrektur hebt die Zeilen GENAU am Tag auf →
+ * `fassung`.
+ */
+export function satzAbTag(
+  heute: string,
+  tag: string,
+  zeilen: Zeile[],
+  ziele: Ziel[],
+  bestehend: Bestandszeile[],
+  korrektur: boolean,
+): SatzAbTagUrteil {
+  const rueckwirkend = tag < heute;
+  const tage = rueckwirkend ? tageZwischen(tag, heute) : 0;
+  const summe = dezRunde(
+    zeilen.reduce((s, z) => dezPlus(s, z.anteil_prozent), NULL_BETRAG),
+    ANTEIL_NACHKOMMASTELLEN,
+  );
+  const abgelehnt = (fehler: string, fakten: Record<string, string>): SatzAbTagUrteil => ({
+    fehler,
+    summe,
+    fakten,
+    aufgehoben: [],
+    beendet: [],
+    neu: [],
+    rueckwirkend,
+    tage_rueckwirkend: tage,
+    unveraendert: false,
+  });
+  for (const z of zeilen) {
+    const a = z.anteil_prozent;
+    if (
+      dezVorzeichen(a) <= 0 ||
+      dezVergleich(a, SUMME_PROZENT) > 0 ||
+      dezKuerze(a).e > ANTEIL_NACHKOMMASTELLEN
+    ) {
+      return abgelehnt(FEHLER_ANTEIL, { kostenstelle: z.kostenstelle, anteil_prozent: text(a) });
+    }
+  }
+  if (zeilen.length > 0) {
+    const s = satz(tag, '', zeilen, ziele);
+    if (!s.gueltig) return abgelehnt(s.fehler as string, s.fakten);
+  }
+  const neu: NeueZeile[] = zeilen.map((z) => ({
+    kostenstelle: z.kostenstelle,
+    anteil_prozent: z.anteil_prozent,
+    gueltig_ab: tag,
+    gueltig_bis: ziele.find((y) => y.kostenstelle === z.kostenstelle)?.gueltig_bis ?? null,
+  }));
+  // Ein Rest am Tag nach dem Ende eines Ziels: die übrigen Zeilen ergäben weniger als 100 %.
+  const enden = [...new Set(neu.map((n) => n.gueltig_bis).filter((e): e is string => e !== null))].sort();
+  for (const ende of enden) {
+    const danach = minusTage(ende, -1);
+    const rest = neu
+      .filter((n) => gilt(danach, n.gueltig_ab, n.gueltig_bis))
+      .reduce((s, n) => dezPlus(s, n.anteil_prozent), NULL_BETRAG);
+    if (dezVorzeichen(rest) > 0 && dezVergleich(rest, SUMME_PROZENT) !== 0) {
+      return abgelehnt(FEHLER_SUMME, { summe: text(rest), tag: danach });
+    }
+  }
+  const wirksam = bestehend.filter((b) => b.aufgehoben_am === null);
+  const stand = (k: string, a: Dez, bis: string | null): string => `${k}=${text(a)}@${bis}`;
+  const spaeter = wirksam.some((b) => b.gueltig_ab !== null && b.gueltig_ab > tag);
+  const vorher = wirksam
+    .filter((b) => gilt(tag, b.gueltig_ab, b.gueltig_bis))
+    .map((b) => stand(b.kostenstelle, b.anteil_prozent, b.gueltig_bis))
+    .sort();
+  const nachher = neu.map((n) => stand(n.kostenstelle, n.anteil_prozent, n.gueltig_bis)).sort();
+  if (!spaeter && vorher.length === nachher.length && vorher.every((v, i) => v === nachher[i])) {
+    return {
+      fehler: null,
+      summe,
+      fakten: {},
+      aufgehoben: [],
+      beendet: [],
+      neu: [],
+      rueckwirkend,
+      tage_rueckwirkend: tage,
+      unveraendert: true,
+    };
+  }
+  const aufgehoben: Aufgehoben[] = [];
+  const rest: Bestandszeile[] = [];
+  for (const b of wirksam) {
+    if (korrektur && b.gueltig_ab === tag) aufgehoben.push({ kostenstelle: b.kostenstelle, gueltig_ab: tag });
+    else rest.push(b);
+  }
+  const f = fassung(heute, rest, tag, zeilen);
+  if (f.fehler !== null) {
+    const laufend = rest.map((b) => b.gueltig_ab ?? '').sort().reverse()[0] ?? '';
+    return abgelehnt(f.fehler, { gueltig_ab: tag, laufend_ab: laufend });
+  }
+  return {
+    fehler: null,
+    summe,
+    fakten: {},
+    aufgehoben,
+    beendet: f.beendet,
+    neu,
+    rueckwirkend,
+    tage_rueckwirkend: tage,
+    unveraendert: false,
+  };
+}
+
 // ----------------------------------------------------------------------------------- Mengen
 
 /** Eine Tagesmenge der Quelle; `menge === null` heißt „keine Werte". */

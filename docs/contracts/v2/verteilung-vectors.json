@@ -12,9 +12,13 @@
     "Keine dynamischen Schlüssel: kein Anteil aus Messwerten, Flächen, Stückzahlen oder",
     "Betriebsstunden (Grenze des Captains, AP-09 S2).",
     "Erzeugt aus data/vp-uems-ap10-bilanzen/referenzfaelle.json; _abweichungen nennt jede bewusste",
-    "Abweichung von der Vorlage, _nicht_geprueft jede Erwartung ohne Zwilling."
+    "Abweichung von der Vorlage, _nicht_geprueft jede Erwartung ohne Zwilling.",
+    "",
+    "Fassung 1.1 (AP-10 IP-8, 13.09.2026): Regel `satz_ab_tag` — der Schreibweg `PUT …/verteilung`",
+    "als EINE reine Regel (Satz ab Tag: Anteil, Ziel, Summe, Ende mit dem Ziel, Wiederholung,",
+    "Korrektur am selben Tag, Fassung); im Block `leseweg` ist `verteilung_wartet_auf_ip8` eingelöst."
   ],
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "$schema_datei": "./verteilung.schema.json",
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -28,7 +32,8 @@
     "Drei Wörter, nie vermischt: gemessen (führende Quelle) · berechnet (Summe · Differenz · Saldo, mit Formel-Fassung und Eingängen) · verteilt (n % von MS-xx, mit Verteilungs-Fassung). Jeder Wert trägt Zustand, Abdeckung, Kennzeichen, Version (AP-08) und seine Herkunft (E13).",
     "Fortpflanzung (E2): Summe = Summe der vorhandenen Eingänge mit Zustand „schlechtester Eingang“ und Nennung der fehlenden („mindestens …“); Differenz und Saldo bei einem nicht vollständigen Eingang = „keine Werte“; Verteilung erbt; der Live-Wert bleibt `null` statt Teilsumme.",
     "Eine Verteilung ist eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage, Muster A), Summe je Tag genau 100 % an jedem Tag mit Zeilen, sonst „nicht verteilt“; sie wirkt je Tag (Tagesanteile, nie Stichtag) und endet mit ihrem Ziel (E11/E12). Keine dynamischen Schlüssel.",
-    "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14)."
+    "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14).",
+    "Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens einer Nachkommastelle, jedes Ziel besteht am Tag, die Summe ist 100 %; eine neue Zeile endet mit ihrem Ziel, und an keinem Tag danach bleibt ein Rest ≠ 100 %; derselbe Satz noch einmal ändert nichts; ein Satz am Tag der laufenden Fassung ist nur als Korrektur erlaubt (aufheben + neu); ein leerer Satz heißt ab dem Tag „nicht verteilt“."
   ],
   "vokabulare": {
     "term_art": [
@@ -104,6 +109,10 @@
       "java",
       "ts"
     ],
+    "satz_ab_tag": [
+      "java",
+      "ts"
+    ],
     "mengen": [
       "java",
       "ts"
@@ -124,14 +133,13 @@
     "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel."
   },
   "leseweg": {
-    "herkunft": "UEMS AP-10 §8 IP-5 („Anteil über den AP-08-IP-7-Leseweg — bis dahin 422 `anteil_wartet_auf_ap08`, benannt, nie geraten; Verteilungs-Term liest den Anteil des Tages“), §1.1 von messstelle-formel.md; nachgetragen mit AP-10 IP-5 am 13.09.2026. Die zweite Ablehnung `verteilung_wartet_auf_ip8` ist die Anweisung von firstmate vom 13.09.2026: beim Bau fehlte neben AP-08 IP-7 auch die Verteilung selbst (AP-10 IP-8) — zwei fehlende Fähigkeiten, zwei Sätze.",
-    "regel": "Ein Formel-Term liest seinen Anteil über EINEN Leseweg. Der Teil eines Messwerts (`anteil` = `positiv` | `negativ`) kommt aus der Quellenbindung (AP-08 IP-7), der Anteil DES TAGES eines Terms der Art `verteilung` aus der Verteilung (AP-10 IP-8). Fehlt die Fähigkeit, wird der Term benannt abgelehnt: der Schreibweg speichert ihn nicht (422 mit Kundensatz), Wert und Verlauf nennen ihn als fehlenden Term mit dem Code als Grund — nie eine geratene Zahl, nie eine Null, nie `nicht_verteilt` oder `ziel_besteht_nicht` (die sagen etwas über eine VORHANDENE Verteilung). Die Vertragsregel `verteilungs_term_ohne_faktor` gilt unabhängig vom Leseweg und wird zuerst geprüft; danach der Teil des Messwerts, danach der Anteil der Verteilung (erst der Teil, dann die Verteilung dieses Teils).",
-    "stelle": "Java services/api .../uems/AnteilLeseweg#lies — die EINE Stelle, die Schreibweg, Live-Wert und Verlauf fragen. Wird AP-08 IP-7 oder AP-10 IP-8 gebaut, wird aus GENAU dem Zweig dieses Pakets ein Aufruf; der Anteil des Tages wird dann über `AnteilLeseweg.tagesanteil` von `VerteilungRegeln.term` gerechnet (Regel `term` dieser Datei, aufgerufen, nie nachgebaut).",
+    "herkunft": "UEMS AP-10 §8 IP-5 („Anteil über den AP-08-IP-7-Leseweg — bis dahin 422 `anteil_wartet_auf_ap08`, benannt, nie geraten; Verteilungs-Term liest den Anteil des Tages“), §1.1 von messstelle-formel.md; nachgetragen mit AP-10 IP-5 am 13.09.2026. Die zweite Ablehnung `verteilung_wartet_auf_ip8` ist die Anweisung von firstmate vom 13.09.2026: beim Bau fehlte neben AP-08 IP-7 auch die Verteilung selbst (AP-10 IP-8) — zwei fehlende Fähigkeiten, zwei Sätze. Eingelöst mit AP-10 IP-8 am 13.09.2026: der Zweig `verteilung` liest die Zeilen der Verteilung am Tag (`messstelle_verteilung`) und rechnet den Anteil über `VerteilungRegeln.term` — `verteilung_wartet_auf_ip8` gibt es nicht mehr.",
+    "regel": "Ein Formel-Term liest seinen Anteil über EINEN Leseweg. Der Teil eines Messwerts (`anteil` = `positiv` | `negativ`) kommt aus der Quellenbindung (AP-08 IP-7), der Anteil DES TAGES eines Terms der Art `verteilung` aus der Verteilung (AP-10 IP-8). Seit AP-10 IP-8 liest ein Verteilungs-Term den Anteil des Tages (`lesung` = `tagesanteil`; ohne Zeile am Tag `nicht_verteilt` — ein Zustand, kein Fehler des Schreibwegs). Fehlt eine Fähigkeit, wird der Term benannt abgelehnt: der Schreibweg speichert ihn nicht (422 mit Kundensatz), Wert und Verlauf nennen ihn als fehlenden Term mit dem Code als Grund — nie eine geratene Zahl, nie eine Null, nie `nicht_verteilt` oder `ziel_besteht_nicht` (die sagen etwas über eine VORHANDENE Verteilung). Die Vertragsregel `verteilungs_term_ohne_faktor` gilt unabhängig vom Leseweg und wird zuerst geprüft; danach der Teil des Messwerts, danach der Anteil der Verteilung (erst der Teil, dann die Verteilung dieses Teils).",
+    "stelle": "Java services/api .../uems/AnteilLeseweg#lies — die EINE Stelle, die Schreibweg, Live-Wert und Verlauf fragen. Mit AP-10 IP-8 wurde aus dem Zweig `verteilung` der Aufruf (Zeilen am Tag über `VerteilungRegeln.amTag`); der Anteil des Tages wird dann über `AnteilLeseweg.tagesanteil` von `VerteilungRegeln.term` gerechnet (Regel `term` dieser Datei, aufgerufen, nie nachgebaut).",
     "grund_im_wert": "fehlende[].grund",
     "pruefreihenfolge": [
       "verteilungs_term_ohne_faktor",
-      "anteil_wartet_auf_ap08",
-      "verteilung_wartet_auf_ip8"
+      "anteil_wartet_auf_ap08"
     ],
     "ablehnungen": [
       {
@@ -147,13 +155,6 @@
         "wartet_auf": "AP-08 IP-7",
         "feld": "anteil",
         "satz": "Nur den positiven oder nur den negativen Teil eines Messwerts (etwa Laden oder Entladen) kann eine Formel noch nicht lesen. Der Term wird darum nicht gespeichert — geschätzt wird nichts."
-      },
-      {
-        "code": "verteilung_wartet_auf_ip8",
-        "status": 422,
-        "wartet_auf": "AP-10 IP-8",
-        "feld": "eingang_art",
-        "satz": "Anteile aus der Verteilung auf Kostenstellen kann eine Formel noch nicht lesen. Der Term wird darum nicht gespeichert — geschätzt wird nichts."
       }
     ],
     "zwillinge": [
@@ -174,7 +175,8 @@
         },
         "tag": "2026-10-18",
         "ergebnis": {
-          "ablehnung": "anteil_wartet_auf_ap08"
+          "ablehnung": "anteil_wartet_auf_ap08",
+          "lesung": null
         }
       },
       {
@@ -190,11 +192,12 @@
         },
         "tag": "2026-10-18",
         "ergebnis": {
-          "ablehnung": "anteil_wartet_auf_ap08"
+          "ablehnung": "anteil_wartet_auf_ap08",
+          "lesung": null
         }
       },
       {
-        "name": "F11 · „4100 von MS-07“ — der Anteil des Tages wartet auf die Verteilung",
+        "name": "F11 · „4100 von MS-07“ — liest den Anteil des Tages aus der Verteilung (seit AP-10 IP-8)",
         "fall": "F11",
         "term": {
           "art": "verteilung",
@@ -206,7 +209,8 @@
         },
         "tag": "2026-10-01",
         "ergebnis": {
-          "ablehnung": "verteilung_wartet_auf_ip8"
+          "ablehnung": null,
+          "lesung": "tagesanteil"
         }
       },
       {
@@ -222,7 +226,8 @@
         },
         "tag": "2026-10-01",
         "ergebnis": {
-          "ablehnung": "verteilungs_term_ohne_faktor"
+          "ablehnung": "verteilungs_term_ohne_faktor",
+          "lesung": null
         }
       },
       {
@@ -238,7 +243,8 @@
         },
         "tag": "2026-10-01",
         "ergebnis": {
-          "ablehnung": "anteil_wartet_auf_ap08"
+          "ablehnung": "anteil_wartet_auf_ap08",
+          "lesung": null
         }
       },
       {
@@ -254,7 +260,8 @@
         },
         "tag": "2026-10-18",
         "ergebnis": {
-          "ablehnung": null
+          "ablehnung": null,
+          "lesung": "ganz"
         }
       },
       {
@@ -270,7 +277,8 @@
         },
         "tag": "2026-10-18",
         "ergebnis": {
-          "ablehnung": null
+          "ablehnung": null,
+          "lesung": "ganz"
         }
       }
     ]
@@ -540,6 +548,45 @@
         },
         {
           "regel": "satz",
+          "name": "60 % + 30 % = 90 % wird abgelehnt — kein Rest, der „irgendwohin“ geht",
+          "eingang": {
+            "tag": "2026-10-01",
+            "messstelle": "MS-07",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ]
+          },
+          "ergebnis": {
+            "gueltig": false,
+            "summe": "90",
+            "fehler": "verteilung_summe",
+            "fakten": {
+              "summe": "90",
+              "tag": "2026-10-01"
+            }
+          }
+        },
+        {
+          "regel": "satz",
           "name": "Ein Anteil von 0 % ist keine Zeile, sondern ein Fehler",
           "eingang": {
             "tag": "2026-10-01",
@@ -722,6 +769,154 @@
               "abdeckung_prozent": 100
             },
             "fehlt": []
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Satz mit zwei Zielen auf eine noch nicht verteilte Messstelle: zwei Zeilen ab dem Tag, offen wie ihre Ziele",
+          "eingang": {
+            "heute": "2026-10-01",
+            "tag": "2026-10-01",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "90 % im Satz: 422 `verteilung_summe` mit Summe und Tag — nichts wird geschrieben",
+          "eingang": {
+            "heute": "2026-10-01",
+            "tag": "2026-10-01",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": "verteilung_summe",
+            "summe": "90",
+            "fakten": {
+              "summe": "90",
+              "tag": "2026-10-01"
+            },
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "33,33 % hat mehr als eine Nachkommastelle: `anteil_ungueltig`, nie still gerundet",
+          "eingang": {
+            "heute": "2026-10-01",
+            "tag": "2026-10-01",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "33.33"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "66.67"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": "anteil_ungueltig",
+            "summe": "100",
+            "fakten": {
+              "kostenstelle": "4100",
+              "anteil_prozent": "33.33"
+            },
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
           }
         }
       ],
@@ -976,6 +1171,252 @@
               "kostenstelle": "9000",
               "tag": "2027-01-01"
             }
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "MS-03 zu 100 % an 9000: die Zeile endet mit ihrem Ziel am 31.12.2026, danach „nicht verteilt“",
+          "eingang": {
+            "heute": "2026-10-01",
+            "tag": "2026-10-01",
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              }
+            ],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "50 % an 9000 und 50 % an 9100: ab 01.01.2027 blieben 50 % — 422 `verteilung_summe` am ersten Tag danach",
+          "eingang": {
+            "heute": "2026-12-01",
+            "tag": "2026-12-01",
+            "zeilen": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "50"
+              },
+              {
+                "kostenstelle": "9100",
+                "anteil_prozent": "50"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": "verteilung_summe",
+            "summe": "100",
+            "fakten": {
+              "summe": "50",
+              "tag": "2027-01-01"
+            },
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Die Nachfolger 9010/9020 ab 01.01.2027: die alte Zeile endete schon mit 9000 und bleibt unberührt",
+          "eingang": {
+            "heute": "2027-01-05",
+            "tag": "2027-01-01",
+            "zeilen": [
+              {
+                "kostenstelle": "9010",
+                "anteil_prozent": "50"
+              },
+              {
+                "kostenstelle": "9020",
+                "anteil_prozent": "50"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [
+              {
+                "kostenstelle": "9010",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "anteil_prozent": "50",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 4,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Ein leerer Satz nach dem Ende von 9000 ändert nichts: ohne Zeile ist MS-03 schon „nicht verteilt“",
+          "eingang": {
+            "heute": "2027-01-05",
+            "tag": "2027-01-01",
+            "zeilen": [],
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "9000",
+                "anteil_prozent": "100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "0",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 4,
+            "unveraendert": true
           }
         }
       ],
@@ -1425,6 +1866,399 @@
               "abdeckung_prozent": 100
             },
             "fehlt": []
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Wechsel am 15.01.2027 (70/30 → 60/40), eingetragen am 20.01.: die laufende endet am 14.01. — rückwirkend 5 Tage",
+          "eingang": {
+            "heute": "2027-01-20",
+            "tag": "2027-01-15",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_bis": "2027-01-14"
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_bis": "2027-01-14"
+              }
+            ],
+            "neu": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              }
+            ],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 5,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Derselbe Satz noch einmal (Wiederholung der Anfrage): nichts ändert sich, keine neue Fassung",
+          "eingang": {
+            "heute": "2027-01-20",
+            "tag": "2027-01-15",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 5,
+            "unveraendert": true
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Ein anderer Satz am selben Tag ohne Korrektur überlappt: 422 `formel_fassung_ueberlappt`",
+          "eingang": {
+            "heute": "2027-01-20",
+            "tag": "2027-01-15",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "65"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "35"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": "formel_fassung_ueberlappt",
+            "summe": "100",
+            "fakten": {
+              "gueltig_ab": "2027-01-15",
+              "laufend_ab": "2027-01-15"
+            },
+            "aufgehoben": [],
+            "beendet": [],
+            "neu": [],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 5,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Korrektur am selben Tag: 60/40 ab 15.01. wird aufgehoben (lesbar) und durch 65/35 ersetzt",
+          "eingang": {
+            "heute": "2027-01-20",
+            "tag": "2027-01-15",
+            "zeilen": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "65"
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "35"
+              }
+            ],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": true
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "100",
+            "fakten": {},
+            "aufgehoben": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2027-01-15"
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2027-01-15"
+              }
+            ],
+            "beendet": [],
+            "neu": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "65",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "35",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null
+              }
+            ],
+            "rueckwirkend": true,
+            "tage_rueckwirkend": 5,
+            "unveraendert": false
+          }
+        },
+        {
+          "regel": "satz_ab_tag",
+          "name": "Ein leerer Satz ab 01.02.2027 beendet die Verteilung am 31.01. — danach ausdrücklich „nicht verteilt“, nie 0 %",
+          "eingang": {
+            "heute": "2027-01-20",
+            "tag": "2027-02-01",
+            "zeilen": [],
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "bestehend": [
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "70",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "30",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2027-01-14",
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4100",
+                "anteil_prozent": "60",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              },
+              {
+                "kostenstelle": "4200",
+                "anteil_prozent": "40",
+                "gueltig_ab": "2027-01-15",
+                "gueltig_bis": null,
+                "aufgehoben_am": null
+              }
+            ],
+            "korrektur": false
+          },
+          "ergebnis": {
+            "fehler": null,
+            "summe": "0",
+            "fakten": {},
+            "aufgehoben": [],
+            "beendet": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_bis": "2027-01-31"
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_bis": "2027-01-31"
+              }
+            ],
+            "neu": [],
+            "rueckwirkend": false,
+            "tage_rueckwirkend": 0,
+            "unveraendert": false
           }
         }
       ],

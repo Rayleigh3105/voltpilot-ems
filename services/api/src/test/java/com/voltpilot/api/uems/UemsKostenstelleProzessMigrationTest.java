@@ -420,8 +420,9 @@ class UemsKostenstelleProzessMigrationTest {
                 .replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER);
         root.execute(sql);
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
+        // Zwei aus diesem Paket, der dritte hängt seit AP-10 IP-8 an `messstelle_verteilung` (V20260913230000).
         assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid = "
-                + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal", Long.class)).isEqualTo(2);
+                + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal", Long.class)).isEqualTo(3);
         assertThat(root.queryForObject("SELECT count(*) FROM pg_constraint WHERE conname IN "
                 + "('bezugsgroesse_geltung_objekt_chk', 'bezugsgroesse_geltung_uq', 'bezugsgroesse_prozess_fk', "
                 + "'bezugsgroesse_kostenstelle_fk', 'messstelle_formel_term_verteilung_ziel_fk')", Long.class)).isEqualTo(5);

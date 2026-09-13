@@ -170,6 +170,23 @@ class AenderungSatzTest {
                 .isEqualTo("Prozesse zugeordnet: keine");
     }
 
+    /** AP-10 IP-8: die Verteilung nennt die Anteile ab dem Tag — ohne Zeile „nicht verteilt“, nie 0 %. */
+    @Test
+    void eineVerteilungNenntDieAnteile() throws Exception {
+        assertThat(satz("messstelle", "verteilung_geaendert", null, "{\"gueltig_ab\": \"2027-01-15\", "
+                + "\"zeilen\": [{\"kostenstelle\": \"4100\", \"anteil_prozent\": \"60\"}, "
+                + "{\"kostenstelle\": \"4200\", \"anteil_prozent\": \"40\"}], \"korrektur\": false}"))
+                .isEqualTo("Verteilung auf Kostenstellen geändert: 60\u00a0% 4100, 40\u00a0% 4200");
+        assertThat(satz("messstelle", "verteilung_geaendert", null,
+                "{\"gueltig_ab\": \"2027-01-15\", \"zeilen\": [{\"kostenstelle\": \"4100\", "
+                        + "\"anteil_prozent\": \"33.5\"}, {\"kostenstelle\": \"4200\", \"anteil_prozent\": \"66.5\"}], "
+                        + "\"korrektur\": true}"))
+                .isEqualTo("Verteilung auf Kostenstellen berichtigt: 33,5\u00a0% 4100, 66,5\u00a0% 4200");
+        assertThat(satz("messstelle", "verteilung_geaendert", null,
+                "{\"gueltig_ab\": \"2027-02-01\", \"zeilen\": [], \"korrektur\": false}"))
+                .isEqualTo("Verteilung auf Kostenstellen geändert: nicht verteilt");
+    }
+
     // ---- Vollständigkeit ----------------------------------------------------------------------
 
     /**
