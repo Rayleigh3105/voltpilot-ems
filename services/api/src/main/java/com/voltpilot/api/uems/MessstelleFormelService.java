@@ -99,6 +99,8 @@ public class MessstelleFormelService {
     private final ObjectMapper json;
     private final AnteilLeseweg leseweg;
     private final KostenstelleProzessRepository kostenstellen;
+    private final BilanzRestRepository reste;
+    private final BilanzStellungen stellungen;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
@@ -107,7 +109,7 @@ public class MessstelleFormelService {
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
             MessstelleService messstellenDienst, MeasurementCatalog katalog, UnternehmenRepository unternehmen,
             PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg,
-            KostenstelleProzessRepository kostenstellen) {
+            KostenstelleProzessRepository kostenstellen, BilanzRestRepository reste, BilanzStellungen stellungen) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -121,6 +123,8 @@ public class MessstelleFormelService {
         this.json = json;
         this.leseweg = leseweg;
         this.kostenstellen = kostenstellen;
+        this.reste = reste;
+        this.stellungen = stellungen;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -339,6 +343,11 @@ public class MessstelleFormelService {
                     "„gültig ab“ fehlt: der Tag (JJJJ-MM-TT), ab dem die neue Formel gilt.");
         }
         String typ = a.formelTyp() == null ? MessstelleFormelRegeln.GEWICHTETE_SUMME : a.formelTyp();
+        if (fassungen.wirksame(id).stream().anyMatch(f -> MessstelleFormelRegeln.REST.equals(f.formelTyp()))) {
+            // E3: die Terme eines Rests kommen je Tag aus der Stellung — es gibt nichts einzutragen.
+            throw MessstelleFormelAbgelehnt.anfrage("formel_typ", m.kennzeichen() + " ist ein Rest: seine Terme "
+                    + "kommen je Tag aus der elektrischen Stellung. Ändern Sie die Stellung, nicht die Formel.");
+        }
         if (!MessstelleFormelRegeln.GEWICHTETE_SUMME.equals(typ)) {
             throw MessstelleFormelAbgelehnt.anfrage("formel_typ",
                     "Eine Formel ist heute eine gewichtete Summe („gewichtete_summe“).");
@@ -459,10 +468,26 @@ public class MessstelleFormelService {
         LocalDate heute = heute(zone());
         RohWert r = liveWert(m, cutoff, heute, new HashSet<>(List.of(id)), 0);
         return new MessstelleFormelDto.Wert(r.wert(), r.einheit(), r.wert() == null, r.fehlende(),
-                r.stand() == null ? null : zeit(r.stand()));
+                r.stand() == null ? null : zeit(r.stand()), BEFRISTET);
     }
 
+    /**
+     * BEFRISTET bis AP-10 IP-10 (W12): Live-Wert und Verlauf rechnen aus den Geräte-Verdichtungen. IP-10
+     * baut die Periodenwerte berechneter Messstellen und ENTFERNT dieses Kennzeichen.
+     */
+    private static final List<String> BEFRISTET = List.of(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
+
     private RohWert liveWert(Messstelle m, Instant cutoff, LocalDate tag, Set<UUID> besucht, int tiefe) {
+        Optional<UUID> restVon = restHauptzaehlerAm(m.id(), tag);
+        if (restVon.isPresent()) {
+            RestLive live = restLive(restVon.get(), cutoff, tag);
+            List<MessstelleFormelDto.FehlenderTerm> fehlende = new ArrayList<>();
+            for (BilanzAbleitung.Fehlender f : live.urteil().fehlende()) {
+                fehlende.add(new MessstelleFormelDto.FehlenderTerm(live.position(f.term()), f.grund()));
+            }
+            return new RohWert(live.urteil().wert(), live.urteil().wert() == null ? null : live.stand(),
+                    RestLive.EINHEIT, fehlende);
+        }
         Groesse haupt = m.hauptgroesse();
         String ziel = haupt.einheit();
         List<Summand> summanden = new ArrayList<>();
@@ -546,6 +571,232 @@ public class MessstelleFormelService {
         }
     }
 
+    // ------------------------------------------------------ Rest aus der Stellung (AP-10 IP-9)
+
+    /**
+     * Der Live-Wert eines Rests — der PR-688-Weg, mit Termen aus der STELLUNG des Tages (E3): je Term die
+     * frischeste Wirkleistung seiner Messstelle, Zufluss {@code +}, Abfluss und zugeordnet {@code −},
+     * gerechnet von {@link BilanzAbleitung#live} (= {@link MessstelleFormelRegeln#gewichteteSumme}).
+     * Ist EIN Term älter als {@link #FRISCHE}, ist der Wert {@code null} und der Term steht mit
+     * {@code veraltet} in {@code fehlende} — nie eine Teilsumme, nie der letzte bekannte Wert (F18).
+     *
+     * @param fehler {@link BilanzAbleitung#REST_OHNE_HAUPTZAEHLER}, wenn der Hauptzähler heute keiner ist
+     */
+    public record RestLive(String hauptzaehler, List<BilanzAbleitung.RestTerm> terme,
+            BilanzAbleitung.LiveUrteil urteil, Instant stand, String fehler) {
+
+        /** Ein Momentanwert: Wirkleistung in kW (die Richtung E1 gilt nur auf der Mengen-Ebene). */
+        public static final String EINHEIT = "kW";
+
+        int position(String messstelle) {
+            for (int i = 0; i < terme.size(); i++) {
+                if (terme.get(i).messstelle().equals(messstelle)) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+    }
+
+    /** Der Live-Wert des Rests eines Hauptzählers JETZT (Tag in der Zeitzone des Kundenbereichs). */
+    public RestLive restLive(UUID hauptzaehlerId) {
+        return restLive(hauptzaehlerId, uhr.instant().minus(FRISCHE), heute(zone()));
+    }
+
+    private RestLive restLive(UUID hauptzaehlerId, Instant cutoff, LocalDate tag) {
+        BilanzStellungen.Stand stand = stellungen.lesen();
+        Messstelle x = messstellen.finde(hauptzaehlerId).orElse(null);
+        BilanzAbleitung.RestFassung f = x == null ? null : stand.rest(x.kennzeichen(), tag);
+        if (f == null || f.fehler() != null) {
+            return new RestLive(x == null ? null : x.kennzeichen(), List.of(),
+                    new BilanzAbleitung.LiveUrteil(null, true, List.of()), null, BilanzAbleitung.REST_OHNE_HAUPTZAEHLER);
+        }
+        List<BilanzAbleitung.LiveTerm> live = new ArrayList<>();
+        Instant juengster = null;
+        for (BilanzAbleitung.RestTerm t : f.terme()) {
+            Messstelle q = stand.nachKennzeichen().get(t.messstelle());
+            Leistung l = q == null ? null : leistungsKanal(q);
+            Double wert = null;
+            String grund = null;
+            if (l == null) {
+                grund = "kein_geraet";
+            } else {
+                Optional<Messwert> mw = werte.frischester(l.quelle(), l.pointKey());
+                if (mw.isEmpty()) {
+                    grund = "kein_wert";
+                } else if (mw.get().zeit().isBefore(cutoff)) {
+                    grund = "veraltet";
+                } else {
+                    // Der Anteil (Bindung oder Speicher-Rolle) wird JE ROHWERT geteilt — hier ist es einer.
+                    BigDecimal w = BigDecimal.valueOf(
+                            MessstelleFormelRegeln.normiere(mw.get().wert(), l.einheit(), RestLive.EINHEIT));
+                    if (l.anteil() != null) {
+                        w = VerbrauchRegeln.anteilDesWerts(w, l.anteil());
+                    }
+                    if (!GESAMT.equals(t.anteil())) {
+                        w = VerbrauchRegeln.anteilDesWerts(w, t.anteil());
+                    }
+                    wert = w.doubleValue();
+                    juengster = juenger(juengster, mw.get().zeit());
+                }
+            }
+            live.add(new BilanzAbleitung.LiveTerm(t.messstelle(), vorzeichen(t), 1.0, wert, RestLive.EINHEIT, grund));
+        }
+        BilanzAbleitung.LiveUrteil u = BilanzAbleitung.live(RestLive.EINHEIT, live);
+        return new RestLive(x.kennzeichen(), f.terme(), u, u.wert() == null ? null : juengster, null);
+    }
+
+    private static final String GESAMT = "gesamt";
+
+    private static String vorzeichen(BilanzAbleitung.RestTerm t) {
+        return BilanzAbleitung.ZUFLUSS.equals(t.rolle()) ? "+" : "-";
+    }
+
+    /**
+     * Der Verlauf eines Rests je 15-min-Bucket: die Terme DES TAGES, an dem der Bucket beginnt, aus der
+     * Stellung; je Term die mittlere Wirkleistung seiner Messstelle. {@code null}, wenn in einem Bucket
+     * nicht ALLE Terme einen Wert haben. Ein Term, der nur einen ANTEIL liest, hat im Verlauf keinen Wert:
+     * ein Anteil wird je Rohwert geteilt, nie je Mittelwert (AP-08 IP-7) — der Bucket bleibt {@code null}.
+     */
+    private Map<Instant, Double> restVerlauf(UUID hauptzaehlerId, Instant von, Instant bis, ZoneId zone) {
+        Map<Instant, Double> out = new TreeMap<>();
+        Messstelle x = messstellen.finde(hauptzaehlerId).orElse(null);
+        if (x == null) {
+            return out;
+        }
+        BilanzStellungen.Stand stand = stellungen.lesen();
+        Map<String, Map<Instant, Double>> jeMessstelle = new java.util.HashMap<>();
+        for (LocalDate tag = von.atZone(zone).toLocalDate(); tag.atStartOfDay(zone).toInstant().isBefore(bis);
+                tag = tag.plusDays(1)) {
+            Instant a = spaeter(von, tag.atStartOfDay(zone).toInstant());
+            Instant e = frueher(bis, tag.plusDays(1).atStartOfDay(zone).toInstant());
+            BilanzAbleitung.RestFassung f = stand.rest(x.kennzeichen(), tag);
+            if (f.fehler() != null || !a.isBefore(e)) {
+                continue;
+            }
+            List<Map<Instant, Double>> proTerm = new ArrayList<>();
+            for (BilanzAbleitung.RestTerm t : f.terme()) {
+                Map<Instant, Double> roh = GESAMT.equals(t.anteil())
+                        ? jeMessstelle.computeIfAbsent(t.messstelle(),
+                                kz -> leistungsVerlauf(stand.nachKennzeichen().get(kz), von, bis))
+                        : Map.of();
+                double vz = "+".equals(vorzeichen(t)) ? 1 : -1;
+                Map<Instant, Double> gewichtet = new TreeMap<>();
+                roh.forEach((b, w) -> {
+                    if (!b.isBefore(a) && b.isBefore(e)) {
+                        gewichtet.put(b, vz * w);
+                    }
+                });
+                proTerm.add(gewichtet);
+            }
+            Set<Instant> alle = new java.util.TreeSet<>();
+            proTerm.forEach(map -> alle.addAll(map.keySet()));
+            for (Instant b : alle) {
+                boolean vollstaendig = proTerm.stream().allMatch(map -> map.containsKey(b));
+                out.put(b, vollstaendig ? proTerm.stream().mapToDouble(map -> map.get(b)).sum() : null);
+            }
+        }
+        return out;
+    }
+
+    private Map<Instant, Double> leistungsVerlauf(Messstelle q, Instant von, Instant bis) {
+        Leistung l = q == null ? null : leistungsKanal(q);
+        if (l == null || l.anteil() != null) {
+            return Map.of();
+        }
+        Map<Instant, Double> out = new TreeMap<>();
+        werte.verlauf15m(l.quelle(), l.pointKey(), "Momentanwert", von, bis).forEach((b, w) ->
+                out.put(b, MessstelleFormelRegeln.normiere(w, l.einheit(), RestLive.EINHEIT)));
+        return out;
+    }
+
+    /** Die führende Wirkleistung einer Messstelle in der Richtung ihrer Hauptgröße, jetzt, samt Box. */
+    private record Leistung(Quelle quelle, String pointKey, String einheit, String anteil) {}
+
+    private static final String WIRKLEISTUNG = "Wirkleistung";
+
+    private Leistung leistungsKanal(Messstelle q) {
+        Instant jetzt = uhr.instant();
+        for (MessstelleQuelleRepository.Quelle b : quellen.derMessstelle(q.id())) {
+            if (!FUEHREND.equals(b.rolle()) || !WIRKLEISTUNG.equals(b.groesse())
+                    || !q.hauptgroesse().richtung().equals(b.richtung())) {
+                continue;
+            }
+            if (b.gueltigAb().isAfter(jetzt) || (b.gueltigBis() != null && !b.gueltigBis().isAfter(jetzt))) {
+                continue;
+            }
+            Optional<Quelle> scope = werte.quelle(b.entityId(), b.kanal());
+            if (scope.isPresent()) {
+                return new Leistung(scope.get(), b.kanal(), kanalEinheit(b.kanal(), RestLive.EINHEIT), b.anteil());
+            }
+        }
+        return null;
+    }
+
+    /** Der Hauptzähler, wenn die Fassung der Messstelle an dem Tag ein Rest ist. */
+    private Optional<UUID> restHauptzaehlerAm(UUID messstelleId, LocalDate tag) {
+        return fassungAm(fassungen.wirksame(messstelleId), tag)
+                .filter(f -> MessstelleFormelRegeln.REST.equals(f.formelTyp()))
+                .flatMap(f -> reste.hauptzaehlerDerFassung(f.id()));
+    }
+
+    /** Das Ergebnis von „Rest anlegen“: die Rest-Messstelle und ob sie JETZT entstanden ist. */
+    public record RestAngelegt(UUID messstelleId, boolean neu) {}
+
+    /** Die Art, unter der das Protokoll die bestätigte Vorschlags-Anlage nennt ({@code neu.herkunft}). */
+    static final String HERKUNFT_VORSCHLAG_REST = "vorschlag_rest_anlegen";
+
+    /**
+     * E18 — legt die Rest-Messstelle eines Hauptzählers an, auf den Klick eines Menschen: Kennzeichen
+     * automatisch ({@link MessstelleRepository#anlegen}), Name wie übergeben (vorbelegt vom Aufrufer),
+     * Urheber im Protokoll {@code angelegt}. NIE ZWEIMAL: unter der Sperre je Hauptzähler wird zuerst
+     * nachgesehen; hat er schon einen Rest, entsteht nichts und die vorhandene Messstelle kommt zurück.
+     * Der eindeutige Index hinter der Sperre macht auch einen dritten Schreiber zu „schon da“.
+     *
+     * <p>Geprüft, dass {@code hauptzaehler} an diesem Tag Hauptzähler Bezug der Anlage ist, hat der
+     * Aufrufer ({@code BilanzService}) — hier wird nur geschrieben.
+     */
+    public RestAngelegt restAnlegen(Messstelle hauptzaehler, String name, ProtokollAkteur wer) {
+        UUID tenant = TenantContext.get();
+        if (tenant == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Kein Kundenbereich gewählt.");
+        }
+        Groesse haupt = MessstelleFormelRegeln.hauptgroesse(MessstelleFormelRegeln.REST, MessstelleRegeln.BERECHNET,
+                "Intervallmenge", null).hauptgroesse();
+        String medium = medium(haupt.groesse());
+        Instant jetzt = minute(uhr.instant());
+        try {
+            return transaktion.execute(s -> {
+                reste.sperren(hauptzaehler.id());
+                Optional<BilanzRestRepository.Rest> da = reste.vonHauptzaehler(hauptzaehler.id());
+                if (da.isPresent()) {
+                    return new RestAngelegt(da.get().messstelleId(), false);
+                }
+                Messstelle m = messstellen.anlegen(new NeueMessstelle(tenant, null, name, MessstelleRegeln.BERECHNET,
+                        medium, haupt, null));
+                reste.fassungAnlegen(m.id(), hauptzaehler.id(), uhr.instant(), wer);
+                Map<String, Object> neu = new LinkedHashMap<>();
+                neu.put("name", name);
+                neu.put("art", MessstelleRegeln.BERECHNET);
+                neu.put("medium", medium);
+                neu.put("hauptgroesse", Map.of("groesse", haupt.groesse(), "richtung", haupt.richtung(),
+                        "einheit", haupt.einheit(), "wertart", haupt.wertart()));
+                neu.put("formel_typ", MessstelleFormelRegeln.REST);
+                neu.put("rest_von", Map.of("id", hauptzaehler.id().toString(), "kennzeichen",
+                        hauptzaehler.kennzeichen()));
+                neu.put("herkunft", HERKUNFT_VORSCHLAG_REST);
+                aenderungen.eintragen(new NeuerEintrag(tenant, m.id(), "angelegt", null, alsJson(neu), jetzt, false,
+                        null, wer.sub(), wer.name(), wer.rolle(), wer.art()));
+                return new RestAngelegt(m.id(), true);
+            });
+        } catch (DataIntegrityViolationException e) {
+            // Der Index hat einen Schreiber außerhalb der Sperre abgewiesen: dann gibt es den Rest schon.
+            return reste.vonHauptzaehler(hauptzaehler.id())
+                    .map(r -> new RestAngelegt(r.messstelleId(), false))
+                    .orElseThrow(() -> e);
+        }
+    }
+
     // --------------------------------------------------------------- Verlauf
 
     /**
@@ -562,7 +813,9 @@ public class MessstelleFormelService {
             punkte.add(new MessstelleFormelDto.VerlaufPunkt(zeit(e.getKey()),
                     e.getValue() == null ? null : runde(e.getValue())));
         }
-        return new MessstelleFormelDto.Verlauf(id, m.hauptgroesse().einheit(), punkte);
+        String einheit = restHauptzaehlerAm(id, heute(zone())).isPresent() ? RestLive.EINHEIT
+                : m.hauptgroesse().einheit();
+        return new MessstelleFormelDto.Verlauf(id, einheit, punkte, BEFRISTET);
     }
 
     /**
@@ -579,6 +832,12 @@ public class MessstelleFormelService {
             Instant e = f.gueltigBis() == null ? bis
                     : frueher(bis, f.gueltigBis().plusDays(1).atStartOfDay(zone).toInstant());
             if (!a.isBefore(e)) {
+                continue;
+            }
+            Optional<UUID> restVon = MessstelleFormelRegeln.REST.equals(f.formelTyp())
+                    ? reste.hauptzaehlerDerFassung(f.id()) : Optional.empty();
+            if (restVon.isPresent()) {
+                out.putAll(restVerlauf(restVon.get(), a, e, zone));
                 continue;
             }
             List<Map<Instant, Double>> proTerm = termVerlaeufe(m, terme.derFassung(f.id()), a, e, zone, besucht,

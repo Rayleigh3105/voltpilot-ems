@@ -1966,7 +1966,8 @@ export interface MessstelleWertFehlend {
 /**
  * Der Live-Wert einer berechneten Messstelle (`GET …/{id}/wert`): die gewichtete
  * Summe der frischesten Eingänge. Fehlt/veraltet EIN Term, ist `wert` null
- * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme.
+ * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme. `kennzeichen` trägt bis
+ * AP-10 IP-10 „vorläufig (Geräte-Verdichtung)“ (`VORLAEUFIG_GERAETE_VERDICHTUNG`, uemsBilanz.ts).
  */
 export interface MessstelleWert {
   wert: number | null;
@@ -1974,6 +1975,7 @@ export interface MessstelleWert {
   unvollstaendig: boolean;
   fehlende: MessstelleWertFehlend[];
   stand: string | null;
+  kennzeichen: string[];
 }
 
 /** Ein 15-min-Zeitraster des Verlaufs; `wert` null = unvollständig (nie 0). */
@@ -1987,6 +1989,8 @@ export interface MessstelleVerlauf {
   messstelle_id: string;
   einheit: string | null;
   punkte: MessstelleVerlaufPunkt[];
+  /** Bis AP-10 IP-10: „vorläufig (Geräte-Verdichtung)“. */
+  kennzeichen: string[];
 }
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
@@ -2219,6 +2223,117 @@ export type VerteilungFehlerCode =
   | 'verteilung_summe'
   | 'formel_fassung_ueberlappt'
   | 'zuordnung_ueberlappt';
+
+/** Eine Messstelle, auf die die Bilanz zeigt (AP-10 IP-9). */
+export interface BilanzMessstelleRef {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+}
+
+/** Die Summe einer Rolle: „mindestens …“ (`anzeige`) und `mit_werten` von `gesamt`; `menge` ungerundet, null nie 0. */
+export interface BilanzSumme {
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  mit_werten: number;
+  gesamt: number;
+  fehlend: string[];
+  kennzeichen: string[];
+  anzeige: string | null;
+}
+
+/** Der Rest (fest Wirkenergie · Bezug): „10 kWh sind keiner Messstelle zugeordnet“ — nie „Verlust“. */
+export interface BilanzRest {
+  menge: number | null;
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  zustand: string;
+  abdeckung_prozent: number | null;
+  fehlend: string[];
+  kennzeichen: string[];
+  kundensatz: string | null;
+}
+
+export interface BilanzEingang {
+  messstelle: string;
+  rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+  anteil: 'gesamt' | 'positiv' | 'negativ';
+  menge: number | null;
+  zustand: string;
+  abdeckung_prozent: number | null;
+  version: number;
+  kennzeichen: string[];
+  grund: string | null;
+}
+
+export interface BilanzWerte {
+  von: string;
+  bis: string;
+  zufluss: BilanzSumme;
+  abfluss: BilanzSumme;
+  zugeordnet: BilanzSumme;
+  rest: BilanzRest;
+  eingaenge: BilanzEingang[];
+}
+
+/** Tage mit denselben Termen aus der Stellung (E3); `raster` `tag`, wenn die Stellung in der Periode wechselt. */
+export interface BilanzAbschnitt {
+  von: string;
+  bis: string;
+  raster: 'tag' | 'monat' | 'jahr';
+  terme: Array<{
+    messstelle: string;
+    messstelle_id: string | null;
+    name: string | null;
+    rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+    anteil: 'gesamt' | 'positiv' | 'negativ';
+  }>;
+  ausserhalb: string[];
+  werte: BilanzWerte[];
+}
+
+/** Der Rest JETZT in kW (F18): `wert` null, sobald ein Term fehlt oder veraltet ist — nie 0. */
+export interface BilanzLive {
+  wert: number | null;
+  einheit: string;
+  unvollstaendig: boolean;
+  fehlende: Array<{ term: string; grund: 'kein_geraet' | 'kein_wert' | 'veraltet' }>;
+  stand: string | null;
+  kennzeichen: string[];
+}
+
+export interface BilanzHauptzaehler {
+  messstelle: BilanzMessstelleRef;
+  rest_messstelle: BilanzMessstelleRef | null;
+  /** E18: „Rest anlegen“ — nur ohne Rest-Messstelle. */
+  vorschlag: { aktion: 'rest_anlegen'; hauptzaehler_id: string; name: string } | null;
+  stellung_geaendert: boolean;
+  abschnitte: BilanzAbschnitt[];
+  live: BilanzLive;
+}
+
+/** Die Antwort von `GET /api/v1/sites/{id}/bilanz?periode=&am=` (AP-10 IP-9). */
+export interface Bilanz {
+  anlage: { id: string; name: string };
+  periode: 'tag' | 'monat' | 'jahr';
+  am: string;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  hauptzaehler: BilanzHauptzaehler[];
+}
+
+/** `POST /api/v1/sites/{id}/bilanz/rest`: `neu` = false, wenn der Hauptzähler schon einen Rest hatte. */
+export interface BilanzRestAngelegt {
+  neu: boolean;
+  hauptzaehler: BilanzMessstelleRef;
+  messstelle: Messstelle;
+}
+
+/** Die Ablehnungen der Bilanz-Schnittstelle (`uems/BilanzAbgelehnt`, OpenAPI `BilanzFehler`). */
+export type BilanzFehlerCode = 'anfrage_ungueltig' | 'rest_ohne_hauptzaehler';
 
 /** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
 export interface BezugsgroesseWerte {
@@ -2935,8 +3050,8 @@ export interface MessstelleRegisterNebengroesse {
 /**
  * Eine Zeile des Registers zum Stichtag. `lebenszyklus` ist der HEUTIGE (ein Stichtag verschiebt
  * Ort, Stellung und Quelle, nicht ihn); `beobachtung` und `letzter_wert` gelten der Hauptgröße
- * über ihre führende Quelle — `null` nur bei einer BERECHNETEN Messstelle (AP-10), nie geraten,
- * nie eine 0.
+ * über ihre führende Quelle — `null` nur bei einer BERECHNETEN Messstelle, nie geraten, nie eine 0;
+ * deren Vollständigkeit steht in `berechnung` (AP-10 IP-9).
  */
 export interface MessstelleRegisterZeile {
   id: string;
@@ -2955,6 +3070,15 @@ export interface MessstelleRegisterZeile {
   beobachtung: MessstelleRegisterBeobachtung | null;
   letzter_wert: MessstelleRegisterWert | null;
   nebengroessen: MessstelleRegisterNebengroesse[];
+  berechnung: MessstelleRegisterBerechnung | null;
+}
+
+/** Nur berechnet (AP-10 IP-9): vollständig nur, wenn ALLE Eingänge der Formel des Tages liefern. */
+export interface MessstelleRegisterBerechnung {
+  zustand: 'vollstaendig' | 'unvollstaendig';
+  fehlend: string[];
+  seit: string | null;
+  text: string;
 }
 
 /** „x von y Messstellen liefern Daten“ — nur `liefert` zählt im Zähler. */
@@ -2972,8 +3096,8 @@ export interface MessstelleRegisterStandortAbdeckung extends MessstelleRegisterA
 }
 
 /**
- * Das Aggregat der Antwort: gezählt werden GENAU die gezeigten Zeilen mit einer Beobachtung
- * (die Filter gelten also auch hier); eine berechnete Messstelle steht in keinem Nenner, eine
+ * Das Aggregat der Antwort: gezählt werden GENAU die gezeigten Zeilen (die Filter gelten also auch
+ * hier); seit AP-10 IP-9 auch die berechneten (vollständig = liefert, ohne Formel im Nenner), eine
  * Zeile ohne Standort nur beim Unternehmen.
  */
 export interface MessstelleRegisterAggregat {
@@ -5744,6 +5868,19 @@ export const api = {
     id: string,
     body: { gueltig_ab: string; zeilen: VerteilungZeileEingabe[]; korrektur?: boolean | null; grund?: string | null },
   ) => request<MessstelleVerteilung>(`/api/v1/messstellen/${id}/verteilung`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Bilanz einer Anlage je Hauptzähler (AP-10 IP-9): Periode `tag` · `monat` · `jahr`, die `am` enthält. */
+  anlageBilanz: (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => {
+    const q = new URLSearchParams();
+    if (periode) q.set('periode', periode);
+    if (am) q.set('am', am);
+    const qs = q.toString();
+    return request<Bilanz>(`/api/v1/sites/${siteId}/bilanz${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Bestätigt „Rest anlegen“ (E18) — nie zweimal: ein zweiter Klick liefert `neu` = false. */
+  anlageRestAnlegen: (siteId: string, body: { hauptzaehler_id: string; name?: string }) =>
+    request<BilanzRestAngelegt>(`/api/v1/sites/${siteId}/bilanz/rest`, { method: 'POST', body: JSON.stringify(body) }),
 
   /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5). */
   bezugsgroessen: () => request<{ bezugsgroessen: Bezugsgroesse[] }>(`/api/v1/bezugsgroessen`),

@@ -60,8 +60,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Deckel 1 Tag); 2 × Kadenz ist die LÜCKE — eine andere Aussage, die hier nicht vorkommt (AP-07
  * IP-9).
  *
- * <p><b>Was noch nicht da ist, ist {@code null}:</b> die Formel einer berechneten Messstelle
- * (AP-10; die Quelle sagt {@code berechnet}), Prozesse und Kostenstellen (ihre Objekte fehlen),
+ * <p><b>Was noch nicht da ist, ist {@code null}:</b> die Beobachtung einer berechneten Messstelle (sie
+ * hat keine Quelle; ihre Vollständigkeit steht seit AP-10 IP-9 in {@code berechnung}), Prozesse und
+ * Kostenstellen (ihre Objekte fehlen),
  * {@code teilansicht} ist {@code false} bis AP-03.
  */
 @Service
@@ -92,15 +93,20 @@ public class MessstelleRegisterService {
     private final StandortService standorte;
     private final MesskanalService kanaele;
     private final QuelleKadenzRepository kadenzen;
+    private final BilanzRestRepository reste;
+    private final MessstelleFormelTermRepository formelTerme;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleRegisterService(MessstelleRegisterRepository register, MessstelleService messstellen,
-            StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen) {
+            StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen,
+            BilanzRestRepository reste, MessstelleFormelTermRepository formelTerme) {
         this.register = register;
         this.messstellen = messstellen;
         this.standorte = standorte;
         this.kanaele = kanaele;
         this.kadenzen = kadenzen;
+        this.reste = reste;
+        this.formelTerme = formelTerme;
     }
 
     /** Nur für Tests: die Uhr, an der „ohne Stichtag = jetzt“ hängt. */
@@ -133,16 +139,28 @@ public class MessstelleRegisterService {
         StandortService.Baum baum = standorte.baum(imBaum);
         Map<UUID, String> anlagen = baum.zeilen().anlagen().stream()
                 .collect(Collectors.toMap(StandortLesemodell.Anlage::id, StandortLesemodell.Anlage::name));
-        Map<Messwert, Werte> werte = register.werte(messwerte(bestand, zeitpunkt), zeitpunkt);
+        // AP-10 IP-9: die Eingänge der berechneten Messstellen am Tag — Messkanal-Terme reisen im selben Werte-Zug.
+        RegisterBerechnung.Plan plan = RegisterBerechnung.planen(bestand, tag, reste, formelTerme);
+        Set<Messwert> gefragt = messwerte(bestand, zeitpunkt);
+        gefragt.addAll(plan.kanaele());
+        Map<Messwert, Werte> werte = register.werte(gefragt, zeitpunkt);
         // ⚠ ZUM ZEITPUNKT, nie „jetzt": die Kadenz ist seit AP-07 IP-10 eine Tatsache mit
         // Geschichte, und ein alter Stichtag sieht die alte Erwartung.
         Map<UUID, Integer> fassungen = kadenzen.jeBindung(bindungen(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
+        Map<UUID, MessstelleDto.RegisterZeile> alle = new LinkedHashMap<>();
         for (int i = 0; i < bestand.size(); i++) {
-            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt,
-                    werte, fassungen);
+            alle.put(bestand.get(i).messstelle().id(), zeile(bestand.get(i), voll.get(i), baum, anlagen, tag,
+                    zeitpunkt, werte, fassungen));
+        }
+        Map<UUID, MessstelleDto.RegisterBerechnung> berechnungen = RegisterBerechnung.ableiten(plan, alle, werte,
+                m -> kanaele.kadenz(m.kanal(), werte.get(m) == null ? null : werte.get(m).kadenzS(), null).erwartetS(),
+                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()));
+        for (int i = 0; i < bestand.size(); i++) {
+            MessstelleDto.RegisterZeile z = mitBerechnung(alle.get(bestand.get(i).messstelle().id()),
+                    berechnungen.get(bestand.get(i).messstelle().id()));
             if (auswahl.passt(z)) {
                 messstellenListe.add(voll.get(i));
                 zeilen.add(z);
@@ -194,7 +212,14 @@ public class MessstelleRegisterService {
                 ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
-                List.copyOf(neben));
+                List.copyOf(neben), null);
+    }
+
+    private static MessstelleDto.RegisterZeile mitBerechnung(MessstelleDto.RegisterZeile z,
+            MessstelleDto.RegisterBerechnung b) {
+        return b == null ? z : new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), b);
     }
 
     /**
@@ -255,19 +280,26 @@ public class MessstelleRegisterService {
     /**
      * „x von y Messstellen liefern Daten“ (§5.16) über {@link ZustandAbleitung#aggregatLiefertDaten}
      * — für das Unternehmen und je Standort, über GENAU die Zeilen dieser Antwort. Gezählt werden
-     * die Zeilen mit einer Beobachtung; eine BERECHNETE Messstelle hat keine (ihre Vollständigkeit
-     * kommt mit AP-10) und steht deshalb in keinem der beiden Nenner. Eine Zeile ohne Standort an
-     * dem Tag zählt nur beim Unternehmen — nie unter einem geratenen Standort.
+     * JEDE Zeile. Seit AP-10 IP-9 zählen BERECHNETE Messstellen mit: vollständig heißt „liefert“,
+     * unvollständig „liefert nicht“ — und eine berechnete ohne Formel am Tag steht wie eine gemessene
+     * ohne Quelle im Nenner, nie im Zähler. Eine Zeile ohne Standort an dem Tag zählt nur beim
+     * Unternehmen — nie unter einem geratenen Standort.
      */
     private static MessstelleDto.RegisterAggregat aggregat(List<MessstelleDto.RegisterZeile> zeilen) {
         List<ZustandAbleitung.LiefertDaten> alle = new ArrayList<>();
         Map<String, List<ZustandAbleitung.LiefertDaten>> jeStandort = new LinkedHashMap<>();
         Map<String, MessstelleDto.RegisterOrt> orte = new LinkedHashMap<>();
         for (MessstelleDto.RegisterZeile z : zeilen) {
-            if (z.beobachtung() == null) {
+            ZustandAbleitung.LiefertDaten zustand;
+            if (z.beobachtung() != null) {
+                zustand = ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
+            } else if (MessstelleRegeln.BERECHNET.equals(z.art())) {
+                zustand = z.berechnung() == null ? ZustandAbleitung.LiefertDaten.KEINE_DATENQUELLE
+                        : RegisterBerechnung.VOLLSTAENDIG.equals(z.berechnung().zustand())
+                                ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT;
+            } else {
                 continue;
             }
-            ZustandAbleitung.LiefertDaten zustand = ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
             alle.add(zustand);
             String standort = z.ort().standort();
             if (standort != null) {

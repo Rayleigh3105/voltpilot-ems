@@ -1407,7 +1407,7 @@
             "messstelle.formel"
           ],
           "zuordnung": "neu",
-          "anmerkung": "Seit AP-10 IP-3 nennen `POST /api/v1/messstellen/berechnet` und `POST …/messstellen/{id}/formel/fassungen` die Kennung (davor `messstelle.bearbeiten`)."
+          "anmerkung": "Seit AP-10 IP-3 nennen `POST /api/v1/messstellen/berechnet` und `POST …/messstellen/{id}/formel/fassungen` die Kennung (davor `messstelle.bearbeiten`); seit AP-10 IP-9 auch `POST /api/v1/sites/{siteId}/bilanz/rest` (Vorschlag „Rest anlegen“ bestätigen)."
         },
         {
           "handlung": "Lesen der Bilanz, Verteilung und Herkunft",
@@ -1417,7 +1417,7 @@
             "messstelle.ansehen"
           ],
           "zuordnung": "zugeordnet",
-          "anmerkung": "Auch die Formel zu einem Tag (`GET …/formel?am=`); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`."
+          "anmerkung": "Auch die Formel zu einem Tag (`GET …/formel?am=`) und seit AP-10 IP-9 die Bilanz je Anlage (`GET /api/v1/sites/{siteId}/bilanz`, mit ihrer Live-Zeile); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`."
         },
         {
           "handlung": "Kostenstellen und Prozesse verwalten",

@@ -59,7 +59,8 @@ Datei fest:
 - ⚠ **Gespeichert werden kann eine `saldo`-Messstelle noch nicht:** `POST …/messstellen/berechnet`
   lehnt `formel_typ` ≠ `gewichtete_summe` ab, der CHECK von `messstelle_formel_fassung.formel_typ`
   und `messstelle_groesse_im_katalog` kennen die neuen Wörter nicht. Wer den ersten Schreibweg baut
-  (IP-9 Rest anlegen, IP-16 Assistent), braucht dafür eine Migration.
+  (IP-16 Assistent), braucht dafür eine Migration. **`rest` ist seit AP-10 IP-9 anlegbar** — nur über
+  „Rest anlegen“ (`V20260913235700`, `uems-bilanz-lesemodell.md`).
 
 ## Die Terme eines `rest` kommen je Tag aus der Stellung (E3)
 

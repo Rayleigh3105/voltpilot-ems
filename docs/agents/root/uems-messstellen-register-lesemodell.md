@@ -30,7 +30,7 @@ und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
 - `beobachtung`, `letzter_wert`, `nebengroessen` und `aggregat`: **seit IP-15 gefüllt** (die
   Platzhalter-Zusage „IMMER `null`“ ist damit eingelöst, nicht mehr gültig) — Einzelheiten und
   Fallen in [`uems-messstellen-beobachtung-letzter-wert.md`](uems-messstellen-beobachtung-letzter-wert.md).
-  `null` bleibt die Beobachtung nur bei einer BERECHNETEN Messstelle (AP-10). `teilansicht` bleibt
+  `null` bleibt die Beobachtung nur bei einer BERECHNETEN Messstelle — ihre Vollständigkeit steht seit AP-10 IP-9 in `berechnung`. `teilansicht` bleibt
   `false`, bis AP-03 Rechte je Standort durchsetzt; Prozess- und Kostenstellen-Filter fehlen,
   solange ihre Objekte fehlen.
 

@@ -255,6 +255,14 @@ tags:
       `prozess.verwalten`, die Zuordnung `messstelle.bearbeiten` - noch nicht durchgesetzt
       (AP-03), es gilt authenticated(). Die Verteilung auf Kostenstellen steht seit AP-10 IP-8
       unter dem Tag `verteilung`; das Kostenstellen-Lesemodell (IP-11) kommt mit seinem Paket.
+  - name: bilanz
+    description: >
+      UEMS-Bilanz je Anlage (AP-10 IP-9, E3 = A, E18 = A): Zufluss, Abfluss, zugeordnet und Rest je
+      Hauptzähler Bezug. Der Rest ist eine RECHNUNG, keine gespeicherte Zahl - seine Terme kommen je
+      Tag aus der elektrischen Stellung (BilanzAbleitung.restAusStellung); ändert sich die Stellung,
+      ändert sich der Rest von selbst. Eine Rest-MESSSTELLE entsteht nur auf menschlichen Wunsch
+      („Rest anlegen“), mit protokolliertem Urheber und nie zweimal. Rechte eingetragen, nicht
+      durchgesetzt (AP-03).
   - name: verteilung
     description: >
       UEMS-Verteilung einer Messstelle auf Kostenstellen (AP-10 IP-8, Konzept §4.6, E11 = A,
@@ -8922,6 +8930,72 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/bilanz:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bilanz]
+      summary: Die Bilanz einer Anlage je Hauptzähler - Zufluss, Abfluss, zugeordnet, Rest aus der Stellung, Live und der Vorschlag „Rest anlegen“.
+      description: >
+        Recht `messstelle.ansehen`. Die Periode `tag` · `monat` (Vorgabe) · `jahr`, die `am`
+        enthält (Vorgabe heute, Zeitzone des Standorts). Je Hauptzähler Bezug der Anlage leitet
+        BilanzAbleitung.restAusStellung die Terme JE TAG ab; gleiche Terme hintereinander sind ein
+        Abschnitt. Gelten in der Periode überall dieselben Terme, rechnet EIN Abschnitt mit den
+        Periodenwerten der Terme (Lese-Modell „Werte je Messstelle“); wechseln sie
+        (`stellung_geaendert`), rechnet jeder Abschnitt Tag für Tag - eine Zahl über die ganze
+        Periode bringt AP-10 IP-10. Zufluss/Abfluss/zugeordnet aus BilanzAbleitung.summe
+        („mindestens …“, `mit_werten` von `gesamt`), der Rest aus MessstelleFormelRegeln.periodenwert
+        (`rest`): ein nicht vollständiger Eingang macht ihn zu „keine Werte“ (menge null, nie 0).
+        `live` (F18): der Rest JETZT in kW über den PR-688-Weg - null, sobald ein Term fehlt oder
+        veraltet ist, mit `fehlende`. `vorschlag` nur, wenn der Hauptzähler heute Hauptzähler der
+        Anlage ist und noch keine Rest-Messstelle hat. Liest nur.
+      parameters:
+        - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
+        - { name: am, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Bilanz.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bilanz" }
+        "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/bilanz/rest:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [bilanz]
+      summary: Vorschlag „Rest anlegen“ bestätigen - legt die Rest-Messstelle eines Hauptzählers an (Typ rest), nie zweimal.
+      description: >
+        Recht `messstelle.formel`. Nur für einen Hauptzähler, der HEUTE Hauptzähler Bezug dieser
+        Anlage ist (sonst 422 `rest_ohne_hauptzaehler`). Legt in EINER Transaktion eine berechnete
+        Messstelle an: Kennzeichen automatisch (MS-xxxx), Name wie angegeben oder vorbelegt
+        „<Anlage> nicht zugeordnet“, Hauptgröße fest Wirkenergie · Bezug · kWh · Intervallmenge
+        (E1), Formel-Fassung 1 vom Typ `rest` OHNE Terme (sie kommen je Tag aus der Stellung), und
+        GENAU EIN Protokolleintrag `angelegt` mit dem Urheber. Hat der Hauptzähler schon eine
+        Rest-Messstelle, entsteht nichts: 200 mit `neu` = false und der vorhandenen - auch wenn zwei
+        Menschen gleichzeitig klicken (Sperre je Hauptzähler, eindeutiger Index dahinter).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BilanzRestAnlegen" }
+      responses:
+        "201":
+          description: Die Rest-Messstelle ist entstanden.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BilanzRestAngelegt" }
+        "200":
+          description: Der Hauptzähler hatte schon eine Rest-Messstelle - nichts ist entstanden.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BilanzRestAngelegt" }
+        "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/BilanzAbgelehnt" }
   /api/v1/sites/{siteId}/geraete:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -9870,6 +9944,13 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/NetzanschlussFehler" }
+    BilanzAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus
+        uems/BilanzAbgelehnt; dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BilanzFehler" }
     MessstelleFormelAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag. Der Körper trägt
@@ -16826,7 +16907,7 @@ components:
         sind die der Messstellen-Antwort - der HEUTIGE Lebenszyklus (gespeichert ist nur
         der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
       required: [id, kennzeichen, name, art, medium, hauptgroesse, ort, elektrische_stellung, quelle,
-        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen]
+        lebenszyklus, fehlt, angehalten_ab, archiviert_am, beobachtung, letzter_wert, nebengroessen, berechnung]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -16848,7 +16929,8 @@ components:
           nullable: true
           description: >
             Die Beobachtung der HAUPTGRÖSSE über ihre führende Quelle (AP-04 IP-15). null nur
-            bei einer BERECHNETEN Messstelle - ihre Vollständigkeit kommt mit AP-10; nie geraten.
+            bei einer BERECHNETEN Messstelle - sie hat keine Quelle, ihre Vollständigkeit steht
+            in `berechnung` (AP-10 IP-9); nie geraten.
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBeobachtung" }]
         letzter_wert:
           nullable: true
@@ -16858,6 +16940,22 @@ components:
           type: array
           description: "Je Nebengröße dieselbe Beobachtung, über ihre EIGENE führende Quelle."
           items: { $ref: "#/components/schemas/MessstelleRegisterNebengroesse" }
+        berechnung:
+          nullable: true
+          description: >
+            Nur BERECHNET (AP-10 IP-9): „Vollständig“ nur, wenn ALLE Eingänge der Formel DES
+            TAGES liefern (ZustandAbleitung.berechnet) - bei einem Rest die Terme aus der
+            Stellung. null an einer gemessenen Messstelle und an einer berechneten ohne Formel
+            am Tag.
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBerechnung" }]
+    MessstelleRegisterBerechnung:
+      type: object
+      required: [zustand, fehlend, seit, text]
+      properties:
+        zustand: { type: string, enum: [vollstaendig, unvollstaendig] }
+        fehlend: { type: array, items: { type: string }, description: "Die Kennzeichen der Eingänge, die nicht liefern." }
+        seit: { type: string, format: date-time, nullable: true, description: "Seit wann der früheste fehlende Eingang schweigt; null, wenn keiner einen Zeitpunkt hat." }
+        text: { type: string, example: "Unvollständig seit 14:00 Uhr (fehlt: MS-12)" }
     MessstelleRegisterOrt:
       type: object
       description: >
@@ -16973,9 +17071,10 @@ components:
       description: >
         „x von y Messstellen liefern Daten“ (AP-04 IP-15) über die Ableitung aggregat des
         Zustandsvertrags: nur liefert zählt im Zähler, „keine Datenquelle“ steht im Nenner.
-        Gezählt werden GENAU die Zeilen dieser Antwort (die Filter gelten also auch hier) mit
-        einer Beobachtung - eine BERECHNETE Messstelle hat keine (AP-10) und steht in keinem
-        Nenner. Eine Zeile ohne Standort an dem Tag zählt nur beim Unternehmen.
+        Gezählt werden GENAU die Zeilen dieser Antwort (die Filter gelten also auch hier). Seit
+        AP-10 IP-9 zählen BERECHNETE Messstellen mit: `berechnung.zustand` vollstaendig =
+        liefert, unvollstaendig = liefert nicht, ohne Formel am Tag wie „keine Datenquelle“
+        (im Nenner, nie im Zähler). Eine Zeile ohne Standort an dem Tag zählt nur beim Unternehmen.
       required: [unternehmen, standorte]
       properties:
         unternehmen: { $ref: "#/components/schemas/MessstelleRegisterAbdeckung" }
@@ -17929,6 +18028,162 @@ components:
         kennzeichen: { type: string }
         am: { type: string, format: date, nullable: true }
         prozesse: { type: array, items: { $ref: "#/components/schemas/MessstelleProzessZuordnung" } }
+    BilanzFehler:
+      type: object
+      description: >
+        Die Ablehnung der Bilanz-Schnittstelle (AP-10 IP-9): 400 `anfrage_ungueltig` (`feld`);
+        422 `rest_ohne_hauptzaehler` (`hauptzaehler`, Code aus `fehler_neu` des Bilanz-Vertrags).
+      required: [code, message]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, rest_ohne_hauptzaehler] }
+        message: { type: string }
+        feld: { type: string }
+        hauptzaehler: { type: string }
+    Bilanz:
+      type: object
+      required: [anlage, periode, am, von, bis, zeitzone, hauptzaehler]
+      properties:
+        anlage: { $ref: "#/components/schemas/BilanzAnlage" }
+        periode: { type: string, enum: [tag, monat, jahr] }
+        am: { type: string, format: date }
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der LETZTE Tag der Periode (einschließlich)." }
+        zeitzone: { type: string, example: Europe/Berlin }
+        hauptzaehler: { type: array, items: { $ref: "#/components/schemas/BilanzHauptzaehler" } }
+    BilanzAnlage:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    BilanzMessstelleRef:
+      type: object
+      required: [id, kennzeichen, name]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string, nullable: true }
+    BilanzHauptzaehler:
+      type: object
+      required: [messstelle, rest_messstelle, vorschlag, stellung_geaendert, abschnitte, live]
+      properties:
+        messstelle: { $ref: "#/components/schemas/BilanzMessstelleRef" }
+        rest_messstelle:
+          nullable: true
+          description: "Die bestätigte Rest-Messstelle (E18); null = noch keine."
+          allOf: [{ $ref: "#/components/schemas/BilanzMessstelleRef" }]
+        vorschlag:
+          nullable: true
+          description: "„Rest anlegen“ - nur ohne Rest-Messstelle und nur, wenn der Hauptzähler heute Hauptzähler der Anlage ist."
+          allOf: [{ $ref: "#/components/schemas/BilanzVorschlag" }]
+        stellung_geaendert: { type: boolean, description: "In der Periode gelten verschiedene Terme - dann rechnet jeder Abschnitt Tag für Tag." }
+        abschnitte: { type: array, items: { $ref: "#/components/schemas/BilanzAbschnitt" } }
+        live: { $ref: "#/components/schemas/BilanzLive" }
+    BilanzVorschlag:
+      type: object
+      required: [aktion, hauptzaehler_id, name]
+      properties:
+        aktion: { type: string, enum: [rest_anlegen] }
+        hauptzaehler_id: { type: string, format: uuid }
+        name: { type: string, example: "Werk Ahrenberg – Halle 2 nicht zugeordnet" }
+    BilanzAbschnitt:
+      type: object
+      required: [von, bis, raster, terme, ausserhalb, werte]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        raster: { type: string, enum: [tag, monat, jahr] }
+        terme: { type: array, items: { $ref: "#/components/schemas/BilanzTerm" } }
+        ausserhalb: { type: array, items: { type: string }, description: "Abzweige desselben Systems ohne Vorgänger - gemessen, aber in keiner Bilanz." }
+        werte: { type: array, items: { $ref: "#/components/schemas/BilanzWerte" } }
+    BilanzTerm:
+      type: object
+      required: [messstelle, messstelle_id, name, rolle, anteil]
+      properties:
+        messstelle: { type: string, example: MS-11 }
+        messstelle_id: { type: string, format: uuid, nullable: true }
+        name: { type: string, nullable: true }
+        rolle: { type: string, enum: [zufluss, abfluss, zugeordnet] }
+        anteil: { type: string, enum: [gesamt, positiv, negativ] }
+    BilanzWerte:
+      type: object
+      required: [von, bis, zufluss, abfluss, zugeordnet, rest, eingaenge]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        zufluss: { $ref: "#/components/schemas/BilanzSumme" }
+        abfluss: { $ref: "#/components/schemas/BilanzSumme" }
+        zugeordnet: { $ref: "#/components/schemas/BilanzSumme" }
+        rest: { $ref: "#/components/schemas/BilanzRest" }
+        eingaenge: { type: array, items: { $ref: "#/components/schemas/BilanzEingang" } }
+    BilanzSumme:
+      type: object
+      required: [menge, zustand, abdeckung_prozent, mit_werten, gesamt, fehlend, kennzeichen, anzeige]
+      properties:
+        menge: { type: number, nullable: true, description: "Ungerundet; null ohne Eingang dieser Rolle - nie 0." }
+        zustand: { type: string, nullable: true }
+        abdeckung_prozent: { type: integer, nullable: true }
+        mit_werten: { type: integer }
+        gesamt: { type: integer }
+        fehlend: { type: array, items: { type: string } }
+        kennzeichen: { type: array, items: { type: string } }
+        anzeige: { type: string, nullable: true, example: "mindestens 1.055 kWh (MS-14 fehlt)" }
+    BilanzRest:
+      type: object
+      required: [menge, groesse, richtung, einheit, zustand, abdeckung_prozent, fehlend, kennzeichen, kundensatz]
+      properties:
+        menge: { type: number, nullable: true, description: "Ungerundet; null = keine Werte, nie 0. Negativ wird gezeigt, nie geklemmt." }
+        groesse: { type: string, example: Wirkenergie }
+        richtung: { type: string, example: Bezug }
+        einheit: { type: string, example: kWh }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        fehlend: { type: array, items: { type: string } }
+        kennzeichen: { type: array, items: { type: string } }
+        kundensatz: { type: string, nullable: true, example: "10 kWh sind keiner Messstelle zugeordnet" }
+    BilanzEingang:
+      type: object
+      required: [messstelle, rolle, anteil, menge, zustand, abdeckung_prozent, version, kennzeichen, grund]
+      properties:
+        messstelle: { type: string }
+        rolle: { type: string, enum: [zufluss, abfluss, zugeordnet] }
+        anteil: { type: string, enum: [gesamt, positiv, negativ] }
+        menge: { type: number, nullable: true }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer }
+        kennzeichen: { type: array, items: { type: string } }
+        grund: { type: string, nullable: true, description: "Warum das Lese-Modell „Werte je Messstelle“ keine Menge hat." }
+    BilanzLive:
+      type: object
+      required: [wert, einheit, unvollstaendig, fehlende, stand, kennzeichen]
+      properties:
+        wert: { type: number, nullable: true, example: 1.6, description: "null, sobald EIN Term fehlt oder veraltet ist - nie eine Teilsumme, nie 0." }
+        einheit: { type: string, example: kW }
+        unvollstaendig: { type: boolean }
+        fehlende: { type: array, items: { $ref: "#/components/schemas/BilanzLiveFehlend" } }
+        stand: { type: string, format: date-time, nullable: true }
+        kennzeichen: { type: array, items: { type: string }, example: ["vorläufig (Geräte-Verdichtung)"] }
+    BilanzLiveFehlend:
+      type: object
+      required: [term, grund]
+      properties:
+        term: { type: string, example: MS-14 }
+        grund: { type: string, enum: [kein_geraet, kein_wert, veraltet] }
+    BilanzRestAnlegen:
+      type: object
+      additionalProperties: false
+      required: [hauptzaehler_id]
+      properties:
+        hauptzaehler_id: { type: string, format: uuid }
+        name: { type: string, description: "Ohne Angabe „<Anlage> nicht zugeordnet“." }
+    BilanzRestAngelegt:
+      type: object
+      required: [neu, hauptzaehler, messstelle]
+      properties:
+        neu: { type: boolean }
+        hauptzaehler: { $ref: "#/components/schemas/BilanzMessstelleRef" }
+        messstelle: { $ref: "#/components/schemas/Messstelle" }
     VerteilungFehler:
       type: object
       description: >

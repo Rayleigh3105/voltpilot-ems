@@ -260,8 +260,11 @@ class MessstelleFormelFassungMigrationTest {
         // Nur Fassung 1 darf ohne ersten Tag sein.
         abgelehnt("messstelle_formel_fassung_ab_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
                 "gewichtete_summe", null, "eintrag", false, null, Instant.now(), kunde())));
-        // Heute gibt es nur die gewichtete Summe (rest/saldo: IP-4).
+        // Die gewichtete Summe und seit AP-10 IP-9 (V20260913235700) der Rest — saldo kommt mit seinem Schreibweg.
         abgelehnt("messstelle_formel_fassung_typ_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
+                "saldo", LocalDate.of(2026, 10, 18), "eintrag", false, null, Instant.now(), kunde())));
+        // Ein Rest ohne seinen Hauptzähler ist keiner (V20260913235700).
+        abgelehnt("messstelle_formel_fassung_rest_hauptzaehler_chk", () -> alsTue(t, () -> fassungen.anlegen(ms, 2,
                 "rest", LocalDate.of(2026, 10, 18), "eintrag", false, null, Instant.now(), kunde())));
         // Nur an einer berechneten Messstelle.
         abgelehnt("messstelle_formel_fassung_nur_berechnet", () -> alsTue(t, () -> fassungen.anlegen(gem, 1,

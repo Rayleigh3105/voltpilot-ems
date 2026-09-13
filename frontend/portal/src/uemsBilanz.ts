@@ -47,6 +47,12 @@ export const BERECHNET_SUMME = 'berechnet (Summe)';
 export const BERECHNET_SALDO = 'berechnet (Saldo)';
 export const NICHT_ZUGEORDNET = 'nicht zugeordnet';
 export const UNPLAUSIBEL_NEGATIV = 'unplausibel (negativ)';
+/**
+ * BEFRISTET (AP-10 IP-9, W12): Live-Wert und Verlauf einer berechneten Messstelle (PR #688) kommen aus
+ * den Geräte-Verdichtungen. Das Kennzeichen steht an beiden Antworten, bis AP-10 IP-10 es entfernt
+ * (`vokabulare.kennzeichen_befristet` der Vektor-Datei).
+ */
+export const VORLAEUFIG_GERAETE_VERDICHTUNG = 'vorläufig (Geräte-Verdichtung)';
 /** Das Katalog-Wort steht EINMAL — im Größen-Katalog der Messstelle (AP-10 IP-4). */
 export const SALDIERT = KATALOG_SALDIERT;
 export const SALDIERT_KENNZEICHEN = 'saldiert (Bezug − Abgabe)';

@@ -371,6 +371,8 @@ class MessstelleRegisterApiTest {
             JsonNode beobachtung = zeile.get("beobachtung");
             if ("berechnet".equals(soll.get("art").asText())) {
                 assertThat(beobachtung.isNull()).as(kz + " berechnet hat keine Beobachtung (AP-10)").isTrue();
+                // Ohne Formel am Tag gibt es keine Berechnung (AP-10 IP-9) — nie ein erfundenes „Vollständig“.
+                assertThat(zeile.get("berechnung").isNull()).as(kz + " ohne Formel keine Berechnung").isTrue();
             } else if (quelleSoll == null) {
                 assertThat(beobachtung.get("zustand").asText()).as(kz).isEqualTo("keine_datenquelle");
                 assertThat(beobachtung.get("text").asText()).as(kz).isEqualTo("Keine Datenquelle");
@@ -400,23 +402,21 @@ class MessstelleRegisterApiTest {
             }
         }
 
-        // Das Aggregat „x von y“ — nur die GEMESSENEN stehen im Nenner (berechnete kommen mit AP-10).
+        // Das Aggregat „x von y“ — seit AP-10 IP-9 stehen auch die BERECHNETEN im Nenner (bis dahin stand
+        // hier „berechnete kommen mit AP-10“): ohne Formel wie eine gemessene ohne Quelle, nie im Zähler.
         Map<String, Integer> jeStandort = new LinkedHashMap<>();
-        int gemessen = 0;
+        int alle = 0;
         for (JsonNode soll : referenz.get("messstellen")) {
-            if ("berechnet".equals(soll.get("art").asText())) {
-                continue;
-            }
-            gemessen++;
+            alle++;
             String st = standortVon(ortAm(soll.get("kennzeichen").asText(), tag));
             if (st != null) {
                 jeStandort.merge(st, 1, Integer::sum);
             }
         }
-        assertThat(antwort.at("/aggregat/unternehmen/gesamt").asInt()).isEqualTo(gemessen);
+        assertThat(antwort.at("/aggregat/unternehmen/gesamt").asInt()).isEqualTo(alle);
         assertThat(antwort.at("/aggregat/unternehmen/erfuellt").asInt()).isZero();
         assertThat(antwort.at("/aggregat/unternehmen/text").asText())
-                .isEqualTo("0 von " + gemessen + " Messstellen liefern Daten");
+                .isEqualTo("0 von " + alle + " Messstellen liefern Daten");
         Map<String, Integer> gezaehlt = new LinkedHashMap<>();
         antwort.get("aggregat").get("standorte").forEach(a -> gezaehlt.put(a.get("kurzzeichen").asText(),
                 a.get("gesamt").asInt()));

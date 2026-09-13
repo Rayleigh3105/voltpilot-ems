@@ -243,6 +243,7 @@ class MessstelleSchnittstelleVertragTest {
                 {"MessstelleRegisterBindung", MessstelleDto.RegisterBindung.class},
                 {"MessstelleRegisterGeraet", MessstelleDto.RegisterGeraet.class},
                 {"MessstelleRegisterBeobachtung", MessstelleDto.RegisterBeobachtung.class},
+                {"MessstelleRegisterBerechnung", MessstelleDto.RegisterBerechnung.class},
                 {"MessstelleRegisterWert", MessstelleDto.RegisterWert.class},
                 {"MessstelleRegisterNebengroesse", MessstelleDto.RegisterNebengroesse.class},
                 {"MessstelleRegisterAggregat", MessstelleDto.RegisterAggregat.class},

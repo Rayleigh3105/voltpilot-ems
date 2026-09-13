@@ -216,10 +216,17 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
 - **Terme eines `rest` (E3):** `speichertTerme("rest")` ist `false`; die Terme eines Tages leitet
   `BilanzAbleitung.restAusStellung(hauptzaehler, tag, stellungen)` aus den Stellungen ab (Regel
   `rest_aus_stellung` in `bilanz-vectors.json`).
-- **Nicht gebaut:** Anlegen einer `rest`-/`saldo`-Messstelle (die Route lehnt `formel_typ` ≠
-  `gewichtete_summe` weiter ab, der CHECK der Fassungs-Tabelle kennt nur ihn, die Datenbank-Funktion
-  `messstelle_groesse_im_katalog` kennt `saldiert` nicht) — das kommt mit dem ersten Schreibweg
-  (IP-9 / IP-16) samt Migration.
+- **Nicht gebaut:** Anlegen einer `saldo`-Messstelle (die Route lehnt `formel_typ` ≠
+  `gewichtete_summe` weiter ab, der CHECK der Fassungs-Tabelle kennt `saldo` nicht, die
+  Datenbank-Funktion `messstelle_groesse_im_katalog` kennt `saldiert` nicht) — das kommt mit IP-16.
+- **Seit AP-10 IP-9 (13.09.2026) ist ein `rest` anlegbar — nur als bestätigter Vorschlag** „Rest
+  anlegen“ (`POST /api/v1/sites/{siteId}/bilanz/rest`, E18): Fassung 1 vom Typ `rest` ohne ersten Tag
+  und OHNE Terme, mit ihrem einzigen Parameter `rest_hauptzaehler_id` (`V20260913235700`: CHECK Rest ⇔
+  Hauptzähler, höchstens ein nicht aufgehobener Rest je Hauptzähler, kein Term an einer Rest-Fassung).
+  `POST …/{id}/formel/fassungen` lehnt einen Rest ab (400 `formel_typ`). Live-Wert und Verlauf eines
+  Rests rechnen die Terme des Tages aus der Stellung und antworten in kW (Wirkleistung der
+  Term-Messstellen); `wert` und `verlauf` tragen BEFRISTET bis IP-10 `kennzeichen:
+  ["vorläufig (Geräte-Verdichtung)"]` (`bilanz-vectors.json` `vokabulare.kennzeichen_befristet`).
 
 ### 6.3 Die Term-Art `verteilung` und der `anteil` (AP-10 IP-5, Stand 13.09.2026)
 

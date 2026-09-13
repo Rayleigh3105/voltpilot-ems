@@ -13,6 +13,7 @@ import {
   SATZ_REST_NEGATIV,
   SATZ_REST_ZUGEORDNET,
   VERBOTENE_WOERTER,
+  VORLAEUFIG_GERAETE_VERDICHTUNG,
   ZUSTAND_RANG,
   ebene,
   gebaeude,
@@ -184,6 +185,13 @@ describe('Bilanz-Vertrag: Form der Vektor-Datei', () => {
     expect(SATZ_REST_ZUGEORDNET).toBe(vectors.saetze.rest_zugeordnet);
     expect(SATZ_REST_NEGATIV).toBe(vectors.saetze.rest_negativ);
     expect(SATZ_REST_KEINE_WERTE).toBe(vectors.saetze.rest_keine_werte);
+  });
+
+  it('das befristete Kennzeichen der PR-688-Antworten steht im Vertrag — mit seinem Ablauf (IP-10)', () => {
+    expect(vectors.vokabulare.kennzeichen_neu).toContain(VORLAEUFIG_GERAETE_VERDICHTUNG);
+    expect(vectors.vokabulare.kennzeichen_befristet).toHaveLength(1);
+    expect(vectors.vokabulare.kennzeichen_befristet[0].wort).toBe(VORLAEUFIG_GERAETE_VERDICHTUNG);
+    expect(vectors.vokabulare.kennzeichen_befristet[0].entfaellt_mit).toBe('AP-10 IP-10');
   });
 
   it('E3: jede Fassung aus der Stellung ist genau die Eingangsmenge einer Rest-Prüfung desselben Falls', () => {
