@@ -46,6 +46,17 @@ class EndgueltigkeitWiringTest {
         MeasurementCatalog measurementCatalog() {
             return mock(MeasurementCatalog.class);
         }
+
+        /** Der Korrektur-Vorschlag (AP-08 IP-14) rechnet „neu“ über den Verdichtungs-Lauf und zählt mit dem Melder. */
+        @Bean
+        ViertelstundeVerdichter viertelstundeVerdichter() {
+            return mock(ViertelstundeVerdichter.class);
+        }
+
+        @Bean
+        SpaetankunftMelder spaetankunftMelder() {
+            return mock(SpaetankunftMelder.class);
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -53,7 +64,8 @@ class EndgueltigkeitWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, EndgueltigkeitLauf.class, TagVerdichter.class,
-                    PeriodeVerdichter.class, EndgueltigkeitLaeufer.class, EndgueltigkeitSchedulingConfig.class);
+                    PeriodeVerdichter.class, KorrekturVorschlagLauf.class, EndgueltigkeitLaeufer.class,
+                    EndgueltigkeitSchedulingConfig.class);
 
     @Test
     void derTaktVerdrahtetSichMitBeidenLaeufen() {
@@ -63,6 +75,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
             assertThat(context).hasSingleBean(EndgueltigkeitSchedulingConfig.class);
         });
     }
@@ -77,6 +90,7 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
         });
     }
 

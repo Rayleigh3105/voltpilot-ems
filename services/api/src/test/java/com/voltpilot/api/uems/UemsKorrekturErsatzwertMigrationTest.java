@@ -578,8 +578,11 @@ class UemsKorrekturErsatzwertMigrationTest {
             assertThat(spalte(APP_USER, tabelle, "created_at", "INSERT")).as("die Zeit setzt die Datenbank").isFalse();
             assertThat(root.queryForObject("SELECT has_any_column_privilege(?, ?, 'UPDATE')", Boolean.class, APP_USER,
                     tabelle)).isFalse();
+            // Seit AP-08 IP-14 (V20260913224500) legt der Stundenlauf VORSCHLÄGE an: nur die Korrektur, nur die
+            // anlegenden Spalten — ein Ersatzwert bleibt die Sache eines Menschen.
             assertThat(root.queryForObject("SELECT has_any_column_privilege(?, ?, 'INSERT')", Boolean.class, ADMIN_USER,
-                    tabelle)).as("kein Hintergrund-Lauf schreibt heute").isFalse();
+                    tabelle)).as("nur der Vorschlags-Lauf schreibt: " + tabelle)
+                    .isEqualTo(tabelle.equals("messreihe_korrektur"));
             // Belege: keine Hypertable, keine Aufbewahrung.
             assertThat(root.queryForObject("SELECT count(*) FROM timescaledb_information.hypertables "
                     + "WHERE hypertable_name = ?", Long.class, tabelle)).isZero();

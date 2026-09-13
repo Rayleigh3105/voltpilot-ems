@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
 /**
  * Der TAKT der Endgültigkeit und der Tageswerte (UEMS AP-07 IP-13): einmal je Stunde erst
  * {@link EndgueltigkeitLauf#umschalten}, dann {@link TagVerdichter#lauf}, dann
- * {@link PeriodeVerdichter#lauf} (Monat und Jahr, AP-08 IP-5).
+ * {@link PeriodeVerdichter#lauf} (Monat und Jahr, AP-08 IP-5), zuletzt
+ * {@link KorrekturVorschlagLauf#lauf} (AP-08 IP-14: das System schlägt vor, freigegeben wird von Hand).
  *
  * <p><b>Die Reihenfolge ist Absicht.</b> Erst werden die fälligen Viertelstunden endgültig, dann
  * zieht der Tageslauf nach — so trägt eine Tageszeile, die in diesem Takt entsteht, schon die
@@ -43,12 +44,14 @@ public class EndgueltigkeitLaeufer {
     private final EndgueltigkeitLauf endgueltigkeit;
     private final TagVerdichter tage;
     private final PeriodeVerdichter perioden;
+    private final KorrekturVorschlagLauf vorschlaege;
 
     public EndgueltigkeitLaeufer(EndgueltigkeitLauf endgueltigkeit, TagVerdichter tage,
-            PeriodeVerdichter perioden) {
+            PeriodeVerdichter perioden, KorrekturVorschlagLauf vorschlaege) {
         this.endgueltigkeit = endgueltigkeit;
         this.tage = tage;
         this.perioden = perioden;
+        this.vorschlaege = vorschlaege;
     }
 
     @Scheduled(fixedDelayString = "${voltpilot.uems.endgueltigkeit.interval-ms:3600000}",
@@ -69,6 +72,12 @@ public class EndgueltigkeitLaeufer {
             perioden.lauf(jetzt);
         } catch (RuntimeException e) {
             log.warn("UEMS Monats-/Jahreslauf übersprungen: {}", e.toString());
+        }
+        // Zuletzt: was gerade endgültig wurde, kann eine Nachlieferung nur noch vorschlagen — nie anwenden.
+        try {
+            vorschlaege.lauf(jetzt);
+        } catch (RuntimeException e) {
+            log.warn("UEMS Korrektur-Vorschläge übersprungen: {}", e.toString());
         }
     }
 }

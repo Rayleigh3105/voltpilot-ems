@@ -849,3 +849,54 @@ describe('UEMS AP-08 IP-8 · die Ergebnis-Sätze sprechen das Kunden-Wörterbuch
     }
   });
 });
+
+/**
+ * UEMS · AP-08 IP-14 — die vorbelegte Begründung eines Korrektur-Vorschlags.
+ *
+ * Das System schlägt vor, ein Mensch gibt frei (E14). Die Begründung sagt, was
+ * das System gesehen hat, und sie wird GESPEICHERT (`messreihe_korrektur`), nie
+ * im Portal gebildet — darum wohnt ihr Wortlaut im Vertrag
+ * (`docs/contracts/v2/korrektur-vorschlag-vectors.json`), gesprochen von Java
+ * `uems/KorrekturVorschlagRegeln`. Dieser Abschnitt liest jedes Muster, jede
+ * Notiz an der Erkennung und jeden erwarteten Satz gegen dieselben Wörterbücher
+ * wie die Ergebnis-Sätze.
+ */
+describe('UEMS AP-08 IP-14 · die Vorschlags-Begründung spricht das Kunden-Wörterbuch', () => {
+  const vertrag = JSON.parse(
+    readFileSync(join(process.cwd(), '../../docs/contracts/v2/korrektur-vorschlag-vectors.json'), 'utf8'),
+  );
+
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const [art, muster] of Object.entries(vertrag.begruendung as Record<string, string>)) {
+      out.push({ wo: `Muster ${art}`, text: ohnePlatz(muster) });
+    }
+    for (const [zustand, notiz] of Object.entries(vertrag.erkennung_notiz as Record<string, string>)) {
+      out.push({ wo: `Notiz ${zustand}`, text: ohnePlatz(notiz) });
+    }
+    for (const f of vertrag.cases) out.push({ wo: `Fall ${f.name}`, text: f.satz });
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBe(13);
+  });
+
+  it('kein Vorschlags-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('sagt, was gesehen wurde — nie, was der Mensch tun soll', () => {
+    const auftrag = /\b(bitte|müssen|muss|sollten|sollen|freigeben|genehmigen|übernehmen Sie)\b/i;
+    for (const { wo, text } of saetze()) expect(auftrag.test(text), `${wo}: ${text}`).toBe(false);
+    expect(auftrag.test('Bitte freigeben.')).toBe(true);
+  });
+});
