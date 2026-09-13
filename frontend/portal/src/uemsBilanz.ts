@@ -24,6 +24,7 @@ import {
   type Term as FormelTerm,
 } from './uemsMessstelleFormel';
 import { SALDIERT as KATALOG_SALDIERT, groessePruefen } from './uemsMessstelle';
+import { zahl } from './uemsErgebnis';
 
 // ------------------------------------------------------------------------ Wörter und Schwellen
 
@@ -40,9 +41,6 @@ export const ZUSTAND_RANG = [VOLLSTAENDIG, MIT_ERSATZWERT, UNVOLLSTAENDIG, KEINE
 const RANG_RECHENBAR = ZUSTAND_RANG.indexOf(MIT_ERSATZWERT);
 
 export const MENGE_NACHKOMMASTELLEN = 6;
-export const TAUSENDER_TRENNZEICHEN = ' ';
-/** U+2212 — das Minuszeichen der Kundensätze, nicht der ASCII-Bindestrich. */
-export const MINUS = '−';
 
 export const BERECHNET_DIFFERENZ = 'berechnet (Differenz)';
 export const BERECHNET_SUMME = 'berechnet (Summe)';
@@ -56,10 +54,11 @@ export const SALDIERT_KENNZEICHEN = 'saldiert (Bezug − Abgabe)';
 /**
  * Die Kundensätze des Rests, WÖRTLICH die Vorlagen aus `saetze` der Vektor-Datei (`rest_zugeordnet`,
  * `rest_negativ`, `rest_keine_werte`); der Test hält sie dort fest. Ein Rest heißt „nicht
- * zugeordnet" — nie „Verlust", und er nennt keine Ursache.
+ * zugeordnet" — nie „Verlust", und er nennt keine Ursache. `{zahl}` ist Zahl mit Einheit aus
+ * `uemsErgebnis.zahl` (E11).
  */
-export const SATZ_REST_ZUGEORDNET = '{menge} {einheit} sind keiner Messstelle zugeordnet';
-export const SATZ_REST_NEGATIV = 'Messwerte passen nicht zusammen ({menge} {einheit})';
+export const SATZ_REST_ZUGEORDNET = '{zahl} sind keiner Messstelle zugeordnet';
+export const SATZ_REST_NEGATIV = 'Messwerte passen nicht zusammen ({zahl})';
 export const SATZ_REST_KEINE_WERTE = 'nicht zugeordnet: keine Werte';
 
 /** Wörter, die eine URSACHE behaupten — kein Satz dieses Vertrags darf sie tragen. */
@@ -114,25 +113,6 @@ export const dezKuerze = (d: Dez): Dez => {
     e -= 1;
   }
   return { z, e };
-};
-
-/**
- * Die Zahl eines Kundensatzes: Tausender mit Leerzeichen, Minuszeichen U+2212. Sie steht nur in
- * SÄTZEN — die Beträge des Vertrags reisen als Dezimaltext.
- */
-export const zahlDe = (wert: Dez): string => {
-  const kurz = dezKuerze(wert);
-  const negativ = dezVorzeichen(kurz) < 0;
-  const text = dezText(negativ ? { z: -kurz.z, e: kurz.e } : kurz);
-  const punkt = text.indexOf('.');
-  const ganz = punkt < 0 ? text : text.slice(0, punkt);
-  const rest = punkt < 0 ? '' : text.slice(punkt + 1);
-  let gruppiert = '';
-  for (let i = 0; i < ganz.length; i += 1) {
-    if (i > 0 && (ganz.length - i) % 3 === 0) gruppiert += TAUSENDER_TRENNZEICHEN;
-    gruppiert += ganz[i];
-  }
-  return `${negativ ? MINUS : ''}${gruppiert}${rest ? `,${rest}` : ''}`;
 };
 
 // ------------------------------------------------------------------------------ Tage (Muster A)
@@ -299,6 +279,8 @@ export function rest(
   // Wessen Bilanz das ist — sie steht im Vertrag und in der Herkunft, die Rechnung braucht sie nicht.
   _hauptzaehler: string,
   einheit: string,
+  // Die Ebene der Periode (tag, monat …) — sie bestimmt die Stellen der Zahl im Kundensatz (E11).
+  zahlEbene: string | null,
   version: number,
   vermerke: string[],
   eingaenge: Eingang[],
@@ -347,8 +329,7 @@ export function rest(
   kennzeichen.push(...vermerke);
   if (version > 1) kennzeichen.push(korrigiert(version));
   const kundensatz = (negativ ? SATZ_REST_NEGATIV : SATZ_REST_ZUGEORDNET)
-    .replace('{menge}', zahlDe(menge))
-    .replace('{einheit}', einheit);
+    .replace('{zahl}', zahl(dezText(menge), einheit, zahlEbene));
   return {
     zufluss,
     abfluss,
@@ -491,7 +472,19 @@ export interface SummeUrteil {
  * §4.5 Zeile „Summe" — die Summe der VORHANDENEN Eingänge, Zustand „schlechtester Eingang"; fehlt
  * einer, heißt die Zahl „mindestens …" und NENNT ihn. Eine Summe verschweigt nie einen Summanden.
  */
-export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
+export function summe(einheit: string, zahlEbene: string | null, eingaenge: Summand[]): SummeUrteil {
+  const s = summeOhneAnzeige(eingaenge);
+  const anzeige =
+    s.fehlend.length === 0
+      ? null
+      : `mindestens ${zahl(dezText(s.menge), einheit, zahlEbene)} (${s.fehlend.join(', ')} ${
+          s.fehlend.length === 1 ? 'fehlt' : 'fehlen'
+        })`;
+  return { ...s, anzeige };
+}
+
+/** Die Summe ohne Kundensatz — die Standort-Ebene (`ebene`) spricht ihn nicht. */
+function summeOhneAnzeige(eingaenge: Summand[]): SummeUrteil {
   let menge = NULL_BETRAG;
   let vorhanden = 0;
   const fehlend: string[] = [];
@@ -511,12 +504,6 @@ export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
   if (vorhanden === 0) zustand = KEINE_WERTE;
   else if (rang(zustand) > rang(UNVOLLSTAENDIG)) zustand = UNVOLLSTAENDIG;
   const kennzeichen = [BERECHNET_SUMME, ...geerbt(eingaenge.map((e) => e.kennzeichen))];
-  const anzeige =
-    fehlend.length === 0
-      ? null
-      : `mindestens ${zahlDe(menge)} ${einheit} (${fehlend.join(', ')} ${
-          fehlend.length === 1 ? 'fehlt' : 'fehlen'
-        })`;
   return {
     menge,
     zustand,
@@ -525,7 +512,7 @@ export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
     gesamt: eingaenge.length,
     fehlend,
     kennzeichen,
-    anzeige,
+    anzeige: null,
   };
 }
 
@@ -713,9 +700,13 @@ export interface EbeneUrteil {
  * wird in der Anzeige seinem Namen vorangestellt („Lindach ab 15.10.2026") — an der Zahl selbst
  * steht nur, was die Regel sagt.
  */
-export function ebene(einheit: string, wort: string, systeme: SystemZeile[]): EbeneUrteil {
-  const s = summe(
-    einheit,
+export function ebene(
+  // Die Einheit der Ebene steht im Vertrag; die Summe der Systeme spricht keinen Zahlensatz.
+  _einheit: string,
+  wort: string,
+  systeme: SystemZeile[],
+): EbeneUrteil {
+  const s = summeOhneAnzeige(
     systeme.map((z) => ({
       messstelle: z.messstelle,
       menge: z.menge,

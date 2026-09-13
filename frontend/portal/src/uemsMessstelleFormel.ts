@@ -321,6 +321,8 @@ export function periodenwert(
   typ: string,
   art: string,
   einheit: string,
+  // Die Ebene der Periode — sie bestimmt die Stellen des Kundensatzes (E11); für `saldo` ohne Bedeutung.
+  zahlEbene: string | null,
   version: number,
   vermerke: string[],
   eingaenge: Periodeneingang[],
@@ -329,6 +331,7 @@ export function periodenwert(
   if (t === 'gewichtete_summe') {
     const u = bilanzSumme(
       einheit,
+      zahlEbene,
       eingaenge.map((e) => ({
         messstelle: e.messstelle,
         menge: e.menge,
@@ -355,7 +358,7 @@ export function periodenwert(
   if (t === 'rest') {
     const bilanz = bilanzEingaenge(eingaenge);
     const hauptzaehler = bilanz.find((e) => e.rolle === ZUFLUSS)?.messstelle ?? '';
-    const u = bilanzRest(hauptzaehler, einheit, version, vermerke, bilanz);
+    const u = bilanzRest(hauptzaehler, einheit, zahlEbene, version, vermerke, bilanz);
     return {
       typ: t,
       menge: u.menge,

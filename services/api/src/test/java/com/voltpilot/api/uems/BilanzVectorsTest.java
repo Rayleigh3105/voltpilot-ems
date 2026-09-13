@@ -1,6 +1,7 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -161,9 +162,8 @@ class BilanzVectorsTest {
     void dieRegelnStehenInDerDatei() throws Exception {
         JsonNode r = vektoren().path("regeln");
         assertThat(r.path("menge_nachkommastellen").asInt()).isEqualTo(BilanzAbleitung.MENGE_NACHKOMMASTELLEN);
-        assertThat(r.path("tausender_trennzeichen").asText())
-                .isEqualTo(BilanzAbleitung.TAUSENDER_TRENNZEICHEN);
-        assertThat(r.path("minuszeichen").asText()).isEqualTo(BilanzAbleitung.MINUS);
+        assertThat(r.path("zahlform").asText()).startsWith("ergebnis-zustand-vectors.json");
+        assertThat(r.has("tausender_trennzeichen")).as("die Zahlform steht im Ergebnis-Zustand, nicht hier").isFalse();
         assertThat(texte(vektoren().path("verbotene_woerter")))
                 .containsExactlyElementsOf(BilanzAbleitung.VERBOTENE_WOERTER);
         List<String> muster = new ArrayList<>();
@@ -203,6 +203,68 @@ class BilanzVectorsTest {
                 assertThat(satz).as("Satz ohne Ursachen-Behauptung").doesNotContain(wort);
             }
         }
+    }
+
+    // ------------------------------------------------ Zahlform E11 (ergebnis-zustand-vectors.json)
+
+    private static BilanzAbleitung.Summand summand(String messstelle, String menge) {
+        return new BilanzAbleitung.Summand(messstelle, menge == null ? null : new BigDecimal(menge),
+                menge == null ? BilanzAbleitung.KEINE_WERTE : BilanzAbleitung.VOLLSTAENDIG, 100, 1, List.of(), "+",
+                BigDecimal.ONE);
+    }
+
+    private static BilanzAbleitung.Eingang eingang(String messstelle, String rolle, String menge) {
+        return new BilanzAbleitung.Eingang(messstelle, rolle, "gesamt", new BigDecimal(menge),
+                BilanzAbleitung.VOLLSTAENDIG, 100, 1, List.of());
+    }
+
+    /** Die alte Form „1 055 kWh“ (Leerzeichen als Tausendertrenner) ist falsch: E11 schreibt „1.055 kWh“. */
+    @Test
+    void tausenderMitPunktNichtMitLeerzeichen() {
+        String anzeige = BilanzAbleitung.summe("kWh", "tag",
+                List.of(summand("MS-11", "740"), summand("MS-13", "315"), summand("MS-14", null))).anzeige();
+        assertThat(anzeige).isEqualTo("mindestens 1.055\u00A0kWh (MS-14 fehlt)").doesNotContain("1 055");
+        assertThat(NetzanschlussRegeln.kopfzeile("NA-9", new BigDecimal("1200"), null, null).text())
+                .isEqualTo("vereinbart 1.200,0\u00A0kW").doesNotContain("1 200");
+    }
+
+    /** Die alte Form war ungerundet („1 200,5“): die EBENE bestimmt die Stellen — Tag/Monat ganz, Leistung eine. */
+    @Test
+    void festeStellenJeEbeneStattUngerundet() {
+        List<BilanzAbleitung.Eingang> e = List.of(eingang("MS-16", BilanzAbleitung.ZUFLUSS, "1300.5"),
+                eingang("MS-17", BilanzAbleitung.ZUGEORDNET, "100"));
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "monat", 1, List.of(), e).kundensatz())
+                .isEqualTo("1.201\u00A0kWh sind keiner Messstelle zugeordnet").doesNotContain("1 200,5");
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "stunde", 1, List.of(), e).kundensatz())
+                .isEqualTo("1.200,5\u00A0kWh sind keiner Messstelle zugeordnet");
+        assertThat(NetzanschlussRegeln.kopfzeile("NA-1", new BigDecimal("550"), new BigDecimal("630"),
+                new BigDecimal("312.44")).text())
+                .isEqualTo("vereinbart 550,0\u00A0kW · Anschluss 630,0\u00A0kVA · Momentan 312,4\u00A0kW");
+        assertThatThrownBy(() -> BilanzAbleitung.rest("MS-16", "kWh", null, 1, List.of(), e))
+                .as("kWh ohne Ebene hat keine Anzeige (ebene_fehlt)")
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Die alte Form hatte ein normales Leerzeichen vor der Einheit: E11 verlangt U+00A0, auf 375 px bricht nichts um. */
+    @Test
+    void geschuetztesLeerzeichenVorDerEinheit() throws Exception {
+        List<String> saetze = new ArrayList<>();
+        for (JsonNode fall : vektoren().path("cases")) {
+            for (JsonNode p : fall.path("pruefungen")) {
+                for (String feld : List.of("kundensatz", "anzeige")) {
+                    JsonNode satz = p.path("ergebnis").path(feld);
+                    if (satz.isTextual() && satz.asText().matches(".*\\d.*kWh.*")) {
+                        saetze.add(satz.asText());
+                    }
+                }
+            }
+        }
+        assertThat(saetze).hasSizeGreaterThanOrEqualTo(11)
+                .allSatisfy(s -> assertThat(s).contains("\u00A0kWh").doesNotContain(" kWh"));
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "tag", 1, List.of(),
+                List.of(eingang("MS-16", BilanzAbleitung.ZUFLUSS, "100"),
+                        eingang("MS-17", BilanzAbleitung.ZUGEORDNET, "105"))).kundensatz())
+                .isEqualTo("Messwerte passen nicht zusammen (\u22125\u00A0kWh)");
     }
 
     /**
@@ -371,7 +433,7 @@ class BilanzVectorsTest {
             }
             case "rest" -> {
                 BilanzAbleitung.RestUrteil ist = BilanzAbleitung.rest(
-                        str(ein.path("hauptzaehler")), str(ein.path("einheit")),
+                        str(ein.path("hauptzaehler")), str(ein.path("einheit")), str(ein.path("zahl_ebene")),
                         ein.path("version").asInt(), texte(ein.path("vermerke")),
                         eingaenge(ein.path("eingaenge")));
                 betragGleich(ist.zufluss(), soll.path("zufluss"), why + " · Zufluss");
@@ -393,7 +455,8 @@ class BilanzVectorsTest {
             }
             case "summe" -> {
                 BilanzAbleitung.SummeUrteil ist =
-                        BilanzAbleitung.summe(str(ein.path("einheit")), summanden(ein.path("eingaenge")));
+                        BilanzAbleitung.summe(str(ein.path("einheit")), str(ein.path("zahl_ebene")),
+                                summanden(ein.path("eingaenge")));
                 betragGleich(ist.menge(), soll.path("menge"), why + " · Summe");
                 assertThat(ist.zustand()).as(why + " · Zustand").isEqualTo(str(soll.path("zustand")));
                 assertThat(ist.abdeckungProzent()).as(why + " · Abdeckung")

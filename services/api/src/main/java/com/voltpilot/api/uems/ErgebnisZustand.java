@@ -469,6 +469,8 @@ public final class ErgebnisZustand {
     public static final String KW = "kW";
     public static final String PROZENT = "%";
     public static final String KUBIKMETER = "m³";
+    /** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
+    public static final String KVA = "kVA";
 
     /** Die Stellen je Einheit und Ebene; {@code ebene == null} = für jede Ebene gleich. */
     public record Stellen(String einheit, String ebene, int stellen) {}
@@ -481,7 +483,8 @@ public final class ErgebnisZustand {
             new Stellen(KWH, "jahr", 0),
             new Stellen(KW, null, 1),
             new Stellen(PROZENT, null, 0),
-            new Stellen(KUBIKMETER, null, 1));
+            new Stellen(KUBIKMETER, null, 1),
+            new Stellen(KVA, null, 1));
 
     public static final String TAUSENDER = ".";
     public static final String DEZIMAL = ",";

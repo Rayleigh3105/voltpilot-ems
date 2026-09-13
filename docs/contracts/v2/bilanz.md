@@ -106,7 +106,12 @@ Jede Prüfung der Vektor-Datei nennt ihre `regel`; beide Zwillinge haben zu jede
     als Fall; die Regel antwortet dort `rest_ohne_hauptzaehler`.
 11. **Der Kundensatz kommt aus `saetze`.** Die Vorlagen `rest_zugeordnet`, `rest_negativ` und
     `rest_keine_werte` stehen wörtlich als Konstanten in beiden Zwillingen und werden gegen die Datei
-    geprüft — F1 sagt „10 kWh sind keiner Messstelle zugeordnet“.
+    geprüft — F1 sagt „10 kWh sind keiner Messstelle zugeordnet“. Zahl und Einheit (`{zahl}`)
+    schreibt der Ergebnis-Zustand ([`ergebnis-zustand.md`](./ergebnis-zustand.md) §3, E11):
+    `rest`/`summe` bekommen die Ebene der Periode als `zahl_ebene` (Tag, Monat ganze kWh;
+    Viertelstunde/Stunde eine Stelle), Tausenderpunkt und U+00A0 vor der Einheit — „mindestens
+    1.055 kWh (MS-14 fehlt)“. Die beschreibenden `anzeige`-Texte je Fall bleiben im Wortlaut der
+    Vorlage (`_abweichungen`).
 
 ## 5. Was hier NICHT steht
 

@@ -64,12 +64,13 @@
       "vereinbart_kw"
     ],
     "kopfzeile_trenner": " · ",
-    "leistung_nachkommastellen": 1
+    "leistung_nachkommastellen": 1,
+    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): {wert} ist Zahl mit Einheit aus ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl — kW und kVA eine Nachkommastelle"
   },
   "saetze": {
-    "kopfzeile_vereinbart": "vereinbart {wert} kW",
-    "kopfzeile_anschluss": "Anschluss {wert} kVA",
-    "kopfzeile_momentan": "Momentan {wert} kW",
+    "kopfzeile_vereinbart": "vereinbart {wert}",
+    "kopfzeile_anschluss": "Anschluss {wert}",
+    "kopfzeile_momentan": "Momentan {wert}",
     "nicht_angelegt": "Netzanschluss: nicht angelegt"
   },
   "zwillinge": {
@@ -113,6 +114,13 @@
         "AN-3": "NA-3 ab 2026-10-15"
       },
       "grund": "Die Vorlage nennt unter `erwartet.bindung` je Anlage einen eigenen Tag (dem Bestehen der Anlage folgend) und unter `annahmen` einen gemeinsamen Anlegetag der Objekte. Die Vektoren nehmen die BINDUNGS-Tage der Vorlage, weil genau sie das Ergebnis tragen; der Anlegetag der Objekte trägt keines."
+    },
+    {
+      "fall": "F16 · Kopfzeile",
+      "feld": "pruefungen[kopfzeile].ergebnis.text",
+      "vorlage": "„vereinbart 550 kW · Momentanleistung 312,4 kW“",
+      "statt": "„vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan 312,4 kW“ mit geschütztem Leerzeichen U+00A0 vor der Einheit",
+      "grund": "Entscheid E11: Leistung eine Nachkommastelle, Tausenderpunkt, U+00A0. kVA ist Anschluss-(Schein-)Leistung und folgt derselben Stelle; ergebnis-zustand-vectors.json führt kVA seit 1.2. Die beschreibenden `anzeige`-Texte bleiben im Wortlaut der Vorlage."
     }
   ],
   "_nicht_geprueft": [
@@ -543,7 +551,7 @@
             "momentan_kw": "312.4"
           },
           "ergebnis": {
-            "text": "vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW",
+            "text": "vereinbart 550,0 kW · Anschluss 630,0 kVA · Momentan 312,4 kW",
             "grenze_geprueft": false
           }
         },
@@ -557,7 +565,7 @@
             "momentan_kw": null
           },
           "ergebnis": {
-            "text": "vereinbart 550 kW · Anschluss 630 kVA",
+            "text": "vereinbart 550,0 kW · Anschluss 630,0 kVA",
             "grenze_geprueft": false
           }
         }

@@ -52,9 +52,6 @@ public final class BilanzAbleitung {
     private static final int RANG_RECHENBAR = ZUSTAND_RANG.indexOf(MIT_ERSATZWERT);
 
     public static final int MENGE_NACHKOMMASTELLEN = 6;
-    public static final String TAUSENDER_TRENNZEICHEN = " ";
-    /** U+2212 — das Minuszeichen der Kundensätze, nicht der ASCII-Bindestrich. */
-    public static final String MINUS = "−";
 
     public static final String BERECHNET_DIFFERENZ = "berechnet (Differenz)";
     public static final String BERECHNET_SUMME = "berechnet (Summe)";
@@ -69,9 +66,10 @@ public final class BilanzAbleitung {
      * Die Kundensätze des Rests, WÖRTLICH die Vorlagen aus {@code saetze} der Vektor-Datei
      * ({@code rest_zugeordnet}, {@code rest_negativ}, {@code rest_keine_werte}); der Test hält
      * sie dort fest. Ein Rest heißt „nicht zugeordnet“ — nie „Verlust“, und er nennt keine Ursache.
+     * {@code {zahl}} ist Zahl mit Einheit aus {@link ErgebnisZustand#zahl} (E11).
      */
-    public static final String SATZ_REST_ZUGEORDNET = "{menge} {einheit} sind keiner Messstelle zugeordnet";
-    public static final String SATZ_REST_NEGATIV = "Messwerte passen nicht zusammen ({menge} {einheit})";
+    public static final String SATZ_REST_ZUGEORDNET = "{zahl} sind keiner Messstelle zugeordnet";
+    public static final String SATZ_REST_NEGATIV = "Messwerte passen nicht zusammen ({zahl})";
     public static final String SATZ_REST_KEINE_WERTE = "nicht zugeordnet: keine Werte";
 
     /** Wörter, die eine URSACHE behaupten — kein Satz dieses Vertrags darf sie tragen. */
@@ -251,11 +249,14 @@ public final class BilanzAbleitung {
      * vollständig sind; sonst „keine Werte“ und Menge {@code null} — nie eine um den fehlenden
      * Eingang verkleinerte Differenz, die zu HOCH wäre.
      *
+     * @param zahlEbene die Ebene der Periode ({@code tag}, {@code monat} …) — sie bestimmt die Stellen
+     *     der Zahl im Kundensatz (E11, {@link ErgebnisZustand#zahl}); gerechnet wird ungerundet
      * @param vermerke was an dieser Periode zusätzlich zu sagen ist (etwa eine geänderte Stellung);
      *     sie werden nie erraten, sondern von dem hereingereicht, der die Änderung kennt
      */
     public static RestUrteil rest(
-            String hauptzaehler, String einheit, int version, List<String> vermerke, List<Eingang> eingaenge) {
+            String hauptzaehler, String einheit, String zahlEbene, int version, List<String> vermerke,
+            List<Eingang> eingaenge) {
         List<String> fehlend = new ArrayList<>();
         for (Eingang e : eingaenge) {
             if ((e.menge() == null || rang(e.zustand()) > RANG_RECHENBAR) && !fehlend.contains(e.messstelle())) {
@@ -294,8 +295,7 @@ public final class BilanzAbleitung {
             kennzeichen.add(korrigiert(version));
         }
         String satz = (negativ ? SATZ_REST_NEGATIV : SATZ_REST_ZUGEORDNET)
-                .replace("{menge}", zahlDe(menge))
-                .replace("{einheit}", einheit);
+                .replace("{zahl}", ErgebnisZustand.zahl(menge, einheit, zahlEbene));
         return new RestUrteil(zufluss, abfluss, zugeordnet, verbrauch, menge, richtung.groesse(),
                 richtung.richtung(), einheit, zustand, abdeckung, List.of(), List.copyOf(kennzeichen), satz);
     }
@@ -438,7 +438,18 @@ public final class BilanzAbleitung {
      * fehlt einer, heißt die Zahl „mindestens …“ und NENNT ihn. Eine Summe verschweigt nie einen
      * Summanden: die Anzeige sagt, dass sie eine Untergrenze ist.
      */
-    public static SummeUrteil summe(String einheit, List<Summand> eingaenge) {
+    public static SummeUrteil summe(String einheit, String zahlEbene, List<Summand> eingaenge) {
+        SummeUrteil s = summeOhneAnzeige(eingaenge);
+        String anzeige = s.fehlend().isEmpty()
+                ? null
+                : "mindestens " + ErgebnisZustand.zahl(s.menge(), einheit, zahlEbene) + " ("
+                        + String.join(", ", s.fehlend()) + " " + (s.fehlend().size() == 1 ? "fehlt" : "fehlen") + ")";
+        return new SummeUrteil(s.menge(), s.zustand(), s.abdeckungProzent(), s.vorhanden(), s.gesamt(),
+                s.fehlend(), s.kennzeichen(), anzeige);
+    }
+
+    /** Die Summe ohne Kundensatz — die Standort-Ebene ({@link #ebene}) spricht ihn nicht. */
+    private static SummeUrteil summeOhneAnzeige(List<Summand> eingaenge) {
         BigDecimal menge = BigDecimal.ZERO;
         int vorhanden = 0;
         List<String> fehlend = new ArrayList<>();
@@ -465,12 +476,8 @@ public final class BilanzAbleitung {
         Integer abdeckung = kleinsteAbdeckung(eingaenge.stream().map(Summand::abdeckungProzent).toList());
         List<String> kennzeichen = new ArrayList<>(List.of(BERECHNET_SUMME));
         kennzeichen.addAll(geerbt(eingaenge.stream().map(Summand::kennzeichen).toList()));
-        String anzeige = fehlend.isEmpty()
-                ? null
-                : "mindestens " + zahlDe(menge) + " " + einheit + " (" + String.join(", ", fehlend) + " "
-                        + (fehlend.size() == 1 ? "fehlt" : "fehlen") + ")";
         return new SummeUrteil(menge, zustand, abdeckung, vorhanden, eingaenge.size(),
-                List.copyOf(fehlend), List.copyOf(kennzeichen), anzeige);
+                List.copyOf(fehlend), List.copyOf(kennzeichen), null);
     }
 
     // --------------------------------------------------------------------------------- Saldo
@@ -599,7 +606,7 @@ public final class BilanzAbleitung {
      * Zahl selbst steht nur, was die Regel sagt.
      */
     public static EbeneUrteil ebene(String einheit, String wort, List<SystemZeile> systeme) {
-        SummeUrteil s = summe(einheit, systeme.stream()
+        SummeUrteil s = summeOhneAnzeige(systeme.stream()
                 .map(z -> new Summand(z.messstelle(), z.menge(), z.zustand(), z.abdeckungProzent(),
                         z.version(), List.of(), "+", BigDecimal.ONE))
                 .toList());
@@ -724,31 +731,5 @@ public final class BilanzAbleitung {
         });
         List<String> nichtMessbar = gebaeude.stream().filter(g -> !messbar.contains(g)).toList();
         return new VersorgungUrteil(Map.copyOf(fertig), List.copyOf(ausserhalb), nichtMessbar);
-    }
-
-    // -------------------------------------------------------------------------------- Zahlen
-
-    /**
-     * Die Zahl eines Kundensatzes: Tausender mit Leerzeichen, Minuszeichen U+2212. Sie steht nur in
-     * SÄTZEN — die Beträge des Vertrags reisen als Dezimaltext.
-     */
-    public static String zahlDe(BigDecimal wert) {
-        BigDecimal betrag = wert.abs().stripTrailingZeros();
-        String klartext = betrag.toPlainString();
-        int punkt = klartext.indexOf('.');
-        String ganz = punkt < 0 ? klartext : klartext.substring(0, punkt);
-        String rest = punkt < 0 ? "" : klartext.substring(punkt + 1);
-        StringBuilder gruppiert = new StringBuilder();
-        for (int i = 0; i < ganz.length(); i++) {
-            if (i > 0 && (ganz.length() - i) % 3 == 0) {
-                gruppiert.append(TAUSENDER_TRENNZEICHEN);
-            }
-            gruppiert.append(ganz.charAt(i));
-        }
-        String text = gruppiert.toString();
-        if (!rest.isEmpty()) {
-            text = text + "," + rest;
-        }
-        return (wert.signum() < 0 ? MINUS : "") + text;
     }
 }

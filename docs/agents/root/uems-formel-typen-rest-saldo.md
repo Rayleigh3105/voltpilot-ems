@@ -37,8 +37,8 @@ wörtlich die Vorlagen aus `saetze` der Vektor-Datei und stehen als Konstanten i
 (`SATZ_REST_ZUGEORDNET` · `SATZ_REST_NEGATIV` · `SATZ_REST_KEINE_WERTE`); die Tests halten sie an der
 Datei fest:
 
-- `{menge} {einheit} sind keiner Messstelle zugeordnet`
-- `Messwerte passen nicht zusammen ({menge} {einheit})` — negativ gezeigt (U+2212), nie geklemmt
+- `{zahl} sind keiner Messstelle zugeordnet` — `{zahl}` aus `ErgebnisZustand.zahl` mit `zahl_ebene` (E11)
+- `Messwerte passen nicht zusammen ({zahl})` — negativ gezeigt (U+2212), nie geklemmt
 - `nicht zugeordnet: keine Werte` — ein nicht vollständiger Eingang macht die Differenz zu „keine
   Werte“, nie zu einer zu hohen Teil-Differenz (die Summe dagegen rechnet weiter: „mindestens …“)
 

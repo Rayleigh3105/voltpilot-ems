@@ -185,7 +185,7 @@ class AnteilLesewegVectorsTest {
         }
         assertThat(anteile).contains("MS-04:negativ", "MS-04:positiv").doesNotContain("MS-04:gesamt");
         Periodenwert w = MessstelleFormelRegeln.periodenwert(MessstelleFormelRegeln.REST, MessstelleRegeln.BERECHNET,
-                str(ein.path("einheit")), ein.path("version").asInt(1), texte(ein.path("vermerke")), eingaenge);
+                str(ein.path("einheit")), str(ein.path("zahl_ebene")), ein.path("version").asInt(1), texte(ein.path("vermerke")), eingaenge);
         betragGleich(w.menge(), rest.path("ergebnis").path("menge"), "F4 · Rest");
         assertThat(w.menge()).isEqualByComparingTo("54580");
     }

@@ -14,9 +14,10 @@
  *
  * Rein: keine Netzzugriffe, keine Uhr, kein React.
  */
-import { type Dez } from './bezugsdaten';
+import { dezText, type Dez } from './bezugsdaten';
 import { kennzeichenFormatGueltig } from './uemsMessstelle';
-import { minusTage, zahlDe } from './uemsBilanz';
+import { minusTage } from './uemsBilanz';
+import { KVA, KW, zahl } from './uemsErgebnis';
 
 /** Dieselbe Kennzeichen-Form wie bei der Messstelle (AP-00 E10) — nur mit eigenem Präfix. */
 export const KENNZEICHEN_PRAEFIX = 'NA-';
@@ -209,7 +210,7 @@ export interface KopfzeileUrteil {
 
 /**
  * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird nie
- * zu „0 kW". `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
+ * zu „0 kW". Die Zahlen schreibt `uemsErgebnis.zahl` (E11: Leistung eine Stelle). `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
  */
 export function kopfzeile(
   // Die Kennung steht am Kopf der Seite, nicht in dieser Zeile.
@@ -219,8 +220,8 @@ export function kopfzeile(
   momentanKw: Dez | null,
 ): KopfzeileUrteil {
   const teile: string[] = [];
-  if (vereinbartKw !== null) teile.push(`vereinbart ${zahlDe(vereinbartKw)} kW`);
-  if (anschlussKva !== null) teile.push(`Anschluss ${zahlDe(anschlussKva)} kVA`);
-  if (momentanKw !== null) teile.push(`Momentan ${zahlDe(momentanKw)} kW`);
+  if (vereinbartKw !== null) teile.push(`vereinbart ${zahl(dezText(vereinbartKw), KW, null)}`);
+  if (anschlussKva !== null) teile.push(`Anschluss ${zahl(dezText(anschlussKva), KVA, null)}`);
+  if (momentanKw !== null) teile.push(`Momentan ${zahl(dezText(momentanKw), KW, null)}`);
   return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: false };
 }

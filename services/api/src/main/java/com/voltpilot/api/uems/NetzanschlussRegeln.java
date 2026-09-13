@@ -202,20 +202,21 @@ public final class NetzanschlussRegeln {
 
     /**
      * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird
-     * nie zu „0 kW“. {@code grenzeGeprueft} ist immer {@code false}: hier wird GEZEIGT, nicht
+     * nie zu „0 kW“. Die Zahlen schreibt {@link ErgebnisZustand#zahl} (E11: Leistung eine Stelle).
+     * {@code grenzeGeprueft} ist immer {@code false}: hier wird GEZEIGT, nicht
      * geprüft (AP-15).
      */
     public static KopfzeileUrteil kopfzeile(
             String netzanschluss, BigDecimal vereinbartKw, BigDecimal anschlussKva, BigDecimal momentanKw) {
         List<String> teile = new ArrayList<>();
         if (vereinbartKw != null) {
-            teile.add("vereinbart " + BilanzAbleitung.zahlDe(vereinbartKw) + " kW");
+            teile.add("vereinbart " + ErgebnisZustand.zahl(vereinbartKw, ErgebnisZustand.KW, null));
         }
         if (anschlussKva != null) {
-            teile.add("Anschluss " + BilanzAbleitung.zahlDe(anschlussKva) + " kVA");
+            teile.add("Anschluss " + ErgebnisZustand.zahl(anschlussKva, ErgebnisZustand.KVA, null));
         }
         if (momentanKw != null) {
-            teile.add("Momentan " + BilanzAbleitung.zahlDe(momentanKw) + " kW");
+            teile.add("Momentan " + ErgebnisZustand.zahl(momentanKw, ErgebnisZustand.KW, null));
         }
         return new KopfzeileUrteil(String.join(KOPFZEILE_TRENNER, teile), false);
     }
