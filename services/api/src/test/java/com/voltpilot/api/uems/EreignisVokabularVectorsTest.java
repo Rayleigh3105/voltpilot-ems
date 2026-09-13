@@ -136,6 +136,14 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        // AP-08 IP-12 (additiv): die Wörter von Ersatzwert und Korrektur.
+        assertThat(texte(w.path("ersatzwert_methode"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
+                .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
+        assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();
         // AP-08 IP-6: die Einheiten des Zuwachses sind die Zählerstand-Einheiten des Größen-Katalogs
         // der Messstellen mit ihren umrechenbaren Einheiten — aus DER Datei, nicht abgeschrieben.
         JsonNode messstelle = lies(MESSSTELLE);
@@ -292,6 +300,13 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(rd.path("qualitaet").path("enum"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
         assertThat(texte(rd.path("einheit_zuwachs").path("enum")))
                 .containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
+        assertThat(texte(rd.path("ersatzwert_methode").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(rd.path("ersatzwert_status").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(rd.path("korrektur_art").path("enum"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(rd.path("korrektur_status").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
         JsonNode umschlag = mqtt.path("properties");
         assertThat(umschlag.path("schema_version").path("const").asText())
                 .isEqualTo(EreignisVokabular.FASSUNG_UMSCHLAG);

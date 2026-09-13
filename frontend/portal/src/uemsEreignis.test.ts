@@ -7,6 +7,8 @@ import {
   EREIGNIS_TEXTE,
   FELDTYP,
   GRUND_TEXT,
+  KORREKTUR_ART_TEXT,
+  METHODE_TEXT,
   dauerText,
   ereignisName,
   ereignisSatz,
@@ -56,6 +58,10 @@ interface Vektoren {
     grund: { code: string; text: string }[];
     anlass_geraetegrenze: string[];
     anlass_uebergabe: string[];
+    ersatzwert_methode: { code: string; name: string }[];
+    ersatzwert_status: { code: string }[];
+    korrektur_art: { code: string; name: string }[];
+    korrektur_status: { code: string }[];
     felder: Record<string, { typ: string }>;
     arten: ArtVektor[];
   };
@@ -99,6 +105,11 @@ describe('Ereignis-Vokabular: der TS-Zwilling spricht dieselben Sätze wie die V
     expect(Object.entries(GRUND_TEXT)).toEqual(V.vokabular.grund.map((g) => [g.code, g.text]));
   });
 
+  it('spricht Methode und Art einer Korrektur mit dem Namen der Vektor-Datei, nie mit dem Vertragswort', () => {
+    expect(Object.entries(METHODE_TEXT)).toEqual(V.vokabular.ersatzwert_methode.map((m) => [m.code, m.name]));
+    expect(Object.entries(KORREKTUR_ART_TEXT)).toEqual(V.vokabular.korrektur_art.map((a) => [a.code, a.name]));
+  });
+
   it('kennt jedes Feld mit demselben Typ', () => {
     expect(FELDTYP).toEqual(Object.fromEntries(Object.entries(V.vokabular.felder).map(([k, f]) => [k, f.typ])));
   });
@@ -110,7 +121,11 @@ describe('Ereignis-Vokabular: der TS-Zwilling spricht dieselben Sätze wie die V
           ? ['standard']
           : a.art === 'device_boundary'
             ? V.vokabular.anlass_geraetegrenze
-            : V.vokabular.anlass_uebergabe;
+            : a.art === 'substitute'
+              ? V.vokabular.ersatzwert_status.map((s) => s.code)
+              : a.art === 'correction'
+                ? V.vokabular.korrektur_status.map((s) => s.code)
+                : V.vokabular.anlass_uebergabe;
       const erwartet = varianten.flatMap((v) => (a.zeit.offen_erlaubt ? [v, `${v}_offen`] : [v]));
       expect(Object.keys(a.saetze).sort(), a.art).toEqual([...erwartet].sort());
       const felder = new Set([

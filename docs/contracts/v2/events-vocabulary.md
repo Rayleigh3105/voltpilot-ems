@@ -5,7 +5,7 @@ Stand 11.09.2026 · Umschlag 2.1 · `events.raw` 1.0 · Vokabular 1.0 · Bezug: 
 beide Pfade — nie gelöscht“), dazu AP-04 E2, AP-05 E6, AP-06 E5/E7/E9 und der
 [Herkunftsvertrag](./messwert-herkunft.md).
 
-Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 24 Arten),
+Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 26 Arten),
 **wer sie melden darf**, **worauf sie sich beziehen**, **wie ihre Zeit zu lesen ist**, **wie
 eine VoltPilot-Box sie an die Cloud schickt** und **in welcher Form jedes Ereignis — von der
 Box oder von der Cloud selbst — auf Redpanda liegt**, bevor es in die nie gelöschte
@@ -141,6 +141,8 @@ Felder, die eine Fortschreibung setzen darf.
 | `state_change` | Zustand | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `bitfield_change` | Statusbits | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `text_change` | Text | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
+| `substitute` | Ersatzwert | kunde | — | [von, bis) · Messzeit | komponente, messkanal (+ messstelle) | `ersatzwert`, `methode`, `status` | — |
+| `correction` | Korrektur | cloud · kunde | — | [von, bis) · Messzeit | komponente, messkanal (+ messstelle) | `korrektur`, `korrektur_art`, `status` | — |
 
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
@@ -185,6 +187,27 @@ weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar“. Di
 Rechnung zum Nachlesen, nie die Quelle der Menge: in welcher Periode der Zuwachs zählt, entscheidet
 `VerbrauchRegeln.zaehltZu` im Verbrauchsvertrag (`verbrauch.md` §9). Migration
 `V20260913170000__uems_luecken_zuwachs.sql`.
+
+**Ersatzwert und Korrektur (AP-08 IP-12, E7/E8/E14, additiv).** `substitute` und `correction` sind
+das 25. und 26. Wort — beide nur aus der Cloud, beide an EINER Reihe (`komponente` + `messkanal`),
+[von, bis) auf dem Viertelstunden-Raster. **Ein Ersatzwert ist kein Messwert:** `substitute`
+meldet ein Mensch (`kunde`) mit Kennung `EW-<Jahr>-<lfd. Nr.>`, Methode aus
+`vokabular.ersatzwert_methode` (a `gleichmaessig_verteilen` · b `profil_vorperiode` · c
+`profil_vergleichsquelle` · d `ablesestand_nachtragen` · e `wert_eingeben` · f
+`vorperiode_uebernehmen` · g `vergleichsquelle_uebernehmen`) und Status `wirksam` ·
+`zurueckgenommen`. `correction` trägt `K-<Jahr>-<lfd. Nr.>`, `korrektur_art`
+(`nachlieferung_nach_endgueltigkeit` · `ablesestaende_nachgetragen` · `umklassifizierung` ·
+`ersatzwert` · `wert_berichtigt`) und Status `vorschlag` · `freigegeben` · `abgelehnt` ·
+`zurueckgenommen`; `ersatzwert` genau bei der Art `ersatzwert`. **Nie automatisch (E14):** die
+Cloud meldet nur `vorschlag`. **Jeder Statuswechsel ist eine NEUE Meldung** mit eigener
+`ereignis_id` — nie eine Fortschreibung, denn ein Status wird nicht nachgetragen, sondern
+entschieden. Welche Methode einen gemessenen Zuwachs verteilt (a–c, Summe = Zuwachs) und welche
+nur ohne ihn steht (e–g), trägt das Vokabular als Merkmal `zuwachs`; erzwungen wird es in der
+Tabelle `messreihe_ersatzwert` (die Meldung nennt nur Methode und Stand). Kundensatz etwa
+„Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs gleichmäßig verteilen —
+kein gemessener Wert“; die Namen der Methoden und Arten stehen in der Vektor-Datei, der Satz
+spricht nie das Vertragswort. Dieselben Wörter prüfen die Tabellen über
+`messreihe_korrektur_vokabular()`. Migration `V20260913190000__uems_korrektur_ersatzwert.sql`.
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
@@ -314,7 +337,7 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-68 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+86 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
@@ -325,6 +348,7 @@ verworfenen Fall; A = mit `annahme` (siehe §9).
 | Übergabe DQ-3, 10.04.2027 07:30 (Referenz) | offen bis zur Quittung · Quittung schließt · an dieselbe Box / nicht auf der Minute / Ende vor Beginn verworfen · Rückgabe 12.04. (A) · nicht zuständige Box 07:32 (über eine Stunde verworfen) |
 | Kartenzähler-Rücksetzung EK-3 (A) | `counter_reset` 6 184,37 → 0 · bestätigt als Grenze ohne Gerätewechsel · mit Gerätewechsel / steigender Stand verworfen |
 | Überlauf Impulszähler K-6/MS-07, 20.10.2026 (F7, AP-08 IP-4) | `counter_overflow` 64 954 → 185 (767 ≤ 1 667) · Sprung 12 457 → 100 über dem Höchstzuwachs verworfen |
+| Ersatzwert und Korrektur MS-10/MS-11 (F10, F11, F12, F21, AP-08 IP-12) | EW-2026-0003 gleichmäßig verteilt · zurückgenommen · EW-2026-0005 nach Profil der Vergleichsquelle · K-2026-0007 vorgeschlagen (cloud) · freigegeben · K-2027-0002 Ablesestände vorgeschlagen · Korrektur zum Ersatzwert (A: K-2026-0008) · Freigabe von der Cloud / Wochentagsmittel / vom Writer / neben dem Raster / Art Ersatzwert ohne Ersatzwert verworfen |
 | Box-Umschläge (A) | Neustart bei Wandlertausch 01.02.2027 · neue Karte EK-7 01.03.2027 · Bereichsbegrenzung EK-3 · Werte eingefroren · Puffer verdrängt · Übergabe von der Box / unbekannte Art / Kennung / Fassung 2.0 / ohne Kennung / offene Lücke / leer verworfen |
 | Datenannahme | Box Lindach 14 min vor · genau 300 s ist kein Ereignis · 91 Tage alt · Uhrsprung · ohne Einbau (Writer) · unbekanntes Wort · unbekannter Grund / `herkunft_unvollstaendig` von der Datenannahme verworfen |
 | Übergänge (A) | Statusbits EK-3 · Zustand, Fehlermeldung, Text am Ladepunkt · unverändert / fremdes Feld verworfen |

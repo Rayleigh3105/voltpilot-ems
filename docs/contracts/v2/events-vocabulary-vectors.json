@@ -25,7 +25,13 @@
     "",
     "AP-08 IP-6 (additiv): data_gap trägt den gemessenen Zuwachs über die Lücke — zuwachs, einheit,",
     "stand_vor, stand_nach — nur zusammen, nur geschlossen, nur an einer Reihe, nie von der Box;",
-    "einheit aus vokabular.einheit_zuwachs (Zählerstand-Einheiten aus messstelle-vectors.json)."
+    "einheit aus vokabular.einheit_zuwachs (Zählerstand-Einheiten aus messstelle-vectors.json).",
+    "",
+    "AP-08 IP-12 (additiv): substitute (Ersatzwert) und correction (Korrektur) — beide nur aus der",
+    "Cloud (kunde bzw. kunde/cloud), je Statuswechsel eine NEUE Meldung, nie fortgeschrieben. Ihre",
+    "Wörter stehen in vokabular.ersatzwert_methode (a–g, E7), ersatzwert_status, korrektur_art und",
+    "korrektur_status — dieselben Wörter, mit denen die Tabellen messreihe_ersatzwert und",
+    "messreihe_korrektur sie über messreihe_korrektur_vokabular() prüfen (Zeile für Zeile)."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./events-vocabulary.schema.json",
@@ -171,6 +177,150 @@
       "varh",
       "kvarh",
       "m³"
+    ],
+    "ersatzwert_methode": [
+      {
+        "code": "gleichmaessig_verteilen",
+        "buchstabe": "a",
+        "name": "Zuwachs gleichmäßig verteilen",
+        "zuwachs": "gemessen",
+        "bezug": null,
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke mit gemessenem Zuwachs; Zuwachs ÷ Anzahl Viertelstunden der Lücke"
+      },
+      {
+        "code": "profil_vorperiode",
+        "buchstabe": "b",
+        "name": "Zuwachs nach dem Profil der Vorperiode verteilen",
+        "zuwachs": "gemessen",
+        "bezug": "vorperiode",
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke; Vorperiode = derselbe Zeitraum 7 Tage früher (Vorgabe) oder gewählter Tag"
+      },
+      {
+        "code": "profil_vergleichsquelle",
+        "buchstabe": "c",
+        "name": "Zuwachs nach dem Profil der Vergleichsquelle verteilen",
+        "zuwachs": "gemessen",
+        "bezug": "vergleichsquelle",
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke; die gekennzeichnete Vergleichsquelle (AP-04 E3) hat Werte im Zeitraum"
+      },
+      {
+        "code": "ablesestand_nachtragen",
+        "buchstabe": "d",
+        "name": "Ablesestand nachtragen",
+        "zuwachs": null,
+        "bezug": "ablesestaende",
+        "zeit": "zeitpunkt",
+        "wann": "Rücksetzung ohne Endstand, Zählerwechsel ohne Ablesestände, Kartenwechsel; Regel Z4 rechnet die Menge"
+      },
+      {
+        "code": "wert_eingeben",
+        "buchstabe": "e",
+        "name": "Wert eingeben (mit Beleg)",
+        "zuwachs": "keiner",
+        "bezug": "betrag",
+        "zeit": "zeitraum",
+        "wann": "nicht gezählte Zeit oder Lücke einer Intervallmengen-/Leistungsreihe; Beleg z. B. Netzrechnung, Ablesung, Protokoll"
+      },
+      {
+        "code": "vorperiode_uebernehmen",
+        "buchstabe": "f",
+        "name": "Vorperiode übernehmen",
+        "zuwachs": "keiner",
+        "bezug": "vorperiode",
+        "zeit": "zeitraum",
+        "wann": "Lücke ohne gemessenen Zuwachs (Intervallmenge, integrierte Leistung)"
+      },
+      {
+        "code": "vergleichsquelle_uebernehmen",
+        "buchstabe": "g",
+        "name": "Vergleichsquelle übernehmen",
+        "zuwachs": "keiner",
+        "bezug": "vergleichsquelle",
+        "zeit": "zeitraum",
+        "wann": "Lücke ohne gemessenen Zuwachs; die Vergleichsquelle hat Werte"
+      }
+    ],
+    "ersatzwert_status": [
+      {
+        "code": "wirksam",
+        "folgt_auf": [],
+        "grund_pflicht": false
+      },
+      {
+        "code": "zurueckgenommen",
+        "folgt_auf": [
+          "wirksam"
+        ],
+        "grund_pflicht": true
+      }
+    ],
+    "korrektur_art": [
+      {
+        "code": "nachlieferung_nach_endgueltigkeit",
+        "name": "Nachlieferung nach Endgültigkeit",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System aus late_arrival (E14), F10"
+      },
+      {
+        "code": "ablesestaende_nachgetragen",
+        "name": "Ablesestände nachgetragen",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System aus geänderter Gerätegrenze oder Rücksetzung (AP-04 E2 rückwirkend), F12"
+      },
+      {
+        "code": "umklassifizierung",
+        "name": "Rücksetzung und Überlauf umklassifiziert",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "Bearbeiter (Vorschlag mit Rechnung), F7"
+      },
+      {
+        "code": "ersatzwert",
+        "name": "Ersatzwert",
+        "ersatzwert": true,
+        "beleg_pflicht": false,
+        "wer": "Bearbeiter (E7) — eingetragen oder zurückgenommen, F11, F21"
+      },
+      {
+        "code": "wert_berichtigt",
+        "name": "Wert berichtigt (mit Beleg)",
+        "ersatzwert": false,
+        "beleg_pflicht": true,
+        "wer": "Bearbeiter — nur abgeleitete Werte, nie Rohwerte"
+      }
+    ],
+    "korrektur_status": [
+      {
+        "code": "vorschlag",
+        "folgt_auf": [],
+        "grund_pflicht": false
+      },
+      {
+        "code": "freigegeben",
+        "folgt_auf": [
+          "vorschlag"
+        ],
+        "grund_pflicht": false
+      },
+      {
+        "code": "abgelehnt",
+        "folgt_auf": [
+          "vorschlag"
+        ],
+        "grund_pflicht": true
+      },
+      {
+        "code": "zurueckgenommen",
+        "folgt_auf": [
+          "freigegeben"
+        ],
+        "grund_pflicht": true
+      }
     ],
     "fehlerklasse_datei": "./data-source-vectors.json",
     "felder": {
@@ -425,6 +575,26 @@
       "stand_nach": {
         "typ": "stand",
         "beschreibung": "Der erste gute Zählerstand danach (Messzeit: bis)."
+      },
+      "ersatzwert": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennung des Ersatzwerts: EW-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6)."
+      },
+      "methode": {
+        "typ": "wort",
+        "beschreibung": "Die Methode des Ersatzwerts a–g (vokabular.ersatzwert_methode, AP-08 E7)."
+      },
+      "status": {
+        "typ": "wort",
+        "beschreibung": "Der Stand, den diese Meldung setzt: vokabular.ersatzwert_status bzw. korrektur_status."
+      },
+      "korrektur": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6)."
+      },
+      "korrektur_art": {
+        "typ": "wort",
+        "beschreibung": "Die Art der Korrektur (vokabular.korrektur_art, AP-08 §4.6)."
       }
     },
     "arten": [
@@ -1504,6 +1674,99 @@
         "bestand": true,
         "nie_geloescht": true,
         "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      },
+      {
+        "art": "substitute",
+        "name": "Ersatzwert",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "messstelle"
+        ],
+        "pflicht": [
+          "ersatzwert",
+          "methode",
+          "status"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": "status",
+        "saetze": {
+          "wirksam": "Ersatzwert {ersatzwert} für {von} bis {bis}: {methode} — kein gemessener Wert",
+          "zurueckgenommen": "Ersatzwert {ersatzwert} für {von} bis {bis} zurückgenommen: {methode}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); bei ablesestand_nachtragen ist es die Viertelstunde, in die der Ablesestand fällt (Zeitpunkt in (von, bis]).",
+          "`ersatzwert` hat die Form EW-<Jahr>-<lfd. Nr.>. Eine Rücknahme ist eine NEUE Meldung (eigene ereignis_id) mit status zurueckgenommen — der Ersatzwert bleibt sichtbar, nie gelöscht.",
+          "Ein Ersatzwert ist kein Messwert (E7): a–c verteilen nur einen GEMESSENEN Zuwachs, ihre Summe ist dieser Zuwachs; e, f und g nur, wo keiner gemessen ist. Die Tabelle messreihe_ersatzwert erzwingt das, die Meldung nennt Methode und Stand."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.4, §4.6, E7 (Tabelle messreihe_ersatzwert, Lieferpaket IP-12)"
+      },
+      {
+        "art": "correction",
+        "name": "Korrektur",
+        "urheber": [
+          "cloud",
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "messstelle"
+        ],
+        "pflicht": [
+          "korrektur",
+          "korrektur_art",
+          "status"
+        ],
+        "felder": [
+          "ersatzwert"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": "status",
+        "saetze": {
+          "vorschlag": "Korrektur {korrektur} vorgeschlagen für {von} bis {bis}: {korrektur_art} — die Werte bleiben bis zur Freigabe unverändert",
+          "freigegeben": "Korrektur {korrektur} freigegeben für {von} bis {bis}: {korrektur_art}",
+          "abgelehnt": "Korrektur {korrektur} abgelehnt für {von} bis {bis}: {korrektur_art} — die Werte bleiben unverändert",
+          "zurueckgenommen": "Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}"
+        },
+        "zusaetze": {
+          "ersatzwert": " ({ersatzwert})"
+        },
+        "regeln": [
+          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); eine Meldung je betroffener Reihe.",
+          "`korrektur` hat die Form K-<Jahr>-<lfd. Nr.>. Jeder Statuswechsel ist eine NEUE Meldung (eigene ereignis_id) — nie fortgeschrieben, nie gelöscht.",
+          "Nie automatisch (E14): die Cloud meldet nur `vorschlag`; freigegeben, abgelehnt und zurueckgenommen meldet ein Mensch (kunde).",
+          "`ersatzwert` steht genau bei korrektur_art ersatzwert.",
+          "freigegeben und zurueckgenommen lösen die Neuberechnung (E9) und die Revision freigegebener Berichte (AP-12) aus — die Kaskade selbst ist AP-08 IP-17."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.4, §4.6, E8, E9, E14 (Tabelle messreihe_korrektur, Lieferpaket IP-12)"
       }
     ]
   },
@@ -3902,6 +4165,357 @@
         "schema": false,
         "urteil": "verworfen",
         "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ew-2026-0003-zuwachs-gleichmaessig-verteilt",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E7 (Methode a); Referenzfall F11",
+      "why": "Ines Kaltenbach verteilt am 06.11. 11:20 den gemessenen Zuwachs von 1 872,0 kWh über die Lücke der getauschten Box Halle 2 gleichmäßig auf 78 Viertelstunden. Der Satz sagt, dass es kein gemessener Wert ist.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000094",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs gleichmäßig verteilen — kein gemessener Wert"
+        ]
+      }
+    },
+    {
+      "name": "ew-2026-0003-zurueckgenommen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Status zurückgenommen, nie gelöscht); Referenzfall F21",
+      "why": "Am 20.11. 15:10 liegt der Lastgang des Netzbetreibers vor; Ines Kaltenbach nimmt EW-2026-0003 zurück. Die Rücknahme ist eine neue Meldung, der Ersatzwert bleibt sichtbar.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000095",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "zurueckgenommen"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30 zurückgenommen: Zuwachs gleichmäßig verteilen"
+        ]
+      }
+    },
+    {
+      "name": "ew-2026-0005-profil-der-vergleichsquelle",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E7 (Methode c); Referenzfall F21",
+      "why": "Derselbe Zeitraum, jetzt nach dem Profil des Lastgangs des Netzbetreibers verteilt; die Summe bleibt der gemessene Zuwachs.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000096",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0005",
+          "methode": "profil_vergleichsquelle",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0005 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs nach dem Profil der Vergleichsquelle verteilen — kein gemessener Wert"
+        ]
+      }
+    },
+    {
+      "name": "k-2026-0007-nachlieferung-vorgeschlagen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E14; Referenzfall F10",
+      "why": "Die Werte 14:01–17:30 treffen am 12.11. 09:02 ein, die Viertelstunden sind endgültig: die Cloud schlägt K-2026-0007 vor und ändert nichts.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000097",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0007 vorgeschlagen für 03.11.2026 14:00 bis 17:45: Nachlieferung nach Endgültigkeit — die Werte bleiben bis zur Freigabe unverändert"
+        ]
+      }
+    },
+    {
+      "name": "k-2026-0007-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E8, E9; Referenzfall F10",
+      "why": "Ines Kaltenbach gibt K-2026-0007 am 12.11. 10:15 frei — erst jetzt entsteht Version 2.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000098",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0007 freigegeben für 03.11.2026 14:00 bis 17:45: Nachlieferung nach Endgültigkeit"
+        ]
+      }
+    },
+    {
+      "name": "k-2027-0002-ablesestaende-vorgeschlagen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6; Referenzfälle F6/F12",
+      "why": "Ines Kaltenbach trägt am 25.01.2027 den Endstand der Rücksetzung vom 15.01. nach; die Viertelstunde ist endgültig, also schlägt die Cloud K-2027-0002 vor.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000099",
+          "art": "correction",
+          "von": "2027-01-15T08:00:00Z",
+          "bis": "2027-01-15T08:15:00Z",
+          "komponente": "K-8.2",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-11",
+          "korrektur": "K-2027-0002",
+          "korrektur_art": "ablesestaende_nachgetragen",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2027-0002 vorgeschlagen für 15.01.2027 09:00 bis 09:15: Ablesestände nachgetragen — die Werte bleiben bis zur Freigabe unverändert"
+        ]
+      }
+    },
+    {
+      "name": "korrektur-zum-ersatzwert-ew-2026-0003-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Art „Ersatzwert eingetragen“, Wirkung: erzeugt eine Korrektur); Referenzfall F11",
+      "why": "Der Ersatzwert EW-2026-0003 wirkt über eine Korrektur: ihre Freigabe erzeugt Version 2 der Tage 03.11. und 04.11.",
+      "annahme": "F11 nennt die Kennung der Korrektur zum Ersatzwert nicht; der Fall setzt K-2026-0008 (die nächste nach K-2026-0007 aus F10).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000100",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0008",
+          "korrektur_art": "ersatzwert",
+          "status": "freigegeben",
+          "ersatzwert": "EW-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0008 freigegeben für 03.11.2026 14:00 bis 04.11.2026 09:30: Ersatzwert (EW-2026-0003)"
+        ]
+      }
+    },
+    {
+      "name": "korrektur-freigabe-nie-automatisch-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E14 (nie automatisch)",
+      "why": "Eine Freigabe ist die Entscheidung eines Menschen; meldet die Cloud selbst „freigegeben“, wäre die Korrektur automatisch wirksam.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000101",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-nach-wochentagsmittel-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E7 (sieben benannte Methoden — Option C „Wochentagsmittel“ nicht gewählt)",
+      "why": "Das Wochentagsmittel steht nicht im geschlossenen Vokabular der Methoden; es wird verworfen, nie auf eine ähnliche Methode geraten.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000102",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "wochentagsmittel",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-vom-writer-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.4 (Ersatzwert: Kunde, E7)",
+      "why": "Einen Ersatzwert setzt ein Mensch mit Begründung; der Writer misst und setzt nie eine Zahl, die der Zähler nicht geliefert hat.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000103",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-neben-dem-viertelstunden-raster-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Zeitraum auf die Viertelstunde)",
+      "why": "Ein Ersatzwert gilt für ganze Viertelstunden; 14:01 liegt neben dem Raster.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000104",
+          "art": "substitute",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-art-ersatzwert-ohne-ersatzwert-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Art „Ersatzwert eingetragen / zurückgenommen“)",
+      "why": "Eine Korrektur der Art Ersatzwert nennt den Ersatzwert, den sie wirksam macht — ohne ihn wäre sie nicht nachvollziehbar.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000105",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0008",
+          "korrektur_art": "ersatzwert",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
         "saetze": []
       }
     }
