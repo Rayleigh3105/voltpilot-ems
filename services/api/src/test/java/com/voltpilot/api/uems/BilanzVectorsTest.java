@@ -281,18 +281,15 @@ class BilanzVectorsTest {
     }
 
     /**
-     * Das BEFRISTETE Kennzeichen der PR-688-Antworten (AP-10 IP-9, W12) steht im Vertrag — mit dem
-     * Paket, das es wieder entfernt. Es ist ein Kennzeichen dieses Vertrags (die verbotenen Wörter
-     * prüfen es mit) und hat genau EIN Ablaufpaket.
+     * Das BEFRISTETE Kennzeichen „vorläufig (Geräte-Verdichtung)“ (AP-10 IP-9, W12) ist mit seinem Ablaufpaket
+     * AP-10 IP-10 entfallen: die Periodenwerte berechneter Messstellen liegen in der Speicherklasse. Kein
+     * Kennzeichen dieses Vertrags spricht mehr von der Geräte-Verdichtung, und der befristete Block ist weg.
      */
     @Test
-    void dasBefristeteKennzeichenStehtImVertragMitSeinemAblauf() throws Exception {
+    void dasBefristeteKennzeichenIstMitSeinemAblaufpaketEntfallen() throws Exception {
         JsonNode v = vektoren().path("vokabulare");
-        assertThat(texte(v.path("kennzeichen_neu"))).contains(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
-        JsonNode befristet = v.path("kennzeichen_befristet");
-        assertThat(befristet).hasSize(1);
-        assertThat(befristet.get(0).path("wort").asText()).isEqualTo(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
-        assertThat(befristet.get(0).path("entfaellt_mit").asText()).isEqualTo("AP-10 IP-10");
+        assertThat(v.has("kennzeichen_befristet")).isFalse();
+        assertThat(texte(v.path("kennzeichen_neu"))).noneMatch(k -> k.contains("Geräte-Verdichtung"));
     }
 
     /**

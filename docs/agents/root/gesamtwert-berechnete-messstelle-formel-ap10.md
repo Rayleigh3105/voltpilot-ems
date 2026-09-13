@@ -40,6 +40,11 @@ mehr `entwurf`); das Register (IP-4) batcht die Formel noch nicht und lässt sie
 `GET …/formel?am=` und `POST …/formel/fassungen` kommen dazu, das Anlegen trägt das Recht
 `messstelle.formel` — Details und Fallen in `uems-formel-fassungen-je-tag.md`.
 
+**Seit AP-10 IP-10 (Periodenwerte):** Viertelstunde, Tag, Monat und Jahr einer berechneten Messstelle mit Menge
+stehen in der Speicherklasse (Spur `berechnet`, gerechnet vom Stundenlauf nach den gemessenen) und werden über
+`GET …/{kennzeichen}/werte` gelesen; Live-Wert und Verlauf bleiben der schnelle Blick aus den Geräte-Verdichtungen,
+jetzt ohne befristetes Kennzeichen — `uems-berechnete-periodenwerte.md`.
+
 **Endpunkte:** `POST /api/v1/messstellen/berechnet`, `GET …/{id}/formel|wert|verlauf`
 (`MessstelleFormelController`). Prüfen: `MessstelleFormelRegelnVectorsTest` (rein),
 `MessstelleFormelTermMigrationTest` + `MessstelleFormelApiTest` (DB), `uemsMessstelleFormel.test.ts`.

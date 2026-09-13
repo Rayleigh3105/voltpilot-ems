@@ -114,6 +114,8 @@ public class PeriodeVerdichter {
     }
 
     // ================================================================== Eingang
+    // Beide Quellen lesen nur REIHEN (`entity_id IS NOT NULL`): Monat und Jahr einer berechneten Messstelle
+    // (Spur `berechnet`, AP-10 IP-10) rechnet ihr eigener Lauf aus den Perioden ihrer Eingänge.
 
     /** Perioden, die noch vorläufig sind und deren Frist abgelaufen ist — sie werden endgültig. */
     int eintragenAusFrist(Instant jetzt) {
@@ -122,6 +124,7 @@ public class PeriodeVerdichter {
                 SELECT p.tenant_id, p.entity_id, p.messkanal, p.art, p.tag, 'frist'
                   FROM messreihe_periode p
                  WHERE p.zustand = 'vorlaeufig' AND p.endgueltig_ab <= ?
+                   AND p.entity_id IS NOT NULL
                 ON CONFLICT DO NOTHING
                 """, Timestamp.from(jetzt));
     }
@@ -141,6 +144,7 @@ public class PeriodeVerdichter {
                                     WHERE p.tenant_id = t.tenant_id AND p.entity_id = t.entity_id
                                       AND p.messkanal = t.messkanal AND p.art = 'monat'
                                       AND p.tag = date_trunc('month', t.tag)::date)
+                   AND t.entity_id IS NOT NULL
                  LIMIT ?
                 ON CONFLICT DO NOTHING
                 """, nachholenJeLauf);

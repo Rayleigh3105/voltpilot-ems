@@ -20,13 +20,14 @@ Unternehmen und ein Gebäude daraus sehen.
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
-> **Wer anruft (Stand AP-10 IP-9): das Formel-Modul und die Bilanz je Anlage.**
+> **Wer anruft (Stand AP-10 IP-10): das Formel-Modul, die Bilanz je Anlage und der Lauf der Periodenwerte.**
 > `MessstelleFormelRegeln.hauptgroesse` und `.periodenwert` (TS: `uemsMessstelleFormel.ts`) verzweigen
 > je Formel-Typ in diese Regeln ([`messstelle-formel.md`](./messstelle-formel.md) §6.2). Seit IP-9 ist
 > `GET /api/v1/sites/{siteId}/bilanz` der erste Produktionsweg: `restAusStellung` je Tag, `summe`
 > für Zufluss/Abfluss/zugeordnet, `periodenwert("rest")` und `live` für die Live-Zeile — die Route
-> rechnet nichts selbst. Periodenwerte berechneter Messstellen (IP-10), Herkunft (IP-12) und die
-> Portal-Fläche (IP-14) folgen.
+> rechnet nichts selbst. Seit IP-10 speichert `BerechnetePeriodenLauf` die Periodenwerte berechneter
+> Messstellen über `periodenwert` (`BerechnetePeriode.rechne`, F1–F7 in `BerechnetePeriodeVectorsTest`).
+> Herkunft (IP-12) und die Portal-Fläche (IP-14) folgen.
 
 ## 1. Warum es zwei Umsetzungen gibt
 

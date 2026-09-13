@@ -468,14 +468,8 @@ public class MessstelleFormelService {
         LocalDate heute = heute(zone());
         RohWert r = liveWert(m, cutoff, heute, new HashSet<>(List.of(id)), 0);
         return new MessstelleFormelDto.Wert(r.wert(), r.einheit(), r.wert() == null, r.fehlende(),
-                r.stand() == null ? null : zeit(r.stand()), BEFRISTET);
+                r.stand() == null ? null : zeit(r.stand()));
     }
-
-    /**
-     * BEFRISTET bis AP-10 IP-10 (W12): Live-Wert und Verlauf rechnen aus den Geräte-Verdichtungen. IP-10
-     * baut die Periodenwerte berechneter Messstellen und ENTFERNT dieses Kennzeichen.
-     */
-    private static final List<String> BEFRISTET = List.of(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
 
     private RohWert liveWert(Messstelle m, Instant cutoff, LocalDate tag, Set<UUID> besucht, int tiefe) {
         Optional<UUID> restVon = restHauptzaehlerAm(m.id(), tag);
@@ -815,7 +809,7 @@ public class MessstelleFormelService {
         }
         String einheit = restHauptzaehlerAm(id, heute(zone())).isPresent() ? RestLive.EINHEIT
                 : m.hauptgroesse().einheit();
-        return new MessstelleFormelDto.Verlauf(id, einheit, punkte, BEFRISTET);
+        return new MessstelleFormelDto.Verlauf(id, einheit, punkte);
     }
 
     /**

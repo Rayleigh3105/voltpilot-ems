@@ -69,7 +69,6 @@ class BilanzApiTest {
     private static final String ENERGIE = "sunspec.model_203.totwhimp";
     private static final String LEISTUNG = "sunspec.model_203.w";
     private static final String KATALOG = "2026.09.11.1";
-    private static final String VORLAEUFIG = "vorläufig (Geräte-Verdichtung)";
 
     /** Die Momentaufnahme 20.10.2026 10:15 (F18) in W, wie der Kanal sie liefert. */
     private static final Map<String, Double> MOMENTAUFNAHME_W = Map.of(
@@ -140,7 +139,7 @@ class BilanzApiTest {
         assertThat(live.get("einheit").asText()).isEqualTo("kW");
         assertThat(live.get("unvollstaendig").asBoolean()).isFalse();
         assertThat(live.get("fehlende")).isEmpty();
-        assertThat(texte(live.get("kennzeichen"))).containsExactly(VORLAEUFIG);
+        assertThat(live.has("kennzeichen")).as("das befristete Kennzeichen ist mit AP-10 IP-10 entfallen").isFalse();
         // Die Terme des Tages kommen aus der Stellung: MS-10 fließt zu, MS-11 … MS-14 sind zugeordnet.
         JsonNode terme = hz.get("abschnitte").get(0).get("terme");
         assertThat(terme).extracting(t -> t.get("messstelle").asText() + ":" + t.get("rolle").asText())
@@ -161,12 +160,12 @@ class BilanzApiTest {
     }
 
     /**
-     * Die Rest-Messstelle antwortet über die PR-688-Routen mit derselben Rechnung aus der Stellung (kW) —
-     * und beide Antworten tragen bis AP-10 IP-10 „vorläufig (Geräte-Verdichtung)“. Eine gewichtete Summe
-     * trägt es genauso; ohne Terme ist ein Rest nie „0“.
+     * Die Rest-Messstelle antwortet über die PR-688-Routen mit derselben Rechnung aus der Stellung (kW). Das
+     * befristete Kennzeichen „vorläufig (Geräte-Verdichtung)“ (AP-10 IP-9) ist mit IP-10 entfallen: die
+     * Periodenwerte liegen jetzt in der Speicherklasse, der Live-Wert bleibt live. Ohne Terme ist ein Rest nie „0“.
      */
     @Test
-    void dieRestMessstelleRechnetLiveAusDerStellungUndTraegtDasBefristeteKennzeichen() throws Exception {
+    void dieRestMessstelleRechnetLiveAusDerStellungOhneBefristetesKennzeichen() throws Exception {
         Welt w = halle2();
         leistungen(w, Instant.now());
         JsonNode angelegt = ok(ruf(w, HttpMethod.POST, bilanzPfad(w) + "/rest",
@@ -176,10 +175,10 @@ class BilanzApiTest {
         JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + rest + "/wert", null), 200);
         assertThat(wert.get("wert").asDouble()).isEqualTo(1.6);
         assertThat(wert.get("einheit").asText()).isEqualTo("kW");
-        assertThat(texte(wert.get("kennzeichen"))).containsExactly(VORLAEUFIG);
+        assertThat(wert.has("kennzeichen")).isFalse();
 
         JsonNode verlauf = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + rest + "/verlauf", null), 200);
-        assertThat(texte(verlauf.get("kennzeichen"))).containsExactly(VORLAEUFIG);
+        assertThat(verlauf.has("kennzeichen")).isFalse();
         assertThat(verlauf.get("einheit").asText()).isEqualTo("kW");
 
         // Die Formel des Rests IST die Stellung: eine Fassung vom Typ rest, kein einziger Term.
