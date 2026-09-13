@@ -137,11 +137,14 @@ class MessstelleWerteApiTest {
         stammdaten();
         rohwerte();
 
+        // Tag- und Periodenlauf tragen den Katalog seit PR 726 (ReihenKontext): ohne die Einheit kWh des
+        // Testkanals spräche der Lücken-Satz des Tages den Zuwachs ohne Zahl (F8: „Zuwachs 337,6 kWh gemessen").
+        MeasurementCatalog katalog = UemsTestKatalog.mitKwhTestkanaelen();
         ViertelstundeVerdichter verdichter = new ViertelstundeVerdichter(admin,
-                new MeasurementCatalog(new ObjectMapper()), new SpaetankunftMelder(), 500, 40, 200_000);
+                katalog, new SpaetankunftMelder(), 500, 40, 200_000);
         EndgueltigkeitLauf endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        TagVerdichter tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
-        PeriodeVerdichter perioden = new PeriodeVerdichter(admin, 50, 40, 2000);
+        TagVerdichter tage = new TagVerdichter(admin, katalog, 200, 40, 20_000, 200_000);
+        PeriodeVerdichter perioden = new PeriodeVerdichter(admin, katalog, 50, 40, 2000);
 
         // ---- 1. Anfang November: Viertelstunden, Endgültigkeit, Tage, Monate, Jahre ---------
         arbeitFuellen();

@@ -137,7 +137,10 @@ Migration, keine Rechenregel — gelesen bzw. AUFGERUFEN.
    Zeitraum** (`ZeitraumMenge.raster` → `ViertelstundenTeile.schritte`, dieselbe Regel wie
    `ZeitraumMenge.zeitraum`, ein Lesezug für alle Schritte; Lockstep im Test): eine Viertelstunde OHNE
    Rohwert hat KEINE Zeile, `count(*)=count(menge)` war darum auch über einer Lücke „vollständig"
-   (Stunde mit 35 min Lücke: 40,0 statt 96,0 kWh). Platzhalter-Kanäle: Summe der Kanal-Mengen nur,
+   (Stunde mit 35 min Lücke: 40,0 statt 96,0 kWh). ⚠ Die ABDECKUNG daneben kommt ebenso aus dem Schritt:
+   `erhalten`/`erwartet` aus Zeitraum und Kadenz zur Messzeit (`ViertelstundenTeile.erwartet`, Kadenz-Kette
+   je Viertelstunden-Beginn), für jede Wertart — nie `sum(erwartet)` der vorhandenen Zeilen (F8 17:00: 48 %,
+   nicht 96 %). Platzhalter-Kanäle: Summe der Kanal-Mengen nur,
    wenn jeder eine hat; Zustand/Kennzeichen/Energie nur bei genau einem Kanal. Das Mittel im groben
    Raster bleibt das bisherige (Befund: Mittel gerundeter Mittel, nicht Teil dieser Nacharbeit).
 2. **Energie aus Leistung** steht nur als `herkunft.energieAusLeistung {wert, kennzeichen}` —

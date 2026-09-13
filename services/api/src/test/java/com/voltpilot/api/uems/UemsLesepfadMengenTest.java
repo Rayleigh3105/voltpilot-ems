@@ -90,6 +90,8 @@ class UemsLesepfadMengenTest {
     private static final String Z = "deye.hybrid_1p.meter.total-battery-charge";
     private static final String P = "deye.hybrid_1p.grid.grid-power";
     private static final String P0 = "deye.hybrid_1p.grid.external-power";
+    /** Ein Zähler, dessen Kadenz MITTEN in einer Stunde wechselt (Befund aus PR 725). */
+    private static final String K = "deye.hybrid_1p.meter.today-energy-export";
 
     /** 96 Tage — jenseits der Frist und über 90 Tage: die Tagesklasse. */
     private static final Instant TAG_VON = Instant.parse("2026-10-01T00:00:00Z");
@@ -159,6 +161,7 @@ class UemsLesepfadMengenTest {
         saeen(H, "counter", stundeMitLuecke());
         saeen(P, "gauge", leistung(Instant.parse("2026-11-12T09:00:00Z"), 60));
         saeen(P0, "gauge", leistung(Instant.parse("2026-11-12T09:00:00Z"), 60));
+        saeen(K, "counter", kadenzWechsel());
 
         JdbcTemplate admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         ViertelstundeVerdichter viertelstunden = new ViertelstundeVerdichter(admin,
@@ -296,6 +299,65 @@ class UemsLesepfadMengenTest {
     }
 
     /**
+     * GEGENPROBE zum Befund aus PR 725 — F8, Stunde 17:00–18:00 Ortszeit. Zwei ihrer vier Viertelstunden haben
+     * keinen einzigen Rohwert und darum keine Zeile. Die Stunde erwartet trotzdem 60 Werte, nicht die 30 der
+     * beiden vorhandenen: 29 von 60 = 48 % wie in der Vektor-Datei. Vorher stand hier 29 von 30 = 96 % —
+     * eine fast vollständige Stunde, der die halbe Zeit fehlt, neben einer richtigen Menge.
+     */
+    @Test
+    void gegenprobeF8Stunde17UhrHatAchtundvierzigProzentNichtSechsundneunzig() {
+        TenantContext.set(KB);
+        Instant stunde = Instant.parse("2026-11-03T16:00:00Z");
+        Map<String, Object> zeilen = root.queryForMap("SELECT count(*) AS n, sum(erwartet) AS erwartet "
+                + "FROM messreihe_viertelstunde WHERE entity_id = ? AND messkanal = ? AND intervall_beginn >= ? "
+                + "AND intervall_beginn < ?", IDS.get(F8), F8, Timestamp.from(stunde),
+                Timestamp.from(stunde.plusSeconds(3600)));
+        assertThat(((Number) zeilen.get("n")).intValue()).as("zwei Viertelstunden ohne Zeile").isEqualTo(2);
+        assertThat(((Number) zeilen.get("erwartet")).intValue()).as("was die Zeilen allein erwarten").isEqualTo(30);
+
+        History h = frei(F8, GROB_VON, GROB_BIS);
+        JsonNode herkunft = JSON.valueToTree(h).path("data").get(index(h, stunde)).path("herkunft");
+        assertThat(herkunft.path("erhalten").asInt()).isEqualTo(29);
+        assertThat(herkunft.path("erwartet").asInt()).as("Zeitraum ÷ Kadenz, nicht die Summe der Zeilen")
+                .isEqualTo(60);
+        assertThat(herkunft.path("abdeckungProzent").asInt()).as("48 %, nicht 96 %").isEqualTo(48);
+    }
+
+    /**
+     * Die Kadenz wechselt INNERHALB der Stunde (Reihe K, 05.11.2026, 11:00–12:00 Ortszeit): 60 s bis 11:15,
+     * 30 s bis 11:30, 120 s bis 13:00, heute 300 s. Die Viertelstunden 11:15 und 11:30 haben keine Zeile;
+     * jede erwartet, was ZU IHRER ZEIT galt — 30 und 7 —, dazu die gespeicherten 15 und 7 der beiden
+     * vorhandenen: 59. Jede andere Kadenz verrät sich: die von jetzt ergäbe 28, die der jüngsten Zeile 37,
+     * die zum Stundenbeginn 52, die Zeilen allein 22.
+     */
+    @Test
+    void einKadenzWechselInDerStundeZaehltJedeFehlendeViertelstundeMitIhrerKadenz() {
+        TenantContext.set(KB);
+        Instant stunde = Instant.parse("2026-11-05T10:00:00Z");
+        List<Map<String, Object>> zeilen = root.queryForList("SELECT erhalten, erwartet, kadenz_s "
+                + "FROM messreihe_viertelstunde WHERE entity_id = ? AND messkanal = ? AND intervall_beginn >= ? "
+                + "AND intervall_beginn < ? ORDER BY intervall_beginn", IDS.get(K), K, Timestamp.from(stunde),
+                Timestamp.from(stunde.plusSeconds(3600)));
+        assertThat(zeilen).extracting(z -> ((Number) z.get("kadenz_s")).intValue())
+                .as("11:00 und 11:45 — jede Zeile mit der Kadenz zu ihrem Beginn").containsExactly(60, 120);
+        assertThat(zeilen).extracting(z -> ((Number) z.get("erwartet")).intValue()).containsExactly(15, 7);
+        int erhalten = zeilen.stream().mapToInt(z -> ((Number) z.get("erhalten")).intValue()).sum();
+
+        History h = frei(K, GROB_VON, GROB_BIS);
+        JsonNode herkunft = JSON.valueToTree(h).path("data").get(index(h, stunde)).path("herkunft");
+        assertThat(herkunft.path("erwartet").asInt()).as("15 + 30 + 7 + 7").isEqualTo(59);
+        assertThat(herkunft.path("erhalten").asInt()).isEqualTo(erhalten);
+        assertThat(herkunft.path("abdeckungProzent").asInt())
+                .isEqualTo(SpeicherklasseHistorie.abdeckung(erhalten, 59));
+
+        // Der freie Zeitraum derselben Stunde sagt dasselbe — eine Kadenz-Kette, zwei Wege.
+        ZeitraumMenge.Zeitraum z = new ZeitraumMenge(app, KATALOG).zeitraum(KB, IDS.get(K), K, stunde,
+                stunde.plusSeconds(3600), JETZT);
+        assertThat(z.erhalten()).isEqualTo(erhalten);
+        assertThat(z.erwartet()).isEqualTo(59);
+    }
+
+    /**
      * Lockstep: JEDER Schritt des groben Rasters ist genau das, was die Regel für ihn sagt — der
      * Zählerstand gegen {@link ZeitraumMenge#zeitraum} (freier Zeitraum, P7), die Leistung gegen
      * {@link ViertelstundenTeile#werte} über {@link ViertelstundenTeile#laden}. Der Lesepfad ruft die
@@ -311,13 +373,18 @@ class UemsLesepfadMengenTest {
             JsonNode daten = JSON.valueToTree(h).path("data");
             for (int i = 0; i < h.data().size(); i++) {
                 Instant von = h.data().get(i).time();
-                VerbrauchRegeln.Ergebnis soll = zeitraum.zeitraum(KB, IDS.get(kanal), kanal, von,
-                        von.plusSeconds(3600), JETZT).menge().ergebnis();
+                ZeitraumMenge.Zeitraum sollZeitraum = zeitraum.zeitraum(KB, IDS.get(kanal), kanal, von,
+                        von.plusSeconds(3600), JETZT);
+                VerbrauchRegeln.Ergebnis soll = sollZeitraum.menge().ergebnis();
                 BigDecimal ist = h.data().get(i).value();
                 assertThat(ist == null ? null : ist.stripTrailingZeros()).as(kanal + " " + von)
                         .isEqualTo(soll.menge() == null ? null : soll.menge().stripTrailingZeros());
                 assertThat(daten.get(i).path("herkunft").path("mengeZustand").asText()).isEqualTo(soll.zustand());
                 assertThat(texte(daten.get(i).path("herkunft").path("kennzeichen"))).isEqualTo(soll.kennzeichen());
+                assertThat(daten.get(i).path("herkunft").path("erhalten").asInt()).as(kanal + " " + von)
+                        .isEqualTo(sollZeitraum.erhalten());
+                assertThat(daten.get(i).path("herkunft").path("erwartet").asInt()).as(kanal + " " + von)
+                        .isEqualTo(sollZeitraum.erwartet());
                 geprueft++;
             }
         }
@@ -624,7 +691,7 @@ class UemsLesepfadMengenTest {
                 + "VALUES (?, ?, ?, DATE '2024-01-01')", KB, IDS.get("AN2"), IDS.get("ST"));
         IDS.put("BOX", uuid("INSERT INTO device (tenant_id, site_id, external_ref, status) "
                 + "VALUES (?, ?, 'VP-BOX-HALLE-2', 'claimed') RETURNING id", KB, IDS.get("AN2")));
-        for (String kanal : List.of(F8, H, Z, P, P0)) {
+        for (String kanal : List.of(F8, H, Z, P, P0, K)) {
             IDS.put(kanal, reihe(KB, IDS.get("AN2"), IDS.get("BOX"), kanal));
         }
         // MS-10-artig: Wirkenergie aus der Leistung — Herleitung `integration` (AP-04 Regel 7).
@@ -638,6 +705,27 @@ class UemsLesepfadMengenTest {
                 + "actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, ?, 'gauge', 'integration', "
                 + "'fuehrend', '2024-03-12T00:00:00Z', false, now(), 'sub', 'Probe', 'kunde')",
                 KB, ms, IDS.get(P), geraet, P);
+
+        // Die Reihe K wechselt ihre Kadenz in der Stunde 11:00–12:00 Ortszeit: 60 s bis 11:15, 30 s bis
+        // 11:30, 120 s bis 13:00, danach — und damit „jetzt" — 300 s (Fassungen, AP-07 IP-10).
+        UUID msK = uuid("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, "
+                + "einheit, wertart) VALUES (?, 'MS-0002', 'Kadenz-Wechsel', 'gemessen', 'Strom', 'Wirkenergie', "
+                + "'Bezug', 'kWh', 'Zählerstand') RETURNING id", KB);
+        UUID geraetK = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_bis IS NULL", UUID.class, IDS.get(K));
+        UUID bindungK = uuid("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, "
+                + "actor_sub, actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, ?, 'counter', "
+                + "'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', false, now(), 'sub', 'Probe', 'kunde') "
+                + "RETURNING id", KB, msK, IDS.get(K), geraetK, K);
+        String fassung = "INSERT INTO quelle_kadenz (tenant_id, messstelle_quelle_id, erwartet_s, herkunft, "
+                + "gueltig_ab, gueltig_bis, rueckwirkend, actor_sub, actor_name, actor_art) VALUES (?, ?, ?, "
+                + "'eintrag', ?::timestamptz, ?::timestamptz, false, 'sub', 'Probe', 'kunde')";
+        root.update(fassung, KB, bindungK, 60, "2024-03-12T00:00:00Z", "2026-11-05T10:15:00Z");
+        root.update(fassung, KB, bindungK, 30, "2026-11-05T10:15:00Z", "2026-11-05T10:30:00Z");
+        root.update(fassung, KB, bindungK, 120, "2026-11-05T10:30:00Z", "2026-11-05T12:00:00Z");
+        root.update(fassung.replace(", gueltig_bis", "").replace(", ?::timestamptz, false", ", false"),
+                KB, bindungK, 300, "2026-11-05T12:00:00Z");
 
         IDS.put("AN-F", uuid("INSERT INTO site (tenant_id, name) VALUES (?, 'B-1') RETURNING id", FREMD));
         IDS.put("BOX-F", uuid("INSERT INTO device (tenant_id, site_id, external_ref, status) "
@@ -668,6 +756,23 @@ class UemsLesepfadMengenTest {
                 continue;
             }
             aus.add(new Rohwert(t, new BigDecimal("500000.0").add(new BigDecimal("1.6").multiply(BigDecimal.valueOf(i)))));
+        }
+        return aus;
+    }
+
+    /**
+     * 05.11.2026 für die Reihe K: 11:00–11:14 Ortszeit jede Minute, 11:15–11:44 kein einziger Wert (zwei
+     * Viertelstunden ohne Zeile), ab 11:46 alle zwei Minuten bis 12:08 — je Viertelstunde sieben Werte,
+     * genau die Erwartung bei 120 s.
+     */
+    private static List<Rohwert> kadenzWechsel() {
+        List<Rohwert> aus = new ArrayList<>();
+        Instant beginn = Instant.parse("2026-11-05T10:00:00Z");
+        for (int i = 0; i < 15; i++) {
+            aus.add(new Rohwert(beginn.plusSeconds(60L * i), new BigDecimal("700000.0").add(BigDecimal.valueOf(i))));
+        }
+        for (int i = 46; i < 70; i += 2) {
+            aus.add(new Rohwert(beginn.plusSeconds(60L * i), new BigDecimal("700000.0").add(BigDecimal.valueOf(i))));
         }
         return aus;
     }
