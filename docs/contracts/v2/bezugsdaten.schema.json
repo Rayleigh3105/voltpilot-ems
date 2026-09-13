@@ -302,6 +302,28 @@
         "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
+    "arten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "je_art", "pruefungen"],
+      "description": "AP-09 §4.2 (nachgetragen am 13.09.2026): das Vokabular der ARTEN einer Bezugsgröße — die Schlüssel von `je_art` — und je Art, welche Einheiten, welche Wertart, welche Perioden, welche Geltungsbereiche und welche Herkünfte möglich sind. Jede Angabe ist ein Wort der VORHANDENEN Vokabulare dieser Datei (`einheiten`, `vokabulare`); ob sie dort steht, prüfen beide Zwillings-Tests, nicht dieses Schema — so gibt es keine zweite Liste. Keine Tabelle und keine Route tragen die Art.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "je_art": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/art" },
+          "description": "Je Art (Schlüssel, in der Reihenfolge der Konzept-Tabelle) ihre Angaben."
+        },
+        "pruefungen": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/art_pruefung" },
+          "description": "Was beide Zwillinge nachrechnen: passt eine Bezugsgröße zu ihrer Art? Mit den Beispielen des Referenzunternehmens (`beispiel`)."
+        },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "zwillinge": {
       "type": "object",
       "minProperties": 1,
@@ -445,6 +467,87 @@
         "werte": { "type": "integer", "minimum": 0, "description": "Wie viele Wert-Zeilen (alle Fassungen) die Bezugsgröße trägt." },
         "waehlbar": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Die Geltungsbereich-Arten, deren Objekte gebaut sind (E1: „wählbar, sobald gebaut“)." },
         "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." }
+      }
+    },
+
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "einheiten", "wertart", "perioden", "geltung", "herkunft", "konzept"],
+      "description": "arten (§4.2): eine Art einer Bezugsgröße. `konzept` hält die Zellen der Konzept-Tabelle wörtlich fest; die übrigen Felder sind ihre Lesart in den Wörtern der vorhandenen Vokabulare.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Das Kundenwort, wie §4.2 die Art nennt." },
+        "einheiten": {
+          "anyOf": [
+            { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            { "type": "string", "enum": ["alle", "messstelle"] }
+          ],
+          "description": "Wörter aus `einheiten`; `alle` = jede Einheit des Vokabulars, `messstelle` = die Einheit der Messstelle, an der die Größe hängt."
+        },
+        "wertart": { "type": "string", "minLength": 1, "description": "Ein Wort aus `vokabulare.wertart`." },
+        "perioden": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Wörter aus `vokabulare.periode_art`; leer = keine Periode (jede Wertart außer `periodenwert`)." },
+        "geltung": {
+          "anyOf": [
+            { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            { "type": "string", "const": "alle" }
+          ],
+          "description": "Wörter aus `vokabulare.geltung_art`; `alle` = jedes Objekt."
+        },
+        "herkunft": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Wörter aus `vokabulare.herkunft_art`." },
+        "konzept": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["einheiten", "wertart", "periode", "geltungsbereich", "herkunft", "ahrenberg"],
+          "description": "Die Zellen der Zeile in §4.2, Zeichen für Zeichen — Beleg, keine Regel.",
+          "properties": {
+            "einheiten": { "type": "string", "minLength": 1 },
+            "wertart": { "type": "string", "minLength": 1 },
+            "periode": { "type": "string", "minLength": 1 },
+            "geltungsbereich": { "type": "string", "minLength": 1 },
+            "herkunft": { "type": "string", "minLength": 1 },
+            "ahrenberg": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "art_feld": {
+      "type": "string",
+      "enum": ["art", "wertart", "geltung_art", "einheit", "periode_art", "herkunft_art"],
+      "description": "arten: ein Feld, das nicht zur Art passt — in dieser Reihenfolge genannt."
+    },
+
+    "art_pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "art", "beispiel", "eingang", "ergebnis"],
+      "description": "arten: passt eine Bezugsgröße zu ihrer Art?",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "art": { "type": "string", "minLength": 1 },
+        "beispiel": { "type": ["string", "null"], "description": "Das Kennzeichen der Bezugsgröße im Referenzunternehmen, deren Angaben der Eingang trägt." },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wertart", "geltung_art", "einheit", "periode_art", "herkunft_art", "einheit_der_messstelle"],
+          "properties": {
+            "wertart": { "type": ["string", "null"] },
+            "geltung_art": { "type": ["string", "null"] },
+            "einheit": { "type": ["string", "null"] },
+            "periode_art": { "type": ["string", "null"] },
+            "herkunft_art": { "type": ["string", "null"], "description": "null = nicht geprüft; die Herkunft gehört zum Wert (§4.1)." },
+            "einheit_der_messstelle": { "type": ["string", "null"], "description": "Nur für `einheiten: messstelle`." }
+          }
+        },
+        "ergebnis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["abweichend"],
+          "properties": {
+            "abweichend": { "type": "array", "items": { "$ref": "#/$defs/art_feld" }, "description": "Leer = passt." }
+          }
+        },
+        "hinweis": { "type": "string", "minLength": 1 }
       }
     },
 

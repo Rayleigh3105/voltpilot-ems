@@ -25,6 +25,7 @@ widersprechen, gilt die Datei.
 | `…/uems/BezugsPeriode.java` ⟷ `…/src/bezugsPeriode.ts` | seit **AP-09 IP-3** das eigene Modul der Regeln `periode`, `zeit` und `stunden` (Deutung, Zeitzone des Standorts, 23/25 h) |
 | `…/uems/BezugsdatenVectorsTest.java` · `…/src/bezugsdaten.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
 | `…/uems/BezugsEinheitTest.java` · `…/BezugsPeriodeTest.java` ⟷ `…/src/bezugsEinheit.test.ts` · `bezugsPeriode.test.ts` | dieselben Familien noch einmal, DIREKT am Modul — plus die Zusagen ohne Referenzfall |
+| `…/uems/BezugsArt.java` ⟷ `…/src/bezugsArt.ts` (Tests `BezugsArtTest` · `bezugsArt.test.ts`) | seit dem **13.09.2026** das Vokabular der ARTEN (Block `arten`, §8) — ruft das Einheiten-Modul an; noch ruft niemand das Modul an |
 
 **Wer eine Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
@@ -215,5 +216,45 @@ Java-Zwilling `uems/BezugsgroesseRegeln`; das Portal hat dafür keinen Zwilling
 (`zwillinge_grund`), aber `frontend/portal/src/bezugsgroesse.ts` spricht den Satz der
 Ablehnungen und wird gegen diese Datei geprüft. ⚠ Welche Geltungsbereiche **wählbar** sind,
 ist ein Eingang (`waehlbar`), kein Vokabular: Prozess und Kostenstelle stehen im Vokabular,
-haben aber noch kein Objekt (E1 „wählbar, sobald gebaut“). ⚠ Es gibt **keine Art**
-(„Produktionsmenge“, „Gutteile“) — das Vokabular dafür fehlt diesem Vertrag.
+haben aber noch kein Objekt (E1 „wählbar, sobald gebaut“). ⚠ Die **Art** („Produktionsmenge“,
+„Gutteile“) prüft `verwalten` nicht: ihr Vokabular steht seit dem 13.09.2026 im Block `arten`
+(§8), eine Spalte und ein Feld der Schnittstelle dafür gibt es nicht.
+
+## 8. Die Arten einer Bezugsgröße (§4.2 des Konzepts, nachgetragen am 13.09.2026)
+
+Der Block **`arten`** ist das Vokabular der Arten — die Schlüssel von `je_art`, in der
+Reihenfolge der Konzept-Tabelle: Produktionsmenge · Gutteile · Betriebszeit · Schichten ·
+Bezugsfläche · Mitarbeitende · Gradtagzahl · Zählerstand (Ablesung) · Sonstige Menge. Je Art
+steht, was möglich ist: **Einheiten**, **Wertart**, **Perioden**, **Geltungsbereiche** und
+**Herkünfte**. Daraus folgt, was der Anlege-Dialog (IP-9) zur Wahl stellt — aus der Art die
+Einheiten und die Perioden.
+
+- **Nur vorhandene Wörter.** Jede Angabe ist ein Wort von `einheiten` bzw. `vokabulare.wertart`
+  · `periode_art` · `geltung_art` · `herkunft_art`. Keine Art bringt ein eigenes Wort mit, und
+  keine Umsetzung führt eine zweite Liste: `BezugsArt` ⟷ `bezugsArt.ts` bekommen Arten und
+  Vokabulare hereingereicht und fragen die Einheiten bei `BezugsEinheit` ⟷ `bezugsEinheit.ts`
+  an. Beide Tests lesen die Quelltexte und verlangen, dass dort kein Wort steht.
+- **Zwei Verweise statt Aufzählung.** `einheiten: "alle"` (Sonstige Menge: jede Einheit des
+  Vokabulars), `einheiten: "messstelle"` (Zählerstand: die Einheit der Messstelle, die selbst im
+  Vokabular stehen muss), `geltung: "alle"` (jedes Objekt). Leere `perioden` heißt: keine
+  Periode — bei Stand und Stammdatum (M1).
+- **`konzept`** hält die Zellen der Tabelle §4.2 Zeichen für Zeichen fest, auch die Beispiele aus
+  Ahrenberg. Was nur dort steht, ist Beleg, keine Regel: die Zusätze „Dauer“, „Anzahl“,
+  „abgeleitet“, die Kadenz „monatlich“ und die Art des Kanals (Zähler, Zustand, Betriebsstunden,
+  Temperatur, §4.9) — `herkunft_art` kennt dafür das eine Wort `messkanal`. „Tag → Monat“ der
+  Gradtagzahl ist gelesen als: Tag und Monat, nicht Woche und Jahr.
+- **`pruefungen`** — passt eine Bezugsgröße zu ihrer Art? `abweichend` nennt ALLE Felder, die
+  nicht passen (art · wertart · geltung_art · einheit · periode_art · herkunft_art), leer heißt
+  passt. Die fünf Bezugsgrößen des Referenzunternehmens (BZ-1 … BZ-5) stehen als `beispiel`
+  darin; beide Tests prüfen sie gegen `uems-referenzunternehmen.json`. BZ-4 steht dort mit
+  `geltung_art` „ort“ (eine Größe an vielen Orten) und ist hier am Gebäude geprüft — der
+  `hinweis` sagt es.
+- ⚠ **Die Art schränkt ein, sie rechnet nicht um.** Gutteile in kg passen nicht, obwohl kg im
+  Vokabular steht; ein Zählerstand in l an einer Messstelle in m³ passt nicht, obwohl l und m³
+  dieselbe Größe sind. Die Umrechnung eines gelieferten Werts bleibt die Regel `einheit`.
+- **Keine Regel der Fälle.** Die Prüfungen gehören zu keinem Abnahmefall (BZ-3 hat keinen), darum
+  stehen sie nicht in `cases` und `zwillinge`; beide Umsetzungen fahren jede.
+
+Es ändert sich kein Verhalten: keine Migration, keine Spalte an `bezugsgroesse`, keine Route und
+keine Portal-Fläche, und kein Produktionsweg ruft `BezugsArt` oder `bezugsArt.ts` an. Das Paket,
+das die Art speichert, legt ihre Spalte additiv an und prüft sie gegen dieses Vokabular.

@@ -86,14 +86,38 @@ Herkunft · Import · Zuordnungs-Vorlage · Befund) und eine Verfeinerung von �
 `docs/fachmodell/tools/fachmodell.py` plus `build_fachmodell.py`, nie durch Handeditieren der
 erzeugten `glossar.md`.
 
+## Die Arten einer Bezugsgröße (nachgetragen am 13.09.2026)
+
+Block **`arten`** der Vektor-Datei = das Vokabular aus §4.2 des Konzepts: neun Arten (Schlüssel
+von `je_art`) mit je möglichen Einheiten, Wertart, Perioden, Geltungsbereichen und Herkünften —
+Prosa `bezugsdaten.md` §8. Zwillinge Java `uems/BezugsArt` (+ `BezugsArtTest`) ⟷ TS
+`src/bezugsArt.ts` (+ `bezugsArt.test.ts`), beide fahren jede Prüfung von `arten.pruefungen`.
+
+- ⚠ **Keine zweite Liste.** Jede Angabe ist ein Wort der VORHANDENEN Vokabulare (`einheiten`,
+  `vokabulare.*`); die Module bekommen Arten und Vokabular hereingereicht und fragen die Einheiten
+  bei `BezugsEinheit`/`bezugsEinheit.ts` an. Beide Tests lesen den Modul-Quelltext und werden rot,
+  sobald dort ein Art- oder Vokabular-Wort steht. Das Schema prüft die Wörter NICHT gegen die
+  Vokabulare (es trüge sonst eine dritte Liste) — das tun die Tests.
+- ⚠ **Verweise statt Aufzählung:** `einheiten: "alle"` / `"messstelle"`, `geltung: "alle"`; leere
+  `perioden` = keine Periode (Stand, Stammdatum). `konzept` = die Tabellenzellen wörtlich (Beleg,
+  keine Regel); Kanal-Art und Klammer-Zusätze stehen NUR dort.
+- ⚠ **Die Art schränkt ein, sie rechnet nicht um** (Gutteile in kg passt nicht; l an einer
+  m³-Messstelle passt nicht).
+- **Keine Regel der Fälle:** `arten.pruefungen` stehen nicht in `cases`/`zwillinge` (BZ-3 hat
+  keinen Abnahmefall); `beispiel` BZ-1 … BZ-5 wird gegen `uems-referenzunternehmen.json`
+  gegengeprüft (BZ-4 dort `geltung_art` „ort“ → hier `gebaeude`, mit `hinweis`).
+- **Keine Spalte, keine Migration, keine Route, kein Aufrufer.** Wer die Art speichert, legt die
+  Spalte additiv an; die DB bekommt dann — wie `bezugsdaten_vokabular()` — EINE aus der Datei
+  erzeugte Funktion, und jeder CHECK fragt sie.
+
 ## Wie man hier weiterbaut
 
 ```bash
 # Java-Zwilling (rein, ~2 s, kein Docker)
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
-(cd services/api && ./mvnw test -Dtest=BezugsdatenVectorsTest)
+(cd services/api && ./mvnw test -Dtest='BezugsdatenVectorsTest,BezugsArtTest')
 # TS-Zwilling
-(cd frontend/portal && npx vitest run src/bezugsdaten.test.ts)
+(cd frontend/portal && npx vitest run src/bezugsdaten.test.ts src/bezugsArt.test.ts)
 # Glossar nach einer Änderung an fachmodell.py
 python3 docs/fachmodell/tools/build_fachmodell.py --check
 ```

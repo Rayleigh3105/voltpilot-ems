@@ -51,7 +51,7 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   `rechte-vectors.json`) für die Schreibwege, `messwerte.ansehen` fürs Lesen — keine Durchsetzung,
   fremd = 404 `nicht_gefunden`. `ablesung.erfassen` bekommt seine Zeile erst mit IP-8.
 - **Nicht gebaut:** Werte schreiben (IP-7 — die Tests schreiben Fassungen direkt in die Tabelle),
-  keine Art-Spalte (Vertrag hat kein Vokabular), kein Prozess/keine Kostenstelle, kein Import,
+  keine Art-Spalte (Vokabular seit 13.09.2026 im Block `arten`, noch ohne Spalte), kein Prozess/keine Kostenstelle, kein Import,
   keine Kanalbindung (M5 = IP-17), keine Portal-Fläche.
 
 ## Prüfen
