@@ -147,7 +147,10 @@ heutige Wortlaut schon Vertrag von `verbrauch-vectors.json` und in den Speicherk
 ist. Die wichtigsten:
 
 - **„Zuwachs 337.600“** steht mit Punkt, drei Stellen und ohne Einheit — ein de-DE-Leser liest
-  337 600. E11 verlangte „337,6 kWh“.
+  337 600. E11 verlangte „337,6 kWh“. In 1.1 bewusst offen: die Rechenregel kennt die Einheit
+  nicht (Durchreichen bis Tag/Monat/Jahr ist ein Folgepaket mit Datenbank-Lauf). Anzeige-Einheit
+  als Ableitung aus E11: gespeichert bleibt die Zähler-Einheit, angezeigt kWh/kvarh/m³ mit den
+  Stellen von E11 (wie „1.482.300 kWh“ statt „1.482,3 MWh“).
 - **„Rechteck-Halten ≤ 2 × Kadenz“** ist Rechenmethode, kein Kundenwort.
 - Sechs Satzformen haben **kein Wort** im Kennzeichen-Vokabular (Anfang/Ende nicht gemessen, nur
   ein Stand, fehlende Intervallmengen, gemessene Zeit).

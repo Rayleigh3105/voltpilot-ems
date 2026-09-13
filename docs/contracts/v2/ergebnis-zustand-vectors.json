@@ -372,7 +372,7 @@
     {
       "stelle": "kennzeichen.luecke_zuwachs",
       "befund": "Die Zahl steht mit Punkt als Dezimalzeichen, drei Nachkommastellen und ohne Einheit: „Zuwachs 337.600“ liest ein de-DE-Leser als 337 600. E11 verlangte „337,6 kWh“.",
-      "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-6 Vertrag (verbrauch-vectors.json, Python-Zwilling, gespeichert in kennzeichen der Speicherklassen). Eine Änderung ist eine neue Fassung beider Verträge samt Umgang mit gespeicherten Zeilen — nicht Umfang von IP-8."
+      "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-6 Vertrag (verbrauch-vectors.json, Python-Zwilling, gespeichert in kennzeichen der Speicherklassen). In 1.1 bewusst offen: die Rechenregel (VerbrauchRegeln.mengeZaehlerstand/zaehlerstandAusTeilperioden) kennt die Einheit nicht, und TagVerdichter/PeriodeVerdichter/ZeitraumMenge laden den Katalog nicht — das Durchreichen ist ein Folgepaket mit Datenbank-Lauf; die alte Form kommt dann nach fruehere_fassungen. Anzeige-Einheit (Ableitung aus E11, kein Captain-Entscheid zu Wh/varh/MWh): gespeichert bleibt die Einheit des Zählers, angezeigt wird kWh bzw. kvarh bzw. m³ mit den Stellen von E11 — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“."
     },
     {
       "stelle": "kennzeichen.aus_leistung_integriert",
