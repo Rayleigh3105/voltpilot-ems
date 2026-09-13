@@ -20,7 +20,9 @@
     "Seit AP-09 IP-5 (13.09.2026): `verwalten` trägt M1–M6 und den GESCHLOSSENEN Satz der Ablehnungen",
     "mit Status und Kundensatz (Java uems/BezugsgroesseRegeln, TS bezugsgroesse.ts); Regel `verwalten`.",
     "Seit dem 13.09.2026: `arten` trägt das Vokabular der ARTEN einer Bezugsgröße aus §4.2 — je Art Einheiten,",
-    "Wertart, Perioden, Geltungsbereiche und Herkünfte, alles Wörter der vorhandenen Vokabulare (Java uems/BezugsArt, TS bezugsArt.ts)."
+    "Wertart, Perioden, Geltungsbereiche und Herkünfte, alles Wörter der vorhandenen Vokabulare (Java uems/BezugsArt, TS bezugsArt.ts).",
+    "Seit AP-09 IP-11 (13.09.2026): `csv` trägt den CSV-Leser C1 — Grenzen, Kodierungen, Trennzeichen, Reihenfolge, Neutralisierung beim Anzeigen, die Zusätze zu den",
+    "Befunden und die Erkennungs-Fälle (Java uems/CsvLeser, kein TS-Zwilling); Regel `csv` an B1, B12 und B13."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./bezugsdaten.schema.json",
@@ -878,6 +880,1067 @@
       "Eine Spalte für die Art an `bezugsgroesse` gibt es NICHT und keine Route nimmt die Art an; das Paket, das sie braucht, legt sie additiv an und prüft sie gegen dieses Vokabular."
     ]
   },
+  "csv": {
+    "herkunft": "UEMS AP-09 §4.6 C1 (Datei) und C8 (Befunde), E14 (Multipart ≤ 5 MB und ≤ 100 000 Datenzeilen, UTF-8/Windows-1252), §5 Ablauf „Datei“, §7 B1/B12/B13 — nachgetragen mit AP-09 IP-11 am 13.09.2026",
+    "grenzen": {
+      "bytes_hoechstens": 5242880,
+      "datenzeilen_hoechstens": 100000
+    },
+    "kodierungen": [
+      "utf-8",
+      "windows-1252"
+    ],
+    "zeilenenden": [
+      "\r\n",
+      "\n",
+      "\r"
+    ],
+    "trennzeichen": [
+      ";",
+      ",",
+      "\t"
+    ],
+    "erkennung_zeilen": 20,
+    "reihenfolge": [
+      "groesse",
+      "leer",
+      "kodierung",
+      "trennzeichen",
+      "anfuehrungszeichen",
+      "leerzeilen",
+      "kopfzeile",
+      "datenzeilen"
+    ],
+    "befunde": [
+      "datei_zu_gross",
+      "kodierung_unlesbar",
+      "keine_datenzeilen"
+    ],
+    "neutralisieren": {
+      "zeichen": [
+        "=",
+        "+",
+        "-",
+        "@",
+        "\t",
+        "\r"
+      ],
+      "praefix": "'",
+      "spiegel": "services/api/src/main/java/com/voltpilot/api/measurement/MeasurementHistoryService.java"
+    },
+    "zusaetze": {
+      "zu_viele_bytes": {
+        "befund": "datei_zu_gross",
+        "satz": "Erlaubt sind höchstens 5 MB."
+      },
+      "zu_viele_datenzeilen": {
+        "befund": "datei_zu_gross",
+        "satz": "Erlaubt sind höchstens 100 000 Datenzeilen."
+      },
+      "leer_0_byte": {
+        "befund": "keine_datenzeilen",
+        "satz": "Die Datei ist leer (0 Byte)."
+      },
+      "nur_leerzeilen": {
+        "befund": "keine_datenzeilen",
+        "satz": "Die Datei enthält keine Zeile mit Inhalt."
+      },
+      "nur_kopfzeile": {
+        "befund": "keine_datenzeilen",
+        "satz": "Die Datei enthält nur die Kopfzeile."
+      },
+      "kodierung_nicht_erlaubt": {
+        "befund": "kodierung_unlesbar",
+        "satz": "Erlaubt sind Textdateien in UTF-8 oder Windows-1252 — keine Excel-Mappe und kein „Unicode-Text“."
+      },
+      "kodierung_nicht_wie_vorgabe": {
+        "befund": "kodierung_unlesbar",
+        "satz": "Die Datei ist nicht in der Kodierung gespeichert, die die Vorlage festhält."
+      },
+      "anfuehrungszeichen_offen": {
+        "befund": "kodierung_unlesbar",
+        "satz": "Ein Feld in Anführungszeichen ist nicht richtig abgeschlossen."
+      }
+    },
+    "pruefungen": [
+      {
+        "name": "Windows-1252 mit Umlaut: „Stück“ (BZ-2 Gutteile Montage) wird als Windows-1252 erkannt",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bereich;Menge;Einheit",
+              "2026-10;Montage;48.200;Stück"
+            ],
+            "zeilenende": "\r\n",
+            "kodierung": "windows-1252"
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "windows-1252",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bereich",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;Montage;48.200;Stück",
+              "felder": [
+                "2026-10",
+                "Montage",
+                "48.200",
+                "Stück"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dieselbe Zeile als UTF-8 ohne BOM wird als UTF-8 erkannt — dieselben Felder",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bereich;Menge;Einheit",
+              "2026-10;Montage;48.200;Stück"
+            ],
+            "kodierung": "utf-8"
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bereich",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;Montage;48.200;Stück",
+              "felder": [
+                "2026-10",
+                "Montage",
+                "48.200",
+                "Stück"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Der BOM entscheidet vor der Vorlage: UTF-8 mit BOM bleibt UTF-8, auch wenn die Vorlage Windows-1252 festhält",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bereich;Menge;Einheit",
+              "2026-10;Montage;48.200;Stück"
+            ],
+            "kodierung": "utf-8",
+            "bom": true
+          },
+          "vorgabe": {
+            "kodierung": "windows-1252"
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": true,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bereich",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;Montage;48.200;Stück",
+              "felder": [
+                "2026-10",
+                "Montage",
+                "48.200",
+                "Stück"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Die Vorlage hält UTF-8 fest, die Datei ist Windows-1252 → kodierung_unlesbar, nie ein stilles Ersatzzeichen",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bereich;Menge;Einheit",
+              "2026-10;Montage;48.200;Stück"
+            ],
+            "kodierung": "windows-1252"
+          },
+          "vorgabe": {
+            "kodierung": "utf-8"
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "kodierung_nicht_wie_vorgabe",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Ein Byte, das weder UTF-8 noch in Windows-1252 belegt ist (0x81) → kodierung_unlesbar",
+        "eingang": {
+          "datei": {
+            "hex": "506572696f64653b4d656e67650a81"
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "kodierung_nicht_erlaubt",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "„Unicode-Text“ aus Excel (UTF-16 mit BOM FF FE) → kodierung_unlesbar, kein Lesen mit Nullbytes",
+        "eingang": {
+          "datei": {
+            "hex": "fffe50006500720069006f006400650009004d0065006e00670065000d000a0032003000320036002d00310030000900340038002e003200300030000d000a00"
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "kodierung_nicht_erlaubt",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Dieselbe UTF-16-Datei, auch wenn die Vorlage Windows-1252 festhält: Nullbytes sind nie Text → kodierung_nicht_erlaubt, nicht „wie Vorgabe“",
+        "eingang": {
+          "datei": {
+            "hex": "fffe50006500720069006f006400650009004d0065006e00670065000d000a0032003000320036002d00310030000900340038002e003200300030000d000a00"
+          },
+          "vorgabe": {
+            "kodierung": "windows-1252"
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "kodierung_nicht_erlaubt",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Eine Excel-Mappe (ZIP), umbenannt in .csv → kodierung_unlesbar",
+        "eingang": {
+          "datei": {
+            "hex": "504b030414000600080000002100"
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "kodierung_nicht_erlaubt",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Nur ein BOM → keine_datenzeilen, erkannt ist nur UTF-8",
+        "eingang": {
+          "datei": {
+            "hex": "efbbbf"
+          }
+        },
+        "ergebnis": {
+          "befund": "keine_datenzeilen",
+          "zusatz": "nur_leerzeilen",
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": true,
+          "trennzeichen": ";",
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Gemischte Trennzeichen: 5 Zeilen „;“ gegen 2 Zeilen „,“ → die Mehrheit „;“; die Komma-Zeilen bleiben EIN Feld",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bereich;Menge;Einheit",
+              "2026-10;Montage;48.200;Stück",
+              "2026-11;Montage;47.900;Stück",
+              "2026-11,Spritzguss gesamt,301.200,kg",
+              "2026-12;Montage;46.100;Stück",
+              "2026-12,Spritzguss gesamt,295.800,kg",
+              "2027-01;Montage;44.000;Stück"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bereich",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": 6,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;Montage;48.200;Stück",
+              "felder": [
+                "2026-10",
+                "Montage",
+                "48.200",
+                "Stück"
+              ]
+            },
+            {
+              "nr": 3,
+              "text": "2026-11;Montage;47.900;Stück",
+              "felder": [
+                "2026-11",
+                "Montage",
+                "47.900",
+                "Stück"
+              ]
+            },
+            {
+              "nr": 4,
+              "text": "2026-11,Spritzguss gesamt,301.200,kg",
+              "felder": [
+                "2026-11,Spritzguss gesamt,301.200,kg"
+              ]
+            },
+            {
+              "nr": 5,
+              "text": "2026-12;Montage;46.100;Stück",
+              "felder": [
+                "2026-12",
+                "Montage",
+                "46.100",
+                "Stück"
+              ]
+            },
+            {
+              "nr": 6,
+              "text": "2026-12,Spritzguss gesamt,295.800,kg",
+              "felder": [
+                "2026-12,Spritzguss gesamt,295.800,kg"
+              ]
+            },
+            {
+              "nr": 7,
+              "text": "2027-01;Montage;44.000;Stück",
+              "felder": [
+                "2027-01",
+                "Montage",
+                "44.000",
+                "Stück"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Gleichstand in der Zeile: „Montage;48,5“ zerlegt „;“ wie „,“ in zwei Felder → „;“ nach der Reihenfolge",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Montage;48,5"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": false,
+          "kopf": null,
+          "spalten": 2,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 1,
+              "text": "Montage;48,5",
+              "felder": [
+                "Montage",
+                "48,5"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Eine Spalte ohne Trennzeichen: niemand stimmt ab → „;“, Kopfzeile „Menge“",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Menge",
+              "48200"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Menge"
+          ],
+          "spalten": 1,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "48200",
+              "felder": [
+                "48200"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Die Vorlage hält „,“ fest: gelesen wird mit „,“, nicht mit der Mehrheit — nichts wird geraten",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Artikelgruppe;Menge;Einheit",
+              "2026-10;Spritzguss gesamt;312.400,0;kg"
+            ]
+          },
+          "vorgabe": {
+            "trennzeichen": ","
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ",",
+          "kopfzeile": false,
+          "kopf": null,
+          "spalten": 1,
+          "datenzeilen": 2,
+          "zeilen": [
+            {
+              "nr": 1,
+              "text": "Periode;Artikelgruppe;Menge;Einheit",
+              "felder": [
+                "Periode;Artikelgruppe;Menge;Einheit"
+              ]
+            },
+            {
+              "nr": 2,
+              "text": "2026-10;Spritzguss gesamt;312.400,0;kg",
+              "felder": [
+                "2026-10;Spritzguss gesamt;312.400",
+                "0;kg"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RFC 4180: Trennzeichen, verdoppeltes Anführungszeichen und Zeilenumbruch IM Feld; die Nummer bleibt die der Datei",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bemerkung;Menge",
+              "2026-10;\"Halle 2; Linie \"\"A\"\"",
+              "zweite Zeile\";48.200",
+              "2026-11;ohne;47.900"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bemerkung",
+            "Menge"
+          ],
+          "spalten": 3,
+          "datenzeilen": 2,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;\"Halle 2; Linie \"\"A\"\"\nzweite Zeile\";48.200",
+              "felder": [
+                "2026-10",
+                "Halle 2; Linie \"A\"\nzweite Zeile",
+                "48.200"
+              ]
+            },
+            {
+              "nr": 4,
+              "text": "2026-11;ohne;47.900",
+              "felder": [
+                "2026-11",
+                "ohne",
+                "47.900"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Kaputtes Anführungszeichen: nie geschlossen → kodierung_unlesbar mit der Zeile, in der das Feld beginnt",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Menge",
+              "2026-10;\"48.200",
+              "2026-11;47.900"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "anfuehrungszeichen_offen",
+          "zeile": 2,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Kaputtes Anführungszeichen: Text nach dem schließenden → kodierung_unlesbar",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Menge",
+              "2026-10;47.900",
+              "2026-11;\"48\"200"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": "kodierung_unlesbar",
+          "zusatz": "anfuehrungszeichen_offen",
+          "zeile": 3,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Ein Anführungszeichen mitten im Feld ohne Anführungszeichen ist ein Zeichen: „Rohr 12\" Stahl“",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Bezeichnung;Menge",
+              "Rohr 12\" Stahl;4"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Bezeichnung",
+            "Menge"
+          ],
+          "spalten": 2,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "Rohr 12\" Stahl;4",
+              "felder": [
+                "Rohr 12\" Stahl",
+                "4"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Formel-Neutralisierung beim ANZEIGEN: gelesen bleibt „=1+1“, angezeigt wird „'=1+1“ — ebenso + - @",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Bemerkung;Menge",
+              "2026-10;=1+1;48.200",
+              "2026-11;+49 2651 000;-5",
+              "2026-12;@Ines Kaltenbach;47.900"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Bemerkung",
+            "Menge"
+          ],
+          "spalten": 3,
+          "datenzeilen": 3,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;=1+1;48.200",
+              "felder": [
+                "2026-10",
+                "=1+1",
+                "48.200"
+              ]
+            },
+            {
+              "nr": 3,
+              "text": "2026-11;+49 2651 000;-5",
+              "felder": [
+                "2026-11",
+                "+49 2651 000",
+                "-5"
+              ]
+            },
+            {
+              "nr": 4,
+              "text": "2026-12;@Ines Kaltenbach;47.900",
+              "felder": [
+                "2026-12",
+                "@Ines Kaltenbach",
+                "47.900"
+              ]
+            }
+          ],
+          "anzeige": [
+            [
+              "2026-10",
+              "'=1+1",
+              "48.200"
+            ],
+            [
+              "2026-11",
+              "'+49 2651 000",
+              "'-5"
+            ],
+            [
+              "2026-12",
+              "'@Ines Kaltenbach",
+              "47.900"
+            ]
+          ]
+        }
+      },
+      {
+        "name": "Zeilenenden \\r\\n, \\n und \\r in einer Datei: drei Datenzeilen",
+        "eingang": {
+          "datei": {
+            "text": "Periode;Menge\r\n2026-10;48.200\n2026-11;47.900\r2026-12;46.100"
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Menge"
+          ],
+          "spalten": 2,
+          "datenzeilen": 3,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "2026-10;48.200",
+              "felder": [
+                "2026-10",
+                "48.200"
+              ]
+            },
+            {
+              "nr": 3,
+              "text": "2026-11;47.900",
+              "felder": [
+                "2026-11",
+                "47.900"
+              ]
+            },
+            {
+              "nr": 4,
+              "text": "2026-12;46.100",
+              "felder": [
+                "2026-12",
+                "46.100"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Leerzeilen, „;“ allein und nur Leerzeichen sind keine Datenzeilen; die Nummern bleiben die der Datei",
+        "eingang": {
+          "datei": {
+            "text": "Periode;Menge\n\n2026-10;48.200\n;\n   \n2026-11;47.900\n"
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Menge"
+          ],
+          "spalten": 2,
+          "datenzeilen": 2,
+          "zeilen": [
+            {
+              "nr": 3,
+              "text": "2026-10;48.200",
+              "felder": [
+                "2026-10",
+                "48.200"
+              ]
+            },
+            {
+              "nr": 6,
+              "text": "2026-11;47.900",
+              "felder": [
+                "2026-11",
+                "47.900"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Nur Text in zwei Zeilen: keine Kopfzeile erkannt, zwei Datenzeilen",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Montage;Halle 2",
+              "Spritzguss;Halle 1"
+            ]
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": false,
+          "kopf": null,
+          "spalten": 2,
+          "datenzeilen": 2,
+          "zeilen": [
+            {
+              "nr": 1,
+              "text": "Montage;Halle 2",
+              "felder": [
+                "Montage",
+                "Halle 2"
+              ]
+            },
+            {
+              "nr": 2,
+              "text": "Spritzguss;Halle 1",
+              "felder": [
+                "Spritzguss",
+                "Halle 1"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Dieselbe Datei, die Vorlage hält „Kopfzeile ja“ fest: eine Datenzeile",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Montage;Halle 2",
+              "Spritzguss;Halle 1"
+            ]
+          },
+          "vorgabe": {
+            "kopfzeile": true
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Montage",
+            "Halle 2"
+          ],
+          "spalten": 2,
+          "datenzeilen": 1,
+          "zeilen": [
+            {
+              "nr": 2,
+              "text": "Spritzguss;Halle 1",
+              "felder": [
+                "Spritzguss",
+                "Halle 1"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Genau 5 MB (5 242 880 Bytes) werden gelesen",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Artikelgruppe;Menge;Einheit;Bemerkungen des ERP-Systems"
+            ],
+            "fuellen": {
+              "zeile": "2026-10;Spritzguss gesamt;312.400,0;kg;Buchung ERP Spritzguss 1",
+              "anzahl": 81919
+            }
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Artikelgruppe",
+            "Menge",
+            "Einheit",
+            "Bemerkungen des ERP-Systems"
+          ],
+          "spalten": 5,
+          "datenzeilen": 81919
+        }
+      },
+      {
+        "name": "Ein Byte mehr (5 242 881 Bytes) → datei_zu_gross, nichts gelesen",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Artikelgruppe;Menge;Einheit;Bemerkung aus dem ERP-Export"
+            ],
+            "fuellen": {
+              "zeile": "2026-10;Spritzguss gesamt;312.400,0;kg;Buchung ERP Spritzguss 1",
+              "anzahl": 81919
+            }
+          }
+        },
+        "ergebnis": {
+          "befund": "datei_zu_gross",
+          "zusatz": "zu_viele_bytes",
+          "zeile": null,
+          "kodierung": null,
+          "bom": null,
+          "trennzeichen": null,
+          "kopfzeile": null,
+          "kopf": null,
+          "spalten": null,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      },
+      {
+        "name": "Genau 100 000 Datenzeilen werden gelesen",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Artikelgruppe;Menge;Einheit"
+            ],
+            "fuellen": {
+              "zeile": "2026-10;Spritzguss gesamt;312.400,0;kg",
+              "anzahl": 100000
+            }
+          }
+        },
+        "ergebnis": {
+          "befund": null,
+          "zusatz": null,
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Artikelgruppe",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": 100000
+        }
+      },
+      {
+        "name": "100 001 Datenzeilen → datei_zu_gross; Kodierung, Trennzeichen und Kopfzeile stehen schon fest",
+        "eingang": {
+          "datei": {
+            "zeilen": [
+              "Periode;Artikelgruppe;Menge;Einheit"
+            ],
+            "fuellen": {
+              "zeile": "2026-10;Spritzguss gesamt;312.400,0;kg",
+              "anzahl": 100001
+            }
+          }
+        },
+        "ergebnis": {
+          "befund": "datei_zu_gross",
+          "zusatz": "zu_viele_datenzeilen",
+          "zeile": null,
+          "kodierung": "utf-8",
+          "bom": false,
+          "trennzeichen": ";",
+          "kopfzeile": true,
+          "kopf": [
+            "Periode",
+            "Artikelgruppe",
+            "Menge",
+            "Einheit"
+          ],
+          "spalten": 4,
+          "datenzeilen": null,
+          "zeilen": []
+        }
+      }
+    ],
+    "hinweis": [
+      "Der Leser liest Bytes und gibt Zeilen zurück — mehr nicht. Er deutet kein Feld (keine Zahl, kein Datum, kein Trimmen), bildet keinen Fingerabdruck (C2) und schreibt nichts; das beginnt mit der Zuordnung und der Vorschau (IP-12). Umsetzung: Java `uems/CsvLeser`; einen TS-Zwilling gibt es nicht (`zwillinge_grund.csv`). Die Regel `csv` an B1, B12 und B13 und JEDE Prüfung dieses Blocks fährt `CsvLeserTest` bzw. `BezugsdatenVectorsTest`.",
+      "`reihenfolge`: die erste Stufe, die nicht passt, spricht. groesse (mehr als `bytes_hoechstens`) → leer (0 Byte) → kodierung → trennzeichen → anfuehrungszeichen (RFC 4180) → leerzeilen (keine Zeile mit Inhalt) → kopfzeile → datenzeilen (mehr als `datenzeilen_hoechstens`, dann keine). Was VOR der Ablehnung feststand, steht im Ergebnis; alles danach ist null, `zeilen` ist leer. Die Zeilen werden der Reihe nach gelesen; ein Anführungszeichen-Fehler VOR der 100 001. Datenzeile spricht zuerst.",
+      "Es gibt kein neues Befund-Wort: C8 ist geschlossen. Jede Ablehnung ist `datei_zu_gross`, `kodierung_unlesbar` oder `keine_datenzeilen` mit ihrem Kundensatz aus `befund_saetze`; der `zusatz` sagt, WORAN es lag (Vorbild §7 B12 „Die Datei ist leer (0 Byte).“), `zeile` die Zeile der Datei, wenn es eine gibt. Eine RFC-4180-Verletzung ist `kodierung_unlesbar`: der Satz „Die Datei lässt sich nicht lesen.“ trifft sie, und hinter einem offenen Anführungszeichen ist keine Zeilengrenze mehr sicher.",
+      "`grenzen.bytes_hoechstens`: 5 MB = 5 × 1 024 × 1 024 Bytes — keine Datei, die ein Betriebssystem mit „5 MB“ oder weniger anzeigt, wird abgelehnt, und es ist die Zahl, die Spring unter `5MB` versteht (IP-12). `datenzeilen_hoechstens` zählt ohne Kopfzeile und ohne Leerzeilen.",
+      "Kodierung: ein UTF-8-BOM entscheidet (auch gegen die Vorlage) und gehört nicht zur ersten Zeile. Sonst die Vorlage, sonst UTF-8, sonst Windows-1252 — beide STRENG: ein ungültiges oder nicht belegtes Byte (0x81, 0x8D, 0x8F, 0x90, 0x9D) ergibt nie ein Ersatzzeichen. Eine Datei nur aus ASCII-Bytes ist in beiden gleich und heißt UTF-8. Steuerzeichen außer Tab, \\n und \\r machen jede Datei unlesbar — so fallen eine Excel-Mappe (ZIP) und „Unicode-Text“ (UTF-16, jedes zweite Byte 0) nicht als Text durch.",
+      "Trennzeichen: die ersten `erkennung_zeilen` Zeilen MIT Inhalt stimmen ab; jede für das Trennzeichen, das sie (Anführungszeichen beachtet) in die meisten Felder zerlegt, mindestens zwei. Gleichstand in der Zeile und in der Summe entscheidet die Reihenfolge von `trennzeichen`; stimmt niemand ab (eine Spalte), gilt das erste. Zeilen der Minderheit bleiben, was sie mit dem Sieger sind — die Zuordnung findet sie; der Leser rät nicht um.",
+      "Kopfzeile: die erste Zeile mit Inhalt ist sie, wenn keines ihrer Felder nach Zahl oder Datum aussieht (nur Ziffern und `+ - . , : / '` und Leerzeichen, mindestens eine Ziffer) UND die zweite fehlt oder mindestens ein solches Feld hat. Die Vorlage kann Kopfzeile, Trennzeichen und Kodierung festhalten; dann wird nicht erkannt.",
+      "Zeilen: `nr` ist die Zeile der Datei, in der die Zeile beginnt (1-basiert, Leerzeilen mitgezählt), `text` der Zeilentext ohne Zeilenende, `felder` die Felder nach RFC 4180, unverändert. Zeilenenden `\\r\\n` und `\\n` (C1) — und `\\r` allein, damit eine Datei im alten Mac-Format nicht zu einer einzigen Zeile wird. Eine Zeile ohne ein nicht-leeres Feld (leer, nur Leerzeichen, nur Trennzeichen) wird übersprungen. Ein `\"` mitten in einem Feld ohne Anführungszeichen ist ein Zeichen.",
+      "`neutralisieren` (C1, Spiegel des Exports): beim ANZEIGEN bekommt ein Feld, das mit einem der `zeichen` beginnt, das `praefix` vorangestellt — genau wie der Export in `spiegel` es schreibt (C1 nennt = + - @, der Export zusätzlich Tab und \\r). Gelesen und gespeichert wird der Text der Datei; eine zweite Wahrheit über die Datei des Kunden gibt es nicht. Der Leser kennt keine Spaltenart: auch „-5“ wird so angezeigt, solange die Zuordnung das Feld nicht als Zahl liest.",
+      "`datei` einer Prüfung: `zeilen` (mit `zeilenende`, Vorgabe \\n, und einem Zeilenende auch nach der letzten, außer `ohne_schluss`) ODER `text` (roh) ODER `hex` (rohe Bytes); `fuellen` hängt `anzahl`-mal `zeile` + Zeilenende an; `kodierung` (Vorgabe utf-8) und `bom` (Vorgabe false) machen daraus Bytes. Im Ergebnis wird jedes Feld verglichen, das dasteht; fehlen `zeilen` oder `anzeige`, werden sie nicht verglichen."
+    ]
+  },
   "zwillinge": {
     "zahl": [
       "java",
@@ -929,6 +1992,9 @@
     ],
     "verwalten": [
       "java"
+    ],
+    "csv": [
+      "java"
     ]
   },
   "zwillinge_grund": {
@@ -936,7 +2002,8 @@
     "fassung": "Fassungen, Vier-Augen und Rücknahme sind der Schreibweg des Servers (F1–F4, C7). Das Portal zeigt den Verlauf, es bildet ihn nicht.",
     "stammdatum": "Der Stichtag eines zeitgültigen Stammdatums wird im Lesemodell gelesen (E17); das Portal bekommt den Wert fertig.",
     "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht.",
-    "verwalten": "Anlegen, Ändern, Archivieren und Löschen einer Bezugsgröße sind der Schreibweg des Servers (M1–M6 brauchen die gespeicherten Werte und die je belegten Kennzeichen). Das Portal zeigt die Ablehnung mit ihrem Kundensatz — den geschlossenen Satz `verwalten.ablehnungen` prüft der TS-Test gegen `bezugsgroesse.ts`."
+    "verwalten": "Anlegen, Ändern, Archivieren und Löschen einer Bezugsgröße sind der Schreibweg des Servers (M1–M6 brauchen die gespeicherten Werte und die je belegten Kennzeichen). Das Portal zeigt die Ablehnung mit ihrem Kundensatz — den geschlossenen Satz `verwalten.ablehnungen` prüft der TS-Test gegen `bezugsgroesse.ts`.",
+    "csv": "Die Datei liest der Server beim Hochladen (C1, E14 Multipart); das Portal bekommt Kodierung, Trennzeichen, Kopfzeile und Zeilen fertig und zeigt sie — es liest keine Datei selbst."
   },
   "_abweichungen": [
     {
@@ -970,6 +2037,13 @@
       "vorlage": null,
       "statt": "dreizehn Prüfungen der Regel `verwalten` (M1–M6)",
       "grund": "Die Vorlage rechnet Werte, nicht das Verwalten der Bezugsgröße; M1–M6 standen nur in §4.2 des Konzepts. AP-09 IP-5 trägt sie als Prüfungen in die Fälle nach, in deren Bezugsgröße sie spielen — keine bestehende Prüfung, kein Betrag und kein Ergebnis der Vorlage ändert sich."
+    },
+    {
+      "fall": "B1 · Regel csv",
+      "feld": "gegeben.datei.kodierung",
+      "vorlage": "Windows-1252",
+      "statt": "windows-1252 mit der Vorlage „ERP-Export Spritzguss“, utf-8 ohne Vorlage",
+      "grund": "Die zwei Zeilen der Vorlage enthalten kein Byte über 0x7F: in UTF-8 und Windows-1252 sind es dieselben Zeichen, und kein Leser kann die beiden unterscheiden. Ohne Vorlage heißt eine solche Datei UTF-8 (C1: UTF-8 zuerst); die Vorlage, die B1 speichert, hält Windows-1252 fest (C1 „in der Vorlage festgehalten“), und damit steht Windows-1252 da. Felder und Zeilen sind in beiden Prüfungen gleich — kein Betrag und kein Ergebnis der Vorlage ändert sich."
     }
   ],
   "_nicht_geprueft": [
@@ -990,8 +2064,8 @@
     },
     {
       "fall": "B1, B12, B13",
-      "feld": "gegeben.datei (Kodierung, Trennzeichen, Kopfzeile, Fingerabdruck)",
-      "warum": "Das Lesen einer CSV-Datei (C1: Kodierung, Trennzeichen, RFC-4180, SHA-256) ist IP-11. Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei bekannt ist, bekommt die Regel `urteil` als Eingang `datei_fingerabdruck_bekannt`."
+      "feld": "gegeben.datei.sha256 (Fingerabdruck)",
+      "warum": "Kodierung, Trennzeichen und Kopfzeile prüft seit AP-09 IP-11 die Regel `csv` (Java uems/CsvLeser). Den Fingerabdruck der Datei (C2/E8, SHA-256) bildet erst die Vorschau (IP-12); ob eine Datei bekannt ist, bekommt die Regel `urteil` als Eingang `datei_fingerabdruck_bekannt`."
     },
     {
       "fall": "alle",
@@ -1150,6 +2224,240 @@
             ],
             "ereignisse": [],
             "wirksamer_betrag": "312400.0"
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "ERP-Datei, wie die Vorlage „ERP-Export Spritzguss“ sie festhält: Windows-1252 · „;“ · Kopfzeile · 1 Datenzeile",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "zeilenende": "\r\n",
+                "kodierung": "windows-1252"
+              },
+              "vorgabe": {
+                "kodierung": "windows-1252"
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "windows-1252",
+              "bom": false,
+              "trennzeichen": ";",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 1,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Dieselbe Datei ohne Vorlage: nur ASCII-Bytes lesen sich als UTF-8 — dieselben Felder",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "zeilenende": "\r\n",
+                "kodierung": "windows-1252"
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": ";",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 1,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Dieselbe Datei als UTF-8 mit BOM — der BOM ist kein Teil der Kopfzeile",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "kodierung": "utf-8",
+                "bom": true
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": true,
+              "trennzeichen": ";",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 1,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Dieselbe Datei mit Tab — Tab erkannt, dieselben Felder",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode\tArtikelgruppe\tMenge\tEinheit",
+                  "2026-10\tSpritzguss gesamt\t312.400,0\tkg"
+                ]
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": "\t",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 1,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10\tSpritzguss gesamt\t312.400,0\tkg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Dieselbe Datei mit „,“ — die Menge mit Dezimalkomma steht in Anführungszeichen (RFC 4180)",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode,Artikelgruppe,Menge,Einheit",
+                  "2026-10,Spritzguss gesamt,\"312.400,0\",kg"
+                ]
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": ",",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 1,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10,Spritzguss gesamt,\"312.400,0\",kg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                }
+              ]
+            }
           }
         }
       ],
@@ -3659,6 +4967,96 @@
               "keine_datenzeilen"
             ]
           }
+        },
+        {
+          "regel": "csv",
+          "name": "Nur die Kopfzeile: Trennzeichen „;“, 4 Spalten, 0 Datenzeilen → keine_datenzeilen",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit"
+                ]
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": "keine_datenzeilen",
+              "zusatz": "nur_kopfzeile",
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": ";",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 0,
+              "zeilen": []
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "0-Byte-Datei: keine_datenzeilen mit Zusatz „Die Datei ist leer (0 Byte).“ — nichts erkannt",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "hex": ""
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": "keine_datenzeilen",
+              "zusatz": "leer_0_byte",
+              "zeile": null,
+              "kodierung": null,
+              "bom": null,
+              "trennzeichen": null,
+              "kopfzeile": null,
+              "kopf": null,
+              "spalten": null,
+              "datenzeilen": null,
+              "zeilen": []
+            }
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Nur Leerzeilen: keine_datenzeilen, keine Kopfzeile erkannt",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "",
+                  "",
+                  ""
+                ],
+                "zeilenende": "\r\n"
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": "keine_datenzeilen",
+              "zusatz": "nur_leerzeilen",
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": ";",
+              "kopfzeile": null,
+              "kopf": null,
+              "spalten": null,
+              "datenzeilen": null,
+              "zeilen": []
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -3900,6 +5298,73 @@
           },
           "ergebnis": {
             "ablehnung": "einheit_unbekannt"
+          }
+        },
+        {
+          "regel": "csv",
+          "name": "Die gemischte Datei liest sich vollständig: 3 Datenzeilen — „lbs“ und „Paletten“ lehnt erst die Regel einheit ab, nie der Leser",
+          "eingang": {
+            "csv": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "2026-10;Spritzguss Export;688.720;lbs",
+                  "2026-10;Montage;96;Paletten"
+                ]
+              }
+            }
+          },
+          "ergebnis": {
+            "csv": {
+              "befund": null,
+              "zusatz": null,
+              "zeile": null,
+              "kodierung": "utf-8",
+              "bom": false,
+              "trennzeichen": ";",
+              "kopfzeile": true,
+              "kopf": [
+                "Periode",
+                "Artikelgruppe",
+                "Menge",
+                "Einheit"
+              ],
+              "spalten": 4,
+              "datenzeilen": 3,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "text": "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss gesamt",
+                    "312.400,0",
+                    "kg"
+                  ]
+                },
+                {
+                  "nr": 3,
+                  "text": "2026-10;Spritzguss Export;688.720;lbs",
+                  "felder": [
+                    "2026-10",
+                    "Spritzguss Export",
+                    "688.720",
+                    "lbs"
+                  ]
+                },
+                {
+                  "nr": 4,
+                  "text": "2026-10;Montage;96;Paletten",
+                  "felder": [
+                    "2026-10",
+                    "Montage",
+                    "96",
+                    "Paletten"
+                  ]
+                }
+              ]
+            }
           }
         }
       ],

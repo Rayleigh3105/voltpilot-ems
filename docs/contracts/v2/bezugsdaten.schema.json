@@ -324,6 +324,60 @@
         "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
+    "csv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "grenzen", "kodierungen", "zeilenenden", "trennzeichen", "erkennung_zeilen", "reihenfolge", "befunde", "neutralisieren", "zusaetze", "pruefungen"],
+      "description": "AP-09 §4.6 C1 (nachgetragen mit IP-11 am 13.09.2026): der CSV-Leser — Grenzen, Kodierungen, Zeilenenden, Trennzeichen, die Reihenfolge der Stufen, die Befunde, die Formel-Neutralisierung beim Anzeigen, die Zusätze und die Erkennungs-Fälle. Umsetzung Java `uems/CsvLeser`; kein TS-Zwilling (`zwillinge_grund.csv`).",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "grenzen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bytes_hoechstens", "datenzeilen_hoechstens"],
+          "properties": {
+            "bytes_hoechstens": { "type": "integer", "const": 5242880, "description": "5 MB = 5 × 1 024 × 1 024 Bytes (E14)." },
+            "datenzeilen_hoechstens": { "type": "integer", "const": 100000, "description": "Ohne Kopfzeile und ohne Leerzeilen (E14)." }
+          }
+        },
+        "kodierungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_kodierung" }, "description": "In der Reihenfolge, in der sie versucht werden." },
+        "zeilenenden": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["\r\n", "\n", "\r"] } },
+        "trennzeichen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_trennzeichen" } },
+        "erkennung_zeilen": { "type": "integer", "minimum": 1, "description": "So viele Zeilen mit Inhalt stimmen über das Trennzeichen ab." },
+        "reihenfolge": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["groesse", "leer", "kodierung", "trennzeichen", "anfuehrungszeichen", "leerzeilen", "kopfzeile", "datenzeilen"] }
+        },
+        "befunde": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/befund" }, "description": "Die Befunde aus C8, die der Leser nennen kann." },
+        "neutralisieren": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeichen", "praefix", "spiegel"],
+          "properties": {
+            "zeichen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 1 } },
+            "praefix": { "type": "string", "const": "'" },
+            "spiegel": { "type": "string", "minLength": 1, "description": "Die Datei des Exports, dessen Regel gespiegelt wird." }
+          }
+        },
+        "zusaetze": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["befund", "satz"],
+            "properties": {
+              "befund": { "$ref": "#/$defs/befund" },
+              "satz": { "type": "string", "minLength": 1 }
+            }
+          },
+          "description": "Je Zusatz (Schlüssel = `csv_zusatz`) der Befund, zu dem er gehört, und sein Satz."
+        },
+        "pruefungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_pruefung" } },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "zwillinge": {
       "type": "object",
       "minProperties": 1,
@@ -799,7 +853,8 @@
         "zustand_am_anfang": { "type": ["string", "null"], "description": "kanal: der Zustand am Periodenanfang = letzter Wechsel davor; null heißt „vor dem ersten Wechsel wurde nicht gemessen“." },
         "wechsel": { "type": "array", "items": { "$ref": "#/$defs/zustandswechsel" }, "description": "kanal: die Statuswechsel innerhalb der Periode." },
         "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." },
-        "verwaltung": { "$ref": "#/$defs/verwaltung" }
+        "verwaltung": { "$ref": "#/$defs/verwaltung" },
+        "csv": { "$ref": "#/$defs/csv_eingang", "description": "csv (C1, AP-09 IP-11): die Datei als Bytes und was die Vorlage festhält." }
       }
     },
 
@@ -863,7 +918,108 @@
         "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." },
         "ablehnung": { "anyOf": [{ "$ref": "#/$defs/ablehnung_code" }, { "type": "null" }], "description": "verwalten: die Ablehnung, oder null — der Vorgang ist erlaubt." },
         "ablehnung_felder": { "type": "array", "items": { "$ref": "#/$defs/bezugsgroesse_feld" }, "description": "verwalten (`bedeutung_fest`): die Felder, die nach dem ersten Wert nicht geändert werden." },
-        "kennzeichen_vorschlag": { "type": "string", "minLength": 1, "description": "verwalten (M2): das Kennzeichen, das der Server ohne Angabe vergibt." }
+        "kennzeichen_vorschlag": { "type": "string", "minLength": 1, "description": "verwalten (M2): das Kennzeichen, das der Server ohne Angabe vergibt." },
+        "csv": { "$ref": "#/$defs/csv_ergebnis", "description": "csv (C1, AP-09 IP-11): was der Leser aus der Datei macht." }
+      }
+    },
+
+    "csv_datei": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "csv: eine Datei als Bytes. `zeilen` (mit `zeilenende` und einem Zeilenende nach jeder Zeile, außer `ohne_schluss`) ODER `text` (roh) ODER `hex` (rohe Bytes); `fuellen` hängt `anzahl`-mal `zeile` + Zeilenende an; `kodierung` und `bom` machen aus dem Text Bytes.",
+      "properties": {
+        "zeilen": { "type": "array", "items": { "type": "string" } },
+        "text": { "type": "string" },
+        "hex": { "type": "string", "pattern": "^([0-9a-f]{2})*$" },
+        "zeilenende": { "type": "string", "enum": ["\r\n", "\n", "\r"], "description": "Vorgabe \\n." },
+        "ohne_schluss": { "type": "boolean", "description": "Kein Zeilenende nach der letzten Zeile von `zeilen`. Vorgabe false." },
+        "fuellen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeile", "anzahl"],
+          "properties": {
+            "zeile": { "type": "string", "minLength": 1 },
+            "anzahl": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "kodierung": { "$ref": "#/$defs/csv_kodierung", "description": "Vorgabe utf-8." },
+        "bom": { "type": "boolean", "description": "Ein UTF-8-BOM vor dem Text. Vorgabe false." }
+      }
+    },
+
+    "csv_kodierung": { "type": "string", "enum": ["utf-8", "windows-1252"], "description": "C1: die lesbaren Kodierungen." },
+
+    "csv_trennzeichen": { "type": "string", "enum": [";", ",", "\t"], "description": "C1: die Trennzeichen, in der Reihenfolge, die einen Gleichstand entscheidet." },
+
+    "csv_zusatz": {
+      "type": "string",
+      "enum": ["zu_viele_bytes", "zu_viele_datenzeilen", "leer_0_byte", "nur_leerzeilen", "nur_kopfzeile", "kodierung_nicht_erlaubt", "kodierung_nicht_wie_vorgabe", "anfuehrungszeichen_offen"],
+      "description": "csv: WORAN ein Befund lag. Der Befund bleibt das geschlossene Wort aus C8."
+    },
+
+    "csv_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei"],
+      "properties": {
+        "datei": { "$ref": "#/$defs/csv_datei" },
+        "vorgabe": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Was die Vorlage festhält; ein fehlendes Feld wird erkannt.",
+          "properties": {
+            "kodierung": { "$ref": "#/$defs/csv_kodierung" },
+            "trennzeichen": { "$ref": "#/$defs/csv_trennzeichen" },
+            "kopfzeile": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "csv_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["befund", "zusatz", "zeile", "kodierung", "bom", "trennzeichen", "kopfzeile", "kopf", "spalten", "datenzeilen"],
+      "description": "csv: befund null heißt gelesen. Was vor einer Ablehnung feststand, steht da; alles danach ist null. Fehlen `zeilen` oder `anzeige`, werden sie nicht verglichen.",
+      "properties": {
+        "befund": { "anyOf": [{ "type": "string", "enum": ["datei_zu_gross", "kodierung_unlesbar", "keine_datenzeilen"] }, { "type": "null" }] },
+        "zusatz": { "anyOf": [{ "$ref": "#/$defs/csv_zusatz" }, { "type": "null" }] },
+        "zeile": { "type": ["integer", "null"], "minimum": 1, "description": "Die Zeile der Datei, an der es lag, wenn es eine gibt." },
+        "kodierung": { "anyOf": [{ "$ref": "#/$defs/csv_kodierung" }, { "type": "null" }] },
+        "bom": { "type": ["boolean", "null"] },
+        "trennzeichen": { "anyOf": [{ "$ref": "#/$defs/csv_trennzeichen" }, { "type": "null" }] },
+        "kopfzeile": { "type": ["boolean", "null"] },
+        "kopf": { "anyOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "null" }] },
+        "spalten": { "type": ["integer", "null"], "minimum": 1 },
+        "datenzeilen": { "type": ["integer", "null"], "minimum": 0 },
+        "zeilen": { "type": "array", "items": { "$ref": "#/$defs/csv_zeile" } },
+        "anzeige": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Die Felder je Datenzeile, wie sie ANGEZEIGT werden (Formel-Neutralisierung)."
+        }
+      }
+    },
+
+    "csv_zeile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nr", "text", "felder"],
+      "properties": {
+        "nr": { "type": "integer", "minimum": 1, "description": "Die Zeile der Datei, in der die Zeile beginnt." },
+        "text": { "type": "string", "description": "Der Zeilentext ohne Zeilenende." },
+        "felder": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Felder nach RFC 4180, unverändert." }
+      }
+    },
+
+    "csv_pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "eingang", "ergebnis"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "eingang": { "$ref": "#/$defs/csv_eingang" },
+        "ergebnis": { "$ref": "#/$defs/csv_ergebnis" }
       }
     },
 
@@ -874,7 +1030,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal", "verwalten"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal", "verwalten", "csv"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

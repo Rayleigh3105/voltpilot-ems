@@ -161,7 +161,7 @@ verlangt E10 eine ausdrückliche Bestätigung mit der Zahl: „1 von 3 Zeilen ü
 
 Die Datei trennt drei Dinge sauber:
 
-- **`pruefungen`** — was ein Zwilling nachrechnet. 91 Prüfungen über 14 Fälle (78 aus der Vorlage, seit IP-5 dazu 13 der Regel `verwalten`).
+- **`pruefungen`** — was ein Zwilling nachrechnet. 100 Prüfungen über 14 Fälle (78 aus der Vorlage, seit IP-5 dazu 13 der Regel `verwalten`, seit IP-11 neun der Regel `csv`).
 - **`beschreibend`** — was die Vorlage erwartet, aber keine reine Regel dieses Pakets bildet:
   Anzeigesätze, die Herkunfts-Angaben je Wert (Spalten der Tabelle aus IP-4), die
   Kennzahlen (AP-11 bildet sie, nicht dieser Vertrag) und die Lesemodell-Aussagen aus IP-8.
@@ -173,8 +173,8 @@ Bei den beiden Plan-Abnahmen ist genau der geprüfte Teil der Kern: bei B2 ist e
 unveränderte Betrag 312 400 kg samt `aenderungen: 0`, bei B6 der **Nenner** 3 100 / 3 100 /
 3 400 m². Die Division daraus ist AP-11.
 
-Ebenfalls nicht hier: der CSV-Leser (C1: Kodierung, Trennzeichen, RFC 4180, SHA-256 — IP-11),
-die Tabellen (IP-4), die Routen (IP-5 ff.), die Portal-Flächen (IP-9 ff.) und die
+Ebenfalls nicht hier: der Fingerabdruck der Datei (C2, SHA-256 — IP-12; den CSV-Leser C1 trägt
+seit IP-11 §9), die Tabellen (IP-4), die Routen (IP-5 ff.), die Portal-Flächen (IP-9 ff.) und die
 Rechte-Zeilen (W8, `rechte-matrix.json` seit IP-5). Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei
 bekannt ist, bekommt die Regel `urteil` als Eingang.
 
@@ -259,3 +259,42 @@ Einheiten und die Perioden.
 Es ändert sich kein Verhalten: keine Migration, keine Spalte an `bezugsgroesse`, keine Route und
 keine Portal-Fläche, und kein Produktionsweg ruft `BezugsArt` oder `bezugsArt.ts` an. Das Paket,
 das die Art speichert, legt ihre Spalte additiv an und prüft sie gegen dieses Vokabular.
+
+## 9. Der CSV-Leser (C1, nachgetragen mit AP-09 IP-11 am 13.09.2026)
+
+**Die Datei kommt von draußen.** Der Block **`csv`** legt fest, wie aus den Bytes einer
+hochgeladenen Datei Zeilen werden — und welche benannte, ruhige Antwort jede Datei bekommt, die
+das nicht hergibt. Umsetzung: Java `uems/CsvLeser` (rein, ohne Spring); einen TS-Zwilling gibt es
+nicht, das Portal liest keine Datei (`zwillinge_grund.csv`). Die Regel `csv` steht an B1 (die
+ERP-Datei in Windows-1252, als UTF-8 mit BOM, mit Tab, mit Komma), B12 (nur Kopfzeile, 0 Byte,
+nur Leerzeilen) und B13; die übrigen Erkennungs-Fälle stehen in `csv.pruefungen`.
+
+- **Grenzen (E14):** höchstens 5 MB = 5 242 880 Bytes und 100 000 Datenzeilen (ohne Kopfzeile,
+  ohne Leerzeilen). Darüber: `datei_zu_gross`.
+- **Reihenfolge — die erste Stufe, die nicht passt, spricht:** Größe → leer → Kodierung →
+  Trennzeichen → Anführungszeichen → Leerzeilen → Kopfzeile → Datenzeilen. Was vorher feststand,
+  steht im Ergebnis; alles danach ist null.
+- **Kein neues Befund-Wort.** C8 bleibt geschlossen: jede Ablehnung ist `datei_zu_gross`,
+  `kodierung_unlesbar` oder `keine_datenzeilen` mit ihrem Satz aus `befund_saetze`. Der
+  **Zusatz** (`csv.zusaetze`) sagt, woran es lag — nach dem Vorbild von B12 („Die Datei ist
+  leer (0 Byte).“) —, `zeile` die Zeile der Datei. Ein nicht geschlossenes Anführungszeichen ist
+  `kodierung_unlesbar`: hinter ihm ist keine Zeilengrenze mehr sicher.
+- **Kodierung:** ein UTF-8-BOM entscheidet (auch gegen die Vorlage); sonst die Vorlage, sonst
+  UTF-8, sonst Windows-1252 — beide streng, nie ein Ersatzzeichen. ⚠ Eine Datei nur aus
+  ASCII-Bytes heißt UTF-8, auch wenn sie aus einem Windows-1252-ERP kommt (B1, `_abweichungen`).
+  Steuerzeichen machen jede Datei unlesbar: eine Excel-Mappe und „Unicode-Text“ (UTF-16) gehen
+  nicht als Text durch.
+- **Trennzeichen:** `;`, `,`, Tab — Mehrheit der ersten 20 Zeilen mit Inhalt, jede Zeile für das
+  Zeichen, das sie in die meisten Felder zerlegt; Gleichstand entscheidet diese Reihenfolge. Die
+  Zeilen der Minderheit bleiben ungeteilt — der Leser rät nicht um.
+- **Kopfzeile:** die erste Zeile, wenn keines ihrer Felder nach Zahl oder Datum aussieht und die
+  zweite fehlt oder eines hat. Kodierung, Trennzeichen und Kopfzeile kann die Vorlage festhalten.
+- **RFC 4180:** Trennzeichen, `""` und Zeilenumbruch im Feld in Anführungszeichen; Zeilenenden
+  `\r\n`, `\n` und `\r`. `nr` ist die Zeile der Datei, `text` der Zeilentext, `felder` sind
+  unverändert — kein Trimmen, keine Zahl.
+- ⚠ **Formel-Neutralisierung beim ANZEIGEN, nicht beim Lesen:** ein Feld, das mit `=` `+` `-` `@`
+  (und wie der Export mit Tab oder `\r`) beginnt, wird mit vorangestelltem `'` angezeigt —
+  derselbe Schutz wie im Export (`MeasurementHistoryService.csv`). Gelesen und gespeichert wird,
+  was in der Datei steht.
+
+Keine Route, keine Tabelle, keine Migration, kein Fingerabdruck: das beginnt mit IP-12.

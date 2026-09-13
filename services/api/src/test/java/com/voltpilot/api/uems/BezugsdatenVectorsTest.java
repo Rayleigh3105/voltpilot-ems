@@ -533,6 +533,7 @@ class BezugsdatenVectorsTest {
                             .isEqualTo(soll.path("kennzeichen_vorschlag").asText());
                 }
             }
+            case "csv" -> CsvVektoren.pruefe(why, ein.path("csv"), soll.path("csv"));
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
     }
