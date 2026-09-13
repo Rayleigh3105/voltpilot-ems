@@ -22,8 +22,8 @@
     "Stellungen des Referenzunternehmens ab (`referenzunternehmen`, Messstellen[].elektrische_stellung);",
     "beide Zwillinge lesen die Stellungen von dort, und jede Fassung mit Termen deckt sich mit den",
     "Eingängen einer `rest`-Prüfung desselben Falls.",
-    "AP-10 IP-9: `vokabulare.kennzeichen_befristet` nennt „vorläufig (Geräte-Verdichtung)“ an den",
-    "PR-688-Antworten `wert`/`verlauf` — mit dem Paket, das es wieder entfernt (IP-10)."
+    "AP-10 IP-10: das befristete Kennzeichen der PR-688-Antworten `wert`/`verlauf` aus IP-9 ist entfallen —",
+    "die Periodenwerte berechneter Messstellen liegen in der Speicherklasse, der Live-Wert bleibt live."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./bilanz.schema.json",
@@ -74,20 +74,7 @@
       "unplausibel (negativ)",
       "Stellung geändert",
       "Verteilung geändert",
-      "x von y Systemen",
-      "vorläufig (Geräte-Verdichtung)"
-    ],
-    "kennzeichen_befristet": [
-      {
-        "wort": "vorläufig (Geräte-Verdichtung)",
-        "an": [
-          "GET /api/v1/messstellen/{id}/wert",
-          "GET /api/v1/messstellen/{id}/verlauf"
-        ],
-        "seit": "AP-10 IP-9",
-        "entfaellt_mit": "AP-10 IP-10",
-        "warum": "Live-Wert und Verlauf einer berechneten Messstelle rechnen bis dahin aus den Geräte-Verdichtungen (device_measurement_sample, device_measurement_rollup_15m), nicht aus Periodenwerten der Messstelle (E6/E7, W12). IP-10 baut die Periodenwerte und entfernt das Kennzeichen samt dieses Eintrags."
-      }
+      "x von y Systemen"
     ],
     "herkunft_art": [
       "gemessen",

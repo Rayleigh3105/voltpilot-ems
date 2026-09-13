@@ -1966,8 +1966,8 @@ export interface MessstelleWertFehlend {
 /**
  * Der Live-Wert einer berechneten Messstelle (`GET …/{id}/wert`): die gewichtete
  * Summe der frischesten Eingänge. Fehlt/veraltet EIN Term, ist `wert` null
- * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme. `kennzeichen` trägt bis
- * AP-10 IP-10 „vorläufig (Geräte-Verdichtung)“ (`VORLAEUFIG_GERAETE_VERDICHTUNG`, uemsBilanz.ts).
+ * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme. Der Live-Wert wird nie
+ * gespeichert; die Periodenwerte liegen seit AP-10 IP-10 in der Speicherklasse (`…/{kennzeichen}/werte`).
  */
 export interface MessstelleWert {
   wert: number | null;
@@ -1975,7 +1975,6 @@ export interface MessstelleWert {
   unvollstaendig: boolean;
   fehlende: MessstelleWertFehlend[];
   stand: string | null;
-  kennzeichen: string[];
 }
 
 /** Ein 15-min-Zeitraster des Verlaufs; `wert` null = unvollständig (nie 0). */
@@ -1989,8 +1988,6 @@ export interface MessstelleVerlauf {
   messstelle_id: string;
   einheit: string | null;
   punkte: MessstelleVerlaufPunkt[];
-  /** Bis AP-10 IP-10: „vorläufig (Geräte-Verdichtung)“. */
-  kennzeichen: string[];
 }
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
@@ -2301,7 +2298,6 @@ export interface BilanzLive {
   unvollstaendig: boolean;
   fehlende: Array<{ term: string; grund: 'kein_geraet' | 'kein_wert' | 'veraltet' }>;
   stand: string | null;
-  kennzeichen: string[];
 }
 
 export interface BilanzHauptzaehler {

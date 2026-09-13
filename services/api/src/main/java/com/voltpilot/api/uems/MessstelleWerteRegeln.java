@@ -301,7 +301,11 @@ public final class MessstelleWerteRegeln {
          * tragen den ganzen Wert der Reihe, eine Menge je Anteil ist nirgends gespeichert.
          */
         ANTEIL_NICHT_GESPEICHERT("anteil_nicht_gespeichert"),
-        /** Eine berechnete Messstelle hat keine Reihe; ihre Werte rechnet die Formel (AP-10). */
+        /**
+         * Eine berechnete Messstelle hat keine Reihe. Viertelstunde, Tag, Monat und Jahr liest sie seit AP-10 IP-10
+         * aus ihrer gespeicherten Spur; dieser Grund bleibt der Stunde (keine Speicherklasse) und einer Formel mit
+         * Momentanwert (nur live).
+         */
         BERECHNET("berechnet"),
         /** Rohwerte bzw. Viertelstunden sind da, die Periode ist aber noch nicht gebildet. */
         NOCH_NICHT_GEBILDET("noch_nicht_gebildet"),

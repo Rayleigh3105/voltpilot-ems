@@ -44,6 +44,10 @@ Partitionierungs-Spalte (Chunk-Ausschluss), und der CHECK aus V20260912170000 bi
 zeichengleich aneinander. Dazu der TEILWEISE Index `idx_messreihe_viertelstunde_vorlaeufig`, der
 mit jeder endgültig gewordenen Zeile schrumpft.
 
+⚠ Seit AP-10 IP-10 wählt er nur REIHEN (`entity_id IS NOT NULL`): eine Zeile der Spur `berechnet` wird endgültig,
+wenn ihre Eingänge es sind (`BerechnetePeriodenLauf`) — ausgewählt, aber über den Reihen-Schlüssel nie umgeschaltet,
+hielte sie jeden Stapel voll. Dasselbe Filter tragen die Quellen des Tageslaufs (`uems-berechnete-periodenwerte.md`).
+
 ## Die Spätankunft (`SpaetankunftMelder`)
 
 Ein **Nachzügler** ist ein Rohwert dieser Reihe in diesem Intervall, dessen **Eingangszeit nach der
@@ -164,7 +168,8 @@ beide.
 
 `EndgueltigkeitLaeufer`: **einmal je Stunde**, erst umschalten, dann Tage nachziehen (die
 Reihenfolge ist Absicht — so trägt eine frisch gebildete Tageszeile schon die umgeschalteten
-Slots). Schalter `voltpilot.uems.endgueltigkeit.enabled`, **Vorgabe AN** in `application.yml`, **im
+Slots), dann Monate/Jahre, dann die berechneten Messstellen (AP-10 IP-10, NACH allen gemessenen Stufen,
+`EndgueltigkeitLaeuferReihenfolgeTest`), zuletzt die Korrektur-Vorschläge. Schalter `voltpilot.uems.endgueltigkeit.enabled`, **Vorgabe AN** in `application.yml`, **im
 Testlauf AUS** (surefire, `pom.xml`) — die dokumentierte `@Scheduled`-Falle; `EndgueltigkeitWiringTest`
 prüft beides an den echten Dateien.
 

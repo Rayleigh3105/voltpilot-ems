@@ -178,6 +178,8 @@ public class TagVerdichter {
     }
 
     // ------------------------------------------------------- Quelle 1: die Viertelstunden
+    // Alle drei Quellen lesen nur REIHEN (`entity_id IS NOT NULL`): eine Zeile der Spur `berechnet`
+    // (AP-10 IP-10) bildet ihr eigener Lauf aus den Tageswerten ihrer Eingänge, nie aus Viertelstunden.
 
     /**
      * Trägt den UTC-Tag jeder Viertelstunde ein, die seit dem Zeiger neu GEBILDET wurde — und
@@ -210,6 +212,7 @@ public class TagVerdichter {
                       FROM messreihe_viertelstunde v
                      WHERE v.berechnet_am > ? AND v.berechnet_am <= ?
                        AND v.intervall_beginn >= ?
+                       AND v.entity_id IS NOT NULL
                     ON CONFLICT DO NOTHING
                     """)) {
                 ps.setTimestamp(1, Timestamp.from(von));
@@ -262,6 +265,7 @@ public class TagVerdichter {
                      WHERE t.zustand = 'vorlaeufig'
                        AND t.endgueltig_ab <= ?
                        AND t.tag <= ?
+                       AND t.entity_id IS NOT NULL
                      ORDER BY t.tag
                      LIMIT ?
                     ON CONFLICT DO NOTHING
@@ -309,6 +313,7 @@ public class TagVerdichter {
                            (v.intervall_beginn AT TIME ZONE 'UTC')::date, 'rueckrechnung'
                       FROM messreihe_viertelstunde v
                      WHERE v.intervall_beginn >= ? AND v.intervall_beginn < ?
+                       AND v.entity_id IS NOT NULL
                     ON CONFLICT DO NOTHING
                     """)) {
                 ps.setTimestamp(1, Timestamp.from(von));

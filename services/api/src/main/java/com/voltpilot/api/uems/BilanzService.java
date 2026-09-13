@@ -39,8 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Abschnitte.</b> Gelten in der Periode überall dieselben Terme, rechnet EIN Abschnitt mit dem
  * Periodenwert (Tage ohne Hauptzähler zählen nicht als Wechsel). Wechseln sie, rechnet jeder Abschnitt
- * Tag für Tag mit Tageswerten — eine Zahl über die ganze Periode ist dann ein Periodenwert der
- * berechneten Messstelle, und den baut AP-10 IP-10.
+ * Tag für Tag mit Tageswerten. Die gespeicherten Periodenwerte einer Rest-Messstelle (AP-10 IP-10,
+ * {@link BerechnetePeriodenLauf}) entstehen ebenso nur über gleichbleibende Terme — über einen Wechsel gibt
+ * es auch dort keine Zahl ({@code terme_wechseln}); diese Route liest sie nicht, sie rechnet den Rest (E3).
  *
  * <p><b>Live</b> kommt über den PR-688-Weg ({@link MessstelleFormelService#restLive}).
  *
@@ -177,8 +178,7 @@ public class BilanzService {
                 .map(f -> new BilanzDto.Fehlender(f.term(), f.grund())).toList();
         BilanzDto.Live liveDto = new BilanzDto.Live(live.urteil().wert(), MessstelleFormelService.RestLive.EINHEIT,
                 live.urteil().wert() == null, fehlende,
-                live.stand() == null ? null : live.stand().atOffset(ZoneOffset.UTC),
-                List.of(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG));
+                live.stand() == null ? null : live.stand().atOffset(ZoneOffset.UTC));
 
         return new BilanzDto.Hauptzaehler(new BilanzDto.MessstelleRef(x.id(), x.kennzeichen(), x.name()), restRef,
                 vorschlag, !gleicheTerme, List.copyOf(abschnitte), liveDto);

@@ -225,8 +225,23 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
   Hauptzähler, höchstens ein nicht aufgehobener Rest je Hauptzähler, kein Term an einer Rest-Fassung).
   `POST …/{id}/formel/fassungen` lehnt einen Rest ab (400 `formel_typ`). Live-Wert und Verlauf eines
   Rests rechnen die Terme des Tages aus der Stellung und antworten in kW (Wirkleistung der
-  Term-Messstellen); `wert` und `verlauf` tragen BEFRISTET bis IP-10 `kennzeichen:
-  ["vorläufig (Geräte-Verdichtung)"]` (`bilanz-vectors.json` `vokabulare.kennzeichen_befristet`).
+  Term-Messstellen). Das befristete Kennzeichen, das `wert` und `verlauf` von IP-9 bis IP-10 trugen, ist
+  entfallen (§6.4).
+
+### 6.4 Periodenwerte berechneter Messstellen (AP-10 IP-10, Stand 14.09.2026)
+
+E6 = A ist gebaut: Viertelstunde, Tag, Monat und Jahr einer berechneten Messstelle (`gewichtete_summe`,
+`rest`) liegen in der Speicherklasse — Spur `berechnet` von `messreihe_viertelstunde`, `messreihe_tag`,
+`messreihe_periode` (`messstelle_id`, `formel_fassung_id`, `formel_typ`; ohne Reihe) — mit ihren
+Eingängen in `bilanzwert_eingang` (`V20260914100000`). Gerechnet vom Stundenlauf NACH den gemessenen
+Stufen, in der Abhängigkeitsordnung der Fassungen; ein Formel-Kreis wird benannt abgelehnt
+(`formel_kreis`/`haengt_an_kreis`). Der Wert je Periode ist `periodenwert` (§6.2) über die
+Periodenwerte der Eingänge (nie Summe der Viertelstunden), vorläufig/endgültig über die Eingänge.
+Gelesen über `GET /api/v1/messstellen/{kennzeichen}/werte`. Der Live-Wert (`wert`) und der Verlauf
+(`verlauf`, Geräte-Verdichtung) bleiben unverändert und werden nie gespeichert. Nicht gerechnet:
+eine Formel mit Momentanwert (nur live), `saldo` (kein Schreibweg), ein Term mit `anteil`
+positiv/negativ oder Verteilung (verteilte Werte = IP-11) — der Eingang steht mit Grund und ohne Menge
+im Satz; eine Periode, an deren Tagen verschiedene Terme gelten (`terme_wechseln`).
 
 ### 6.3 Die Term-Art `verteilung` und der `anteil` (AP-10 IP-5, Stand 13.09.2026)
 

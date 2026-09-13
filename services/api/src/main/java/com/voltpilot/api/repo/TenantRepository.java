@@ -198,6 +198,11 @@ public class TenantRepository {
                 // FK — the same one way out. Its gaps live in messreihe_ereignis (above); the
                 // run-state row is not tenant-bound and stays.
                 deleteByTenant(con, "messreihe_luecke_stand", tenantId);
+                // The inputs of computed period values and the run's backfill state (AP-10 IP-10): a
+                // hypertable + a work state, no FK - the same one way out. The computed rows themselves
+                // live in the classes above (track `berechnet`).
+                deleteByTenant(con, "bilanzwert_eingang", tenantId);
+                deleteByTenant(con, "messreihe_berechnet_stand", tenantId);
                 // The measurement pipeline (device_measurement_*, AP-07 IP-11): since
                 // V20260913150000 its FKs to device and site RESTRICT, so the tenant's cascade
                 // below would be refused. The admin role holds no DELETE on the selection

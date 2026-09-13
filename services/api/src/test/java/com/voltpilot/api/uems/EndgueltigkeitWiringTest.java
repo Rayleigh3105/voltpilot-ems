@@ -57,6 +57,12 @@ class EndgueltigkeitWiringTest {
         SpaetankunftMelder spaetankunftMelder() {
             return mock(SpaetankunftMelder.class);
         }
+
+        /** Die berechneten Messstellen (AP-10 IP-10) rechnen im selben Takt nach den gemessenen. */
+        @Bean
+        BerechnetePeriodenLauf berechnetePeriodenLauf() {
+            return mock(BerechnetePeriodenLauf.class);
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()

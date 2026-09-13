@@ -156,6 +156,8 @@ class UemsFristVorschlagTest {
         tage = new TagVerdichter(admin, katalog, 200, 40, 20_000, 200_000);
         laeufer = new EndgueltigkeitLaeufer(new EndgueltigkeitLauf(admin, 2000, 200), tage,
                 new PeriodeVerdichter(admin, katalog, 50, 40, 2000),
+                // Die berechneten Messstellen (AP-10 IP-10) rechnen im Takt nach den gemessenen; diese Welt hat keine.
+                org.mockito.Mockito.mock(BerechnetePeriodenLauf.class),
                 new KorrekturVorschlagLauf(admin, verdichter, melder, 200));
         korrekturen = new MessreiheKorrekturRepository(app);
 

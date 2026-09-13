@@ -74,7 +74,9 @@ seinem jüngsten Monat). Die Stundenzahl eines Tages kommt weiter aus `TagRegeln
 - `messreihe_periode_arbeit`: durable, Entnahme `FOR UPDATE SKIP LOCKED`, entnehmen und schreiben
   in EINER Transaktion; Quellen: Tag geschrieben → Monat, Monat geschrieben → Jahr, Frist,
   `nachholen()` (Monate mit Tageszeilen ohne Monatszeile). Upsert lässt endgültige und
-  unveränderte Zeilen in Ruhe.
+  unveränderte Zeilen in Ruhe. ⚠ Frist und `nachholen()` lesen seit AP-10 IP-10 nur REIHEN
+  (`entity_id IS NOT NULL`): Monat und Jahr einer berechneten Messstelle (Spur `berechnet`) rechnet
+  `BerechnetePeriodenLauf` aus den Monaten/Jahren ihrer Eingänge (`uems-berechnete-periodenwerte.md`).
 
 ## Grenzen
 

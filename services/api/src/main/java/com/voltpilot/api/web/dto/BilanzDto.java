@@ -43,7 +43,8 @@ public final class BilanzDto {
      * (E18) oder {@code null}; dann steht — solange er heute Hauptzähler der Anlage ist — ein
      * {@code vorschlag} „Rest anlegen“ da. Der Rest selbst steht IMMER als Zeile in {@code abschnitte}.
      * {@code stellung_geaendert}: in der Periode gelten verschiedene Terme — dann rechnet jeder
-     * Abschnitt Tag für Tag, und es gibt keine Zahl über die ganze Periode (die bringt AP-10 IP-10).
+     * Abschnitt Tag für Tag, und es gibt keine Zahl über die ganze Periode (auch nicht als gespeicherter
+     * Periodenwert, AP-10 IP-10: {@code terme_wechseln}).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Hauptzaehler(
@@ -134,8 +135,7 @@ public final class BilanzDto {
             String einheit,
             boolean unvollstaendig,
             List<Fehlender> fehlende,
-            OffsetDateTime stand,
-            List<String> kennzeichen) {}
+            OffsetDateTime stand) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Fehlender(String term, String grund) {}

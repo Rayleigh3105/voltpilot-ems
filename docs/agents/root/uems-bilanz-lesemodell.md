@@ -12,7 +12,7 @@ Mensch den Vorschlag bestätigt (E18 = A). Bericht `data/vp-uems-ap10-bilanzen/r
 | Live + Anlegen | `MessstelleFormelService.restLive` (PR-688-Weg: frischeste Wirkleistung, `FRISCHE` 15 min) · `.restAnlegen` |
 | Migration | `V20260913235700`: `formel_typ` kennt `rest`; `messstelle_formel_fassung.rest_hauptzaehler_id` (FK mit Mandant), CHECK Rest ⇔ Hauptzähler, eindeutiger Teil-Index je Hauptzähler, Constraint-Trigger `messstelle_formel_term_nicht_rest` |
 | Register | `uems/RegisterBerechnung` → `berechnung` je berechneter Zeile, Aggregat zählt sie mit |
-| Tests | `BilanzApiTest` (9, Testcontainers) · `UemsBilanzRestMigrationTest` (5) · `BilanzSchnittstelleVertragTest` · `BilanzVectorsTest`/`uemsBilanz.test.ts` (befristetes Kennzeichen) · `MessstelleRegisterApiTest` |
+| Tests | `BilanzApiTest` (9, Testcontainers) · `UemsBilanzRestMigrationTest` (5) · `BilanzSchnittstelleVertragTest` · `BilanzVectorsTest`/`uemsBilanz.test.ts` (befristetes Kennzeichen entfallen) · `MessstelleRegisterApiTest` |
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='BilanzApiTest,UemsBilanzRestMigrationTest,BilanzSchnittstelleVertragTest,BilanzVectorsTest')
@@ -29,7 +29,8 @@ Mensch den Vorschlag bestätigt (E18 = A). Bericht `data/vp-uems-ap10-bilanzen/r
 2. **Abschnitte statt einer erfundenen Periodenzahl.** Gleiche Terme an allen Tagen der Periode (Tage ohne
    Hauptzähler zählen nicht als Wechsel) → EIN Abschnitt mit den Periodenwerten der Terme aus
    `MessstelleWerteService` (AP-08 IP-9). Wechseln die Terme (`stellung_geaendert`), rechnet jeder Abschnitt Tag
-   für Tag; eine Zahl über die ganze Periode ist ein Periodenwert der berechneten Messstelle = **IP-10**.
+   für Tag. Auch die gespeicherten Periodenwerte der Rest-Messstelle (IP-10) entstehen nur über gleichbleibende
+   Terme (`terme_wechseln`) — über einen Wechsel gibt es keine Periodenzahl.
    Vermerke „Stellung geändert (…)“ und Herkunft trägt die Route nicht (IP-12).
 3. **`null` ist nie 0.** Ein nicht vollständiger Eingang macht den Rest „keine Werte“ (`menge` null); eine Rolle
    ohne Eingang hat `menge` null und „0 von 0“. Live: EIN veralteter Term (älter als 15 min) → `wert` null mit
@@ -52,14 +53,13 @@ Mensch den Vorschlag bestätigt (E18 = A). Bericht `data/vp-uems-ap10-bilanzen/r
    liefert, unvollständig = liefert nicht, **ohne Formel am Tag `null` und im Nenner wie „keine Datenquelle“**.
    Die zwei Zusatz-Abfragen laufen NUR, wenn es berechnete gibt (die Eine-Abfrage-Zählung bleibt).
 
-## Das befristete Kennzeichen — wer es wieder entfernt
+## Das befristete Kennzeichen — mit IP-10 entfallen
 
-`GET …/messstellen/{id}/wert` und `…/verlauf` (PR #688) und die Live-Zeile der Bilanz tragen
-`kennzeichen: ["vorläufig (Geräte-Verdichtung)"]` (`BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG` ⟷
-`uemsBilanz.ts`, Vertrag `bilanz-vectors.json` `vokabulare.kennzeichen_befristet` mit `entfaellt_mit: AP-10 IP-10`).
-⚠ **AP-10 IP-10 entfernt es**, wenn es die Periodenwerte berechneter Messstellen baut: Konstante, beide
-`BEFRISTET`-Stellen (`MessstelleFormelService`, `BilanzService`), den Vektor-Eintrag samt der zwei Tests
-(`dasBefristeteKennzeichenStehtImVertragMitSeinemAblauf` in Java und TS) und die OpenAPI-Beispiele.
+Von IP-9 bis IP-10 trugen `GET …/messstellen/{id}/wert`, `…/verlauf` (PR #688) und die Live-Zeile der Bilanz
+`kennzeichen: ["vorläufig (Geräte-Verdichtung)"]`. **AP-10 IP-10 hat es entfernt**, als es die Periodenwerte
+berechneter Messstellen gebaut hat: Konstante, beide `BEFRISTET`-Stellen, die `kennzeichen`-Felder der drei
+Antworten, den Vektor-Eintrag, OpenAPI und `api.ts`; die Tests (`dasBefristeteKennzeichenIstMitSeinemAblaufpaketEntfallen`
+in Java und TS, `BilanzApiTest`) prüfen jetzt das Fehlen. Details `uems-berechnete-periodenwerte.md`.
 
 ## Rechte (eingetragen, nicht durchgesetzt)
 
@@ -69,6 +69,5 @@ Nachtrags-Handlungen in `rechte-matrix.json` nennen die Routen; `RechteKennungen
 
 ## Nicht gebaut
 
-Periodenwerte berechneter Messstellen und die Zahl über eine Periode mit Stellungswechsel (IP-10),
-Korrektur-Kaskade (IP-11), Herkunft (IP-12), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
+Die Zahl über eine Periode mit Stellungswechsel (auch IP-10 bildet sie nicht), Korrektur-Kaskade (IP-11), Herkunft (IP-12), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
 Unterzählers mit Unterzählern (`rest_ohne_hauptzaehler`), `saldo`-Schreibweg (IP-16).

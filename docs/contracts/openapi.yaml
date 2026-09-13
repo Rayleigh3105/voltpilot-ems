@@ -8943,7 +8943,8 @@ paths:
         Abschnitt. Gelten in der Periode überall dieselben Terme, rechnet EIN Abschnitt mit den
         Periodenwerten der Terme (Lese-Modell „Werte je Messstelle“); wechseln sie
         (`stellung_geaendert`), rechnet jeder Abschnitt Tag für Tag - eine Zahl über die ganze
-        Periode bringt AP-10 IP-10. Zufluss/Abfluss/zugeordnet aus BilanzAbleitung.summe
+        Periode gibt es dann nicht, auch nicht als gespeicherter Periodenwert der Rest-Messstelle
+        (AP-10 IP-10, `terme_wechseln`). Zufluss/Abfluss/zugeordnet aus BilanzAbleitung.summe
         („mindestens …“, `mit_werten` von `gesamt`), der Rest aus MessstelleFormelRegeln.periodenwert
         (`rest`): ein nicht vollständiger Eingang macht ihn zu „keine Werte“ (menge null, nie 0).
         `live` (F18): der Rest JETZT in kW über den PR-688-Weg - null, sobald ein Term fehlt oder
@@ -9698,8 +9699,11 @@ paths:
         (docs/contracts/v2/ergebnis-zustand.md), `fassung` vorläufig/endgültig - zwei Aussagen.
         Eine Periode ohne gespeicherte Zeile hat `keine Werte` mit 0 von den erwarteten Werten
         der Kadenz-Kette; liegen darunter schon Rohwerte oder Viertelstunden, sagt `grund`
-        `noch_nicht_gebildet`. Ein Schritt ohne Zustand nennt immer `grund`. Eine fremde
-        Messstelle ist 404, nie 403.
+        `noch_nicht_gebildet`. Ein Schritt ohne Zustand nennt immer `grund`. Eine BERECHNETE
+        Messstelle (AP-10 IP-10) liest Viertelstunde, Tag, Monat und Jahr aus ihrer gespeicherten
+        Spur `berechnet` (ohne Rohwerte: `erhalten`/`erwartet`/`quelle` null); ohne Zeile
+        `noch_nicht_gebildet`, die Stunde und eine Formel mit Momentanwert weiter `berechnet`.
+        Eine fremde Messstelle ist 404, nie 403.
       responses:
         "200":
           description: Die Werte.
@@ -18156,14 +18160,13 @@ components:
         grund: { type: string, nullable: true, description: "Warum das Lese-Modell „Werte je Messstelle“ keine Menge hat." }
     BilanzLive:
       type: object
-      required: [wert, einheit, unvollstaendig, fehlende, stand, kennzeichen]
+      required: [wert, einheit, unvollstaendig, fehlende, stand]
       properties:
         wert: { type: number, nullable: true, example: 1.6, description: "null, sobald EIN Term fehlt oder veraltet ist - nie eine Teilsumme, nie 0." }
         einheit: { type: string, example: kW }
         unvollstaendig: { type: boolean }
         fehlende: { type: array, items: { $ref: "#/components/schemas/BilanzLiveFehlend" } }
         stand: { type: string, format: date-time, nullable: true }
-        kennzeichen: { type: array, items: { type: string }, example: ["vorläufig (Geräte-Verdichtung)"] }
     BilanzLiveFehlend:
       type: object
       required: [term, grund]

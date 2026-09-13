@@ -78,18 +78,20 @@ public class MessstelleWerteService {
     private final QuelleKadenzRepository kadenzen;
     private final MesskanalService kanaele;
     private final SpeicherklasseHistorie historie;
+    private final BerechnetePeriodenRepository berechnete;
 
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleWerteService(JdbcTemplate jdbc, MessstelleRepository messstellen,
             MessstelleQuelleRepository quellen, QuelleKadenzRepository kadenzen, MesskanalService kanaele,
-            SpeicherklasseHistorie historie) {
+            SpeicherklasseHistorie historie, BerechnetePeriodenRepository berechnete) {
         this.jdbc = jdbc;
         this.messstellen = messstellen;
         this.quellen = quellen;
         this.kadenzen = kadenzen;
         this.kanaele = kanaele;
         this.historie = historie;
+        this.berechnete = berechnete;
     }
 
     /** Nur für Tests: die Uhr, an der die Frist (vorläufig/endgültig) gemessen wird. */
@@ -129,6 +131,7 @@ public class MessstelleWerteService {
                         Collectors.mapping(Map.Entry::getKey, Collectors.toList())))
                 .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte)));
 
+        Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z);
         Beschriftung beschriftung = new Beschriftung(z);
         List<MessstelleWerteDto.Wert> werte = new ArrayList<>();
         for (Map.Entry<Schritt, Deckung> e : deckung.entrySet()) {
@@ -138,7 +141,8 @@ public class MessstelleWerteService {
                     MessstelleWerteRegeln.iso(s.bis(), zone.id()), beschriftung.von(s), stunden(z, s),
                     z.raster() == Raster.TAG ? ErgebnisZustand.tagesdauer(TagRegeln.tag(s.von(), zone.id()), zone.id())
                             : null);
-            werte.add(d.reihe() == null ? ohneReihe(r, d.grund())
+            werte.add(spur != null ? berechnet(r, s, spur.get(s.von()), z, form.version())
+                    : d.reihe() == null ? ohneReihe(r, d.grund())
                     : wert(r, s, d, gelesen.get(d.reihe()), z, form.version(), jetzt));
         }
 
@@ -195,6 +199,44 @@ public class MessstelleWerteService {
                 offen.stream().map(Schritt::von).toList(), offen.stream().map(Schritt::bis).toList()));
         return new Gelesen(zeilen, viertel, historie.ereignisVerweise(tenant, e, k, a, b), mitDaten,
                 offen.isEmpty() ? null : selektionS(tenant, e, k), new HashMap<>());
+    }
+
+    // ------------------------------------------------------------------ Die Spur berechnet (AP-10 IP-10)
+
+    /**
+     * Die gespeicherten Periodenwerte einer BERECHNETEN Messstelle ({@link BerechnetePeriodenLauf}, E6 = A) —
+     * {@code null}, wo es keine Spur gibt: eine gemessene Messstelle, eine berechnete mit Momentanwert (nur live)
+     * und die Stunde (keine Speicherklasse; dort bleibt der Grund {@code berechnet}).
+     */
+    private Map<Instant, BerechnetePeriodenRepository.Gespeichert> gespeicherteSpur(Messstelle m, Zeitraum z) {
+        if (!MessstelleRegeln.BERECHNET.equals(m.art()) || "Momentanwert".equals(m.hauptgroesse().wertart())
+                || z.raster() == Raster.STUNDE) {
+            return null;
+        }
+        return berechnete.gespeichert(m.id(), z.raster().wort(), z.von(), z.bis());
+    }
+
+    /**
+     * Ein Schritt einer berechneten Messstelle: die gespeicherte Zeile mit Menge, Zustand, Kennzeichen, Abdeckung
+     * und vorläufig/endgültig — ohne Zeile ist sie noch nicht gebildet (der Lauf rechnet nach den gemessenen).
+     * Eine berechnete Zeile hat keine Rohwerte: {@code erhalten}/{@code erwartet} und {@code quelle} bleiben leer.
+     */
+    private static MessstelleWerteDto.Wert berechnet(Rahmen r, Schritt s,
+            BerechnetePeriodenRepository.Gespeichert zeile, Zeitraum z, Integer version) {
+        if (zeile == null) {
+            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                    null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
+                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of());
+        }
+        if (version != null && version != zeile.version()) {
+            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                    null, null, null, null, null, List.of(), null, null, null, null, null, null, null, null,
+                    OhneZahl.VERSION_NICHT_GESPEICHERT.wort(), List.of());
+        }
+        return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                zeile.menge(), null, null, null, zeile.mengeZustand(), zeile.kennzeichen(), null, null,
+                zeile.abdeckungProzent(), zeile.zustand(), iso(zeile.endgueltigAb(), z.zone()), zeile.version(),
+                gebildetAus(z.raster()), null, null, List.of());
     }
 
     // ------------------------------------------------------------------------ Ein Schritt
