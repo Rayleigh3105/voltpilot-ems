@@ -382,6 +382,8 @@ class UemsQuelleAnteilTest {
     void derBestandsvergleichFaengtEineGeaenderteZeile() {
         Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
                 "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, () -> tabellenFinger("device_measurement_sample"), "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
     }
 
     // ============================================================ Aufbau der Beispielwelt
@@ -565,8 +567,7 @@ class UemsQuelleAnteilTest {
     }
 
     private static String tabellenFinger(String tabelle) {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                + tabelle + " t", String.class);
+        return Bestandsschutz.inhalt(root, tabelle, null);
     }
 
     private static Map<String, String> fingerabdruck() {

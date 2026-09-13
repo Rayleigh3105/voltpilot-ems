@@ -37,6 +37,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -307,8 +308,16 @@ class BestandsuebernahmeApiTest {
         // … und KEINE andere Tabelle: kein Kommando, kein Fahrplan, keine Komponente, kein Push.
         Map<String, String> tabellenNachher = tabellenStand();
         assertThat(tabellenNachher.keySet()).isEqualTo(tabellenVorher.keySet());
-        tabellenNachher.forEach((tabelle, stand) ->
-                assertThat(stand).as(tabelle).isEqualTo(tabellenVorher.get(tabelle)));
+        assertThat(Bestandsschutz.abweichungen(tabellenVorher, tabellenNachher)).isEmpty();
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Anlage fällt auf, eine leere neue Spalte nicht. */
+    @Test
+    @Order(1)
+    void derTabellenvergleichFaengtEineGeaenderteZeile() {
+        JdbcTemplate root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()));
+        Bestandsschutz.mutationsprobe(root, SCHREIBT_IN, "site", "UPDATE site SET name = name || ' (Probe)'");
     }
 
     /** Die Übernahme kennt keinen Publisher — sie KANN nichts an eine Box schicken. */
@@ -528,17 +537,7 @@ class BestandsuebernahmeApiTest {
 
     /** Der Stand JEDER Tabelle, in die die Übernahme nicht schreiben darf. */
     private Map<String, String> tabellenStand() {
-        Map<String, String> stand = new LinkedHashMap<>();
-        for (String t : admin.queryForList("SELECT table_name FROM information_schema.tables "
-                + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name",
-                String.class)) {
-            if (SCHREIBT_IN.contains(t) || "flyway_schema_history".equals(t)) {
-                continue;
-            }
-            stand.put(t, admin.queryForObject("SELECT coalesce(md5(string_agg(x::text, E'\\n' "
-                    + "ORDER BY x::text)), 'leer') FROM " + t + " x", String.class));
-        }
-        return stand;
+        return Bestandsschutz.fingerabdruck(admin, SCHREIBT_IN);
     }
 
     /** Der Stand der Tabellen, in die sie schreibt — für „ein zweiter Lauf schreibt nichts". */

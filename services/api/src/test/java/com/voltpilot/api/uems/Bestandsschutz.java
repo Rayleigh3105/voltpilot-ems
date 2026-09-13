@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -68,10 +69,22 @@ final class Bestandsschutz {
         sql.append(" ORDER BY table_name");
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : db.queryForList(sql.toString(), String.class, ausnahmen.toArray())) {
-            aus.put(tabelle, db.queryForObject("SELECT coalesce(md5(string_agg(z, '|' ORDER BY z)), '" + LEER
-                    + "') FROM (SELECT " + ZEILE + " AS z FROM " + tabelle + " t) s", String.class));
+            aus.put(tabelle, inhalt(db, tabelle, null));
         }
         return aus;
+    }
+
+    /**
+     * Der Inhalt EINER Tabelle als ein Wert, in derselben Zeilenform wie {@link #fingerabdruck} —
+     * für die Tests, die nur eine Tabelle oder einen Ausschnitt messen (etwa die pünktlichen
+     * Rohwerte). Eine überall leere Spalte, die eine spätere Migration anhängt, ändert ihn nicht.
+     *
+     * @param bedingung {@code WHERE}-Bedingung über den Alias {@code t}, oder {@code null} für alle Zeilen
+     */
+    static String inhalt(JdbcTemplate db, String tabelle, String bedingung, Object... args) {
+        return db.queryForObject("SELECT coalesce(md5(string_agg(z, '|' ORDER BY z)), '" + LEER + "') FROM (SELECT "
+                + ZEILE + " AS z FROM " + tabelle + " t" + (bedingung == null ? "" : " WHERE " + bedingung)
+                + ") s", String.class, args);
     }
 
     /** Was sich am Bestand geändert hat, je Tabelle ein Satz — leer heißt: der Bestand ist unberührt. */
@@ -127,6 +140,31 @@ final class Bestandsschutz {
             db.update("INSERT INTO bestandsschutz_probe VALUES (1)");
             assertThat(abweichungen(vorher, fingerabdruck(db, ausnahmen))).as("neue Tabelle mit Inhalt")
                     .containsExactly("bestandsschutz_probe: neue Tabelle mit Inhalt");
+        });
+    }
+
+    /**
+     * Dieselbe Probe für einen eigenen Ausschnitt aus {@link #inhalt}: eine geänderte Zeile und
+     * eine neue Spalte mit Wert ändern ihn, eine neue leere Spalte nicht. Zurückgerollt wie oben.
+     *
+     * @param finger    misst den Ausschnitt; sein Ergebnis wird mit {@code equals} verglichen
+     * @param aenderung ein {@code UPDATE}, das mindestens eine gemessene Zeile von {@code tabelle} ändert
+     */
+    static void inhaltsprobe(JdbcTemplate db, Supplier<?> finger, String tabelle, String aenderung) {
+        TransactionTemplate tx = new TransactionTemplate(new DataSourceTransactionManager(db.getDataSource()));
+        tx.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            Object vorher = finger.get();
+            assertThat(db.update(aenderung)).as("die Änderung trifft eine bestehende Zeile").isPositive();
+            assertThat(finger.get()).as("geänderte Zeile").isNotEqualTo(vorher);
+        });
+        tx.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            Object vorher = finger.get();
+            db.execute("ALTER TABLE " + tabelle + " ADD COLUMN bestandsschutz_probe integer");
+            assertThat(finger.get()).as("neue leere Spalte").isEqualTo(vorher);
+            db.update("UPDATE " + tabelle + " SET bestandsschutz_probe = 1");
+            assertThat(finger.get()).as("neue Spalte mit Wert").isNotEqualTo(vorher);
         });
     }
 }

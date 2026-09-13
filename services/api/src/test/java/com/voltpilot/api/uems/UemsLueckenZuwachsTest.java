@@ -398,6 +398,9 @@ class UemsLueckenZuwachsTest {
     void endgueltigeZeilenBleibenUnberuehrt() {
         assertThat(endgueltigeZeilen).as("es gibt endgültige Tage und Perioden").isPositive();
         assertThat(endgueltigNachher).isEqualTo(endgueltigVorher);
+        Bestandsschutz.inhaltsprobe(root, UemsLueckenZuwachsTest::endgueltigeFinger, "messreihe_periode",
+                "UPDATE messreihe_periode SET berechnet_am = berechnet_am + interval '1 second' "
+                        + "WHERE zustand = 'endgueltig'");
     }
 
     /** Ein anderer Kundenbereich sieht weder die Lücke noch den Tag — und seine eigene trägt SEINEN Zuwachs. */
@@ -606,9 +609,8 @@ class UemsLueckenZuwachsTest {
     }
 
     private static String endgueltigeFinger() {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t, '|' ORDER BY t)), 'leer') FROM ("
-                + "SELECT x::text t FROM messreihe_tag x WHERE zustand = 'endgueltig' UNION ALL "
-                + "SELECT y::text FROM messreihe_periode y WHERE zustand = 'endgueltig') a", String.class);
+        return Bestandsschutz.inhalt(root, "messreihe_tag", "t.zustand = 'endgueltig'") + ';'
+                + Bestandsschutz.inhalt(root, "messreihe_periode", "t.zustand = 'endgueltig'");
     }
 
     private static Map<String, Object> viertelstunde(UUID entity, String beginn) {

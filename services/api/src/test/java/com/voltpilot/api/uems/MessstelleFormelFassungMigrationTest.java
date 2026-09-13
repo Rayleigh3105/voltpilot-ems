@@ -188,6 +188,13 @@ class MessstelleFormelFassungMigrationTest {
         assertThat(fingerNachher).isEqualTo(fingerVorher);
     }
 
+    /** Der Vergleich beißt noch: eine geänderte Messstelle fällt auf, eine leere neue Spalte nicht. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.inhaltsprobe(root, MessstelleFormelFassungMigrationTest::fingerabdruck, "messstelle",
+                "UPDATE messstelle SET name = coalesce(name, 'Probe') || ' (Probe)'");
+    }
+
     @Test
     void derBestandRechnetNachDerMigrationAnJedemTagUnveraendert() {
         for (Map.Entry<UUID, List<UUID>> e : TERME_VORHER.entrySet()) {
@@ -344,12 +351,16 @@ class MessstelleFormelFassungMigrationTest {
         return List.of(true, unaufloesbar == null || unaufloesbar == 0);
     }
 
-    /** Der Inhalt jeder Bestands-Tabelle als ein Wert — bei den Termen jede Spalte VOR IP-3. */
+    /**
+     * Der Inhalt jeder Bestands-Tabelle als ein Wert ({@link Bestandsschutz#inhalt}) — bei den Termen
+     * bewusst NICHT: diese Migration füllt an jedem bestehenden Term neue Spalten mit Wert, die der
+     * gemeinsame Vergleich zu Recht als geänderten Bestand meldete. Die Zusage hier ist enger —
+     * „jede Spalte VOR IP-3 bleibt stehen" —, darum zählen die Terme ihre alten Spalten mit Namen auf.
+     */
     private static Map<String, String> fingerabdruck() {
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : List.of("messstelle", "messstelle_aenderung", "messstelle_kennzeichen")) {
-            aus.put(tabelle, root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), "
-                    + "'leer') FROM " + tabelle + " t", String.class));
+            aus.put(tabelle, Bestandsschutz.inhalt(root, tabelle, null));
         }
         aus.put("messstelle_formel_term", root.queryForObject("SELECT coalesce(md5(string_agg(concat_ws('~', id, "
                 + "tenant_id, messstelle_id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
