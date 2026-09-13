@@ -63,6 +63,15 @@ public final class BilanzAbleitung {
     public static final String SALDIERT_KENNZEICHEN = "saldiert (Bezug − Abgabe)";
 
     /**
+     * BEFRISTET (AP-10 IP-9, W12): der Live-Wert und der Verlauf einer berechneten Messstelle
+     * ({@code GET …/messstellen/{id}/wert|verlauf}, PR #688) kommen aus den Geräte-Verdichtungen,
+     * nicht aus Periodenwerten der Messstelle. Das sagt dieses Kennzeichen an beiden Antworten —
+     * bis AP-10 IP-10 die Periodenwerte berechneter Messstellen baut und es wieder ENTFERNT
+     * ({@code vokabulare.kennzeichen_befristet} der Vektor-Datei nennt das Paket).
+     */
+    public static final String VORLAEUFIG_GERAETE_VERDICHTUNG = "vorläufig (Geräte-Verdichtung)";
+
+    /**
      * Die Kundensätze des Rests, WÖRTLICH die Vorlagen aus {@code saetze} der Vektor-Datei
      * ({@code rest_zugeordnet}, {@code rest_negativ}, {@code rest_keine_werte}); der Test hält
      * sie dort fest. Ein Rest heißt „nicht zugeordnet“ — nie „Verlust“, und er nennt keine Ursache.

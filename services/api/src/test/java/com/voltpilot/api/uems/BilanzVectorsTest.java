@@ -281,6 +281,21 @@ class BilanzVectorsTest {
     }
 
     /**
+     * Das BEFRISTETE Kennzeichen der PR-688-Antworten (AP-10 IP-9, W12) steht im Vertrag — mit dem
+     * Paket, das es wieder entfernt. Es ist ein Kennzeichen dieses Vertrags (die verbotenen Wörter
+     * prüfen es mit) und hat genau EIN Ablaufpaket.
+     */
+    @Test
+    void dasBefristeteKennzeichenStehtImVertragMitSeinemAblauf() throws Exception {
+        JsonNode v = vektoren().path("vokabulare");
+        assertThat(texte(v.path("kennzeichen_neu"))).contains(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
+        JsonNode befristet = v.path("kennzeichen_befristet");
+        assertThat(befristet).hasSize(1);
+        assertThat(befristet.get(0).path("wort").asText()).isEqualTo(BilanzAbleitung.VORLAEUFIG_GERAETE_VERDICHTUNG);
+        assertThat(befristet.get(0).path("entfaellt_mit").asText()).isEqualTo("AP-10 IP-10");
+    }
+
+    /**
      * E3 — jede Fassung eines Rests, die {@code rest_aus_stellung} aus den Stellungen des
      * Referenzunternehmens ableitet, ist GENAU die Eingangsmenge einer {@code rest}-Prüfung desselben
      * Falls: die Terme, mit denen gerechnet wird, sind die aus der Stellung — nicht eine zweite,

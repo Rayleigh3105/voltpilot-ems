@@ -158,7 +158,19 @@ public final class MessstelleDto {
             OffsetDateTime archiviertAm,
             RegisterBeobachtung beobachtung,
             RegisterWert letzterWert,
-            List<RegisterNebengroesse> nebengroessen) {}
+            List<RegisterNebengroesse> nebengroessen,
+            RegisterBerechnung berechnung) {}
+
+    /**
+     * Die Vollständigkeit einer BERECHNETEN Messstelle zum Zeitpunkt (AP-10 IP-9) — abgeleitet von
+     * {@code ZustandAbleitung.berechnet} über die Eingänge der Formel DES TAGES (bei einem Rest aus der
+     * Stellung): {@code zustand} {@code vollstaendig} · {@code unvollstaendig}, {@code fehlend} die
+     * Kennzeichen der Eingänge, die nicht liefern, {@code seit} der früheste Zeitpunkt, seit dem einer
+     * schweigt, {@code text} der Kundensatz („Unvollständig seit 14:00 Uhr (fehlt: MS-12)“). {@code null}
+     * an einer gemessenen Messstelle und an einer berechneten ohne Formel am Tag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterBerechnung(String zustand, List<String> fehlend, OffsetDateTime seit, String text) {}
 
     /**
      * Die Beobachtung EINER Größe (AP-04 IP-15) — abgeleitet, nie gespeichert und nie geraten:

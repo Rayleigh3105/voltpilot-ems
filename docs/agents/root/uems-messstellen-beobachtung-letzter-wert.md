@@ -62,8 +62,9 @@ gebaute Vertrag (AP-07 E9 vom 10.09.2026, umgesetzt in PR 650):
   geben jeder Messstelle ihre eigene Box.
 - **Eine BERECHNETE Messstelle hat keine Beobachtung** (`null`, wie `quelle.stand = berechnet`):
   sie ist nicht ohne Quelle, sie wird gerechnet. Ihre Vollständigkeit („Vollständig“ /
-  „Unvollständig seit … (fehlt: MS-12)“) bringt AP-10 mit der Formel. Deshalb steht sie in
-  KEINEM Nenner des Aggregats — Ahrenberg zählt 17 gemessene, nicht 21.
+  „Unvollständig seit … (fehlt: MS-12)“) steht seit AP-10 IP-9 in `berechnung`, und sie zählt im
+  Aggregat MIT (vollständig = liefert; ohne Formel am Tag im Nenner wie „keine Datenquelle“) —
+  Ahrenberg zählt 22, nicht mehr 17 gemessene (`uems-bilanz-lesemodell.md`).
 - **Das Aggregat zählt GENAU die gezeigten Zeilen.** Ein Filter schneidet auch das Aggregat; eine
   Messstelle ohne Standort an dem Tag zählt nur beim Unternehmen, nie unter einem geratenen
   Standort.

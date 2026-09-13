@@ -132,6 +132,9 @@ public final class MessstelleFormelDto {
      * Eingangswerte. Fehlt/veraltet EIN Pflicht-Term, ist {@code wert} {@code null}
      * ({@code unvollstaendig} = true) und {@code fehlende} nennt die Terme — NIE eine Teilsumme.
      * {@code stand} ist der jüngste Messzeitpunkt der Eingänge (null, wenn unvollständig).
+     * {@code kennzeichen} trägt BEFRISTET „vorläufig (Geräte-Verdichtung)“ (AP-10 IP-9, W12) — IP-10
+     * entfernt es mit den Periodenwerten berechneter Messstellen. Ein Rest (Formel-Typ {@code rest})
+     * rechnet seine Terme aus der Stellung des Tages und antwortet in kW (Wirkleistung).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Wert(
@@ -139,15 +142,17 @@ public final class MessstelleFormelDto {
             String einheit,
             boolean unvollstaendig,
             List<FehlenderTerm> fehlende,
-            OffsetDateTime stand) {}
+            OffsetDateTime stand,
+            List<String> kennzeichen) {}
 
     /** Ein 15-min-Bucket des Verlaufs; {@code wert} {@code null} = unvollständig (nicht 0). */
     public record VerlaufPunkt(OffsetDateTime zeit, Double wert) {}
 
     /**
      * {@code GET /api/v1/messstellen/{id}/verlauf}: je 15-min-Bucket die Summe, WENN alle Terme im
-     * Bucket einen Wert haben, sonst {@code null} (nie eine stille Teilsumme).
+     * Bucket einen Wert haben, sonst {@code null} (nie eine stille Teilsumme). {@code kennzeichen} wie
+     * am {@link Wert}: befristet „vorläufig (Geräte-Verdichtung)“ bis AP-10 IP-10.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Verlauf(UUID messstelleId, String einheit, List<VerlaufPunkt> punkte) {}
+    public record Verlauf(UUID messstelleId, String einheit, List<VerlaufPunkt> punkte, List<String> kennzeichen) {}
 }

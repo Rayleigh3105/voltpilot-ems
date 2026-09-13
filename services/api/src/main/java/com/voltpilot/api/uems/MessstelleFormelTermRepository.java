@@ -50,6 +50,28 @@ public class MessstelleFormelTermRepository {
                 TERM, fassungId);
     }
 
+    /**
+     * Die Terme MEHRERER Fassungen in EINER Abfrage (Fassung → Terme in Reihenfolge) — der Register-Zug
+     * der berechneten Messstellen (AP-10 IP-9), nie je Zeile.
+     */
+    public java.util.Map<UUID, List<TermZeile>> derFassungen(java.util.Collection<UUID> fassungen) {
+        java.util.Map<UUID, List<TermZeile>> out = new java.util.LinkedHashMap<>();
+        if (fassungen.isEmpty()) {
+            return out;
+        }
+        jdbc.query(con -> {
+            var ps = con.prepareStatement("SELECT fassung_id, id, position, eingang_art, entity_id, point_key, "
+                    + "quell_messstelle_id, vorzeichen, faktor, verteilung_ziel, anteil FROM messstelle_formel_term "
+                    + "WHERE fassung_id = ANY (?) ORDER BY fassung_id, position");
+            ps.setArray(1, con.createArrayOf("uuid", fassungen.toArray()));
+            return ps;
+        }, rs -> {
+            out.computeIfAbsent(rs.getObject("fassung_id", UUID.class), k -> new java.util.ArrayList<>())
+                    .add(TERM.mapRow(rs, 0));
+        });
+        return out;
+    }
+
     private static final org.springframework.jdbc.core.RowMapper<TermZeile> TERM =
             (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
                     rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
@@ -105,7 +127,12 @@ public class MessstelleFormelTermRepository {
                 "SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ? AND " + FASSUNG_AM,
                 Integer.class, messstelleId, tag, tag);
         if (gesamt == null || gesamt == 0) {
-            return new FormelStand(false, false);
+            // AP-10 IP-9 (E3): ein Rest speichert keine Terme — seine Formel IST die Stellung des Tages.
+            Boolean rest = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM messstelle_formel_fassung f "
+                    + "WHERE f.messstelle_id = ? AND f.formel_typ = 'rest' AND f.aufgehoben_am IS NULL "
+                    + "AND (f.gueltig_ab IS NULL OR f.gueltig_ab <= ?) AND (f.gueltig_bis IS NULL OR f.gueltig_bis >= ?))",
+                    Boolean.class, messstelleId, tag, tag);
+            return Boolean.TRUE.equals(rest) ? new FormelStand(true, true) : new FormelStand(false, false);
         }
         // Terme, deren Eingang NICHT mehr auflösbar ist.
         Integer unaufloesbar = jdbc.queryForObject("""
