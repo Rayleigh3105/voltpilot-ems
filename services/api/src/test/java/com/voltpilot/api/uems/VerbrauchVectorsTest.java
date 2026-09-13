@@ -100,7 +100,8 @@ class VerbrauchVectorsTest {
         assertThat(regeln.path("luecke_faktor").asInt()).isEqualTo(VerbrauchRegeln.LUECKE_FAKTOR);
         assertThat(regeln.path("integration_halten_faktor").asInt()).isEqualTo(VerbrauchRegeln.HALTEN_FAKTOR);
         assertThat(regeln.path("vergleich_nachkommastellen").asInt()).isEqualTo(VerbrauchRegeln.NACHKOMMASTELLEN);
-        assertThat(lies(VECTORS).path("zeitzone").asText()).isEqualTo(VerbrauchRegeln.ANZEIGE_ZEITZONE.getId());
+        // Die Zeitzone der Datei ist die der Beispielwelt Ahrenberg; die Regel nimmt die der Reihe (E10).
+        assertThat(lies(VECTORS).path("zeitzone").asText()).isEqualTo("Europe/Berlin");
         List<String> zeitraeume = new ArrayList<>();
         regeln.path("luecke_zeitraeume").forEach(z -> zeitraeume.add(z.asText()));
         assertThat(zeitraeume).isEqualTo(VerbrauchRegeln.LUECKE_ZEITRAEUME);
@@ -157,6 +158,7 @@ class VerbrauchVectorsTest {
         ereignisse.addAll(ereignisse(erwartung.path("ereignisse_zusatz")));
 
         Ergebnis ist = VerbrauchRegeln.ergebnis(
+                kontext(reihe),
                 reihe.path("wertart").asText(),
                 rohwerte(reihe),
                 von,
@@ -234,13 +236,13 @@ class VerbrauchVectorsTest {
             zahl(why + " · zuwachs", s.path("zuwachs"), l.zuwachs());
             assertThat(s.path("einheit").asText()).as(why + " · einheit").isEqualTo(reihe.path("einheit").asText());
             assertThat(ist.kennzeichen()).as(why + " · Kennzeichen des gezählten Zuwachses")
-                    .contains(VerbrauchRegeln.lueckenKennzeichen(l));
+                    .contains(VerbrauchRegeln.lueckenKennzeichen(l, kontext(reihe)));
         }
         for (LueckenZuwachs l : VerbrauchRegeln.lueckenZuwaechse(
                 rohwerte(reihe), IMMER_VON, IMMER_BIS, kadenz, ereignisse, faktor)) {
             if (!gezaehlt.contains(l)) {
                 assertThat(ist.kennzeichen()).as(why + " · angeschnittene Lücke steht nicht da")
-                        .doesNotContain(VerbrauchRegeln.lueckenKennzeichen(l));
+                        .doesNotContain(VerbrauchRegeln.lueckenKennzeichen(l, kontext(reihe)));
             }
         }
     }
@@ -361,6 +363,16 @@ class VerbrauchVectorsTest {
 
     // ------------------------------------------------------------ Die Vektor-Form lesen
 
+    /**
+     * Der Träger einer Reihe der Datei: ihre Einheit und ihre Zeitzone — ohne eigene Zone die der
+     * Beispielwelt ({@code zeitzone} der Datei).
+     */
+    static ReihenKontext kontext(JsonNode reihe) {
+        String zone = reihe.hasNonNull("zeitzone") ? reihe.path("zeitzone").asText() : "Europe/Berlin";
+        return new ReihenKontext(reihe.hasNonNull("einheit") ? reihe.path("einheit").asText() : null,
+                ZoneId.of(zone));
+    }
+
     static JsonNode reihe(JsonNode fall, JsonNode erwartung) {
         JsonNode eingang = fall.path("input");
         if (eingang.has("reihe")) {
@@ -411,7 +423,7 @@ class VerbrauchVectorsTest {
                     continue;
                 }
                 String uhr = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
-                        .format(nachher.zeit().atZone(VerbrauchRegeln.ANZEIGE_ZEITZONE));
+                        .format(nachher.zeit().atZone(kontext(reihe).zeitzone()));
                 BigDecimal ueber = VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, modul, hoechst);
                 assertThat(ueber != null).as(fall.path("name").asText() + " " + uhr)
                         .isEqualTo(genannt.contains(uhr));
@@ -466,8 +478,6 @@ class VerbrauchVectorsTest {
         array.forEach(e -> out.add(new Ereignis(
                 e.path("art").asText(),
                 VerbrauchRegeln.zeit(e.path("t").asText()),
-                // Die Uhrzeit, wie der Verdichter sie der Meldung gibt (mit MESZ/MEZ an der doppelten Stunde).
-                ErgebnisZustand.uhr(VerbrauchRegeln.zeit(e.path("t").asText()), VerbrauchRegeln.ANZEIGE_ZEITZONE),
                 dezimal(e.path("endstand"), null),
                 dezimal(e.path("anfangsstand"), null),
                 e.path("verlust_s").asLong(Ereignis.VERLUST_VORGABE))));

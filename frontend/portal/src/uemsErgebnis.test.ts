@@ -3,10 +3,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
 import {
+  ANZEIGE_EINHEITEN,
   DEZIMAL,
   EBENEN,
   FRUEHERE_FASSUNGEN,
   KENNZEICHEN,
+  KENNZEICHEN_EBENE,
   MINUS,
   OHNE_ZAHL,
   PLATZHALTER,
@@ -21,7 +23,9 @@ import {
   ZUSTAENDE,
   anfang,
   erkenne,
+  menge,
   pruefe,
+  pruefeMenge,
   pruefeZahl,
   raster,
   rundungsdifferenz,
@@ -95,6 +99,8 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
     expect(MINUS).toBe(vektoren.rundung.minus);
     expect(EBENEN).toEqual(vektoren.rundung.ebenen);
     expect(STELLEN).toEqual(vektoren.rundung.stellen);
+    expect(ANZEIGE_EINHEITEN).toEqual(vektoren.rundung.anzeige_einheiten);
+    expect(KENNZEICHEN_EBENE).toBe(vektoren.rundung.kennzeichen_ebene);
     expect(Object.fromEntries(Object.entries(TAGESDAUER))).toEqual(vektoren.sommerzeit.tagesdauer);
     expect(SCHRITTE).toEqual(vektoren.sommerzeit.schritte);
   });
@@ -109,8 +115,12 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
       const e = erkenne(f.beispiel);
       expect(e?.muster.schluessel, f.beispiel).toBe(f.schluessel);
       expect(e?.fruehereFassung).toBe(true);
-      // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut.
-      expect(sprich(f.schluessel, e!.werte)).not.toBe(f.beispiel);
+      // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut — oder, wo nur
+      // der Platzhalter sich änderte (1.3: „337.600“ ist keine Menge), nimmt das heutige Muster den
+      // alten Wert nicht mehr an (sonst hätte erkenne auf zwei Muster gepasst).
+      if (sprich(f.schluessel, e!.werte) === f.beispiel) {
+        expect(e!.muster.platzhalter, f.beispiel).not.toEqual(f.platzhalter);
+      }
     }
     expect(anfang('ruecksetzung')).toBe('Rücksetzung ');
     expect(() => sprich('neustart', { uhr: '10:22' })).toThrow();
@@ -118,7 +128,7 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
 
   it('jede Familie, jedes Zustandswort und jeder Verstoß ist abgedeckt', () => {
     expect(new Set(faelle.map((f) => f.familie))).toEqual(
-      new Set(['zahl', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz']),
+      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz']),
     );
     const gesprochen = faelle.filter((f) => f.familie === 'ergebnis' && f.erwartet.satz !== null).map((f) => f.eingang.zustand);
     for (const z of ZUSTAENDE) expect(gesprochen).toContain(z.wort);
@@ -169,6 +179,12 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
           expect(pruefeZahl(ein.einheit, ein.ebene)).toEqual(erw.verstoesse);
           if (erw.verstoesse.length === 0) expect(zahl(ein.wert, ein.einheit, ein.ebene)).toBe(erw.text);
           else expect(() => zahl(ein.wert, ein.einheit, ein.ebene)).toThrow();
+          break;
+        }
+        case 'menge': {
+          expect(pruefeMenge(ein.einheit, ein.ebene)).toEqual(erw.verstoesse);
+          if (erw.verstoesse.length === 0) expect(menge(ein.wert, ein.einheit, ein.ebene)).toBe(erw.text);
+          else expect(() => menge(ein.wert, ein.einheit, ein.ebene)).toThrow();
           break;
         }
         case 'ergebnis': {
@@ -245,6 +261,15 @@ describe('uemsErgebnis — die alten Kundensätze kommen nicht zurück', () => {
   it('Dativ: „mit Ablesestände“ wird nie mehr gesprochen', () => {
     expect(sprich('geraetegrenze_mit', { uhr: '10:40' })).toBe('Gerätegrenze 10:40 mit Ableseständen');
     expect(erkenne('Gerätegrenze 10:40 mit Ablesestände')?.fruehereFassung).toBe(true);
+  });
+
+  it('Zuwachs: „337.600“ ohne Einheit wird nie mehr gesprochen, bleibt aber lesbar', () => {
+    const alt = erkenne('Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar');
+    expect(alt?.muster.schluessel).toBe('luecke_zuwachs');
+    expect(alt?.fruehereFassung).toBe(true);
+    const neu = `Lücke 14:00–17:31: Zuwachs ${menge('337600', 'Wh', KENNZEICHEN_EBENE)} gemessen, nicht auf Viertelstunden verteilbar`;
+    expect(neu).toBe(`Lücke 14:00–17:31: Zuwachs 337,6${VOR_EINHEIT}kWh gemessen, nicht auf Viertelstunden verteilbar`);
+    expect(erkenne(neu)?.fruehereFassung).toBe(false);
   });
 
   it('Sommerzeit: 02:30 am 25.10.2026 ist nie mehr ohne Zusatz', () => {

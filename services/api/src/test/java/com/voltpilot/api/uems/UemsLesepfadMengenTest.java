@@ -68,6 +68,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsLesepfadMengenTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";
@@ -159,9 +162,9 @@ class UemsLesepfadMengenTest {
 
         JdbcTemplate admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         ViertelstundeVerdichter viertelstunden = new ViertelstundeVerdichter(admin,
-                new MeasurementCatalog(new ObjectMapper()), new SpaetankunftMelder(), 500, 40, 200_000);
+                KATALOG, new SpaetankunftMelder(), 500, 40, 200_000);
         EndgueltigkeitLauf endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        TagVerdichter tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
+        TagVerdichter tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
         root.update("""
                 INSERT INTO messreihe_viertelstunde_arbeit (tenant_id, entity_id, messkanal, intervall_beginn, grund)
                 SELECT DISTINCT s.tenant_id, s.entity_id, s.point_key,
@@ -198,8 +201,8 @@ class UemsLesepfadMengenTest {
         zaehlerbrueche();
 
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verlauf = new MeasurementHistoryService(app, new MeasurementCatalog(new ObjectMapper()),
-                new MeasurementSelectionRepository(app), new SpeicherklasseHistorie(app),
+        verlauf = new MeasurementHistoryService(app, KATALOG,
+                new MeasurementSelectionRepository(app), new SpeicherklasseHistorie(app, KATALOG),
                 Clock.fixed(JETZT, ZoneOffset.UTC));
     }
 
@@ -269,7 +272,7 @@ class UemsLesepfadMengenTest {
         assertThat(h.data().get(i).value()).as("Stand 11:00 − Stand 10:00").isEqualByComparingTo("96.0");
         assertThat(herkunft.path("mengeZustand").asText()).isEqualTo("vollständig");
         assertThat(texte(herkunft.path("kennzeichen"))).containsExactly(
-                "Lücke 10:05–10:40: Zuwachs 56.000 gemessen, nicht auf Viertelstunden verteilbar");
+                "Lücke 10:05–10:40: Zuwachs 56,0 kWh gemessen, nicht auf Viertelstunden verteilbar");
 
         assertThat(h.data().get(index(h, stunde.minusSeconds(3600))).value())
                 .as("eine volle Stunde davor").isEqualByComparingTo("96.0");
@@ -301,7 +304,7 @@ class UemsLesepfadMengenTest {
     @Test
     void jederSchrittDesGrobenRastersIstDieRegelFuerDiesenZeitraum() {
         TenantContext.set(KB);
-        ZeitraumMenge zeitraum = new ZeitraumMenge(app);
+        ZeitraumMenge zeitraum = new ZeitraumMenge(app, KATALOG);
         int geprueft = 0;
         for (String kanal : List.of(F8, H)) {
             History h = frei(kanal, GROB_VON, GROB_BIS);

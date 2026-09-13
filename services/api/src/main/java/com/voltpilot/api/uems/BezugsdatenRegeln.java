@@ -855,11 +855,13 @@ public final class BezugsdatenRegeln {
      * {@link VerbrauchRegeln#mengeZaehlerstand} weiter. Sie ist ausdrücklich keine zweite
      * Rechnung: ein kleinerer Stand ist dort eine Rücksetzung (Z5) und macht die Periode
      * unvollständig statt eine negative Menge zu erzeugen.
+     *
+     * @param reihe Einheit der Ablesungen und Zeitzone des Standorts, in denen die Kennzeichen sprechen
      */
-    public static VerbrauchRegeln.Ergebnis mengeAblesezeitraum(
+    public static VerbrauchRegeln.Ergebnis mengeAblesezeitraum(ReihenKontext reihe,
             List<VerbrauchRegeln.Rohwert> staende, Instant von, Instant bis, Duration kadenz) {
         return VerbrauchRegeln.mengeZaehlerstand(
-                staende, von, bis, kadenz, List.of(), BigDecimal.ONE, null, null);
+                reihe, staende, von, bis, kadenz, List.of(), BigDecimal.ONE, null, null);
     }
 
     /** Der Kundensatz eines Befunds aus dem Vertrag — das Portal erfindet keinen zweiten. */

@@ -25,7 +25,7 @@
  */
 
 import { iso, mitternacht, offsetMinuten, stundenDesTages, tagPlus, zwei } from './bezugsPeriode';
-import { dez, dezRunde, type Dez } from './dez';
+import { dez, dezRunde, dezText, type Dez } from './dez';
 
 // ------------------------------------------------------------------ Zustände (§4.5)
 
@@ -54,6 +54,8 @@ export const PLATZHALTER: Record<string, string> = {
   sekunden: '[0-5][0-9]',
   dezimal_punkt: '(?:0|[1-9][0-9]*)\\.[0-9]{3}',
   dezimal_klartext: '(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?',
+  // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
+  menge: '(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00a0(?:kWh|kvarh|m³)',
 };
 
 export type Muster = {
@@ -103,7 +105,9 @@ export const KENNZEICHEN: Muster[] = [
   m('ruecksetzung', 'Rücksetzung {uhr} ohne Endstand — bis zu 1 Kadenz nicht gezählt', { uhr: 'uhr' },
     'Rücksetzung', 30, true, false),
   m('luecke_zuwachs', 'Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar',
-    { von: 'uhr', bis: 'uhr', zuwachs: 'dezimal_punkt' }, 'Lücke: Zuwachs gemessen', 30, false, false),
+    { von: 'uhr', bis: 'uhr', zuwachs: 'menge' }, 'Lücke: Zuwachs gemessen', 30, false, false),
+  m('luecke_zuwachs_ohne_einheit', 'Lücke {von}–{bis}: Zuwachs gemessen, nicht auf Viertelstunden verteilbar',
+    { von: 'uhr', bis: 'uhr' }, 'Lücke: Zuwachs gemessen', 30, false, false),
   m('neustart', 'Neustart {uhr}: bis zu {verlust_s} s Zählung möglicherweise verloren',
     { uhr: 'uhr', verlust_s: 'ganzzahl' }, 'Neustart-Verlust', 40, true, false),
   m('intervallmenge_fehlt', '1 von {erwartet} Intervallmengen fehlt — Menge ist die Summe der gemessenen',
@@ -131,6 +135,13 @@ export type FruehereFassung = {
 export const FRUEHERE_FASSUNGEN: FruehereFassung[] = [
   // Falscher Dativ; in endgültigen Viertelstunden gespeichert und von Tag/Monat/Jahr übernommen.
   { schluessel: 'geraetegrenze_mit', muster: 'Gerätegrenze {uhr} mit Ablesestände', platzhalter: { uhr: 'uhr' }, bisFassung: '1.0' },
+  // Punkt, drei Stellen, ohne Einheit („Zuwachs 337.600“); seit AP-08 IP-6 gespeichert.
+  {
+    schluessel: 'luecke_zuwachs',
+    muster: 'Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar',
+    platzhalter: { von: 'uhr', bis: 'uhr', zuwachs: 'dezimal_punkt' },
+    bisFassung: '1.2',
+  },
 ];
 
 export type Vorgesehen = { wort: string; anfang: string; wortlautMit: string };
@@ -319,6 +330,8 @@ export const PROZENT = '%';
 export const KUBIKMETER = 'm³';
 /** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
 export const KVA = 'kVA';
+/** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
+export const KVARH = 'kvarh';
 
 export type Stellen = { einheit: string; ebene: string | null; stellen: number };
 
@@ -329,6 +342,11 @@ export const STELLEN: Stellen[] = [
   { einheit: KWH, ebene: 'tag', stellen: 0 },
   { einheit: KWH, ebene: 'monat', stellen: 0 },
   { einheit: KWH, ebene: 'jahr', stellen: 0 },
+  { einheit: KVARH, ebene: 'viertelstunde', stellen: 1 },
+  { einheit: KVARH, ebene: 'stunde', stellen: 1 },
+  { einheit: KVARH, ebene: 'tag', stellen: 0 },
+  { einheit: KVARH, ebene: 'monat', stellen: 0 },
+  { einheit: KVARH, ebene: 'jahr', stellen: 0 },
   { einheit: KW, ebene: null, stellen: 1 },
   { einheit: PROZENT, ebene: null, stellen: 0 },
   { einheit: KUBIKMETER, ebene: null, stellen: 1 },
@@ -347,7 +365,7 @@ export const pruefeZahl = (einheit: string, ebene: string | null): Verstoss[] =>
   const v: Verstoss[] = [];
   if (!STELLEN.some((s) => s.einheit === einheit)) v.push('einheit_unbekannt');
   if (ebene !== null && !EBENEN.includes(ebene)) v.push('ebene_unbekannt');
-  else if (ebene === null && einheit === KWH) v.push('ebene_fehlt');
+  else if (ebene === null && (einheit === KWH || einheit === KVARH)) v.push('ebene_fehlt');
   return v;
 };
 
@@ -383,6 +401,42 @@ const text = (d: Dez, einheit: string): string => {
 export const zahl = (wert: Betrag, einheit: string, ebene: string | null): string => {
   const s = stellen(einheit, ebene);
   return wert === null ? OHNE_ZAHL : text(dezRunde(zuDez(wert), s), einheit);
+};
+
+/**
+ * Die Anzeige-Einheit einer GESPEICHERTEN Einheit (seit 1.3, Ableitung aus E11): gespeichert bleibt,
+ * was der Zähler liefert; angezeigt wird kWh · kvarh · m³ — „1.482.300 kWh“, nie „1.482,3 MWh“.
+ * `faktor`: gespeicherter Wert × faktor = Wert in der Anzeige-Einheit.
+ */
+export type AnzeigeEinheit = { gespeichert: string; angezeigt: string; faktor: string };
+
+export const ANZEIGE_EINHEITEN: AnzeigeEinheit[] = [
+  { gespeichert: 'Wh', angezeigt: KWH, faktor: '0.001' },
+  { gespeichert: 'kWh', angezeigt: KWH, faktor: '1' },
+  { gespeichert: 'MWh', angezeigt: KWH, faktor: '1000' },
+  { gespeichert: 'varh', angezeigt: KVARH, faktor: '0.001' },
+  { gespeichert: 'kvarh', angezeigt: KVARH, faktor: '1' },
+  { gespeichert: KUBIKMETER, angezeigt: KUBIKMETER, faktor: '1' },
+];
+
+/** Die Ebene, deren Stellen eine Menge IN einem Kennzeichen spricht — ein Satz rundet auf jeder Ebene gleich. */
+export const KENNZEICHEN_EBENE = 'viertelstunde';
+
+/** Die Verstöße einer gespeicherten Einheit und Ebene; leer = anzeigbar. */
+export const pruefeMenge = (gespeichert: string, ebene: string | null): Verstoss[] => {
+  const a = ANZEIGE_EINHEITEN.find((x) => x.gespeichert === gespeichert);
+  return a ? pruefeZahl(a.angezeigt, ebene) : ['einheit_unbekannt'];
+};
+
+/** E11 für eine Menge in ihrer GESPEICHERTEN Einheit: in die Anzeige-Einheit umgerechnet, dann {@link zahl}. */
+export const menge = (wert: Betrag, gespeichert: string, ebene: string | null): string => {
+  const v = pruefeMenge(gespeichert, ebene);
+  if (v.length > 0) throw new Error(`keine Anzeige für ${gespeichert} / ${ebene}: ${v.join(', ')}`);
+  const a = ANZEIGE_EINHEITEN.find((x) => x.gespeichert === gespeichert)!;
+  if (wert === null) return zahl(null, a.angezeigt, ebene);
+  const w = zuDez(wert);
+  const f = dez(a.faktor);
+  return zahl(dezText({ z: w.z * f.z, e: w.e + f.e }), a.angezeigt, ebene);
 };
 
 export type Rundungsdifferenz = { summeDerAngezeigten: string; differenz: string | null; satz: string | null };

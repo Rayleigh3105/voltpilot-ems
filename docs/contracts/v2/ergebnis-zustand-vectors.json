@@ -11,9 +11,10 @@
     "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; die Ebene bestimmt die Stellen, nie die Fläche. Kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
     "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es. Dieselbe Regel gilt für die Uhrzeit IN einem Kennzeichen (familie uhr, seit 1.1): „Rücksetzung 02:30 MEZ …“.",
     "1.2 (additiv): die Einheit kVA (Anschluss-Scheinleistung) mit der Stelle der Leistung; Bilanz- und Netzanschluss-Sätze rufen zahl() an, statt selbst zu formatieren.",
+    "1.3: der Zuwachs-Satz trägt seine Einheit („Zuwachs 337,6 kWh“) — rundung.anzeige_einheiten (gespeichert bleibt die Zähler-Einheit, angezeigt kWh · kvarh · m³; Familie menge), rundung.kennzeichen_ebene (ein Satz rundet auf JEDER Ebene gleich), kvarh mit den Stellen von kWh, Platzhalter menge; ohne bekannte Einheit steht der Satz ohne Zahl (luecke_zuwachs_ohne_einheit). Die alte Form „Zuwachs 337.600“ lebt in fruehere_fassungen. Die Uhrzeiten sprechen in der Zone des Standorts, die der Träger ReihenKontext bis zur Rechenregel reicht — ohne neuen Wortlaut.",
     "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -52,7 +53,8 @@
     "ganzzahl_ab_2": "(?:[2-9]|[1-9][0-9]+)",
     "sekunden": "[0-5][0-9]",
     "dezimal_punkt": "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
-    "dezimal_klartext": "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?"
+    "dezimal_klartext": "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
+    "menge": "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9] (?:kWh|kvarh|m³)"
   },
   "kennzeichen": [
     {
@@ -201,15 +203,28 @@
     {
       "schluessel": "luecke_zuwachs",
       "muster": "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
-      "platzhalter": {"von": "uhr", "bis": "uhr", "zuwachs": "dezimal_punkt"},
+      "platzhalter": {"von": "uhr", "bis": "uhr", "zuwachs": "menge"},
       "wort": "Lücke: Zuwachs gemessen",
       "rang": 30,
       "fehlbestand": false,
       "einmalig": false,
       "folgt_auf": null,
       "verlangt_danach": null,
-      "beispiel": "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar",
+      "beispiel": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar",
       "fall": "F8"
+    },
+    {
+      "schluessel": "luecke_zuwachs_ohne_einheit",
+      "muster": "Lücke {von}–{bis}: Zuwachs gemessen, nicht auf Viertelstunden verteilbar",
+      "platzhalter": {"von": "uhr", "bis": "uhr"},
+      "wort": "Lücke: Zuwachs gemessen",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar",
+      "fall": "konstruiert"
     },
     {
       "schluessel": "neustart",
@@ -285,6 +300,14 @@
       "bis_fassung": "1.0",
       "beispiel": "Gerätegrenze 10:40 mit Ablesestände",
       "warum": "Falscher Dativ (nach „mit“: „Ableseständen“). Seit AP-08 IP-4 gesprochen und in kennzeichen der Speicherklassen gespeichert; eine endgültige Viertelstunde wird nie neu geschrieben, und Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Darum bleibt die alte Form lesbar."
+    },
+    {
+      "schluessel": "luecke_zuwachs",
+      "muster": "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
+      "platzhalter": {"von": "uhr", "bis": "uhr", "zuwachs": "dezimal_punkt"},
+      "bis_fassung": "1.2",
+      "beispiel": "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar",
+      "warum": "Punkt als Dezimalzeichen, drei Nachkommastellen, ohne Einheit — ein de-DE-Leser las 337 600. Seit AP-08 IP-6 gesprochen und in kennzeichen der Speicherklassen gespeichert (auch für Reihen ohne bekannte Einheit); Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Darum bleibt die alte Form lesbar."
     }
   ],
   "kennzeichen_vorgesehen": [
@@ -355,11 +378,27 @@
       {"einheit": "kWh", "ebene": "tag", "stellen": 0},
       {"einheit": "kWh", "ebene": "monat", "stellen": 0},
       {"einheit": "kWh", "ebene": "jahr", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "viertelstunde", "stellen": 1},
+      {"einheit": "kvarh", "ebene": "stunde", "stellen": 1},
+      {"einheit": "kvarh", "ebene": "tag", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "monat", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "jahr", "stellen": 0},
       {"einheit": "kW", "ebene": null, "stellen": 1},
       {"einheit": "%", "ebene": null, "stellen": 0},
       {"einheit": "m³", "ebene": null, "stellen": 1},
       {"einheit": "kVA", "ebene": null, "stellen": 1}
     ],
+    "anzeige_einheiten": [
+      {"gespeichert": "Wh", "angezeigt": "kWh", "faktor": "0.001"},
+      {"gespeichert": "kWh", "angezeigt": "kWh", "faktor": "1"},
+      {"gespeichert": "MWh", "angezeigt": "kWh", "faktor": "1000"},
+      {"gespeichert": "varh", "angezeigt": "kvarh", "faktor": "0.001"},
+      {"gespeichert": "kvarh", "angezeigt": "kvarh", "faktor": "1"},
+      {"gespeichert": "m³", "angezeigt": "m³", "faktor": "1"}
+    ],
+    "anzeige_einheit_warum": "Ableitung aus E11 (firstmate 13.09.2026, kein Captain-Entscheid): gespeichert bleibt, was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen, mit den Stellen von E11 auf dieser Einheit — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. Blindarbeit ist Arbeit und rundet darum wie kWh.",
+    "kennzeichen_ebene": "viertelstunde",
+    "kennzeichen_ebene_warum": "Eine Menge IN einem Kennzeichen spricht die Stellen der Viertelstunde: der Satz wandert unverändert von der Viertelstunde in Tag, Monat und Jahr (VerbrauchRegeln.zaehlerstandAusTeilperioden übernimmt ihn) und wird nie umgeschrieben — er darf also nicht je Periode anders runden.",
     "differenz_satz": "Summe der angezeigten Werte {summe} · Rundungsdifferenz {differenz}",
     "export": "CSV ungerundet, Punkt als Dezimalzeichen, Zeit ISO-8601 mit Offset"
   },
@@ -373,7 +412,7 @@
   "befunde": [
     {
       "stelle": "kennzeichen.luecke_zuwachs",
-      "befund": "Die Zahl steht mit Punkt als Dezimalzeichen, drei Nachkommastellen und ohne Einheit: „Zuwachs 337.600“ liest ein de-DE-Leser als 337 600. E11 verlangte „337,6 kWh“.",
+      "befund": "Erledigt in 1.3: die Zahl stand mit Punkt als Dezimalzeichen, drei Nachkommastellen und ohne Einheit: „Zuwachs 337.600“ liest ein de-DE-Leser als 337 600. Seit 1.3 „Zuwachs 337,6 kWh“ — die Einheit reist im Träger ReihenKontext (Katalog-Einheit des Messkanals) bis VerbrauchRegeln, ErgebnisZustand.menge rechnet sie in die Anzeige-Einheit um; die alte Form steht in fruehere_fassungen.",
       "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-6 Vertrag (verbrauch-vectors.json, Python-Zwilling, gespeichert in kennzeichen der Speicherklassen). In 1.1 bewusst offen: die Rechenregel (VerbrauchRegeln.mengeZaehlerstand/zaehlerstandAusTeilperioden) kennt die Einheit nicht, und TagVerdichter/PeriodeVerdichter/ZeitraumMenge laden den Katalog nicht — das Durchreichen ist ein Folgepaket mit Datenbank-Lauf; die alte Form kommt dann nach fruehere_fassungen. Anzeige-Einheit (Ableitung aus E11, kein Captain-Entscheid zu Wh/varh/MWh): gespeichert bleibt die Einheit des Zählers, angezeigt wird kWh bzw. kvarh bzw. m³ mit den Stellen von E11 — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“."
     },
     {
@@ -388,8 +427,8 @@
     },
     {
       "stelle": "Uhrzeiten aller Kennzeichen",
-      "befund": "Die Uhrzeit steht in der festen Zone Europe/Berlin (VerbrauchRegeln.ANZEIGE_ZEITZONE, verbrauch.py ebenso), nicht in der Zeitzone des Standorts (E10). Seit 1.1 trägt sie an der doppelten Stunde MESZ/MEZ („Rücksetzung 02:30 MEZ …“) und ist damit eindeutig; die Zone selbst ist weiter die feste.",
-      "warum_so_aufgenommen": "Die Rechenregel spricht den Satz bei der Verdichtung (ViertelstundeVerdichter, TagVerdichter/PeriodeVerdichter/ZeitraumMenge über ViertelstundenTeile); keiner dieser Wege lädt heute die Zone des Standorts (standort.zeitzone). ErgebnisZustand.uhr(zeit, zone) nimmt sie schon entgegen — durchgereicht werden muss sie bis VerbrauchRegeln.uhr und ViertelstundeVerdichter.uhr."
+      "befund": "Erledigt in 1.3: die Uhrzeit stand in der festen Zone Europe/Berlin (VerbrauchRegeln.ANZEIGE_ZEITZONE, verbrauch.py ebenso), nicht in der Zeitzone des Standorts (E10). Seit 1.3 schlagen ViertelstundeVerdichter, TagVerdichter, PeriodeVerdichter und ZeitraumMenge die Zone nach (Standort → Unternehmen → Vorgabe, ReihenKontext.zeitzonen) und reichen sie im Träger ReihenKontext bis VerbrauchRegeln; die feste Konstante ist entfernt.",
+      "warum_so_aufgenommen": "Kein früherer Wortlaut: die Form HH:MM mit MESZ/MEZ bzw. Offset ist dieselbe, und die drei zugelassenen Zonen (Europe/Berlin, Europe/Vienna, Europe/Zurich) zeigen dieselbe Wanduhr — kein gespeicherter Satz nennt eine andere Uhrzeit, als sein Standort sie heute sähe. Der Platzhalter uhr erkennt jede Zone."
     },
     {
       "stelle": "kennzeichen.ueberlauf",
@@ -655,18 +694,18 @@
       "name": "Tag vollständig trotz 85 % Verlauf, mit gezähltem Lücken-Zuwachs",
       "familie": "ergebnis",
       "fall": "F8",
-      "why": "Abdeckung ist nicht Vollständigkeit; das Kennzeichen steht unverändert, wie IP-6 es spricht (siehe befunde).",
+      "why": "Abdeckung ist nicht Vollständigkeit; das Kennzeichen trägt seit 1.3 Zahl und Einheit — mit den Stellen der Viertelstunde, auch am Tag (rundung.kennzeichen_ebene).",
       "eingang": {
         "wert": "2304.000",
         "einheit": "kWh",
         "ebene": "tag",
         "zustand": "vollständig",
         "abdeckung_prozent": "85",
-        "kennzeichen": ["Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"]
+        "kennzeichen": ["Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"]
       },
       "erwartet": {
         "verstoesse": [],
-        "satz": "2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"
+        "satz": "2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"
       }
     },
     {
@@ -1119,12 +1158,52 @@
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
     },
     {
-      "name": "Lücken-Zuwachs in E11-Form ist (noch) nicht der Vertragssatz",
+      "name": "Lücken-Zuwachs mit normalem Leerzeichen vor der Einheit",
       "familie": "erkennen",
       "fall": "F8",
-      "why": "Die de-DE-Form wäre richtig, ist aber eine Vertragsänderung an verbrauch-vectors.json — siehe befunde.",
+      "why": "Vor der Einheit steht das geschützte Leerzeichen U+00A0 (rundung.vor_einheit) — ein normales Leerzeichen ist ein anderer Satz.",
       "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"},
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs mit Zahl und Einheit ist der Vertragssatz",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "Seit 1.3 trägt der Zuwachs Zahl und Anzeige-Einheit nach E11.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs", "werte": {"von": "14:00", "bis": "17:31", "zuwachs": "337,6 kWh"}, "fruehere_fassung": false, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs der Fassung 1.2 ist nur noch eine frühere Fassung",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "„Zuwachs 337.600“ steht in gespeicherten Viertelstunden, Tagen, Monaten und Jahren — erkannt, nie mehr gesprochen.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs", "werte": {"von": "14:00", "bis": "17:31", "zuwachs": "337.600"}, "fruehere_fassung": true, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs in der gespeicherten Einheit ist kein Satz",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Gespeichert bleibt die Zähler-Einheit, gesprochen wird die Anzeige-Einheit: „337.600,0 Wh“ sagt kein Zwilling.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337.600,0 Wh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs mit den Stellen des Tages ist kein Satz",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "Der Satz rundet auf JEDER Ebene wie die Viertelstunde (rundung.kennzeichen_ebene) — „338 kWh“ am Tag wäre ein zweiter Wortlaut desselben Satzes.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 338 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs einer Reihe ohne bekannte Einheit",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Ohne Anzeige-Einheit (Katalog ohne Einheit, VAh …) steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs_ohne_einheit", "werte": {"von": "14:00", "bis": "17:31"}, "fruehere_fassung": false, "vorgesehen": false}
     },
     {
       "name": "Dativ: die richtige Form ist der Vertragssatz",
@@ -1490,6 +1569,86 @@
       "why": "Wie im Raster: MESZ/MEZ nur in einer Zone mit Normalzeit UTC+01:00, sonst der Offset.",
       "eingang": {"zeit": "2026-10-25T01:30:00+00:00", "zeitzone": "Europe/London"},
       "erwartet": {"text": "01:30 UTC+00:00"}
+    },
+    {
+      "name": "Standort außerhalb von Europe/Berlin: seine eigene Wanduhr",
+      "familie": "uhr",
+      "fall": "konstruiert",
+      "why": "E10: die Uhrzeit spricht die Zone des STANDORTS, nie eine feste — 14:00 in Berlin ist 13:00 in Lissabon.",
+      "eingang": {"zeit": "2026-11-03T14:00:00+01:00", "zeitzone": "Europe/Lisbon"},
+      "erwartet": {"text": "13:00"}
+    },
+    {
+      "name": "Menge eines Wh-Zählers in kWh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Gespeichert 337 600 Wh, angezeigt in der Anzeige-Einheit kWh mit den Stellen der Ebene — nie „337.600,0 Wh“.",
+      "eingang": {"wert": "337600.000", "einheit": "Wh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Menge eines kWh-Zählers bleibt kWh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Faktor 1: dieselbe Zahl wie zahl(…, kWh, …).",
+      "eingang": {"wert": "337.600", "einheit": "kWh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Jahresmenge eines MWh-Zählers in kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Der Jahreswert heißt „1.482.300 kWh“, nicht „1.482,3 MWh“ — kWh ist die Anzeige-Einheit auf jeder Ebene.",
+      "eingang": {"wert": "1482.3", "einheit": "MWh", "ebene": "jahr"},
+      "erwartet": {"verstoesse": [], "text": "1.482.300 kWh"}
+    },
+    {
+      "name": "Blindarbeit eines varh-Zählers in kvarh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Blindarbeit ist Arbeit: kvarh mit den Stellen von kWh (Viertelstunde 1).",
+      "eingang": {"wert": "12345.678", "einheit": "varh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "12,3 kvarh"}
+    },
+    {
+      "name": "Blindarbeit am Tag ganz",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "kvarh rundet wie kWh: Tag, Monat, Jahr ohne Nachkommastelle.",
+      "eingang": {"wert": "2304.5", "einheit": "kvarh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.305 kvarh"}
+    },
+    {
+      "name": "Volumen bleibt m³",
+      "familie": "menge",
+      "fall": "F17",
+      "why": "m³ eine Nachkommastelle auf jeder Ebene (E11).",
+      "eingang": {"wert": "1240", "einheit": "m³", "ebene": "monat"},
+      "erwartet": {"verstoesse": [], "text": "1.240,0 m³"}
+    },
+    {
+      "name": "gespeicherte Einheit ohne Anzeige-Einheit",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "VAh (Scheinarbeit) steht in keiner Anzeige-Einheit — eine neue ist eine Vertragsänderung, nie ein Durchreichen.",
+      "eingang": {"wert": "100", "einheit": "VAh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": ["einheit_unbekannt"], "text": null}
+    },
+    {
+      "name": "kvarh ohne Ebene",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wie kWh braucht Blindarbeit die Ebene — sie bestimmt die Stellen.",
+      "eingang": {"wert": "100", "einheit": "varh", "ebene": null},
+      "erwartet": {"verstoesse": ["ebene_fehlt"], "text": null}
+    },
+    {
+      "name": "keine Menge ist ein Strich, auch in Wh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Unbekannt ist keine Null.",
+      "eingang": {"wert": null, "einheit": "Wh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "—"}
     },
     {
       "name": "negative Rundungsdifferenz",

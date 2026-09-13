@@ -127,7 +127,7 @@ class UemsLesepfadTest {
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
         katalog = new MeasurementCatalog(new ObjectMapper());
         verlauf = new MeasurementHistoryService(app, katalog,
-                new MeasurementSelectionRepository(app), new SpeicherklasseHistorie(app),
+                new MeasurementSelectionRepository(app), new SpeicherklasseHistorie(app, katalog),
                 Clock.fixed(JETZT, ZoneOffset.UTC));
         TenantContext.set(KB);
     }

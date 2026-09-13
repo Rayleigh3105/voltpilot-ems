@@ -9,6 +9,8 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -452,11 +454,13 @@ public class ViertelstundeVerdichter {
         Map<String, UUID> einbauten = einbautenJeKennzeichen(con, stapel, ereignisse);
         // 4. Was die Zählerreihe rechenbar macht (AP-08 IP-4, Z6/Z7) - dieselbe Quelle wie der Writer.
         Map<Integer, ZaehlerDeklaration> deklarationen = deklarationen(con, stapel);
+        // 5. Einheit und Zeitzone, in denen die Kennzeichen sprechen - EIN Träger je Reihe.
+        Map<Integer, ReihenKontext> kontexte = kontexte(con, stapel);
 
         int geschrieben = 0;
         try (PreparedStatement ps = con.prepareStatement(upsertSql())) {
             for (int i = 0; i < stapel.size(); i++) {
-                Object[] werte = zeile(stapel.get(i), kadenzen.get(i),
+                Object[] werte = zeile(stapel.get(i), kontexte.get(i), kadenzen.get(i),
                         rohe.getOrDefault(i, List.of()), ereignisse.getOrDefault(i, List.of()),
                         einbauten, integrieren.contains(i),
                         deklarationen.getOrDefault(i, ZaehlerDeklaration.NICHTS), jetzt);
@@ -477,7 +481,7 @@ public class ViertelstundeVerdichter {
      * inkrementell fortgeschrieben (§4.5 Reihenfolge Nr. 3). {@code null}, wenn das Intervall
      * keinen einzigen Rohwert hat: eine Lücke ist keine Null und wird nicht geschrieben.
      */
-    private Object[] zeile(Auftrag a, KadenzRegeln.Wirksam kadenz, List<Roh> fenster,
+    private Object[] zeile(Auftrag a, ReihenKontext kontext, KadenzRegeln.Wirksam kadenz, List<Roh> fenster,
             List<Ereignis> alleEreignisse, Map<String, UUID> einbauten, boolean integrieren,
             ZaehlerDeklaration deklaration, Instant jetzt) {
         Instant von = a.beginn();
@@ -519,7 +523,7 @@ public class ViertelstundeVerdichter {
             teil = VerbrauchRegeln.intervallmengeTeil(werte, von, bis, kadenzD, ViertelstundeRegeln.FAKTOR_DER_FASSUNG);
             e = teil.teil().ergebnis();
         } else if (regel != null) {
-            e = VerbrauchRegeln.ergebnis(regel, werte, von, bis, kadenzD,
+            e = VerbrauchRegeln.ergebnis(kontext, regel, werte, von, bis, kadenzD,
                     fuerVerbrauchRegeln(alleEreignisse, deklaration), ViertelstundeRegeln.FAKTOR_DER_FASSUNG,
                     deklaration.modulFuer(kadenzD), deklaration.hoechstzuwachsFuer(kadenzD), false);
         } else {
@@ -685,19 +689,30 @@ public class ViertelstundeVerdichter {
         List<VerbrauchRegeln.Ereignis> aus = new ArrayList<>();
         for (Ereignis e : ereignisse) {
             if (VerbrauchRegeln.Ereignis.GERAETEGRENZE.equals(e.art())) {
-                aus.add(new VerbrauchRegeln.Ereignis(e.art(), e.zeit(), uhr(e.zeit()),
-                        e.endstand(), e.anfangsstand(), 0));
+                aus.add(new VerbrauchRegeln.Ereignis(e.art(), e.zeit(), e.endstand(), e.anfangsstand(), 0));
             } else if (VerbrauchRegeln.Ereignis.NEUSTART.equals(e.art())) {
-                aus.add(new VerbrauchRegeln.Ereignis(e.art(), e.zeit(), uhr(e.zeit()), null, null,
+                aus.add(new VerbrauchRegeln.Ereignis(e.art(), e.zeit(), null, null,
                         e.verlustS() == null ? deklaration.neustartVerlust() : e.verlustS()));
             }
         }
         return aus;
     }
 
-    /** Die Uhrzeit eines Kennzeichens — mit MESZ/MEZ an der doppelten Stunde (E10). */
-    private static String uhr(Instant t) {
-        return ErgebnisZustand.uhr(t, VerbrauchRegeln.ANZEIGE_ZEITZONE);
+    /**
+     * Der Träger je Auftrag: die Einheit des Messkanals aus dem Katalog und die Zeitzone des Standorts
+     * zum (UTC-)Tag des Intervalls — dieselbe Kette wie der Tageslauf, in EINER Abfrage für den Stapel.
+     */
+    private Map<Integer, ReihenKontext> kontexte(Connection con, List<Auftrag> stapel) throws SQLException {
+        List<ReihenKontext.Frage> fragen = stapel.stream()
+                .map(a -> new ReihenKontext.Frage(a.tenant(), a.entity(),
+                        LocalDate.ofInstant(a.beginn(), ZoneOffset.UTC)))
+                .toList();
+        Map<Integer, ReihenKontext.Zeitzone> zonen = ReihenKontext.zeitzonen(con, fragen);
+        Map<Integer, ReihenKontext> aus = new HashMap<>();
+        for (int i = 0; i < stapel.size(); i++) {
+            aus.put(i, ReihenKontext.aus(katalog, stapel.get(i).kanal(), zonen.get(i).zone()));
+        }
+        return aus;
     }
 
     /** Die Zählung je Art als jsonb-Text; eine Art ohne Ereignis steht gar nicht erst darin. */

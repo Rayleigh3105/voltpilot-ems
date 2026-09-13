@@ -1143,7 +1143,7 @@ public class LueckenMelder {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     grenzen.add(new VerbrauchRegeln.Ereignis(VerbrauchRegeln.Ereignis.GERAETEGRENZE,
-                            rs.getTimestamp(1).toInstant(), null, null, null, 0));
+                            rs.getTimestamp(1).toInstant(), null, null, 0));
                 }
             }
         }

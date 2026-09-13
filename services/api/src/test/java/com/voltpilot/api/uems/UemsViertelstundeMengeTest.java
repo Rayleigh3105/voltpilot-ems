@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -68,6 +69,9 @@ import org.testcontainers.utility.DockerImageName;
  */
 @Testcontainers(disabledWithoutDocker = true)
 class UemsViertelstundeMengeTest {
+
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
 
     private static final String DIESE = "20260912180000";
     private static final String APP_USER = "voltpilot_app";
@@ -159,7 +163,7 @@ class UemsViertelstundeMengeTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
 
         arbeitFuellen();
@@ -790,7 +794,8 @@ class UemsViertelstundeMengeTest {
     /** Der REINE Zwilling zu derselben Viertelstunde — die Gegenprobe zur geschriebenen Zeile. */
     private static VerbrauchRegeln.Ergebnis zwilling(String kanal, String beginn, int kadenzS) {
         Instant von = Instant.parse(beginn);
-        return VerbrauchRegeln.ergebnis("zaehlerstand", SERIE.get(kanal), von,
+        return VerbrauchRegeln.ergebnis(new ReihenKontext("kWh", ZoneId.of("Europe/Berlin")), "zaehlerstand",
+                SERIE.get(kanal), von,
                 von.plus(Duration.ofMinutes(15)), Duration.ofSeconds(kadenzS), List.of(),
                 ViertelstundeRegeln.FAKTOR_DER_FASSUNG, null, null, false);
     }

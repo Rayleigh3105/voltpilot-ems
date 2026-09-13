@@ -19,8 +19,10 @@ in der Lücke sie anfiel: sie ist **NICHT VERTEILBAR**. Beides gleichzeitig sage
    „Anfang/Ende nicht gemessen“ und bekommt ihn NICHT (F20: beide Tage 2 208 kWh unvollständig, der
    Zwei-Tage-Zeitraum 4 608 kWh vollständig). Gröbere Perioden, die sie auch enthalten, tragen dieselbe
    Energie über ihre Periodenstände — nie doppelt (Monat Okt + Monat Nov + Zuwachs = Jahr).
-3. **Mit Kennzeichen** „Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden
-   verteilbar“ (`lueckenKennzeichen`, Vertrag nach Text UND Reihenfolge).
+3. **Mit Kennzeichen** „Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden
+   verteilbar“ (`lueckenKennzeichen`, Vertrag nach Text UND Reihenfolge). Einheit und Zone kommen seit
+   ergebnis-zustand 1.3 aus dem Träger `ReihenKontext` (Katalog-Einheit + Standort-Zone); ohne
+   Anzeige-Einheit steht der Satz ohne Zahl, „Zuwachs 337.600“ ist eine frühere Fassung.
 
 `kleinsterZeitraum` nennt den kleinsten Zeitraum der Kette `regeln.luecke_zeitraeume` (Viertelstunde
 → Stunde UTC-Raster, Tag → Monat → Jahr in der Standort-Zeitzone); über den Jahreswechsel **keinen**

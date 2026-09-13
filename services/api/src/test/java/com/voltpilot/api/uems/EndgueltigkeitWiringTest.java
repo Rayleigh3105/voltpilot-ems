@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,6 +39,12 @@ class EndgueltigkeitWiringTest {
         @Bean("adminJdbcTemplate")
         JdbcTemplate adminJdbcTemplate() {
             return mock(JdbcTemplate.class);
+        }
+
+        /** Tag und Monat/Jahr bilden den Träger ihrer Reihe ({@link ReihenKontext}) aus dem Katalog. */
+        @Bean
+        MeasurementCatalog measurementCatalog() {
+            return mock(MeasurementCatalog.class);
         }
     }
 

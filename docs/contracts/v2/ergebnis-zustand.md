@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 13.09.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 13.09.2026 · Vertrag 1.3 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -58,7 +58,8 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 30 | Lücke am Wechsel {von}–{bis} (nicht aufgefüllt) — nach „mit“ oder „nicht messbar“ | Gerätegrenze | nein |
 | 30 | Überlauf {uhr} (Wertebereich {modul}) | Überlauf | nein |
 | 30 | Rücksetzung {uhr} ohne Endstand — bis zu 1 Kadenz nicht gezählt | Rücksetzung | ja |
-| 30 | Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar | Lücke: Zuwachs gemessen | nein |
+| 30 | Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar — `{zuwachs}` ist eine `menge` („337,6 kWh“, seit 1.3) | Lücke: Zuwachs gemessen | nein |
+| 30 | Lücke {von}–{bis}: Zuwachs gemessen, nicht auf Viertelstunden verteilbar — die Reihe hat keine Anzeige-Einheit (seit 1.3) | Lücke: Zuwachs gemessen | nein |
 | 40 | Neustart {uhr}: bis zu {verlust_s} s Zählung möglicherweise verloren | Neustart-Verlust | ja |
 | 50 | 1 von {erwartet} Intervallmengen fehlt / {fehlend ≥ 2} von {erwartet} … fehlen — … | — | ja |
 | 50 | gemessene Zeit {minuten}:{sekunden} min von {periode_min} min | — | ja |
@@ -77,7 +78,9 @@ alten Wortlaut je Muster: er wird als dieses Muster **erkannt** (gleicher Rang, 
 `fruehere_fassung = true`), `pruefe` lässt ihn zu und `satz` spricht ihn, wie er gespeichert ist —
 aber **keine Sprech-Funktion erzeugt ihn mehr**, und keine Erwartung von `verbrauch-vectors.json`
 trägt ihn. Eine vorläufige Zeile bekommt den neuen Wortlaut beim nächsten Verdichtungslauf, eine
-endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände“ (bis 1.0).
+endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände“ (bis 1.0) und „Lücke
+{von}–{bis}: Zuwachs {zuwachs} gemessen, …“ mit `dezimal_punkt` („Zuwachs 337.600“, bis 1.2) — gleicher
+Text, anderer Platzhalter: das heutige Muster nimmt „337.600“ nicht an.
 
 **Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · korrigiert (Version n) ·
 vorläufig · endgültig · Ablesezeitraum · mit Ersatzwert (Methode …). Ihren Wortlaut legt das
@@ -98,12 +101,23 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 | % | 0 („85 %“) — jede Ebene | | | | |
 | m³ | 1 („1.240,0 m³“) — jede Ebene | | | | |
 | kVA | 1 („630,0 kVA“) — jede Ebene; Anschluss-Scheinleistung = „Leistung“ in E11 (seit 1.2) | | | | |
+| kvarh | 1 | 1 | 0 | 0 | 0 — Blindarbeit ist Arbeit und rundet wie kWh (seit 1.3) |
+
+**Anzeige-Einheit (seit 1.3, Ableitung aus E11 — kein Captain-Entscheid).** Gespeichert bleibt,
+was der Zähler liefert (Wh, kWh, MWh, varh, kvarh, m³); **angezeigt** wird kWh für Wirkarbeit,
+kvarh für Blindarbeit, m³ für Volumen, mit den Stellen dieser Tabelle — so wie der Jahreswert
+„1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. `menge(wert, gespeicherte Einheit, ebene)` rechnet mit
+dem festen Faktor aus `rundung.anzeige_einheiten` um und ruft `zahl` an („337600 Wh“ → „337,6 kWh“);
+eine Einheit ohne Eintrag (unbekannt, VAh …) ist `einheit_unbekannt`. Eine Menge **in einem
+Kennzeichen** spricht die Stellen von `rundung.kennzeichen_ebene` = Viertelstunde: der Satz wandert
+unverändert von der Viertelstunde bis ins Jahr und darf nicht je Periode anders runden
+(„Zuwachs 337,6 kWh“ auch am Tag).
 
 - Kaufmännisch (halbe Stelle von der Null weg, wie `BigDecimal.HALF_UP`): 96,45 kW → „96,5 kW“.
   Der TS-Zwilling rundet den **Dezimaltext** (`dez.ts`), nie den Binärbruch — `0.15` wird „0,2“.
 - Tausenderpunkt, Komma, **geschütztes Leerzeichen U+00A0** vor der Einheit, Minus **U+2212**
   („−34,2 kW“), auf null gerundet ohne Minus („0,0 kW“). Kein Wert ist „—“, nie „0“.
-- kWh ohne Ebene ist `ebene_fehlt`; eine Einheit außerhalb der Tabelle ist `einheit_unbekannt` —
+- kWh und kvarh ohne Ebene sind `ebene_fehlt`; eine Einheit außerhalb der Tabelle ist `einheit_unbekannt` —
   eine neue Einheit ist eine Vertragsänderung.
 - **Gerechnet wird ungerundet** (Vektoren auf 3 Nachkommastellen). Der CSV-Export bleibt
   ungerundet mit Punkt als Dezimalzeichen und ISO-8601-Zeit mit Offset.
@@ -123,8 +137,10 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 - `uhr(zeit, zone)` ist dieselbe Regel für die Uhrzeit **in einem Kennzeichen** (seit 1.1): „02:30“
   am 25.10.2026 gibt es zweimal, also heißt es „Rücksetzung 02:30 MESZ …“ bzw. „… 02:30 MEZ …“;
   „03:00“ und jede Uhrzeit eines anderen Tages bleiben ohne Zusatz. Der Platzhalter `uhr` erkennt
-  den Zusatz mit. ⚠ Die Verbrauchsregel übergibt heute die feste Zone Europe/Berlin
-  (`VerbrauchRegeln.ANZEIGE_ZEITZONE`), nicht die des Standorts — siehe Befunde.
+  den Zusatz mit. Die Zone kommt seit 1.3 aus dem Träger **`ReihenKontext`** (Einheit der Reihe +
+  Zeitzone des Standorts), den `ViertelstundeVerdichter`, `TagVerdichter`, `PeriodeVerdichter` und
+  `ZeitraumMenge` bilden (Standort → Unternehmen → Vorgabe, `ReihenKontext.zeitzonen`) und bis
+  `VerbrauchRegeln` reichen; Python-Zwilling `verbrauch.ReihenKontext`. Es gibt keine feste Zone mehr.
 - `tagesdauer(tag, zone)` sagt „25 Stunden (Zeitumstellung)“ bzw. „23 Stunden (Zeitumstellung)“
   und an einem 24-Stunden-Tag nichts. Die Stundenzahl wird bei `BezugsPeriode.stundenDesTages`
   (→ `VerbrauchRegeln.stunden`) bzw. `bezugsPeriode.ts` bestellt, nie hier gezählt.
@@ -133,7 +149,7 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 
 `satz(ergebnis)` spricht **Zahl · Zustand · Verlauf · Kennzeichen**, getrennt durch „ · “:
 
-- „2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht
+- „2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht
   auf Viertelstunden verteilbar“ (F8)
 - „14,3 kWh · unvollständig · Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt“ (F6)
 - „— · keine Werte“ (F8) · „2.304 kWh · mit Ersatzwert“ (F11)
@@ -147,18 +163,16 @@ Die Vektor-Datei führt sie im Block `befunde` — benannt, **nicht still umform
 heutige Wortlaut schon Vertrag von `verbrauch-vectors.json` und in den Speicherklassen gespeichert
 ist. Die wichtigsten:
 
-- **„Zuwachs 337.600“** steht mit Punkt, drei Stellen und ohne Einheit — ein de-DE-Leser liest
-  337 600. E11 verlangte „337,6 kWh“. In 1.1 bewusst offen: die Rechenregel kennt die Einheit
-  nicht (Durchreichen bis Tag/Monat/Jahr ist ein Folgepaket mit Datenbank-Lauf). Anzeige-Einheit
-  als Ableitung aus E11: gespeichert bleibt die Zähler-Einheit, angezeigt kWh/kvarh/m³ mit den
-  Stellen von E11 (wie „1.482.300 kWh“ statt „1.482,3 MWh“).
+- **Erledigt in 1.3: „Zuwachs 337.600“** stand mit Punkt, drei Stellen und ohne Einheit — ein
+  de-DE-Leser las 337 600. Seit 1.3 „Zuwachs 337,6 kWh“: die Einheit reist im Träger `ReihenKontext`
+  bis zur Rechenregel, angezeigt nach der Anzeige-Einheit (§3); ohne bekannte Einheit steht der Satz
+  ohne Zahl. Die alte Form lebt in `fruehere_fassungen`.
 - **„Rechteck-Halten ≤ 2 × Kadenz“** ist Rechenmethode, kein Kundenwort.
 - Sechs Satzformen haben **kein Wort** im Kennzeichen-Vokabular (Anfang/Ende nicht gemessen, nur
   ein Stand, fehlende Intervallmengen, gemessene Zeit).
-- Die Uhrzeiten der Kennzeichen stehen in der festen Zone Europe/Berlin, nicht in der Zone des
-  Standorts. Seit 1.1 tragen sie an der doppelten Stunde MESZ/MEZ und sind damit eindeutig; die
-  Standort-Zone müssten `ViertelstundeVerdichter` und `ViertelstundenTeile` (Tag, Monat, Jahr,
-  freier Zeitraum) laden und bis `VerbrauchRegeln.uhr` durchreichen.
+- **Erledigt in 1.3:** die Uhrzeiten der Kennzeichen standen in der festen Zone Europe/Berlin.
+  Seit 1.3 sprechen sie die Zone des Standorts aus dem Träger `ReihenKontext` (§4). Kein früherer
+  Wortlaut: die drei zugelassenen Zonen zeigen dieselbe Wanduhr, und `uhr` erkennt jede Zone.
 - **Erledigt in 1.1:** „mit Ablesestände“ (Dativ) → „mit Ableseständen“, alte Form als frühere
   Fassung lesbar.
 - **Erledigt in 1.2:** die Bilanz- und Netzanschluss-Sätze schrieben „mindestens 1 055 kWh“ und

@@ -81,9 +81,9 @@ public class SpeicherklasseHistorie {
     private final JdbcTemplate jdbc;
     private final ZeitraumMenge zeitraum;
 
-    public SpeicherklasseHistorie(JdbcTemplate jdbc) {
+    public SpeicherklasseHistorie(JdbcTemplate jdbc, MeasurementCatalog katalog) {
         this.jdbc = jdbc;
-        this.zeitraum = new ZeitraumMenge(jdbc);
+        this.zeitraum = new ZeitraumMenge(jdbc, katalog);
     }
 
     /**

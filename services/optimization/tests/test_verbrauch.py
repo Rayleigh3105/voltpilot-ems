@@ -52,6 +52,12 @@ ERWARTUNGEN = [
 ]
 
 
+#: Der Träger der konstruierten Fälle: ein kWh-Zähler an einem Standort in Europe/Berlin.
+_KWH_BERLIN = verbrauch.ReihenKontext("kWh", "Europe/Berlin")
+
+ERGEBNIS_ZUSTAND = VECTORS.parent / "ergebnis-zustand-vectors.json"
+
+
 def _reihe(case: dict, erwartung: dict) -> dict:
     """Die Reihe einer Erwartung: ein Fall hat EINE Reihe oder mehrere mit Namen."""
     if "reihe" in case["input"]:
@@ -331,6 +337,7 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
     modul = verbrauch._dez(reihe["wertebereich_modul"]) if reihe.get("wertebereich_modul") else None
     hoechst = verbrauch._dez(reihe["hoechstzuwachs_je_kadenz"]) if reihe.get("hoechstzuwachs_je_kadenz") else None
     zusatz = (ereignisse, faktor, modul, hoechst)
+    kontext = verbrauch.kontext(reihe)
 
     ab = von - (timedelta(days=2) if ueber_tage else timedelta(days=1))
     ende = bis + (timedelta(days=1) if ueber_tage else _VIERTELSTUNDE)
@@ -339,7 +346,7 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
     while q < ende:
         fenster = _fenster(werte, q - kadenz, q + _VIERTELSTUNDE)
         if any(q <= r.zeit < q + _VIERTELSTUNDE for r in fenster):
-            viertelstunden.append(verbrauch.teilperiode(fenster, q, q + _VIERTELSTUNDE, kadenz, *zusatz))
+            viertelstunden.append(verbrauch.teilperiode(kontext, fenster, q, q + _VIERTELSTUNDE, kadenz, *zusatz))
         q += _VIERTELSTUNDE
 
     teile = viertelstunden
@@ -353,10 +360,10 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
             t_bis = datetime.combine(tag + timedelta(days=1), time(), _ORT).astimezone(timezone.utc)
             fuer_tag = [v for v in viertelstunden if v.bis > t_von - timedelta(days=1) and v.von <= t_bis]
             if any(v.von >= t_von and v.bis <= t_bis for v in fuer_tag):
-                teile.append(verbrauch.zaehlerstand_aus_teilperioden(fuer_tag, t_von, t_bis, kadenz, *zusatz))
+                teile.append(verbrauch.zaehlerstand_aus_teilperioden(kontext, fuer_tag, t_von, t_bis, kadenz, *zusatz))
             tag += timedelta(days=1)
 
-    ist = verbrauch.zaehlerstand_aus_teilperioden(teile, von, bis, kadenz, *zusatz).ergebnis
+    ist = verbrauch.zaehlerstand_aus_teilperioden(kontext, teile, von, bis, kadenz, *zusatz).ergebnis
     for feld in ("menge", "zustand", "erhalten", "erwartet", "abdeckung_prozent", "kennzeichen"):
         if feld not in erwartung:
             continue
@@ -378,11 +385,12 @@ def test_die_summe_der_tage_ist_nicht_die_monatsmenge():
     while tag.month == 10:
         t_von = datetime.combine(tag, time(), _ORT).astimezone(timezone.utc)
         t_bis = datetime.combine(tag + timedelta(days=1), time(), _ORT).astimezone(timezone.utc)
-        t = verbrauch.teilperiode(_fenster(werte, t_von - kadenz, t_bis), t_von, t_bis, kadenz)
+        t = verbrauch.teilperiode(_KWH_BERLIN, _fenster(werte, t_von - kadenz, t_bis), t_von, t_bis, kadenz)
         tage.append(t)
         summe += t.ergebnis["menge"]
         tag += timedelta(days=1)
     monat = verbrauch.zaehlerstand_aus_teilperioden(
+        _KWH_BERLIN,
         tage, verbrauch._zeit("2026-10-01T00:00:00+02:00"), verbrauch._zeit("2026-11-01T00:00:00+01:00"), kadenz
     )
     assert summe == Decimal("55100.013")
@@ -393,10 +401,10 @@ def test_eine_ueberstehende_teilperiode_wird_abgewiesen():
     von = verbrauch._zeit("2026-10-20T00:00:00+00:00")
     kadenz = timedelta(seconds=60)
     schief = verbrauch.teilperiode(
-        [verbrauch.Rohwert(von, Decimal(1))], von - kadenz, von + timedelta(seconds=840), kadenz
+        _KWH_BERLIN, [verbrauch.Rohwert(von, Decimal(1))], von - kadenz, von + timedelta(seconds=840), kadenz
     )
     with pytest.raises(ValueError, match="ragt"):
-        verbrauch.zaehlerstand_aus_teilperioden([schief], von, von + timedelta(hours=1), kadenz)
+        verbrauch.zaehlerstand_aus_teilperioden(_KWH_BERLIN, [schief], von, von + timedelta(hours=1), kadenz)
 
 
 # ------------------- Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
@@ -557,7 +565,7 @@ def test_die_ueberlauf_entscheidung_steht_genau_dort_wo_die_erwartung_einen_uebe
         modul = verbrauch._dez(reihe["wertebereich_modul"]) if reihe.get("wertebereich_modul") else None
         hoechst = verbrauch._dez(reihe["hoechstzuwachs_je_kadenz"]) if reihe.get("hoechstzuwachs_je_kadenz") else None
         ueber = verbrauch.ueberlauf(vorher, nachher, kadenz, modul, hoechst)
-        uhr = verbrauch._uhr(nachher.zeit)
+        uhr = verbrauch._uhr(nachher.zeit, verbrauch.kontext(reihe).zeitzone)
         assert (ueber is not None) == (uhr in genannt), f"{name} {uhr}"
         if ueber is not None:
             assert ueber == modul - vorher.wert + nachher.wert
@@ -616,10 +624,10 @@ def test_der_zuwachs_steht_genau_einmal(case: dict, erwartung: dict):
         assert luecke.stand_nach == verbrauch._dez(s["stand_nach"])
         assert luecke.zuwachs == verbrauch._dez(s["zuwachs"])
         assert s["einheit"] == reihe["einheit"]
-        assert verbrauch.luecken_kennzeichen(luecke) in ist["kennzeichen"]
+        assert verbrauch.luecken_kennzeichen(luecke, verbrauch.kontext(reihe)) in ist["kennzeichen"]
     for luecke in verbrauch.luecken_zuwaechse(werte, _IMMER_VON, _IMMER_BIS, kadenz, ereignisse, faktor):
         if luecke not in gezaehlt:
-            assert verbrauch.luecken_kennzeichen(luecke) not in ist["kennzeichen"], case["why"]
+            assert verbrauch.luecken_kennzeichen(luecke, verbrauch.kontext(reihe)) not in ist["kennzeichen"], case["why"]
 
 
 @pytest.mark.parametrize("zuordnung", DOC["luecken_zuordnung"], ids=lambda z: z["name"])
@@ -657,7 +665,9 @@ def test_der_alte_dativ_wird_nie_mehr_gesprochen():
         verbrauch.Rohwert(t, Decimal("3")),
     ]
     grenze = {"art": "device_boundary", "t": "2026-11-19T10:45:00+01:00", "endstand": "100.5", "anfangsstand": "2.5"}
-    ergebnis = verbrauch.menge_zaehlerstand(werte, t - timedelta(seconds=60), t, timedelta(seconds=60), [grenze])
+    ergebnis = verbrauch.menge_zaehlerstand(
+        _KWH_BERLIN, werte, t - timedelta(seconds=60), t, timedelta(seconds=60), [grenze]
+    )
     assert ergebnis["kennzeichen"] == ["Gerätegrenze 10:45 mit Ableseständen"]
     assert "Gerätegrenze 10:45 mit Ablesestände" not in ergebnis["kennzeichen"]
 
@@ -671,9 +681,76 @@ def test_eine_ruecksetzung_in_der_doppelten_stunde_ist_eindeutig():
         verbrauch.Rohwert(zweite, Decimal("5")),
         verbrauch.Rohwert(zweite + minute, Decimal("6")),
     ]
-    ergebnis = verbrauch.menge_zaehlerstand(werte, zweite - minute, zweite + minute, minute)
+    ergebnis = verbrauch.menge_zaehlerstand(_KWH_BERLIN, werte, zweite - minute, zweite + minute, minute)
     assert "Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt" in ergebnis["kennzeichen"]
     assert "Rücksetzung 02:30 ohne Endstand — bis zu 1 Kadenz nicht gezählt" not in ergebnis["kennzeichen"]
-    assert verbrauch._uhr(zweite - timedelta(hours=1)) == "02:30 MESZ"
-    assert verbrauch._uhr(datetime(2026, 10, 25, 2, 0, tzinfo=timezone.utc)) == "03:00"
+    assert verbrauch._uhr(zweite - timedelta(hours=1), "Europe/Berlin") == "02:30 MESZ"
+    assert verbrauch._uhr(datetime(2026, 10, 25, 2, 0, tzinfo=timezone.utc), "Europe/Berlin") == "03:00"
     assert verbrauch._uhr(datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc), "Europe/London") == "01:30 UTC+01:00"
+
+
+# ------------------------------- Einheit und Zone aus dem Träger (ergebnis-zustand 1.3, Befunde aus 721/722)
+
+
+def test_die_anzeige_einheiten_sind_die_des_vertrags():
+    """Zwilling von ``ErgebnisZustand.ANZEIGE_EINHEITEN``: dieselbe Tabelle wie ``rundung.anzeige_einheiten``."""
+    rundung = json.loads(ERGEBNIS_ZUSTAND.read_text(encoding="utf-8"))["rundung"]
+    assert verbrauch.ANZEIGE_EINHEITEN == {
+        a["gespeichert"]: (a["angezeigt"], Decimal(a["faktor"])) for a in rundung["anzeige_einheiten"]
+    }
+    assert rundung["kennzeichen_ebene"] == "viertelstunde"
+    stellen = {(s["einheit"], s["ebene"]): s["stellen"] for s in rundung["stellen"]}
+    for angezeigt, _ in verbrauch.ANZEIGE_EINHEITEN.values():
+        assert stellen.get((angezeigt, "viertelstunde"), stellen.get((angezeigt, None))) == verbrauch.KENNZEICHEN_STELLEN
+
+
+@pytest.mark.parametrize(
+    "fall",
+    [
+        f
+        for f in json.loads(ERGEBNIS_ZUSTAND.read_text(encoding="utf-8"))["cases"]
+        if f["familie"] == "menge" and f["eingang"]["ebene"] == "viertelstunde" and f["eingang"]["wert"] is not None
+    ],
+    ids=lambda f: f["name"],
+)
+def test_die_menge_im_kennzeichen_ist_die_des_vertrags(fall: dict):
+    """Die Zahl im Zuwachs-Satz spricht Python wie ``ErgebnisZustand.menge`` an der Viertelstunde."""
+    ein, erw = fall["eingang"], fall["erwartet"]
+    assert verbrauch._menge(Decimal(ein["wert"]), ein["einheit"]) == erw["text"]
+
+
+def test_ein_zaehler_in_wh_ergibt_einen_satz_in_kwh():
+    """Befund Zuwachs: 337 600 Wh sind „Zuwachs 337,6 kWh“ — ohne bekannte Einheit steht keine Zahl."""
+    werte = [
+        verbrauch.Rohwert(datetime(2026, 11, 3, 13, 0, tzinfo=timezone.utc), Decimal("418200000")),
+        verbrauch.Rohwert(datetime(2026, 11, 3, 16, 31, tzinfo=timezone.utc), Decimal("418537600")),
+    ]
+    von = datetime(2026, 11, 2, 23, 0, tzinfo=timezone.utc)
+    bis = datetime(2026, 11, 3, 23, 0, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    wh = verbrauch.menge_zaehlerstand(verbrauch.ReihenKontext("Wh", "Europe/Berlin"), werte, von, bis, minute)
+    assert wh["menge"] == Decimal("337600.000")
+    assert "Lücke 14:00–17:31: Zuwachs 337,6\u00a0kWh gemessen, nicht auf Viertelstunden verteilbar" in wh["kennzeichen"]
+    ohne = verbrauch.menge_zaehlerstand(verbrauch.ReihenKontext(None, "Europe/Berlin"), werte, von, bis, minute)
+    assert "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar" in ohne["kennzeichen"]
+
+
+def test_ein_standort_ausserhalb_von_berlin_zeigt_seine_eigene_uhrzeit():
+    """Befund Zone (E10): die Uhrzeit spricht die Zone des Standorts aus dem Träger, nie eine feste."""
+    t = datetime(2026, 11, 19, 9, 12, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    werte = [verbrauch.Rohwert(t - minute, Decimal("101")), verbrauch.Rohwert(t, Decimal("5"))]
+    neustart = [{"art": "device_restart", "t": "2026-11-19T09:12:00+00:00", "verlust_s": 120}]
+    berlin = verbrauch.menge_zaehlerstand(_KWH_BERLIN, werte, t - minute, t, minute, neustart)
+    lissabon = verbrauch.menge_zaehlerstand(
+        verbrauch.ReihenKontext("kWh", "Europe/Lisbon"), werte, t - minute, t, minute, neustart
+    )
+    assert berlin["kennzeichen"] == [
+        "Rücksetzung 10:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+        "Neustart 10:12: bis zu 120 s Zählung möglicherweise verloren",
+    ]
+    assert lissabon["kennzeichen"] == [
+        "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+        "Neustart 09:12: bis zu 120 s Zählung möglicherweise verloren",
+    ]
+    assert lissabon["menge"] == berlin["menge"]
