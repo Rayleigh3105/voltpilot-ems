@@ -59,7 +59,9 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
   `bezugsgroesse_geltung_objekt_chk` lehnt ab (E1 „wählbar, sobald gebaut"). Ahrenbergs BZ-1…BZ-3
   (P-1/P-2) passen darum noch nicht; BZ-5 (MS-14) passt. Der Test wird rot, sobald `prozess` oder
   `kostenstelle` als Tabelle existiert.
-- **Keine Art-Spalte** („Produktionsmenge", „Gutteile"): der Vertrag hat dafür kein Vokabular.
+- **Keine Art-Spalte** („Produktionsmenge", „Gutteile"): das Vokabular steht seit 13.09.2026 im
+  Vertrag (Block `arten`, `uems-bezugsdaten-vertrag-java-ts-zwill.md`); die Spalte legt das Paket
+  additiv an, das sie braucht — mit EINER erzeugten Funktion wie `bezugsdaten_vokabular()`.
 - Herkunft `stammdatum_ap02` und Wertart `stammdatum` haben hier keine Werte (E17/M4, S1).
 
 ## ⚠ Die Zeitformen

@@ -18,7 +18,9 @@
     "Stelle, an der diese Datei bewusst von der Vorlage abweicht, _nicht_geprueft jede",
     "Erwartung der Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet.",
     "Seit AP-09 IP-5 (13.09.2026): `verwalten` trägt M1–M6 und den GESCHLOSSENEN Satz der Ablehnungen",
-    "mit Status und Kundensatz (Java uems/BezugsgroesseRegeln, TS bezugsgroesse.ts); Regel `verwalten`."
+    "mit Status und Kundensatz (Java uems/BezugsgroesseRegeln, TS bezugsgroesse.ts); Regel `verwalten`.",
+    "Seit dem 13.09.2026: `arten` trägt das Vokabular der ARTEN einer Bezugsgröße aus §4.2 — je Art Einheiten,",
+    "Wertart, Perioden, Geltungsbereiche und Herkünfte, alles Wörter der vorhandenen Vokabulare (Java uems/BezugsArt, TS bezugsArt.ts)."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./bezugsdaten.schema.json",
@@ -367,6 +369,513 @@
       "`geltung_nicht_waehlbar` spricht, solange Prozess und Kostenstelle keine Objekte haben (Tabellen AP-09 IP-4: keine Verweis-Spalte). Welche Geltungsbereiche wählbar sind, ist darum ein EINGANG der Regel (`waehlbar`), kein Wort des Vokabulars.",
       "`geltung_unbekannt` antwortet gleich für ein Objekt, das es nicht gibt, und für eines eines anderen Kundenbereichs — die Antwort verrät nichts.",
       "`lesarten`: `GET …/{id}/werte?fassungen=` — `wirksam` (Vorgabe) liefert je Schlüssel die wirksame Fassung mit ihrer Herkunft, `alle` die ganze Kette; die Kette und ihr Stand kommen aus der Regel `fassung`."
+    ]
+  },
+  "arten": {
+    "herkunft": "UEMS AP-09 §4.2 „Das Bezugsgrößen-Modell (Arten)“ — nachgetragen am 13.09.2026, bevor der Anlege-Dialog (AP-09 IP-9) darauf stößt",
+    "je_art": {
+      "produktionsmenge": {
+        "name": "Produktionsmenge",
+        "einheiten": [
+          "kg",
+          "t",
+          "Stück",
+          "m³",
+          "l"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat"
+        ],
+        "geltung": [
+          "prozess",
+          "bereich",
+          "gebaeude",
+          "standort",
+          "unternehmen",
+          "kostenstelle"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import",
+          "messkanal"
+        ],
+        "konzept": {
+          "einheiten": "kg, t · Stück · m³, l",
+          "wertart": "Periodenwert",
+          "periode": "Tag · Woche · Monat",
+          "geltungsbereich": "Prozess · Bereich · Gebäude · Standort · Unternehmen · Kostenstelle",
+          "herkunft": "Eingabe · Import · Zähler-Kanal (Stückzähler)",
+          "ahrenberg": "BZ-1 Produktionsmenge Spritzguss 312 400 kg, Oktober 2026, P-1 (CSV aus dem ERP)"
+        }
+      },
+      "gutteile": {
+        "name": "Gutteile",
+        "einheiten": [
+          "Stück"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat"
+        ],
+        "geltung": [
+          "prozess",
+          "bereich",
+          "gebaeude",
+          "standort",
+          "unternehmen",
+          "kostenstelle"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import",
+          "messkanal"
+        ],
+        "konzept": {
+          "einheiten": "Stück",
+          "wertart": "Periodenwert",
+          "periode": "Tag · Woche · Monat",
+          "geltungsbereich": "wie oben",
+          "herkunft": "Eingabe · Import · Zähler-Kanal",
+          "ahrenberg": "BZ-2 Gutteile Montage 48 200 Stück, Oktober 2026, P-2 (Eingabe)"
+        }
+      },
+      "betriebszeit": {
+        "name": "Betriebszeit",
+        "einheiten": [
+          "h",
+          "min"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat"
+        ],
+        "geltung": [
+          "prozess",
+          "bereich",
+          "messstelle"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import",
+          "messkanal"
+        ],
+        "konzept": {
+          "einheiten": "h, min",
+          "wertart": "Periodenwert (Dauer)",
+          "periode": "Tag · Woche · Monat",
+          "geltungsbereich": "Prozess · Bereich · Messstelle",
+          "herkunft": "Eingabe · Import · Zustands-Kanal · Betriebsstundenzähler",
+          "ahrenberg": "BZ-3 Betriebsstunden Spritzguss 4 980 h, Oktober 2026, P-1 (Eingabe); B7 Ladezeit K-9 aus OCPP-Status"
+        }
+      },
+      "schichten": {
+        "name": "Schichten",
+        "einheiten": [
+          "Schichten"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat"
+        ],
+        "geltung": [
+          "standort",
+          "prozess",
+          "bereich"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import"
+        ],
+        "konzept": {
+          "einheiten": "Schichten",
+          "wertart": "Periodenwert (Anzahl)",
+          "periode": "Tag · Woche · Monat",
+          "geltungsbereich": "Standort · Prozess · Bereich",
+          "herkunft": "Eingabe · Import",
+          "ahrenberg": "— (nicht erhoben; Ahrenberg nennt einen Schichtführer, keine Schichtzahl)"
+        }
+      },
+      "bezugsflaeche": {
+        "name": "Bezugsfläche",
+        "einheiten": [
+          "m²"
+        ],
+        "wertart": "stammdatum",
+        "perioden": [],
+        "geltung": [
+          "standort",
+          "gebaeude",
+          "bereich"
+        ],
+        "herkunft": [
+          "stammdatum_ap02"
+        ],
+        "konzept": {
+          "einheiten": "m²",
+          "wertart": "Stammdatum mit Gültigkeit (Tag)",
+          "periode": "—",
+          "geltungsbereich": "Standort · Gebäude · Bereich",
+          "herkunft": "nur AP-02 (gelesen)",
+          "ahrenberg": "BZ-4: Halle 1 4 200 · Halle 2 3 100 → 3 400 ab 01.01.2027 · Verwaltung 1 150 · Lindach 1 800 + 800"
+        }
+      },
+      "mitarbeitende": {
+        "name": "Mitarbeitende",
+        "einheiten": [
+          "Personen"
+        ],
+        "wertart": "stammdatum",
+        "perioden": [],
+        "geltung": [
+          "unternehmen",
+          "standort"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import"
+        ],
+        "konzept": {
+          "einheiten": "Personen",
+          "wertart": "Stammdatum mit Gültigkeit (Tag)",
+          "periode": "—",
+          "geltungsbereich": "Unternehmen · Standort",
+          "herkunft": "Eingabe · Import",
+          "ahrenberg": "180 (Unternehmen)"
+        }
+      },
+      "gradtagzahl": {
+        "name": "Gradtagzahl",
+        "einheiten": [
+          "Kd"
+        ],
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "monat"
+        ],
+        "geltung": [
+          "standort"
+        ],
+        "herkunft": [
+          "messkanal",
+          "import"
+        ],
+        "konzept": {
+          "einheiten": "Kd",
+          "wertart": "Periodenwert (abgeleitet)",
+          "periode": "Tag → Monat",
+          "geltungsbereich": "Standort",
+          "herkunft": "Temperatur-Kanal (gemessen) · Import (z. B. DWD-Datei)",
+          "ahrenberg": "— (kein Außentemperatur-Kanal im Referenzunternehmen; Vorhersage-Wetter zählt nicht)"
+        }
+      },
+      "zaehlerstand": {
+        "name": "Zählerstand (Ablesung)",
+        "einheiten": "messstelle",
+        "wertart": "stand",
+        "perioden": [],
+        "geltung": [
+          "messstelle"
+        ],
+        "herkunft": [
+          "eingabe",
+          "import"
+        ],
+        "konzept": {
+          "einheiten": "Einheit der Messstelle (m³ …)",
+          "wertart": "Stand",
+          "periode": "— (Kadenz monatlich)",
+          "geltungsbereich": "Messstelle",
+          "herkunft": "Eingabe · Import",
+          "ahrenberg": "MS-21 Gas 48 211 → 49 451 m³ (1 240 m³)"
+        }
+      },
+      "sonstige_menge": {
+        "name": "Sonstige Menge",
+        "einheiten": "alle",
+        "wertart": "periodenwert",
+        "perioden": [
+          "tag",
+          "woche",
+          "monat",
+          "jahr"
+        ],
+        "geltung": "alle",
+        "herkunft": [
+          "eingabe",
+          "import"
+        ],
+        "konzept": {
+          "einheiten": "jede Einheit des Vokabulars",
+          "wertart": "Periodenwert",
+          "periode": "Tag · Woche · Monat · Jahr",
+          "geltungsbereich": "jedes Objekt",
+          "herkunft": "Eingabe · Import",
+          "ahrenberg": "—"
+        }
+      }
+    },
+    "pruefungen": [
+      {
+        "name": "BZ-1 Produktionsmenge Spritzguss: kg je Monat an P-1, aus der CSV des ERP",
+        "art": "produktionsmenge",
+        "beispiel": "BZ-1",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "prozess",
+          "einheit": "kg",
+          "periode_art": "monat",
+          "herkunft_art": "import",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        }
+      },
+      {
+        "name": "BZ-2 Gutteile Montage: Stück je Monat an P-2, eingegeben",
+        "art": "gutteile",
+        "beispiel": "BZ-2",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "prozess",
+          "einheit": "Stück",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        }
+      },
+      {
+        "name": "BZ-3 Betriebsstunden Spritzguss: h je Monat an P-1, eingegeben",
+        "art": "betriebszeit",
+        "beispiel": "BZ-3",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "prozess",
+          "einheit": "h",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        }
+      },
+      {
+        "name": "BZ-4 Bezugsfläche: m² als Stammdatum mit Gültigkeit am Gebäude, gelesen aus AP-02",
+        "art": "bezugsflaeche",
+        "beispiel": "BZ-4",
+        "eingang": {
+          "wertart": "stammdatum",
+          "geltung_art": "gebaeude",
+          "einheit": "m²",
+          "periode_art": null,
+          "herkunft_art": "stammdatum_ap02",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        },
+        "hinweis": "Das Referenzunternehmen führt BZ-4 mit `geltung_art` „ort“ — eine Größe, die an vielen Orten hängt. Jede ihrer Zahlen steht an einem Gebäude (`gebaeude[].bezugsflaechen`); geprüft ist darum `gebaeude`."
+      },
+      {
+        "name": "BZ-5 Ladezeit Ladepunkt Halle 2: h je Tag an MS-14, aus dem Zustands-Kanal",
+        "art": "betriebszeit",
+        "beispiel": "BZ-5",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "messstelle",
+          "einheit": "h",
+          "periode_art": "tag",
+          "herkunft_art": "messkanal",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        },
+        "hinweis": "§4.2 nennt sie als „B7 Ladezeit K-9 aus OCPP-Status“; im Referenzunternehmen steht sie seit Fassung 1.2 als BZ-5."
+      },
+      {
+        "name": "Gutteile in kg: die Art führt kg nicht — abgelehnt, obwohl kg im Vokabular steht",
+        "art": "gutteile",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "prozess",
+          "einheit": "kg",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "einheit"
+          ]
+        }
+      },
+      {
+        "name": "Zählerstand an MS-21: die Einheit ist die der Messstelle (m³)",
+        "art": "zaehlerstand",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "stand",
+          "geltung_art": "messstelle",
+          "einheit": "m³",
+          "periode_art": null,
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": "m³"
+        },
+        "ergebnis": {
+          "abweichend": []
+        }
+      },
+      {
+        "name": "Zählerstand in l an einer Messstelle in m³: dieselbe Größe, aber nicht die Einheit der Messstelle",
+        "art": "zaehlerstand",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "stand",
+          "geltung_art": "messstelle",
+          "einheit": "l",
+          "periode_art": null,
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": "m³"
+        },
+        "ergebnis": {
+          "abweichend": [
+            "einheit"
+          ]
+        }
+      },
+      {
+        "name": "Sonstige Menge: jede Einheit des Vokabulars, jede Periode, jedes Objekt",
+        "art": "sonstige_menge",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "kostenstelle",
+          "einheit": "Kd",
+          "periode_art": "jahr",
+          "herkunft_art": "import",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        }
+      },
+      {
+        "name": "Sonstige Menge in „Paletten“: kein Wort des Vokabulars",
+        "art": "sonstige_menge",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "standort",
+          "einheit": "Paletten",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "einheit"
+          ]
+        }
+      },
+      {
+        "name": "Bezugsfläche als eingegebener Periodenwert je Monat: Wertart, Periode und Herkunft passen nicht",
+        "art": "bezugsflaeche",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "gebaeude",
+          "einheit": "m²",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "wertart",
+            "periode_art",
+            "herkunft_art"
+          ]
+        }
+      },
+      {
+        "name": "Schichten an einer Messstelle: kein Geltungsbereich dieser Art",
+        "art": "schichten",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "messstelle",
+          "einheit": "Schichten",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "geltung_art"
+          ]
+        }
+      },
+      {
+        "name": "Gradtagzahl je Woche: die Art kennt Tag und Monat",
+        "art": "gradtagzahl",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "standort",
+          "einheit": "Kd",
+          "periode_art": "woche",
+          "herkunft_art": "messkanal",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "periode_art"
+          ]
+        }
+      },
+      {
+        "name": "Eine unbekannte Art: „paletten“ steht nicht im Vokabular der Arten",
+        "art": "paletten",
+        "beispiel": null,
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "standort",
+          "einheit": "Stück",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": [
+            "art"
+          ]
+        }
+      }
+    ],
+    "hinweis": [
+      "Das Vokabular der Arten sind die Schlüssel von `je_art`, in der Reihenfolge der Konzept-Tabelle. Jede Angabe einer Art ist ein Wort der VORHANDENEN Vokabulare dieser Datei — `einheiten`, `vokabulare.wertart`, `vokabulare.periode_art`, `vokabulare.geltung_art`, `vokabulare.herkunft_art`; keine Art führt ein eigenes Wort und keine Umsetzung eine zweite Liste.",
+      "`konzept` hält die Zellen der Tabelle §4.2 WÖRTLICH fest (Beleg, keine Regel); die Wörter daneben sind ihre Lesart. Die Zusätze in Klammern („Dauer“, „Anzahl“, „abgeleitet“, „Stückzähler“, „Kadenz monatlich“) und die Art des Kanals (Zähler, Zustand, Betriebsstunden, Temperatur — §4.9) stehen nur dort: das Vokabular `herkunft_art` kennt dafür das eine Wort `messkanal`.",
+      "`einheiten`: eine Liste, `alle` (jede Einheit des Vokabulars) oder `messstelle` (die Einheit der Messstelle, an der die Größe hängt — sie muss selbst im Vokabular stehen). `geltung`: eine Liste oder `alle` (jedes Objekt). Eine leere `perioden`-Liste heißt: keine Periode — so bei jeder Wertart außer `periodenwert` (M1, `periode_passt_nicht_zur_wertart`).",
+      "„Tag → Monat“ (Gradtagzahl) ist gelesen als: Tag und Monat sind Perioden dieser Art, Woche und Jahr nicht.",
+      "Die Art schränkt ein, sie rechnet nicht um: eine Einheit derselben Größe, die die Art nicht führt, passt nicht (Zählerstand in l an einer Messstelle in m³). Die Umrechnung eines gelieferten Werts bleibt die Regel `einheit`.",
+      "`pruefungen` sind KEINE Regel der Fälle (`cases`/`zwillinge`): sie gehören zu keinem Abnahmefall aus §7 — BZ-3 hat keinen. Beide Umsetzungen (Java `uems/BezugsArt`, TypeScript `bezugsArt.ts`) fahren JEDE Prüfung. `abweichend` nennt alle Felder, die nicht passen, in der Reihenfolge art · wertart · geltung_art · einheit · periode_art · herkunft_art; leer heißt: passt. `herkunft_art` null wird nicht geprüft — die Herkunft gehört zum Wert, nicht zur Bezugsgröße (§4.1).",
+      "Eine Spalte für die Art an `bezugsgroesse` gibt es NICHT und keine Route nimmt die Art an; das Paket, das sie braucht, legt sie additiv an und prüft sie gegen dieses Vokabular."
     ]
   },
   "zwillinge": {
