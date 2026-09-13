@@ -59,8 +59,11 @@ Jede Live-Fläche prüft `ausgebaut_am IS NULL`; Historie liest weiter alles. Um
 
 ## Offen / Befunde
 
-- **Schon heute lecken 19 Live-Leser** (Herzschlag-Tabellen ohne FK, die das Abmelden nie geräumt hat) — **nicht
-  durch IP-11**, als Folgepaket geschnitten (siehe Tabelle unten).
+- **Die 19 Altlecks sind geschlossen** (Folgepaket, Tabelle unten; bestehender Mangel, keine Regression von IP-11): jede
+  Stelle filtert `EXISTS (… device … ausgebaut_am IS NULL)` — auch eine vor IP-11 gelöschte Box ist damit nicht mehr
+  aktuell —, dazu als Nr. 20 `ConsumerMetricsRepository.consumers`; Nr. 19 wird BEENDET statt gefiltert
+  (`CommandLogRepository.beimAusbauBeenden` im Abmelde-Weg, `ended_at = last_seen_at`; Nachzug `V20260913200000`),
+  Tests `UemsAusgebauteBoxLiveFlaechenApiTest`, `UemsBefehlsverlaufAusbauMigrationTest`.
 - `data_source_assignment.device_id` ohne FK (Bestand: Zeiträume gelöschter Boxen); ein offener Zeitraum wird beim
   Abmelden nicht beendet, „Gerät entfernen“ prüft Zuständigkeiten noch nicht (AP-06 IP-19).
 - MQTT-`purge_request` einer Box mit Belegen: abgelehnt und geloggt; der Vertrag kennt keine Ablehnung, die Box
@@ -68,7 +71,7 @@ Jede Live-Fläche prüft `ausgebaut_am IS NULL`; Historie liest weiter alles. Um
 - `MessstelleFormelWerteRepository.verlauf15m` liest je Term EINE Box — der Verlauf einer berechneten Messstelle
   über einen Box-Wechsel hinweg zeigt nur die Zeiträume der gewählten Box.
 
-## Folgepaket: die 19 Live-Leser, die schon vor IP-11 leckten
+## Folgepaket: die 19 Live-Leser, die schon vor IP-11 leckten (geschlossen)
 
 Pfade relativ zu `services/api/src/main/java/com/voltpilot/api/`. „Alte Box“ = eine abgemeldete (heute: ausgebaute) Box derselben Anlage.
 

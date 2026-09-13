@@ -193,7 +193,8 @@ public class AdminFleetRepository {
     /**
      * Der jüngste Steuerungs-Beleg je Anlage - dieselbe Zeile, die
      * {@link ControlStatusRepository#latestForSite} je Anlage liefert, nur
-     * flottenweit in EINER Abfrage ({@code DISTINCT ON}).
+     * flottenweit in EINER Abfrage ({@code DISTINCT ON}) - also auch nur von einer
+     * Box, die nicht ausgebaut ist (UEMS AP-07 IP-11).
      */
     public Map<UUID, ControlStatusDto> controlPerSite() {
         Map<UUID, ControlStatusDto> out = new HashMap<>();
@@ -203,7 +204,9 @@ public class AdminFleetRepository {
                         + "checked_at, control_source, execution_mode, execution_direction, "
                         + "execution_planned_kw, execution_target_kw, cert_source, platform_cert_verdict, "
                         + "platform_cert_model, platform_cert_reason "
-                        + "FROM device_control_status ORDER BY site_id, checked_at DESC",
+                        + "FROM device_control_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, checked_at DESC",
                 rs -> {
                     Timestamp slotStart = rs.getTimestamp("slot_start");
                     out.put(rs.getObject("site_id", UUID.class), new ControlStatusDto(
@@ -237,13 +240,15 @@ public class AdminFleetRepository {
      *
      * <p>Gelesen und abgebildet über {@link CurtailmentStatusRepository#COLUMNS}
      * / {@code map} (dasselbe Paket): die Flotten-Sicht und der Anlagen-Lesepfad
-     * dürfen über DIESELBE Zeile nicht Verschiedenes behaupten.
+     * dürfen über DIESELBE Zeile nicht Verschiedenes behaupten - darum auch
+     * derselbe Filter {@link CurtailmentStatusRepository#BOX_AKTIV}.
      */
     public Map<UUID, CurtailmentStatusDto> curtailmentPerSite() {
         Map<UUID, CurtailmentStatusDto> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, " + CurtailmentStatusRepository.COLUMNS
-                        + " FROM device_curtailment_status ORDER BY site_id, checked_at DESC",
+                        + " FROM device_curtailment_status WHERE " + CurtailmentStatusRepository.BOX_AKTIV
+                        + " ORDER BY site_id, checked_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class),
                             CurtailmentStatusRepository.map(rs));
@@ -255,13 +260,16 @@ public class AdminFleetRepository {
      * Der zuletzt gemeldete Edge-Stand je Anlage. <b>Keine Zeile heißt
      * „unbekannt", nie „veraltet"</b>: die Edge baut den {@code flows}-Block des
      * Herzschlags erst nach ihrem ersten Deployment-Satz, ein Gerät ohne
-     * ausgerollte Automation meldet also gar keine Version.
+     * ausgerollte Automation meldet also gar keine Version. Der Stand einer
+     * ausgebauten Box ist kein Stand der Anlage (UEMS AP-07 IP-11).
      */
     public Map<UUID, EdgeVersionRow> edgeVersionPerSite() {
         Map<UUID, EdgeVersionRow> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, core_version, palette_version, reported_at "
-                        + "FROM device_edge_version ORDER BY site_id, reported_at DESC",
+                        + "FROM device_edge_version s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new EdgeVersionRow(
                             rs.getString("core_version"),
@@ -278,14 +286,17 @@ public class AdminFleetRepository {
      * genau deshalb sieht diese Abfrage auch die Geräte, auf denen nie eine
      * Automation ausgerollt wurde (das Loch, das Stufe 0 schließt). Beide
      * Blöcke haben ihren eigenen Frische-Anker, und keine Zeile heißt
-     * weiterhin „unbekannt", nie „veraltet".
+     * weiterhin „unbekannt", nie „veraltet". Der Stand einer ausgebauten Box
+     * zählt nicht (UEMS AP-07 IP-11).
      */
     public Map<UUID, UpdateStatusRow> updateStatusPerSite() {
         Map<UUID, UpdateStatusRow> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, version, backend, current_version, "
                         + "target_version, state, reason, last_known_good, reported_at "
-                        + "FROM device_update_status ORDER BY site_id, reported_at DESC",
+                        + "FROM device_update_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new UpdateStatusRow(
                             rs.getString("version"),
@@ -318,7 +329,7 @@ public class AdminFleetRepository {
      * Die vom Gerät gemeldeten Quellen je Anlage, nach Gesundheit gezählt -
      * dieselbe Grundlage wie {@code GET /api/v1/sites/{id}/sources}, nur
      * aggregiert. Eine Anlage ohne Meldung ist abwesend („keine Meldung"), nie
-     * „0 gesund".
+     * „0 gesund". Die Meldungen einer ausgebauten Box zählen nicht (UEMS AP-07 IP-11).
      */
     public Map<UUID, SourceCounts> sourceCountsPerSite() {
         Map<UUID, SourceCounts> out = new HashMap<>();
@@ -327,7 +338,9 @@ public class AdminFleetRepository {
                         + "count(*) FILTER (WHERE health = 'ok') AS ok_n, "
                         + "count(*) FILTER (WHERE health = 'stale') AS stale_n, "
                         + "count(*) FILTER (WHERE health NOT IN ('ok', 'stale')) AS never_n "
-                        + "FROM device_source_status GROUP BY site_id",
+                        + "FROM device_source_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "GROUP BY site_id",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new SourceCounts(
                             rs.getInt("total"), rs.getInt("ok_n"), rs.getInt("stale_n"),

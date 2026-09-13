@@ -68,12 +68,17 @@ public class DeviceSourceStatusRepository {
         }
     }
 
-    /** Every reported measurement point of a site, primary first, stable order. */
+    /**
+     * Every reported measurement point of a site, primary first, stable order - as reported by the
+     * boxes that take part in operation (UEMS AP-07 IP-11): the rows of an ausgebaut box stay stored,
+     * but its last „liest" is no current reading.
+     */
     public List<SiteSourceDto> forSite(UUID siteId) {
         return jdbc.query(
                 "SELECT device_id, source_id, kind, role, label, brand, model, pv_kw, power_kw, "
-                        + "load_kw, health, read_at, reported_at, bms FROM device_source_status "
-                        + "WHERE site_id = ? "
+                        + "load_kw, health, read_at, reported_at, bms FROM device_source_status s "
+                        + "WHERE s.site_id = ? "
+                        + "AND EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY (kind <> 'primary'), device_id, source_id",
                 DeviceSourceStatusRepository::mapRow, siteId);
     }

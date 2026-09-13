@@ -83,10 +83,18 @@ public class FlowStatusRepository {
         }
     }
 
+    /**
+     * The row was reported by a box that takes part in operation (UEMS AP-07 IP-11): what an
+     * ausgebaut box last reported stays stored, but no flow runs there any more.
+     */
+    private static final String BOX_AKTIV =
+            "EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL)";
+
     public List<Ack> acksForSite(UUID siteId) {
         return jdbc.query(
                 "SELECT flow_id, flow_version, content_hash, state, detail, reported_at "
-                        + "FROM flow_device_ack WHERE site_id = ? ORDER BY reported_at DESC",
+                        + "FROM flow_device_ack s WHERE s.site_id = ? AND " + BOX_AKTIV
+                        + " ORDER BY reported_at DESC",
                 (rs, i) -> new Ack(rs.getObject("flow_id", UUID.class), rs.getInt("flow_version"),
                         rs.getString("content_hash"), rs.getString("state"), rs.getString("detail"),
                         rs.getTimestamp("reported_at").toInstant()),
@@ -96,7 +104,8 @@ public class FlowStatusRepository {
     public List<NodeStatus> nodeStatusesForSite(UUID siteId) {
         return jdbc.query(
                 "SELECT flow_id, node_id, state, text, since, reported_at "
-                        + "FROM flow_node_status WHERE site_id = ? ORDER BY flow_id, node_id",
+                        + "FROM flow_node_status s WHERE s.site_id = ? AND " + BOX_AKTIV
+                        + " ORDER BY flow_id, node_id",
                 (rs, i) -> new NodeStatus(rs.getObject("flow_id", UUID.class), rs.getString("node_id"),
                         rs.getString("state"), rs.getString("text"),
                         rs.getTimestamp("since") == null ? null : rs.getTimestamp("since").toInstant(),

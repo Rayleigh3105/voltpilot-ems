@@ -73,6 +73,14 @@ public class DeviceChargerStatusRepository {
              */
             String tagRef) {}
 
+    /**
+     * The row {@code s} was reported by a box that takes part in operation (UEMS AP-07 IP-11): not
+     * ausgebaut, and still there. These tables have no FK on {@code device}, so the rows of an
+     * unclaimed box stay - as history, never as the site's current state.
+     */
+    private static final String BOX_AKTIV =
+            "EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL)";
+
     private final JdbcTemplate jdbc;
 
     public DeviceChargerStatusRepository(JdbcTemplate jdbc) {
@@ -84,8 +92,9 @@ public class DeviceChargerStatusRepository {
     }
 
     public List<Map<String, Object>> ocppControlStatus(UUID siteId) {
-        return jdbc.query("SELECT device_id, reported_at, ocpp_control_status::text FROM device_charging_budget "
-                + "WHERE site_id = ? AND ocpp_control_status IS NOT NULL ORDER BY device_id", (rs, n) -> {
+        return jdbc.query("SELECT s.device_id, s.reported_at, s.ocpp_control_status::text FROM device_charging_budget s "
+                + "WHERE s.site_id = ? AND s.ocpp_control_status IS NOT NULL AND " + BOX_AKTIV
+                + " ORDER BY s.device_id", (rs, n) -> {
             try {
                 return Map.<String, Object>of("deviceId", rs.getObject("device_id", UUID.class),
                         "reportedAt", rs.getTimestamp("reported_at").toInstant(), "state",
@@ -182,12 +191,13 @@ public class DeviceChargerStatusRepository {
      * retained Dokument. Eine Säule, deren Box (noch) nichts meldet, fehlt hier
      * schlicht - und eine fehlende Angabe liest sich als {@code haus}, die
      * sichere Richtung. Damit sagen Ladepunkt-Liste und Flussbild dasselbe: die
-     * Kundenfläche liest denselben IST.
+     * Kundenfläche liest denselben IST. Eine ausgebaute Box meldet keinen IST mehr:
+     * ihre Zeilen bleiben, zählen hier aber nicht (UEMS AP-07 IP-11).
      */
     public Map<UUID, String> connectionsByEntity(UUID siteId) {
         Map<UUID, String> out = new LinkedHashMap<>();
-        jdbc.query("SELECT entity_id, connection FROM device_charge_point "
-                + "WHERE site_id = ? AND entity_id IS NOT NULL AND connection IS NOT NULL",
+        jdbc.query("SELECT s.entity_id, s.connection FROM device_charge_point s "
+                + "WHERE s.site_id = ? AND s.entity_id IS NOT NULL AND s.connection IS NOT NULL AND " + BOX_AKTIV,
                 rs -> {
                     out.put(rs.getObject("entity_id", UUID.class), rs.getString("connection"));
                 }, siteId);
@@ -218,16 +228,21 @@ public class DeviceChargerStatusRepository {
      * Die ganze Ladepunkt-Sicht einer Anlage. {@code budget} ist null, solange
      * kein Gerät den Block gemeldet hat - der ehrliche Zustand einer Anlage
      * ohne Ladesäulen, nie ein Budget von 0.
+     *
+     * <p>Nur Boxen, die am Betrieb teilnehmen (UEMS AP-07 IP-11): Säulen, Stecker und Budget einer
+     * ausgebauten Box bleiben gespeichert, sind aber nicht der Stand der Anlage - sonst stünde ein
+     * Ladepunkt doppelt da, ein eingefrorener Stecker „lädt" mit seiner Karte für immer, und das
+     * Budget ({@code get(0)} nach Box-Kennung) könnte aus der alten Box stammen.
      */
     public SiteChargingDto forSite(UUID siteId) {
         List<ChargePointDto> points = new ArrayList<>();
         Map<String, List<ChargeConnectorDto>> byPoint = new LinkedHashMap<>();
-        jdbc.query("SELECT device_id, charge_point_id, connector_id, status, charging, "
-                + "allocated_kw, reason, reason_text, next_turn, power_kw, energy_kwh, soc_pct, "
-                + "command_status, readback, readback_note, session_since, session_kwh, "
-                + "metered_at, boost, tag_ref "
-                + "FROM device_charge_connector WHERE site_id = ? "
-                + "ORDER BY device_id, charge_point_id, connector_id", rs -> {
+        jdbc.query("SELECT s.device_id, s.charge_point_id, s.connector_id, s.status, s.charging, "
+                + "s.allocated_kw, s.reason, s.reason_text, s.next_turn, s.power_kw, s.energy_kwh, s.soc_pct, "
+                + "s.command_status, s.readback, s.readback_note, s.session_since, s.session_kwh, "
+                + "s.metered_at, s.boost, s.tag_ref "
+                + "FROM device_charge_connector s WHERE s.site_id = ? AND " + BOX_AKTIV
+                + " ORDER BY s.device_id, s.charge_point_id, s.connector_id", rs -> {
                     byPoint.computeIfAbsent(key(rs.getObject("device_id", UUID.class),
                             rs.getString("charge_point_id")), k -> new ArrayList<>())
                             .add(mapConnector(rs));
@@ -238,7 +253,8 @@ public class DeviceChargerStatusRepository {
                 + "cp.last_seen, cp.connection, cp.entity_id, cp.reported_at "
                 + "FROM device_charge_point cp "
                 + "LEFT JOIN measurement_point mp ON mp.id = cp.entity_id "
-                + "WHERE cp.site_id = ? ORDER BY cp.device_id, cp.charge_point_id", rs -> {
+                + "WHERE cp.site_id = ? AND EXISTS (SELECT 1 FROM device d WHERE d.id = cp.device_id "
+                + "AND d.ausgebaut_am IS NULL) ORDER BY cp.device_id, cp.charge_point_id", rs -> {
                     UUID deviceId = rs.getObject("device_id", UUID.class);
                     String id = rs.getString("charge_point_id");
                     points.add(new ChargePointDto(deviceId, id, rs.getString("display_label"),
@@ -252,7 +268,8 @@ public class DeviceChargerStatusRepository {
                             byPoint.getOrDefault(key(deviceId, id), List.of())));
                 }, siteId);
         List<ChargingBudgetDto> budgets = jdbc.query(
-                "SELECT * FROM device_charging_budget WHERE site_id = ? ORDER BY device_id",
+                "SELECT s.* FROM device_charging_budget s WHERE s.site_id = ? AND " + BOX_AKTIV
+                        + " ORDER BY s.device_id",
                 DeviceChargerStatusRepository::mapBudget, siteId);
         return new SiteChargingDto(budgets.isEmpty() ? null : budgets.get(0), points);
     }

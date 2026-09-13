@@ -159,6 +159,24 @@ public class CommandLogRepository {
     }
 
     /**
+     * Der Ausbau einer Box (UEMS AP-07 IP-11) beendet ihre offenen Perioden - alle Ströme, alle
+     * Komponenten. Nach dem Ausbau kommt kein Herzschlag dieser Box mehr an, also schlösse sie
+     * sonst niemand: im Verlauf „liefe" die letzte Anweisung der alten Box für immer, und das
+     * Aufräumen ({@link #prune}) nähme eine offene Periode nie. Geschlossen wird wie in
+     * {@link #closeOpenExcept} an ihrem letzten belegten Zeitpunkt, ohne Ereignis: der Ausbau ist
+     * kein Stopp. Gelöscht wird nichts - die Periode bleibt im Verlauf. Dieselbe Regel zieht
+     * {@code V20260913200000} für die Perioden nach, deren Box schon vorher nicht mehr am Betrieb
+     * teilnahm.
+     *
+     * @return wie viele Perioden beendet wurden
+     */
+    public int beimAusbauBeenden(UUID deviceId) {
+        return jdbc.update("UPDATE device_command_log SET ended_at = last_seen_at "
+                + "WHERE device_id = ? AND kind = '" + CommandLog.KIND_PERIODE + "' AND ended_at IS NULL",
+                deviceId);
+    }
+
+    /**
      * Die KOMPONENTE, an die der Schreibweg dieses Geräts geht: ihr Steuer-Punkt
      * (heute die Batterie-Hybrid-Zeile). {@code null} heisst ehrlich „keiner
      * einzelnen Komponente zuzuordnen" - die Zeile bleibt gerätebezogen und
