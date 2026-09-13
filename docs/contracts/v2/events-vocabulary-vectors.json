@@ -21,7 +21,11 @@
     "der Java-Test prüft das gegen die Referenzdatei. Was ein Fall ERFINDET, nennt er in",
     "`annahme` und — für ein Kennzeichen oder einen Messkanal außerhalb der Referenz — in",
     "`erfunden`. Technische Kennungen (UUIDs) nennt die Referenz nicht: `kennungen` legt sie fest.",
-    "Zeiten in Ereignissen sind UTC (…Z); der Kundensatz spricht in der Zeitzone des Standorts."
+    "Zeiten in Ereignissen sind UTC (…Z); der Kundensatz spricht in der Zeitzone des Standorts.",
+    "",
+    "AP-08 IP-6 (additiv): data_gap trägt den gemessenen Zuwachs über die Lücke — zuwachs, einheit,",
+    "stand_vor, stand_nach — nur zusammen, nur geschlossen, nur an einer Reihe, nie von der Box;",
+    "einheit aus vokabular.einheit_zuwachs (Zählerstand-Einheiten aus messstelle-vectors.json)."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./events-vocabulary.schema.json",
@@ -159,6 +163,14 @@
       "invalid",
       "stale",
       "device_error"
+    ],
+    "einheit_zuwachs": [
+      "Wh",
+      "kWh",
+      "MWh",
+      "varh",
+      "kvarh",
+      "m³"
     ],
     "fehlerklasse_datei": "./data-source-vectors.json",
     "felder": {
@@ -401,6 +413,18 @@
       "neu": {
         "typ": "wert",
         "beschreibung": "Der Wert nachher."
+      },
+      "zuwachs": {
+        "typ": "stand",
+        "beschreibung": "Der gemessene Zuwachs über eine Lücke: stand_nach − stand_vor. Gemessen, aber auf keine Viertelstunde verteilbar (AP-08 E2)."
+      },
+      "stand_vor": {
+        "typ": "stand",
+        "beschreibung": "Der letzte gute Zählerstand vor der Lücke (Messzeit: von − eine Kadenz)."
+      },
+      "stand_nach": {
+        "typ": "stand",
+        "beschreibung": "Der erste gute Zählerstand danach (Messzeit: bis)."
       }
     },
     "arten": [
@@ -434,13 +458,21 @@
           "erwartet_fehlend",
           "nachgeliefert_am",
           "fehlerklasse",
-          "ursache_ereignis"
+          "ursache_ereignis",
+          "zuwachs",
+          "einheit",
+          "stand_vor",
+          "stand_nach"
         ],
         "fortschreibbar": [
           "bis",
           "erwartet_fehlend",
           "nachgeliefert_am",
-          "ursache_ereignis"
+          "ursache_ereignis",
+          "zuwachs",
+          "einheit",
+          "stand_vor",
+          "stand_nach"
         ],
         "mqtt": {
           "pflicht": [
@@ -468,6 +500,7 @@
           "standard_offen": "Lücke seit {von} — nie als 0 gerechnet"
         },
         "zusaetze": {
+          "zuwachs": " · der Zähler hat weitergezählt: Zuwachs {zuwachs} — nicht auf Viertelstunden verteilbar",
           "nachgeliefert_am": " · nachgeliefert am {nachgeliefert_am}"
         },
         "regeln": [
@@ -475,11 +508,13 @@
           "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer (seit AP-07 IP-9 auch cloud — der Lücken-Melder der api, `auch_urheber`), verdraengung ↔ box, herzschlag ↔ cloud.",
           "Eine Box meldet nur eine geschlossene Lücke (was sie verdrängt hat, weiß sie hinterher).",
           "`fehlerklasse` `box_meldet_sich_nicht` nur mit `erkannt_aus` herzschlag; eine Herzschlag-Lücke trägt keine andere Klasse — solange die Box schweigt, kennt niemand ihren Grund.",
-          "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6)."
+          "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6).",
+          "`zuwachs`, `einheit`, `stand_vor` und `stand_nach` (AP-08 IP-6, E2) stehen nur ZUSAMMEN, nur an einer geschlossenen Lücke EINER Reihe (`komponente` + `messkanal`) und nie von einer Box: `zuwachs` = `stand_nach` − `stand_vor` ≥ 0, `einheit` aus `einheit_zuwachs` (die Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten).",
+          "Der Zuwachs ist GEMESSEN, aber NICHT VERTEILBAR: er zählt im kleinsten Zeitraum, der die Lücke ganz enthält (verbrauch-vectors.json `regeln.luecke_zuwachs`), die Viertelstunden der Lücke bleiben „keine Werte“. Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge — die bildet der Verdichtungs-Lauf aus den Werten."
         ],
         "bestand": true,
         "nie_geloescht": true,
-        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers; Kadenz-Lücke auch von `cloud` seit AP-07 IP-9"
+        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers; Kadenz-Lücke auch von `cloud` seit AP-07 IP-9; Zuwachs als Nutzlast seit AP-08 IP-6 (E2)"
       },
       {
         "art": "backfill",
@@ -1864,6 +1899,212 @@
         "saetze": [
           "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
         ]
+      }
+    },
+    {
+      "name": "ms10-luecke-geschlossen-mit-zuwachs-nicht-verteilbar",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Der Zähler hat weitergezählt, während die Werte fehlten: 418 537,6 − 418 200,0 = 337,6 kWh sind GEMESSEN — nur wann in den 3,5 Stunden sie anfielen, weiß niemand. Der Lücken-Melder schreibt den Zuwachs mit dem Schließen fort.",
+      "annahme": "Der Fall folgt der Zeitachse von F8 ohne Nachlieferung; `von` ist wie beim Lücken-Melder der letzte gute Wert (14:00) plus eine Kadenz (60 s).",
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000088",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000088",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:01 bis 17:31 — nie als 0 gerechnet · der Zähler hat weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar"
+        ]
+      }
+    },
+    {
+      "name": "luecke-zuwachs-ohne-einheit-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Ein Zuwachs ohne Einheit ist eine Zahl ohne Bedeutung — die vier Felder stehen nur zusammen.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000089",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-rechnet-nicht-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Der Zuwachs IST die Differenz der Stände — 300,0 statt 337,6 wäre eine erfundene Zahl.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000090",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 300.0,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-offen-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Solange die Lücke offen ist, gibt es keinen Stand danach — und damit keinen Zuwachs.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000091",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-je-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; AP-06 §6.2 (Lücke je Box aus dem Herzschlag)",
+      "why": "Eine Box hat keinen Zählerstand — der Zuwachs gehört an die Lücke EINER Reihe, nie an die der Box.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000092",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht",
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-einheit-unbekannt-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Die Einheit des Zuwachses kommt aus dem Einheiten-Vokabular der Zählerstände, nicht als freier Text.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000093",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "einheit": "kilowattstunden",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
       }
     },
     {

@@ -207,3 +207,39 @@ Energie**, die **gemessene Zeit** und ob **in ihm** eine Lücke liegt.
 Beide Zwillinge prüfen an jeder Momentanwert- und Intervallmengen-Erwartung ab zwei
 Viertelstunden, dass die Zusammensetzung die Erwartung der Datei ergibt
 (`VerbrauchWerteteileTest`, `test_verbrauch.py`).
+
+## 9. Zuwachs über eine Lücke: gemessen, benannt, nicht verteilt (AP-08 IP-6, E2)
+
+Der Zähler hat weitergezählt, während die Werte fehlten. Die Differenz der Stände um die Lücke ist
+darum eine **gemessene** Energiemenge — nur **wann** in der Lücke sie anfiel, weiß niemand. Beides
+gilt gleichzeitig, und daraus folgen drei Regeln (`regeln.luecke_zuwachs`):
+
+1. **Die Viertelstunden der Lücke bekommen nichts.** Sie haben keinen Wert und bleiben „keine
+   Werte“ — nie 0 kWh, nie ein Anteil (F8 Viertelstunde 14:15–14:30).
+2. **Der Zuwachs zählt genau einmal je Stufe** — in der Periode, die die Lücke GANZ enthält:
+   Messzeit davor > `von − Kadenz` (der Wert ist ihr Stand am Anfang oder liegt in ihr) und Messzeit
+   danach ≤ `bis`. Eine Periode, die die Lücke nur anschneidet, bekommt ihn nicht; ihr fehlt der
+   Stand an der Grenze („Anfang/Ende nicht gemessen“). F20: beide Tage je 2 208 kWh unvollständig,
+   der Zwei-Tage-Zeitraum 4 608 kWh vollständig.
+3. **Er trägt sein Kennzeichen:** „Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf
+   Viertelstunden verteilbar“ — sonst läse ihn jemand als normalen Verbrauch.
+
+Die Entscheidung steht an EINER Stelle: `VerbrauchRegeln.zaehltZu` ⟷ `verbrauch.zaehlt_zu`;
+`lueckenZuwachs` ⟷ `luecken_zuwachs` erkennt die Lücke (kein Loch über `luecke_faktor × Kadenz`,
+fallender Stand oder Gerätegrenze dazwischen → kein Zuwachs), `lueckenZuwaechse` ⟷
+`luecken_zuwaechse` liefert die Lücken, die eine Periode zählt. `mengeZaehlerstand` und die
+Zusammensetzung aus Teilperioden kommen über ihre Periodenstände zum selben Ergebnis; beide
+Zwillinge halten das an jeder Erwartung mit `luecken_zuwachs` fest (F8, F11, F20, F23: gezählte
+Lücke mit Ständen, Zuwachs, Einheit UND Kennzeichen; jede andere Lücke der Reihe steht nicht da).
+
+`kleinsterZeitraum` ⟷ `kleinster_zeitraum` nennt den **kleinsten** ganz enthaltenden Zeitraum der
+Kette `regeln.luecke_zeitraeume` (Viertelstunde → Stunde → Tag → Monat → Jahr; Viertelstunde und
+Stunde im UTC-Raster, Tag/Monat/Jahr in der Zeitzone des Standorts). `luecken_zuordnung` hält ihn
+fest: F8 Tag, F23 Stunde, F20 und F11 Monat, über die Monatsgrenze das Jahr, am 23-/25-Stunden-Tag
+der Tag, vier Minuten bei 60 s Kadenz die Viertelstunde selbst, über den Jahreswechsel **keiner** —
+dann zählt der Zuwachs nur in einem freien Zeitraum, der die Lücke umfasst.
+
+**Kein Ersatzwert.** Eine Verteilung auf Viertelstunden gibt es nur als manuellen, gekennzeichneten
+Ersatzwert (E7 a–c, IP-13) — nie hier, nie automatisch. Die Lücke trägt denselben Zuwachs als
+Nutzlast von `data_gap` (`events-vocabulary.md`, „Zuwachs über eine Lücke“).
+

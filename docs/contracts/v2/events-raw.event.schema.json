@@ -129,6 +129,18 @@
       "minLength": 1,
       "maxLength": 16
     },
+    "einheit_zuwachs": {
+      "type": "string",
+      "enum": [
+        "Wh",
+        "kWh",
+        "MWh",
+        "varh",
+        "kvarh",
+        "m³"
+      ],
+      "description": "Die Einheit des Zuwachses über eine Lücke (AP-08 IP-6): die Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten — vokabular.einheit_zuwachs."
+    },
     "ganz_ab_0": {
       "type": "integer",
       "minimum": 0
@@ -407,6 +419,18 @@
         },
         "ursache_ereignis": {
           "$ref": "#/$defs/uuid"
+        },
+        "zuwachs": {
+          "$ref": "#/$defs/stand"
+        },
+        "einheit": {
+          "$ref": "#/$defs/einheit_zuwachs"
+        },
+        "stand_vor": {
+          "$ref": "#/$defs/stand"
+        },
+        "stand_nach": {
+          "$ref": "#/$defs/stand"
         }
       }
     },

@@ -5,6 +5,7 @@ import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -438,10 +439,9 @@ public final class VerbrauchRegeln {
             return new Paar(BigDecimal.ZERO, true);
         }
 
-        if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
-            kennzeichen.add("Lücke " + uhr(vorher.zeit()) + "–" + uhr(nachher.zeit())
-                    + ": Zuwachs " + runde(zuwachs.multiply(faktor), NACHKOMMASTELLEN).toPlainString()
-                    + " gemessen, nicht auf Viertelstunden verteilbar");
+        LueckenZuwachs luecke = lueckenZuwachs(vorher, nachher, List.of(), kadenz, faktor);
+        if (luecke != null) {
+            kennzeichen.add(lueckenKennzeichen(luecke));
         }
         return new Paar(zuwachs, false);
     }
@@ -453,6 +453,137 @@ public final class VerbrauchRegeln {
                     + " s Zählung möglicherweise verloren");
         }
         return !neustarts.isEmpty();
+    }
+
+    // ---------------------------------------------- Zuwachs über eine Lücke (Z2, E2, IP-6)
+
+    /**
+     * E2 — die Kette der Kalender-Zeiträume, vom feinsten zum gröbsten, in der der KLEINSTE ganz
+     * enthaltende Zeitraum gesucht wird ({@code regeln.luecke_zeitraeume}). Ein freier Zeitraum
+     * folgt derselben Regel {@link #zaehltZu}, steht aber nicht in der Kette.
+     */
+    public static final List<String> LUECKE_ZEITRAEUME = List.of("viertelstunde", "stunde", "tag", "monat", "jahr");
+
+    /**
+     * Z2/E2 — der Zuwachs über EINE Lücke: GEMESSEN (der Zähler hat weitergezählt, während die Werte
+     * fehlten), aber NICHT VERTEILBAR (niemand weiß, wann in der Lücke er anfiel). Dieselben Felder
+     * trägt das Ereignis {@code data_gap} als Nutzlast ({@code stand_vor}, {@code stand_nach},
+     * {@code zuwachs}; die Einheit ist die der Reihe).
+     *
+     * @param messzeitVor Messzeit des letzten guten Werts vor der Lücke
+     * @param messzeitNach Messzeit des ersten guten Werts danach
+     * @param standVor der Stand davor in der Einheit der Reihe (Rohwert × Faktor)
+     * @param standNach der Stand danach, ebenso
+     * @param zuwachs {@code standNach − standVor}, ungerundet
+     */
+    public record LueckenZuwachs(
+            Instant messzeitVor, Instant messzeitNach, BigDecimal standVor, BigDecimal standNach, BigDecimal zuwachs) {}
+
+    /** Ein Zeitraum der Kette {@link #LUECKE_ZEITRAEUME}: {@code [von, bis)}. */
+    public record Zeitraum(String art, Instant von, Instant bis) {}
+
+    /**
+     * Z2/E2 — ist die Nachbarschaft zweier guter Werte eine Lücke mit gemessenem Zuwachs? {@code null},
+     * wenn nicht: kein Loch ÜBER {@code LUECKE_FAKTOR × Kadenz}, ein fallender Stand (Rücksetzung
+     * oder Überlauf, Z5/Z6) oder eine Gerätegrenze in {@code (vorher, nachher]} (Z4 — dann ist
+     * {@code nachher − vorher} gar kein Zuwachs eines Zählers).
+     */
+    public static LueckenZuwachs lueckenZuwachs(
+            Rohwert vorher, Rohwert nachher, Collection<Ereignis> ereignisse, Duration kadenz, BigDecimal faktor) {
+        if (!istLuecke(vorher.zeit(), nachher.zeit(), kadenz) || nachher.wert().compareTo(vorher.wert()) < 0
+                || !ereignisseIn(ereignisse, Ereignis.GERAETEGRENZE, vorher.zeit(), nachher.zeit()).isEmpty()) {
+            return null;
+        }
+        BigDecimal vor = vorher.wert().multiply(faktor);
+        BigDecimal nach = nachher.wert().multiply(faktor);
+        return new LueckenZuwachs(vorher.zeit(), nachher.zeit(), vor, nach, nach.subtract(vor));
+    }
+
+    /**
+     * E2 — DIE Stelle, die entscheidet, ob der Zuwachs über eine Lücke zu {@code [von, bis)} zählt:
+     * genau dann, wenn die Periode die Lücke GANZ enthält. Der Wert davor ist ihr Stand am Anfang oder
+     * liegt in ihr ({@code messzeitVor > von − Kadenz}, das Fenster von Z1), und der Wert danach liegt
+     * in ihr oder ist ihr Stand am Ende ({@code messzeitNach ≤ bis}).
+     *
+     * <p>Eine Periode, die die Lücke nur ANSCHNEIDET, bekommt ihn nicht — ihr fehlt der Stand an der
+     * Grenze („Anfang/Ende nicht gemessen“), sonst stünde dieselbe Energie zweimal in der Bilanz. Die
+     * Viertelstunden IN der Lücke haben gar keinen Wert und bleiben „keine Werte“, nie 0 und nie ein
+     * Anteil. {@link #mengeZaehlerstand} und {@link #zaehlerstandAusTeilperioden} kommen über ihre
+     * Periodenstände zu genau diesem Ergebnis; {@code VerbrauchVectorsTest} hält beide aneinander.
+     */
+    public static boolean zaehltZu(LueckenZuwachs luecke, Instant von, Instant bis, Duration kadenz) {
+        return luecke.messzeitVor().isAfter(von.minus(kadenz)) && !luecke.messzeitNach().isAfter(bis);
+    }
+
+    /**
+     * E2 — die Lücken mit gemessenem Zuwachs, die {@code [von, bis)} zählt, in Zeitfolge: jede
+     * Nachbarschaft guter Werte nach {@link #lueckenZuwachs}, gefiltert nach {@link #zaehltZu}. Eine
+     * Gerätegrenze wirkt wie in {@link #mengeZaehlerstand} nur, wenn sie in {@code (von, bis]} liegt.
+     */
+    public static List<LueckenZuwachs> lueckenZuwaechse(
+            List<Rohwert> werte, Instant von, Instant bis, Duration kadenz, Collection<Ereignis> ereignisse,
+            BigDecimal faktor) {
+        List<Ereignis> grenzen = ereignisseIn(ereignisse, Ereignis.GERAETEGRENZE, von, bis);
+        List<Rohwert> gut = werte.stream().filter(Rohwert::gut).sorted(Comparator.comparing(Rohwert::zeit)).toList();
+        List<LueckenZuwachs> out = new ArrayList<>();
+        for (int i = 0; i + 1 < gut.size(); i++) {
+            LueckenZuwachs l = lueckenZuwachs(gut.get(i), gut.get(i + 1), grenzen, kadenz, faktor);
+            if (l != null && zaehltZu(l, von, bis, kadenz)) {
+                out.add(l);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Das Kennzeichen, mit dem der Zuwachs in der Periode steht, die ihn zählt — Vertrag nach Text
+     * („Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar“).
+     */
+    public static String lueckenKennzeichen(LueckenZuwachs luecke) {
+        return "Lücke " + uhr(luecke.messzeitVor()) + "–" + uhr(luecke.messzeitNach())
+                + ": Zuwachs " + runde(luecke.zuwachs(), NACHKOMMASTELLEN).toPlainString()
+                + " gemessen, nicht auf Viertelstunden verteilbar";
+    }
+
+    /**
+     * E2 — der KLEINSTE Zeitraum der Kette Viertelstunde → Stunde → Tag → Monat → Jahr, der die
+     * Lücke ganz enthält ({@link #zaehltZu}); {@code null}, wenn keiner es tut (über den
+     * Jahreswechsel — dann zählt der Zuwachs nur in einem freien Zeitraum, der sie umfasst).
+     * Viertelstunde und Stunde im UTC-Raster, Tag/Monat/Jahr in der Zeitzone des Standorts (23-/25-
+     * Stunden-Tage). Geprüft werden je Stufe der Zeitraum des Werts davor und der, in den sein Fenster
+     * {@code (t − Kadenz, t]} als Stand am Anfang reicht.
+     */
+    public static Zeitraum kleinsterZeitraum(LueckenZuwachs luecke, Duration kadenz, ZoneId zone) {
+        for (String art : LUECKE_ZEITRAEUME) {
+            for (Instant t : List.of(luecke.messzeitVor(), luecke.messzeitVor().plus(kadenz).minusNanos(1))) {
+                Zeitraum z = zeitraum(art, t, zone);
+                if (zaehltZu(luecke, z.von(), z.bis(), kadenz)) {
+                    return z;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Zeitraum zeitraum(String art, Instant t, ZoneId zone) {
+        LocalDate tag = t.atZone(zone).toLocalDate();
+        return switch (art) {
+            case "viertelstunde" -> raster(art, t, 900);
+            case "stunde" -> raster(art, t, 3600);
+            case "tag" -> kalender(art, tag, tag.plusDays(1), zone);
+            case "monat" -> kalender(art, tag.withDayOfMonth(1), tag.withDayOfMonth(1).plusMonths(1), zone);
+            case "jahr" -> kalender(art, tag.withDayOfYear(1), tag.withDayOfYear(1).plusYears(1), zone);
+            default -> throw new IllegalArgumentException("unbekannter Zeitraum " + art);
+        };
+    }
+
+    private static Zeitraum raster(String art, Instant t, long sekunden) {
+        long beginn = Math.floorDiv(t.getEpochSecond(), sekunden) * sekunden;
+        return new Zeitraum(art, Instant.ofEpochSecond(beginn), Instant.ofEpochSecond(beginn + sekunden));
+    }
+
+    private static Zeitraum kalender(String art, LocalDate von, LocalDate bis, ZoneId zone) {
+        return new Zeitraum(art, von.atStartOfDay(zone).toInstant(), bis.atStartOfDay(zone).toInstant());
     }
 
     // ------------------------------------------- Zählerstand aus Teilperioden (P7, §4.5)

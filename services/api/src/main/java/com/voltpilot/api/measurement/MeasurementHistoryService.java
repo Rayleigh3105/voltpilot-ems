@@ -311,11 +311,26 @@ public class MeasurementHistoryService {
             List<SpeicherklasseHistorie.Ereignis> ereignisse) {
         List<Marker> out = new ArrayList<>(bestehende);
         for (SpeicherklasseHistorie.Ereignis e : ereignisse) {
-            out.add(new Marker(e.von(), e.art(), ereignisWort(e.art(), e.anzahl()),
+            out.add(new Marker(e.von(), e.art(), ereignisWort(e.art(), e.anzahl()) + zuwachsSatz(e.zuwachs()),
                     e.bis() == null || e.bis().equals(e.von()) ? null : e.bis(), e.anzahl()));
         }
         out.sort(java.util.Comparator.comparing(Marker::time));
         return List.copyOf(out);
+    }
+
+    /**
+     * AP-08 IP-6 — der Zusatz am Lücken-Marker, Wort für Wort der des Ereignis-Vertrags
+     * ({@code events-vocabulary-vectors.json}, {@code data_gap.zusaetze.zuwachs}): gemessen, aber
+     * nicht verteilbar. Zahlen deutsch mit höchstens drei Nachkommastellen, wie im TS-Zwilling.
+     */
+    public static String zuwachsSatz(SpeicherklasseHistorie.Zuwachs zuwachs) {
+        if (zuwachs == null) {
+            return "";
+        }
+        java.text.NumberFormat zahl = java.text.NumberFormat.getNumberInstance(java.util.Locale.GERMANY);
+        zahl.setMaximumFractionDigits(3);
+        return " · der Zähler hat weitergezählt: Zuwachs " + zahl.format(zuwachs.menge()) + " "
+                + zuwachs.einheit() + " — nicht auf Viertelstunden verteilbar";
     }
 
     /** Kundensprache für die sieben Ereignisarten, die der Verlauf zeigt (§4.8, AP-08 IP-4). */

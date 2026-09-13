@@ -256,6 +256,10 @@ public final class EreignisVokabular {
         f.put("karten_gelesen", Typ.GANZ_AB_0);
         f.put("alt", Typ.WERT);
         f.put("neu", Typ.WERT);
+        // AP-08 IP-6 (additiv): der gemessene Zuwachs über eine Lücke.
+        f.put("zuwachs", Typ.STAND);
+        f.put("stand_vor", Typ.STAND);
+        f.put("stand_nach", Typ.STAND);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -295,6 +299,22 @@ public final class EreignisVokabular {
             List.of("good", "uncertain", "invalid", "stale", "device_error");
 
     /**
+     * AP-08 IP-6 — die Einheiten, in denen {@code data_gap} einen Zuwachs trägt: die Einheiten der
+     * Größen mit Wertart Zählerstand im Größen-Katalog der Messstellen, jeweils mit ihren
+     * umrechenbaren Einheiten — gerufen aus {@link MessstelleRegeln}, nicht nachgebaut
+     * ({@code vokabular.einheit_zuwachs}). Kein freier Text: ein Zuwachs in „Impulse“ ist erst mit
+     * einer Größe dafür eine Menge.
+     */
+    public static final List<String> EINHEITEN_ZUWACHS = MessstelleRegeln.GROESSEN_KATALOG.stream()
+            .filter(k -> k.wertarten().contains("Zählerstand"))
+            .flatMap(k -> MessstelleRegeln.KANAL_EINHEITEN.getOrDefault(k.groesse(), List.of(k.einheit())).stream())
+            .distinct()
+            .toList();
+
+    /** AP-08 IP-6 — die Felder des Zuwachses über eine Lücke; sie stehen nur zusammen. */
+    public static final List<String> ZUWACHS_FELDER = List.of("zuwachs", "einheit", "stand_vor", "stand_nach");
+
+    /**
      * Die Fehlerklassen je Datenquelle (AP-06 E5) — gerufen aus
      * {@link DatenquelleRegeln.Fehlerklasse}, nicht nachgebaut. Sie sind ZUSTAND (Herzschlag je
      * Quelle, IP-13); ein Ereignis trägt eine nur, wenn ein exportierter Fakt sie belegt.
@@ -312,8 +332,10 @@ public final class EreignisVokabular {
         DATA_GAP("data_gap", EnumSet.of(WRITER, BOX, CLOUD), ZEITRAUM, HALBOFFEN, true, MESSZEIT,
                 List.of("box"), List.of("datenquelle", "komponente", "messkanal", "messstelle"),
                 List.of("erkannt_aus"),
-                List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis"),
-                List.of("bis", "erwartet_fehlend", "nachgeliefert_am", "ursache_ereignis"),
+                List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis",
+                        "zuwachs", "einheit", "stand_vor", "stand_nach"),
+                List.of("bis", "erwartet_fehlend", "nachgeliefert_am", "ursache_ereignis",
+                        "zuwachs", "einheit", "stand_vor", "stand_nach"),
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus"),
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus", "datenquelle",
                         "komponente", "messkanal", "erwartet_fehlend")),
@@ -803,6 +825,9 @@ public final class EreignisVokabular {
         wort(e, "erkannt_aus", List.copyOf(ERKANNT_AUS.keySet()));
         wort(e, "fehlerklasse", FEHLERKLASSEN);
         wort(e, "anlass", art == Art.DEVICE_BOUNDARY ? ANLASS_GERAETEGRENZE : ANLASS_UEBERGABE);
+        if (art == Art.DATA_GAP) {
+            wort(e, "einheit", EINHEITEN_ZUWACHS);
+        }
         if (e.has("grund") && Grund.vonCode(e.get("grund").asText()) == null) {
             throw nein(Grund.WORT_UNBEKANNT, "grund " + e.get("grund").asText());
         }
@@ -865,6 +890,7 @@ public final class EreignisVokabular {
                 if (e.hasNonNull("nachgeliefert_am") && e.get("bis").isNull()) {
                     throw nein(Grund.REGEL_VERLETZT, "nachgeliefert, aber offen");
                 }
+                pruefeZuwachs(e);
             }
             case BACKFILL -> {
                 if (zeit(e, "eingang_bis").isBefore(zeit(e, "eingang_von"))
@@ -964,6 +990,31 @@ public final class EreignisVokabular {
             default -> {
                 // late_arrival: Zeitregel oben; box_restart: nichts weiter
             }
+        }
+    }
+
+    /**
+     * AP-08 IP-6 — der Zuwachs über eine Lücke: alle vier Felder oder keines, nur an einer
+     * geschlossenen Lücke EINER Reihe, und er IST die Differenz der Stände (nie negativ). Die Box
+     * kann ihn gar nicht senden (ihr Drahtschema kennt die Felder nicht).
+     */
+    private static void pruefeZuwachs(JsonNode e) {
+        long da = ZUWACHS_FELDER.stream().filter(e::has).count();
+        if (da == 0) {
+            return;
+        }
+        if (da < ZUWACHS_FELDER.size()) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs nur mit zuwachs, einheit, stand_vor und stand_nach");
+        }
+        if (e.get("bis").isNull()) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs, aber offen");
+        }
+        if (!e.has("komponente") || !e.has("messkanal")) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs ohne Reihe");
+        }
+        BigDecimal zuwachs = zahl(e, "zuwachs");
+        if (zuwachs.signum() < 0 || zuwachs.compareTo(zahl(e, "stand_nach").subtract(zahl(e, "stand_vor"))) != 0) {
+            throw nein(Grund.REGEL_VERLETZT, "zuwachs ist nicht stand_nach − stand_vor");
         }
     }
 

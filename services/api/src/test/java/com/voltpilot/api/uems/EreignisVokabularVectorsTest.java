@@ -63,6 +63,7 @@ class EreignisVokabularVectorsTest {
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
     private static final Path HERKUNFT = V2.resolve("messwert-herkunft-vectors.json");
     private static final Path DATENQUELLE = V2.resolve("data-source-vectors.json");
+    private static final Path MESSSTELLE = V2.resolve("messstelle-vectors.json");
     private static final Path BEISPIELE = V2.resolve("examples");
 
     private static JsonNode lies(Path p) throws Exception {
@@ -135,6 +136,22 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        // AP-08 IP-6: die Einheiten des Zuwachses sind die Zählerstand-Einheiten des Größen-Katalogs
+        // der Messstellen mit ihren umrechenbaren Einheiten — aus DER Datei, nicht abgeschrieben.
+        JsonNode messstelle = lies(MESSSTELLE);
+        List<String> ausKatalog = new ArrayList<>();
+        for (JsonNode g : messstelle.path("groessen_katalog")) {
+            if (texte(g.path("wertarten")).contains("Zählerstand")) {
+                JsonNode familie = messstelle.path("kanal_einheiten").path(g.path("groesse").asText());
+                for (String einheit : familie.isMissingNode() ? List.of(g.path("einheit").asText()) : texte(familie)) {
+                    if (!ausKatalog.contains(einheit)) {
+                        ausKatalog.add(einheit);
+                    }
+                }
+            }
+        }
+        assertThat(texte(w.path("einheit_zuwachs"))).containsExactlyElementsOf(ausKatalog)
+                .containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         Map<String, String> erkannt = new LinkedHashMap<>();
         w.path("erkannt_aus").forEach(e -> erkannt.put(e.path("code").asText(), e.path("urheber").asText()));
         Map<String, String> javaErkannt = new LinkedHashMap<>();
@@ -273,6 +290,8 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(rd.path("anlass_uebergabe").path("enum")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(rd.path("qualitaet").path("enum"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        assertThat(texte(rd.path("einheit_zuwachs").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         JsonNode umschlag = mqtt.path("properties");
         assertThat(umschlag.path("schema_version").path("const").asText())
                 .isEqualTo(EreignisVokabular.FASSUNG_UMSCHLAG);

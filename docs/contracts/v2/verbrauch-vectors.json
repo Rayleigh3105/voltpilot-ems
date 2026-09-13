@@ -20,7 +20,12 @@
   "aus Leistung nur gekennzeichnet und nur über gemessene Zeit. F24 ist KEIN Fall der Vorlage, sondern für IP-3",
   "handgerechnet (Lücke über die Viertelstundengrenze, Halten bis zum nächsten Wert hinter der Grenze); F2 trägt",
   "seit IP-3 zusätzlich die halbe Stunde. Beide Zwillinge prüfen an jeder Momentanwert- und Intervallmengen-",
-  "Erwartung ab zwei Viertelstunden die Zusammensetzung (Java VerbrauchWerteteileTest, Python test_verbrauch.py)."
+  "Erwartung ab zwei Viertelstunden die Zusammensetzung (Java VerbrauchWerteteileTest, Python test_verbrauch.py).",
+  "AP-08 IP-6: der Zuwachs über eine Lücke ist GEMESSEN, aber NICHT VERTEILBAR (E2 = A). F8, F11, F20",
+  "und F23 nennen je Erwartung in `luecken_zuwachs`, welche Lücken ihr Zuwachs ZÄHLT (leer = die Periode schneidet",
+  "sie nur an); `luecken_zuordnung` hält den kleinsten ganz enthaltenden Zeitraum der Kette",
+  "regeln.luecke_zeitraeume fest (null = nur ein freier Zeitraum). Dieselben vier Felder",
+  "(zuwachs, einheit, stand_vor, stand_nach) trägt die Lücke als Ereignis (events-vocabulary, data_gap)."
  ],
  "schema_version": "1.0",
  "$schema_datei": "./verbrauch.schema.json",
@@ -33,7 +38,15 @@
   "integration_halten_faktor": 2,
   "vergleich_nachkommastellen": 3,
   "teilperioden": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
-  "werte_teilperioden": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge"
+  "werte_teilperioden": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge",
+  "luecke_zuwachs": "Zuwachs über eine Lücke = Stand nach − Stand vor zweier guter Nachbarn über luecke_faktor × Kadenz (nicht fallend, keine Gerätegrenze dazwischen); er zählt zu [von, bis) genau dann, wenn die Periode die Lücke ganz enthält: Messzeit vor > von − Kadenz und Messzeit nach ≤ bis; nie verteilt, nie in einer Periode, die sie nur anschneidet",
+  "luecke_zeitraeume": [
+   "viertelstunde",
+   "stunde",
+   "tag",
+   "monat",
+   "jahr"
+  ]
  },
  "zustaende": [
   "vollständig",
@@ -65,6 +78,134 @@
    ],
    "statt": [],
    "grund": "Der Abstand 10:15 → 10:45 ist GENAU 2 × Kadenz (900 s). Eine Lücke beginnt nach Z2 und nach dem schon gemergten Zustandsvertrag (ZustandAbleitung.LUECKE_FAKTOR, strikt >) erst ÜBER 2 × Kadenz; mit ≥ wäre die führende 60-s-Reihe desselben Falls (Loch 10:07–10:08) ebenfalls eine Lücke und F15 in sich widersprüchlich. Menge, Zustand, erhalten/erwartet und Abdeckung der Vorlage bleiben unberührt."
+  }
+ ],
+ "luecken_zuordnung": [
+  {
+   "name": "f8-tag",
+   "fall": "f8-plan-abnahme-2",
+   "why": "3,5 Stunden ohne Werte am 03.11.: keine Stunde enthält die Lücke ganz, der Tag schon — dort steht der Zuwachs, sonst nirgends.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-11-03T14:00:00+01:00",
+   "messzeit_nach": "2026-11-03T17:31:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "tag",
+    "von": "2026-11-03T00:00:00+01:00",
+    "bis": "2026-11-04T00:00:00+01:00"
+   }
+  },
+  {
+   "name": "f23-stunde",
+   "fall": "f23-nachlieferung-unvollst-ndig",
+   "why": "Nach der Nachlieferung bleiben 14:00–14:41 Lücke: die Stunde 14:00–15:00 enthält sie ganz — die Viertelstunden 14:00–14:45 nicht.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-11-03T14:00:00+01:00",
+   "messzeit_nach": "2026-11-03T14:41:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "stunde",
+    "von": "2026-11-03T14:00:00+01:00",
+    "bis": "2026-11-03T15:00:00+01:00"
+   }
+  },
+  {
+   "name": "f20-monat",
+   "fall": "f20-l-cke-ber-die-tagesgrenze",
+   "why": "Über Mitternacht enthält kein Tag die Lücke; der kleinste Kalender-Zeitraum ist der Oktober (ein freier Zeitraum über beide Tage enthält sie ebenso).",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-10-20T23:00:00+02:00",
+   "messzeit_nach": "2026-10-21T01:00:00+02:00",
+   "kleinster_zeitraum": {
+    "art": "monat",
+    "von": "2026-10-01T00:00:00+02:00",
+    "bis": "2026-11-01T00:00:00+01:00"
+   }
+  },
+  {
+   "name": "f11-monat",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "03.11. 14:00 bis 04.11. 09:30: beide Tage schneiden die Lücke nur an, der November enthält sie ganz.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-11-03T14:00:00+01:00",
+   "messzeit_nach": "2026-11-04T09:30:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "monat",
+    "von": "2026-11-01T00:00:00+01:00",
+    "bis": "2026-12-01T00:00:00+01:00"
+   }
+  },
+  {
+   "name": "monatsgrenze-das-jahr",
+   "fall": null,
+   "why": "Über die Monatsgrenze Oktober/November enthält kein Monat die Lücke — erst das Jahr 2026.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-10-31T23:00:00+01:00",
+   "messzeit_nach": "2026-11-01T01:00:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "jahr",
+    "von": "2026-01-01T00:00:00+01:00",
+    "bis": "2027-01-01T00:00:00+01:00"
+   }
+  },
+  {
+   "name": "fuenfundzwanzig-stunden-tag",
+   "fall": null,
+   "why": "25.10.2026: 01:30 MESZ bis 02:30 MEZ sind zwei Stunden — keine Stunde, aber der Tag mit 25 Stunden enthält die Lücke ganz.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-10-25T01:30:00+02:00",
+   "messzeit_nach": "2026-10-25T02:30:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "tag",
+    "von": "2026-10-25T00:00:00+02:00",
+    "bis": "2026-10-26T00:00:00+01:00"
+   }
+  },
+  {
+   "name": "dreiundzwanzig-stunden-tag",
+   "fall": null,
+   "why": "28.03.2027: 01:30 MEZ bis 03:30 MESZ ist eine Stunde über die UTC-Stundengrenze — der Tag mit 23 Stunden enthält sie ganz.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2027-03-28T01:30:00+01:00",
+   "messzeit_nach": "2027-03-28T03:30:00+02:00",
+   "kleinster_zeitraum": {
+    "art": "tag",
+    "von": "2027-03-28T00:00:00+01:00",
+    "bis": "2027-03-29T00:00:00+02:00"
+   }
+  },
+  {
+   "name": "in-einer-viertelstunde",
+   "fall": null,
+   "why": "Vier Minuten ohne Wert bei 60 s Kadenz liegen ganz in 10:00–10:15: die Viertelstunde hat beide Stände und zählt den Zuwachs selbst.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-11-03T10:01:00+01:00",
+   "messzeit_nach": "2026-11-03T10:05:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "viertelstunde",
+    "von": "2026-11-03T10:00:00+01:00",
+    "bis": "2026-11-03T10:15:00+01:00"
+   }
+  },
+  {
+   "name": "stand-am-anfang-aus-dem-fenster",
+   "fall": null,
+   "why": "Der Wert davor liegt 13:59:30 — im Fenster (14:00 − Kadenz, 14:00] und damit Stand am Anfang der Stunde 14:00–15:00 (Z1); die Stunde davor endet mit ihm und bekommt nichts.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-11-03T13:59:30+01:00",
+   "messzeit_nach": "2026-11-03T15:00:00+01:00",
+   "kleinster_zeitraum": {
+    "art": "stunde",
+    "von": "2026-11-03T14:00:00+01:00",
+    "bis": "2026-11-03T15:00:00+01:00"
+   }
+  },
+  {
+   "name": "jahreswechsel-kein-kalender-zeitraum",
+   "fall": null,
+   "why": "Über den Jahreswechsel enthält kein Zeitraum der Kette die Lücke: der Zuwachs zählt nur in einem freien Zeitraum, der sie umfasst — nie in einem der beiden Jahre.",
+   "kadenz_s": 60,
+   "messzeit_vor": "2026-12-31T23:00:00+01:00",
+   "messzeit_nach": "2027-01-01T01:00:00+01:00",
+   "kleinster_zeitraum": null
   }
  ],
  "cases": [
@@ -679,7 +820,8 @@
      "abdeckung_prozent": 6,
      "kennzeichen": [
       "nur ein Stand in der Periode — keine Menge bildbar"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Viertelstunde 14:15–14:30",
@@ -690,7 +832,8 @@
      "erhalten": 0,
      "erwartet": 15,
      "abdeckung_prozent": 0,
-     "kennzeichen": []
+     "kennzeichen": [],
+     "luecken_zuwachs": []
     },
     {
      "name": "Viertelstunde 17:30–17:45",
@@ -703,7 +846,8 @@
      "abdeckung_prozent": 93,
      "kennzeichen": [
       "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Stunde 17:00–18:00",
@@ -716,7 +860,8 @@
      "abdeckung_prozent": 48,
      "kennzeichen": [
       "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Tag 03.11.2026",
@@ -729,6 +874,16 @@
      "abdeckung_prozent": 85,
      "kennzeichen": [
       "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "luecken_zuwachs": [
+      {
+       "messzeit_vor": "2026-11-03T14:00:00+01:00",
+       "messzeit_nach": "2026-11-03T17:31:00+01:00",
+       "stand_vor": 418200.0,
+       "stand_nach": 418537.6,
+       "zuwachs": 337.6,
+       "einheit": "kWh"
+      }
      ]
     }
    ]
@@ -921,6 +1076,7 @@
      "kennzeichen": [
       "Ende nicht gemessen (kein Stand an der Periodengrenze)"
      ],
+     "luecken_zuwachs": [],
      "version": 1
     },
     {
@@ -935,6 +1091,7 @@
      "kennzeichen": [
       "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
      ],
+     "luecken_zuwachs": [],
      "version": 1
     },
     {
@@ -948,6 +1105,16 @@
      "abdeckung_prozent": 59,
      "kennzeichen": [
       "Lücke 14:00–09:30: Zuwachs 1872.000 gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "luecken_zuwachs": [
+      {
+       "messzeit_vor": "2026-11-03T14:00:00+01:00",
+       "messzeit_nach": "2026-11-04T09:30:00+01:00",
+       "stand_vor": 418200.0,
+       "stand_nach": 420072.0,
+       "zuwachs": 1872.0,
+       "einheit": "kWh"
+      }
      ]
     }
    ]
@@ -1554,7 +1721,8 @@
      "abdeckung_prozent": 95,
      "kennzeichen": [
       "Ende nicht gemessen (kein Stand an der Periodengrenze)"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Tag 21.10.2026",
@@ -1567,7 +1735,8 @@
      "abdeckung_prozent": 95,
      "kennzeichen": [
       "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Zeitraum 20.–21.10.2026",
@@ -1580,6 +1749,16 @@
      "abdeckung_prozent": 95,
      "kennzeichen": [
       "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "luecken_zuwachs": [
+      {
+       "messzeit_vor": "2026-10-20T23:00:00+02:00",
+       "messzeit_nach": "2026-10-21T01:00:00+02:00",
+       "stand_vor": 404208.0,
+       "stand_nach": 404400.0,
+       "zuwachs": 192.0,
+       "einheit": "kWh"
+      }
      ]
     }
    ]
@@ -1737,7 +1916,8 @@
      "abdeckung_prozent": 26,
      "kennzeichen": [
       "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
-     ]
+     ],
+     "luecken_zuwachs": []
     },
     {
      "name": "Stunde 14:00–15:00",
@@ -1750,6 +1930,16 @@
      "abdeckung_prozent": 33,
      "kennzeichen": [
       "Lücke 14:00–14:41: Zuwachs 65.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "luecken_zuwachs": [
+      {
+       "messzeit_vor": "2026-11-03T14:00:00+01:00",
+       "messzeit_nach": "2026-11-03T14:41:00+01:00",
+       "stand_vor": 418200.0,
+       "stand_nach": 418265.6,
+       "zuwachs": 65.6,
+       "einheit": "kWh"
+      }
      ]
     },
     {
@@ -1763,6 +1953,16 @@
      "abdeckung_prozent": 97,
      "kennzeichen": [
       "Lücke 14:00–14:41: Zuwachs 65.600 gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "luecken_zuwachs": [
+      {
+       "messzeit_vor": "2026-11-03T14:00:00+01:00",
+       "messzeit_nach": "2026-11-03T14:41:00+01:00",
+       "stand_vor": 418200.0,
+       "stand_nach": 418265.6,
+       "zuwachs": 65.6,
+       "einheit": "kWh"
+      }
      ]
     }
    ]

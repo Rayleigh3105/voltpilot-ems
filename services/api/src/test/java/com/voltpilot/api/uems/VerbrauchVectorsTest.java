@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ereignis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
+import com.voltpilot.api.uems.VerbrauchRegeln.LueckenZuwachs;
 import com.voltpilot.api.uems.VerbrauchRegeln.Rohwert;
+import com.voltpilot.api.uems.VerbrauchRegeln.Zeitraum;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -98,6 +101,9 @@ class VerbrauchVectorsTest {
         assertThat(regeln.path("integration_halten_faktor").asInt()).isEqualTo(VerbrauchRegeln.HALTEN_FAKTOR);
         assertThat(regeln.path("vergleich_nachkommastellen").asInt()).isEqualTo(VerbrauchRegeln.NACHKOMMASTELLEN);
         assertThat(lies(VECTORS).path("zeitzone").asText()).isEqualTo(VerbrauchRegeln.ANZEIGE_ZEITZONE.getId());
+        List<String> zeitraeume = new ArrayList<>();
+        regeln.path("luecke_zeitraeume").forEach(z -> zeitraeume.add(z.asText()));
+        assertThat(zeitraeume).isEqualTo(VerbrauchRegeln.LUECKE_ZEITRAEUME);
     }
 
     /**
@@ -192,6 +198,111 @@ class VerbrauchVectorsTest {
                     .as(why + " · stunden")
                     .isEqualTo(erwartung.path("stunden").asLong());
         }
+        if (erwartung.has("luecken_zuwachs")) {
+            pruefeLueckenZuwachs(why, reihe, erwartung, von, bis, kadenz, ereignisse, ist);
+        }
+    }
+
+    /** Weit genug, um jede Lücke einer Reihe zu sehen — für „jede ANDERE Lücke steht nicht da“. */
+    private static final Instant IMMER_VON = Instant.parse("2000-01-01T00:00:00Z");
+    private static final Instant IMMER_BIS = Instant.parse("2100-01-01T00:00:00Z");
+
+    /**
+     * E2 (AP-08 IP-6) — der Zuwachs über eine Lücke steht GENAU EINMAL: die Periode, die die Lücke
+     * ganz enthält, zählt ihn mit beiden Ständen, Zuwachs, Einheit und dem vertraglichen Kennzeichen;
+     * jede Periode, die sie nur anschneidet, nennt ihn nicht — weder als Lücke noch als Kennzeichen.
+     */
+    private static void pruefeLueckenZuwachs(String why, JsonNode reihe, JsonNode erwartung, Instant von,
+            Instant bis, Duration kadenz, List<Ereignis> ereignisse, Ergebnis ist) {
+        BigDecimal faktor = dezimal(reihe.path("faktor"), BigDecimal.ONE);
+        List<LueckenZuwachs> gezaehlt =
+                VerbrauchRegeln.lueckenZuwaechse(rohwerte(reihe), von, bis, kadenz, ereignisse, faktor);
+        JsonNode soll = erwartung.path("luecken_zuwachs");
+        assertThat(gezaehlt).as(why + " · luecken_zuwachs (Anzahl)").hasSize(soll.size());
+        for (int i = 0; i < soll.size(); i++) {
+            JsonNode s = soll.get(i);
+            LueckenZuwachs l = gezaehlt.get(i);
+            assertThat(l.messzeitVor()).as(why + " · messzeit_vor")
+                    .isEqualTo(VerbrauchRegeln.zeit(s.path("messzeit_vor").asText()));
+            assertThat(l.messzeitNach()).as(why + " · messzeit_nach")
+                    .isEqualTo(VerbrauchRegeln.zeit(s.path("messzeit_nach").asText()));
+            zahl(why + " · stand_vor", s.path("stand_vor"), l.standVor());
+            zahl(why + " · stand_nach", s.path("stand_nach"), l.standNach());
+            zahl(why + " · zuwachs", s.path("zuwachs"), l.zuwachs());
+            assertThat(s.path("einheit").asText()).as(why + " · einheit").isEqualTo(reihe.path("einheit").asText());
+            assertThat(ist.kennzeichen()).as(why + " · Kennzeichen des gezählten Zuwachses")
+                    .contains(VerbrauchRegeln.lueckenKennzeichen(l));
+        }
+        for (LueckenZuwachs l : VerbrauchRegeln.lueckenZuwaechse(
+                rohwerte(reihe), IMMER_VON, IMMER_BIS, kadenz, ereignisse, faktor)) {
+            if (!gezaehlt.contains(l)) {
+                assertThat(ist.kennzeichen()).as(why + " · angeschnittene Lücke steht nicht da")
+                        .doesNotContain(VerbrauchRegeln.lueckenKennzeichen(l));
+            }
+        }
+    }
+
+    /**
+     * E2 (AP-08 IP-6) — der KLEINSTE Zeitraum, der eine Lücke ganz enthält. Die Fälle mit {@code fall}
+     * gehören zu einem Referenzfall: dessen Reihe hat genau diese eine Lücke mit gemessenem Zuwachs.
+     */
+    @TestFactory
+    List<DynamicTest> lueckenZuordnung() throws Exception {
+        JsonNode datei = lies(VECTORS);
+        ZoneId zone = ZoneId.of(datei.path("zeitzone").asText());
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode z : datei.path("luecken_zuordnung")) {
+            tests.add(DynamicTest.dynamicTest(z.path("name").asText(), () -> {
+                Duration kadenz = Duration.ofSeconds(z.path("kadenz_s").asLong());
+                Instant vor = VerbrauchRegeln.zeit(z.path("messzeit_vor").asText());
+                Instant nach = VerbrauchRegeln.zeit(z.path("messzeit_nach").asText());
+                Zeitraum ist = VerbrauchRegeln.kleinsterZeitraum(
+                        new LueckenZuwachs(vor, nach, null, null, null), kadenz, zone);
+                JsonNode soll = z.path("kleinster_zeitraum");
+                String why = z.path("why").asText();
+                if (soll.isNull()) {
+                    assertThat(ist).as(why).isNull();
+                } else {
+                    assertThat(ist).as(why).isEqualTo(new Zeitraum(soll.path("art").asText(),
+                            VerbrauchRegeln.zeit(soll.path("von").asText()),
+                            VerbrauchRegeln.zeit(soll.path("bis").asText())));
+                }
+                if (!z.path("fall").isNull()) {
+                    JsonNode reihe = null;
+                    for (JsonNode fall : datei.path("cases")) {
+                        if (fall.path("name").asText().equals(z.path("fall").asText())) {
+                            reihe = fall.path("input").path("reihe");
+                        }
+                    }
+                    assertThat(reihe).as("Fall " + z.path("fall").asText()).isNotNull();
+                    List<LueckenZuwachs> alle = VerbrauchRegeln.lueckenZuwaechse(rohwerte(reihe), IMMER_VON,
+                            IMMER_BIS, Duration.ofSeconds(reihe.path("kadenz_s").asLong()),
+                            ereignisse(reihe.path("ereignisse")), dezimal(reihe.path("faktor"), BigDecimal.ONE));
+                    assertThat(alle).as(why).hasSize(1);
+                    assertThat(alle.get(0).messzeitVor()).isEqualTo(vor);
+                    assertThat(alle.get(0).messzeitNach()).isEqualTo(nach);
+                }
+            }));
+        }
+        assertThat(tests).as("Zuordnungsfälle").hasSizeGreaterThanOrEqualTo(10);
+        return tests;
+    }
+
+    /** Die Abnahme von AP-08 IP-6: F8, F11, F20 und F23 tragen an JEDER Erwartung ihre Zuwachs-Felder. */
+    @Test
+    void dieAbnahmefaelleVonIp6TragenIhreZuwachsFelder() throws Exception {
+        List<String> abnahme = List.of("f8-", "f11-", "f20-", "f23-");
+        int gesehen = 0;
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            if (abnahme.stream().anyMatch(fall.path("name").asText()::startsWith)) {
+                gesehen++;
+                for (JsonNode e : fall.path("expected")) {
+                    assertThat(e.has("luecken_zuwachs")).as(fall.path("name").asText() + " :: " + e.path("name").asText())
+                            .isTrue();
+                }
+            }
+        }
+        assertThat(gesehen).isEqualTo(4);
     }
 
     static void zahl(String was, JsonNode soll, BigDecimal ist) {

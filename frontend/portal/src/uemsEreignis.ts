@@ -142,6 +142,9 @@ export const FELDTYP: Record<string, Feldtyp> = {
   karten_gelesen: 'ganz_ab_0',
   alt: 'wert',
   neu: 'wert',
+  zuwachs: 'stand',
+  stand_vor: 'stand',
+  stand_nach: 'stand',
 };
 
 export interface ArtText {
@@ -177,7 +180,10 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
       standard: 'Lücke von {von} bis {bis} — nie als 0 gerechnet',
       standard_offen: 'Lücke seit {von} — nie als 0 gerechnet',
     },
-    zusaetze: { nachgeliefert_am: ' · nachgeliefert am {nachgeliefert_am}' },
+    zusaetze: {
+      zuwachs: ' · der Zähler hat weitergezählt: Zuwachs {zuwachs} — nicht auf Viertelstunden verteilbar',
+      nachgeliefert_am: ' · nachgeliefert am {nachgeliefert_am}',
+    },
   },
   backfill: {
     name: 'Nachlieferung',

@@ -67,6 +67,10 @@
         "anlass_geraetegrenze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
         "anlass_uebergabe": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
         "qualitaet": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
+        "einheit_zuwachs": {
+          "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 },
+          "description": "AP-08 IP-6 (additiv): die Einheiten, in denen data_gap einen Zuwachs trägt — die Zählerstand-Einheiten des Größen-Katalogs der Messstellen (messstelle-vectors.json groessen_katalog) mit ihren umrechenbaren Einheiten (kanal_einheiten)."
+        },
         "fehlerklasse_datei": { "type": "string", "const": "./data-source-vectors.json" },
         "felder": {
           "type": "object",

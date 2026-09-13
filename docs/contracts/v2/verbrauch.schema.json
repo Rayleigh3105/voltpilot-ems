@@ -70,6 +70,16 @@
           "type": "string",
           "const": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge",
           "description": "M1–M4, I1–I2 über Perioden (AP-08 IP-3, §4.5). Additiv: Momentanwert- und Intervallmengen-Reihen einer gröberen Periode aus den gespeicherten Teilperioden (Summe, Energie, gemessene Zeit, Lücke im Teil). Die Energie aus Leistung steht nie ohne das Kennzeichen „aus Leistung integriert“ (E5)."
+        },
+        "luecke_zuwachs": {
+          "type": "string",
+          "const": "Zuwachs über eine Lücke = Stand nach − Stand vor zweier guter Nachbarn über luecke_faktor × Kadenz (nicht fallend, keine Gerätegrenze dazwischen); er zählt zu [von, bis) genau dann, wenn die Periode die Lücke ganz enthält: Messzeit vor > von − Kadenz und Messzeit nach ≤ bis; nie verteilt, nie in einer Periode, die sie nur anschneidet",
+          "description": "Z2/E2 (AP-08 IP-6). Additiv: der Zuwachs über eine Lücke ist GEMESSEN, aber NICHT VERTEILBAR. Er steht genau einmal je Stufe — in der Periode, die die Lücke ganz enthält; die Viertelstunden der Lücke bleiben „keine Werte“, eine angeschnittene Periode ist „Anfang/Ende nicht gemessen“."
+        },
+        "luecke_zeitraeume": {
+          "type": "array",
+          "const": ["viertelstunde", "stunde", "tag", "monat", "jahr"],
+          "description": "E2 (AP-08 IP-6): die Kette der Kalender-Zeiträume, vom feinsten zum gröbsten, in der der KLEINSTE ganz enthaltende Zeitraum gesucht wird. Viertelstunde und Stunde im UTC-Raster, Tag/Monat/Jahr in der Zeitzone des Standorts. Ein freier Zeitraum folgt derselben Regel (luecke_zuwachs), steht aber nicht in der Kette."
         }
       }
     },
@@ -89,6 +99,11 @@
       "type": "array",
       "description": "Jede Stelle, an der diese Datei bewusst von der Vorlage data/vp-uems-ap08-verbrauch/referenzfaelle.json abweicht. Leer heißt: nichts wurde stillschweigend geändert.",
       "items": { "$ref": "#/$defs/abweichung" }
+    },
+    "luecken_zuordnung": {
+      "type": "array",
+      "description": "E2 (AP-08 IP-6): je Lücke der KLEINSTE Zeitraum der Kette regeln.luecke_zeitraeume, der sie ganz enthält. Fälle mit `fall` gehören zu einem Referenzfall (seine Reihe hat genau diese Lücke); die übrigen prüfen die Ränder der Kette (Monatsgrenze, 23-/25-Stunden-Tag, Viertelstunde, Stand aus dem Fenster, Jahreswechsel).",
+      "items": { "$ref": "#/$defs/zuordnung" }
     },
     "cases": {
       "type": "array",
@@ -256,7 +271,57 @@
           "items": { "$ref": "#/$defs/ereignis" },
           "description": "Ereignisse einer Fall-VARIANTE (etwa ein nachgetragener Ablesestand, der aus der Rücksetzung eine Gerätegrenze macht). Sie treten zu den Ereignissen der Reihe hinzu."
         },
-        "stunden": { "type": "integer", "minimum": 0, "description": "P3: die Länge der Periode in Stunden — am Umstellungstag 23 oder 25." }
+        "stunden": { "type": "integer", "minimum": 0, "description": "P3: die Länge der Periode in Stunden — am Umstellungstag 23 oder 25." },
+        "luecken_zuwachs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lueckenzuwachs" },
+          "description": "E2 (AP-08 IP-6): die Lücken, deren gemessenen Zuwachs DIESE Periode zählt — genau die, die sie ganz enthält, in Zeitfolge. Leer heißt: sie schneidet eine Lücke höchstens an und bekommt ihren Zuwachs nicht. Jede genannte Lücke steht zugleich als Kennzeichen „Lücke HH:MM–HH:MM: Zuwachs … gemessen, nicht auf Viertelstunden verteilbar“ da, jede andere nicht."
+        }
+      }
+    },
+
+    "lueckenzuwachs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messzeit_vor", "messzeit_nach", "stand_vor", "stand_nach", "zuwachs", "einheit"],
+      "description": "Z2/E2 (AP-08 IP-6): der gemessene Zuwachs über EINE Lücke. Dieselben vier Felder (stand_vor, stand_nach, zuwachs, einheit) trägt das Ereignis data_gap (events-vocabulary).",
+      "properties": {
+        "messzeit_vor": { "$ref": "#/$defs/zeitpunkt" },
+        "messzeit_nach": { "$ref": "#/$defs/zeitpunkt" },
+        "stand_vor": { "type": "number", "description": "Der letzte gute Stand vor der Lücke, in der Einheit der Reihe (Rohwert × faktor)." },
+        "stand_nach": { "type": "number", "description": "Der erste gute Stand danach, ebenso." },
+        "zuwachs": { "type": "number", "minimum": 0, "description": "stand_nach − stand_vor: gemessen, nicht verteilbar." },
+        "einheit": { "type": "string", "minLength": 1, "description": "Die Einheit der Reihe." }
+      }
+    },
+
+    "zuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fall", "why", "kadenz_s", "messzeit_vor", "messzeit_nach", "kleinster_zeitraum"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "fall": { "type": ["string", "null"], "description": "Der Referenzfall, dessen Reihe genau diese Lücke hat, sonst null." },
+        "why": { "type": "string", "minLength": 1 },
+        "kadenz_s": { "type": "integer", "minimum": 1 },
+        "messzeit_vor": { "$ref": "#/$defs/zeitpunkt" },
+        "messzeit_nach": { "$ref": "#/$defs/zeitpunkt" },
+        "kleinster_zeitraum": {
+          "description": "Der kleinste ganz enthaltende Zeitraum der Kette; null heißt: keiner (dann zählt der Zuwachs nur in einem freien Zeitraum, der die Lücke umfasst).",
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["art", "von", "bis"],
+              "properties": {
+                "art": { "type": "string", "enum": ["viertelstunde", "stunde", "tag", "monat", "jahr"] },
+                "von": { "$ref": "#/$defs/zeitpunkt" },
+                "bis": { "$ref": "#/$defs/zeitpunkt" }
+              }
+            }
+          ]
+        }
       }
     },
 

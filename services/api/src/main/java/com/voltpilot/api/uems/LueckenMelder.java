@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import com.voltpilot.api.uems.EreignisVokabular.Urteil;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -1055,6 +1056,7 @@ public class LueckenMelder {
                 ObjectNode l = reihenMeldung(con, e, new Wert(a.zeit(), a.device(), a.site()), von);
                 l.put("bis", uhr(LueckenRegeln.lueckeEnde(von, b.zeit())));
                 l.put("erwartet_fehlend", LueckenRegeln.erwartetFehlend(von, b.zeit(), k));
+                zuwachs(con, e, von, b.zeit(), k, l);
                 if (melden(con, e.tenant, a.site() != null ? a.site() : e.site, l, jetzt, z)) {
                     z.geschlossen++;
                 }
@@ -1086,6 +1088,7 @@ public class LueckenMelder {
         ObjectNode neu = ((ObjectNode) alt).deepCopy();
         neu.put("bis", uhr(LueckenRegeln.lueckeEnde(von, bis)));
         neu.put("erwartet_fehlend", LueckenRegeln.erwartetFehlend(von, bis, k));
+        zuwachs(con, e, von, bis, k, neu);
         Instant nach = nachgeliefertAmReihe(con, e, von, bis);
         if (nach != null) {
             neu.put("nachgeliefert_am", uhr(nach));
@@ -1093,6 +1096,97 @@ public class LueckenMelder {
         if (melden(con, e.tenant, e.site, neu, jetzt, z)) {
             z.geschlossen++;
         }
+    }
+
+    /** Ein guter Wert am Rand einer Lücke: Messzeit, Zahl und die Wertart, mit der er gespeichert ist. */
+    private record Stand(Instant zeit, BigDecimal wert, String wertart) {}
+
+    /**
+     * AP-08 IP-6 — der gemessene Zuwachs über eine GESCHLOSSENE Reihen-Lücke als Nutzlast
+     * ({@code zuwachs}, {@code einheit}, {@code stand_vor}, {@code stand_nach}). Der Zähler hat
+     * weitergezählt, während die Werte fehlten: die Differenz der Stände ist gemessen, aber auf keine
+     * Viertelstunde verteilbar.
+     *
+     * <p>Gerechnet wird hier nichts: ob die beiden Nachbarn eine Lücke mit Zuwachs sind (Loch über
+     * {@code 2 × Kadenz}, nicht fallend, keine Gerätegrenze dazwischen), entscheidet
+     * {@link VerbrauchRegeln#lueckenZuwachs}; in welcher Periode er zählt, {@link VerbrauchRegeln#zaehltZu}.
+     * Die Felder bleiben WEG — nie geraten —, wenn die Reihe kein Zählerstand ist, ihr Messkanal keine
+     * Einheit aus {@link EreignisVokabular#EINHEITEN_ZUWACHS} hat, oder der direkte Nachbar des Stands
+     * davor nicht der Wert ist, der die Lücke schließt (dann liegt schon ein nachgelieferter Wert IN
+     * der Lücke, oder sie endete durch Abwählen ohne Stand). Eine Nachlieferung, die erst NACH dem
+     * Schließen kommt, ändert die Meldung nicht (append-only): sie trägt dann zusätzlich
+     * {@code nachgeliefert_am}, und was danach noch Lücke ist, sagt das Kennzeichen der Periode.
+     */
+    private void zuwachs(Connection con, Einheit e, Instant von, Instant rueckkehr, int kadenzS, ObjectNode l)
+            throws SQLException {
+        MeasurementCatalog.Point p = katalog.resolve(e.kanal);
+        String einheit = p == null ? null : p.unit();
+        if (einheit == null || !EreignisVokabular.EINHEITEN_ZUWACHS.contains(einheit)) {
+            return;
+        }
+        Stand vor = stand(con, e, "s.time < ? ORDER BY s.time DESC", von);
+        Stand nach = vor == null ? null : stand(con, e, "s.time > ? ORDER BY s.time", vor.zeit());
+        if (nach == null || !nach.zeit().equals(rueckkehr) || !zaehlerstand(vor) || !zaehlerstand(nach)) {
+            return;
+        }
+        List<VerbrauchRegeln.Ereignis> grenzen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT e.zeit FROM messreihe_ereignis e
+                 WHERE e.tenant_id = ? AND e.entity_id = ? AND (e.messkanal IS NULL OR e.messkanal = ?)
+                   AND e.art = 'device_boundary' AND e.zeit > ? AND e.zeit <= ?
+                """)) {
+            ps.setObject(1, e.tenant);
+            ps.setObject(2, e.entity);
+            ps.setString(3, e.kanal);
+            ps.setTimestamp(4, Timestamp.from(vor.zeit()));
+            ps.setTimestamp(5, Timestamp.from(nach.zeit()));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    grenzen.add(new VerbrauchRegeln.Ereignis(VerbrauchRegeln.Ereignis.GERAETEGRENZE,
+                            rs.getTimestamp(1).toInstant(), null, null, null, 0));
+                }
+            }
+        }
+        VerbrauchRegeln.LueckenZuwachs z = VerbrauchRegeln.lueckenZuwachs(
+                new VerbrauchRegeln.Rohwert(vor.zeit(), vor.wert()),
+                new VerbrauchRegeln.Rohwert(nach.zeit(), nach.wert()),
+                grenzen, Duration.ofSeconds(kadenzS), ViertelstundeRegeln.FAKTOR_DER_FASSUNG);
+        if (z == null) {
+            return;
+        }
+        l.put("zuwachs", z.zuwachs());
+        l.put("einheit", einheit);
+        l.put("stand_vor", z.standVor());
+        l.put("stand_nach", z.standNach());
+    }
+
+    /** Der erste gute Wert der Reihe nach {@code bedingung} (Richtung und Grenze), sonst {@code null}. */
+    private Stand stand(Connection con, Einheit e, String bedingung, Instant t) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT s.time, coalesce(s.decoded_numeric, s.raw_numeric),
+                       coalesce(s.value_kind, s.aggregation_kind)
+                  FROM device_measurement_sample s
+                 WHERE s.tenant_id = ? AND s.entity_id = ? AND s.point_key = ? AND %s
+                   AND s.quality = 'good' AND %s
+                 LIMIT 1
+                """.formatted(SPUR, bedingung))) {
+            ps.setObject(1, e.tenant);
+            ps.setObject(2, e.entity);
+            ps.setString(3, e.kanal);
+            ps.setTimestamp(4, Timestamp.from(t));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                double zahl = rs.getDouble(2);
+                return rs.wasNull() ? null
+                        : new Stand(rs.getTimestamp(1).toInstant(), BigDecimal.valueOf(zahl), rs.getString(3));
+            }
+        }
+    }
+
+    private static boolean zaehlerstand(Stand s) {
+        return "zaehlerstand".equals(ViertelstundeRegeln.regelWort(s.wertart()));
     }
 
     /**

@@ -327,17 +327,133 @@ def _paar(
         kennzeichen.append(RUECKSETZUNG + _uhr(nachher.zeit) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt")
         return _D(0), True
 
-    if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
-        kennzeichen.append(
-            "Lücke "
-            + _uhr(vorher.zeit)
-            + "–"
-            + _uhr(nachher.zeit)
-            + ": Zuwachs "
-            + str(_runde(zuwachs * faktor))
-            + " gemessen, nicht auf Viertelstunden verteilbar"
-        )
+    luecke = luecken_zuwachs(vorher, nachher, (), kadenz, faktor)
+    if luecke is not None:
+        kennzeichen.append(luecken_kennzeichen(luecke))
     return zuwachs, False
+
+
+# ------------------------------------------------- Zuwachs über eine Lücke (Z2, E2, IP-6)
+
+#: E2: die Kette der Kalender-Zeiträume, vom feinsten zum gröbsten, in der der KLEINSTE ganz
+#: enthaltende Zeitraum gesucht wird (``regeln.luecke_zeitraeume``). Ein freier Zeitraum folgt
+#: derselben Regel (:func:`zaehlt_zu`), steht aber nicht in der Kette.
+LUECKE_ZEITRAEUME = ("viertelstunde", "stunde", "tag", "monat", "jahr")
+
+
+@dataclass(frozen=True)
+class LueckenZuwachs:
+    """Z2/E2 — der Zuwachs über EINE Lücke: GEMESSEN, aber NICHT VERTEILBAR.
+
+    ``stand_vor``/``stand_nach`` in der Einheit der Reihe (Rohwert × Faktor), ``zuwachs`` =
+    ``stand_nach − stand_vor`` ungerundet. Dieselben Felder trägt das Ereignis ``data_gap``.
+    """
+
+    messzeit_vor: datetime
+    messzeit_nach: datetime
+    stand_vor: Decimal | None = None
+    stand_nach: Decimal | None = None
+    zuwachs: Decimal | None = None
+
+
+def luecken_zuwachs(
+    vorher: Rohwert, nachher: Rohwert, ereignisse: Iterable[dict], kadenz: timedelta, faktor: Decimal = _D(1)
+) -> LueckenZuwachs | None:
+    """Z2/E2 — ist die Nachbarschaft zweier guter Werte eine Lücke mit gemessenem Zuwachs?
+
+    ``None``, wenn nicht: kein Loch ÜBER ``LUECKE_FAKTOR × Kadenz``, ein fallender Stand
+    (Rücksetzung oder Überlauf) oder eine Gerätegrenze in ``(vorher, nachher]``.
+    """
+    if nachher.zeit - vorher.zeit <= LUECKE_FAKTOR * kadenz or nachher.wert < vorher.wert:
+        return None
+    if any(e["art"] == "device_boundary" and vorher.zeit < _zeit(e["t"]) <= nachher.zeit for e in ereignisse):
+        return None
+    vor, nach = vorher.wert * faktor, nachher.wert * faktor
+    return LueckenZuwachs(vorher.zeit, nachher.zeit, vor, nach, nach - vor)
+
+
+def zaehlt_zu(luecke: LueckenZuwachs, von: datetime, bis: datetime, kadenz: timedelta) -> bool:
+    """E2 — DIE Stelle: der Zuwachs zählt zu ``[von, bis)`` genau dann, wenn die Periode die Lücke GANZ enthält.
+
+    Der Wert davor ist ihr Stand am Anfang oder liegt in ihr (``messzeit_vor > von − Kadenz``,
+    das Fenster von Z1), der Wert danach liegt in ihr oder ist ihr Stand am Ende
+    (``messzeit_nach ≤ bis``). Eine angeschnittene Periode bekommt ihn nicht.
+    """
+    return luecke.messzeit_vor > von - kadenz and luecke.messzeit_nach <= bis
+
+
+def luecken_zuwaechse(
+    werte: Sequence[Rohwert],
+    von: datetime,
+    bis: datetime,
+    kadenz: timedelta,
+    ereignisse: Iterable[dict] = (),
+    faktor: Decimal = _D(1),
+) -> list[LueckenZuwachs]:
+    """E2 — die Lücken mit gemessenem Zuwachs, die ``[von, bis)`` zählt, in Zeitfolge.
+
+    Eine Gerätegrenze wirkt wie in :func:`menge_zaehlerstand` nur, wenn sie in ``(von, bis]`` liegt.
+    """
+    grenzen = [e for e in ereignisse if e["art"] == "device_boundary" and von < _zeit(e["t"]) <= bis]
+    gut = sorted((w for w in werte if w.gut), key=lambda w: w.zeit)
+    out = []
+    for vorher, nachher in zip(gut, gut[1:]):
+        luecke = luecken_zuwachs(vorher, nachher, grenzen, kadenz, faktor)
+        if luecke is not None and zaehlt_zu(luecke, von, bis, kadenz):
+            out.append(luecke)
+    return out
+
+
+def luecken_kennzeichen(luecke: LueckenZuwachs) -> str:
+    """Das Kennzeichen des gezählten Zuwachses — Vertrag nach Text."""
+    return (
+        "Lücke "
+        + _uhr(luecke.messzeit_vor)
+        + "–"
+        + _uhr(luecke.messzeit_nach)
+        + ": Zuwachs "
+        + str(_runde(luecke.zuwachs))
+        + " gemessen, nicht auf Viertelstunden verteilbar"
+    )
+
+
+def _zeitraum(art: str, t: datetime, zone: str) -> tuple[str, datetime, datetime]:
+    if art in ("viertelstunde", "stunde"):
+        schritt = 900 if art == "viertelstunde" else 3600
+        beginn = int(t.timestamp()) // schritt * schritt
+        return art, datetime.fromtimestamp(beginn, timezone.utc), datetime.fromtimestamp(beginn + schritt, timezone.utc)
+    ort = ZoneInfo(zone)
+    tag = t.astimezone(ort).date()
+    if art == "tag":
+        a, b = tag, tag + timedelta(days=1)
+    elif art == "monat":
+        a = tag.replace(day=1)
+        b = a.replace(year=a.year + 1, month=1) if a.month == 12 else a.replace(month=a.month + 1)
+    elif art == "jahr":
+        a = tag.replace(month=1, day=1)
+        b = a.replace(year=a.year + 1)
+    else:
+        raise ValueError(f"unbekannter Zeitraum {art!r}")
+
+    def mitternacht(d):
+        return datetime(d.year, d.month, d.day, tzinfo=ort).astimezone(timezone.utc)
+
+    return art, mitternacht(a), mitternacht(b)
+
+
+def kleinster_zeitraum(
+    luecke: LueckenZuwachs, kadenz: timedelta, zone: str = ANZEIGE_ZEITZONE
+) -> tuple[str, datetime, datetime] | None:
+    """E2 — der KLEINSTE Zeitraum der Kette, der die Lücke ganz enthält; ``None``, wenn keiner.
+
+    Viertelstunde und Stunde im UTC-Raster, Tag/Monat/Jahr in der Zeitzone des Standorts.
+    """
+    for art in LUECKE_ZEITRAEUME:
+        for t in (luecke.messzeit_vor, luecke.messzeit_vor + kadenz - timedelta(microseconds=1)):
+            z = _zeitraum(art, t, zone)
+            if zaehlt_zu(luecke, z[1], z[2], kadenz):
+                return z
+    return None
 
 
 def _neustart_kennzeichen(neustarts: Sequence[dict], kennzeichen: list[str]) -> bool:
