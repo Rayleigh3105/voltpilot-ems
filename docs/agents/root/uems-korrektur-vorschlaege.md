@@ -36,6 +36,9 @@ Der Captain hat die Ausnahme „es wird ja nur eine Lücke gefüllt“ ausdrück
    dann mit drin); eine Gruppe WARTET, solange ihr letzter Eingang jünger als `RUHE` (15 min) ist oder die
    Verdichtung für die Reihe noch Arbeit hat. ⚠ Der Nachbar davor/danach kommt in die Vorschau, wenn er sich
    ändert: ein nachgelieferter Wert genau auf der Grenze ist der Endstand der Viertelstunde davor (Z1).
+   Seit AP-08 IP-19 kommt JEDE Nachlieferung nach der Frist hier an, gleich aus welchem Grund ihr Intervall in
+   der Arbeitsliste stand; vor der Frist bildet die Verdichtung automatisch neu und es entsteht kein Vorschlag
+   (Paar F9/F10 in `UemsFristVorschlagTest`).
 2. **Ablesestände nach der Frist** (F12) — `device_boundary` mit `endstand`/`anfangsstand`, eingegangen nach
    `endgueltig_ab` einer endgültigen Viertelstunde (Auswahl wie `BruchEreignisse`, Rückblick 90 Tage = Rohwerte);
    Art `ablesestaende_nachgetragen`. Ein nachgetragener Ersatzwert der Methode d ist NICHT diese Quelle (IP-13).
