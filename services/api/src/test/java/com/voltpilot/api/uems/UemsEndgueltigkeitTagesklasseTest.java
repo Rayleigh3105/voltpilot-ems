@@ -64,6 +64,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsEndgueltigkeitTagesklasseTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912190000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -164,10 +167,10 @@ class UemsEndgueltigkeitTagesklasseTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
         endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
+        tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
 
         // ---- 1. Die Viertelstunden bilden (alles, was bis hierher gesät ist) -------------
         arbeitFuellen();

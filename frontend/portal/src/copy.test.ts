@@ -774,9 +774,10 @@ describe('K4 · Klartext-Wächter über den Chart-Beschriftungen', () => {
  * Umschrift, die englischen Ereignis-Arten, ein ASCII-Minus, ein normales
  * Leerzeichen vor der Einheit oder als Tausendertrenner (E11).
  *
- * ⚠ Bekannt und benannt, NICHT durchgelassen aus Versehen: „Zuwachs 337.600“
- * (Punkt als Dezimalzeichen) und „Rechteck-Halten“ sind heutiger Wortlaut der
- * Verbrauchsregel und stehen als Befund in der Vektor-Datei.
+ * ⚠ Bekannt und benannt, NICHT durchgelassen aus Versehen: „Rechteck-Halten“ ist
+ * heutiger Wortlaut der Verbrauchsregel und steht als Befund in der Vektor-Datei.
+ * „Zuwachs 337.600“ (Punkt, ohne Einheit) spricht seit 1.3 niemand mehr — er lebt
+ * nur als frühere Fassung (gespeicherte Zeilen) und wird hier nicht gelesen.
  */
 const ERGEBNIS_INTERN: Array<{ re: RegExp; why: string; beispiel: string }> = [
   { re: /\b[a-z]+_[a-z0-9_]+\b/, why: 'IP-8: ein Vertragsschlüssel ist kein Kundenwort', beispiel: '36,0 kWh · keine_werte' },
@@ -792,7 +793,7 @@ const ERGEBNIS_INTERN: Array<{ re: RegExp; why: string; beispiel: string }> = [
   },
   { re: /\b(null|undefined|NaN|Infinity)\b/, why: 'IP-8: kein Wert ist „—“', beispiel: 'undefined · keine Werte' },
   { re: /(^|[\s(])-\d/, why: 'E11: Minus ist U+2212, nicht der Bindestrich', beispiel: '-34,2 kW' },
-  { re: /\d (kWh|kW|%|m³)(?![\w])/, why: 'E11: geschütztes Leerzeichen vor der Einheit', beispiel: '2.304 kWh' },
+  { re: /\d (kWh|kvarh|kW|%|m³)(?![\w])/, why: 'E11: geschütztes Leerzeichen vor der Einheit', beispiel: '2.304 kWh' },
   { re: /\d \d{3}(?!\d)/, why: 'E11: Tausenderpunkt statt Leerzeichen', beispiel: '1 240 m³' },
 ];
 

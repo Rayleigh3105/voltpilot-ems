@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.ErgebnisZustand.AnzeigeEinheit;
 import com.voltpilot.api.uems.ErgebnisZustand.Erkannt;
 import com.voltpilot.api.uems.ErgebnisZustand.Ergebnis;
 import com.voltpilot.api.uems.ErgebnisZustand.Feld;
@@ -42,6 +43,8 @@ import org.junit.jupiter.api.TestFactory;
  * Rein — kein Testcontainers.
  */
 class ErgebnisZustandVectorsTest {
+
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -135,6 +138,11 @@ class ErgebnisZustandVectorsTest {
         rundung.path("stellen").forEach(s -> stellen.add(new Stellen(
                 s.path("einheit").asText(), textOderNull(s.get("ebene")), s.path("stellen").asInt())));
         assertThat(ErgebnisZustand.STELLEN).containsExactlyElementsOf(stellen);
+        List<AnzeigeEinheit> anzeige = new ArrayList<>();
+        rundung.path("anzeige_einheiten").forEach(a -> anzeige.add(new AnzeigeEinheit(a.path("gespeichert").asText(),
+                a.path("angezeigt").asText(), new BigDecimal(a.path("faktor").asText()))));
+        assertThat(ErgebnisZustand.ANZEIGE_EINHEITEN).containsExactlyElementsOf(anzeige);
+        assertThat(ErgebnisZustand.KENNZEICHEN_EBENE).isEqualTo(rundung.path("kennzeichen_ebene").asText());
 
         JsonNode sommerzeit = v.path("sommerzeit");
         Map<Long, String> tagesdauer = new LinkedHashMap<>();
@@ -165,8 +173,14 @@ class ErgebnisZustandVectorsTest {
             assertThat(e).as(beispiel).isNotNull();
             assertThat(e.muster().schluessel()).isEqualTo(f.path("schluessel").asText());
             assertThat(e.fruehereFassung()).isTrue();
-            // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut.
-            assertThat(ErgebnisZustand.sprich(e.muster().schluessel(), e.werte())).isNotEqualTo(beispiel);
+            // Erkannt, aber nie mehr gesprochen: dieselben Werte ergeben den heutigen Wortlaut — oder, wo
+            // nur der Platzhalter sich änderte (1.3: „337.600“ ist keine Menge), nimmt das heutige Muster
+            // den alten Wert nicht mehr an (sonst hätte erkenne oben auf zwei Muster gepasst).
+            if (ErgebnisZustand.sprich(e.muster().schluessel(), e.werte()).equals(beispiel)) {
+                Map<String, String> alt = new LinkedHashMap<>();
+                f.path("platzhalter").fields().forEachRemaining(x -> alt.put(x.getKey(), x.getValue().asText()));
+                assertThat(e.muster().platzhalter()).as(beispiel).isNotEqualTo(alt);
+            }
         }
     }
 
@@ -226,6 +240,19 @@ class ErgebnisZustandVectorsTest {
                             .isEqualTo(erw.path("text").asText());
                 } else {
                     assertThatThrownBy(() -> ErgebnisZustand.zahl(dezimal(ein.get("wert")), einheit, ebene))
+                            .isInstanceOf(IllegalArgumentException.class);
+                }
+            }
+            case "menge" -> {
+                String einheit = ein.path("einheit").asText();
+                String ebene = textOderNull(ein.get("ebene"));
+                List<String> verstoesse = texte(erw.path("verstoesse"));
+                assertThat(ErgebnisZustand.pruefeMenge(einheit, ebene)).containsExactlyElementsOf(verstoesse);
+                if (verstoesse.isEmpty()) {
+                    assertThat(ErgebnisZustand.menge(dezimal(ein.get("wert")), einheit, ebene))
+                            .isEqualTo(erw.path("text").asText());
+                } else {
+                    assertThatThrownBy(() -> ErgebnisZustand.menge(dezimal(ein.get("wert")), einheit, ebene))
                             .isInstanceOf(IllegalArgumentException.class);
                 }
             }
@@ -311,7 +338,8 @@ class ErgebnisZustandVectorsTest {
                 gesprocheneZustaende.add(fall.path("eingang").path("zustand").asText());
             }
         }
-        assertThat(familien).contains("zahl", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr", "rundungsdifferenz");
+        assertThat(familien).contains("zahl", "menge", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr",
+                "rundungsdifferenz");
         assertThat(gesprocheneZustaende).containsAll(
                 ErgebnisZustand.ZUSTAENDE.stream().map(Zustand::wort).toList());
         // Jeder Verstoß des Vokabulars fliegt in mindestens einem Fall auf.
@@ -383,11 +411,70 @@ class ErgebnisZustandVectorsTest {
                 new VerbrauchRegeln.Rohwert(zweite.minusSeconds(60), new BigDecimal("101")),
                 new VerbrauchRegeln.Rohwert(zweite, new BigDecimal("5")),
                 new VerbrauchRegeln.Rohwert(zweite.plusSeconds(60), new BigDecimal("6")));
-        VerbrauchRegeln.Ergebnis e = VerbrauchRegeln.mengeZaehlerstand(werte, zweite.minusSeconds(60),
+        VerbrauchRegeln.Ergebnis e = VerbrauchRegeln.mengeZaehlerstand(new ReihenKontext("kWh", BERLIN), werte,
+                zweite.minusSeconds(60),
                 zweite.plusSeconds(60), Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
         assertThat(e.kennzeichen()).contains("Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt")
                 .doesNotContain("Rücksetzung 02:30 ohne Endstand — bis zu 1 Kadenz nicht gezählt");
-        assertThat(ErgebnisZustand.uhr(zweite.minusSeconds(3600), VerbrauchRegeln.ANZEIGE_ZEITZONE))
+        assertThat(ErgebnisZustand.uhr(zweite.minusSeconds(3600), BERLIN))
                 .isEqualTo("02:30 MESZ");
+    }
+
+    // ------------------------------------------ Einheit und Zone aus dem Träger (Befunde aus 721/722)
+
+    /** Befund Zuwachs: ein Wh-Zähler spricht seinen Zuwachs in kWh, mit den Stellen der Viertelstunde. */
+    @Test
+    void einZaehlerInWhErgibtEinenSatzInKwh() {
+        List<VerbrauchRegeln.Rohwert> werte = List.of(
+                new VerbrauchRegeln.Rohwert(Instant.parse("2026-11-03T13:00:00Z"), new BigDecimal("418200000")),
+                new VerbrauchRegeln.Rohwert(Instant.parse("2026-11-03T16:31:00Z"), new BigDecimal("418537600")));
+        Instant von = Instant.parse("2026-11-02T23:00:00Z");
+        Instant bis = Instant.parse("2026-11-03T23:00:00Z");
+        VerbrauchRegeln.Ergebnis wh = VerbrauchRegeln.mengeZaehlerstand(new ReihenKontext("Wh", BERLIN), werte,
+                von, bis, Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
+        assertThat(wh.menge()).as("gerechnet wird in der gespeicherten Einheit").isEqualByComparingTo("337600");
+        assertThat(wh.kennzeichen()).contains(
+                "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar");
+        assertThat(ErgebnisZustand.erkenne(wh.kennzeichen().get(wh.kennzeichen().size() - 1)).fruehereFassung())
+                .isFalse();
+        // Ohne bekannte Einheit keine Zahl — nie „337600“ ohne Einheit und nie eine geratene.
+        VerbrauchRegeln.Ergebnis ohne = VerbrauchRegeln.mengeZaehlerstand(new ReihenKontext(null, BERLIN), werte,
+                von, bis, Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
+        assertThat(ohne.kennzeichen()).contains(
+                "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar");
+    }
+
+    /** Befund Sommerzeit/Zone: die Uhrzeit spricht die Zone des Standorts, die der Träger mitbringt (E10). */
+    @Test
+    void einStandortAusserhalbVonBerlinZeigtSeineEigeneUhrzeit() {
+        Instant t = Instant.parse("2026-11-19T09:12:00Z");
+        List<VerbrauchRegeln.Rohwert> werte = List.of(
+                new VerbrauchRegeln.Rohwert(t.minusSeconds(60), new BigDecimal("101")),
+                new VerbrauchRegeln.Rohwert(t, new BigDecimal("5")));
+        List<VerbrauchRegeln.Ereignis> neustart = List.of(new VerbrauchRegeln.Ereignis(
+                VerbrauchRegeln.Ereignis.NEUSTART, t, null, null, 120));
+        VerbrauchRegeln.Ergebnis berlin = VerbrauchRegeln.mengeZaehlerstand(new ReihenKontext("kWh", BERLIN), werte,
+                t.minusSeconds(60), t, Duration.ofSeconds(60), neustart, BigDecimal.ONE, null, null);
+        VerbrauchRegeln.Ergebnis lissabon = VerbrauchRegeln.mengeZaehlerstand(
+                new ReihenKontext("kWh", ZoneId.of("Europe/Lisbon")), werte,
+                t.minusSeconds(60), t, Duration.ofSeconds(60), neustart, BigDecimal.ONE, null, null);
+        assertThat(berlin.kennzeichen()).containsExactly(
+                "Rücksetzung 10:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+                "Neustart 10:12: bis zu 120 s Zählung möglicherweise verloren");
+        assertThat(lissabon.kennzeichen()).containsExactly(
+                "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+                "Neustart 09:12: bis zu 120 s Zählung möglicherweise verloren");
+        assertThat(lissabon.menge()).as("die Zone ändert nur die Sprache, nie die Menge").isEqualTo(berlin.menge());
+    }
+
+    /** Befund Zuwachs: die Form der Fassung 1.2 bleibt gespeichert lesbar — gesprochen wird sie nie mehr. */
+    @Test
+    void derAlteZuwachsSatzBleibtLesbar() {
+        Erkannt alt = ErgebnisZustand.erkenne(
+                "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar");
+        assertThat(alt.muster().schluessel()).isEqualTo("luecke_zuwachs");
+        assertThat(alt.fruehereFassung()).isTrue();
+        assertThat(ErgebnisZustand.lueckeZuwachs("14:00", "17:31", new BigDecimal("337.600"), "kWh"))
+                .isEqualTo("Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar");
     }
 }

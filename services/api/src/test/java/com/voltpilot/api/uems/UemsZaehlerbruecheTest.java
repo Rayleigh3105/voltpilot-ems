@@ -70,6 +70,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsZaehlerbruecheTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912220000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -165,12 +168,12 @@ class UemsZaehlerbruecheTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
         EndgueltigkeitLauf endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
-        perioden = new PeriodeVerdichter(admin, 50, 40, 2000);
-        zeitraum = new ZeitraumMenge(app);
+        tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
+        perioden = new PeriodeVerdichter(admin, KATALOG, 50, 40, 2000);
+        zeitraum = new ZeitraumMenge(app, KATALOG);
 
         // ---- 1. Die Brüche, die schon da sind, als die Rohwerte verdichtet werden -----------------
         EREIGNISSE.put("F4", ereignisseDerDatei("f4", null));
@@ -182,7 +185,7 @@ class UemsZaehlerbruecheTest {
         EREIGNISSE.put("F22O", ereignisseDerDatei("f22", Ereignis.VERLUST_VORGABE));
         neustart(KB, IDS.get("DQ-F22O"), "2027-05-12T10:22:00+02:00", null);
         EREIGNISSE.put("GR", List.of(new Ereignis(Ereignis.GERAETEGRENZE, Instant.parse("2026-11-19T09:45:00Z"),
-                "10:45", new BigDecimal("545"), BigDecimal.ZERO, 0)));
+                new BigDecimal("545"), BigDecimal.ZERO, 0)));
         grenze(KB, "GR", "2026-11-19T10:45:00+01:00", new BigDecimal("545"), BigDecimal.ZERO, null);
         for (String r : List.of("F6", "F7", "F7O", "F12", "F12E", "AB")) {
             EREIGNISSE.put(r, List.of());
@@ -368,7 +371,7 @@ class UemsZaehlerbruecheTest {
         assertThat((BigDecimal) q.get("menge")).isEqualByComparingTo((BigDecimal) mit.get("menge"));
         assertThat(q.get("menge_zustand")).isEqualTo(VerbrauchRegeln.UNVOLLSTAENDIG);
         assertThat(kennzeichen(q)).containsExactly(
-                "Lücke 10:20–10:26: Zuwachs 6.400 gemessen, nicht auf Viertelstunden verteilbar",
+                "Lücke 10:20–10:26: Zuwachs 6,4 kWh gemessen, nicht auf Viertelstunden verteilbar",
                 "Neustart 10:22: bis zu 255 s Zählung möglicherweise verloren");
     }
 
@@ -528,7 +531,8 @@ class UemsZaehlerbruecheTest {
 
     private static void pruefeGegenRegel(String reihe, Map<String, Object> zeile, String von, String bis) {
         Deklaration d = DEKLARATION.getOrDefault(reihe, new Deklaration(null, null));
-        Ergebnis soll = VerbrauchRegeln.mengeZaehlerstand(ROH.get(reihe), VerbrauchRegeln.zeit(von),
+        Ergebnis soll = VerbrauchRegeln.mengeZaehlerstand(new ReihenKontext("kWh", ORT), ROH.get(reihe),
+                VerbrauchRegeln.zeit(von),
                 VerbrauchRegeln.zeit(bis), KADENZ, EREIGNISSE.get(reihe), BigDecimal.ONE, d.modul(), d.hoechst());
         String was = reihe + " " + von + "–" + bis;
         assertThat((BigDecimal) zeile.get("menge")).as(was + " · menge").usingComparator(BigDecimal::compareTo)
@@ -680,7 +684,7 @@ class UemsZaehlerbruecheTest {
         JsonNode f = FAELLE.get(fall);
         List<Ereignis> aus = new ArrayList<>(VerbrauchVectorsTest.ereignisse(f.path("input").path("reihe").path("ereignisse")));
         f.path("expected").forEach(e -> aus.addAll(VerbrauchVectorsTest.ereignisse(e.path("ereignisse_zusatz"))));
-        return aus.stream().map(e -> verlust == null ? e : new Ereignis(e.art(), e.zeit(), e.uhrzeit(),
+        return aus.stream().map(e -> verlust == null ? e : new Ereignis(e.art(), e.zeit(),
                 e.endstand(), e.anfangsstand(), verlust)).toList();
     }
 

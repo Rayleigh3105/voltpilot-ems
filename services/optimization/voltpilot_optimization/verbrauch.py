@@ -57,9 +57,21 @@ HALTEN_FAKTOR = 2
 #: Auf so viele Nachkommastellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12).
 NACHKOMMASTELLEN = 3
 
-#: Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen — FEST, nicht die des Standorts (E10);
-#: die doppelte Stunde trägt MESZ/MEZ (``_uhr``, Zwilling von ``ErgebnisZustand.uhr``).
-ANZEIGE_ZEITZONE = "Europe/Berlin"
+#: Seit ergebnis-zustand 1.3: die Anzeige-Einheit je GESPEICHERTER Einheit und ihr fester Faktor
+#: (``rundung.anzeige_einheiten``, Zwilling von ``ErgebnisZustand.ANZEIGE_EINHEITEN``). Gespeichert bleibt,
+#: was der Zähler liefert; ein Kennzeichen spricht kWh · kvarh · m³.
+ANZEIGE_EINHEITEN = {
+    "Wh": ("kWh", Decimal("0.001")),
+    "kWh": ("kWh", Decimal("1")),
+    "MWh": ("kWh", Decimal("1000")),
+    "varh": ("kvarh", Decimal("0.001")),
+    "kvarh": ("kvarh", Decimal("1")),
+    "m³": ("m³", Decimal("1")),
+}
+
+#: Eine Menge IN einem Kennzeichen hat die Stellen der Viertelstunde (``rundung.kennzeichen_ebene``):
+#: kWh · kvarh · m³ je eine Nachkommastelle — der Satz wandert unverändert bis ins Jahr.
+KENNZEICHEN_STELLEN = 1
 
 VOLLSTAENDIG = "vollständig"
 UNVOLLSTAENDIG = "unvollständig"
@@ -101,8 +113,20 @@ def _zeit(s: str) -> datetime:
     return datetime.fromisoformat(s).astimezone(timezone.utc)
 
 
-def _uhr(t: datetime, zone: str = ANZEIGE_ZEITZONE) -> str:
-    """``HH:MM`` in der Anzeige-Zeitzone — so nennen die Kennzeichen ihre Zeitpunkte.
+@dataclass(frozen=True)
+class ReihenKontext:
+    """Der EINE Träger je Reihe (Zwilling von ``uems.ReihenKontext``): was die Regel braucht, um von ihr zu sprechen.
+
+    ``einheit`` ist die GESPEICHERTE Einheit der Reihe (``None`` = unbekannt, nie geraten), ``zeitzone``
+    die Zone des Standorts (E10), in der jedes Kennzeichen seine Uhrzeiten nennt.
+    """
+
+    einheit: str | None
+    zeitzone: str
+
+
+def _uhr(t: datetime, zone: str) -> str:
+    """``HH:MM`` in der Zeitzone des Standorts — so nennen die Kennzeichen ihre Zeitpunkte.
 
     Gibt es die Wanduhr an dem Tag zweimal (Sommerzeit-Ende), trägt sie den Zusatz des Rasters
     (E10): „02:30 MESZ“ / „02:30 MEZ“ in einer Zone mit Normalzeit UTC+01:00, sonst den Offset.
@@ -119,6 +143,21 @@ def _uhr(t: datetime, zone: str = ANZEIGE_ZEITZONE) -> str:
         return text + (" MEZ" if offset == timedelta(hours=1) else " MESZ")
     minuten = int(offset.total_seconds() // 60)
     return text + " UTC%s%02d:%02d" % ("-" if minuten < 0 else "+", abs(minuten) // 60, abs(minuten) % 60)
+
+
+def _menge(wert: Decimal, einheit: str | None) -> str | None:
+    """E11 für den Zuwachs IN einem Kennzeichen: „337,6 kWh“ — ``None`` ohne Anzeige-Einheit.
+
+    Zwilling von ``ErgebnisZustand.menge(wert, einheit, KENNZEICHEN_EBENE)``: umgerechnet in die
+    Anzeige-Einheit, kaufmännisch auf die Stellen der Viertelstunde, Tausenderpunkt, Komma, U+00A0.
+    """
+    anzeige = ANZEIGE_EINHEITEN.get(einheit) if einheit is not None else None
+    if anzeige is None:
+        return None
+    gerundet = (wert * anzeige[1]).quantize(Decimal(1).scaleb(-KENNZEICHEN_STELLEN), rounding=ROUND_HALF_UP)
+    ganz, _, rest = f"{abs(gerundet):f}".partition(".")
+    gruppiert = f"{int(ganz):,}".replace(",", ".")
+    return ("−" if gerundet < 0 else "") + gruppiert + ("," + rest if rest else "") + "\u00a0" + anzeige[0]
 
 
 def _runde(x: Decimal, stellen: int = NACHKOMMASTELLEN) -> Decimal:
@@ -200,6 +239,7 @@ def _loecher(werte: Sequence[Rohwert], kadenz: timedelta, von: datetime, bis: da
 
 
 def menge_zaehlerstand(
+    kontext: ReihenKontext,
     werte: Sequence[Rohwert],
     von: datetime,
     bis: datetime,
@@ -262,12 +302,12 @@ def menge_zaehlerstand(
 
     for vorher, nachher in zip(folge, folge[1:]):
         beitrag, offen = _paar(
-            vorher, nachher, grenzen, kadenz, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz, kennzeichen
+            kontext, vorher, nachher, grenzen, kadenz, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz, kennzeichen
         )
         menge += beitrag
         unvollstaendig |= offen
 
-    unvollstaendig |= _neustart_kennzeichen(neustarts, kennzeichen)
+    unvollstaendig |= _neustart_kennzeichen(kontext, neustarts, kennzeichen)
 
     return {
         "menge": _runde(menge * faktor),
@@ -301,6 +341,7 @@ def ueberlauf(
 
 
 def _paar(
+    kontext: ReihenKontext,
     vorher: Rohwert,
     nachher: Rohwert,
     grenzen: Sequence[dict],
@@ -324,13 +365,19 @@ def _paar(
         neu = (nachher.wert - anfangsstand) if anfangsstand is not None else _D(0)
         mit = endstand is not None and anfangsstand is not None
         kennzeichen.append(
-            "Gerätegrenze " + _uhr(_zeit(grenze["t"])) + (" mit Ableseständen" if mit else " ohne Ablesestände")
+            "Gerätegrenze "
+            + _uhr(_zeit(grenze["t"]), kontext.zeitzone)
+            + (" mit Ableseständen" if mit else " ohne Ablesestände")
         )
         if not mit:
             kennzeichen.append(ZUWACHS_NICHT_MESSBAR)
         if nachher.zeit - vorher.zeit > LUECKE_FAKTOR * kadenz:
             kennzeichen.append(
-                "Lücke am Wechsel " + _uhr(vorher.zeit) + "–" + _uhr(nachher.zeit) + " (nicht aufgefüllt)"
+                "Lücke am Wechsel "
+                + _uhr(vorher.zeit, kontext.zeitzone)
+                + "–"
+                + _uhr(nachher.zeit, kontext.zeitzone)
+                + " (nicht aufgefüllt)"
             )
         return alt + neu, not mit
 
@@ -338,16 +385,20 @@ def _paar(
     if zuwachs < 0:
         ueber = ueberlauf(vorher, nachher, kadenz, wertebereich_modul, hoechstzuwachs_je_kadenz)
         if ueber is not None:
-            kennzeichen.append("Überlauf " + _uhr(nachher.zeit) + " (Wertebereich " + str(wertebereich_modul) + ")")
+            kennzeichen.append(
+                "Überlauf " + _uhr(nachher.zeit, kontext.zeitzone) + " (Wertebereich " + str(wertebereich_modul) + ")"
+            )
             return ueber, False
         # Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
         # nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
-        kennzeichen.append(RUECKSETZUNG + _uhr(nachher.zeit) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt")
+        kennzeichen.append(
+            RUECKSETZUNG + _uhr(nachher.zeit, kontext.zeitzone) + " ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+        )
         return _D(0), True
 
     luecke = luecken_zuwachs(vorher, nachher, (), kadenz, faktor)
     if luecke is not None:
-        kennzeichen.append(luecken_kennzeichen(luecke))
+        kennzeichen.append(luecken_kennzeichen(luecke, kontext))
     return zuwachs, False
 
 
@@ -422,16 +473,20 @@ def luecken_zuwaechse(
     return out
 
 
-def luecken_kennzeichen(luecke: LueckenZuwachs) -> str:
-    """Das Kennzeichen des gezählten Zuwachses — Vertrag nach Text."""
+def luecken_kennzeichen(luecke: LueckenZuwachs, kontext: ReihenKontext) -> str:
+    """Das Kennzeichen des gezählten Zuwachses — Vertrag nach Text („Zuwachs 337,6 kWh“).
+
+    Uhrzeiten in der Zone des Standorts, der Zuwachs UNGERUNDET in der Anzeige-Einheit; ohne
+    Anzeige-Einheit steht der Satz ohne Zahl (``luecke_zuwachs_ohne_einheit``).
+    """
+    zahl = _menge(luecke.zuwachs, kontext.einheit)
     return (
         "Lücke "
-        + _uhr(luecke.messzeit_vor)
+        + _uhr(luecke.messzeit_vor, kontext.zeitzone)
         + "–"
-        + _uhr(luecke.messzeit_nach)
-        + ": Zuwachs "
-        + str(_runde(luecke.zuwachs))
-        + " gemessen, nicht auf Viertelstunden verteilbar"
+        + _uhr(luecke.messzeit_nach, kontext.zeitzone)
+        + (": Zuwachs gemessen" if zahl is None else ": Zuwachs " + zahl + " gemessen")
+        + ", nicht auf Viertelstunden verteilbar"
     )
 
 
@@ -460,7 +515,7 @@ def _zeitraum(art: str, t: datetime, zone: str) -> tuple[str, datetime, datetime
 
 
 def kleinster_zeitraum(
-    luecke: LueckenZuwachs, kadenz: timedelta, zone: str = ANZEIGE_ZEITZONE
+    luecke: LueckenZuwachs, kadenz: timedelta, zone: str
 ) -> tuple[str, datetime, datetime] | None:
     """E2 — der KLEINSTE Zeitraum der Kette, der die Lücke ganz enthält; ``None``, wenn keiner.
 
@@ -474,12 +529,12 @@ def kleinster_zeitraum(
     return None
 
 
-def _neustart_kennzeichen(neustarts: Sequence[dict], kennzeichen: list[str]) -> bool:
+def _neustart_kennzeichen(kontext: ReihenKontext, neustarts: Sequence[dict], kennzeichen: list[str]) -> bool:
     """Z7 — je Neustart ein Kennzeichen, zuletzt; ``True``, wenn es einen gab."""
     for neustart in neustarts:
         kennzeichen.append(
             NEUSTART
-            + _uhr(_zeit(neustart["t"]))
+            + _uhr(_zeit(neustart["t"]), kontext.zeitzone)
             + ": bis zu "
             + str(neustart.get("verlust_s", 255))
             + " s Zählung möglicherweise verloren"
@@ -521,6 +576,7 @@ def _mit_abdeckung(out: dict, erwartet: int) -> dict:
 
 
 def teilperiode(
+    kontext: ReihenKontext,
     werte: Sequence[Rohwert],
     von: datetime,
     bis: datetime,
@@ -531,7 +587,9 @@ def teilperiode(
     hoechstzuwachs_je_kadenz: Decimal | None = None,
 ) -> Teilperiode:
     """Eine Periode aus Rohwerten als :class:`Teilperiode` — die Form, in der sie gespeichert wird."""
-    out = menge_zaehlerstand(werte, von, bis, kadenz, ereignisse, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz)
+    out = menge_zaehlerstand(
+        kontext, werte, von, bis, kadenz, ereignisse, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz
+    )
     gute = _gute_in(werte, von, bis)
     return Teilperiode(
         von,
@@ -575,6 +633,7 @@ def erwartet_aus_teilperioden(innen: Sequence[Teilperiode], von: datetime, bis: 
 
 
 def zaehlerstand_aus_teilperioden(
+    kontext: ReihenKontext,
     teile: Sequence[Teilperiode],
     von: datetime,
     bis: datetime,
@@ -667,7 +726,15 @@ def zaehlerstand_aus_teilperioden(
         differenz = nachher.wert - vorher.wert
         if t is None:
             beitrag, offen = _paar(
-                vorher, nachher, grenzen, kadenz, faktor, wertebereich_modul, hoechstzuwachs_je_kadenz, kennzeichen
+                kontext,
+                vorher,
+                nachher,
+                grenzen,
+                kadenz,
+                faktor,
+                wertebereich_modul,
+                hoechstzuwachs_je_kadenz,
+                kennzeichen,
             )
             menge += (beitrag - differenz) * faktor
             unvollstaendig |= offen
@@ -681,7 +748,7 @@ def zaehlerstand_aus_teilperioden(
             kennzeichen.append(k)
             unvollstaendig |= k == ZUWACHS_NICHT_MESSBAR or k.startswith(RUECKSETZUNG)
 
-    unvollstaendig |= _neustart_kennzeichen(neustarts, kennzeichen)
+    unvollstaendig |= _neustart_kennzeichen(kontext, neustarts, kennzeichen)
     return ergebnis(
         {
             "menge": _runde(menge),
@@ -1119,6 +1186,11 @@ def momentanwerte_anteil(
 # ------------------------------------------------------------------------ Der Eingang
 
 
+def kontext(reihe: dict) -> ReihenKontext:
+    """Der Träger einer Reihenbeschreibung: ihre ``einheit`` und ``zeitzone`` (ohne eigene die Beispielwelt)."""
+    return ReihenKontext(reihe.get("einheit"), reihe.get("zeitzone", "Europe/Berlin"))
+
+
 def ergebnis(
     reihe: dict,
     von: str,
@@ -1150,6 +1222,7 @@ def ergebnis(
     if wertart == "zaehlerstand":
         ereignisse = list(reihe.get("ereignisse", [])) + list(ereignisse_zusatz)
         out = menge_zaehlerstand(
+            kontext(reihe),
             werte,
             a,
             b,

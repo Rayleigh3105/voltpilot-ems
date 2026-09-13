@@ -87,7 +87,9 @@ public final class ErgebnisZustand {
             "ganzzahl_ab_2", "(?:[2-9]|[1-9][0-9]+)",
             "sekunden", "[0-5][0-9]",
             "dezimal_punkt", "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
-            "dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?");
+            "dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
+            // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
+            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|m³)");
 
     /**
      * Ein Kennzeichen-Satz der geschlossenen Liste.
@@ -141,8 +143,11 @@ public final class ErgebnisZustand {
                     Map.of(UHR, UHR), "Rücksetzung", 30, true, false, null, null),
             new Muster("luecke_zuwachs",
                     "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
-                    Map.of("von", UHR, "bis", UHR, "zuwachs", "dezimal_punkt"), "Lücke: Zuwachs gemessen",
+                    Map.of("von", UHR, "bis", UHR, "zuwachs", "menge"), "Lücke: Zuwachs gemessen",
                     30, false, false, null, null),
+            new Muster("luecke_zuwachs_ohne_einheit",
+                    "Lücke {von}–{bis}: Zuwachs gemessen, nicht auf Viertelstunden verteilbar",
+                    Map.of("von", UHR, "bis", UHR), "Lücke: Zuwachs gemessen", 30, false, false, null, null),
             new Muster("neustart", "Neustart {uhr}: bis zu {verlust_s} s Zählung möglicherweise verloren",
                     Map.of(UHR, UHR, "verlust_s", "ganzzahl"), "Neustart-Verlust", 40, true, false, null, null),
             new Muster("intervallmenge_fehlt",
@@ -168,7 +173,11 @@ public final class ErgebnisZustand {
 
     public static final List<FruehereFassung> FRUEHERE_FASSUNGEN = List.of(
             // Falscher Dativ; in endgültigen Viertelstunden gespeichert und von Tag/Monat/Jahr übernommen.
-            new FruehereFassung("geraetegrenze_mit", "Gerätegrenze {uhr} mit Ablesestände", Map.of(UHR, UHR), "1.0"));
+            new FruehereFassung("geraetegrenze_mit", "Gerätegrenze {uhr} mit Ablesestände", Map.of(UHR, UHR), "1.0"),
+            // Punkt, drei Stellen, ohne Einheit („Zuwachs 337.600“); seit AP-08 IP-6 gespeichert.
+            new FruehereFassung("luecke_zuwachs",
+                    "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
+                    Map.of("von", UHR, "bis", UHR, "zuwachs", "dezimal_punkt"), "1.2"));
 
     /** Ein Wort des Vokabulars, dessen Wortlaut ein späteres Paket festlegt. */
     public record Vorgesehen(String wort, String anfang, String wortlautMit) {}
@@ -282,9 +291,18 @@ public final class ErgebnisZustand {
         return sprich("ruecksetzung", Map.of(UHR, uhr));
     }
 
-    /** „Lücke 14:00–17:31: Zuwachs 337.600 gemessen, …“ — {@code zuwachs} kommt schon gerundet. */
-    public static String lueckeZuwachs(String von, String bis, BigDecimal zuwachs) {
-        return sprich("luecke_zuwachs", Map.of("von", von, "bis", bis, "zuwachs", zuwachs.toPlainString()));
+    /**
+     * „Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, …“ — {@code zuwachs} UNGERUNDET in der
+     * gespeicherten {@code einheit} der Reihe; gesprochen in ihrer Anzeige-Einheit mit den Stellen der
+     * {@link #KENNZEICHEN_EBENE} ({@link #menge}). Hat die Einheit keine Anzeige-Einheit (unbekannt,
+     * VAh, …), steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.
+     */
+    public static String lueckeZuwachs(String von, String bis, BigDecimal zuwachs, String einheit) {
+        if (anzeigeEinheit(einheit) == null) {
+            return sprich("luecke_zuwachs_ohne_einheit", Map.of("von", von, "bis", bis));
+        }
+        return sprich("luecke_zuwachs",
+                Map.of("von", von, "bis", bis, "zuwachs", menge(zuwachs, einheit, KENNZEICHEN_EBENE)));
     }
 
     /** „Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren“. */
@@ -471,6 +489,8 @@ public final class ErgebnisZustand {
     public static final String KUBIKMETER = "m³";
     /** Scheinleistung (Anschlussleistung) — „Leistung eine Nachkommastelle“ wie kW (E11, seit 1.2). */
     public static final String KVA = "kVA";
+    /** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
+    public static final String KVARH = "kvarh";
 
     /** Die Stellen je Einheit und Ebene; {@code ebene == null} = für jede Ebene gleich. */
     public record Stellen(String einheit, String ebene, int stellen) {}
@@ -481,6 +501,11 @@ public final class ErgebnisZustand {
             new Stellen(KWH, "tag", 0),
             new Stellen(KWH, "monat", 0),
             new Stellen(KWH, "jahr", 0),
+            new Stellen(KVARH, "viertelstunde", 1),
+            new Stellen(KVARH, "stunde", 1),
+            new Stellen(KVARH, "tag", 0),
+            new Stellen(KVARH, "monat", 0),
+            new Stellen(KVARH, "jahr", 0),
             new Stellen(KW, null, 1),
             new Stellen(PROZENT, null, 0),
             new Stellen(KUBIKMETER, null, 1),
@@ -501,7 +526,7 @@ public final class ErgebnisZustand {
         }
         if (ebene != null && !EBENEN.contains(ebene)) {
             v.add(EBENE_UNBEKANNT);
-        } else if (ebene == null && KWH.equals(einheit)) {
+        } else if (ebene == null && (KWH.equals(einheit) || KVARH.equals(einheit))) {
             v.add(EBENE_FEHLT);
         }
         return List.copyOf(v);
@@ -545,6 +570,53 @@ public final class ErgebnisZustand {
             gruppiert.append(DEZIMAL).append(klartext.substring(punkt + 1));
         }
         return (gerundet.signum() < 0 ? MINUS : "") + gruppiert + VOR_EINHEIT + einheit;
+    }
+
+    /**
+     * Die Anzeige-Einheit einer GESPEICHERTEN Einheit (seit 1.3, Ableitung aus E11): gespeichert bleibt,
+     * was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen —
+     * „1.482.300 kWh“, nie „1.482,3 MWh“.
+     *
+     * @param faktor gespeicherter Wert × faktor = Wert in der Anzeige-Einheit
+     */
+    public record AnzeigeEinheit(String gespeichert, String angezeigt, BigDecimal faktor) {}
+
+    public static final List<AnzeigeEinheit> ANZEIGE_EINHEITEN = List.of(
+            new AnzeigeEinheit("Wh", KWH, new BigDecimal("0.001")),
+            new AnzeigeEinheit("kWh", KWH, BigDecimal.ONE),
+            new AnzeigeEinheit("MWh", KWH, new BigDecimal("1000")),
+            new AnzeigeEinheit("varh", KVARH, new BigDecimal("0.001")),
+            new AnzeigeEinheit("kvarh", KVARH, BigDecimal.ONE),
+            new AnzeigeEinheit(KUBIKMETER, KUBIKMETER, BigDecimal.ONE));
+
+    /**
+     * Die Ebene, deren Stellen eine Menge IN einem Kennzeichen spricht: ein Satz wandert unverändert von
+     * der Viertelstunde in Tag, Monat und Jahr, darf also nicht je Periode anders runden (seit 1.3).
+     */
+    public static final String KENNZEICHEN_EBENE = "viertelstunde";
+
+    /** Die Anzeige-Einheit zu einer gespeicherten Einheit; {@code null}, wenn es keine gibt. */
+    public static AnzeigeEinheit anzeigeEinheit(String gespeichert) {
+        return ANZEIGE_EINHEITEN.stream().filter(a -> a.gespeichert().equals(gespeichert)).findFirst().orElse(null);
+    }
+
+    /** Die Verstöße einer gespeicherten Einheit und Ebene; leer = anzeigbar. */
+    public static List<String> pruefeMenge(String gespeichert, String ebene) {
+        AnzeigeEinheit a = anzeigeEinheit(gespeichert);
+        return a == null ? List.of(EINHEIT_UNBEKANNT) : pruefeZahl(a.angezeigt(), ebene);
+    }
+
+    /**
+     * E11 für eine Menge in ihrer GESPEICHERTEN Einheit: in die Anzeige-Einheit umgerechnet, dann
+     * {@link #zahl} („337600 Wh“ → „337,6 kWh“ an der Viertelstunde). Kein Wert ist „—“.
+     */
+    public static String menge(BigDecimal wert, String gespeichert, String ebene) {
+        List<String> v = pruefeMenge(gespeichert, ebene);
+        if (!v.isEmpty()) {
+            throw new IllegalArgumentException("keine Anzeige für " + gespeichert + " / " + ebene + ": " + v);
+        }
+        AnzeigeEinheit a = anzeigeEinheit(gespeichert);
+        return zahl(wert == null ? null : wert.multiply(a.faktor()), a.angezeigt(), ebene);
     }
 
     /** Eine genannte Rundungsdifferenz; {@code differenz}/{@code satz} sind {@code null}, wenn es keine gibt. */

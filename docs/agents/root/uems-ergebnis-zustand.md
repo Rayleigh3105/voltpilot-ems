@@ -44,8 +44,12 @@ mit `ergebnis-zustand-vectors.json` und Schema.
    Stundenzahl kommt aus `BezugsPeriode.stundenDesTages` → `VerbrauchRegeln.stunden`, nie neu
    gezählt. Die letzte Stunde heißt „23:00–00:00“ (keine 24:00-Sonderregel). Die Uhrzeit IN einem
    Kennzeichen spricht `ErgebnisZustand.uhr(zeit, zone)` ⟷ `uemsErgebnis.uhr` ⟷ `verbrauch._uhr`
-   mit derselben Regel („Rücksetzung 02:30 MEZ …“) — ⚠ die Zone ist dort noch die FESTE
-   `VerbrauchRegeln.ANZEIGE_ZEITZONE`, nicht die des Standorts.
+   mit derselben Regel („Rücksetzung 02:30 MEZ …“). **Einheit und Zone kommen aus EINEM Träger**
+   `uems/ReihenKontext` (Einheit des Katalog-Messkanals + Zeitzone des Standorts, gebildet in
+   `ViertelstundeVerdichter`/`TagVerdichter`/`PeriodeVerdichter`/`ZeitraumMenge` über
+   `ReihenKontext.zeitzonen`, Python `verbrauch.ReihenKontext`) — eine dritte Angabe auf demselben Weg
+   gehört dorthin, nie in eine zweite Parameterkette. ⚠ Testkanäle `energy_kwh_*` haben keine
+   Katalog-Einheit: die Testcontainers-Klassen nehmen `UemsTestKatalog.mitKwhTestkanaelen()`.
 3. **Sprechen prüft keine Werte.** Die Sprech-Funktionen liegen im Rechenweg der Verdichtung; ein
    ungewöhnlicher Wert (`Wertebereich 65536.000`) wird gesprochen, nie mit einer Ausnahme
    bezahlt. Ob jeder Satz passt, beweisen die Vektor-Tests. `satz(ergebnis)` dagegen spricht nur
@@ -58,9 +62,13 @@ mit `ergebnis-zustand-vectors.json` und Schema.
 
 ## Befunde (benannt, nicht umformuliert)
 
-Block `befunde` der Vektor-Datei: „Zuwachs 337.600“ (Punkt, ohne Einheit — liest sich als 337 600;
-die Einheit kennt die Verdichtung von Tag/Monat/Jahr nicht), „Rechteck-Halten ≤ 2 × Kadenz“ (Methodenwort; der DB-CHECK prüft nur
-den Anfang), sechs Satzformen ohne Vokabular-Wort, Kennzeichen-Uhrzeiten fest in Europe/Berlin (MESZ/MEZ seit 1.1), F17 „1 240 m³“ gegen E11
+Block `befunde` der Vektor-Datei: „Rechteck-Halten ≤ 2 × Kadenz“ (Methodenwort; der DB-CHECK prüft nur
+den Anfang), sechs Satzformen ohne Vokabular-Wort, F17 „1 240 m³“ gegen E11
 „m³ 1 Nachkommastelle“, E10 „23 Stunden“ gelesen wie F14. Eine Umformulierung ist eine neue
 Fassung beider Vektor-Dateien (+ Python-Zwilling, `fruehere_fassungen` für gespeicherte Zeilen) — nicht still.
-„mit Ablesestände“ (Dativ) ist so in 1.1 erledigt.
+„mit Ablesestände“ (Dativ) ist so in 1.1 erledigt; „Zuwachs 337.600“ und die feste Zone Europe/Berlin
+in 1.3: „Zuwachs 337,6 kWh“ nach der Anzeige-Einheit (Wh/MWh → kWh, varh → kvarh, m³; gespeichert
+bleibt die Zähler-Einheit; `rundung.kennzeichen_ebene` = Viertelstunde, weil der Satz unverändert bis
+ins Jahr wandert; ohne Anzeige-Einheit `luecke_zuwachs_ohne_einheit` ohne Zahl). ⚠ Ein Muster, das nur
+seinen PLATZHALTER ändert, spricht mit den alten Werten denselben Text — die frühere Fassung beweist
+sich dann über den Platzhalter, nicht über den Wortlaut.

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
 import java.sql.Connection;
@@ -70,16 +71,19 @@ public class PeriodeVerdichter {
         "mittel", "min_wert", "max_wert", "summe", "energie", "gemessen_s", "luecke_innen"};
 
     private final JdbcTemplate adminJdbc;
+    private final MeasurementCatalog katalog;
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int nachholenJeLauf;
 
     public PeriodeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
+            MeasurementCatalog katalog,
             @Value("${voltpilot.uems.periode.stapel:50}") int stapelGroesse,
             @Value("${voltpilot.uems.periode.stapel-je-lauf:40}") int stapelJeLauf,
             @Value("${voltpilot.uems.periode.nachholen-je-lauf:2000}") int nachholenJeLauf) {
         this.adminJdbc = adminJdbc;
+        this.katalog = katalog;
         this.stapelGroesse = stapelGroesse;
         this.stapelJeLauf = stapelJeLauf;
         this.nachholenJeLauf = nachholenJeLauf;
@@ -255,7 +259,8 @@ public class PeriodeVerdichter {
         String zustand = alleSlotsEndgueltig
                 ? TagRegeln.zustand(tage.vorhanden(), tage.endgueltig(), TagRegeln.endgueltigAb(ende), jetzt)
                 : ViertelstundeRegeln.VORLAEUFIG;
-        return zeile(a, erster, zone, tage, beginn, ende, erster.lengthOfMonth(),
+        return zeile(a, erster, ReihenKontext.aus(katalog, a.kanal(), zone), tage, beginn, ende,
+                erster.lengthOfMonth(),
                 tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.deklaration(), v.wertart(),
                 v.kadenzS(),
                 v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand,
@@ -338,18 +343,23 @@ public class PeriodeVerdichter {
                 a.kanal(), beginn, ende, deklaration);
         String zustand = TagRegeln.zustand(monate.vorhanden(), monate.endgueltig(), TagRegeln.endgueltigAb(ende),
                 jetzt);
-        return zeile(a, erster, zone, monate, beginn, ende, 12, monate.endgueltig(), innen, teile, ereignisse,
+        return zeile(a, erster, ReihenKontext.aus(katalog, a.kanal(), zone), monate, beginn, ende, 12,
+                monate.endgueltig(), innen, teile, ereignisse,
                 deklaration, wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand,
                 ViertelstundenTeile.werte(werteteile, wertart, kadenzS, beginn, ende), jetzt);
     }
 
-    private static Object[] zeile(Auftrag a, LocalDate erster, ZoneId zone, Teile teile, Instant beginn,
+    /**
+     * @param reihe der Träger dieser Reihe: Einheit aus dem Katalog, Zone der Tage bzw. Monate — in ihm
+     *     sprechen die Kennzeichen, die die Regel an dieser Periode neu bildet
+     */
+    private static Object[] zeile(Auftrag a, LocalDate erster, ReihenKontext reihe, Teile teile, Instant beginn,
             Instant ende, int teileErwartet, int teileEndgueltig, List<Teilperiode> innen,
             List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, ZaehlerDeklaration deklaration,
             String wertart, Integer kadenzS,
             int nachgeliefert, UUID site, String zustand, VerbrauchRegeln.Werteteil werteteil, Instant jetzt) {
-        Teilperiode menge = ViertelstundenTeile.zaehlerstand(alle, ereignisse, deklaration, wertart, kadenzS,
-                beginn, ende);
+        Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe, alle, ereignisse, deklaration, wertart,
+                kadenzS, beginn, ende);
         // Zählerstand aus den Periodenständen (IP-5), Momentanwert/Intervallmenge aus der Regel von
         // IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.
         Ergebnis mengeErgebnis = menge != null ? menge.ergebnis()

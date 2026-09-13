@@ -66,13 +66,6 @@ public final class VerbrauchRegeln {
     /** Auf so viele Nachkommastellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12). */
     public static final int NACHKOMMASTELLEN = 3;
 
-    /**
-     * Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen — FEST, nicht die des Standorts
-     * (E10). Die doppelte Stunde trägt MESZ/MEZ ({@link ErgebnisZustand#uhr}); die Standort-Zone
-     * reist durch die Verdichtung noch nicht mit (Befund in {@code ergebnis-zustand-vectors.json}).
-     */
-    public static final ZoneId ANZEIGE_ZEITZONE = ZoneId.of("Europe/Berlin");
-
     // Zustandswörter und Kennzeichen-Sätze sind der Vertrag ergebnis-zustand (AP-08 IP-8): diese
     // Klasse formuliert keinen Satz selbst, sie ruft ErgebnisZustand an.
     public static final String VOLLSTAENDIG = ErgebnisZustand.VOLLSTAENDIG;
@@ -114,8 +107,7 @@ public final class VerbrauchRegeln {
      * der Periode liegt.
      *
      * @param art {@code device_boundary} (Gerätegrenze, Z4) oder {@code device_restart} (Z7)
-     * @param zeit Zeitpunkt
-     * @param uhrzeit die Uhrzeit, wie das Kennzeichen sie nennt (HH:MM aus der Meldung)
+     * @param zeit Zeitpunkt; das Kennzeichen nennt ihn in der Zone des {@link ReihenKontext}
      * @param endstand Ablesestand des ALTEN Zählers, {@code null} wenn er fehlt
      * @param anfangsstand Ablesestand des NEUEN Zählers, {@code null} wenn er fehlt
      * @param verlustS Z7: so viele Sekunden Zählung können verloren sein
@@ -123,7 +115,6 @@ public final class VerbrauchRegeln {
     public record Ereignis(
             String art,
             Instant zeit,
-            String uhrzeit,
             BigDecimal endstand,
             BigDecimal anfangsstand,
             long verlustS) {
@@ -226,8 +217,9 @@ public final class VerbrauchRegeln {
         return Duration.between(vorher, nachher).compareTo(kadenz.multipliedBy(LUECKE_FAKTOR)) > 0;
     }
 
-    private static String uhr(Instant t) {
-        return ErgebnisZustand.uhr(t, ANZEIGE_ZEITZONE);
+    /** Die Uhrzeit IN einem Kennzeichen — in der Zeitzone des Standorts, die der Träger mitbringt (E10). */
+    private static String uhr(Instant t, ReihenKontext reihe) {
+        return ErgebnisZustand.uhr(t, reihe.zeitzone());
     }
 
     private static BigDecimal runde(BigDecimal x, int stellen) {
@@ -274,11 +266,13 @@ public final class VerbrauchRegeln {
      *       zur Periode, ist aber nicht auf feinere Perioden verteilbar (Z2).
      * </ul>
      *
+     * @param reihe Einheit und Zeitzone, in denen die Kennzeichen sprechen
      * @param faktor Z8: Rohwert × faktor ergibt die Einheit der Reihe
      * @param wertebereichModul Z6: der deklarierte Wertebereich, oder {@code null}
      * @param hoechstzuwachsJeKadenz Z6: der größte plausible Zuwachs je Kadenz, oder {@code null}
      */
     public static Ergebnis mengeZaehlerstand(
+            ReihenKontext reihe,
             List<Rohwert> werte,
             Instant von,
             Instant bis,
@@ -332,13 +326,13 @@ public final class VerbrauchRegeln {
         }
 
         for (int i = 0; i + 1 < folge.size(); i++) {
-            Paar p = paar(folge.get(i), folge.get(i + 1), grenzen, kadenz, faktor, wertebereichModul,
+            Paar p = paar(reihe, folge.get(i), folge.get(i + 1), grenzen, kadenz, faktor, wertebereichModul,
                     hoechstzuwachsJeKadenz, kennzeichen);
             menge = menge.add(p.beitrag());
             unvollstaendig |= p.unvollstaendig();
         }
 
-        unvollstaendig |= neustartKennzeichen(neustarts, kennzeichen);
+        unvollstaendig |= neustartKennzeichen(reihe, neustarts, kennzeichen);
 
         return new Ergebnis(
                 runde(menge.multiply(faktor), NACHKOMMASTELLEN),
@@ -403,8 +397,8 @@ public final class VerbrauchRegeln {
      * anhängen. Die EINE Stelle dafür: die Rohwert-Regel und die Zusammensetzung aus
      * Teilperioden rufen beide hier an.
      */
-    private static Paar paar(Rohwert vorher, Rohwert nachher, List<Ereignis> grenzen, Duration kadenz,
-            BigDecimal faktor, BigDecimal wertebereichModul, BigDecimal hoechstzuwachsJeKadenz,
+    private static Paar paar(ReihenKontext reihe, Rohwert vorher, Rohwert nachher, List<Ereignis> grenzen,
+            Duration kadenz, BigDecimal faktor, BigDecimal wertebereichModul, BigDecimal hoechstzuwachsJeKadenz,
             List<String> kennzeichen) {
         Ereignis grenze = grenzen.stream()
                 .filter(e -> e.zeit().isAfter(vorher.zeit()) && !e.zeit().isAfter(nachher.zeit()))
@@ -415,12 +409,13 @@ public final class VerbrauchRegeln {
             BigDecimal neu =
                     grenze.anfangsstand() != null ? nachher.wert().subtract(grenze.anfangsstand()) : BigDecimal.ZERO;
             boolean mit = grenze.endstand() != null && grenze.anfangsstand() != null;
-            kennzeichen.add(ErgebnisZustand.geraetegrenze(grenze.uhrzeit(), mit));
+            kennzeichen.add(ErgebnisZustand.geraetegrenze(uhr(grenze.zeit(), reihe), mit));
             if (!mit) {
                 kennzeichen.add(ZUWACHS_NICHT_MESSBAR);
             }
             if (istLuecke(vorher.zeit(), nachher.zeit(), kadenz)) {
-                kennzeichen.add(ErgebnisZustand.lueckeAmWechsel(uhr(vorher.zeit()), uhr(nachher.zeit())));
+                kennzeichen.add(ErgebnisZustand.lueckeAmWechsel(
+                        uhr(vorher.zeit(), reihe), uhr(nachher.zeit(), reihe)));
             }
             return new Paar(alt.add(neu), !mit);
         }
@@ -429,26 +424,27 @@ public final class VerbrauchRegeln {
         if (zuwachs.signum() < 0) {
             BigDecimal ueber = ueberlauf(vorher, nachher, kadenz, wertebereichModul, hoechstzuwachsJeKadenz);
             if (ueber != null) {
-                kennzeichen.add(ErgebnisZustand.ueberlauf(uhr(nachher.zeit()), wertebereichModul));
+                kennzeichen.add(ErgebnisZustand.ueberlauf(uhr(nachher.zeit(), reihe), wertebereichModul));
                 return new Paar(ueber, false);
             }
             // Rücksetzung ohne Endstand: gezählt sind nur die Strecken bis vorher und ab
             // nachher - was dazwischen lag, weiß niemand und wird nicht geschätzt.
-            kennzeichen.add(ErgebnisZustand.ruecksetzung(uhr(nachher.zeit())));
+            kennzeichen.add(ErgebnisZustand.ruecksetzung(uhr(nachher.zeit(), reihe)));
             return new Paar(BigDecimal.ZERO, true);
         }
 
         LueckenZuwachs luecke = lueckenZuwachs(vorher, nachher, List.of(), kadenz, faktor);
         if (luecke != null) {
-            kennzeichen.add(lueckenKennzeichen(luecke));
+            kennzeichen.add(lueckenKennzeichen(luecke, reihe));
         }
         return new Paar(zuwachs, false);
     }
 
     /** Z7 — je Neustart ein Kennzeichen, zuletzt; {@code true}, wenn es einen gab. */
-    private static boolean neustartKennzeichen(List<Ereignis> neustarts, List<String> kennzeichen) {
+    private static boolean neustartKennzeichen(
+            ReihenKontext reihe, List<Ereignis> neustarts, List<String> kennzeichen) {
         for (Ereignis neustart : neustarts) {
-            kennzeichen.add(ErgebnisZustand.neustart(neustart.uhrzeit(), neustart.verlustS()));
+            kennzeichen.add(ErgebnisZustand.neustart(uhr(neustart.zeit(), reihe), neustart.verlustS()));
         }
         return !neustarts.isEmpty();
     }
@@ -535,11 +531,13 @@ public final class VerbrauchRegeln {
 
     /**
      * Das Kennzeichen, mit dem der Zuwachs in der Periode steht, die ihn zählt — Vertrag nach Text
-     * („Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar“).
+     * („Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar“): Uhrzeiten
+     * in der Zone des Standorts, der Zuwachs UNGERUNDET in der Einheit der Reihe an
+     * {@link ErgebnisZustand#lueckeZuwachs} — beides aus dem {@link ReihenKontext}.
      */
-    public static String lueckenKennzeichen(LueckenZuwachs luecke) {
-        return ErgebnisZustand.lueckeZuwachs(uhr(luecke.messzeitVor()), uhr(luecke.messzeitNach()),
-                runde(luecke.zuwachs(), NACHKOMMASTELLEN));
+    public static String lueckenKennzeichen(LueckenZuwachs luecke, ReihenKontext reihe) {
+        return ErgebnisZustand.lueckeZuwachs(uhr(luecke.messzeitVor(), reihe), uhr(luecke.messzeitNach(), reihe),
+                luecke.zuwachs(), reihe.einheit());
     }
 
     /**
@@ -606,6 +604,7 @@ public final class VerbrauchRegeln {
 
     /** Eine Periode aus Rohwerten als {@link Teilperiode} — die Form, in der sie gespeichert wird. */
     public static Teilperiode teilperiode(
+            ReihenKontext reihe,
             List<Rohwert> werte,
             Instant von,
             Instant bis,
@@ -614,7 +613,7 @@ public final class VerbrauchRegeln {
             BigDecimal faktor,
             BigDecimal wertebereichModul,
             BigDecimal hoechstzuwachsJeKadenz) {
-        Ergebnis e = ergebnis("zaehlerstand", werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
+        Ergebnis e = ergebnis(reihe, "zaehlerstand", werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
                 hoechstzuwachsJeKadenz, false);
         List<Rohwert> gute = guteIn(werte, von, bis);
         return new Teilperiode(von, bis, periodenstand(werte, von, kadenz), periodenstand(werte, bis, kadenz),
@@ -653,6 +652,7 @@ public final class VerbrauchRegeln {
      *     der Zeit ohne Teilperiode
      */
     public static Teilperiode zaehlerstandAusTeilperioden(
+            ReihenKontext reihe,
             List<Teilperiode> teile,
             Instant von,
             Instant bis,
@@ -739,7 +739,7 @@ public final class VerbrauchRegeln {
             BigDecimal differenz = nachher.wert().subtract(vorher.wert());
             Teilperiode t = ueber.get(i);
             if (t == null) {
-                Paar p = paar(vorher, nachher, grenzen, kadenz, faktor, wertebereichModul,
+                Paar p = paar(reihe, vorher, nachher, grenzen, kadenz, faktor, wertebereichModul,
                         hoechstzuwachsJeKadenz, kennzeichen);
                 menge = menge.add(p.beitrag().subtract(differenz).multiply(faktor));
                 unvollstaendig |= p.unvollstaendig();
@@ -759,7 +759,8 @@ public final class VerbrauchRegeln {
             }
         }
 
-        unvollstaendig |= neustartKennzeichen(ereignisseIn(ereignisse, Ereignis.NEUSTART, von, bis), kennzeichen);
+        unvollstaendig |= neustartKennzeichen(
+                reihe, ereignisseIn(ereignisse, Ereignis.NEUSTART, von, bis), kennzeichen);
 
         Ergebnis ergebnis = new Ergebnis(
                         runde(menge, NACHKOMMASTELLEN),
@@ -1334,9 +1335,11 @@ public final class VerbrauchRegeln {
     /**
      * Der EINE Eingang: eine Reihe, eine Periode → das Ergebnis der Vektor-Datei.
      *
+     * @param reihe Einheit und Zeitzone der Reihe, in denen die Kennzeichen sprechen
      * @param wertart {@code zaehlerstand}, {@code intervallmenge} oder {@code momentanwert}
      */
     public static Ergebnis ergebnis(
+            ReihenKontext reihe,
             String wertart,
             List<Rohwert> werte,
             Instant von,
@@ -1347,7 +1350,7 @@ public final class VerbrauchRegeln {
             BigDecimal wertebereichModul,
             BigDecimal hoechstzuwachsJeKadenz,
             boolean integrieren) {
-        return ergebnis(wertart, werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
+        return ergebnis(reihe, wertart, werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul,
                 hoechstzuwachsJeKadenz, integrieren, null, null);
     }
 
@@ -1360,6 +1363,7 @@ public final class VerbrauchRegeln {
      * @param quelle Komponente · Messwert, wie das Anteil-Kennzeichen sie nennt
      */
     public static Ergebnis ergebnis(
+            ReihenKontext reihe,
             String wertart,
             List<Rohwert> werte,
             Instant von,
@@ -1376,7 +1380,7 @@ public final class VerbrauchRegeln {
             throw new IllegalArgumentException("einen Anteil hat nur ein Momentanwert, nicht " + wertart);
         }
         return switch (wertart) {
-            case "zaehlerstand" -> mengeZaehlerstand(
+            case "zaehlerstand" -> mengeZaehlerstand(reihe,
                             werte, von, bis, kadenz, ereignisse, faktor, wertebereichModul, hoechstzuwachsJeKadenz)
                     .mitAbdeckung(erwarteteWerte(von, bis, kadenz));
             case "intervallmenge" -> mengeIntervall(werte, von, bis, kadenz, faktor);

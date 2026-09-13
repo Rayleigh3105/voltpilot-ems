@@ -411,7 +411,9 @@ class BezugsdatenVectorsTest {
                 ein.path("staende")
                         .forEach(s -> staende.add(new VerbrauchRegeln.Rohwert(
                                 BezugsdatenRegeln.zeit(s.path("t").asText()), dezimal(s.path("stand")))));
+                // Die Ablesungen des Falls nennen keine Einheit — ohne Lücke spricht die Regel auch keine.
                 VerbrauchRegeln.Ergebnis ist = BezugsdatenRegeln.mengeAblesezeitraum(
+                        new ReihenKontext(null, BezugsdatenRegeln.ANZEIGE_ZEITZONE),
                         staende,
                         BezugsdatenRegeln.zeit(ein.path("von").asText()),
                         BezugsdatenRegeln.zeit(ein.path("bis").asText()),

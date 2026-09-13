@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -54,6 +55,11 @@ import org.testcontainers.utility.DockerImageName;
  */
 @Testcontainers(disabledWithoutDocker = true)
 class UemsPeriodenmengeTest {
+
+    private static final ZoneId ORT = ZoneId.of("Europe/Berlin");
+
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
 
     private static final String DIESE = "20260912205000";
     private static final String APP_USER = "voltpilot_app";
@@ -144,12 +150,12 @@ class UemsPeriodenmengeTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
         endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
-        perioden = new PeriodeVerdichter(admin, 50, 40, 2000);
-        zeitraum = new ZeitraumMenge(app);
+        tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
+        perioden = new PeriodeVerdichter(admin, KATALOG, 50, 40, 2000);
+        zeitraum = new ZeitraumMenge(app, KATALOG);
 
         // ---- 1. Anfang November: Viertelstunden, Endgültigkeit, Tage, Monate, Jahre ---------
         arbeitFuellen();
@@ -324,12 +330,13 @@ class UemsPeriodenmengeTest {
         ZeitraumMenge.Zeitraum z = zeitraum.zeitraum(KB, IDS.get("MG"), "energy_kwh_mg", von, bis, T_SPAETER);
 
         // Dieselbe Regel über dieselben ROHWERTE — die Antwort ist Zeichen für Zeichen dieselbe.
-        VerbrauchRegeln.Ergebnis roh = VerbrauchRegeln.ergebnis("zaehlerstand", mgRohwerte(), von, bis,
+        VerbrauchRegeln.Ergebnis roh = VerbrauchRegeln.ergebnis(new ReihenKontext("kWh", ORT), "zaehlerstand",
+                mgRohwerte(), von, bis,
                 Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null, false);
         assertThat(z.menge().ergebnis()).isEqualTo(roh);
         assertThat(roh.zustand()).isEqualTo("vollständig");
         assertThat(roh.kennzeichen()).containsExactly(
-                "Lücke 23:40–00:20: Zuwachs 64.000 gemessen, nicht auf Viertelstunden verteilbar");
+                "Lücke 23:40–00:20: Zuwachs 64,0 kWh gemessen, nicht auf Viertelstunden verteilbar");
 
         Map<String, Object> oktober = periode("MG", "monat", LocalDate.of(2026, 10, 1));
         Map<String, Object> november = periode("MG", "monat", LocalDate.of(2026, 11, 1));
@@ -372,7 +379,7 @@ class UemsPeriodenmengeTest {
     void abdeckungUndKennzeichenPflanzenSichInDenMonatFort() {
         Map<String, Object> november = periode("F8", "monat", LocalDate.of(2026, 11, 1));
         assertThat(kennzeichen(november)).contains(
-                "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar");
+                "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar");
         // 1 230 Werte des 03.11. und der Stand um 04.11. 00:00, der den Tag schließt.
         assertThat(zahl(november, "erhalten")).isEqualTo(1231);
         assertThat(zahl(november, "erwartet")).as("jede Minute des Novembers ist erwartet").isEqualTo(43200);

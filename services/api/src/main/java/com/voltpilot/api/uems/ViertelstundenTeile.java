@@ -296,16 +296,18 @@ final class ViertelstundenTeile {
 
     /**
      * Die Menge von {@code [von, bis)} aus diesen Teilperioden — {@code null}, wenn die Reihe kein
-     * Zählerstand ist (für sie hat AP-08 keine Periodenregel über Ständen).
+     * Zählerstand ist (für sie hat AP-08 keine Periodenregel über Ständen). {@code reihe} ist der Träger,
+     * den der Aufrufer gebildet hat: in seiner Einheit und Zone sprechen die neuen Kennzeichen.
      */
-    static Teilperiode zaehlerstand(Collection<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse,
+    static Teilperiode zaehlerstand(ReihenKontext reihe, Collection<Teilperiode> teile,
+            List<VerbrauchRegeln.Ereignis> ereignisse,
             ZaehlerDeklaration deklaration, String wertart, Integer kadenzS, Instant von, Instant bis) {
         if (!"counter".equals(wertart) || kadenzS == null) {
             return null;
         }
         Duration kadenz = Duration.ofSeconds(kadenzS);
         // Z6 auch über eine Grenze ohne Stand (die Nachbarschaft, die erst die gröbere Periode sieht).
-        return VerbrauchRegeln.zaehlerstandAusTeilperioden(List.copyOf(teile), von, bis, kadenz, ereignisse,
+        return VerbrauchRegeln.zaehlerstandAusTeilperioden(reihe, List.copyOf(teile), von, bis, kadenz, ereignisse,
                 ViertelstundeRegeln.FAKTOR_DER_FASSUNG, deklaration.modulFuer(kadenz),
                 deklaration.hoechstzuwachsFuer(kadenz));
     }
@@ -327,7 +329,7 @@ final class ViertelstundenTeile {
      * <p>Warum nicht {@link #laden} je Schritt: 80 Tage im Stundenraster sind 1 920 Schritte mit je vier
      * Abfragen. Hier sind es drei, gleich wie viele Schritte.
      */
-    static List<Schritt> schritte(Connection con, UUID tenant, UUID entity, String kanal,
+    static List<Schritt> schritte(Connection con, ReihenKontext reihe, UUID tenant, UUID entity, String kanal,
             Collection<Instant> beginne, Duration raster) throws SQLException {
         List<Instant> reihenfolge = beginne.stream().distinct().sorted().toList();
         if (reihenfolge.isEmpty()) {
@@ -401,7 +403,7 @@ final class ViertelstundenTeile {
             List<VerbrauchRegeln.Ereignis> fuerRegel =
                     List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(imSchritt, deklaration));
             aus.add(new Schritt(von, bis, wertart,
-                    zaehlerstand(teile, fuerRegel, deklaration, wertart, kadenzS, von, bis),
+                    zaehlerstand(reihe, teile, fuerRegel, deklaration, wertart, kadenzS, von, bis),
                     werte(werteteile, wertart, kadenzS, von, bis)));
         }
         return aus;

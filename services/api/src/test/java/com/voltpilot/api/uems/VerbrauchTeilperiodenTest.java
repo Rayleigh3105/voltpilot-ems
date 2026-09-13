@@ -36,6 +36,7 @@ class VerbrauchTeilperiodenTest {
 
     private static final Duration VIERTELSTUNDE = Duration.ofMinutes(15);
     private static final ZoneId ORT = ZoneId.of("Europe/Berlin");
+    private static final ReihenKontext KWH_BERLIN = new ReihenKontext("kWh", ORT);
 
     @TestFactory
     List<DynamicTest> ausViertelstunden() throws Exception {
@@ -82,6 +83,7 @@ class VerbrauchTeilperiodenTest {
         BigDecimal faktor = VerbrauchVectorsTest.dezimal(reihe.path("faktor"), BigDecimal.ONE);
         BigDecimal modul = VerbrauchVectorsTest.dezimal(reihe.path("wertebereich_modul"), null);
         BigDecimal hoechst = VerbrauchVectorsTest.dezimal(reihe.path("hoechstzuwachs_je_kadenz"), null);
+        ReihenKontext kontext = VerbrauchVectorsTest.kontext(reihe);
 
         // Die Viertelstunden, wie die Datenbank sie trägt: eine Zeile nur mit mindestens einem
         // Rohwert — einen Tag davor und eine Viertelstunde danach (die Nachbarn der Grenzen).
@@ -95,8 +97,8 @@ class VerbrauchTeilperiodenTest {
             if (fenster.stream().noneMatch(r -> !r.zeit().isBefore(qq) && r.zeit().isBefore(qBis))) {
                 continue;
             }
-            viertelstunden.add(VerbrauchRegeln.teilperiode(fenster, q, qBis, kadenz, ereignisse, faktor, modul,
-                    hoechst));
+            viertelstunden.add(VerbrauchRegeln.teilperiode(kontext, fenster, q, qBis, kadenz, ereignisse, faktor,
+                    modul, hoechst));
         }
 
         List<Teilperiode> teile = viertelstunden;
@@ -112,13 +114,13 @@ class VerbrauchTeilperiodenTest {
                 if (fuerTag.stream().noneMatch(v -> !v.von().isBefore(tVon) && v.bis().compareTo(tBis) <= 0)) {
                     continue;
                 }
-                teile.add(VerbrauchRegeln.zaehlerstandAusTeilperioden(fuerTag, tVon, tBis, kadenz, ereignisse,
-                        faktor, modul, hoechst));
+                teile.add(VerbrauchRegeln.zaehlerstandAusTeilperioden(kontext, fuerTag, tVon, tBis, kadenz,
+                        ereignisse, faktor, modul, hoechst));
             }
         }
 
-        Teilperiode ist = VerbrauchRegeln.zaehlerstandAusTeilperioden(teile, von, bis, kadenz, ereignisse, faktor,
-                modul, hoechst);
+        Teilperiode ist = VerbrauchRegeln.zaehlerstandAusTeilperioden(kontext, teile, von, bis, kadenz, ereignisse,
+                faktor, modul, hoechst);
         VerbrauchVectorsTest.zahl(why + " · menge", erwartung.path("menge"), ist.ergebnis().menge());
         if (erwartung.has("zustand")) {
             assertThat(ist.ergebnis().zustand()).as(why + " · zustand").isEqualTo(erwartung.path("zustand").asText());
@@ -165,12 +167,12 @@ class VerbrauchTeilperiodenTest {
         for (LocalDate tag = LocalDate.of(2026, 10, 1); tag.isBefore(LocalDate.of(2026, 11, 1)); tag = tag.plusDays(1)) {
             Instant tVon = tag.atStartOfDay(ORT).toInstant();
             Instant tBis = tag.plusDays(1).atStartOfDay(ORT).toInstant();
-            Teilperiode t = VerbrauchRegeln.teilperiode(fenster(werte, tVon.minus(kadenz), tBis), tVon, tBis, kadenz,
-                    List.of(), BigDecimal.ONE, null, null);
+            Teilperiode t = VerbrauchRegeln.teilperiode(KWH_BERLIN, fenster(werte, tVon.minus(kadenz), tBis), tVon,
+                    tBis, kadenz, List.of(), BigDecimal.ONE, null, null);
             tage.add(t);
             summe = summe.add(t.ergebnis().menge());
         }
-        Teilperiode monat = VerbrauchRegeln.zaehlerstandAusTeilperioden(tage,
+        Teilperiode monat = VerbrauchRegeln.zaehlerstandAusTeilperioden(KWH_BERLIN, tage,
                 VerbrauchRegeln.zeit("2026-10-01T00:00:00+02:00"), VerbrauchRegeln.zeit("2026-11-01T00:00:00+01:00"),
                 kadenz, List.of(), BigDecimal.ONE, null, null);
         assertThat(summe).isEqualByComparingTo("55100.013");
@@ -184,10 +186,10 @@ class VerbrauchTeilperiodenTest {
     @Test
     void eineUeberstehendeTeilperiodeWirdAbgewiesen() {
         Instant von = Instant.parse("2026-10-20T00:00:00Z");
-        Teilperiode schief = VerbrauchRegeln.teilperiode(
+        Teilperiode schief = VerbrauchRegeln.teilperiode(KWH_BERLIN,
                 List.of(new Rohwert(von, BigDecimal.ONE)), von.minusSeconds(60), von.plusSeconds(840),
                 Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
-        assertThatThrownBy(() -> VerbrauchRegeln.zaehlerstandAusTeilperioden(List.of(schief), von,
+        assertThatThrownBy(() -> VerbrauchRegeln.zaehlerstandAusTeilperioden(KWH_BERLIN, List.of(schief), von,
                 von.plus(Duration.ofHours(1)), Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ragt");

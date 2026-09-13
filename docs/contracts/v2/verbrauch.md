@@ -224,8 +224,10 @@ gilt gleichzeitig, und daraus folgen drei Regeln (`regeln.luecke_zuwachs`):
    danach ≤ `bis`. Eine Periode, die die Lücke nur anschneidet, bekommt ihn nicht; ihr fehlt der
    Stand an der Grenze („Anfang/Ende nicht gemessen“). F20: beide Tage je 2 208 kWh unvollständig,
    der Zwei-Tage-Zeitraum 4 608 kWh vollständig.
-3. **Er trägt sein Kennzeichen:** „Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf
-   Viertelstunden verteilbar“ — sonst läse ihn jemand als normalen Verbrauch.
+3. **Er trägt sein Kennzeichen:** „Lücke 23:00–01:00: Zuwachs 192,0 kWh gemessen, nicht auf
+   Viertelstunden verteilbar“ — sonst läse ihn jemand als normalen Verbrauch. Einheit und Zone des
+   Satzes kommen aus dem Träger `ReihenKontext` (Einheit der Reihe, Zeitzone des Standorts); die Zahl
+   spricht `ErgebnisZustand.menge` (ergebnis-zustand 1.3, bis dahin „Zuwachs 192.000“).
 
 Die Entscheidung steht an EINER Stelle: `VerbrauchRegeln.zaehltZu` ⟷ `verbrauch.zaehlt_zu`;
 `lueckenZuwachs` ⟷ `luecken_zuwachs` erkennt die Lücke (kein Loch über `luecke_faktor × Kadenz`,

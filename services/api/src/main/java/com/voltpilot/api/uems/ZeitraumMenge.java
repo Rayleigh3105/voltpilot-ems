@@ -1,11 +1,16 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +38,23 @@ import org.springframework.stereotype.Component;
 public class ZeitraumMenge {
 
     private final JdbcTemplate jdbc;
+    private final MeasurementCatalog katalog;
 
-    public ZeitraumMenge(JdbcTemplate jdbc) {
+    public ZeitraumMenge(JdbcTemplate jdbc, MeasurementCatalog katalog) {
         this.jdbc = jdbc;
+        this.katalog = katalog;
+    }
+
+    /**
+     * Der Träger der Reihe: Einheit des Messkanals aus dem Katalog, Zone des Standorts zum (UTC-)Tag
+     * von {@code von} — dieselbe Kette wie Viertelstunden- und Tageslauf.
+     */
+    private ReihenKontext reihe(Connection con, UUID tenantId, UUID entityId, String messkanal, Instant von)
+            throws SQLException {
+        ReihenKontext.Zeitzone zone = ReihenKontext.zeitzonen(con,
+                List.of(new ReihenKontext.Frage(tenantId, entityId, LocalDate.ofInstant(von, ZoneOffset.UTC))))
+                .get(0);
+        return ReihenKontext.aus(katalog, messkanal, zone.zone());
     }
 
     /**
@@ -62,8 +81,8 @@ public class ZeitraumMenge {
         }
         return jdbc.execute((Connection con) -> {
             ViertelstundenTeile.Geladen v = ViertelstundenTeile.laden(con, tenantId, entityId, messkanal, von, bis);
-            Teilperiode menge = ViertelstundenTeile.zaehlerstand(v.teile(), v.ereignisse(), v.deklaration(),
-                    v.wertart(), v.kadenzS(), von, bis);
+            Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe(con, tenantId, entityId, messkanal, von),
+                    v.teile(), v.ereignisse(), v.deklaration(), v.wertart(), v.kadenzS(), von, bis);
             int erhalten = v.innen(von, bis).stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
             int erwartet = v.kadenzS() == null ? 0
                     : VerbrauchRegeln.erwartetAusTeilperioden(v.innen(von, bis), von, bis,
@@ -112,8 +131,12 @@ public class ZeitraumMenge {
         }
         return jdbc.execute((Connection con) -> {
             Map<Instant, Schritt> aus = new LinkedHashMap<>();
-            for (ViertelstundenTeile.Schritt s : ViertelstundenTeile.schritte(con, tenantId, entityId, messkanal,
-                    beginne, Duration.ofSeconds(rasterS))) {
+            if (beginne.isEmpty()) {
+                return aus;
+            }
+            ReihenKontext reihe = reihe(con, tenantId, entityId, messkanal, Collections.min(beginne));
+            for (ViertelstundenTeile.Schritt s : ViertelstundenTeile.schritte(con, reihe, tenantId, entityId,
+                    messkanal, beginne, Duration.ofSeconds(rasterS))) {
                 if (s.menge() != null) {
                     VerbrauchRegeln.Ergebnis e = s.menge().ergebnis();
                     aus.put(s.von(), new Schritt(s.von(), s.bis(), s.wertart(), e.menge(), e.zustand(),

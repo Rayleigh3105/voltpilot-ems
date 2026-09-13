@@ -192,6 +192,15 @@ public class MeasurementCatalog {
         return points.stream().map(Point::family).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * Die Einheit eines Messkanals, wie der Katalog sie nennt; {@code null} ohne Eintrag oder ohne
+     * Einheit. Die UEMS-Verdichtung liest die Einheit einer Reihe NUR hier ({@code uems.ReihenKontext}).
+     */
+    public String einheit(String pointKey) {
+        Point p = resolve(pointKey);
+        return p == null ? null : p.unit();
+    }
+
     public Point resolve(String pointKey) {
         if (pointKey == null || pointKey.isBlank()) {
             return null;

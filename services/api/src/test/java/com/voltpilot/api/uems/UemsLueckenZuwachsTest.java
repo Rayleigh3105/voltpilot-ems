@@ -17,6 +17,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -57,6 +58,8 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsLueckenZuwachsTest {
 
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
+
     private static final String DIESE = "20260913170000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -81,11 +84,11 @@ class UemsLueckenZuwachsTest {
             "device_measurement_selection", "device", "site", "unternehmen", "standort", "tenant");
     private static final List<String> AUSNAHMEN = List.of("messreihe_%", "device_measurement_sample");
 
-    private static final String LUECKE_F8 = "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar";
-    private static final String LUECKE_F20 = "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
-    private static final String LUECKE_MG = "Lücke 23:00–01:00: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
+    private static final String LUECKE_F8 = "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar";
+    private static final String LUECKE_F20 = "Lücke 23:00–01:00: Zuwachs 192,0 kWh gemessen, nicht auf Viertelstunden verteilbar";
+    private static final String LUECKE_MG = "Lücke 23:00–01:00: Zuwachs 192,0 kWh gemessen, nicht auf Viertelstunden verteilbar";
     // Die zweite 02:30 des Tages — ohne MEZ wäre sie von der ersten nicht zu unterscheiden (E10).
-    private static final String LUECKE_SZ = "Lücke 01:30–02:30 MEZ: Zuwachs 192.000 gemessen, nicht auf Viertelstunden verteilbar";
+    private static final String LUECKE_SZ = "Lücke 01:30–02:30 MEZ: Zuwachs 192,0 kWh gemessen, nicht auf Viertelstunden verteilbar";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -142,9 +145,9 @@ class UemsLueckenZuwachsTest {
         melder = new LueckenMelder(admin, katalog, 50, 40, 20_000);
         verdichter = new ViertelstundeVerdichter(admin, katalog, new SpaetankunftMelder(), 500, 40, 200_000);
         endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
-        perioden = new PeriodeVerdichter(admin, 50, 40, 2000);
-        zeitraum = new ZeitraumMenge(app);
+        tage = new TagVerdichter(admin, katalog, 200, 40, 20_000, 200_000);
+        perioden = new PeriodeVerdichter(admin, katalog, 50, 40, 2000);
+        zeitraum = new ZeitraumMenge(app, katalog);
 
         // ---- 1. Die Box fällt aus: der Melder öffnet die Lücke der Reihe (und die der Box) -----
         melder.lauf(T_OFFEN);
@@ -233,7 +236,7 @@ class UemsLueckenZuwachsTest {
                 List.of(), Duration.ofSeconds(60), BigDecimal.ONE);
         assertThat(regel).isNotNull();
         assertThat(regel.zuwachs()).isEqualByComparingTo(l.path("zuwachs").decimalValue());
-        assertThat(VerbrauchRegeln.kleinsterZeitraum(regel, Duration.ofSeconds(60), VerbrauchRegeln.ANZEIGE_ZEITZONE))
+        assertThat(VerbrauchRegeln.kleinsterZeitraum(regel, Duration.ofSeconds(60), BERLIN))
                 .isEqualTo(new VerbrauchRegeln.Zeitraum("tag", Instant.parse("2026-11-02T23:00:00Z"),
                         Instant.parse("2026-11-03T23:00:00Z")));
     }
@@ -350,7 +353,7 @@ class UemsLueckenZuwachsTest {
         assertThat((BigDecimal) jahr.get("menge")).isEqualByComparingTo(summe);
         LueckenZuwachs l = new LueckenZuwachs(Instant.parse("2026-10-31T22:00:00Z"),
                 Instant.parse("2026-11-01T00:00:00Z"), null, null, null);
-        assertThat(VerbrauchRegeln.kleinsterZeitraum(l, Duration.ofSeconds(60), VerbrauchRegeln.ANZEIGE_ZEITZONE).art())
+        assertThat(VerbrauchRegeln.kleinsterZeitraum(l, Duration.ofSeconds(60), BERLIN).art())
                 .isEqualTo("jahr");
     }
 
@@ -373,12 +376,52 @@ class UemsLueckenZuwachsTest {
 
     // ================================================================ Leser und Grenzen
 
+    /**
+     * Der Träger ({@link ReihenKontext}) bekommt die Zone des STANDORTS zum Tag (E10) — sonst die des
+     * Unternehmens, sonst die Vorgabe — und die Einheit des Katalog-Messkanals. Die drei zugelassenen
+     * Zonen zeigen dieselbe Wanduhr; dass eine andere Zone eine andere Uhrzeit spricht, hält
+     * {@code ErgebnisZustandVectorsTest#einStandortAusserhalbVonBerlinZeigtSeineEigeneUhrzeit} fest.
+     */
+    @Test
+    void derTraegerNimmtDieZoneDesStandortsUndDieEinheitDesKatalogs() {
+        UUID zw = IDS.get("ZW");
+        List<ReihenKontext.Zeitzone> gesehen = root.execute((java.sql.Connection con) -> {
+            con.setAutoCommit(false);
+            try {
+                List<ReihenKontext.Zeitzone> aus = new ArrayList<>();
+                ReihenKontext.Frage heute = new ReihenKontext.Frage(KB, zw, LocalDate.of(2026, 11, 3));
+                aus.add(ReihenKontext.zeitzonen(con, List.of(heute)).get(0));
+                try (var ps = con.prepareStatement("UPDATE standort SET zeitzone = 'Europe/Vienna' WHERE id = ?")) {
+                    ps.setObject(1, IDS.get("ST"));
+                    ps.executeUpdate();
+                }
+                aus.add(ReihenKontext.zeitzonen(con, List.of(heute)).get(0));
+                // Vor der Zuordnung zum Standort gilt die Zone des Unternehmens.
+                aus.add(ReihenKontext.zeitzonen(con,
+                        List.of(new ReihenKontext.Frage(KB, zw, LocalDate.of(2023, 12, 31)))).get(0));
+                return aus;
+            } finally {
+                con.rollback();
+                con.setAutoCommit(true);
+            }
+        });
+        assertThat(gesehen).extracting(ReihenKontext.Zeitzone::name, ReihenKontext.Zeitzone::herkunft).containsExactly(
+                org.assertj.core.groups.Tuple.tuple("Europe/Berlin", TagRegeln.AUS_STANDORT),
+                org.assertj.core.groups.Tuple.tuple("Europe/Vienna", TagRegeln.AUS_STANDORT),
+                org.assertj.core.groups.Tuple.tuple("Europe/Berlin", TagRegeln.AUS_UNTERNEHMEN));
+        assertThat(ReihenKontext.aus(new MeasurementCatalog(new ObjectMapper()), KANAL, gesehen.get(1).zone()))
+                .isEqualTo(new ReihenKontext("kWh", ZoneId.of("Europe/Vienna")));
+        assertThat(root.queryForObject("SELECT zeitzone FROM standort WHERE id = ?", String.class, IDS.get("ST")))
+                .as("zurückgerollt").isEqualTo("Europe/Berlin");
+    }
+
     /** Der Verlaufs-Marker nennt den Zuwachs mit dem Zusatz des Ereignis-Vertrags, Wort für Wort. */
     @Test
     void derMarkerSagtGemessenNichtVerteilbar() throws Exception {
         TenantContext.set(KB);
-        List<SpeicherklasseHistorie.Ereignis> marken = new SpeicherklasseHistorie(app).ereignisse(KB, IDS.get("ZW"),
-                KANAL, Instant.parse("2026-11-03T00:00:00Z"), Instant.parse("2026-11-04T00:00:00Z"), 3600);
+        List<SpeicherklasseHistorie.Ereignis> marken = new SpeicherklasseHistorie(app,
+                new MeasurementCatalog(new ObjectMapper())).ereignisse(KB, IDS.get("ZW"), KANAL,
+                Instant.parse("2026-11-03T00:00:00Z"), Instant.parse("2026-11-04T00:00:00Z"), 3600);
         SpeicherklasseHistorie.Ereignis luecke = marken.stream().filter(e -> "data_gap".equals(e.art()))
                 .findFirst().orElseThrow();
         assertThat(luecke.zuwachs()).isNotNull();

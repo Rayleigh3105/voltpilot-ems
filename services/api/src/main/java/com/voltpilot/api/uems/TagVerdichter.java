@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Date;
@@ -124,6 +125,7 @@ public class TagVerdichter {
             Set.of("tag", "tenant_id", "entity_id", "messkanal", "version");
 
     private final JdbcTemplate adminJdbc;
+    private final MeasurementCatalog katalog;
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int fristJeLauf;
@@ -131,11 +133,13 @@ public class TagVerdichter {
 
     public TagVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
+            MeasurementCatalog katalog,
             @Value("${voltpilot.uems.tag.stapel:200}") int stapelGroesse,
             @Value("${voltpilot.uems.tag.stapel-je-lauf:40}") int stapelJeLauf,
             @Value("${voltpilot.uems.tag.frist-je-lauf:20000}") int fristJeLauf,
             @Value("${voltpilot.uems.tag.arbeit-hochwasser:200000}") int arbeitHochwasser) {
         this.adminJdbc = adminJdbc;
+        this.katalog = katalog;
         this.stapelGroesse = stapelGroesse;
         this.stapelJeLauf = stapelJeLauf;
         this.fristJeLauf = fristJeLauf;
@@ -401,65 +405,17 @@ public class TagVerdichter {
      * nicht verschieben — gespeichert wird sie trotzdem.
      */
     private List<Ortstag> ortstage(Connection con, List<Auftrag> stapel) throws SQLException {
-        Map<Integer, String[]> zonen = new LinkedHashMap<>();
-        Map<Integer, UUID> sites = new LinkedHashMap<>();
-        StringBuilder werte = new StringBuilder();
-        for (int i = 0; i < stapel.size(); i++) {
-            werte.append(i == 0 ? "" : ", ")
-                    .append(i == 0 ? "(?::int, ?::uuid, ?::uuid, ?::date)" : "(?, ?, ?, ?)");
-        }
-        try (PreparedStatement ps = con.prepareStatement("""
-                SELECT v.i, mp.site_id,
-                       (SELECT st.zeitzone
-                          FROM anlage_standort a
-                          JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
-                         WHERE a.tenant_id = v.tenant_id AND a.site_id = mp.site_id
-                           AND a.aufgehoben_am IS NULL
-                           AND a.gueltig_ab <= v.utc_tag
-                           AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= v.utc_tag)
-                         ORDER BY a.gueltig_ab DESC
-                         LIMIT 1),
-                       (SELECT un.zeitzone FROM unternehmen un
-                         WHERE un.tenant_id = v.tenant_id
-                         ORDER BY un.created_at, un.id LIMIT 1)
-                  FROM (VALUES """ + werte + """
-                       ) AS v(i, tenant_id, entity_id, utc_tag)
-                  LEFT JOIN measurement_point mp
-                         ON mp.id = v.entity_id AND mp.tenant_id = v.tenant_id
-                """)) {
-            int p = 1;
-            for (int i = 0; i < stapel.size(); i++) {
-                Auftrag a = stapel.get(i);
-                ps.setInt(p++, i);
-                ps.setObject(p++, a.tenant(), Types.OTHER);
-                ps.setObject(p++, a.entity(), Types.OTHER);
-                ps.setObject(p++, a.utcTag());
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int i = rs.getInt(1);
-                    sites.put(i, rs.getObject(2, UUID.class));
-                    String ausStandort = rs.getString(3);
-                    String ausUnternehmen = rs.getString(4);
-                    if (ausStandort != null && TagRegeln.ZONEN.contains(ausStandort)) {
-                        zonen.put(i, new String[] {ausStandort, TagRegeln.AUS_STANDORT});
-                    } else if (ausUnternehmen != null && TagRegeln.ZONEN.contains(ausUnternehmen)) {
-                        zonen.put(i, new String[] {ausUnternehmen, TagRegeln.AUS_UNTERNEHMEN});
-                    } else {
-                        zonen.put(i, new String[] {TagRegeln.VORGABE_ZONE, TagRegeln.AUS_VORGABE});
-                    }
-                }
-            }
-        }
+        Map<Integer, ReihenKontext.Zeitzone> zonen = ReihenKontext.zeitzonen(con, stapel.stream()
+                .map(a -> new ReihenKontext.Frage(a.tenant(), a.entity(), a.utcTag()))
+                .toList());
         Set<Ortstag> aus = new LinkedHashSet<>();
         for (int i = 0; i < stapel.size(); i++) {
             Auftrag a = stapel.get(i);
-            String[] z = zonen.getOrDefault(i,
-                    new String[] {TagRegeln.VORGABE_ZONE, TagRegeln.AUS_VORGABE});
-            ZoneId zone = TagRegeln.zone(z[0]);
+            ReihenKontext.Zeitzone z = zonen.get(i);
+            ZoneId zone = z.zone();
             for (LocalDate tag : TagRegeln.ortstageEinesUtcTages(a.utcTag(), zone)) {
-                aus.add(new Ortstag(a.tenant(), a.entity(), a.kanal(), tag, zone, z[0], z[1],
-                        sites.get(i)));
+                aus.add(new Ortstag(a.tenant(), a.entity(), a.kanal(), tag, zone, z.name(), z.herkunft(),
+                        z.siteId()));
             }
         }
         return List.copyOf(aus);
@@ -675,8 +631,10 @@ public class TagVerdichter {
         // AP-08 IP-5 — die MENGE aus den PERIODENSTÄNDEN des Tages, nie als Summe der
         // Viertelstunden: gerechnet von VerbrauchRegeln, hier nur angerufen. Für eine Reihe ohne
         // Zählerstand gibt es keine Periodenregel über Ständen (null).
-        VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(teile.teile(), teile.ereignisse(),
-                teile.deklaration(), wertart, teile.kadenzS(), beginn, ende);
+        // Einheit des Messkanals und Zone des Standorts: der EINE Träger, in dem die Kennzeichen sprechen.
+        ReihenKontext reihe = ReihenKontext.aus(katalog, t.kanal(), t.zone());
+        VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe, teile.teile(),
+                teile.ereignisse(), teile.deklaration(), wertart, teile.kadenzS(), beginn, ende);
         // §4.5: Summe erhalten ÷ Summe erwartet — eine Viertelstunde OHNE Zeile zählt mit ihrer
         // Erwartung (F8: 85 %, nicht 98 %). Vor IP-5 zählten nur die vorhandenen.
         if (teile.kadenzS() != null) {
