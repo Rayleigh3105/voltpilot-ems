@@ -1,6 +1,7 @@
 package com.voltpilot.api.measurement;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.LesepfadQuelle;
 import com.voltpilot.api.uems.LesepfadQuelle.Quelle;
@@ -259,14 +260,15 @@ public class SpeicherklasseHistorie {
         // liefe die Abfrage an den Indizes `idx_messreihe_ereignis_reihe` und
         // `…_quelle` vorbei, die IP-8 genau für diesen Leser gebaut hat.
         String sql = "WITH e AS (SELECT DISTINCT ON (ereignis_id) ereignis_id,art,"
-                + "zeit beginn,bis,entity_id,messkanal FROM messreihe_ereignis WHERE tenant_id=? "
+                + "zeit beginn,bis,entity_id,messkanal,nutzlast FROM messreihe_ereignis WHERE tenant_id=? "
                 + "AND NOT aus_bestand AND art IN (" + MARKER_ARTEN + ") AND ("
                 + "(entity_id=? AND (messkanal IS NULL OR " + praedikat("messkanal", messkanal)
                 + ")) OR (entity_id IS NULL AND data_source_id=(SELECT data_source_id "
                 + "FROM measurement_point WHERE tenant_id=? AND id=?))) "
                 + "AND zeit<=? AND COALESCE(bis,zeit)>=? "
                 + "ORDER BY ereignis_id,eingang DESC) "
-                + "SELECT art,min(beginn) beginn,max(COALESCE(bis,beginn)) ende,count(*) anzahl "
+                + "SELECT art,min(beginn) beginn,max(COALESCE(bis,beginn)) ende,count(*) anzahl,"
+                + "CASE WHEN count(*)=1 THEN (array_agg(nutzlast))[1] END nutzlast "
                 + "FROM e WHERE NOT (e.art='counter_reset' AND EXISTS (SELECT 1 FROM messreihe_ereignis u "
                 + "WHERE u.tenant_id=? AND u.entity_id=e.entity_id AND u.messkanal=e.messkanal "
                 + "AND u.art='counter_overflow' AND u.zeit=e.beginn)) "
@@ -275,7 +277,7 @@ public class SpeicherklasseHistorie {
         return jdbc.query(sql, (rs, n) -> new Ereignis(rs.getString("art"),
                         rs.getTimestamp("beginn").toInstant(),
                         rs.getTimestamp("ende") == null ? null : rs.getTimestamp("ende").toInstant(),
-                        rs.getInt("anzahl")),
+                        rs.getInt("anzahl"), zuwachs(rs.getString("art"), rs.getString("nutzlast"))),
                 tenantId, entityId, wert(messkanal), tenantId, entityId, Timestamp.from(bis),
                 Timestamp.from(von), tenantId, rasterS + " seconds");
     }
@@ -407,6 +409,34 @@ public class SpeicherklasseHistorie {
         }
     }
 
-    /** Ein gebündeltes Ereignis des Zeitraums. */
-    public record Ereignis(String art, Instant von, Instant bis, int anzahl) {}
+    /**
+     * AP-08 IP-6 — der gemessene Zuwachs einer EINZELNEN Lücke, wie ihre Meldung ihn trägt; sonst
+     * {@code null}. Eine Lücke, in die nach dem Schließen nachgeliefert wurde, zeigt ihn nicht: dort
+     * sind Teile verteilbar geworden, und was noch Lücke ist, sagt das Kennzeichen der Periode.
+     */
+    private static Zuwachs zuwachs(String art, String nutzlast) {
+        if (!"data_gap".equals(art) || nutzlast == null) {
+            return null;
+        }
+        try {
+            JsonNode n = JSON.readTree(nutzlast);
+            if (!n.hasNonNull("zuwachs") || !n.hasNonNull("einheit") || n.hasNonNull("nachgeliefert_am")) {
+                return null;
+            }
+            return new Zuwachs(n.get("zuwachs").decimalValue(), n.get("einheit").asText());
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    /** Der gemessene, nicht verteilbare Zuwachs über eine Lücke (AP-08 IP-6). */
+    public record Zuwachs(BigDecimal menge, String einheit) {}
+
+    /** Ein gebündeltes Ereignis des Zeitraums; {@code zuwachs} nur an einer einzelnen Lücke. */
+    public record Ereignis(String art, Instant von, Instant bis, int anzahl, Zuwachs zuwachs) {
+        /** Die Form von VOR AP-08 IP-6. */
+        public Ereignis(String art, Instant von, Instant bis, int anzahl) {
+            this(art, von, bis, anzahl, null);
+        }
+    }
 }

@@ -17,7 +17,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * declaration {@code messreihe_zaehler_deklaration()} the overflow detection reads (UEMS AP-08
  * IP-4, V20260912220000) - it rewrites the whole vocabulary function, so the writer sees the
  * CURRENT vocabulary, not the one of the first migration. And the one that lets {@code backfill}
- * come from {@code cloud} too (UEMS AP-07 IP-9, V20260913130000) - again the whole function.
+ * come from {@code cloud} too (UEMS AP-07 IP-9, V20260913130000) - again the whole function. And the
+ * one that lets {@code data_gap} carry the measured increase across the gap (UEMS AP-08 IP-6,
+ * V20260913170000) - the whole function once more.
  */
 final class EreignisTabelleImTest {
 
@@ -26,6 +28,7 @@ final class EreignisTabelleImTest {
             "V20260911260000__uems_messreihe_ereignis.sql");
     static final Path UEBERLAUF = MIGRATION.resolveSibling("V20260912220000__uems_zaehler_ueberlauf.sql");
     static final Path LUECKEN = MIGRATION.resolveSibling("V20260913130000__uems_luecken_vokabular.sql");
+    static final Path ZUWACHS = MIGRATION.resolveSibling("V20260913170000__uems_luecken_zuwachs.sql");
 
     private EreignisTabelleImTest() {}
 
@@ -33,7 +36,7 @@ final class EreignisTabelleImTest {
     static void anlegen(PostgreSQLContainer<?> db, String... tenants) throws Exception {
         try (Connection c = DriverManager.getConnection(db.getJdbcUrl(), db.getUsername(),
                 db.getPassword()); Statement st = c.createStatement()) {
-            for (Path migration : new Path[] {MIGRATION, UEBERLAUF, LUECKEN}) {
+            for (Path migration : new Path[] {MIGRATION, UEBERLAUF, LUECKEN, ZUWACHS}) {
                 st.execute(Files.readString(migration)
                         .replace("${appDbUser}", "voltpilot_app")
                         .replace("${adminDbUser}", "voltpilot_admin"));

@@ -105,7 +105,8 @@ Jedes Ereignis trägt:
 nie geändert: dieselbe `ereignis_id`, dieselbe Art, derselbe Bezug, dasselbe `von`; ein
 **fortschreibbares** Feld darf von leer auf einen Wert gehen — nie zurück, nie auf einen
 anderen Wert, und kein Feld verschwindet (`fortschreibung_unzulaessig`). Fortschreibbar sind
-bei `data_gap` `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis`, bei
+bei `data_gap` `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis` und der Zuwachs
+(`zuwachs`, `einheit`, `stand_vor`, `stand_nach`, AP-08 IP-6), bei
 `handover` `bis`. Der Speicher (IP-8) hängt die Fortschreibung an; die erste Meldung bleibt
 lesbar. **Kein Ereignis wird gelöscht** (§4.9 Nr. 7) — `nie_geloescht` steht bei jeder Art.
 
@@ -116,7 +117,7 @@ Felder, die eine Fortschreibung setzen darf.
 
 | Art | Überschrift | Urheber | Box | Zeit · Achse | Bezug (Pflicht, + erlaubt) | Pflichtfelder | Fortschreibbar |
 |---|---|---|---|---|---|---|---|
-| `data_gap` | Lücke | writer · box · cloud | ja | [von, bis) · offen erlaubt · Messzeit | box (+ datenquelle, komponente, messkanal, messstelle) | `erkannt_aus` | `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis` |
+| `data_gap` | Lücke | writer · box · cloud | ja | [von, bis) · offen erlaubt · Messzeit | box (+ datenquelle, komponente, messkanal, messstelle) | `erkannt_aus` | `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis`, `zuwachs`, `einheit`, `stand_vor`, `stand_nach` |
 | `backfill` | Nachlieferung | writer · cloud | — | [von, bis] · Messzeit | box, datenquelle | `eingang_von`, `eingang_bis`, `anzahl` | — |
 | `duplicate_conflict` | Abweichender Wert | writer | — | Zeitpunkt · Eingangszeit | box, komponente, messkanal (+ messstelle) | `messzeit`, `gespeicherter_wert`, `abgewiesener_wert`, `sequenzen` | — |
 | `sequence_gap` | Datenpakete fehlen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten`, `anzahl` | — |
@@ -170,6 +171,20 @@ Lücken-Melder der api fest (`uems/LueckenMelder`) — dort heißt Weg 2 `cloud`
 auch von `cloud` (`auch_urheber` in der Vektor-Datei); `writer` bleibt zulässig, keine Bedeutung
 ändert sich. Schmal: `verdraengung` bleibt der Box, `herzschlag` der Cloud. Migration
 `V20260913130000__uems_luecken_vokabular.sql`.
+
+**Zuwachs über eine Lücke (AP-08 IP-6, E2 = A, additiv).** Der Zähler hat weitergezählt, während
+die Werte fehlten: die Differenz der Stände um die Lücke ist GEMESSEN, aber auf keine Viertelstunde
+VERTEILBAR. `data_gap` trägt sie darum als Nutzlast — `zuwachs`, `einheit`, `stand_vor`,
+`stand_nach`, optional und fortschreibbar (der Lücken-Melder setzt sie mit dem Schließen). Die
+vier Felder stehen **nur zusammen**, **nur an einer geschlossenen Lücke EINER Reihe**
+(`komponente` + `messkanal`) und **nie von einer Box** (ihr Drahtschema kennt sie nicht);
+`zuwachs` = `stand_nach` − `stand_vor` ≥ 0, `einheit` aus `vokabular.einheit_zuwachs` — die
+Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten
+(`messstelle-vectors.json`), kein freier Text. Der Zusatz im Kundensatz: „· der Zähler hat
+weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar“. Die Meldung ist die
+Rechnung zum Nachlesen, nie die Quelle der Menge: in welcher Periode der Zuwachs zählt, entscheidet
+`VerbrauchRegeln.zaehltZu` im Verbrauchsvertrag (`verbrauch.md` §9). Migration
+`V20260913170000__uems_luecken_zuwachs.sql`.
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen

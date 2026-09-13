@@ -83,6 +83,7 @@ def test_die_regeln_der_datei_sind_die_regeln_des_moduls():
     assert regeln["luecke_faktor"] == verbrauch.LUECKE_FAKTOR
     assert regeln["integration_halten_faktor"] == verbrauch.HALTEN_FAKTOR
     assert regeln["vergleich_nachkommastellen"] == verbrauch.NACHKOMMASTELLEN
+    assert tuple(regeln["luecke_zeitraeume"]) == verbrauch.LUECKE_ZEITRAEUME
     assert set(DOC["zustaende"]) >= {
         verbrauch.VOLLSTAENDIG,
         verbrauch.UNVOLLSTAENDIG,
@@ -531,3 +532,76 @@ def test_die_ueberlauf_entscheidung_steht_genau_dort_wo_die_erwartung_einen_uebe
     assert verbrauch.ueberlauf(
         verbrauch.Rohwert(t, Decimal(100)), verbrauch.Rohwert(t + timedelta(minutes=1), Decimal(101)),
         timedelta(minutes=1), Decimal(65536), Decimal(1667)) is None
+
+
+# ------------------------------------------ Zuwachs über eine Lücke (AP-08 IP-6, E2 = A)
+
+_IMMER_VON = verbrauch._zeit("2000-01-01T00:00:00+00:00")
+_IMMER_BIS = verbrauch._zeit("2100-01-01T00:00:00+00:00")
+
+LUECKEN_ERWARTUNGEN = [
+    pytest.param(case, erwartung, id=f"{case['name']}::{erwartung['name']}")
+    for case in CASES
+    for erwartung in case["expected"]
+    if "luecken_zuwachs" in erwartung
+]
+
+
+def test_die_abnahmefaelle_von_ip6_tragen_ihre_zuwachs_felder():
+    """F8, F11, F20 und F23 nennen an JEDER Erwartung, welche Lücken ihr Zuwachs zählt."""
+    abnahme = [c for c in CASES if c["name"].split("-")[0] in {"f8", "f11", "f20", "f23"}]
+    assert len(abnahme) == 4
+    for case in abnahme:
+        for erwartung in case["expected"]:
+            assert "luecken_zuwachs" in erwartung, f"{case['name']}::{erwartung['name']}"
+
+
+@pytest.mark.parametrize("case,erwartung", LUECKEN_ERWARTUNGEN)
+def test_der_zuwachs_steht_genau_einmal(case: dict, erwartung: dict):
+    """E2: die Periode, die die Lücke GANZ enthält, zählt den Zuwachs (Stände, Einheit, Kennzeichen); sonst keine."""
+    reihe = _reihe(case, erwartung)
+    werte = verbrauch.rohwerte(reihe)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    faktor = verbrauch._dez(reihe.get("faktor", 1))
+    ereignisse = list(reihe.get("ereignisse", [])) + list(erwartung.get("ereignisse_zusatz", []))
+    von, bis = verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"])
+    ist = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], erwartung.get("ereignisse_zusatz", ()))
+
+    gezaehlt = verbrauch.luecken_zuwaechse(werte, von, bis, kadenz, ereignisse, faktor)
+    soll = erwartung["luecken_zuwachs"]
+    assert len(gezaehlt) == len(soll), case["why"]
+    for luecke, s in zip(gezaehlt, soll):
+        assert luecke.messzeit_vor == verbrauch._zeit(s["messzeit_vor"])
+        assert luecke.messzeit_nach == verbrauch._zeit(s["messzeit_nach"])
+        assert luecke.stand_vor == verbrauch._dez(s["stand_vor"])
+        assert luecke.stand_nach == verbrauch._dez(s["stand_nach"])
+        assert luecke.zuwachs == verbrauch._dez(s["zuwachs"])
+        assert s["einheit"] == reihe["einheit"]
+        assert verbrauch.luecken_kennzeichen(luecke) in ist["kennzeichen"]
+    for luecke in verbrauch.luecken_zuwaechse(werte, _IMMER_VON, _IMMER_BIS, kadenz, ereignisse, faktor):
+        if luecke not in gezaehlt:
+            assert verbrauch.luecken_kennzeichen(luecke) not in ist["kennzeichen"], case["why"]
+
+
+@pytest.mark.parametrize("zuordnung", DOC["luecken_zuordnung"], ids=lambda z: z["name"])
+def test_der_kleinste_ganz_enthaltende_zeitraum(zuordnung: dict):
+    """E2: Viertelstunde → Stunde → Tag → Monat → Jahr; über den Jahreswechsel keiner."""
+    kadenz = timedelta(seconds=zuordnung["kadenz_s"])
+    vor, nach = verbrauch._zeit(zuordnung["messzeit_vor"]), verbrauch._zeit(zuordnung["messzeit_nach"])
+    ist = verbrauch.kleinster_zeitraum(verbrauch.LueckenZuwachs(vor, nach), kadenz, DOC["zeitzone"])
+    soll = zuordnung["kleinster_zeitraum"]
+    if soll is None:
+        assert ist is None, zuordnung["why"]
+    else:
+        assert ist == (soll["art"], verbrauch._zeit(soll["von"]), verbrauch._zeit(soll["bis"])), zuordnung["why"]
+    if zuordnung["fall"] is not None:
+        reihe = next(c for c in CASES if c["name"] == zuordnung["fall"])["input"]["reihe"]
+        alle = verbrauch.luecken_zuwaechse(
+            verbrauch.rohwerte(reihe),
+            _IMMER_VON,
+            _IMMER_BIS,
+            timedelta(seconds=reihe["kadenz_s"]),
+            reihe.get("ereignisse", []),
+            verbrauch._dez(reihe.get("faktor", 1)),
+        )
+        assert [(l.messzeit_vor, l.messzeit_nach) for l in alle] == [(vor, nach)]

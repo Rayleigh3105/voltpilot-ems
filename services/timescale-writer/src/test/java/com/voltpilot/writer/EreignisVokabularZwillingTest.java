@@ -81,6 +81,7 @@ class EreignisVokabularZwillingTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        assertThat(texte(w.path("einheit_zuwachs"))).containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         Map<String, String> erkannt = new LinkedHashMap<>();
         w.path("erkannt_aus").forEach(e -> erkannt.put(e.path("code").asText(), e.path("urheber").asText()));
         Map<String, String> twin = new LinkedHashMap<>();

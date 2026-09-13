@@ -72,6 +72,9 @@ Bezug wird übernommen, nie neu nachgeschlagen), geprüft mit `EreignisVokabular
 `auch_urheber`; die DB prüft Urheber je Art, nicht je `erkannt_aus`). Vier neue Vektor-Fälle (68).
 Der Writer-Test fährt die Vokabular-Migration mit (`EreignisTabelleImTest.LUECKEN`).
 
+Seit AP-08 IP-6 schreibt der Melder beim Schließen einer Reihen-Lücke den gemessenen Zuwachs
+(`zuwachs`, `einheit`, `stand_vor`, `stand_nach`) — Regeln und Fallen in `uems-luecken-zuwachs.md`.
+
 ## Arbeitsweise
 
 `lauf(jetzt)` = `eintragen` (Eingänge seit dem Zeiger `messreihe_luecke_lauf`, Zeile unter
