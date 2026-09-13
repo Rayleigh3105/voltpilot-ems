@@ -466,8 +466,8 @@ class VerbrauchVectorsTest {
         array.forEach(e -> out.add(new Ereignis(
                 e.path("art").asText(),
                 VerbrauchRegeln.zeit(e.path("t").asText()),
-                // Die Uhrzeit, wie die Meldung sie trägt: Stunde und Minute des Zeitpunkts.
-                e.path("t").asText().substring(11, 16),
+                // Die Uhrzeit, wie der Verdichter sie der Meldung gibt (mit MESZ/MEZ an der doppelten Stunde).
+                ErgebnisZustand.uhr(VerbrauchRegeln.zeit(e.path("t").asText()), VerbrauchRegeln.ANZEIGE_ZEITZONE),
                 dezimal(e.path("endstand"), null),
                 dezimal(e.path("anfangsstand"), null),
                 e.path("verlust_s").asLong(Ereignis.VERLUST_VORGABE))));

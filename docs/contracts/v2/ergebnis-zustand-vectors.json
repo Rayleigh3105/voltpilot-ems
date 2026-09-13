@@ -6,12 +6,13 @@
     "kennzeichen: die geschlossene Liste JEDES Satzes, den die Verbrauchsregel (VerbrauchRegeln ⟷ verbrauch.py) heute spricht — Wortlaut, Platzhalter, Rang. Ein Satz, der auf kein Muster passt, ist kein Kennzeichen.",
     "Reihenfolge: der Rang steigt nie. Innerhalb von Rang 30 (Strecke) stehen die Sätze in zeitlicher Folge; die Uhrzeit HH:MM allein beweist das über Tagesgrenzen nicht und wird darum nicht verglichen. folgt_auf/verlangt_danach binden die Sätze der Gerätegrenze aneinander.",
     "fehlbestand: true heißt, der Satz nennt einen nicht gezählten Teil. vollständig trägt keinen, unvollständig mindestens einen, keine Werte keinen.",
+    "fruehere_fassungen (1.1): Wortlaute, die eine frühere Fassung sprach und die in kennzeichen der Speicherklassen gespeichert sein können. Sie werden als ihr heutiges Muster ERKANNT (fruehere_fassung = true), aber nie mehr gesprochen — keine Zeile wird umgeschrieben, keine wird unlesbar.",
     "kennzeichen_vorgesehen: Wörter des Vokabulars (verbrauch-vectors.json kennzeichen), deren Wortlaut das erzeugende Paket festlegt. Bis dahin sind sie kein Satz dieses Vertrags.",
     "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; die Ebene bestimmt die Stellen, nie die Fläche. Kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
-    "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es.",
+    "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es. Dieselbe Regel gilt für die Uhrzeit IN einem Kennzeichen (familie uhr, seit 1.1): „Rücksetzung 02:30 MEZ …“.",
     "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -44,7 +45,7 @@
     }
   ],
   "platzhalter": {
-    "uhr": "(?:[01][0-9]|2[0-3]):[0-5][0-9]",
+    "uhr": "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?",
     "text": ".+",
     "ganzzahl": "(?:0|[1-9][0-9]*)",
     "ganzzahl_ab_2": "(?:[2-9]|[1-9][0-9]+)",
@@ -120,7 +121,7 @@
     },
     {
       "schluessel": "geraetegrenze_mit",
-      "muster": "Gerätegrenze {uhr} mit Ablesestände",
+      "muster": "Gerätegrenze {uhr} mit Ableseständen",
       "platzhalter": {"uhr": "uhr"},
       "wort": "Gerätegrenze",
       "rang": 30,
@@ -128,7 +129,7 @@
       "einmalig": false,
       "folgt_auf": null,
       "verlangt_danach": null,
-      "beispiel": "Gerätegrenze 10:40 mit Ablesestände",
+      "beispiel": "Gerätegrenze 10:40 mit Ableseständen",
       "fall": "F4"
     },
     {
@@ -275,6 +276,16 @@
       "fall": "F3"
     }
   ],
+  "fruehere_fassungen": [
+    {
+      "schluessel": "geraetegrenze_mit",
+      "muster": "Gerätegrenze {uhr} mit Ablesestände",
+      "platzhalter": {"uhr": "uhr"},
+      "bis_fassung": "1.0",
+      "beispiel": "Gerätegrenze 10:40 mit Ablesestände",
+      "warum": "Falscher Dativ (nach „mit“: „Ableseständen“). Seit AP-08 IP-4 gesprochen und in kennzeichen der Speicherklassen gespeichert; eine endgültige Viertelstunde wird nie neu geschrieben, und Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Darum bleibt die alte Form lesbar."
+    }
+  ],
   "kennzeichen_vorgesehen": [
     {
       "wort": "nachgeliefert",
@@ -364,11 +375,6 @@
       "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-6 Vertrag (verbrauch-vectors.json, Python-Zwilling, gespeichert in kennzeichen der Speicherklassen). Eine Änderung ist eine neue Fassung beider Verträge samt Umgang mit gespeicherten Zeilen — nicht Umfang von IP-8."
     },
     {
-      "stelle": "kennzeichen.geraetegrenze_mit",
-      "befund": "„mit Ablesestände“ — nach „mit“ steht der Dativ: „mit Ableseständen“. „ohne Ablesestände“ ist richtig.",
-      "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-4 Vertrag und gespeichert; die richtige Form ist hier ausdrücklich ein unbekannter Satz (Gegenprobe)."
-    },
-    {
       "stelle": "kennzeichen.aus_leistung_integriert",
       "befund": "Der Klammerzusatz „Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit“ ist Rechenmethode, kein Kundenwort.",
       "warum_so_aufgenommen": "Vertrag seit AP-08 IP-3. Der Datenbank-CHECK prüft nur den Anfang „aus Leistung integriert%“ — eine Kürzung bräuchte keine Migration, wohl aber verbrauch-vectors.json und beide Rechen-Zwillinge."
@@ -380,8 +386,8 @@
     },
     {
       "stelle": "Uhrzeiten aller Kennzeichen",
-      "befund": "Die Uhrzeit steht in der festen Zone Europe/Berlin (VerbrauchRegeln.ANZEIGE_ZEITZONE, verbrauch.py ebenso) bzw. wie die Meldung sie nennt, nicht in der Zeitzone des Standorts (E10) — und ohne MESZ/MEZ: „Rücksetzung 02:30 …“ am 25.10. ist mehrdeutig.",
-      "warum_so_aufgenommen": "Die Rechenregel spricht den Satz bei der Verdichtung; die Standort-Zone reist dort noch nicht mit. Nicht Umfang von IP-8."
+      "befund": "Die Uhrzeit steht in der festen Zone Europe/Berlin (VerbrauchRegeln.ANZEIGE_ZEITZONE, verbrauch.py ebenso), nicht in der Zeitzone des Standorts (E10). Seit 1.1 trägt sie an der doppelten Stunde MESZ/MEZ („Rücksetzung 02:30 MEZ …“) und ist damit eindeutig; die Zone selbst ist weiter die feste.",
+      "warum_so_aufgenommen": "Die Rechenregel spricht den Satz bei der Verdichtung (ViertelstundeVerdichter, TagVerdichter/PeriodeVerdichter/ZeitraumMenge über ViertelstundenTeile); keiner dieser Wege lädt heute die Zone des Standorts (standort.zeitzone). ErgebnisZustand.uhr(zeit, zone) nimmt sie schon entgegen — durchgereicht werden muss sie bis VerbrauchRegeln.uhr und ViertelstundeVerdichter.uhr."
     },
     {
       "stelle": "kennzeichen.ueberlauf",
@@ -993,16 +999,31 @@
       "name": "Gegenprobe: umformulierter Kennzeichen-Satz",
       "familie": "ergebnis",
       "fall": "F4",
-      "why": "Auch eine gut gemeinte Korrektur ist ein unbekannter Satz — die Liste ist geschlossen (siehe befunde).",
+      "why": "Auch eine gut gemeinte Umformulierung ist ein unbekannter Satz — die Liste ist geschlossen; eine Änderung ist eine neue Fassung mit fruehere_fassungen.",
       "eingang": {
         "wert": "101.800",
         "einheit": "kWh",
         "ebene": "stunde",
         "zustand": "vollständig",
         "abdeckung_prozent": "88",
-        "kennzeichen": ["Gerätegrenze 10:40 mit Ableseständen"]
+        "kennzeichen": ["Gerätegrenze 10:40 mit Zählerständen"]
       },
       "erwartet": {"verstoesse": ["kennzeichen_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gespeicherter Satz der Fassung 1.0 bleibt lesbar",
+      "familie": "ergebnis",
+      "fall": "F4",
+      "why": "„mit Ablesestände“ steht in endgültigen Zeilen, die nie neu geschrieben werden. Die Fläche liest sie weiter — als Satz, wie er gespeichert ist; gesprochen wird er nie mehr.",
+      "eingang": {
+        "wert": "101.800",
+        "einheit": "kWh",
+        "ebene": "stunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "88",
+        "kennzeichen": ["Gerätegrenze 10:40 mit Ablesestände"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "101,8 kWh · vollständig · Verlauf 88 % · Gerätegrenze 10:40 mit Ablesestände"}
     },
     {
       "name": "Gegenprobe: Kennzeichen, dessen Wortlaut noch nicht im Vertrag steht",
@@ -1048,7 +1069,7 @@
         "ebene": "tag",
         "zustand": "keine Werte",
         "abdeckung_prozent": null,
-        "kennzeichen": ["Gerätegrenze 10:40 mit Ableseständen", "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"]
+        "kennzeichen": ["Gerätegrenze 10:40 mit Zählerständen", "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"]
       },
       "erwartet": {
         "verstoesse": ["einheit_unbekannt", "zahl_verboten", "kennzeichen_unbekannt", "keine_werte_mit_fehlbestand"],
@@ -1085,6 +1106,38 @@
       "fall": "F8",
       "why": "Die de-DE-Form wäre richtig, ist aber eine Vertragsänderung an verbrauch-vectors.json — siehe befunde.",
       "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Dativ: die richtige Form ist der Vertragssatz",
+      "familie": "erkennen",
+      "fall": "F4",
+      "why": "Nach „mit“ steht der Dativ. Seit 1.1 der Wortlaut des Musters.",
+      "eingang": {"satz": "Gerätegrenze 10:40 mit Ableseständen"},
+      "erwartet": {"schluessel": "geraetegrenze_mit", "werte": {"uhr": "10:40"}, "vorgesehen": false}
+    },
+    {
+      "name": "Dativ: die alte Form ist nur noch eine frühere Fassung",
+      "familie": "erkennen",
+      "fall": "F4",
+      "why": "„mit Ablesestände“ wird erkannt (gespeicherte Zeilen), aber als frühere Fassung — kein Zwilling spricht ihn mehr.",
+      "eingang": {"satz": "Gerätegrenze 10:40 mit Ablesestände"},
+      "erwartet": {"schluessel": "geraetegrenze_mit", "werte": {"uhr": "10:40"}, "fruehere_fassung": true, "vorgesehen": false}
+    },
+    {
+      "name": "Uhrzeit mit Zusatz an der doppelten Stunde",
+      "familie": "erkennen",
+      "fall": "F13",
+      "why": "Der Zusatz gehört zur Uhrzeit — der Platzhalter uhr trägt ihn mit.",
+      "eingang": {"satz": "Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt"},
+      "erwartet": {"schluessel": "ruecksetzung", "werte": {"uhr": "02:30 MEZ"}, "vorgesehen": false}
+    },
+    {
+      "name": "Uhrzeit mit erfundenem Zusatz",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Nur MESZ, MEZ oder ein UTC-Offset — „Sommerzeit“ ist kein Zusatz des Vertrags.",
+      "eingang": {"satz": "Rücksetzung 02:30 Sommerzeit ohne Endstand — bis zu 1 Kadenz nicht gezählt"},
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
     },
     {
@@ -1355,6 +1408,70 @@
         "ebene_summe": "tag"
       },
       "erwartet": {"summe_der_angezeigten": "720,0 kWh", "differenz": null, "satz": null}
+    },
+    {
+      "name": "Erste 02:30 am Sommerzeit-Ende",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Die Uhrzeit gibt es am 25.10.2026 zweimal; die erste ist Sommerzeit.",
+      "eingang": {"zeit": "2026-10-25T02:30:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:30 MESZ"}
+    },
+    {
+      "name": "Zweite 02:30 am Sommerzeit-Ende",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Eine Stunde später zeigt die Wanduhr wieder 02:30 — ohne Zusatz wären beide Sätze gleich.",
+      "eingang": {"zeit": "2026-10-25T02:30:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:30 MEZ"}
+    },
+    {
+      "name": "02:00 am Sommerzeit-Ende gibt es zweimal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Der Beginn der doppelten Stunde gehört zu ihr (wie „02:00–03:00 MEZ“ im Raster).",
+      "eingang": {"zeit": "2026-10-25T02:00:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:00 MEZ"}
+    },
+    {
+      "name": "03:00 am Sommerzeit-Ende gibt es nur einmal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Die Wanduhr springt von 02:59 MESZ auf 02:00 MEZ — 03:00 kommt danach genau einmal.",
+      "eingang": {"zeit": "2026-10-25T03:00:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "03:00"}
+    },
+    {
+      "name": "01:59 am Sommerzeit-Ende gibt es nur einmal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Vor der doppelten Stunde kein Zusatz.",
+      "eingang": {"zeit": "2026-10-25T01:59:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "01:59"}
+    },
+    {
+      "name": "Sommerzeit-Beginn: keine doppelte Uhrzeit",
+      "familie": "uhr",
+      "fall": "F14",
+      "why": "Am 28.03.2027 fehlt eine Stunde; keine Uhrzeit kommt zweimal vor, keine trägt einen Zusatz.",
+      "eingang": {"zeit": "2027-03-28T03:00:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "03:00"}
+    },
+    {
+      "name": "gewöhnlicher Tag",
+      "familie": "uhr",
+      "fall": "F6",
+      "why": "An jedem anderen Tag bleibt die Uhrzeit HH:MM.",
+      "eingang": {"zeit": "2026-11-19T09:12:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "09:12"}
+    },
+    {
+      "name": "Zone außerhalb Mitteleuropas: Offset statt Kurzname",
+      "familie": "uhr",
+      "fall": "konstruiert",
+      "why": "Wie im Raster: MESZ/MEZ nur in einer Zone mit Normalzeit UTC+01:00, sonst der Offset.",
+      "eingang": {"zeit": "2026-10-25T01:30:00+00:00", "zeitzone": "Europe/London"},
+      "erwartet": {"text": "01:30 UTC+00:00"}
     },
     {
       "name": "negative Rundungsdifferenz",

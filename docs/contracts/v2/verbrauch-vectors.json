@@ -485,7 +485,7 @@
    "familie": "zaehlerstand",
    "ableitung": "einzel",
    "abnahme": null,
-   "why": "Gerätegrenze als Fakt: keine Differenz über die Grenze; mit Ablesestände ist die Tagesmenge vollständig, obwohl zwei Viertelstunden unvollständig sind.",
+   "why": "Gerätegrenze als Fakt: keine Differenz über die Grenze; mit Ableseständen ist die Tagesmenge vollständig, obwohl zwei Viertelstunden unvollständig sind.",
    "messstelle": "MS-06",
    "input": {
     "reihe": {
@@ -565,7 +565,7 @@
      "erwartet": 60,
      "abdeckung_prozent": 88,
      "kennzeichen": [
-      "Gerätegrenze 10:40 mit Ablesestände",
+      "Gerätegrenze 10:40 mit Ableseständen",
       "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
      ]
     },
@@ -579,7 +579,7 @@
      "erwartet": 1440,
      "abdeckung_prozent": 99,
      "kennzeichen": [
-      "Gerätegrenze 10:40 mit Ablesestände",
+      "Gerätegrenze 10:40 mit Ableseständen",
       "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
      ]
     }
@@ -1179,7 +1179,7 @@
      "erwartet": 15,
      "abdeckung_prozent": 100,
      "kennzeichen": [
-      "Gerätegrenze 09:12 mit Ablesestände"
+      "Gerätegrenze 09:12 mit Ableseständen"
      ],
      "version": 2,
      "ereignisse_zusatz": [

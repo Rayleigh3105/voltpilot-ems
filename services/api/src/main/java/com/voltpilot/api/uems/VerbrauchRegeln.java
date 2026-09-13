@@ -8,12 +8,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Die REINEN Rechenregeln der Verbrauchsbildung — UEMS AP-08 §4 (Prosa in
@@ -68,7 +66,11 @@ public final class VerbrauchRegeln {
     /** Auf so viele Nachkommastellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12). */
     public static final int NACHKOMMASTELLEN = 3;
 
-    /** Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen. */
+    /**
+     * Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen — FEST, nicht die des Standorts
+     * (E10). Die doppelte Stunde trägt MESZ/MEZ ({@link ErgebnisZustand#uhr}); die Standort-Zone
+     * reist durch die Verdichtung noch nicht mit (Befund in {@code ergebnis-zustand-vectors.json}).
+     */
     public static final ZoneId ANZEIGE_ZEITZONE = ZoneId.of("Europe/Berlin");
 
     // Zustandswörter und Kennzeichen-Sätze sind der Vertrag ergebnis-zustand (AP-08 IP-8): diese
@@ -88,8 +90,6 @@ public final class VerbrauchRegeln {
 
     /** Dieselbe Rechengenauigkeit wie der Python-Zwilling (Decimal-Vorgabe: 28 Stellen, half-even). */
     private static final MathContext RECHNUNG = new MathContext(28, RoundingMode.HALF_EVEN);
-
-    private static final DateTimeFormatter UHR = DateTimeFormatter.ofPattern("HH:mm", Locale.GERMANY);
 
     private VerbrauchRegeln() {}
 
@@ -227,7 +227,7 @@ public final class VerbrauchRegeln {
     }
 
     private static String uhr(Instant t) {
-        return UHR.format(t.atZone(ANZEIGE_ZEITZONE));
+        return ErgebnisZustand.uhr(t, ANZEIGE_ZEITZONE);
     }
 
     private static BigDecimal runde(BigDecimal x, int stellen) {
@@ -264,7 +264,7 @@ public final class VerbrauchRegeln {
      * {@code Stand(bis)}. Jede Nachbarschaft dieser Folge wird einzeln eingeordnet:
      *
      * <ul>
-     *   <li>Gerätegrenze in {@code (vorher, nachher]}: mit Ablesestände
+     *   <li>Gerätegrenze in {@code (vorher, nachher]}: mit Ableseständen
      *       {@code (Endstand − vorher) + (nachher − Anfangsstand)}, ohne Ablesestände Beitrag 0
      *       und die Periode ist unvollständig (Z4). Nie {@code nachher − vorher}.
      *   <li>Fallender Stand mit deklariertem Wertebereich und plausiblem Zuwachs: Überlauf mit

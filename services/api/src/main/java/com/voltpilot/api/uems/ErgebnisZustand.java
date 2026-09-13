@@ -81,7 +81,7 @@ public final class ErgebnisZustand {
 
     /** Je Platzhalter-Art der Ausdruck, der den eingesetzten Text erkennt (ohne fangende Gruppe). */
     public static final Map<String, String> PLATZHALTER = Map.of(
-            "uhr", "(?:[01][0-9]|2[0-3]):[0-5][0-9]",
+            "uhr", "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?",
             "text", ".+",
             "ganzzahl", "(?:0|[1-9][0-9]*)",
             "ganzzahl_ab_2", "(?:[2-9]|[1-9][0-9]+)",
@@ -126,7 +126,7 @@ public final class ErgebnisZustand {
                     Map.of(), null, 21, true, true, null, null),
             new Muster("nur_ein_stand", "nur ein Stand in der Periode — keine Menge bildbar",
                     Map.of(), null, 22, true, true, null, null),
-            new Muster("geraetegrenze_mit", "Gerätegrenze {uhr} mit Ablesestände", Map.of(UHR, UHR),
+            new Muster("geraetegrenze_mit", "Gerätegrenze {uhr} mit Ableseständen", Map.of(UHR, UHR),
                     "Gerätegrenze", 30, false, false, null, null),
             new Muster("geraetegrenze_ohne", "Gerätegrenze {uhr} ohne Ablesestände", Map.of(UHR, UHR),
                     "Gerätegrenze", 30, false, false, null, "zuwachs_nicht_messbar"),
@@ -158,6 +158,18 @@ public final class ErgebnisZustand {
                     "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)", Map.of(),
                     "aus Leistung integriert", 60, false, true, null, null));
 
+    /**
+     * Ein Wortlaut, den eine frühere Fassung sprach und der gespeichert sein kann. Er wird als das
+     * Muster {@code schluessel} ERKANNT (gleicher Rang, gleiches Wort), aber nie mehr gesprochen.
+     *
+     * @param bisFassung die letzte Fassung des Vertrags, die ihn sprach
+     */
+    public record FruehereFassung(String schluessel, String muster, Map<String, String> platzhalter, String bisFassung) {}
+
+    public static final List<FruehereFassung> FRUEHERE_FASSUNGEN = List.of(
+            // Falscher Dativ; in endgültigen Viertelstunden gespeichert und von Tag/Monat/Jahr übernommen.
+            new FruehereFassung("geraetegrenze_mit", "Gerätegrenze {uhr} mit Ablesestände", Map.of(UHR, UHR), "1.0"));
+
     /** Ein Wort des Vokabulars, dessen Wortlaut ein späteres Paket festlegt. */
     public record Vorgesehen(String wort, String anfang, String wortlautMit) {}
 
@@ -174,7 +186,7 @@ public final class ErgebnisZustand {
 
     private static final Pattern PLATZ = Pattern.compile("\\{([a-z_]+)\\}");
 
-    private record Erkenner(Muster muster, Pattern ausdruck, List<String> namen) {}
+    private record Erkenner(Muster muster, Pattern ausdruck, List<String> namen, boolean fruehereFassung) {}
 
     private static final Map<String, Muster> JE_SCHLUESSEL = new LinkedHashMap<>();
     private static final List<Erkenner> ERKENNER = new ArrayList<>();
@@ -182,19 +194,26 @@ public final class ErgebnisZustand {
     static {
         for (Muster m : KENNZEICHEN) {
             JE_SCHLUESSEL.put(m.schluessel(), m);
-            StringBuilder ausdruck = new StringBuilder("^");
-            List<String> namen = new ArrayList<>();
-            Matcher p = PLATZ.matcher(m.muster());
-            int stelle = 0;
-            while (p.find()) {
-                ausdruck.append(Pattern.quote(m.muster().substring(stelle, p.start())));
-                namen.add(p.group(1));
-                ausdruck.append('(').append(PLATZHALTER.get(m.platzhalter().get(p.group(1)))).append(')');
-                stelle = p.end();
-            }
-            ausdruck.append(Pattern.quote(m.muster().substring(stelle))).append('$');
-            ERKENNER.add(new Erkenner(m, Pattern.compile(ausdruck.toString()), List.copyOf(namen)));
+            ERKENNER.add(erkenner(m, m.muster(), m.platzhalter(), false));
         }
+        for (FruehereFassung f : FRUEHERE_FASSUNGEN) {
+            ERKENNER.add(erkenner(muster(f.schluessel()), f.muster(), f.platzhalter(), true));
+        }
+    }
+
+    private static Erkenner erkenner(Muster m, String text, Map<String, String> platzhalter, boolean frueher) {
+        StringBuilder ausdruck = new StringBuilder("^");
+        List<String> namen = new ArrayList<>();
+        Matcher p = PLATZ.matcher(text);
+        int stelle = 0;
+        while (p.find()) {
+            ausdruck.append(Pattern.quote(text.substring(stelle, p.start())));
+            namen.add(p.group(1));
+            ausdruck.append('(').append(PLATZHALTER.get(platzhalter.get(p.group(1)))).append(')');
+            stelle = p.end();
+        }
+        ausdruck.append(Pattern.quote(text.substring(stelle))).append('$');
+        return new Erkenner(m, Pattern.compile(ausdruck.toString()), List.copyOf(namen), frueher);
     }
 
     /** Das Muster zu einem Schlüssel; ein unbekannter Schlüssel ist ein Programmfehler. */
@@ -243,7 +262,7 @@ public final class ErgebnisZustand {
         return sprich(positiv ? "anteil_positiv" : "anteil_negativ", Map.of("quelle", quelle));
     }
 
-    /** „Gerätegrenze 10:40 mit Ablesestände“ (Wortlaut siehe Befund in der Vektor-Datei). */
+    /** „Gerätegrenze 10:40 mit Ableseständen“ bzw. „… ohne Ablesestände“. */
     public static String geraetegrenze(String uhr, boolean mitAblesestaenden) {
         return sprich(mitAblesestaenden ? "geraetegrenze_mit" : "geraetegrenze_ohne", Map.of(UHR, uhr));
     }
@@ -289,8 +308,13 @@ public final class ErgebnisZustand {
                 "periode_min", Long.toString(periodeMin)));
     }
 
-    /** Ein erkannter Satz: sein Muster und die eingesetzten Werte. */
-    public record Erkannt(Muster muster, Map<String, String> werte) {}
+    /**
+     * Ein erkannter Satz: sein Muster und die eingesetzten Werte.
+     *
+     * @param fruehereFassung der Satz trägt den Wortlaut einer früheren Fassung (gespeichert, nie
+     *     mehr gesprochen)
+     */
+    public record Erkannt(Muster muster, Map<String, String> werte, boolean fruehereFassung) {}
 
     /**
      * Welches Muster ein Satz trägt, oder {@code null}, wenn er keines trägt. Passt ein Satz auf
@@ -311,7 +335,7 @@ public final class ErgebnisZustand {
             for (int i = 0; i < e.namen().size(); i++) {
                 werte.put(e.namen().get(i), m.group(i + 1));
             }
-            treffer = new Erkannt(e.muster(), Map.copyOf(werte));
+            treffer = new Erkannt(e.muster(), Map.copyOf(werte), e.fruehereFassung());
         }
         return treffer;
     }
@@ -584,8 +608,7 @@ public final class ErgebnisZustand {
             throw new IllegalArgumentException("unbekannter Schritt " + schritt + " — bekannt sind " + SCHRITTE.keySet());
         }
         Instant ende = tag.plusDays(1).atStartOfDay(zone).toInstant();
-        ZoneOffset normalzeit = zone.getRules().getOffset(LocalDate.of(tag.getYear(), 1, 1).atStartOfDay()
-                .toInstant(ZoneOffset.UTC));
+        ZoneOffset normalzeit = normalzeit(zone, tag.getYear());
         List<String[]> roh = new ArrayList<>();
         for (Instant t = tag.atStartOfDay(zone).toInstant(); t.isBefore(ende); t = t.plusSeconds(minuten * 60L)) {
             ZoneOffset offset = zone.getRules().getOffset(t);
@@ -606,6 +629,25 @@ public final class ErgebnisZustand {
         return roh.stream()
                 .map(r -> new Feld(doppelt.contains(r[0]) ? r[0] + " " + r[1] : r[0], r[2]))
                 .toList();
+    }
+
+    /**
+     * E10 — die Uhrzeit IN einem Kennzeichen: Wanduhr {@code HH:mm} in {@code zone}. Gibt es diese
+     * Wanduhr an dem Tag zweimal (die doppelte Stunde am Sommerzeit-Ende), trägt sie denselben
+     * Zusatz wie {@link #raster}: „02:30 MESZ“ bzw. „02:30 MEZ“, in anderen Zonen den Offset.
+     */
+    public static String uhr(Instant zeit, ZoneId zone) {
+        ZoneOffset offset = zone.getRules().getOffset(zeit);
+        LocalDateTime wand = LocalDateTime.ofInstant(zeit, offset);
+        String text = WANDUHR.format(wand);
+        if (zone.getRules().getValidOffsets(wand).size() < 2) {
+            return text;
+        }
+        return text + " " + zusatz(normalzeit(zone, wand.getYear()), offset);
+    }
+
+    private static ZoneOffset normalzeit(ZoneId zone, int jahr) {
+        return zone.getRules().getOffset(LocalDate.of(jahr, 1, 1).atStartOfDay().toInstant(ZoneOffset.UTC));
     }
 
     private static String zusatz(ZoneOffset normalzeit, ZoneOffset offset) {

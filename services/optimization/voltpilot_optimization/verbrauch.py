@@ -57,7 +57,8 @@ HALTEN_FAKTOR = 2
 #: Auf so viele Nachkommastellen wird verglichen; gerechnet wird ungerundet (§4.7 Nr. 12).
 NACHKOMMASTELLEN = 3
 
-#: Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen.
+#: Die Zeitzone, in der die Kennzeichen ihre Uhrzeiten nennen — FEST, nicht die des Standorts (E10);
+#: die doppelte Stunde trägt MESZ/MEZ (``_uhr``, Zwilling von ``ErgebnisZustand.uhr``).
 ANZEIGE_ZEITZONE = "Europe/Berlin"
 
 VOLLSTAENDIG = "vollständig"
@@ -101,8 +102,23 @@ def _zeit(s: str) -> datetime:
 
 
 def _uhr(t: datetime, zone: str = ANZEIGE_ZEITZONE) -> str:
-    """``HH:MM`` in der Anzeige-Zeitzone — so nennen die Kennzeichen ihre Zeitpunkte."""
-    return t.astimezone(ZoneInfo(zone)).strftime("%H:%M")
+    """``HH:MM`` in der Anzeige-Zeitzone — so nennen die Kennzeichen ihre Zeitpunkte.
+
+    Gibt es die Wanduhr an dem Tag zweimal (Sommerzeit-Ende), trägt sie den Zusatz des Rasters
+    (E10): „02:30 MESZ“ / „02:30 MEZ“ in einer Zone mit Normalzeit UTC+01:00, sonst den Offset.
+    """
+    info = ZoneInfo(zone)
+    ort = t.astimezone(info)
+    text = ort.strftime("%H:%M")
+    wand = ort.replace(tzinfo=None)
+    if wand.replace(tzinfo=info, fold=0).utcoffset() == wand.replace(tzinfo=info, fold=1).utcoffset():
+        return text
+    offset = ort.utcoffset()
+    normalzeit = datetime(ort.year, 1, 1, tzinfo=timezone.utc).astimezone(info).utcoffset()
+    if normalzeit == timedelta(hours=1) and offset in (timedelta(hours=1), timedelta(hours=2)):
+        return text + (" MEZ" if offset == timedelta(hours=1) else " MESZ")
+    minuten = int(offset.total_seconds() // 60)
+    return text + " UTC%s%02d:%02d" % ("-" if minuten < 0 else "+", abs(minuten) // 60, abs(minuten) % 60)
 
 
 def _runde(x: Decimal, stellen: int = NACHKOMMASTELLEN) -> Decimal:
@@ -198,7 +214,7 @@ def menge_zaehlerstand(
     Gerechnet wird über die Folge ``Stand(von)`` → gute Werte in der Periode →
     ``Stand(bis)``. Jede Nachbarschaft dieser Folge wird einzeln eingeordnet:
 
-    * Gerätegrenze (``device_boundary``) in ``(vorher, nachher]``: mit Ablesestände
+    * Gerätegrenze (``device_boundary``) in ``(vorher, nachher]``: mit Ableseständen
       ``(Endstand − vorher) + (nachher − Anfangsstand)``, ohne Ablesestände Beitrag 0 und
       die Periode ist unvollständig (Z4). Nie ``nachher − vorher``.
     * Fallender Stand mit deklariertem Wertebereich und plausiblem Zuwachs: Überlauf mit
@@ -308,7 +324,7 @@ def _paar(
         neu = (nachher.wert - anfangsstand) if anfangsstand is not None else _D(0)
         mit = endstand is not None and anfangsstand is not None
         kennzeichen.append(
-            "Gerätegrenze " + grenze["t"][11:16] + (" mit Ablesestände" if mit else " ohne Ablesestände")
+            "Gerätegrenze " + _uhr(_zeit(grenze["t"])) + (" mit Ableseständen" if mit else " ohne Ablesestände")
         )
         if not mit:
             kennzeichen.append(ZUWACHS_NICHT_MESSBAR)
@@ -463,7 +479,7 @@ def _neustart_kennzeichen(neustarts: Sequence[dict], kennzeichen: list[str]) -> 
     for neustart in neustarts:
         kennzeichen.append(
             NEUSTART
-            + neustart["t"][11:16]
+            + _uhr(_zeit(neustart["t"]))
             + ": bis zu "
             + str(neustart.get("verlust_s", 255))
             + " s Zählung möglicherweise verloren"

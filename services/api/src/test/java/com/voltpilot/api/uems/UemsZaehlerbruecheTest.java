@@ -255,7 +255,7 @@ class UemsZaehlerbruecheTest {
 
     // ======================================================== Z4 Gerätegrenze (F4, F5)
 
-    /** F4: mit Ablesestände — zwei unvollständige Viertelstunden, aber Stunde und Tag VOLLSTÄNDIG. */
+    /** F4: mit Ableseständen — zwei unvollständige Viertelstunden, aber Stunde und Tag VOLLSTÄNDIG. */
     @Test
     void f4GeraetegrenzeMitAblesestaendenIstUeberDenWechselVollstaendig() {
         pruefeViertelstunde("F4", "f4", "Viertelstunde 10:30–10:45", BigDecimal.ONE);
@@ -277,7 +277,7 @@ class UemsZaehlerbruecheTest {
         Map<String, Object> davor = viertelstunde("GR", "2026-11-19T10:30:00+01:00");
         assertThat((BigDecimal) davor.get("menge")).isEqualByComparingTo("15");
         assertThat(davor.get("menge_zustand")).isEqualTo(VerbrauchRegeln.VOLLSTAENDIG);
-        assertThat(kennzeichen(davor)).containsExactly("Gerätegrenze 10:45 mit Ablesestände");
+        assertThat(kennzeichen(davor)).containsExactly("Gerätegrenze 10:45 mit Ableseständen");
         Map<String, Object> danach = viertelstunde("GR", "2026-11-19T10:45:00+01:00");
         assertThat((BigDecimal) danach.get("menge")).isEqualByComparingTo("15");
         assertThat(kennzeichen(danach)).isEmpty();
@@ -312,7 +312,7 @@ class UemsZaehlerbruecheTest {
         assertThat(((Number) f12Version2.get("version")).intValue()).isOne();
         assertThat(f12Version2.get("zustand")).isEqualTo(ViertelstundeRegeln.VORLAEUFIG);
         assertThat(ereignisEintraegeTag).as("und seinen Tag").isPositive();
-        assertThat(kennzeichen(f12TagNachher)).contains("Gerätegrenze 09:12 mit Ablesestände")
+        assertThat(kennzeichen(f12TagNachher)).contains("Gerätegrenze 09:12 mit Ableseständen")
                 .doesNotContain("Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt");
         pruefeTagGegenRegel("F12", LocalDate.of(2027, 1, 15));
     }
@@ -389,7 +389,7 @@ class UemsZaehlerbruecheTest {
         pruefePeriodeGegenRegel("F22", "monat", LocalDate.of(2027, 5, 1), LocalDate.of(2027, 6, 1));
         pruefePeriodeGegenRegel("F22", "jahr", LocalDate.of(2027, 1, 1), LocalDate.of(2028, 1, 1));
         assertThat(kennzeichen(periode("F4", "jahr", LocalDate.of(2026, 1, 1))))
-                .contains("Gerätegrenze 10:40 mit Ablesestände");
+                .contains("Gerätegrenze 10:40 mit Ableseständen");
         assertThat(kennzeichen(periode("F5", "jahr", LocalDate.of(2026, 1, 1))))
                 .contains("Gerätegrenze 10:40 ohne Ablesestände", VerbrauchRegeln.ZUWACHS_NICHT_MESSBAR);
         assertThat(kennzeichen(periode("F7", "jahr", LocalDate.of(2026, 1, 1))))
