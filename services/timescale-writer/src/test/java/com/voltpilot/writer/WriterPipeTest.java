@@ -23,10 +23,12 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -83,6 +85,18 @@ class WriterPipeTest {
     @BeforeAll
     static void ereignisTabelle() throws Exception {
         EreignisTabelleImTest.anlegen(POSTGRES, TENANT_A, TENANT_B);
+    }
+
+    /**
+     * Stops this context's listeners while their broker still runs. Spring caches the context
+     * beyond this class, Testcontainers stops the containers after it: a {@code timescale-writer}
+     * consumer left running rejoins the group on the NEXT class's broker, wins the partition (lower
+     * member id) and writes into its own stopped database - that class then waits in vain
+     * ({@link EventsRawConsumerTest} stops its listeners the same way).
+     */
+    @AfterAll
+    static void zuhoererBeenden(@Autowired KafkaListenerEndpointRegistry zuhoerer) {
+        zuhoerer.stop();
     }
 
     @DynamicPropertySource
