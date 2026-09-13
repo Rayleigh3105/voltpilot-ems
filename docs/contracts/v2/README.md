@@ -73,6 +73,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`datenannahme-events-vectors.json`](./datenannahme-events-vectors.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`verbrauch.md`](./verbrauch.md) + [`verbrauch-vectors.json`](./verbrauch-vectors.json) + [`verbrauch.schema.json`](./verbrauch.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`ergebnis-zustand.md`](./ergebnis-zustand.md) + [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) + [`ergebnis-zustand.schema.json`](./ergebnis-zustand.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
+| [`korrektur-vorschlag-vectors.json`](./korrektur-vorschlag-vectors.json) | AP-08 IP-14: vorbelegte Begründung, Notizen, Vorschau-Form und Sperre der System-Vorschläge (Java `KorrekturVorschlagRegeln`, `copy.test.ts`). |
 | [`bezugsdaten.md`](./bezugsdaten.md) + [`bezugsdaten-vectors.json`](./bezugsdaten-vectors.json) + [`bezugsdaten.schema.json`](./bezugsdaten.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`bezugsdaten.md`](./bezugsdaten.md) + [`bezugsdaten-vectors.json`](./bezugsdaten-vectors.json) + [`bezugsdaten.schema.json`](./bezugsdaten.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`bilanz.md`](./bilanz.md) + [`bilanz-vectors.json`](./bilanz-vectors.json) + [`bilanz.schema.json`](./bilanz.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |

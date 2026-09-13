@@ -62,7 +62,8 @@ berechnete `ersatzwert_fassung` = 1; Trigger: Reihe in `reihen`, Zeitraum umfass
 - Ersteller, Freigeber, Widerrufer sind die `actor_*` ihrer Fassung — zwei Zeilen, nie zwei Spalten.
 - UPDATE scheitert per Trigger `…_append_only` für JEDE Rolle (auch Verwaltung mit Recht, Eigentümer).
   App: SELECT + spaltenweises INSERT ohne `created_at`; Verwaltung: SELECT + DELETE (nur Offboarding).
-  Die System-Vorschläge von IP-14 brauchen ein eigenes INSERT-Recht der BYPASSRLS-Rolle.
+  Seit IP-14 (`V20260913224500`) darf die BYPASSRLS-Rolle Korrekturen VORSCHLAGEN: INSERT nur auf die anlegenden
+  Spalten, der Trigger `messreihe_korrektur_system_nur_vorschlag` lässt ihr nur Fassung 1 (`uems-korrektur-vorschlaege.md`).
 - Kennung: höchste je vergebene + 1 unter `pg_advisory_xact_lock` je Kundenbereich + Präfix + Jahr
   (Jahr in der Zone des Aufrufers) — kein Zähler, weil nie gelöscht wird. Nur in einer Transaktion.
 
@@ -85,7 +86,8 @@ Die Liste ist die **Erkennung** (eine Zeile je Reihe + Viertelstunde, Rohwert na
 `offen`/`erledigt`/`verworfen`, vom Stundenlauf); `messreihe_korrektur` ist der **Vorgang** (bündelt
 solche Zeilen einer Reihe — F10: K-2026-0007 über 15 Viertelstunden — und wird entschieden). IP-14 macht
 aus offenen Zeilen eine Korrektur der Art `nachlieferung_nach_endgueltigkeit` (dasselbe Wort wie
-`grund`) und setzt sie auf `erledigt`. Keine zweite Wahrheit, keine Spalte doppelt.
+`grund`) und setzt sie auf `erledigt` — seit 13.09.2026 gebaut: `uems-korrektur-vorschlaege.md`. Keine zweite
+Wahrheit, keine Spalte doppelt.
 
 ## Offboarding
 

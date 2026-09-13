@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -441,6 +442,48 @@ public class ViertelstundeVerdichter {
             Long verlustS, String einbauAlt, String einbauNeu, UUID boxAlt, UUID boxNeu) {}
 
     private int bilden(Connection con, List<Auftrag> stapel, Instant jetzt) throws SQLException {
+        int geschrieben = 0;
+        try (PreparedStatement ps = con.prepareStatement(upsertSql())) {
+            for (Object[] werte : zeilen(con, stapel, jetzt, null)) {
+                if (werte == null) {
+                    continue;
+                }
+                for (int p = 0; p < werte.length; p++) {
+                    ps.setObject(p + 1, werte[p]);
+                }
+                geschrieben += ps.executeUpdate();
+            }
+        }
+        return geschrieben;
+    }
+
+    /**
+     * AP-08 IP-14: was dieser Lauf für EINE Viertelstunde heute schriebe — mit denselben Ladewegen und
+     * derselben Rechenregel wie {@link #bilden}, aber geschrieben wird nichts. Die Vorschau „neu“ eines
+     * Korrektur-Vorschlags ist genau diese Zeile; sie rechnet nichts Eigenes. {@code null}, wenn die
+     * Viertelstunde keinen einzigen Rohwert hat (eine Lücke ist keine Null).
+     *
+     * @param umdeuten die Zähler-Deklaration, mit der gerechnet wird — {@code null} = die gespeicherte; eine
+     *     Umklassifizierung (E4) rechnet mit einem bestätigten Wertebereich bzw. ohne einen
+     * @return die Spalten der Zeile nach Namen
+     */
+    Map<String, Object> waereZeile(Connection con, UUID tenant, UUID entity, String kanal, Instant beginn,
+            Instant jetzt, UnaryOperator<ZaehlerDeklaration> umdeuten) throws SQLException {
+        Object[] werte = zeilen(con, List.of(new Auftrag(tenant, entity, kanal, beginn, "vorschlag")), jetzt,
+                umdeuten).get(0);
+        if (werte == null) {
+            return null;
+        }
+        Map<String, Object> aus = new LinkedHashMap<>();
+        for (int i = 0; i < SPALTEN.length; i++) {
+            aus.put(SPALTEN[i], werte[i]);
+        }
+        return aus;
+    }
+
+    /** Die Zeilen eines Stapels in seiner Reihenfolge, {@code null} für ein Intervall ohne Rohwert. */
+    private List<Object[]> zeilen(Connection con, List<Auftrag> stapel, Instant jetzt,
+            UnaryOperator<ZaehlerDeklaration> umdeuten) throws SQLException {
         // 1. Die Erwartung ZUM INTERVALL (IP-10): Fassung -> Auswahl -> Katalog -> 300 s.
         Map<Integer, KadenzRegeln.Wirksam> kadenzen = kadenzJeAuftrag(con, stapel);
         // 2. Die Rohwerte, je Auftrag mit dem Rückblick einer Kadenz (Z1 braucht ihn für den
@@ -457,23 +500,15 @@ public class ViertelstundeVerdichter {
         // 5. Einheit und Zeitzone, in denen die Kennzeichen sprechen - EIN Träger je Reihe.
         Map<Integer, ReihenKontext> kontexte = kontexte(con, stapel);
 
-        int geschrieben = 0;
-        try (PreparedStatement ps = con.prepareStatement(upsertSql())) {
-            for (int i = 0; i < stapel.size(); i++) {
-                Object[] werte = zeile(stapel.get(i), kontexte.get(i), kadenzen.get(i),
-                        rohe.getOrDefault(i, List.of()), ereignisse.getOrDefault(i, List.of()),
-                        einbauten, integrieren.contains(i),
-                        deklarationen.getOrDefault(i, ZaehlerDeklaration.NICHTS), jetzt);
-                if (werte == null) {
-                    continue;
-                }
-                for (int p = 0; p < werte.length; p++) {
-                    ps.setObject(p + 1, werte[p]);
-                }
-                geschrieben += ps.executeUpdate();
-            }
+        List<Object[]> aus = new ArrayList<>();
+        for (int i = 0; i < stapel.size(); i++) {
+            ZaehlerDeklaration deklaration = deklarationen.getOrDefault(i, ZaehlerDeklaration.NICHTS);
+            aus.add(zeile(stapel.get(i), kontexte.get(i), kadenzen.get(i),
+                    rohe.getOrDefault(i, List.of()), ereignisse.getOrDefault(i, List.of()),
+                    einbauten, integrieren.contains(i),
+                    umdeuten == null ? deklaration : umdeuten.apply(deklaration), jetzt));
         }
-        return geschrieben;
+        return aus;
     }
 
     /**

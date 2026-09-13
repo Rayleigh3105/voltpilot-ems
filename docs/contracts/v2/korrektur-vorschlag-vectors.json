@@ -1,0 +1,94 @@
+{
+  "_comment": "UEMS AP-08 IP-14 (E14 = A, 11.09.2026): was das System an einem Korrektur-Vorschlag selbst sagt. Nie automatisch — der Vorschlag wird angelegt, freigegeben wird von Hand, auch wenn nur Lücken gefüllt werden. Die Begründung ist VORBELEGT und sagt, was das System gesehen hat, nie, was der Mensch tun soll. Java `uems/KorrekturVorschlagRegeln` spricht jeden Satz (KorrekturVorschlagRegelnTest), `frontend/portal/src/copy.test.ts` liest jedes Muster und jeden Satz gegen das Kunden-Wörterbuch. Keine TS-Zwillingsregel: der Satz wird gespeichert (`messreihe_korrektur.begruendung`) und angezeigt, nie im Portal gebildet.",
+  "schema_version": "1.0",
+  "herkunft": "AP-08 §4.6 (Korrektur-Arten, Begründung bei System-Vorschlägen vorbelegt), E14, Referenzfälle F10 und F12; Zeitform E10 aus ergebnis-zustand (Wanduhr des Standorts, MESZ/MEZ an der doppelten Stunde)",
+  "zeitzone": "Europe/Berlin",
+  "begruendung": {
+    "nachlieferung_nach_endgueltigkeit": "Nachgeliefert nach Ablauf der Frist: {anzahl} für {zeitraum}, zuletzt eingegangen am {eingang}; endgültig seit {frist}.",
+    "ablesestaende_nachgetragen": "Ablesestände nach Ablauf der Frist eingetragen: Gerätegrenze {zeitpunkt}, eingetragen am {eingang}; endgültig seit {frist}.",
+    "umklassifizierung_als_ueberlauf": "Der fallende Stand am {zeitpunkt} ist bisher eine Rücksetzung; auf Wunsch rechnet die Vorschau ihn als Überlauf (Wertebereich {modul}).",
+    "umklassifizierung_als_ruecksetzung": "Der fallende Stand am {zeitpunkt} ist bisher ein Überlauf; auf Wunsch rechnet die Vorschau ihn als Rücksetzung."
+  },
+  "erkennung_notiz": {
+    "erledigt": "Aufgenommen in den Korrektur-Vorschlag {kennung}.",
+    "verworfen": "Die nachgelieferten Messwerte ändern keinen Wert der Viertelstunde."
+  },
+  "platzhalter": {
+    "anzahl": "Messwerte mit Tausenderpunkt: „1 Messwert“, „210 Messwerte“, „1.440 Messwerte“",
+    "zeitraum": "[von, bis) als „TT.MM.JJJJ hh:mm bis hh:mm“; liegt `bis` an einem anderen Ortstag, trägt es sein Datum",
+    "zeitpunkt": "„TT.MM.JJJJ hh:mm“ — die Uhrzeit aus ErgebnisZustand.uhr (E10)",
+    "eingang": "wie zeitpunkt: die LETZTE Eingangszeit",
+    "frist": "wie zeitpunkt: die FRÜHESTE Frist der Viertelstunden (Ende + 7 Tage)",
+    "modul": "der Wertebereich ohne Tausenderpunkt, wie im Kennzeichen „Überlauf hh:mm (Wertebereich 65536)“",
+    "kennung": "die Kennung der Korrektur, K-<Jahr>-<lfd. Nr.>"
+  },
+  "vorschau": {
+    "periode": ["viertelstunde"],
+    "felder": ["periode", "von", "bis", "aendert", "alt", "neu"],
+    "stand": ["version", "menge", "menge_zustand", "kennzeichen", "erhalten", "erwartet", "abdeckung_prozent", "mittel", "energie"],
+    "regeln": [
+      "Eine Periode je Viertelstunde des Zeitraums, älteste zuerst; von/bis als ISO-8601 UTC.",
+      "alt = die neueste gespeicherte Version (Version 1 aus der Verdichtung, darüber die Menge, der Zustand und die Kennzeichen einer späteren Version); ohne Zeile version = null und menge_zustand „keine Werte“ — nie 0.",
+      "neu = was der Verdichtungs-Lauf mit derselben Rechenregel HEUTE schriebe; version ist dort immer null (die Version vergibt erst die Freigabe, IP-17).",
+      "Beträge als Dezimaltext, ungerundet; null ist nie 0.",
+      "aendert = menge, menge_zustand, kennzeichen, erhalten, erwartet, abdeckung_prozent, mittel oder energie unterscheiden sich."
+    ]
+  },
+  "sperre": [
+    "Der fachliche Schlüssel ist Kundenbereich + Art + Reihe + Zeitraum — kein Zeitstempel.",
+    "liegt_schon_vor: ein Vorschlag derselben Art an derselben Reihe, der den Zeitraum überschneidet, ist noch nicht entschieden.",
+    "schon_entschieden: ein entschiedener Vorschlag derselben Art, derselben Reihe und GENAU dieses Zeitraums schlug schon dieselben neuen Werte vor."
+  ],
+  "ablehnungen": ["ohne_aenderung", "liegt_schon_vor", "schon_entschieden", "reihe_unbekannt", "richtung_unbekannt", "wertebereich_fehlt"],
+  "cases": [
+    {
+      "name": "f10-nachlieferung-k-2026-0007",
+      "why": "F10: die 210 Werte 14:01–17:30 treffen am 12.11. 09:02 ein, die 15 Viertelstunden 14:00–17:45 sind seit 10.11. 14:15 … 17:45 endgültig.",
+      "art": "nachlieferung_nach_endgueltigkeit",
+      "eingabe": {"von": "2026-11-03T13:00:00Z", "bis": "2026-11-03T16:45:00Z", "anzahl": 210, "eingang": "2026-11-12T08:02:00Z", "frist": "2026-11-10T13:15:00Z"},
+      "satz": "Nachgeliefert nach Ablauf der Frist: 210 Messwerte für 03.11.2026 14:00 bis 17:45, zuletzt eingegangen am 12.11.2026 09:02; endgültig seit 10.11.2026 14:15."
+    },
+    {
+      "name": "nachlieferung-ein-messwert-ueber-mitternacht",
+      "why": "Einzahl, und ein Zeitraum über die Tagesgrenze trägt beide Daten (MESZ: 23:00 bis 01:00 Ortszeit).",
+      "art": "nachlieferung_nach_endgueltigkeit",
+      "eingabe": {"von": "2026-10-20T21:00:00Z", "bis": "2026-10-20T23:00:00Z", "anzahl": 1, "eingang": "2026-10-29T10:30:00Z", "frist": "2026-10-27T21:15:00Z"},
+      "satz": "Nachgeliefert nach Ablauf der Frist: 1 Messwert für 20.10.2026 23:00 bis 21.10.2026 01:00, zuletzt eingegangen am 29.10.2026 11:30; endgültig seit 27.10.2026 22:15."
+    },
+    {
+      "name": "nachlieferung-tausenderpunkt",
+      "why": "E11: ein ganzer Tag mit Minutenwerten — 1.440 mit Tausenderpunkt, nie „1 440“.",
+      "art": "nachlieferung_nach_endgueltigkeit",
+      "eingabe": {"von": "2026-11-02T23:00:00Z", "bis": "2026-11-03T23:00:00Z", "anzahl": 1440, "eingang": "2026-11-12T08:02:00Z", "frist": "2026-11-09T23:15:00Z"},
+      "satz": "Nachgeliefert nach Ablauf der Frist: 1.440 Messwerte für 03.11.2026 00:00 bis 04.11.2026 00:00, zuletzt eingegangen am 12.11.2026 09:02; endgültig seit 10.11.2026 00:15."
+    },
+    {
+      "name": "f12-ablesestaende-k-2027-0002",
+      "why": "F12: Ines Kaltenbach trägt am 25.01.2027 09:40 Endstand und Anfangsstand zur Rücksetzung 09:12 nach; die Viertelstunde 09:00–09:15 ist seit 22.01. 09:15 endgültig.",
+      "art": "ablesestaende_nachgetragen",
+      "eingabe": {"zeitpunkt": "2027-01-15T08:12:00Z", "eingang": "2027-01-25T08:40:00Z", "frist": "2027-01-22T08:15:00Z"},
+      "satz": "Ablesestände nach Ablauf der Frist eingetragen: Gerätegrenze 15.01.2027 09:12, eingetragen am 25.01.2027 09:40; endgültig seit 22.01.2027 09:15."
+    },
+    {
+      "name": "ablesestaende-an-der-doppelten-stunde",
+      "why": "E10: 02:12 gibt es am 25.10.2026 zweimal — die zweite ist MEZ.",
+      "art": "ablesestaende_nachgetragen",
+      "eingabe": {"zeitpunkt": "2026-10-25T01:12:00Z", "eingang": "2026-11-03T08:00:00Z", "frist": "2026-11-01T01:15:00Z"},
+      "satz": "Ablesestände nach Ablauf der Frist eingetragen: Gerätegrenze 25.10.2026 02:12 MEZ, eingetragen am 03.11.2026 09:00; endgültig seit 01.11.2026 02:15."
+    },
+    {
+      "name": "f7-als-ueberlauf",
+      "why": "F7: der Stand fällt um 10:03 von 64 954 auf 185; ohne Deklaration ist das eine Rücksetzung, der Bearbeiter lässt ihn als Überlauf eines 16-bit-Zählers rechnen.",
+      "art": "umklassifizierung",
+      "eingabe": {"richtung": "als_ueberlauf", "zeitpunkt": "2026-10-20T08:03:00Z", "modul": "65536"},
+      "satz": "Der fallende Stand am 20.10.2026 10:03 ist bisher eine Rücksetzung; auf Wunsch rechnet die Vorschau ihn als Überlauf (Wertebereich 65536)."
+    },
+    {
+      "name": "f7-als-ruecksetzung",
+      "why": "Die Gegenrichtung: ein gerechneter Überlauf soll eine Rücksetzung sein (etwa ein Zählertausch ohne Meldung).",
+      "art": "umklassifizierung",
+      "eingabe": {"richtung": "als_ruecksetzung", "zeitpunkt": "2026-10-20T08:03:00Z", "modul": null},
+      "satz": "Der fallende Stand am 20.10.2026 10:03 ist bisher ein Überlauf; auf Wunsch rechnet die Vorschau ihn als Rücksetzung."
+    }
+  ]
+}
