@@ -165,7 +165,8 @@
       "quellen": [
         {"kanal_groesse": "Wirkenergie", "kanal_wertart": "counter", "nur_wertart": null},
         {"kanal_groesse": "Wirkleistung", "kanal_wertart": "gauge", "nur_wertart": "Intervallmenge"}
-      ]
+      ],
+      "richtungen_nur_berechnet": ["saldiert"]
     },
     {
       "groesse": "Wirkleistung",
@@ -595,6 +596,49 @@
           "groesse": {"groesse": "Volumen", "richtung": "Bezug", "einheit": "m³", "wertart": "Zählerstand"}
         },
         "expected": {"fehler": "groesse_ungueltig", "grund": "medium"}
+      },
+      {
+        "name": "saldiert-an-berechneter-messstelle",
+        "herkunft": "AP-10 E1 · IP-4 · Fall F9 (Netz-Saldo Halle 1 = MS-01 − MS-02)",
+        "why": "„saldiert“ ist ein additiver Katalog-Eintrag der Wirkenergie NUR für berechnete Messstellen: das Ergebnis des Formel-Typs `saldo` (Bezug − Abgabe) steht im Katalog.",
+        "input": {
+          "medium": "Strom",
+          "art": "berechnet",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "saldiert", "einheit": "kWh", "wertart": "Intervallmenge"}
+        },
+        "expected": {"fehler": null, "grund": null}
+      },
+      {
+        "name": "saldiert-an-gemessener-messstelle",
+        "herkunft": "AP-10 E1 · IP-4 · Referenzunternehmen MS-01",
+        "why": "Eine GEMESSENE Messstelle bekommt „saldiert“ nie — Bezug und Abgabe sind zwei Messstellen, nicht eine mit Vorzeichen (§2). Abgelehnt mit Grund „richtung“.",
+        "input": {
+          "medium": "Strom",
+          "art": "gemessen",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "saldiert", "einheit": "kWh", "wertart": "Zählerstand"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "richtung"}
+      },
+      {
+        "name": "saldiert-ohne-art",
+        "herkunft": "AP-10 IP-4 · Datenbank-Funktion messstelle_groesse_im_katalog",
+        "why": "Ohne Art urteilt der Katalog wie vor AP-10 IP-4 und wie die Datenbank-Funktion: „saldiert“ ist dann keine Richtung der Wirkenergie.",
+        "input": {
+          "medium": "Strom",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "saldiert", "einheit": "kWh", "wertart": "Intervallmenge"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "richtung"}
+      },
+      {
+        "name": "richtungslose-wirkenergie-auch-berechnet-nicht",
+        "herkunft": "messstelle-formel.md §2 (netto-ohne-richtungslos-im-katalog-abgelehnt) · AP-10 IP-4",
+        "why": "„saldiert“ öffnet keine Hintertür: eine richtungslose Wirkenergie gibt es auch an einer berechneten Messstelle nicht — ein Netto der gewichteten Summe bleibt `groessen_gemischt`.",
+        "input": {
+          "medium": "Strom",
+          "art": "berechnet",
+          "groesse": {"groesse": "Wirkenergie", "richtung": "richtungslos", "einheit": "kWh", "wertart": "Intervallmenge"}
+        },
+        "expected": {"fehler": "groesse_ungueltig", "grund": "richtung"}
       }
     ],
     "lebenszyklus": [

@@ -13,7 +13,7 @@ vom 12.09.2026).
 > neuen Typen stehen in [`bilanz.md`](./bilanz.md) (`bilanz-vectors.json`), die der Verteilung in
 > [`verteilung.md`](./verteilung.md); der Code zieht mit AP-10 IP-3, IP-4 und IP-5 nach — dieser
 > Abschnitt ist bis dahin die VEREINBARUNG, nicht der Stand. **§6 (Fassungen) ist seit AP-10 IP-3
-> gebaut**; §0 `rest`/`saldo` (IP-4) und §1.1 (IP-5) sind es noch nicht.
+> gebaut**, **§0 `rest`/`saldo` und §2.1 seit AP-10 IP-4** (§6.2); §1.1 (IP-5) ist es noch nicht.
 
 ## 0. Die drei Formel-Typen (AP-10 E1)
 
@@ -115,9 +115,10 @@ minus 30 ergibt 10 kWh **Bezug**, nicht „richtungslos“:
 | `rest` | **fest** Wirkenergie · Bezug · kWh. Der Live-Wert ist ein Momentanwert und trägt die Katalog-Richtung der Wirkleistung (`richtungslos`) — E1 greift nur auf der Mengen-Ebene. |
 | `saldo` | **fest** Wirkenergie · `saldiert` · kWh — ein additiver Katalog-Eintrag, zulässig NUR für `art = berechnet` und nie an einem Messkanal bindbar (`saldiert_nur_berechnet`). |
 
-Der Eintrag `Wirkenergie · saldiert` wandert mit AP-10 IP-4 in [`messstelle.md`](./messstelle.md)
-§2 und `MessstelleRegeln.GROESSEN_KATALOG`; bis dahin steht er in
-[`bilanz-vectors.json`](./bilanz-vectors.json) (`vokabulare.richtung_berechnet_additiv`).
+Der Eintrag `Wirkenergie · saldiert` steht seit AP-10 IP-4 in [`messstelle.md`](./messstelle.md)
+§2 und `MessstelleRegeln.GROESSEN_KATALOG` (Feld `richtungen_nur_berechnet`); das Vokabular dazu
+bleibt [`bilanz-vectors.json`](./bilanz-vectors.json) (`vokabulare.richtung_berechnet_additiv`),
+beide Tests halten Katalog und Vokabular gleich.
 
 ## 3. Die Berechnung (Cloud, `MessstelleFormelBerechnung`/`gewichteteSumme`)
 
@@ -200,11 +201,33 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
 - **Protokoll:** eine eingetragene Fassung schreibt GENAU EINEN Eintrag `formel_geaendert`
   (`alt` = beendete Fassung, `neu` = Nummer, Typ, erster Tag, Terme).
 
+### 6.2 Die Typen je Typ (AP-10 IP-4, Stand 13.09.2026)
+
+- **Verzweigung, keine zweite Rechnung.** `MessstelleFormelRegeln.hauptgroesse(typ, art, wertart,
+  terme)` und `.periodenwert(typ, art, einheit, version, vermerke, eingaenge)` verzweigen je
+  `formel_typ`: `gewichtete_summe` → `formelGroesse` (unverändert) bzw. `BilanzAbleitung.summe`;
+  `rest` → `BilanzAbleitung.richtung`/`.rest`; `saldo` → `BilanzAbleitung.richtung`/`.saldo`. Der
+  TS-Zwilling `uemsMessstelleFormel.ts` trägt dieselben zwei Funktionen ADDITIV unter den
+  bestehenden (keine Zeile oberhalb geändert).
+- **Richtung je Typ (E1):** `rest` fest Wirkenergie · Bezug — auch mit den Termen Bezug + · Bezug − ·
+  Bezug − (F1), die als `gewichtete_summe` `groessen_gemischt` (`richtung`) wären; `saldo` fest
+  Wirkenergie · `saldiert`, an einer gemessenen Messstelle `groessen_gemischt`
+  (`saldiert_nur_berechnet`) — der KATALOG entscheidet die Art (`groessePruefen(medium, art, g)`).
+- **Terme eines `rest` (E3):** `speichertTerme("rest")` ist `false`; die Terme eines Tages leitet
+  `BilanzAbleitung.restAusStellung(hauptzaehler, tag, stellungen)` aus den Stellungen ab (Regel
+  `rest_aus_stellung` in `bilanz-vectors.json`).
+- **Nicht gebaut:** Anlegen einer `rest`-/`saldo`-Messstelle (die Route lehnt `formel_typ` ≠
+  `gewichtete_summe` weiter ab, der CHECK der Fassungs-Tabelle kennt nur ihn, die Datenbank-Funktion
+  `messstelle_groesse_im_katalog` kennt `saldiert` nicht) — das kommt mit dem ersten Schreibweg
+  (IP-9 / IP-16) samt Migration.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelRegelnVectorsTest')          # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsMessstelleFormel.test.ts)
+(cd services/api && ./mvnw test -Dtest='MessstelleFormelTypenTest')                   # Typen je Typ (IP-4), rein
+(cd frontend/portal && npx vitest run src/uemsMessstelleFormelTypen.test.ts)
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelFassungRegelnTest,MessstelleFormelSchnittstelleVertragTest')  # rein
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelTermMigrationTest,MessstelleFormelApiTest')  # gegen die DB
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelFassungMigrationTest,MessstelleFormelFassungApiTest')  # Fassungen, DB

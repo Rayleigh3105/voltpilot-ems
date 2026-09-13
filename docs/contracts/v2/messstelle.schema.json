@@ -68,6 +68,7 @@
     "medium": { "type": "string", "enum": ["Strom", "Gas", "Wärme", "Kälte", "Wasser", "Druckluft"], "description": "Was gemessen wird. Nie änderbar. Im ersten Umfang ist nur „Strom“ wählbar; die übrigen sind vorbereitet und binden keinen Messwert aus dem Katalog." },
     "groesseName": { "type": "string", "enum": ["Wirkenergie", "Wirkleistung", "Blindenergie", "Scheinleistung", "Ladestand", "Volumen"], "description": "Was gemessen wird." },
     "richtung": { "type": "string", "enum": ["Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen", "richtungslos"], "description": "In welche Richtung. Bezug und Abgabe sind zwei Messstellen, nicht eine mit Vorzeichen; „Laden / Entladen“ ist die zusammengefasste Richtung eines Speichers." },
+    "richtungNurBerechnet": { "type": "string", "enum": ["saldiert"], "description": "Eine Richtung, die NUR eine berechnete Messstelle tragen darf (AP-10 E1, IP-4): „saldiert“ ist das Ergebnis des Formel-Typs `saldo` (Bezug − Abgabe derselben Grenze). Additiv und bewusst NICHT in `richtung` — jenes Vokabular ist das der Messkanäle und des Messpunkt-Katalogs, an einem Messkanal ist „saldiert“ nie bindbar." },
     "einheit": { "type": "string", "enum": ["kWh", "kW", "kvarh", "kVA", "%", "m³"], "description": "Einheit des Werts." },
     "wertart": { "type": "string", "enum": ["Zählerstand", "Intervallmenge", "Momentanwert"], "description": "Wie der Wert zu lesen ist: ein fortlaufender Zählerstand, die Menge eines Zeitabschnitts oder ein Wert in diesem Augenblick." },
     "kanalWertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Wie der Messwert am Gerät zu lesen ist: fortlaufender Zähler, Momentanwert, Zustand, Bitfeld oder Text." },
@@ -83,7 +84,7 @@
       "required": ["groesse", "richtung", "einheit", "wertart"],
       "properties": {
         "groesse": { "$ref": "#/$defs/groesseName" },
-        "richtung": { "$ref": "#/$defs/richtung" },
+        "richtung": { "anyOf": [{ "$ref": "#/$defs/richtung" }, { "$ref": "#/$defs/richtungNurBerechnet" }], "description": "Eine Richtung des Vokabulars — oder, nur an einer berechneten Messstelle, eine aus `richtungNurBerechnet` (der Katalog prüft die Art)." },
         "einheit": { "$ref": "#/$defs/einheit" },
         "wertart": { "$ref": "#/$defs/wertart" }
       }
@@ -256,6 +257,7 @@
         "einheit": { "$ref": "#/$defs/einheit" },
         "richtungen": { "type": "array", "items": { "$ref": "#/$defs/richtung" }, "description": "Welche Richtungen sie haben kann." },
         "wertarten": { "type": "array", "items": { "$ref": "#/$defs/wertart" }, "description": "Wie ihr Wert gelesen werden kann." },
+        "richtungen_nur_berechnet": { "type": "array", "items": { "$ref": "#/$defs/richtungNurBerechnet" }, "description": "Richtungen, die NUR eine berechnete Messstelle tragen darf (AP-10 IP-4). Fehlt das Feld, gibt es keine." },
         "quellen": {
           "type": "array",
           "description": "Welche Messwerte sie speisen dürfen. Leer heißt: kein Messwert aus dem Katalog — abgelesen.",
@@ -368,6 +370,7 @@
           "type": "object", "additionalProperties": false, "required": ["medium", "groesse"],
           "properties": {
             "medium": { "$ref": "#/$defs/medium" },
+            "art": { "$ref": "#/$defs/art", "description": "Die Art der Messstelle (AP-10 IP-4). Fehlt sie, urteilt der Katalog ohne Art — wie die Datenbank-Funktion." },
             "groesse": { "$ref": "#/$defs/groesse" }
           }
         },
