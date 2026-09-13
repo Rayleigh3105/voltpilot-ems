@@ -116,7 +116,7 @@ public final class OrtsbaumLesemodell {
             return Optional.of(new OrtsbaumAmStichtag(stichtag, standort.get(), null, List.of(),
                     List.of(), null));
         }
-        StandAm stand = OrtsbaumAbleitung.standAm(StandortLesemodell.baum(z), stichtag);
+        StandAm stand = OrtsbaumAbleitung.standAm(StandortLesemodell.baum(z, stichtag), stichtag);
         Map<String, OrtAmStichtag> amTag = new HashMap<>();
         stand.orte().forEach(o -> amTag.put(o.kennzeichen(), o));
         String st = standortId.toString();

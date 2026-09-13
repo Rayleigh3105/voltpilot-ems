@@ -167,17 +167,26 @@ public final class NetzanschlussRegeln {
         return !tag.isBefore(b.gueltigAb()) && (b.gueltigBis() == null || !tag.isAfter(b.gueltigBis()));
     }
 
+    /** Teilen sich zwei Bindungen mindestens einen Tag ({@code gueltigBis == null} = offen)? */
+    private static boolean ueberlappen(Bindung a, Bindung b) {
+        boolean aVorB = a.gueltigBis() != null && a.gueltigBis().isBefore(b.gueltigAb());
+        boolean bVorA = b.gueltigBis() != null && b.gueltigBis().isBefore(a.gueltigAb());
+        return !aVorB && !bVorA;
+    }
+
     /**
      * Eine neue Bindung ab ihrem Tag. Läuft an diesem Tag schon eine Bindung DERSELBEN Anlage, die
      * an genau diesem Tag beginnt, ist das ein Konflikt; beginnt die neue später, wird die laufende
-     * am Vortag beendet. Hängt der Anschluss am Tag schon an einer ANDEREN Anlage, ist er belegt.
+     * am Vortag beendet. Hängt der Anschluss an einem ihrer Tage schon an einer ANDEREN Anlage, ist er
+     * belegt. Eine SPÄTERE Bindung derselben Anlage wird nie verkürzt — teilt die neue einen Tag mit
+     * ihr, ist das ebenfalls ein Konflikt (nur die laufende endet am Vortag, nichts wird überschrieben).
      */
     public static BindungUrteil bindung(List<Bindung> bestehend, Bindung neu, LocalDate heute) {
         boolean rueckwirkend = neu.gueltigAb().isBefore(heute);
         for (Bindung b : bestehend) {
             if (b.netzanschluss().equals(neu.netzanschluss())
                     && !b.anlage().equals(neu.anlage())
-                    && laeuftAm(b, neu.gueltigAb())) {
+                    && ueberlappen(b, neu)) {
                 return new BindungUrteil(null, null, FEHLER_ANSCHLUSS_BELEGT, rueckwirkend);
             }
         }
@@ -185,11 +194,16 @@ public final class NetzanschlussRegeln {
                 .filter(b -> b.anlage().equals(neu.anlage()) && laeuftAm(b, neu.gueltigAb()))
                 .findFirst()
                 .orElse(null);
+        if (laufend != null && !neu.gueltigAb().isAfter(laufend.gueltigAb())) {
+            return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
+        }
+        for (Bindung b : bestehend) {
+            if (b != laufend && b.anlage().equals(neu.anlage()) && ueberlappen(b, neu)) {
+                return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
+            }
+        }
         if (laufend == null) {
             return new BindungUrteil(null, neu, null, rueckwirkend);
-        }
-        if (!neu.gueltigAb().isAfter(laufend.gueltigAb())) {
-            return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
         }
         Bindung beendet = new Bindung(laufend.anlage(), laufend.netzanschluss(), laufend.gueltigAb(),
                 neu.gueltigAb().minusDays(1));

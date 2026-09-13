@@ -172,27 +172,38 @@ export interface BindungUrteil {
 const laeuftAm = (b: Bindung, tag: string): boolean =>
   tag >= b.gueltig_ab && (b.gueltig_bis === null || tag <= b.gueltig_bis);
 
+/** Teilen sich zwei Bindungen mindestens einen Tag (`gueltig_bis === null` = offen)? */
+const ueberlappen = (a: Bindung, b: Bindung): boolean =>
+  !(a.gueltig_bis !== null && a.gueltig_bis < b.gueltig_ab) &&
+  !(b.gueltig_bis !== null && b.gueltig_bis < a.gueltig_ab);
+
 /**
  * Eine neue Bindung ab ihrem Tag. Läuft an diesem Tag schon eine Bindung DERSELBEN Anlage, die an
  * genau diesem Tag beginnt, ist das ein Konflikt; beginnt die neue später, wird die laufende am
- * Vortag beendet. Hängt der Anschluss am Tag schon an einer ANDEREN Anlage, ist er belegt.
+ * Vortag beendet. Hängt der Anschluss an einem ihrer Tage schon an einer ANDEREN Anlage, ist er
+ * belegt. Eine SPÄTERE Bindung derselben Anlage wird nie verkürzt — teilt die neue einen Tag mit
+ * ihr, ist das ebenfalls ein Konflikt (nur die laufende endet am Vortag, nichts wird überschrieben).
  */
 export function bindung(bestehend: Bindung[], neu: Bindung, heute: string): BindungUrteil {
   const rueckwirkend = neu.gueltig_ab < heute;
   const belegt = bestehend.some(
     (b) =>
-      b.netzanschluss === neu.netzanschluss &&
-      b.anlage !== neu.anlage &&
-      laeuftAm(b, neu.gueltig_ab),
+      b.netzanschluss === neu.netzanschluss && b.anlage !== neu.anlage && ueberlappen(b, neu),
   );
   if (belegt) {
     return { beendet: null, eintrag: null, fehler: FEHLER_ANSCHLUSS_BELEGT, rueckwirkend };
   }
   const laufend = bestehend.find((b) => b.anlage === neu.anlage && laeuftAm(b, neu.gueltig_ab));
-  if (!laufend) return { beendet: null, eintrag: neu, fehler: null, rueckwirkend };
-  if (neu.gueltig_ab <= laufend.gueltig_ab) {
+  if (laufend && neu.gueltig_ab <= laufend.gueltig_ab) {
     return { beendet: null, eintrag: null, fehler: FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend };
   }
+  const spaeter = bestehend.some(
+    (b) => b !== laufend && b.anlage === neu.anlage && ueberlappen(b, neu),
+  );
+  if (spaeter) {
+    return { beendet: null, eintrag: null, fehler: FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend };
+  }
+  if (!laufend) return { beendet: null, eintrag: neu, fehler: null, rueckwirkend };
   return {
     beendet: { ...laufend, gueltig_bis: minusTage(neu.gueltig_ab, 1) },
     eintrag: neu,

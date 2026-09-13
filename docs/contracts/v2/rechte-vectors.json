@@ -4547,6 +4547,137 @@
       }
     },
     {
+      "name": "ap10-jonas-legt-netzanschluss-na-1-an",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-10 §5.1 (E8, E15): Jonas Wendlinger (Kundenadministrator) legt am Standort Werk Ahrenberg den Netzanschluss NA-1 „Hauptanschluss Halle 1“ an und bindet die Anlage Werk Ahrenberg – Halle 1 — `netzanschluss.verwalten` hat die Zellen von `standort.verwalten` (Kundenadministrator U).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "netzanschluss.verwalten",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ap10-claudia-legt-keinen-netzanschluss-an-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-10 §4.10 (E15, Abnahme „claudia_netzanschluss_anlegen: 403“): Claudia Berger (Leserin für Werk Ahrenberg und Werk Lindach) sieht den Standort, legt aber keinen Netzanschluss an — `netzanschluss.verwalten` hat die Zellen von `standort.verwalten` (Leser −): 403, nötige Rolle Energiemanager.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "netzanschluss.verwalten",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
       "name": "ap09-ines-legt-bezugsgroesse-an",
       "familie": "darf",
       "ableitung": "darf",

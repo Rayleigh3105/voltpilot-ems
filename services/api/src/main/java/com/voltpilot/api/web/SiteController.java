@@ -21,6 +21,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.MessreihenBelege;
+import com.voltpilot.api.uems.NetzanschlussService;
 import com.voltpilot.api.uems.OrtAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
@@ -97,6 +98,7 @@ public class SiteController {
     private final StandortLesemodellService standortLesemodell;
     private final AnlageStandortService anlageStandort;
     private final MessreihenBelege belege;
+    private final NetzanschlussService netzanschluesse;
 
     public SiteController(
             SiteRepository sites,
@@ -116,7 +118,8 @@ public class SiteController {
             CockpitLayoutRepository cockpitLayouts,
             StandortLesemodellService standortLesemodell,
             AnlageStandortService anlageStandort,
-            MessreihenBelege belege) {
+            MessreihenBelege belege,
+            NetzanschlussService netzanschluesse) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -135,6 +138,7 @@ public class SiteController {
         this.standortLesemodell = standortLesemodell;
         this.anlageStandort = anlageStandort;
         this.belege = belege;
+        this.netzanschluesse = netzanschluesse;
     }
 
     @GetMapping
@@ -278,6 +282,9 @@ public class SiteController {
         // wie die Serien-Zeilen darueber.
         cockpitLayouts.deleteForScope(CockpitLayoutRepository.SCOPE_SITE, siteId);
         anlageStandort.beimLoeschen(siteId, () -> OrtAnfrage.akteur(auth));
+        // UEMS AP-10 IP-6: die Bindung an den Netzanschluss endet heute und bleibt stehen — sonst hielte
+        // die gelöschte Anlage ihren Anschluss für immer belegt.
+        netzanschluesse.beimLoeschen(siteId, () -> OrtAnfrage.akteur(auth));
         if (!sites.delete(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

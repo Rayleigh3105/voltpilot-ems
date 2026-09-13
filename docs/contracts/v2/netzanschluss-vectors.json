@@ -542,6 +542,60 @@
           }
         },
         {
+          "regel": "bindung",
+          "name": "Ein früherer Beginn schiebt sich nie vor eine spätere Bindung derselben Anlage — nichts wird überschrieben",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-3",
+                "netzanschluss": "NA-3",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-3",
+              "netzanschluss": "NA-3",
+              "gueltig_ab": "2026-10-01",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-20"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "bindung_ueberlappt",
+            "rueckwirkend": true
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Ein Anschluss, der erst ab einem späteren Tag an einer anderen Anlage hängt, ist für eine offene Bindung davor belegt",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-2",
+                "netzanschluss": "NA-2",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-2",
+              "gueltig_ab": "2026-09-01",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-20"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "anschluss_belegt",
+            "rueckwirkend": true
+          }
+        },
+        {
           "regel": "kopfzeile",
           "name": "Die Kopfzeile der Bilanz nennt Vereinbartes, Anschluss und Momentanleistung",
           "eingang": {

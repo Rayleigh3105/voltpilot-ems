@@ -1158,6 +1158,24 @@
       "anmerkung": "AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/prozesse`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. Eine Messstelle einem Prozess zuordnen bleibt `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“)."
     },
     {
+      "kennung": "netzanschluss.verwalten",
+      "gruppe": "struktur",
+      "kundenwort": "Netzanschluss anlegen · bearbeiten · beenden · Anlage binden",
+      "herkunft": "AP-10 §4.10 (E15)",
+      "nachtrag": "AP-10 §4.10",
+      "wie": "standort.verwalten",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-10 E15: „`netzanschluss.verwalten` (Zellen wie `standort.verwalten`)“. Beendet, nie gelöscht (§5.1); seit AP-10 IP-6 nennen `POST /api/v1/standorte/{id}/netzanschluesse`, `PUT …/netzanschluesse/{id}` und `POST …/netzanschluesse/{id}/anlagen` die Kennung. Lesen bleibt ohne eigene Kennung (wie das Standort-Lesemodell)."
+    },
+    {
       "kennung": "bezugsgroesse.verwalten",
       "gruppe": "messdaten",
       "kundenwort": "Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen",
@@ -1421,12 +1439,22 @@
           ],
           "zuordnung": "neu",
           "anmerkung": "Seit AP-10 IP-8 (Tabelle `messstelle_verteilung`, `PUT /api/v1/messstellen/{id}/verteilung`); gelesen wird über `messstelle.ansehen` (`GET …/verteilung?am=`). Die Durchsetzung bringt AP-03."
+        },
+        {
+          "handlung": "Netzanschlüsse verwalten und Anlagen binden",
+          "wer": "Zellen wie `standort.verwalten`: KA U · EM U",
+          "recht": "`netzanschluss.verwalten`",
+          "kennungen": [
+            "netzanschluss.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Seit AP-10 IP-6 (Tabellen `netzanschluss`, `anlage_netzanschluss`); die Durchsetzung bringt AP-03."
         }
       ],
       "regeln": [
         {
           "wortlaut": "`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`)",
-          "wo": "`kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen, `messstelle.verteilung` seit AP-10 IP-8; `netzanschluss.verwalten` entsteht mit dem Bau-Paket, das seine Route baut: AP-10 IP-6"
+          "wo": "`kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen, `messstelle.verteilung` seit AP-10 IP-8, `netzanschluss.verwalten` seit AP-10 IP-6"
         },
         {
           "wortlaut": "Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen)",

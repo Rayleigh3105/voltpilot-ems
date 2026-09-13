@@ -267,6 +267,11 @@ public class TenantRepository {
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",
+                        // The Netzanschluss (V20260913235000): its bindings and Kennzeichen
+                        // occupancy before it, it before its Standort; counter and protocol hold
+                        // only the tenant (RESTRICT).
+                        "anlage_netzanschluss", "netzanschluss_kennzeichen", "netzanschluss",
+                        "netzanschluss_kennzeichen_seq", "netzanschluss_aenderung",
                         "standort_vorschlag", "anlage_standort", "standort", "ort_kurzzeichen",
                         "ort_kurzzeichen_seq",
                         "unternehmen"}) {
