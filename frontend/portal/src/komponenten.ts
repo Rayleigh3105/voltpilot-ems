@@ -551,9 +551,15 @@ export interface ComponentActions {
 /**
  * Which cleanup actions a component offers, mirroring the server guards ONE to
  * one (`SiteEntityAdoptController`): the PV aspect of a hybrid is not an entity
- * of its own, the platform-composed types are untouchable, and only a component
- * that actually carries a device pin can be deleted (a composed grid meter /
- * house load has none and IS the plant's base).
+ * of its own, and the platform-composed types (battery-hybrid / house-load) are
+ * untouchable here.
+ *
+ * <p><b>Deletable without a pin (Captain-Entscheid E2, vp-komp-loeschen):</b> a
+ * component a customer created and never connected should be removable. Only a
+ * platform-SYNTHESIZED base row (`sourceKind === 'composed'` - the grid-meter /
+ * house-load derived from the gateway) stays refused when it has no pin, because
+ * it IS the plant's Grundausstattung. A producer is never synthesized, so a
+ * never-connected producer is deletable - exactly the case the report calls out.
  *
  * This is the fix for the captain's dead end: before it, the ONLY way back was
  * the „Wieder verbinden"-Dialog of a NEWLY reported device — and on a fully
@@ -567,7 +573,8 @@ export function componentActions(
   if ((PLATFORM_COMPONENT_TYPES as readonly string[]).includes(entity.entityType)) {
     return { canRepin: false, canDelete: false };
   }
-  return { canRepin: true, canDelete: entity.edgeSourceId != null };
+  const isComposedBase = entity.sourceKind === 'composed';
+  return { canRepin: true, canDelete: entity.edgeSourceId != null || !isComposedBase };
 }
 
 /** One device a component can be assigned to („Zuordnung ändern"). */

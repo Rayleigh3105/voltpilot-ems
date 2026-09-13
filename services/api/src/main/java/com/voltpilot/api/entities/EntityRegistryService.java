@@ -752,6 +752,43 @@ public class EntityRegistryService {
     }
 
     /**
+     * "Batterie am Standort abmelden" (vp-komp-loeschen E1): remove the site's
+     * battery as ONE coherent action, so nothing is left behind to plan a
+     * PHANTOM battery. Three things go together, and the ORDER matters - the
+     * asset first, so the re-push at the end already composes a site without a
+     * battery:
+     * <ol>
+     *   <li>the {@code asset} nameplate (kWh/kW) - the row the optimizer
+     *       actually reads (report §4c); without this the platform keeps
+     *       planning a battery the portal no longer shows, which is exactly why
+     *       {@code battery-hybrid} is otherwise hard-blocked;</li>
+     *   <li>the {@code flow_claim} orphan of the battery entity (report §4b),
+     *       else the optimizer reads it as "held by a rule";</li>
+     *   <li>the {@code battery-hybrid} measurement point itself - its recorded
+     *       telemetry is deliberately KEPT ("Ehrlichkeit der Zahlen", E3;
+     *       retention cleans it up later), only its live VISIBILITY goes.</li>
+     * </ol>
+     *
+     * <p>Dropping the asset is also what makes it stick: {@link
+     * #bootstrapIfEligible} only re-composes a battery-hybrid while a battery
+     * asset exists, so with the asset gone the deliberate removal is never
+     * silently re-composed. The best-effort re-push makes the edge forget the
+     * source (report §4d). Idempotent: a site without a battery is a no-op.
+     * Returns true when anything was removed.
+     */
+    @Transactional
+    public boolean unregisterBattery(UUID siteId) {
+        UUID pointId = repo.batteryHybridPointId(siteId);
+        boolean assetRemoved = assets.deleteBattery(siteId);
+        if (pointId != null) {
+            claims.deleteForEntity(siteId, pointId);
+            repo.deletePoint(pointId);
+        }
+        pushRegistryBestEffort(siteId);
+        return assetRemoved || pointId != null;
+    }
+
+    /**
      * RE-PIN an entity to a (different) edge source - the repair lever for
      * identity churn (vp-vier-erzeuger-p9): a source that was deleted +
      * re-added on the device minted a new id, so the entity's pin points into

@@ -50,6 +50,8 @@ import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
+import { GeraetGefahrenzone } from '../components/GeraetGefahrenzone';
+import { gefahrenzone } from '../geraetLoeschen';
 import {
   anlageRoute,
   befehleGeraetHash,
@@ -1056,6 +1058,20 @@ export function GeraetSeiteSection({
     return { text: erste.label, onClick: () => aktionAusloesen(erste) };
   }, [gesichtView, aktionen, aktionAusloesen]);
 
+  /**
+   * Die GEFAHRENZONE dieses Geräts (vp-loeschen-konzept-l3, E4): ihr Zustand ist
+   * eine reine Ableitung aus den Komponenten des Geräts und ihren Entitäten -
+   * löschbar, geschützter Speicher (mit Weg) oder Grundausstattung ohne Weg.
+   * Nie für die Box selbst oder eine Ladesäule (die haben hier keine eine
+   * Aktion). Der Name zum Bestätigen ist der der Komponente, sonst des Geräts.
+   */
+  const gefahr = useMemo(() => {
+    if (!view || !view.gefunden || view.art === 'ladepunkt') return null;
+    return gefahrenzone(view.komponenten, (id) => data?.entities.find((e) => e.id === id));
+  }, [view, data]);
+  const gefahrName =
+    gefahr?.kind === 'entfernen' ? gefahr.component.label : view?.kopf.titel ?? '';
+
   return (
     <div className="vp-geraet">
       {/* GENAU EIN Rückweg (Stufe 0, §2.1/§4.2): der Knopf „Anlage {Name}" und
@@ -1425,6 +1441,22 @@ export function GeraetSeiteSection({
             )}
           </RahmenSektion>
         </GeraetRahmen>
+      )}
+
+      {view && view.gefunden && gesichtView?.gattung !== 'ladepunkt' && !editOpen
+        && !renameTarget && gefahr && (
+        <GeraetGefahrenzone
+          siteId={site.id}
+          zustand={gefahr}
+          name={gefahrName}
+          onDone={() => {
+            setEditNotice(gefahr.kind === 'batterie'
+              ? 'Die Batterie wurde am Standort abgemeldet.'
+              : 'Die Komponente wurde entfernt.');
+            setData(null);
+            setReloadKey((key) => key + 1);
+          }}
+        />
       )}
 
       <ConfirmDialog

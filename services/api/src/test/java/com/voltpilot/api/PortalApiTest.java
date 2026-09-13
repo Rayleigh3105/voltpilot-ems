@@ -3324,12 +3324,16 @@ class PortalApiTest {
         assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
                 + "' AND role = 'pv-generation'")).as("a swap never mints a row").isEqualTo(3L);
 
-        // A component WITHOUT a device assignment is the plant's base, not a
-        // mis-adoption - refused, and provably still there afterwards.
+        // A customer producer with NO device pin is now deletable (Captain-
+        // Entscheid E2, vp-komp-loeschen): it is a mis-adoption a customer can
+        // clean up, not the plant's SYNTHESIZED base (source_kind 'composed').
+        // It goes; only the derived grid-meter / house-load and the battery-
+        // hybrid below stay protected without a pin.
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr2),
                 HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
-                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
-        assertThat(entityById.apply(wr2)).isNotNull();
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE id = '" + wr2 + "'"))
+                .as("the never-connected producer is gone").isZero();
 
         // Neither is a platform-composed component (seeded like every v2 test).
         String hybrid = java.util.UUID.randomUUID().toString();

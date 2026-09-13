@@ -917,14 +917,29 @@ describe('componentActions — die Bereinigung hängt an der Komponente', () => 
     }
   });
 
-  it('does not delete a component that carries no device assignment', () => {
-    const composed = entity('netz', 'grid-meter', { label: 'Netzanschluss' });
+  it('does not delete a platform-synthesized base row without a pin', () => {
+    // A grid-meter the platform SYNTHESIZED from the gateway carries
+    // sourceKind 'composed' and no pin - it IS the plant's Grundausstattung, so
+    // the server refuses its delete with 422 and the button would only fail.
+    const composed = entity('netz', 'grid-meter', {
+      label: 'Netzanschluss',
+      sourceKind: 'composed',
+    });
     const m = plantModel([composed], null, []);
-    // Re-assigning it is fine; deleting a composed base row is not (the server
-    // refuses it with 422, so the button would only ever fail).
     expect(componentActions(m.components[0], composed)).toEqual({
       canRepin: true,
       canDelete: false,
+    });
+  });
+
+  it('deletes a customer-created component that was never connected (E2)', () => {
+    // A producer the customer added and never pinned carries no 'composed'
+    // marker - after E2 it is removable, not stuck as "Grundausstattung".
+    const stranded = entity('pv-neu', 'producer', { label: 'PV Scheune' });
+    const m = plantModel([stranded], null, []);
+    expect(componentActions(m.components[0], stranded)).toEqual({
+      canRepin: true,
+      canDelete: true,
     });
   });
 

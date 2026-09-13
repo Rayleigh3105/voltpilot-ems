@@ -1414,6 +1414,14 @@ export interface SiteEntity {
    * backend simply omits the field).
    */
   orphanedPin?: boolean | null;
+  /**
+   * „composed" = a platform-SYNTHESIZED base row (the grid-meter / house-load
+   * derived from the gateway). The delete gate mirrors the server
+   * (vp-komp-loeschen E2): a component without a pin is deletable UNLESS it
+   * carries this marker, so a never-connected producer can be removed while the
+   * plant's derived base stays protected. Absent on an older backend.
+   */
+  sourceKind?: string | null;
 }
 
 /** The composed registry Soll + the edge's echoed revision. */
@@ -5274,6 +5282,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+  /**
+   * „Batterie am Standort abmelden" (vp-komp-loeschen E1): remove the site's
+   * battery as one coherent action - the nameplate the optimizer reads, the
+   * battery entity's flow-claim orphan and the entity/measurement point go
+   * together, so nothing keeps planning a phantom battery. Recorded telemetry
+   * is KEPT; only the live visibility ends. Returns the remaining assets.
+   */
+  unregisterBattery: (siteId: string) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/battery`, { method: 'DELETE' }),
   mastrLookup: (siteId: string, einheitNummer: string) =>
     request<MastrPreview>(`/api/v1/sites/${siteId}/mastr-lookup`, {
       method: 'POST',

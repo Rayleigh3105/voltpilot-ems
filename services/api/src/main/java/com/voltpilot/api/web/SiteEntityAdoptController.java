@@ -236,10 +236,26 @@ public class SiteEntityAdoptController {
      * the RIGHT component. The registry re-push makes the device drop it too.
      *
      * <p>Two guards keep this the CLEANUP lever and not a demolition button:
-     * the platform-composed base components (battery-hybrid / house-load) are
-     * refused, and so is any component that carries no device assignment at all
-     * - a grid meter or house load composed from the plant's own master data is
-     * its Grundausstattung, not something a customer adopted by mistake.
+     * <ul>
+     *   <li>the platform-composed base components (battery-hybrid / house-load)
+     *       are refused by {@link #requireCustomerManaged} - deleting one would
+     *       only make the composition recreate it;</li>
+     *   <li>a platform-SYNTHESIZED base row without a device pin
+     *       ({@code source_kind = 'composed'}, the grid-meter / house-load
+     *       {@code EntityRegistryService} derives from the gateway) is its
+     *       Grundausstattung, not something a customer adopted by mistake, and
+     *       stays refused.</li>
+     * </ul>
+     *
+     * <p><b>A customer-created component with NO pin is now deletable</b>
+     * (Captain-Entscheid E2, vp-komp-loeschen). Before, ANY {@code
+     * edgeSourceId == null} row was refused as "Grundausstattung" - too coarse:
+     * a producer a customer created by mistake and never connected (freshly
+     * added or MaStR-imported) could never be removed, and a producer whose pin
+     * was released by a swap got stranded as a nameless row. Those rows carry
+     * no {@code source_kind = 'composed'} marker, so narrowing the pin guard to
+     * exactly the synthesized base rows frees them while keeping the plant's
+     * derived grid-meter / house-load protected.
      */
     @DeleteMapping("/{entityId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -253,7 +269,8 @@ public class SiteEntityAdoptController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
         requireCustomerManaged(row.entityType());
-        if (row.edgeSourceId() == null) {
+        if (row.edgeSourceId() == null
+                && EntityRegistryRepository.SOURCE_KIND_COMPOSED.equals(row.sourceKind())) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
                             + "entfernt werden.");

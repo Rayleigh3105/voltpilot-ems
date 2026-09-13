@@ -114,4 +114,15 @@ public class FlowClaimRepository {
     public void clearForFlow(UUID flowId) {
         jdbc.update("DELETE FROM flow_claim WHERE flow_id = ?", flowId);
     }
+
+    /**
+     * Drop every claim on ONE entity - the orphan cleanup when a component is
+     * removed (vp-komp-loeschen). {@code flow_claim.entity_id} carries no FK
+     * (V20260842000000), so a deleted component's claim would dangle and the
+     * optimizer would keep reading the entity as "von einer Regel gehalten"
+     * (report §4b). RLS scopes it to the caller's tenant.
+     */
+    public void deleteForEntity(UUID siteId, UUID entityId) {
+        jdbc.update("DELETE FROM flow_claim WHERE site_id = ? AND entity_id = ?", siteId, entityId);
+    }
 }
