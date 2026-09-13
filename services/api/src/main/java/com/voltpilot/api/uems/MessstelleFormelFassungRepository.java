@@ -99,6 +99,7 @@ public class MessstelleFormelFassungRepository {
      * {@code ab} kann nur mit ihnen einen Kreis bilden; eine vorher beendete verkettet nichts
      * mehr), in Kennzeichen. Die Eingabe von {@link MessstelleFormelRegeln#zyklus} — bewusst
      * vorsichtig: zwei Kanten, die an verschiedenen Tagen ab {@code ab} gelten, zählen zusammen.
+     * Ein Verteilungs-Term (AP-10 IP-5) liest seine Quell-Messstelle und ist darum ebenso eine Kante.
      */
     public Map<String, List<String>> verkettungen(LocalDate ab) {
         Map<String, List<String>> out = new LinkedHashMap<>();
@@ -109,7 +110,7 @@ public class MessstelleFormelFassungRepository {
                    AND (f.gueltig_bis IS NULL OR f.gueltig_bis >= ?)
                   JOIN messstelle m ON m.id = t.messstelle_id
                   JOIN messstelle q ON q.id = t.quell_messstelle_id
-                 WHERE t.eingang_art = 'messstelle'
+                 WHERE t.eingang_art IN ('messstelle', 'verteilung')
                  ORDER BY 1, 2
                 """, rs -> {
                     out.computeIfAbsent(rs.getString("von"), k -> new ArrayList<>()).add(rs.getString("nach"));

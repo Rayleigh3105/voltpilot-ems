@@ -20,6 +20,7 @@ import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.uems.MessstelleRepository.NeueMessstelle;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleFormelDto;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,6 +62,11 @@ import org.springframework.web.server.ResponseStatusException;
  * SEINER Messstelle an demselben Tag. Fassung 1 des Bestands und des Anlegens gilt seit Beginn;
  * darum rechnet eine Messstelle mit einer einzigen Fassung genau wie vor IP-3.
  *
+ * <p><b>Anteil eines Terms (AP-10 IP-5).</b> Ob ein Term den ganzen Wert seines Eingangs nimmt, nur
+ * den positiven/negativen Teil oder den Anteil einer Kostenstelle DES TAGES, fragen Schreibweg,
+ * Live-Wert und Verlauf ausschließlich {@link AnteilLeseweg#lies} — heute lehnt er jeden Anteil
+ * benannt ab (422 beim Schreiben, fehlender Term mit dem Code als Grund beim Rechnen).
+ *
  * <p>Der Mandant ist die RLS: eine fremde Messstelle/Komponente ist nicht da (404, nie 403).
  */
 @Service
@@ -72,6 +78,7 @@ public class MessstelleFormelService {
     private static final String SCHEMA_VERSION = "1.0";
     private static final String MESSKANAL = "messkanal";
     private static final String MESSSTELLE = "messstelle";
+    private static final String VERTEILUNG = AnteilLeseweg.VERTEILUNG;
     private static final String FUEHREND = "fuehrend";
     private static final int MAX_TIEFE = 16;
     private static final String HERKUNFT_ANLAGE = "anlage";
@@ -90,6 +97,7 @@ public class MessstelleFormelService {
     private final UnternehmenRepository unternehmen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
+    private final AnteilLeseweg leseweg;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleFormelService(MessstelleRepository messstellen,
@@ -97,7 +105,7 @@ public class MessstelleFormelService {
             MessstelleFormelFassungRepository fassungen,
             MessstelleFormelWerteRepository werte, MessstelleQuelleRepository quellen,
             MessstelleService messstellenDienst, MeasurementCatalog katalog, UnternehmenRepository unternehmen,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            PlatformTransactionManager transactionManager, ObjectMapper json, AnteilLeseweg leseweg) {
         this.messstellen = messstellen;
         this.aenderungen = aenderungen;
         this.terme = terme;
@@ -109,6 +117,7 @@ public class MessstelleFormelService {
         this.unternehmen = unternehmen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
+        this.leseweg = leseweg;
     }
 
     /** Nur für Tests: die Uhr, an der „jetzt" (und die Frische-Grenze) hängt. */
@@ -118,9 +127,12 @@ public class MessstelleFormelService {
 
     // ---------------------------------------------------------------- anlegen
 
-    /** Ein Term auf dem Weg zum Anlegen: die gespeicherte Bindung und die abgeleitete Größe. */
+    /**
+     * Ein Term auf dem Weg zum Anlegen: die gespeicherte Bindung und die abgeleitete Größe.
+     * {@code anteil == null} ist {@code gesamt} (so wird es auch gespeichert).
+     */
     private record Bindung(String eingangArt, UUID entityId, String pointKey, UUID quellMessstelleId,
-            String vorzeichen, double faktor, Groesse groesse) {}
+            String vorzeichen, double faktor, Groesse groesse, UUID verteilungZiel, String anteil) {}
 
     /**
      * Legt eine berechnete Messstelle mit ihrer Formel an — in EINER Transaktion mit dem
@@ -139,8 +151,10 @@ public class MessstelleFormelService {
         }
         List<Bindung> bindungen = new ArrayList<>();
         List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
+        // Fassung 1 gilt seit Beginn; ihr Anteil wird am Tag des Anlegens gefragt.
+        LocalDate ab = heute(zone());
         for (int i = 0; i < a.terme().size(); i++) {
-            Bindung b = bindung(a.terme().get(i), i);
+            Bindung b = bindung(a.terme().get(i), i, ab);
             bindungen.add(b);
             fuerAbleitung.add(new MessstelleFormelRegeln.Term(b.groesse().groesse(), b.groesse().richtung(),
                     b.groesse().einheit(), b.groesse().wertart(), b.vorzeichen()));
@@ -168,7 +182,13 @@ public class MessstelleFormelService {
         return messstellenDienst.eine(id);
     }
 
-    private Bindung bindung(MessstelleFormelDto.TermEingabe t, int index) {
+    /**
+     * Ein Term der Anfrage auf dem Weg zum Speichern: erst die Form (400), dann ob sein Eingang da ist
+     * (404, fremd ist nicht da), dann die Vertragsregel des Verteilungs-Terms und zuletzt, ob sein
+     * Anteil am Tag {@code ab} lesbar ist ({@link AnteilLeseweg#lies}, 422) — gespeichert wird nur,
+     * was die Rechnung auch lesen kann.
+     */
+    private Bindung bindung(MessstelleFormelDto.TermEingabe t, int index, LocalDate ab) {
         String feld = "terme[" + index + "]";
         if (t == null) {
             throw MessstelleFormelAbgelehnt.anfrage(feld, "Ein Term ist leer.");
@@ -181,6 +201,33 @@ public class MessstelleFormelService {
         if (faktor == 0) {
             throw MessstelleFormelAbgelehnt.anfrage(feld + ".faktor", "Ein Faktor 0 wäre ein Term ohne Wirkung.");
         }
+        if (t.anteil() != null && !AnteilLeseweg.ANTEILE.contains(t.anteil())) {
+            throw MessstelleFormelAbgelehnt.anfrage(feld + ".anteil",
+                    "Der Anteil ist „gesamt“, „positiv“ oder „negativ“.");
+        }
+        // `gesamt` hat genau eine Schreibweise: keine (V20260913143000).
+        String anteil = AnteilLeseweg.GESAMT.equals(t.anteil()) ? null : t.anteil();
+        if (t.verteilungZiel() != null && !VERTEILUNG.equals(t.eingangArt())) {
+            throw MessstelleFormelAbgelehnt.anfrage(feld + ".verteilung_ziel",
+                    "Nur ein Verteilungs-Term nennt eine Kostenstelle.");
+        }
+        Bindung b = eingang(t, feld, vorzeichen, faktor, anteil);
+        Optional<AnteilLeseweg.Ablehnung> regel =
+                AnteilLeseweg.vertragsregel(b.eingangArt(), BigDecimal.valueOf(faktor));
+        if (regel.isPresent()) {
+            throw MessstelleFormelAbgelehnt.leseweg(regel.get(), feld);
+        }
+        AnteilLeseweg.Lesung lesung =
+                leseweg.lies(b.eingangArt(), b.anteil(), b.quellMessstelleId(), b.verteilungZiel(), ab);
+        if (lesung.wartet() != null) {
+            throw MessstelleFormelAbgelehnt.leseweg(lesung.wartet(), feld);
+        }
+        return b;
+    }
+
+    /** Der Eingang eines Terms, aufgelöst: Messkanal, Baustein oder Verteilungs-Anteil einer Messstelle. */
+    private Bindung eingang(MessstelleFormelDto.TermEingabe t, String feld, String vorzeichen, double faktor,
+            String anteil) {
         if (MESSKANAL.equals(t.eingangArt())) {
             if (t.entityId() == null || leerAlsNull(t.pointKey()) == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
@@ -194,7 +241,7 @@ public class MessstelleFormelService {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
                         "Dieser Messwert hat keine Vertrags-Messgröße — er kann kein Term sein.");
             }
-            return new Bindung(MESSKANAL, t.entityId(), t.pointKey(), null, vorzeichen, faktor, g);
+            return new Bindung(MESSKANAL, t.entityId(), t.pointKey(), null, vorzeichen, faktor, g, null, anteil);
         }
         if (MESSSTELLE.equals(t.eingangArt())) {
             if (t.quellMessstelleId() == null) {
@@ -202,10 +249,22 @@ public class MessstelleFormelService {
             }
             Messstelle quell = messstellen.finde(t.quellMessstelleId()).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
-            return new Bindung(MESSSTELLE, null, null, quell.id(), vorzeichen, faktor, quell.hauptgroesse());
+            return new Bindung(MESSSTELLE, null, null, quell.id(), vorzeichen, faktor, quell.hauptgroesse(), null,
+                    anteil);
+        }
+        if (VERTEILUNG.equals(t.eingangArt())) {
+            if (t.quellMessstelleId() == null || t.verteilungZiel() == null) {
+                throw MessstelleFormelAbgelehnt.anfrage(feld,
+                        "Ein Verteilungs-Term braucht die Messstelle und die Kostenstelle.");
+            }
+            Messstelle quell = messstellen.finde(t.quellMessstelleId()).orElseThrow(() ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+            // Größe und Richtung eines Verteilungs-Terms sind die seiner Quell-Messstelle (§1.1).
+            return new Bindung(VERTEILUNG, null, null, quell.id(), vorzeichen, faktor, quell.hauptgroesse(),
+                    t.verteilungZiel(), anteil);
         }
         throw MessstelleFormelAbgelehnt.anfrage(feld + ".eingang_art",
-                "Der Eingang ist „messkanal“ oder „messstelle“.");
+                "Der Eingang ist „messkanal“, „messstelle“ oder „verteilung“.");
     }
 
     // ------------------------------------------------------------------ lesen
@@ -228,7 +287,7 @@ public class MessstelleFormelService {
         for (TermZeile t : fassung.map(f -> terme.derFassung(f.id())).orElse(List.of())) {
             aus.add(new MessstelleFormelDto.Term(t.position(), t.eingangArt(), t.entityId(),
                     t.pointKey(), t.quellMessstelleId(), t.vorzeichen(), t.faktor(),
-                    dtoGroesse(groesse(t)), eingerichtet(t)));
+                    dtoGroesse(groesse(t)), eingerichtet(t), t.verteilungZiel(), t.anteil()));
         }
         Groesse h = m.hauptgroesse();
         MessstelleFormelDto.FassungAm fassungAm = am == null ? null
@@ -291,7 +350,7 @@ public class MessstelleFormelService {
         List<MessstelleFormelRegeln.Term> fuerAbleitung = new ArrayList<>();
         List<String> verweise = new ArrayList<>();
         for (int i = 0; i < a.terme().size(); i++) {
-            Bindung b = bindung(a.terme().get(i), i);
+            Bindung b = bindung(a.terme().get(i), i, a.gueltigAb());
             bindungen.add(b);
             fuerAbleitung.add(new MessstelleFormelRegeln.Term(b.groesse().groesse(), b.groesse().richtung(),
                     b.groesse().einheit(), b.groesse().wertart(), b.vorzeichen()));
@@ -374,7 +433,7 @@ public class MessstelleFormelService {
         for (int i = 0; i < bindungen.size(); i++) {
             Bindung b = bindungen.get(i);
             terme.anlegen(fassung, messstelle, i, b.eingangArt(), b.entityId(), b.pointKey(),
-                    b.quellMessstelleId(), b.vorzeichen(), b.faktor());
+                    b.quellMessstelleId(), b.vorzeichen(), b.faktor(), b.verteilungZiel(), b.anteil());
         }
     }
 
@@ -403,7 +462,11 @@ public class MessstelleFormelService {
         for (TermZeile t : termeAm(m.id(), tag)) {
             Double wert = null;
             String einheit = ziel;
-            if (MESSKANAL.equals(t.eingangArt())) {
+            AnteilLeseweg.Lesung lesung = lesung(t, tag);
+            if (lesung.wartet() != null) {
+                // Der Anteil ist nicht lesbar: der Term fehlt, genannt mit dem Code — nie eine Zahl.
+                fehlende.add(fehlt(t, lesung.wartet().code()));
+            } else if (MESSKANAL.equals(t.eingangArt())) {
                 Optional<Quelle> q = werte.quelle(t.entityId(), t.pointKey());
                 if (q.isEmpty()) {
                     fehlende.add(fehlt(t, "kein_geraet"));
@@ -427,6 +490,15 @@ public class MessstelleFormelService {
                     wert = sub.wert();
                     einheit = sub.einheit();
                     stand = juenger(stand, sub.stand());
+                }
+            }
+            if (wert != null && !lesung.ganz()) {
+                VerteilungRegeln.TermUrteil anteil = lesung.urteil(BigDecimal.valueOf(wert));
+                if (anteil.fehler() != null) {
+                    fehlende.add(fehlt(t, anteil.fehler()));
+                    wert = null;
+                } else {
+                    wert = anteil.menge().doubleValue();
                 }
             }
             summanden.add(new Summand(t.vorzeichen(), t.faktor(), wert, einheit));
@@ -531,6 +603,8 @@ public class MessstelleFormelService {
             double vz = ("-".equals(t.vorzeichen()) ? -1 : 1) * t.faktor();
             Map<Instant, Double> roh;
             String von_einheit = ziel;
+            // Der Anteil gilt je TAG des Buckets (Zeitzone des Standorts) — nie der von heute.
+            Map<LocalDate, AnteilLeseweg.Lesung> jeTag = new java.util.HashMap<>();
             if (MESSKANAL.equals(t.eingangArt())) {
                 Optional<Quelle> q = werte.quelle(t.entityId(), t.pointKey());
                 roh = q.isEmpty() ? Map.of() : werte.verlauf15m(q.get(), t.pointKey(), wertart, von, bis);
@@ -540,7 +614,19 @@ public class MessstelleFormelService {
             }
             Map<Instant, Double> gewichtet = new TreeMap<>();
             for (Map.Entry<Instant, Double> e : roh.entrySet()) {
-                gewichtet.put(e.getKey(), vz * MessstelleFormelRegeln.normiere(e.getValue(), von_einheit, ziel));
+                AnteilLeseweg.Lesung lesung = jeTag.computeIfAbsent(
+                        e.getKey().atZone(zone).toLocalDate(), tag -> lesung(t, tag));
+                Double wert = e.getValue();
+                if (!lesung.ganz()) {
+                    // Wartet der Anteil (oder gibt es am Tag keinen), hat der Term im Bucket keinen
+                    // Wert — der Bucket wird null, nie eine Teilsumme.
+                    BigDecimal menge = lesung.urteil(BigDecimal.valueOf(wert)).menge();
+                    if (menge == null) {
+                        continue;
+                    }
+                    wert = menge.doubleValue();
+                }
+                gewichtet.put(e.getKey(), vz * MessstelleFormelRegeln.normiere(wert, von_einheit, ziel));
             }
             out.add(gewichtet);
         }
@@ -715,6 +801,13 @@ public class MessstelleFormelService {
                     b.quellMessstelleId() == null ? null : b.quellMessstelleId().toString());
             term.put("vorzeichen", b.vorzeichen());
             term.put("faktor", b.faktor());
+            // AP-10 IP-5: nur, wenn der Term sie trägt — ein Term ohne sie protokolliert wie vorher.
+            if (b.verteilungZiel() != null) {
+                term.put("verteilung_ziel", b.verteilungZiel().toString());
+            }
+            if (b.anteil() != null) {
+                term.put("anteil", b.anteil());
+            }
             formel.add(term);
         }
         return formel;
@@ -735,6 +828,11 @@ public class MessstelleFormelService {
             case "30d" -> Duration.ofDays(30);
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unbekannter Zeitraum.");
         };
+    }
+
+    /** Wie der Term an dem Tag seinen Anteil liest — die EINE Stelle ist {@link AnteilLeseweg#lies}. */
+    private AnteilLeseweg.Lesung lesung(TermZeile t, LocalDate tag) {
+        return leseweg.lies(t.eingangArt(), t.anteil(), t.quellMessstelleId(), t.verteilungZiel(), tag);
     }
 
     /** Die Terme der Fassung, die an dem Tag gilt — leer, wenn an dem Tag keine gilt. */

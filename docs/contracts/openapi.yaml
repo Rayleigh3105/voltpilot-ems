@@ -16964,11 +16964,14 @@ components:
           items: { $ref: "#/components/schemas/KadenzFassung" }
     MessstelleFormelTerm:
       type: object
-      description: Ein Term der Formel, wie er gespeichert ist (snake_case - das Portal wandelt nichts um).
+      description: >
+        Ein Term der Formel, wie er gespeichert ist (snake_case - das Portal wandelt nichts um).
+        `verteilung_ziel` und `anteil` (AP-10 IP-5) stehen nur im Körper, wenn der Term sie trägt;
+        ein Term ohne sie (`anteil` = gesamt) antwortet wie vor IP-5.
       required: [position, eingang_art, vorzeichen, faktor, eingerichtet]
       properties:
         position: { type: integer }
-        eingang_art: { type: string, enum: [messkanal, messstelle] }
+        eingang_art: { type: string, enum: [messkanal, messstelle, verteilung] }
         entity_id: { type: string, format: uuid, nullable: true }
         point_key: { type: string, nullable: true }
         quell_messstelle_id: { type: string, format: uuid, nullable: true }
@@ -16978,6 +16981,14 @@ components:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessGroesse" }]
         eingerichtet: { type: boolean }
+        verteilung_ziel:
+          type: string
+          format: uuid
+          description: Bei `eingang_art` = verteilung - die Kostenstelle, deren Anteil DES TAGES an `quell_messstelle_id` der Term liest.
+        anteil:
+          type: string
+          enum: [positiv, negativ]
+          description: Nur der positive bzw. negative Teil eines Messwerts; fehlt = gesamt.
     MessstelleFormelFassung:
       type: object
       description: >
@@ -17033,12 +17044,20 @@ components:
             type: object
             required: [eingang_art, vorzeichen]
             properties:
-              eingang_art: { type: string, enum: [messkanal, messstelle] }
+              eingang_art: { type: string, enum: [messkanal, messstelle, verteilung] }
               entity_id: { type: string, format: uuid }
               point_key: { type: string }
               quell_messstelle_id: { type: string, format: uuid }
               vorzeichen: { type: string, enum: ["+", "-"] }
-              faktor: { type: number, description: "Fehlend = 1, nie 0." }
+              faktor: { type: number, description: "Fehlend = 1, nie 0; bei verteilung nur 1." }
+              verteilung_ziel: { type: string, format: uuid, description: "Nur bei eingang_art = verteilung: die Kostenstelle." }
+              anteil:
+                type: string
+                enum: [gesamt, positiv, negativ]
+                description: >
+                  Fehlend = gesamt. `positiv`/`negativ` lehnt die Schnittstelle bis AP-08 IP-7 mit 422
+                  `anteil_wartet_auf_ap08` ab, `eingang_art` = verteilung bis AP-10 IP-8 mit 422
+                  `verteilung_wartet_auf_ip8` (Vertrag verteilung-vectors.json, Block `leseweg`).
         begruendung: { type: string, maxLength: 500 }
     BezugsgroesseFehler:
       type: object
@@ -17164,12 +17183,16 @@ components:
         Die Ablehnung der Formel-Schnittstelle (Vertrag messstelle-formel.md §5 und §6):
         `anfrage_ungueltig` 400 (`feld`), `groessen_gemischt` 422 (`grund`: groesse ·
         wertart · richtung), `formel_zyklus` 422 (`kette`), `formel_fassung_ueberlappt` 422
-        (`fassung`, `gueltig_ab` der jüngsten Fassung).
+        (`fassung`, `gueltig_ab` der jüngsten Fassung). AP-10 IP-5 (Vertrag verteilung-vectors.json,
+        Block `leseweg`, mit Kundensatz): `verteilungs_term_ohne_faktor` 422 (`feld`),
+        `anteil_wartet_auf_ap08` 422 und `verteilung_wartet_auf_ip8` 422 (`feld`, `wartet_auf`) -
+        der Anteil ist noch nicht lesbar, der Term wird nicht gespeichert, nichts wird geschätzt.
       required: [code, message]
       properties:
-        code: { type: string, enum: [anfrage_ungueltig, groessen_gemischt, formel_zyklus, formel_fassung_ueberlappt] }
+        code: { type: string, enum: [anfrage_ungueltig, groessen_gemischt, formel_zyklus, formel_fassung_ueberlappt, verteilungs_term_ohne_faktor, anteil_wartet_auf_ap08, verteilung_wartet_auf_ip8] }
         message: { type: string }
         feld: { type: string }
+        wartet_auf: { type: string, example: "AP-08 IP-7" }
         grund: { type: string }
         kette: { type: array, items: { type: string } }
         fassung: { type: integer }

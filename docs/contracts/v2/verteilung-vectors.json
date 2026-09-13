@@ -123,6 +123,158 @@
   "zwillinge_grund": {
     "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel."
   },
+  "leseweg": {
+    "herkunft": "UEMS AP-10 §8 IP-5 („Anteil über den AP-08-IP-7-Leseweg — bis dahin 422 `anteil_wartet_auf_ap08`, benannt, nie geraten; Verteilungs-Term liest den Anteil des Tages“), §1.1 von messstelle-formel.md; nachgetragen mit AP-10 IP-5 am 13.09.2026. Die zweite Ablehnung `verteilung_wartet_auf_ip8` ist die Anweisung von firstmate vom 13.09.2026: beim Bau fehlte neben AP-08 IP-7 auch die Verteilung selbst (AP-10 IP-8) — zwei fehlende Fähigkeiten, zwei Sätze.",
+    "regel": "Ein Formel-Term liest seinen Anteil über EINEN Leseweg. Der Teil eines Messwerts (`anteil` = `positiv` | `negativ`) kommt aus der Quellenbindung (AP-08 IP-7), der Anteil DES TAGES eines Terms der Art `verteilung` aus der Verteilung (AP-10 IP-8). Fehlt die Fähigkeit, wird der Term benannt abgelehnt: der Schreibweg speichert ihn nicht (422 mit Kundensatz), Wert und Verlauf nennen ihn als fehlenden Term mit dem Code als Grund — nie eine geratene Zahl, nie eine Null, nie `nicht_verteilt` oder `ziel_besteht_nicht` (die sagen etwas über eine VORHANDENE Verteilung). Die Vertragsregel `verteilungs_term_ohne_faktor` gilt unabhängig vom Leseweg und wird zuerst geprüft; danach der Teil des Messwerts, danach der Anteil der Verteilung (erst der Teil, dann die Verteilung dieses Teils).",
+    "stelle": "Java services/api .../uems/AnteilLeseweg#lies — die EINE Stelle, die Schreibweg, Live-Wert und Verlauf fragen. Wird AP-08 IP-7 oder AP-10 IP-8 gebaut, wird aus GENAU dem Zweig dieses Pakets ein Aufruf; der Anteil des Tages wird dann über `AnteilLeseweg.tagesanteil` von `VerteilungRegeln.term` gerechnet (Regel `term` dieser Datei, aufgerufen, nie nachgebaut).",
+    "grund_im_wert": "fehlende[].grund",
+    "pruefreihenfolge": [
+      "verteilungs_term_ohne_faktor",
+      "anteil_wartet_auf_ap08",
+      "verteilung_wartet_auf_ip8"
+    ],
+    "ablehnungen": [
+      {
+        "code": "verteilungs_term_ohne_faktor",
+        "status": 422,
+        "wartet_auf": null,
+        "feld": "faktor",
+        "satz": "Ein Verteilungs-Anteil kommt aus der Verteilung des Tages und hat darum keinen eigenen Faktor."
+      },
+      {
+        "code": "anteil_wartet_auf_ap08",
+        "status": 422,
+        "wartet_auf": "AP-08 IP-7",
+        "feld": "anteil",
+        "satz": "Nur den positiven oder nur den negativen Teil eines Messwerts (etwa Laden oder Entladen) kann eine Formel noch nicht lesen. Der Term wird darum nicht gespeichert — geschätzt wird nichts."
+      },
+      {
+        "code": "verteilung_wartet_auf_ip8",
+        "status": 422,
+        "wartet_auf": "AP-10 IP-8",
+        "feld": "eingang_art",
+        "satz": "Anteile aus der Verteilung auf Kostenstellen kann eine Formel noch nicht lesen. Der Term wird darum nicht gespeichert — geschätzt wird nichts."
+      }
+    ],
+    "zwillinge": [
+      "java"
+    ],
+    "zwillinge_grund": "Die Ablehnung entsteht im Schreibweg des Servers und reist mit Code und Kundensatz ins Portal; das Portal bildet sie nie selbst. Der TS-Test hält nur fest, dass die Typen des Portals dieselben Anteil-Wörter kennen und kein Satz ein internes Wort trägt.",
+    "faelle": [
+      {
+        "name": "F4 · MS-04 Laden als Term (`positiv`) — der Teil des Messwerts wartet auf die Quellenbindung",
+        "fall": "F4",
+        "term": {
+          "art": "messstelle",
+          "verteilung_ziel": null,
+          "quell_messstelle": "MS-04",
+          "anteil": "positiv",
+          "faktor": "1",
+          "vorzeichen": "-"
+        },
+        "tag": "2026-10-18",
+        "ergebnis": {
+          "ablehnung": "anteil_wartet_auf_ap08"
+        }
+      },
+      {
+        "name": "F4 · MS-04 Entladen als Term (`negativ`) — ebenso, nie als Saldo und nie nur mit einer Hälfte",
+        "fall": "F4",
+        "term": {
+          "art": "messstelle",
+          "verteilung_ziel": null,
+          "quell_messstelle": "MS-04",
+          "anteil": "negativ",
+          "faktor": "1",
+          "vorzeichen": "+"
+        },
+        "tag": "2026-10-18",
+        "ergebnis": {
+          "ablehnung": "anteil_wartet_auf_ap08"
+        }
+      },
+      {
+        "name": "F11 · „4100 von MS-07“ — der Anteil des Tages wartet auf die Verteilung",
+        "fall": "F11",
+        "term": {
+          "art": "verteilung",
+          "verteilung_ziel": "4100",
+          "quell_messstelle": "MS-07",
+          "anteil": "gesamt",
+          "faktor": "1",
+          "vorzeichen": "+"
+        },
+        "tag": "2026-10-01",
+        "ergebnis": {
+          "ablehnung": "verteilung_wartet_auf_ip8"
+        }
+      },
+      {
+        "name": "F11 · Faktor 0,7 statt des Verweises — die Vertragsregel geht dem Leseweg voraus",
+        "fall": "F11",
+        "term": {
+          "art": "verteilung",
+          "verteilung_ziel": "4100",
+          "quell_messstelle": "MS-07",
+          "anteil": "gesamt",
+          "faktor": "0.7",
+          "vorzeichen": "+"
+        },
+        "tag": "2026-10-01",
+        "ergebnis": {
+          "ablehnung": "verteilungs_term_ohne_faktor"
+        }
+      },
+      {
+        "name": "Ein positiver Teil UND eine Verteilung — genannt wird zuerst der Teil des Messwerts",
+        "fall": "F11",
+        "term": {
+          "art": "verteilung",
+          "verteilung_ziel": "4100",
+          "quell_messstelle": "MS-07",
+          "anteil": "positiv",
+          "faktor": "1",
+          "vorzeichen": "+"
+        },
+        "tag": "2026-10-01",
+        "ergebnis": {
+          "ablehnung": "anteil_wartet_auf_ap08"
+        }
+      },
+      {
+        "name": "F1 · MS-17 als Baustein (`gesamt`) — liest wie vor diesem Paket, keine Ablehnung",
+        "fall": "F1",
+        "term": {
+          "art": "messstelle",
+          "verteilung_ziel": null,
+          "quell_messstelle": "MS-17",
+          "anteil": "gesamt",
+          "faktor": "1",
+          "vorzeichen": "-"
+        },
+        "tag": "2026-10-18",
+        "ergebnis": {
+          "ablehnung": null
+        }
+      },
+      {
+        "name": "Ein Messkanal-Term ohne `anteil` (Vorgabe `gesamt`) — keine Ablehnung",
+        "fall": "F1",
+        "term": {
+          "art": "messkanal",
+          "verteilung_ziel": null,
+          "quell_messstelle": null,
+          "anteil": null,
+          "faktor": "1",
+          "vorzeichen": "+"
+        },
+        "tag": "2026-10-18",
+        "ergebnis": {
+          "ablehnung": null
+        }
+      }
+    ]
+  },
   "_abweichungen": [
     {
       "fall": "F13 · herkunft.ausloeser",

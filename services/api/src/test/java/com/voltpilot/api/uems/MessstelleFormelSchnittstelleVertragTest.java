@@ -60,7 +60,21 @@ class MessstelleFormelSchnittstelleVertragTest {
 
         assertThat(map(schema("MessstelleFormelTerm"), "properties").keySet())
                 .containsExactlyElementsOf(felder(MessstelleFormelDto.Term.class));
-        assertThat(interfaceFelder("MessstelleFormelTerm")).containsExactlyElementsOf(felder(MessstelleFormelDto.Term.class));
+        // AP-10 IP-5: verteilung_ziel und anteil stehen nur da, wenn der Term sie trägt — darum
+        // optional in api.ts und nicht Pflicht in der OpenAPI; die Felder von vor IP-5 bleiben Pflicht.
+        assertThat(felder(MessstelleFormelDto.Term.class)).containsExactly("position", "eingang_art", "entity_id",
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet",
+                "verteilung_ziel", "anteil");
+        assertThat(interfaceFelder("MessstelleFormelTerm")).containsExactly("position", "eingang_art", "entity_id",
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet",
+                "verteilung_ziel?", "anteil?");
+        assertThat(liste(schema("MessstelleFormelTerm"), "required"))
+                .doesNotContain("verteilung_ziel", "anteil");
+        assertThat(liste(schema("MessstelleFormelTerm"), "properties", "eingang_art", "enum"))
+                .containsExactly("messkanal", "messstelle", AnteilLeseweg.VERTEILUNG);
+        // Gespeichert wird `gesamt` als „kein Anteil“: die Antwort kennt nur die zwei Teile.
+        assertThat(liste(schema("MessstelleFormelTerm"), "properties", "anteil", "enum"))
+                .containsExactly(AnteilLeseweg.POSITIV, AnteilLeseweg.NEGATIV);
     }
 
     @Test
@@ -86,7 +100,11 @@ class MessstelleFormelSchnittstelleVertragTest {
                 .containsExactly("gueltig_ab", "formel_typ?", "terme", "begruendung?");
         // Die Term-Eingabe der Fassung ist die des Anlegens.
         assertThat(felder(MessstelleFormelDto.TermEingabe.class)).containsExactly("eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "verteilung_ziel", "anteil");
+        Map<String, Object> termEingabe = map(map(map(schema, "properties"), "terme"), "items");
+        assertThat(map(termEingabe, "properties").keySet())
+                .containsExactlyElementsOf(felder(MessstelleFormelDto.TermEingabe.class));
+        assertThat(liste(termEingabe, "properties", "anteil", "enum")).containsExactlyElementsOf(AnteilLeseweg.ANTEILE);
     }
 
     @Test
@@ -95,6 +113,8 @@ class MessstelleFormelSchnittstelleVertragTest {
         codes.add("anfrage_ungueltig");
         Arrays.stream(MessstelleFormelRegeln.Fehler.values()).forEach(f -> codes.add(f.code()));
         Arrays.stream(MessstelleFormelRegeln.FassungFehler.values()).forEach(f -> codes.add(f.code()));
+        // AP-10 IP-5: die Ablehnungen des Terms aus dem Block `leseweg` des Verteilungs-Vertrags.
+        Arrays.stream(AnteilLeseweg.Ablehnung.values()).forEach(a -> codes.add(a.code()));
         assertThat(liste(schema("MessstelleFormelFehler"), "properties", "code", "enum"))
                 .containsExactlyElementsOf(codes);
 
