@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/ergebnis-zustand.schema.json",
+  "title": "Ergebnis-Zustand, Kennzeichen und Anzeige: die Vektor-Datei",
+  "description": "Der Vertrag, wie eine abgeleitete Zahl sagt, wie belastbar sie ist (UEMS AP-08 IP-8, Prosa: ergebnis-zustand.md): das geschlossene Zustands-Vokabular, die geschlossene Liste der Kennzeichen-Sätze mit Rang, die Rundung je Ebene (E11) und die Sommerzeit-Beschriftung (E10). Er beschreibt ergebnis-zustand-vectors.json, gegen die BEIDE Zwillinge gefahren werden: Java services/api .../uems/ErgebnisZustand und TypeScript frontend/portal/src/uemsErgebnis.ts. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "befunde", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
+    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv." },
+    "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
+    "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json" },
+    "verbrauch_vektoren": { "type": "string", "const": "./verbrauch-vectors.json", "description": "Die Datei, deren Kennzeichen-Sätze diese Liste vollständig abdecken muss — beide Zwillinge prüfen jede Erwartung dort." },
+    "zustaende": {
+      "type": "array",
+      "minItems": 4,
+      "description": "Das geschlossene Zustands-Vokabular (§4.5) in dieser Reihenfolge.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["wort", "zahl", "kennzeichen", "bedeutung"],
+        "properties": {
+          "wort": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+          "zahl": { "type": "string", "enum": ["pflicht", "erlaubt", "verboten"] },
+          "kennzeichen": { "type": "string", "enum": ["kein_fehlbestand", "mindestens_ein_fehlbestand", "frei"] },
+          "bedeutung": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "platzhalter": {
+      "type": "object",
+      "description": "Je Platzhalter-Art der reguläre Ausdruck (ohne fangende Gruppen), der den eingesetzten Text erkennt.",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "kennzeichen": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Die geschlossene Liste der Kennzeichen-Sätze. Ein Satz ist genau dann ein Kennzeichen, wenn er auf GENAU EIN Muster passt.",
+      "items": { "$ref": "#/$defs/muster" }
+    },
+    "kennzeichen_vorgesehen": {
+      "type": "array",
+      "description": "Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. Ein Satz, der mit `anfang` beginnt, ist bis dahin `kennzeichen_vorgesehen`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["wort", "anfang", "wortlaut_mit"],
+        "properties": {
+          "wort": { "type": "string", "minLength": 1 },
+          "anfang": { "type": "string", "minLength": 1 },
+          "wortlaut_mit": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "verstoesse": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Das geschlossene Vokabular der Verstöße, in der Reihenfolge, in der `pruefe` sie meldet.",
+      "items": { "$ref": "#/$defs/verstoss" }
+    },
+    "satz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trenner", "ohne_zahl", "abdeckung", "reihenfolge"],
+      "properties": {
+        "trenner": { "type": "string", "const": " · " },
+        "ohne_zahl": { "type": "string", "const": "—" },
+        "abdeckung": { "type": "string", "const": "Verlauf {prozent}" },
+        "reihenfolge": { "type": "array", "items": { "type": "string", "enum": ["zahl", "zustand", "abdeckung", "kennzeichen"] } }
+      }
+    },
+    "rundung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gerechnet", "rundungsart", "tausender", "dezimal", "vor_einheit", "minus", "ebenen", "stellen", "differenz_satz", "export"],
+      "properties": {
+        "gerechnet": { "type": "string", "minLength": 1 },
+        "rundungsart": { "type": "string", "minLength": 1 },
+        "tausender": { "type": "string", "const": "." },
+        "dezimal": { "type": "string", "const": "," },
+        "vor_einheit": { "type": "string", "const": " ", "description": "Geschütztes Leerzeichen U+00A0." },
+        "minus": { "type": "string", "const": "−", "description": "U+2212, nicht der ASCII-Bindestrich." },
+        "ebenen": { "type": "array", "items": { "$ref": "#/$defs/ebene" } },
+        "stellen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["einheit", "ebene", "stellen"],
+            "properties": {
+              "einheit": { "type": "string", "enum": ["kWh", "kW", "%", "m³"] },
+              "ebene": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/ebene" }] },
+              "stellen": { "type": "integer", "minimum": 0, "maximum": 3 }
+            }
+          }
+        },
+        "differenz_satz": { "type": "string", "minLength": 1 },
+        "export": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sommerzeit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zusatz_normalzeit_utc_plus_1", "zusatz_sonst", "schritte", "beschriftung", "tagesdauer"],
+      "properties": {
+        "zusatz_normalzeit_utc_plus_1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["+01:00", "+02:00"],
+          "properties": { "+01:00": { "const": "MEZ" }, "+02:00": { "const": "MESZ" } }
+        },
+        "zusatz_sonst": { "type": "string", "const": "UTC{offset}" },
+        "schritte": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["viertelstunde", "stunde"],
+          "properties": { "viertelstunde": { "const": 15 }, "stunde": { "const": 60 } }
+        },
+        "beschriftung": { "type": "string", "const": "{von}–{bis}" },
+        "tagesdauer": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "befunde": {
+      "type": "array",
+      "description": "Was die Inventur fand und nicht still umformuliert hat.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stelle", "befund", "warum_so_aufgenommen"],
+        "properties": {
+          "stelle": { "type": "string", "minLength": 1 },
+          "befund": { "type": "string", "minLength": 1 },
+          "warum_so_aufgenommen": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "anyOf": [
+        { "$ref": "#/$defs/fall_zahl" },
+        { "$ref": "#/$defs/fall_ergebnis" },
+        { "$ref": "#/$defs/fall_erkennen" },
+        { "$ref": "#/$defs/fall_tagesdauer" },
+        { "$ref": "#/$defs/fall_raster" },
+        { "$ref": "#/$defs/fall_rundungsdifferenz" }
+      ] }
+    }
+  },
+  "$defs": {
+    "ebene": { "type": "string", "enum": ["viertelstunde", "stunde", "tag", "monat", "jahr"] },
+    "zustand_wort": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+    "verstoss": {
+      "type": "string",
+      "enum": ["zustand_unbekannt", "einheit_unbekannt", "ebene_unbekannt", "ebene_fehlt", "zahl_fehlt", "zahl_verboten", "kennzeichen_unbekannt", "kennzeichen_vorgesehen", "kennzeichen_doppelt", "kennzeichen_reihenfolge", "kennzeichen_folge", "vollstaendig_mit_fehlbestand", "unvollstaendig_ohne_grund", "keine_werte_mit_fehlbestand"]
+    },
+    "dezimaltext": { "type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$" },
+    "muster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schluessel", "muster", "platzhalter", "wort", "rang", "fehlbestand", "einmalig", "folgt_auf", "verlangt_danach", "beispiel", "fall"],
+      "properties": {
+        "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "muster": { "type": "string", "minLength": 1, "description": "Der Wortlaut; {name} ist ein Platzhalter aus `platzhalter`." },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext"] } },
+        "wort": { "type": ["string", "null"], "description": "Das Wort des Kennzeichen-Vokabulars (verbrauch-vectors.json kennzeichen); null = kein Wort (siehe befunde)." },
+        "rang": { "type": "integer", "minimum": 1 },
+        "fehlbestand": { "type": "boolean" },
+        "einmalig": { "type": "boolean" },
+        "folgt_auf": { "anyOf": [{ "type": "null" }, { "type": "array", "minItems": 1, "items": { "type": "string" } }] },
+        "verlangt_danach": { "type": ["string", "null"] },
+        "beispiel": { "type": "string", "minLength": 1 },
+        "fall": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fall_zahl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "zahl" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wert", "einheit", "ebene"],
+          "properties": {
+            "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "einheit": { "type": "string", "minLength": 1 },
+            "ebene": { "type": ["string", "null"] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verstoesse", "text"],
+          "properties": {
+            "verstoesse": { "type": "array", "items": { "$ref": "#/$defs/verstoss" } },
+            "text": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "ergebnis" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wert", "einheit", "ebene", "zustand", "abdeckung_prozent", "kennzeichen"],
+          "properties": {
+            "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "einheit": { "type": "string", "minLength": 1 },
+            "ebene": { "type": ["string", "null"] },
+            "zustand": { "type": "string", "minLength": 1 },
+            "abdeckung_prozent": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verstoesse", "satz"],
+          "properties": {
+            "verstoesse": { "type": "array", "items": { "$ref": "#/$defs/verstoss" } },
+            "satz": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_erkennen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "erkennen" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": { "type": "object", "additionalProperties": false, "required": ["satz"], "properties": { "satz": { "type": "string" } } },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schluessel", "werte", "vorgesehen"],
+          "properties": {
+            "schluessel": { "type": ["string", "null"] },
+            "werte": { "anyOf": [{ "type": "null" }, { "type": "object", "additionalProperties": { "type": "string" } }] },
+            "vorgesehen": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "fall_tagesdauer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "tagesdauer" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "zeitzone"],
+          "properties": { "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }, "zeitzone": { "type": "string", "minLength": 1 } }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stunden", "satz"],
+          "properties": { "stunden": { "type": "integer", "minimum": 23, "maximum": 25 }, "satz": { "type": ["string", "null"] } }
+        }
+      }
+    },
+    "fall_raster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "raster" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "ausschnitt_ab": { "type": "integer", "minimum": 0, "description": "Die Felder stehen ab diesem Index; ohne Angabe ist die Liste vollständig." },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "zeitzone", "schritt"],
+          "properties": {
+            "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "zeitzone": { "type": "string", "minLength": 1 },
+            "schritt": { "type": "string", "enum": ["viertelstunde", "stunde"] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anzahl", "felder"],
+          "properties": {
+            "anzahl": { "type": "integer", "minimum": 1 },
+            "felder": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["beschriftung", "von"],
+                "properties": {
+                  "beschriftung": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]–[0-2][0-9]:[0-5][0-9]( (MEZ|MESZ|UTC[+-][0-9]{2}:[0-9]{2}))?$" },
+                  "von": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fall_rundungsdifferenz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "rundungsdifferenz" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["einheit", "teile", "ebene_teile", "summe", "ebene_summe"],
+          "properties": {
+            "einheit": { "type": "string", "minLength": 1 },
+            "teile": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/dezimaltext" } },
+            "ebene_teile": { "$ref": "#/$defs/ebene" },
+            "summe": { "$ref": "#/$defs/dezimaltext" },
+            "ebene_summe": { "$ref": "#/$defs/ebene" }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summe_der_angezeigten", "differenz", "satz"],
+          "properties": {
+            "summe_der_angezeigten": { "type": "string", "minLength": 1 },
+            "differenz": { "type": ["string", "null"] },
+            "satz": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
