@@ -27,7 +27,10 @@ public class ConsumerMetricsRepository {
         this.admin = admin;
     }
 
-    /** Every controllable consumer joined with its live runtime state. */
+    /**
+     * Every controllable consumer joined with its live runtime state - a state only an ausgebaut
+     * box reported is no live state (UEMS AP-07 IP-11), the consumer then counts as unconfirmed.
+     */
     public List<ConsumerRow> consumers() {
         return admin.query(
                 "SELECT cp.enabled, "
@@ -37,7 +40,8 @@ public class ConsumerMetricsRepository {
                         + "crs.state, crs.confirmed, crs.reason_code "
                         + "FROM consumer_profile cp "
                         + "JOIN measurement_point mp ON mp.id = cp.entity_id "
-                        + "LEFT JOIN consumer_runtime_status crs ON crs.entity_id = cp.entity_id",
+                        + "LEFT JOIN consumer_runtime_status crs ON crs.entity_id = cp.entity_id "
+                        + "AND EXISTS (SELECT 1 FROM device d WHERE d.id = crs.device_id AND d.ausgebaut_am IS NULL)",
                 (rs, i) -> new ConsumerRow(rs.getBoolean("enabled"), rs.getBoolean("active_policy"),
                         rs.getBoolean("connected"), rs.getString("state"),
                         (Boolean) rs.getObject("confirmed"), rs.getString("reason_code")));

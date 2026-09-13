@@ -141,14 +141,18 @@ public class AdminComponentFleetRepository {
         return out;
     }
 
-    /** Die vom Gerät gemeldete Steuer-Herkunft je Anlage (jüngster Bericht). */
+    /**
+     * Die vom Gerät gemeldete Steuer-Herkunft je Anlage (jüngster Bericht einer Box, die nicht
+     * ausgebaut ist - UEMS AP-07 IP-11).
+     */
     public Map<UUID, ControlRow> controlPerSite() {
         Map<UUID, ControlRow> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
                 new ControlRow(rs.getString("cert_source"), rs.getString("platform_cert_verdict"),
                         rs.getString("platform_cert_model"), instant(rs, "checked_at"))),
                 "SELECT DISTINCT ON (site_id) site_id, cert_source, platform_cert_verdict, "
-                        + "platform_cert_model, checked_at FROM device_control_status "
+                        + "platform_cert_model, checked_at FROM device_control_status s "
+                        + "WHERE EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY site_id, checked_at DESC");
         return out;
     }

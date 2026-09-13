@@ -103,12 +103,17 @@ public class EntityRegistryRepository {
      * <p>Nur BEIDES gebunden zaehlt: eine Zeile ohne {@code entity_id} ist eine
      * noch nicht komponierte Saeule, und ohne Kennung gaebe es nichts zu
      * binden.
+     *
+     * <p>Nur die Säulen einer Box, die am Betrieb teilnimmt (UEMS AP-07 IP-11): die
+     * Zeilen einer ausgebauten Box bleiben gespeichert, ihre Kennung reist aber
+     * nicht mehr in Push und Steuerart.
      */
     public java.util.Map<UUID, String> chargePointIdsByEntity(UUID siteId) {
         java.util.Map<UUID, String> out = new java.util.HashMap<>();
         jdbc.query(
-                "SELECT entity_id, charge_point_id FROM device_charge_point "
-                        + "WHERE site_id = ? AND entity_id IS NOT NULL",
+                "SELECT c.entity_id, c.charge_point_id FROM device_charge_point c "
+                        + "WHERE c.site_id = ? AND c.entity_id IS NOT NULL AND EXISTS (SELECT 1 FROM device d "
+                        + "WHERE d.id = c.device_id AND d.ausgebaut_am IS NULL)",
                 rs -> {
                     out.put(rs.getObject("entity_id", UUID.class),
                             rs.getString("charge_point_id"));

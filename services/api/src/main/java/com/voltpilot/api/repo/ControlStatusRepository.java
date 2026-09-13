@@ -123,7 +123,11 @@ public class ControlStatusRepository {
                 ct.source(), ct.verdict(), ct.model(), ct.reason());
     }
 
-    /** The newest control confirmation for a site (across its devices), or empty. */
+    /**
+     * The newest control confirmation for a site (across its devices), or empty. Only a box that
+     * takes part in operation counts (UEMS AP-07 IP-11): the row of an ausgebaut box stays stored,
+     * but its last report is never the site's current state.
+     */
     public Optional<ControlStatusDto> latestForSite(UUID siteId) {
         return jdbc.query(
                 "SELECT device_id, commanded_kw, confirmed_kw, all_match, control_enabled, certified, "
@@ -142,6 +146,7 @@ public class ControlStatusRepository {
                         + "    AND mp.connection_json -> 'reading_override' ->> 'channel' IS NOT NULL "
                         + "  LIMIT 1) AS missing_reading_channel "
                         + "FROM device_control_status s WHERE s.site_id = ? "
+                        + "AND EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY s.checked_at DESC LIMIT 1",
                 (rs, i) -> new ControlStatusDto(
                         rs.getObject("device_id", UUID.class),

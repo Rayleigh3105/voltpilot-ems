@@ -30,6 +30,14 @@ import org.springframework.stereotype.Repository;
 public class CurtailmentStatusRepository {
 
     /**
+     * The row was reported by a box that takes part in operation - not ausgebaut, and still there
+     * (UEMS AP-07 IP-11). Shared with {@code AdminFleetRepository} like {@link #COLUMNS}: the fleet
+     * aggregate asks the same question of the same row.
+     */
+    static final String BOX_AKTIV = "EXISTS (SELECT 1 FROM device d "
+            + "WHERE d.id = device_curtailment_status.device_id AND d.ausgebaut_am IS NULL)";
+
+    /**
      * The columns {@link #map(ResultSet)} needs. Shared with
      * {@code AdminFleetRepository} (same package) so the fleet aggregate and the
      * per-site read can never disagree about the same row.
@@ -134,11 +142,14 @@ public class CurtailmentStatusRepository {
      * this row came from, and folding them into the aggregate row's SELECT
      * would either duplicate the row per unit or need a join the fleet
      * aggregate (which shares {@link #COLUMNS}) must not pay for.
+     *
+     * <p>Only a box that takes part in operation counts (UEMS AP-07 IP-11): the row of an
+     * ausgebaut box stays stored, but its last report is never the site's current state.
      */
     public Optional<CurtailmentStatusDto> latestForSite(UUID siteId) {
         Optional<CurtailmentStatusDto> row = jdbc.query(
                 "SELECT " + COLUMNS + " FROM device_curtailment_status WHERE site_id = ? "
-                        + "ORDER BY checked_at DESC LIMIT 1",
+                        + "AND " + BOX_AKTIV + " ORDER BY checked_at DESC LIMIT 1",
                 (rs, i) -> map(rs), siteId).stream().findFirst();
         return row.map(r -> r.withPerUnit(unitsForDevice(r.deviceId())));
     }

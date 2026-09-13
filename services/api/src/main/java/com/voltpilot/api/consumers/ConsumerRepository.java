@@ -278,7 +278,9 @@ public class ConsumerRepository {
     /**
      * Edge-reported sources of the site (from {@code device_source_status}) that
      * can back a consumer, with whether a measurement point already binds each.
-     * Empty when no device has reported yet - the draft path never needs it.
+     * Empty when no device has reported yet - the draft path never needs it. Only
+     * boxes that take part in operation (UEMS AP-07 IP-11): a source only an
+     * ausgebaut box reported is no source to build a consumer on.
      */
     public List<ReportedSource> reportedSources(UUID siteId) {
         return jdbc.query(
@@ -291,6 +293,8 @@ public class ConsumerRepository {
                         + "        WHERE mp.site_id = dss.site_id "
                         + "          AND mp.edge_source_id = dss.source_id) AS bound "
                         + "FROM device_source_status dss WHERE dss.site_id = ? AND dss.kind = 'source' "
+                        + "AND EXISTS (SELECT 1 FROM device d WHERE d.id = dss.device_id "
+                        + "  AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY dss.label NULLS LAST, dss.source_id",
                 (rs, n) -> new ReportedSource(rs.getString("source_id"), rs.getString("label"),
                         rs.getString("brand"), rs.getString("role"),

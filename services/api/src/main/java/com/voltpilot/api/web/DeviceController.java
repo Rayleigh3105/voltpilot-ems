@@ -10,6 +10,7 @@ import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -66,6 +67,7 @@ public class DeviceController {
     private final ControlCertificationService controlCertification;
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
+    private final CommandLogRepository commandLog;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             AssetRepository assets,
@@ -78,7 +80,8 @@ public class DeviceController {
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
-            com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides) {
+            com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
+            CommandLogRepository commandLog) {
         this.devices = devices;
         this.sites = sites;
         this.assets = assets;
@@ -92,6 +95,7 @@ public class DeviceController {
         this.controlCertification = controlCertification;
         this.chargingConfig = chargingConfig;
         this.deviceOverrides = deviceOverrides;
+        this.commandLog = commandLog;
     }
 
     @GetMapping
@@ -229,7 +233,8 @@ public class DeviceController {
      * NOTHING recorded is deleted: the device row stays with its identity, and so do its raw
      * telemetry, OCPP recordings, additional measurements, events, measurement selection and
      * approvals - the history keeps naming the box that read it. What ends is the box's part in
-     * operation: every live surface filters on {@code device.ausgebaut_am}, the topology loses
+     * operation: every live surface filters on {@code device.ausgebaut_am}, the box's open command
+     * log periods end at their last evidence, the topology loses
      * its pointers to the box (what the FK {@code SET NULL} did when the row was deleted), and
      * the broker is cleaned as before - the retained {@code provision/{ref}/config} and schedule
      * topic are cleared (best-effort), so the physical device falls back to its watchdog
@@ -246,6 +251,9 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
         devices.ausDerTopologieLoesen(deviceId);
+        // Die offenen Perioden des Befehlsverlaufs enden mit der Box: kein Herzschlag schlösse sie
+        // mehr, und „läuft" wäre für immer falsch. Beendet, nicht gelöscht (UEMS AP-07 IP-11).
+        commandLog.beimAusbauBeenden(deviceId);
         provisioning.ifAvailable(p ->
                 p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
         // v2 hygiene: the retained entity-registry slot ends with the box
