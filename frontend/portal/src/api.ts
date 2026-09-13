@@ -1918,6 +1918,10 @@ export interface MessstelleFormelTerm {
   faktor: number;
   groesse: MessstelleGroesse | null;
   eingerichtet: boolean;
+  /** AP-10 IP-5: nur bei `eingang_art` = `verteilung` — die Kostenstelle. */
+  verteilung_ziel?: string;
+  /** AP-10 IP-5: nur der positive/negative Teil; fehlt = gesamt. */
+  anteil?: 'positiv' | 'negativ';
 }
 
 /**
@@ -1989,12 +1993,19 @@ export interface MessstelleVerlauf {
 export interface BerechneteMessstelleAnlegen {
   name: string;
   terme: Array<{
-    eingang_art: 'messkanal' | 'messstelle';
+    eingang_art: 'messkanal' | 'messstelle' | 'verteilung';
     entity_id?: string;
     point_key?: string;
     quell_messstelle_id?: string;
     vorzeichen: '+' | '-';
     faktor: number;
+    /**
+     * AP-10 IP-5: die Kostenstelle eines Verteilungs-Terms. Bis zur Verteilung lehnt der Server
+     * ab (422 `verteilung_wartet_auf_ip8`, mit Kundensatz in `message`).
+     */
+    verteilung_ziel?: string;
+    /** AP-10 IP-5: fehlt = gesamt; `positiv`/`negativ` lehnt der Server ab (422 `anteil_wartet_auf_ap08`). */
+    anteil?: 'gesamt' | 'positiv' | 'negativ';
   }>;
 }
 

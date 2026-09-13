@@ -236,3 +236,39 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
     }
   });
 });
+
+/**
+ * AP-10 IP-5: der Block `leseweg`. Die Ablehnung eines Terms, dessen Anteil (noch) nicht lesbar ist,
+ * bildet der Server (Java `AnteilLeseweg`) und schickt Code + Kundensatz; das Portal bildet sie nie
+ * selbst. Hier steht fest, dass die Typen des Portals dieselben Wörter kennen wie der Vertrag und
+ * dass kein Kundensatz ein internes Wort trägt.
+ */
+describe('Verteilungs-Vertrag: der Leseweg des Formel-Terms', () => {
+  const block: Json = vectors.leseweg;
+  const apiTs = readFileSync(resolve(process.cwd(), 'src/api.ts'), 'utf8');
+  const union = (woerter: string[]): string => woerter.map((w) => `'${w}'`).join(' | ');
+
+  it('die Lücke ist begründet und die Prüfreihenfolge ist die der Ablehnungen', () => {
+    expect(block.zwillinge).toEqual(['java']);
+    expect(block.zwillinge_grund.length).toBeGreaterThan(20);
+    expect(block.pruefreihenfolge).toEqual(block.ablehnungen.map((a: Json) => a.code));
+    expect(block.ablehnungen.filter((a: Json) => a.wartet_auf !== null).map((a: Json) => a.code)).toEqual([
+      'anteil_wartet_auf_ap08',
+      'verteilung_wartet_auf_ip8',
+    ]);
+  });
+
+  it('die Portal-Typen kennen die Term-Arten und Anteil-Wörter des Vertrags', () => {
+    expect(apiTs).toContain(`eingang_art: ${union(vectors.vokabulare.term_art)};`);
+    expect(apiTs).toContain(`anteil?: ${union(vectors.vokabulare.anteil)};`);
+    // In der Antwort steht `gesamt` nie: ein Term ohne Teil trägt das Feld nicht.
+    expect(apiTs).toContain(`anteil?: ${union(vectors.vokabulare.anteil.filter((w: string) => w !== 'gesamt'))};`);
+  });
+
+  it('kein Kundensatz trägt ein internes Wort', () => {
+    for (const a of block.ablehnungen) {
+      expect(a.satz, a.code).not.toMatch(/AP-|IP-|Leseweg|_|null/);
+      expect(a.satz, a.code).toMatch(/\.$/);
+    }
+  });
+});

@@ -19,8 +19,11 @@ public final class MessstelleFormelDto {
 
     /**
      * Ein Term der Anfrage. {@code eingang_art} ist {@code messkanal} (dann {@code entity_id} +
-     * {@code point_key}) oder {@code messstelle} (dann {@code quell_messstelle_id}). {@code faktor}
-     * fehlend = 1; {@code vorzeichen} {@code +} oder {@code -}.
+     * {@code point_key}), {@code messstelle} (dann {@code quell_messstelle_id}) oder — seit AP-10
+     * IP-5 — {@code verteilung} (dann {@code quell_messstelle_id} + {@code verteilung_ziel}, die
+     * Kostenstelle). {@code faktor} fehlend = 1; {@code vorzeichen} {@code +} oder {@code -};
+     * {@code anteil} fehlend = {@code gesamt}. Ein Anteil, der (noch) nicht lesbar ist, wird benannt
+     * abgelehnt ({@code AnteilLeseweg}).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TermEingabe(
@@ -29,7 +32,9 @@ public final class MessstelleFormelDto {
             String pointKey,
             UUID quellMessstelleId,
             String vorzeichen,
-            Double faktor) {}
+            Double faktor,
+            UUID verteilungZiel,
+            String anteil) {}
 
     /**
      * {@code POST /api/v1/messstellen/berechnet}. Das Kennzeichen wird automatisch vergeben (E7);
@@ -43,7 +48,10 @@ public final class MessstelleFormelDto {
 
     /**
      * Ein Term, so wie er gespeichert ist, mit der aufgelösten Größe des Messwerts (für die Anzeige).
-     * {@code eingerichtet} sagt, ob sein Eingang noch auflösbar ist.
+     * {@code eingerichtet} sagt, ob sein Eingang noch auflösbar ist. {@code verteilung_ziel} und
+     * {@code anteil} (AP-10 IP-5) stehen NUR in der Antwort, wenn der Term sie trägt — ein Term ohne
+     * sie (jeder Term von vor IP-5, {@code anteil} = {@code gesamt}) antwortet Zeichen für Zeichen wie
+     * vorher; die Portal-Fläche aus PR #689 liest dieselben Felder.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Term(
@@ -55,7 +63,9 @@ public final class MessstelleFormelDto {
             String vorzeichen,
             double faktor,
             Groesse groesse,
-            boolean eingerichtet) {}
+            boolean eingerichtet,
+            @JsonInclude(JsonInclude.Include.NON_NULL) UUID verteilungZiel,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String anteil) {}
 
     /**
      * {@code GET /api/v1/messstellen/{id}/formel}: die Formel einer berechneten Messstelle — die

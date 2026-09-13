@@ -61,6 +61,17 @@ Tagesmenge.
    Abzeichen samt Zahl der Tage; eine Fassung, die vor der laufenden beginnt, überlappt und wird
    abgelehnt.
 
+## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5)
+
+Ein Term der Art `verteilung` („4100 von MS-07“, `messstelle-formel.md` §1.1) liest den Anteil des
+TAGES aus dieser Verteilung — über EINE Stelle, `uems/AnteilLeseweg#lies`. Solange die Verteilung
+selbst nicht gebaut ist (IP-8), und solange der Teil eines Messwerts (`anteil` = `positiv`/`negativ`)
+nicht lesbar ist (AP-08 IP-7), lehnt sie **benannt** ab. Der Block `leseweg` der Vektor-Datei trägt die
+geschlossene Menge dieser Ablehnungen mit Kundensatz, ihre Prüfreihenfolge und je Referenzfall (F1,
+F4, F11) das erwartete Urteil. Zwei fehlende Fähigkeiten, zwei Sätze: `anteil_wartet_auf_ap08` und
+`verteilung_wartet_auf_ip8` — nie `nicht_verteilt` (ein Zustand einer VORHANDENEN Verteilung), nie
+eine geratene Zahl. Der TS-Zwilling bildet die Ablehnung nicht (`zwillinge_grund`).
+
 ## 3. Was hier NICHT steht
 
 Die Tabelle mit ihrem Commit-Zeit-Trigger für die 100 %, die Routen `PUT …/messstellen/{id}/verteilung`
@@ -77,6 +88,6 @@ ohne Zwilling.
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest')      # rein, kein Docker
+(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,AnteilLesewegVectorsTest')  # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsVerteilung.test.ts)
 ```

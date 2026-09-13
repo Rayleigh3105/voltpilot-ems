@@ -221,9 +221,45 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
   `messstelle_groesse_im_katalog` kennt `saldiert` nicht) — das kommt mit dem ersten Schreibweg
   (IP-9 / IP-16) samt Migration.
 
+### 6.3 Die Term-Art `verteilung` und der `anteil` (AP-10 IP-5, Stand 13.09.2026)
+
+§1.1 ist gebaut — als Speicher, Schnittstelle und Rechenweg, aber mit einem **benannt fehlenden
+Leseweg**: den Teil eines Messwerts (`positiv`/`negativ`) liest erst die Quellenbindung mit Anteil
+(AP-08 IP-7), den Anteil des Tages einer Kostenstelle erst die Verteilung (AP-10 IP-8). Bis dahin
+wird **abgelehnt, nie geraten**.
+
+- **Migration** `V20260913143000` (additiv): `anteil` (`positiv` | `negativ`, NULL = `gesamt` — genau
+  EINE Schreibweise, keine Bestandszeile ändert sich), `verteilung_ziel` (die Kostenstelle, ⚠ noch
+  OHNE Fremdschlüssel: `kostenstelle` entsteht mit IP-7, das den Schlüssel nachzieht). Die CHECKs sind
+  vom aktuellen Stand abgeschrieben und geweitet: `eingang_art` + `verteilung`, die Bindung
+  `verteilung` = Quell-Messstelle UND Ziel (kein Messkanal), ein Verteilungs-Term trägt Faktor 1.
+- **Die EINE Stelle** `uems/AnteilLeseweg#lies`: Schreibweg, Live-Wert und Verlauf fragen nur sie.
+  Heute lehnt sie ab; wird AP-08 IP-7 bzw. AP-10 IP-8 gebaut, wird aus GENAU ihrem Zweig ein Aufruf —
+  für die Verteilung `AnteilLeseweg.tagesanteil(term, tag, abschnitte)`, das die Regel `term` aus
+  [`verteilung-vectors.json`](./verteilung-vectors.json) (`VerteilungRegeln.term`) aufruft.
+- **Die Ablehnungen stehen im Vertrag**, Block `leseweg` von `verteilung-vectors.json`, mit Status,
+  Feld, Paket und Kundensatz — in Prüfreihenfolge:
+
+  | Code | Status | Fakten | Wann |
+  |---|---|---|---|
+  | `verteilungs_term_ohne_faktor` | 422 | `feld` | ein Verteilungs-Term mit Faktor ≠ 1 (Vertragsregel, wartet nie) |
+  | `anteil_wartet_auf_ap08` | 422 | `feld`, `wartet_auf` | `anteil` = `positiv`/`negativ` |
+  | `verteilung_wartet_auf_ip8` | 422 | `feld`, `wartet_auf` | `eingang_art` = `verteilung` |
+
+  Form (400) und „fremd ist nicht da“ (404) gehen voraus. Nie `nicht_verteilt` oder
+  `ziel_besteht_nicht`: die sagen etwas über eine VORHANDENE Verteilung.
+- **Rechnen:** steht ein solcher Term doch in der Datenbank, fehlt er — im Live-Wert unter
+  `fehlende[]` mit dem Code als `grund`, im Verlauf ist der Bucket `null`. Der Anteil gilt je TAG: im
+  Live-Wert der von heute, im Verlauf der des Tages, an dem der Bucket beginnt.
+- **Zeichengleich:** `verteilung_ziel` und `anteil` stehen in `terme[]` NUR, wenn der Term sie trägt;
+  jeder Term von vor IP-5 antwortet und protokolliert wie vorher. Eine Verkettung über einen
+  Verteilungs-Term zählt für `formel_zyklus` wie ein Baustein.
+
 ## Prüfen
 
 ```bash
+(cd services/api && ./mvnw test -Dtest='AnteilLesewegVectorsTest')                    # IP-5, rein
+(cd services/api && ./mvnw test -Dtest='MessstelleFormelTermVerteilungMigrationTest,MessstelleFormelVerteilungsTermApiTest')  # IP-5, DB
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelRegelnVectorsTest')          # rein, kein Docker
 (cd frontend/portal && npx vitest run src/uemsMessstelleFormel.test.ts)
 (cd services/api && ./mvnw test -Dtest='MessstelleFormelTypenTest')                   # Typen je Typ (IP-4), rein

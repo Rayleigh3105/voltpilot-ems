@@ -323,13 +323,22 @@ public final class VerteilungRegeln {
             BigDecimal menge, BigDecimal anteilProzent, List<String> kennzeichen, String fehler) {}
 
     /**
+     * Trägt ein Verteilungs-Term einen zulässigen Faktor? Nur 1 (oder keinen): ein kopierter Anteil
+     * als Faktor liefe der Verteilung davon ({@link #FEHLER_TERM_FAKTOR}). Der Schreibweg der Formel
+     * (AP-10 IP-5, {@link AnteilLeseweg}) fragt dieselbe Regel, bevor er einen Term speichert.
+     */
+    public static boolean faktorErlaubt(BigDecimal faktor) {
+        return faktor == null || faktor.compareTo(BigDecimal.ONE) == 0;
+    }
+
+    /**
      * Der Verteilungs-Term liest den Anteil des TAGES aus der Verteilung. Ein kopierter Faktor
      * (etwa 0,7 statt des Verweises) wird abgelehnt: er liefe der Verteilung davon, sobald sie sich
      * ändert. Gibt es am Tag keine Verteilungszeile, gibt es keinen Anteil — nie einen geratenen.
      */
     public static TermUrteil term(
             VerteilungsTerm t, LocalDate tag, BigDecimal quelleMenge, List<Abschnitt> verteilung) {
-        if (t.faktor() != null && t.faktor().compareTo(BigDecimal.ONE) != 0) {
+        if (!faktorErlaubt(t.faktor())) {
             return new TermUrteil(null, null, List.of(), FEHLER_TERM_FAKTOR);
         }
         BigDecimal anteil = verteilung.stream()

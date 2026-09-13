@@ -22,9 +22,12 @@ public class MessstelleFormelTermRepository {
         this.jdbc = jdbc;
     }
 
-    /** Ein gespeicherter Term, in seiner Reihenfolge. */
+    /**
+     * Ein gespeicherter Term, in seiner Reihenfolge. {@code verteilungZiel} und {@code anteil} kamen
+     * mit AP-10 IP-5 (V20260913143000): {@code anteil == null} ist die Vorgabe {@code gesamt}.
+     */
     public record TermZeile(UUID id, int position, String eingangArt, UUID entityId, String pointKey,
-            UUID quellMessstelleId, String vorzeichen, double faktor) {}
+            UUID quellMessstelleId, String vorzeichen, double faktor, UUID verteilungZiel, String anteil) {}
 
     /** Ob eine Formel Terme hat und ob JEDER Term-Eingang eingerichtet ist (fehlt: eingaenge). */
     public record FormelStand(boolean vorhanden, boolean eingerichtet) {}
@@ -32,7 +35,8 @@ public class MessstelleFormelTermRepository {
     /** Alle Terme der Messstelle über ALLE ihre Fassungen, nach Fassung und Reihenfolge. */
     public List<TermZeile> derMessstelle(UUID messstelleId) {
         return jdbc.query("SELECT t.id, t.position, t.eingang_art, t.entity_id, t.point_key, "
-                + "t.quell_messstelle_id, t.vorzeichen, t.faktor FROM messstelle_formel_term t "
+                + "t.quell_messstelle_id, t.vorzeichen, t.faktor, t.verteilung_ziel, t.anteil "
+                + "FROM messstelle_formel_term t "
                 + "JOIN messstelle_formel_fassung f ON f.id = t.fassung_id "
                 + "WHERE t.messstelle_id = ? ORDER BY f.nummer, t.position",
                 TERM, messstelleId);
@@ -41,7 +45,8 @@ public class MessstelleFormelTermRepository {
     /** Die Terme EINER Fassung in Reihenfolge — die Formel eines Tages (AP-10 IP-3). */
     public List<TermZeile> derFassung(UUID fassungId) {
         return jdbc.query("SELECT id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
-                + "vorzeichen, faktor FROM messstelle_formel_term WHERE fassung_id = ? ORDER BY position",
+                + "vorzeichen, faktor, verteilung_ziel, anteil FROM messstelle_formel_term "
+                + "WHERE fassung_id = ? ORDER BY position",
                 TERM, fassungId);
     }
 
@@ -49,16 +54,29 @@ public class MessstelleFormelTermRepository {
             (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
                     rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
                     rs.getString("point_key"), rs.getObject("quell_messstelle_id", UUID.class),
-                    rs.getString("vorzeichen"), rs.getDouble("faktor"));
+                    rs.getString("vorzeichen"), rs.getDouble("faktor"),
+                    rs.getObject("verteilung_ziel", UUID.class), rs.getString("anteil"));
 
     /** Legt einen Term in seiner Fassung an; {@code tenant_id} aus dem {@link TenantContext}. */
     public void anlegen(UUID fassungId, UUID messstelleId, int position, String eingangArt, UUID entityId,
             String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor) {
+        anlegen(fassungId, messstelleId, position, eingangArt, entityId, pointKey, quellMessstelleId, vorzeichen,
+                faktor, null, null);
+    }
+
+    /**
+     * Legt einen Term mit Verteilungs-Ziel und Anteil an (AP-10 IP-5); {@code anteil == null} ist
+     * {@code gesamt}. Welcher Anteil lesbar ist und darum gespeichert werden darf, entscheidet vorher
+     * {@link AnteilLeseweg} — hier wird nur geschrieben.
+     */
+    public void anlegen(UUID fassungId, UUID messstelleId, int position, String eingangArt, UUID entityId,
+            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor, UUID verteilungZiel,
+            String anteil) {
         jdbc.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, "
-                + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor, verteilung_ziel, "
+                + "anteil) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 TenantContext.get(), messstelleId, fassungId, position, eingangArt, entityId, pointKey,
-                quellMessstelleId, vorzeichen, faktor);
+                quellMessstelleId, vorzeichen, faktor, verteilungZiel, anteil);
     }
 
     /**
@@ -79,7 +97,7 @@ public class MessstelleFormelTermRepository {
      * Fassung, die an dem Tag gilt (AP-10 IP-3): {@code vorhanden} = mindestens ein Term;
      * {@code eingerichtet} = jeder Term-Eingang ist noch da — ein Messkanal-Term über eine
      * bekannte Mess-Selektion der Komponente ({@code device_measurement_selection}), ein
-     * messstelle-Term über eine noch nicht archivierte Quell-Messstelle. Sonst {@code fehlt:
+     * messstelle- oder verteilung-Term über eine noch nicht archivierte Quell-Messstelle. Sonst {@code fehlt:
      * eingaenge} (§2.2 „Komponente/Kanal nicht mehr da"). Alles RLS-scoped.
      */
     public FormelStand stand(UUID messstelleId, LocalDate tag) {
@@ -98,7 +116,7 @@ public class MessstelleFormelTermRepository {
                      (t.eingang_art = 'messkanal' AND NOT EXISTS (
                         SELECT 1 FROM device_measurement_selection s
                          WHERE s.entity_id = t.entity_id AND s.point_key = t.point_key))
-                     OR (t.eingang_art = 'messstelle' AND NOT EXISTS (
+                     OR (t.eingang_art IN ('messstelle', 'verteilung') AND NOT EXISTS (
                         SELECT 1 FROM messstelle q
                          WHERE q.id = t.quell_messstelle_id AND q.archiviert_am IS NULL))
                    )
