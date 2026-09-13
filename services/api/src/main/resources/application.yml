@@ -417,6 +417,21 @@ voltpilot:
       stapel-je-lauf: ${VOLTPILOT_UEMS_TAG_STAPEL_JE_LAUF:40}
       frist-je-lauf: ${VOLTPILOT_UEMS_TAG_FRIST_JE_LAUF:20000}
       arbeit-hochwasser: ${VOLTPILOT_UEMS_TAG_ARBEIT_HOCHWASSER:200000}
+    # UEMS AP-07 IP-9: der LUECKEN-MELDER - alle fuenf Minuten schreibt er fest,
+    # dass Werte FEHLEN: je Reihe aus der Kadenz zum Zeitpunkt (kein guter Wert
+    # ueber 2 x Kadenz) und je Box aus dem letzten Eingang ("Box meldet sich
+    # nicht", eine Luecke je Box und je Datenquelle der Box) - und schliesst sie
+    # bei Rueckkehr/Nachlieferung (nachgeliefert_am, backfill). Kein Alarm, keine
+    # Benachrichtigung. Vorgabe AN (die Hausregel "ein Flag hat die Vorgabe AN"),
+    # im Testlauf AUS (surefire); wer ihn prueft, ruft LueckenMelder.lauf() selbst.
+    # `stapel` = Einheiten je Transaktion, `stapel-je-lauf` = Transaktionen je
+    # Takt, `werte-je-lochsuche` = wie viele Werte einer Reihe eine Suche liest.
+    luecken:
+      enabled: ${VOLTPILOT_UEMS_LUECKEN_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_LUECKEN_INTERVAL_MS:300000}
+      stapel: ${VOLTPILOT_UEMS_LUECKEN_STAPEL:200}
+      stapel-je-lauf: ${VOLTPILOT_UEMS_LUECKEN_STAPEL_JE_LAUF:50}
+      werte-je-lochsuche: ${VOLTPILOT_UEMS_LUECKEN_WERTE_JE_LOCHSUCHE:20000}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

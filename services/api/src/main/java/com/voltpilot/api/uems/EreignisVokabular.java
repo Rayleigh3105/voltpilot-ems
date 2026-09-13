@@ -273,6 +273,15 @@ public final class EreignisVokabular {
         ERKANNT_AUS = Collections.unmodifiableMap(e);
     }
 
+    /**
+     * Wer dasselbe ZUSÄTZLICH feststellen darf (additiv, Vektor-Datei {@code auch_urheber}): die
+     * Kadenz-Lücke auch der Lücken-Melder der api ({@code cloud}, AP-07 IP-9) — wie
+     * {@code late_arrival} seit IP-13. {@code verdraengung} bleibt der Box, {@code herzschlag} der
+     * Cloud.
+     */
+    public static final Map<String, Set<Urheber>> ERKANNT_AUS_AUCH =
+            Map.of("kadenz", Collections.unmodifiableSet(EnumSet.of(CLOUD)));
+
     public static final List<String> ANLASS_GERAETEGRENZE =
             List.of("zaehlerwechsel", "kartenwechsel", "controllerwechsel", "zaehler_zurueckgesetzt");
 
@@ -308,7 +317,7 @@ public final class EreignisVokabular {
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus"),
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus", "datenquelle",
                         "komponente", "messkanal", "erwartet_fehlend")),
-        BACKFILL("backfill", EnumSet.of(WRITER), ZEITRAUM, GESCHLOSSEN, false, MESSZEIT,
+        BACKFILL("backfill", EnumSet.of(WRITER, CLOUD), ZEITRAUM, GESCHLOSSEN, false, MESSZEIT,
                 List.of("box", "datenquelle"), List.of(),
                 List.of("eingang_von", "eingang_bis", "anzahl"), List.of("erwartet"), List.of(),
                 null, null),
@@ -844,7 +853,8 @@ public final class EreignisVokabular {
         switch (art) {
             case DATA_GAP -> {
                 String aus = e.get("erkannt_aus").asText();
-                if (ERKANNT_AUS.get(aus) != u) {
+                if (ERKANNT_AUS.get(aus) != u
+                        && !ERKANNT_AUS_AUCH.getOrDefault(aus, Set.of()).contains(u)) {
                     throw nein(Grund.REGEL_VERLETZT, "erkannt_aus " + aus + " von " + u.code());
                 }
                 String klasse = e.path("fehlerklasse").asText(null);

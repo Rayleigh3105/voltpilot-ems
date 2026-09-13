@@ -15,7 +15,7 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 |---|---|
 | [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) | der Umschlag Box → Cloud auf `ems/{tenant_id}/{site_id}/{device_id}/v2/events` |
 | [`events-raw.event.schema.json`](./events-raw.event.schema.json) | das Redpanda-Ereignis `events.raw` (beide Wege, ein Ereignis je Datensatz) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 64 Fälle im Referenzunternehmen Ahrenberg |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 68 Fälle im Referenzunternehmen Ahrenberg |
 | [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | JSON Schema 2020-12 der Vektor-Datei |
 | `services/api/.../uems/EreignisVokabular.java` | die reine PRÜFUNG: angenommen oder verworfen mit Grund |
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
@@ -117,7 +117,7 @@ Felder, die eine Fortschreibung setzen darf.
 | Art | Überschrift | Urheber | Box | Zeit · Achse | Bezug (Pflicht, + erlaubt) | Pflichtfelder | Fortschreibbar |
 |---|---|---|---|---|---|---|---|
 | `data_gap` | Lücke | writer · box · cloud | ja | [von, bis) · offen erlaubt · Messzeit | box (+ datenquelle, komponente, messkanal, messstelle) | `erkannt_aus` | `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis` |
-| `backfill` | Nachlieferung | writer | — | [von, bis] · Messzeit | box, datenquelle | `eingang_von`, `eingang_bis`, `anzahl` | — |
+| `backfill` | Nachlieferung | writer · cloud | — | [von, bis] · Messzeit | box, datenquelle | `eingang_von`, `eingang_bis`, `anzahl` | — |
 | `duplicate_conflict` | Abweichender Wert | writer | — | Zeitpunkt · Eingangszeit | box, komponente, messkanal (+ messstelle) | `messzeit`, `gespeicherter_wert`, `abgewiesener_wert`, `sequenzen` | — |
 | `sequence_gap` | Datenpakete fehlen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten`, `anzahl` | — |
 | `sequence_reset` | Paketzählung neu begonnen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten` | — |
@@ -144,7 +144,7 @@ Felder, die eine Fortschreibung setzen darf.
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
 `strom` = `telemetry` · `measurement-samples` · `events` (das Blatt des Topics); `erkannt_aus` =
-`kadenz` (writer) · `verdraengung` (box) · `herzschlag` (cloud); Anlass einer Gerätegrenze =
+`kadenz` (writer, seit AP-07 IP-9 auch cloud) · `verdraengung` (box) · `herzschlag` (cloud); Anlass einer Gerätegrenze =
 `zaehlerwechsel` · `kartenwechsel` · `controllerwechsel` · `zaehler_zurueckgesetzt`; Anlass einer
 Übergabe = `uebergabe` · `box_tausch`; `fehlerklasse` = die neun Klassen aus
 [`data-source-vectors.json`](./data-source-vectors.json).
@@ -163,6 +163,13 @@ Werten und der Deklaration, nie aus der Meldung. Kein Box-Umschlag ändert sich 
 Edge-Release); die Bestandstabelle `device_measurement_event` kennt das Wort nicht und schreibt
 für denselben Sprung weiter `counter_reset` (Spiegel `aus_bestand`). Migration
 `V20260912220000__uems_zaehler_ueberlauf.sql`.
+
+**Lücken-Melder (AP-07 IP-9, additiv).** Die Kadenz-Lücke und die Nachlieferung stellt der
+Lücken-Melder der api fest (`uems/LueckenMelder`) — dort heißt Weg 2 `cloud`, wie schon bei
+`late_arrival` (IP-13). Darum darf `backfill` auch von `cloud` kommen und `erkannt_aus = kadenz`
+auch von `cloud` (`auch_urheber` in der Vektor-Datei); `writer` bleibt zulässig, keine Bedeutung
+ändert sich. Schmal: `verdraengung` bleibt der Box, `herzschlag` der Cloud. Migration
+`V20260913130000__uems_luecken_vokabular.sql`.
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
@@ -292,12 +299,12 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-61 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+68 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
 |---|---|
-| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) |
+| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) · vom Lücken-Melder der api (`cloud`, IP-9): Reihen-Lücke offen, geschlossen mit Nachlieferung, `backfill` (A), `verdraengung` von der Cloud verworfen |
 | Rückkehr 17:30 und Nachlieferung, A1/A3/A4 (Referenz) | Nachlieferung 3 640 Werte · Lücke MS-10 nachgeliefert 17:31 · 188 Datenpakete fehlen (falsche Anzahl verworfen) · Paketzählung neu · MS-10 nach Abschluss eingegangen (A: Puffer der reparierten Box; Raster verletzt verworfen) |
 | Zählerwechsel MS-06, 18.11.2026 10:40 (Referenz) | Z-5a → Z-5b mit Ständen · Lücke 10:40–10:47 mit Ursache · gleicher Einbau / nicht auf der Minute / im Voraus / von der Box verworfen · abweichender Wert 10:39 (gleicher Wert verworfen) |
 | Übergabe DQ-3, 10.04.2027 07:30 (Referenz) | offen bis zur Quittung · Quittung schließt · an dieselbe Box / nicht auf der Minute / Ende vor Beginn verworfen · Rückgabe 12.04. (A) · nicht zuständige Box 07:32 (über eine Stunde verworfen) |

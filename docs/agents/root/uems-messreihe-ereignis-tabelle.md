@@ -3,6 +3,8 @@
 Neu angelegt am 11.09.2026 (AP-07 IP-8). Migration
 `services/api/src/main/resources/db/migration/V20260911260000__uems_messreihe_ereignis.sql`.
 Schreibwege: api `uems/MessreiheEreignisRepository` (Cloud-Ereignisse der api, noch ohne Aufrufer),
+api-Läufe auf der BYPASSRLS-Rolle mit abgeleiteten Kennungen (`SpaetankunftMelder` → `late_arrival`,
+`LueckenMelder` → `data_gap`/`backfill`, [`uems-luecken-melder.md`](uems-luecken-melder.md)),
 Writer `MessreiheEreignisRepository` (Bestands-Spiegel + `events.raw`) mit `EventsRawConsumer` und
 dem Writer-Zwilling `EreignisVokabular`. Beweise: `MessreiheEreignisMigrationTest` (api,
 Testcontainers: Bestand zeichengleich, Vokabular = Klasse, CHECKs urteilen wie die Klasse, alle
