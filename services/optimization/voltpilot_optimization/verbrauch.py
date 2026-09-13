@@ -40,8 +40,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP
-from typing import Iterable, Sequence
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP, localcontext
+from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------------- Regeln
@@ -1183,6 +1183,401 @@ def momentanwerte_anteil(
     return out
 
 
+# ---------------------------------------------------- Ersatzwert-Methoden (E7, AP-08 IP-13)
+
+#: E7 — die sieben Methoden in der Reihenfolge von ``vokabular.ersatzwert_methode`` der
+#: Ereignis-Vektoren, je mit ihrem Namen in Kundensprache (``name``). Das Kennzeichen spricht den
+#: Namen, nie das Vertragswort.
+ERSATZWERT_METHODEN = {
+    "gleichmaessig_verteilen": "Zuwachs gleichmäßig verteilen",
+    "profil_vorperiode": "Zuwachs nach dem Profil der Vorperiode verteilen",
+    "profil_vergleichsquelle": "Zuwachs nach dem Profil der Vergleichsquelle verteilen",
+    "ablesestand_nachtragen": "Ablesestand nachtragen",
+    "wert_eingeben": "Wert eingeben (mit Beleg)",
+    "vorperiode_uebernehmen": "Vorperiode übernehmen",
+    "vergleichsquelle_uebernehmen": "Vergleichsquelle übernehmen",
+}
+(
+    GLEICHMAESSIG_VERTEILEN,
+    PROFIL_VORPERIODE,
+    PROFIL_VERGLEICHSQUELLE,
+    ABLESESTAND_NACHTRAGEN,
+    WERT_EINGEBEN,
+    VORPERIODE_UEBERNEHMEN,
+    VERGLEICHSQUELLE_UEBERNEHMEN,
+) = ERSATZWERT_METHODEN
+
+#: a–c verteilen einen GEMESSENEN Zuwachs; f und g übernehmen die Werte ihres Bezugs.
+VERTEILEN = (GLEICHMAESSIG_VERTEILEN, PROFIL_VORPERIODE, PROFIL_VERGLEICHSQUELLE)
+UEBERNEHMEN = (VORPERIODE_UEBERNEHMEN, VERGLEICHSQUELLE_UEBERNEHMEN)
+
+#: Nur ein wirksamer Ersatzwert wirkt; ein zurückgenommener hinterlässt keine Spur in den Zahlen.
+WIRKSAM = "wirksam"
+
+MIT_ERSATZWERT = "mit Ersatzwert"
+
+#: Ein verteilter Anteil wird zum Speichern auf so viele Nachkommastellen ABGESCHNITTEN; den Rest
+#: bekommt die letzte Viertelstunde (:func:`verteilen`). Gerechnet wird davor ungerundet (E11).
+ERSATZWERT_STELLEN = 9
+
+#: Die Genauigkeit der Division vor dem Abschneiden — dieselbe wie ``MathContext(40)`` in Java.
+_VERTEILEN_GENAUIGKEIT = 40
+
+#: Die geschlossene Liste der benannten Ablehnungen (``regeln.ersatzwert_ablehnungen``). Eine
+#: Methode, die nicht rechnen kann, lehnt mit ihrem Grund ab — sie weicht nie still auf eine andere aus.
+ERSATZWERT_ABLEHNUNGEN = (
+    "wertart_passt_nicht",
+    "kein_gemessener_zuwachs",
+    "zeitraum_nicht_die_luecke",
+    "vorperiode_fehlt",
+    "vergleichsquelle_fehlt",
+    "profil_negativ",
+    "profil_ohne_verbrauch",
+    "betrag_fuer_mehrere_viertelstunden",
+    "einheit_passt_nicht",
+    "endstand_unter_letztem_wert",
+    "anfangsstand_ueber_naechstem_wert",
+    "ueberschneidet_ersatzwert",
+)
+
+_VIERTELSTUNDE_S = 900
+
+
+class ErsatzwertAbgelehnt(ValueError):
+    """Eine BENANNTE Ablehnung (``grund`` aus :data:`ERSATZWERT_ABLEHNUNGEN`) — nie ein stiller Rückfall."""
+
+    def __init__(self, grund: str, was: str = ""):
+        if grund not in ERSATZWERT_ABLEHNUNGEN:
+            raise ValueError(f"unbekannte Ablehnung {grund!r}")
+        super().__init__(grund + (": " + was if was else ""))
+        self.grund = grund
+
+
+@dataclass(frozen=True)
+class Profilwert:
+    """Ein Wert des Bezugs einer Viertelstunde (Vorperiode oder Vergleichsquelle): Menge und Zustand."""
+
+    menge: Decimal | None
+    zustand: str | None = VOLLSTAENDIG
+
+
+@dataclass(frozen=True)
+class Ersatzwert:
+    """Ein Ersatzwert, wie die Rechenregel ihn braucht — die anlegende Fassung und ihr heutiger Status.
+
+    ``von``/``bis`` im Viertelstunden-Raster (bei d die Viertelstunde des Ablesestands). a–c: ``luecke``
+    ist der GEMESSENE Zuwachs ihrer Lücke, ``luecke_von`` deren erste fehlende Messzeit (``data_gap.von``).
+    b, c, f, g: ``profil`` je Viertelstunde von ``[von, bis)`` in Zeitfolge (``None`` = der Bezug hat dort
+    keinen Wert), bei g ``profil_einheit`` die Einheit der Vergleichsquelle. e: ``betrag`` in ``einheit``.
+    d: ``zeitpunkt`` mit ``endstand`` und/oder ``anfangsstand``.
+    """
+
+    kennung: str
+    methode: str
+    von: datetime
+    bis: datetime
+    status: str = WIRKSAM
+    luecke: LueckenZuwachs | None = None
+    luecke_von: datetime | None = None
+    profil: tuple[Profilwert | None, ...] | None = None
+    profil_einheit: str | None = None
+    betrag: Decimal | None = None
+    einheit: str | None = None
+    zeitpunkt: datetime | None = None
+    endstand: Decimal | None = None
+    anfangsstand: Decimal | None = None
+
+
+def _raster(t: datetime, auf: bool) -> datetime:
+    s = t.timestamp()
+    k = (s // _VIERTELSTUNDE_S + (1 if auf and s % _VIERTELSTUNDE_S else 0)) * _VIERTELSTUNDE_S
+    return datetime.fromtimestamp(k, timezone.utc)
+
+
+def viertelstunden(von: datetime, bis: datetime) -> list[datetime]:
+    """Die Beginne der Viertelstunden in ``[von, bis)`` (UTC-Raster)."""
+    out, t = [], _raster(von, True)
+    while t < bis:
+        out.append(t)
+        t += timedelta(seconds=_VIERTELSTUNDE_S)
+    return out
+
+
+def viertelstunden_der_luecke(luecke_von: datetime, luecke_bis: datetime) -> tuple[datetime, datetime]:
+    """Die Viertelstunden, in denen ein Zuwachs anfiel: ``[Boden(erste fehlende Messzeit), Decke(Messzeit danach))``.
+
+    Dieselbe Rechnung wie der Datenbank-Auslöser ``messreihe_ersatzwert_luecke``.
+    """
+    return _raster(luecke_von, False), _raster(luecke_bis, True)
+
+
+def verteilen(zuwachs: Decimal, gewichte: Sequence[Decimal]) -> list[Decimal]:
+    """Die Invariante „Summe = gemessener Zuwachs“ — für a, b und c die EINE Stelle.
+
+    Jeder Anteil außer dem letzten ist ``Zuwachs × Gewicht ÷ Summe der Gewichte``, ungerundet gerechnet
+    und erst dann auf :data:`ERSATZWERT_STELLEN` Nachkommastellen ABGESCHNITTEN (nie aufgerundet, darum
+    nie negativ). Der letzte ist der Zuwachs minus alle anderen: die Summe der gespeicherten Anteile ist
+    EXAKT der Zuwachs, und der Rest aus dem Abschneiden (kleiner als n × 10⁻⁹) steht in der LETZTEN
+    Viertelstunde — dort, wo der Stand nach der Lücke den Zuwachs abschließt.
+    """
+    if not gewichte:
+        raise ValueError("ein Zuwachs braucht mindestens eine Viertelstunde")
+    summe = sum(gewichte, _D(0))
+    stelle = _D(1).scaleb(-ERSATZWERT_STELLEN)
+    with localcontext() as ctx:
+        ctx.prec = _VERTEILEN_GENAUIGKEIT
+        ctx.rounding = ROUND_HALF_EVEN
+        anteile = [(zuwachs * g / summe).quantize(stelle, rounding=ROUND_DOWN) for g in gewichte[:-1]]
+    anteile.append(zuwachs - sum(anteile, _D(0)))
+    return anteile
+
+
+def _profil(ew: Ersatzwert, n: int) -> list[Decimal]:
+    grund = "vorperiode_fehlt" if ew.methode in (PROFIL_VORPERIODE, VORPERIODE_UEBERNEHMEN) else "vergleichsquelle_fehlt"
+    if ew.profil is None or len(ew.profil) != n:
+        raise ErsatzwertAbgelehnt(grund, ew.kennung)
+    for p in ew.profil:
+        if p is None or p.menge is None or p.zustand != VOLLSTAENDIG:
+            raise ErsatzwertAbgelehnt(grund, ew.kennung)
+    return [p.menge for p in ew.profil]
+
+
+def ersatzwert_anteile(ew: Ersatzwert, regel: str, einheit: str | None) -> list[tuple[datetime, Decimal]]:
+    """E7 — die Werte je Viertelstunde, die ein Ersatzwert setzt (a, b, c, e, f, g), in Zeitfolge.
+
+    ``regel`` ist die Rechenregel der Reihe (``zaehlerstand`` · ``intervallmenge`` · ``momentanwert``),
+    ``einheit`` ihre gespeicherte Einheit. a–c verteilen den GEMESSENEN Zuwachs genau über die
+    Viertelstunden seiner Lücke (:func:`verteilen`); b und c brauchen ein vollständiges Profil ohne
+    negative Werte und mit Verbrauch. e setzt den Betrag EINER Viertelstunde, f und g übernehmen die
+    Werte ihres Bezugs. Methode d setzt keine Werte (:func:`ablesestand_ereignisse`).
+    Kann eine Methode nicht rechnen, lehnt sie benannt ab (:class:`ErsatzwertAbgelehnt`).
+    """
+    m = ew.methode
+    if m not in ERSATZWERT_METHODEN or m == ABLESESTAND_NACHTRAGEN:
+        raise ValueError(f"{m!r} ist keine Methode mit Anteilen je Viertelstunde")
+    beginne = viertelstunden(ew.von, ew.bis)
+    if regel == "momentanwert" or (m in VERTEILEN and regel != "zaehlerstand"):
+        raise ErsatzwertAbgelehnt("wertart_passt_nicht", f"{m} an {regel}")
+    if m in VERTEILEN:
+        if ew.luecke is None or ew.luecke.zuwachs is None or ew.luecke_von is None:
+            raise ErsatzwertAbgelehnt("kein_gemessener_zuwachs", ew.kennung)
+        if (ew.von, ew.bis) != viertelstunden_der_luecke(ew.luecke_von, ew.luecke.messzeit_nach):
+            raise ErsatzwertAbgelehnt("zeitraum_nicht_die_luecke", ew.kennung)
+        if m == GLEICHMAESSIG_VERTEILEN:
+            gewichte = [_D(1)] * len(beginne)
+        else:
+            gewichte = _profil(ew, len(beginne))
+            if any(g < 0 for g in gewichte):
+                raise ErsatzwertAbgelehnt("profil_negativ", ew.kennung)
+            if sum(gewichte, _D(0)) == 0:
+                raise ErsatzwertAbgelehnt("profil_ohne_verbrauch", ew.kennung)
+        return list(zip(beginne, verteilen(ew.luecke.zuwachs, gewichte)))
+    if m == WERT_EINGEBEN:
+        if len(beginne) != 1:
+            raise ErsatzwertAbgelehnt("betrag_fuer_mehrere_viertelstunden", ew.kennung)
+        if einheit is None or ew.einheit != einheit:
+            raise ErsatzwertAbgelehnt("einheit_passt_nicht", f"{ew.einheit} an {einheit}")
+        return [(beginne[0], ew.betrag)]
+    werte = _profil(ew, len(beginne))
+    if m == VERGLEICHSQUELLE_UEBERNEHMEN and (einheit is None or ew.profil_einheit != einheit):
+        raise ErsatzwertAbgelehnt("einheit_passt_nicht", f"{ew.profil_einheit} an {einheit}")
+    return list(zip(beginne, werte))
+
+
+def ablesestand_pruefen(werte: Sequence[Rohwert], ew: Ersatzwert) -> None:
+    """E7 d — ein Ablesestand passt zu den Werten um seinen Zeitpunkt, sonst benannte Ablehnung.
+
+    Der Endstand liegt nicht unter dem letzten guten Wert VOR dem Zeitpunkt, der Anfangsstand nicht über
+    dem ersten guten Wert AB dem Zeitpunkt (dieselbe Nachbarschaft ``(vorher, nachher]`` wie Z4).
+    """
+    gut = [w for w in werte if w.gut]
+    vorher = [w for w in gut if w.zeit < ew.zeitpunkt]
+    nachher = [w for w in gut if w.zeit >= ew.zeitpunkt]
+    if ew.endstand is not None and vorher and ew.endstand < vorher[-1].wert:
+        raise ErsatzwertAbgelehnt("endstand_unter_letztem_wert", ew.kennung)
+    if ew.anfangsstand is not None and nachher and ew.anfangsstand > nachher[0].wert:
+        raise ErsatzwertAbgelehnt("anfangsstand_ueber_naechstem_wert", ew.kennung)
+
+
+def ablesestand_ereignisse(ereignisse: Sequence[dict], ew: Ersatzwert) -> list[dict]:
+    """E7 d — die Gerätegrenze zum Zeitpunkt mit den nachgetragenen Ableseständen; Z4 rechnet danach.
+
+    Eine Gerätegrenze genau zu diesem Zeitpunkt wird ersetzt, sonst entsteht sie (die Rücksetzung von F6
+    ist nur aus den Werten erkannt). Kein Rohwert wird angefasst.
+    """
+    grenze = {
+        "art": "device_boundary",
+        "t": ew.zeitpunkt.isoformat(),
+        "endstand": ew.endstand,
+        "anfangsstand": ew.anfangsstand,
+    }
+    uebrig = [e for e in ereignisse if not (e["art"] == "device_boundary" and _zeit(e["t"]) == ew.zeitpunkt)]
+    return [*uebrig, grenze]
+
+
+def _kennung_folge(kennung: str) -> tuple[int, int]:
+    _, jahr, nummer = kennung.split("-")
+    return int(jahr), int(nummer)
+
+
+def geltende(
+    ersatzwerte: Sequence[Ersatzwert],
+    regel: str,
+    einheit: str | None,
+    vorab_abgelehnt: Mapping[str, str] | None = None,
+) -> tuple[list[tuple[Ersatzwert, list[tuple[datetime, Decimal]]]], dict[str, str]]:
+    """Welche Ersatzwerte einer Reihe gelten — und welche benannt abgelehnt sind.
+
+    Nur WIRKSAME zählen; ein zurückgenommener ist, als hätte es ihn nie gegeben. In der Folge ihrer
+    Kennung (Jahr, Nummer) hält der frühere seine Viertelstunden: ein späterer, der eine davon berührt,
+    ist ``ueberschneidet_ersatzwert`` — zwei Verteilungen desselben Zuwachses ergäben die doppelte Summe.
+    Ein abgelehnter hält keine Viertelstunde. ``vorab_abgelehnt`` trägt die Ablehnungen, die nur mit den
+    Rohwerten prüfbar sind (d, :func:`ablesestand_pruefen`). Geliefert werden die geltenden mit ihren
+    Anteilen (d ohne) und je abgelehnter Kennung ihr Grund.
+    """
+    vorab = dict(vorab_abgelehnt or {})
+    gelten: list[tuple[Ersatzwert, list[tuple[datetime, Decimal]]]] = []
+    abgelehnt: dict[str, str] = {}
+    for ew in sorted((e for e in ersatzwerte if e.status == WIRKSAM), key=lambda e: _kennung_folge(e.kennung)):
+        if ew.kennung in vorab:
+            abgelehnt[ew.kennung] = vorab[ew.kennung]
+            continue
+        if any(g.von < ew.bis and ew.von < g.bis for g, _ in gelten):
+            abgelehnt[ew.kennung] = "ueberschneidet_ersatzwert"
+            continue
+        try:
+            if ew.methode == ABLESESTAND_NACHTRAGEN and regel != "zaehlerstand":
+                raise ErsatzwertAbgelehnt("wertart_passt_nicht", f"{ew.methode} an {regel}")
+            anteile = [] if ew.methode == ABLESESTAND_NACHTRAGEN else ersatzwert_anteile(ew, regel, einheit)
+        except ErsatzwertAbgelehnt as x:
+            abgelehnt[ew.kennung] = x.grund
+            continue
+        gelten.append((ew, anteile))
+    return gelten, abgelehnt
+
+
+def ersatzwert_kennzeichen(methode: str, kennung: str) -> str:
+    """Das Kennzeichen „mit Ersatzwert (Methode …)“ — Wortlaut aus ``ergebnis-zustand`` (Rang 70)."""
+    return "mit Ersatzwert (Methode „" + ERSATZWERT_METHODEN[methode] + "“, " + kennung + ")"
+
+
+def mit_ersatzwerten(
+    kontext: ReihenKontext,
+    basis: dict,
+    stand_anfang: bool,
+    stand_ende: bool,
+    von: datetime,
+    bis: datetime,
+    gelten: Sequence[tuple[Ersatzwert, list[tuple[datetime, Decimal]]]],
+) -> dict:
+    """E7 — die Periode ``[von, bis)`` mit ihren geltenden Ersatzwerten: die neue Version über dem Bestand.
+
+    ``basis`` ist das Ergebnis aus den Rohwerten (Version 1, bei d schon mit dem Ablesestand gerechnet),
+    ``stand_anfang``/``stand_ende`` sagen, ob Z1 an den Grenzen einen Stand fand. Gerechnet wird IMMER vom
+    Bestand aus — nie auf dem Ergebnis einer früheren Version.
+
+    * a–c: Enthält die Periode die Lücke ganz, steckt der Zuwachs schon in der Menge (E2) — sie bleibt, und
+      der Satz „nicht auf Viertelstunden verteilbar“ weicht dem Ersatzwert. Schneidet sie die Lücke an,
+      kommen die Anteile ihrer Viertelstunden zur gemessenen Menge (``None`` hieß hier: kein gemessener Teil
+      außerhalb der Lücke). Ein Rand, der IN der Lücke liegt, ist gedeckt; einer außerhalb bleibt „nicht gemessen“.
+    * e–g gelten nur für die Viertelstunde selbst: ihr Wert IST die Menge (die gröbere Periode bildet die Kaskade).
+    * d: der Ablesestand wirkt schon in ``basis`` (Z4); hier kommt nur sein Kennzeichen dazu.
+
+    Der Zustand ist „mit Ersatzwert“, sobald einer wirkt und eine Zahl dasteht; die Abdeckung des Verlaufs
+    bleibt die der Rohwerte. Kennzeichen: Ränder (Rang 20/21), die übrigen Sätze, zuletzt je Ersatzwert
+    sein Satz (Rang 70).
+    """
+    menge = basis.get("menge")
+    kennzeichen = list(basis.get("kennzeichen", []))
+    anfang_gedeckt = ende_gedeckt = ersetzt = angeschnitten = False
+    saetze: list[str] = []
+    for ew, anteile in gelten:
+        if ew.methode == ABLESESTAND_NACHTRAGEN:
+            if von < ew.zeitpunkt <= bis:
+                saetze.append(ersatzwert_kennzeichen(ew.methode, ew.kennung))
+            continue
+        innen = [a for t, a in anteile if von <= t < bis]
+        if not innen:
+            continue
+        if ew.methode in VERTEILEN:
+            luecke, lv, lb = ew.luecke, ew.luecke_von, ew.luecke.messzeit_nach
+            if lv > von and lb <= bis:
+                satz = luecken_kennzeichen(luecke, kontext)
+                kennzeichen = [s for s in kennzeichen if s != satz]
+            else:
+                menge = (menge if menge is not None else _D(0)) + sum(innen, _D(0))
+                angeschnitten = True
+                anfang_gedeckt |= lv <= von < lb
+                ende_gedeckt |= lv <= bis < lb
+        else:
+            if len(innen) != 1 or (bis - von) != timedelta(seconds=_VIERTELSTUNDE_S):
+                raise ValueError("e–g bilden die Viertelstunde; die gröbere Periode bildet die Kaskade (IP-17)")
+            menge, ersetzt, kennzeichen = innen[0], True, []
+        saetze.append(ersatzwert_kennzeichen(ew.methode, ew.kennung))
+    if not saetze:
+        return dict(basis)
+    if ersetzt or angeschnitten:
+        # Die Ränder neu sagen: gedeckt ist, was in der Lücke liegt; „nur ein Stand“ war ein Rand.
+        rand = (ANFANG_NICHT_GEMESSEN, ENDE_NICHT_GEMESSEN, NUR_EIN_STAND)
+        vorn = []
+        if not ersetzt and not stand_anfang and not anfang_gedeckt:
+            vorn.append(ANFANG_NICHT_GEMESSEN)
+        if not ersetzt and not stand_ende and not ende_gedeckt:
+            vorn.append(ENDE_NICHT_GEMESSEN)
+        kennzeichen = vorn + [s for s in kennzeichen if s not in rand]
+    out = dict(basis)
+    out["menge"] = menge
+    out["kennzeichen"] = kennzeichen + saetze
+    out["zustand"] = MIT_ERSATZWERT if menge is not None else basis["zustand"]
+    return out
+
+
+def ersatzwert_aus(eintrag: dict, reihe: dict) -> Ersatzwert:
+    """Ein Ersatzwert aus seiner Beschreibung in der Vektor-Datei.
+
+    a–c nennen ihre Lücke nur mit ``luecke: {von, bis}`` (erste fehlende Messzeit, Messzeit danach); der
+    Zuwachs wird aus den Rohwerten der Reihe genommen (:func:`luecken_zuwachs`), nie abgetippt. ``profil``
+    ist eine Liste von Abschnitten ``{von, bis, je_viertelstunde}`` oder ``{von, bis, fehlt: true}``.
+    """
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    luecke = luecke_von = None
+    if "luecke" in eintrag:
+        luecke_von, nach = _zeit(eintrag["luecke"]["von"]), _zeit(eintrag["luecke"]["bis"])
+        gut = [w for w in rohwerte(reihe) if w.gut]
+        vorher = [w for w in gut if w.zeit < luecke_von]
+        nachher = [w for w in gut if vorher and w.zeit > vorher[-1].zeit][:1]
+        if vorher and nachher and nachher[0].zeit == nach and vorher[-1].zeit + kadenz == luecke_von:
+            luecke = luecken_zuwachs(vorher[-1], nachher[0], reihe.get("ereignisse", []), kadenz,
+                                     _dez(reihe.get("faktor", 1)))
+    profil = None
+    if "profil" in eintrag:
+        werte: list[Profilwert | None] = []
+        for a in eintrag["profil"]:
+            n = len(viertelstunden(_zeit(a["von"]), _zeit(a["bis"])))
+            werte += [None if a.get("fehlt") else Profilwert(_dez(a["je_viertelstunde"]), a.get("zustand", VOLLSTAENDIG))] * n
+        profil = tuple(werte)
+
+    def dez(feld: str) -> Decimal | None:
+        return _dez(eintrag[feld]) if eintrag.get(feld) is not None else None
+
+    return Ersatzwert(
+        kennung=eintrag["kennung"],
+        methode=eintrag["methode"],
+        von=_zeit(eintrag["von"]),
+        bis=_zeit(eintrag["bis"]),
+        status=eintrag.get("status", WIRKSAM),
+        luecke=luecke,
+        luecke_von=luecke_von,
+        profil=profil,
+        profil_einheit=eintrag.get("profil_einheit"),
+        betrag=dez("betrag"),
+        einheit=eintrag.get("einheit"),
+        zeitpunkt=_zeit(eintrag["zeitpunkt"]) if "zeitpunkt" in eintrag else None,
+        endstand=dez("endstand"),
+        anfangsstand=dez("anfangsstand"),
+    )
+
+
 # ------------------------------------------------------------------------ Der Eingang
 
 
@@ -1198,6 +1593,7 @@ def ergebnis(
     ereignisse_zusatz: Iterable[dict] = (),
     anteil: str | None = None,
     quelle: str | None = None,
+    ersatzwerte: Iterable[dict] = (),
 ) -> dict:
     """Der EINE Eingang: eine Reihe, eine Periode → das Ergebnis der Vektor-Datei.
 
@@ -1210,6 +1606,10 @@ def ergebnis(
     Geliefert werden genau die Felder, die die Vektor-Datei je Erwartung nennt:
     ``menge`` beziehungsweise ``mittel``/``min``/``max``/``energie_kwh``, dazu ``zustand``,
     ``erhalten``, ``erwartet``, ``abdeckung_prozent``, ``kennzeichen`` und ``stunden``.
+
+    ``ersatzwerte`` (AP-08 IP-13) sind die Ersatzwerte der Reihe mit ihrem Status: die Erwartung ist dann
+    die VERSION mit den geltenden (:func:`geltende`, :func:`mit_ersatzwerten`), und ``ersatzwert_abgelehnt``
+    nennt je abgelehnter Kennung ihren Grund.
     """
     werte = rohwerte(reihe)
     kadenz = timedelta(seconds=reihe["kadenz_s"])
@@ -1219,8 +1619,21 @@ def ergebnis(
     if anteil is not None and wertart != "momentanwert":
         raise ValueError(f"einen Anteil hat nur ein Momentanwert, nicht {wertart!r}")
 
+    liste = [ersatzwert_aus(e, reihe) for e in ersatzwerte]
+    vorab = {}
+    for ew in liste:
+        if ew.status == WIRKSAM and ew.methode == ABLESESTAND_NACHTRAGEN:
+            try:
+                ablesestand_pruefen(werte, ew)
+            except ErsatzwertAbgelehnt as x:
+                vorab[ew.kennung] = x.grund
+    gelten, abgelehnt = geltende(liste, wertart, reihe.get("einheit"), vorab)
+
     if wertart == "zaehlerstand":
         ereignisse = list(reihe.get("ereignisse", [])) + list(ereignisse_zusatz)
+        for ew, _ in gelten:
+            if ew.methode == ABLESESTAND_NACHTRAGEN:
+                ereignisse = ablesestand_ereignisse(ereignisse, ew)
         out = menge_zaehlerstand(
             kontext(reihe),
             werte,
@@ -1240,6 +1653,19 @@ def ergebnis(
     else:
         raise ValueError(f"unbekannte Wertart {wertart!r} — bekannt sind zaehlerstand, intervallmenge, momentanwert")
 
+    if gelten:
+        zaehler = wertart == "zaehlerstand"
+        out = mit_ersatzwerten(
+            kontext(reihe),
+            out,
+            not zaehler or periodenstand(werte, a, kadenz) is not None,
+            not zaehler or periodenstand(werte, b, kadenz) is not None,
+            a,
+            b,
+            gelten,
+        )
+    if abgelehnt:
+        out["ersatzwert_abgelehnt"] = abgelehnt
     # Z9: Abdeckung des VERLAUFS - sie sagt, wie viele Werte ankamen, nicht ob die Menge
     # stimmt. Ein vollständiger Tag darf 85 % Abdeckung haben (F8).
     out["abdeckung_prozent"] = (

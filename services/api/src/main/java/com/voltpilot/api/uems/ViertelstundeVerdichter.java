@@ -646,6 +646,47 @@ public class ViertelstundeVerdichter {
     }
 
     /**
+     * AP-08 IP-13: die RECHENGRUNDLAGE einer Viertelstunde für {@link VerbrauchRegeln} — dieselben
+     * Rohwerte (mit dem Rückblick einer Kadenz), Ereignisse, Kadenz, Deklaration und derselbe Träger, die
+     * {@link #zeile} der Regel gibt, aber ohne zu rechnen und ohne zu schreiben. Der Ersatzwert-Lauf rechnet
+     * damit einen nachgetragenen Ablesestand (E7 d) über Z4 — kein zweiter Ladeweg für dieselbe Zahl.
+     *
+     * @param regel die Rechenregel der Reihe ({@link ViertelstundeRegeln#regelWort}), {@code null} = keine
+     */
+    record Grundlage(String regel, List<VerbrauchRegeln.Rohwert> werte, Collection<VerbrauchRegeln.Ereignis> ereignisse,
+            Duration kadenz, ReihenKontext kontext, BigDecimal modul, BigDecimal hoechstzuwachs) {}
+
+    /**
+     * Die Rechengrundlage der Viertelstunde ab {@code beginn}; {@code null}, wenn sie keinen einzigen Rohwert
+     * (mehr) hat — die Rohwerte haben 90 Tage Aufbewahrung, die Viertelstunden zehn Jahre.
+     */
+    Grundlage grundlage(Connection con, UUID tenant, UUID entity, String kanal, Instant beginn) throws SQLException {
+        List<Auftrag> stapel = List.of(new Auftrag(tenant, entity, kanal, beginn, "ersatzwert"));
+        Map<Integer, KadenzRegeln.Wirksam> kadenzen = kadenzJeAuftrag(con, stapel);
+        List<Roh> fenster = rohwerte(con, stapel, kadenzen).getOrDefault(0, List.of());
+        Instant bis = ViertelstundeRegeln.ende(beginn);
+        List<Roh> imIntervall = fenster.stream()
+                .filter(r -> !r.zeit().isBefore(beginn) && r.zeit().isBefore(bis))
+                .toList();
+        if (imIntervall.isEmpty()) {
+            return null;
+        }
+        List<Roh> gute = imIntervall.stream().filter(Roh::gut).toList();
+        Roh bezug = gute.isEmpty() ? imIntervall.get(imIntervall.size() - 1) : gute.get(gute.size() - 1);
+        Duration kadenzD = Duration.ofSeconds(kadenzen.get(0).erwartetS());
+        Instant regelVon = beginn.minus(kadenzD);
+        List<VerbrauchRegeln.Rohwert> werte = fenster.stream()
+                .filter(r -> r.zahl() != null)
+                .filter(r -> r.zeit().isAfter(regelVon) && !r.zeit().isAfter(bis))
+                .map(r -> new VerbrauchRegeln.Rohwert(r.zeit(), r.zahl(), r.gut()))
+                .toList();
+        ZaehlerDeklaration deklaration = deklarationen(con, stapel).getOrDefault(0, ZaehlerDeklaration.NICHTS);
+        return new Grundlage(ViertelstundeRegeln.regelWort(wertart(bezug)), werte,
+                fuerVerbrauchRegeln(ereignisse(con, stapel).getOrDefault(0, List.of()), deklaration), kadenzD,
+                kontexte(con, stapel).get(0), deklaration.modulFuer(kadenzD), deklaration.hoechstzuwachsFuer(kadenzD));
+    }
+
+    /**
      * Die Wertart, mit der das Intervall gebildet wurde: die NACHGESCHLAGENE des Bezugswerts
      * ({@code value_kind}, IP-7), sonst das Vertragswort seiner Verdichtungsart — dieselbe
      * Filterung, die der Writer anwendet ({@code event} und {@code none} des Katalogs sind keine

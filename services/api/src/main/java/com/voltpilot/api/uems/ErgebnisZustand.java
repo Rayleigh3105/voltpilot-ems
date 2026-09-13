@@ -89,7 +89,12 @@ public final class ErgebnisZustand {
             "dezimal_punkt", "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
             "dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
             // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
-            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|m³)");
+            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|m³)",
+            // Seit 1.4 (AP-08 IP-13): der Name einer Ersatzwert-Methode in Kundensprache und die Kennung.
+            "ersatzwert_methode", "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen"
+                    + "|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen"
+                    + "|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)",
+            "ersatzwert_kennung", "EW-[0-9]{4}-[0-9]{4,}");
 
     /**
      * Ein Kennzeichen-Satz der geschlossenen Liste.
@@ -161,7 +166,11 @@ public final class ErgebnisZustand {
                     50, true, true, null, null),
             new Muster("aus_leistung_integriert",
                     "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)", Map.of(),
-                    "aus Leistung integriert", 60, false, true, null, null));
+                    "aus Leistung integriert", 60, false, true, null, null),
+            // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
+            new Muster("mit_ersatzwert", "mit Ersatzwert (Methode „{methode}“, {kennung})",
+                    Map.of("methode", "ersatzwert_methode", "kennung", "ersatzwert_kennung"),
+                    "mit Ersatzwert (Methode …)", 70, false, false, null, null));
 
     /**
      * Ein Wortlaut, den eine frühere Fassung sprach und der gespeichert sein kann. Er wird als das
@@ -190,8 +199,7 @@ public final class ErgebnisZustand {
             new Vorgesehen("endgültig", "endgültig",
                     "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"),
             new Vorgesehen("Ablesezeitraum", "Ablesezeitraum",
-                    "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"),
-            new Vorgesehen("mit Ersatzwert (Methode …)", "mit Ersatzwert (", "AP-08 IP-13 (Ersatzwert-Methoden)"));
+                    "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"));
 
     private static final Pattern PLATZ = Pattern.compile("\\{([a-z_]+)\\}");
 
@@ -303,6 +311,37 @@ public final class ErgebnisZustand {
         }
         return sprich("luecke_zuwachs",
                 Map.of("von", von, "bis", bis, "zuwachs", menge(zuwachs, einheit, KENNZEICHEN_EBENE)));
+    }
+
+    /**
+     * E7 — der Name jeder Ersatzwert-Methode in Kundensprache, in der Reihenfolge des Vokabulars
+     * ({@code events-vocabulary-vectors.json} {@code vokabular.ersatzwert_methode[].name}). Das Kennzeichen
+     * spricht den Namen, nie das Vertragswort.
+     */
+    public static final Map<String, String> ERSATZWERT_METHODE_NAME = namen(
+            "gleichmaessig_verteilen", "Zuwachs gleichmäßig verteilen",
+            "profil_vorperiode", "Zuwachs nach dem Profil der Vorperiode verteilen",
+            "profil_vergleichsquelle", "Zuwachs nach dem Profil der Vergleichsquelle verteilen",
+            "ablesestand_nachtragen", "Ablesestand nachtragen",
+            "wert_eingeben", "Wert eingeben (mit Beleg)",
+            "vorperiode_uebernehmen", "Vorperiode übernehmen",
+            "vergleichsquelle_uebernehmen", "Vergleichsquelle übernehmen");
+
+    private static Map<String, String> namen(String... paare) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (int i = 0; i < paare.length; i += 2) {
+            out.put(paare[i], paare[i + 1]);
+        }
+        return java.util.Collections.unmodifiableMap(out);
+    }
+
+    /** „mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)“ — Rang 70, seit 1.4. */
+    public static String ersatzwert(String methode, String kennung) {
+        String name = ERSATZWERT_METHODE_NAME.get(methode);
+        if (name == null) {
+            throw new IllegalArgumentException("unbekannte Ersatzwert-Methode " + methode);
+        }
+        return sprich("mit_ersatzwert", Map.of("methode", name, "kennung", kennung));
     }
 
     /** „Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren“. */

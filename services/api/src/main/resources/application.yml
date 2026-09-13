@@ -432,6 +432,16 @@ voltpilot:
       stapel: ${VOLTPILOT_UEMS_LUECKEN_STAPEL:200}
       stapel-je-lauf: ${VOLTPILOT_UEMS_LUECKEN_STAPEL_JE_LAUF:50}
       werte-je-lochsuche: ${VOLTPILOT_UEMS_LUECKEN_WERTE_JE_LOCHSUCHE:20000}
+    # UEMS AP-08 IP-13: der ERSATZWERT-LAUF - alle fuenf Minuten bildet er fuer jeden
+    # neu erfassten oder zurueckgenommenen Ersatzwert die Viertelstunden als Version
+    # (messreihe_viertelstunde_version) und haelt seine Wirkung fest. Er rechnet nichts
+    # selbst (VerbrauchRegeln) und fuellt nie etwas automatisch auf: jeder Ersatzwert ist
+    # ein Mensch mit Begruendung. Vorgabe AN (die Hausregel), im Testlauf AUS (surefire);
+    # wer ihn prueft, ruft ErsatzwertLauf.lauf() selbst. `je-lauf` = Ersatzwerte je Takt.
+    ersatzwert:
+      enabled: ${VOLTPILOT_UEMS_ERSATZWERT_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_ERSATZWERT_INTERVAL_MS:300000}
+      je-lauf: ${VOLTPILOT_UEMS_ERSATZWERT_JE_LAUF:200}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

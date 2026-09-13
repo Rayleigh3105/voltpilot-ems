@@ -142,7 +142,8 @@ Zustand und Abdeckung der Vorlage bleiben unberührt).
 
 ## 6. Was dieser Vertrag NICHT regelt
 
-Ersatzwerte und ihre Methoden, Korrekturen und Versionierung (§4.6, ab IP-12), die
+Korrekturen und ihre Kaskade über Tag, Monat und Jahr (§4.6, IP-14 ff.; die Ersatzwert-Methoden
+selbst regelt seit IP-13 Abschnitt 11), die
 Fortpflanzung über berechnete Messstellen (§4.5, AP-10), der gröbere Eingang und das Intervall
 über die Grenze (I3/I4), die Kundensätze (IP-8), die
 Zustandsart `state` (S1/S2)
@@ -272,3 +273,39 @@ zwei Mengen, „saldiert“ gibt es nur als berechnete Messstelle (AP-10). Die S
 `VerbrauchRegeln.anteilJeRohwert`/`momentanwerteAnteil` ⟷ `verbrauch.anteil_je_rohwert`/
 `momentanwerte_anteil`; einen Anteil hat nur ein Momentanwert (ein Zählerstand mit Anteil ist ein
 Fehler des Aufrufers).
+
+## 11. Ersatzwert-Methoden: die geschätzte Verteilung ändert den gemessenen Betrag nie (AP-08 IP-13, E7)
+
+Ein Ersatzwert ist eine Zahl, die ein Mensch mit Begründung setzt (`messreihe_ersatzwert`,
+`events-vocabulary.md` §4). Die sieben Methoden a–g (E7) rechnen `VerbrauchRegeln` ⟷
+`verbrauch.py` gegen den Block **`ersatzwerte`** der Vektor-Datei: Versionen der Reihen von F11
+(Version 2), F21 (Widerruf, Version 3) sowie konstruierte Fälle je Methode und je Ablehnung.
+
+- **a–c verteilen den GEMESSENEN Zuwachs** einer Zählerstand-Lücke über ihre Viertelstunden
+  `[Boden(erste fehlende Messzeit), Decke(Messzeit danach))` — Gewicht 1 (a) oder die vollständige
+  Menge der Profil-Viertelstunde der Vorperiode (b) bzw. der Vergleichsquelle (c).
+  `regeln.ersatzwert_verteilung`: jeder Anteil wird ungerundet gerechnet und auf
+  `ersatzwert_stellen` = 9 Nachkommastellen **abgeschnitten**, die **letzte** Viertelstunde der
+  Lücke bekommt den Rest — dort, wo der Stand nach der Lücke den Zuwachs abschließt. Die Summe der
+  gespeicherten Anteile ist darum **exakt** der Zuwachs (Methode b konstruiert: 26,742857186 statt
+  26,742857142 in der letzten Viertelstunde).
+- **d** macht den Zeitpunkt zur Gerätegrenze mit Ableseständen; Z4 rechnet (F6 mit den Ständen von
+  F12: 14,81 kWh). **e** setzt den Betrag EINER Viertelstunde, **f/g** übernehmen die Werte ihres
+  Bezugs (gleiche Einheit) — ihr Wert ist die Menge der Viertelstunde.
+- **Benannte Ablehnungen** (`regeln.ersatzwert_ablehnungen`, geschlossen): eine Methode, die nicht
+  rechnen kann, lehnt mit ihrem Grund ab und weicht nie still auf eine andere aus — fehlt eine
+  Viertelstunde der Vorperiode, ist das `vorperiode_fehlt`, nie „dann eben gleichmäßig“.
+- **Versionsregel** (`regeln.ersatzwert_version`): eine Periode mit Ersatzwerten ist eine neue
+  Version über dem Bestand (Version 1), nie auf einer früheren gerechnet. Nur wirksame gelten; in
+  der Folge ihrer Kennung hält der frühere seine Viertelstunden (`ueberschneidet_ersatzwert`).
+  Enthält die Periode die Lücke ganz, bleibt ihre Menge (E2) und der Satz „nicht auf
+  Viertelstunden verteilbar“ weicht dem Ersatzwert; schneidet sie sie an, kommen die Anteile ihrer
+  Viertelstunden dazu (F11: 1 344,0 + 960,0 = 2 304,0), ein Rand in der Lücke ist gedeckt.
+  Zustand „mit Ersatzwert“, Kennzeichen zuletzt „mit Ersatzwert (Methode „…“, EW-…)“
+  (`ergebnis-zustand` Rang 70); die Abdeckung bleibt die der Rohwerte.
+- Ein zurückgenommener Ersatzwert hinterlässt **keine Spur in den Zahlen**: die Version gleicht
+  Version 1 Zeichen für Zeichen (F21), und die bessere Methode rechnet vom Bestand aus.
+
+Gebildet werden die Versionen der Viertelstunde (`messreihe_viertelstunde_version`, Lauf
+`ErsatzwertLauf`); Tag, Monat und Jahr mit Ersatzwert bildet die Kaskade (IP-17) über dieselbe
+Regel `mitErsatzwerten` ⟷ `mit_ersatzwerten`.

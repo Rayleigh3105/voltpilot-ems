@@ -23,6 +23,7 @@ import {
   ZUSTAENDE,
   anfang,
   erkenne,
+  ersatzwert,
   menge,
   pruefe,
   pruefeMenge,
@@ -143,7 +144,8 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
  */
 describe('uemsErgebnis — jeder Satz der Verbrauchsregel steht in der Liste', () => {
   const verbrauch = lies('verbrauch-vectors.json');
-  const erwartungen = (verbrauch.cases as Json[]).flatMap((fall) =>
+  // Seit 1.4 auch die Versionen mit Ersatzwerten (Block `ersatzwerte`, AP-08 IP-13).
+  const erwartungen = [...(verbrauch.cases as Json[]), ...(verbrauch.ersatzwerte as Json[])].flatMap((fall) =>
     (fall.expected as Json[]).filter((e) => Array.isArray(e.kennzeichen)).map((e) => ({ fall, e })),
   );
 
@@ -278,5 +280,36 @@ describe('uemsErgebnis — die alten Kundensätze kommen nicht zurück', () => {
     expect(erste).not.toBe('02:30');
     expect(zweite).not.toBe('02:30');
     expect(erste).not.toBe(zweite);
+  });
+});
+
+describe('uemsErgebnis — das Kennzeichen „mit Ersatzwert (Methode …)“ (seit 1.4, AP-08 IP-13)', () => {
+  const methoden = lies('events-vocabulary-vectors.json').vokabular.ersatzwert_methode as Json[];
+
+  it('spricht je Methode ihren Namen aus dem Ereignis-Vokabular, nie das Vertragswort', () => {
+    for (const m of methoden) {
+      const text = ersatzwert(m.code, 'EW-2026-0003');
+      expect(text).toBe(`mit Ersatzwert (Methode „${m.name}“, EW-2026-0003)`);
+      expect(erkenne(text)?.muster.schluessel).toBe('mit_ersatzwert');
+      expect(text).not.toContain(m.code);
+    }
+    expect(() => ersatzwert('schaetzen', 'EW-2026-0003')).toThrow();
+  });
+
+  it('jeder Ersatzwert-Satz der Verbrauchsregel ist genau dieser Wortlaut', () => {
+    const verbrauch = lies('verbrauch-vectors.json');
+    let gesehen = 0;
+    for (const eintrag of verbrauch.ersatzwerte as Json[]) {
+      for (const e of eintrag.expected as Json[]) {
+        for (const k of e.kennzeichen as string[]) {
+          if (erkenne(k)?.muster.schluessel !== 'mit_ersatzwert') continue;
+          const ew = (eintrag.ersatzwerte as Json[]).find((x) => k.endsWith(`${x.kennung})`));
+          expect(ew, k).toBeDefined();
+          expect(ersatzwert(ew.methode, ew.kennung)).toBe(k);
+          gesehen++;
+        }
+      }
+    }
+    expect(gesehen).toBeGreaterThan(20);
   });
 });

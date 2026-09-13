@@ -28,7 +28,13 @@
   "(zuwachs, einheit, stand_vor, stand_nach) trägt die Lücke als Ereignis (events-vocabulary, data_gap).",
   "AP-08 IP-7: ein Vorzeichen-Wert (Katalog import_export) speist Bezug UND Abgabe — geteilt JE ROHWERT, nie je",
   "Mittelwert (regeln.anteil, E15 = A). F19 trägt dafür die Reihe `wirkleistung` von K-3 und je Anteil eine",
-  "Erwartung mit `anteil` und `quelle`; `gegenprobe` hält die verworfene Rechnung (erst mitteln, dann zuordnen) fest."
+  "Erwartung mit `anteil` und `quelle`; `gegenprobe` hält die verworfene Rechnung (erst mitteln, dann zuordnen) fest.",
+  "AP-08 IP-13: die Ersatzwert-Methoden a–g (E7). Der Block `ersatzwerte` rechnet Versionen der Fälle F11, F21",
+  "(Vorlage: „nicht maschinell“ — hier maschinell, mit dem Kennzeichen aus ergebnis-zustand) sowie konstruierte",
+  "Fälle für b, d, e, f, g und JEDE benannte Ablehnung an den Reihen von F11, F6 und F2. `status` sagt je Kennung,",
+  "ob der Ersatzwert zu dieser Version wirksam oder zurückgenommen ist; `verteilung` hält Anzahl, Summe (EXAKT der",
+  "Zuwachs), ersten und letzten Anteil und die Summe je Tag; `abgelehnt` je Kennung den Grund. Die Lücke nennt ein",
+  "Ersatzwert nur mit {von, bis} — der Zuwachs kommt aus den Rohwerten, nie abgetippt."
  ],
  "schema_version": "1.0",
  "$schema_datei": "./verbrauch.schema.json",
@@ -50,6 +56,23 @@
    "tag",
    "monat",
    "jahr"
+  ],
+  "ersatzwert_stellen": 9,
+  "ersatzwert_verteilung": "a–c: Anteil je Viertelstunde der Lücke = Zuwachs × Gewicht ÷ Summe der Gewichte (a: Gewicht 1; b/c: Menge der Profil-Viertelstunde), ungerundet gerechnet und auf ersatzwert_stellen Nachkommastellen ABGESCHNITTEN; die LETZTE Viertelstunde der Lücke bekommt Zuwachs − Summe der übrigen. Die Summe der gespeicherten Anteile ist EXAKT der gemessene Zuwachs. Die Viertelstunden der Lücke sind [Boden(erste fehlende Messzeit), Decke(Messzeit danach)).",
+  "ersatzwert_version": "Eine Periode mit Ersatzwerten ist eine neue VERSION über dem Bestand (Version 1 aus den Rohwerten), nie auf einer früheren Version gerechnet. Nur WIRKSAME gelten; in der Folge ihrer Kennung hält der frühere seine Viertelstunden. a–c: enthält die Periode die Lücke ganz, bleibt ihre Menge; schneidet sie sie an, kommen die Anteile ihrer Viertelstunden dazu, und ein Rand in der Lücke ist gedeckt. e–g: der Wert IST die Menge der Viertelstunde. d: die Gerätegrenze mit Ableseständen, Z4 rechnet. Zustand „mit Ersatzwert“, sobald einer wirkt und eine Zahl dasteht; Kennzeichen zuletzt „mit Ersatzwert (Methode „…“, EW-…)“; die Abdeckung bleibt die der Rohwerte.",
+  "ersatzwert_ablehnungen": [
+   "wertart_passt_nicht",
+   "kein_gemessener_zuwachs",
+   "zeitraum_nicht_die_luecke",
+   "vorperiode_fehlt",
+   "vergleichsquelle_fehlt",
+   "profil_negativ",
+   "profil_ohne_verbrauch",
+   "betrag_fuer_mehrere_viertelstunden",
+   "einheit_passt_nicht",
+   "endstand_unter_letztem_wert",
+   "anfangsstand_ueber_naechstem_wert",
+   "ueberschneidet_ersatzwert"
   ]
  },
  "zustaende": [
@@ -2187,6 +2210,1179 @@
      "kennzeichen": [
       "gemessene Zeit 58:10 min von 60 min",
       "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+     ]
+    }
+   ]
+  }
+ ],
+ "ersatzwerte": [
+  {
+   "name": "F11 · EW-2026-0003 gleichmäßig verteilt (Version 2)",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Methode a: 1 872,0 kWh ÷ 78 Viertelstunden = 24,0 kWh je Viertelstunde (40 am 03.11., 38 am 04.11.). Die Tage bekommen die Anteile ihrer Viertelstunden zur gemessenen Menge: 1 344,0 + 960,0 = 2 304,0 und 912,0 + 1 392,0 = 2 304,0 — der Rand „Ende/Anfang nicht gemessen“ liegt in der Lücke und ist gedeckt. Der Zeitraum enthält die Lücke ganz: seine Menge 4 608,0 trug den Zuwachs schon (E2) und bleibt; „nicht auf Viertelstunden verteilbar“ weicht dem Ersatzwert. Die Abdeckung des Verlaufs bleibt die der Rohwerte.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0003",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    }
+   ],
+   "status": {
+    "EW-2026-0003": "wirksam"
+   },
+   "verteilung": [
+    {
+     "kennung": "EW-2026-0003",
+     "anzahl": 78,
+     "summe": 1872.0,
+     "erster": 24.0,
+     "letzter": 24.0,
+     "je_tag": {
+      "2026-11-03": 960.0,
+      "2026-11-04": 912.0
+     }
+    }
+   ],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 (Version 2)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Tag 04.11.2026 (Version 2)",
+     "von": "2026-11-04T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 870,
+     "erwartet": 1440,
+     "abdeckung_prozent": 60,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026 (Version 2)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Viertelstunde 03.11. 14:00–14:15 (Version 2) — nur der Stand vor der Lücke",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T14:15:00+01:00",
+     "menge": 24.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1,
+     "erwartet": 15,
+     "abdeckung_prozent": 6,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Viertelstunde 03.11. 20:00–20:15 (Version 2) — ganz in der Lücke",
+     "von": "2026-11-03T20:00:00+01:00",
+     "bis": "2026-11-03T20:15:00+01:00",
+     "menge": 24.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Viertelstunde 04.11. 09:15–09:30 (Version 2) — nur der Stand nach der Lücke",
+     "von": "2026-11-04T09:15:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "menge": 24.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Stunde 04.11. 09:00–10:00 (Version 2) — schneidet die Lücke an",
+     "von": "2026-11-04T09:00:00+01:00",
+     "bis": "2026-11-04T10:00:00+01:00",
+     "menge": 96.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 30,
+     "erwartet": 60,
+     "abdeckung_prozent": 50,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Viertelstunde 04.11. 09:30–09:45 — nach der Lücke, unberührt",
+     "von": "2026-11-04T09:30:00+01:00",
+     "bis": "2026-11-04T09:45:00+01:00",
+     "menge": 24.0,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "F21 · Widerruf von EW-2026-0003 allein (Version 3 = Zustand von Version 1)",
+   "fall": "f21-widerruf-und-ersatz-durch-eine-bessere-methode",
+   "why": "Ein zurückgenommener Ersatzwert hinterlässt keine Spur in den Zahlen: Version 3 ist Zeichen für Zeichen Version 1 — Tage unvollständig, der Zeitraum mit dem nicht verteilbaren Zuwachs, die Viertelstunde in der Lücke ohne Werte. EW-2026-0003 bleibt als Beleg „zurückgenommen“ sichtbar.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0003",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    }
+   ],
+   "status": {
+    "EW-2026-0003": "zurueckgenommen"
+   },
+   "verteilung": [],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 (Version 3, nur Widerruf)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Tag 04.11.2026 (Version 3, nur Widerruf)",
+     "von": "2026-11-04T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 1392.0,
+     "zustand": "unvollständig",
+     "erhalten": 870,
+     "erwartet": 1440,
+     "abdeckung_prozent": 60,
+     "kennzeichen": [
+      "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026 (Version 3, nur Widerruf)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "vollständig",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "Lücke 14:00–09:30: Zuwachs 1.872,0 kWh gemessen, nicht auf Viertelstunden verteilbar"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Viertelstunde 03.11. 20:00–20:15 (Version 3, nur Widerruf)",
+     "von": "2026-11-03T20:00:00+01:00",
+     "bis": "2026-11-03T20:15:00+01:00",
+     "menge": null,
+     "zustand": "keine Werte",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [],
+     "version": 3
+    }
+   ]
+  },
+  {
+   "name": "F21 · Widerruf und EW-2026-0005 nach dem Profil der Vergleichsquelle (Version 3)",
+   "fall": "f21-widerruf-und-ersatz-durch-eine-bessere-methode",
+   "why": "Methode c: je Viertelstunde Zuwachs × Lastgang-Viertelstunde ÷ Lastgang-Summe — gerechnet vom BESTAND (Version 1) aus, nie auf Version 2. Der Lastgang des Netzbetreibers: 03.11. 14:00–24:00 40 × 25,26 = 1 010,4 kWh, 04.11. 00:00–09:00 36 × 22,6 und 09:00–09:30 2 × 24,0 = 861,6 kWh; seine Summe ist zufällig der Zuwachs 1 872,0, die Anteile sind darum genau die Lastgang-Werte. Tag 03.11. 1 344,0 + 1 010,4 = 2 354,4; Tag 04.11. 861,6 + 1 392,0 = 2 253,6; Summe 4 608,0 wie Version 1 + Zuwachs.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0003",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    },
+    {
+     "kennung": "EW-2026-0005",
+     "methode": "profil_vergleichsquelle",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "je_viertelstunde": 25.26
+      },
+      {
+       "von": "2026-11-04T00:00:00+01:00",
+       "bis": "2026-11-04T09:00:00+01:00",
+       "je_viertelstunde": 22.6
+      },
+      {
+       "von": "2026-11-04T09:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 24.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0003": "zurueckgenommen",
+    "EW-2026-0005": "wirksam"
+   },
+   "verteilung": [
+    {
+     "kennung": "EW-2026-0005",
+     "anzahl": 78,
+     "summe": 1872.0,
+     "erster": 25.26,
+     "letzter": 24.0,
+     "je_tag": {
+      "2026-11-03": 1010.4,
+      "2026-11-04": 861.6
+     }
+    }
+   ],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 (Version 3)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2354.4,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Tag 04.11.2026 (Version 3)",
+     "von": "2026-11-04T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 2253.6,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 870,
+     "erwartet": 1440,
+     "abdeckung_prozent": 60,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026 (Version 3, mit Ersatzwert)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Viertelstunde 03.11. 14:00–14:15 (Version 3)",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-03T14:15:00+01:00",
+     "menge": 25.26,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1,
+     "erwartet": 15,
+     "abdeckung_prozent": 6,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+     ],
+     "version": 3
+    },
+    {
+     "name": "Viertelstunde 04.11. 09:15–09:30 (Version 3)",
+     "von": "2026-11-04T09:15:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "menge": 24.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+     ],
+     "version": 3
+    }
+   ]
+  },
+  {
+   "name": "Gegenprobe: zwei wirksame Verteilungen derselben Lücke",
+   "fall": "f21-widerruf-und-ersatz-durch-eine-bessere-methode",
+   "why": "Wird EW-2026-0005 erfasst, bevor EW-2026-0003 zurückgenommen ist, verteilten beide denselben Zuwachs — zusammen 3 744,0 kWh über eine Lücke von 1 872,0. Der frühere hält seine Viertelstunden, der spätere ist benannt abgelehnt (ueberschneidet_ersatzwert); nach dem Widerruf gilt er (Fall darüber).",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0003",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    },
+    {
+     "kennung": "EW-2026-0005",
+     "methode": "profil_vergleichsquelle",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "je_viertelstunde": 25.26
+      },
+      {
+       "von": "2026-11-04T00:00:00+01:00",
+       "bis": "2026-11-04T09:00:00+01:00",
+       "je_viertelstunde": 22.6
+      },
+      {
+       "von": "2026-11-04T09:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 24.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0003": "wirksam",
+    "EW-2026-0005": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0005": "ueberschneidet_ersatzwert"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 — nur EW-2026-0003 gilt",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2304.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ]
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026 — die Summe bleibt der Zuwachs",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Methode b: Profil der Vorperiode mit Rundungsrest (konstruiert an F11)",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Das Profil der Vorwoche (27./28.10.: 40 × 20,0 und 38 × 25,0 = 1 750,0 kWh) verteilt den Zuwachs 1 872,0 im Verhältnis 20 : 25. Die Anteile 21,394285714… und 26,742857142… sind unendliche Brüche: jeder wird auf 9 Nachkommastellen ABGESCHNITTEN, und die letzte Viertelstunde der Lücke (04.11. 09:15, dort schließt der Stand nach der Lücke den Zuwachs ab) bekommt den Rest 1 872 − 40 × 21,394285714 − 37 × 26,742857142 = 26,742857186. Die Summe der gespeicherten Anteile ist EXAKT 1 872,0; beide Tage zusammen EXAKT 4 608,0.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0006",
+     "methode": "profil_vorperiode",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-04T00:00:00+01:00",
+       "je_viertelstunde": 20.0
+      },
+      {
+       "von": "2026-11-04T00:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 25.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0006": "wirksam"
+   },
+   "verteilung": [
+    {
+     "kennung": "EW-2026-0006",
+     "anzahl": 78,
+     "summe": 1872.0,
+     "erster": 21.394285714,
+     "letzter": 26.742857186,
+     "je_tag": {
+      "2026-11-03": 855.77142856,
+      "2026-11-04": 1016.22857144
+     }
+    }
+   ],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 (Version 2, Profil der Vorperiode)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 2199.77142856,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vorperiode verteilen“, EW-2026-0006)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Tag 04.11.2026 (Version 2, Profil der Vorperiode)",
+     "von": "2026-11-04T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 2408.22857144,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 870,
+     "erwartet": 1440,
+     "abdeckung_prozent": 60,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vorperiode verteilen“, EW-2026-0006)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Zeitraum 03.–04.11.2026 (Version 2, Profil der Vorperiode)",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-05T00:00:00+01:00",
+     "menge": 4608.0,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 1711,
+     "erwartet": 2880,
+     "abdeckung_prozent": 59,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vorperiode verteilen“, EW-2026-0006)"
+     ],
+     "version": 2
+    },
+    {
+     "name": "Viertelstunde 04.11. 09:15–09:30 (Version 2) — trägt den Rest",
+     "von": "2026-11-04T09:15:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "menge": 26.742857186,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 0,
+     "erwartet": 15,
+     "abdeckung_prozent": 0,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vorperiode verteilen“, EW-2026-0006)"
+     ],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: die Vorperiode hat eine Lücke — kein stiller Rückfall auf a",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Methode b braucht für JEDE Viertelstunde der Lücke eine vollständige Menge der Vorperiode. Fehlt eine (hier 27.10. 18:00–19:00), ist das die benannte Ablehnung vorperiode_fehlt — der Tag bleibt Version 1, nie gleichmäßig verteilt.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0007",
+     "methode": "profil_vorperiode",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-03T18:00:00+01:00",
+       "je_viertelstunde": 20.0
+      },
+      {
+       "von": "2026-11-03T18:00:00+01:00",
+       "bis": "2026-11-03T19:00:00+01:00",
+       "fehlt": true
+      },
+      {
+       "von": "2026-11-03T19:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 20.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0007": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0007": "vorperiode_fehlt"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: die Vergleichsquelle hat keine Werte",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Methode c ohne Werte der Vergleichsquelle im Zeitraum: vergleichsquelle_fehlt, keine Verteilung.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0008",
+     "methode": "profil_vergleichsquelle",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "fehlt": true
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0008": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0008": "vergleichsquelle_fehlt"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: ein Profil ohne Verbrauch",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Ein Profil, dessen Summe 0 ist, hat kein Verhältnis, nach dem sich der Zuwachs verteilen ließe (Division durch 0) — profil_ohne_verbrauch, nie gleichmäßig.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0009",
+     "methode": "profil_vergleichsquelle",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 0.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0009": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0009": "profil_ohne_verbrauch"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: ein negatives Profil",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Ein negativer Profilwert gäbe einen negativen Anteil an einem Zählerstand-Zuwachs — profil_negativ.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0010",
+     "methode": "profil_vergleichsquelle",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     },
+     "profil": [
+      {
+       "von": "2026-11-03T14:00:00+01:00",
+       "bis": "2026-11-03T14:15:00+01:00",
+       "je_viertelstunde": -5.0
+      },
+      {
+       "von": "2026-11-03T14:15:00+01:00",
+       "bis": "2026-11-04T09:30:00+01:00",
+       "je_viertelstunde": 25.0
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0010": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0010": "profil_negativ"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: der Zeitraum ist nicht die Lücke",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Der Zuwachs gehört der ganzen Lücke (03.11. 14:00 – 04.11. 09:30). Über nur einen Teil verteilt, stünde die Energie der ganzen Lücke in ihrer ersten Hälfte — zeitraum_nicht_die_luecke.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0011",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T14:01:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    }
+   ],
+   "status": {
+    "EW-2026-0011": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0011": "zeitraum_nicht_die_luecke"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: a–c ohne gemessenen Zuwachs",
+   "fall": "f11-begr-ndeter-ersatzwert",
+   "why": "Die genannte Lücke hat an diesen Messzeiten keinen gemessenen Zuwachs (erste fehlende Messzeit 13:30 statt 14:01) — kein_gemessener_zuwachs.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0012",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-11-03T14:00:00+01:00",
+     "bis": "2026-11-04T09:30:00+01:00",
+     "luecke": {
+      "von": "2026-11-03T13:30:00+01:00",
+      "bis": "2026-11-04T09:30:00+01:00"
+     }
+    }
+   ],
+   "status": {
+    "EW-2026-0012": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0012": "kein_gemessener_zuwachs"
+   },
+   "expected": [
+    {
+     "name": "Tag 03.11.2026 bleibt Version 1",
+     "von": "2026-11-03T00:00:00+01:00",
+     "bis": "2026-11-04T00:00:00+01:00",
+     "menge": 1344.0,
+     "zustand": "unvollständig",
+     "erhalten": 841,
+     "erwartet": 1440,
+     "abdeckung_prozent": 58,
+     "kennzeichen": [
+      "Ende nicht gemessen (kein Stand an der Periodengrenze)"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Methode d: Ablesestand nachtragen an F6 (die Ablesestände von F12)",
+   "fall": "f6-plan-abnahme-1",
+   "why": "Endstand 6 184,90 und Anfangsstand 0,00 zur Rücksetzung 09:12 machen daraus eine Gerätegrenze mit Ableseständen; Z4 rechnet (6 184,90 − 6 184,37) + (3,06 − 0,00) + 11,22 = 14,81 kWh — dieselbe Zahl wie die Korrektur F12, hier als Ersatzwert gekennzeichnet.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2027-0001",
+     "methode": "ablesestand_nachtragen",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "zeitpunkt": "2027-01-15T09:12:00+01:00",
+     "endstand": 6184.9,
+     "anfangsstand": 0.0,
+     "einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2027-0001": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Viertelstunde 09:00–09:15 (Version 2)",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.81,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Gerätegrenze 09:12 mit Ableseständen",
+      "mit Ersatzwert (Methode „Ablesestand nachtragen“, EW-2027-0001)"
+     ],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: Endstand unter dem letzten Messwert",
+   "fall": "f6-plan-abnahme-1",
+   "why": "Der Endstand 6 100,0 liegt unter dem letzten Messwert vor der Rücksetzung (6 184,37) — endstand_unter_letztem_wert (Report §5: „bitte prüfen“, kein Speichern).",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2027-0002",
+     "methode": "ablesestand_nachtragen",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "zeitpunkt": "2027-01-15T09:12:00+01:00",
+     "endstand": 6100.0,
+     "anfangsstand": 0.0,
+     "einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2027-0002": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2027-0002": "endstand_unter_letztem_wert"
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 09:00–09:15 bleibt Version 1",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.28,
+     "zustand": "unvollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: Anfangsstand über dem ersten Messwert danach",
+   "fall": "f6-plan-abnahme-1",
+   "why": "Der Anfangsstand 5,0 liegt über dem ersten Messwert nach der Rücksetzung (0,0) — anfangsstand_ueber_naechstem_wert.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2027-0003",
+     "methode": "ablesestand_nachtragen",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "zeitpunkt": "2027-01-15T09:12:00+01:00",
+     "endstand": 6184.9,
+     "anfangsstand": 5.0,
+     "einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2027-0003": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2027-0003": "anfangsstand_ueber_naechstem_wert"
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 09:00–09:15 bleibt Version 1",
+     "von": "2027-01-15T09:00:00+01:00",
+     "bis": "2027-01-15T09:15:00+01:00",
+     "menge": 14.28,
+     "zustand": "unvollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": [
+      "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Methode e: Wert eingeben (mit Beleg) an einer Intervallmengen-Viertelstunde",
+   "fall": "f2-intervallmenge",
+   "why": "Eine fehlende Intervallmenge ist verlorene Menge (I2): der Wert der Netzrechnung (2,75 kWh) IST die Menge der Viertelstunde; die gemessenen 2,567 kWh bleiben Version 1.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0020",
+     "methode": "wert_eingeben",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "betrag": 2.75,
+     "einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2026-0020": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30 (Version 2)",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.75,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Wert eingeben (mit Beleg)“, EW-2026-0020)"
+     ],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "Methode f: Vorperiode übernehmen",
+   "fall": "f2-intervallmenge",
+   "why": "Die Menge derselben Viertelstunde der Vorperiode (2,751 kWh, vollständig) wird übernommen.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0021",
+     "methode": "vorperiode_uebernehmen",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "profil": [
+      {
+       "von": "2026-10-20T10:15:00+02:00",
+       "bis": "2026-10-20T10:30:00+02:00",
+       "je_viertelstunde": 2.751
+      }
+     ]
+    }
+   ],
+   "status": {
+    "EW-2026-0021": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30 (Version 2)",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.751,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Vorperiode übernehmen“, EW-2026-0021)"
+     ],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "Methode g: Vergleichsquelle übernehmen",
+   "fall": "f2-intervallmenge",
+   "why": "Die Menge der Vergleichsquelle derselben Viertelstunde (2,7 kWh, gleiche Einheit) wird übernommen.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0022",
+     "methode": "vergleichsquelle_uebernehmen",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "profil": [
+      {
+       "von": "2026-10-20T10:15:00+02:00",
+       "bis": "2026-10-20T10:30:00+02:00",
+       "je_viertelstunde": 2.7
+      }
+     ],
+     "profil_einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2026-0022": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {},
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30 (Version 2)",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.7,
+     "zustand": "mit Ersatzwert",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "mit Ersatzwert (Methode „Vergleichsquelle übernehmen“, EW-2026-0022)"
+     ],
+     "version": 2
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: ein Betrag für mehrere Viertelstunden",
+   "fall": "f2-intervallmenge",
+   "why": "Methode e setzt den Betrag EINER Viertelstunde. Über 10:00–10:30 wäre er der Wert der halben Stunde — ihn auf Viertelstunden zu teilen, erfände ein Profil; die gröbere Periode bildet die Kaskade (IP-17).",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0023",
+     "methode": "wert_eingeben",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "betrag": 2.75,
+     "einheit": "kWh"
+    }
+   ],
+   "status": {
+    "EW-2026-0023": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0023": "betrag_fuer_mehrere_viertelstunden"
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:00–10:15 bleibt Version 1",
+     "von": "2026-10-20T10:00:00+02:00",
+     "bis": "2026-10-20T10:15:00+02:00",
+     "menge": 2.751,
+     "zustand": "vollständig",
+     "erhalten": 15,
+     "erwartet": 15,
+     "abdeckung_prozent": 100,
+     "kennzeichen": []
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: die Vergleichsquelle misst in einer anderen Einheit",
+   "fall": "f2-intervallmenge",
+   "why": "Methode g übernimmt Werte — in Wh gemessen, wären es an einer kWh-Reihe tausendfache Mengen: einheit_passt_nicht.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0024",
+     "methode": "vergleichsquelle_uebernehmen",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "profil": [
+      {
+       "von": "2026-10-20T10:15:00+02:00",
+       "bis": "2026-10-20T10:30:00+02:00",
+       "je_viertelstunde": 2.7
+      }
+     ],
+     "profil_einheit": "Wh"
+    }
+   ],
+   "status": {
+    "EW-2026-0024": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0024": "einheit_passt_nicht"
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30 bleibt Version 1",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.567,
+     "zustand": "unvollständig",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "1 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Ablehnung: eine Verteilung an einer Reihe ohne Zählerstand",
+   "fall": "f2-intervallmenge",
+   "why": "a–c verteilen einen Zählerstand-Zuwachs; eine Intervallmengen-Reihe hat keinen — wertart_passt_nicht.",
+   "ersatzwerte": [
+    {
+     "kennung": "EW-2026-0025",
+     "methode": "gleichmaessig_verteilen",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "luecke": {
+      "von": "2026-10-20T10:15:00+02:00",
+      "bis": "2026-10-20T10:30:00+02:00"
+     }
+    }
+   ],
+   "status": {
+    "EW-2026-0025": "wirksam"
+   },
+   "verteilung": [],
+   "abgelehnt": {
+    "EW-2026-0025": "wertart_passt_nicht"
+   },
+   "expected": [
+    {
+     "name": "Viertelstunde 10:15–10:30 bleibt Version 1",
+     "von": "2026-10-20T10:15:00+02:00",
+     "bis": "2026-10-20T10:30:00+02:00",
+     "menge": 2.567,
+     "zustand": "unvollständig",
+     "erhalten": 14,
+     "erwartet": 15,
+     "abdeckung_prozent": 93,
+     "kennzeichen": [
+      "1 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen"
      ]
     }
    ]
