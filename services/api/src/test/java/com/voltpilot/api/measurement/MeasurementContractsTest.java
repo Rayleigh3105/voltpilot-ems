@@ -2,6 +2,7 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -78,7 +79,7 @@ class MeasurementContractsTest {
     @Test
     void statusIdentityAndMonotoneRevisionAreEnforced() throws Exception {
         MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
-        when(repository.deviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
         when(repository.revision(DEVICE)).thenReturn(8L);
         when(repository.acknowledgedRevision(DEVICE)).thenReturn(6L);
         MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
@@ -100,6 +101,25 @@ class MeasurementContractsTest {
         assertThat(listener.handle(STATUS_TOPIC.replace(TENANT.toString(),
                 "10000000-0000-0000-0000-000000000001"), valid)).isFalse();
         verify(repository, never()).applyAcknowledgement(eq(DEVICE), eq(8L), any(), any(), any(), any());
+    }
+
+    @Test
+    void statusOfAnAusgebauteBoxIsDiscarded() throws Exception {
+        // The box is still RLS-visible for its history (deviceScope), but no longer takes part in
+        // operation (aktiverDeviceScope, UEMS AP-07 IP-11): its acknowledgement must not land.
+        MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
+        when(repository.deviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(null);
+        when(repository.revision(DEVICE)).thenReturn(8L);
+        when(repository.acknowledgedRevision(DEVICE)).thenReturn(6L);
+        MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
+                "tcp://unused:1883", "", "", repository, mapper);
+
+        assertThat(listener.handle(STATUS_TOPIC,
+                fixture("mqtt-measurement-config-status.valid.json"))).isFalse();
+        verify(repository).aktiverDeviceScope(DEVICE);
+        verify(repository, never()).applyAcknowledgement(any(), anyLong(), any(), any(), any(), any());
+        assertThat(TenantContext.get()).isNull();
     }
 
     @Test
