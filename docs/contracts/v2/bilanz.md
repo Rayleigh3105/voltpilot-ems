@@ -20,9 +20,10 @@ Unternehmen und ein Gebäude daraus sehen.
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
-> **Wer anruft (Stand AP-10 IP-1): niemand.** Dieses Paket legt die Verträge; die Routen, Tabellen
-> und Flächen bauen IP-3 … IP-18. Es ändert kein Verhalten: kein Produktionsweg ruft
-> `BilanzAbleitung` oder `uemsBilanz.ts` an, es entsteht keine Migration und keine Route.
+> **Wer anruft (Stand AP-10 IP-4): das Formel-Modul.** `MessstelleFormelRegeln.hauptgroesse` und
+> `.periodenwert` (TS: `uemsMessstelleFormel.ts`) verzweigen je Formel-Typ in diese Regeln
+> ([`messstelle-formel.md`](./messstelle-formel.md) §6.2). Ein Produktionsweg ruft noch nicht an:
+> die Routen, Tabellen und Flächen bauen IP-5 … IP-18; es gibt keine Migration und keine Route.
 
 ## 1. Warum es zwei Umsetzungen gibt
 
@@ -47,7 +48,7 @@ nennt in `zwillinge_grund` den Grund; ohne Grund gibt es keine Lücke.
 - **Die Rechte** — sie gehören AP-03 (`rechte-matrix.json`). Die neuen Kennungen tragen IP-3, IP-6,
   IP-7 und IP-8 als Nachtrag dort ein; `_nicht_geprueft` nennt das je Fall.
 
-## 3. Die elf Regeln
+## 3. Die Regeln
 
 Jede Prüfung der Vektor-Datei nennt ihre `regel`; beide Zwillinge haben zu jeder eine Funktion.
 
@@ -55,6 +56,7 @@ Jede Prüfung der Vektor-Datei nennt ihre `regel`; beide Zwillinge haben zu jede
 |---|---|
 | `rolle` | §4.3: Was tut diese Messstelle an diesem Tag in der Bilanz ihres Systems? |
 | `rest` | §4.3/§4.5: Was ist nicht zugeordnet — und was ist es NICHT? |
+| `rest_aus_stellung` | §4.3/E3 (AP-10 IP-4): Mit welchen Termen rechnet der Rest eines Hauptzählers an DIESEM Tag — aus den Stellungen des Referenzunternehmens? |
 | `summe` | §4.5: Was ist die Summe, wenn ein Summand fehlt? |
 | `saldo` | §4.4: Was ist Bezug minus Abgabe derselben Grenze? |
 | `richtung` | E1: Welche Größe und Richtung trägt das Ergebnis je Formel-Typ? |
@@ -97,6 +99,14 @@ Jede Prüfung der Vektor-Datei nennt ihre `regel`; beide Zwillinge haben zu jede
 10. **Der Rest folgt der STELLUNG, nicht einer bearbeiteten Formel.** Zieht ein Unterzähler in ein
     anderes System um, ändern sich beide Reste am selben Tag, ohne dass jemand eine Formel anfasst —
     die Herkunft nennt den Grund als Vermerk (F7). Vermerke werden hereingereicht, nie erraten.
+    `rest_aus_stellung` (IP-4) liest die Stellungen aus `uems-referenzunternehmen.json`, nicht aus
+    einer Kopie; jede Fassung mit Termen ist genau die Eingangsmenge einer `rest`-Prüfung desselben
+    Falls (beide Tests prüfen das). ⚠ Nur der Rest eines **Hauptzählers Bezug** ist gebaut — den
+    eigenen Rest eines Unterzählers mit Unterzählern (§4.3, Satz 2) hat das Referenzunternehmen nicht
+    als Fall; die Regel antwortet dort `rest_ohne_hauptzaehler`.
+11. **Der Kundensatz kommt aus `saetze`.** Die Vorlagen `rest_zugeordnet`, `rest_negativ` und
+    `rest_keine_werte` stehen wörtlich als Konstanten in beiden Zwillingen und werden gegen die Datei
+    geprüft — F1 sagt „10 kWh sind keiner Messstelle zugeordnet“.
 
 ## 5. Was hier NICHT steht
 
@@ -104,9 +114,9 @@ Tabellen, Migrationen, Routen und Portal-Flächen. Dieses Paket ist der Vertrag,
 gebaut werden: die Formel-Fassungen (IP-3), die Typen `rest` und `saldo` im Formel-Modul (IP-4),
 die Term-Art `verteilung` (IP-5), der Netzanschluss (IP-6), Kostenstellen und Prozesse (IP-7), die
 Verteilung (IP-8), das Bilanz-Lesemodell (IP-9) und die Periodenwerte berechneter Messstellen
-(IP-10). Der Katalog-Eintrag `Wirkenergie · saldiert` steht hier als Vertrag
-(`vokabulare.richtung_berechnet_additiv`) und wandert mit IP-4 in
-[`messstelle.md`](./messstelle.md) §2 und `MessstelleRegeln.GROESSEN_KATALOG`.
+(IP-10). Der Katalog-Eintrag `Wirkenergie · saldiert` steht hier als Vokabular
+(`vokabulare.richtung_berechnet_additiv`) und seit IP-4 in [`messstelle.md`](./messstelle.md) §2
+und `MessstelleRegeln.GROESSEN_KATALOG` (`richtungen_nur_berechnet`); `saldo` fragt den Katalog.
 
 ## 6. Herkunft der Zahlen
 
@@ -121,6 +131,6 @@ abweicht, `_nicht_geprueft` jede Erwartung der Vorlage ohne Zwilling.
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='BilanzVectorsTest')          # rein, kein Docker
-(cd frontend/portal && npx vitest run src/uemsBilanz.test.ts)
+(cd services/api && ./mvnw test -Dtest='BilanzVectorsTest,MessstelleFormelTypenTest')   # rein, kein Docker
+(cd frontend/portal && npx vitest run src/uemsBilanz.test.ts src/uemsMessstelleFormelTypen.test.ts)
 ```

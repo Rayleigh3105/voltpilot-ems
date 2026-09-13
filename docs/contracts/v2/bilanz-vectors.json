@@ -17,7 +17,11 @@
     "nie nachgebaut. Die Zustandswörter sind die der Verbrauchsregel AP-08 (VerbrauchRegeln).",
     "Erzeugt aus data/vp-uems-ap10-bilanzen/referenzfaelle.json; _abweichungen nennt jede Stelle,",
     "an der diese Datei bewusst von der Vorlage abweicht, _nicht_geprueft jede Erwartung der",
-    "Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet."
+    "Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet.",
+    "AP-10 IP-4: `rest_aus_stellung` leitet die Terme eines Rests je Hauptzähler und TAG aus den",
+    "Stellungen des Referenzunternehmens ab (`referenzunternehmen`, Messstellen[].elektrische_stellung);",
+    "beide Zwillinge lesen die Stellungen von dort, und jede Fassung mit Termen deckt sich mit den",
+    "Eingängen einer `rest`-Prüfung desselben Falls."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./bilanz.schema.json",
@@ -203,6 +207,10 @@
       "ts"
     ],
     "rest": [
+      "java",
+      "ts"
+    ],
+    "rest_aus_stellung": [
       "java",
       "ts"
     ],
@@ -499,6 +507,36 @@
           }
         },
         {
+          "regel": "rest_aus_stellung",
+          "name": "Die Terme des Rests MS-22 am 18.10.2026 kommen aus der STELLUNG: MS-16 Zufluss, MS-17 und MS-18 zugeordnet — keine gespeicherte Formel",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-18"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
           "regel": "richtung",
           "name": "Typ `rest`: Bezug − Bezug bleibt Bezug (E1, fest je Typ)",
           "eingang": {
@@ -514,6 +552,86 @@
             "wertart": "Intervallmenge",
             "fehler": null,
             "grund": null
+          }
+        },
+        {
+          "regel": "richtung",
+          "name": "Gleichgerichtete Eingänge mit Minus (MS-16 + · MS-17 − · MS-18 −): der Typ `rest` bleibt Bezug — die Vorzeichen entscheiden nichts",
+          "eingang": {
+            "typ": "rest",
+            "art": "berechnet",
+            "wertart": "Intervallmenge",
+            "terme": [
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "+"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              }
+            ]
+          },
+          "ergebnis": {
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "einheit": "kWh",
+            "wertart": "Intervallmenge",
+            "fehler": null,
+            "grund": null
+          }
+        },
+        {
+          "regel": "richtung",
+          "name": "Dieselben Terme als `gewichtete_summe` wären ein Netto ohne Katalog-Richtung — genau daran scheiterte die Abnahme vor E1",
+          "eingang": {
+            "typ": "gewichtete_summe",
+            "art": "berechnet",
+            "wertart": "Intervallmenge",
+            "terme": [
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "+"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              }
+            ]
+          },
+          "ergebnis": {
+            "groesse": null,
+            "richtung": null,
+            "einheit": null,
+            "wertart": null,
+            "fehler": "groessen_gemischt",
+            "grund": "richtung"
           }
         },
         {
@@ -734,6 +852,50 @@
               "ab 15.10.2026"
             ],
             "kundensatz": "1 200 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "14.10.2026 — vor „Lindach ab 15.10.2026“ ist MS-16 noch kein Hauptzähler: kein Rest, keine erfundene Bilanz",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-14"
+          },
+          "ergebnis": {
+            "anlage": null,
+            "terme": [],
+            "ausserhalb": [],
+            "fehler": "rest_ohne_hauptzaehler"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "15.10.2026 — ab dem ersten Tag der Stellung gibt es den Rest mit denselben drei Termen",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-15"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -1032,6 +1194,46 @@
               "nicht zugeordnet"
             ],
             "kundensatz": "3 800 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Halle 2 im Oktober 2026: MS-10 Zufluss, MS-11 … MS-14 zugeordnet (MS-08 steht noch in AN-1)",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -1421,6 +1623,80 @@
               "nicht zugeordnet"
             ],
             "kundensatz": "54 580 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Halle 1: Erzeuger und Speicher kommen aus der Stellung desselben Systems — der Speicher mit BEIDEN Anteilen",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Der Hauptzähler Abgabe hat keinen eigenen Rest — er ist ein Abfluss im Rest von MS-01",
+          "eingang": {
+            "hauptzaehler": "MS-02",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": null,
+            "terme": [],
+            "ausserhalb": [],
+            "fehler": "rest_ohne_hauptzaehler"
           }
         },
         {
@@ -1850,6 +2126,46 @@
           }
         },
         {
+          "regel": "rest_aus_stellung",
+          "name": "04.11.2026: MS-14 ohne Werte ändert die Terme nicht — der Rest fehlt erst in der Rechnung, nicht in der Fassung",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2026-11-04"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
           "regel": "live",
           "name": "Der Live-Wert bleibt `null` statt einer Teilsumme und NENNT den fehlenden Term",
           "eingang": {
@@ -2128,6 +2444,36 @@
               "unplausibel (negativ)"
             ],
             "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "08.11.2026: dieselben drei Terme — auch ein negativer Rest ist eine Differenz aus der Stellung",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-11-08"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -2628,6 +2974,166 @@
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
             ],
             "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "28.02.2027: MS-08 ist Unterzähler von MS-01 und geht in den Rest von AN-1 ein",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2027-02-28"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "01.03.2027: MS-08 ist umgezogen — der Rest von AN-1 verliert den Term, ohne dass eine Formel angefasst wird",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2027-03-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "01.03.2027: derselbe Tag, anderes System — MS-08 ist jetzt im Rest von AN-2 zugeordnet",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2027-03-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {

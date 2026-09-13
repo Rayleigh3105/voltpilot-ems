@@ -324,6 +324,8 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
           kanal_wertart: q.kanalWertart,
           nur_wertart: q.nurWertart,
         })),
+        // Nur wo es sie gibt (AP-10 IP-4) — `toEqual` übergeht ein `undefined`-Feld.
+        richtungen_nur_berechnet: e.richtungenNurBerechnet,
       })),
     );
     expect(Object.entries(vectors.kanal_einheiten)).toEqual(Object.entries(KANAL_EINHEITEN));
@@ -342,7 +344,8 @@ describe('Messstellen-Vertrag — die Fälle', () => {
   });
 
   it.each(faelle('groesse'))('Größe: $name', (c) => {
-    expect(groessePruefen(c.input.medium, c.input.groesse)).toEqual(c.expected);
+    // `art` fehlt in den Fällen von vor AP-10 IP-4: dann urteilt die Regel ohne Art.
+    expect(groessePruefen(c.input.medium, c.input.groesse, c.input.art)).toEqual(c.expected);
   });
 
   it.each(faelle('lebenszyklus'))('Lebenszyklus: $name', (c) => {

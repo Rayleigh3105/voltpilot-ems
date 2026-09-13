@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -60,8 +61,18 @@ public final class BilanzAbleitung {
     public static final String BERECHNET_SALDO = "berechnet (Saldo)";
     public static final String NICHT_ZUGEORDNET = "nicht zugeordnet";
     public static final String UNPLAUSIBEL_NEGATIV = "unplausibel (negativ)";
-    public static final String SALDIERT = "saldiert";
+    /** Das Katalog-Wort steht EINMAL — im Größen-Katalog der Messstelle (AP-10 IP-4). */
+    public static final String SALDIERT = MessstelleRegeln.SALDIERT;
     public static final String SALDIERT_KENNZEICHEN = "saldiert (Bezug − Abgabe)";
+
+    /**
+     * Die Kundensätze des Rests, WÖRTLICH die Vorlagen aus {@code saetze} der Vektor-Datei
+     * ({@code rest_zugeordnet}, {@code rest_negativ}, {@code rest_keine_werte}); der Test hält
+     * sie dort fest. Ein Rest heißt „nicht zugeordnet“ — nie „Verlust“, und er nennt keine Ursache.
+     */
+    public static final String SATZ_REST_ZUGEORDNET = "{menge} {einheit} sind keiner Messstelle zugeordnet";
+    public static final String SATZ_REST_NEGATIV = "Messwerte passen nicht zusammen ({menge} {einheit})";
+    public static final String SATZ_REST_KEINE_WERTE = "nicht zugeordnet: keine Werte";
 
     /** Wörter, die eine URSACHE behaupten — kein Satz dieses Vertrags darf sie tragen. */
     public static final List<String> VERBOTENE_WOERTER =
@@ -265,7 +276,7 @@ public final class BilanzAbleitung {
             }
             return new RestUrteil(null, null, null, null, null, richtung.groesse(), richtung.richtung(),
                     einheit, KEINE_WERTE, abdeckung, List.copyOf(fehlend), List.copyOf(kennzeichen),
-                    "nicht zugeordnet: keine Werte");
+                    SATZ_REST_KEINE_WERTE);
         }
 
         BigDecimal zufluss = summiere(eingaenge, ZUFLUSS);
@@ -282,15 +293,121 @@ public final class BilanzAbleitung {
         if (version > 1) {
             kennzeichen.add(korrigiert(version));
         }
-        String satz = negativ
-                ? "Messwerte passen nicht zusammen (" + zahlDe(menge) + " " + einheit + ")"
-                : zahlDe(menge) + " " + einheit + " sind keiner Messstelle zugeordnet";
+        String satz = (negativ ? SATZ_REST_NEGATIV : SATZ_REST_ZUGEORDNET)
+                .replace("{menge}", zahlDe(menge))
+                .replace("{einheit}", einheit);
         return new RestUrteil(zufluss, abfluss, zugeordnet, verbrauch, menge, richtung.groesse(),
                 richtung.richtung(), einheit, zustand, abdeckung, List.of(), List.copyOf(kennzeichen), satz);
     }
 
     private static String korrigiert(int version) {
         return "korrigiert (Version " + version + ")";
+    }
+
+    // ------------------------------------------------------------------- Rest aus der Stellung
+
+    /** Fehler: an diesem Tag ist die Messstelle kein Hauptzähler Bezug — es gibt keinen Rest (§4.3). */
+    public static final String REST_OHNE_HAUPTZAEHLER = "rest_ohne_hauptzaehler";
+
+    /**
+     * Eine zeitgültige elektrische Stellung einer Messstelle (AP-04 {@code messstelle_stellung}), mit
+     * den Merkmalen der Messstelle, die die Rolle braucht. {@code ab}/{@code bis} sind TAGE, der
+     * letzte Tag gehört dazu; {@code null} heißt offen.
+     */
+    public record StellungZeile(
+            String messstelle,
+            String anlage,
+            String stellung,
+            String richtung,
+            String art,
+            String medium,
+            String unterzaehlerVon,
+            LocalDate ab,
+            LocalDate bis) {
+
+        boolean gilt(LocalDate tag) {
+            return (ab == null || !tag.isBefore(ab)) && (bis == null || !tag.isAfter(bis));
+        }
+    }
+
+    /** Ein Term des Rests: welche Messstelle mit welcher Rolle und welchem Anteil eingeht. */
+    public record RestTerm(String messstelle, String rolle, String anteil) {}
+
+    /**
+     * Die Fassung eines Rests an EINEM Tag, aus der Stellung abgeleitet. {@code fehler != null} heißt:
+     * an diesem Tag gibt es keinen Rest ({@code terme} leer). {@code ausserhalb} nennt die Abzweige
+     * desselben Systems — gemessen, aber in keiner Bilanz (die Sicht nennt sie).
+     */
+    public record RestFassung(
+            String hauptzaehler, String anlage, List<RestTerm> terme, List<String> ausserhalb, String fehler) {}
+
+    /**
+     * §4.3 / E3 — der Rest eines Hauptzählers X an einem TAG, aus den Stellungen dieses Tages: Ein
+     * {@code rest} speichert keine Terme. Zieht ein Unterzähler um, ändern sich beide Reste am selben
+     * Tag, ohne dass jemand eine Formel anfasst (F7).
+     *
+     * <ul>
+     *   <li>X muss an dem Tag Hauptzähler mit der Rolle Zufluss sein (Richtung Bezug), sonst
+     *       {@link #REST_OHNE_HAUPTZAEHLER}.
+     *   <li>Zufluss und Abfluss sind X selbst und die Erzeuger, Speicher (mit beiden Anteilen, E4) und
+     *       der Hauptzähler Abgabe DESSELBEN Systems (Anlage). Einen zweiten Hauptzähler Bezug lässt
+     *       der Messstellen-Vertrag §6 nicht zu (höchstens einer je Anlage und Richtung); stünde doch
+     *       einer da, ginge er nicht als zweiter Zufluss ein.
+     *   <li>Zugeordnet sind genau die Unterzähler VON X — ein Unterzähler eines Unterzählers zählt im
+     *       Rest von X nicht doppelt.
+     *   <li>Berechnete Messstellen, andere Medien und „keine“ Stellung gehen nie ein ({@link #rolle}).
+     * </ul>
+     *
+     * <p>Die Reihenfolge der Terme ist Zufluss (X zuerst) · Abfluss · zugeordnet, je in der
+     * Reihenfolge der Zeilen; sie ändert keine Zahl. Vermerke wie „Stellung geändert (…)“ leitet
+     * diese Regel NICHT ab — sie werden von dem hereingereicht, der die Änderung kennt.
+     */
+    public static RestFassung restAusStellung(
+            String hauptzaehler, LocalDate tag, List<StellungZeile> zeilen) {
+        List<StellungZeile> amTag = zeilen.stream().filter(z -> z.gilt(tag)).toList();
+        StellungZeile x = amTag.stream()
+                .filter(z -> z.messstelle().equals(hauptzaehler))
+                .findFirst()
+                .orElse(null);
+        if (x == null || !"Hauptzähler".equals(x.stellung())
+                || !List.of(new RolleAnteil(ZUFLUSS, "gesamt")).equals(rolle(eingangVon(x)).rollen())) {
+            return new RestFassung(hauptzaehler, null, List.of(), List.of(), REST_OHNE_HAUPTZAEHLER);
+        }
+        List<RestTerm> zufluss = new ArrayList<>(List.of(new RestTerm(x.messstelle(), ZUFLUSS, "gesamt")));
+        List<RestTerm> abfluss = new ArrayList<>();
+        List<RestTerm> zugeordnet = new ArrayList<>();
+        List<String> ausserhalb = new ArrayList<>();
+        for (StellungZeile z : amTag) {
+            if (z.messstelle().equals(x.messstelle())) {
+                continue;
+            }
+            RolleUrteil u = rolle(eingangVon(z));
+            if (hauptzaehler.equals(u.ziel())) {
+                zugeordnet.add(new RestTerm(z.messstelle(), ZUGEORDNET, "gesamt"));
+                continue;
+            }
+            boolean imSystem = x.anlage() != null && x.anlage().equals(z.anlage());
+            boolean zweiterBezug = "Hauptzähler".equals(z.stellung()) && "Bezug".equals(z.richtung());
+            if (!imSystem || u.ziel() != null || zweiterBezug) {
+                continue;
+            }
+            for (RolleAnteil r : u.rollen()) {
+                switch (r.rolle()) {
+                    case ZUFLUSS -> zufluss.add(new RestTerm(z.messstelle(), ZUFLUSS, r.anteil()));
+                    case ABFLUSS -> abfluss.add(new RestTerm(z.messstelle(), ABFLUSS, r.anteil()));
+                    case AUSSERHALB -> ausserhalb.add(z.messstelle());
+                    default -> { }
+                }
+            }
+        }
+        List<RestTerm> terme = new ArrayList<>(zufluss);
+        terme.addAll(abfluss);
+        terme.addAll(zugeordnet);
+        return new RestFassung(hauptzaehler, x.anlage(), List.copyOf(terme), List.copyOf(ausserhalb), null);
+    }
+
+    private static RolleEingang eingangVon(StellungZeile z) {
+        return new RolleEingang(z.stellung(), z.richtung(), z.art(), z.medium(), z.unterzaehlerVon());
     }
 
     // --------------------------------------------------------------------------------- Summe
@@ -440,7 +557,11 @@ public final class BilanzAbleitung {
             case "rest" -> "Momentanwert".equals(wertart)
                     ? new RichtungUrteil("Wirkleistung", "richtungslos", "kW", "Momentanwert", null, null)
                     : new RichtungUrteil("Wirkenergie", "Bezug", "kWh", wertart, null, null);
-            case "saldo" -> MessstelleRegeln.BERECHNET.equals(art)
+            // Ob `saldiert` an dieser Messstelle stehen darf, sagt der KATALOG (AP-10 IP-4) — nicht
+            // eine zweite Liste hier: nur `art = berechnet` darf die Richtung tragen.
+            case "saldo" -> MessstelleRegeln.groessePruefen("Strom", art,
+                            new MessstelleRegeln.Groesse("Wirkenergie", SALDIERT, "kWh", "Intervallmenge"))
+                    .fehler() == null
                     ? new RichtungUrteil("Wirkenergie", SALDIERT, "kWh", wertart, null, null)
                     : new RichtungUrteil(null, null, null, null,
                             MessstelleFormelRegeln.Fehler.GROESSEN_GEMISCHT.code(), "saldiert_nur_berechnet");

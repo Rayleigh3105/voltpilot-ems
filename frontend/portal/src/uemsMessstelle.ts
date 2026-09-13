@@ -134,12 +134,24 @@ export interface KatalogEintrag {
   richtungen: string[];
   wertarten: string[];
   quellen: KatalogQuelle[];
+  /**
+   * Richtungen, die NUR eine berechnete Messstelle tragen darf (AP-10 IP-4: `saldiert`) —
+   * bewusst NICHT in `richtungen`, damit eine gemessene Reihe sie nie bekommt.
+   */
+  richtungenNurBerechnet?: string[];
 }
+
+/**
+ * Die Richtung einer Bilanz-Differenz „Bezug − Abgabe" (AP-10 E1, Formel-Typ `saldo`): ein
+ * ADDITIVER Katalog-Eintrag der Wirkenergie, nur für `art = berechnet`, nie an einem Messkanal.
+ */
+export const SALDIERT = 'saldiert';
 
 /**
  * Der Größen-Katalog (AP-04 §4.1). „Laden / Entladen" bei der Wirkenergie ist
  * die zusammengefasste Richtung des Speichers (E1, MS-04); aus einer Leistung
- * wird nur eine Intervallmenge, nie ein Zählerstand.
+ * wird nur eine Intervallmenge, nie ein Zählerstand. `saldiert` gibt es nur an
+ * einer berechneten Messstelle (AP-10 IP-4).
  */
 export const GROESSEN_KATALOG: KatalogEintrag[] = [
   {
@@ -152,6 +164,7 @@ export const GROESSEN_KATALOG: KatalogEintrag[] = [
       { kanalGroesse: 'Wirkenergie', kanalWertart: 'counter', nurWertart: null },
       { kanalGroesse: 'Wirkleistung', kanalWertart: 'gauge', nurWertart: 'Intervallmenge' },
     ],
+    richtungenNurBerechnet: [SALDIERT],
   },
   {
     groesse: 'Wirkleistung',
@@ -223,8 +236,12 @@ const katalog = (groesse: string): KatalogEintrag | undefined =>
 /**
  * Steht die Größe mit diesem Medium im Katalog? Sonst `groesse_ungueltig` mit
  * dem ERSTEN verletzten Merkmal: groesse → medium → einheit → richtung → wertart.
+ *
+ * `art` (AP-10 IP-4): nur `berechnet` darf zusätzlich eine Richtung aus
+ * `richtungenNurBerechnet` tragen (`saldiert`). Ohne Art urteilt der Katalog wie
+ * vorher und wie die Datenbank-Funktion — `saldiert` ist dann `richtung`.
  */
-export function groessePruefen(medium: string, g: Groesse): GroesseUrteil {
+export function groessePruefen(medium: string, g: Groesse, art?: string | null): GroesseUrteil {
   const e = katalog(g.groesse);
   const grund: GroesseGrund | null = !e
     ? 'groesse'
@@ -232,13 +249,17 @@ export function groessePruefen(medium: string, g: Groesse): GroesseUrteil {
       ? 'medium'
       : e.einheit !== g.einheit
         ? 'einheit'
-        : !e.richtungen.includes(g.richtung)
+        : !richtungErlaubt(e, art ?? null, g.richtung)
           ? 'richtung'
           : !e.wertarten.includes(g.wertart)
             ? 'wertart'
             : null;
   return { fehler: grund ? 'groesse_ungueltig' : null, grund };
 }
+
+const richtungErlaubt = (e: KatalogEintrag, art: string | null, richtung: string): boolean =>
+  e.richtungen.includes(richtung) ||
+  (art === 'berechnet' && (e.richtungenNurBerechnet ?? []).includes(richtung));
 
 // -------------------------------------------------------------- Kennzeichen
 

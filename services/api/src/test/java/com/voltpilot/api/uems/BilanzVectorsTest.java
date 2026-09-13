@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -202,6 +203,50 @@ class BilanzVectorsTest {
                 assertThat(satz).as("Satz ohne Ursachen-Behauptung").doesNotContain(wort);
             }
         }
+    }
+
+    /**
+     * Der Kundensatz des Rests kommt aus dem VERTRAG (AP-10 IP-4): die Vorlagen der Klasse sind
+     * wörtlich die aus {@code saetze} — und die Plan-Abnahme F1 sagt damit „10 kWh sind keiner
+     * Messstelle zugeordnet“, nie „Verlust“.
+     */
+    @Test
+    void dieKundensaetzeDesRestsStehenImVertrag() throws Exception {
+        JsonNode saetze = vektoren().path("saetze");
+        assertThat(BilanzAbleitung.SATZ_REST_ZUGEORDNET).isEqualTo(saetze.path("rest_zugeordnet").asText());
+        assertThat(BilanzAbleitung.SATZ_REST_NEGATIV).isEqualTo(saetze.path("rest_negativ").asText());
+        assertThat(BilanzAbleitung.SATZ_REST_KEINE_WERTE).isEqualTo(saetze.path("rest_keine_werte").asText());
+    }
+
+    /**
+     * E3 — jede Fassung eines Rests, die {@code rest_aus_stellung} aus den Stellungen des
+     * Referenzunternehmens ableitet, ist GENAU die Eingangsmenge einer {@code rest}-Prüfung desselben
+     * Falls: die Terme, mit denen gerechnet wird, sind die aus der Stellung — nicht eine zweite,
+     * von Hand gepflegte Liste. (Die Reihenfolge ändert keine Zahl und wird hier nicht verglichen.)
+     */
+    @Test
+    void dieTermeAusDerStellungSindDieEingaengeDesRests() throws Exception {
+        int gedeckt = 0;
+        for (JsonNode fall : vektoren().path("cases")) {
+            for (JsonNode p : fall.path("pruefungen")) {
+                if (!p.path("regel").asText().equals("rest_aus_stellung") || !p.path("ergebnis").path("fehler").isNull()) {
+                    continue;
+                }
+                List<String> ausStellung = terme(p.path("ergebnis").path("terme"));
+                List<List<String>> restEingaenge = new ArrayList<>();
+                for (JsonNode r : fall.path("pruefungen")) {
+                    if (r.path("regel").asText().equals("rest") && r.path("eingang").path("hauptzaehler").asText()
+                            .equals(p.path("eingang").path("hauptzaehler").asText())) {
+                        restEingaenge.add(terme(r.path("eingang").path("eingaenge")));
+                    }
+                }
+                assertThat(restEingaenge)
+                        .as(fall.path("id").asText() + " · " + p.path("name").asText())
+                        .anySatisfy(e -> assertThat(e).containsExactlyInAnyOrderElementsOf(ausStellung));
+                gedeckt++;
+            }
+        }
+        assertThat(gedeckt).as("Fassungen mit Termen").isGreaterThanOrEqualTo(9);
     }
 
     /** Die Richtung je Typ ist eine REGEL in der Datei — `rest` fest auf Bezug, `saldo` auf saldiert. */
@@ -497,8 +542,49 @@ class BilanzVectorsTest {
                         .as(why + " · der Satz hält bilanzwert-herkunft.schema.json")
                         .isEmpty();
             }
+            case "rest_aus_stellung" -> {
+                BilanzAbleitung.RestFassung ist = BilanzAbleitung.restAusStellung(
+                        ein.path("hauptzaehler").asText(), LocalDate.parse(ein.path("tag").asText()),
+                        stellungenDesReferenzunternehmens());
+                assertThat(ist.hauptzaehler()).as(why + " · Hauptzähler").isEqualTo(ein.path("hauptzaehler").asText());
+                assertThat(ist.anlage()).as(why + " · System").isEqualTo(str(soll.path("anlage")));
+                assertThat(ist.terme().stream().map(t -> t.messstelle() + ":" + t.rolle() + ":" + t.anteil()).toList())
+                        .as(why + " · Terme aus der Stellung")
+                        .isEqualTo(terme(soll.path("terme")));
+                assertThat(ist.ausserhalb()).as(why + " · außerhalb").isEqualTo(texte(soll.path("ausserhalb")));
+                assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
+            }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    private static List<String> terme(JsonNode n) {
+        List<String> raus = new ArrayList<>();
+        n.forEach(t -> raus.add(t.path("messstelle").asText() + ":" + (t.has("rolle") ? t.path("rolle").asText()
+                : t.path("bilanz_rolle").asText()) + ":" + t.path("anteil").asText()));
+        return raus;
+    }
+
+    /**
+     * Die zeitgültigen Stellungen ALLER Messstellen des Referenzunternehmens — die Regel
+     * {@code rest_aus_stellung} liest sie von dort und nicht aus einer Kopie in der Vektor-Datei.
+     */
+    static List<BilanzAbleitung.StellungZeile> stellungenDesReferenzunternehmens() throws Exception {
+        List<BilanzAbleitung.StellungZeile> raus = new ArrayList<>();
+        for (JsonNode m : lies(REFERENZ).path("messstellen")) {
+            for (JsonNode st : m.path("elektrische_stellung")) {
+                raus.add(new BilanzAbleitung.StellungZeile(m.path("kennzeichen").asText(),
+                        st.path("anlage").asText(), st.path("stellung").asText(),
+                        m.path("hauptgroesse").path("richtung").asText(), m.path("art").asText(),
+                        m.path("medium").asText(), str(st.path("unterzaehler_von")),
+                        tag(st.path("gueltig_ab")), tag(st.path("gueltig_bis"))));
+            }
+        }
+        return raus;
+    }
+
+    private static LocalDate tag(JsonNode n) {
+        return str(n) == null ? null : LocalDate.parse(n.asText());
     }
 
     private static List<BilanzAbleitung.Eingang> eingaenge(JsonNode n) {

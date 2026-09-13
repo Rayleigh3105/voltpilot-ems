@@ -72,12 +72,22 @@ Katalog; sonst `groesse_ungueltig` mit dem ERSTEN verletzten Merkmal
 
 | Größe | Medium | Einheit | Richtungen | Wertarten | gespeist aus |
 |---|---|---|---|---|---|
-| Wirkenergie | Strom | kWh | Bezug · Abgabe · Erzeugung · Laden · Entladen · Laden / Entladen | Zählerstand · Intervallmenge | Wirkenergie-Zähler (`counter`); Wirkleistung (`gauge`) nur zur Intervallmenge |
+| Wirkenergie | Strom | kWh | Bezug · Abgabe · Erzeugung · Laden · Entladen · Laden / Entladen; **nur berechnet:** saldiert | Zählerstand · Intervallmenge | Wirkenergie-Zähler (`counter`); Wirkleistung (`gauge`) nur zur Intervallmenge |
 | Wirkleistung | Strom | kW | Bezug · Abgabe · Erzeugung · Laden · Entladen · richtungslos | Momentanwert | Wirkleistung (`gauge`) |
 | Blindenergie | Strom | kvarh | Bezug · Abgabe | Zählerstand · Intervallmenge | Blindenergie-Zähler (`counter`) |
 | Scheinleistung | Strom | kVA | richtungslos | Momentanwert | Scheinleistung (`gauge`) |
 | Ladestand | Strom | % | richtungslos | Momentanwert | Ladestand (`gauge`) |
 | Volumen | Gas | m³ | Bezug | Zählerstand · Intervallmenge | — (abgelesen, AP-09) |
+
+**`saldiert` (AP-10 E1, IP-4)** ist ein ADDITIVER Eintrag der Wirkenergie, zulässig NUR für
+`art = berechnet`: das Ergebnis des Formel-Typs `saldo` (Bezug − Abgabe derselben Grenze,
+[`messstelle-formel.md`](./messstelle-formel.md) §2.1). Er steht im Katalog als
+`richtungen_nur_berechnet`, NICHT unter den Richtungen — eine gemessene Messstelle bekommt ihn nie
+(`groesse_ungueltig`, Grund `richtung`), und ohne Art urteilt der Katalog wie die
+Datenbank-Funktion `messstelle_groesse_im_katalog`, die ihn nicht kennt. Er ist nie an einem
+Messkanal bindbar: das Vokabular `$defs/richtung` (das der Messkanäle, `MesskanalAbbildung`) bleibt
+unverändert, `saldiert` steht in `$defs/richtungNurBerechnet`. Der Messpunkt-Katalog der Box
+(`catalog/measurement-points`) ist davon nicht berührt.
 
 Die übrigen Medien sind im Vokabular vorbereitet, aber noch ohne Größe — sie kommen mit AP-09.
 Ein Messwert darf eine umrechenbare Einheit tragen: Wh/kWh/MWh, W/kW/MW, varh/kvarh, VA/kVA, %.

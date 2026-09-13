@@ -232,26 +232,47 @@ public final class MessstelleRegeln {
     /** Aus welchem Messwert eine Größe gespeist werden darf. */
     public record KatalogQuelle(String kanalGroesse, String kanalWertart, String nurWertart) {}
 
-    /** Eine Größe des Katalogs. */
+    /**
+     * Eine Größe des Katalogs. {@code richtungenNurBerechnet} sind Richtungen, die NUR eine
+     * berechnete Messstelle tragen darf (AP-10 IP-4: {@code saldiert}) — sie stehen bewusst NICHT
+     * in {@code richtungen}, damit jede gemessene Reihe und jeder Messkanal sie nie bekommt.
+     */
     public record KatalogEintrag(
             String groesse,
             List<String> medien,
             String einheit,
             List<String> richtungen,
             List<String> wertarten,
-            List<KatalogQuelle> quellen) {}
+            List<KatalogQuelle> quellen,
+            List<String> richtungenNurBerechnet) {
+
+        /** Eine Größe, deren Richtungen alle auch gemessen vorkommen dürfen. */
+        public KatalogEintrag(String groesse, List<String> medien, String einheit, List<String> richtungen,
+                List<String> wertarten, List<KatalogQuelle> quellen) {
+            this(groesse, medien, einheit, richtungen, wertarten, quellen, List.of());
+        }
+    }
+
+    /**
+     * Die Richtung einer Bilanz-Differenz „Bezug − Abgabe“ (AP-10 E1, Formel-Typ {@code saldo}):
+     * ein ADDITIVER Katalog-Eintrag der Wirkenergie, zulässig nur für {@code art = berechnet} und
+     * nie an einem Messkanal bindbar ({@code MesskanalAbbildung} kennt das Wort nicht).
+     */
+    public static final String SALDIERT = "saldiert";
 
     /**
      * Der Größen-Katalog (AP-04 §4.1). „Laden / Entladen“ bei der Wirkenergie ist
      * die zusammengefasste Richtung des Speichers (E1, MS-04); aus einer Leistung
-     * wird nur eine Intervallmenge, nie ein Zählerstand.
+     * wird nur eine Intervallmenge, nie ein Zählerstand. {@code saldiert} gibt es nur
+     * an einer berechneten Messstelle (AP-10 IP-4).
      */
     public static final List<KatalogEintrag> GROESSEN_KATALOG = List.of(
             new KatalogEintrag("Wirkenergie", List.of(STROM), "kWh",
                     List.of("Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen"),
                     List.of(ZAEHLERSTAND, "Intervallmenge"),
                     List.of(new KatalogQuelle("Wirkenergie", COUNTER, null),
-                            new KatalogQuelle("Wirkleistung", GAUGE, "Intervallmenge"))),
+                            new KatalogQuelle("Wirkleistung", GAUGE, "Intervallmenge")),
+                    List.of(SALDIERT)),
             new KatalogEintrag("Wirkleistung", List.of(STROM), "kW",
                     List.of("Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "richtungslos"),
                     List.of(MOMENTANWERT),
@@ -296,16 +317,35 @@ public final class MessstelleRegeln {
      * Steht die Größe mit diesem Medium im Katalog? Sonst {@code groesse_ungueltig}
      * mit dem ERSTEN verletzten Merkmal: groesse → medium → einheit → richtung →
      * wertart.
+     *
+     * <p>Ohne Art geprüft: eine Richtung, die nur eine berechnete Messstelle tragen darf
+     * ({@code saldiert}), ist hier {@code richtung} — genau so urteilt die Datenbank-Funktion
+     * {@code messstelle_groesse_im_katalog}.
      */
     public static GroesseUrteil groessePruefen(String medium, Groesse g) {
+        return groessePruefen(medium, null, g);
+    }
+
+    /**
+     * Wie {@link #groessePruefen(String, Groesse)}, aber mit der Art der Messstelle: nur
+     * {@code art = berechnet} darf zusätzlich eine Richtung aus
+     * {@link KatalogEintrag#richtungenNurBerechnet()} tragen (AP-10 IP-4). Eine gemessene
+     * Messstelle mit {@code saldiert} ist {@code groesse_ungueltig} mit Grund {@code richtung}.
+     */
+    public static GroesseUrteil groessePruefen(String medium, String art, Groesse g) {
         KatalogEintrag e = katalog(g.groesse());
         String grund = e == null ? "groesse"
                 : !enthaelt(e.medien(), medium) ? "medium"
                 : !e.einheit().equals(g.einheit()) ? "einheit"
-                : !enthaelt(e.richtungen(), g.richtung()) ? "richtung"
+                : !richtungErlaubt(e, art, g.richtung()) ? "richtung"
                 : !enthaelt(e.wertarten(), g.wertart()) ? "wertart"
                 : null;
         return new GroesseUrteil(grund == null ? null : Fehler.GROESSE_UNGUELTIG, grund);
+    }
+
+    private static boolean richtungErlaubt(KatalogEintrag e, String art, String richtung) {
+        return enthaelt(e.richtungen(), richtung)
+                || (BERECHNET.equals(art) && enthaelt(e.richtungenNurBerechnet(), richtung));
     }
 
     private static KatalogEintrag katalog(String groesse) {

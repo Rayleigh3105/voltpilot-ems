@@ -11,8 +11,22 @@
  *
  * Ableitung ist REIN, die Fläche rendert nur (Portal-Hausregel). Die harte
  * Ehrlichkeitsregel lebt in `gewichteteSumme`: `null` statt Teilsumme.
+ *
+ * Formel-Typen (AP-10 IP-4, `messstelle-formel.md` §0/§2.1): `hauptgroesse` und `periodenwert`
+ * VERZWEIGEN je `formel_typ` — die gewichtete Summe bleibt `formelGroesse`/`gewichteteSumme`
+ * (unverändert, vektor-gleich), `rest` und `saldo` rechnet `uemsBilanz.ts` mit fester
+ * Ergebnis-Richtung. Die neuen Typen stehen ADDITIV daneben; nichts oberhalb ändert sich.
  */
 import { GROESSEN_KATALOG, KANAL_EINHEITEN, groessePruefen, type Groesse } from './uemsMessstelle';
+import type { Dez } from './bezugsdaten';
+import {
+  ZUFLUSS,
+  rest as bilanzRest,
+  richtung as bilanzRichtung,
+  saldo as bilanzSaldo,
+  summe as bilanzSumme,
+  type Eingang as BilanzEingang,
+} from './uemsBilanz';
 
 /** Auf wie viele Nachkommastellen die Summe gerundet wird (deterministisch über die Zwillinge). */
 export const SUMME_NACHKOMMASTELLEN = 6;
@@ -199,4 +213,171 @@ export function normiere(wert: number, von: string, nach: string): number {
 function runde(wert: number): number {
   const faktor = Math.pow(10, SUMME_NACHKOMMASTELLEN);
   return Math.round(wert * faktor) / faktor;
+}
+
+// ------------------------------------------- Formel-Typen je Typ (§0, §2.1, AP-10 IP-4)
+// ⚠ `uemsBilanz.ts` importiert dieses Modul — hier darf darum KEIN Wert aus `uemsBilanz.ts` auf
+// oberster Ebene gelesen werden, nur in Funktionen.
+
+/** Die drei Formel-Typen in der Reihenfolge des Vertrags (§0, `vokabulare.formel_typ`). */
+export const FORMEL_TYPEN = ['gewichtete_summe', 'rest', 'saldo'] as const;
+export type FormelTyp = (typeof FORMEL_TYPEN)[number];
+
+const bekannterTyp = (typ: string): FormelTyp => {
+  if (!(FORMEL_TYPEN as readonly string[]).includes(typ)) {
+    throw new Error(`unbekannter Formel-Typ ${typ} — bekannt sind ${FORMEL_TYPEN.join(', ')}`);
+  }
+  return typ as FormelTyp;
+};
+
+/**
+ * Speichert der Typ Terme? `rest` NICHT: seine Fassung ist „aus der Stellung je Tag" (E3,
+ * `restAusStellung` in `uemsBilanz.ts`).
+ */
+export function speichertTerme(typ: string): boolean {
+  return bekannterTyp(typ) !== 'rest';
+}
+
+/**
+ * §2.1 — die Hauptgröße JE TYP. Verzweigt nur: die gewichtete Summe bleibt `formelGroesse`
+ * (vektor-gleich), `rest` und `saldo` beantwortet `richtung` aus `uemsBilanz.ts` — mit FESTER
+ * Richtung, nie aus den Vorzeichen: Bezug − Bezug − Bezug bleibt Bezug (F1), Bezug − Abgabe ist
+ * `saldiert`, und das nur an einer berechneten Messstelle.
+ */
+export function hauptgroesse(
+  typ: string,
+  art: string,
+  wertart: string | null,
+  terme: Term[] | null,
+): GroesseUrteil {
+  if (bekannterTyp(typ) === 'gewichtete_summe') {
+    return formelGroesse(terme ?? []);
+  }
+  const r = bilanzRichtung(typ, art, wertart, terme);
+  if (r.fehler !== null) {
+    return { fehler: r.fehler as FehlerCode, grund: r.grund, hauptgroesse: null };
+  }
+  return {
+    fehler: null,
+    grund: null,
+    hauptgroesse: {
+      groesse: r.groesse as string,
+      richtung: r.richtung as string,
+      einheit: r.einheit as string,
+      wertart: r.wertart as string,
+    },
+  };
+}
+
+/**
+ * Ein Eingang des Periodenwerts einer berechneten Messstelle. Eine gewichtete Summe liest
+ * `vorzeichen` und `faktor`, ein `rest` und ein `saldo` die Bilanz-`rolle` und den `anteil`.
+ * `menge === null` heißt „keine Werte" — nie „gemessen 0".
+ */
+export interface Periodeneingang {
+  messstelle: string;
+  rolle: string | null;
+  anteil: string | null;
+  vorzeichen: string | null;
+  faktor: Dez | null;
+  menge: Dez | null;
+  zustand: string;
+  abdeckung_prozent: number | null;
+  version: number;
+  kennzeichen: string[];
+}
+
+/** Der Periodenwert JE TYP (§4.5); `satz` = Kundensatz eines `rest` bzw. „mindestens …" einer Summe. */
+export interface Periodenwert {
+  typ: FormelTyp;
+  menge: Dez | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  fehlend: string[];
+  kennzeichen: string[];
+  satz: string | null;
+  fehler: string | null;
+  grund: string | null;
+}
+
+const bilanzEingaenge = (eingaenge: Periodeneingang[]): BilanzEingang[] =>
+  eingaenge.map((e) => ({
+    messstelle: e.messstelle,
+    rolle: e.rolle as string,
+    anteil: e.anteil as string,
+    menge: e.menge,
+    zustand: e.zustand,
+    abdeckung_prozent: e.abdeckung_prozent,
+    version: e.version,
+    kennzeichen: e.kennzeichen,
+  }));
+
+/**
+ * §4.5 — der Periodenwert JE TYP, mit der Fortpflanzung des Typs: eine Summe rechnet mit den
+ * vorhandenen Eingängen weiter („mindestens …"), eine Differenz (`rest`, `saldo`) bei einem nicht
+ * vollständigen Eingang gar nicht („keine Werte"). Gerechnet wird in `uemsBilanz.ts`.
+ */
+export function periodenwert(
+  typ: string,
+  art: string,
+  einheit: string,
+  version: number,
+  vermerke: string[],
+  eingaenge: Periodeneingang[],
+): Periodenwert {
+  const t = bekannterTyp(typ);
+  if (t === 'gewichtete_summe') {
+    const u = bilanzSumme(
+      einheit,
+      eingaenge.map((e) => ({
+        messstelle: e.messstelle,
+        menge: e.menge,
+        zustand: e.zustand,
+        abdeckung_prozent: e.abdeckung_prozent,
+        version: e.version,
+        kennzeichen: e.kennzeichen,
+        vorzeichen: e.vorzeichen as string,
+        faktor: e.faktor as Dez,
+      })),
+    );
+    return {
+      typ: t,
+      menge: u.menge,
+      zustand: u.zustand,
+      abdeckung_prozent: u.abdeckung_prozent,
+      fehlend: u.fehlend,
+      kennzeichen: u.kennzeichen,
+      satz: u.anzeige,
+      fehler: null,
+      grund: null,
+    };
+  }
+  if (t === 'rest') {
+    const bilanz = bilanzEingaenge(eingaenge);
+    const hauptzaehler = bilanz.find((e) => e.rolle === ZUFLUSS)?.messstelle ?? '';
+    const u = bilanzRest(hauptzaehler, einheit, version, vermerke, bilanz);
+    return {
+      typ: t,
+      menge: u.menge,
+      zustand: u.zustand,
+      abdeckung_prozent: u.abdeckung_prozent,
+      fehlend: u.fehlend,
+      kennzeichen: u.kennzeichen,
+      satz: u.kundensatz,
+      fehler: null,
+      grund: null,
+    };
+  }
+  const u = bilanzSaldo(einheit, art, bilanzEingaenge(eingaenge));
+  return {
+    typ: t,
+    menge: u.menge,
+    zustand: u.zustand,
+    abdeckung_prozent: u.abdeckung_prozent,
+    fehlend: u.fehlend,
+    kennzeichen: u.kennzeichen,
+    satz: null,
+    fehler: u.fehler,
+    grund: u.grund,
+  };
 }

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
+import { stellungenDesReferenzunternehmens } from './test/uemsReferenzStellungen';
 import { dez, dezVergleich, type Dez } from './bezugsdaten';
 import { STELLUNGEN } from './uemsMessstelle';
 import {
@@ -9,6 +10,9 @@ import {
   MENGE_NACHKOMMASTELLEN,
   MINUS,
   SALDIERT,
+  SATZ_REST_KEINE_WERTE,
+  SATZ_REST_NEGATIV,
+  SATZ_REST_ZUGEORDNET,
   TAUSENDER_TRENNZEICHEN,
   VERBOTENE_WOERTER,
   ZUSTAND_RANG,
@@ -18,6 +22,7 @@ import {
   live,
   richtung,
   rest,
+  restAusStellung,
   rolle,
   saldo,
   summe,
@@ -174,6 +179,30 @@ describe('Bilanz-Vertrag: Form der Vektor-Datei', () => {
 
   it('die Stellungen sind die des Messstellen-Vertrags — kein zweites Vokabular', () => {
     expect(vectors.vokabulare.stellung).toEqual([...STELLUNGEN]);
+  });
+
+  it('der Kundensatz des Rests kommt aus dem Vertrag (saetze) — nie „Verlust"', () => {
+    expect(SATZ_REST_ZUGEORDNET).toBe(vectors.saetze.rest_zugeordnet);
+    expect(SATZ_REST_NEGATIV).toBe(vectors.saetze.rest_negativ);
+    expect(SATZ_REST_KEINE_WERTE).toBe(vectors.saetze.rest_keine_werte);
+  });
+
+  it('E3: jede Fassung aus der Stellung ist genau die Eingangsmenge einer Rest-Prüfung desselben Falls', () => {
+    const schluessel = (ts: Json[]): string[] =>
+      ts.map((t) => `${t.messstelle}:${t.rolle}:${t.anteil}`).sort();
+    let gedeckt = 0;
+    for (const fall of vectors.cases) {
+      for (const p of fall.pruefungen) {
+        if (p.regel !== 'rest_aus_stellung' || p.ergebnis.fehler !== null) continue;
+        const ausStellung = schluessel(p.ergebnis.terme);
+        const restEingaenge = fall.pruefungen
+          .filter((r: Json) => r.regel === 'rest' && r.eingang.hauptzaehler === p.eingang.hauptzaehler)
+          .map((r: Json) => schluessel(r.eingang.eingaenge));
+        expect(restEingaenge, `${fall.id} · ${p.name}`).toContainEqual(ausStellung);
+        gedeckt += 1;
+      }
+    }
+    expect(gedeckt).toBeGreaterThanOrEqual(9);
   });
 
   it('die Richtung je Typ ist eine Regel in der Datei', () => {
@@ -378,6 +407,15 @@ describe('Bilanz-Vertrag: die Vektoren', () => {
         }
         expect(ist.satz, `${why} · Herkunfts-Satz`).toEqual(soll.satz);
         expect(schemaVerstoesse(ist.satz, herkunftSchema), `${why} · Schema`).toEqual([]);
+        break;
+      }
+      case 'rest_aus_stellung': {
+        const ist = restAusStellung(ein.hauptzaehler, ein.tag, stellungenDesReferenzunternehmens());
+        expect(ist.hauptzaehler, `${why} · Hauptzähler`).toBe(ein.hauptzaehler);
+        expect(ist.anlage, `${why} · System`).toBe(soll.anlage);
+        expect(ist.terme, `${why} · Terme aus der Stellung`).toEqual(soll.terme);
+        expect(ist.ausserhalb, `${why} · außerhalb`).toEqual(soll.ausserhalb);
+        expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
         break;
       }
       default:

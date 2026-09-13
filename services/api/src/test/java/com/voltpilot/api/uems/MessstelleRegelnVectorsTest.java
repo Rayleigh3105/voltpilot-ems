@@ -184,7 +184,8 @@ class MessstelleRegelnVectorsTest {
             e.path("quellen").forEach(q -> quellen.add(new KatalogQuelle(
                     q.path("kanal_groesse").asText(), q.path("kanal_wertart").asText(), text(q.path("nur_wertart")))));
             katalog.add(new KatalogEintrag(e.path("groesse").asText(), texte(e.path("medien")),
-                    e.path("einheit").asText(), texte(e.path("richtungen")), texte(e.path("wertarten")), quellen));
+                    e.path("einheit").asText(), texte(e.path("richtungen")), texte(e.path("wertarten")), quellen,
+                    texte(e.path("richtungen_nur_berechnet"))));
         }
         assertThat(katalog).isEqualTo(MessstelleRegeln.GROESSEN_KATALOG);
 
@@ -238,8 +239,9 @@ class MessstelleRegelnVectorsTest {
     @TestFactory
     List<DynamicTest> groesse() throws Exception {
         return fuerJedenFall("groesse", c -> {
+            // `art` fehlt in den Fällen von vor AP-10 IP-4: dann urteilt die Regel ohne Art.
             MessstelleRegeln.GroesseUrteil u = MessstelleRegeln.groessePruefen(
-                    c.at("/input/medium").asText(), groesse(c.at("/input/groesse")));
+                    c.at("/input/medium").asText(), text(c.at("/input/art")), groesse(c.at("/input/groesse")));
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", u.fehler() == null ? null : u.fehler().code());
             out.put("grund", u.grund());
