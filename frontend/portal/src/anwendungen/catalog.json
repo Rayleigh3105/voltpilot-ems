@@ -361,6 +361,28 @@
       "aggregation_regel": "Zählt die Anlagen nach Zustand; es wird KEIN Messwert über Anlagen hinweg verrechnet."
     },
     {
+      "id": "datenlage",
+      "label": "Datenlage",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Zählt die Anlagen, die gerade Daten liefern - dasselbe Urteil wie die Zustands-Spalte, im Wortlaut des Vertrags „liefert Daten\". Es wird KEIN Messwert über Anlagen hinweg verrechnet. Steht in der Kopfzeile der Unternehmens- und der Standort-Übersicht (UEMS AP-01 IP-6), nur dort; bis das Messstellen-Register die Datenlage je Messstelle trägt (AP-04), zählt sie Anlagen."
+    },
+    {
+      "id": "netzbezug-gesamt",
+      "label": "Netzbezug gesamt",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ des Netzbezugs JETZT (kW) über die Anlagen mit FRISCHEM Messwert. Eine Anlage, die gerade einspeist, trägt 0 kW Bezug bei - ihre Einspeisung tilgt nie den Bezug einer anderen, es wird nicht saldiert. Die Fläche nennt die Zahl der beitragenden Anlagen. Nur auf der Unternehmens- und der Standort-Übersicht (UEMS AP-01 IP-6)."
+    },
+    {
       "id": "erloese",
       "label": "Erlöse",
       "flaeche": "portfolio",
@@ -530,6 +552,8 @@
         "ansichten": ["live", "geraete", "telemetrie-historie", "wetter"],
         "portfolio": [
           "flotten-status",
+          "datenlage",
+          "netzbezug-gesamt",
           "pv-jetzt",
           "erzeugung-heute",
           "verbrauch-heute",

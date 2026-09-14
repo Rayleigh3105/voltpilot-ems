@@ -12,7 +12,7 @@ gelesen über `GET /api/v1/standorte` und `GET /api/v1/unternehmen`
 | Weiche (rein): `orteAus` → `startEbene` → `canonicalShellRoute`; Pfad `kopfPfad`, Umschalter-Zeilen `pfadZeile` | `frontend/portal/src/betriebsart.ts` · `startansicht.test.ts` (sechs Landungsfälle, Namen = Zeilen der Sprungregeln-Tabelle) |
 | Bestandsschutz | `src/migration.test.ts` „Einzel-Anlagen-Kunde byte-identisch“ — Weiche, Pfad, Flags UND gerenderte Schale gegen die Eingabe ohne Ebene |
 | Route `#/standort/{id}` | `nav.ts` (`STANDORT_PAGE`, `standortRoute`, `Route.standortId`); Stück in `pageChunks.ts`/`pageTransition.ts` |
-| Standort-Übersicht | `src/pages/StandortUebersichtPage.tsx` (+ `.css`), Kopf `StandortKopf` aus AP-02 |
+| Standort-Übersicht | `src/pages/StandortUebersichtPage.tsx` (+ `.css`), Kopf `StandortKopf` aus AP-02; seit IP-6 das Portfolio-Cockpit mit Ebene „Standort“ (`uems-unternehmens-uebersicht.md`) |
 | Pfad in der Kopfzeile | `src/shell/AppShell.tsx` (`AnlageNav.pfad`, `ortsPfad`), `Shell.css` (`.vp-crumbs-ort`), `Ortspfad.test.tsx` |
 | Laden und Verdrahtung | `App.tsx` (`orteLaden` im selben `Promise.all` wie die Anlagen, `ebene`, `navigateSchale`) |
 | 375/1440 px + Bilder | `e2e/startansicht.spec.ts` (+ Bühne `startansicht.html/.tsx`); `STARTANSICHT_BILDER=<Ordner>` legt Bilder und `messung-*.json` ab |
@@ -26,10 +26,10 @@ gelesen über `GET /api/v1/standorte` und `GET /api/v1/unternehmen`
 2. **Die Standorte reisen im SELBEN Schnappschuss wie die Anlagen** (`reload` in `App.tsx`). Kämen sie
    später, ersetzte die Weiche die Adresse zweimal (erst Cockpit, dann Standort-Übersicht). Eine
    Hintergrund-Auffrischung (`opts.background`) lädt sie nicht neu.
-3. **Die Standort-Übersicht nimmt das Portfolio-Cockpit nur, wenn JEDE Anlage an diesem Standort
-   hängt** (`alleAnlagenHier`): das Cockpit zählt `api.overview()` über alle Anlagen und hat keinen
-   Standort-Filter. Unter einem Unternehmen (und in der Teilansicht) zeigt sie die Anlagen des
-   Standorts als Liste ohne Summe — die Kennzahlen je Standort bringt IP-6.
+3. **Die Standort-Übersicht ist seit IP-6 immer das Portfolio-Cockpit mit Standort-Filter**
+   (`ebene: { art: 'standort' }`, `uebersicht.anlagenDerEbene`): jede Summe geht nur über die Anlagen,
+   die dem Standort heute zugeordnet sind — auch unter einem Unternehmen und in der Teilansicht. Die
+   frühere Liste ohne Kennzahlen (`alleAnlagenHier`) ist entfallen.
 4. **Eine Anlage ohne Standort hält die Unternehmensebene offen** (1 Standort, n Anlagen, eine davon
    nicht zugeordnet → `#/portfolio`). **1 Standort und 1 Anlage ist immer das Cockpit**, auch wenn die
    Anlage dem Standort noch nicht zugeordnet ist.
@@ -47,6 +47,6 @@ gelesen über `GET /api/v1/standorte` und `GET /api/v1/unternehmen`
    Glieder hat. Auf den Übersichten (ohne Anlage) bleibt das Glied sichtbar, 44 px hoch (`.vp-crumbs-ort`).
 8. **`#/standort` ist nicht `#/standorte`** — die Mehrzahl ist die Alt-Adresse der Technik
    (`LEGACY_ROUTES`); die Liste „Standorte“ wohnt weiter unter `#/portfolio/standorte`.
-9. **Nicht hier:** Standort-Umschalter im mittleren Glied, Standort-Karten, Kopfzeile und
-   Funktions-Karte der Übersichten (IP-6/IP-8), Telefon-Leiste je Ebene (IP-7), Messstellen als Grund
+9. **Nicht hier:** Standort-Umschalter im mittleren Glied, Funktions-Karte der Übersichten (IP-8;
+   Standort-Karten und Kopfzeile kamen mit IP-6), Telefon-Leiste je Ebene (IP-7), Messstellen als Grund
    für eine eigene Standort-Ebene (W2).

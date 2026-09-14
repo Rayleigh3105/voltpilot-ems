@@ -119,3 +119,19 @@
 .vp-portfolio-fuss > * {
   flex: 1 1 160px;
 }
+
+/*
+ * UEMS AP-01 IP-6 — die Zahlen-Zeile der Unternehmens- und Standort-Übersicht
+ * („2 Standorte · 3 Anlagen · 1 steuert"), über der Datenlage.
+ */
+.vp-portfolio-zahlen {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--vp-text, #212529);
+  overflow-wrap: anywhere;
+}
+
+.vp-portfolio-funktionen {
+  margin-top: var(--vp-space-3, 12px);
+}

@@ -1,6 +1,7 @@
 import type { Betriebsart, Site } from '../api';
 import type { Route } from '../nav';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
+import type { UebersichtEbene } from '../uebersicht';
 
 interface PortfolioProps {
   sites: Site[];
@@ -9,6 +10,12 @@ interface PortfolioProps {
   isAdmin?: boolean;
   /** U0-Rahmen (effektiv, aus /tenant-context); null = unbekannt. */
   betriebsart?: Betriebsart | null;
+  /**
+   * UEMS AP-01 IP-6: bei mehreren Standorten ist diese Landung die
+   * Unternehmens-Übersicht (Kopfzeile, Standort-Gruppen, Geld-Regel); `null` =
+   * das Portfolio wie bisher.
+   */
+  ebene?: UebersichtEbene | null;
 }
 
 /**
@@ -34,6 +41,7 @@ export function PortfolioPage({
   onReload,
   isAdmin = false,
   betriebsart = null,
+  ebene = null,
 }: PortfolioProps) {
   return (
     <PortfolioCockpit
@@ -46,6 +54,7 @@ export function PortfolioPage({
       betriebsart={betriebsart ?? 'betreiber'}
       titel="Portfolio"
       titelBereitsGenannt
+      ebene={ebene}
     />
   );
 }

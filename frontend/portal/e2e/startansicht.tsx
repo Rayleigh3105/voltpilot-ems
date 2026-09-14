@@ -31,7 +31,10 @@ import {
   bestandEineAnlage,
   FIXTURE_IDS,
   werkAhrenberg,
+  werkLindach,
 } from '../src/test/standorteFixtures';
+import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
+import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -53,8 +56,11 @@ import '../src/index.css';
  * 96,5 kW; Werk Lindach 38,7 kW. Was die Datei nicht trägt (Verbrauch, Geld),
  * bleibt leer — nie eine erfundene Zahl.
  *
- * `?bild=einzel|standort|unternehmen` — die drei Startbilder; `&ansicht=anlage`
- * öffnet Halle 1, `&ansicht=lindach` die Standort-Übersicht Werk Lindach.
+ * `?bild=einzel|standort|unternehmen|messkunde` — die drei Startbilder plus
+ * Peter Hollerbach (nur Werk Lindach, AP-03-Teilansicht); `&ansicht=anlage`
+ * öffnet Halle 1, `&ansicht=werk` die Standort-Übersicht Werk Ahrenberg,
+ * `&ansicht=lindach` die Standort-Übersicht Werk Lindach. `&messen=bestand`
+ * zeigt „Messen & Auswerten" wie nach dem Umstieg (A11: noch nicht eingerichtet).
  */
 
 const { an1, an2, an3, st2 } = FIXTURE_IDS;
@@ -62,6 +68,7 @@ const STAND = '2026-10-20T08:15:00Z';
 const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
+const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
 
 Object.assign(keycloak, {
   token: 'e2e-token',
@@ -121,6 +128,12 @@ const SZENEN = {
     liste: ahrenbergHeute(),
     unternehmen: ahrenbergUnternehmen(),
   },
+  /** Peter Hollerbach am 20.10.2026: Zugriff nur auf Werk Lindach — der reine Messkunde (A13). */
+  messkunde: {
+    sites: [lindach],
+    liste: { ...ahrenbergHeute(), standorte: [werkLindach()] },
+    unternehmen: ahrenbergUnternehmen(),
+  },
 };
 
 const szene = SZENEN[bild as keyof typeof SZENEN] ?? SZENEN.einzel;
@@ -145,6 +158,13 @@ Object.assign(api, {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
+  // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
+  funktionen: async () =>
+    ahrenbergFunktionen({
+      standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)].filter((f) =>
+        szene.liste.standorte.some((s) => s.id === f.id),
+      ),
+    }),
 });
 
 const surface = anlageSurface({
@@ -161,7 +181,15 @@ function Vorschau() {
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
   const [route, setRoute] = useState<Route>(() =>
-    kanonisch(ansicht === 'anlage' ? anlageRoute(an1) : ansicht === 'lindach' ? standortRoute(st2) : pageRoute('uebersicht')),
+    kanonisch(
+      ansicht === 'anlage'
+        ? anlageRoute(an1)
+        : ansicht === 'lindach'
+          ? standortRoute(st2)
+          : ansicht === 'werk'
+            ? standortRoute(FIXTURE_IDS.st1)
+            : pageRoute('uebersicht'),
+    ),
   );
   useEffect(() => {
     document.body.dataset.route = hashForRoute(route);
@@ -178,6 +206,11 @@ function Vorschau() {
   const flotte = showPortfolioNav(shell) || showOverviewNav(shell);
   const standort =
     route.page === 'standort' ? szene.liste.standorte.find((s) => s.id === route.standortId) ?? null : null;
+  // Wie `App.tsx`: bei mehreren Standorten ist `#/portfolio` die Unternehmens-Übersicht.
+  const unternehmensEbene: UebersichtEbene | null =
+    ebene.art === 'unternehmen'
+      ? { art: 'unternehmen', name: szene.unternehmen.name ?? '', standorte: szene.liste.standorte }
+      : null;
 
   return (
     <AppShell
@@ -238,7 +271,6 @@ function Vorschau() {
           <StandortUebersichtPage
             standort={standort}
             sites={sites}
-            alleAnlagenHier={ebene.art === 'standort' && !ebene.teilansicht}
             onNavigate={navigate}
             onReload={() => undefined}
             betriebsart="endkunde"
@@ -248,7 +280,13 @@ function Vorschau() {
       {route.page === 'portfolio' && (
         <>
           <PortfolioTabs page="portfolio" showErloese={false} fleetLabel={FLOTTE} onNavigate={navigateSchale} />
-          <PortfolioPage sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
+          <PortfolioPage
+            sites={sites}
+            onNavigate={navigate}
+            onReload={() => undefined}
+            betriebsart="endkunde"
+            ebene={unternehmensEbene}
+          />
         </>
       )}
     </AppShell>

@@ -50,6 +50,7 @@ import {
 import { PAGE_CHUNK } from './pageChunks';
 import { transitionToRoute } from './pageTransition';
 import { hatGeldWelt } from './portfolioHistorie';
+import { geldAnlagen, type UebersichtEbene } from './uebersicht';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
@@ -777,6 +778,33 @@ function UnifiedPortal() {
     [isAdmin, betriebsart, sites, orte],
   );
 
+  // UEMS AP-01 IP-6, Geld-Regel: auf der Unternehmens- und der Standort-Ebene
+  // zeigt der Reiter „Erlöse" nur Anlagen, die steuern oder Erzeuger/Speicher
+  // haben — ein reiner Messkunde bekommt ihn nicht. Solange die Fakten unbekannt
+  // sind (lädt, Fehler, keine Ebene), gilt die heutige Regel `hatGeldWelt`.
+  const [geldIds, setGeldIds] = useState<Set<string> | null>(null);
+  const aufEbene = ebene.art === 'unternehmen' || ebene.art === 'standort';
+  const anlagenSchluessel = sites.map((site) => site.id).join(',');
+  useEffect(() => {
+    if (!aufEbene) {
+      setGeldIds(null);
+      return;
+    }
+    let active = true;
+    Promise.all([api.overview(), api.funktionen().catch(() => null)]).then(
+      ([o, f]) => {
+        if (active) setGeldIds(geldAnlagen(o.sites, f));
+      },
+      () => {
+        if (active) setGeldIds(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [aufEbene, anlagenSchluessel]);
+  const geldSites = aufEbene && geldIds ? sites.filter((site) => geldIds.has(site.id)) : sites;
+
   // One stable post-hydration canonicalization. The old three independent
   // redirects could emit `uebersicht -> anlagen -> portfolio -> uebersicht`
   // for a one-site customer. The pure decision below sees one shell snapshot,
@@ -930,6 +958,15 @@ function UnifiedPortal() {
   const standortOffen =
     page === 'standort'
       ? orteQuelle?.liste.standorte.find((s) => s.id === route.standortId) ?? null
+      : null;
+  // IP-6: bei mehreren Standorten ist `#/portfolio` die Unternehmens-Übersicht.
+  const unternehmensEbene: UebersichtEbene | null =
+    ebene.art === 'unternehmen' && orteQuelle
+      ? {
+          art: 'unternehmen',
+          name: orteQuelle.unternehmen?.name?.trim() || ebene.name || 'Ihr Unternehmen',
+          standorte: orteQuelle.liste.standorte,
+        }
       : null;
 
   const anlageNav = shellSite
@@ -1116,7 +1153,7 @@ function UnifiedPortal() {
             // IP-5: ist der Standort die oberste Ebene, IST seine Übersicht der
             // Reiter „Übersicht"; unter einem Unternehmen trägt sie keine Reiter.
             page={page === 'standort' && ebene.art === 'standort' ? 'portfolio' : page}
-            showErloese={hatGeldWelt(sites)}
+            showErloese={hatGeldWelt(geldSites)}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
           />
@@ -1127,6 +1164,7 @@ function UnifiedPortal() {
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
               betriebsart={betriebsart}
+              ebene={unternehmensEbene}
             />
           )}
           {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der
@@ -1138,7 +1176,6 @@ function UnifiedPortal() {
             <StandortUebersichtPage
               standort={standortOffen}
               sites={sites}
-              alleAnlagenHier={ebene.art === 'standort' && !ebene.teilansicht}
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
@@ -1146,7 +1183,7 @@ function UnifiedPortal() {
             />
           )}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
-          {page === 'portfolio-erloese' && <PortfolioErloese sites={sites} />}
+          {page === 'portfolio-erloese' && <PortfolioErloese sites={geldSites} />}
           {page === 'uebersicht' && (
             <UebersichtPage
               {...customerProps}

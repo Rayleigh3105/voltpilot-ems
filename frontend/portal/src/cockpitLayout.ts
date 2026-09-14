@@ -675,6 +675,10 @@ export function ortsHinweis(id: string): string | null {
       return 'Der Kopf Ihres Portfolios — er steht immer oben.';
     case 'anlagen':
       return 'Die Anlagen-Tabelle steht immer zuletzt.';
+    // UEMS AP-01 IP-6: die Datenlage hat ihren festen Ort in der Kopfzeile der
+    // Unternehmens- und Standort-Übersicht; ausblenden darf man sie.
+    case 'datenlage':
+      return 'Steht in der Kopfzeile Ihrer Übersicht.';
     default:
       return null;
   }

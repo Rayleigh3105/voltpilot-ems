@@ -985,6 +985,10 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     // eigene Zeile in `cockpit_layout` hat - also fast aller.
     expect(CANONICAL_PORTFOLIO).toEqual([
       'flotten-status',
+      // UEMS AP-01 IP-6: nur auf der Unternehmens-/Standort-Übersicht verfügbar,
+      // jede andere Flotte behält ihre Anordnung (`verfuegbareBausteine`).
+      'datenlage',
+      'netzbezug-gesamt',
       'erloese',
       'speicher',
       'lastspitzen',

@@ -8,13 +8,14 @@ import {
   type Betriebsart,
   type ControlStatus,
   type Earnings,
+  type Funktionen,
   type Overview,
   type SchedulePlan,
   type Site,
 } from '../api';
 import { fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
-import { anlageRoute, type Route } from '../nav';
+import { anlageRoute, pageRoute, standortRoute, type Route } from '../nav';
 import {
   CANONICAL_PORTFOLIO,
   anlagenZeilen,
@@ -29,6 +30,14 @@ import {
   type PortfolioBausteinId,
 } from '../portfolioCockpit';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
+import {
+  anlagenDerEbene,
+  funktionenDesStandorts,
+  geldAnlagen,
+  kopfzeile,
+  standortGruppen,
+  type UebersichtEbene,
+} from '../uebersicht';
 import { useCockpitLayout } from '../useCockpitLayout';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
@@ -38,6 +47,7 @@ import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
+import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
 // LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
@@ -98,6 +108,14 @@ export interface PortfolioCockpitProps {
   titelBereitsGenannt?: boolean;
   /** Der Kundenname für das Admin-Band des Anpassen-Modus. */
   kunde?: string | null;
+  /**
+   * UEMS AP-01 IP-6 — die Ebene, wenn diese Fläche die Unternehmens- oder die
+   * Standort-Übersicht ist (E2: die Übersicht IST dieses Cockpit). Sie bringt
+   * die Kopfzeile, die Standort-Gruppen, den Standort-Filter, die zwei
+   * Übersichts-Bausteine und die Geld-Regel mit. `null` = die Flotte wie bisher,
+   * zeichengleich.
+   */
+  ebene?: UebersichtEbene | null;
 }
 
 export function PortfolioCockpit({
@@ -109,6 +127,7 @@ export function PortfolioCockpit({
   titel,
   titelBereitsGenannt = false,
   kunde = null,
+  ebene = null,
 }: PortfolioCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
@@ -118,7 +137,10 @@ export function PortfolioCockpit({
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
+  /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */
+  const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
   const isPhone = useIsPhone();
+  const mitEbene = ebene != null;
 
   useEffect(() => {
     let active = true;
@@ -156,6 +178,24 @@ export function PortfolioCockpit({
     };
   }, [reloadKey]);
 
+  // UEMS AP-01 IP-6: der Zustand beider Funktionen je Standort — nur auf einer
+  // Ebene geholt, jede andere Flotte fragt nichts Neues ab.
+  useEffect(() => {
+    if (!mitEbene) return;
+    let active = true;
+    api.funktionen().then(
+      (f) => {
+        if (active) setFunktionen(f);
+      },
+      () => {
+        if (active) setFunktionen(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [reloadKey, mitEbene]);
+
   useFreshnessPoll(() => {
     setNow(new Date());
     api.overview().then(
@@ -174,22 +214,35 @@ export function PortfolioCockpit({
 
   const dichte = portfolioDichte(betriebsart);
   const configById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
+  // Die Standort-Übersicht ist DIESELBE Fläche, auf die Anlagen des Standorts
+  // gefiltert: jede Zahl darunter geht nur über sie.
+  const blick = useMemo<Overview | null>(
+    () => (overview && ebene ? { ...overview, sites: anlagenDerEbene(overview.sites, ebene) } : overview),
+    [overview, ebene],
+  );
+  // Die Geld-Regel (A13): auf einer Ebene zählt Geld nur über die Anlagen, die
+  // steuern oder Erzeuger/Speicher haben; ohne Ebene gilt das heutige Verhalten.
+  const geld = useMemo(
+    () => (ebene && blick ? geldAnlagen(blick.sites, funktionen ?? null) : null),
+    [ebene, blick, funktionen],
+  );
   const kennzahlen = useMemo(
-    () => portfolioKennzahlen(overview, earnings, now),
-    [overview, earnings, now],
+    () => portfolioKennzahlen(blick, earnings, now, geld),
+    [blick, earnings, now, geld],
   );
   const anwendungen = useMemo(
-    () => portfolioAnwendungen(overview, configById),
-    [overview, configById],
+    () => portfolioAnwendungen(blick, configById),
+    [blick, configById],
   );
   const verfuegbar = useMemo(
     () =>
       verfuegbareBausteine({
         anwendungen,
         kennzahlen,
-        anlagen: overview?.sites.length ?? 0,
+        anlagen: blick?.sites.length ?? 0,
+        uebersicht: ebene ? { geld: (geld?.size ?? 0) > 0 } : null,
       }),
-    [anwendungen, kennzahlen, overview],
+    [anwendungen, kennzahlen, blick, ebene, geld],
   );
 
   const layout = useCockpitLayout<PortfolioBausteinId>({
@@ -223,17 +276,49 @@ export function PortfolioCockpit({
     },
   ];
 
-  const aussage = overview ? flottenAussage(overview.sites, now) : null;
+  const aussage = blick ? flottenAussage(blick.sites, now) : null;
+  const kopf =
+    ebene && blick
+      ? kopfzeile({
+          ebene,
+          sites: blick.sites,
+          funktionen: funktionen ?? null,
+          mitDatenlage: layout.resolved.order.includes('datenlage'),
+          now,
+        })
+      : null;
 
   const head = (
     <div className="vp-portfolio-kopf">
       <div className="vp-portfolio-titel">
-        <h1 className={titelBereitsGenannt ? 'vp-sr-only' : undefined}>{titel}</h1>
-        {aussage && (
-          <p className={`vp-portfolio-satz is-${aussage.tone}`}>
-            <span className="vp-portfolio-punkt" aria-hidden="true" />
-            {aussage.text}
-          </p>
+        <h1 className={titelBereitsGenannt && !kopf?.titel ? 'vp-sr-only' : undefined}>
+          {kopf?.titel ?? titel}
+        </h1>
+        {kopf ? (
+          <>
+            {kopf.zahlen && <p className="vp-portfolio-zahlen">{kopf.zahlen}</p>}
+            {kopf.datenlage && (
+              <p className={`vp-portfolio-satz is-${kopf.datenlage.ton}`}>
+                <span className="vp-portfolio-punkt" aria-hidden="true" />
+                {kopf.datenlage.text}
+              </p>
+            )}
+          </>
+        ) : (
+          aussage && (
+            <p className={`vp-portfolio-satz is-${aussage.tone}`}>
+              <span className="vp-portfolio-punkt" aria-hidden="true" />
+              {aussage.text}
+            </p>
+          )
+        )}
+        {ebene?.art === 'standort' && (
+          <div className="vp-portfolio-funktionen">
+            <FunktionsZustaende
+              zeilen={funktionenDesStandorts(ebene.standort.id, funktionen ?? null)}
+              laedt={funktionen === undefined}
+            />
+          </div>
         )}
       </div>
       <div className="vp-portfolio-aktionen">
@@ -331,8 +416,9 @@ export function PortfolioCockpit({
     );
   }
 
+  const sicht = blick ?? overview;
   const tonalitaet = fleetTonalitaet(
-    overview.sites.map((s) => ({
+    sicht.sites.map((s) => ({
       profil: configById.get(s.id)?.profil ?? null,
       plantKind: s.plantKind,
     })),
@@ -340,10 +426,28 @@ export function PortfolioCockpit({
   const zellen = leistenZellen({
     order: layout.resolved.order,
     kennzahlen,
-    anlagen: overview.sites.length,
+    anlagen: sicht.sites.length,
     tonalitaet,
   });
-  const zeilen = anlagenZeilen({ overview, earnings, configById, dichte, now });
+  const zeilen = anlagenZeilen({ overview: sicht, earnings, configById, dichte, now, geld });
+  const gruppen =
+    ebene?.art === 'unternehmen'
+      ? standortGruppen({ ebene, zeilen, sites: sicht.sites, funktionen: funktionen ?? null, now }).map(
+          (g) => ({
+            key: g.key,
+            zeilen: g.zeilen,
+            leer: g.leer,
+            kopf: (
+              <StandortGruppeKopf
+                gruppe={g}
+                laedt={funktionen === undefined}
+                onOeffnen={(id) => onNavigate(standortRoute(id))}
+                onZuordnen={() => onNavigate(pageRoute('portfolio-standorte'))}
+              />
+            ),
+          }),
+        )
+      : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
 
@@ -385,8 +489,15 @@ export function PortfolioCockpit({
       <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
       {ruhe && <p className="vp-portfolio-ruhe">{ruhe}</p>}
 
-      <section className="vp-portfolio-anlagen" aria-label="Meine Anlagen">
+      <section
+        className="vp-portfolio-anlagen"
+        aria-label={ebene?.art === 'unternehmen' ? 'Anlagen nach Standort' : 'Meine Anlagen'}
+      >
+        {ebene?.art === 'standort' && zeilen.length === 0 && (
+          <p className="vp-portfolio-ruhe">Diesem Standort ist heute keine Anlage zugeordnet.</p>
+        )}
         <AnlagenTabelle
+          gruppen={gruppen}
           zeilen={zeilen}
           spalten={spalten}
           dichte={dichte}

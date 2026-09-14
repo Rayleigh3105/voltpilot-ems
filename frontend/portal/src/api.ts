@@ -6486,6 +6486,8 @@ export const api = {
   // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
   /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */
   unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
+  /** UEMS AP-01 IP-6: beide Funktionen je Standort (`GET /api/v1/funktionen`, Routen aus IP-3). */
+  funktionen: () => request<Funktionen>('/api/v1/funktionen'),
 
   /** Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“. */
   standorte: (stichtag?: string) =>
