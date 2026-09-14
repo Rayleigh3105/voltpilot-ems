@@ -51,6 +51,7 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
 import { GeraetGefahrenzone } from '../components/GeraetGefahrenzone';
+import { GeraetPvProduktion } from '../components/GeraetPvProduktion';
 import { gefahrenzone } from '../geraetLoeschen';
 import {
   anlageRoute,
@@ -258,6 +259,13 @@ export function GeraetSeiteSection({
   const brueckeVerbraucht = useCallback(() => setBruecke(null), []);
   /** Die Kurzfassung der Register-Sektion - sie kommt aus der Beobachtungs-Fläche. */
   const [beobKurz, setBeobKurz] = useState<string | null>(null);
+  /**
+   * Trägt dieses Gerät die PV-Produktion der Anlage (eine Rollen-Zuordnung,
+   * vp-agg-konzept3-r8)? Nur für die ehrliche Gefahrenzonen-Folge; der Zähler
+   * frischt sie nach, wenn der Assistent die Zuordnung ändert.
+   */
+  const [pvZugeordnet, setPvZugeordnet] = useState(false);
+  const [pvReload, setPvReload] = useState(0);
   // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
   // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
@@ -1067,10 +1075,38 @@ export function GeraetSeiteSection({
    */
   const gefahr = useMemo(() => {
     if (!view || !view.gefunden || view.art === 'ladepunkt') return null;
-    return gefahrenzone(view.komponenten, (id) => data?.entities.find((e) => e.id === id));
-  }, [view, data]);
+    return gefahrenzone(view.komponenten, (id) => data?.entities.find((e) => e.id === id), pvZugeordnet);
+  }, [view, data, pvZugeordnet]);
   const gefahrName =
     gefahr?.kind === 'entfernen' ? gefahr.component.label : view?.kopf.titel ?? '';
+
+  /**
+   * Die Erzeugungs-Komponente dieses Geräts (Konzept vp-agg-konzept3-r8): der
+   * PV-Aspekt eines Hybriden bzw. der PV-Wechselrichter selbst. Nur wenn es sie
+   * gibt, trägt das Gerät Erzeugungs-Register - und nur dann bietet die Karte
+   * „PV-Produktion dieses Geräts" überhaupt etwas an (nie ein toter Knopf).
+   */
+  const pvKomponente = useMemo(
+    () => (view?.gefunden ? view.komponenten.find((c) => c.role === 'pv') ?? null : null),
+    [view],
+  );
+
+  // Die PV-Rollen-Zuordnung dieses Geräts - nur für die Gefahrenzonen-Folge.
+  useEffect(() => {
+    let aktiv = true;
+    const entityId = pvKomponente?.entityId;
+    if (!entityId) {
+      setPvZugeordnet(false);
+      return;
+    }
+    api.geraetRolle(site.id, entityId, 'pv').then(
+      (r) => aktiv && setPvZugeordnet(r.zugeordnet != null),
+      () => aktiv && setPvZugeordnet(false),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [pvKomponente, site.id, pvReload]);
 
   return (
     <div className="vp-geraet">
@@ -1275,6 +1311,20 @@ export function GeraetSeiteSection({
               />
             )}
           </RahmenSektion>
+
+          {/* 1b · PV-Produktion dieses Geräts (vp-agg-konzept3-r8): die kompakte
+              Ergebnis-Karte + der Summenwert-Assistent. NACH „Jetzt", nur für
+              Geräte mit Erzeugungs-Komponente; die Karte lädt ihre Zuordnung
+              selbst und öffnet den Assistenten. */}
+          {pvKomponente && boxDevice?.id && (
+            <GeraetPvProduktion
+              siteId={site.id}
+              deviceId={boxDevice.id}
+              entityId={pvKomponente.entityId}
+              geraetName={view.kopf.titel}
+              onZuordnungGeaendert={() => setPvReload((x) => x + 1)}
+            />
+          )}
 
           {/* 2 · Befehle */}
           <RahmenSektion id="befehle">

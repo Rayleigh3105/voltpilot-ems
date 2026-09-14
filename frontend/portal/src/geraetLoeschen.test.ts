@@ -116,4 +116,15 @@ describe('die Folgenlisten', () => {
     expect(folgen.some((f) => /Steuerung enden/.test(f.text))).toBe(true);
     expect(folgen.at(-1)?.text).toBe('Die Optimierung plant ohne diesen Speicher.');
   });
+
+  it('names the lost PV-Produktion only when the device carries the assignment (vp-agg)', () => {
+    const p = entity('p', 'producer', { label: 'Deye SUN-30K' });
+    const { components } = plant([p]);
+    const pv = /PV-Produktion/;
+    // Ohne Zuordnung wird die Folge NICHT versprochen (die Vorgabe ist false).
+    expect(komponenteEntfernenFolgen(components[0], p).some((f) => pv.test(f.text))).toBe(false);
+    // Mit Zuordnung steht die ehrliche Folge da - als „endet" (gone).
+    const mit = komponenteEntfernenFolgen(components[0], p, true);
+    expect(mit.some((f) => f.art === 'gone' && pv.test(f.text))).toBe(true);
+  });
 });

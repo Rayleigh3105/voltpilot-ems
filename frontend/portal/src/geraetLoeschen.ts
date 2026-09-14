@@ -51,6 +51,12 @@ const ROLLE_WORT: Record<ComponentRole, string> = {
 export function komponenteEntfernenFolgen(
   component: PlantComponent,
   entity: SiteEntity | undefined,
+  /**
+   * Trägt dieses Gerät die PV-Produktion der Anlage (eine Rollen-Zuordnung,
+   * Konzept vp-agg-konzept3-r8)? Dann verschwindet sein Beitrag zur Gesamt-PV -
+   * eine ehrliche Folge, die genannt gehört, nie stillschweigend.
+   */
+  pvZugeordnet = false,
 ): EntfernenFolge[] {
   const folgen: EntfernenFolge[] = [
     {
@@ -69,6 +75,13 @@ export function komponenteEntfernenFolgen(
       art: 'gone',
       text: 'Die Box vergisst dieses Gerät - die Datenquelle wird aus dem Leseplan genommen '
         + 'und erscheint danach wieder als „Neues Gerät gefunden“.',
+    });
+  }
+  if (pvZugeordnet) {
+    folgen.push({
+      art: 'gone',
+      text: 'Dieses Gerät zählt nicht mehr zur PV-Produktion Ihrer Anlage - der ihm '
+        + 'zugeordnete Summenwert entfällt aus der Gesamt-PV.',
     });
   }
   folgen.push({
@@ -148,6 +161,8 @@ const GRUND_GRUNDAUSSTATTUNG =
 export function gefahrenzone(
   komponenten: PlantComponent[],
   entityOf: (entityId: string) => SiteEntity | undefined,
+  /** Trägt dieses Gerät die PV-Produktion der Anlage? (vp-agg-konzept3-r8) */
+  pvZugeordnet = false,
 ): GefahrenzoneZustand {
   const mains = komponenten.filter((c) => c.aspect === 'main');
   const battery = mains.find((c) => entityOf(c.entityId)?.entityType === 'battery-hybrid');
@@ -160,7 +175,12 @@ export function gefahrenzone(
   if (entity == null) return null;
   const { canDelete } = componentActions(component, entity);
   if (canDelete) {
-    return { kind: 'entfernen', component, entity, folgen: komponenteEntfernenFolgen(component, entity) };
+    return {
+      kind: 'entfernen',
+      component,
+      entity,
+      folgen: komponenteEntfernenFolgen(component, entity, pvZugeordnet),
+    };
   }
   // Not deletable and not the battery path (house-load / a synthesized meter):
   // show the reason, never a disabled button.

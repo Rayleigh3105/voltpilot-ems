@@ -937,6 +937,14 @@ export interface MeasurementCatalogPoint {
   labelSource: string | null;
   semanticStatus: 'known' | 'vendor_label_only' | 'unknown';
   aggregationKind: string;
+  /**
+   * Die ROHEN Katalogwörter der Messgröße/Richtung (`active_power`, `generation`
+   * …), `null` = nicht belegt (z. B. der richtungslose Gen-Port). Additiv, damit
+   * der Summenwert-Assistent auch noch nicht beobachtete Register einordnen kann;
+   * die Kundenwörter leitet `registerAbbildung.ts` daraus ab.
+   */
+  quantity: string | null;
+  direction: string | null;
   defaultCadenceS: number | null;
   minCadenceS: number | null;
   longTermCadenceS: number | null;
@@ -2006,7 +2014,50 @@ export interface BerechneteMessstelleAnlegen {
     quell_messstelle_id?: string;
     vorzeichen: '+' | '-';
     faktor: number;
+    /** AP-08: nur bei einem richtungslosen Kanal, der als Erzeugung zählen soll. */
+    gilt_als_erzeugung?: boolean;
   }>;
+}
+
+/**
+ * Ein zugeordneter Rollen-Wert (`RollenDto.Wert`, PR 758): ENTWEDER ein Messwert-
+ * Kanal (`art = messkanal`, `capability`) ODER ein Gesamtwert (`art = gesamtwert`,
+ * `quell_messstelle_id`). `name` ist der Anzeigename des Werts. snake_case wie am
+ * Vertrag (`@JsonNaming`).
+ */
+export interface RollenWert {
+  art: 'messkanal' | 'gesamtwert';
+  capability: string | null;
+  quell_messstelle_id: string | null;
+  name: string | null;
+}
+
+/**
+ * Der maßgebliche Rollen-Wert EINES Geräts (`GET …/komponenten/{entityId}/rollen/{role}`,
+ * `RollenDto.GeraetRolle`). `zugeordnet == null` heißt: keine Zuordnung, das Cockpit
+ * bleibt beim Rückfall auf die Roh-Telemetrie.
+ */
+export interface GeraetRolle {
+  entity_id: string;
+  role: string;
+  zugeordnet: RollenWert | null;
+}
+
+/** Der Anfrage-Körper von `PUT …/komponenten/{entityId}/rollen/{role}` (`RollenDto.Eingabe`). */
+export interface RollenEingabe {
+  art: 'messkanal' | 'gesamtwert';
+  capability?: string;
+  quell_messstelle_id?: string;
+}
+
+/**
+ * Die Antwort eines Zuordnens (`RollenDto.ZuordnungAntwort`): der jetzt maßgebliche Wert
+ * und - beim Konfliktfall - der abgelöste vorige Wert (`abgeloest == null`, wenn keiner
+ * abgelöst wurde).
+ */
+export interface RollenZuordnungAntwort {
+  zugeordnet: RollenWert;
+  abgeloest: RollenWert | null;
 }
 
 /**
@@ -5444,6 +5495,24 @@ export const api = {
    */
   rollenWert: (siteId: string, role: string) =>
     request<RollenKanonischerWert>(`/api/v1/sites/${siteId}/rollen/${role}`),
+
+  /**
+   * Der maßgebliche Rollen-Wert EINES Geräts (Konzept vp-agg „verwenden als",
+   * PR 758); `zugeordnet == null` = keine Zuordnung.
+   */
+  geraetRolle: (siteId: string, entityId: string, role: string) =>
+    request<GeraetRolle>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`),
+
+  /**
+   * Setzt den maßgeblichen Rollen-Wert eines Geräts (nativer Kanal ODER Gesamtwert);
+   * die Antwort nennt den abgelösten Wert (is_primary-Semantik, Ersetzen statt doppelt
+   * zählen).
+   */
+  rolleZuordnen: (siteId: string, entityId: string, role: string, body: RollenEingabe) =>
+    request<RollenZuordnungAntwort>(
+      `/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
 
   /** Der Verlauf einer berechneten Messstelle (je 15 min die Summe, sonst null). */
   messstelleVerlauf: (id: string, range?: string) =>
