@@ -34,6 +34,8 @@ public final class OrtAbgelehnt extends RuntimeException {
         ARCHIVIEREN_GESPERRT("archivieren_gesperrt", 409),
         /** Wiederherstellen gesperrt; {@code grund} sagt, warum (nicht archiviert, Name belegt …). */
         WIEDERHERSTELLEN_GESPERRT("wiederherstellen_gesperrt", 409),
+        /** Löschen gesperrt (E1): der Ort trägt Historie; {@code historie} nennt sie, der Satz den Weg. */
+        LOESCHEN_GESPERRT("loeschen_gesperrt", 409),
         // Die Gründe des Ortsbaum-Vertrags beim Anlegen und bei der Fläche (IP-5) — Code und
         // Satz aus OrtsbaumAbleitung#eintrag bzw. #flaecheEintrag, Status nach AP-02 §5.10.
         /** Woran der Ort hängen soll, geht nicht (Bereich unter Bereich, Gebäude unter Gebäude …). */

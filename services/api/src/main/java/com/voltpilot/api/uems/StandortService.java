@@ -356,7 +356,7 @@ public class StandortService {
     }
 
     /** Ein Sperrgrund in der Antwort: der Grund des Vertrags, wer sperrt, und der Weg als Code. */
-    private static Map<String, Object> grund(ArchivGrund g, Baum b) {
+    static Map<String, Object> grund(ArchivGrund g, Baum b) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("art", g.art().name().toLowerCase(Locale.ROOT));
         OrtRepository.Ort ort = b.orte().get(g.kennzeichen());
@@ -412,7 +412,11 @@ public class StandortService {
 
     /** Der Baum mit genau diesen Messstellen (deren Intervall-Eltern Kurzzeichen bzw. „U“ sind). */
     Baum baum(List<OrtsbaumAbleitung.Messstelle> ms) {
-        Zeilen z = lesemodell.zeilen();
+        return baum(lesemodell.zeilen(), ms);
+    }
+
+    /** Derselbe Baum aus schon gelesenen Zeilen — für Schreibwege, die unter ihrer Sperre gelesen haben (IP-15). */
+    static Baum baum(Zeilen z, List<OrtsbaumAbleitung.Messstelle> ms) {
         Map<String, String> kz = new HashMap<>();
         Map<String, UUID> standortJeKz = new HashMap<>();
         Map<String, OrtRepository.Ort> ortJeKz = new HashMap<>();

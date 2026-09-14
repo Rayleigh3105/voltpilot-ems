@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.OrtService;
 import com.voltpilot.api.uems.OrtsbaumLesemodell.OrtsbaumAmStichtag;
 import com.voltpilot.api.web.dto.OrtDto;
+import com.voltpilot.api.web.dto.StandortDto;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,8 +33,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Mandanten-RLS wie unter {@code /api/v1/standorte} — ein fremder Standort oder Ort ist 404, nie
  * 403 (A14); der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route
  * nennt ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}; eine Rechte-Annotation
- * gibt es hier bewusst nicht. Verschieben (IP-12) und Archivieren (IP-15) sind nicht hier — wer
- * an {@code PUT} schon einen Elternknoten schickt, bekommt 400 {@code anfrage_ungueltig}.
+ * gibt es hier bewusst nicht. Archivieren, Wiederherstellen und Löschen ohne Historie (IP-15) urteilt
+ * derselbe Vertrag wie am Standort. Verschieben (IP-12) ist nicht hier — wer an {@code PUT} schon
+ * einen Elternknoten schickt, bekommt 400 {@code anfrage_ungueltig}.
  */
 @RestController
 public class OrtController {
@@ -79,5 +82,28 @@ public class OrtController {
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return orte.flaecheSetzen(ortId, anfrage.lies(body, OrtDto.Flaeche.class, false),
                 OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `gebaeude.pflegen`. Ohne Inhalt: es gibt nichts zu wählen — archiviert wird ab heute (IP-15).
+    @PostMapping("/api/v1/orte/{ortId}/archivieren")
+    public OrtDto.Ort archivieren(@PathVariable UUID ortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        OrtAnfrage.leer(body);
+        return orte.archivieren(ortId, OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `gebaeude.pflegen`. Optional `{"name": …}` — das Umbenennen im selben Dialog (IP-15).
+    @PostMapping("/api/v1/orte/{ortId}/wiederherstellen")
+    public OrtDto.Ort wiederherstellen(@PathVariable UUID ortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return orte.wiederherstellen(ortId, anfrage.lies(body, StandortDto.Wiederherstellen.class, true),
+                OrtAnfrage.akteur(auth));
+    }
+
+    // Rechte: `gebaeude.pflegen`. Nur ohne Historie (E1) — sonst 409 `loeschen_gesperrt` (IP-15).
+    @DeleteMapping("/api/v1/orte/{ortId}")
+    public ResponseEntity<Void> loeschen(@PathVariable UUID ortId, Authentication auth) {
+        orte.loeschen(ortId, OrtAnfrage.akteur(auth));
+        return ResponseEntity.noContent().build();
     }
 }

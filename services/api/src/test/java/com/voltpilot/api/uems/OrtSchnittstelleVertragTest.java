@@ -66,17 +66,24 @@ class OrtSchnittstelleVertragTest {
 
     @Test
     void dieFormenSindDieDerSchnittstelle() {
-        Map<String, Class<?>> formen = Map.of(
-                "OrtAnlegen", OrtDto.Anlegen.class,
-                "OrtBearbeiten", OrtDto.Bearbeiten.class,
-                "OrtFlaeche", OrtDto.Flaeche.class,
-                "Ort", OrtDto.Ort.class,
-                "OrtZuordnung", OrtDto.Zuordnung.class,
-                "OrtFlaechenStand", OrtDto.FlaechenStand.class,
-                "OrtRueckwirkung", OrtDto.Rueckwirkung.class,
-                "OrtsbaumAmStichtag", OrtsbaumLesemodell.OrtsbaumAmStichtag.class,
-                "OrtsbaumGebaeude", OrtsbaumLesemodell.Gebaeude.class,
-                "OrtsbaumBereich", OrtsbaumLesemodell.Bereich.class);
+        Map<String, Class<?>> formen = Map.ofEntries(
+                Map.entry("OrtAnlegen", OrtDto.Anlegen.class),
+                Map.entry("OrtBearbeiten", OrtDto.Bearbeiten.class),
+                Map.entry("OrtFlaeche", OrtDto.Flaeche.class),
+                Map.entry("Ort", OrtDto.Ort.class),
+                Map.entry("OrtZuordnung", OrtDto.Zuordnung.class),
+                Map.entry("OrtFlaechenStand", OrtDto.FlaechenStand.class),
+                Map.entry("OrtRueckwirkung", OrtDto.Rueckwirkung.class),
+                Map.entry("OrtsbaumAmStichtag", OrtsbaumLesemodell.OrtsbaumAmStichtag.class),
+                Map.entry("OrtsbaumGebaeude", OrtsbaumLesemodell.Gebaeude.class),
+                Map.entry("OrtsbaumBereich", OrtsbaumLesemodell.Bereich.class),
+                // IP-15: der Grabstein und die Aktionen je Knoten
+                Map.entry("OrtsbaumArchivierterOrt", OrtsbaumLesemodell.ArchivierterOrt.class),
+                Map.entry("OrtAktionen", OrtAktionen.Aktionen.class),
+                Map.entry("OrtArchivierenAktion", OrtAktionen.Archivieren.class),
+                Map.entry("OrtMitarchiviert", OrtAktionen.Mitarchiviert.class),
+                Map.entry("OrtWiederherstellenAktion", OrtAktionen.Wiederherstellen.class),
+                Map.entry("OrtLoeschenAktion", OrtAktionen.Loeschen.class));
         formen.forEach((name, form) -> {
             List<String> felder = Arrays.stream(form.getRecordComponents()).map(c -> c.getName()).toList();
             assertThat(map(schema(name), "properties").keySet()).as(name).containsExactlyInAnyOrderElementsOf(felder);

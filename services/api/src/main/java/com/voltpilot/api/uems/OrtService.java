@@ -1,6 +1,8 @@
 package com.voltpilot.api.uems;
 
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.ArchivErgebnis;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.Archiviert;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.EintragAntrag;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.EintragErgebnis;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.FlaecheAntrag;
@@ -13,9 +15,12 @@ import com.voltpilot.api.uems.OrtsbaumAbleitung.Ortsbaum;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungEingang;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungErgebnis;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Vorgang;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.WiederherstellErgebnis;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.WiederherstellGrund;
 import com.voltpilot.api.uems.OrtsbaumLesemodell.OrtsbaumAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.Zeilen;
 import com.voltpilot.api.web.dto.OrtDto;
+import com.voltpilot.api.web.dto.StandortDto;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
@@ -31,9 +36,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -123,7 +130,12 @@ public class OrtService {
         LocalDate tag = stichtag != null
                 ? stichtag : uhr.instant().atZone(ZoneId.of(st.get().zeitzone())).toLocalDate();
         OrtsbaumMessstellen quelle = messstellen.getIfAvailable();
-        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, quelle == null ? null : quelle.messstellen());
+        List<OrtsbaumAbleitung.Messstelle> ms = quelle == null ? null : quelle.messstellen();
+        // IP-15: ohne Stichtag trägt jeder Knoten, was man HEUTE mit ihm tun kann — auf demselben
+        // Baum, auf dem die Schreibrouten urteilen. „Stand am …“ ändert nichts: keine Aktionen.
+        OrtAktionen aktionen = stichtag != null ? null
+                : new OrtAktionen(StandortService.baum(z, ms == null ? List.of() : ms), tag, orte.mitBezugsgroesse());
+        return OrtsbaumLesemodell.ortsbaum(z, standortId, tag, ms, aktionen);
     }
 
     // ---------------------------------------------------------------- anlegen
@@ -315,6 +327,197 @@ public class OrtService {
      * aufgehoben (Korrektur); eine, die früher endet, beendet; eine neue eingetragen — erst
      * alles Beenden, dann das Eintragen (das Überlappungsverbot sieht jeden Zwischenstand).
      */
+    // ------------------------------------ archivieren · wiederherstellen · löschen (IP-15)
+
+    /** SQLSTATE, mit dem die Datenbank ein Löschen mit Historie ablehnt (Rückwand und Fremdschlüssel). */
+    private static final Set<String> HISTORIE = Set.of("23001", "23503");
+
+    /**
+     * Archiviert ein Gebäude oder einen Bereich ab HEUTE in der Zeitzone seines Standorts (Z2, E12):
+     * nur ohne aktive Messstelle im Teilbaum und ohne geplante Zuordnung hinein oder heraus — sonst
+     * 409 {@code archivieren_gesperrt} mit ALLEN Sperrgründen und dem Satz mit Grund und Weg (Z1, A7),
+     * genau wie beim Standort. Leere Bereiche eines Gebäudes gehen mit; jedes laufende Intervall
+     * endet am Vortag (begann es heute, wird es aufgehoben — es belegte keinen Tag). Keine Kaskade
+     * auf Messstellen. GENAU EIN Protokolleintrag am Ort, der die Mitarchivierten nennt.
+     */
+    public OrtDto.Ort archivieren(UUID ortId, ProtokollAkteur wer) {
+        return transaktion.execute(tx -> {
+            sperre();
+            Zeilen z = lesemodell.zeilen();
+            OrtRepository.Ort o = ortIn(z, ortId);
+            Instant jetzt = uhr.instant();
+            Lage lage = lage(z, StandortLesemodell.baum(z), ortId, jetzt);
+            LocalDate heute = jetzt.atZone(lage.zone()).toLocalDate();
+            StandortService.Baum b = StandortService.baum(z, messstellenAmOrt());
+            ArchivErgebnis e = OrtsbaumAbleitung.archivieren(b.baum(), o.kurzzeichen(), heute);
+            if (!e.erlaubt()) {
+                throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.ARCHIVIEREN_GESPERRT, e.text(),
+                        Map.of("gruende", e.gruende().stream().map(g -> StandortService.grund(g, b)).toList()));
+            }
+            List<Map<String, Object>> mit = new ArrayList<>();
+            for (Archiviert a : e.archiviert()) {
+                OrtRepository.Ort x = b.ort(a.kennzeichen());
+                if (!orte.archivieren(x.id(), jetzt, wer.sub()) && x.id().equals(ortId)) {
+                    throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.ARCHIVIERT, o.name() + " ist schon archiviert.",
+                            Map.of());
+                }
+                for (OrtZuordnungRepository.Zuordnung iv : z.ortZuordnungen()) {
+                    if (iv.ortId().equals(x.id()) && !iv.aufgehoben()
+                            && (iv.gueltigBis() == null || !iv.gueltigBis().isBefore(heute))) {
+                        if (a.letzterTag().isBefore(iv.gueltigAb())) {
+                            zuordnungen.aufheben(iv.id(), jetzt);
+                        } else {
+                            zuordnungen.beenden(iv.id(), a.letzterTag());
+                        }
+                    }
+                }
+                if (!x.id().equals(ortId)) {
+                    Map<String, Object> kind = new LinkedHashMap<>();
+                    kind.put("id", x.id().toString());
+                    kind.put("art", x.art());
+                    kind.put("kurzzeichen", x.kurzzeichen());
+                    kind.put("name", x.name());
+                    mit.add(kind);
+                }
+            }
+            Map<String, Object> alt = new LinkedHashMap<>();
+            alt.put("zustand", o.zustand());
+            Map<String, Object> neu = new LinkedHashMap<>();
+            neu.put("zustand", "archiviert");
+            neu.put("archiviert_am", ZEIT.format(jetzt.atZone(lage.zone())));
+            neu.put("letzter_tag", heute.minusDays(1).toString());
+            neu.put("mitarchiviert", mit);
+            protokoll.eintragen(mandant(), o.art(), ortId, OrtAenderungRepository.ARCHIVIERT, alt, neu, heute,
+                    lage.zone(), jetzt, wer);
+            return darstellung(lesemodell.zeilen(), ortId, null);
+        });
+    }
+
+    /**
+     * Holt ein archiviertes Gebäude oder einen archivierten Bereich zurück (Z3, A8): ein NEUES
+     * Intervall ab heute an dem Knoten, an dem es zuletzt hing; die Lücke seit dem Archivieren
+     * bleibt und wird nie aufgefüllt. Gesperrt (409 {@code wiederherstellen_gesperrt} mit
+     * {@code grund}), solange der Elternknoten archiviert ist oder der Name unter den Geschwistern
+     * vergeben ist — {@code name} benennt im selben Dialog um. Mitarchivierte Bereiche kommen nicht
+     * still mit. Das Kurzzeichen bleibt seins. GENAU EIN Protokolleintrag.
+     */
+    public OrtDto.Ort wiederherstellen(UUID ortId, StandortDto.Wiederherstellen w, ProtokollAkteur wer) {
+        String neuerName = w == null || w.name() == null ? null : OrtFelder.name(w.name(), "name");
+        return transaktion.execute(tx -> {
+            sperre();
+            Zeilen z = lesemodell.zeilen();
+            OrtRepository.Ort o = ortIn(z, ortId);
+            Instant jetzt = uhr.instant();
+            Lage lage = lage(z, StandortLesemodell.baum(z), ortId, jetzt);
+            LocalDate heute = jetzt.atZone(lage.zone()).toLocalDate();
+            StandortService.Baum b = StandortService.baum(z, messstellenAmOrt());
+            WiederherstellErgebnis e =
+                    OrtsbaumAbleitung.wiederherstellen(b.baum(), o.kurzzeichen(), heute, neuerName);
+            if (!e.erlaubt()) {
+                Map<String, Object> fakten = new LinkedHashMap<>();
+                fakten.put("grund", e.grund().name().toLowerCase(Locale.ROOT));
+                if (e.grund() == WiederherstellGrund.NAME_BELEGT) {
+                    String eltern = b.baum().ort(o.kurzzeichen()).orElseThrow().intervalle().stream()
+                            .filter(i -> !i.aufgehoben()).reduce((erst, dann) -> dann)
+                            .map(Intervall::eltern).orElse(null);
+                    OrtsbaumAbleitung.nameBelegt(b.baum(), ortArt(o.art()), eltern,
+                            neuerName == null ? o.name() : neuerName, heute, o.kurzzeichen())
+                            .map(belegt -> b.ort(belegt.kennzeichen()))
+                            .filter(Objects::nonNull)
+                            .ifPresent(belegt -> fakten.put("verweis", Map.of("objekt_art", belegt.art(),
+                                    "id", belegt.id(), "kurzzeichen", belegt.kurzzeichen(), "name", belegt.name())));
+                }
+                throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.WIEDERHERSTELLEN_GESPERRT, e.text(), fakten);
+            }
+            String eltern = e.intervall().eltern();
+            UUID elternStandort = b.standorte().get(eltern);
+            OrtRepository.Ort elternOrt = elternStandort == null ? b.ort(eltern) : null;
+            if (elternStandort == null && elternOrt == null) {
+                throw new IllegalStateException("Elternknoten " + eltern + " von " + ortId + " fehlt im Baum");
+            }
+            if (!orte.wiederherstellen(ortId, e.name(), ZUSTAND_NEU)) {
+                throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.WIEDERHERSTELLEN_GESPERRT,
+                        o.name() + " ist nicht archiviert.", Map.of("grund", "nicht_archiviert"));
+            }
+            UUID tenant = mandant();
+            zuordnungen.zuordnen(tenant, ortId, elternStandort, elternOrt == null ? null : elternOrt.id(), heute,
+                    null, wer.sub());
+            Map<String, Object> alt = new LinkedHashMap<>();
+            Map<String, Object> neu = new LinkedHashMap<>();
+            alt.put("zustand", "archiviert");
+            neu.put("zustand", ZUSTAND_NEU);
+            if (!e.name().equals(o.name())) {
+                alt.put("name", o.name());
+                neu.put("name", e.name());
+            }
+            neu.put("eltern_art", elternStandort != null ? OrtArt.STANDORT.code() : OrtArt.GEBAEUDE.code());
+            neu.put("eltern_id", elternStandort != null ? elternStandort : elternOrt.id());
+            Map<String, Object> luecke = null;
+            if (e.luecke() != null) {
+                luecke = new LinkedHashMap<>();
+                luecke.put("von", e.luecke().von().toString());
+                luecke.put("bis", e.luecke().bis().toString());
+            }
+            neu.put("luecke", luecke);
+            protokoll.eintragen(tenant, o.art(), ortId, OrtAenderungRepository.WIEDERHERGESTELLT, alt, neu, heute,
+                    lage.zone(), jetzt, wer);
+            return darstellung(lesemodell.zeilen(), ortId, null);
+        });
+    }
+
+    /**
+     * Löscht ein Gebäude oder einen Bereich OHNE Historie (E1, A9) — endgültig. Das Kurzzeichen
+     * bleibt belegt (nie wiederverwendet), die eigenen Protokolleinträge bleiben, und am Knoten, an
+     * dem der Ort zuletzt hing, steht „geloescht“ im Protokoll. Mit Historie 409
+     * {@code loeschen_gesperrt} mit {@code historie} ({@link OrtAktionen#loeschen}); die Datenbank prüft
+     * es in {@code uems_ort_loeschen} noch einmal.
+     */
+    public void loeschen(UUID ortId, ProtokollAkteur wer) {
+        transaktion.executeWithoutResult(tx -> {
+            sperre();
+            Zeilen z = lesemodell.zeilen();
+            OrtRepository.Ort o = ortIn(z, ortId);
+            Instant jetzt = uhr.instant();
+            Lage lage = lage(z, StandortLesemodell.baum(z), ortId, jetzt);
+            LocalDate heute = jetzt.atZone(lage.zone()).toLocalDate();
+            StandortService.Baum b = StandortService.baum(z, messstellenAmOrt());
+            OrtAktionen.Loeschen l = OrtAktionen.loeschen(b, o, orte.mitBezugsgroesse());
+            if (!l.erlaubt()) {
+                throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.LOESCHEN_GESPERRT, l.text(), Map.of("historie", l.gruende()));
+            }
+            OrtZuordnungRepository.Zuordnung zuletzt = z.ortZuordnungen().stream()
+                    .filter(iv -> iv.ortId().equals(ortId))
+                    .max(Comparator.comparing((OrtZuordnungRepository.Zuordnung iv) -> !iv.aufgehoben())
+                            .thenComparing(OrtZuordnungRepository.Zuordnung::gueltigAb))
+                    .orElse(null);
+            try {
+                if (!orte.loeschen(ortId)) {
+                    throw OrtAbgelehnt.nichtGefunden("Diesen Ort gibt es nicht.");
+                }
+            } catch (DataAccessException ex) {
+                if (HISTORIE.contains(sqlState(ex))) {
+                    throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.LOESCHEN_GESPERRT,
+                            OrtAktionen.loeschenSatz(o.name(), List.of()), Map.of("historie", List.of()));
+                }
+                throw ex;
+            }
+            if (zuletzt != null) {
+                Map<String, Object> alt = new LinkedHashMap<>();
+                alt.put("art", o.art());
+                alt.put("id", o.id().toString());
+                alt.put("kurzzeichen", o.kurzzeichen());
+                alt.put("name", o.name());
+                String elternArt = zuletzt.elternStandortId() != null ? OrtArt.STANDORT.code() : OrtArt.GEBAEUDE.code();
+                protokoll.eintragen(mandant(), elternArt, zuletzt.eltern(), "geloescht", alt, null, heute,
+                        lage.zone(), jetzt, wer);
+            }
+        });
+    }
+
+    private List<OrtsbaumAbleitung.Messstelle> messstellenAmOrt() {
+        return messstellen.getIfAvailable(OrtsbaumMessstellen.Keine::new).messstellen();
+    }
+
     private void anwenden(UUID tenant, UUID ortId, List<FlaechenIntervallMitZustand> soll, Instant jetzt,
             ProtokollAkteur wer) {
         List<FlaecheRepository.Flaeche> ist = flaechen.fuerOrt(ortId).stream()

@@ -9,6 +9,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,9 +24,9 @@ import org.springframework.stereotype.Repository;
  * G-1 … / B-1 …, Name eindeutig je Elternknoten, Protokolleintrag — gehören den
  * Schreibrouten (IP-5). Die Datenbank hält trotzdem, was eine Zeile allein
  * entscheidet (Art, Vokabular, Namensregel, Kurzzeichen eindeutig je
- * Kundenbereich, Baujahr nur am Gebäude). Ein Ort wird archiviert, nie
- * gelöscht, und seine Art ändert sich nie: deshalb gibt es hier weder DELETE
- * noch ein Umschreiben der Art. Die Schreibroute ist {@link OrtService}.
+ * Kundenbereich, Baujahr nur am Gebäude). Ein Ort wird archiviert; gelöscht wird
+ * er nur ohne jede Historie (E1, IP-15), und das nur über die enge Funktion
+ * {@code uems_ort_loeschen} — die App-Rolle hat kein DELETE. Seine Art ändert sich nie. Die Schreibroute ist {@link OrtService}.
  */
 @Repository
 public class OrtRepository {
@@ -86,6 +87,32 @@ public class OrtRepository {
         return jdbc.update("UPDATE ort SET zustand = 'archiviert', archiviert_am = ?, "
                 + "archiviert_von = ? WHERE id = ? AND archiviert_am IS NULL",
                 Timestamp.from(am), von, id) == 1;
+    }
+
+    /**
+     * Holt einen archivierten Ort zurück (IP-15) — mit dem Namen, den er ab heute trägt (Umbenennen
+     * im selben Dialog); {@code false}: nicht archiviert oder nicht da. Das neue Intervall legt der
+     * Schreibweg an ({@link OrtZuordnungRepository#zuordnen}), die Lücke davor bleibt.
+     */
+    public boolean wiederherstellen(UUID id, String name, String zustand) {
+        return jdbc.update("UPDATE ort SET zustand = ?, name = ?, archiviert_am = NULL, "
+                + "archiviert_von = NULL WHERE id = ? AND archiviert_am IS NOT NULL",
+                zustand, name, id) == 1;
+    }
+
+    /**
+     * Löscht einen Ort OHNE Historie über {@code uems_ort_loeschen} (V20260914233000) — die
+     * App-Rolle hat kein DELETE. {@code false}: nicht da. Trägt er Historie, wirft die Datenbank
+     * {@code restrict_violation} ({@code ort_hat_historie}) und nichts ist gelöscht.
+     */
+    public boolean loeschen(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT uems_ort_loeschen(?)", Boolean.class, id));
+    }
+
+    /** Die Orte, an denen eine Bezugsgröße hängt (auch eine archivierte) — Historie für E1. */
+    public Set<UUID> mitBezugsgroesse() {
+        return Set.copyOf(jdbc.queryForList(
+                "SELECT DISTINCT ort_id FROM bezugsgroesse WHERE ort_id IS NOT NULL", UUID.class));
     }
 
     /** Der Ort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */
