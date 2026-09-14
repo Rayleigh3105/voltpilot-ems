@@ -14,6 +14,7 @@ eine Aussage über Zugehörigkeit, kein Eingriff in den Betrieb: geschrieben wer
 | Dialog T6b + Einstieg an der Zeile „Standort“ | `components/AnlageStandortDialog.tsx` (+ `.css`, `.test.tsx`) · `components/AnlageStandortZeile.tsx` |
 | 375/1440 px + Bilder | `e2e/anlage-umziehen.spec.ts` (Bühne `meine-anlage.html`); `UMZUG_BILDER=<Ordner>`, `ANSICHT_VARIANTE=b` |
 | Vertrag | `docs/contracts/openapi.yaml` (`AnlageUmzug*`, `OrtFehler`), geprüft in `OrtSchnittstelleVertragTest` |
+| Übersicht nach dem Umzug (AP-01 IP-6) | `frontend/portal/src/uebersichtNachUmzug.test.ts` gegen `uebersicht.ts` (`standortGruppen`, `kopfzeile`) |
 
 ## Die Fallen
 
@@ -40,6 +41,10 @@ eine Aussage über Zugehörigkeit, kein Eingriff in den Betrieb: geschrieben wer
    zählt je Standort „heute zugeordnet“ ∪ „Teilnahme an seiner Funktion“ — ab „gültig ab“ steht die Anlage in
    `GET /api/v1/funktionen` darum unter BEIDEN Standorten. Der A11-Satz „zeigt die Teilnahme unter Werk
    Ahrenberg Nord“ ist damit NICHT erfüllt; die Folgen-Karte sagt ehrlich „geführt wird sie weiter bei …“.
+   Die Unternehmens-Übersicht (AP-01 IP-6) gruppiert nach `GET /standorte` von heute und zählt „steuert“ über
+   die MENGE der aktiven Teilnahmen: nach dem Umzug steht jede Anlage genau einmal beim neuen Standort, „steuert“
+   zieht mit, die Kopfzeile zählt nicht doppelt — aber die Zeile „Steuern & Optimieren“ des NEUEN Standorts
+   sagt „Noch nicht eingerichtet“, während seine Gruppe „1 steuert“ zählt (`uebersichtNachUmzug.test.ts`).
 6. **Keine Korrektur:** `gleicher_tag` sagt „Ändern Sie diese, statt eine zweite anzulegen“ — der Vertrag kennt
    `vorgang: korrektur`, die Route noch nicht. Ausweg heute: ein anderes Datum.
 7. **Zeile „Standort“:** der Knopf „Anderem Standort zuordnen“ steht nur, wenn es ein Objekt gibt (ohne Objekt
