@@ -119,7 +119,11 @@ public final class BerechnetePeriode {
             return new Urteil(null, w.fehler());
         }
         Instant frist = TagRegeln.endgueltigAb(periodenende);
-        return new Urteil(new Ergebnis(w.menge(), w.zustand(), w.abdeckungProzent(), w.kennzeichen(),
+        // „keine Werte“ trägt nie eine Zahl (bilanz.md Nr. 7, CHECK …_keine_werte_chk): eine gewichtete Summe ohne einen
+        // einzigen Eingang mit Wert rechnet 0 — gespeichert wird „keine Werte“ ohne Menge (Befund AP-08 IP-17: vorher
+        // scheiterte daran die ganze Scheibe, sobald ein Eingang in einer Viertelstunde „nur einen Stand“ hatte).
+        BigDecimal menge = BilanzAbleitung.KEINE_WERTE.equals(w.zustand()) ? null : w.menge();
+        return new Urteil(new Ergebnis(menge, w.zustand(), w.abdeckungProzent(), w.kennzeichen(),
                 TagRegeln.zustand(vorhanden, endgueltig, frist, jetzt), frist, vorhanden, endgueltig), null);
     }
 

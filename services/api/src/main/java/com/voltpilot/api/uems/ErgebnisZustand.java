@@ -170,7 +170,11 @@ public final class ErgebnisZustand {
             // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
             new Muster("mit_ersatzwert", "mit Ersatzwert (Methode „{methode}“, {kennung})",
                     Map.of("methode", "ersatzwert_methode", "kennung", "ersatzwert_kennung"),
-                    "mit Ersatzwert (Methode …)", 70, false, false, null, null));
+                    "mit Ersatzwert (Methode …)", 70, false, false, null, null),
+            // Seit 1.5 (AP-08 IP-17): ganz zuletzt die Version — sie sagt etwas über die ganze Zahl, nicht über
+            // einen Teil. Version 1 ist das Original und nie „korrigiert“.
+            new Muster("korrigiert", "korrigiert (Version {version})", Map.of("version", "ganzzahl_ab_2"),
+                    "korrigiert (Version n)", 80, false, true, null, null));
 
     /**
      * Ein Wortlaut, den eine frühere Fassung sprach und der gespeichert sein kann. Er wird als das
@@ -193,7 +197,6 @@ public final class ErgebnisZustand {
 
     public static final List<Vorgesehen> VORGESEHEN = List.of(
             new Vorgesehen("nachgeliefert", "nachgeliefert", "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"),
-            new Vorgesehen("korrigiert (Version n)", "korrigiert (Version ", "AP-08 IP-17/IP-18 (Versionen)"),
             new Vorgesehen("vorläufig", "vorläufig",
                     "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"),
             new Vorgesehen("endgültig", "endgültig",
@@ -342,6 +345,23 @@ public final class ErgebnisZustand {
             throw new IllegalArgumentException("unbekannte Ersatzwert-Methode " + methode);
         }
         return sprich("mit_ersatzwert", Map.of("methode", name, "kennung", kennung));
+    }
+
+    /**
+     * „korrigiert (Version 2)“ — Rang 80, seit 1.5 (AP-08 IP-17). Gesprochen von der Korrektur-Kaskade an jeder
+     * Stufe, deren Version sie schreibt; Version 1 ist das Original und hat den Satz nie.
+     */
+    public static String korrigiert(int version) {
+        if (version < 2) {
+            throw new IllegalArgumentException("Version " + version + " ist nie korrigiert");
+        }
+        return sprich("korrigiert", Map.of("version", String.valueOf(version)));
+    }
+
+    /** Ob ein Satz das Kennzeichen „korrigiert (Version n)“ ist — die Kaskade vergleicht Zahlen OHNE ihn. */
+    public static boolean istKorrigiert(String satz) {
+        Erkannt e = erkenne(satz);
+        return e != null && "korrigiert".equals(e.muster().schluessel());
     }
 
     /** „Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren“. */

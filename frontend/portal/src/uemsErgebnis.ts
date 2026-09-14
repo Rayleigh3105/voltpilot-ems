@@ -128,6 +128,9 @@ export const KENNZEICHEN: Muster[] = [
   // Seit 1.4 (AP-08 IP-13): zuletzt, was ein Mensch gesetzt hat — nach allem, was gemessen ist.
   m('mit_ersatzwert', 'mit Ersatzwert (Methode „{methode}“, {kennung})',
     { methode: 'ersatzwert_methode', kennung: 'ersatzwert_kennung' }, 'mit Ersatzwert (Methode …)', 70, false, false),
+  // Seit 1.5 (AP-08 IP-17): ganz zuletzt die Version — sie sagt etwas über die ganze Zahl, nicht über einen Teil.
+  // Version 1 ist das Original und nie „korrigiert“.
+  m('korrigiert', 'korrigiert (Version {version})', { version: 'ganzzahl_ab_2' }, 'korrigiert (Version n)', 80, false, true),
 ];
 
 /**
@@ -159,7 +162,6 @@ export type Vorgesehen = { wort: string; anfang: string; wortlautMit: string };
 /** Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. */
 export const VORGESEHEN: Vorgesehen[] = [
   { wort: 'nachgeliefert', anfang: 'nachgeliefert', wortlautMit: 'AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)' },
-  { wort: 'korrigiert (Version n)', anfang: 'korrigiert (Version ', wortlautMit: 'AP-08 IP-17/IP-18 (Versionen)' },
   { wort: 'vorläufig', anfang: 'vorläufig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
   { wort: 'endgültig', anfang: 'endgültig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
   { wort: 'Ablesezeitraum', anfang: 'Ablesezeitraum', wortlautMit: 'AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)' },
@@ -216,6 +218,15 @@ export const ersatzwert = (methode: string, kennung: string): string => {
   const name = METHODE_TEXT[methode];
   if (name === undefined) throw new Error(`unbekannte Ersatzwert-Methode ${methode}`);
   return sprich('mit_ersatzwert', { methode: name, kennung });
+};
+
+/**
+ * „korrigiert (Version 2)“ — Rang 80, seit 1.5 (AP-08 IP-17). Die Cloud speichert den Satz an jeder Stufe, deren
+ * Version die Korrektur-Kaskade schreibt; Version 1 ist das Original und hat ihn nie.
+ */
+export const korrigiert = (version: number): string => {
+  if (!Number.isInteger(version) || version < 2) throw new Error(`Version ${version} ist nie korrigiert`);
+  return sprich('korrigiert', { version: String(version) });
 };
 
 /** Der feste Anfang eines Musters bis zum ersten Platzhalter. */

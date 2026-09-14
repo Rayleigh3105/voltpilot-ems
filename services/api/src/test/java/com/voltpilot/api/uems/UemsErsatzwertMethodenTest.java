@@ -698,7 +698,11 @@ class UemsErsatzwertMethodenTest {
                     v.put("version", rs.getInt(2));
                     v.put("menge", rs.getBigDecimal(3));
                     v.put("menge_zustand", rs.getString(4));
-                    v.put("kennzeichen", saetze(rs.getString(5)));
+                    // Seit AP-08 IP-17 sagt jede Version zuletzt, dass sie eine ist; verglichen wird die Aussage davor.
+                    List<String> saetze = saetze(rs.getString(5));
+                    assertThat(saetze).as("korrigiert (Version n) zuletzt").last()
+                            .isEqualTo(ErgebnisZustand.korrigiert(rs.getInt(2)));
+                    v.put("kennzeichen", saetze.subList(0, saetze.size() - 1));
                     v.put("anteil", rs.getBigDecimal(6));
                     v.put("ersatzwerte", Arrays.asList((String[]) rs.getArray(7).getArray()));
                     out.put(rs.getTimestamp(1).toInstant(), v);

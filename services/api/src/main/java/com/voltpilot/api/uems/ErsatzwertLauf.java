@@ -115,6 +115,33 @@ public class ErsatzwertLauf {
         return new Lauf(ersatzwerte, versionen);
     }
 
+    // ------------------------------------------------------------------------------ Für die Kaskade (IP-17)
+
+    /**
+     * AP-08 IP-17: die Ersatzwerte einer Reihe, die {@code [von, bis)} berühren, geladen wie im Lauf und ausgewählt von
+     * DERSELBEN Regel ({@link VerbrauchRegeln#geltende}) — die Kaskade bildet Tag, Monat und Jahr mit genau den
+     * Ersatzwerten, mit denen dieser Lauf die Viertelstunden bildet, und wählt keine eigenen. Ein Ablesestand (d) wird
+     * hier nicht an den Rohwerten geprüft: über gröbere Perioden rechnet ihn keine Regel (die Kaskade lehnt ihn dort
+     * benannt ab).
+     *
+     * @param regel das Regelwort der Reihe ({@code zaehlerstand} …), {@code null} = keine Periodenregel
+     * @return leer, wenn kein Ersatzwert den Zeitraum berührt
+     */
+    Geltende geltende(Connection con, UUID tenant, UUID entity, String kanal, Instant von, Instant bis, String regel,
+            ReihenKontext kontext) throws SQLException {
+        Kandidat k = new Kandidat(tenant, null, entity, kanal);
+        List<Ersatzwert> ersatzwerte = new ArrayList<>();
+        for (Zeile z : zeilenDerReihe(con, tenant, entity, kanal)) {
+            if (z.von().isBefore(bis) && von.isBefore(z.bis())) {
+                ersatzwerte.add(ersatzwert(con, k, z));
+            }
+        }
+        if (ersatzwerte.isEmpty()) {
+            return new Geltende(List.of(), Map.of());
+        }
+        return VerbrauchRegeln.geltende(ersatzwerte, regel == null ? "" : regel, kontext.einheit(), Map.of());
+    }
+
     // ------------------------------------------------------------------------------ Ein Ersatzwert
 
     private record Kandidat(UUID tenant, String kennung, UUID entity, String kanal) {}
@@ -543,7 +570,10 @@ public class ErsatzwertLauf {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Array a = rs.getArray(6);
-                    out.put(zeit(rs, 1), new Stand(rs.getBigDecimal(2), rs.getString(3), saetze(rs.getString(4)),
+                    // Verglichen wird die Aussage, nicht die Nummer: „korrigiert (Version n)“ sagt nur, WO sie steht.
+                    List<String> saetze = saetze(rs.getString(4)).stream()
+                            .filter(x -> !ErgebnisZustand.istKorrigiert(x)).toList();
+                    out.put(zeit(rs, 1), new Stand(rs.getBigDecimal(2), rs.getString(3), saetze,
                             rs.getBigDecimal(5), Arrays.asList((String[]) a.getArray())));
                 }
             }
@@ -582,7 +612,10 @@ public class ErsatzwertLauf {
             ps.setInt(5, version);
             ps.setBigDecimal(6, soll.menge());
             ps.setString(7, soll.zustand());
-            ps.setString(8, ViertelstundeRegeln.kennzeichenJson(soll.kennzeichen()));
+            // E9 (AP-08 IP-17, ergebnis-zustand 1.5): jede Version sagt zuletzt, dass sie eine ist.
+            List<String> kennzeichen = new ArrayList<>(soll.kennzeichen());
+            kennzeichen.add(ErgebnisZustand.korrigiert(version));
+            ps.setString(8, ViertelstundeRegeln.kennzeichenJson(kennzeichen));
             ps.setBigDecimal(9, soll.anteil());
             ps.setArray(10, con.createArrayOf("text", soll.ersatzwerte().toArray()));
             ps.setString(11, anlass.kennung());

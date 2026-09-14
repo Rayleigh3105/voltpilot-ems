@@ -67,8 +67,9 @@ Lauf kennt dazu `rohwerte_fehlen` (d rechnet Z4 aus Rohwerten, Aufbewahrung 90 T
 
 ## Grenzen
 
-Nur die Viertelstunde: Tag, Monat, Jahr und berechnete Messstellen mit Ersatzwert bildet die Kaskade (IP-17)
-über dieselbe Regel; die F11/F21-Tage stehen schon als Vektor. Keine Vorschläge (IP-14), keine
+Nur die Viertelstunde: Tag, Monat, Jahr und berechnete Messstellen mit Ersatzwert bildet seit 14.09.2026 die Kaskade
+(`uems-korrektur-kaskade.md`) über dieselbe Regel — a–c; d–g haben über gröberen Perioden keine Vertragsregel
+(`ersatzwert_ohne_periodenregel`). Jede Version trägt seit IP-17 zuletzt „korrigiert (Version n)“. Keine Vorschläge (IP-14), keine
 Vier-Augen-Prüfung (IP-15), keine Route/kein Portal (IP-16), keine Rechte-Durchsetzung, keine automatische
 Auffüllung. Eine spätere Neuverdichtung einer vorläufigen Version-1-Zeile löst keine Neubildung aus
 (`basis_berechnet_am` hält fest, worauf gerechnet wurde).

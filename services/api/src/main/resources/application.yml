@@ -442,6 +442,16 @@ voltpilot:
       enabled: ${VOLTPILOT_UEMS_ERSATZWERT_ENABLED:true}
       interval-ms: ${VOLTPILOT_UEMS_ERSATZWERT_INTERVAL_MS:300000}
       je-lauf: ${VOLTPILOT_UEMS_ERSATZWERT_JE_LAUF:200}
+    # UEMS AP-08 IP-17: die KORREKTUR-KASKADE - alle fuenf Minuten zieht sie jede freigegebene
+    # oder zurueckgenommene Korrektur und jeden gerechneten Ersatzwert bis zum Jahr durch
+    # (Viertelstunde, Tag, Monat, Jahr, berechnete Messstellen, Kennzahlen-Naht) und gibt
+    # freigegebenen Berichten NUR den Revisions-Ausloeser; danach zieht sie vorlaeufige Versionen
+    # mit ihrer Grundlage nach. Die Freigabe selbst bleibt beim Menschen (E14). Vorgabe AN, im
+    # Testlauf AUS (surefire); wer sie prueft, ruft KorrekturKaskade.lauf() selbst.
+    kaskade:
+      enabled: ${VOLTPILOT_UEMS_KASKADE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_KASKADE_INTERVAL_MS:300000}
+      je-lauf: ${VOLTPILOT_UEMS_KASKADE_JE_LAUF:50}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

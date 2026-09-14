@@ -307,5 +307,6 @@ Ein Ersatzwert ist eine Zahl, die ein Mensch mit Begründung setzt (`messreihe_e
   Version 1 Zeichen für Zeichen (F21), und die bessere Methode rechnet vom Bestand aus.
 
 Gebildet werden die Versionen der Viertelstunde (`messreihe_viertelstunde_version`, Lauf
-`ErsatzwertLauf`); Tag, Monat und Jahr mit Ersatzwert bildet die Kaskade (IP-17) über dieselbe
-Regel `mitErsatzwerten` ⟷ `mit_ersatzwerten`.
+`ErsatzwertLauf`); Tag, Monat und Jahr mit Ersatzwert bildet die Kaskade (IP-17, `uems/KorrekturKaskade`) über dieselbe
+Regel `mitErsatzwerten` ⟷ `mit_ersatzwerten` — für a–c; d–g haben über gröberen Perioden keine Regel und werden dort
+benannt abgelehnt.

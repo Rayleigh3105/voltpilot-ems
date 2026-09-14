@@ -13,9 +13,10 @@
     "1.2 (additiv): die Einheit kVA (Anschluss-Scheinleistung) mit der Stelle der Leistung; Bilanz- und Netzanschluss-Sätze rufen zahl() an, statt selbst zu formatieren.",
     "1.3: der Zuwachs-Satz trägt seine Einheit („Zuwachs 337,6 kWh“) — rundung.anzeige_einheiten (gespeichert bleibt die Zähler-Einheit, angezeigt kWh · kvarh · m³; Familie menge), rundung.kennzeichen_ebene (ein Satz rundet auf JEDER Ebene gleich), kvarh mit den Stellen von kWh, Platzhalter menge; ohne bekannte Einheit steht der Satz ohne Zahl (luecke_zuwachs_ohne_einheit). Die alte Form „Zuwachs 337.600“ lebt in fruehere_fassungen. Die Uhrzeiten sprechen in der Zone des Standorts, die der Träger ReihenKontext bis zur Rechenregel reicht — ohne neuen Wortlaut.",
     "1.4 (AP-08 IP-13, additiv): „mit Ersatzwert (Methode …)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen mit_ersatzwert — Rang 70, zuletzt: was ein Mensch gesetzt hat, nach allem, was gemessen ist. Die Methode steht mit ihrem Namen in Kundensprache (vokabular.ersatzwert_methode[].name der Ereignis-Vektoren, Platzhalter ersatzwert_methode), die Kennung EW-<Jahr>-<Nr.> (Platzhalter ersatzwert_kennung). Gesprochen von VerbrauchRegeln.mitErsatzwerten ⟷ verbrauch.mit_ersatzwerten; jede Kennzeichen-Erwartung des Blocks ersatzwerte von verbrauch-vectors.json steht in der Liste.",
+    "1.5 (AP-08 IP-17, additiv): „korrigiert (Version n)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen korrigiert — Rang 80, ganz zuletzt: die Version sagt etwas über die ganze Zahl, nicht über einen Teil. Wortlaut „korrigiert (Version {version})“ mit version ≥ 2 (Version 1 ist das Original und nie korrigiert), derselbe Satz, den bilanz-vectors.json (F14) für berechnete Messstellen schon spricht. Gesprochen von der Korrektur-Kaskade (uems/KorrekturKaskade) an jeder Stufe, deren Version sie schreibt; kein Datum im Satz — wann und von wem, sagt die Versions-Historie (IP-18).",
     "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.4",
+  "schema_version": "1.5",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -309,6 +310,21 @@
       "verlangt_danach": null,
       "beispiel": "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)",
       "fall": "F11"
+    },
+    {
+      "schluessel": "korrigiert",
+      "muster": "korrigiert (Version {version})",
+      "platzhalter": {
+        "version": "ganzzahl_ab_2"
+      },
+      "wort": "korrigiert (Version n)",
+      "rang": 80,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "korrigiert (Version 2)",
+      "fall": "F10"
     }
   ],
   "fruehere_fassungen": [
@@ -334,11 +350,6 @@
       "wort": "nachgeliefert",
       "anfang": "nachgeliefert",
       "wortlaut_mit": "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"
-    },
-    {
-      "wort": "korrigiert (Version n)",
-      "anfang": "korrigiert (Version ",
-      "wortlaut_mit": "AP-08 IP-17/IP-18 (Versionen)"
     },
     {
       "wort": "vorläufig",
@@ -452,7 +463,7 @@
     {
       "stelle": "BilanzAbleitung.zahlDe (bilanz-vectors.json)",
       "befund": "Erledigt in 1.2: die Zahlen der Bilanz-Sätze standen mit Leerzeichen als Tausendertrenner, ungerundet und mit normalem Leerzeichen vor der Einheit („mindestens 1 055 kWh“, Netzanschluss „vereinbart 550 kW“). BilanzAbleitung.zahlDe ist entfernt; rest/summe/periodenwert nehmen die Ebene der Periode und rufen zahl() an, NetzanschlussRegeln.kopfzeile ebenso (kW/kVA).",
-      "warum_so_aufgenommen": "Eigener Vertrag (AP-10), in 1.1 nur benannt. Die Bilanz-Kennzeichen (berechnet (…), nicht zugeordnet, unplausibel (negativ), saldiert, korrigiert (Version n)) sind nicht Teil dieser Liste."
+      "warum_so_aufgenommen": "Eigener Vertrag (AP-10), in 1.1 nur benannt. Die Bilanz-Kennzeichen (berechnet (…), nicht zugeordnet, unplausibel (negativ), saldiert) sind nicht Teil dieser Liste; „korrigiert (Version n)“ steht seit 1.5 mit demselben Wortlaut auch hier (Kennzeichen korrigiert)."
     },
     {
       "stelle": "AP-08 F17 Anzeige",
@@ -1172,10 +1183,76 @@
       "erwartet": {"verstoesse": [], "satz": "101,8 kWh · vollständig · Verlauf 88 % · Gerätegrenze 10:40 mit Ablesestände"}
     },
     {
-      "name": "Gegenprobe: Kennzeichen, dessen Wortlaut noch nicht im Vertrag steht",
+      "name": "F10 Viertelstunde in Version 2 (seit 1.5)",
       "familie": "ergebnis",
       "fall": "F10",
-      "why": "„korrigiert (Version n)“ ist vorgesehen; den Satz spricht erst das Paket, das ihn erzeugt.",
+      "why": "Die freigegebene Nachlieferung K-2026-0007: 15 von 15 Werten, vollständig — und zuletzt, Rang 80, die Version. Kein Datum im Satz: wann und von wem sagt die Versions-Historie (IP-18).",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "24,0 kWh · vollständig · Verlauf 100 % · korrigiert (Version 2)"}
+    },
+    {
+      "name": "F12 Viertelstunde in Version 2 nach der Gerätegrenze (seit 1.5)",
+      "familie": "ergebnis",
+      "fall": "F12",
+      "why": "Rang 30 vor Rang 80: der nachgetragene Endstand macht die Viertelstunde vollständig (14,81 kWh), die Version steht nach dem Satz der Gerätegrenze.",
+      "eingang": {
+        "wert": "14.810",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["Gerätegrenze 09:12 mit Ableseständen", "korrigiert (Version 2)"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "14,8 kWh · vollständig · Verlauf 100 % · Gerätegrenze 09:12 mit Ableseständen · korrigiert (Version 2)"}
+    },
+    {
+      "name": "F21 Tag in Version 3 mit Ersatzwert (seit 1.5)",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Rang 70 vor Rang 80: erst, was ein Mensch gesetzt hat, dann die Version der ganzen Zahl.",
+      "eingang": {
+        "wert": "2354.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "58",
+        "kennzeichen": [
+          "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)",
+          "korrigiert (Version 3)"
+        ]
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.354 kWh · mit Ersatzwert · Verlauf 58 % · mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005) · korrigiert (Version 3)"}
+    },
+    {
+      "name": "Gegenprobe: die Version steht vor dem Ersatzwert",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Der Rang steigt nie: Rang 80 vor Rang 70 ist ein Verstoß.",
+      "eingang": {
+        "wert": "2354.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "58",
+        "kennzeichen": [
+          "korrigiert (Version 3)",
+          "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: das Datum gehört nicht in den Satz",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Die Anzeige des Reports („korrigiert (Version 2, 12.11.2026)“) ist Sache der Versions-Historie (IP-18); gespeichert und geprüft wird der Satz ohne Datum. Bis 1.4 war das ein vorgesehenes Wort, seit 1.5 ist es ein unbekannter Satz.",
       "eingang": {
         "wert": "24.000",
         "einheit": "kWh",
@@ -1184,7 +1261,37 @@
         "abdeckung_prozent": "100",
         "kennzeichen": ["korrigiert (Version 2, 12.11.2026)"]
       },
+      "erwartet": {"verstoesse": ["kennzeichen_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: Kennzeichen, dessen Wortlaut noch nicht im Vertrag steht",
+      "familie": "ergebnis",
+      "fall": "F9",
+      "why": "„nachgeliefert“ ist vorgesehen; den Satz spricht erst das Paket, das ihn erzeugt (AP-08 IP-10).",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["nachgeliefert am 05.11.2026 09:00"]
+      },
       "erwartet": {"verstoesse": ["kennzeichen_vorgesehen"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: das Kennzeichen „korrigiert“ steht nur einmal",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Eine Zahl hat genau eine Version.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)", "korrigiert (Version 3)"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
     },
     {
       "name": "Gegenprobe: einmaliges Kennzeichen doppelt",
@@ -1349,6 +1456,22 @@
       "why": "„nachgeliefert“ ist ein Wort des Vokabulars ohne Wortlaut in diesem Vertrag.",
       "eingang": {"satz": "nachgeliefert am 05.11. 09:00"},
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": true}
+    },
+    {
+      "name": "korrigiert mit Version (seit 1.5)",
+      "familie": "erkennen",
+      "fall": "F21",
+      "why": "Seit 1.5 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "korrigiert (Version 3)"},
+      "erwartet": {"schluessel": "korrigiert", "werte": {"version": "3"}, "vorgesehen": false}
+    },
+    {
+      "name": "Version 1 ist nie korrigiert",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Version 1 ist das Original; der Platzhalter nimmt erst 2 an. Und der alte Anfang macht den Satz nicht mehr vorgesehen.",
+      "eingang": {"satz": "korrigiert (Version 1)"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
     },
     {
       "name": "25-Stunden-Tag",
