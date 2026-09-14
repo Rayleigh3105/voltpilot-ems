@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -99,7 +100,11 @@ public final class BilanzDto {
             List<String> kennzeichen,
             String anzeige) {}
 
-    /** Der Rest ({@code MessstelleFormelRegeln.periodenwert("rest", …)}): fest Wirkenergie · Bezug (E1). */
+    /**
+     * Der Rest ({@code MessstelleFormelRegeln.periodenwert("rest", …)}): fest Wirkenergie · Bezug (E1).
+     * {@code herkunft}: die Hülle {@code {satz, fehlt}} nach {@code bilanzwert-herkunft.schema.json} (AP-10 IP-12) —
+     * ohne bestätigte Rest-Messstelle {@code satz} null mit {@code fehlt: [messstelle, formel_fassung]}.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Rest(
             BigDecimal menge,
@@ -110,7 +115,8 @@ public final class BilanzDto {
             Integer abdeckungProzent,
             List<String> fehlend,
             List<String> kennzeichen,
-            String kundensatz) {}
+            String kundensatz,
+            Map<String, Object> herkunft) {}
 
     /** Ein Eingang mit dem, was AP-08 an seinem Periodenwert sagt; {@code grund} aus dem Lese-Modell „Werte je Messstelle“. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

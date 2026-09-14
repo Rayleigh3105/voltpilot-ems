@@ -67,6 +67,11 @@ seitdem keine Menge mehr (vorher 0 und CHECK-Fehler).
 Werden NICHT gespeichert: die Kostenstellen-Sicht bildet sie beim Lesen aus den Tageswerten dieser Spur (und der
 gemessenen) mit der Version der Quelle; die Kaskade meldet `bilanz_neu_berechnet` — `uems-kostenstelle-energie.md`.
 
+## Herkunft (AP-10 IP-12)
+
+Die Route „Werte je Messstelle“ liefert an jeder gespeicherten Zahl die Hülle `herkunft` aus `bilanzwert_eingang` —
+`uems-bilanzwert-herkunft-routen.md`.
+
 ## Nicht gebaut
 
-Herkunft aus `bilanzwert_eingang` (IP-12), Portal (IP-14), Rechte-Durchsetzung (AP-03), eine Periodenzahl über einen Termwechsel.
+Portal (IP-14), Rechte-Durchsetzung (AP-03), eine Periodenzahl über einen Termwechsel.

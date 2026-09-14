@@ -49,8 +49,9 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
    steht nicht im Block (nichts gemessen, nichts offen); ein Momentanwert ohne Anteil nie.
 5. **Herkunft (E13).** Je Posten (nicht bei „nicht verteilt“) ein Satz der Art `verteilt` nach
    `bilanzwert-herkunft.schema.json`: Ziel = die Kostenstelle, Fassung des letzten verteilten Tages, EIN Eingang =
-   die Quelle über dieselben Tage, ab Version 2 Auslöser `correction K-… · MS-xx TT Version n`, `berechnet_am` = die
-   Sicht. Der Messwert-Herkunftsvertrag bleibt unberührt.
+   die Quelle über dieselben Tage, ab Version 2 Auslöser `correction MS-xx TT Version n` (seit IP-12 ohne K-Kennung, wie
+   F14), `berechnet_am` = die Sicht; seit IP-12 an `tage[]` einer berechneten Quelle der gespeicherte Satz des Tages
+   (`uems-bilanzwert-herkunft-routen.md`). Der Messwert-Herkunftsvertrag bleibt unberührt.
 6. **Die Meldung kommt aus DERSELBEN Transaktion wie die Versionen** — für jede berechnete Messstelle mit neuer
    Version und jede gemessene Messstelle einer korrigierten Reihe mit Anteil an den Tagen; die Kennung ist abgeleitet
    (Anlass, Fassung, Status, Messstelle). ⚠ Tests, die `messreihe_ereignis` vor/nach der Kaskade vergleichen, nehmen
@@ -70,4 +71,4 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
 
 ## Nicht gebaut
 
-Herkunft in den Antworten von IP-9/IP-10 (IP-12), Portal-Fläche und `api.ts` (IP-15), Rechte-Durchsetzung (AP-03).
+Portal-Fläche und `api.ts` (IP-15), Rechte-Durchsetzung (AP-03).

@@ -27,7 +27,8 @@ Unternehmen und ein Gebäude daraus sehen.
 > für Zufluss/Abfluss/zugeordnet, `periodenwert("rest")` und `live` für die Live-Zeile — die Route
 > rechnet nichts selbst. Seit IP-10 speichert `BerechnetePeriodenLauf` die Periodenwerte berechneter
 > Messstellen über `periodenwert` (`BerechnetePeriode.rechne`, F1–F7 in `BerechnetePeriodeVectorsTest`).
-> Herkunft (IP-12) und die Portal-Fläche (IP-14) folgen.
+> Seit IP-12 trägt jeder Rest der Bilanz-Route und jeder gespeicherte Periodenwert seine Herkunft
+> ([`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md) §2.1); die Portal-Fläche (IP-14) folgt.
 
 ## 1. Warum es zwei Umsetzungen gibt
 

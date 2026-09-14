@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -100,6 +101,9 @@ class BilanzApiTest {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    BilanzService bilanzService;
 
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
@@ -393,6 +397,39 @@ class BilanzApiTest {
     // ================================================================ Register-Aggregat
 
     /**
+     * AP-10 IP-12: der Rest der Bilanz je Anlage trägt seine HERKUNFT. Werk Lindach am 18.10.2026 (F1): gelesen am
+     * 19.10.2026 um 00:12 (MESZ), liefert die Route am Rest den Satz Zeichen für Zeichen wie die Prüfung
+     * {@code herkunft} von F1 — Rest-Messstelle MS-22 mit Formel-Fassung 1, die drei Eingänge aus der Stellung mit
+     * Rolle und Version. Ohne bestätigte Rest-Messstelle (Halle 2) gibt es keinen halben Satz: {@code satz} null,
+     * {@code fehlt} nennt Messstelle und Formel-Fassung.
+     */
+    @Test
+    void f1DerRestDerBilanzTraegtSeineHerkunftByteGleichZumVektor() throws Exception {
+        LocalDate tag = LocalDate.parse("2026-10-18");
+        Welt w = lindach();
+        tageswert(w, "MS-16", tag, "100");
+        tageswert(w, "MS-17", tag, "60");
+        tageswert(w, "MS-18", tag, "30");
+        bilanzService.uhrStellen(Clock.fixed(Instant.parse("2026-10-18T22:12:00Z"), ZoneId.of("UTC")));
+        try {
+            JsonNode hz = hauptzaehler(ok(ruf(w, HttpMethod.GET, bilanzPfad(w) + "?periode=tag&am=" + tag, null), 200),
+                    "MS-16");
+            JsonNode werte = hz.get("abschnitte").get(0).get("werte").get(0);
+            assertThat(rest(werte)).isEqualByComparingTo("10");
+            assertThat(BilanzwertHerkunftVektor.route(rest(werte, "herkunft")))
+                    .isEqualTo(BilanzwertHerkunftVektor.umschlag("bilanz-vectors.json", "F1"));
+
+            Welt ohneRest = halle2();
+            tageswert(ohneRest, "MS-10", tag, "100");
+            JsonNode herkunft = rest(tag(ohneRest, tag), "herkunft");
+            assertThat(herkunft.get("satz").isNull()).as("kein halber Satz").isTrue();
+            assertThat(texte(herkunft.get("fehlt"))).containsExactly("messstelle", "formel_fassung");
+        } finally {
+            bilanzService.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    /**
      * Berechnete Messstellen zählen im Register-Aggregat mit (bis IP-9: „berechnete zählen erst mit AP-10“):
      * die Rest-Messstelle ist „Vollständig“, solange alle Eingänge der Stellung liefern, und „Unvollständig
      * (fehlt: MS-12)“, wenn einer schweigt — dann liefert sie im Aggregat nicht.
@@ -471,6 +508,28 @@ class BilanzApiTest {
         for (String kz : List.of("MS-11", "MS-12", "MS-13", "MS-14")) {
             messstelle(w, kz, anlage, "Unterzähler", ms10, "2020-01-01");
         }
+        return w;
+    }
+
+    /** Werk Lindach (AN-3, F1): MS-16 Hauptzähler, MS-17/MS-18 Unterzähler, die bestätigte Rest-Messstelle MS-22. */
+    private Welt lindach() {
+        int nr = NR.incrementAndGet();
+        UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
+                "Bilanz-Probe Lindach #" + nr);
+        String name = "Werk Lindach #" + nr;
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) VALUES (?, ?, ?) RETURNING id",
+                UUID.class, t, name, Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")));
+        Welt w = new Welt(t, anlage, name, new LinkedHashMap<>(), new LinkedHashMap<>(), new LinkedHashMap<>());
+        UUID ms16 = messstelle(w, "MS-16", anlage, "Hauptzähler", null, "2020-01-01");
+        messstelle(w, "MS-17", anlage, "Unterzähler", ms16, "2020-01-01");
+        messstelle(w, "MS-18", anlage, "Unterzähler", ms16, "2020-01-01");
+        UUID ms22 = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, 'MS-22', 'Lindach nicht zugeordnet', 'berechnet', 'Strom', "
+                + "'Wirkenergie', 'Bezug', 'kWh', 'Intervallmenge') RETURNING id", UUID.class, t);
+        root.update("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, formel_typ, herkunft, "
+                + "actor_sub, actor_name, actor_art, rest_hauptzaehler_id) VALUES (?, ?, 1, 'rest', 'anlage', 'sub-test', "
+                + "'Test', 'kunde', ?)", t, ms22, ms16);
+        w.messstellen().put("MS-22", ms22);
         return w;
     }
 

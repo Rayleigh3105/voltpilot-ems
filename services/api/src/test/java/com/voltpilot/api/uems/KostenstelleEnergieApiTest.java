@@ -10,6 +10,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -100,6 +101,9 @@ class KostenstelleEnergieApiTest {
     @Autowired
     BerechnetePeriodenLauf lauf;
 
+    @Autowired
+    KostenstelleEnergieService kostenstellenSicht;
+
     private static JdbcTemplate root;
     private static final AtomicInteger NR = new AtomicInteger();
 
@@ -171,6 +175,83 @@ class KostenstelleEnergieApiTest {
         assertThat(b.path("verteilt").path("menge").decimalValue()
                 .add(a.path("verteilt").path("menge").decimalValue())).as("Summe der Kostenstellen = MS-07")
                 .isEqualByComparingTo("15500");
+    }
+
+    // ============================================================================ Herkunft (AP-10 IP-12)
+
+    /**
+     * F10: MS-07 geht im Oktober 2026 zu 70 % an 4100 (15 900 kWh gemessen → 11 130 kWh). Gelesen am 01.11.2026 um
+     * 00:15 (MEZ), trägt der verteilte Posten den Satz Zeichen für Zeichen wie die Prüfung {@code herkunft} von F10 in
+     * {@code verteilung-vectors.json} — und die Tage der GEMESSENEN Quelle tragen keine Herkunft ({@code null}).
+     */
+    @Test
+    void f10DieHerkunftDesVerteiltenPostensIstByteGleichZumVektor() throws Exception {
+        Welt w = welt("Werk Ahrenberg – Halle 1 (F10)");
+        messstelle(w, "MS-07", null, null);
+        UUID k4100 = kostenstelle(w, "4100", "Spritzguss", "2026-10-01", null);
+        kostenstelle(w, "4200", "Montage", "2026-10-01", null);
+        verteilung(w, "MS-07", List.of(new Anteil("4100", "70", "2026-10-01", null),
+                new Anteil("4200", "30", "2026-10-01", null)));
+        LocalDate oktober = LocalDate.parse("2026-10-01");
+        for (int i = 0; i < 31; i++) {
+            tageswert(w, "MS-07", oktober.plusDays(i), i == 30 ? "900" : "500");
+        }
+        kostenstellenSicht.uhrStellen(Clock.fixed(Instant.parse("2026-10-31T23:15:00Z"), ZoneId.of("UTC")));
+        try {
+            JsonNode p = energie(w, k4100, "periode=monat&am=2026-10-15").path("verteilt").path("posten").get(0);
+            assertThat(p.path("menge").decimalValue()).isEqualByComparingTo("11130");
+            assertThat(BilanzwertHerkunftVektor.route(p.path("herkunft")))
+                    .isEqualTo(BilanzwertHerkunftVektor.umschlag("verteilung-vectors.json", "F10"));
+            assertThat(p.path("tage").get(0).has("herkunft")).isTrue();
+            assertThat(p.path("tage").get(0).path("herkunft").isNull())
+                    .as("eine gemessene Quelle hat keine Bilanzwert-Herkunft").isTrue();
+        } finally {
+            kostenstellenSicht.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    /**
+     * F14: der Tageswert des Rests MS-22 in Version 2 trägt an {@code nicht_verteilt.posten[].tage[]} seine Herkunft —
+     * Zeichen für Zeichen wie die Prüfung {@code herkunft} von F14 in {@code bilanz-vectors.json}: die Eingänge IN
+     * Version 2 aus {@code bilanzwert_eingang} (so schreibt sie die Kaskade, hier eingetragen), der Auslöser aus dem
+     * Anlass der Version. Mit {@code version=1} steht derselbe Tag mit Version 1 und ohne Auslöser da.
+     */
+    @Test
+    void f14DieHerkunftDesKorrigiertenRestsIstByteGleichZumVektor() throws Exception {
+        Welt w = lindach("Werk Lindach (F14, Herkunft)", false);
+        lauf.lauf(Instant.parse("2026-10-27T12:00:00Z"));
+        versionZwei(w, "MS-17", false, "58", List.of("korrigiert (Version 2)"));
+        versionZwei(w, "MS-22", true, "12", List.of("berechnet (Differenz)", "nicht zugeordnet", "korrigiert (Version 2)"));
+        Instant kaskade = Instant.parse("2026-10-21T07:40:00Z");
+        int position = 0;
+        for (String[] e : List.of(new String[] {"MS-16", "zufluss", "100", "1", "[]"},
+                new String[] {"MS-17", "zugeordnet", "58", "2", "[\"nachgeliefert\"]"},
+                new String[] {"MS-18", "zugeordnet", "30", "1", "[]"})) {
+            root.update("INSERT INTO bilanzwert_eingang (periode_beginn, tenant_id, messstelle_id, periode, version, "
+                    + "position, eingang_messstelle_id, eingang_kennzeichen, rolle, anteil, menge, menge_zustand, fassung, "
+                    + "abdeckung_prozent, eingang_version, kennzeichen, berechnet_am) VALUES (?, ?, ?, 'tag', 2, ?, ?, ?, ?, "
+                    + "'gesamt', ?::numeric, 'vollständig', 'endgueltig', 100, ?, ?::jsonb, ?)",
+                    Timestamp.from(beginn(F14_TAG)), w.mandant(), w.messstellen().get("MS-22"), position++,
+                    w.messstellen().get(e[0]), e[0], e[1], e[2], Integer.parseInt(e[3]), e[4], Timestamp.from(kaskade));
+        }
+
+        JsonNode offen = energie(w, w.kostenstellen().get("4300"), "periode=tag&am=" + F14_TAG).path("nicht_verteilt");
+        assertThat(kennzeichenDerPosten(offen)).containsExactly("MS-16", "MS-22");
+        JsonNode ms22 = offen.path("posten").get(1);
+        assertThat(ms22.path("herkunft").isNull()).as("nicht verteilt: keine Verteilung").isTrue();
+        assertThat(BilanzwertHerkunftVektor.route(ms22.path("tage").get(0).path("herkunft")))
+                .isEqualTo(BilanzwertHerkunftVektor.umschlag("bilanz-vectors.json", "F14"));
+        assertThat(offen.path("posten").get(0).path("tage").get(0).path("herkunft").isNull())
+                .as("MS-16 ist gemessen").isTrue();
+
+        JsonNode alt = energie(w, w.kostenstellen().get("4300"), "periode=tag&am=" + F14_TAG + "&version=1")
+                .path("nicht_verteilt").path("posten").get(1).path("tage").get(0).path("herkunft");
+        assertThat(alt.path("fehlt")).isEmpty();
+        assertThat(alt.path("satz").path("version").asInt()).isEqualTo(1);
+        assertThat(alt.path("satz").path("ausloeser").isNull()).isTrue();
+        assertThat(alt.path("satz").path("menge").asText()).isEqualTo("10");
+        assertThat(alt.path("satz").path("eingaenge").get(1).path("menge").asText()).isEqualTo("60");
+        assertThat(alt.path("satz").path("berechnet_am").asText()).as("der Lauf").isEqualTo("2026-10-27T13:00:00+01:00");
     }
 
     // ============================================================================ nicht verteilt
@@ -294,7 +375,8 @@ class KostenstelleEnergieApiTest {
         JsonNode satz = ms17.path("herkunft").path("satz");
         assertThat(ms17.path("herkunft").path("fehlt")).isEmpty();
         assertThat(satz.path("version").asInt()).isEqualTo(2);
-        assertThat(satz.path("ausloeser").asText()).isEqualTo("correction K-2026-0011 · MS-17 2026-10-18 Version 2");
+        assertThat(satz.path("ausloeser").asText()).as("dieselbe Form wie F14 (AP-10 IP-12)")
+                .isEqualTo("correction MS-17 2026-10-18 Version 2");
         assertThat(satz.path("eingaenge").get(0).path("version").asInt()).isEqualTo(2);
         JsonNode offen = neu.path("nicht_verteilt");
         assertThat(kennzeichenDerPosten(offen)).containsExactly("MS-16", "MS-22");

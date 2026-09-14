@@ -18172,7 +18172,7 @@ components:
         anzeige: { type: string, nullable: true, example: "mindestens 1.055 kWh (MS-14 fehlt)" }
     BilanzRest:
       type: object
-      required: [menge, groesse, richtung, einheit, zustand, abdeckung_prozent, fehlend, kennzeichen, kundensatz]
+      required: [menge, groesse, richtung, einheit, zustand, abdeckung_prozent, fehlend, kennzeichen, kundensatz, herkunft]
       properties:
         menge: { type: number, nullable: true, description: "Ungerundet; null = keine Werte, nie 0. Negativ wird gezeigt, nie geklemmt." }
         groesse: { type: string, example: Wirkenergie }
@@ -18183,6 +18183,10 @@ components:
         fehlend: { type: array, items: { type: string } }
         kennzeichen: { type: array, items: { type: string } }
         kundensatz: { type: string, nullable: true, example: "10 kWh sind keiner Messstelle zugeordnet" }
+        herkunft:
+          type: object
+          description: "AP-10 IP-12: {satz, fehlt} nach bilanzwert-herkunft.schema.json (Art berechnet, Typ rest). Ohne bestätigte Rest-Messstelle ist satz null und fehlt nennt messstelle und formel_fassung."
+          additionalProperties: true
     BilanzEingang:
       type: object
       required: [messstelle, rolle, anteil, menge, zustand, abdeckung_prozent, version, kennzeichen, grund]
@@ -18296,7 +18300,7 @@ components:
         herkunft:
           type: object
           nullable: true
-          description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null."
+          description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null — die Rechnung einer berechneten Messstelle steht je Tag an tage[].herkunft."
           additionalProperties: true
     KostenstelleEnergieMessstelle:
       type: object
@@ -18308,7 +18312,7 @@ components:
         art: { type: string, enum: [gemessen, berechnet] }
     KostenstelleEnergieTag:
       type: object
-      required: [tag, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund]
+      required: [tag, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund, herkunft]
       properties:
         tag: { type: string, format: date }
         anteil_prozent: { type: number, nullable: true, description: "Der Anteil DIESES Tages; bei nicht_verteilt null." }
@@ -18318,6 +18322,11 @@ components:
         abdeckung_prozent: { type: integer, nullable: true }
         version: { type: integer }
         grund: { type: string, nullable: true, enum: [kein_tageswert, quelle_keine_werte, rest_unplausibel, null] }
+        herkunft:
+          type: object
+          nullable: true
+          description: "AP-10 IP-12: {satz, fehlt} nach bilanzwert-herkunft.schema.json (Art berechnet) am gespeicherten Tageswert einer BERECHNETEN Quelle in der gezeigten Version; null = nicht berechnet (gemessene Quelle) oder kein Tageswert."
+          additionalProperties: true
     VerteilungFehler:
       type: object
       description: >
@@ -18544,7 +18553,8 @@ components:
         dem Kennzeichen „aus Leistung integriert“), `mittel`/`min`/`max` ein Momentanwert - nie
         beides. Ungerundet; gerundet wird nur angezeigt (E11).
       required: [von, bis, beschriftung, stunden, tagesdauer, menge, mittel, min, max, zustand, kennzeichen,
-        erhalten, erwartet, abdeckung_prozent, fassung, endgueltig_ab, version, gebildet_aus, quelle, grund, ereignisse]
+        erhalten, erwartet, abdeckung_prozent, fassung, endgueltig_ab, version, gebildet_aus, quelle, grund, ereignisse,
+        herkunft]
       properties:
         von: { type: string }
         bis: { type: string }
@@ -18572,6 +18582,11 @@ components:
             ohne_menge_gespeichert, version_nicht_gespeichert]
           description: Warum der Schritt keine Zahl trägt, obwohl die Anfrage gültig ist.
         ereignisse: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteEreignis" } }
+        herkunft:
+          type: object
+          nullable: true
+          description: "AP-10 IP-12: {satz, fehlt} nach bilanzwert-herkunft.schema.json an jeder BERECHNETEN Zahl (Spur berechnet, Eingänge aus bilanzwert_eingang). null = nicht berechnet: ein gemessener Schritt oder einer ohne Zahl (grund gesetzt)."
+          additionalProperties: true
     MessstelleWerteEreignis:
       type: object
       description: Ein Verweis auf eine Meldung des Ereignis-Vertrags - der Inhalt bleibt dort.
