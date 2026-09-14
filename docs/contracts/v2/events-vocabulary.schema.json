@@ -154,6 +154,23 @@
         "arten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } }
       }
     },
+    "reserviert": {
+      "type": "array",
+      "description": "Seit AP-11 IP-1: Arten und Bezüge, die ein späteres Paket anlegt. Ein reservierter Eintrag ist KEIN Wort des Vokabulars — die Prüfung lehnt ihn ab, bis das genannte Paket ihn in `vokabular.arten` einträgt.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["art", "bezug", "urheber", "angelegt_von", "gelesen_von", "regel", "bis_dahin"],
+        "properties": {
+          "art": { "$ref": "#/$defs/code" },
+          "bezug": { "$ref": "#/$defs/code" },
+          "urheber": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["box", "datenannahme", "writer", "cloud", "kunde"] } },
+          "angelegt_von": { "type": "string", "minLength": 1 },
+          "gelesen_von": { "type": "string", "minLength": 1 },
+          "regel": { "type": "string", "minLength": 1 },
+          "bis_dahin": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
   },
   "$defs": {

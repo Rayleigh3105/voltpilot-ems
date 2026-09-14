@@ -5,9 +5,9 @@
   "description": "Die Form der EINEN geteilten Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement. Sie beschreibt ein erfundenes Unternehmen mit zwei Standorten, fünf Gebäuden, sieben Bereichen, drei Anlagen und 22 Messstellen und dient jedem Folgepaket als gemeinsame Beispieldatenbasis. Kennzeichen sind stabile Schlüssel; jeder Verweis geht über ein Kennzeichen. Zeitgültige Angaben haben zwei Formen: tagesgenau (Orte, Anlage → Standort, Messstelle → Ort, Stellung, Kostenstellen, Anteile, Flächen) mit einem Tag „gültig ab“ und dem LETZTEN gültigen Tag als „gültig bis“; auf die Minute (Quellen, Einbauten, Wandler, Datenquelle → Box) halboffen mit „gültig bis“ ausschließend. Eine Änderung überschreibt nie, sie beendet die alte Gültigkeit und beginnt eine neue. Regeln, die eine Form nicht ausdrücken kann — genau ein Hauptzähler je Anlage und Richtung, Kostenstellen-Anteile von 100 %, ein Ort je Messstelle, kein Ziel vor seinem Bestehen, eine zuständige Box je Datenquelle und Zeitpunkt, das Abzeichen eines rückwirkenden Eintrags — prüfen die beiden Zwillings-Tests (Java services/api .../uems/UemsReferenzunternehmenVectorsTest und TypeScript frontend/portal/src/uemsReferenzunternehmen.test.ts) gegen dieselbe Datei.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "zuordnungen", "zeitachse"],
+  "required": ["version", "beschreibung", "stand", "unternehmen", "standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen", "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten", "messstellen", "personen", "bezugsgroessen", "kennzahl_beispiel", "kennzahlen", "zuordnungen", "zeitachse"],
   "properties": {
-    "version": { "type": "string", "const": "1.2", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen · 1.2: Bezugsgrößen-Kennungen und BZ-5, Ablesungen an MS-21, MS-22 als Rest von AN-3, Tageswerte des 18.10.2026, `formel_typ` — sowie die beiden entschiedenen Berichtigungen MS-09 und Ende der 9000-Anteile)." },
+    "version": { "type": "string", "const": "1.3", "description": "Fassung dieser Beispieldaten. Sie wächst, wenn ein Folgepaket die Beispielwelt erweitert oder ein Abgleich mit den Verträgen sie berichtigt (1.1: tagesgenaue Gültigkeiten als Kalendertag, Ort → Elternknoten, U als Unternehmen · 1.2: Bezugsgrößen-Kennungen und BZ-5, Ablesungen an MS-21, MS-22 als Rest von AN-3, Tageswerte des 18.10.2026, `formel_typ` — sowie die beiden entschiedenen Berichtigungen MS-09 und Ende der 9000-Anteile · 1.3: BZ-6 und BZ-7 als Gebäude-Stückzahlen und der Block `kennzahlen[]` mit KZ-0001 … KZ-0005, AP-11 E13)." },
     "beschreibung": { "type": "string", "description": "Wofür diese Datei da ist, in einem Satz." },
     "stand": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Tag, an dem die Daten zuletzt bestätigt wurden." },
     "_comment": { "type": "array", "items": { "type": "string" }, "description": "Erklärender Fließtext für Menschen; ohne Wirkung." },
@@ -491,6 +491,34 @@
         "rechnung": { "type": "string", "description": "Der Rechenweg mit den Zahlen der Beispielwelt." },
         "ergebnis": { "type": "number", "description": "Das Ergebnis." },
         "einheit": { "type": "string", "description": "Einheit des Ergebnisses." }
+      }
+    },
+
+    "kennzahlen": {
+      "type": "array", "minItems": 1,
+      "description": "Fassung 1.3 (AP-11 E13): die Kennzahlen der Beispielwelt — eigene Objekte neben den Messstellen (AP-11 E1), gerechnet nach docs/contracts/v2/kennzahl.md. Jeder Eingang ist ein Kennzeichen; der Oktoberwert steht ungerundet auf 4 Stellen.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["kennzeichen", "name", "rechenform", "zaehler", "nenner", "nenner_ort", "paare", "geltung_art", "geltung", "verantwortlich", "zweck", "einheit", "oktober_2026_zaehler", "oktober_2026_nenner", "oktober_2026_wert"],
+        "properties": {
+          "kennzeichen": { "type": "string", "pattern": "^KZ-[0-9]{4}$", "description": "Kennzeichen der Kennzahl (KZ-0001 …), nie an eine andere weitergegeben." },
+          "name": { "type": "string", "minLength": 1, "description": "Name in Kundensprache." },
+          "rechenform": { "type": "string", "enum": ["quotient", "anteil", "zusammenfassung"], "description": "Die Rechenform (AP-11 E2): Menge je Bezugsgröße, Teil am Ganzen, Summe durch Summe über Kennzahlen." },
+          "zaehler": { "type": ["string", "null"], "description": "Kennzeichen der Menge (Messstelle); leer bei einer Zusammenfassung." },
+          "nenner": { "type": ["string", "null"], "description": "Kennzeichen der Bezugsgröße; leer bei einer Zusammenfassung." },
+          "nenner_ort": { "type": ["string", "null"], "description": "Bei einem Stammdatum am Ort (BZ-4 Bezugsfläche): das Gebäude, dessen Fläche gelesen wird; sonst leer." },
+          "paare": { "type": ["array", "null"], "items": { "type": "string" }, "description": "Bei einer Zusammenfassung: die Kennzahlen, deren Zähler und Nenner summiert werden; sonst leer." },
+          "geltung_art": { "type": "string", "enum": ["unternehmen", "standort", "gebaeude", "bereich", "prozess", "kostenstelle", "messstelle"], "description": "Der Fach-Geltungsbereich (AP-11 E6) — eines von sieben Fachobjekten." },
+          "geltung": { "type": "string", "description": "Kennzeichen des Geltungsobjekts." },
+          "verantwortlich": { "type": "string", "description": "Kürzel der verantwortlichen Person." },
+          "zweck": { "type": "string", "minLength": 1, "description": "Wofür die Kennzahl da ist, in Kundensprache." },
+          "einheit": { "type": "string", "description": "Die Einheit als ungekürztes Paar „Menge/Bezugsgröße“ (AP-11 E11)." },
+          "oktober_2026_zaehler": { "type": "number", "description": "Die Menge im Oktober 2026 (bei einer Zusammenfassung: die Summe der Paare)." },
+          "oktober_2026_nenner": { "type": "number", "description": "Die Bezugsgröße im Oktober 2026 (bei einer Zusammenfassung: die Summe der Paare; beim Stammdatum: der Wert am 31.10.2026)." },
+          "oktober_2026_wert": { "type": "number", "description": "Zähler ÷ Nenner, ungerundet auf 4 Stellen." },
+          "mittel_ungewichtet_nicht_gebildet": { "type": "number", "description": "Nur bei einer Zusammenfassung: die Zahl, die NICHT entsteht — das ungewichtete Mittel der Paare (AP-11 Q5)." },
+          "hinweis": { "type": ["string", "null"], "description": "Woher die Zahlen kommen." }
+        }
       }
     },
 

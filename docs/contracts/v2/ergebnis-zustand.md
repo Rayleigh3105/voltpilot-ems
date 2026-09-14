@@ -257,6 +257,52 @@ ist. Die wichtigsten:
 - F17 zeigt „1 240 m³“ am Monat; der Vertrag folgt dem Wortlaut von E11 („1.240,0 m³“). E10
   schreibt „23 Stunden“; der Vertrag liest es wie F14 als „23 Stunden (Zeitumstellung)“.
 
+## 7. Kennzeichen eines Kennzahl-Werts (seit 1.9, AP-11 IP-1)
+
+Eine Kennzahl ([`kennzahl.md`](./kennzahl.md)) teilt Mengen; ihre Zahl trägt dieselben vier
+Zustandswörter (§1), aber eine EIGENE Kennzeichen-Liste — Block `kennzahl_kennzeichen` der
+Vektor-Datei. Die Verbrauchs-Liste (§2) bleibt Satz für Satz, wie sie ist; `ErgebnisZustand`
+spricht keinen der Sätze. Gesprochen und geprüft werden sie von `uems/KennzahlRegeln` ⟷
+`uemsKennzahl.ts` gegen `kennzahl-vectors.json`.
+
+| Rang | Muster (Schlüssel) | Herkunft | ohne Zahl | Fall |
+|---|---|---|---|---|
+| 10 | berechnet (Kennzahl) (`berechnet_kennzahl`) | eigen | nein | K1 |
+| 20 | enthält berechnet ({text}) (`enthaelt_berechnet`) | geerbt | nein | K4 |
+| 21 | enthält verteilt ({text}) (`enthaelt_verteilt`) | geerbt | nein | K5 |
+| 30 | gewichtet (Summe ÷ Summe) (`gewichtet`) | eigen | nein | K3 |
+| 40 | Untergrenze — Menge unvollständig ({text}) (`untergrenze`) | eigen | nein | K10 |
+| 40 | Obergrenze — Bezugsgröße unvollständig ({text}) (`obergrenze`) | eigen | nein | K11 |
+| 40 | Richtung unbestimmt — Menge und Bezugsgröße unvollständig (`richtung_unbestimmt`) | eigen | nein | konstruiert |
+| 41 | Nenner 0 ({text}) (`nenner_null`) | eigen | ja | K9 |
+| 50 | ab {datum} (`ab`) | geerbt | nein | K2 |
+| 51 | mit Ersatzwert ({text}) (`mit_ersatzwert`) | geerbt | nein | konstruiert |
+| 52 | {bezeichnung} geändert am {datum} ({wechsel}) (`stammdatum_geaendert`) | geerbt | nein | konstruiert |
+| 55 | Berechnung geändert am {datum} (Fassung {von} → {nach}) (`berechnung_geaendert_am`) | eigen | nein | konstruiert |
+| 60 | {mit} von {gesamt} {wort} (`x_von_y`) | beides | nein | K3 |
+| 60 | {mit} von {gesamt} {wort} ({fehlt}) (`x_von_y_fehlt`) | eigen | nein | konstruiert |
+| 70 | {geltung} ab {datum} (`ab_mit_geltung`) | geerbt | nein | K3 |
+| 80 | unplausibel (über 100 %) (`unplausibel_ueber_100`) | eigen | nein | K15 |
+| 80 | unplausibel (negativ) (`unplausibel_negativ`) | eigen | nein | konstruiert |
+| 81 | Eingang {objekt} seit {datum} außerhalb von {name} (`eingang_ausserhalb`) | eigen | nein | K22 |
+| 82 | Bezugsgröße archiviert ({objekt}) (`bezugsgroesse_archiviert`) | eigen | nein | konstruiert |
+| 82 | Eingang archiviert ({objekt}) (`eingang_archiviert`) | eigen | nein | konstruiert |
+| 90 | korrigiert (Version {version}) (`korrigiert`) | eigen | ja | K6 |
+| 90 | Berechnung geändert (Fassung {fassung}) (`berechnung_geaendert`) | eigen | ja | konstruiert |
+| 91 | Nenner zurückgenommen ({text}) (`nenner_zurueckgenommen`) | eigen | ja | K19 |
+| 100 | Stichtag {datum} (`stichtag`) — nur am Eingang der Herkunft | eigen | nein | K12 |
+
+**Erbregeln (`erbend`).** Nur was über die PERIODE spricht, reist von einem Eingang an die Kennzahl:
+„berechnet (…)“ eines Gesamtwerts wird „enthält berechnet (…)“, „verteilt (…)“ wird „enthält
+verteilt (…)“, „ab TT.MM.JJJJ“ bleibt (aus einer Kennzahl mit ihrem Geltungsobjekt davor: „G-5 ab
+15.10.2026“), „mit Ersatzwert (…)“, der Übergang eines Stammdatums („Fläche geändert am …“) und
+„x von y Systemen“ bleiben. Alles andere steht nur in der Herkunft.
+
+**Reihenfolge.** Der Rang steigt nie; jeder Satz höchstens einmal; ohne Zahl nur die Sätze mit
+„ohne Zahl: ja“ — nie „berechnet (Kennzahl)“, nie etwas Geerbtes. Eine gröbere Periode aus
+Teilperioden ersetzt jedes „ab …“ ihrer Teile durch ihr eigenes und behält „x von y …“ nur, wenn es
+in jeder Teilperiode gleich lautet. Geschützte Leerzeichen (E11) auch hier: „über 100 %“, „0 Stück“.
+
 ## Grenzen
 
 Keine Route und kein Lese-Modell (IP-9), keine Fläche und keine Karte (IP-10/IP-11), keine

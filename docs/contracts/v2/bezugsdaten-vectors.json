@@ -735,6 +735,40 @@
         "hinweis": "§4.2 nennt sie als „B7 Ladezeit K-9 aus OCPP-Status“; im Referenzunternehmen steht sie seit Fassung 1.2 als BZ-5."
       },
       {
+        "name": "BZ-6 Gutteile Montage Halle 2: Stück je Monat am Gebäude G-2, eingegeben",
+        "art": "gutteile",
+        "beispiel": "BZ-6",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "gebaeude",
+          "einheit": "Stück",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        },
+        "hinweis": "Seit Fassung 1.3 des Referenzunternehmens (AP-11 E13): die Gebäude-Stückzahl, aus der die Kennzahl KZ-0001 rechnet; zusammen mit der anderen Montagehalle genau BZ-2."
+      },
+      {
+        "name": "BZ-7 Gutteile Montage Lindach: Stück je Monat am Gebäude G-5, eingegeben",
+        "art": "gutteile",
+        "beispiel": "BZ-7",
+        "eingang": {
+          "wertart": "periodenwert",
+          "geltung_art": "gebaeude",
+          "einheit": "Stück",
+          "periode_art": "monat",
+          "herkunft_art": "eingabe",
+          "einheit_der_messstelle": null
+        },
+        "ergebnis": {
+          "abweichend": []
+        },
+        "hinweis": "Seit Fassung 1.3 des Referenzunternehmens (AP-11 E13): die Gebäude-Stückzahl, aus der die Kennzahl KZ-0002 rechnet; zusammen mit der anderen Montagehalle genau BZ-2."
+      },
+      {
         "name": "Gutteile in kg: die Art führt kg nicht — abgelehnt, obwohl kg im Vokabular steht",
         "art": "gutteile",
         "beispiel": null,
