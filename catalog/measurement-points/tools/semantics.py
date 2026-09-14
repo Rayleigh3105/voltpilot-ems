@@ -74,6 +74,57 @@ ENERGY_WITHOUT_DIRECTION = {
         "SunSpec 122 nennt nur „Quadrant 4“ ohne Bezugsrichtung (Erzeuger- oder Verbraucher-Zählpfeil)",
 }
 
+# Zähler (`aggregation_kind: counter`), deren Einheit KEINE Anzeige-Einheit des Vertrags
+# `docs/contracts/v2/ergebnis-zustand-vectors.json` (`rundung.anzeige_einheiten`) ist. Die Cloud nennt
+# für sie keine Zahl in einem Mengen-Satz („Zuwachs gemessen …“ ohne Zahl) — darum steht jeder
+# einzeln hier, mit der ART, warum, und nie geraten. Ein Nachtrag an `unit` hebt den Laufzeitstand
+# (`unit` ist ein Box-Feld, `cataloglib.EDGE_FIELDS`) und gehört damit zu einem Edge-Release.
+ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN = {
+    "keine_energie": "zählt Zyklen, Ereignisse oder Revisionen — es gibt keine Einheit nachzutragen",
+    "einheit_im_schluessel": "die Station nennt die Einheit je Wert; sie steht im konkreten Schlüssel "
+                             "der Reihe (`MeasurementCatalog.einheit`), nie im Katalog",
+    "einheit_nur_im_text": "die Quelle nennt die Einheit nur im Beschreibungstext; der Katalog "
+                           "übernimmt keine Einheit aus Prosa (README „Modell“)",
+    "faktor_im_einheitennamen": "die Einheit trägt einen eingebackenen Faktor, der schon an `scale` "
+                                "steht — gerechnet wird mit dem dekodierten Wert, dessen Einheit der "
+                                "Katalog noch nicht nennt",
+}
+ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
+    **{
+        f"deye.hybrid_3p.battery-{n}.battery-{n}-cycles":
+            ("keine_energie", f"ha-solarman „Battery {n} Cycles“ zählt Ladezyklen")
+        for n in range(1, 21)
+    },
+    "deye.hybrid_3p.meter.today-battery-life-cycles":
+        ("keine_energie", "ha-solarman „Today Battery Life Cycles“ zählt Ladezyklen"),
+    "deye.hybrid_3p.meter.total-battery-life-cycles":
+        ("keine_energie", "ha-solarman „Total Battery Life Cycles“ zählt Ladezyklen"),
+    "shelly.gen1.input[*].inputs[*].event_cnt": ("keine_energie", "Shelly `event_cnt` zählt Eingangs-Ereignisse"),
+    "shelly.gen1.system.cfg_changed_cnt": ("keine_energie", "Shelly `cfg_changed_cnt` zählt Konfigurationsänderungen"),
+    "shelly.gen1.system.serial": ("keine_energie", "Shelly `serial` zählt Neustarts"),
+    "shelly.gen2plus.sys.cfg_rev": ("keine_energie", "Shelly `cfg_rev` ist eine Konfigurationsrevision"),
+    "shelly.gen2plus.sys.kvs_rev": ("keine_energie", "Shelly `kvs_rev` ist eine KVS-Revision"),
+    "shelly.gen2plus.sys.schedule_rev": ("keine_energie", "Shelly `schedule_rev` ist eine Zeitplanrevision"),
+    "shelly.gen2plus.sys.webhook_rev": ("keine_energie", "Shelly `webhook_rev` ist eine Webhook-Revision"),
+    **{
+        f"ocpp.1_6.metervalues.energy.{art}.{richtung}.register.context[*].format[*].phase[*].location[*].unit[*]":
+            ("einheit_im_schluessel",
+             f"OCPP-1.6-SampledValue `unit` je Wert → `…unit[wh]`; `unit[none]` bleibt unbekannt, der "
+             f"OCPP-Vorgabewert wird nicht geraten ({art} {richtung})")
+        for art in ("active", "reactive") for richtung in ("export", "import")
+    },
+    **{
+        f"goe.api_v2.{key}": ("einheit_nur_im_text", f"go-e API v2 `{key}`: „measured in Wh“ steht nur im Text")
+        for key in ("eto", "eto_mid", "wh", "wh_mid", "whb", "whg", "who", "whs")
+    },
+    **{
+        f"{familie}.{key}": ("faktor_im_einheitennamen",
+                             f"KACO `{quelle}` in „0,1 kWh“, `scale` 0.1 — dekodiert kWh")
+        for familie in ("kaco_http", "kaco_http_hybrid")
+        for key, quelle in (("energy-today", "etd"), ("energy-total", "eto"))
+    },
+}
+
 SUNSPEC_METER = r"sunspec\.model_2(0[1-4]|1[1-4])"
 SUNSPEC_INVERTER = r"sunspec\.model_1(0[1-3]|1[1-3])"
 DEYE = r"(hybrid_1p|hybrid_3p|micro|string)"

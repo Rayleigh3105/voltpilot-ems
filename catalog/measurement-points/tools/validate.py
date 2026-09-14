@@ -36,6 +36,8 @@ from semantics import (
     ENERGY_UNITS,
     ENERGY_WITHOUT_DIRECTION,
     QUANTITIES,
+    ZAEHLER_OHNE_ANZEIGE_EINHEIT,
+    ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN,
 )
 
 
@@ -263,6 +265,25 @@ def validate_semantics(errors: ValidationErrors, point: dict[str, Any], prefix: 
             errors.check(direction is not None, f"{prefix}: energy point without direction")
     if point.get("unit") in ENERGY_UNITS:
         errors.check(quantity in ENERGY_QUANTITIES, f"{prefix}: energy unit without energy quantity")
+    # Ein Zähler ohne Einheit ist BENANNT, nie still (semantics.ZAEHLER_OHNE_ANZEIGE_EINHEIT).
+    named = ZAEHLER_OHNE_ANZEIGE_EINHEIT.get(point.get("point_key"))
+    if point.get("aggregation_kind") == "counter" and point.get("unit") is None:
+        errors.check(named is not None, f"{prefix}: counter without unit is not named")
+    if named is not None:
+        art, grund = named
+        errors.check(point.get("aggregation_kind") == "counter", f"{prefix}: named as counter, is none")
+        errors.check(art in ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN and bool(grund.strip()),
+                     f"{prefix}: counter without display unit needs a kind and a reason")
+        if art == "faktor_im_einheitennamen":
+            errors.check(point.get("unit") is not None and (point.get("scale") or {}).get("kind") == "factor",
+                         f"{prefix}: a unit with a baked-in factor needs the factor at scale")
+        else:
+            errors.check(point.get("unit") is None, f"{prefix}: named without unit, has one")
+        if art == "einheit_im_schluessel":
+            errors.check((point.get("scale") or {}).get("kind") == "protocol_value",
+                         f"{prefix}: a unit from the key needs scale protocol_value")
+        if art == "keine_energie":
+            errors.check(quantity is None, f"{prefix}: no energy, but a quantity")
 
 
 def validate_runtime_version(errors: ValidationErrors, document: dict[str, Any]) -> None:
@@ -399,6 +420,8 @@ def validate_catalog(path: Path) -> dict[str, Any]:
     errors.check(not (set(keys) & set(aliases)), "point_key alias collides with a canonical point_key")
     stale = sorted(set(ENERGY_WITHOUT_DIRECTION) - set(keys))
     errors.check(not stale, f"energy-without-direction entries name no point: {stale}")
+    stale_counters = sorted(set(ZAEHLER_OHNE_ANZEIGE_EINHEIT) - set(keys))
+    errors.check(not stale_counters, f"counter-without-display-unit entries name no point: {stale_counters}")
 
     selectors: collections.defaultdict[tuple[str, str], list[str]] = collections.defaultdict(list)
     modbus_decoders: collections.defaultdict[tuple[str, tuple[int, ...], str], list[str]] = collections.defaultdict(list)

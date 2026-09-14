@@ -24,6 +24,7 @@ from semantics import (  # noqa: E402
     ENERGY_WITHOUT_DIRECTION,
     QUANTITIES,
     RULES,
+    ZAEHLER_OHNE_ANZEIGE_EINHEIT,
     rule_for,
 )
 from validate import validate_catalog  # noqa: E402
@@ -82,6 +83,42 @@ class SemanticsTest(unittest.TestCase):
                 else:
                     self.assertIn(point["quantity"], ENERGY_QUANTITIES, point["point_key"])
                     self.assertIsNotNone(point["direction"], point["point_key"])
+
+    def test_every_counter_has_a_display_unit_or_is_named(self) -> None:
+        """Jeder Zähler spricht eine Anzeige-Einheit des Ergebnis-Zustands — oder steht benannt da.
+
+        Ohne Anzeige-Einheit nennt die Cloud keine Zahl in einem Mengen-Satz (`einheit_unbekannt`).
+        Dieselbe Datei per Pfad, die Java `ErgebnisZustand` und TS `uemsErgebnis.ts` fahren.
+        """
+        vertrag = json.loads((V2 / "ergebnis-zustand-vectors.json").read_text(encoding="utf-8"))
+        anzeige = {a["gespeichert"]: a["angezeigt"] for a in vertrag["rundung"]["anzeige_einheiten"]}
+        counters = [point for point in self.points if point["aggregation_kind"] == "counter"]
+        ohne = sorted(point["point_key"] for point in counters if point.get("unit") not in anzeige)
+        self.assertEqual(ohne, sorted(ZAEHLER_OHNE_ANZEIGE_EINHEIT))
+        arten = collections.Counter(art for art, _ in ZAEHLER_OHNE_ANZEIGE_EINHEIT.values())
+        self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4,
+                                       "einheit_nur_im_text": 8, "faktor_im_einheitennamen": 4})
+        einheiten = collections.Counter(point.get("unit") for point in counters)
+        # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin.
+        self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["0,1 kWh"], einheiten["Wmin"]),
+                         (41, 25, 4, 1))
+        # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
+        self.assertEqual(anzeige["VAh"], "kVAh")
+        self.assertEqual(anzeige["Wmin"], "kWh")
+        for point in counters:
+            if point.get("unit") == "VAh":
+                self.assertEqual(point["quantity"], "apparent_energy", point["point_key"])
+
+    def test_validator_rejects_an_unnamed_counter_without_unit(self) -> None:
+        def drop(points):
+            points["sunspec.model_203.totwhimp"]["unit"] = None
+        self.assertIn("sunspec.model_203.totwhimp: counter without unit is not named", self.validation_error(drop))
+
+        def wrong(points):
+            points["goe.api_v2.eto"]["unit"] = "Wh"
+            points["goe.api_v2.eto"]["quantity"] = "active_energy"
+            points["goe.api_v2.eto"]["direction"] = "import"
+        self.assertIn("goe.api_v2.eto: named without unit, has one", self.validation_error(wrong))
 
     def test_validator_rejects_an_energy_point_without_direction(self) -> None:
         def drop(points):
