@@ -2050,8 +2050,74 @@ export interface MessstelleWerteWert {
     | 'noch_nicht_gebildet'
     | 'ohne_menge_gespeichert'
     | 'version_nicht_gespeichert'
+    /** Die Stunde hat keine eigenen Versionen: eine ihrer Viertelstunden trägt eine spätere (IP-18). */
+    | 'version_nicht_gebildet'
     | null;
   ereignisse: Array<{ id: string; art: string; von: string; bis: string | null }>;
+  /**
+   * AP-10 IP-12: die Hülle `{satz, fehlt}` nach `bilanzwert-herkunft.schema.json` an jeder BERECHNETEN
+   * Zahl; `null` an einem gemessenen Schritt oder einem ohne Zahl.
+   */
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * AP-08 IP-18: wie viele Versionen die Periode hat — ab 2 gibt es eine Historie unter
+   * `…/werte/versionen`. `null` an der Stunde (keine eigenen Versionen), ohne Reihe und wo nichts gebildet ist.
+   */
+  versionen: number | null;
+}
+
+// ---- Versionen am Wert (UEMS AP-08 IP-18) -----------------------------------
+// Die Form von GET /api/v1/messstellen/{kennzeichen}/werte/versionen (OpenAPI
+// `MessstelleWerteHistorie`): die Historie GENAU EINER Periode.
+
+/** Wer eine Fassung geschrieben hat; ein System-Vorschlag: `VoltPilot`, `art` `voltpilot`. */
+export interface MessstelleWerteUrheber {
+  name: string;
+  rolle: string | null;
+  art: string;
+}
+
+/** Eine Fassung eines Ersatzwerts (`EW-…`) oder einer Korrektur (`K-…`), die eine Version ausmacht. */
+export interface MessstelleWerteEntscheidung {
+  vorgang: 'ersatzwert' | 'korrektur';
+  kennung: string;
+  fassung: number;
+  status: string | null;
+  methode: string | null;
+  art: string | null;
+  wer: MessstelleWerteUrheber | null;
+  /** In der Zeitzone des Standorts, mit Versatz. */
+  wann: string | null;
+  /** Der Text DIESER Fassung (Begründung bzw. Grund) — `null`, wenn keiner geschrieben wurde. */
+  warum: string | null;
+  beleg: string | null;
+  fehlt: Array<'warum' | 'fassung'>;
+  /** Die anlegende Fassung, an einer späteren — mit IHREM Urheber. */
+  angelegt: { wer: MessstelleWerteUrheber; wann: string; warum: string | null; beleg: string | null } | null;
+}
+
+export interface MessstelleWerteVersion {
+  version: number;
+  /** Was vorher dastand (Version n − 1); an Version 1 `null`. */
+  wert_alt: MessstelleWerteWert | null;
+  wert_neu: MessstelleWerteWert;
+  gebildet_am: string | null;
+  nachgezogen_am: string | null;
+  anlass: { kennung: string; fassung: number } | null;
+  entscheidungen: MessstelleWerteEntscheidung[];
+}
+
+export interface MessstelleWerteHistorie {
+  messstelle: MessstelleWerte['messstelle'];
+  raster: Exclude<MessstelleWerteRaster, 'stunde'>;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  zeitzone_herkunft: MessstelleWerte['zeitzone_herkunft'];
+  /** Ein Wort von `MessstelleWerteWert.grund` — warum die Periode keine Versionen hat. */
+  grund: string | null;
+  /** Aufsteigend: Version 1 zuerst. */
+  versionen: MessstelleWerteVersion[];
 }
 
 export interface MessstelleWerte {
@@ -5944,6 +6010,22 @@ export const api = {
   messstelleWerte: (kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string) =>
     request<MessstelleWerte>(
       `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte?raster=${raster}&von=${von}&bis=${bis}`,
+    ),
+
+  /**
+   * Die Versions-Historie EINER Periode (UEMS AP-08 IP-18): `von`/`bis` sind die des Schritts, wie die Route
+   * `…/werte` sie liefert (Zeitpunkte mit Versatz, `bis` ausschließlich) — kodiert, sonst würde das `+` des
+   * Versatzes zum Leerzeichen.
+   */
+  messstelleWerteVersionen: (
+    kennzeichen: string,
+    raster: MessstelleWerteHistorie['raster'],
+    von: string,
+    bis: string,
+  ) =>
+    request<MessstelleWerteHistorie>(
+      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte/versionen?raster=${raster}` +
+        `&von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`,
     ),
 
   /**

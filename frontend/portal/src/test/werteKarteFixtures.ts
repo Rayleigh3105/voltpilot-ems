@@ -47,6 +47,8 @@ export const schritt = (t: Teil): MessstelleWerteWert => ({
   quelle: QUELLE,
   grund: null,
   ereignisse: [],
+  herkunft: null,
+  versionen: 1,
   ...t,
 });
 
@@ -74,7 +76,7 @@ export const MS_21: Messstelle = {
   einheit: 'm³',
 };
 
-const antwort = (
+export const antwort = (
   messstelle: Messstelle,
   art: MessstelleWerteRaster,
   von: string,
@@ -105,13 +107,13 @@ const antwort = (
   werte,
 });
 
-const tagesgrenzen = (tag: string) => ({
+export const tagesgrenzen = (tag: string) => ({
   von: iso(mitternacht(tag, ZONE), ZONE),
   bis: iso(mitternacht(tagPlus(tag, 1), ZONE), ZONE),
 });
 
 /** Ein vollständig gemessener Schritt aus Zählerständen. */
-const voll = (menge: number, erwartet: number): Partial<MessstelleWerteWert> => ({
+export const voll = (menge: number, erwartet: number): Partial<MessstelleWerteWert> => ({
   menge,
   zustand: 'vollständig',
   erhalten: erwartet,
@@ -120,7 +122,7 @@ const voll = (menge: number, erwartet: number): Partial<MessstelleWerteWert> => 
 });
 
 /** Die Stunden eines Tages mit den Beschriftungen des Vertrags; `je` gibt jeder Stunde ihren Wert. */
-const stundenDes = (tag: string, je: (beschriftung: string, i: number) => Partial<MessstelleWerteWert>) => {
+export const stundenDes = (tag: string, je: (beschriftung: string, i: number) => Partial<MessstelleWerteWert>) => {
   const felder = raster(tag, ZONE, 'stunde');
   const ende = tagesgrenzen(tag).bis;
   return felder.map((f, i) =>
@@ -129,12 +131,14 @@ const stundenDes = (tag: string, je: (beschriftung: string, i: number) => Partia
       bis: felder[i + 1]?.von ?? ende,
       beschriftung: f.beschriftung,
       gebildet_aus: 'zeitraum',
+      // Die Stunde hat keine eigenen Versionen (IP-18).
+      versionen: null,
       ...je(f.beschriftung, i),
     }),
   );
 };
 
-const tagSchritt = (tag: string, t: Partial<MessstelleWerteWert>) =>
+export const tagSchritt = (tag: string, t: Partial<MessstelleWerteWert>) =>
   schritt({
     ...tagesgrenzen(tag),
     stunden: stundenDesTages(tag, ZONE),
@@ -249,7 +253,7 @@ export const ohneQuelleTag = (): MessstelleWerte =>
     'tag',
     '2026-11-03T00:00:00+01:00',
     '2026-11-04T00:00:00+01:00',
-    [tagSchritt('2026-11-03', { zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null })],
+    [tagSchritt('2026-11-03', { zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null, versionen: null })],
     false,
   );
 
@@ -259,6 +263,6 @@ export const ohneQuelleStunden = (): MessstelleWerte =>
     'stunde',
     '2026-11-03T00:00:00+01:00',
     '2026-11-04T00:00:00+01:00',
-    stundenDes('2026-11-03', () => ({ zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null })),
+    stundenDes('2026-11-03', () => ({ zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null, versionen: null })),
     false,
   );

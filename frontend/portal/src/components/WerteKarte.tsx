@@ -17,13 +17,17 @@
  * Nicht in die Abzeichen-Reihe verschieben: dort sähe „vorläufig“ neben
  * „Verlauf 85 %“ wie dieselbe Kategorie aus (Captain 14.09.2026: Variante A,
  * `docs/agents/root/uems-tageskarte.md` Falle 7).
+ *
+ * Hat die Zahl zwei oder mehr Versionen (AP-08 IP-18), steht unten der
+ * Einstieg zu „Versionen“ — was vorher dastand, wer, wann und warum.
  */
+import type { ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { TRENNER } from '../uemsErgebnis';
 import type { Karte, Zeile } from '../uemsWerteKarte';
 import './WerteKarte.css';
 
-export function WerteKarte({ karte }: { karte: Karte }) {
+export function WerteKarte({ karte, versionen }: { karte: Karte; versionen?: ReactNode }) {
   return (
     <section className="vp-wk-karte" aria-label={karte.titel} data-testid="werte-karte">
       <div className="vp-wk-kopf">
@@ -48,6 +52,7 @@ export function WerteKarte({ karte }: { karte: Karte }) {
         </div>
       )}
       <Kennzeichen saetze={karte.kennzeichen} />
+      {versionen}
     </section>
   );
 }
