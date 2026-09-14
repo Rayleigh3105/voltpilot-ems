@@ -41,6 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_HALF_UP, localcontext
+from fractions import Fraction
 from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -59,18 +60,23 @@ NACHKOMMASTELLEN = 3
 
 #: Seit ergebnis-zustand 1.3: die Anzeige-Einheit je GESPEICHERTER Einheit und ihr fester Faktor
 #: (``rundung.anzeige_einheiten``, Zwilling von ``ErgebnisZustand.ANZEIGE_EINHEITEN``). Gespeichert bleibt,
-#: was der Zähler liefert; ein Kennzeichen spricht kWh · kvarh · m³.
+#: was der Zähler liefert; ein Kennzeichen spricht kWh · kvarh · kVAh · m³. Je Einheit
+#: (Anzeige-Einheit, faktor, teiler): angezeigt wird wert × faktor ÷ teiler. Seit 1.8 Scheinarbeit als
+#: kVAh (nie kWh) und Wmin mit teiler 60000 — gerundet wird der EXAKTE Quotient.
 ANZEIGE_EINHEITEN = {
-    "Wh": ("kWh", Decimal("0.001")),
-    "kWh": ("kWh", Decimal("1")),
-    "MWh": ("kWh", Decimal("1000")),
-    "varh": ("kvarh", Decimal("0.001")),
-    "kvarh": ("kvarh", Decimal("1")),
-    "m³": ("m³", Decimal("1")),
+    "Wh": ("kWh", Decimal("0.001"), 1),
+    "kWh": ("kWh", Decimal("1"), 1),
+    "MWh": ("kWh", Decimal("1000"), 1),
+    "Wmin": ("kWh", Decimal("1"), 60000),
+    "varh": ("kvarh", Decimal("0.001"), 1),
+    "kvarh": ("kvarh", Decimal("1"), 1),
+    "VAh": ("kVAh", Decimal("0.001"), 1),
+    "kVAh": ("kVAh", Decimal("1"), 1),
+    "m³": ("m³", Decimal("1"), 1),
 }
 
 #: Eine Menge IN einem Kennzeichen hat die Stellen der Viertelstunde (``rundung.kennzeichen_ebene``):
-#: kWh · kvarh · m³ je eine Nachkommastelle — der Satz wandert unverändert bis ins Jahr.
+#: kWh · kvarh · kVAh · m³ je eine Nachkommastelle — der Satz wandert unverändert bis ins Jahr.
 KENNZEICHEN_STELLEN = 1
 
 VOLLSTAENDIG = "vollständig"
@@ -154,7 +160,11 @@ def _menge(wert: Decimal, einheit: str | None) -> str | None:
     anzeige = ANZEIGE_EINHEITEN.get(einheit) if einheit is not None else None
     if anzeige is None:
         return None
-    gerundet = (wert * anzeige[1]).quantize(Decimal(1).scaleb(-KENNZEICHEN_STELLEN), rounding=ROUND_HALF_UP)
+    # Exakt: der Quotient als Bruch, kaufmännisch auf die Stellen gerundet — nie ein abgeschnittener Faktor.
+    zaehler = Fraction(wert * anzeige[1]) * 10**KENNZEICHEN_STELLEN
+    ganz_teil, rest_teil = divmod(abs(zaehler), anzeige[2])
+    gerundet_ganz = ganz_teil + (1 if rest_teil * 2 >= anzeige[2] else 0)
+    gerundet = Decimal(-gerundet_ganz if zaehler < 0 else gerundet_ganz).scaleb(-KENNZEICHEN_STELLEN)
     ganz, _, rest = f"{abs(gerundet):f}".partition(".")
     gruppiert = f"{int(ganz):,}".replace(",", ".")
     return ("−" if gerundet < 0 else "") + gruppiert + ("," + rest if rest else "") + "\u00a0" + anzeige[0]

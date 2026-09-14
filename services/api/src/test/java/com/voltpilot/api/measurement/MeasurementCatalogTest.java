@@ -95,4 +95,30 @@ class MeasurementCatalogTest {
                 .isEqualTo(new MeasurementCatalog.Semantik(null, null));
         assertThat(catalog.semantik("gibt.es.nicht")).isNull();
     }
+
+    /**
+     * Die Einheit eines OCPP-Messwerts steht nicht im Katalog, sondern im konkreten Schlüssel der Reihe —
+     * die Station nennt sie je SampledValue. Ohne genannte Einheit ({@code unit[none]}) und an der Vorlage
+     * bleibt sie unbekannt; jeder andere Punkt behält die Katalog-Einheit, auch eine ohne.
+     */
+    @Test
+    void einOcppZaehlerNenntDieEinheitSeinesSchluessels() {
+        String vorlage = "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*]"
+                + ".location[*].unit[*]";
+        String reihe = "ocpp.1_6.metervalues.energy.active.import.register.context[sample-periodic].format[raw]"
+                + ".phase[none].location[outlet]";
+        assertThat(catalog.resolve(vorlage).unit()).as("der Katalog selbst nennt keine").isNull();
+        assertThat(catalog.einheit(reihe + ".unit[wh]")).isEqualTo("Wh");
+        assertThat(catalog.einheit(reihe + ".unit[kwh]")).isEqualTo("kWh");
+        assertThat(catalog.einheit(reihe.replace(".active.", ".reactive.") + ".unit[kvarh]")).isEqualTo("kvarh");
+        assertThat(catalog.einheit(reihe + ".unit[none]")).as("nie der OCPP-Vorgabewert Wh geraten").isNull();
+        assertThat(catalog.einheit(reihe + ".unit[gibt-es-nicht]")).isNull();
+        assertThat(catalog.einheit(vorlage)).isNull();
+
+        assertThat(catalog.einheit("sunspec.model_203.totwhimp")).isEqualTo("Wh");
+        assertThat(catalog.einheit("kaco_http.energy-total")).as("benannt, bis der Laufzeitstand steigt")
+                .isEqualTo("0,1 kWh");
+        assertThat(catalog.einheit("goe.api_v2.eto")).isNull();
+        assertThat(catalog.einheit("gibt.es.nicht[wh].unit[wh]")).isNull();
+    }
 }

@@ -696,11 +696,12 @@ def test_die_anzeige_einheiten_sind_die_des_vertrags():
     """Zwilling von ``ErgebnisZustand.ANZEIGE_EINHEITEN``: dieselbe Tabelle wie ``rundung.anzeige_einheiten``."""
     rundung = json.loads(ERGEBNIS_ZUSTAND.read_text(encoding="utf-8"))["rundung"]
     assert verbrauch.ANZEIGE_EINHEITEN == {
-        a["gespeichert"]: (a["angezeigt"], Decimal(a["faktor"])) for a in rundung["anzeige_einheiten"]
+        a["gespeichert"]: (a["angezeigt"], Decimal(a["faktor"]), int(a.get("teiler", "1")))
+        for a in rundung["anzeige_einheiten"]
     }
     assert rundung["kennzeichen_ebene"] == "viertelstunde"
     stellen = {(s["einheit"], s["ebene"]): s["stellen"] for s in rundung["stellen"]}
-    for angezeigt, _ in verbrauch.ANZEIGE_EINHEITEN.values():
+    for angezeigt, _, _ in verbrauch.ANZEIGE_EINHEITEN.values():
         assert stellen.get((angezeigt, "viertelstunde"), stellen.get((angezeigt, None))) == verbrauch.KENNZEICHEN_STELLEN
 
 

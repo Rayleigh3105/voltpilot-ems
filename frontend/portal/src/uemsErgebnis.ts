@@ -28,7 +28,7 @@
  */
 
 import { iso, mitternacht, offsetMinuten, stundenDesTages, tagPlus, zwei } from './bezugsPeriode';
-import { dez, dezRunde, dezText, type Dez } from './dez';
+import { dez, dezRunde, dezTeile, dezText, type Dez } from './dez';
 import { METHODE_TEXT } from './uemsEreignis';
 
 // ------------------------------------------------------------------ Zustände (§4.5)
@@ -59,7 +59,7 @@ export const PLATZHALTER: Record<string, string> = {
   dezimal_punkt: '(?:0|[1-9][0-9]*)\\.[0-9]{3}',
   dezimal_klartext: '(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?',
   // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
-  menge: '(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00a0(?:kWh|kvarh|m³)',
+  menge: '(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00a0(?:kWh|kvarh|kVAh|m³)',
   // Seit 1.4 (AP-08 IP-13): der Name einer Ersatzwert-Methode in Kundensprache und die Kennung.
   ersatzwert_methode:
     '(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen'
@@ -445,6 +445,11 @@ export const KUBIKMETER = 'm³';
 export const KVA = 'kVA';
 /** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
 export const KVARH = 'kvarh';
+/**
+ * Scheinarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh, aber eine EIGENE
+ * Anzeige-Einheit: Scheinarbeit ist nicht in Wirkarbeit umrechenbar (seit 1.8).
+ */
+export const KVAH = 'kVAh';
 
 export type Stellen = { einheit: string; ebene: string | null; stellen: number };
 
@@ -460,6 +465,11 @@ export const STELLEN: Stellen[] = [
   { einheit: KVARH, ebene: 'tag', stellen: 0 },
   { einheit: KVARH, ebene: 'monat', stellen: 0 },
   { einheit: KVARH, ebene: 'jahr', stellen: 0 },
+  { einheit: KVAH, ebene: 'viertelstunde', stellen: 1 },
+  { einheit: KVAH, ebene: 'stunde', stellen: 1 },
+  { einheit: KVAH, ebene: 'tag', stellen: 0 },
+  { einheit: KVAH, ebene: 'monat', stellen: 0 },
+  { einheit: KVAH, ebene: 'jahr', stellen: 0 },
   { einheit: KW, ebene: null, stellen: 1 },
   { einheit: PROZENT, ebene: null, stellen: 0 },
   { einheit: KUBIKMETER, ebene: null, stellen: 1 },
@@ -478,7 +488,7 @@ export const pruefeZahl = (einheit: string, ebene: string | null): Verstoss[] =>
   const v: Verstoss[] = [];
   if (!STELLEN.some((s) => s.einheit === einheit)) v.push('einheit_unbekannt');
   if (ebene !== null && !EBENEN.includes(ebene)) v.push('ebene_unbekannt');
-  else if (ebene === null && (einheit === KWH || einheit === KVARH)) v.push('ebene_fehlt');
+  else if (ebene === null && (einheit === KWH || einheit === KVARH || einheit === KVAH)) v.push('ebene_fehlt');
   return v;
 };
 
@@ -518,17 +528,22 @@ export const zahl = (wert: Betrag, einheit: string, ebene: string | null): strin
 
 /**
  * Die Anzeige-Einheit einer GESPEICHERTEN Einheit (seit 1.3, Ableitung aus E11): gespeichert bleibt,
- * was der Zähler liefert; angezeigt wird kWh · kvarh · m³ — „1.482.300 kWh“, nie „1.482,3 MWh“.
- * `faktor`: gespeicherter Wert × faktor = Wert in der Anzeige-Einheit.
+ * was der Zähler liefert; angezeigt wird kWh · kvarh · kVAh (seit 1.8, nie als kWh) · m³ —
+ * „1.482.300 kWh“, nie „1.482,3 MWh“.
+ * `faktor`: gespeicherter Wert × faktor ÷ teiler = Wert in der Anzeige-Einheit; `teiler` (seit 1.8,
+ * fehlt = 1) für Faktoren ohne endlichen Dezimalbruch (Wmin → kWh ÷ 60000).
  */
-export type AnzeigeEinheit = { gespeichert: string; angezeigt: string; faktor: string };
+export type AnzeigeEinheit = { gespeichert: string; angezeigt: string; faktor: string; teiler?: string };
 
 export const ANZEIGE_EINHEITEN: AnzeigeEinheit[] = [
   { gespeichert: 'Wh', angezeigt: KWH, faktor: '0.001' },
   { gespeichert: 'kWh', angezeigt: KWH, faktor: '1' },
   { gespeichert: 'MWh', angezeigt: KWH, faktor: '1000' },
+  { gespeichert: 'Wmin', angezeigt: KWH, faktor: '1', teiler: '60000' },
   { gespeichert: 'varh', angezeigt: KVARH, faktor: '0.001' },
   { gespeichert: 'kvarh', angezeigt: KVARH, faktor: '1' },
+  { gespeichert: 'VAh', angezeigt: KVAH, faktor: '0.001' },
+  { gespeichert: 'kVAh', angezeigt: KVAH, faktor: '1' },
   { gespeichert: KUBIKMETER, angezeigt: KUBIKMETER, faktor: '1' },
 ];
 
@@ -541,7 +556,10 @@ export const pruefeMenge = (gespeichert: string, ebene: string | null): Verstoss
   return a ? pruefeZahl(a.angezeigt, ebene) : ['einheit_unbekannt'];
 };
 
-/** E11 für eine Menge in ihrer GESPEICHERTEN Einheit: in die Anzeige-Einheit umgerechnet, dann {@link zahl}. */
+/**
+ * E11 für eine Menge in ihrer GESPEICHERTEN Einheit: in die Anzeige-Einheit umgerechnet, dann {@link zahl}.
+ * Mit einem `teiler` wird der EXAKTE Quotient kaufmännisch gerundet („2999 Wmin“ → „0,0 kWh“).
+ */
 export const menge = (wert: Betrag, gespeichert: string, ebene: string | null): string => {
   const v = pruefeMenge(gespeichert, ebene);
   if (v.length > 0) throw new Error(`keine Anzeige für ${gespeichert} / ${ebene}: ${v.join(', ')}`);
@@ -549,7 +567,9 @@ export const menge = (wert: Betrag, gespeichert: string, ebene: string | null): 
   if (wert === null) return zahl(null, a.angezeigt, ebene);
   const w = zuDez(wert);
   const f = dez(a.faktor);
-  return zahl(dezText({ z: w.z * f.z, e: w.e + f.e }), a.angezeigt, ebene);
+  const produkt = { z: w.z * f.z, e: w.e + f.e };
+  if (a.teiler === undefined) return zahl(dezText(produkt), a.angezeigt, ebene);
+  return zahl(dezText(dezTeile(produkt, Number(a.teiler), stellen(a.angezeigt, ebene))), a.angezeigt, ebene);
 };
 
 export type Rundungsdifferenz = { summeDerAngezeigten: string; differenz: string | null; satz: string | null };

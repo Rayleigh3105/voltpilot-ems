@@ -92,7 +92,7 @@ public final class ErgebnisZustand {
             "dezimal_punkt", "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
             "dezimal_klartext", "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
             // Eine Menge in der Anzeige-Einheit mit den Stellen der KENNZEICHEN_EBENE (seit 1.3).
-            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|m³)",
+            "menge", "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9]\u00A0(?:kWh|kvarh|kVAh|m³)",
             // Seit 1.4 (AP-08 IP-13): der Name einer Ersatzwert-Methode in Kundensprache und die Kennung.
             "ersatzwert_methode", "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen"
                     + "|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen"
@@ -309,7 +309,7 @@ public final class ErgebnisZustand {
      * „Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, …“ — {@code zuwachs} UNGERUNDET in der
      * gespeicherten {@code einheit} der Reihe; gesprochen in ihrer Anzeige-Einheit mit den Stellen der
      * {@link #KENNZEICHEN_EBENE} ({@link #menge}). Hat die Einheit keine Anzeige-Einheit (unbekannt,
-     * VAh, …), steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.
+     * „0,1 kWh“, …), steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.
      */
     public static String lueckeZuwachs(String von, String bis, BigDecimal zuwachs, String einheit) {
         if (anzeigeEinheit(einheit) == null) {
@@ -628,6 +628,11 @@ public final class ErgebnisZustand {
     public static final String KVA = "kVA";
     /** Blindarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh (seit 1.3). */
     public static final String KVARH = "kvarh";
+    /**
+     * Scheinarbeit — Arbeit wie die Wirkarbeit, darum dieselben Stellen je Ebene wie kWh, aber eine EIGENE
+     * Anzeige-Einheit: Scheinarbeit ist nicht in Wirkarbeit umrechenbar (seit 1.8).
+     */
+    public static final String KVAH = "kVAh";
 
     /** Die Stellen je Einheit und Ebene; {@code ebene == null} = für jede Ebene gleich. */
     public record Stellen(String einheit, String ebene, int stellen) {}
@@ -643,6 +648,11 @@ public final class ErgebnisZustand {
             new Stellen(KVARH, "tag", 0),
             new Stellen(KVARH, "monat", 0),
             new Stellen(KVARH, "jahr", 0),
+            new Stellen(KVAH, "viertelstunde", 1),
+            new Stellen(KVAH, "stunde", 1),
+            new Stellen(KVAH, "tag", 0),
+            new Stellen(KVAH, "monat", 0),
+            new Stellen(KVAH, "jahr", 0),
             new Stellen(KW, null, 1),
             new Stellen(PROZENT, null, 0),
             new Stellen(KUBIKMETER, null, 1),
@@ -663,7 +673,7 @@ public final class ErgebnisZustand {
         }
         if (ebene != null && !EBENEN.contains(ebene)) {
             v.add(EBENE_UNBEKANNT);
-        } else if (ebene == null && (KWH.equals(einheit) || KVARH.equals(einheit))) {
+        } else if (ebene == null && (KWH.equals(einheit) || KVARH.equals(einheit) || KVAH.equals(einheit))) {
             v.add(EBENE_FEHLT);
         }
         return List.copyOf(v);
@@ -711,19 +721,28 @@ public final class ErgebnisZustand {
 
     /**
      * Die Anzeige-Einheit einer GESPEICHERTEN Einheit (seit 1.3, Ableitung aus E11): gespeichert bleibt,
-     * was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen —
-     * „1.482.300 kWh“, nie „1.482,3 MWh“.
+     * was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, kVAh für
+     * Scheinarbeit (seit 1.8, nie als kWh), m³ für Volumen — „1.482.300 kWh“, nie „1.482,3 MWh“.
      *
-     * @param faktor gespeicherter Wert × faktor = Wert in der Anzeige-Einheit
+     * @param faktor gespeicherter Wert × faktor ÷ teiler = Wert in der Anzeige-Einheit
+     * @param teiler seit 1.8 für Faktoren ohne endlichen Dezimalbruch (Wmin → kWh ÷ 60000); sonst 1
      */
-    public record AnzeigeEinheit(String gespeichert, String angezeigt, BigDecimal faktor) {}
+    public record AnzeigeEinheit(String gespeichert, String angezeigt, BigDecimal faktor, BigDecimal teiler) {
+
+        public AnzeigeEinheit(String gespeichert, String angezeigt, BigDecimal faktor) {
+            this(gespeichert, angezeigt, faktor, BigDecimal.ONE);
+        }
+    }
 
     public static final List<AnzeigeEinheit> ANZEIGE_EINHEITEN = List.of(
             new AnzeigeEinheit("Wh", KWH, new BigDecimal("0.001")),
             new AnzeigeEinheit("kWh", KWH, BigDecimal.ONE),
             new AnzeigeEinheit("MWh", KWH, new BigDecimal("1000")),
+            new AnzeigeEinheit("Wmin", KWH, BigDecimal.ONE, new BigDecimal("60000")),
             new AnzeigeEinheit("varh", KVARH, new BigDecimal("0.001")),
             new AnzeigeEinheit("kvarh", KVARH, BigDecimal.ONE),
+            new AnzeigeEinheit("VAh", KVAH, new BigDecimal("0.001")),
+            new AnzeigeEinheit("kVAh", KVAH, BigDecimal.ONE),
             new AnzeigeEinheit(KUBIKMETER, KUBIKMETER, BigDecimal.ONE));
 
     /**
@@ -745,7 +764,9 @@ public final class ErgebnisZustand {
 
     /**
      * E11 für eine Menge in ihrer GESPEICHERTEN Einheit: in die Anzeige-Einheit umgerechnet, dann
-     * {@link #zahl} („337600 Wh“ → „337,6 kWh“ an der Viertelstunde). Kein Wert ist „—“.
+     * {@link #zahl} („337600 Wh“ → „337,6 kWh“ an der Viertelstunde). Kein Wert ist „—“. Mit einem
+     * {@code teiler} wird der EXAKTE Quotient kaufmännisch gerundet, nie ein abgeschnittener Faktor
+     * („2999 Wmin“ → „0,0 kWh“).
      */
     public static String menge(BigDecimal wert, String gespeichert, String ebene) {
         List<String> v = pruefeMenge(gespeichert, ebene);
@@ -753,7 +774,11 @@ public final class ErgebnisZustand {
             throw new IllegalArgumentException("keine Anzeige für " + gespeichert + " / " + ebene + ": " + v);
         }
         AnzeigeEinheit a = anzeigeEinheit(gespeichert);
-        return zahl(wert == null ? null : wert.multiply(a.faktor()), a.angezeigt(), ebene);
+        if (wert == null) {
+            return zahl(null, a.angezeigt(), ebene);
+        }
+        return zahl(wert.multiply(a.faktor()).divide(a.teiler(), stellen(a.angezeigt(), ebene), RoundingMode.HALF_UP),
+                a.angezeigt(), ebene);
     }
 
     /** Eine genannte Rundungsdifferenz; {@code differenz}/{@code satz} sind {@code null}, wenn es keine gibt. */
