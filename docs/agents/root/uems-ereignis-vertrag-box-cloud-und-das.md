@@ -10,7 +10,7 @@ Neu angelegt am 11.09.2026 (AP-07 IP-3, Entscheid E11 = A — der Vertrag, an de
 - **[`mqtt-events-2.1.schema.json`](../../contracts/v2/mqtt-events-2.1.schema.json)** (Box → Cloud)
   + **[`events-raw.event.schema.json`](../../contracts/v2/events-raw.event.schema.json)** (Redpanda
   `events.raw`) + **[`events-vocabulary-vectors.json`](../../contracts/v2/events-vocabulary-vectors.json)**
-  (Vokabular + 61 Ahrenberg-Fälle) + `events-vocabulary.schema.json`; Beispiele unter
+  (Vokabular + 97 Ahrenberg-Fälle) + `events-vocabulary.schema.json`; Beispiele unter
   `examples/mqtt-events-2.1.*` und `examples/events-raw.*`.
 - **Java:** `services/api/.../uems/EreignisVokabular` (reine PRÜFUNG) +
   `EreignisVokabularVectorsTest`. **TS:** `frontend/portal/src/uemsEreignis.ts` (der
@@ -50,11 +50,17 @@ Klasse); die MQTT-Verträge 2.0 sind unverändert.
    Vokabular (mit denselben Feldnamen), die Fehlerklassen sind die von `data-source-vectors.json`,
    die sechs Bestandsarten des Writers heißen gleich, kein Wort in anderer Schreibweise, und
    beide Draht-Schemas sind aus genau dem Vokabular gebaut.
+8. **Ein Messwert hat genau eine Schreibweise:** `raw`, `decoded`, `qualitaet` — `decoded: null`,
+   wenn der Kanal keinen decodierten Wert liefert (`measurement-samples` 2.1 lässt ihn weg, z. B.
+   OCPP). Weggelassen ist `schema_verletzt`, sonst sähe `gleich` zwei gleiche Werte als
+   verschieden. Geändert wird so etwas in beiden Java-Zwillingen (api + Writer), dem
+   `events-raw`-Schema und den Vektoren zugleich; TS spricht dann den Rohwert.
 
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='EreignisVokabularVectorsTest')
+(cd services/timescale-writer && ./mvnw test -Dtest='EreignisVokabularZwillingTest')
 (cd services/ingest && ./mvnw test -Dtest='EventsContractSchemaTest')
 (cd frontend/portal && npx vitest run src/uemsEreignis.test.ts)
 python3 docs/fachmodell/tools/build_fachmodell.py --check

@@ -190,7 +190,13 @@
           "$ref": "#/$defs/rohwert"
         },
         "decoded": {
-          "$ref": "#/$defs/rohwert"
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ],
+          "description": "null, wenn der Kanal keinen decodierten Wert liefert (measurement-samples 2.1 lässt decoded weg) — nie weggelassen, nie 0."
         },
         "qualitaet": {
           "$ref": "#/$defs/qualitaet"
