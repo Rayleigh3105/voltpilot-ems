@@ -124,24 +124,36 @@ export function CockpitErgebnis({
 export function ErgebnisRing({ ring }: { ring: HeroRing }) {
   const R = 26;
   const C = 2 * Math.PI * R;
-  const on = (ring.pct / 100) * C;
+  // Eine unplausible Quote (AP-10 E16 Nr. 5) hat KEINEN Bogen: 110 % oder −20 %
+  // lassen sich nicht als Füllung zeichnen, ohne sie wieder zu klemmen. Es
+  // bleibt die leere Spur, die ungeklemmte Zahl und der Satz unter dem Etikett.
+  const on = ring.pct == null ? null : (ring.pct / 100) * C;
+  // „−1.250 %" ist breiter als der Ring: dann wird die Zahl in die Spur
+  // gestaucht statt abgeschnitten. Normale Werte („88 %") bleiben unberührt.
+  const gestaucht =
+    ring.valueText.length > 5 ? { textLength: 44, lengthAdjust: 'spacingAndGlyphs' } : {};
+  const aria = ring.hinweis
+    ? `${ring.label}: ${ring.valueText}. ${ring.hinweis}`
+    : `${ring.label}: ${ring.valueText}`;
   return (
     <span className="vp-c-ck-ring">
-      <svg viewBox="0 0 64 64" role="img" aria-label={`${ring.label}: ${ring.valueText}`}>
+      <svg viewBox="0 0 64 64" role="img" aria-label={aria}>
         <circle cx="32" cy="32" r={R} fill="none" stroke="var(--vp-flow-base)" strokeWidth={6} />
-        <circle
-          className="vp-c-ck-ring-bogen"
-          cx="32"
-          cy="32"
-          r={R}
-          fill="none"
-          stroke={ring.hue}
-          strokeWidth={6}
-          strokeLinecap="round"
-          strokeDasharray={C.toFixed(2)}
-          strokeDashoffset={(C - on).toFixed(2)}
-          transform="rotate(-90 32 32)"
-        />
+        {on != null && (
+          <circle
+            className="vp-c-ck-ring-bogen"
+            cx="32"
+            cy="32"
+            r={R}
+            fill="none"
+            stroke={ring.hue}
+            strokeWidth={6}
+            strokeLinecap="round"
+            strokeDasharray={C.toFixed(2)}
+            strokeDashoffset={(C - on).toFixed(2)}
+            transform="rotate(-90 32 32)"
+          />
+        )}
         <SwapText
           value={ring.valueText}
           x="32"
@@ -151,9 +163,18 @@ export function ErgebnisRing({ ring }: { ring: HeroRing }) {
           fontSize={14}
           fill="var(--vp-c-fg, #1e293b)"
           fontFamily="'Plus Jakarta Sans', Inter, sans-serif"
+          {...gestaucht}
         />
       </svg>
-      <span className="vp-c-ck-ring-label">{ring.label}</span>
+      <span className="vp-c-ck-ring-label">
+        {ring.label}
+        {ring.hinweis && (
+          <>
+            <br />
+            {ring.hinweis}
+          </>
+        )}
+      </span>
     </span>
   );
 }

@@ -48,6 +48,7 @@
 
 import type { CockpitMoney } from './api';
 import { ctPerKwh, eurAmount, fmtNum } from './format';
+import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import type { AnlagenSub } from './nav';
 import { chargeKind, todaySlots, SLOT_DEADBAND_KW } from './schedule';
 import type { ActiveMode, CockpitBlock, CockpitBlockId } from './surface';
@@ -248,6 +249,8 @@ export interface BlockTile {
   sub: string | null;
   /** Farb-Kanal (die `--vp-flow-*`-Token) für den Akzent. */
   hue: 'pv' | 'batt' | 'grid' | 'load';
+  /** Die Quote liegt außerhalb 0…100 %; `sub` trägt dann den Satz (AP-10 E16 Nr. 5). */
+  unplausibel?: boolean;
 }
 
 export interface HandelBlockView {
@@ -440,6 +443,8 @@ export interface EigenverbrauchBlockView {
 export function eigenverbrauchBlock(input: {
   autarkiePct: number | null | undefined;
   eigenverbrauchPct: number | null | undefined;
+  autarkieUnplausibel?: boolean | null;
+  eigenverbrauchUnplausibel?: boolean | null;
   slots: CockpitSlot[];
   now: Date;
   gridImportKwh?: number | null;
@@ -449,21 +454,25 @@ export function eigenverbrauchBlock(input: {
   const autarkie = numOrNull(input.autarkiePct);
   if (autarkie != null) {
     const imported = numOrNull(input.gridImportKwh);
-    tiles.push({
-      label: 'Autarkie heute',
-      value: fmtNum(autarkie, '%', 0),
-      sub: imported != null ? `${fmtNum(imported, 'kWh')} aus dem Netz` : null,
-      hue: 'pv',
-    });
+    tiles.push(
+      quoteKachel('Autarkie heute', autarkie, input.autarkieUnplausibel, 'pv') ?? {
+        label: 'Autarkie heute',
+        value: fmtNum(autarkie, '%', 0),
+        sub: imported != null ? `${fmtNum(imported, 'kWh')} aus dem Netz` : null,
+        hue: 'pv',
+      },
+    );
   }
   const evQuote = numOrNull(input.eigenverbrauchPct);
   if (evQuote != null) {
-    tiles.push({
-      label: 'PV selbst genutzt',
-      value: fmtNum(evQuote, '%', 0),
-      sub: 'Rest gespeichert oder eingespeist',
-      hue: 'batt',
-    });
+    tiles.push(
+      quoteKachel('PV selbst genutzt', evQuote, input.eigenverbrauchUnplausibel, 'batt') ?? {
+        label: 'PV selbst genutzt',
+        value: fmtNum(evQuote, '%', 0),
+        sub: 'Rest gespeichert oder eingespeist',
+        hue: 'batt',
+      },
+    );
   }
   const until = coverUntil(input.slots, input.now, input.slotMinutes ?? 15);
   if (until) {
@@ -517,4 +526,19 @@ export function automationRows(modes: ActiveMode[] | null | undefined): Automati
 
 function numOrNull(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Die Kachel einer Quote außerhalb 0…100 % (AP-10 E16 Nr. 5): die ungeklemmte
+ * Zahl, darunter „Messwerte passen nicht zusammen (…)" statt der Erklärung, die
+ * einen echten Anteil voraussetzt. `null` = die Quote ist plausibel.
+ */
+function quoteKachel(
+  label: string,
+  pct: number,
+  flag: boolean | null | undefined,
+  hue: BlockTile['hue'],
+): BlockTile | null {
+  if (!quoteUnplausibel(pct, flag)) return null;
+  return { label, value: quoteZahl(pct), sub: quoteSatz(pct), hue, unplausibel: true };
 }

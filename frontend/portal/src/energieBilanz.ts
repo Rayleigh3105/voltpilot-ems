@@ -27,6 +27,7 @@
 import type { History, HistoryBucket, HistoryRange } from './api';
 import type { Kernaussage } from './chartKopf';
 import { periodLabel } from './periodNav';
+import { quoteSatz, quoteUnplausibel } from './quoteUnplausibel';
 
 /** Ein `chartTheme()`-Schlüssel — die Fläche löst ihn zur Farbe auf. */
 export type EnergieFarbe =
@@ -150,6 +151,12 @@ export interface EnergieBilanz {
   summen: EnergieSumme[];
   autarkiePct: number | null;
   eigenverbrauchPct: number | null;
+  /**
+   * Das Server-Kennzeichen „Quote außerhalb 0…100 %" (AP-10 E16 Nr. 5). Gelesen
+   * nur über `quoteUnplausibel`, das ohne Kennzeichen am Wertebereich prüft.
+   */
+  autarkieUnplausibel?: boolean | null;
+  eigenverbrauchUnplausibel?: boolean | null;
   /** Die realen Bezugskosten des Netzbezugs (siehe `gridCostHinweis`). */
   gridCostEur: number | null;
   /** Der ehrliche Zusatz zu `gridCostEur` — nie ohne ihn anzeigen. */
@@ -177,6 +184,8 @@ export function energieBilanz(history: History): EnergieBilanz {
     summen,
     autarkiePct: num(history.totals.autarkiePct),
     eigenverbrauchPct: num(history.totals.eigenverbrauchPct),
+    autarkieUnplausibel: history.totals.autarkieUnplausibel ?? null,
+    eigenverbrauchUnplausibel: history.totals.eigenverbrauchUnplausibel ?? null,
     gridCostEur: num(history.totals.gridCostEur),
     gridCostHinweis: gridCostHinweis(history.totals.tarifPriced),
     empty: summen.every((s) => s.kwh == null),
@@ -208,7 +217,7 @@ export function zeitraumWort(range: HistoryRange): string {
 export function messwerteKernaussage(
   bilanz: EnergieBilanz,
   zeitraumWort: string,
-  vergleich?: { pct: number | null; name: string } | null,
+  vergleich?: { pct: number | null; name: string; unplausibel?: boolean | null } | null,
 ): Kernaussage {
   if (bilanz.empty) {
     return {
@@ -229,6 +238,12 @@ export function messwerteKernaussage(
       ton: 'calm',
     };
   }
+  if (quoteUnplausibel(pct, bilanz.eigenverbrauchUnplausibel)) {
+    // AP-10 E16 Nr. 5: „−25 % Ihrer Sonne haben Sie selbst genutzt" wäre ein
+    // Satz über die Anlage, der nicht stimmt — die Messwerte passen nicht
+    // zusammen, und genau das steht da (die ungeklemmte Zahl im Satz).
+    return { wert: null, satz: null, grund: `${quoteSatz(pct)}.`, ton: 'warn' };
+  }
   const vglPct = vergleich?.pct ?? null;
   return {
     wert: `${Math.round(pct)} %`,
@@ -236,7 +251,11 @@ export function messwerteKernaussage(
     grund: null,
     ton: 'ok',
     anker:
-      vglPct != null && vergleich ? `${vergleich.name}: ${Math.round(vglPct)} %.` : null,
+      vglPct != null && vergleich
+        ? quoteUnplausibel(vglPct, vergleich.unplausibel)
+          ? `${vergleich.name}: ${quoteSatz(vglPct)}.`
+          : `${vergleich.name}: ${Math.round(vglPct)} %.`
+        : null,
   };
 }
 

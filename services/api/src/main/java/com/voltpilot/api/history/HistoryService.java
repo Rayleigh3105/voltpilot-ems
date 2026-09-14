@@ -391,16 +391,19 @@ public class HistoryService {
         }
 
         // A ratio needs BOTH of its inputs; an unknown denominator/numerator is
-        // undefined, never silently 0.
+        // undefined, never silently 0. A ratio outside 0..100 is NOT bent back
+        // into the range (AP-10 E16 Nr. 5): it travels as measured and the DTO
+        // flags it `unplausibel` - a clamped 100 % would look like a perfect
+        // result and hide that the meters do not add up.
         BigDecimal autarkie = null;
         if (consumption != null && gridImport != null && consumption.signum() > 0) {
-            autarkie = clampPct(BigDecimal.ONE
+            autarkie = pct(BigDecimal.ONE
                     .subtract(gridImport.divide(consumption, MathContext.DECIMAL64))
                     .multiply(BigDecimal.valueOf(100)));
         }
         BigDecimal eigenverbrauch = null;
         if (pv != null && gridExport != null && pv.signum() > 0) {
-            eigenverbrauch = clampPct(pv.subtract(gridExport)
+            eigenverbrauch = pct(pv.subtract(gridExport)
                     .divide(pv, MathContext.DECIMAL64)
                     .multiply(BigDecimal.valueOf(100)));
         }
@@ -444,9 +447,8 @@ public class HistoryService {
         return total;
     }
 
-    private static BigDecimal clampPct(BigDecimal pct) {
-        BigDecimal clamped = pct.max(BigDecimal.ZERO).min(BigDecimal.valueOf(100));
-        return clamped.setScale(1, RoundingMode.HALF_UP);
+    private static BigDecimal pct(BigDecimal pct) {
+        return pct.setScale(1, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal round(BigDecimal v) {
