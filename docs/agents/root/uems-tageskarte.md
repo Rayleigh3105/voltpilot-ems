@@ -16,6 +16,7 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
 | Vertrag (additiv 1.6) | `mengen_herkunft` + Familie `herkunft`: `ErgebnisZustand.zustandMitHerkunft` ⟷ `uemsErgebnis.zustandMitHerkunft`; `teile` (nur TS) zerlegt `satz` |
 | Vertrag (additiv 1.7) | Kennzeichen `vorlaeufig`/`endgueltig` (Rang 90) + Block `fassung` + Familie `fassung`: `ErgebnisZustand.fassung` ⟷ `uemsErgebnis.fassung` |
 | 375 px + Bilder | `e2e/tageskarte.spec.ts` (+ Bühne `tageskarte.html/.tsx`, Antworten `src/test/werteKarteFixtures.ts`); `TAGESKARTE_BILDER=<Ordner>` legt Bilder ab |
+| Versionen am Wert (IP-18) | Ableitung `src/uemsWertVersionen.ts` · `uemsWertVersionen.test.ts` (F21, F10 gegen `verbrauch-vectors.json` und `korrektur-vorschlag-vectors.json`); Darstellung `src/components/WertVersionen.tsx` (+ `.css`); Antworten `src/test/wertVersionenFixtures.ts`; Route `api.messstelleWerteVersionen` → `…/werte/versionen` (`uems-versionen-lesen.md`) |
 
 ## Die Fallen
 
@@ -50,6 +51,21 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    ab); `.dbody` hat `overflow-x: hidden`, ein Querlauf wäre dort UNSICHTBAR abgeschnitten — der
    E2E-Test prüft darum jedes Element-Rechteck, nicht nur `scrollWidth`.
 
+8. **Versionen am Wert (AP-08 IP-18): der Einstieg sitzt UNTEN in der Karte, die Historie in einem
+   GESTAPELTEN `Modal`** (`data-testid="werte-versionen"` → `versionen-dialog`), neben — nicht in — dem
+   Dialog der Tageswerte gerendert (React-Ereignisse blubbern durch Portale). Gefragt wird NUR bei
+   `versionen >= 2` und nur mit `von`/`bis` des Schritts, unverändert und kodiert (das `+` des Versatzes).
+   Neueste Version zuerst; je Version vorher → danach über `anzeige` (also `menge`/`teile`, E11), die
+   Entscheidungen mit wer · wann (`zeitText` in der Zone der Historie) · warum in „…“. ⚠ **Nie „geändert“:**
+   die erste Fassung eines Vorgangs ist sein Anfang — Ersatzwert „eingetragen von …“, Korrektur
+   „vorgeschlagen von …“ (Anfangs-Status der Vokabulare), Version 1 der Periode ist „Original“ ohne
+   Entscheidung. ⚠ Fehlt das „warum“, steht ein ehrlicher Satz, kursiv abgesetzt (`OHNE_GRUND`,
+   `OHNE_GRUND_FREIGABE`) — nie Art, Methode oder der Vorschlags-Satz als Ersatz; der steht unter
+   `angelegt` als das, was er ist. ⚠ Der alte Wert wird **nie durchgestrichen**: er ist nicht falsch, er
+   stand vorher da (F10: dieselbe Menge, nur der Verlauf wuchs). Ort: gestapelter Dialog statt
+   aufklappbar in der Karte (Vorschau zeigte beide; die Historie von F21 ist bei 375 px ~1 300 px hoch —
+   in der Karte würden Karten in einer Karte und die Stundenliste rückte ~1 100 px nach unten).
+
 ## Offen (Befunde)
 
 - „— 14 Viertelstunden ohne Werte“ (Report F8) liefert das Lese-Modell nicht; nicht in der Fläche gezählt.
@@ -57,3 +73,7 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
   die Karte zeigt nur den Strich.
 - Momentanwert-Messstellen (Mittel/Min/Max) haben keinen Satz — nur der Strich.
 - Messstellen ohne Portal-Seite: nur berechnete Messstellen haben heute einen Wirt.
+- Versionen: nur die Karte hat den Einstieg. Ein Tag der Monatsliste mit Versionen zeigt sein Kennzeichen,
+  aber keinen eigenen Einstieg (die Stunden haben nie Versionen). `nachgezogen_am` wird nicht gezeigt.
+- Befund F11-Stunde (IP-18): die Stunde eines korrigierten Tages ist `version_nicht_gebildet` und bleibt
+  ein Strich ohne Wort — der Vertrag rechnet sie ab Version 2, der Lesepfad bildet sie nicht.

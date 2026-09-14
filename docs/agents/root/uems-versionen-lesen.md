@@ -40,13 +40,13 @@ Neu angelegt am 14.09.2026. Baut auf dem Lese-Modell (`uems-werte-je-messstelle.
    Die anlegende Fassung steht an einer späteren unter `angelegt` mit IHREM Urheber (ein System-Vorschlag: VoltPilot,
    `art` `voltpilot`).
 
-## Die Naht fürs Portal (leer)
+## Die Fläche im Portal
 
-`versionen` an jedem Wert von `…/werte` ist die Naht der Fläche „Versionen“ am Wert: ab 2 gibt es eine Historie. Die
-Fläche braucht: `api.ts` um `versionen`, `herkunft` und das Wort `version_nicht_gebildet` ergänzen, einen Aufruf
-`…/werte/versionen` mit `von`/`bis` des Schritts, je Version `wert_alt` → `wert_neu` über `uemsErgebnis.menge`/`teile`
-(Zahl nie selbst formatieren), `entscheidungen[]` mit `wer.name`, `wann` (Standort-Zone), `warum` — und bei `fehlt`
-„warum“ einen ehrlichen Satz statt eines Grundes; `angelegt` als „vorgeschlagen von …“. Kein Portal-Code in IP-18.
+Gebaut (Versionen am Wert): `frontend/portal/src/uemsWertVersionen.ts` liest `versionen` am Wert der Karte, fragt ab 2
+`…/werte/versionen` mit `von`/`bis` des Schritts und spricht je Version `wert_alt` → `wert_neu` über
+`uemsWerteKarte.anzeige` (E11) und `entscheidungen[]` mit „eingetragen/vorgeschlagen/freigegeben/zurückgenommen von
+…“, Zeitpunkt in der Standort-Zone und dem „warum“ — bei `fehlt` „warum“ ein ehrlicher Satz. Fallen und Ort:
+`uems-tageskarte.md` Falle 8.
 
 ## Prüfen
 

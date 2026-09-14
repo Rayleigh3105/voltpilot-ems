@@ -1,7 +1,8 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import type { MessstelleWerte } from '../src/api';
+import type { MessstelleWerte, MessstelleWerteHistorie } from '../src/api';
+import { f10Historie, f10Stunden, f10Tag, f21Historie, f21Stunden, f21Tag } from '../src/test/wertVersionenFixtures';
 import {
   f13Stunden,
   f13Tag,
@@ -28,6 +29,11 @@ import {
  * Seit ergebnis-zustand 1.7 (Captain 14.09.2026 „Ja, immer zeigen“) sagt die
  * Karte in BEIDEN Fällen, ob die Zahl vorläufig oder endgültig ist — im Kopf,
  * getrennt von Zustand und Verlauf.
+ *
+ * Versionen am Wert (AP-08 IP-18): hat die Zahl der Karte zwei oder mehr
+ * Versionen, öffnet ihr Einstieg die Historie im gestapelten Dialog — F21 (drei
+ * Versionen) und F10 (Freigabe ohne Grund) sind zwei Geschichten desselben
+ * Tages, je Test ist genau eine verdrahtet.
  */
 
 const ANTWORTEN: Record<string, () => MessstelleWerte> = {
@@ -48,19 +54,19 @@ const ANTWORTEN: Record<string, () => MessstelleWerte> = {
 const BILDER = process.env.TAGESKARTE_BILDER;
 const BREITE = 375;
 
-async function verdrahte(page: Page) {
+async function verdrahte(page: Page, antworten: Record<string, () => MessstelleWerte> = ANTWORTEN) {
   await page.route('**/api/v1/messstellen/*/werte?*', async (route) => {
     const url = new URL(route.request().url());
     const ms = decodeURIComponent(url.pathname.split('/')[4]);
     const key = `${ms}|${url.searchParams.get('raster')}|${url.searchParams.get('von')}`;
-    const antwort = ANTWORTEN[key];
+    const antwort = antworten[key];
     if (!antwort) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(antwort()) });
   });
 }
 
-async function oeffne(page: Page, q: string) {
-  await verdrahte(page);
+async function oeffne(page: Page, q: string, antworten?: Record<string, () => MessstelleWerte>) {
+  await verdrahte(page, antworten);
   await page.setViewportSize({ width: BREITE, height: 812 });
   await page.goto(`/e2e/tageskarte.html?${q}`);
   await expect(page.getByTestId('werte-karte')).toBeVisible();
@@ -70,7 +76,8 @@ async function oeffne(page: Page, q: string) {
 /** Kein Querlauf: weder die Seite noch der Dialog noch ein Element ragt über 375 px. */
 async function keinQuerlauf(page: Page) {
   const befund = await page.evaluate((breite) => {
-    const koerper = document.querySelector('.vp-modal .dbody') as HTMLElement | null;
+    // Gestapelt: jeder Körper, nicht nur der erste.
+    const koerper = [...document.querySelectorAll('.vp-modal .dbody')] as HTMLElement[];
     const raus = [...document.querySelectorAll('.vp-modal *')]
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       .filter(({ r }) => r.width > 0 && (r.right > breite + 0.5 || r.left < -0.5))
@@ -82,7 +89,7 @@ async function keinQuerlauf(page: Page) {
     return {
       gekuerzt,
       seite: document.documentElement.scrollWidth,
-      koerper: koerper ? koerper.scrollWidth - koerper.clientWidth : -1,
+      koerper: koerper.length ? Math.max(...koerper.map((k) => k.scrollWidth - k.clientWidth)) : -1,
       raus,
     };
   }, BREITE);
@@ -96,12 +103,14 @@ async function bilder(page: Page, datei: string) {
   if (!BILDER) return;
   mkdirSync(BILDER, { recursive: true });
   // Erst nach dem Einblenden des Dialogs — sonst zeigt das Bild die leere Bühne.
-  await expect(page.locator('.vp-modal')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.vp-modal').last()).toHaveCSS('opacity', '1');
   await page.waitForFunction(() => document.getAnimations().every((x) => x.playState !== 'running'));
   await page.screenshot({ path: join(BILDER, `${datei}-telefon.png`) });
+  // Die ganze Fläche des OBERSTEN Dialogs (gestapelt: die Versionen).
   const hoehe = await page.evaluate(() => {
-    const k = document.querySelector('.vp-modal .dbody') as HTMLElement;
-    const kopf = (document.querySelector('.vp-modal .dhead') as HTMLElement).offsetHeight;
+    const oben = [...document.querySelectorAll('.vp-modal')].at(-1) as HTMLElement;
+    const k = oben.querySelector('.dbody') as HTMLElement;
+    const kopf = (oben.querySelector('.dhead') as HTMLElement).offsetHeight;
     return kopf + k.scrollHeight + 8;
   });
   await page.setViewportSize({ width: BREITE, height: Math.max(812, hoehe) });
@@ -262,5 +271,97 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('September 2026');
     await expect(page.getByRole('alert')).toBeVisible();
     await keinQuerlauf(page);
+  });
+});
+
+const VERSIONEN_F21: Record<string, () => MessstelleWerte> = {
+  'MS-10|tag|2026-11-03': f21Tag,
+  'MS-10|stunde|2026-11-03': f21Stunden,
+};
+const VERSIONEN_F10: Record<string, () => MessstelleWerte> = {
+  'MS-10|tag|2026-11-03': f10Tag,
+  'MS-10|stunde|2026-11-03': f10Stunden,
+};
+
+/** Die Historie-Route; `anfragen` sammelt, womit gefragt wurde (entschlüsselt). */
+async function verdrahteVersionen(page: Page, historie: () => MessstelleWerteHistorie) {
+  const anfragen: Array<{ raster: string | null; von: string | null; bis: string | null }> = [];
+  await page.route('**/api/v1/messstellen/*/werte/versionen?*', async (route) => {
+    const url = new URL(route.request().url());
+    anfragen.push({ raster: url.searchParams.get('raster'), von: url.searchParams.get('von'), bis: url.searchParams.get('bis') });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(historie()) });
+  });
+  return anfragen;
+}
+
+const versionen = (page: Page) => page.getByTestId('versionen-dialog');
+
+test.describe('Versionen am Wert bei 375 px', () => {
+  test('F21: die Karte zeigt „3 Versionen“, der Dialog Version 3 · 2 · 1 mit wer, wann, warum', async ({ page }) => {
+    const anfragen = await verdrahteVersionen(page, f21Historie);
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03', VERSIONEN_F21);
+    const karte = page.getByTestId('werte-karte');
+    await expect(karte).toContainText('2.354\u00a0kWh');
+    const einstieg = karte.getByTestId('werte-versionen');
+    await expect(einstieg).toContainText('3 Versionen');
+    // Die Stunden ab 14:00 haben keine eigenen Versionen: Strich, kein Wort (Befund F11-Stunde, nicht hier gerechnet).
+    await expect(zeile(page, '14:00–15:00').locator('.vp-wk-zeile-zahl')).toHaveText('—');
+    await expect(zeile(page, '14:00–15:00').locator('.vp-wk-zeile-info')).toHaveCount(0);
+    expect(anfragen).toEqual([]);
+    await keinQuerlauf(page);
+    await bilder(page, '11-karte-mit-versionen');
+
+    await einstieg.click();
+    await expect(versionen(page)).toBeVisible();
+    await expect(versionen(page).getByTestId('version')).toHaveCount(3);
+    // Genau der Schritt der Karte — von und bis mit Versatz, unverändert angekommen.
+    expect(anfragen).toEqual([{ raster: 'tag', von: '2026-11-03T00:00:00+01:00', bis: '2026-11-04T00:00:00+01:00' }]);
+    const [v3, v2, v1] = [0, 1, 2].map((i) => versionen(page).getByTestId('version').nth(i));
+    await expect(v3).toContainText('Version 3');
+    await expect(v3).toContainText('gilt jetzt');
+    await expect(v3.getByTestId('wert-alt')).toContainText('2.304\u00a0kWh');
+    await expect(v3.getByTestId('wert-neu')).toContainText('2.354\u00a0kWh');
+    await expect(v3.getByTestId('entscheidung')).toHaveCount(2);
+    await expect(v3.getByTestId('entscheidung').first()).toContainText('zurückgenommen von Ines Kaltenbach · 20.11.2026 15:10');
+    await expect(v3.getByTestId('entscheidung').first()).toContainText('„Profil aus Netzbetreiber-Lastgang verfügbar“');
+    await expect(v3.getByTestId('angelegt')).toContainText('eingetragen von Ines Kaltenbach · 06.11.2026 11:20');
+    await expect(v2.getByTestId('entscheidung')).toContainText('eingetragen von Ines Kaltenbach');
+    await expect(v1).toContainText('Original');
+    await expect(v1).toContainText('gebildet am 04.11.2026 00:15');
+    await expect(v1.getByTestId('wert-alt')).toHaveCount(0);
+    await expect(versionen(page)).not.toContainText('geändert');
+    await keinQuerlauf(page);
+    await bilder(page, '12-versionen-f21');
+
+    // Escape schließt nur die Versionen; der Fokus kehrt zum Einstieg zurück.
+    await page.keyboard.press('Escape');
+    await expect(versionen(page)).toHaveCount(0);
+    await expect(page.getByTestId('werte-karte')).toBeVisible();
+    await expect(einstieg).toBeFocused();
+  });
+
+  test('F10: freigegeben ohne Grund — ein ehrlicher Satz, der Vorschlag von VoltPilot darunter', async ({ page }) => {
+    await verdrahteVersionen(page, f10Historie);
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03', VERSIONEN_F10);
+    await page.getByTestId('werte-versionen').click();
+    const v2 = versionen(page).getByTestId('version').first();
+    await expect(v2.getByTestId('wert-alt')).toContainText('Verlauf 85\u00a0%');
+    await expect(v2.getByTestId('wert-neu')).toContainText('Verlauf 100\u00a0%');
+    const freigabe = v2.getByTestId('entscheidung');
+    await expect(freigabe).toContainText('Korrektur K-2026-0007');
+    await expect(freigabe).toContainText('freigegeben von Jonas Wendlinger · 12.11.2026 10:15');
+    await expect(freigabe.getByTestId('warum').first()).toHaveText('Kein Grund angegeben — eine Freigabe verlangt keinen.');
+    await expect(freigabe.getByTestId('warum').first()).toHaveClass(/vp-wv-ehrlich/);
+    await expect(freigabe.getByTestId('angelegt')).toContainText('vorgeschlagen von VoltPilot · 12.11.2026 09:02');
+    await keinQuerlauf(page);
+    await bilder(page, '13-versionen-f10');
+  });
+
+  test('ein Tag mit einer Version: kein Einstieg, keine Anfrage', async ({ page }) => {
+    const anfragen = await verdrahteVersionen(page, f21Historie);
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-02');
+    await expect(page.getByTestId('werte-karte')).toContainText('2.304\u00a0kWh');
+    await expect(page.getByTestId('werte-versionen')).toHaveCount(0);
+    expect(anfragen).toEqual([]);
   });
 });

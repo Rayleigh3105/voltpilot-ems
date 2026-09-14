@@ -1,0 +1,219 @@
+/*
+ * Versionen am Wert (UEMS AP-08 IP-18). Mobil zuerst: bei 375 px läuft nichts
+ * quer — Zahlen, Namen und Begründungen brechen um, kein Satz wird gekürzt.
+ * Optik = die Tageskarte (--vp-c-*); der Rahmen ist das gestapelte `Modal`.
+ */
+
+/* --- der Einstieg unten in der Karte --- */
+.vp-wv-einstieg {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin-top: var(--vp-c-space-3);
+  padding: 10px var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 10px;
+  background: var(--vp-bg-light);
+  color: var(--vp-c-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-wv-einstieg:hover {
+  border-color: var(--vp-action);
+}
+.vp-wv-einstieg:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-wv-einstieg > svg {
+  flex: 0 0 auto;
+  color: var(--vp-c-muted-fg);
+}
+.vp-wv-einstieg-text {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-wv-einstieg-titel {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-wv-einstieg-unter {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+/* --- der Dialog --- */
+.vp-wv {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+.vp-wv-kopf {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.vp-wv-messstelle {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wv-periode {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-wv-leer {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-wv-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+.vp-wv-version {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: var(--vp-c-space-4);
+  background: var(--vp-c-card);
+  min-width: 0;
+}
+.vp-wv-version-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+.vp-wv-version-titel {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+/* vorher → danach: zwei Zeilen, die Zahl rechtsbündig untereinander */
+.vp-wv-werte {
+  display: grid;
+  gap: 6px;
+  margin: var(--vp-c-space-3) 0 0;
+}
+.vp-wv-wert {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--vp-c-space-3);
+  align-items: baseline;
+  min-width: 0;
+}
+.vp-wv-wert dt {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+.vp-wv-wert dd {
+  margin: 0;
+}
+.vp-wv-zahl {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--vp-c-fs-20, 20px);
+  font-weight: var(--vp-c-fw-800);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+/* Nie durchgestrichen: der alte Wert ist nicht falsch oder gelöscht, er stand vorher da (F10: dieselbe Menge). */
+.vp-wv-wert.is-alt .vp-wv-zahl {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+}
+.vp-wv-info {
+  grid-column: 1 / -1;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wv-info.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-wv-gebildet {
+  margin: var(--vp-c-space-2) 0 0;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+/* --- die Entscheidungen: wer, wann, warum --- */
+.vp-wv-entscheidungen {
+  list-style: none;
+  margin: var(--vp-c-space-3) 0 0;
+  padding: var(--vp-c-space-3) 0 0;
+  border-top: 1px solid var(--vp-c-border);
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+.vp-wv-entscheidung {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-wv-entscheidung p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.vp-wv-vorgang {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-wv-wer {
+  font-size: var(--vp-c-fs-14);
+}
+.vp-wv-wann {
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-wv-warum {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-wv-was {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+/* Ein Satz, der KEIN Text eines Menschen ist, sieht nicht aus wie einer. */
+.vp-wv-ehrlich {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-style: italic;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wv-angelegt {
+  display: grid;
+  gap: 2px;
+  margin-top: var(--vp-c-space-2);
+  padding-left: var(--vp-c-space-3);
+  border-left: 2px solid var(--vp-c-border);
+}
+.vp-wv-angelegt .vp-wv-wer,
+.vp-wv-angelegt .vp-wv-warum,
+.vp-wv-angelegt .vp-wv-ehrlich {
+  font-size: var(--vp-c-fs-12);
+}
+.vp-wv-angelegt .vp-wv-wer {
+  color: var(--vp-c-muted-fg);
+}

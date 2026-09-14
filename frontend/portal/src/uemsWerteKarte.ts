@@ -26,7 +26,7 @@
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
 
-import type { MessstelleWerte, MessstelleWerteRaster, MessstelleWerteWert } from './api';
+import type { MessstelleWerte, MessstelleWerteQuelle, MessstelleWerteRaster, MessstelleWerteWert } from './api';
 import { MONATE, WOCHENTAGE } from './picker/datum';
 import {
   ANZEIGE_EINHEITEN,
@@ -149,11 +149,22 @@ const STRICH: WertAnzeige = {
 };
 
 /**
+ * Was ein Schritt zum Sprechen braucht: die Messstelle (gespeicherte Einheit),
+ * das Raster (die Ebene der Rundung) und — nur für die Herkunft — die Quellen.
+ * Die Antwort von `…/werte` erfüllt es, die Historie von `…/werte/versionen` auch.
+ */
+export interface Rahmen {
+  messstelle: MessstelleWerte['messstelle'];
+  raster: MessstelleWerteRaster;
+  quellen?: MessstelleWerteQuelle[];
+}
+
+/**
  * EIN Schritt als Anzeige. `mitHerkunft` setzt die Herkunft der Menge ans
  * Zustandswort (die Karte); die Zeilen einer Liste tragen das Wort allein.
  */
 export const anzeige = (
-  antwort: MessstelleWerte,
+  antwort: Rahmen,
   w: MessstelleWerteWert,
   mitHerkunft: boolean,
 ): WertAnzeige => {
@@ -173,7 +184,7 @@ export const anzeige = (
   // Ein Ergebnis, das den Vertrag verletzt, wird nicht gesprochen (auch nicht seine Zahl).
   if (pruefe(ergebnis).length > 0) return STRICH;
   const t = teile(ergebnis);
-  const herleitung = mitHerkunft ? (antwort.quellen.find((q) => q.id === w.quelle)?.herleitung ?? null) : null;
+  const herleitung = mitHerkunft ? ((antwort.quellen ?? []).find((q) => q.id === w.quelle)?.herleitung ?? null) : null;
   return {
     zahl: menge(w.menge, gespeichert, ebene),
     zustand: zustandMitHerkunft(w.zustand, herleitung, w.menge),
