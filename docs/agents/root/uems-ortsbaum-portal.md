@@ -43,7 +43,7 @@ geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl
    Zweig „Direkt am Standort“ unter dem Hinweis. Den Zweig gibt es nur, wenn dort etwas hängt.
 8. **E2E-Routen**: `**/api/v1/standorte**` trifft auch `…/{id}/orte` — `standorte.spec.ts` reicht
    diese Pfade weiter (`fallback`), sonst bekäme der Baum die Standort-Liste.
-9. **Nicht hier:** Verschieben (IP-12), Archivieren/Löschen von Orten (IP-15, `uems-ort-archivieren.md`),
+9. **Nicht hier:** Verschieben (IP-12, `uems-ort-verschieben.md`), Archivieren/Löschen von Orten (IP-15, `uems-ort-archivieren.md`),
    Fläche ändern mit Verlauf (IP-8), die Datenlage je Knoten, eine eigene Seite „Standort › Gebäude“
    (kommt mit der Ebenen-Navigation aus AP-01 IP-5/IP-7 — `Ortsbaum` zieht unverändert um).
    „Stand am …“ (IP-13): der Baum nimmt `stichtag` und bietet dann nichts an (`uems-stand-am-portal.md`).
