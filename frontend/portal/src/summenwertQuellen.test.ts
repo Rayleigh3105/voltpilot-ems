@@ -4,11 +4,13 @@ import {
   ankerAus,
   anhakbar,
   gruppen,
+  istGenPort,
   sperrArt,
   sperrGrund,
   sperrKurz,
   suchePasst,
   unterzeile,
+  vorauswahl,
   zeileAus,
   zuQuellwert,
 } from './summenwertQuellen';
@@ -74,7 +76,7 @@ describe('summenwertQuellen: zeileAus leitet Guard, Kategorie und Live-Wert ab',
     expect(z.entityId).toBe('ent-1');
   });
 
-  it('der Gen-Port (Wirkleistung, direction null) ist summierbar UND richtungslos', () => {
+  it('der Gen-Port (Wirkleistung, direction null) ist summierbar, richtungslos UND genPort', () => {
     const z = zeileAus(
       pt({ pointKey: 'deye.hybrid_1p.load.generator-power', labelDe: 'Gen-Port',
         direction: null, selected: false, decodedValue: null, recorded: false }),
@@ -82,10 +84,24 @@ describe('summenwertQuellen: zeileAus leitet Guard, Kategorie und Live-Wert ab',
     );
     expect(z.summierbar).toBe(true);
     expect(z.richtungslos).toBe(true);
+    expect(z.genPort).toBe(true);
     expect(z.kategorie).toBe('Wirkleistung · richtungslos');
     // Nicht beobachtet → kein Live-Wert vorgetäuscht.
     expect(z.beobachtet).toBe(false);
     expect(z.wert).toBeNull();
+  });
+
+  it('ein generisches richtungsloses Register (Hausverbrauch) ist richtungslos, aber KEIN Gen-Port', () => {
+    // `load-consumption-power` trägt `direction: null` (Deye-Katalog), ist also richtungslos -
+    // aber kein ambivalenter Anschluss-Kanal. Es bekommt die neutrale Erzeugungs-Frage, nicht
+    // das Gen-Port-Wording.
+    const z = zeileAus(
+      pt({ pointKey: 'deye.hybrid_3p.load.load-consumption-power', labelDe: 'Hausverbrauch',
+        group: 'Load', direction: null }),
+      'ent-1',
+    );
+    expect(z.richtungslos).toBe(true);
+    expect(z.genPort).toBe(false);
   });
 
   it('ein Zahlenwert ohne Vertrags-Größe (Spannung) ist nicht summierbar, mit Kategorie', () => {
@@ -193,5 +209,59 @@ describe('summenwertQuellen: Unterzeile, Suche, Gruppen', () => {
       wertart: 'Momentanwert',
       wert: 5.2,
     });
+  });
+});
+
+describe('summenwertQuellen: istGenPort verengt den Gen-Port auf den echten Anschluss-Kanal', () => {
+  it('nur die Leistung AM Generatoranschluss (…generator[-lN]-power) ist der Gen-Port', () => {
+    // Die echten Gen-Port-Schlüssel des Deye-Katalogs (hybrid_1p + hybrid_3p, alle direction:null).
+    expect(istGenPort('deye.hybrid_1p.load.generator-power')).toBe(true);
+    expect(istGenPort('deye.hybrid_3p.generator-smartload-microinverter.generator-power')).toBe(true);
+    expect(istGenPort('deye.hybrid_3p.generator-smartload-microinverter.generator-l1-power')).toBe(true);
+    expect(istGenPort('deye.hybrid_3p.generator-smartload-microinverter.generator-l3-power')).toBe(true);
+  });
+
+  it('Setpoints/Parameter mit „generator" im Schlüssel sind KEIN Gen-Port', () => {
+    expect(istGenPort('deye.hybrid_3p.grid-parameters.generator-min-pv-power')).toBe(false);
+    expect(istGenPort('deye.hybrid_3p.work-mode.generator-peak-shaving@r00be')).toBe(false);
+  });
+
+  it('sonstige richtungslose active_power-Register (Last/Ausgang/CT/Setpoint) sind KEIN Gen-Port', () => {
+    // Die restlichen 39 direction:null-Register der hybrid_3p sind keine Anschluss-Kanäle.
+    for (const key of [
+      'deye.hybrid_3p.load.load-consumption-power',
+      'deye.hybrid_3p.output.power',
+      'deye.hybrid_3p.grid.internal-ct1-power',
+      'deye.hybrid_3p.work-mode.pv-power',
+      'deye.hybrid_3p.info.device-rated-power',
+    ]) {
+      expect(istGenPort(key)).toBe(false);
+    }
+  });
+});
+
+describe('summenwertQuellen: vorauswahl hakt nur Erzeugung vorab an (B2 - keine stille PV-Zählung)', () => {
+  const pv = zeileAus(pt({ pointKey: 'pv1', labelDe: 'PV 1', selected: true }), 'e');
+  const genPort = zeileAus(
+    pt({ pointKey: 'deye.hybrid_1p.load.generator-power', labelDe: 'Gen-Port',
+      direction: null, selected: true, recorded: true }),
+    'e',
+  );
+  const hausverbrauch = zeileAus(
+    pt({ pointKey: 'deye.hybrid_3p.load.load-consumption-power', labelDe: 'Hausverbrauch',
+      group: 'Load', direction: null, selected: true, recorded: true }),
+    'e',
+  );
+
+  it('nur die Erzeugungs-Stränge werden vorab gewählt', () => {
+    expect(vorauswahl([pv, genPort, hausverbrauch]).map((z) => z.name)).toEqual(['PV 1']);
+  });
+
+  it('ein beobachtetes richtungsloses Nicht-Erzeugungs-Register wird NICHT automatisch aufgenommen', () => {
+    // Kern-Ehrlichkeit (B2): ein beobachteter Hausverbrauch/Gen-Port wandert NIE still als
+    // PV-Erzeugung in den Default-Summenwert - er braucht die ausdrückliche Entscheidung.
+    const gewaehlt = vorauswahl([pv, genPort, hausverbrauch]);
+    expect(gewaehlt.some((z) => z.name === 'Hausverbrauch')).toBe(false);
+    expect(gewaehlt.some((z) => z.name === 'Gen-Port')).toBe(false);
   });
 });

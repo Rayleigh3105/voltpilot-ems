@@ -66,10 +66,34 @@ export interface RegisterZeile {
   jahresBytes: number;
   /** Summierbar = trägt Vertrags-Größe UND Wertart (der Guard aus `gesamtwert.ts`). */
   summierbar: boolean;
-  /** Summierbar, aber ohne Katalog-Richtung (der Gen-Port) - nur hier der AP-08-Haken. */
+  /**
+   * Summierbar, aber ohne Katalog-Richtung (`direction: null`) - trägt deshalb nur mit der
+   * per-Term-Entscheidung „gilt als Erzeugung" (AP-08) zur Summe bei. Gilt für JEDES
+   * richtungslose summierbare Register (nicht nur den Gen-Port), weil der Server einen
+   * richtungslosen Term ohne diese Entscheidung mit 400 ablehnt.
+   */
   richtungslos: boolean;
+  /**
+   * Der WIRKLICH ambivalente Anschluss-Kanal (der Gen-Port, an dem ein Mikrowechselrichter/
+   * Generator hängen kann). NUR diese Kanäle tragen die erklärte Gen-Port-Frage; alle übrigen
+   * richtungslosen Register bekommen die neutrale Erzeugungs-Frage (`istGenPort`).
+   */
+  genPort: boolean;
   /** Das Anzeige-Kategoriewort der Unterzeile (Wirkleistung · Erzeugung / Spannung / Zustand). */
   kategorie: string | null;
+}
+
+/**
+ * Ist dieses Register der Gen-Port - der wirklich ambivalente Anschluss-Kanal, dessen Leistung
+ * je nach angeschlossenem Gerät Erzeugung (Mikrowechselrichter) ODER Verbrauch (Generator/
+ * SmartLoad) ist? NUR dann trägt es die erklärte Gen-Port-Frage. Signal ist der stabile
+ * Katalog-Schlüssel: die Leistung AM Generatoranschluss (`…generator[-lN]-power`), nicht ein
+ * Setpoint/Parameter (`…generator-min-pv-power`, `…generator-peak-shaving`). Ein generisches
+ * richtungsloses Register (Last, Ausgang, CT, Setpoint) ist KEIN Gen-Port und bekommt die
+ * neutrale Erzeugungs-Entscheidung ohne Gen-Port-Wording.
+ */
+export function istGenPort(pointKey: string): boolean {
+  return /(?:^|[.-])generator(?:-l[123])?-power$/.test(pointKey);
 }
 
 /** Eine Register-Zeile aus einem Katalog-Punkt (rein). `entityId` ist die Komponente. */
@@ -80,6 +104,7 @@ export function zeileAus(
   const groesse = groesseAus(point.quantity);
   const richtung = richtungAus(point.direction);
   const wertart = wertartAus(point.aggregationKind);
+  const richtungslos = !!groesse && !!wertart && richtung == null;
   const numerisch = point.aggregationKind === 'gauge' || point.aggregationKind === 'counter';
   const summierbar = !!groesse && !!wertart;
   const beobachtet = point.selected;
@@ -106,7 +131,8 @@ export function zeileAus(
     langzeitKadenzS: point.longTermCadenceS,
     jahresBytes: point.estimatedDataPerYearBytes,
     summierbar,
-    richtungslos: summierbar && richtung == null,
+    richtungslos,
+    genPort: richtungslos && istGenPort(point.pointKey),
     kategorie,
   };
 }
@@ -205,6 +231,18 @@ export function suchePasst(zeile: RegisterZeile, query: string): boolean {
     [zeile.name, zeile.gruppe, zeile.einheit ?? '', zeile.kategorie ?? '', zeile.pointKey].join(' '),
   );
   return tokens.every((t) => hay.includes(t));
+}
+
+/**
+ * Die Vorauswahl des Häkchen-Schnellpfads (Konzept §2.1): NUR die beobachteten Katalog-
+ * Erzeugungs-Stränge (`richtung === 'Erzeugung'`, z. B. PV 1/2/3) werden vorab angehakt.
+ * Ein RICHTUNGSLOSES summierbares Register (der Gen-Port UND generische `direction:null`-
+ * Kanäle wie `load-consumption-power` oder `work-mode.pv-power`) wird NIE still mitgezählt -
+ * es kommt ausschließlich über die ausdrückliche Kunden-Entscheidung (der Erzeugungs-Schalter)
+ * in die Summe. So bleibt der Default-Summenwert ehrlich (keine stille PV-Zählung, B2).
+ */
+export function vorauswahl(zeilen: RegisterZeile[]): RegisterZeile[] {
+  return zeilen.filter((z) => z.summierbar && z.richtung === 'Erzeugung');
 }
 
 /** Die zwei Gruppen der Quellenliste: beobachtete „Messwerte" oben, „Alle Register" darunter. */
