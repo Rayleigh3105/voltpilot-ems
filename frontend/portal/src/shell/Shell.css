@@ -795,3 +795,25 @@
 .vp-avatarmenu-phone {
   display: none;
 }
+
+/* ---------- Der Ortspfad einer Seite ohne Anlage (UEMS AP-01 IP-5) ----------
+   Standort- und Unternehmens-Übersicht: „Ahrenberg › Werk Ahrenberg". Anders
+   als in einer Anlage gibt es dort am Telefon weder die Leiste noch den
+   Anlagen-Umschalter — der Rückweg im Pfad bleibt deshalb auf jeder Breite
+   sichtbar, mit 44 px Trefferfläche, und gibt Breite ab, bevor der Ort selbst
+   gekürzt wird. Die Anlagen-Kopfzeile oben ist davon unberührt. */
+@media (max-width: 1279px) {
+  .vp-app .vp-topbar .vp-crumbs-ort .vp-crumb-up {
+    display: inline-block;
+    flex: 0 1 auto;
+    min-width: 3rem;
+    min-height: 44px;
+    line-height: 44px;
+    padding-block: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .vp-app .vp-topbar .vp-crumbs-ort .vp-crumb-sep {
+    display: inline;
+  }
+}

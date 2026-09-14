@@ -1,0 +1,262 @@
+import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import { api, type Overview, type OverviewSite, type Site } from '../src/api';
+import { keycloak } from '../src/auth';
+import { showAddAnlageButton } from '../src/addAnlage';
+import { anlageSidebar } from '../src/anlageNav';
+import { anlagenOptionen } from '../src/anlagenWahl';
+import {
+  canonicalShellRoute,
+  flottenLandung,
+  kopfPfad,
+  orteAus,
+  pfadWert,
+  pfadZeile,
+  showOverviewNav,
+  showPortfolioNav,
+  startEbene,
+  type PfadGlied,
+  type ShellInput,
+} from '../src/betriebsart';
+import { PortfolioTabs } from '../src/components/PortfolioTabs';
+import { healthBadge } from '../src/health';
+import { anlageRoute, hashForRoute, pageRoute, standortRoute, type PageId, type Route } from '../src/nav';
+import { PortfolioPage } from '../src/pages/PortfolioPage';
+import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
+import { AppShell } from '../src/shell/AppShell';
+import { anlageSurface } from '../src/surface';
+import {
+  ahrenbergHeute,
+  ahrenbergUnternehmen,
+  bestandEineAnlage,
+  FIXTURE_IDS,
+  werkAhrenberg,
+} from '../src/test/standorteFixtures';
+import '../designsystem/tokens/fonts.css';
+import '../designsystem/tokens/colors.css';
+import '../designsystem/tokens/typography.css';
+import '../designsystem/tokens/spacing.css';
+import '../designsystem/tokens/effects.css';
+import '../designsystem/components/core/core.css';
+import '../designsystem/components/shell/shell.css';
+import '../src/index.css';
+
+/**
+ * E2E-Bühne „Startansicht" (UEMS AP-01 IP-5): die ECHTE Schale mit dem ECHTEN
+ * Pfad und den ECHTEN Seiten der Flotten-Ebene, entschieden von denselben reinen
+ * Funktionen, die `App.tsx` ruft (`startEbene` → `canonicalShellRoute` →
+ * `kopfPfad`). Die Cloud ist in der Bühne gestellt, nicht verdrahtet.
+ *
+ * Alle Namen und Werte aus dem Referenzunternehmen Ahrenberg
+ * (`docs/contracts/v2/uems-referenzunternehmen.json`, Momentaufnahme 20.10.2026
+ * 10:15): Netzbezug Halle 1 312,4 kW, PV 168,2 kW, Speicher 62 %; Halle 2
+ * 96,5 kW; Werk Lindach 38,7 kW. Was die Datei nicht trägt (Verbrauch, Geld),
+ * bleibt leer — nie eine erfundene Zahl.
+ *
+ * `?bild=einzel|standort|unternehmen` — die drei Startbilder; `&ansicht=anlage`
+ * öffnet Halle 1, `&ansicht=lindach` die Standort-Übersicht Werk Lindach.
+ */
+
+const { an1, an2, an3, st2 } = FIXTURE_IDS;
+const STAND = '2026-10-20T08:15:00Z';
+const params = new URLSearchParams(location.search);
+const bild = params.get('bild') ?? 'einzel';
+const ansicht = params.get('ansicht');
+
+Object.assign(keycloak, {
+  token: 'e2e-token',
+  authenticated: true,
+  updateToken: async () => false,
+  tokenParsed: { name: 'Jonas Wendlinger', email: 'jonas.wendlinger@example.test', realm_access: { roles: ['operator'] } },
+});
+
+const halle1 = { id: an1, name: 'Werk Ahrenberg – Halle 1', biddingZone: 'DE-LU' };
+const halle2 = { id: an2, name: 'Werk Ahrenberg – Halle 2', biddingZone: 'DE-LU' };
+const lindach = { id: an3, name: 'Werk Lindach', biddingZone: 'DE-LU' };
+
+function zeile(
+  site: { id: string; name: string },
+  live: Partial<OverviewSite['live']>,
+  roleCounts: OverviewSite['roleCounts'],
+): OverviewSite {
+  return {
+    id: site.id,
+    name: site.name,
+    plantKind: 'eigenverbrauch',
+    netzladenErlaubt: false,
+    batteryWithoutDevice: false,
+    deviceCount: 1,
+    onlineCount: 1,
+    waitingCount: 0,
+    worstStatus: null,
+    lastSeenAt: STAND,
+    live: { ts: STAND, pvKw: null, loadKw: null, gridKw: null, socPct: null, ...live },
+    plannedSavingsTodayEur: null,
+    roleCounts,
+  } as OverviewSite;
+}
+
+const ZEILEN: Record<string, OverviewSite> = {
+  [an1]: zeile(halle1, { gridKw: 312.4, pvKw: 168.2, socPct: 62 }, { pv: 1, storage: 1, consumer: 0, grid: 1 }),
+  [an2]: zeile(halle2, { gridKw: 96.5 }, { pv: 0, storage: 0, consumer: 1, grid: 1 }),
+  [an3]: zeile(lindach, { gridKw: 38.7 }, { pv: 0, storage: 0, consumer: 0, grid: 1 }),
+};
+
+const SZENEN = {
+  /** Ahrenberg bis 30.09.2026: der Standort aus der Bestandsübernahme, eine Anlage. */
+  einzel: {
+    sites: [halle1],
+    liste: bestandEineAnlage(),
+    unternehmen: ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 1, sitz: null }),
+  },
+  /** Ahrenberg 01.10.–14.10.2026: Werk Ahrenberg mit Halle 1 und Halle 2. */
+  standort: {
+    sites: [halle1, halle2],
+    liste: { ...ahrenbergHeute(), standorte: [werkAhrenberg()] },
+    unternehmen: ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 2 }),
+  },
+  /** Ahrenberg am 20.10.2026: zwei Standorte, drei Anlagen. */
+  unternehmen: {
+    sites: [halle1, halle2, lindach],
+    liste: ahrenbergHeute(),
+    unternehmen: ahrenbergUnternehmen(),
+  },
+};
+
+const szene = SZENEN[bild as keyof typeof SZENEN] ?? SZENEN.einzel;
+const sites = szene.sites as Site[];
+const siteIds = sites.map((s) => s.id);
+
+// Die gestellte Cloud: nur, was die Flotten-Fläche liest.
+const overview: Overview = {
+  sites: siteIds.map((id) => ZEILEN[id]),
+  totals: {
+    sites: siteIds.length,
+    devices: siteIds.length,
+    online: siteIds.length,
+    plannedSavingsTodayEur: null,
+    liveSitesCovered: siteIds.length,
+  },
+  dailySavings: [],
+};
+Object.assign(api, {
+  overview: async () => structuredClone(overview),
+  earnings: async () => {
+    throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
+  },
+  tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
+});
+
+const surface = anlageSurface({
+  entities: [{ id: 'speicher', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+} as Parameters<typeof anlageSurface>[0]);
+
+const FLOTTE = 'Meine Anlagen';
+
+function Vorschau() {
+  const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
+  const orte = orteAus(szene.liste, szene.unternehmen);
+  const ebene = startEbene({ ...rahmen, siteIds, orte });
+  const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
+  const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
+  const [route, setRoute] = useState<Route>(() =>
+    kanonisch(ansicht === 'anlage' ? anlageRoute(an1) : ansicht === 'lindach' ? standortRoute(st2) : pageRoute('uebersicht')),
+  );
+  useEffect(() => {
+    document.body.dataset.route = hashForRoute(route);
+  }, [route]);
+
+  const navigate = (ziel: Route | PageId) => setRoute(kanonisch(typeof ziel === 'string' ? pageRoute(ziel) : ziel));
+  const navigateSchale = (ziel: Route | PageId) =>
+    navigate(ziel === 'portfolio' && ebene.art === 'standort' ? flottenLandung(shell) : ziel);
+
+  const site = route.page === 'anlagen' ? sites.find((s) => s.id === route.siteId) ?? null : null;
+  const pfad = kopfPfad({ shell, route, anlageId: site?.id ?? null, fleetLabel: FLOTTE });
+  const eintrag = (g: PfadGlied) => ({ wert: pfadWert(g), label: g.label, onOpen: () => navigate(g.route) });
+  const rueckwege = pfad.vor.some((g) => g.ebene !== 'flotte') ? pfad.vor.map(pfadZeile) : undefined;
+  const flotte = showPortfolioNav(shell) || showOverviewNav(shell);
+  const standort =
+    route.page === 'standort' ? szene.liste.standorte.find((s) => s.id === route.standortId) ?? null : null;
+
+  return (
+    <AppShell
+      page={route.page}
+      onNavigate={navigateSchale}
+      isAdmin={false}
+      showOverview={showOverviewNav(shell)}
+      showPortfolio={showPortfolioNav(shell)}
+      fleetLabel={FLOTTE}
+      showAddAnlage={showAddAnlageButton({ ...rahmen, onboarding: false, siteCount: siteIds.length })}
+      onAddAnlage={() => undefined}
+      counts={{ sites: siteIds.length, devices: siteIds.length }}
+      tenants={[]}
+      tenantOverride={null}
+      onTenantChange={() => undefined}
+      anlage={
+        site
+          ? {
+              siteId: site.id,
+              siteName: site.name,
+              sites,
+              siteOptions: anlagenOptionen({
+                sites,
+                devices: { devices: [], fetchedAt: null },
+                mitFlotte: sites.length > 1,
+                flottenLabel: FLOTTE,
+                rueckwege,
+              }),
+              onSelectSite: (id) => navigate(anlageRoute(id)),
+              sidebar: anlageSidebar(surface, 0),
+              activeKey: 'cockpit',
+              onOpenSub: () => undefined,
+              onOpenPage: (p) => navigate(p),
+              onOpenFleet: flotte ? () => navigate(flottenLandung(shell)) : null,
+              health: healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } }),
+              pfad: pfad.vor.map(eintrag),
+            }
+          : null
+      }
+      ortsPfad={!site && pfad.hier ? { vor: pfad.vor.map(eintrag), hier: pfad.hier } : null}
+    >
+      {site && (
+        <div className="vp-page-head">
+          <div className="titles">
+            <h1>{site.name}</h1>
+            <p>Das Cockpit dieser Anlage bleibt unverändert — die Bühne zeigt nur Kopfzeile, Pfad und Navigation.</p>
+          </div>
+        </div>
+      )}
+      {route.page === 'standort' && standort && (
+        <>
+          <PortfolioTabs
+            page={ebene.art === 'standort' ? 'portfolio' : route.page}
+            showErloese={false}
+            fleetLabel={FLOTTE}
+            onNavigate={navigateSchale}
+          />
+          <StandortUebersichtPage
+            standort={standort}
+            sites={sites}
+            alleAnlagenHier={ebene.art === 'standort' && !ebene.teilansicht}
+            onNavigate={navigate}
+            onReload={() => undefined}
+            betriebsart="endkunde"
+          />
+        </>
+      )}
+      {route.page === 'portfolio' && (
+        <>
+          <PortfolioTabs page="portfolio" showErloese={false} fleetLabel={FLOTTE} onNavigate={navigateSchale} />
+          <PortfolioPage sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
+        </>
+      )}
+    </AppShell>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <Vorschau />
+  </React.StrictMode>,
+);
