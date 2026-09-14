@@ -13,15 +13,24 @@ import {
   type Betriebsart,
   type Device,
   type Site,
+  type StandorteAmStichtag,
+  type Unternehmen,
 } from './api';
 import { type Tenant } from './admin/adminApi';
 import {
   canonicalShellHash,
   canonicalShellRoute,
   fleetLabel,
+  flottenLandung,
+  kopfPfad,
+  orteAus,
+  pfadWert,
+  pfadZeile,
   redirectAdminToPlattform,
   showOverviewNav,
   showPortfolioNav,
+  startEbene,
+  type PfadGlied,
 } from './betriebsart';
 import { AppShell } from './shell/AppShell';
 import {
@@ -92,6 +101,32 @@ const UebersichtPage = lazy(() =>
 const PortfolioPage = lazy(() =>
   PAGE_CHUNK.portfolio().then((m) => ({ default: m.PortfolioPage })),
 );
+const StandortUebersichtPage = lazy(() =>
+  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortUebersichtPage })),
+);
+
+/** Die zwei Antworten des Standort-Lesemodells, wie sie ankamen (UEMS AP-01 IP-5). */
+interface OrteQuelle {
+  liste: StandorteAmStichtag;
+  unternehmen: Unternehmen | null;
+}
+
+/**
+ * Lädt die Ortsstruktur fail-soft: jeder Fehler — auch ein älteres Backend ohne
+ * die Route — heisst `null`, und `null` heisst für die Startansicht „wie heute".
+ */
+async function orteLaden(): Promise<OrteQuelle | null> {
+  try {
+    const [liste, unternehmen] = await Promise.all([
+      api.standorte(),
+      api.unternehmen().catch(() => null),
+    ]);
+    return { liste, unternehmen };
+  } catch {
+    return null;
+  }
+}
+
 const StandortePage = lazy(() =>
   PAGE_CHUNK['portfolio-standorte']().then((m) => ({ default: m.StandortePage })),
 );
@@ -642,9 +677,13 @@ function UnifiedPortal() {
   // Tenant-scoped data. For an admin without a selected tenant this yields
   // empty lists (backend default-deny) - the pages show a pick-a-tenant hint.
   const tenantReady = !isAdmin || tenantId != null;
+  // UEMS AP-01 IP-5: die Ortsstruktur HEUTE für die Startansicht-Weiche und den
+  // Pfad der Kopfzeile. `null` = nicht geladen, älteres Backend oder Fehler.
+  const [orteQuelle, setOrteQuelle] = useState<OrteQuelle | null>(null);
   const reload = useCallback(
     async (selectSiteId?: string, opts?: { background?: boolean }) => {
       if (!tenantReady) {
+        setOrteQuelle(null);
         setSites([]);
         setDevices([]);
         setDevicesAt(null);
@@ -658,12 +697,18 @@ function UnifiedPortal() {
         // broken portal, and never a mid-session shell flip from one failed
         // background poll. A never-succeeding read keeps the initial null =
         // the v1 site-count fallback.
-        const [s, d, ctx] = await Promise.all([
+        // IP-5: die Standorte reisen im SELBEN Schnappschuss wie die Anlagen —
+        // die Weiche sieht beide zugleich und ersetzt die Adresse genau einmal.
+        // Fail-soft wie der Kontext; eine Hintergrund-Auffrischung behält den
+        // letzten Stand.
+        const [s, d, ctx, orte] = await Promise.all([
           api.listSites(),
           api.listDevices(),
           api.tenantContext().catch(() => null),
+          opts?.background ? Promise.resolve(undefined) : orteLaden(),
         ]);
         setSites(s);
+        if (orte !== undefined) setOrteQuelle(orte);
         setDevices(d);
         setDevicesAt(Date.now());
         if (ctx) setBetriebsart(ctx.betriebsart);
@@ -721,13 +766,24 @@ function UnifiedPortal() {
     setRoute(pageRoute('plattform-uebersicht'));
   }, [isAdmin]);
 
+  // UEMS AP-01 IP-5 (E1): die Ebene, auf der der Kunde landet, EINMAL aus
+  // Anlagen und Standorten abgeleitet — Weiche, Seitenleiste und Pfad lesen sie.
+  const orte = useMemo(
+    () => (orteQuelle ? orteAus(orteQuelle.liste, orteQuelle.unternehmen) : null),
+    [orteQuelle],
+  );
+  const ebene = useMemo(
+    () => startEbene({ isAdmin, betriebsart, siteIds: sites.map((site) => site.id), orte }),
+    [isAdmin, betriebsart, sites, orte],
+  );
+
   // One stable post-hydration canonicalization. The old three independent
   // redirects could emit `uebersicht -> anlagen -> portfolio -> uebersicht`
   // for a one-site customer. The pure decision below sees one shell snapshot,
   // chooses the final target directly and performs at most one replacement.
   useEffect(() => {
     if (error != null) return;
-    const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
+    const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
     const target = canonicalShellRoute({ shell, route, siteIds: sites.map((site) => site.id) });
     if (!target) return;
     replaceCurrentNavigation(canonicalShellHash(target, window.location.hash));
@@ -739,10 +795,12 @@ function UnifiedPortal() {
     betriebsart,
     error,
     sites,
+    ebene,
     route.page,
     route.siteId,
     route.sub,
     route.geraet,
+    route.standortId,
   ]);
 
   // An Anlage opened by route is also the context of the site-scoped pages
@@ -843,10 +901,36 @@ function UnifiedPortal() {
 
   // Die zwei Rahmen-Fragen EINMAL beantwortet (sonst rechnete jede Fläche sie
   // neu): gibt es eine Flotten-Ebene, und heißt sie „Portfolio"?
-  const shellFrame = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
+  const shellFrame = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length, ebene };
   const portfolioNav = showPortfolioNav(shellFrame);
   const overviewNav = showOverviewNav(shellFrame);
   const fleetLevel = portfolioNav || overviewNav;
+  // UEMS AP-01 IP-5: der Pfad der Kopfzeile „Unternehmen › Standort › Anlage".
+  // Jedes Glied navigiert und ist am Telefon eine Zeile des Umschalters.
+  const pfad = kopfPfad({
+    shell: shellFrame,
+    route,
+    anlageId: shellSite?.id ?? null,
+    fleetLabel: fleetLabel(betriebsart),
+  });
+  const pfadEintrag = (glied: PfadGlied) => ({
+    wert: pfadWert(glied),
+    label: glied.label,
+    onOpen: () => navigate(glied.route),
+  });
+  // Nur die NEUEN Glieder (Unternehmen, Standort) ersetzen die Flotten-Zeile
+  // des Umschalters; ohne sie bleibt er Zeichen für Zeichen der von heute.
+  const rueckwege = pfad.vor.some((glied) => glied.ebene !== 'flotte')
+    ? pfad.vor.map(pfadZeile)
+    : undefined;
+  // Seitenleiste und Reiter „Übersicht" meinen die Flotten-Ebene — ist der
+  // Standort die oberste Ebene, ist ER sie (kein Umweg über `#/portfolio`).
+  const navigateSchale = (target: Route | PageId) =>
+    navigate(target === 'portfolio' && ebene.art === 'standort' ? flottenLandung(shellFrame) : target);
+  const standortOffen =
+    page === 'standort'
+      ? orteQuelle?.liste.standorte.find((s) => s.id === route.standortId) ?? null
+      : null;
 
   const anlageNav = shellSite
     ? {
@@ -865,6 +949,7 @@ function UnifiedPortal() {
           // Der Pfad der Kopfzeile und diese Zeile führen an denselben Ort,
           // also tragen sie DASSELBE Wort.
           flottenLabel: fleetLabel(betriebsart),
+          rueckwege,
         }),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
         // ⚠ Das Abzeichen zählt seit Steuerung Stufe 8 die Dinge, die
@@ -883,9 +968,8 @@ function UnifiedPortal() {
         // und das führende Wort des Pfades führen dorthin, wo es eine gibt
         // (`showPortfolio`), sonst auf die Übersicht. Die frühere Listen-Seite
         // `#/anlagen` ist ersatzlos aufgegangen.
-        onOpenFleet: fleetLevel
-          ? () => navigate(pageRoute(portfolioNav ? 'portfolio' : 'uebersicht'))
-          : null,
+        onOpenFleet: fleetLevel ? () => navigate(flottenLandung(shellFrame)) : null,
+        pfad: pfad.vor.map(pfadEintrag),
         // Composed from the devices list the shell holds (kept current by the
         // silent refresh above - a freshness verdict needs FRESH data, not a
         // clock ticking over a frozen one) plus whatever the Anlagen-Seite
@@ -932,7 +1016,7 @@ function UnifiedPortal() {
   return (
     <AppShell
       page={page}
-      onNavigate={navigate}
+      onNavigate={navigateSchale}
       isAdmin={isAdmin}
       // U0: the "Übersicht" nav item follows the tenant's Betriebsart frame
       // (betreiber = always the fleet level; endkunde = only from the second
@@ -952,6 +1036,7 @@ function UnifiedPortal() {
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
       anlage={anlageNav}
+      ortsPfad={!anlageNav && pfad.hier ? { vor: pfad.vor.map(pfadEintrag), hier: pfad.hier } : null}
       helpArticle={page === 'hilfe' ? null : loadFailed ? 'probleme' : showOnboarding ? null : helpForRoute(route)}
     >
       {updateAvailable && (
@@ -988,7 +1073,7 @@ function UnifiedPortal() {
           returnHref={helpReturnHash.current || hashForRoute(
             isAdmin && !tenantId ? pageRoute('plattform-uebersicht')
               : sites.length === 1 ? anlageRoute(sites[0].id)
-                : pageRoute(portfolioNav ? 'portfolio' : 'uebersicht'),
+                : flottenLandung(shellFrame),
           )} /></LazyBoundary>
       ) : needsTenantPick ? (
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
@@ -1028,10 +1113,12 @@ function UnifiedPortal() {
           {/* Die Reiter der FLOTTEN-Ebene (E3/S4) - sie ersetzen die
               Seitenleisten-Gruppe „Alle Anlagen". */}
           <PortfolioTabs
-            page={page}
+            // IP-5: ist der Standort die oberste Ebene, IST seine Übersicht der
+            // Reiter „Übersicht"; unter einem Unternehmen trägt sie keine Reiter.
+            page={page === 'standort' && ebene.art === 'standort' ? 'portfolio' : page}
             showErloese={hatGeldWelt(sites)}
             fleetLabel={fleetLabel(betriebsart)}
-            onNavigate={navigate}
+            onNavigate={navigateSchale}
           />
           {page === 'portfolio' && (
             <PortfolioPage
@@ -1046,6 +1133,18 @@ function UnifiedPortal() {
               Portfolio-EBENE, tragen also dieselben Anlagen wie die Landung. */}
           {/* UEMS AP-02 IP-6: „Unternehmen › Standorte“ als Reiter der Übersicht. */}
           {page === 'portfolio-standorte' && <StandortePage />}
+          {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}
+          {page === 'standort' && standortOffen && (
+            <StandortUebersichtPage
+              standort={standortOffen}
+              sites={sites}
+              alleAnlagenHier={ebene.art === 'standort' && !ebene.teilansicht}
+              onNavigate={navigate}
+              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
+              isAdmin={isAdmin}
+              betriebsart={betriebsart}
+            />
+          )}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={sites} />}
           {page === 'uebersicht' && (

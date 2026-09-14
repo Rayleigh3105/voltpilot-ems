@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -13,7 +13,15 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import { MAIN_PAGES, PLATFORM_GROUPS, navPageFor, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
+import {
+  MAIN_PAGES,
+  PLATFORM_GROUPS,
+  navPageFor,
+  PORTFOLIO_PAGE,
+  pageLabel,
+  STANDORT_PAGE,
+  type PageId,
+} from '../nav';
 import {
   bottomBarSlots,
   HELP_ITEM,
@@ -68,8 +76,23 @@ export interface AnlageNav {
   onOpenPage: (page: PageId) => void;
   /** Der Rückweg auf die Flotten-Ebene; null = es gibt keine. */
   onOpenFleet: (() => void) | null;
+  /**
+   * UEMS AP-01 IP-5: die Glieder des Pfades VOR dem Anlagennamen
+   * („Ahrenberg › Werk Ahrenberg ›", `betriebsart.kopfPfad`); jedes ist auch
+   * eine Zeile des Umschalters (`wert`). Absent = der Rückweg von heute
+   * (`onOpenFleet` unter `fleetLabel`).
+   */
+  pfad?: PfadEintrag[];
   /** The aggregated plant state; null = not known yet (no badge is shown). */
   health: HealthBadge | null;
+}
+
+/** Ein Glied des Pfades in der Kopfzeile (UEMS AP-01 IP-5). */
+export interface PfadEintrag {
+  /** Zugleich der Wert seiner Zeile im Anlagen-Umschalter. */
+  wert: string;
+  label: string;
+  onOpen: () => void;
 }
 
 /**
@@ -103,6 +126,7 @@ export function AppShell({
   tenantOverride,
   onTenantChange,
   anlage = null,
+  ortsPfad = null,
   helpArticle = null,
   children,
 }: {
@@ -122,6 +146,12 @@ export function AppShell({
    * Tonalität, die Ebene gibt es genau einmal.
    */
   fleetLabel?: string;
+  /**
+   * UEMS AP-01 IP-5: der Pfad einer Seite OHNE Anlage — die Standort-Übersicht
+   * („Ahrenberg › Werk Ahrenberg") und die Unternehmens-Übersicht („Ahrenberg").
+   * `null` = wie heute der Seitenname.
+   */
+  ortsPfad?: { vor: PfadEintrag[]; hier: string } | null;
   /**
    * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
    * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
@@ -233,7 +263,13 @@ export function AppShell({
    */
   const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : [];
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
-  const canSwitchAnlage = !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet);
+  const canSwitchAnlage =
+    !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet || (anlage.pfad?.length ?? 0) > 0);
+  /** Die Glieder VOR dem Anlagennamen: der Pfad (IP-5), sonst der Rückweg von heute. */
+  const anlagePfad: PfadEintrag[] = anlage
+    ? anlage.pfad
+      ?? (anlage.onOpenFleet ? [{ wert: ALL_SITES, label: fleetLabel ?? '', onOpen: anlage.onOpenFleet }] : [])
+    : [];
 
   const navEntry = (item: SidebarItem) => (
     <NavItem
@@ -269,7 +305,9 @@ export function AppShell({
 
   /** Der EINE Ort, an dem ein Anlagen-Wechsel entschieden wird. */
   const waehleAnlage = (wert: string) => {
-    if (wert === ALL_SITES) anlage?.onOpenFleet?.();
+    const glied = anlage?.pfad?.find((g) => g.wert === wert);
+    if (glied) glied.onOpen();
+    else if (wert === ALL_SITES) anlage?.onOpenFleet?.();
     else anlage?.onSelectSite(wert);
   };
 
@@ -301,7 +339,7 @@ export function AppShell({
             icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
             label={<span className="vp-nav-lbl">{fleetLabel}</span>}
             title={fleetLabel}
-            active={page === PORTFOLIO_PAGE.id}
+            active={page === PORTFOLIO_PAGE.id || page === STANDORT_PAGE.id}
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
         )}
@@ -379,19 +417,21 @@ export function AppShell({
               Der Name IST der Anlagen-Umschalter, das führende Wort der
               Rückweg auf die Flotten-Ebene. Auf einer Anlage ohne Flotte
               bleibt nur der Name. */}
-          <div className={anlage ? 'vp-topbar-anlage' : 'crumbs'}>
+          <div className={anlage ? 'vp-topbar-anlage' : ortsPfad ? 'crumbs vp-crumbs-ort' : 'crumbs'}>
             {anlage ? (
               <div className="crumbs">
-                {anlage.onOpenFleet && (
-                  <>
-                    <button type="button" className="vp-crumb-up" onClick={anlage.onOpenFleet}>
-                      {fleetLabel}
+                {/* IP-5: „Ahrenberg › Werk Ahrenberg ›" — übersprungene Ebenen
+                    fehlen, ohne Standorte ist es der Rückweg von heute. */}
+                {anlagePfad.map((glied) => (
+                  <Fragment key={glied.wert}>
+                    <button type="button" className="vp-crumb-up" onClick={glied.onOpen}>
+                      {glied.label}
                     </button>
                     <span className="vp-crumb-sep" aria-hidden="true">
                       ›
                     </span>
-                  </>
-                )}
+                  </Fragment>
+                ))}
                 {/* The breadcrumb names the ANLAGE, not the menu item ("Hof
                     Lindenberg", not "Meine Anlagen") - that is what the
                     customer is looking at (G1). The full text stays in the
@@ -423,6 +463,24 @@ export function AppShell({
                   )}
                 </span>
               </div>
+            ) : ortsPfad ? (
+              // IP-5: die Standort- und die Unternehmens-Übersicht nennen ihren
+              // Ort; der Rückweg bleibt am Telefon sichtbar (keine Leiste dort).
+              <>
+                {ortsPfad.vor.map((glied) => (
+                  <Fragment key={glied.wert}>
+                    <button type="button" className="vp-crumb-up" onClick={glied.onOpen}>
+                      {glied.label}
+                    </button>
+                    <span className="vp-crumb-sep" aria-hidden="true">
+                      ›
+                    </span>
+                  </Fragment>
+                ))}
+                <span className="here" title={ortsPfad.hier}>
+                  {ortsPfad.hier}
+                </span>
+              </>
             ) : (
               <span className="here">{pageLabel(page, counts.sites)}</span>
             )}

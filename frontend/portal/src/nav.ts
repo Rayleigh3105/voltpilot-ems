@@ -23,6 +23,7 @@ export type PageId =
   | 'portfolio-standorte'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
+  | 'standort'
   | 'uebersicht'
   | 'anlagen'
   | 'plattform-uebersicht'
@@ -113,6 +114,12 @@ export interface Route {
    * Routen-Zusicherung unverändert gültig.
    */
   geraet?: GeraetTarget;
+  /**
+   * Nur bei `page === 'standort'` gesetzt: WELCHER Standort die
+   * Standort-Übersicht ist (UEMS AP-01 IP-5, `#/standort/{id}`). Absent bei
+   * jeder anderen Route - wie `geraet`.
+   */
+  standortId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -163,6 +170,16 @@ export const MAIN_PAGES: PageDef[] = [
 export const ANLAGEN_PAGE: PageDef = { id: 'anlagen', label: 'Meine Anlage', icon: 'sun' };
 
 export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', icon: 'building' };
+
+/**
+ * Die STANDORT-ÜBERSICHT (UEMS AP-01 IP-5, E1): `#/standort/{id}` — die
+ * Anlagen eines Standorts unter seinem Kopf. Sie ist die Landung eines Kunden
+ * mit genau einem Standort und mehreren Anlagen und das mittlere Glied des
+ * Pfades „Unternehmen › Standort › Anlage“. Ob es sie für einen Kunden gibt,
+ * entscheidet `betriebsart.startEbene`; ohne Standorte leitet
+ * `canonicalShellRoute` die Adresse dorthin, wo der Kunde heute landet.
+ */
+export const STANDORT_PAGE: PageDef = { id: 'standort', label: 'Standort', icon: 'map-pin' };
 
 /**
  * Die zwei Welten der Historie EINE EBENE HÖHER (PR G des Historie-Konzepts,
@@ -354,6 +371,7 @@ export const ALL_PAGES: PageDef[] = [
   { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
+  STANDORT_PAGE,
   ...MAIN_PAGES,
   ANLAGEN_PAGE,
   ...PLATFORM_PAGES,
@@ -543,6 +561,15 @@ export function parseRoute(hash: string): Route {
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
+  // Die Standort-Übersicht (IP-5): `#/standort/{id}`. Ohne Kennung bleibt es
+  // die Seite ohne Ziel — `canonicalShellRoute` legt sie auf die Landung.
+  // ⚠ `#/standorte` (Mehrzahl) ist NICHT diese Seite, sondern die Alt-Adresse
+  // der Technik in `LEGACY_ROUTES`.
+  if (head === 'standort') {
+    return segments[1]
+      ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
+      : { page: 'standort', siteId: null, sub: null };
+  }
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
   }
@@ -608,6 +635,7 @@ export function hashForRoute(route: Route): string {
       : `#/anlage/${route.siteId}`;
   }
   if (route.page === 'anlagen') return '#/anlagen';
+  if (route.page === 'standort') return route.standortId ? `#/standort/${route.standortId}` : '#/standort';
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
     return `#/portfolio/${route.page.slice('portfolio-'.length)}`;
@@ -623,6 +651,11 @@ export function pageRoute(page: PageId): Route {
 /** Route of one Anlage's page (or one of its subpages). */
 export function anlageRoute(siteId: string, sub: AnlagenSub | null = null): Route {
   return { page: 'anlagen', siteId, sub };
+}
+
+/** Route der Standort-Übersicht eines Standorts (UEMS AP-01 IP-5). */
+export function standortRoute(standortId: string): Route {
+  return { page: 'standort', siteId: null, sub: null, standortId };
 }
 
 /* =========================================================================

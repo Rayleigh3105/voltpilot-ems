@@ -71,6 +71,13 @@ export interface AnlagenWahlEingabe {
    * Orte. Ohne Angabe bleibt es beim bisherigen „Alle Anlagen".
    */
   flottenLabel?: string;
+  /**
+   * UEMS AP-01 IP-5: die Glieder des Pfades ÜBER der Anlage
+   * (`betriebsart.pfadZeile`, „Ahrenberg" · „Werk Ahrenberg"). Gegeben ersetzen
+   * sie die EINE Flotten-Zeile — am Telefon sind sie der Rückweg, weil die
+   * Kopfzeile dort nur den Anlagennamen trägt. Absent = wie heute.
+   */
+  rueckwege?: VpOption[];
   now?: number;
 }
 
@@ -86,6 +93,7 @@ export function anlagenOptionen({
   devices,
   mitFlotte,
   flottenLabel = 'Alle Anlagen',
+  rueckwege,
   now = Date.now(),
 }: AnlagenWahlEingabe): VpOption[] {
   // Der Ort steht nur da, wo er unterscheidet - siehe Kopf dieser Datei.
@@ -109,7 +117,9 @@ export function anlagenOptionen({
     };
   });
 
-  if (mitFlotte) {
+  if (rueckwege) {
+    zeilen.unshift(...rueckwege);
+  } else if (mitFlotte) {
     zeilen.unshift({ value: ALLE_ANLAGEN, label: flottenLabel, sub: 'Zurück zur Übersicht' });
   }
   return zeilen;

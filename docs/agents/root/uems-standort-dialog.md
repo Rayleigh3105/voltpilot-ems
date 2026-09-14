@@ -34,8 +34,9 @@ IP-3/IP-4 (`uems-standort-lesemodell-unternehmen-st.md`, `uems-standort-schreibr
 5. **PLZ ist optional** (wie im Backend; das Referenzunternehmen führt `plz: null`) — T2 zeigt ein
    Sternchen, das der gebaute Schreibweg nicht kennt. Ist sie da, prüft das Formular die Stellen je Land.
 6. **`#/standorte` ist belegt** (Alt-Adresse der Technik in `LEGACY_ROUTES`). Die Liste wohnt unter
-   `#/portfolio/standorte`, bis die Ebenen-Navigation aus AP-01 IP-5/IP-7 steht; Einzel-Anlagen-Kunden
+   `#/portfolio/standorte`, bis die Telefon-Leiste je Ebene aus AP-01 IP-7 steht; Einzel-Anlagen-Kunden
    erreichen die Portfolio-Ebene nicht (`canonicalShellRoute`) — ihr Weg ist IP-8 („Meine Anlage“).
+   Die Standort-Übersicht selbst ist seit AP-01 IP-5 `#/standort/{id}` (`uems-startansicht.md`).
 7. **Vier Reiter am Telefon:** mit 12 px Polster 347 px, bei 375 px stehen 343 px zur Verfügung.
    Nur die Leiste mit VIER Reitern bekommt 8 px (`vp-bereich-tabs-dicht`, 315 px); jede Leiste mit
    bis zu drei bleibt, wie sie war. Die Zeitzone „vom Unternehmen“ steht UNTER dem Feld, im Auslöser

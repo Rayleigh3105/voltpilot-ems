@@ -1,6 +1,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { cleanup, render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { anlageSidebar } from './anlageNav';
 import { healthBadge } from './health';
 import { flussKnoten, ladenKachel } from './ladenKachel';
@@ -49,13 +51,32 @@ import {
   verfuegbareBausteine,
 } from './portfolioCockpit';
 import {
+  canonicalShellRoute,
   isFleetShell,
+  kopfPfad,
+  orteAus,
+  pfadWert,
+  pfadZeile,
   redirectOverviewToAnlage,
   redirectToPortfolio,
   showOverviewNav,
   showPortfolioNav,
+  startEbene,
+  type Orte,
+  type ShellInput,
 } from './betriebsart';
-import type { OverviewSite } from './api';
+import type { OverviewSite, Site } from './api';
+import { anlagenOptionen } from './anlagenWahl';
+import { anlageRoute, hashForRoute, pageRoute, standortRoute, type Route } from './nav';
+import { AppShell } from './shell/AppShell';
+import { ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS, halle1Entwurf } from './test/standorteFixtures';
+
+// Die Schale braucht für den Byte-Vergleich (UEMS AP-01 IP-5) nur einen Namen
+// am Avatar; alles andere aus `auth` bleibt echt (`rollen` liest `isPlatformAdmin`).
+vi.mock('./auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./auth')>()),
+  currentUser: () => ({ name: 'Jonas Wendlinger', email: 'jonas@example.test', roles: [] }),
+}));
 
 /**
  * M6 (#534) — die Migrations-Invarianten der „Projektion" an EINER Stelle
@@ -1319,6 +1340,143 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
   it('„Komponenten & Regeln" existiert nirgends mehr — die Seite heisst „Komponenten"', () => {
     for (const a of ANWENDUNGEN) {
       expect(a.leer_zustand ?? '', a.id).not.toContain('Komponenten & Regeln');
+    }
+  });
+});
+
+describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-Kunden stehen', () => {
+  /**
+   * Die härteste Anforderung des Pakets: ein Kunde mit genau einer Anlage merkt
+   * NICHTS — gleich, in welcher Form die Standorte ankommen (gar nicht, ohne
+   * Standort, mit dem Standort der Bestandsübernahme, mit einem Standort ohne
+   * Zuordnung). Verglichen wird gegen die Schale OHNE Ebene — genau die
+   * Eingabe, die `canonicalShellRoute` vor IP-5 bekam — und die gerenderte
+   * Schale Zeichen für Zeichen gegen die von vorher (Aufruf ohne `pfad`).
+   */
+  const halle1 = FIXTURE_IDS.an1;
+  const ids = [halle1];
+  const heute: ShellInput = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 };
+  const formen: [string, Orte | null][] = [
+    ['nicht geladen / älteres Backend', null],
+    [
+      'Unternehmen ohne Standort',
+      orteAus(
+        {
+          stichtag: '2026-09-20',
+          standorte: [],
+          nichtGezeigt: [],
+          nochNichtZugeordnet: { anlagenZahl: 1, anlagen: [{ id: halle1, name: 'Werk Ahrenberg – Halle 1' }] },
+        },
+        ahrenbergUnternehmen({ standortZahl: 0, anlagenZahl: 1, nochNichtZugeordnetZahl: 1, sitz: null }),
+      ),
+    ],
+    [
+      'Standort aus der Bestandsübernahme (AP-02 A5)',
+      orteAus(bestandEineAnlage(), ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 1, sitz: null })),
+    ],
+    [
+      'Standort, die Anlage noch nicht zugeordnet',
+      orteAus(
+        { ...bestandEineAnlage(), standorte: [{ ...halle1Entwurf(), anlagen: [], anlagenZahl: 0 }] },
+        ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 1, nochNichtZugeordnetZahl: 1, sitz: null }),
+      ),
+    ],
+  ];
+  const mitEbene = (orte: Orte | null): ShellInput => ({
+    ...heute,
+    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte }),
+  });
+  const routen: Route[] = [
+    pageRoute('uebersicht'),
+    pageRoute('anlagen'),
+    anlageRoute(halle1),
+    anlageRoute(halle1, 'fahrplan'),
+    anlageRoute('unbekannt', 'messwerte'),
+    { page: 'anlagen', siteId: halle1, sub: 'geraet', geraet: { ref: 'VP-DEMO-0001', geraetId: 'inverter' } },
+    pageRoute('portfolio'),
+    pageRoute('portfolio-messwerte'),
+    pageRoute('portfolio-standorte'),
+    pageRoute('hilfe'),
+    standortRoute(FIXTURE_IDS.st1),
+  ];
+
+  it('Einzel-Anlagen-Kunde byte-identisch', () => {
+    for (const [form, orte] of formen) {
+      const shell = mitEbene(orte);
+      for (const route of routen) {
+        const fall = `${form} · ${hashForRoute(route)}`;
+        expect(JSON.stringify(canonicalShellRoute({ shell, route, siteIds: ids })), fall)
+          .toBe(JSON.stringify(canonicalShellRoute({ shell: heute, route, siteIds: ids })));
+        expect(JSON.stringify(kopfPfad({ shell, route, anlageId: halle1, fleetLabel: 'Meine Anlagen' })), fall)
+          .toBe(JSON.stringify(kopfPfad({ shell: heute, route, anlageId: halle1, fleetLabel: 'Meine Anlagen' })));
+      }
+      expect([showPortfolioNav(shell), showOverviewNav(shell), redirectOverviewToAnlage(shell)], form)
+        .toEqual([showPortfolioNav(heute), showOverviewNav(heute), redirectOverviewToAnlage(heute)]);
+    }
+
+    // Die Schale, wie `App.tsx` sie baut — vorher ohne Pfad, nachher mit dem Pfad der Weiche.
+    const sites = [{ id: halle1, name: 'Werk Ahrenberg – Halle 1' }] as Site[];
+    const devices = { devices: [], fetchedAt: null };
+    const surface = anlageSurface({
+      entities: [],
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+    } as unknown as AnlageSurfaceInput);
+    const schaleHtml = (anlage: Parameters<typeof AppShell>[0]['anlage']) => {
+      const { container } = render(
+        createElement(AppShell, {
+          page: 'anlagen',
+          onNavigate: () => {},
+          isAdmin: false,
+          showOverview: false,
+          showPortfolio: false,
+          fleetLabel: 'Meine Anlagen',
+          showAddAnlage: true,
+          onAddAnlage: () => {},
+          counts: { sites: 1, devices: 1 },
+          tenants: [],
+          tenantOverride: null,
+          onTenantChange: () => {},
+          anlage,
+          children: createElement('p', null, 'Cockpit'),
+        }),
+      );
+      const html = container.innerHTML;
+      cleanup();
+      return html;
+    };
+    const gemeinsam = {
+      siteId: halle1,
+      siteName: 'Werk Ahrenberg – Halle 1',
+      sites,
+      onSelectSite: () => {},
+      sidebar: anlageSidebar(surface, 0),
+      activeKey: 'cockpit',
+      onOpenSub: () => {},
+      onOpenPage: () => {},
+      onOpenFleet: null,
+      health: null,
+    };
+    const vorher = schaleHtml({
+      ...gemeinsam,
+      siteOptions: anlagenOptionen({ sites, devices, mitFlotte: false, flottenLabel: 'Meine Anlagen' }),
+    });
+    expect(vorher).toContain('Werk Ahrenberg – Halle 1');
+    // Der Vergleich beisst: ein einziges Glied davor wäre ein anderes Bild.
+    expect(
+      schaleHtml({
+        ...gemeinsam,
+        pfad: [{ wert: '__standort__', label: 'Werk Ahrenberg – Halle 1', onOpen: () => {} }],
+      }),
+    ).not.toBe(vorher);
+    for (const [form, orte] of formen) {
+      const p = kopfPfad({ shell: mitEbene(orte), route: anlageRoute(halle1), anlageId: halle1, fleetLabel: 'Meine Anlagen' });
+      const rueckwege = p.vor.some((g) => g.ebene !== 'flotte') ? p.vor.map(pfadZeile) : undefined;
+      const nachher = schaleHtml({
+        ...gemeinsam,
+        siteOptions: anlagenOptionen({ sites, devices, mitFlotte: false, flottenLabel: 'Meine Anlagen', rueckwege }),
+        pfad: p.vor.map((g) => ({ wert: pfadWert(g), label: g.label, onOpen: () => {} })),
+      });
+      expect(nachher, form).toBe(vorher);
     }
   });
 });
