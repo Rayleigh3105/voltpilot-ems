@@ -1,0 +1,122 @@
+package com.voltpilot.api.topology;
+
+import com.voltpilot.api.tenant.TenantContext;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Der massgebliche Rollen-Wert eines Geraets (die „verwenden als"-Zuordnung) auf dem
+ * verallgemeinerten {@code entity_role_assignment} (V20260914100100): der zugeordnete Wert ist
+ * ENTWEDER ein nativer Kanal ({@code capability}) ODER ein Gesamtwert / eine berechnete Messstelle
+ * ({@code quell_messstelle_id}). Der Mandant ist die RLS.
+ *
+ * <p>Getrennt von {@link TopologyRepository}: dort lebt das Topologie-Lesemodell (nur die nativen
+ * {@code capability}-Overrides), hier der massgebliche Rollen-Wert je (Geraet, Rolle) mit
+ * is_primary-Semantik. Beide schreiben dieselbe Tabelle, stoeren sich aber nicht — die
+ * Summenwert-Zeilen tragen {@code capability = NULL} und sind fuer das Lesemodell gefiltert.
+ */
+@Repository
+public class RollenZuordnungRepository {
+
+    /** Eine gespeicherte Rollen-Zuordnung: {@code capability} XOR {@code quellMessstelleId}. */
+    public record Zuordnung(UUID id, UUID entityId, String capability, UUID quellMessstelleId,
+            String role, boolean primary) {}
+
+    private static final String SPALTEN =
+            "id, entity_id, capability, quell_messstelle_id, role, is_primary";
+
+    private final JdbcTemplate jdbc;
+
+    public RollenZuordnungRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    private static Zuordnung map(ResultSet rs, int n) throws SQLException {
+        return new Zuordnung(rs.getObject("id", UUID.class), rs.getObject("entity_id", UUID.class),
+                rs.getString("capability"), rs.getObject("quell_messstelle_id", UUID.class),
+                rs.getString("role"), rs.getBoolean("is_primary"));
+    }
+
+    /** Die massgebliche (primaere) Zuordnung eines Geraets fuer eine Rolle, falls es eine gibt. */
+    public Optional<Zuordnung> primaer(UUID entityId, String role) {
+        return jdbc.query("SELECT " + SPALTEN + " FROM entity_role_assignment "
+                + "WHERE entity_id = ? AND role = ? AND is_primary = TRUE ORDER BY id",
+                RollenZuordnungRepository::map, entityId, role).stream().findFirst();
+    }
+
+    /** Alle massgeblichen Zuordnungen einer Rolle ueber die Geraete einer Anlage. */
+    public List<Zuordnung> primaereDerAnlage(UUID siteId, String role) {
+        return jdbc.query("SELECT " + SPALTEN + " FROM entity_role_assignment "
+                + "WHERE site_id = ? AND role = ? AND is_primary = TRUE ORDER BY entity_id, id",
+                RollenZuordnungRepository::map, siteId, role);
+    }
+
+    /**
+     * Nimmt jeder (Geraet, Rolle)-Zuordnung das Massgeblich-Kennzeichen (die is_primary-Semantik:
+     * hoechstens ein massgeblicher je (Geraet, Rolle)). Die Zeile bleibt als nicht-massgeblicher
+     * Kandidat bestehen — so geht keine Rollen-Zuordnung verloren, es zaehlt aber nur eine.
+     */
+    public int primaerLoesen(UUID entityId, String role) {
+        return jdbc.update("UPDATE entity_role_assignment SET is_primary = FALSE "
+                + "WHERE entity_id = ? AND role = ? AND is_primary = TRUE", entityId, role);
+    }
+
+    /** Setzt einen nativen Kanal als massgeblichen Rollen-Wert (idempotent). */
+    public void setzeKanal(UUID siteId, UUID entityId, String capability, String role) {
+        jdbc.update("INSERT INTO entity_role_assignment "
+                + "(tenant_id, site_id, entity_id, capability, quell_messstelle_id, role, is_primary) "
+                + "VALUES (?,?,?,?,NULL,?,TRUE) "
+                + "ON CONFLICT (entity_id, capability) DO UPDATE SET role = EXCLUDED.role, "
+                + "is_primary = TRUE",
+                TenantContext.get(), siteId, entityId, capability, role);
+    }
+
+    /** Setzt einen Gesamtwert (berechnete Messstelle) als massgeblichen Rollen-Wert (idempotent). */
+    public void setzeMessstelle(UUID siteId, UUID entityId, UUID quellMessstelleId, String role) {
+        jdbc.update("INSERT INTO entity_role_assignment "
+                + "(tenant_id, site_id, entity_id, capability, quell_messstelle_id, role, is_primary) "
+                + "VALUES (?,?,?,NULL,?,?,TRUE) "
+                + "ON CONFLICT (entity_id, quell_messstelle_id) DO UPDATE SET role = EXCLUDED.role, "
+                + "is_primary = TRUE",
+                TenantContext.get(), siteId, entityId, quellMessstelleId, role);
+    }
+
+    /**
+     * Gehoert die (berechnete) Messstelle zur Anlage {@code siteId}? Ja, wenn JEDER ihrer
+     * Messkanal-Terme — transitiv ueber verkettete Messstellen-Terme (Bausteine) — an einer
+     * Komponente DIESER Anlage haengt. Das ist die vorhandene Ableitung Messstelle→Gerät→Anlage
+     * ueber ihre Terme (Zwilling {@code gesamtwertQuelle.ts}), hier fuer die Same-Site-Bindung der
+     * Zuordnung (Review vp-review-agg-r1 SOLLTE 2). Eine Messstelle ohne auflösbaren
+     * Messkanal-Term gehoert zu keiner Anlage → {@code false}. {@code UNION} (nicht {@code ALL})
+     * macht die Rekursion zyklussicher. Mandant/Anlage sind die RLS.
+     */
+    public boolean gehoertZuSite(UUID messstelleId, UUID siteId) {
+        Boolean ja = jdbc.query("""
+                WITH RECURSIVE kette AS (
+                    SELECT eingang_art, entity_id, quell_messstelle_id
+                      FROM messstelle_formel_term WHERE messstelle_id = ?
+                    UNION
+                    SELECT t.eingang_art, t.entity_id, t.quell_messstelle_id
+                      FROM messstelle_formel_term t
+                      JOIN kette k ON k.eingang_art = 'messstelle'
+                                  AND t.messstelle_id = k.quell_messstelle_id)
+                SELECT count(*) FILTER (WHERE eingang_art = 'messkanal') AS kanal,
+                       count(*) FILTER (WHERE eingang_art = 'messkanal' AND entity_id NOT IN (
+                           SELECT id FROM measurement_point WHERE site_id = ?)) AS fremd
+                  FROM kette
+                """, rs -> {
+            if (!rs.next()) {
+                return false;
+            }
+            long kanal = rs.getLong("kanal");
+            long fremd = rs.getLong("fremd");
+            return kanal > 0 && fremd == 0;
+        }, messstelleId, siteId);
+        return Boolean.TRUE.equals(ja);
+    }
+}

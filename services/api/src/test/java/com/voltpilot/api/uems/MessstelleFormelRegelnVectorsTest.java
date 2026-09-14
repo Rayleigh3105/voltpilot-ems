@@ -154,6 +154,28 @@ class MessstelleFormelRegelnVectorsTest {
         return tests;
     }
 
+    // --------------------------------------- AP-08 „gilt als Erzeugung"-Haken
+
+    @TestFactory
+    List<DynamicTest> haken() throws Exception {
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode c : faelle("haken")) {
+            tests.add(DynamicTest.dynamicTest(c.path("name").asText(), () -> {
+                JsonNode in = c.path("input");
+                String katalogRichtung = in.path("katalog_richtung").isNull()
+                        ? null : in.path("katalog_richtung").asText();
+                boolean haken = in.path("gilt_als_erzeugung").asBoolean();
+                boolean erlaubt = MessstelleFormelRegeln.erzeugungsHakenErlaubt(katalogRichtung);
+                String richtung = MessstelleFormelRegeln.richtungMitErzeugungsHaken(katalogRichtung, haken);
+                ObjectNode out = MAPPER.createObjectNode();
+                out.put("erlaubt", erlaubt);
+                out.put("richtung", richtung);
+                assertThat(out).as(c.path("why").asText()).isEqualTo(c.path("expected"));
+            }));
+        }
+        return tests;
+    }
+
     private static List<String> texte(JsonNode array) {
         List<String> out = new ArrayList<>();
         array.forEach(n -> out.add(n.asText()));

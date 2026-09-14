@@ -49,7 +49,34 @@ public final class MessstelleFormelRegeln {
     private static final String PLUS = "+";
     private static final String MINUS = "-";
 
+    /** Die Vertrags-Richtung, die der AP-08-Haken einem richtungslosen Kanal gibt. */
+    public static final String ERZEUGUNG = "Erzeugung";
+
     private MessstelleFormelRegeln() {}
+
+    // -------------------------------------------- AP-08: „gilt als Erzeugung"
+
+    /**
+     * Darf der per-Term-Haken „gilt als Erzeugung" gesetzt werden? NUR fuer einen Kanal OHNE
+     * Vertrags-Richtung ({@code katalogRichtung == null} — der Katalog gibt keine, z. B. der
+     * Gen-Port {@code direction: null}). Ein Kanal MIT Katalog-Richtung (auch {@code richtungslos}
+     * aus {@code direction: none}) traegt den Haken nicht — er waere ein wirkungsloser Schalter.
+     * Genau die in {@code messstelle-formel.md} §2 reservierte AP-08-Stelle.
+     */
+    public static boolean erzeugungsHakenErlaubt(String katalogRichtung) {
+        return katalogRichtung == null;
+    }
+
+    /**
+     * Die WIRKSAME Richtung eines Terms: ein richtungsloser Kanal ({@code katalogRichtung == null})
+     * zaehlt mit gesetztem Haken als {@link #ERZEUGUNG}, sonst behaelt der Term seine
+     * Katalog-Richtung (der Haken auf einem gerichteten Kanal ist wirkungslos und wird ohnehin
+     * abgewiesen). So bleibt eine Summe aus lauter {@code +}-Erzeugungs-Termen {@code Erzeugung},
+     * statt an einem richtungslosen Gen-Port zu {@code richtungslos} zu degradieren.
+     */
+    public static String richtungMitErzeugungsHaken(String katalogRichtung, boolean giltAlsErzeugung) {
+        return giltAlsErzeugung && katalogRichtung == null ? ERZEUGUNG : katalogRichtung;
+    }
 
     /** Die Fehlertabelle: Code, Status der Schnittstelle und wer ihn feststellt. */
     public enum Fehler {
