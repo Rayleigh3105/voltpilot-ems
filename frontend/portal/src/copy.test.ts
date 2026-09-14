@@ -2,6 +2,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
+import { UEMS_LEBENSZYKLUS } from './glossar';
+import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -140,6 +142,8 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
  * das Substantiv groß, eine Kennung nicht.
  */
 const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [
+  // AP-02 IP-15: der archivierte Knoten heißt beim Kunden „Archiviert am …“, nie Grabstein/Tombstone.
+  { re: /\b(Grabstein\w*|Tombstones?)\b/, why: 'UEMS: „Archiviert am …“ statt „Grabstein“/„Tombstone“' },
   { re: /\bTenant\w*/, why: 'UEMS: „Kundenbereich" (bzw. „Unternehmen") statt „Tenant"' },
   { re: /\bSites?\b/, why: 'UEMS: „Anlage" oder „Standort" statt „Site"' },
   { re: /\bStandort-ID\b/i, why: 'UEMS: der Standort trägt einen NAMEN, keine „Standort-ID"' },
@@ -902,5 +906,30 @@ describe('UEMS AP-08 IP-14 · die Vorschlags-Begründung spricht das Kunden-Wör
     const auftrag = /\b(bitte|müssen|muss|sollten|sollen|freigeben|genehmigen|übernehmen Sie)\b/i;
     for (const { wo, text } of saetze()) expect(auftrag.test(text), `${wo}: ${text}`).toBe(false);
     expect(auftrag.test('Bitte freigeben.')).toBe(true);
+  });
+});
+
+/**
+ * UEMS AP-02 IP-15 — Archivieren, Wiederherstellen, Löschen. „archiviert“ ist ein Wort des
+ * Lebenszyklus (Glossar), die Fläche sagt „Archivieren …“, „Archiviert am …“, „Wiederherstellen …“
+ * und „Löschen …“; das Werkstatt-Wort für den archivierten Knoten steht in `FORBIDDEN_INTERN`.
+ */
+describe('UEMS AP-02 IP-15 · Archivieren, Wiederherstellen und Löschen sprechen die Kundenwörter', () => {
+  it('„archiviert“ ist ein Lebenszyklus-Wort; Menü und Baum sagen „Archivieren“, „Archiviert am“, „Wiederherstellen“', () => {
+    expect(UEMS_LEBENSZYKLUS).toContain('archiviert');
+    expect(KNOPF_ARCHIVIEREN).toBe('Archivieren …');
+    expect(KNOPF_WIEDERHERSTELLEN).toBe('Wiederherstellen …');
+    expect(KNOPF_LOESCHEN).toBe('Löschen …');
+    expect(archiviertAmText('2027-06-30')).toBe('Archiviert am 30.06.2027');
+  });
+
+  it('die Archiv-Flächen nennen kein „deaktiviert“ und keinen Papierkorb — und der Wächter beißt beim Grabstein', () => {
+    const verboten = /\b([Dd]eaktivier\w*|Papierkorb)\b/;
+    for (const datei of ['ortArchiv.ts', 'components/OrtMenue.tsx', 'components/ArchivierenDialog.tsx', 'components/Ortsbaum.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(0);
+      expect(texte.filter((t) => verboten.test(t)), datei).toEqual([]);
+    }
+    expect(FORBIDDEN_INTERN.some(({ re }) => re.test('Der Grabstein bleibt'))).toBe(true);
   });
 });

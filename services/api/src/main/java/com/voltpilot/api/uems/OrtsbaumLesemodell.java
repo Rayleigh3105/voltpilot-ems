@@ -1,16 +1,21 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.uems.OrtsbaumAbleitung.Bestand;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtAmStichtag;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.StandAm;
 import com.voltpilot.api.uems.StandortLesemodell.StandortAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodell.Zeilen;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -57,9 +62,14 @@ public final class OrtsbaumLesemodell {
             LocalDate gueltigBis,
             Integer flaecheM2,
             String flaecheQuelle,
-            Integer messstellenZahl) {}
+            Integer messstellenZahl,
+            OrtAktionen.Aktionen aktionen) {}
 
-    /** Ein Gebäude zum Stichtag mit den Bereichen, die an dem Tag an ihm hängen. */
+    /**
+     * Ein Gebäude zum Stichtag mit den Bereichen, die an dem Tag an ihm hängen. {@code aktionen}
+     * (IP-15, an Gebäude UND Bereich): was man heute mit dem Knoten tun kann — nur ohne Stichtag,
+     * sonst {@code null} („Stand am …“ ändert nichts).
+     */
     public record Gebaeude(
             UUID id,
             String kurzzeichen,
@@ -73,7 +83,8 @@ public final class OrtsbaumLesemodell {
             Integer flaecheM2,
             String flaecheQuelle,
             Integer messstellenZahl,
-            List<Bereich> bereiche) {}
+            List<Bereich> bereiche,
+            OrtAktionen.Aktionen aktionen) {}
 
     /** Was am Stichtag ohne Gebäude am Standort hängt (AP-00 E3: Gebäude sind optional). */
     public record DirektAmStandort(List<Bereich> bereiche, Integer messstellenZahl) {}
@@ -93,7 +104,27 @@ public final class OrtsbaumLesemodell {
             Integer summeGebaeudeM2,
             List<UUID> gebaeudeOhneFlaeche,
             List<Gebaeude> gebaeude,
-            DirektAmStandort direktAmStandort) {}
+            DirektAmStandort direktAmStandort,
+            List<ArchivierterOrt> archiviert,
+            OrtAktionen.Aktionen aktionen) {}
+
+    /**
+     * Der Grabstein (IP-15, Z3): ein Gebäude oder Bereich dieses Standorts, das am Stichtag
+     * archiviert war. Im Baum fehlt es (§4.4) — hier steht es mit dem Tag, an dem es archiviert
+     * wurde ({@code archiviertAm} = Tag nach dem Ende seines letzten Intervalls vor dem Stichtag),
+     * und dem Knoten, an dem es zuletzt hing. Nichts mit Historie verschwindet aus der Sicht.
+     * {@code aktionen}: Wiederherstellen und Löschen — nur ohne Stichtag.
+     */
+    public record ArchivierterOrt(
+            UUID id,
+            String art,
+            String kurzzeichen,
+            String name,
+            List<String> nutzung,
+            LocalDate archiviertAm,
+            UUID elternId,
+            String elternArt,
+            OrtAktionen.Aktionen aktionen) {}
 
     /** Der Ortsbaum eines Standorts zum Stichtag — ohne Messstellen-Quelle ({@code messstellenZahl} null). */
     public static Optional<OrtsbaumAmStichtag> ortsbaum(Zeilen z, UUID standortId, LocalDate stichtag) {
@@ -107,6 +138,15 @@ public final class OrtsbaumLesemodell {
      */
     public static Optional<OrtsbaumAmStichtag> ortsbaum(
             Zeilen z, UUID standortId, LocalDate stichtag, List<OrtsbaumAbleitung.Messstelle> messstellen) {
+        return ortsbaum(z, standortId, stichtag, messstellen, null);
+    }
+
+    /**
+     * Wie oben, dazu je Knoten die {@code aktionen} von heute (IP-15); {@code aktionen} {@code null} =
+     * keine (mit Stichtag).
+     */
+    public static Optional<OrtsbaumAmStichtag> ortsbaum(Zeilen z, UUID standortId, LocalDate stichtag,
+            List<OrtsbaumAbleitung.Messstelle> messstellen, OrtAktionen aktionen) {
         Map<String, Integer> zahl = messstellenJeOrt(messstellen, stichtag);
         Optional<StandortAmStichtag> standort = StandortLesemodell.standort(z, standortId, stichtag);
         if (standort.isEmpty()) {
@@ -114,7 +154,7 @@ public final class OrtsbaumLesemodell {
         }
         if (!VORHANDEN.equals(standort.get().bestand())) {
             return Optional.of(new OrtsbaumAmStichtag(stichtag, standort.get(), null, List.of(),
-                    List.of(), null));
+                    List.of(), null, List.of(), null));
         }
         StandAm stand = OrtsbaumAbleitung.standAm(StandortLesemodell.baum(z, stichtag), stichtag);
         Map<String, OrtAmStichtag> amTag = new HashMap<>();
@@ -133,9 +173,10 @@ public final class OrtsbaumLesemodell {
                 gebaeude.add(new Gebaeude(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.baujahr(),
                         o.notiz(), o.zustand(), iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(),
                         quelle(a), zahl(zahl, o.kurzzeichen()),
-                        bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl)));
+                        bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl, aktionen),
+                        aktionen == null ? null : aktionen.imBaum(o)));
             } else if (st.equals(a.eltern())) {
-                direkt.add(bereich(z, o, a, stichtag, zahl));
+                direkt.add(bereich(z, o, a, stichtag, zahl, aktionen));
             }
         }
         OrtAmStichtag s = amTag.get(st);
@@ -143,7 +184,75 @@ public final class OrtsbaumLesemodell {
                 : s.gebaeudeOhneFlaeche().stream().map(UUID::fromString).toList();
         return Optional.of(new OrtsbaumAmStichtag(stichtag, standort.get(), s.summeGebaeudeM2(), ohne,
                 List.copyOf(gebaeude),
-                new DirektAmStandort(List.copyOf(direkt), zahl(zahl, standort.get().kurzzeichen()))));
+                new DirektAmStandort(List.copyOf(direkt), zahl(zahl, standort.get().kurzzeichen())),
+                archiviert(z, stand, amTag, standortId, ZoneId.of(standort.get().zeitzone()), stichtag, aktionen),
+                aktionen == null ? null : aktionen.standort(standort.get().kurzzeichen())));
+    }
+
+    /**
+     * Die Grabsteine dieses Standorts am Stichtag (Z3). Archiviert heißt: der Vertrag nennt den Ort
+     * am Stichtag {@code archiviert} ({@link OrtsbaumAbleitung#standAm}) — oder er wurde am Tag
+     * seines Anlegens archiviert, dann ist sein einziges Intervall aufgehoben (es belegte keinen Tag)
+     * und der Tag kommt aus {@code archiviert_am}. Zu welchem Standort er gehört, sagt sein letztes
+     * Intervall: direkt, oder über das Gebäude an dessen letztem gemeinsamen Tag.
+     */
+    private static List<ArchivierterOrt> archiviert(Zeilen z, StandAm stand, Map<String, OrtAmStichtag> amTag,
+            UUID standortId, ZoneId zone, LocalDate stichtag, OrtAktionen aktionen) {
+        Set<String> amTagArchiviert = new HashSet<>();
+        stand.nichtGezeigt().stream()
+                .filter(n -> n.grund() == Bestand.ARCHIVIERT)
+                .forEach(n -> amTagArchiviert.add(n.kennzeichen()));
+        List<ArchivierterOrt> out = new ArrayList<>();
+        for (OrtRepository.Ort o : z.orte()) {
+            if (amTag.containsKey(o.id().toString())) {
+                continue;
+            }
+            List<OrtZuordnungRepository.Zuordnung> eigene = z.ortZuordnungen().stream()
+                    .filter(iv -> iv.ortId().equals(o.id()))
+                    .sorted(Comparator.comparing(OrtZuordnungRepository.Zuordnung::gueltigAb))
+                    .toList();
+            Optional<OrtZuordnungRepository.Zuordnung> beendet = eigene.stream()
+                    .filter(iv -> !iv.aufgehoben() && iv.gueltigBis() != null && iv.gueltigBis().isBefore(stichtag))
+                    .max(Comparator.comparing(OrtZuordnungRepository.Zuordnung::gueltigBis));
+            OrtZuordnungRepository.Zuordnung letzte;
+            LocalDate am;
+            if (amTagArchiviert.contains(o.id().toString()) && beendet.isPresent()) {
+                letzte = beendet.get();
+                am = letzte.gueltigBis().plusDays(1);
+            } else if (o.archiviertAm() != null && !eigene.isEmpty()
+                    && eigene.stream().allMatch(OrtZuordnungRepository.Zuordnung::aufgehoben)
+                    && !o.archiviertAm().atZone(zone).toLocalDate().isAfter(stichtag)) {
+                letzte = eigene.get(eigene.size() - 1);
+                am = o.archiviertAm().atZone(zone).toLocalDate();
+            } else {
+                continue;
+            }
+            if (!standortId.equals(standortVon(z, letzte))) {
+                continue;
+            }
+            out.add(new ArchivierterOrt(o.id(), o.art(), o.kurzzeichen(), o.name(), o.nutzung(), am,
+                    letzte.eltern(), letzte.elternStandortId() != null ? "standort" : "gebaeude",
+                    aktionen == null ? null : aktionen.archiviert(o)));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Der Standort, an dem ein Intervall hing — direkt, oder über das Gebäude an seinem letzten Tag. */
+    private static UUID standortVon(Zeilen z, OrtZuordnungRepository.Zuordnung iv) {
+        if (iv.elternStandortId() != null) {
+            return iv.elternStandortId();
+        }
+        LocalDate tag = iv.gueltigBis() != null ? iv.gueltigBis() : iv.gueltigAb();
+        List<OrtZuordnungRepository.Zuordnung> gebaeude = z.ortZuordnungen().stream()
+                .filter(g -> g.ortId().equals(iv.elternOrtId()) && g.elternStandortId() != null)
+                .sorted(Comparator.comparing(OrtZuordnungRepository.Zuordnung::gueltigAb))
+                .toList();
+        return gebaeude.stream()
+                .filter(g -> !g.aufgehoben() && !g.gueltigAb().isAfter(tag)
+                        && (g.gueltigBis() == null || !tag.isAfter(g.gueltigBis())))
+                .map(OrtZuordnungRepository.Zuordnung::elternStandortId)
+                .findFirst()
+                .orElseGet(() -> gebaeude.isEmpty() ? null : gebaeude.get(gebaeude.size() - 1).elternStandortId());
     }
 
     /**
@@ -171,22 +280,23 @@ public final class OrtsbaumLesemodell {
     }
 
     private static List<Bereich> bereicheUnter(Zeilen z, Map<String, OrtAmStichtag> amTag, String gebaeude,
-            LocalDate stichtag, Map<String, Integer> zahl) {
+            LocalDate stichtag, Map<String, Integer> zahl, OrtAktionen aktionen) {
         List<Bereich> out = new ArrayList<>();
         for (OrtRepository.Ort o : z.orte()) {
             OrtAmStichtag a = amTag.get(o.id().toString());
             if (a != null && "bereich".equals(o.art()) && gebaeude.equals(a.eltern())) {
-                out.add(bereich(z, o, a, stichtag, zahl));
+                out.add(bereich(z, o, a, stichtag, zahl, aktionen));
             }
         }
         return List.copyOf(out);
     }
 
     private static Bereich bereich(Zeilen z, OrtRepository.Ort o, OrtAmStichtag a, LocalDate stichtag,
-            Map<String, Integer> zahl) {
+            Map<String, Integer> zahl, OrtAktionen aktionen) {
         OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
         return new Bereich(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.notiz(), o.zustand(),
-                iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), zahl(zahl, o.kurzzeichen()));
+                iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), zahl(zahl, o.kurzzeichen()),
+                aktionen == null ? null : aktionen.imBaum(o));
     }
 
     /**

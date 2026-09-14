@@ -938,6 +938,90 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+    delete:
+      tags: [ortsstruktur]
+      summary: Ein Gebäude oder einen Bereich löschen - nur ohne jede Historie (AP-02 IP-15, E1, A9).
+      description: >
+        Endgültig, und nur für einen Ort, an dem nie etwas hing: keine Messstelle
+        (auch keine beendete oder aufgehobene Zuordnung), keine Fläche, kein
+        Bereich darunter, keine Bezugsgröße. Die Regel ist
+        docs/contracts/v2/ortsbaum-vectors.json (Familie `archiv`, Ableitung
+        `loeschen`); die Datenbank prüft dasselbe noch einmal (`uems_ort_loeschen`).
+        Sonst 409 `loeschen_gesperrt` mit `historie` und dem Satz, dass alles
+        andere archiviert wird - nichts ist gelöscht. Das Kurzzeichen bleibt
+        belegt und wird nie wiederverwendet; die eigenen Protokolleinträge
+        bleiben, und am Knoten, an dem der Ort zuletzt hing, steht genau ein
+        Eintrag "geloescht" (`alt` = Art, ID, Kurzzeichen, Name). Ob Löschen geht,
+        steht vorher in `aktionen.loeschen` des Ortsbaums. Rechte: `gebaeude.pflegen`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Gelöscht. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}/archivieren:
+    post:
+      tags: [ortsstruktur]
+      summary: Ein Gebäude oder einen Bereich archivieren - nur ohne aktive Messstellen (AP-02 IP-15, Z1/Z2, A7/A8).
+      description: >
+        Archiviert ab HEUTE in der Zeitzone des Standorts: das laufende Intervall
+        endet am Vortag (begann es heute, wird es aufgehoben). Gesperrt (409
+        `archivieren_gesperrt`), solange eine Messstelle im Teilbaum aktiv ist
+        oder eine Zuordnung hinein oder heraus geplant ist - `gruende` ist die
+        GANZE Liste in fester Reihenfolge, je Grund mit `weg`; `message` ist der
+        Satz mit Grund und Weg ("Montagehalle Lindach kann nicht archiviert
+        werden: 1 Messstelle ist hier aktiv (MS-18 Montagehalle Lindach gesamt).
+        Ziehen Sie die Messstelle zuerst um oder legen Sie sie still
+        (Messstellen)."). Dieselbe Regel wie am Standort
+        (docs/contracts/v2/ortsbaum-vectors.json, Familie `archiv`). Leere
+        Bereiche eines Gebäudes werden mitarchiviert; keine Kaskade auf
+        Messstellen. Alte Berichte und "Stand am" vor dem Archivtag bleiben
+        unverändert. Genau ein Protokolleintrag "archiviert" am Ort
+        (`neu.mitarchiviert`). Kein Inhalt oder `{}`; jedes Feld ist 400.
+        Rechte: `gebaeude.pflegen`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Archiviert - der Ort mit seinen Zuordnungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ort" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}/wiederherstellen:
+    post:
+      tags: [ortsstruktur]
+      summary: Ein archiviertes Gebäude oder einen archivierten Bereich wiederherstellen - ein neues Intervall ab heute (AP-02 IP-15, Z3, A8).
+      description: >
+        Ein NEUES Intervall ab heute an dem Knoten, an dem der Ort zuletzt hing;
+        die Lücke seit dem Archivieren bleibt sichtbar und wird nie aufgefüllt
+        (`neu.luecke` im Protokoll). Gesperrt (409 `wiederherstellen_gesperrt`
+        mit `grund`), solange der Elternknoten archiviert ist (`eltern_archiviert`)
+        oder der Name unter den Geschwistern heute vergeben ist (`name_belegt`
+        mit `verweis`) - optional `{"name": …}` benennt ihn im selben Dialog um.
+        Das Kurzzeichen bleibt seins; mitarchivierte Bereiche kommen nicht still
+        mit. Genau ein Protokolleintrag "wiederhergestellt". Rechte: `gebaeude.pflegen`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StandortWiederherstellen" }
+      responses:
+        "200":
+          description: Wiederhergestellt - der Ort mit seinen Zuordnungen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ort" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/orte/{ortId}/flaeche:
     put:
       tags: [ortsstruktur]
@@ -16271,6 +16355,7 @@ components:
         Anlegen einer Anlage (`POST /api/v1/sites`, IP-9): `standort_waehlen`
         (422) → `feld` (standortId) und `standorte` (die Auswahl);
         `ziel_archiviert` (409) und `anfrage_ungueltig` (400) → `feld`.
+        Löschen ohne Historie (IP-15): `loeschen_gesperrt` (409) → `historie`.
       required: [code, message]
       properties:
         code:
@@ -16278,7 +16363,7 @@ components:
           enum: [anfrage_ungueltig, nicht_gefunden, name_belegt, kurzzeichen_belegt, archiviert,
                  archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
                  ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
-                 gleiche_flaeche, standort_waehlen]
+                 gleiche_flaeche, standort_waehlen, loeschen_gesperrt]
         message: { type: string }
         feld: { type: string }
         verweis:
@@ -16296,6 +16381,13 @@ components:
         gruende:
           type: array
           items: { $ref: "#/components/schemas/ArchivSperrgrund" }
+        historie:
+          type: array
+          description: >
+            `loeschen_gesperrt`: was der Ort je getragen hat, in der Reihenfolge des
+            Vertrags (`gruende_loeschen`); `hat_bezugsgroessen` ergänzt die Datenbank
+            (AP-09). Leer, wenn erst die Datenbank widersprochen hat.
+          items: { $ref: "#/components/schemas/OrtLoeschGrund" }
         standorte:
           type: array
           description: Nur bei `standort_waehlen` - die nicht archivierten Standorte zur Wahl.
@@ -16439,6 +16531,85 @@ components:
           nullable: true
           description: Was ohne Gebäude am Standort hängt - null, wenn es den Standort am Stichtag nicht gab.
           allOf: [{ $ref: "#/components/schemas/OrtsbaumDirektAmStandort" }]
+        archiviert:
+          type: array
+          description: >
+            IP-15 (Z3): die Gebäude und Bereiche dieses Standorts, die am Stichtag
+            archiviert waren - im Baum fehlen sie (§4.4), hier stehen sie mit dem
+            Archivtag und dem Knoten, an dem sie zuletzt hingen. Leer, wenn es den
+            Standort am Stichtag nicht gab.
+          items: { $ref: "#/components/schemas/OrtsbaumArchivierterOrt" }
+        aktionen:
+          nullable: true
+          description: IP-15 - was man heute mit dem Standort tun kann (nur `archivieren`); null mit Stichtag.
+          allOf: [{ $ref: "#/components/schemas/OrtAktionen" }]
+    OrtsbaumArchivierterOrt:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [gebaeude, bereich] }
+        kurzzeichen: { type: string, example: B-5 }
+        name: { type: string, example: Halle 2 Lager }
+        nutzung: { type: array, nullable: true, items: { $ref: "#/components/schemas/Nutzung" } }
+        archiviertAm: { type: string, format: date, example: "2027-06-30", description: Der Tag nach dem Ende des letzten Intervalls vor dem Stichtag. }
+        elternId: { type: string, format: uuid, description: Der Knoten, an dem der Ort zuletzt hing. }
+        elternArt: { type: string, enum: [standort, gebaeude] }
+        aktionen:
+          nullable: true
+          description: Wiederherstellen und Löschen - null mit Stichtag.
+          allOf: [{ $ref: "#/components/schemas/OrtAktionen" }]
+    OrtAktionen:
+      type: object
+      description: >
+        IP-15: was man HEUTE mit einem Knoten des Ortsbaums tun kann, bevor jemand
+        einen Knopf drückt - dieselben Urteile und Sätze wie die Schreibrouten.
+        Ein Knoten im Baum: `archivieren` + `loeschen`; ein archivierter:
+        `wiederherstellen` + `loeschen`; der Standort: `archivieren`. Was nicht
+        dazugehört, ist null.
+      properties:
+        archivieren:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtArchivierenAktion" }]
+        wiederherstellen:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtWiederherstellenAktion" }]
+        loeschen:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtLoeschenAktion" }]
+    OrtArchivierenAktion:
+      type: object
+      properties:
+        erlaubt: { type: boolean }
+        text: { type: string, nullable: true, description: Gesperrt - der Satz mit Grund und Weg (Z1), wie `message` der 409. }
+        gruende: { type: array, items: { $ref: "#/components/schemas/ArchivSperrgrund" } }
+        letzterTag: { type: string, format: date, nullable: true, description: Erlaubt - der letzte Tag der Zuordnung (gestern). }
+        mitarchiviert:
+          type: array
+          description: Erlaubt - die leeren Kinder, die mitarchiviert werden.
+          items: { $ref: "#/components/schemas/OrtMitarchiviert" }
+    OrtMitarchiviert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [gebaeude, bereich] }
+        kurzzeichen: { type: string }
+        name: { type: string }
+    OrtWiederherstellenAktion:
+      type: object
+      properties:
+        erlaubt: { type: boolean }
+        grund: { type: string, nullable: true, enum: [nicht_archiviert, eltern_archiviert, name_belegt] }
+        text: { type: string, nullable: true, description: Gesperrt - der Satz; bei name_belegt öffnet der Dialog zum Umbenennen. }
+        ab: { type: string, format: date, description: Der erste Tag des neuen Intervalls (heute). }
+    OrtLoeschenAktion:
+      type: object
+      properties:
+        erlaubt: { type: boolean }
+        gruende: { type: array, items: { $ref: "#/components/schemas/OrtLoeschGrund" } }
+        text: { type: string, nullable: true, description: Gesperrt - der Satz, der die Historie nennt. }
+    OrtLoeschGrund:
+      type: string
+      enum: [hat_messstellen, hat_anlagen, hat_flaeche, hat_kinder, hat_bezugsgroessen]
     OrtsbaumGebaeude:
       type: object
       properties:
@@ -16460,6 +16631,10 @@ components:
         bereiche:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
+        aktionen:
+          nullable: true
+          description: IP-15 - Archivieren und Löschen; null mit Stichtag.
+          allOf: [{ $ref: "#/components/schemas/OrtAktionen" }]
     OrtsbaumBereich:
       type: object
       description: Ein Bereich erbt nie die Fläche seines Gebäudes (§4.1).
@@ -16475,6 +16650,10 @@ components:
         flaecheM2: { type: integer, nullable: true }
         flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
         messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
+        aktionen:
+          nullable: true
+          description: IP-15 - Archivieren und Löschen; null mit Stichtag.
+          allOf: [{ $ref: "#/components/schemas/OrtAktionen" }]
     OrtsbaumDirektAmStandort:
       type: object
       properties:

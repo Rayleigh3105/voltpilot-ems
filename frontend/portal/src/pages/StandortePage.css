@@ -107,3 +107,11 @@
 .vp-st-anlage-link:focus-visible {
   color: var(--vp-c-primary);
 }
+
+/* AP-02 IP-15: „Wiederherstellen …“ an einem archivierten Standort. */
+.vp-st-archiv-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-2);
+}

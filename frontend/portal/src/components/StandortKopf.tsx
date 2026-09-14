@@ -1,7 +1,9 @@
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { StandortAmStichtag } from '../api';
+import type { OrtAktionen, StandortAmStichtag } from '../api';
+import { menueEintraege, type MenueEintrag } from '../ortArchiv';
 import { esFehltSatz, standortZeile } from '../standorte';
+import { OrtMenue } from './OrtMenue';
 import './StandortKopf.css';
 
 /**
@@ -18,11 +20,16 @@ export function StandortKopf({
   standort,
   titelEbene = 'h2',
   onBearbeiten,
+  aktionen = null,
+  onAktion,
 }: {
   standort: StandortAmStichtag;
   titelEbene?: 'h1' | 'h2' | 'h3';
   /** Der Auslöser kommt mit, damit der Fokus nach dem Dialog dorthin zurückkehrt. */
   onBearbeiten?: (standort: StandortAmStichtag, ausloeser: HTMLElement) => void;
+  /** IP-15: was man heute mit dem Standort tun kann (aus seinem Ortsbaum) — das Menü „Archivieren …“. */
+  aktionen?: OrtAktionen | null;
+  onAktion?: (eintrag: MenueEintrag, ausloeser: HTMLElement) => void;
 }) {
   const Titel = titelEbene;
   const zeile = standortZeile(standort);
@@ -47,6 +54,9 @@ export function StandortKopf({
         >
           {fehlt ? 'Adresse nachtragen' : 'Bearbeiten'}
         </Button>
+      )}
+      {onAktion && aktionen && (
+        <OrtMenue name={standort.name} eintraege={menueEintraege(aktionen)} onWahl={onAktion} />
       )}
     </div>
   );

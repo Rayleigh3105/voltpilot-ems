@@ -3,8 +3,10 @@ import type {
   OrtAnlegen,
   OrtBearbeiten,
   OrtFehler,
+  OrtAktionen,
   OrtFlaeche,
   OrtsbaumAmStichtag,
+  OrtsbaumArchivierterOrt,
   OrtsbaumBereich,
   OrtsbaumGebaeude,
 } from './api';
@@ -95,6 +97,10 @@ export interface Knoten {
   /** Nur Gebäude: am Stichtag ohne Fläche (§5.9 „für kWh/m² fehlt die Fläche“). */
   flaecheFehlt: boolean;
   archiviert: boolean;
+  /** IP-15 (Z3): der Archivtag (ISO) eines archivierten Knotens — er bleibt ausgegraut im Baum. */
+  archiviertAm: string | null;
+  /** IP-15: was man heute mit dem Knoten tun kann (`null` mit Stichtag und am Zweig „Direkt am Standort“). */
+  aktionen: OrtAktionen | null;
   /** Woran ein Bereich hängt — für den Dialog „Bereich bearbeiten“. */
   eltern: { art: 'gebaeude' | 'standort'; name: string } | null;
   quelle: OrtsbaumGebaeude | OrtsbaumBereich | null;
@@ -140,8 +146,30 @@ function bereichKnoten(b: OrtsbaumBereich, eltern: Knoten['eltern']): Knoten {
     datenlage: b.messstellenZahl == null ? null : messstellenText(b.messstellenZahl),
     flaecheFehlt: false,
     archiviert: b.zustand === 'archiviert',
+    archiviertAm: null,
+    aktionen: b.aktionen ?? null,
     eltern,
     quelle: b,
+    kinder: [],
+  };
+}
+
+/** Z3: ein archiviertes Gebäude oder ein archivierter Bereich — ohne Fläche und Datenlage, mit Archivtag. */
+function archivierterKnoten(s: OrtsbaumArchivierterOrt, eltern: Knoten['eltern']): Knoten {
+  return {
+    schluessel: s.id,
+    art: s.art,
+    id: s.id,
+    name: s.name,
+    kurzzeichen: s.kurzzeichen,
+    zeile: zeileAus(s.nutzung, null, null),
+    datenlage: null,
+    flaecheFehlt: false,
+    archiviert: true,
+    archiviertAm: s.archiviertAm,
+    aktionen: s.aktionen ?? null,
+    eltern,
+    quelle: null,
     kinder: [],
   };
 }
@@ -170,6 +198,8 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
       datenlage: zahl == null ? null : messstellenText(zahl),
       flaecheFehlt: g.flaecheM2 == null && !archiviert,
       archiviert,
+      archiviertAm: null,
+      aktionen: g.aktionen ?? null,
       eltern: null,
       quelle: g,
       kinder,
@@ -179,7 +209,18 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
   const direkt = antwort.direktAmStandort;
   const direktBereiche = direkt ? [...direkt.bereiche].sort(nachKurzzeichen) : [];
   const knoten = [...gebaeude];
-  if (direkt && (direktBereiche.length > 0 || (direkt.messstellenZahl ?? 0) > 0)) {
+  // IP-15 (Z3): archivierte Gebäude und Bereiche bleiben sichtbar — ausgegraut, mit Archivtag, dort,
+  // wo sie zuletzt hingen. Den Leerzustand L1 ändern sie nicht (er fragt nach dem, was heute da ist).
+  const steine = [...(antwort.archiviert ?? [])].sort(nachKurzzeichen);
+  for (const s of steine.filter((x) => x.art === 'gebaeude')) knoten.push(archivierterKnoten(s, null));
+  const direktSteine: Knoten[] = [];
+  for (const s of steine.filter((x) => x.art === 'bereich')) {
+    const ziel = s.elternArt === 'gebaeude' ? knoten.find((k) => k.id === s.elternId) : undefined;
+    if (ziel) ziel.kinder.push(archivierterKnoten(s, { art: 'gebaeude', name: ziel.name }));
+    else if (s.elternArt === 'standort') direktSteine.push(archivierterKnoten(s, { art: 'standort', name: standortName }));
+    else knoten.push(archivierterKnoten(s, null));
+  }
+  if (direkt && (direktBereiche.length > 0 || direktSteine.length > 0 || (direkt.messstellenZahl ?? 0) > 0)) {
     const zahl = summe([direkt.messstellenZahl, ...direktBereiche.map((b) => b.messstellenZahl)]);
     knoten.push({
       schluessel: 'direkt',
@@ -191,9 +232,14 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
       datenlage: zahl == null ? null : messstellenText(zahl),
       flaecheFehlt: false,
       archiviert: false,
+      archiviertAm: null,
+      aktionen: null,
       eltern: null,
       quelle: null,
-      kinder: direktBereiche.map((b) => bereichKnoten(b, { art: 'standort', name: standortName })),
+      kinder: [
+        ...direktBereiche.map((b) => bereichKnoten(b, { art: 'standort', name: standortName })),
+        ...direktSteine,
+      ],
     });
   }
   return {
