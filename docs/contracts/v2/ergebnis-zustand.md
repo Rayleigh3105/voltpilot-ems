@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 14.09.2026 · Vertrag 1.5 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 14.09.2026 · Vertrag 1.6 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -159,6 +159,29 @@ unverändert von der Viertelstunde bis ins Jahr und darf nicht je Periode anders
 Ein Ergebnis mit Verstößen wird nicht gesprochen — die Fläche fragt vorher `pruefe`. Wie eine
 Karte die Sätze anordnet (Tageskarte, Stundenliste), gestaltet AP-08 IP-11.
 
+**Die Teile (seit 1.6, nur TS).** `teile(ergebnis)` gibt Zahl, Zustand, Verlauf und Kennzeichen
+einzeln zurück — zusammengefügt mit „ · “ Zeichen für Zeichen `satz`. Eine Karte stellt sie
+nebeneinander, sie formuliert nichts um (`uemsErgebnis.test.ts` prüft es an jedem Fall der Familie
+`ergebnis`).
+
+**Die Herkunft der Menge am Zustandswort (seit 1.6, AP-08 IP-11, E1 = A).** Der Zustand einer
+Menge aus Zählerständen folgt aus den Periodenständen, die Abdeckung des Verlaufs steht daneben —
+„vollständig“ neben „Verlauf 85 %“ braucht darum seine Herkunft:
+`zustandMitHerkunft(zustand, herleitung, wert)` → „vollständig (Menge aus Zählerständen)“ (Block
+`mengen_herkunft`, Familie `herkunft`). Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11.
+
+| Herleitung der Quellenbindung | am Zustandswort |
+|---|---|
+| `zaehlerstand`, `differenzen` | „(Menge aus Zählerständen)“ — beide lesen einen Zählerstand |
+| `integration` | nichts — das Kennzeichen „aus Leistung integriert“ sagt es, der Zustand folgt aus der Abdeckung |
+| `momentanwert` | nichts — ein Momentanwert hat keine Menge |
+| keine (berechnete Messstelle) | nichts |
+
+Nur an **vollständig** und **unvollständig**, nur **mit Zahl** („— · unvollständig“ bleibt ohne
+Herkunft; „mit Ersatzwert“ sagt Methode und Kennung im Kennzeichen). Ein fremdes Zustandswort oder
+eine fremde Herleitung wird nicht gesprochen. Java `ErgebnisZustand.zustandMitHerkunft` ⟷ TS
+`uemsErgebnis.zustandMitHerkunft`.
+
 ## 6. Befunde der Inventur
 
 Die Vektor-Datei führt sie im Block `befunde` — benannt, **nicht still umformuliert**, weil der
@@ -181,6 +204,10 @@ ist. Die wichtigsten:
   „vereinbart 550 kW“ (Leerzeichen-Tausender, ungerundet, normales Leerzeichen). `BilanzAbleitung.zahlDe`
   ist entfernt; `rest`/`summe`/`periodenwert` nehmen die Ebene der Periode und rufen `zahl` an,
   `NetzanschlussRegeln.kopfzeile` ebenso.
+- **Seit 1.6:** der Report schreibt an F8 zusätzlich „— 14 Viertelstunden ohne Werte“ und an
+  F13/F14 die Tagesdauer statt des Verlaufs. Die Zählung der leeren Viertelstunden liefert das
+  Lese-Modell nicht (sie wäre eine zweite Rechnung in der Fläche) — offen; der Verlauf steht, wo er
+  bekannt ist, die Tagesdauer setzt die Karte daneben.
 - F17 zeigt „1 240 m³“ am Monat; der Vertrag folgt dem Wortlaut von E11 („1.240,0 m³“). E10
   schreibt „23 Stunden“; der Vertrag liest es wie F14 als „23 Stunden (Zeitumstellung)“.
 

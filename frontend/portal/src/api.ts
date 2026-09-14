@@ -1990,6 +1990,82 @@ export interface MessstelleVerlauf {
   punkte: MessstelleVerlaufPunkt[];
 }
 
+// ---- Werte je Messstelle (UEMS AP-08 IP-9) ----------------------------------
+// Die Form von GET /api/v1/messstellen/{kennzeichen}/werte (snake_case, OpenAPI
+// `MessstelleWerte`). Jedes Feld steht immer da; `null` heißt unbekannt oder nicht
+// gebildet, nie 0. Die Fläche dazu ist die Tages- und Monatskarte (IP-11).
+
+export type MessstelleWerteRaster = 'viertelstunde' | 'stunde' | 'tag' | 'monat' | 'jahr';
+
+/** Eine FÜHRENDE Bindung der Hauptgröße, die den Zeitraum berührt. */
+export interface MessstelleWerteQuelle {
+  id: string;
+  komponente: string;
+  kanal: string;
+  herleitung: 'zaehlerstand' | 'differenzen' | 'integration' | 'momentanwert';
+  anteil: 'positiv' | 'negativ' | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/** Ein Schritt des Rasters — ungerundet; gerundet wird nur angezeigt (E11). */
+export interface MessstelleWerteWert {
+  von: string;
+  bis: string;
+  /** Viertelstunde und Stunde: „02:00–03:00 MESZ“ (E10). */
+  beschriftung: string | null;
+  /** Tag, Monat, Jahr: die Stunden der Periode. */
+  stunden: number | null;
+  /** Tag: „25 Stunden (Zeitumstellung)“, an einem 24-Stunden-Tag null. */
+  tagesdauer: string | null;
+  menge: number | null;
+  mittel: number | null;
+  min: number | null;
+  max: number | null;
+  zustand: 'vollständig' | 'unvollständig' | 'keine Werte' | 'mit Ersatzwert' | null;
+  kennzeichen: string[];
+  erhalten: number | null;
+  erwartet: number | null;
+  abdeckung_prozent: number | null;
+  fassung: 'vorlaeufig' | 'endgueltig' | null;
+  endgueltig_ab: string | null;
+  version: number | null;
+  gebildet_aus: 'viertelstunde' | 'zeitraum' | 'tag' | 'monat' | 'jahr' | null;
+  /** Die Bindung, deren Reihe den Schritt beantwortet. */
+  quelle: string | null;
+  grund:
+    | 'keine_quelle'
+    | 'quelle_teilweise'
+    | 'anteil_nicht_gespeichert'
+    | 'berechnet'
+    | 'noch_nicht_gebildet'
+    | 'ohne_menge_gespeichert'
+    | 'version_nicht_gespeichert'
+    | null;
+  ereignisse: Array<{ id: string; art: string; von: string; bis: string | null }>;
+}
+
+export interface MessstelleWerte {
+  messstelle: {
+    id: string;
+    kennzeichen: string;
+    name: string | null;
+    art: string;
+    groesse: string;
+    richtung: string;
+    einheit: string;
+    wertart: string;
+  };
+  raster: MessstelleWerteRaster;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  zeitzone_herkunft: 'standort' | 'unternehmen' | 'vorgabe';
+  version: number | null;
+  quellen: MessstelleWerteQuelle[];
+  werte: MessstelleWerteWert[];
+}
+
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
 export interface BerechneteMessstelleAnlegen {
   name: string;
@@ -5786,6 +5862,15 @@ export const api = {
   messstelleVerlauf: (id: string, range?: string) =>
     request<MessstelleVerlauf>(
       `/api/v1/messstellen/${id}/verlauf${range ? `?range=${range}` : ''}`,
+    ),
+
+  /**
+   * Die Werte je Messstelle (UEMS AP-08 IP-9) über ihr HEUTIGES Kennzeichen: `von`/`bis` als Tag
+   * (JJJJ-MM-TT, `bis` = letzter Tag einschließlich) in der Zeitzone des Standorts.
+   */
+  messstelleWerte: (kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string) =>
+    request<MessstelleWerte>(
+      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte?raster=${raster}&von=${von}&bis=${bis}`,
     ),
 
   /**

@@ -7,6 +7,7 @@ import { ladeSiteGesamtwerte as ladeQuellen } from '../gesamtwertQuelle';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PROTOKOLL_LABEL, ProtokollDialog } from './ProtokollDialog';
 import { RowMenu, type RowMenuItem } from './RowMenu';
+import { WERTE_LABEL, WerteDialog } from './WerteDialog';
 import './Gesamtwert.css';
 
 /**
@@ -43,6 +44,8 @@ export function GesamtwertKarten({
   const [archivieren, setArchivieren] = useState<GwZeile | null>(null);
   // Das Änderungsprotokoll JE MESSSTELLE (AP-04 IP-21) — es liest nur.
   const [protokoll, setProtokoll] = useState<GwZeile | null>(null);
+  // Die Tages- und Monatswerte JE MESSSTELLE (AP-08 IP-11) — sie lesen nur.
+  const [werte, setWerte] = useState<GwZeile | null>(null);
   const [busy, setBusy] = useState(false);
   const [neuLaden, setNeuLaden] = useState(0);
 
@@ -128,6 +131,7 @@ export function GesamtwertKarten({
             onUmbenennen={() => setUmbenennen({ id: z.messstelle.id, name: z.messstelle.name ?? '' })}
             onArchivieren={() => setArchivieren(z)}
             onProtokoll={() => setProtokoll(z)}
+            onWerte={() => setWerte(z)}
           />
         ))}
       </div>
@@ -137,6 +141,14 @@ export function GesamtwertKarten({
         titel={protokoll?.messstelle.name || GESAMTWERT}
         ziel={protokoll ? { art: 'messstelle', id: protokoll.messstelle.id } : null}
         onClose={() => setProtokoll(null)}
+      />
+
+      <WerteDialog
+        key={werte?.messstelle.id ?? 'zu'}
+        open={werte != null}
+        kennzeichen={werte?.messstelle.kennzeichen ?? null}
+        titel={werte ? `${werte.messstelle.kennzeichen} · ${werte.messstelle.name || GESAMTWERT}` : GESAMTWERT}
+        onClose={() => setWerte(null)}
       />
 
       <ConfirmDialog
@@ -168,6 +180,7 @@ function Karte({
   onUmbenennen,
   onArchivieren,
   onProtokoll,
+  onWerte,
 }: {
   zeile: GwZeile;
   bearbeiten: { id: string; name: string } | null;
@@ -179,12 +192,14 @@ function Karte({
   onUmbenennen: () => void;
   onArchivieren: () => void;
   onProtokoll: () => void;
+  onWerte: () => void;
 }) {
   const { messstelle: m, wert } = zeile;
   const angehalten = m.lebenszyklus === 'angehalten';
   const menu: RowMenuItem[] = [
     { label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
     { label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
+    { label: WERTE_LABEL, icon: 'calendar', onClick: onWerte },
     { label: PROTOKOLL_LABEL, icon: 'history', onClick: onProtokoll },
     { label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
   ];

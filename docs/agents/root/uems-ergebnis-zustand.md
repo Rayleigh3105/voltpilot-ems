@@ -26,6 +26,8 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   Wortlaut legt das erzeugende Paket fest. Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
   aktiv — Rang 70, Methodenname in Kundensprache (`uems-ersatzwert-methoden.md`). Seit 1.5 ist „korrigiert (Version
   {version})“ aktiv — Rang 80, Version ≥ 2, kein Datum; gesprochen von der Korrektur-Kaskade (`uems-korrektur-kaskade.md`).
+  Seit 1.6 steht die Herkunft der Menge am Zustandswort („vollständig (Menge aus Zählerständen)“,
+  `zustandMitHerkunft`, Block `mengen_herkunft`) — gesprochen von der Tageskarte (`uems-tageskarte.md`).
 - **Die Reihenfolge ist Vertrag:** der Rang steigt nie (Anteil 10 → Rand 20–22 → Strecke 30 →
   Neustart 40 → Werte 50 → Integration 60), die Sätze der Gerätegrenze stehen in fester Folge.
   In Rang 30 wird die zeitliche Folge NICHT an HH:MM geprüft (ein Monat hat zwei Tage 09:12).

@@ -1,0 +1,171 @@
+/*
+ * Tages- und Monatskarte (UEMS AP-08 IP-11). Mobil zuerst: bei 375 px läuft
+ * nichts quer — Abzeichen und Kennzeichen brechen um, kein Satz wird gekürzt.
+ * Optik = Portal „Variante C" (--vp-c-*); der Rahmen ist das zentrierte `Modal`.
+ */
+
+.vp-wk {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-wk-messstelle {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-wk-steuer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-wk-blaettern {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+.vp-wk-datum {
+  min-width: 0;
+  flex: 0 1 12rem;
+}
+
+/* --- die Karte --- */
+.vp-wk-karte {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: var(--vp-c-space-4);
+  background: var(--vp-c-card);
+  min-width: 0;
+}
+.vp-wk-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+.vp-wk-titel {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-wk-zahl {
+  margin-top: var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-48);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-tight);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 719px) {
+  .vp-wk-zahl {
+    font-size: var(--vp-c-fs-hero-phone, 40px);
+  }
+}
+.vp-wk-abzeichen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-wk-abzeichen > * {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.vp-wk-kennzeichen {
+  list-style: none;
+  margin: var(--vp-c-space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.vp-wk-kennzeichen li {
+  position: relative;
+  padding-left: 14px;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wk-kennzeichen li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vp-c-warn-fg);
+}
+
+/* --- die Liste --- */
+.vp-wk-liste {
+  min-width: 0;
+}
+.vp-wk-liste-titel {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-wk-liste ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  background: var(--vp-c-card);
+  overflow: hidden;
+}
+.vp-wk-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--vp-c-space-3);
+  row-gap: 2px;
+  padding: 10px var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-wk-zeile + .vp-wk-zeile {
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-wk-zeile-name {
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.vp-wk-zeile-zahl {
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-wk-zeile-info {
+  grid-column: 1 / -1;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wk-zeile-info.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+.vp-wk-zeile .vp-wk-kennzeichen {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+.vp-wk-zeile .vp-wk-kennzeichen li {
+  font-size: var(--vp-c-fs-12);
+}

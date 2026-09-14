@@ -5,10 +5,10 @@
   "description": "Der Vertrag, wie eine abgeleitete Zahl sagt, wie belastbar sie ist (UEMS AP-08 IP-8, Prosa: ergebnis-zustand.md): das geschlossene Zustands-Vokabular, die geschlossene Liste der Kennzeichen-Sätze mit Rang, die Rundung je Ebene (E11) und die Sommerzeit-Beschriftung (E10). Er beschreibt ergebnis-zustand-vectors.json, gegen die BEIDE Zwillinge gefahren werden: Java services/api .../uems/ErgebnisZustand und TypeScript frontend/portal/src/uemsErgebnis.ts. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "befunde", "cases"],
+  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "mengen_herkunft", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.5", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "schema_version": { "type": "string", "const": "1.6", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -159,6 +159,29 @@
         "tagesdauer": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
       }
     },
+    "mengen_herkunft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["form", "zustaende", "nur_mit_zahl", "herleitungen"],
+      "description": "Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort (E1 = A) — „vollständig (Menge aus Zählerständen)“.",
+      "properties": {
+        "form": { "type": "string", "const": "{zustand} ({herkunft})" },
+        "zustaende": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/zustand_wort" } },
+        "nur_mit_zahl": { "type": "boolean", "const": true },
+        "herleitungen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zaehlerstand", "differenzen", "integration", "momentanwert"],
+          "description": "Die geschlossenen Herleitungen der Quellenbindung (messstelle.schema.json); null = das Wort steht allein.",
+          "properties": {
+            "zaehlerstand": { "type": ["string", "null"], "minLength": 1 },
+            "differenzen": { "type": ["string", "null"], "minLength": 1 },
+            "integration": { "type": ["string", "null"], "minLength": 1 },
+            "momentanwert": { "type": ["string", "null"], "minLength": 1 }
+          }
+        }
+      }
+    },
     "befunde": {
       "type": "array",
       "description": "Was die Inventur fand und nicht still umformuliert hat.",
@@ -184,7 +207,8 @@
         { "$ref": "#/$defs/fall_tagesdauer" },
         { "$ref": "#/$defs/fall_raster" },
         { "$ref": "#/$defs/fall_uhr" },
-        { "$ref": "#/$defs/fall_rundungsdifferenz" }
+        { "$ref": "#/$defs/fall_rundungsdifferenz" },
+        { "$ref": "#/$defs/fall_herkunft" }
       ] }
     }
   },
@@ -449,6 +473,33 @@
             "differenz": { "type": ["string", "null"] },
             "satz": { "type": ["string", "null"] }
           }
+        }
+      }
+    },
+    "fall_herkunft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "herkunft" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zustand", "herleitung", "wert"],
+          "properties": {
+            "zustand": { "type": "string", "minLength": 1 },
+            "herleitung": { "type": ["string", "null"] },
+            "wert": { "anyOf": [{ "$ref": "#/$defs/dezimaltext" }, { "type": "null" }] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": ["string", "null"], "description": "null = nicht gesprochen (fremdes Wort)." } }
         }
       }
     }

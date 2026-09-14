@@ -7,8 +7,10 @@ import {
   DEZIMAL,
   EBENEN,
   FRUEHERE_FASSUNGEN,
+  HERKUNFT_ZUSTAENDE,
   KENNZEICHEN,
   KENNZEICHEN_EBENE,
+  MENGEN_HERKUNFT,
   MINUS,
   OHNE_ZAHL,
   PLATZHALTER,
@@ -34,9 +36,11 @@ import {
   satz,
   sprich,
   tagesdauer,
+  teile,
   uhr,
   vorgesehen,
   zahl,
+  zustandMitHerkunft,
   type Ergebnis,
 } from './uemsErgebnis';
 import { stundenDesTages } from './bezugsPeriode';
@@ -105,6 +109,11 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
     expect(KENNZEICHEN_EBENE).toBe(vektoren.rundung.kennzeichen_ebene);
     expect(Object.fromEntries(Object.entries(TAGESDAUER))).toEqual(vektoren.sommerzeit.tagesdauer);
     expect(SCHRITTE).toEqual(vektoren.sommerzeit.schritte);
+    // Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort.
+    expect(MENGEN_HERKUNFT).toEqual(vektoren.mengen_herkunft.herleitungen);
+    expect(HERKUNFT_ZUSTAENDE).toEqual(vektoren.mengen_herkunft.zustaende);
+    expect(vektoren.mengen_herkunft.form).toBe('{zustand} ({herkunft})');
+    expect(vektoren.mengen_herkunft.nur_mit_zahl).toBe(true);
   });
 
   it('jedes Muster erkennt sein Beispiel und spricht es zurück', () => {
@@ -130,7 +139,7 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
 
   it('jede Familie, jedes Zustandswort und jeder Verstoß ist abgedeckt', () => {
     expect(new Set(faelle.map((f) => f.familie))).toEqual(
-      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz']),
+      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz', 'herkunft']),
     );
     const gesprochen = faelle.filter((f) => f.familie === 'ergebnis' && f.erwartet.satz !== null).map((f) => f.eingang.zustand);
     for (const z of ZUSTAENDE) expect(gesprochen).toContain(z.wort);
@@ -200,8 +209,15 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
             kennzeichen: ein.kennzeichen,
           };
           expect(pruefe(e)).toEqual(erw.verstoesse);
-          if (erw.verstoesse.length === 0) expect(satz(e)).toBe(erw.satz);
-          else expect(() => satz(e)).toThrow();
+          if (erw.verstoesse.length === 0) {
+            expect(satz(e)).toBe(erw.satz);
+            // Die Teile einer Karte sind derselbe Satz — zusammengefügt Zeichen für Zeichen (seit 1.6).
+            const t = teile(e);
+            expect([t.zahl, t.zustand, ...(t.abdeckung === null ? [] : [t.abdeckung]), ...t.kennzeichen].join(TRENNER)).toBe(erw.satz);
+          } else {
+            expect(() => satz(e)).toThrow();
+            expect(() => teile(e)).toThrow();
+          }
           break;
         }
         case 'erkennen': {
@@ -235,6 +251,11 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
             differenz: erw.differenz,
             satz: erw.satz,
           });
+          break;
+        }
+        case 'herkunft': {
+          if (erw.text === null) expect(() => zustandMitHerkunft(ein.zustand, ein.herleitung, ein.wert)).toThrow();
+          else expect(zustandMitHerkunft(ein.zustand, ein.herleitung, ein.wert)).toBe(erw.text);
           break;
         }
         default:

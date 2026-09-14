@@ -816,6 +816,10 @@ describe('UEMS AP-08 IP-8 · die Ergebnis-Sätze sprechen das Kunden-Wörterbuch
     for (const k of vertrag.kennzeichen) out.push({ wo: `Beispiel ${k.schluessel}`, text: k.beispiel });
     out.push({ wo: 'Rundungsdifferenz', text: ohnePlatz(vertrag.rundung.differenz_satz) });
     out.push({ wo: 'Verlauf', text: ohnePlatz(vertrag.satz.abdeckung) });
+    // Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort.
+    for (const h of Object.values(vertrag.mengen_herkunft.herleitungen)) {
+      if (typeof h === 'string') out.push({ wo: 'Herkunft', text: h });
+    }
     for (const f of vertrag.cases) {
       const e = f.erwartet;
       for (const t of [e.satz, e.text, e.summe_der_angezeigten, e.differenz]) {
