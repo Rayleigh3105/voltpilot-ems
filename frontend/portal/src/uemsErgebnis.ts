@@ -9,7 +9,7 @@
  * ändert die Datei UND beide Zwillinge; `uemsErgebnis.test.ts` fährt dieselbe
  * Datei per Pfad.
  *
- * Vier Dinge wohnen hier, und die Flächen erfinden keinen zweiten Wortlaut:
+ * Fünf Dinge wohnen hier, und die Flächen erfinden keinen zweiten Wortlaut:
  *  1. das geschlossene Zustands-Vokabular (vollständig · unvollständig ·
  *     keine Werte · mit Ersatzwert) mit seiner Regel für Zahl und Kennzeichen;
  *  2. die geschlossene Liste der Kennzeichen-Sätze mit Rang — die
@@ -19,7 +19,9 @@
  *     nur beim Anzeigen, exakt als Dezimaltext (`dez.ts`) — `0.15` rundet wie
  *     `BigDecimal` auf `0,2`, nicht wie ein Binärbruch auf `0,1`;
  *  4. die Sommerzeit-Beschriftung (E10): Ortszeit des Standorts, die doppelte
- *     Stunde mit MESZ/MEZ, die fehlende erscheint nicht.
+ *     Stunde mit MESZ/MEZ, die fehlende erscheint nicht;
+ *  5. seit 1.6 die Herkunft der Menge am Zustandswort (E1): „vollständig
+ *     (Menge aus Zählerständen)“ neben „Verlauf 85 %“.
  *
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
@@ -337,17 +339,67 @@ export const pruefe = (e: Ergebnis): Verstoss[] => {
   return VERSTOESSE.filter((x) => v.has(x));
 };
 
+/** Die Teile eines Kundensatzes in der Reihenfolge des Vertrags — für eine Fläche, die sie nebeneinander setzt. */
+export type Teile = { zahl: string; zustand: string; abdeckung: string | null; kennzeichen: string[] };
+
+/**
+ * Der Kundensatz eines gültigen Ergebnisses in seinen Teilen (seit 1.6, AP-08
+ * IP-11): zusammengefügt mit {@link TRENNER} ist es Zeichen für Zeichen
+ * {@link satz}. Eine Karte stellt sie nebeneinander, formuliert aber nichts
+ * um. Ein ungültiges Ergebnis wird nicht gesprochen.
+ */
+export const teile = (e: Ergebnis): Teile => {
+  const verstoesse = pruefe(e);
+  if (verstoesse.length > 0) throw new Error(`Ergebnis verletzt den Vertrag: ${verstoesse.join(', ')}`);
+  return {
+    zahl: zahl(e.wert, e.einheit, e.ebene),
+    zustand: e.zustand,
+    abdeckung: e.abdeckungProzent === null ? null : ABDECKUNG + zahl(e.abdeckungProzent, PROZENT, null),
+    kennzeichen: [...e.kennzeichen],
+  };
+};
+
 /**
  * Der Kundensatz eines gültigen Ergebnisses: Zahl · Zustand · Verlauf ·
  * Kennzeichen („2.304 kWh · vollständig · Verlauf 85 %“). Ein ungültiges wird
  * nicht gesprochen — die Fläche fragt vorher `pruefe`.
  */
 export const satz = (e: Ergebnis): string => {
-  const verstoesse = pruefe(e);
-  if (verstoesse.length > 0) throw new Error(`Ergebnis verletzt den Vertrag: ${verstoesse.join(', ')}`);
-  const teile = [zahl(e.wert, e.einheit, e.ebene), e.zustand];
-  if (e.abdeckungProzent !== null) teile.push(ABDECKUNG + zahl(e.abdeckungProzent, PROZENT, null));
-  return [...teile, ...e.kennzeichen].join(TRENNER);
+  const t = teile(e);
+  return [t.zahl, t.zustand, ...(t.abdeckung === null ? [] : [t.abdeckung]), ...t.kennzeichen].join(TRENNER);
+};
+
+// ------------------------------------------------------------------ Herkunft der Menge (seit 1.6, E1)
+
+/**
+ * Je Herleitung der Quellenbindung (geschlossen, `messstelle.schema.json`) die
+ * Herkunft, die am Zustandswort steht; `null` = das Wort steht allein
+ * (`integration` spricht ihr Kennzeichen, ein Momentanwert hat keine Menge).
+ */
+export const MENGEN_HERKUNFT: Record<string, string | null> = {
+  zaehlerstand: 'Menge aus Zählerständen',
+  differenzen: 'Menge aus Zählerständen',
+  integration: null,
+  momentanwert: null,
+};
+
+/** Die Zustandswörter, an denen eine Herkunft stehen darf. */
+export const HERKUNFT_ZUSTAENDE: string[] = [VOLLSTAENDIG, UNVOLLSTAENDIG];
+
+/**
+ * E1 — das Zustandswort mit der Herkunft seiner Menge: „vollständig (Menge aus
+ * Zählerständen)“, damit es neben „Verlauf 85 %“ lesbar ist. Nur an
+ * vollständig/unvollständig, nur MIT Zahl; ohne Herleitung (berechnete
+ * Messstelle) steht das Wort allein. Ein fremdes Wort wird nicht gesprochen.
+ */
+export const zustandMitHerkunft = (zustand: string, herleitung: string | null, wert: Betrag): string => {
+  if (!ZUSTAENDE.some((z) => z.wort === zustand)) throw new Error(`unbekannter Zustand ${zustand}`);
+  if (herleitung !== null && !Object.prototype.hasOwnProperty.call(MENGEN_HERKUNFT, herleitung)) {
+    throw new Error(`unbekannte Herleitung ${herleitung}`);
+  }
+  const herkunft = herleitung === null ? null : MENGEN_HERKUNFT[herleitung];
+  if (herkunft === null || wert === null || !HERKUNFT_ZUSTAENDE.includes(zustand)) return zustand;
+  return `${zustand} (${herkunft})`;
 };
 
 // ------------------------------------------------------------------ Rundung (E11)

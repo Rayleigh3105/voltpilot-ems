@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * {@code ergebnis-zustand.md}); der TS-Zwilling ist {@code frontend/portal/src/uemsErgebnis.ts}.
  * Wer eine Regel oder einen Satz ändert, ändert die Vektor-Datei UND beide Zwillinge.
  *
- * <p>Vier Dinge wohnen hier, und nur hier:
+ * <p>Fünf Dinge wohnen hier, und nur hier:
  *
  * <ol>
  *   <li><b>Das geschlossene Zustands-Vokabular</b> — vollständig · unvollständig · keine Werte ·
@@ -43,6 +43,8 @@ import java.util.regex.Pattern;
  *   <li><b>Die Sommerzeit-Beschriftung (E10)</b> — Ortszeit des Standorts, die doppelte Stunde mit
  *       MESZ/MEZ, die fehlende erscheint nicht ({@link #raster}, {@link #tagesdauer}); die
  *       Stundenzahl wird bei {@link BezugsPeriode#stundenDesTages} bestellt, nie hier gezählt.
+ *   <li><b>Die Herkunft der Menge am Zustandswort (E1, seit 1.6)</b> — „vollständig (Menge aus
+ *       Zählerständen)“ neben „Verlauf 85 %“ ({@link #zustandMitHerkunft}).
  * </ol>
  *
  * <p><b>Rein:</b> ohne Spring, ohne Datenbank, ohne Uhr. Die Sprech-Funktionen prüfen die
@@ -537,6 +539,46 @@ public final class ErgebnisZustand {
     public static final String TRENNER = " · ";
     public static final String OHNE_ZAHL = "—";
     private static final String ABDECKUNG = "Verlauf ";
+
+    // ------------------------------------------------------------------ Herkunft der Menge (seit 1.6, E1)
+
+    /**
+     * Je Herleitung der Quellenbindung (geschlossen, {@code messstelle.schema.json}) die Herkunft, die am
+     * Zustandswort steht; {@code null} = das Wort steht allein ({@code integration} spricht ihr Kennzeichen,
+     * ein Momentanwert hat keine Menge).
+     */
+    public static final Map<String, String> MENGEN_HERKUNFT = mengenHerkunft();
+
+    /** Die Zustandswörter, an denen eine Herkunft stehen darf. */
+    public static final List<String> HERKUNFT_ZUSTAENDE = List.of(VOLLSTAENDIG, UNVOLLSTAENDIG);
+
+    private static Map<String, String> mengenHerkunft() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("zaehlerstand", "Menge aus Zählerständen");
+        m.put("differenzen", "Menge aus Zählerständen");
+        m.put("integration", null);
+        m.put("momentanwert", null);
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * E1 — das Zustandswort mit der Herkunft seiner Menge: „vollständig (Menge aus Zählerständen)“ (AP-08
+     * IP-11). Nur an vollständig/unvollständig, nur MIT Zahl; ohne Herleitung (berechnete Messstelle) steht
+     * das Wort allein. Ein fremdes Wort wird nicht gesprochen.
+     */
+    public static String zustandMitHerkunft(String zustand, String herleitung, BigDecimal wert) {
+        if (ZUSTAENDE.stream().noneMatch(z -> z.wort().equals(zustand))) {
+            throw new IllegalArgumentException("unbekannter Zustand " + zustand);
+        }
+        if (herleitung != null && !MENGEN_HERKUNFT.containsKey(herleitung)) {
+            throw new IllegalArgumentException("unbekannte Herleitung " + herleitung);
+        }
+        String herkunft = herleitung == null ? null : MENGEN_HERKUNFT.get(herleitung);
+        if (herkunft == null || wert == null || !HERKUNFT_ZUSTAENDE.contains(zustand)) {
+            return zustand;
+        }
+        return zustand + " (" + herkunft + ")";
+    }
 
     // ------------------------------------------------------------------ Rundung (E11)
 

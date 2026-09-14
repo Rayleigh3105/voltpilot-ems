@@ -153,6 +153,16 @@ class ErgebnisZustandVectorsTest {
         sommerzeit.path("schritte").fields().forEachRemaining(e -> schritte.put(e.getKey(), e.getValue().asInt()));
         assertThat(ErgebnisZustand.SCHRITTE).isEqualTo(schritte);
 
+        // Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort.
+        JsonNode herkunft = v.path("mengen_herkunft");
+        Map<String, String> herleitungen = new LinkedHashMap<>();
+        herkunft.path("herleitungen").fields()
+                .forEachRemaining(e -> herleitungen.put(e.getKey(), textOderNull(e.getValue())));
+        assertThat(ErgebnisZustand.MENGEN_HERKUNFT).containsExactlyEntriesOf(herleitungen);
+        assertThat(ErgebnisZustand.HERKUNFT_ZUSTAENDE).containsExactlyElementsOf(texte(herkunft.path("zustaende")));
+        assertThat(herkunft.path("form").asText()).isEqualTo("{zustand} ({herkunft})");
+        assertThat(herkunft.path("nur_mit_zahl").asBoolean()).isTrue();
+
         // Die Vorgabe der Ebenen ist dieselbe Kette wie die der Lücken-Zuordnung (E2).
         assertThat(ErgebnisZustand.EBENEN).containsExactlyElementsOf(VerbrauchRegeln.LUECKE_ZEITRAEUME);
     }
@@ -328,6 +338,18 @@ class ErgebnisZustandVectorsTest {
                         textOderNull(erw.get("differenz")),
                         textOderNull(erw.get("satz"))));
             }
+            case "herkunft" -> {
+                String zustand = ein.path("zustand").asText();
+                String herleitung = textOderNull(ein.get("herleitung"));
+                BigDecimal wert = ein.path("wert").isNull() ? null : new BigDecimal(ein.path("wert").asText());
+                String text = textOderNull(erw.get("text"));
+                if (text == null) {
+                    assertThatThrownBy(() -> ErgebnisZustand.zustandMitHerkunft(zustand, herleitung, wert))
+                            .isInstanceOf(IllegalArgumentException.class);
+                } else {
+                    assertThat(ErgebnisZustand.zustandMitHerkunft(zustand, herleitung, wert)).isEqualTo(text);
+                }
+            }
             default -> throw new AssertionError("unbekannte Familie " + fall.path("familie").asText());
         }
     }
@@ -343,7 +365,7 @@ class ErgebnisZustandVectorsTest {
             }
         }
         assertThat(familien).contains("zahl", "menge", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr",
-                "rundungsdifferenz");
+                "rundungsdifferenz", "herkunft");
         assertThat(gesprocheneZustaende).containsAll(
                 ErgebnisZustand.ZUSTAENDE.stream().map(Zustand::wort).toList());
         // Jeder Verstoß des Vokabulars fliegt in mindestens einem Fall auf.

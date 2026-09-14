@@ -14,9 +14,10 @@
     "1.3: der Zuwachs-Satz trägt seine Einheit („Zuwachs 337,6 kWh“) — rundung.anzeige_einheiten (gespeichert bleibt die Zähler-Einheit, angezeigt kWh · kvarh · m³; Familie menge), rundung.kennzeichen_ebene (ein Satz rundet auf JEDER Ebene gleich), kvarh mit den Stellen von kWh, Platzhalter menge; ohne bekannte Einheit steht der Satz ohne Zahl (luecke_zuwachs_ohne_einheit). Die alte Form „Zuwachs 337.600“ lebt in fruehere_fassungen. Die Uhrzeiten sprechen in der Zone des Standorts, die der Träger ReihenKontext bis zur Rechenregel reicht — ohne neuen Wortlaut.",
     "1.4 (AP-08 IP-13, additiv): „mit Ersatzwert (Methode …)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen mit_ersatzwert — Rang 70, zuletzt: was ein Mensch gesetzt hat, nach allem, was gemessen ist. Die Methode steht mit ihrem Namen in Kundensprache (vokabular.ersatzwert_methode[].name der Ereignis-Vektoren, Platzhalter ersatzwert_methode), die Kennung EW-<Jahr>-<Nr.> (Platzhalter ersatzwert_kennung). Gesprochen von VerbrauchRegeln.mitErsatzwerten ⟷ verbrauch.mit_ersatzwerten; jede Kennzeichen-Erwartung des Blocks ersatzwerte von verbrauch-vectors.json steht in der Liste.",
     "1.5 (AP-08 IP-17, additiv): „korrigiert (Version n)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen korrigiert — Rang 80, ganz zuletzt: die Version sagt etwas über die ganze Zahl, nicht über einen Teil. Wortlaut „korrigiert (Version {version})“ mit version ≥ 2 (Version 1 ist das Original und nie korrigiert), derselbe Satz, den bilanz-vectors.json (F14) für berechnete Messstellen schon spricht. Gesprochen von der Korrektur-Kaskade (uems/KorrekturKaskade) an jeder Stufe, deren Version sie schreibt; kein Datum im Satz — wann und von wem, sagt die Versions-Historie (IP-18).",
+    "1.6 (AP-08 IP-11, additiv): mengen_herkunft — die Herkunft der Menge steht am Zustandswort, damit „vollständig“ neben „Verlauf 85 %“ lesbar ist (E1 = A: der Zustand der MENGE folgt aus den Periodenständen, die Abdeckung des VERLAUFS steht daneben): „vollständig (Menge aus Zählerständen)“. Nur an vollständig und unvollständig, nur MIT Zahl, nur bei den Herleitungen der Quellenbindung, die einen Zählerstand lesen (zaehlerstand, differenzen); integration spricht schon ihr Kennzeichen „aus Leistung integriert“, ein Momentanwert hat keine Menge, ohne Herleitung (berechnete Messstelle) steht das Wort allein. Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11 — kein neuer Satz, keine neue Regel für den Zustand selbst.",
     "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.5",
+  "schema_version": "1.6",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -434,7 +435,23 @@
     "beschriftung": "{von}–{bis}",
     "tagesdauer": {"23": "23 Stunden (Zeitumstellung)", "25": "25 Stunden (Zeitumstellung)"}
   },
+  "mengen_herkunft": {
+    "form": "{zustand} ({herkunft})",
+    "zustaende": ["vollständig", "unvollständig"],
+    "nur_mit_zahl": true,
+    "herleitungen": {
+      "zaehlerstand": "Menge aus Zählerständen",
+      "differenzen": "Menge aus Zählerständen",
+      "integration": null,
+      "momentanwert": null
+    }
+  },
   "befunde": [
+    {
+      "stelle": "mengen_herkunft (AP-08 IP-11)",
+      "befund": "Der Report schreibt an F8 „2 304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % — 14 Viertelstunden ohne Werte“ (§5.1, E1) und an F13/F14 „720 kWh · vollständig · 25 Stunden (Zeitumstellung)“ — einmal mit Zählung der leeren Viertelstunden, einmal ohne Verlauf.",
+      "warum_so_aufgenommen": "Die Zahl der Viertelstunden ohne Werte liefert das Lese-Modell „Werte je Messstelle“ nicht; sie in der Fläche zu zählen wäre eine zweite Rechnung — sie bleibt offen. Der Verlauf steht nach satz.reihenfolge überall, wo eine Abdeckung bekannt ist; die Tagesdauer setzt die Karte daneben, sie ist kein Teil des Satzes."
+    },
     {
       "stelle": "kennzeichen.luecke_zuwachs",
       "befund": "Erledigt in 1.3: die Zahl stand mit Punkt als Dezimalzeichen, drei Nachkommastellen und ohne Einheit: „Zuwachs 337.600“ liest ein de-DE-Leser als 337 600. Seit 1.3 „Zuwachs 337,6 kWh“ — die Einheit reist im Träger ReihenKontext (Katalog-Einheit des Messkanals) bis VerbrauchRegeln, ErgebnisZustand.menge rechnet sie in die Anzeige-Einheit um; die alte Form steht in fruehere_fassungen.",
@@ -1879,6 +1896,110 @@
         "differenz": "−0,1 kWh",
         "satz": "Summe der angezeigten Werte 0,0 kWh · Rundungsdifferenz −0,1 kWh"
       }
+    },
+    {
+      "name": "Tag aus Zählerständen, Verlauf 85 %",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "E1 = A: MS-10 am 03.11.2026 — 2 304,0 kWh aus den Ständen um 00:00 und 24:00, der Verlauf hat 3,5 Stunden Lücke. „vollständig“ gilt der Menge; die Herkunft sagt warum.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "2304.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "Stunde aus Zählerständen, unvollständig",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Stunde 17:00–18:00: 46,4 kWh als gemessener Teil (kein Stand um 17:00) — die Menge kommt weiter aus Zählerständen.",
+      "eingang": {"zustand": "unvollständig", "herleitung": "zaehlerstand", "wert": "46.400"},
+      "erwartet": {"text": "unvollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "ohne Zahl keine Herkunft",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Viertelstunde 14:00–14:15: nur ein Stand, keine Menge bildbar („—“) — die Herkunft einer Menge, die es nicht gibt, wäre eine Behauptung.",
+      "eingang": {"zustand": "unvollständig", "herleitung": "zaehlerstand", "wert": null},
+      "erwartet": {"text": "unvollständig"}
+    },
+    {
+      "name": "keine Werte trägt keine Herkunft",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Viertelstunde 14:15–14:30: kein Wert, keine Null, keine Herkunft.",
+      "eingang": {"zustand": "keine Werte", "herleitung": "zaehlerstand", "wert": null},
+      "erwartet": {"text": "keine Werte"}
+    },
+    {
+      "name": "25-Stunden-Tag aus Zählerständen",
+      "familie": "herkunft",
+      "fall": "F13",
+      "why": "MS-06 am 25.10.2026: 720,0 kWh aus den Ständen an beiden Tagesgrenzen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "720.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "23-Stunden-Tag aus Zählerständen",
+      "familie": "herkunft",
+      "fall": "F14",
+      "why": "MS-06 am 28.03.2027: 662,4 kWh aus den Ständen an beiden Tagesgrenzen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "662.400"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "Differenzen eines Zählerstands",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "Die Herleitung differenzen liest ebenfalls einen Zählerstand — die Menge folgt aus seinen Periodenständen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "differenzen", "wert": "36.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "integriert: das Kennzeichen spricht",
+      "familie": "herkunft",
+      "fall": "F3",
+      "why": "Eine aus Leistung integrierte Menge trägt das Kennzeichen „aus Leistung integriert“, ihr Zustand folgt aus der Abdeckung (E1) — eine zweite Herkunft am Wort wäre doppelt.",
+      "eingang": {"zustand": "vollständig", "herleitung": "integration", "wert": "5.200"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "Momentanwert ohne Menge",
+      "familie": "herkunft",
+      "fall": "F3",
+      "why": "Ein Momentanwert hat Mittel, Minimum und Maximum, nie eine Menge.",
+      "eingang": {"zustand": "vollständig", "herleitung": "momentanwert", "wert": "312.400"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "mit Ersatzwert: das Kennzeichen spricht",
+      "familie": "herkunft",
+      "fall": "F11",
+      "why": "Tag 03.11.2026 in Version 2: Methode und Kennung sagt das Kennzeichen „mit Ersatzwert (Methode …)“; eine eingegebene Menge (e–g) kommt nicht aus Zählerständen.",
+      "eingang": {"zustand": "mit Ersatzwert", "herleitung": "zaehlerstand", "wert": "2304.000"},
+      "erwartet": {"text": "mit Ersatzwert"}
+    },
+    {
+      "name": "ohne Herleitung: berechnete Messstelle",
+      "familie": "herkunft",
+      "fall": "AP-10 F5",
+      "why": "Eine berechnete Messstelle hat keine Quellenbindung; ihr Wort steht allein.",
+      "eingang": {"zustand": "vollständig", "herleitung": null, "wert": "850.000"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "unbekannte Herleitung",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "Die Herleitungen sind geschlossen (messstelle.schema.json) — ein fremdes Wort wird nicht gesprochen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "schaetzung", "wert": "36.000"},
+      "erwartet": {"text": null}
+    },
+    {
+      "name": "unbekannter Zustand",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "„vorläufig“ ist die Fassung, kein Zustandswort — ein fremdes Wort wird nicht gesprochen.",
+      "eingang": {"zustand": "vorläufig", "herleitung": "zaehlerstand", "wert": "36.000"},
+      "erwartet": {"text": null}
     }
   ]
 }
