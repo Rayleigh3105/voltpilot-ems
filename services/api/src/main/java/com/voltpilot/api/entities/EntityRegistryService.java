@@ -13,6 +13,7 @@ import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
+import com.voltpilot.api.uems.RuheRegel;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -1019,8 +1020,19 @@ public class EntityRegistryService {
         // offline war, hebt die Sperre nach ihrer eigenen Uhr wieder auf, statt
         // auf eine Nachricht zu warten, die nie kommt. Ohne Pause fehlt das
         // Feld - die Nutzlast ist dann byte-gleich zu vorher.
-        overrides.activePause(siteId)
-                .ifPresent(pause -> push.put("automation_paused_until", pause.endsAt().toString()));
+        //
+        // UEMS AP-01 IP-4 (R0): die Ruhe bis zum Start hat KEIN Ende. Sie trägt
+        // zusätzlich `automation_paused_until_revoked: true` (die Box ruht bis auf
+        // Widerruf) und als Ende nur das rollierende jetzt + 4 h für eine ÄLTERE
+        // Box, die das neue Feld überliest; der Erneuerungs-Takt schiebt es weiter.
+        // Eine Pause von Hand bleibt byte-gleich: ihr Ende, kein zweites Feld.
+        overrides.activePause(siteId).ifPresent(pause -> {
+            RuheRegel.PushFelder felder = RuheRegel.push(pause.endsAt(), now);
+            push.put(RuheRegel.FELD_ENDE, felder.ende().toString());
+            if (felder.bisAufWiderruf()) {
+                push.put(RuheRegel.FELD_WIDERRUF, true);
+            }
+        });
         // The consumer cycle-guard limits (min-on/min-off/starts per day) live
         // in consumer_profile - the ONE profile truth - and ride the push as
         // guards.limits fields (D-9: limits live in registry config, never in

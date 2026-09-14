@@ -1,0 +1,219 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der RUHE BIS ZUM START (UEMS AP-01 IP-4, Regel R0, Entscheid E7 = A):",
+    "eine Anlage, die zur Funktion „Steuern & Optimieren“ gehört, aber nicht gestartet ist,",
+    "ruht OHNE Enddatum — im heutigen Pause-Zustand der Box, nicht mit einem erfundenen",
+    "fernen Zeitpunkt. Die Zeile ist `device_override` mit kind = pause und Herkunft „funktion“.",
+    "",
+    "Sie pinnen drei Stellen gegeneinander:",
+    "  DB    services/api  V20260914193000 (CHECKs)        ← Block `zeilen`",
+    "  Java  services/api  uems/RuheRegel                  ← Blöcke `zeilen`, `push`, `box`, `box_alt`, `erneuerung`",
+    "  Go    edge-app/core entities.Registry.Paused        ← Blöcke `push` (als Registry-Push geparst), `box`, `box_alt`",
+    "Wer die Regel ändert, ändert ALLE drei UND diese Datei.",
+    "",
+    "═══ ZEILEN (was die Tabelle annimmt) ═══",
+    "  · Herkunft leer = Handeingriff (Bestand von V20260845000000): Ende PFLICHT, jede Art.",
+    "  · Herkunft „funktion“: NUR kind = pause, und IMMER ohne Ende. Eine Pause MIT Ende ist",
+    "    nach funktion-zustand-vectors.json (`ruhe_eintrag`) ein Handeingriff, kein Anhalten.",
+    "  · Prüfreihenfolge = Namensreihenfolge der CHECKs (so meldet Postgres den ersten Verstoß):",
+    "    device_override_ende_chk → device_override_funktion_ohne_ende_chk → device_override_herkunft_chk.",
+    "",
+    "═══ PUSH (was der Publisher in den Registry-Push schreibt) ═══",
+    "  · keine Pause → KEIN Feld (byte-gleich zu vorher).",
+    "  · Pause mit Ende → `automation_paused_until` = das Ende (byte-gleich zu vorher).",
+    "  · Ruhe ohne Ende → `automation_paused_until_revoked: true` UND `automation_paused_until`",
+    "    = Push-Zeit + 4 h. Das Ende ist NUR für eine ältere Box, die das neue Feld überliest:",
+    "    sie ruht bis dahin, und der Erneuerungs-Takt schiebt es alle 3 h weiter (dieselben",
+    "    Zahlen wie B6: Arbiter-Kappe D-5 = 4 h, Erneuerung nach 3 h, Takt 10 min).",
+    "",
+    "═══ BOX (was die Box daraus macht) ═══",
+    "  · `box`: die neue Box — `automation_paused_until_revoked: true` ruht BIS AUF WIDERRUF,",
+    "    unabhängig von jedem Ende und jeder Uhr; nur ein Push ohne das Feld hebt die Ruhe auf.",
+    "  · `box_alt`: eine Box VOR diesem Stand — sie liest nur `automation_paused_until`.",
+    "  · Was die Ruhe NICHT berührt (beide Boxen): Messen, Guard-Kette, § 14a, Abregelung,",
+    "    Einspeise-Wache und jeder Wunsch über der Markt-Klasse (contract, grid, safety).",
+    "",
+    "Additiv: kein bestehendes Feld, kein Topic, keine schema_version ändert sich; der",
+    "Katalog-Laufzeitstand (RUNTIME_VERSION) ist unberührt. Wirkt an einer echten Box erst",
+    "mit einem Edge-Release."
+  ],
+  "fassung": "1.0",
+  "herkunft": "UEMS AP-01 §6.1 „Vertrag Box (additiv)“ + §6.2, Regel R0, Entscheid E7 = A (10.09.2026); Steuerung Stufe 4 (V20260845000000, B5/B6).",
+  "konstanten": {
+    "ende_fuer_aeltere_box_s": 14400,
+    "erneuern_nach_s": 10800,
+    "takt_s": 600
+  },
+  "zeilen": [
+    {
+      "name": "handeingriff-pause-mit-ende",
+      "why": "Der Bestand: „Automatik pausieren“ von Hand mit Pflicht-Dauer.",
+      "input": { "kind": "pause", "herkunft": null, "mit_komponente": false, "ends_at": "2026-12-01T10:00:00Z" },
+      "expected": { "zulaessig": true, "grund": null, "constraint": null }
+    },
+    {
+      "name": "handeingriff-speicher-mit-ende",
+      "why": "Der Bestand: „Ladestand halten“ von Hand mit Pflicht-Dauer.",
+      "input": { "kind": "speicher_halten", "herkunft": null, "mit_komponente": true, "ends_at": "2026-12-01T10:00:00Z" },
+      "expected": { "zulaessig": true, "grund": null, "constraint": null }
+    },
+    {
+      "name": "handeingriff-pause-ohne-ende-bleibt-abgelehnt",
+      "why": "⚠ Die Lockerung gilt NICHT für die Pause von Hand: ein Handeingriff läuft nie unbegrenzt (§16).",
+      "input": { "kind": "pause", "herkunft": null, "mit_komponente": false, "ends_at": null },
+      "expected": { "zulaessig": false, "grund": "ende_pflicht", "constraint": "device_override_ende_chk" }
+    },
+    {
+      "name": "handeingriff-speicher-ohne-ende-bleibt-abgelehnt",
+      "why": "Ein Speicher-Eingriff ohne Ende war nie zulässig und bleibt es nicht.",
+      "input": { "kind": "speicher_laden", "herkunft": null, "mit_komponente": true, "ends_at": null },
+      "expected": { "zulaessig": false, "grund": "ende_pflicht", "constraint": "device_override_ende_chk" }
+    },
+    {
+      "name": "ruhe-der-funktion-ohne-ende",
+      "why": "R0: Halle 2 ist eingerichtet, aber nicht gestartet — sie ruht bis auf Widerruf.",
+      "input": { "kind": "pause", "herkunft": "funktion", "mit_komponente": false, "ends_at": null },
+      "expected": { "zulaessig": true, "grund": null, "constraint": null }
+    },
+    {
+      "name": "ruhe-der-funktion-mit-ende-abgelehnt",
+      "why": "Eine Pause MIT Ende ist ein Handeingriff (funktion-zustand `ruhe_eintrag`), kein Anhalten — die Funktion erfindet kein Ende.",
+      "input": { "kind": "pause", "herkunft": "funktion", "mit_komponente": false, "ends_at": "2027-12-01T08:00:00Z" },
+      "expected": { "zulaessig": false, "grund": "funktion_ohne_ende", "constraint": "device_override_funktion_ohne_ende_chk" }
+    },
+    {
+      "name": "funktion-haelt-nie-eine-komponente",
+      "why": "Die Funktion ruht die ganze Anlage; ein Speicher-Eingriff ist immer ein Handeingriff.",
+      "input": { "kind": "speicher_halten", "herkunft": "funktion", "mit_komponente": true, "ends_at": null },
+      "expected": { "zulaessig": false, "grund": "funktion_nur_pause", "constraint": "device_override_herkunft_chk" }
+    },
+    {
+      "name": "unbekannte-herkunft-abgelehnt",
+      "why": "Geschlossenes Vokabular: eine Handpause trägt KEINE Herkunft, nicht „hand“.",
+      "input": { "kind": "pause", "herkunft": "hand", "mit_komponente": false, "ends_at": "2026-12-01T10:00:00Z" },
+      "expected": { "zulaessig": false, "grund": "herkunft_unbekannt", "constraint": "device_override_herkunft_chk" }
+    },
+    {
+      "name": "reihenfolge-unbekannte-herkunft-ohne-ende",
+      "why": "Zwei Verstöße (Ende fehlt UND Herkunft unbekannt): gemeldet wird der erste CHECK in Namensreihenfolge — das fehlende Ende.",
+      "input": { "kind": "pause", "herkunft": "hand", "mit_komponente": false, "ends_at": null },
+      "expected": { "zulaessig": false, "grund": "ende_pflicht", "constraint": "device_override_ende_chk" }
+    },
+    {
+      "name": "reihenfolge-funktion-am-speicher-mit-ende",
+      "why": "Zwei Verstöße (Funktion mit Ende UND an einer Komponente): gemeldet wird funktion_ohne_ende vor herkunft.",
+      "input": { "kind": "speicher_halten", "herkunft": "funktion", "mit_komponente": true, "ends_at": "2026-12-01T10:00:00Z" },
+      "expected": { "zulaessig": false, "grund": "funktion_ohne_ende", "constraint": "device_override_funktion_ohne_ende_chk" }
+    }
+  ],
+  "push": [
+    {
+      "name": "ohne-pause-kein-feld",
+      "why": "Byte-gleich zu vorher: ohne Zeile steht nichts im Push.",
+      "input": { "pause": null, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "felder": {} }
+    },
+    {
+      "name": "handpause-traegt-ihr-ende",
+      "why": "Byte-gleich zu vorher: das Ende der Zeile, kein zweites Feld.",
+      "input": { "pause": { "herkunft": null, "ends_at": "2026-12-01T10:00:00Z" }, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "felder": { "automation_paused_until": "2026-12-01T10:00:00Z" } }
+    },
+    {
+      "name": "ruhe-traegt-widerruf-und-rollierendes-ende",
+      "why": "Neu: die neue Box liest `automation_paused_until_revoked`, die ältere Box das Ende Push-Zeit + 4 h.",
+      "input": { "pause": { "herkunft": "funktion", "ends_at": null }, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "felder": { "automation_paused_until": "2026-12-01T12:00:00Z", "automation_paused_until_revoked": true } }
+    },
+    {
+      "name": "ruhe-nach-der-erneuerung",
+      "why": "Der Erneuerungs-Push drei Stunden später schiebt nur das Ende der älteren Box weiter.",
+      "input": { "pause": { "herkunft": "funktion", "ends_at": null }, "jetzt": "2026-12-01T11:00:00Z" },
+      "expected": { "felder": { "automation_paused_until": "2026-12-01T15:00:00Z", "automation_paused_until_revoked": true } }
+    }
+  ],
+  "box": [
+    {
+      "name": "ohne-feld-keine-ruhe",
+      "why": "Jede ältere Cloud und jede nicht pausierte Anlage.",
+      "input": { "felder": {}, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "ruht": false }
+    },
+    {
+      "name": "handpause-vor-dem-ende",
+      "why": "Bestand: vor dem Ende ruht die Anlage.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T10:00:00Z" }, "jetzt": "2026-12-01T09:59:59Z" },
+      "expected": { "ruht": true }
+    },
+    {
+      "name": "handpause-am-ende-vorbei",
+      "why": "Bestand: am Ende selbst ist die Pause vorbei — die Box hebt sie nach ihrer EIGENEN Uhr auf.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T10:00:00Z" }, "jetzt": "2026-12-01T10:00:00Z" },
+      "expected": { "ruht": false }
+    },
+    {
+      "name": "ruhe-vor-dem-rollierenden-ende",
+      "why": "Die Ruhe, eben gesendet.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T12:00:00Z", "automation_paused_until_revoked": true }, "jetzt": "2026-12-01T08:00:01Z" },
+      "expected": { "ruht": true }
+    },
+    {
+      "name": "ruhe-ueberdauert-das-rollierende-ende",
+      "why": "⚠ Bis auf Widerruf: die Cloud ist seit Tagen nicht erreichbar, das Ende der älteren Box ist lange vorbei — die neue Box ruht weiter.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T12:00:00Z", "automation_paused_until_revoked": true }, "jetzt": "2026-12-09T08:00:00Z" },
+      "expected": { "ruht": true }
+    },
+    {
+      "name": "widerruf-ohne-ende",
+      "why": "Die neue Box verlässt sich nicht auf das Ende: auch ohne es ruht sie.",
+      "input": { "felder": { "automation_paused_until_revoked": true }, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "ruht": true }
+    },
+    {
+      "name": "widerruf-false-ist-wie-abwesend",
+      "why": "Nur ein ausdrückliches true ruht bis auf Widerruf; false liest das Ende wie bisher.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T10:00:00Z", "automation_paused_until_revoked": false }, "jetzt": "2026-12-01T10:00:00Z" },
+      "expected": { "ruht": false }
+    }
+  ],
+  "box_alt": [
+    {
+      "name": "aeltere-box-ruht-bis-zum-rollierenden-ende",
+      "why": "Eine Box vor diesem Stand überliest das neue Feld und ruht bis Push-Zeit + 4 h.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T12:00:00Z", "automation_paused_until_revoked": true }, "jetzt": "2026-12-01T11:59:59Z" },
+      "expected": { "ruht": true }
+    },
+    {
+      "name": "aeltere-box-ohne-erneuerung-laeuft-wieder",
+      "why": "⚠ Ohne Erneuerung (Cloud länger als 4 h weg) läuft die ältere Box wieder — dort trägt R1 (vor dem Start ist nichts auf „an“) die Sicherung allein, wie heute.",
+      "input": { "felder": { "automation_paused_until": "2026-12-01T12:00:00Z", "automation_paused_until_revoked": true }, "jetzt": "2026-12-01T12:00:00Z" },
+      "expected": { "ruht": false }
+    }
+  ],
+  "erneuerung": [
+    {
+      "name": "nie-gesendet-ist-faellig",
+      "why": "Eine Ruhe ohne Sende-Stempel wird beim nächsten Takt gesendet.",
+      "input": { "zuletzt_gesendet": null, "jetzt": "2026-12-01T08:00:00Z" },
+      "expected": { "faellig": true }
+    },
+    {
+      "name": "frisch-gesendet-nicht-faellig",
+      "why": "Vor drei Stunden wird nichts neu gesendet.",
+      "input": { "zuletzt_gesendet": "2026-12-01T08:00:00Z", "jetzt": "2026-12-01T10:59:59Z" },
+      "expected": { "faellig": false }
+    },
+    {
+      "name": "genau-drei-stunden-nicht-faellig",
+      "why": "Wie B6: fällig ist erst, was VOR der Grenze gesendet wurde (strikt kleiner).",
+      "input": { "zuletzt_gesendet": "2026-12-01T08:00:00Z", "jetzt": "2026-12-01T11:00:00Z" },
+      "expected": { "faellig": false }
+    },
+    {
+      "name": "nach-drei-stunden-faellig",
+      "why": "Der nächste Takt schiebt das Ende der älteren Box weiter, lange bevor es erreicht ist.",
+      "input": { "zuletzt_gesendet": "2026-12-01T08:00:00Z", "jetzt": "2026-12-01T11:00:01Z" },
+      "expected": { "faellig": true }
+    }
+  ]
+}

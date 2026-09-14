@@ -72,6 +72,12 @@ public class SiteInterventionController {
         List<InterventionDto> rows = new ArrayList<>();
         Instant pausedUntil = null;
         for (DeviceOverrideRepository.Row row : service.active(siteId)) {
+            if (row.ausFunktion()) {
+                // Die Ruhe bis zum Start (R0) ist kein Handeingriff: sie hat kein Ende und
+                // gehört der Funktion, nicht der Jetzt-Zone - dieser Lesepfad bleibt
+                // byte-gleich, bis die Steuerungsseite sie selbst zeigt (AP-01 IP-11).
+                continue;
+            }
             if (row.isPause()) {
                 pausedUntil = row.endsAt();
                 continue;

@@ -2362,7 +2362,7 @@ paths:
                     type: string
                     format: date-time
                     nullable: true
-                    description: Bis wann die Pause läuft; null = keine Pause.
+                    description: Bis wann die Pause von Hand läuft; null = keine. Die Ruhe bis zum Start (UEMS AP-01 R0) ist kein Handeingriff und erscheint hier nicht.
                   interventions:
                     type: array
                     items:
@@ -2452,6 +2452,7 @@ paths:
         "200": { description: Die Pause läuft. }
         "400": { description: Ohne Dauer oder Endzeit. }
         "404": { description: Anlage nicht gefunden. }
+        "409": { description: "Die Anlage ist in Ruhe, bis ihre Steuerung gestartet wird (UEMS AP-01 R0) - eine Pause mit Ende würde die Ruhe verkürzen; nichts wird geschrieben." }
     delete:
       tags: [sites]
       summary: „Automatik fortsetzen" für die ganze Anlage - wirkt sofort.
@@ -2460,6 +2461,7 @@ paths:
       responses:
         "200": { description: Die Automatik läuft wieder. }
         "404": { description: Anlage nicht gefunden. }
+        "409": { description: "Die Anlage ist in Ruhe, bis ihre Steuerung gestartet wird (UEMS AP-01 R0) - nur „Steuerung starten“ hebt sie auf." }
   /api/v1/sites/{siteId}/steuerung-vorschau:
     post:
       tags: [sites]
