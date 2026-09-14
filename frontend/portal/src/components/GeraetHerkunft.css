@@ -1,0 +1,337 @@
+/*
+ * Karte „Gerät“, Karte „Einstellungen“, Messkanäle (UEMS AP-04 IP-12) und der
+ * Dialog „Ändern ab <Zeitpunkt>“. Die Blöcke erben Kopf und Trennlinie von
+ * `.vp-rahmen-block`, die Label/Wert-Zeilen von `.vp-geraet-kv` — hier steht
+ * nur, was diese Flächen zusätzlich brauchen.
+ *
+ * Telefon zuerst: jede Zeile bricht um, nichts hat eine Mindestbreite über
+ * dem Bildschirm; ab 640 px dürfen Wert und Aktion neben dem Text stehen.
+ */
+
+.vp-gh {
+  min-width: 0;
+}
+
+/* Die Karte „Gerät“ folgt direkt auf die Komponenten-Zeilen: dieselbe
+   Trennlinie wie zwischen zwei Blöcken, sonst klebt ihr Kopf an der Zeile. */
+.vp-geraet-komps + .vp-gh {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-4, 16px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-gh-titel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-gh-unter {
+  margin: 14px 0 8px;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-transform: none;
+}
+
+.vp-gh-liste {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-gh-liste > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-gh-liste > li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.vp-gh-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.vp-gh-zeile .tx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.vp-gh-zeile .nm {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-gh-quelle {
+  font-weight: 500;
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-gh-zeile .s {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-gh-zeile .val {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.vp-gh-geplant {
+  color: var(--vp-warn-ink, #92400e) !important;
+}
+
+.vp-gh-akt {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.vp-gh-historie {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.vp-gh-historie > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--vp-link, #2c5282);
+  cursor: pointer;
+}
+
+.vp-gh-historie > ol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--vp-border, #e2e8f0);
+  list-style: none;
+}
+
+.vp-gh-historie > ol > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-gh-historie > ol > li small {
+  color: var(--vp-text-muted, #4a5568);
+  overflow-wrap: anywhere;
+}
+
+.vp-gh-historie > ol > li.is-beendet .vp-gh-h-kopf > b {
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-gh-h-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.vp-gh-h-marke {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--vp-warn-soft, #fef3c7);
+  color: var(--vp-warn-ink, #92400e);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.vp-gh-fuss {
+  margin-top: 6px;
+}
+
+.vp-gh-notiz {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--vp-flow-batt-soft, #eaf7ef);
+  color: var(--vp-flow-batt-ink, #166534);
+  font-size: 0.86rem;
+}
+
+.vp-gh-kanal {
+  align-items: flex-start !important;
+}
+
+.vp-gh-speist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 1 auto;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-gh-marke {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-text, #1a202c);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+/* Die führende Bindung trägt ihr WORT „führend“ — die Farbe betont nur. */
+.vp-gh-marke.is-fuehrend {
+  border-color: var(--vp-action, #2c5282);
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+
+.vp-gh-speist-keine {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.84rem;
+}
+
+/* --- Dialog „Ändern ab <Zeitpunkt>" --------------------------------------- */
+
+/* Der Knopf nennt den Zeitpunkt; reicht die Zeile trotzdem nicht (große
+   Schrift), bricht sein Text um, statt über den Rand zu laufen. */
+.vp-modal:has(.vp-einst) .dfoot > .vp-btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.vp-einst fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-einst legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+  padding: 0;
+  font-weight: 650;
+}
+
+.vp-einst-bisher {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.vp-einst-felder {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .vp-einst-felder {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    align-items: end;
+  }
+}
+
+.vp-einst-karten {
+  display: grid;
+  gap: 8px;
+}
+
+.vp-einst-karte {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #dfe6f2);
+  border-radius: 12px;
+  background: var(--vp-surface, #fff);
+  cursor: pointer;
+}
+
+.vp-einst-karte.is-gewaehlt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282) inset;
+}
+
+.vp-einst-karte > input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.vp-einst-karte > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-einst-karte small {
+  color: var(--vp-text-muted, #4a5568);
+  line-height: 1.45;
+}
+
+.vp-einst-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.vp-einst-fehler {
+  margin: 0;
+  color: var(--vp-danger-ink, #8a1f1f);
+  font-size: 0.86rem;
+}
+
+.vp-einst-folgen {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--vp-surface-2, #f7fafc);
+  border: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-einst-folgen > h4 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+
+.vp-einst-folgen > ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}

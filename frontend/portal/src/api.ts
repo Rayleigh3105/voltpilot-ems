@@ -1882,6 +1882,23 @@ export interface Messkanal {
   groesse: string | null;
   richtung: string | null;
   aktiv: boolean;
+  /** Die gewünschte Kadenz der Mess-Selektion in Sekunden; `null` = nicht festgelegt. */
+  kadenz_s?: number | null;
+  /** Welche Messstellen der Kanal jetzt speist (AP-04 IP-13) — leer ohne laufende Quellenbindung. */
+  speist?: MesskanalSpeist[];
+}
+
+/** Eine laufende Quellenbindung des Kanals — genug für „speist MS-06 (führend)“. */
+export interface MesskanalSpeist {
+  messstelle_id: string;
+  messstelle: string;
+  groesse: string | null;
+  richtung: string | null;
+  rolle: 'fuehrend' | 'vergleich';
+  /** Nur bei `vergleich`: Plausibilität · Ersatz bei Ausfall · Abrechnungszähler. */
+  zweck: string | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
 }
 
 export interface MesskanalListe {
@@ -4986,6 +5003,103 @@ export interface UemsGeraet {
   einbau_kennzeichen: string;
   ausgebaut_am: string | null;
   komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
+  /*
+   * Die übrigen Felder von `GeraetDto.Geraet` — die Geräteseite (AP-04 IP-12)
+   * braucht sie für die Karte „Gerät“. Optional, weil das Protokoll und seine
+   * Tests nur die Felder oben kennen. `null` = nicht erhoben, nie geraten.
+   */
+  geraeteart?: 'zaehler' | 'wechselrichter' | 'controller' | 'ladestation' | 'speicher' | 'sonstiges';
+  hersteller?: string | null;
+  typ?: string | null;
+  seriennummer?: string | null;
+  bezeichnung?: string | null;
+  eingebaut_am?: string;
+  /** `true`: aus der Komponente abgeleitet — `eingebaut_am` ist der Beginn ihres Verlaufs, nicht der Einbautag. */
+  aus_bestand?: boolean;
+  teile?: UemsGeraetTeil[];
+  /** Die früheren Einbauten desselben Geräts, der jüngste zuerst. */
+  vorgaenger?: UemsGeraetVorgaenger[];
+}
+
+/** Eine Energiekarte im Steckplatz eines Controllers; `steckplatz` null = nicht erhoben. */
+export interface UemsGeraetTeil {
+  id: string;
+  teilart: string;
+  steckplatz: number | null;
+  bezeichnung: string | null;
+  typ: string | null;
+  seriennummer: string | null;
+  eingebaut_am: string;
+  ausgebaut_am: string | null;
+}
+
+/** Ein früherer Einbau desselben Geräts — „Z-5a · ausgebaut am 18.11.2026, 10:40 Uhr“. */
+export interface UemsGeraetVorgaenger {
+  id: string;
+  einbau_kennzeichen: string;
+  hersteller: string | null;
+  typ: string | null;
+  seriennummer: string | null;
+  eingebaut_am: string;
+  ausgebaut_am: string | null;
+}
+
+/**
+ * Eine Einstellungs-Fassung (`GET /api/v1/geraete/{id}/einstellungen`, AP-04
+ * IP-11, `EinstellungDto.Fassung`). Die Quelle ist der Einbau (`entity_id`
+ * null), eine Komponente oder ein Kanal der Komponente. `wert_text`,
+ * `art_kundenwort` und `anwendung_text` sind die Sätze des Vertrags.
+ */
+export interface EinstellungFassung {
+  id: string;
+  entity_id: string | null;
+  kanal: string | null;
+  art: string;
+  art_kundenwort: string;
+  wert: Record<string, unknown>;
+  wert_text: string;
+  anwendung: 'angewendet' | 'dokumentiert';
+  anwendung_text: string;
+  zustellung: 'verbindung' | 'ausstehend' | null;
+  herkunft: 'bestand' | 'verbindung' | 'eintrag';
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  status: 'geplant' | 'gueltig' | 'beendet';
+  tatsaechlich_ab: string | null;
+  rueckwirkend: boolean;
+  begruendung: string | null;
+  eingetragen: { am: string; von: string; rolle: string | null; art: string | null } | null;
+}
+
+export interface GeraetEinstellungen {
+  geraet_id: string;
+  geraet: string;
+  einbau: string;
+  stichtag: string;
+  /** Je Quelle und Art die zum Stichtag gültige Fassung. */
+  gueltig: EinstellungFassung[];
+  /** Alle Fassungen, nach Quelle, Art und Beginn. */
+  historie: EinstellungFassung[];
+}
+
+/** Eine neue Fassung; `entity_id`/`kanal` leer = sie gilt für den Einbau. */
+export interface EinstellungNeu {
+  entity_id: string | null;
+  kanal: string | null;
+  art: string;
+  wert: Record<string, unknown>;
+  anwendung: 'angewendet' | 'dokumentiert';
+  gueltig_ab: string;
+  tatsaechlich_ab: string | null;
+  begruendung: string | null;
+}
+
+/** Antwort 201: die neue, die beendete Fassung, die Folgen-Sätze und die Messstellen des Protokolls. */
+export interface EinstellungEingetragen {
+  fassung: EinstellungFassung;
+  beendet: EinstellungFassung | null;
+  folgen: string[];
+  messstellen: string[];
 }
 
 /** Wer den Eintrag geschrieben hat; `rolle`/`art` null = vom Journal nicht festgehalten. */
@@ -6081,6 +6195,17 @@ export const api = {
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /** Die Einstellungs-Fassungen eines Einbaus (AP-04 IP-11) — gültig jetzt und die Historie. */
+  geraetEinstellungen: (id: string) =>
+    request<GeraetEinstellungen>(`/api/v1/geraete/${id}/einstellungen`),
+
+  /** Trägt eine neue Fassung ein — sie legt sich zwischen die bestehenden, nie überschreibend. */
+  geraetEinstellungEintragen: (id: string, body: EinstellungNeu) =>
+    request<EinstellungEingetragen>(`/api/v1/geraete/${id}/einstellungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /**
    * Das Änderungsprotokoll EINER Messstelle (AP-04 IP-21) — jüngster Eintrag
