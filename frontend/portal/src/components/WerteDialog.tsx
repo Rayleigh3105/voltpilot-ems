@@ -4,8 +4,8 @@
  * Stunden, im Monat die Tage.
  *
  * Kein eigenes Gestaltungssystem: der zentrierte `Modal` des Hauses (am Telefon
- * Vollbild), die Zeitbedienung der Historie (`ZeitSegment`, `.vp-period-nav`)
- * und `VpDatePicker`. Er LIEST nur — `GET /api/v1/messstellen/{kennzeichen}/werte`
+ * Vollbild), das Zeitraum-Segment der Historie (`ZeitSegment`) und `VpDatePicker`
+ * — beide in EINEM Rahmen verschmolzen. Er LIEST nur — `GET /api/v1/messstellen/{kennzeichen}/werte`
  * (IP-9); was er zeigt, leitet `src/uemsWerteKarte.ts` ab.
  */
 import { useCallback, useEffect, useState } from 'react';
@@ -42,6 +42,7 @@ export function WerteDialog({
   onClose,
   anfang,
   heute = isoTag(new Date()),
+  steuerung = 'block',
 }: {
   open: boolean;
   /** Das Kennzeichen, das die Messstelle HEUTE trägt; null = nichts gewählt, nichts geladen. */
@@ -53,6 +54,12 @@ export function WerteDialog({
   anfang?: { art: KartenArt; wert: string };
   /** Der heutige Tag (JJJJ-MM-TT) — die Grenze des Blätterns. */
   heute?: string;
+  /**
+   * Wie Zeitraum-Art und Datum als EIN Bedienelement stehen (Änderungswunsch des Captains zur
+   * Vorschau): `leiste` — Tag|Monat und ‹ Datum › in einer Zeile; `block` — ein Kasten, oben
+   * Tag|Monat, darunter ‹ Datum ›. Bis zur Freigabe beide, danach bleibt eine.
+   */
+  steuerung?: 'leiste' | 'block';
 }) {
   const [art, setArt] = useState<KartenArt>(anfang?.art ?? 'tag');
   const [tag, setTag] = useState(anfang?.art === 'tag' ? anfang.wert : verschiebe(heute, -1));
@@ -85,6 +92,13 @@ export function WerteDialog({
     [art],
   );
 
+  // Umschalten behält den gewählten Zeitraum: vom Tag in SEINEN Monat, vom Monat auf einen Tag darin.
+  const umschalten = (neu: KartenArt) => {
+    if (neu === 'monat') setMonat(tag.slice(0, 7));
+    else if (tag.slice(0, 7) !== monat) setTag(`${monat}-01`);
+    setArt(neu);
+  };
+
   if (!open) return null;
   const vorGesperrt = art === 'tag' ? tag >= heute : monat >= heute.slice(0, 7);
   const aktuell = geladen?.schluessel === schluessel ? geladen : null;
@@ -99,10 +113,10 @@ export function WerteDialog({
       <div className="vp-wk">
         {/* Nicht im Kopf: dort schnitte die Kopfzeile den Namen bei 375 px ab. */}
         <p className="vp-wk-messstelle">{titel}</p>
-        <div className="vp-wk-steuer">
-          <ZeitSegment label="Zeitraum" optionen={ARTEN} wert={art} onWert={setArt} />
-          <div className="vp-period-nav vp-wk-blaettern">
-            <button type="button" className="step" aria-label="Vorheriger Zeitraum" onClick={() => blaettern(-1)}>
+        <div className={`vp-wk-zeitwahl is-${steuerung}`} role="group" aria-label="Zeitraum">
+          <ZeitSegment label="Tag oder Monat" optionen={ARTEN} wert={art} onWert={umschalten} />
+          <div className="vp-wk-datumzeile">
+            <button type="button" className="vp-wk-schritt" aria-label="Vorheriger Zeitraum" onClick={() => blaettern(-1)}>
               <Icon name="chevron-left" size={18} />
             </button>
             <VpDatePicker
@@ -115,7 +129,7 @@ export function WerteDialog({
             />
             <button
               type="button"
-              className="step"
+              className="vp-wk-schritt"
               aria-label="Nächster Zeitraum"
               disabled={vorGesperrt}
               onClick={() => blaettern(1)}

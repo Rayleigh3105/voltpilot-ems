@@ -20,21 +20,106 @@
   overflow-wrap: anywhere;
 }
 
-.vp-wk-steuer {
+/* --- Zeitraum-Wahl: Tag|Monat und Datum als EIN Bedienelement ---
+   Ein Rahmen trägt Segment, Blätter-Knöpfe und Datumsfeld; die Teile verlieren
+   ihre eigenen Ränder, damit sie nicht als drei Kästen nebeneinander stehen. */
+.vp-wk-zeitwahl {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vp-c-space-3);
   min-width: 0;
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  padding: 3px;
+  gap: 3px;
 }
-.vp-wk-blaettern {
+.vp-wk-zeitwahl .vp-seg {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.vp-wk-datumzeile {
+  display: flex;
+  align-items: stretch;
   flex: 1 1 auto;
   min-width: 0;
-  justify-content: flex-end;
+  background: var(--vp-surface);
+  border-radius: calc(var(--vp-radius-btn) - 3px);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-wk-schritt {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--vp-text-dark);
+  border-radius: calc(var(--vp-radius-btn) - 3px);
+  cursor: pointer;
+}
+.vp-wk-schritt:hover:not(:disabled) {
+  background: var(--vp-bg-light);
+}
+.vp-wk-schritt:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vp-wk-schritt:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
 }
 .vp-wk-datum {
+  flex: 1 1 auto;
   min-width: 0;
-  flex: 0 1 12rem;
+}
+.vp-wk-datum .vp-picker-ausloeser {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
+  padding: 0 0.35rem;
+  min-height: 44px;
+  font-size: var(--vp-text-sm, 0.875rem);
+  font-weight: 600;
+}
+.vp-wk-datum .vp-picker-wert {
+  flex: 0 1 auto;
+}
+.vp-wk-datum .vp-picker-caret {
+  display: none;
+}
+.vp-wk-datum .vp-picker-ausloeser:focus-visible,
+.vp-wk-datum .vp-picker-ausloeser[aria-expanded='true'] {
+  box-shadow: inset 0 0 0 2px var(--vp-action);
+}
+
+/* Variante „leiste“ am Telefon: jedes Pixel für das Datum — „September 2026“ muss ganz stehen. */
+@media (max-width: 420px) {
+  .vp-wk-zeitwahl.is-leiste .vp-seg button {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .vp-wk-zeitwahl.is-leiste .vp-wk-schritt {
+    min-width: 28px;
+  }
+  .vp-wk-zeitwahl.is-leiste .vp-picker-ausloeser {
+    padding: 0 0.15rem;
+  }
+  .vp-wk-zeitwahl.is-leiste .vp-picker-ic {
+    display: none;
+  }
+}
+
+/* Variante „block“: ein Kasten, oben Tag|Monat über die ganze Breite, darunter ‹ Datum ›. */
+.vp-wk-zeitwahl.is-block {
+  flex-direction: column;
+}
+.vp-wk-zeitwahl.is-block .vp-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 
 /* --- die Karte --- */

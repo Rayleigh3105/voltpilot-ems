@@ -21,12 +21,13 @@ import '../src/index.css';
  * E2E-Bühne der Tages- und Monatskarte (UEMS AP-08 IP-11): der ECHTE Dialog
  * gegen die per `page.route` verdrahtete Route „Werte je Messstelle“ mit den
  * Antworten des Referenzunternehmens Ahrenberg (`src/test/werteKarteFixtures.ts`).
- * `?ms=MS-10&name=…&art=tag&wert=2026-11-03` wählt, was öffnet.
+ * `?ms=MS-10&name=…&art=tag&wert=2026-11-03[&steuerung=block]` wählt, was öffnet.
  */
 const q = new URLSearchParams(location.search);
 const ms = q.get('ms') ?? 'MS-10';
 const art = (q.get('art') ?? 'tag') as KartenArt;
 const wert = q.get('wert') ?? '2026-11-03';
+const steuerung = q.get('steuerung') === 'leiste' ? 'leiste' : q.get('steuerung') === 'block' ? 'block' : undefined;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -36,6 +37,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       titel={`${ms} · ${q.get('name') ?? 'Messstelle'}`}
       anfang={{ art, wert }}
       heute="2027-04-01"
+      steuerung={steuerung}
       onClose={() => undefined}
     />
   </React.StrictMode>,

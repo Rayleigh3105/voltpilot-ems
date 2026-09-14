@@ -27,7 +27,12 @@ beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: geles
    Browser-Zone; der Titel liest den Kalendertag aus dem `von` der Route (Ortszeit mit Versatz).
 4. **Die Herkunft steht an der Karte, nicht in jeder Zeile** (Zeilen: Wort · Verlauf). Nur mit
    Zahl, nur vollständig/unvollständig, nur `zaehlerstand`/`differenzen`.
-5. **375 px:** der Messstellen-Name steht im Körper, nicht im Modal-Kopf (dort schneidet `.dhead`
+5. **Zeitraum-Wahl = EIN Bedienelement** (Änderungswunsch zur Vorschau): Tag|Monat, Pfeile und
+   `VpDatePicker` in einem Rahmen `.vp-wk-zeitwahl`, Teile ohne eigene Ränder. Bis zur Freigabe zwei
+   Fassungen (`steuerung` `block` = Vorgabe, `leiste`); die Leiste passt „September 2026“ bei 375 px nur
+   ohne Kalender-Symbol. Umschalten behält den Zeitraum (Tag → sein Monat). Der E2E-Test meldet auch
+   ein abgeschnittenes Datum (`.vp-picker-wert` mit Auslassungspunkten) als Querlauf.
+6. **375 px:** der Messstellen-Name steht im Körper, nicht im Modal-Kopf (dort schneidet `.dhead`
    ab); `.dbody` hat `overflow-x: hidden`, ein Querlauf wäre dort UNSICHTBAR abgeschnitten — der
    E2E-Test prüft darum jedes Element-Rechteck, nicht nur `scrollWidth`.
 
