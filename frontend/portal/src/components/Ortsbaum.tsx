@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
+import { api, type OrtAktionen, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
 import {
   FLAECHE_FEHLT,
   KNOPF_BEREICH_ANLEGEN,
@@ -15,7 +15,10 @@ import {
   type OrtDialogArt,
   type OrtFeld,
 } from '../ortsbaum';
+import { archiviertAmText, menueEintraege, type MenueEintrag } from '../ortArchiv';
+import { ArchivierenDialog, type ArchivAktion } from './ArchivierenDialog';
 import { OrtDialog } from './OrtDialog';
+import { OrtMenue } from './OrtMenue';
 import './StandortKopf.css';
 import './Ortsbaum.css';
 
@@ -56,12 +59,15 @@ export function Ortsbaum({
   standort,
   stichtag = null,
   onGeaendert,
+  onAktionen,
 }: {
   standort: StandortAmStichtag;
   /** „Stand am …“ (IP-13): `null` = heute, mit Schreibwegen. */
   stichtag?: string | null;
   /** Nach jedem Speichern — die Zahlen im Standort-Kopf („3 Gebäude“) ändern sich mit. */
   onGeaendert?: () => void;
+  /** IP-15: was man heute mit dem Standort selbst tun kann — sein Menü sitzt im Standort-Kopf. */
+  onAktionen?: (aktionen: OrtAktionen | null) => void;
 }) {
   const titelId = `vp-ob-${useId().replace(/:/g, '')}`;
   // Die Antwort merkt sich, für welchen Tag sie gilt: nach einem Wechsel des Stichtags steht
@@ -70,6 +76,7 @@ export function Ortsbaum({
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(true);
   const [dialog, setDialog] = useState<DialogZustand | null>(null);
+  const [aktion, setAktion] = useState<{ art: ArchivAktion; knoten: Knoten; schluessel: number } | null>(null);
   // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
   // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
   const ausloeser = useRef<HTMLElement | null>(null);
@@ -92,6 +99,10 @@ export function Ortsbaum({
   const antwort = geladen && geladen.fuer === stichtag ? geladen.daten : null;
 
   useEffect(() => {
+    if (antwort) onAktionen?.(antwort.aktionen ?? null);
+  }, [antwort, onAktionen]);
+
+  useEffect(() => {
     void laden();
   }, [laden]);
 
@@ -108,11 +119,28 @@ export function Ortsbaum({
     });
   }
 
+  function waehle(eintrag: MenueEintrag, knoten: Knoten, von: HTMLElement) {
+    const art: ArchivAktion | null =
+      eintrag.art === 'archivieren_gesperrt' ? 'gesperrt' : eintrag.knopf ? eintrag.art : null;
+    if (!art) return;
+    ausloeser.current = von;
+    setAktion((a) => ({ art, knoten, schluessel: (a?.schluessel ?? 0) + 1 }));
+  }
+
+  function schliesseAktion() {
+    setAktion(null);
+    const ziel = ausloeser.current;
+    requestAnimationFrame(() => {
+      if (ziel?.isConnected) ziel.focus();
+    });
+  }
+
   const sicht = antwort ? ortsbaumSicht(antwort) : null;
   // Ein archivierter Standort nimmt nichts Neues an — ein Knopf, der nichts bewirken kann, wird nicht angeboten (§5.3).
   // „Stand am …“ zeigt die Vergangenheit, man ändert sie dort nicht (IP-13, H1).
   const kannSchreiben = standort.zustand !== 'archiviert' && !stichtag;
   const alleKnoten = sicht ? sicht.knoten.flatMap((k) => [k, ...k.kinder]) : [];
+  const mitMenue = kannSchreiben && alleKnoten.some((k) => k.aktionen);
 
   function zeile(k: Knoten) {
     const bearbeiten = kannSchreiben && k.id !== null && !k.archiviert;
@@ -127,6 +155,11 @@ export function Ortsbaum({
             {k.kurzzeichen && <span className="vp-st-kz">{k.kurzzeichen}</span>}
           </p>
           {k.zeile && <p className="vp-ob-beschreibung">{k.zeile}</p>}
+          {k.archiviertAm && (
+            <p className="vp-ob-archiviert-am" data-testid="archiviert-am">
+              {archiviertAmText(k.archiviertAm)}
+            </p>
+          )}
           {k.datenlage && (
             <p className="vp-ob-datenlage" data-testid="datenlage">
               {k.datenlage}
@@ -183,6 +216,13 @@ export function Ortsbaum({
         )}
         {/* „Direkt am Standort“ hat keinen Stift — der Platz bleibt, damit die Spalte der Datenlage bündig steht. */}
         {kannSchreiben && !bearbeiten && <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />}
+        {/* IP-15: das Menü je Knoten; wo keins ist („Direkt am Standort“), hält der Platz die Spalte bündig. */}
+        {mitMenue &&
+          (k.aktionen ? (
+            <OrtMenue name={k.name} eintraege={menueEintraege(k.aktionen)} onWahl={(e, von) => waehle(e, k, von)} />
+          ) : (
+            <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />
+          ))}
       </div>
     );
   }
@@ -311,6 +351,29 @@ export function Ortsbaum({
             </li>
           ))}
         </ul>
+      )}
+
+      {aktion && aktion.knoten.id && (
+        <ArchivierenDialog
+          key={aktion.schluessel}
+          open
+          aktion={aktion.art}
+          objekt={{
+            art: aktion.knoten.art === 'gebaeude' ? 'gebaeude' : 'bereich',
+            id: aktion.knoten.id,
+            name: aktion.knoten.name,
+            kurzzeichen: aktion.knoten.kurzzeichen ?? '',
+            eltern: aktion.knoten.eltern?.name ?? null,
+            archiviertAm: aktion.knoten.archiviertAm,
+            aktionen: aktion.knoten.aktionen,
+          }}
+          onClose={schliesseAktion}
+          onFertig={() => {
+            schliesseAktion();
+            void laden();
+            onGeaendert?.();
+          }}
+        />
       )}
 
       {dialog && antwort && (

@@ -89,8 +89,18 @@
   padding: var(--vp-c-space-2) 0;
 }
 
-.vp-ob-zeile-still {
+/* Ausgegraut werden Symbol und Text — das Menü eines archivierten Knotens bleibt voll lesbar (IP-15). */
+.vp-ob-zeile-still > .vp-ob-icon,
+.vp-ob-zeile-still > .vp-ob-text {
   opacity: 0.7;
+}
+
+.vp-ob-archiviert-am {
+  margin: 2px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
 }
 
 .vp-ob-icon {

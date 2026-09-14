@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
+import { api, type OrtAktionen, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
+import { ArchivierenDialog, type ArchivAktion } from '../components/ArchivierenDialog';
 import { Ortsbaum } from '../components/Ortsbaum';
 import { StandAm } from '../components/StandAm';
 import { StandortDialog } from '../components/StandortDialog';
 import { StandortKopf } from '../components/StandortKopf';
 import { standAmListe } from '../standAm';
+import { lokalerTag } from '../uemsOrtsbaum';
 import './StandortePage.css';
 
 /**
@@ -49,6 +51,15 @@ export function StandortePage() {
   // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
   // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
   const ausloeser = useRef<HTMLElement | null>(null);
+  // AP-02 IP-15: je Standort, was man heute mit ihm tun kann — sein Ortsbaum liest es mit.
+  const [aktionen, setAktionen] = useState<Record<string, OrtAktionen | null>>({});
+  const [archiv, setArchiv] = useState<{ art: ArchivAktion; standort: StandortAmStichtag; schluessel: number } | null>(
+    null,
+  );
+  const merkeAktionen = useCallback(
+    (id: string, a: OrtAktionen | null) => setAktionen((m) => (m[id] === a ? m : { ...m, [id]: a })),
+    [],
+  );
 
   const laden = useCallback(async () => {
     const nummer = ++anfrage.current;
@@ -83,6 +94,19 @@ export function StandortePage() {
 
   function schliesse() {
     setDialog(null);
+    const ziel = ausloeser.current;
+    requestAnimationFrame(() => {
+      if (ziel?.isConnected) ziel.focus();
+    });
+  }
+
+  function oeffneArchiv(art: ArchivAktion, standort: StandortAmStichtag, von: HTMLElement) {
+    ausloeser.current = von;
+    setArchiv((d) => ({ art, standort, schluessel: (d?.schluessel ?? 0) + 1 }));
+  }
+
+  function schliesseArchiv() {
+    setArchiv(null);
     const ziel = ausloeser.current;
     requestAnimationFrame(() => {
       if (ziel?.isConnected) ziel.focus();
@@ -141,10 +165,20 @@ export function StandortePage() {
                     <StandortKopf
                       standort={e.standort}
                       onBearbeiten={stichtag ? undefined : (st, von) => oeffne(st, von)}
+                      aktionen={stichtag ? null : (aktionen[e.standort.id] ?? null)}
+                      onAktion={(eintrag, von) => {
+                        if (eintrag.art === 'archivieren') oeffneArchiv('archivieren', e.standort, von);
+                        if (eintrag.art === 'archivieren_gesperrt') oeffneArchiv('gesperrt', e.standort, von);
+                      }}
                     />
                     {/* AP-02 IP-7: der Ortsbaum „Standort › Gebäude“ — bis die Standort-Übersicht
                         aus AP-01 steht, unter dem Kopf jeder Karte; er folgt dem Stichtag der Seite. */}
-                    <Ortsbaum standort={e.standort} stichtag={stichtag} onGeaendert={() => void laden()} />
+                    <Ortsbaum
+                      standort={e.standort}
+                      stichtag={stichtag}
+                      onGeaendert={() => void laden()}
+                      onAktionen={(a) => merkeAktionen(e.standort.id, a)}
+                    />
                   </li>
                 ) : (
                   // „Stand am …“: gab es an dem Tag noch nicht — benannt an seinem Platz, nie weggelassen (A12).
@@ -173,6 +207,20 @@ export function StandortePage() {
                       <span className="vp-st-kz">{s.kurzzeichen}</span>
                     </p>
                     <p className="vp-st-zeile">{satz}</p>
+                    {/* IP-15 (Z3): ein archivierter Standort kommt zurück — ein neues Bestehen ab heute. */}
+                    {!stichtag && (
+                      <div className="vp-st-archiv-knoepfe">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          iconLeft={<Icon name="refresh-cw" size={16} />}
+                          aria-label={`${s.name} wiederherstellen`}
+                          onClick={(ev) => oeffneArchiv('wiederherstellen', s, ev.currentTarget)}
+                        >
+                          Wiederherstellen …
+                        </Button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -197,6 +245,31 @@ export function StandortePage() {
             </section>
           )}
         </>
+      )}
+
+      {archiv && !stichtag && (
+        <ArchivierenDialog
+          key={archiv.schluessel}
+          open
+          aktion={archiv.art}
+          heute={heute}
+          objekt={{
+            art: 'standort',
+            id: archiv.standort.id,
+            name: archiv.standort.name,
+            kurzzeichen: archiv.standort.kurzzeichen,
+            eltern: null,
+            archiviertAm: archiv.standort.archiviertAm
+              ? lokalerTag(archiv.standort.archiviertAm, archiv.standort.zeitzone)
+              : null,
+            aktionen: aktionen[archiv.standort.id] ?? null,
+          }}
+          onClose={schliesseArchiv}
+          onFertig={() => {
+            schliesseArchiv();
+            void laden();
+          }}
+        />
       )}
 
       {dialog && liste && heute && !stichtag && (
