@@ -50,6 +50,7 @@ export const EREIGNIS_ARTEN = [
   'substitute',
   'correction',
   'verteilung_geaendert',
+  'bilanz_neu_berechnet',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -153,6 +154,7 @@ export const FELDTYP: Record<string, Feldtyp> = {
   status: 'wort',
   korrektur: 'kennung',
   korrektur_art: 'wort',
+  ausloeser: 'kennung',
 };
 
 export interface ArtText {
@@ -387,6 +389,13 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     zeitraum: false,
     varianteNach: null,
     saetze: { standard: 'Verteilung auf Kostenstellen geändert ab {zeitpunkt} (eingetragen am {eingetragen_am})' },
+    zusaetze: {},
+  },
+  bilanz_neu_berechnet: {
+    name: 'Bilanz neu berechnet',
+    zeitraum: true,
+    varianteNach: null,
+    saetze: { standard: 'Bilanz neu berechnet für {von} bis {bis} nach {ausloeser}' },
     zusaetze: {},
   },
 };

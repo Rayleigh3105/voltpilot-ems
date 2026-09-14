@@ -62,7 +62,11 @@ Rechnung, Eingänge in ihrer neuesten Version) und speichert sie in `messreihe_p
 `bilanzwert_eingang` mit `version` = n — `uems-korrektur-kaskade.md`. Eine Summe ohne einen Eingang mit Wert trägt
 seitdem keine Menge mehr (vorher 0 und CHECK-Fehler).
 
+## Verteilte Werte (AP-10 IP-11)
+
+Werden NICHT gespeichert: die Kostenstellen-Sicht bildet sie beim Lesen aus den Tageswerten dieser Spur (und der
+gemessenen) mit der Version der Quelle; die Kaskade meldet `bilanz_neu_berechnet` — `uems-kostenstelle-energie.md`.
+
 ## Nicht gebaut
 
-Herkunft aus `bilanzwert_eingang` (IP-12), Portal (IP-14), verteilte
-Werte (IP-11), Rechte-Durchsetzung (AP-03), eine Periodenzahl über einen Termwechsel.
+Herkunft aus `bilanzwert_eingang` (IP-12), Portal (IP-14), Rechte-Durchsetzung (AP-03), eine Periodenzahl über einen Termwechsel.

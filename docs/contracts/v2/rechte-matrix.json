@@ -1417,7 +1417,7 @@
             "messstelle.ansehen"
           ],
           "zuordnung": "zugeordnet",
-          "anmerkung": "Auch die Formel zu einem Tag (`GET …/formel?am=`) und seit AP-10 IP-9 die Bilanz je Anlage (`GET /api/v1/sites/{siteId}/bilanz`, mit ihrer Live-Zeile); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`."
+          "anmerkung": "Auch die Formel zu einem Tag (`GET …/formel?am=`) seit AP-10 IP-9 die Bilanz je Anlage (`GET /api/v1/sites/{siteId}/bilanz`, mit ihrer Live-Zeile) und seit AP-10 IP-11 die Kostenstellen-Sicht (`GET /api/v1/unternehmen/kostenstellen/{id}/energie`: gemessen · verteilt · berechnet · nicht verteilt, mit Herkunft); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`."
         },
         {
           "handlung": "Kostenstellen und Prozesse verwalten",

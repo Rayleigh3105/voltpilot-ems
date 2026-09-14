@@ -53,7 +53,9 @@ import org.springframework.stereotype.Component;
  * betroffenen Reihe, die berechneten Messstellen (AP-10, an {@link BerechnetePeriodenLauf#nachKorrektur}) und die
  * Kennzahlen ({@link KennzahlenNaht}, AP-11) — jede Stufe, die sich ändert, als Version n + 1 mit „korrigiert (Version
  * n)“ ({@link ErgebnisZustand#korrigiert}, ergebnis-zustand 1.5). Dieselbe Kaskade folgt einem Ersatzwert, sobald der
- * Ersatzwert-Lauf seine Viertelstunden gebildet hat (E7, F11/F21).
+ * Ersatzwert-Lauf seine Viertelstunden gebildet hat (E7, F11/F21). Wessen Bilanz-Werte sich dadurch geändert haben —
+ * berechnete Versionen und verteilte Werte der Kostenstellen-Sicht —, meldet {@link BilanzNeuBerechnet} in derselben
+ * Transaktion als {@code bilanz_neu_berechnet} (AP-10 IP-11).
  *
  * <p><b>Die Grenze.</b> Ein freigegebener Bericht wird NIE geändert; er bekommt nur den Revisions-Auslöser, die Meldung
  * {@code correction} ({@link #berichteBenachrichtigen}). Ein Bericht-Entwurf bildet sich neu.
@@ -342,6 +344,11 @@ public class KorrekturKaskade {
                 }
             }
         }
+
+        // AP-10 IP-11: wessen Bilanz-Werte (berechnete Versionen, verteilte Werte) sich geändert haben — in DIESER
+        // Transaktion gemeldet, gerechnet hat die Kaskade oben.
+        BilanzNeuBerechnet.melden(con, a.tenant(), a.kennung(), a.fassung(), a.status(), reihen, von, bis, zone,
+                ersterTag, letzterTag, b.messstellen(), versionen, jetzt);
 
         Betroffen betroffen = new Betroffen(a.tenant(), a.kennung(), a.fassung(), a.status(), List.copyOf(reihen), von,
                 bis, zone, ersterTag, letzterTag, b.messstellen(), List.copyOf(ereignisse), versionen);

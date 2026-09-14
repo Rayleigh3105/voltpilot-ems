@@ -148,7 +148,7 @@ class VerteilungVectorsTest {
                 tests.add(DynamicTest.dynamicTest(name, () -> pruefe(fall, p)));
             }
         }
-        assertThat(tests).as("Prüfungen über alle Fälle").hasSizeGreaterThanOrEqualTo(18);
+        assertThat(tests).as("Prüfungen über alle Fälle").hasSizeGreaterThanOrEqualTo(26);
         return tests;
     }
 
@@ -292,8 +292,76 @@ class VerteilungVectorsTest {
                         .as(why + " · der Satz hält bilanzwert-herkunft.schema.json")
                         .isEmpty();
             }
+            case "kostenstelle" -> {
+                List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
+                for (JsonNode q : ein.path("quellen")) {
+                    List<KostenstelleEnergieRegeln.Anteil> anteile = new ArrayList<>();
+                    for (JsonNode a : q.path("anteile")) {
+                        anteile.add(new KostenstelleEnergieRegeln.Anteil(a.path("kostenstelle").asText(),
+                                bd(a.path("anteil_prozent")), tag(a.path("gueltig_ab")), tag(a.path("gueltig_bis")),
+                                a.path("fassung").asInt()));
+                    }
+                    List<KostenstelleEnergieRegeln.Tageswert> tage = new ArrayList<>();
+                    for (JsonNode t : q.path("tage")) {
+                        tage.add(new KostenstelleEnergieRegeln.Tageswert(tag(t.path("tag")), bd(t.path("menge")),
+                                t.path("zustand").asText(), ganz(t.path("abdeckung_prozent")), t.path("version").asInt(),
+                                texte(t.path("kennzeichen"))));
+                    }
+                    quellen.add(new KostenstelleEnergieRegeln.Quelle(q.path("messstelle").asText(),
+                            q.path("art").asText(), q.path("groesse").asText(), q.path("richtung").asText(),
+                            q.path("einheit").asText(), anteile, tage));
+                }
+                KostenstelleEnergieRegeln.Urteil ist = KostenstelleEnergieRegeln.energie(
+                        ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
+                        ziele(ein.path("ziele")), quellen);
+                blockGleich(ist.gemessen(), soll.path("gemessen"), why + " · gemessen");
+                blockGleich(ist.verteilt(), soll.path("verteilt"), why + " · verteilt");
+                blockGleich(ist.berechnet(), soll.path("berechnet"), why + " · berechnet");
+                blockGleich(ist.summe(), soll.path("summe"), why + " · Summe der Kostenstelle");
+                blockGleich(ist.nichtVerteilt(), soll.path("nicht_verteilt"), why + " · nicht verteilt");
+            }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    /** Ein Block der Kostenstellen-Sicht: Zahl, Einheit, Zustand, Grund und JEDER Posten mit seinen Stichproben. */
+    private static void blockGleich(KostenstelleEnergieRegeln.Block ist, JsonNode soll, String wo) {
+        betragGleich(ist.menge(), soll.path("menge"), wo + " · Menge");
+        assertThat(ist.einheit()).as(wo + " · Einheit").isEqualTo(str(soll.path("einheit")));
+        assertThat(ist.zustand()).as(wo + " · Zustand").isEqualTo(str(soll.path("zustand")));
+        assertThat(ist.grund()).as(wo + " · Grund").isEqualTo(str(soll.path("grund")));
+        if (soll.has("anzahl_summen")) {
+            assertThat(ist.summen()).as(wo + " · Summen je Größe").hasSize(soll.path("anzahl_summen").asInt());
+        }
+        assertThat(ist.posten().stream().map(KostenstelleEnergieRegeln.Posten::messstelle).toList())
+                .as(wo + " · Posten").isEqualTo(sollNamen(soll.path("posten")));
+        for (int i = 0; i < ist.posten().size(); i++) {
+            KostenstelleEnergieRegeln.Posten p = ist.posten().get(i);
+            JsonNode s = soll.path("posten").get(i);
+            String hier = wo + " · " + p.messstelle();
+            assertThat(p.art()).as(hier + " · Art").isEqualTo(s.path("art").asText());
+            betragGleich(p.menge(), s.path("menge"), hier + " · Menge");
+            assertThat(p.zustand()).as(hier + " · Zustand").isEqualTo(str(s.path("zustand")));
+            assertThat(p.version()).as(hier + " · Version").isEqualTo(s.path("version").asInt());
+            assertThat(p.kennzeichen()).as(hier + " · Kennzeichen").isEqualTo(texte(s.path("kennzeichen")));
+            List<Integer> fassungen = new ArrayList<>();
+            s.path("fassungen").forEach(f -> fassungen.add(f.asInt()));
+            assertThat(p.fassungen()).as(hier + " · Fassungen").isEqualTo(fassungen);
+            for (JsonNode stichprobe : s.path("tage_stichproben")) {
+                LocalDate t = tag(stichprobe.path("tag"));
+                KostenstelleEnergieRegeln.Tag tagIst = p.tage().stream().filter(x -> x.tag().equals(t)).findFirst()
+                        .orElseThrow(() -> new AssertionError(hier + " · kein Tag " + t));
+                betragGleich(tagIst.anteilProzent(), stichprobe.path("anteil_prozent"), hier + " · Anteil " + t);
+                betragGleich(tagIst.menge(), stichprobe.path("menge"), hier + " · Tagesanteil " + t);
+                assertThat(tagIst.grund()).as(hier + " · Grund " + t).isEqualTo(str(stichprobe.path("grund")));
+            }
+        }
+    }
+
+    private static List<String> sollNamen(JsonNode posten) {
+        List<String> raus = new ArrayList<>();
+        posten.forEach(p -> raus.add(p.path("messstelle").asText()));
+        return raus;
     }
 
     private static List<String> paare(JsonNode n, String tagFeld) {

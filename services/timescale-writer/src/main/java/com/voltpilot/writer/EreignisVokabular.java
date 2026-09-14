@@ -261,6 +261,8 @@ public final class EreignisVokabular {
         f.put("status", Typ.WORT);
         f.put("korrektur", Typ.KENNUNG);
         f.put("korrektur_art", Typ.WORT);
+        // AP-10 IP-11 (additiv): was eine Neuberechnung der Bilanz auslöste (K-… oder EW-…).
+        f.put("ausloeser", Typ.KENNUNG);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -335,6 +337,8 @@ public final class EreignisVokabular {
 
     private static final Pattern ERSATZWERT_KENNUNG = Pattern.compile("^EW-[0-9]{4}-[0-9]{4,}$");
     private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
+    /** AP-10 IP-11 — der Auslöser einer Neuberechnung ist eine Korrektur oder ein Ersatzwert. */
+    private static final Pattern AUSLOESER_KENNUNG = Pattern.compile("^(K|EW)-[0-9]{4}-[0-9]{4,}$");
 
     /**
      * Die Fehlerklassen je Datenquelle (AP-06 E5) — im api-Zwilling aus {@code
@@ -464,7 +468,12 @@ public final class EreignisVokabular {
         // der Cloud von einem Menschen.
         VERTEILUNG_GEAENDERT("verteilung_geaendert", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
                 List.of("messstelle"), List.of(), List.of("eingetragen_am"), List.of(), List.of(), null,
-                null);
+                null),
+        // AP-10 IP-11 (additiv): die Korrektur-Kaskade hat die Bilanz-Werte einer Messstelle — ihre berechneten
+        // Versionen oder ihre verteilten Werte — für einen Zeitraum neu berechnet. Bezug NUR die Messstelle, nur die
+        // Cloud (gerechnet hat das System; entschieden hat ein Mensch, und das meldet `correction`).
+        BILANZ_NEU_BERECHNET("bilanz_neu_berechnet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("messstelle"), List.of(), List.of("ausloeser"), List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -1054,6 +1063,11 @@ public final class EreignisVokabular {
                 }
                 if (mitErsatzwert && !ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
                     throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
+            }
+            case BILANZ_NEU_BERECHNET -> {
+                if (!AUSLOESER_KENNUNG.matcher(e.get("ausloeser").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur oder Ersatzwert)");
                 }
             }
             case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {

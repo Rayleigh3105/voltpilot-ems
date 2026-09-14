@@ -69,5 +69,5 @@ Nachtrags-Handlungen in `rechte-matrix.json` nennen die Routen; `RechteKennungen
 
 ## Nicht gebaut
 
-Die Zahl über eine Periode mit Stellungswechsel (auch IP-10 bildet sie nicht), Korrektur-Kaskade (IP-11), Herkunft (IP-12), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
+Die Zahl über eine Periode mit Stellungswechsel (auch IP-10 bildet sie nicht), Herkunft (IP-12), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
 Unterzählers mit Unterzählern (`rest_ohne_hauptzaehler`), `saldo`-Schreibweg (IP-16).

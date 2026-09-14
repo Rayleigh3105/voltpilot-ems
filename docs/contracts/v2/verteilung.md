@@ -1,6 +1,6 @@
 # Verteilungs-Vertrag: eine Messstelle auf Kostenstellen (UEMS AP-10)
 
-Stand 13.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, Entscheide E4, E11,
+Stand 14.09.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
 E12, E13 vom 12.09.2026.
 
 Eine **feste Verteilung** ist eine eigene zeitgültige Beziehung **Messstelle → Kostenstelle** mit
@@ -9,9 +9,10 @@ Tagesmenge.
 
 | Datei | Rolle |
 |---|---|
-| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F13 mit Eingang und erwartetem Ergebnis je Prüfung |
+| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F14 mit Eingang und erwartetem Ergebnis je Prüfung |
 | [`verteilung.schema.json`](./verteilung.schema.json) | das Schema für Vokabulare, Regeln und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/api/.../uems/VerteilungRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
+| `services/api/.../uems/KostenstelleEnergieRegeln.java` | die Regel `kostenstelle` (rein, nur Java — sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz) |
 | `frontend/portal/src/uemsVerteilung.ts` | der **TypeScript-Zwilling** |
 | `…/uems/VerteilungVectorsTest.java` · `…/src/uemsVerteilung.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
 
@@ -20,9 +21,11 @@ Tagesmenge.
 > **Wer anruft (Stand AP-10 IP-8):** der Schreibweg `PUT /api/v1/messstellen/{id}/verteilung`
 > (`uems/VerteilungService` → `satz_ab_tag`), das Lesen `GET …/verteilung?am=` (`am_tag`) und der Leseweg
 > des Formel-Terms (`AnteilLeseweg#lies` → `am_tag` + `term`). Tabelle `messstelle_verteilung`
-> (`V20260913230000`). Kostenstellen-Lesemodell, Kaskade und Verteilen-Dialog kommen mit IP-11 und IP-15.
+> (`V20260913230000`). Seit AP-10 IP-11 die Kostenstellen-Sicht
+> `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (`uems/KostenstelleEnergieService` → `kostenstelle`).
+> Der Verteilen-Dialog kommt mit IP-15.
 
-## 1. Die acht Regeln
+## 1. Die neun Regeln
 
 | Regel | Was sie beantwortet |
 |---|---|
@@ -34,6 +37,7 @@ Tagesmenge.
 | `erbe` | §4.5: Was erbt der verteilte Wert von seiner Quelle? |
 | `term` | E11/F11: Wie liest ein Formel-Term „Anteil 4100 von MS-07“? |
 | `herkunft` | §4.7/E13: Woher kommt dieser verteilte Wert? (gemeinsam mit [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md)) |
+| `kostenstelle` | AP-10 IP-11, §5.7: Was bekommt eine Kostenstelle über eine Periode — gemessen · verteilt · berechnet — und was gehört daneben niemandem (nicht verteilt)? |
 
 ## 2. Die Fallen
 
@@ -73,6 +77,25 @@ Tagesmenge.
    „zu 0 % verteilt“. Die Datenbank hält die 100 % noch einmal **zur Commit-Zeit**: ein Satz mit zwei
    Zielen verschiebt Anteile zwischen ihnen und ist zwischen zwei Anweisungen nie 100 %.
 
+10. **Die Kostenstellen-Sicht nennt vier Herkünfte nebeneinander (`kostenstelle`, AP-10 IP-11).**
+   Je Tag und Messstelle: geht sie zu **100 %** an die Kostenstelle und ist sie gemessen → `gemessen`; zu
+   einem Anteil **unter 100 %** → `verteilt`; ist sie eine **berechnete** Messstelle (Summe, Rest) →
+   `berechnet`, gleich zu welchem Anteil. Hat sie an einem Tag einen Wert, aber **keine Zeile** →
+   `nicht verteilt`. Der Tagesanteil kommt aus `erbe` (Version und Kennzeichen der Quelle reisen mit),
+   die Periode ist die **Summe der Tage** (E12, Summenregel der Bilanz: ein unvollständiger Tag zählt
+   nicht mit und steht in `fehlend`); die höchste Version der Tage steht EINMAL als „korrigiert
+   (Version n)“ am Posten, ein Wechsel des Anteils innerhalb der Periode als „Verteilung geändert am
+   TT.MM.JJJJ“.
+11. **„Nicht verteilt“ gehört keiner Kostenstelle — es wird nie aufgeteilt und nie weggelassen.** Der
+   Block steht in JEDER Kostenstellen-Sicht des Kundenbereichs gleich da und zählt in ihrer `summe` nie
+   mit: eine Summe der Kostenstellen, die den Gesamtverbrauch trifft, weil der Rest still verteilt wurde,
+   wäre eine Lüge mit stimmiger Summe. Ein Posten entsteht nur, wenn an einem nicht verteilten Tag eine
+   Menge da ist — ohne jede Menge ist nichts gemessen, das niemandem gehört.
+12. **Ohne Zuordnung keine Menge — nie 0.** Eine Kostenstelle ohne Zeile hat `menge: null` mit
+   `grund: keine_zuordnung` (F12: nicht „9010 Druckluft 0 kWh“); ein zugeordneter Tag ohne Wert ist
+   „keine Werte“. Verschiedene Größen, Richtungen oder Einheiten werden nie zu einer Zahl
+   (`groessen_gemischt`, je Größe eine Summe — Erzeugung und Abgabe an 9000 bleiben getrennt).
+
 ## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5, eingelöst mit IP-8)
 
 Ein Term der Art `verteilung` („4100 von MS-07“, `messstelle-formel.md` §1.1) liest den Anteil des
@@ -87,7 +110,8 @@ TS-Zwilling bildet die Ablehnung nicht (`zwillinge_grund`).
 ## 3. Was hier NICHT steht
 
 Die Tabelle und die Routen (gebaut mit IP-8 gegen diesen Vertrag, Wegweiser
-`docs/agents/root/uems-verteilung.md`), das Kostenstellen-Lesemodell und die Korrektur-Kaskade (IP-11).
+`docs/agents/root/uems-verteilung.md`) und die Kostenstellen-Route mit ihrem Kaskaden-Anschluss
+(IP-11, `docs/agents/root/uems-kostenstelle-energie.md`).
 
 ## 4. Herkunft der Zahlen
 
@@ -100,6 +124,6 @@ ohne Zwilling.
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,AnteilLesewegVectorsTest,VerteilungSchnittstelleVertragTest')  # rein, kein Docker
-(cd services/api && ./mvnw test -Dtest='UemsMessstelleVerteilungMigrationTest,VerteilungApiTest,MessstelleFormelVerteilungsTermApiTest')  # Docker
+(cd services/api && ./mvnw test -Dtest='UemsMessstelleVerteilungMigrationTest,VerteilungApiTest,MessstelleFormelVerteilungsTermApiTest,KostenstelleEnergieApiTest')  # Docker
 (cd frontend/portal && npx vitest run src/uemsVerteilung.test.ts)
 ```
