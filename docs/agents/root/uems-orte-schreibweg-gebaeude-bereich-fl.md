@@ -24,7 +24,7 @@ A14, A16, Bereich unter Bereich, Protokoll).
   + erste Fläche“ ist einer; Bearbeiten ohne Änderung schreibt keinen), Anfrage `OrtAnfrage`,
   Fehlerform `OrtAbgelehntHandler` (der `OrtController` steht in dessen `assignableTypes`).
 - `messstellenZahl` ist ein benannter Platzhalter (`null`, nie 0) bis AP-04 IP-7.
-- NICHT hier: Verschieben (IP-12), Archivieren/Wiederherstellen/Löschen von Orten (IP-15),
+- NICHT hier: Verschieben (IP-12), Archivieren/Wiederherstellen/Löschen von Orten (IP-15, `uems-ort-archivieren.md`),
   Portal-Flächen (IP-7/IP-8), Messstelle → Ort (AP-04 IP-7), Rechte-Annotation (AP-03).
 
 ## ⚠ Die Fallen

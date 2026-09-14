@@ -215,7 +215,10 @@ export function Ortsbaum({
           </button>
         )}
         {/* „Direkt am Standort“ hat keinen Stift — der Platz bleibt, damit die Spalte der Datenlage bündig steht. */}
-        {kannSchreiben && !bearbeiten && <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />}
+        {/* Ein archivierter Knoten hat weder Stift noch Datenlage-Spalte — sein Platz ginge dem Archivtag verloren. */}
+        {kannSchreiben && !bearbeiten && !k.archiviertAm && (
+          <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />
+        )}
         {/* IP-15: das Menü je Knoten; wo keins ist („Direkt am Standort“), hält der Platz die Spalte bündig. */}
         {mitMenue &&
           (k.aktionen ? (
