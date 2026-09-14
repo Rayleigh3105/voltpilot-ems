@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
+import { Ortsbaum } from '../components/Ortsbaum';
 import { StandortDialog } from '../components/StandortDialog';
 import { StandortKopf } from '../components/StandortKopf';
 import { archiviertText, standortListe } from '../standorte';
@@ -17,6 +18,9 @@ import './StandortePage.css';
  * nicht. Bis dahin ist sie ein Reiter der Übersicht (`#/portfolio/standorte`)
  * — der Report nennt genau diesen Weg („erreichbar über die Standort-Übersicht“).
  * Keine eigene Navigationsebene; `#/standorte` bleibt die Alt-Adresse der Technik.
+ *
+ * Seit IP-7 trägt jede Karte unter dem Kopf den Ortsbaum „Standort › Gebäude“
+ * (`Ortsbaum`, T3) mit den Dialogen für Gebäude und Bereich.
  *
  * Nicht hier: „Stand am …“ (IP-13), Archivieren/Wiederherstellen (IP-15),
  * Anlage zuordnen (IP-11), die Datenlage je Standort und die Eingabe der
@@ -110,6 +114,9 @@ export function StandortePage() {
               {sicht.standorte.map((s) => (
                 <li key={s.id} className="vp-st-karte">
                   <StandortKopf standort={s} onBearbeiten={(st, von) => oeffne(st, von)} />
+                  {/* AP-02 IP-7: der Ortsbaum „Standort › Gebäude“ — bis die Standort-Übersicht
+                      aus AP-01 steht, unter dem Kopf jeder Karte. */}
+                  <Ortsbaum standort={s} onGeaendert={() => void laden()} />
                 </li>
               ))}
             </ul>

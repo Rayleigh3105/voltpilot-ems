@@ -10,6 +10,7 @@ import {
   werkAhrenberg,
   werkLindach,
 } from '../src/test/standorteFixtures';
+import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
 
 /**
  * „Unternehmen › Standorte“ und der Standort-Dialog (UEMS AP-02 IP-6) bei 375
@@ -50,9 +51,21 @@ async function verdrahte(page: Page, fall: Fall) {
   await page.route('**/api/v1/standorte/kurzzeichen-vorschlag', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ kurzzeichen: 'ST-2' }) }),
   );
+  await page.route('**/api/v1/standorte/*/orte', (r) => {
+    const standort = fall.liste().standorte.find((s) => r.request().url().includes(s.id))!;
+    // Ein Standort ohne Gebäude (A5) bekommt den leeren Baum — sonst den des Referenzunternehmens.
+    const baum =
+      standort.gebaeudeZahl === 0
+        ? { ...ortsbaumLindachOhneGebaeude(), standort, direktAmStandort: { bereiche: [], messstellenZahl: 0 } }
+        : standort.id === werkLindach().id
+          ? ortsbaumLindach()
+          : ortsbaumAhrenberg();
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(baum) });
+  });
   await page.route('**/api/v1/standorte**', async (r) => {
     const url = new URL(r.request().url());
-    if (url.pathname.endsWith('/kurzzeichen-vorschlag')) return r.fallback();
+    // AP-02 IP-7: jede Karte liest ihren Ortsbaum — dessen Antworten stehen darunter.
+    if (url.pathname.endsWith('/kurzzeichen-vorschlag') || url.pathname.endsWith('/orte')) return r.fallback();
     const methode = r.request().method();
     if (methode === 'GET') {
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fall.liste()) });
