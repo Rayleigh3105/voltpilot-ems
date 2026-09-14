@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,6 +54,8 @@ public final class MessstelleWerteDto {
      *     andere Aussage als {@code zustand}
      * @param grund warum der Schritt keine Zahl trägt, obwohl die Anfrage gültig ist
      *     ({@code MessstelleWerteRegeln.OhneZahl}); {@code null}, wenn er aus der Speicherklasse kommt
+     * @param herkunft die Hülle {@code {satz, fehlt}} nach {@code bilanzwert-herkunft.schema.json} (AP-10 IP-12) an
+     *     jeder BERECHNETEN Zahl; {@code null} heißt „nicht berechnet“ — ein gemessener Schritt oder einer ohne Zahl
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -77,7 +80,8 @@ public final class MessstelleWerteDto {
             String gebildetAus,
             UUID quelle,
             String grund,
-            List<Ereignis> ereignisse) {}
+            List<Ereignis> ereignisse,
+            Map<String, Object> herkunft) {}
 
     /** Ein Verweis auf eine Meldung des Ereignis-Vertrags — Kennung, Art, Zeit; der Inhalt bleibt dort. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

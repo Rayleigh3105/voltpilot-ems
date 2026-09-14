@@ -79,7 +79,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`bilanz.md`](./bilanz.md) + [`bilanz-vectors.json`](./bilanz-vectors.json) + [`bilanz.schema.json`](./bilanz.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`verteilung.md`](./verteilung.md) + [`verteilung-vectors.json`](./verteilung-vectors.json) + [`verteilung.schema.json`](./verteilung.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`netzanschluss.md`](./netzanschluss.md) + [`netzanschluss-vectors.json`](./netzanschluss-vectors.json) + [`netzanschluss.schema.json`](./netzanschluss.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
-| [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md) + [`bilanzwert-herkunft.schema.json`](./bilanzwert-herkunft.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
+| [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md) + [`bilanzwert-herkunft.schema.json`](./bilanzwert-herkunft.schema.json) + [`bilanzwert-herkunft-vectors.json`](./bilanzwert-herkunft-vectors.json) | Schema, Regeln und gemeinsame Testvektoren; seit 1.1 die Ableitung der Routen aus gespeicherten Zeilen. |
 
 ## Ergänzende Entscheidungen
 

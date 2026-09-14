@@ -79,6 +79,7 @@ public class MessstelleWerteService {
     private final MesskanalService kanaele;
     private final SpeicherklasseHistorie historie;
     private final BerechnetePeriodenRepository berechnete;
+    private final BilanzwertHerkunftLeser herkunft;
 
     private volatile Clock uhr = Clock.systemUTC();
 
@@ -92,6 +93,12 @@ public class MessstelleWerteService {
         this.kanaele = kanaele;
         this.historie = historie;
         this.berechnete = berechnete;
+        this.herkunft = new BilanzwertHerkunftLeser(berechnete);
+    }
+
+    /** Die Herkunft gespeicherter berechneter Werte (AP-10 IP-12) — derselbe Leser für Bilanz und Kostenstelle. */
+    BilanzwertHerkunftLeser herkunft() {
+        return herkunft;
     }
 
     /** Nur für Tests: die Uhr, an der die Frist (vorläufig/endgültig) gemessen wird. */
@@ -132,6 +139,13 @@ public class MessstelleWerteService {
                 .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte)));
 
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z);
+        Map<Instant, Map<String, Object>> herkuenfte = spur == null || spur.isEmpty() ? Map.of()
+                : herkunft.umschlaege(m.id(), m.kennzeichen(), z.raster().wort(), z.von(), z.bis(), zone.id(), f -> {
+                    BerechnetePeriodenRepository.Gespeichert g = spur.get(f.beginn());
+                    return g == null ? null : new BilanzwertHerkunftLeser.Wert(g.version(),
+                            new BilanzwertHerkunft.Ergebnis(BilanzwertHerkunft.betrag(g.menge()), g.mengeZustand(),
+                                    g.abdeckungProzent(), g.kennzeichen()));
+                });
         Beschriftung beschriftung = new Beschriftung(z);
         List<MessstelleWerteDto.Wert> werte = new ArrayList<>();
         for (Map.Entry<Schritt, Deckung> e : deckung.entrySet()) {
@@ -141,7 +155,7 @@ public class MessstelleWerteService {
                     MessstelleWerteRegeln.iso(s.bis(), zone.id()), beschriftung.von(s), stunden(z, s),
                     z.raster() == Raster.TAG ? ErgebnisZustand.tagesdauer(TagRegeln.tag(s.von(), zone.id()), zone.id())
                             : null);
-            werte.add(spur != null ? berechnet(r, s, spur.get(s.von()), z, form.version())
+            werte.add(spur != null ? berechnet(r, s, spur.get(s.von()), z, form.version(), herkuenfte.get(s.von()))
                     : d.reihe() == null ? ohneReihe(r, d.grund())
                     : wert(r, s, d, gelesen.get(d.reihe()), z, form.version(), jetzt));
         }
@@ -222,21 +236,21 @@ public class MessstelleWerteService {
      * Eine berechnete Zeile hat keine Rohwerte: {@code erhalten}/{@code erwartet} und {@code quelle} bleiben leer.
      */
     private static MessstelleWerteDto.Wert berechnet(Rahmen r, Schritt s,
-            BerechnetePeriodenRepository.Gespeichert zeile, Zeitraum z, Integer version) {
+            BerechnetePeriodenRepository.Gespeichert zeile, Zeitraum z, Integer version, Map<String, Object> herkunft) {
         if (zeile == null) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
-                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of());
+                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of(), null);
         }
         if (version != null && version != zeile.version()) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), null, null, null, null, null, null, null, null,
-                    OhneZahl.VERSION_NICHT_GESPEICHERT.wort(), List.of());
+                    OhneZahl.VERSION_NICHT_GESPEICHERT.wort(), List.of(), null);
         }
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 zeile.menge(), null, null, null, zeile.mengeZustand(), zeile.kennzeichen(), null, null,
                 zeile.abdeckungProzent(), zeile.zustand(), iso(zeile.endgueltigAb(), z.zone()), zeile.version(),
-                gebildetAus(z.raster()), null, null, List.of());
+                gebildetAus(z.raster()), null, null, List.of(), herkunft);
     }
 
     // ------------------------------------------------------------------------ Ein Schritt
@@ -261,13 +275,13 @@ public class MessstelleWerteService {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), zeile.erhalten(), zeile.erwartet(),
                     zeile.abdeckungProzent(), zeile.zustand(), iso(zeile.endgueltigAb(), z.zone()), zeile.version(),
-                    gebildetAus(z.raster()), b.id(), OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse);
+                    gebildetAus(z.raster()), b.id(), OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null);
         }
         Zahlen n = zahlen(b, zeile);
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile),
                 zeile.erhalten(), zeile.erwartet(), zeile.abdeckungProzent(), zeile.zustand(),
-                iso(zeile.endgueltigAb(), z.zone()), zeile.version(), gebildetAus(z.raster()), b.id(), null, ereignisse);
+                iso(zeile.endgueltigAb(), z.zone()), zeile.version(), gebildetAus(z.raster()), b.id(), null, ereignisse, null);
     }
 
     /**
@@ -288,7 +302,7 @@ public class MessstelleWerteService {
                 // Eine Viertelstunde der Stunde hat Rohwerte, aber noch keine Zeile: die Stunde ist nicht fertig gebildet.
                 return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                         null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG,
-                        null, null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse);
+                        null, null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null);
             }
             if (v == null) {
                 continue;
@@ -307,13 +321,13 @@ public class MessstelleWerteService {
                     null, null, null, null, null, List.of(), zeile.erhalten(), zeile.erwartet(),
                     zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
                     versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(),
-                    OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse);
+                    OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null);
         }
         Zahlen n = zahlen(b, zeile);
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile), zeile.erhalten(),
                 zeile.erwartet(), zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
-                versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(), null, ereignisse);
+                versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(), null, ereignisse, null);
     }
 
     /** Ein Schritt ohne gespeicherte Zeile: noch nicht gebildet — oder wirklich „keine Werte“. */
@@ -324,14 +338,14 @@ public class MessstelleWerteService {
         if (darunter) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
-                    null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse);
+                    null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null);
         }
         int erwartet = erwartetOhneZeile(b, g, s.von(), s.bis());
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, ErgebnisZustand.KEINE_WERTE, List.of(), 0, erwartet,
                 SpeicherklasseHistorie.abdeckung(0, erwartet),
                 TagRegeln.zustand(0, 0, TagRegeln.endgueltigAb(s.bis()), jetzt), null, null, null, b.id(), null,
-                ereignisse);
+                ereignisse, null);
     }
 
     private static boolean stundeMitDaten(Schritt s, Gelesen g) {
@@ -348,14 +362,14 @@ public class MessstelleWerteService {
         String zustand = grund == OhneZahl.KEINE_QUELLE ? ErgebnisZustand.KEINE_WERTE : null;
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, zustand, List.of(), null, null, null, null, null, null, null, null,
-                grund.wort(), List.of());
+                grund.wort(), List.of(), null);
     }
 
     private static MessstelleWerteDto.Wert leer(Rahmen r, Bindung b, OhneZahl grund,
             List<MessstelleWerteDto.Ereignis> ereignisse) {
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, null, List.of(), null, null, null, null, null, null, null, b.id(),
-                grund.wort(), ereignisse);
+                grund.wort(), ereignisse, null);
     }
 
     private record Zahlen(BigDecimal menge, BigDecimal mittel, BigDecimal min, BigDecimal max) {}

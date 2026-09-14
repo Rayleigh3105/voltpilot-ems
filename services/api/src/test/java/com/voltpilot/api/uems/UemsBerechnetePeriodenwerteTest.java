@@ -184,6 +184,50 @@ class UemsBerechnetePeriodenwerteTest {
     }
 
     /**
+     * AP-10 IP-12: die HERKUNFT des gespeicherten Rests. Der Lauf rechnet F1 am 19.10.2026 um 00:12 (MESZ) — genau der
+     * Rechenzeitpunkt der Vorlage —, und die Route „Werte je Messstelle“ liefert den Satz Zeichen für Zeichen wie die
+     * Prüfung {@code herkunft} von F1 in {@code bilanz-vectors.json}: Formel-Fassung 1, drei Eingänge aus
+     * {@code bilanzwert_eingang} mit Rolle und Version, Periodenende, {@code berechnet_am}, kein Auslöser. Eine
+     * gemessene Zahl (MS-16) trägt KEINE Herkunft — {@code null}, nicht eine leere; ein Schritt ohne Zahl ebenso.
+     */
+    @Test
+    void f1DieHerkunftDesGespeichertenRestsIstByteGleichZumVektor() throws Exception {
+        LocalDate tag = LocalDate.parse("2026-10-18");
+        Welt w = lindach("2026-01-01");
+        tageswert(w, "MS-16", tag, "100", VOLL, 100, List.of(), true);
+        tageswert(w, "MS-17", tag, "60", VOLL, 100, List.of(), true);
+        tageswert(w, "MS-18", tag, "30", VOLL, 100, List.of(), true);
+        Instant zehnUhr = tag.atTime(10, 0).atZone(ZONE).toInstant();
+        viertelstunde(w, "MS-16", zehnUhr, "2.5", true);
+        viertelstunde(w, "MS-17", zehnUhr, "1.5", true);
+        viertelstunde(w, "MS-18", zehnUhr, "0.75", true);
+        rest(w, "MS-22", "MS-16");
+
+        lauf.lauf(Instant.parse("2026-10-18T22:12:00Z"));
+
+        JsonNode schritt = werte(w, "MS-22", "tag", tag, tag).get("werte").get(0);
+        assertThat(schritt.get("menge").decimalValue()).isEqualByComparingTo("10");
+        assertThat(BilanzwertHerkunftVektor.route(schritt.get("herkunft")))
+                .isEqualTo(BilanzwertHerkunftVektor.umschlag("bilanz-vectors.json", "F1"));
+
+        JsonNode vs = werte(w, "MS-22", "viertelstunde", tag, tag).get("werte");
+        JsonNode satz = vs.get(40).get("herkunft").get("satz");
+        assertThat(vs.get(40).get("herkunft").get("fehlt")).isEmpty();
+        assertThat(satz.get("periode").get("art").asText()).isEqualTo("viertelstunde");
+        assertThat(satz.get("periode").get("schluessel").asText()).isEqualTo("2026-10-18T10:00:00+02:00");
+        assertThat(satz.get("periode_ende").asText()).isEqualTo("2026-10-18T10:14:59+02:00");
+        assertThat(satz.get("menge").asText()).isEqualTo("0.25");
+        assertThat(satz.get("eingaenge").get(2).get("menge").asText()).isEqualTo("0.75");
+        assertThat(vs.get(41).get("herkunft").isNull()).as("ohne Zahl keine Herkunft").isTrue();
+        assertThat(werte(w, "MS-22", "stunde", tag, tag).get("werte").get(0).get("herkunft").isNull())
+                .as("die Stunde trägt keine gespeicherte Zahl").isTrue();
+
+        JsonNode gemessen = werte(w, "MS-16", "tag", tag, tag).get("werte").get(0);
+        assertThat(gemessen.has("herkunft")).as("das Feld steht immer da").isTrue();
+        assertThat(gemessen.get("herkunft").isNull()).as("eine gemessene Zahl hat keine Bilanzwert-Herkunft").isTrue();
+    }
+
+    /**
      * F5: MS-14 hat keine Werte — die Summe MS-11 … MS-14 wird „unvollständig“ (1 055 kWh, Abdeckung 0), der Rest
      * „keine Werte“ (Menge null, nie 0). F6: 100 − 60 − 45 = −5 kWh, gezeigt und nicht geklemmt.
      */

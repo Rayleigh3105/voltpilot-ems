@@ -31,7 +31,8 @@ Mensch den Vorschlag bestätigt (E18 = A). Bericht `data/vp-uems-ap10-bilanzen/r
    `MessstelleWerteService` (AP-08 IP-9). Wechseln die Terme (`stellung_geaendert`), rechnet jeder Abschnitt Tag
    für Tag. Auch die gespeicherten Periodenwerte der Rest-Messstelle (IP-10) entstehen nur über gleichbleibende
    Terme (`terme_wechseln`) — über einen Wechsel gibt es keine Periodenzahl.
-   Vermerke „Stellung geändert (…)“ und Herkunft trägt die Route nicht (IP-12).
+   Vermerke „Stellung geändert (…)“ trägt die Route nicht; die Herkunft des Rests seit IP-12
+   (`uems-bilanzwert-herkunft-routen.md`).
 3. **`null` ist nie 0.** Ein nicht vollständiger Eingang macht den Rest „keine Werte“ (`menge` null); eine Rolle
    ohne Eingang hat `menge` null und „0 von 0“. Live: EIN veralteter Term (älter als 15 min) → `wert` null mit
    `fehlende: [{term, grund: veraltet}]` — nie die Teilsumme 12,6 kW, nie der letzte bekannte Wert (F18).
@@ -69,5 +70,5 @@ Nachtrags-Handlungen in `rechte-matrix.json` nennen die Routen; `RechteKennungen
 
 ## Nicht gebaut
 
-Die Zahl über eine Periode mit Stellungswechsel (auch IP-10 bildet sie nicht), Herkunft (IP-12), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
+Die Zahl über eine Periode mit Stellungswechsel (auch IP-10 bildet sie nicht), Portal-Fläche (IP-14), Rechte-Durchsetzung (AP-03), Rest eines
 Unterzählers mit Unterzählern (`rest_ohne_hauptzaehler`), `saldo`-Schreibweg (IP-16).

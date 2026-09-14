@@ -62,8 +62,9 @@ public final class KostenstelleEnergieDto {
     /**
      * Eine Messstelle in einer Herkunft.
      *
-     * @param herkunft der Satz nach {@code bilanzwert-herkunft.schema.json} (Art {@code verteilt}); bei
-     *     {@code nicht_verteilt} {@code null} — dort gibt es keine Verteilung, die Herkunft ist die der Messstelle
+     * @param herkunft die Hülle {@code {satz, fehlt}} nach {@code bilanzwert-herkunft.schema.json} (Art
+     *     {@code verteilt}); bei {@code nicht_verteilt} {@code null} — dort gibt es keine Verteilung; die Rechnung
+     *     einer berechneten Messstelle steht je Tag an {@code tage[].herkunft}
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -75,9 +76,15 @@ public final class KostenstelleEnergieDto {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record MessstelleRef(UUID id, String kennzeichen, String name, String art) {}
 
-    /** Ein Tagesanteil: der Tageswert der Quelle, der Anteil DIESES Tages und die Menge daraus. */
+    /**
+     * Ein Tagesanteil: der Tageswert der Quelle, der Anteil DIESES Tages und die Menge daraus.
+     *
+     * @param herkunft die Hülle {@code {satz, fehlt}} (Art {@code berechnet}, AP-10 IP-12) am Tageswert einer
+     *     BERECHNETEN Quelle in der gezeigten Version; {@code null} bei einer gemessenen Quelle und an einem Tag ohne
+     *     gespeicherten Tageswert
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Tag(LocalDate tag, BigDecimal anteilProzent, BigDecimal quelleMenge, BigDecimal menge,
-            String zustand, Integer abdeckungProzent, int version, String grund) {}
+            String zustand, Integer abdeckungProzent, int version, String grund, Map<String, Object> herkunft) {}
 }

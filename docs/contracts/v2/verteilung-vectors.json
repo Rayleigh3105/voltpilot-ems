@@ -20,9 +20,10 @@
     "",
     "Fassung 1.2 (AP-10 IP-11, 14.09.2026): Regel `kostenstelle` — was eine Kostenstelle über eine",
     "Periode bekommt (gemessen · verteilt · berechnet) und was daneben NIEMANDEM gehört (nicht verteilt),",
-    "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar)."
+    "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar).",
+    "Fassung 1.3 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`."
   ],
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "$schema_datei": "./verteilung.schema.json",
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -334,6 +335,26 @@
       "vorlage": null,
       "statt": "MS-03 480 kWh (31.12.2026, 15.01.2027), MS-02 95 kWh (31.12.2026); MS-22 an 4300 am 08.11.2026 (F6)",
       "grund": "Die Vorlage nennt für MS-03/MS-02 keine Tageswerte (nur „14 900 kWh im Vormonat“) und für MS-22 keine Kostenstelle; die Zahlen tragen nur die Form der Prüfung (100 % → gemessen, keine Zeile → nicht verteilt, Erzeugung ≠ Abgabe, negativer Rest). F14 nimmt die Zahlen der Vorlage unverändert."
+    },
+    {
+      "fall": "F10, F13 · herkunft.periode_ende",
+      "feld": "herkunft.periode_ende",
+      "vorlage": null,
+      "statt": "die letzte Sekunde der Periode in der Zone des Standorts (z. B. 2026-10-31T23:59:59+01:00)",
+      "grund": "IP-12 leitet `periode_ende` in JEDER Route aus der Periode ab (`BilanzwertHerkunft.periodeEnde`: die letzte Sekunde in der Zone des Standorts, die Form der Vorlage an F1/F5). Die Vorlage nannte es nur dort, wo sie zwei Zeitpunkte in ein Feld schrieb (F1, F5) — F14 ist derselbe Tag wie F1, und keine Regel gäbe dem einen ein Ende und dem anderen keins. Byte-gleich zum Vektor kann eine Route darum nur sein, wenn jeder Fall es trägt."
+    },
+    {
+      "fall": "F10, F13 · herkunft.menge",
+      "feld": "herkunft.menge",
+      "vorlage": [
+        "11130.0",
+        "10000.0"
+      ],
+      "statt": [
+        "11130",
+        "10000"
+      ],
+      "grund": "Ein Betrag reist im Herkunfts-Satz ohne nachgestellte Nullen (`BilanzwertHerkunft.betrag`, dieselbe Form wie die Kostenstellen-Sicht seit IP-11). Numerisch gleich; byte-gleich zum Vektor ist die Route nur mit EINER Form."
     }
   ],
   "_nicht_geprueft": [
@@ -853,7 +874,7 @@
             },
             "formel_typ": null,
             "formel_fassung": null,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -875,7 +896,7 @@
               }
             ],
             "ergebnis": {
-              "menge": "11130.0",
+              "menge": "11130",
               "zustand": "vollständig",
               "abdeckung_prozent": 100,
               "kennzeichen": [
@@ -893,7 +914,7 @@
               },
               "formel_typ": null,
               "formel_fassung": null,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -917,7 +938,7 @@
               "kennzeichen": [
                 "verteilt (70 % von MS-07)"
               ],
-              "menge": "11130.0",
+              "menge": "11130",
               "zustand": "vollständig",
               "abdeckung_prozent": 100
             },
@@ -2346,7 +2367,7 @@
             },
             "formel_typ": null,
             "formel_fassung": null,
-            "periode_ende": null,
+            "periode_ende": "2027-01-31T23:59:59+01:00",
             "berechnet_am": "2027-02-01T00:15:00+01:00",
             "version": 2,
             "ausloeser": "Verteilung geändert am 15.01.2027, rückwirkend eingetragen am 20.01.2027",
@@ -2368,7 +2389,7 @@
               }
             ],
             "ergebnis": {
-              "menge": "10000.0",
+              "menge": "10000",
               "zustand": "vollständig",
               "abdeckung_prozent": 100,
               "kennzeichen": [
@@ -2387,7 +2408,7 @@
               },
               "formel_typ": null,
               "formel_fassung": null,
-              "periode_ende": null,
+              "periode_ende": "2027-01-31T23:59:59+01:00",
               "berechnet_am": "2027-02-01T00:15:00+01:00",
               "version": 2,
               "ausloeser": "Verteilung geändert am 15.01.2027, rückwirkend eingetragen am 20.01.2027",
@@ -2412,7 +2433,7 @@
                 "verteilt",
                 "Verteilung geändert am 15.01.2027"
               ],
-              "menge": "10000.0",
+              "menge": "10000",
               "zustand": "vollständig",
               "abdeckung_prozent": 100
             },

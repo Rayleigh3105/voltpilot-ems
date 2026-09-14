@@ -92,6 +92,98 @@ public class BerechnetePeriodenRepository {
         return out;
     }
 
+    /**
+     * Was die Herkunft einer gespeicherten Zeile braucht (AP-10 IP-12): Formel-Typ und Nummer der Fassung aus der
+     * Zeile von Version 1, je Version die Eingänge IN DIESER Version mit ihrem Rechenzeitpunkt, und ab Version 2 die
+     * Kennung des Anlasses aus {@code messreihe_periode_version}. {@code tag}/{@code zone} sind die der Zeile
+     * (Viertelstunde: {@code null}).
+     */
+    public record HerkunftFakten(Instant beginn, LocalDate tag, ZoneId zone, String formelTyp, Integer fassungNummer,
+            Map<Integer, List<BilanzwertHerkunft.GespeicherterEingang>> eingaenge, Map<Integer, Instant> berechnetAm,
+            Map<Integer, String> anlass) {}
+
+    /** Die Herkunfts-Fakten der Zeilen einer Messstelle auf einer Ebene mit Beginn in {@code [von, bis)}. */
+    public Map<Instant, HerkunftFakten> herkunftFakten(UUID messstelleId, String ebene, Instant von, Instant bis) {
+        Map<Instant, HerkunftFakten> out = new HashMap<>();
+        List<Object> args = new ArrayList<>(List.of(messstelleId));
+        if (!artFilter(ebene).isEmpty()) {
+            args.add(ebene);
+        }
+        args.add(Timestamp.from(von));
+        args.add(Timestamp.from(bis));
+        boolean viertelstunde = VIERTELSTUNDE.equals(ebene);
+        jdbc.query("SELECT t." + beginnSpalte(ebene) + " AS beginn, "
+                + (viertelstunde ? "NULL::date AS tag, NULL::text AS zeitzone" : "t.tag, t.zeitzone")
+                + ", t.formel_typ, f.nummer FROM " + tabelle(ebene) + " t LEFT JOIN messstelle_formel_fassung f "
+                + "ON f.id = t.formel_fassung_id AND f.tenant_id = t.tenant_id WHERE t.messstelle_id = ?"
+                + artFilter(ebene).replace("art", "t.art") + " AND t." + beginnSpalte(ebene) + " >= ? AND t."
+                + beginnSpalte(ebene) + " < ? AND t.version = 1", rs -> {
+                    Instant b = rs.getTimestamp("beginn").toInstant();
+                    String zone = rs.getString("zeitzone");
+                    out.put(b, new HerkunftFakten(b, rs.getObject("tag", LocalDate.class),
+                            zone == null ? null : ZoneId.of(zone), rs.getString("formel_typ"),
+                            (Integer) rs.getObject("nummer", Integer.class), new HashMap<>(), new HashMap<>(),
+                            new HashMap<>()));
+                }, args.toArray());
+        if (out.isEmpty()) {
+            return out;
+        }
+        jdbc.query("SELECT periode_beginn, version, eingang_kennzeichen, rolle, anteil, menge, menge_zustand, "
+                + "abdeckung_prozent, eingang_version, kennzeichen::text AS kennzeichen, berechnet_am "
+                + "FROM bilanzwert_eingang WHERE messstelle_id = ? AND periode = ? AND periode_beginn >= ? "
+                + "AND periode_beginn < ? ORDER BY periode_beginn, version, position", rs -> {
+                    HerkunftFakten f = out.get(rs.getTimestamp("periode_beginn").toInstant());
+                    if (f == null) {
+                        return;
+                    }
+                    int version = rs.getInt("version");
+                    f.eingaenge().computeIfAbsent(version, v -> new ArrayList<>()).add(
+                            new BilanzwertHerkunft.GespeicherterEingang(rs.getString("eingang_kennzeichen"),
+                                    rs.getString("rolle"), rs.getString("anteil"), rs.getBigDecimal("menge"),
+                                    rs.getString("menge_zustand"),
+                                    (Integer) rs.getObject("abdeckung_prozent", Integer.class),
+                                    (Integer) rs.getObject("eingang_version", Integer.class),
+                                    saetze(rs.getString("kennzeichen"))));
+                    f.berechnetAm().merge(version, rs.getTimestamp("berechnet_am").toInstant(),
+                            (a, b) -> a.isAfter(b) ? a : b);
+                }, messstelleId, ebene, Timestamp.from(von), Timestamp.from(bis));
+        jdbc.query("SELECT periode_beginn, version, anlass_kennung FROM messreihe_periode_version "
+                + "WHERE messstelle_id = ? AND ebene = ? AND periode_beginn >= ? AND periode_beginn < ?", rs -> {
+                    HerkunftFakten f = out.get(rs.getTimestamp("periode_beginn").toInstant());
+                    if (f != null) {
+                        f.anlass().put(rs.getInt("version"), rs.getString("anlass_kennung"));
+                    }
+                }, messstelleId, ebene, Timestamp.from(von), Timestamp.from(bis));
+        return out;
+    }
+
+    /** Die Nummer einer Formel-Fassung; {@code null}, wenn es sie (hinter RLS) nicht gibt. */
+    public Integer fassungNummer(UUID fassungId) {
+        return jdbc.query("SELECT nummer FROM messstelle_formel_fassung WHERE id = ?",
+                (rs, n) -> rs.getInt(1), fassungId).stream().findFirst().orElse(null);
+    }
+
+    /**
+     * Die nicht aufgehobenen Verteilungs-Zeilen EINER Messstelle, die die Tage berühren — die Fassung gezählt wie in
+     * der Kostenstellen-Sicht ({@code KostenstelleEnergieRepository.anteile}).
+     */
+    public List<BilanzwertHerkunft.VerteilungZeile> verteilungen(UUID messstelleId, LocalDate von, LocalDate bis) {
+        return jdbc.query("""
+                SELECT k.kennzeichen, v.anteil_prozent, v.gueltig_ab, v.gueltig_bis,
+                       (SELECT count(DISTINCT a.gueltig_ab) FROM messstelle_verteilung a
+                         WHERE a.tenant_id = v.tenant_id AND a.messstelle_id = v.messstelle_id
+                           AND a.gueltig_ab <= v.gueltig_ab) AS fassung
+                  FROM messstelle_verteilung v
+                  JOIN kostenstelle k ON k.id = v.kostenstelle_id AND k.tenant_id = v.tenant_id
+                 WHERE v.messstelle_id = ? AND v.aufgehoben_am IS NULL AND v.gueltig_ab <= ?
+                   AND (v.gueltig_bis IS NULL OR v.gueltig_bis >= ?)
+                 ORDER BY v.gueltig_ab, k.kennzeichen
+                """, (rs, n) -> new BilanzwertHerkunft.VerteilungZeile(rs.getString("kennzeichen"),
+                        rs.getBigDecimal("anteil_prozent"), rs.getInt("fassung"),
+                        rs.getObject("gueltig_ab", LocalDate.class), rs.getObject("gueltig_bis", LocalDate.class)),
+                messstelleId, bis, von);
+    }
+
     // --------------------------------------------------------------------- schreiben (Lauf, BYPASSRLS)
 
     /**

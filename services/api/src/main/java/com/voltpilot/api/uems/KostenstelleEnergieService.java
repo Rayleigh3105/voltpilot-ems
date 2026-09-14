@@ -109,6 +109,7 @@ public class KostenstelleEnergieService {
         Map<String, Messstelle> nachKennzeichen = new LinkedHashMap<>();
         Map<String, Map<LocalDate, KostenstelleEnergieRegeln.Tageswert>> tageswerte = new HashMap<>();
         Map<String, Map<LocalDate, String>> anlaesse = new HashMap<>();
+        Map<String, Map<LocalDate, Map<String, Object>>> tagesHerkunft = new HashMap<>();
         List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
         for (Messstelle m : messstellen.alle()) {
             List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(m.id(), List.of());
@@ -124,6 +125,9 @@ public class KostenstelleEnergieService {
             nachKennzeichen.put(m.kennzeichen(), m);
             tageswerte.put(m.kennzeichen(), tage);
             anlaesse.put(m.kennzeichen(), anlass);
+            if (MessstelleRegeln.BERECHNET.equals(m.art()) && !tage.isEmpty()) {
+                tagesHerkunft.put(m.kennzeichen(), tagesHerkunft(m, tage, von, bis, zone));
+            }
             quellen.add(new KostenstelleEnergieRegeln.Quelle(m.kennzeichen(), m.art(), m.hauptgroesse().groesse(),
                     m.hauptgroesse().richtung(), m.hauptgroesse().einheit(),
                     eigene.stream().map(a -> new KostenstelleEnergieRegeln.Anteil(a.kostenstelle(), a.anteilProzent(),
@@ -134,8 +138,8 @@ public class KostenstelleEnergieService {
         KostenstelleEnergieRegeln.Urteil u = KostenstelleEnergieRegeln.energie(k.kennzeichen(), von, bis, ziele,
                 quellen);
         String berechnetAm = MessstelleWerteRegeln.iso(jetzt, zone);
-        Herkunft h = new Herkunft(k.kennzeichen(), periode, schluessel(periode, von), berechnetAm, nachKennzeichen,
-                tageswerte, anlaesse);
+        Herkunft h = new Herkunft(k.kennzeichen(), periode, schluessel(periode, von), berechnetAm, zone,
+                nachKennzeichen, tageswerte, anlaesse, tagesHerkunft);
         return new KostenstelleEnergieDto.Energie(
                 new KostenstelleEnergieDto.Kostenstelle(k.id(), k.kennzeichen(), k.name(), k.gueltigAb(),
                         k.gueltigBis()),
@@ -192,9 +196,34 @@ public class KostenstelleEnergieService {
 
     // ------------------------------------------------------------------------------ Antwort
 
-    private record Herkunft(String kostenstelle, String periode, String schluessel, String berechnetAm,
+    private record Herkunft(String kostenstelle, String periode, String schluessel, String berechnetAm, ZoneId zone,
             Map<String, Messstelle> messstellen, Map<String, Map<LocalDate, KostenstelleEnergieRegeln.Tageswert>> tage,
-            Map<String, Map<LocalDate, String>> anlaesse) {}
+            Map<String, Map<LocalDate, String>> anlaesse,
+            Map<String, Map<LocalDate, Map<String, Object>>> tagesHerkunft) {}
+
+    /**
+     * Die Herkunft jedes Tageswerts einer BERECHNETEN Messstelle (AP-10 IP-12): der gespeicherte Satz des Tages in der
+     * Version, die die Sicht zeigt — Eingänge in DIESER Version, ab Version 2 mit Auslöser. Eine gemessene Messstelle
+     * hat keinen; ihr Tag trägt {@code herkunft: null}.
+     */
+    private Map<LocalDate, Map<String, Object>> tagesHerkunft(Messstelle m,
+            Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage, LocalDate von, LocalDate bis, ZoneId zone) {
+        Map<Instant, LocalDate> tagJeBeginn = new HashMap<>();
+        Map<Instant, Map<String, Object>> je = werte.herkunft().umschlaege(m.id(), m.kennzeichen(),
+                BerechnetePeriodenRepository.TAG, von.minusDays(1).atStartOfDay(zone).toInstant(),
+                bis.plusDays(2).atStartOfDay(zone).toInstant(), zone, f -> {
+                    KostenstelleEnergieRegeln.Tageswert tw = f.tag() == null ? null : tage.get(f.tag());
+                    if (tw == null) {
+                        return null;
+                    }
+                    tagJeBeginn.put(f.beginn(), f.tag());
+                    return new BilanzwertHerkunftLeser.Wert(tw.version(), new BilanzwertHerkunft.Ergebnis(
+                            text(tw.menge()), tw.zustand(), tw.abdeckungProzent(), tw.kennzeichen()));
+                });
+        Map<LocalDate, Map<String, Object>> raus = new HashMap<>();
+        je.forEach((beginn, umschlag) -> raus.put(tagJeBeginn.get(beginn), umschlag));
+        return raus;
+    }
 
     private static KostenstelleEnergieDto.Block block(KostenstelleEnergieRegeln.Block b, Herkunft h, boolean verteilt) {
         return new KostenstelleEnergieDto.Block(b.menge(), b.einheit(), b.zustand(), b.grund(),
@@ -211,7 +240,8 @@ public class KostenstelleEnergieService {
                 p.groesse(), p.richtung(), p.einheit(), p.menge(), p.zustand(), p.abdeckungProzent(), p.version(),
                 p.kennzeichen(), p.fassungen(), p.fehlend(),
                 p.tage().stream().map(t -> new KostenstelleEnergieDto.Tag(t.tag(), t.anteilProzent(), t.quelleMenge(),
-                        t.menge(), t.zustand(), t.abdeckungProzent(), t.version(), t.grund())).toList(),
+                        t.menge(), t.zustand(), t.abdeckungProzent(), t.version(), t.grund(),
+                        h.tagesHerkunft().getOrDefault(p.messstelle(), Map.of()).get(t.tag()))).toList(),
                 verteilt ? herkunft(p, h) : null);
     }
 
@@ -248,23 +278,20 @@ public class KostenstelleEnergieService {
             KostenstelleEnergieRegeln.Tag erster = tage.stream().filter(t -> t.version() == p.version()).findFirst()
                     .orElse(letzter);
             String anlass = h.anlaesse().getOrDefault(p.messstelle(), Map.of()).get(erster.tag());
-            ausloeser = anlass == null ? null
-                    : (anlass.startsWith("EW-") ? "substitute " : "correction ") + anlass + " · " + p.messstelle() + " "
-                            + erster.tag() + " Version " + p.version();
+            ausloeser = BilanzwertHerkunft.ausloeser(anlass, List.of(p.messstelle()), erster.tag().toString(),
+                    p.version());
         }
         BilanzwertHerkunft.Urteil urteil = BilanzwertHerkunft.herkunft(new BilanzwertHerkunft.Eingang(
-                BilanzwertHerkunft.VERTEILT, h.kostenstelle(), h.periode(), h.schluessel(), null, null, null,
-                h.berechnetAm(), p.version(), ausloeser,
+                BilanzwertHerkunft.VERTEILT, h.kostenstelle(), h.periode(), h.schluessel(), null, null,
+                BilanzwertHerkunft.periodeEnde(h.periode(), h.schluessel(), h.zone()), h.berechnetAm(), p.version(),
+                ausloeser,
                 new BilanzwertHerkunft.Verteilungsbezug(p.fassungen().stream().mapToInt(Integer::intValue).max()
                         .orElse(1), h.kostenstelle(), text(letzter.anteilProzent())),
                 List.of(new BilanzwertHerkunft.Eingangswert(p.messstelle(), null, "gesamt",
                         s.vorhanden() == 0 ? null : text(s.menge()), s.zustand(), s.abdeckungProzent(), quelleVersion,
                         List.copyOf(kennzeichen))),
                 new BilanzwertHerkunft.Ergebnis(text(p.menge()), p.zustand(), p.abdeckungProzent(), p.kennzeichen())));
-        Map<String, Object> raus = new LinkedHashMap<>();
-        raus.put("satz", urteil.satz());
-        raus.put("fehlt", urteil.fehlt());
-        return raus;
+        return BilanzwertHerkunft.umschlag(urteil);
     }
 
     // ------------------------------------------------------------------------------ Gerüst
@@ -293,7 +320,7 @@ public class KostenstelleEnergieService {
     }
 
     private static String text(BigDecimal zahl) {
-        return zahl == null ? null : zahl.stripTrailingZeros().toPlainString();
+        return BilanzwertHerkunft.betrag(zahl);
     }
 
     private static List<String> saetze(String json) {

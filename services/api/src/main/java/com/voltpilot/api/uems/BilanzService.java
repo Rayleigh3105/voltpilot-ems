@@ -8,6 +8,7 @@ import com.voltpilot.api.web.dto.MessstelleWerteDto;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -110,7 +111,8 @@ public class BilanzService {
         List<BilanzDto.Hauptzaehler> hauptzaehler = new ArrayList<>();
         for (String kz : hauptzaehlerDerAnlage(stand, siteId, von, bis)) {
             Messstelle x = stand.nachKennzeichen().get(kz);
-            hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, stand, alleReste.get(x.id())));
+            hauptzaehler.add(hauptzaehler(x, siteId, name, periode, von, bis, heute, stand, alleReste.get(x.id()),
+                    zone));
         }
         return new BilanzDto.Bilanz(new BilanzDto.Anlage(siteId, name), periode, am, von, bis, zone.getId(),
                 List.copyOf(hauptzaehler));
@@ -134,7 +136,13 @@ public class BilanzService {
 
     private BilanzDto.Hauptzaehler hauptzaehler(Messstelle x, UUID siteId, String anlageName, String periode,
             LocalDate von, LocalDate bis, LocalDate heute, BilanzStellungen.Stand stand,
-            BilanzRestRepository.Rest rest) {
+            BilanzRestRepository.Rest rest, ZoneId zone) {
+        BilanzDto.MessstelleRef restRef = null;
+        if (rest != null) {
+            MessstelleDto.Messstelle r = messstellen.eine(rest.messstelleId());
+            restRef = new BilanzDto.MessstelleRef(r.id(), r.kennzeichen(), r.name());
+        }
+        Herkunft herkunft = new Herkunft(rest, restRef == null ? null : restRef.kennzeichen(), zone, uhr.instant());
         // E3: je TAG die Terme aus der Stellung; gleiche Terme hintereinander sind ein Abschnitt.
         List<Lauf> laeufe = new ArrayList<>();
         for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
@@ -154,19 +162,15 @@ public class BilanzService {
         List<BilanzDto.Abschnitt> abschnitte = new ArrayList<>();
         if (gleicheTerme && !laeufe.isEmpty()) {
             abschnitte.add(abschnitt(laeufe.get(0).von(), laeufe.get(laeufe.size() - 1).bis(), periode, von, bis,
-                    laeufe.get(0).fassung(), stand));
+                    laeufe.get(0).fassung(), stand, herkunft));
         } else {
             for (Lauf l : laeufe) {
-                abschnitte.add(abschnitt(l.von(), l.bis(), "tag", l.von(), l.bis(), l.fassung(), stand));
+                abschnitte.add(abschnitt(l.von(), l.bis(), "tag", l.von(), l.bis(), l.fassung(), stand, herkunft));
             }
         }
 
-        BilanzDto.MessstelleRef restRef = null;
         BilanzDto.Vorschlag vorschlag = null;
-        if (rest != null) {
-            MessstelleDto.Messstelle r = messstellen.eine(rest.messstelleId());
-            restRef = new BilanzDto.MessstelleRef(r.id(), r.kennzeichen(), r.name());
-        } else {
+        if (rest == null) {
             BilanzAbleitung.RestFassung jetzt = stand.rest(x.kennzeichen(), heute);
             if (jetzt.fehler() == null && siteId.toString().equals(jetzt.anlage())) {
                 vorschlag = new BilanzDto.Vorschlag(AKTION_REST_ANLEGEN, x.id(), anlageName + NAME_ENDUNG);
@@ -184,12 +188,16 @@ public class BilanzService {
                 vorschlag, !gleicheTerme, List.copyOf(abschnitte), liveDto);
     }
 
+    /** Wessen Rest das ist und wann gelesen wurde — für den Herkunfts-Satz des Rests (AP-10 IP-12). */
+    private record Herkunft(BilanzRestRepository.Rest rest, String kennzeichen, ZoneId zone, Instant jetzt) {}
+
     /**
      * Ein Abschnitt mit seinen Zeilen. {@code raster} = die Periode: EIN Werte-Eintrag über
      * [{@code von}, {@code bis}]; {@code raster} = {@code tag}: je Tag einer.
      */
     private BilanzDto.Abschnitt abschnitt(LocalDate abschnittVon, LocalDate abschnittBis, String raster,
-            LocalDate von, LocalDate bis, BilanzAbleitung.RestFassung fassung, BilanzStellungen.Stand stand) {
+            LocalDate von, LocalDate bis, BilanzAbleitung.RestFassung fassung, BilanzStellungen.Stand stand,
+            Herkunft herkunft) {
         List<BilanzDto.Term> terme = new ArrayList<>();
         Map<String, List<MessstelleWerteDto.Wert>> jeMessstelle = new LinkedHashMap<>();
         Map<String, String> gruende = new LinkedHashMap<>();
@@ -222,6 +230,7 @@ public class BilanzService {
             List<BilanzAbleitung.Summand> zugeordnet = new ArrayList<>();
             List<MessstelleFormelRegeln.Periodeneingang> eingaenge = new ArrayList<>();
             List<BilanzDto.Eingang> eingangDtos = new ArrayList<>();
+            List<BilanzwertHerkunft.GespeicherterEingang> herkunftEingaenge = new ArrayList<>();
             for (BilanzAbleitung.RestTerm t : fassung.terme()) {
                 MessstelleWerteDto.Wert w = wertAm(jeMessstelle.get(t.messstelle()), tag);
                 BigDecimal menge = w == null ? null : w.menge();
@@ -242,6 +251,8 @@ public class BilanzService {
                         null, menge, zustand, abdeckung, version, kennzeichen));
                 eingangDtos.add(new BilanzDto.Eingang(t.messstelle(), t.rolle(), t.anteil(), menge, zustand, abdeckung,
                         version, kennzeichen, grund));
+                herkunftEingaenge.add(new BilanzwertHerkunft.GespeicherterEingang(t.messstelle(), t.rolle(),
+                        t.anteil(), menge, zustand, abdeckung, version, kennzeichen));
             }
             String ebene = tag == null ? raster : "tag";
             MessstelleFormelRegeln.Periodenwert r = MessstelleFormelRegeln.periodenwert(MessstelleFormelRegeln.REST,
@@ -251,7 +262,14 @@ public class BilanzService {
             zeilen.add(new BilanzDto.Werte(tag == null ? von : tag, tag == null ? bis : tag,
                     summe(zufluss, ebene), summe(abfluss, ebene), summe(zugeordnet, ebene),
                     new BilanzDto.Rest(r.menge(), g.groesse(), g.richtung(), g.einheit(), r.zustand(),
-                            r.abdeckungProzent(), r.fehlend(), r.kennzeichen(), r.satz()),
+                            r.abdeckungProzent(), r.fehlend(), r.kennzeichen(), r.satz(),
+                            werte.herkunft().umschlagGelesen(
+                                    herkunft.rest() == null ? null : herkunft.rest().messstelleId(),
+                                    herkunft.kennzeichen(), herkunft.rest() == null ? null : herkunft.rest().fassungId(),
+                                    MessstelleFormelRegeln.REST, ebene, tag == null ? von : tag, tag == null ? bis : tag,
+                                    herkunft.zone(), herkunft.jetzt(), List.copyOf(herkunftEingaenge),
+                                    new BilanzwertHerkunft.Ergebnis(BilanzwertHerkunft.betrag(r.menge()), r.zustand(),
+                                            r.abdeckungProzent(), r.kennzeichen()))),
                     List.copyOf(eingangDtos)));
         }
         return new BilanzDto.Abschnitt(abschnittVon, abschnittBis, raster, List.copyOf(terme),
