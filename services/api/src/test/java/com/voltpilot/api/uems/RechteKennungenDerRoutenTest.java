@@ -47,7 +47,7 @@ class RechteKennungenDerRoutenTest {
      * Die UEMS-Controller von heute: Messstellen, Messkanäle, Geräte und ihre Einstellungen (AP-04),
      * das Änderungsprotokoll (AP-04 IP-21), Datenquellen (AP-06), Standorte, Unternehmen, Gebäude
      * und Bereiche (AP-02) — und seit AP-07 IP-14 der LESEPFAD der Messdatenstrecke (Verlauf,
-     * Herkunft, Export) auf {@code DeviceMeasurementSelectionController}.
+     * Herkunft, Export) auf {@code DeviceMeasurementSelectionController} — und seit AP-01 IP-3 die Funktionen.
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
             "GeraetController", "GeraetEinstellungController", "GeraetWechselController",
@@ -56,7 +56,7 @@ class RechteKennungenDerRoutenTest {
             "DeviceMeasurementSelectionController", "BezugsgroesseController",
             "KostenstelleProzessController", "MessstelleWerteController", "VerteilungController",
             "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
-            "BezugsdatenImportController");
+            "BezugsdatenImportController", "FunktionController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");

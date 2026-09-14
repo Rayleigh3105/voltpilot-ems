@@ -37,6 +37,7 @@ Sie ist die Zeile `device_override` mit `kind = pause` und `herkunft = 'funktion
   `purgeExpired`, `dueForRenewal`) überspringen sie per Konstruktion; `active`/`activePause` lesen sie.
 - **Schreibweg für IP-3:** `DeviceOverrideRepository.putRuhe` (macht aus einer Handpause die Ruhe,
   eine bestehende Ruhe bleibt unverändert; `renewed_at` leer → der nächste Takt pusht) und
-  `clearRuhe` (lässt eine Handpause stehen). **Noch ruft niemand an** — keine Route, keine Fläche.
+  `clearRuhe` (lässt eine Handpause stehen). Seit IP-3 ruft `FunktionService` an: Anhalten und Beenden
+  setzen die Ruhe, Starten und Fortsetzen heben sie auf (`uems-funktionen-routen.md`); keine Fläche.
 - **Wirkt an einer echten Box erst mit einem Edge-Release.** `RUNTIME_VERSION` (Katalog-Laufzeitstand)
   ist unberührt, `schema_version` des Pushs bleibt `1.0`.
