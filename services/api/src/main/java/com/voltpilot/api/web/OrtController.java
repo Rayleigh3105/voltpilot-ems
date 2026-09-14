@@ -1,12 +1,16 @@
 package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.uems.OrtAbgelehnt;
 import com.voltpilot.api.uems.OrtService;
+import com.voltpilot.api.uems.OrtVerschiebenService;
 import com.voltpilot.api.uems.OrtsbaumLesemodell.OrtsbaumAmStichtag;
 import com.voltpilot.api.web.dto.OrtDto;
+import com.voltpilot.api.web.dto.OrtVerschiebungDto;
 import com.voltpilot.api.web.dto.StandortDto;
 import java.net.URI;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -34,17 +38,20 @@ import org.springframework.web.server.ResponseStatusException;
  * 403 (A14); der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route
  * nennt ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}; eine Rechte-Annotation
  * gibt es hier bewusst nicht. Archivieren, Wiederherstellen und Löschen ohne Historie (IP-15) urteilt
- * derselbe Vertrag wie am Standort. Verschieben (IP-12) ist nicht hier — wer an {@code PUT} schon
- * einen Elternknoten schickt, bekommt 400 {@code anfrage_ungueltig}.
+ * derselbe Vertrag wie am Standort. Verschieben (IP-12) hat eigene Routen mit Folgen-Vorschau
+ * ({@link OrtVerschiebenService}) — wer an {@code PUT} einen Elternknoten schickt, bekommt 400
+ * {@code anfrage_ungueltig}.
  */
 @RestController
 public class OrtController {
 
     private final OrtService orte;
+    private final OrtVerschiebenService verschieben;
     private final OrtAnfrage anfrage;
 
-    public OrtController(OrtService orte, OrtAnfrage anfrage) {
+    public OrtController(OrtService orte, OrtVerschiebenService verschieben, OrtAnfrage anfrage) {
         this.orte = orte;
+        this.verschieben = verschieben;
         this.anfrage = anfrage;
     }
 
@@ -105,5 +112,43 @@ public class OrtController {
     public ResponseEntity<Void> loeschen(@PathVariable UUID ortId, Authentication auth) {
         orte.loeschen(ortId, OrtAnfrage.akteur(auth));
         return ResponseEntity.noContent().build();
+    }
+
+    // Rechte: `gebaeude.pflegen` — die Vorschau gehört zum Dialog „Verschieben" (V2/V3); schreibt nichts.
+    @GetMapping("/api/v1/orte/{ortId}/verschieben/vorschau")
+    public OrtVerschiebungDto.Verschiebung verschiebenVorschau(@PathVariable UUID ortId,
+            @RequestParam(required = false) String zielId,
+            @RequestParam(required = false) String gueltigAb) {
+        return verschieben.vorschau(ortId, uuid(zielId), tag(gueltigAb));
+    }
+
+    // Rechte: `gebaeude.pflegen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend` (IP-12, V4).
+    @PostMapping("/api/v1/orte/{ortId}/verschieben")
+    public OrtVerschiebungDto.Verschiebung verschieben(@PathVariable UUID ortId,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return verschieben.verschieben(ortId, anfrage.lies(body, OrtVerschiebungDto.Anfrage.class, false),
+                OrtAnfrage.akteur(auth));
+    }
+
+    private static UUID uuid(String roh) {
+        if (roh == null || roh.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(roh);
+        } catch (IllegalArgumentException e) {
+            throw OrtAbgelehnt.anfrage("zielId", "„zielId“ hat nicht die erwartete Form.");
+        }
+    }
+
+    private static LocalDate tag(String roh) {
+        if (roh == null || roh.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(roh);
+        } catch (DateTimeParseException e) {
+            throw OrtAbgelehnt.anfrage("gueltigAb", "„gueltigAb“ hat nicht die erwartete Form.");
+        }
     }
 }
