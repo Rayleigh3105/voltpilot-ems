@@ -69,6 +69,9 @@ Push, kein anderer Wunsch, kein anderer Text.
 - **⚠ `automation_paused_until` ist ein ABSOLUTER Zeitpunkt, nie eine Dauer.** Der Push ist
   RETAINED: eine Box, die beim Ablauf offline war, muss die Sperre nach ihrer EIGENEN Uhr aufheben
   können, statt auf eine Nachricht zu warten, die vielleicht nie kommt (`Registry.Paused(now)`).
+  **Ausnahme seit UEMS AP-01 IP-4:** die Ruhe bis zum Start (`herkunft = 'funktion'`, KEIN Ende)
+  trägt zusätzlich `automation_paused_until_revoked: true` und ruht bis auf Widerruf; kein Handweg
+  verkürzt oder hebt sie auf (409). Details: [`uems-ruhe-bis-zum-start.md`](uems-ruhe-bis-zum-start.md).
 - **Edge: die Pause hat DREI Hälften, und alle sind nötig.** `runPlanExecutors` speist nichts mehr
   ein (der Fahrplan ruht), `desired.Deps.Suspended` lässt den Arbiter jede Wunsch-Klasse
   **in `market` und darunter** ignorieren (Fahrplan und Regeln ruhen). **⚠ Es ist ein TOR, kein Rang-Wechsel:**

@@ -570,6 +570,15 @@
           ],
           "description": "OPTIONAL + ADDITIV (Einheitsmodell Stufe 1). WER die Geraete-Konfiguration dieser ANLAGE besitzt - genau ein Zustand je Anlage, nie je Geraet. 'portal' = das Portal ist das Soll und die Box LEITET ihre lokalen Dateien (Wechselrichter-Auswahl, sources.json) aus diesem Push ab; 'box' = der Bestandsfall, die Box bleibt Autoritaet und der Push aendert an ihrer Geraete-Konfiguration NICHTS. ABWESEND heisst 'box' - ein aelterer Cloud-Stand darf niemals versehentlich als Uebernahme gelesen werden, und eine Box ohne Applier ignoriert das Feld ohnehin (sie bleibt damit box-verwaltet, so wie die Flotte es ueber das Edge-Stand-Register erwartet)."
         },
+        "automation_paused_until": {
+          "type": "string",
+          "format": "date-time",
+          "description": "OPTIONAL + ADDITIV (Steuerung Stufe 4, B5). „Automatik pausieren“: bis zu diesem ABSOLUTEN Zeitpunkt ruhen Fahrplan und Regeln (jede Wunsch-Klasse bis einschließlich market), jede Komponente fällt auf ihren Registry-Failsafe; Messen, Guard-Kette, § 14a, Abregelung, Einspeise-Wache und contract/grid/safety bleiben. Absolut, nie eine Dauer: der Push ist retained, eine Box, die beim Ablauf offline war, hebt die Pause nach ihrer EIGENEN Uhr auf. ABWESEND = keine Pause. Neben automation_paused_until_revoked ist es das rollierende Ende NUR für eine ältere Box (Push-Zeit + 4 h, alle 3 h erneuert)."
+        },
+        "automation_paused_until_revoked": {
+          "const": true,
+          "description": "OPTIONAL + ADDITIV (UEMS AP-01 IP-4, Regel R0). „Ruhe bis zum Start“: die Anlage ruht BIS AUF WIDERRUF - dieselbe Pause wie automation_paused_until, aber ohne Ende; keine Uhr und kein abgelaufenes Ende hebt sie auf, nur ein Push OHNE dieses Feld. Nur mit true gesendet; ABWESEND = die Pause (falls vorhanden) endet an automation_paused_until, byte-gleich zu vorher. Der Publisher sendet immer auch automation_paused_until (für eine ältere Box, die dieses Feld überliest). Vektoren: override-vectors.json."
+        },
         "entities": {
           "type": "array",
           "items": {

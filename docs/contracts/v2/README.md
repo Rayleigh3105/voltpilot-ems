@@ -62,6 +62,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`uems-zustand-vectors.json`](./uems-zustand-vectors.json) + [`uems-zustand.schema.json`](./uems-zustand.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) + [`uems-referenzunternehmen.schema.json`](./uems-referenzunternehmen.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`funktion-zustand-vectors.json`](./funktion-zustand-vectors.json) + [`funktion-zustand.schema.json`](./funktion-zustand.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
+| [`override-vectors.json`](./override-vectors.json) + [`edge-entity.schema.json`](./edge-entity.schema.json) `registry_push` | AP-01 IP-4: Ruhe bis zum Start — Tabellen-CHECKs, Pausen-Felder des Registry-Pushs, Box bis auf Widerruf (Java `RuheRegel` ⟷ Go `Registry.Paused`). |
 | [`messwert-herkunft.md`](./messwert-herkunft.md) + [`messwert-herkunft-vectors.json`](./messwert-herkunft-vectors.json) + [`messwert-herkunft.schema.json`](./messwert-herkunft.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`ortsbaum-vectors.json`](./ortsbaum-vectors.json) + [`ortsbaum.schema.json`](./ortsbaum.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`messstelle.md`](./messstelle.md) + [`messstelle.schema.json`](./messstelle.schema.json) + [`messstelle-vectors.json`](./messstelle-vectors.json) + [`fixtures/messstelle/`](./fixtures/messstelle/) | Schema, Regeln und gemeinsame Testvektoren. |

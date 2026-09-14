@@ -125,12 +125,18 @@ public class DeviceOverrideService {
      * <p><b>Was NICHT pausiert:</b> Messen, die Guard-Kette, § 14a, die
      * Abregelung und die Einspeise-Wache. Sie liegen unterhalb der
      * Arbitrierung und werden von der Sperre nicht einmal berührt.
+     *
+     * <p><b>⚠ Ruht die Anlage bis zum Start (R0, UEMS AP-01 IP-4), gibt es hier nichts zu
+     * pausieren:</b> eine Pause mit Ende würde die Ruhe bis auf Widerruf VERKÜRZEN. Die Zeile
+     * bleibt unberührt, und die Antwort ist 409 statt einer Erfolgsmeldung, die nicht stimmt.
      */
     @Transactional
     public Outcome pause(UUID siteId, Handeingriff.Anfrage req, String actor) {
         Instant now = Instant.now();
         Instant endsAt = refuseTo(() -> Handeingriff.ende(req, now));
-        overrides.putPause(siteId, endsAt, actor);
+        if (!overrides.putPause(siteId, endsAt, actor)) {
+            throw inRuhe();
+        }
         audit.append(siteId, null, "automation_paused", null, null, actor, "bis " + endsAt);
         boolean pushed = pushRegistry(siteId);
         return new Outcome(true, pushed, Handeingriff.PAUSE, endsAt, null, false,
@@ -141,9 +147,17 @@ public class DeviceOverrideService {
                                 + "gesendet werden. VoltPilot versucht es weiter.");
     }
 
+    /**
+     * „Automatik fortsetzen" beendet NUR die Pause von Hand. Die Ruhe bis zum Start (R0) hebt
+     * allein „Steuerung starten“ auf - hier bleibt sie stehen, und die Antwort ist 409.
+     */
     @Transactional
     public Outcome resume(UUID siteId, String actor) {
-        overrides.clearPause(siteId);
+        if (overrides.clearPause(siteId) == 0
+                && overrides.activePause(siteId).filter(DeviceOverrideRepository.Row::ausFunktion)
+                        .isPresent()) {
+            throw inRuhe();
+        }
         audit.append(siteId, null, "automation_resumed", null, null, actor, null);
         boolean pushed = pushRegistry(siteId);
         return new Outcome(true, pushed, "resume", null, null, false,
@@ -163,6 +177,11 @@ public class DeviceOverrideService {
     }
 
     // -- helpers ---------------------------------------------------------------
+
+    private static ResponseStatusException inRuhe() {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "Diese Anlage ist in Ruhe, bis ihre Steuerung gestartet wird.");
+    }
 
     private EntityRegistryRepository.EntityRow batteryEntity(UUID siteId) {
         for (EntityRegistryRepository.EntityRow row : entities.entitiesForSite(siteId)) {

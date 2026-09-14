@@ -1033,6 +1033,64 @@ class ConsumerApiTest {
         }
     }
 
+    /**
+     * UEMS AP-01 IP-4 (R0): die Ruhe bis zum Start ist kein Handeingriff. Die Jetzt-Zone zeigt sie
+     * nicht (byte-gleich, bis die Steuerungsseite sie selbst zeigt), und keiner der Handwege
+     * verkürzt oder hebt sie auf - „Automatik pausieren" und „fortsetzen" antworten 409 und lassen
+     * die Zeile stehen.
+     */
+    @org.junit.jupiter.api.Test
+    void dieRuheBisZumStartIstKeinHandeingriffUndKeinHandwegHebtSieAuf() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString(BERLIN_SITE);
+        String base = "/api/v1/sites/" + BERLIN_SITE;
+        com.voltpilot.api.repo.DeviceOverrideRepository overrides =
+                new com.voltpilot.api.repo.DeviceOverrideRepository(jdbc);
+        TenantContext.set(tenantA);
+        try {
+            assertThat(overrides.putRuhe(site, "test")).isTrue();
+        } finally {
+            TenantContext.clear();
+        }
+        try {
+            long spurVorher = automationAudit(tenantA, site);
+            Map<String, Object> jetzt = interventions(tok);
+            assertThat(jetzt.get("automationPaused")).isEqualTo(Boolean.FALSE);
+            assertThat(jetzt.get("pausedUntil")).isNull();
+            assertThat((List<?>) jetzt.get("interventions")).isEmpty();
+
+            ResponseEntity<Map<String, Object>> pause = post(tok, base + "/automation-pause",
+                    Map.of("kind", "pause", "durationMinutes", 60));
+            assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(String.valueOf(pause.getBody().get("message"))).contains("in Ruhe");
+
+            ResponseEntity<Map<String, Object>> fortsetzen = rest.exchange(url(base + "/automation-pause"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {});
+            assertThat(fortsetzen.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+            TenantContext.set(tenantA);
+            try {
+                com.voltpilot.api.repo.DeviceOverrideRepository.Row ruhe =
+                        overrides.activePause(site).orElseThrow();
+                assertThat(ruhe.ausFunktion()).isTrue();
+                assertThat(ruhe.endsAt()).isNull();
+            } finally {
+                TenantContext.clear();
+            }
+            assertThat(automationAudit(tenantA, site))
+                    .as("eine abgelehnte Handlung schreibt keine Papierspur").isEqualTo(spurVorher);
+        } finally {
+            TenantContext.set(tenantA);
+            try {
+                overrides.clearRuhe(site);
+            } finally {
+                TenantContext.clear();
+            }
+        }
+    }
+
     @org.junit.jupiter.api.Test
     void handeingriffeSindMandantenGefenced() {
         // demo2 gehört Tenant B - Berlin ist für ihn schlicht nicht auffindbar.
@@ -1156,6 +1214,16 @@ class ConsumerApiTest {
             st.execute(sql);
         } catch (java.sql.SQLException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private long automationAudit(UUID tenant, UUID site) {
+        TenantContext.set(tenant);
+        try {
+            return jdbc.queryForObject("SELECT count(*) FROM consumer_audit_event WHERE site_id = ? "
+                    + "AND event_type LIKE 'automation%'", Long.class, site);
+        } finally {
+            TenantContext.clear();
         }
     }
 
