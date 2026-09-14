@@ -52,7 +52,8 @@ beim Messstellen-Vertrag (`messstelle-vectors.json` mit `uems/MessstelleRegeln` 
 **`zwillinge` in der Datei sagt je Regel, wer sie prüft.** Vier Regeln haben bewusst keinen
 TypeScript-Zwilling, und `zwillinge_grund` nennt je Regel den Grund: `fassung` (Fassungen,
 Vier-Augen, Rücknahme sind der Schreibweg des Servers), `stammdatum` (der Stichtag wird im
-Lesemodell gelesen), `kanal` (die Zustandsdauer entsteht aus Rohwerten, die das Portal nie
+Lesemodell gelesen), `stammdatum_eintrag` (ein Wert ab einem Tag ist der Schreibweg des Servers,
+AP-09 IP-6), `kanal` (die Zustandsdauer entsteht aus Rohwerten, die das Portal nie
 sieht) und `menge` (dazu unten). Beide Zwillings-Tests lesen diese Angabe und prüfen genau
 die Regeln, die sie nennt — **eine Regel, die nur eine Seite kennt, ist deklariert und nicht
 stillschweigend übersprungen.** Beide Tests sind grün; es gibt keinen roten und keinen
@@ -92,7 +93,8 @@ tun, in einem Satz:
 | `import` | C4/C6: Was sagt die Vorschau, und was würde die Übernahme schreiben? |
 | `menge` | Die Menge eines Ablesezeitraums (aus der Verbrauchsregel) |
 | `fassung` | F1–F4/C7: Welche Fassungen hat dieser Wert — und welche ist wirksam? |
-| `stammdatum` | E17: Welchen Wert hat die Fläche für die Periode Oktober 2026? |
+| `stammdatum` | E17/S3: Welchen Wert hat die Fläche für die Periode Oktober 2026 — und welcher Übergang liegt in der Periode? |
+| `stammdatum_eintrag` | E15/S4: Was ändert ein neuer Wert ab einem Tag an den Intervallen eines Stammdatums? |
 | `kanal` | K1–K7: Wie lange war der Ladepunkt „Charging“? |
 
 Die **Prüfreihenfolge** (`regeln.pruefreihenfolge`) ist Teil des Vertrags und
@@ -137,6 +139,27 @@ AP-08 E13, B8).
 3 100 auf 3 400 m², eingetragen am 15.01.2027 (rückwirkend, 14 Tage). Oktober und Dezember
 2026 lesen weiter 3 100 m² — ihre Kennzahlen bleiben, und es entsteht **kein** Ereignis für
 sie (Plan-Abnahme 2, E17, B6). Eine Periode ohne gültiges Intervall hat „keine Werte“, nie 0.
+
+**Ein Übergang in der Periode wird genannt, nicht gemittelt (S3, nachgetragen mit AP-09 IP-6).**
+Ändert sich ein Stammdatum NACH dem ersten Tag einer Periode (bis einschließlich zum Stichtag),
+trägt die Periode je Übergang ein Kennzeichen aus `stammdatum_saetze`: „Fläche geändert am
+01.01.2027 (3.100 → 3.400 m²)“ (Woche 2026-W53), „Fläche erst ab 01.10.2026 erhoben
+(3.100 m²)“ (Jahr 2026), „Fläche nur bis 31.12.2026 erhoben (3.100 m²)“ — dann ist der Stichtag
+„keine Werte“. Gelesen wird trotzdem nur der Stichtag; ein zeitgewichtetes Mittel ist eine
+AP-11-Formel. Ein Übergang GENAU am ersten Tag liegt nicht in der Periode (Januar 2027 liest
+3 400 m² ohne Kennzeichen). Die Zahl steht wie jede angezeigte Zahl (Tausenderpunkt, Komma),
+ungerundet.
+
+**Ein Stammdatum, das AP-09 selbst hält, folgt dem Flächen-Muster (S4, E15).** Mitarbeitende
+u. a. stehen in `bezugsgroesse_stammdatum` mit „gültig ab“ und LETZTEM Tag; die Regel
+`stammdatum_eintrag` ist dieselbe Mechanik wie die Fläche der Ortsstruktur
+(`OrtsbaumAbleitung.flaecheEintrag`, `StammdatumEintragWieFlaecheTest` hält beide aneinander):
+das laufende Intervall endet am VORTAG, das neue erbt dessen Ende; ein Wert am Beginntag eines
+Intervalls ist eine Korrektur (aufgehoben, lesbar); derselbe Wert ändert nichts. Die
+Verwaltung prüft in `verwalten.pruefreihenfolge.stammdatum`: `archiviert` → `kein_stammdatum`
+(S1) → `flaeche_aus_struktur` (M4) → `wert_ungueltig` (Zahl größer als 0 — „nicht erhoben“ ist
+keine Zeile). ⚠ Eine **Bezugsfläche** wird nie hier gespeichert: sie wird aus der Ortsstruktur
+GELESEN (E17) — `GET /api/v1/bezugsflaechen`.
 
 **„keine Werte“ ist nie 0.** Ein Tag ohne Werte am Zustands-Kanal hat keine Ladezeit — nicht
 0 h (K4, B7). Eine zurückgenommene Fassung hat keinen Betrag — nicht 0 (C7, B14).

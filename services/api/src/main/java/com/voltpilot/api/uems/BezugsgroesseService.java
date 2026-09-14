@@ -54,20 +54,24 @@ public class BezugsgroesseService {
     private static final TypeReference<List<String>> TEXTE = new TypeReference<>() {};
 
     private final BezugsgroesseRepository repo;
+    private final BezugsflaecheLesemodell bezugsflaechen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
 
-    public BezugsgroesseService(BezugsgroesseRepository repo, PlatformTransactionManager transactionManager,
-            ObjectMapper json) {
+    public BezugsgroesseService(BezugsgroesseRepository repo, BezugsflaecheLesemodell bezugsflaechen,
+            PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.repo = repo;
+        this.bezugsflaechen = bezugsflaechen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
 
     // ------------------------------------------------------------------------------ lesen
 
+    /** Die Bezugsgrößen — und daneben die Bezugsflächen, die in der Ortsstruktur stehen (IP-6, gelesen). */
     public BezugsgroesseDto.Liste alle() {
-        return new BezugsgroesseDto.Liste(repo.alle().stream().map(BezugsgroesseService::darstellung).toList());
+        return new BezugsgroesseDto.Liste(repo.alle().stream().map(BezugsgroesseService::darstellung).toList(),
+                bezugsflaechen.alle());
     }
 
     public BezugsgroesseDto.Bezugsgroesse eine(UUID id) {
@@ -159,6 +163,126 @@ public class BezugsgroesseService {
                 w.freigeberName() == null ? null
                         : new BezugsgroesseDto.Person(w.freigeberName(), w.freigeberRolle(), w.freigeberArt()),
                 w.createdAt().atZone(zone).toOffsetDateTime());
+    }
+
+    // ------------------------------------------------------------ Stammdatum (E15, IP-6)
+
+    /**
+     * Die Intervalle eines Stammdatums, das AP-09 selbst hält — und, wenn {@code periodeArt} genannt ist, der
+     * Wert je Periode am Stichtag mit den Übergängen (S3), gerechnet von {@link BezugsdatenRegeln#stammdatum}.
+     * Eine Bezugsgröße, die kein Stammdatum ist, hat keine Gültigkeiten (422 {@code kein_stammdatum}).
+     */
+    public BezugsgroesseDto.Stammdatum stammdatum(UUID id, String periodeArt, LocalDate von, LocalDate bis) {
+        Zeile b = finde(id);
+        if (!BezugsgroesseRegeln.STAMMDATUM.equals(b.wertart())) {
+            throw new BezugsgroesseAbgelehnt(Ablehnung.KEIN_STAMMDATUM, Map.of("wertart", b.wertart()));
+        }
+        boolean mitPerioden = periodeArt != null || von != null || bis != null;
+        List<String> perioden = mitPerioden
+                ? BezugsflaecheLesemodell.perioden(periodeArt, von, bis, repo.vokabular().periodeArten())
+                : List.of();
+        return stammdatumDarstellung(b, perioden, mitPerioden ? periodeArt : null, von, bis);
+    }
+
+    /**
+     * E15/S4: ein Wert ab einem Tag — die Mechanik der Bezugsfläche: das laufende Intervall endet am Vortag, ein
+     * Wert am Beginntag eines Intervalls hebt es auf (Korrektur), derselbe Wert schreibt nichts. Erst beenden
+     * bzw. aufheben, dann eintragen (die Exklusion sieht jeden Zwischenstand); GENAU EIN Protokolleintrag
+     * {@code stammdatum_eingetragen} mit „gilt ab“ und „rückwirkend“. Die Bezugsfläche kommt hier nie an: eine
+     * Bezugsgröße in m² gibt es nicht (M4), und die Tabelle lehnt sie zusätzlich ab.
+     */
+    public BezugsgroesseDto.Stammdatum stammdatumEintragen(UUID id, String wertText, LocalDate gueltigAb,
+            ProtokollAkteur wer) {
+        UUID tenant = TenantContext.get();
+        schreibe(() -> transaktion.execute(s -> {
+            repo.kundenbereichSperren(tenant);
+            Zeile b = repo.sperre(id).orElseThrow(() -> BezugsgroesseAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+            pruefe(BezugsgroesseRegeln.stammdatum(entwurf(b), b.archiviertAm() != null, wertText, repo.vokabular()));
+            BigDecimal wert = BezugsgroesseRegeln.stammdatumWert(wertText);
+            List<BezugsgroesseRepository.StammdatumZeile> wirksame = repo.stammdaten(id).stream()
+                    .filter(z -> !z.aufgehoben())
+                    .toList();
+            BezugsdatenRegeln.StammdatumEintrag e = BezugsdatenRegeln.stammdatumEintrag(wirksame.stream()
+                    .map(z -> new BezugsdatenRegeln.Intervall(z.wert(), z.gueltigAb(), z.gueltigBis(), null))
+                    .toList(), gueltigAb, wert);
+            if (e.unveraendert()) {
+                return id;
+            }
+            Map<String, Object> alt = null;
+            BezugsdatenRegeln.Intervall ersetzt = e.beendet() != null ? e.beendet() : e.aufgehoben();
+            if (ersetzt != null) {
+                BezugsgroesseRepository.StammdatumZeile zeile = wirksame.stream()
+                        .filter(z -> z.gueltigAb().equals(ersetzt.gueltigAb()))
+                        .findFirst()
+                        .orElseThrow();
+                alt = intervallFelder(zeile.wert(), zeile.gueltigAb(), zeile.gueltigBis());
+                if (e.beendet() != null) {
+                    repo.stammdatumBeenden(zeile.id(), e.beendet().gueltigBis());
+                } else {
+                    repo.stammdatumAufheben(zeile.id());
+                }
+            }
+            repo.stammdatumEintragen(tenant, id, b.wertart(), b.einheit(), wert, e.neu().gueltigAb(),
+                    e.neu().gueltigBis(), wer.sub());
+            ZoneId zone = ZoneId.of(repo.zeitzone(id));
+            Map<String, Object> neu = intervallFelder(wert, e.neu().gueltigAb(), e.neu().gueltigBis());
+            neu.put("korrektur", e.korrektur());
+            boolean rueckwirkend = gueltigAb.isBefore(LocalDate.now(zone));
+            repo.protokoll(tenant, id, "stammdatum_eingetragen", alsJson(alt), alsJson(neu),
+                    gueltigAb.atStartOfDay(zone).toInstant(), rueckwirkend, wer);
+            return id;
+        }));
+        return stammdatum(id, null, null, null);
+    }
+
+    private BezugsgroesseDto.Stammdatum stammdatumDarstellung(Zeile b, List<String> perioden, String periodeArt,
+            LocalDate von, LocalDate bis) {
+        ZoneId zone = ZoneId.of(repo.zeitzone(b.id()));
+        List<BezugsgroesseRepository.StammdatumZeile> zeilen = repo.stammdaten(b.id());
+        List<BezugsgroesseDto.StammdatumIntervall> intervalle = zeilen.stream()
+                .map(z -> new BezugsgroesseDto.StammdatumIntervall(text(z.wert()), z.gueltigAb(), z.gueltigBis(),
+                        zeit(z.aufgehobenAm(), zone), zeit(z.createdAt(), zone), abzeichen(z, zone)))
+                .toList();
+        List<BezugsgroesseRepository.StammdatumZeile> wirksame = zeilen.stream().filter(z -> !z.aufgehoben()).toList();
+        List<BezugsgroesseDto.Stichtagwert> werte = new ArrayList<>();
+        if (!perioden.isEmpty()) {
+            BezugsdatenRegeln.Stammdatenstand stand = BezugsdatenRegeln.stammdatum(wirksame.stream()
+                    .map(z -> new BezugsdatenRegeln.Intervall(z.wert(), z.gueltigAb(), z.gueltigBis(),
+                            z.createdAt().atZone(zone).toLocalDate()))
+                    .toList(), perioden, periodeArt, b.name(), b.einheit());
+            for (String p : perioden) {
+                LocalDate stichtag = stand.stichtage().get(p);
+                BezugsgroesseRepository.StammdatumZeile gilt = wirksame.stream()
+                        .filter(z -> !stichtag.isBefore(z.gueltigAb())
+                                && (z.gueltigBis() == null || !stichtag.isAfter(z.gueltigBis())))
+                        .findFirst()
+                        .orElse(null);
+                werte.add(new BezugsgroesseDto.Stichtagwert(p, BezugsPeriode.spanneVon(p, periodeArt)[0], stichtag,
+                        text(stand.jePeriode().get(p)), null, gilt == null ? null : gilt.gueltigAb(),
+                        gilt == null ? null : gilt.createdAt().atZone(zone).toLocalDate(),
+                        gilt == null ? null : abzeichen(gilt, zone), stand.kennzeichen().get(p)));
+            }
+        }
+        return new BezugsgroesseDto.Stammdatum(b.id(), b.kennzeichen(), b.name(), b.einheit(), zone.getId(),
+                b.archiviertAm() == null, intervalle, periodeArt, von, bis, werte);
+    }
+
+    /** „rückwirkend (n Tage)“ — die Regel der Ortsstruktur (AP-02 E2), aufgerufen. */
+    private static String abzeichen(BezugsgroesseRepository.StammdatumZeile z, ZoneId zone) {
+        return OrtsbaumAbleitung.rueckwirkung(new OrtsbaumAbleitung.RueckwirkungEingang(
+                z.createdAt().atZone(zone).toOffsetDateTime(), z.gueltigAb(), z.gueltigBis(), zone, null)).abzeichen();
+    }
+
+    private static Map<String, Object> intervallFelder(BigDecimal wert, LocalDate ab, LocalDate bis) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("wert", text(wert));
+        m.put("gueltig_ab", ab.toString());
+        m.put("gueltig_bis", bis == null ? null : bis.toString());
+        return m;
+    }
+
+    private static OffsetDateTime zeit(Instant t, ZoneId zone) {
+        return t == null ? null : t.atZone(zone).toOffsetDateTime();
     }
 
     // ---------------------------------------------------------------------------- anlegen
@@ -283,6 +407,7 @@ public class BezugsgroesseService {
                 throw new BezugsgroesseAbgelehnt(Ablehnung.KENNZEICHEN_BELEGT, Map.of("feld", "kennzeichen"));
             }
             if (meldung.contains("\"bezugsgroesse_wert_bedeutung_fk\"") || meldung.contains("\"bezugsgroesse_wert_periode_fk\"")
+                    || meldung.contains("\"bezugsgroesse_stammdatum_bedeutung_fk\"")
                     || meldung.contains("hat Werte und ist nicht mehr änderbar")) {
                 throw BezugsgroesseAbgelehnt.von(Ablehnung.BEDEUTUNG_FEST);
             }

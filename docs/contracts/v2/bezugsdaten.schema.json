@@ -178,6 +178,19 @@
       "additionalProperties": { "type": "string", "minLength": 1 },
       "description": "C8: je Befund ein Kundensatz de-DE. Das Portal zeigt ihn, ergänzt um die Werte der Zeile; es erfindet keinen zweiten Wortlaut."
     },
+    "stammdatum_saetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "regel", "geaendert", "beginnt", "endet"],
+      "description": "S3 (AP-09 IP-6): die Kennzeichen-Sätze eines Übergangs in einer Periode. Platzhalter {bezeichnung}, {tag}, {alt}, {neu}, {einheit}; die Java-Regel hält ihre Vorlagen Zeichen für Zeichen daran.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "regel": { "type": "string", "minLength": 1 },
+        "geaendert": { "type": "string", "minLength": 1, "description": "Ein Wert vorher und nachher." },
+        "beginnt": { "type": "string", "minLength": 1, "description": "Vorher war kein Wert erhoben." },
+        "endet": { "type": "string", "minLength": 1, "description": "Ab dem Übergang ist kein Wert erhoben; {tag} ist der letzte Tag mit Wert." }
+      }
+    },
     "regeln": {
       "type": "object",
       "additionalProperties": false,
@@ -282,13 +295,14 @@
         "pruefreihenfolge": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["anlegen", "aendern", "archivieren", "loeschen"],
+          "required": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum"],
           "description": "Je Vorgang die Reihenfolge der Prüfungen — die ERSTE, die nicht besteht, ist die Ablehnung.",
           "properties": {
             "anlegen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "aendern": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "archivieren": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-            "loeschen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            "loeschen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "stammdatum": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "E15/S4 (AP-09 IP-6): ein Wert eines Stammdatums ab einem Tag." }
           }
         },
         "lesarten": {
@@ -461,8 +475,10 @@
         "einheit_unbekannt",
         "kennzeichen_format",
         "zeitraum_ungueltig",
+        "wert_ungueltig",
         "periode_passt_nicht_zur_wertart",
         "flaeche_aus_struktur",
+        "kein_stammdatum",
         "geltung_nicht_waehlbar",
         "geltung_unbekannt",
         "bedeutung_fest",
@@ -514,13 +530,14 @@
       "required": ["vorgang"],
       "description": "verwalten (M1–M6): der Eingang eines Vorgangs an einer Bezugsgröße.",
       "properties": {
-        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen"] },
+        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum"] },
         "entwurf": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
         "bestand": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
         "archiviert": { "type": "boolean" },
         "werte": { "type": "integer", "minimum": 0, "description": "Wie viele Wert-Zeilen (alle Fassungen) die Bezugsgröße trägt." },
         "waehlbar": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Die Geltungsbereich-Arten, deren Objekte gebaut sind (E1: „wählbar, sobald gebaut“)." },
-        "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." }
+        "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." },
+        "wert": { "type": ["string", "null"], "description": "stammdatum (E15): der Wert, wie die Schnittstelle ihn liest — Dezimaltext, nichts wird umgewandelt." }
       }
     },
 
@@ -739,6 +756,18 @@
       }
     },
 
+    "stammdatum_wechsel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "alt", "neu"],
+      "description": "S3: an `tag` (00:00) gilt ein anderer Wert als am Vortag; null heißt „nicht erhoben“, nie 0.",
+      "properties": {
+        "tag": { "$ref": "#/$defs/tag" },
+        "alt": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+        "neu": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }
+      }
+    },
+
     "intervall": {
       "type": "object",
       "additionalProperties": false,
@@ -847,7 +876,10 @@
         "kadenz_s": { "type": "integer", "minimum": 1, "description": "menge: die Kadenz der Reihe in Sekunden, wie die Verbrauchsregel sie braucht." },
         "vier_augen": { "type": "boolean", "description": "fassung (F3/E6): die Einstellung des Unternehmens." },
         "vorgaenge": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/vorgang" }, "description": "fassung: die Vorgänge in der Reihenfolge, in der sie geschehen sind." },
-        "intervalle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/intervall" }, "description": "stammdatum (E17)." },
+        "intervalle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/intervall" }, "description": "stammdatum (E17) · stammdatum_eintrag (S4): die wirksamen Intervalle." },
+        "bezeichnung": { "type": "string", "minLength": 1, "description": "stammdatum (S3): wie das Stammdatum im Kennzeichen-Satz heißt („Fläche“)." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "stammdatum_eintrag (S4): der Tag, ab dem der neue Wert gilt." },
+        "wert": { "$ref": "#/$defs/betrag", "description": "stammdatum_eintrag (S4): der neue Wert." },
         "perioden": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "stammdatum: die Perioden, für die der Wert gefragt ist." },
         "zustand_gewaehlt": { "type": "string", "minLength": 1, "description": "kanal (K): der Zustand, dessen Dauer gezählt wird." },
         "zustand_am_anfang": { "type": ["string", "null"], "description": "kanal: der Zustand am Periodenanfang = letzter Wechsel davor; null heißt „vor dem ersten Wechsel wurde nicht gemessen“." },
@@ -912,6 +944,30 @@
           "description": "stammdatum: der Tag, an dem gelesen wurde — der LETZTE Tag der Periode (E17)."
         },
         "rueckwirkend_tage": { "type": "integer", "minimum": 0, "description": "stammdatum: Tage zwischen „gültig ab“ und dem Eintrag; 0 heißt „nicht rückwirkend“." },
+        "wechsel_je_periode": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/stammdatum_wechsel" } },
+          "description": "stammdatum (S3): je Periode die Übergänge nach ihrem ersten Tag bis einschließlich zum Stichtag, nach Tag sortiert."
+        },
+        "kennzeichen_je_periode": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "description": "stammdatum (S3): je Periode der Satz zu jedem Übergang (`stammdatum_saetze`), in derselben Reihenfolge — Vertrag nach Text UND Reihenfolge."
+        },
+        "eintrag": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unveraendert", "beendet", "aufgehoben", "neu"],
+          "description": "stammdatum_eintrag (S4): was der neue Wert an den Intervallen ändert.",
+          "properties": {
+            "unveraendert": { "type": "boolean", "description": "An dem Tag gilt schon genau dieser Wert — nichts wird geschrieben." },
+            "beendet": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das laufende Intervall mit seinem neuen letzten Tag (dem Vortag)." },
+            "aufgehoben": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das Intervall, das am selben Tag begann (Korrektur) — es bleibt lesbar." },
+            "neu": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das neue Intervall." }
+          }
+        },
         "minuten_im_zustand": { "type": "integer", "minimum": 0, "description": "kanal: die gemessene Zeit im gewählten Zustand." },
         "abdeckung_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "kanal: gemessene Zeit ÷ Periodenlänge. ⚠ Zeitbasiert — nicht die wertbasierte Abdeckung der Verbrauchsregel." },
         "gemessene_stunden": { "$ref": "#/$defs/betrag", "description": "kanal: wie viele Stunden der Periode überhaupt gemessen wurden." },
@@ -1030,7 +1086,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal", "verwalten", "csv"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "verwalten", "csv"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

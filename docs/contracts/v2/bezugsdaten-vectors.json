@@ -201,6 +201,13 @@
     "datei_zu_gross": "Die Datei ist zu groß.",
     "kodierung_unlesbar": "Die Datei lässt sich nicht lesen."
   },
+  "stammdatum_saetze": {
+    "herkunft": "UEMS AP-09 §4.3 S3 — nachgetragen mit AP-09 IP-6 am 14.09.2026",
+    "regel": "Ändert sich ein Stammdatum NACH dem ersten Tag einer Periode (bis einschließlich zum Stichtag), nennt die Periode jeden Übergang in dieser Form. Gelesen wird trotzdem nur der Stichtag. `{tag}` ist der Tag des Übergangs — beim Ende der LETZTE Tag mit Wert; die Zahl steht wie jede angezeigte Zahl (Tausenderpunkt, Komma), ungerundet.",
+    "geaendert": "{bezeichnung} geändert am {tag} ({alt} → {neu} {einheit})",
+    "beginnt": "{bezeichnung} erst ab {tag} erhoben ({neu} {einheit})",
+    "endet": "{bezeichnung} nur bis {tag} erhoben ({alt} {einheit})"
+  },
   "regeln": {
     "pruefreihenfolge": [
       "zahl",
@@ -221,7 +228,7 @@
     "vier_augen_vorgabe": false
   },
   "verwalten": {
-    "herkunft": "UEMS AP-09 §4.2 M1–M6, §4.10 Invariante 6, §4.11 (Rechte, W8), §6.2 (Fehlerform `{code, message, Fakten}`, 400 Form, 422 Regel) — nachgetragen mit AP-09 IP-5 am 13.09.2026",
+    "herkunft": "UEMS AP-09 §4.2 M1–M6, §4.10 Invariante 6, §4.11 (Rechte, W8), §6.2 (Fehlerform `{code, message, Fakten}`, 400 Form, 422 Regel) — nachgetragen mit AP-09 IP-5 am 13.09.2026 · E15/S4 (Wert eines Stammdatums ab einem Tag) nachgetragen mit AP-09 IP-6 am 14.09.2026",
     "kennzeichen": {
       "praefix": "BZ-",
       "stellen": 4,
@@ -273,6 +280,12 @@
       ],
       "loeschen": [
         "hat_werte"
+      ],
+      "stammdatum": [
+        "archiviert",
+        "wertart",
+        "flaeche",
+        "wert"
       ]
     },
     "lesarten": [
@@ -311,6 +324,12 @@
         "satz": "Der Zeitraum endet vor seinem Beginn."
       },
       {
+        "code": "wert_ungueltig",
+        "status": 400,
+        "regel": "E15 · S4",
+        "satz": "Bitte geben Sie den Wert als Zahl größer als 0 an, mit Punkt und höchstens sechs Nachkommastellen, z. B. 180."
+      },
+      {
         "code": "periode_passt_nicht_zur_wertart",
         "status": 422,
         "regel": "M1",
@@ -321,6 +340,12 @@
         "status": 422,
         "regel": "M4 · E17",
         "satz": "Flächen pflegen Sie am Gebäude."
+      },
+      {
+        "code": "kein_stammdatum",
+        "status": 422,
+        "regel": "S1 · E15",
+        "satz": "Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen."
       },
       {
         "code": "geltung_nicht_waehlbar",
@@ -1995,15 +2020,19 @@
     ],
     "csv": [
       "java"
+    ],
+    "stammdatum_eintrag": [
+      "java"
     ]
   },
   "zwillinge_grund": {
     "menge": "Die Menge eines Ablesezeitraums rechnet die Verbrauchsregel AP-08 (VerbrauchRegeln.mengeZaehlerstand). Sie lebt in Java und Python, nicht im Portal — das Portal zeigt die Zahl, es bildet sie nicht.",
     "fassung": "Fassungen, Vier-Augen und Rücknahme sind der Schreibweg des Servers (F1–F4, C7). Das Portal zeigt den Verlauf, es bildet ihn nicht.",
-    "stammdatum": "Der Stichtag eines zeitgültigen Stammdatums wird im Lesemodell gelesen (E17); das Portal bekommt den Wert fertig.",
+    "stammdatum": "Der Stichtag eines zeitgültigen Stammdatums und die Übergänge in einer Periode (S3) werden im Lesemodell gelesen (E17); das Portal bekommt Wert und Kennzeichen fertig.",
     "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht.",
     "verwalten": "Anlegen, Ändern, Archivieren und Löschen einer Bezugsgröße sind der Schreibweg des Servers (M1–M6 brauchen die gespeicherten Werte und die je belegten Kennzeichen). Das Portal zeigt die Ablehnung mit ihrem Kundensatz — den geschlossenen Satz `verwalten.ablehnungen` prüft der TS-Test gegen `bezugsgroesse.ts`.",
-    "csv": "Die Datei liest der Server beim Hochladen (C1, E14 Multipart); das Portal bekommt Kodierung, Trennzeichen, Kopfzeile und Zeilen fertig und zeigt sie — es liest keine Datei selbst."
+    "csv": "Die Datei liest der Server beim Hochladen (C1, E14 Multipart); das Portal bekommt Kodierung, Trennzeichen, Kopfzeile und Zeilen fertig und zeigt sie — es liest keine Datei selbst.",
+    "stammdatum_eintrag": "Ein Wert eines Stammdatums ab einem Tag ist der Schreibweg des Servers (E15/S4, `PUT /api/v1/bezugsgroessen/{id}/stammdatum`); das Portal schickt Wert und Tag und zeigt die Intervalle, die zurückkommen."
   },
   "_abweichungen": [
     {
@@ -3634,7 +3663,9 @@
               "2026-12",
               "2027-01"
             ],
-            "periode_art": "monat"
+            "periode_art": "monat",
+            "bezeichnung": "Fläche",
+            "einheit": "m²"
           },
           "ergebnis": {
             "je_periode": {
@@ -3648,7 +3679,17 @@
               "2027-01": "2027-01-31"
             },
             "rueckwirkend_tage": 14,
-            "ereignisse": []
+            "ereignisse": [],
+            "wechsel_je_periode": {
+              "2026-10": [],
+              "2026-12": [],
+              "2027-01": []
+            },
+            "kennzeichen_je_periode": {
+              "2026-10": [],
+              "2026-12": [],
+              "2027-01": []
+            }
           }
         },
         {
@@ -3667,7 +3708,9 @@
               "2026-09",
               "2026-10"
             ],
-            "periode_art": "monat"
+            "periode_art": "monat",
+            "bezeichnung": "Fläche",
+            "einheit": "m²"
           },
           "ergebnis": {
             "je_periode": {
@@ -3679,7 +3722,15 @@
               "2026-10": "2026-10-31"
             },
             "rueckwirkend_tage": 0,
-            "ereignisse": []
+            "ereignisse": [],
+            "wechsel_je_periode": {
+              "2026-09": [],
+              "2026-10": []
+            },
+            "kennzeichen_je_periode": {
+              "2026-09": [],
+              "2026-10": []
+            }
           }
         },
         {
@@ -3737,6 +3788,472 @@
           "ergebnis": {
             "ablehnung": "flaeche_aus_struktur"
           }
+        },
+        {
+          "regel": "stammdatum",
+          "name": "S3: die Woche über den Jahreswechsel enthält den Anbau — gelesen wird der Stichtag (3 400 m²), genannt wird der Übergang",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": "2027-01-15"
+              }
+            ],
+            "perioden": [
+              "2026-W53"
+            ],
+            "periode_art": "woche",
+            "bezeichnung": "Fläche",
+            "einheit": "m²"
+          },
+          "ergebnis": {
+            "je_periode": {
+              "2026-W53": "3400"
+            },
+            "stichtage": {
+              "2026-W53": "2027-01-03"
+            },
+            "rueckwirkend_tage": 14,
+            "ereignisse": [],
+            "wechsel_je_periode": {
+              "2026-W53": [
+                {
+                  "tag": "2027-01-01",
+                  "alt": "3100",
+                  "neu": "3400"
+                }
+              ]
+            },
+            "kennzeichen_je_periode": {
+              "2026-W53": [
+                "Fläche geändert am 01.01.2027 (3.100 → 3.400 m²)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "stammdatum",
+          "name": "S3: das Jahr 2026 beginnt ohne Fläche, das Jahr 2027 beginnt MIT dem Anbau — ein Übergang am ersten Tag liegt nicht in der Periode",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": "2027-01-15"
+              }
+            ],
+            "perioden": [
+              "2026",
+              "2027"
+            ],
+            "periode_art": "jahr",
+            "bezeichnung": "Fläche",
+            "einheit": "m²"
+          },
+          "ergebnis": {
+            "je_periode": {
+              "2026": "3100",
+              "2027": "3400"
+            },
+            "stichtage": {
+              "2026": "2026-12-31",
+              "2027": "2027-12-31"
+            },
+            "rueckwirkend_tage": 14,
+            "ereignisse": [],
+            "wechsel_je_periode": {
+              "2026": [
+                {
+                  "tag": "2026-10-01",
+                  "alt": null,
+                  "neu": "3100"
+                }
+              ],
+              "2027": []
+            },
+            "kennzeichen_je_periode": {
+              "2026": [
+                "Fläche erst ab 01.10.2026 erhoben (3.100 m²)"
+              ],
+              "2027": []
+            }
+          }
+        },
+        {
+          "regel": "stammdatum",
+          "name": "S3: endet eine Fläche vor dem Stichtag ohne Nachfolger, ist der Stichtag „keine Werte“ — und der Satz sagt, bis wann sie galt",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              }
+            ],
+            "perioden": [
+              "2026-W53"
+            ],
+            "periode_art": "woche",
+            "bezeichnung": "Fläche",
+            "einheit": "m²"
+          },
+          "ergebnis": {
+            "je_periode": {
+              "2026-W53": null
+            },
+            "stichtage": {
+              "2026-W53": "2027-01-03"
+            },
+            "rueckwirkend_tage": 0,
+            "ereignisse": [],
+            "wechsel_je_periode": {
+              "2026-W53": [
+                {
+                  "tag": "2027-01-01",
+                  "alt": "3100",
+                  "neu": null
+                }
+              ]
+            },
+            "kennzeichen_je_periode": {
+              "2026-W53": [
+                "Fläche nur bis 31.12.2026 erhoben (3.100 m²)"
+              ]
+            }
+          }
+        },
+        {
+          "regel": "stammdatum_eintrag",
+          "name": "S4: der Anbau ab 01.01.2027 beendet 3 100 m² am Vortag — dieselbe Mechanik wie die Fläche der Ortsstruktur",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            ],
+            "gueltig_ab": "2027-01-01",
+            "wert": "3400"
+          },
+          "ergebnis": {
+            "eintrag": {
+              "unveraendert": false,
+              "beendet": {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              "aufgehoben": null,
+              "neu": {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            }
+          }
+        },
+        {
+          "regel": "stammdatum_eintrag",
+          "name": "S4: ein Wert am Tag, an dem schon einer beginnt, ist eine Korrektur — das Intervall wird aufgehoben, nie umgeschrieben",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            ],
+            "gueltig_ab": "2027-01-01",
+            "wert": "3450"
+          },
+          "ergebnis": {
+            "eintrag": {
+              "unveraendert": false,
+              "beendet": null,
+              "aufgehoben": {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              },
+              "neu": {
+                "betrag": "3450",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            }
+          }
+        },
+        {
+          "regel": "stammdatum_eintrag",
+          "name": "S4: ein Wert mitten im laufenden Intervall erbt dessen Ende — auch das vor dem geplanten Anbau",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            ],
+            "gueltig_ab": "2026-11-01",
+            "wert": "3200"
+          },
+          "ergebnis": {
+            "eintrag": {
+              "unveraendert": false,
+              "beendet": {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-10-31",
+                "eingetragen_am": null
+              },
+              "aufgehoben": null,
+              "neu": {
+                "betrag": "3200",
+                "gueltig_ab": "2026-11-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              }
+            }
+          }
+        },
+        {
+          "regel": "stammdatum_eintrag",
+          "name": "S4: vor dem ersten Intervall endet der neue Wert am Vortag des nächsten",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            ],
+            "gueltig_ab": "2026-09-01",
+            "wert": "3000"
+          },
+          "ergebnis": {
+            "eintrag": {
+              "unveraendert": false,
+              "beendet": null,
+              "aufgehoben": null,
+              "neu": {
+                "betrag": "3000",
+                "gueltig_ab": "2026-09-01",
+                "gueltig_bis": "2026-09-30",
+                "eingetragen_am": null
+              }
+            }
+          }
+        },
+        {
+          "regel": "stammdatum_eintrag",
+          "name": "S4: gilt am Tag schon genau dieser Wert (numerisch verglichen), ändert sich nichts",
+          "eingang": {
+            "intervalle": [
+              {
+                "betrag": "3100",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31",
+                "eingetragen_am": null
+              },
+              {
+                "betrag": "3400",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null,
+                "eingetragen_am": null
+              }
+            ],
+            "gueltig_ab": "2027-01-15",
+            "wert": "3400.0"
+          },
+          "ergebnis": {
+            "eintrag": {
+              "unveraendert": true,
+              "beendet": null,
+              "aufgehoben": null,
+              "neu": null
+            }
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "E15: 180 Mitarbeitende am Unternehmen sind ein Stammdatum mit Gültigkeit ab einem Tag",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-0006",
+                "name": "Mitarbeitende",
+                "wertart": "stammdatum",
+                "einheit": "Personen",
+                "periode_art": null,
+                "geltung_art": "unternehmen",
+                "geltung_id": "U"
+              },
+              "archiviert": false,
+              "wert": "180"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "S1: ein Periodenwert (BZ-1) hat Fassungen, keine Gültigkeit",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-1",
+                "name": "Produktionsmenge Spritzguss",
+                "wertart": "periodenwert",
+                "einheit": "kg",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-1"
+              },
+              "archiviert": false,
+              "wert": "312400"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "kein_stammdatum"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "M4/E17: eine Fläche wird nie hier eingetragen — auch nicht als Stammdatum, das es gar nicht geben dürfte",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-0007",
+                "name": "Bezugsfläche Halle 2",
+                "wertart": "stammdatum",
+                "einheit": "m²",
+                "periode_art": null,
+                "geltung_art": "gebaeude",
+                "geltung_id": "G-2"
+              },
+              "archiviert": false,
+              "wert": "3400"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "flaeche_aus_struktur"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "E15: „nicht erhoben“ ist keine Zeile — 0 ist kein Wert eines Stammdatums",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-0006",
+                "name": "Mitarbeitende",
+                "wertart": "stammdatum",
+                "einheit": "Personen",
+                "periode_art": null,
+                "geltung_art": "unternehmen",
+                "geltung_id": "U"
+              },
+              "archiviert": false,
+              "wert": "0"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "wert_ungueltig"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "E15: der Wert reist als Dezimaltext mit Punkt — „180,5“ wird nicht geraten",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-0006",
+                "name": "Mitarbeitende",
+                "wertart": "stammdatum",
+                "einheit": "Personen",
+                "periode_art": null,
+                "geltung_art": "unternehmen",
+                "geltung_id": "U"
+              },
+              "archiviert": false,
+              "wert": "180,5"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "wert_ungueltig"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "M6: eine archivierte Bezugsgröße bekommt keinen neuen Wert — die Prüfung spricht vor der Wertart",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "stammdatum",
+              "bestand": {
+                "kennzeichen": "BZ-1",
+                "name": "Produktionsmenge Spritzguss",
+                "wertart": "periodenwert",
+                "einheit": "kg",
+                "periode_art": "monat",
+                "geltung_art": "prozess",
+                "geltung_id": "P-1"
+              },
+              "archiviert": true,
+              "wert": "0"
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "archiviert"
+          }
         }
       ],
       "beschreibend": {
@@ -3765,7 +4282,9 @@
       },
       "annahmen": [
         "Uhrzeit des Eintrags 14:40 aus AP-02 §4.4; alle Flächen, Gültigkeiten und der Oktober-Verbrauch sind Referenzwerte.",
-        "Der Name „Bezugsfläche Halle 2“ der Verwalten-Prüfung ist eine Annahme (AP-09 IP-5)."
+        "Der Name „Bezugsfläche Halle 2“ der Verwalten-Prüfung ist eine Annahme (AP-09 IP-5).",
+        "Die Prüfungen zu S3/S4 nehmen die Flächen von Halle 2; der Wert 3 450 m² (Korrektur), 3 200 m² (ab 01.11.2026) und 3 000 m² (ab 01.09.2026) sind Annahmen der Mechanik (AP-09 IP-6).",
+        "Die Prüfungen zu Mitarbeitenden (E15) nehmen die 180 Mitarbeitenden des Unternehmens aus dem Referenzunternehmen; Kennzeichen BZ-0006/BZ-0007 und die Namen sind Annahmen (AP-09 IP-6)."
       ]
     },
     {

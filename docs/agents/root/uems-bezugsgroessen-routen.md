@@ -50,6 +50,8 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
 - **Rechte:** `bezugsgroesse.verwalten` (Nachtrag AP-09 §4.11 / W8, `U U S - - - -`, darf-Fälle in
   `rechte-vectors.json`) für die Schreibwege, `messwerte.ansehen` fürs Lesen — keine Durchsetzung,
   fremd = 404 `nicht_gefunden`. `ablesung.erfassen` bekommt seine Zeile erst mit IP-8.
+- **Seit IP-6:** `bezugsflaechen` an der Liste, `GET/PUT …/{id}/stammdatum` und zwei weitere Ablehnungen
+  (`wert_ungueltig`, `kein_stammdatum`) — `uems-bezugsflaechen-stammdaten.md`.
 - **Nicht gebaut:** Werte schreiben (IP-7 — die Tests schreiben Fassungen direkt in die Tabelle),
   keine Art-Spalte (Vokabular seit 13.09.2026 im Block `arten`, noch ohne Spalte), kein Import,
   keine Kanalbindung (M5 = IP-17), keine Portal-Fläche.

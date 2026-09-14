@@ -2416,6 +2416,70 @@ export interface BilanzRestAngelegt {
 /** Die Ablehnungen der Bilanz-Schnittstelle (`uems/BilanzAbgelehnt`, OpenAPI `BilanzFehler`). */
 export type BilanzFehlerCode = 'anfrage_ungueltig' | 'rest_ohne_hauptzaehler';
 
+/**
+ * Eine Bezugsfläche aus der Ortsstruktur als Bezugsgröße (AP-09 IP-6, E17): GELESEN aus
+ * `flaeche_gueltigkeit`, ohne ID und Kennzeichen einer Bezugsgröße. `schreibbar` ist immer
+ * false — geändert wird sie am Gebäude; `pflegen` sagt es in Kundensprache.
+ */
+export interface Bezugsflaeche {
+  name: string;
+  wertart: 'stammdatum';
+  einheit: 'm²';
+  herkunft_art: 'stammdatum_ap02';
+  geltung_art: 'standort' | 'gebaeude' | 'bereich';
+  geltung_id: string;
+  geltung_kennzeichen: string | null;
+  geltung_name: string;
+  schreibbar: false;
+  pflegen: string;
+}
+
+/**
+ * Der Wert eines Stammdatums für EINE Periode am Stichtag = ihrem letzten Tag (E17).
+ * `betrag` null heißt „nicht erhoben“, nie 0; `kennzeichen` nennt jeden Übergang in der Periode (S3).
+ */
+export interface BezugsgroesseStichtagwert {
+  periode: string;
+  von: string;
+  stichtag: string;
+  betrag: string | null;
+  quelle: 'eigen' | 'aus_gebaeuden_summiert' | null;
+  gilt_ab: string | null;
+  eingetragen_am: string | null;
+  abzeichen: string | null;
+  kennzeichen: string[];
+}
+
+/** Die Antwort von `GET /api/v1/bezugsflaechen?periode_art&von&bis`. */
+export interface Bezugsflaechen {
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr';
+  von: string;
+  bis: string;
+  bezugsflaechen: { bezugsflaeche: Bezugsflaeche; perioden: BezugsgroesseStichtagwert[] }[];
+}
+
+/** Die Antwort von `GET/PUT /api/v1/bezugsgroessen/{id}/stammdatum` (E15). */
+export interface BezugsgroesseStammdatum {
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  name: string;
+  einheit: string;
+  zeitzone: string;
+  schreibbar: boolean;
+  intervalle: {
+    wert: string;
+    gueltig_ab: string;
+    gueltig_bis: string | null;
+    aufgehoben_am: string | null;
+    eingetragen_am: string;
+    abzeichen: string | null;
+  }[];
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr' | null;
+  von: string | null;
+  bis: string | null;
+  perioden: BezugsgroesseStichtagwert[];
+}
+
 /** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
 export interface BezugsgroesseWerte {
   bezugsgroesse_id: string;
@@ -5972,8 +6036,31 @@ export const api = {
   anlageRestAnlegen: (siteId: string, body: { hauptzaehler_id: string; name?: string }) =>
     request<BilanzRestAngelegt>(`/api/v1/sites/${siteId}/bilanz/rest`, { method: 'POST', body: JSON.stringify(body) }),
 
-  /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5). */
-  bezugsgroessen: () => request<{ bezugsgroessen: Bezugsgroesse[] }>(`/api/v1/bezugsgroessen`),
+  /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5) — daneben die Bezugsflächen der Ortsstruktur (IP-6). */
+  bezugsgroessen: () =>
+    request<{ bezugsgroessen: Bezugsgroesse[]; bezugsflaechen: Bezugsflaeche[] }>(`/api/v1/bezugsgroessen`),
+
+  /** Die Bezugsflächen mit ihrem Wert je Periode am Stichtag (E17, S3) — nur lesen, es gibt keinen Schreibweg. */
+  bezugsflaechen: (periodeArt: 'tag' | 'woche' | 'monat' | 'jahr', von: string, bis: string) =>
+    request<Bezugsflaechen>(
+      `/api/v1/bezugsflaechen?periode_art=${periodeArt}&von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`,
+    ),
+
+  /** Die Intervalle eines Stammdatums (E15); mit Periode zusätzlich der Wert je Periode am Stichtag. */
+  bezugsgroesseStammdatum: (id: string, periode?: { periodeArt: 'tag' | 'woche' | 'monat' | 'jahr'; von: string; bis: string }) =>
+    request<BezugsgroesseStammdatum>(
+      `/api/v1/bezugsgroessen/${id}/stammdatum` +
+        (periode
+          ? `?periode_art=${periode.periodeArt}&von=${encodeURIComponent(periode.von)}&bis=${encodeURIComponent(periode.bis)}`
+          : ''),
+    ),
+
+  /** Ein Wert eines Stammdatums ab einem Tag (E15/S4); eine Ablehnung trägt `code` aus `bezugsgroesse.ts`. */
+  bezugsgroesseStammdatumEintragen: (id: string, body: { wert: string; gueltig_ab: string }) =>
+    request<BezugsgroesseStammdatum>(`/api/v1/bezugsgroessen/${id}/stammdatum`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   bezugsgroesse: (id: string) => request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}`),
 

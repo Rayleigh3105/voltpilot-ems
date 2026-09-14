@@ -9332,6 +9332,88 @@ paths:
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}/stammdatum:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bezugsgroessen]
+      summary: Die Intervalle eines Stammdatums (E15) - und auf Wunsch der Wert je Periode am Stichtag (E17, S3).
+      description: >
+        Recht `messwerte.ansehen`. Ein Stammdatum, das AP-09 selbst hält (Mitarbeitende u. a.),
+        hat Gültigkeiten statt Fassungen: `intervalle` zeigt jedes, aufgehobene
+        (Korrekturen) eingeschlossen, mit dem Abzeichen „rückwirkend (n Tage)“. Mit
+        `periode_art`, `von` und `bis` (alle drei) kommt je Periode, die den Zeitraum
+        berührt, der Wert am Stichtag = dem LETZTEN Tag der Periode; ändert sich der Wert
+        nach dem ersten Tag der Periode, nennt `kennzeichen` jeden Übergang (Sätze
+        `stammdatum_saetze` des Bezugsdaten-Vertrags). Ohne gültiges Intervall am Stichtag ist
+        `betrag` null, nie 0. Eine Bezugsgröße, die kein Stammdatum ist = 422
+        `kein_stammdatum`.
+      parameters:
+        - { name: periode_art, in: query, required: false, schema: { type: string, enum: [tag, woche, monat, jahr] } }
+        - { name: von, in: query, required: false, schema: { type: string, format: date }, description: "Erster Tag (einschließlich)." }
+        - { name: bis, in: query, required: false, schema: { type: string, format: date }, description: "Letzter Tag (EINSCHLIESSLICH)." }
+      responses:
+        "200":
+          description: Das Stammdatum.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseStammdatum" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+    put:
+      tags: [bezugsgroessen]
+      summary: Ein Wert eines Stammdatums ab einem Tag (E15/S4) - die Mechanik der Bezugsfläche.
+      description: >
+        Recht `bezugsgroesse.eingeben`. Das laufende Intervall endet am VORTAG, das neue erbt
+        dessen Ende; ein Wert am Tag, an dem schon eines beginnt, ist eine Korrektur (das
+        alte wird aufgehoben und bleibt lesbar); gilt am Tag schon genau dieser Wert, wird
+        nichts geschrieben (Regel `stammdatum_eintrag`). Genau ein Protokolleintrag
+        `stammdatum_eingetragen` mit „gilt ab“ und „rückwirkend“. Prüfreihenfolge
+        `verwalten.pruefreihenfolge.stammdatum`: 409 `archiviert` → 422 `kein_stammdatum` →
+        422 `flaeche_aus_struktur` → 400 `wert_ungueltig`. Eine Bezugsfläche wird hier NIE
+        geschrieben - sie steht in der Ortsstruktur (`PUT /api/v1/orte/{id}/flaeche`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsgroesseStammdatumAnfrage" }
+      responses:
+        "200":
+          description: Das Stammdatum nach dem Eintrag (ohne Perioden).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseStammdatum" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsflaechen:
+    get:
+      tags: [bezugsgroessen]
+      summary: Die Bezugsflächen aus der Ortsstruktur als Bezugsgrößen - Wert je Periode am Stichtag (E17, S3).
+      description: >
+        Recht `messwerte.ansehen`. GELESEN aus `flaeche_gueltigkeit` (AP-02), nie kopiert: jedes
+        Objekt mit eigener Fläche und jeder Standort, an dem ein Gebäude mit Fläche hing (dann
+        „aus Gebäuden summiert“). Je Periode, die den Zeitraum berührt, der Wert am Stichtag =
+        dem LETZTEN Tag der Periode; ein Übergang nach dem ersten Tag der Periode steht als
+        Kennzeichen („Fläche geändert am 01.01.2027 (3.100 → 3.400 m²)“), gelesen wird nur der
+        Stichtag. Ohne gültige Fläche am Stichtag ist `betrag` null, nie 0. Diese Route hat
+        KEINEN Schreibweg (405): geändert wird eine Fläche über `PUT /api/v1/orte/{id}/flaeche`.
+      parameters:
+        - { name: periode_art, in: query, required: true, schema: { type: string, enum: [tag, woche, monat, jahr] } }
+        - { name: von, in: query, required: true, schema: { type: string, format: date }, description: "Erster Tag (einschließlich)." }
+        - { name: bis, in: query, required: true, schema: { type: string, format: date }, description: "Letzter Tag (EINSCHLIESSLICH)." }
+      responses:
+        "200":
+          description: Die Bezugsflächen mit ihren Werten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Bezugsflaechen" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/unternehmen/kostenstellen:
     get:
       tags: [kostenstellen-prozesse]
@@ -18396,20 +18478,21 @@ components:
         Die Ablehnung der Bezugsgrößen-Schnittstelle - der geschlossene Satz
         `verwalten.ablehnungen` des Bezugsdaten-Vertrags: 400 `anfrage_ungueltig`
         (`feld`), `wort_unbekannt` (`feld`, `erlaubt`), `einheit_unbekannt`,
-        `kennzeichen_format`, `zeitraum_ungueltig`; 404 `nicht_gefunden`; 409
-        `kennzeichen_belegt`, `archiviert`, `hat_werte` (`werte`); 422
-        `periode_passt_nicht_zur_wertart`, `flaeche_aus_struktur`,
-        `geltung_nicht_waehlbar`, `geltung_unbekannt`, `bedeutung_fest` (`felder`).
+        `kennzeichen_format`, `zeitraum_ungueltig`, `wert_ungueltig` (`feld`); 404
+        `nicht_gefunden`; 409 `kennzeichen_belegt`, `archiviert`, `hat_werte` (`werte`); 422
+        `periode_passt_nicht_zur_wertart`, `flaeche_aus_struktur`, `kein_stammdatum`
+        (`wertart`), `geltung_nicht_waehlbar`, `geltung_unbekannt`, `bedeutung_fest` (`felder`).
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, wort_unbekannt, einheit_unbekannt, kennzeichen_format, zeitraum_ungueltig, periode_passt_nicht_zur_wertart, flaeche_aus_struktur, geltung_nicht_waehlbar, geltung_unbekannt, bedeutung_fest, kennzeichen_belegt, archiviert, hat_werte, nicht_gefunden]
+          enum: [anfrage_ungueltig, wort_unbekannt, einheit_unbekannt, kennzeichen_format, zeitraum_ungueltig, wert_ungueltig, periode_passt_nicht_zur_wertart, flaeche_aus_struktur, kein_stammdatum, geltung_nicht_waehlbar, geltung_unbekannt, bedeutung_fest, kennzeichen_belegt, archiviert, hat_werte, nicht_gefunden]
         message: { type: string }
         feld: { type: string }
         erlaubt: { type: array, items: { type: string } }
         felder: { type: array, items: { type: string, enum: [wertart, einheit, periode_art, geltung_art, geltung_id] } }
         werte: { type: integer }
+        wertart: { type: string, description: "`kein_stammdatum`: die Wertart der Bezugsgröße." }
     BezugsgroesseAnfrage:
       type: object
       additionalProperties: false
@@ -18439,14 +18522,98 @@ components:
         geltung_art: { type: string, enum: [unternehmen, standort, gebaeude, bereich, prozess, kostenstelle, messstelle] }
         geltung_id: { type: string, format: uuid }
         geltung_name: { type: string, description: "Name des Objekts; bei einer Messstelle ohne Namen ihr Kennzeichen." }
-        hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile? Dann gilt M1 und sie ist nicht löschbar (M6)." }
+        hat_werte: { type: boolean, description: "Trägt sie eine Wert-Zeile oder ein Intervall eines Stammdatums? Dann gilt M1 und sie ist nicht löschbar (M6)." }
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
     BezugsgroesseListe:
       type: object
-      required: [bezugsgroessen]
+      required: [bezugsgroessen, bezugsflaechen]
       properties:
         bezugsgroessen: { type: array, items: { $ref: "#/components/schemas/Bezugsgroesse" } }
+        bezugsflaechen:
+          type: array
+          description: "AP-09 IP-6: die Bezugsflächen der Ortsstruktur - gelesen, ohne ID und Kennzeichen einer Bezugsgröße."
+          items: { $ref: "#/components/schemas/Bezugsflaeche" }
+    Bezugsflaeche:
+      type: object
+      description: >
+        Eine Bezugsfläche aus der Ortsstruktur (`flaeche_gueltigkeit`) als Bezugsgröße (E17).
+        `schreibbar` ist immer false - geändert wird sie am Gebäude; `pflegen` sagt es.
+      required: [name, wertart, einheit, herkunft_art, geltung_art, geltung_id, geltung_kennzeichen, geltung_name, schreibbar, pflegen]
+      properties:
+        name: { type: string }
+        wertart: { type: string, enum: [stammdatum] }
+        einheit: { type: string, enum: ["m²"] }
+        herkunft_art: { type: string, enum: [stammdatum_ap02] }
+        geltung_art: { type: string, enum: [standort, gebaeude, bereich] }
+        geltung_id: { type: string, format: uuid }
+        geltung_kennzeichen: { type: string, nullable: true }
+        geltung_name: { type: string }
+        schreibbar: { type: boolean, enum: [false] }
+        pflegen: { type: string, description: "Der Satz von `flaeche_aus_struktur`." }
+    BezugsgroesseStichtagwert:
+      type: object
+      description: >
+        Der Wert eines Stammdatums für EINE Periode am Stichtag = ihrem letzten Tag (E17).
+        `betrag` null = nicht erhoben, nie 0. `kennzeichen`: jeder Übergang nach dem ersten Tag
+        der Periode (S3). `quelle` nur bei einer Bezugsfläche.
+      required: [periode, von, stichtag, betrag, quelle, gilt_ab, eingetragen_am, abzeichen, kennzeichen]
+      properties:
+        periode: { type: string, description: "Der Schlüssel der Periode (2026-10, 2026-W53, 2026, 2026-10-31)." }
+        von: { type: string, format: date }
+        stichtag: { type: string, format: date }
+        betrag: { type: string, nullable: true }
+        quelle: { type: string, nullable: true, enum: [eigen, aus_gebaeuden_summiert, null] }
+        gilt_ab: { type: string, format: date, nullable: true, description: "Beginn des Intervalls, das am Stichtag gilt." }
+        eingetragen_am: { type: string, format: date, nullable: true }
+        abzeichen: { type: string, nullable: true, description: "„rückwirkend (n Tage)“ des Intervalls, das am Stichtag gilt." }
+        kennzeichen: { type: array, items: { type: string } }
+    BezugsflaecheWerte:
+      type: object
+      required: [bezugsflaeche, perioden]
+      properties:
+        bezugsflaeche: { $ref: "#/components/schemas/Bezugsflaeche" }
+        perioden: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseStichtagwert" } }
+    Bezugsflaechen:
+      type: object
+      required: [periode_art, von, bis, bezugsflaechen]
+      properties:
+        periode_art: { type: string, enum: [tag, woche, monat, jahr] }
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        bezugsflaechen: { type: array, items: { $ref: "#/components/schemas/BezugsflaecheWerte" } }
+    BezugsgroesseStammdatumAnfrage:
+      type: object
+      additionalProperties: false
+      required: [wert, gueltig_ab]
+      properties:
+        wert: { type: string, pattern: "^[0-9]{1,12}(\\.[0-9]{1,6})?$", description: "Dezimaltext größer als 0, Punkt als Trenner." }
+        gueltig_ab: { type: string, format: date }
+    BezugsgroesseStammdatumIntervall:
+      type: object
+      required: [wert, gueltig_ab, gueltig_bis, aufgehoben_am, eingetragen_am, abzeichen]
+      properties:
+        wert: { type: string }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true, description: "Der LETZTE Tag, einschließlich; null = offen." }
+        aufgehoben_am: { type: string, format: date-time, nullable: true, description: "Eine Korrektur - das Intervall bleibt lesbar, belegt aber keinen Tag." }
+        eingetragen_am: { type: string, format: date-time }
+        abzeichen: { type: string, nullable: true }
+    BezugsgroesseStammdatum:
+      type: object
+      required: [bezugsgroesse_id, kennzeichen, name, einheit, zeitzone, schreibbar, intervalle, periode_art, von, bis, perioden]
+      properties:
+        bezugsgroesse_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        einheit: { type: string }
+        zeitzone: { type: string, description: "Die Zone der Tage: die des Standorts, sonst die des Unternehmens." }
+        schreibbar: { type: boolean, description: "false, sobald die Bezugsgröße archiviert ist." }
+        intervalle: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseStammdatumIntervall" } }
+        periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr, null] }
+        von: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, nullable: true }
+        perioden: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseStichtagwert" } }
     BezugsgroessePerson:
       type: object
       required: [name, rolle, art]
