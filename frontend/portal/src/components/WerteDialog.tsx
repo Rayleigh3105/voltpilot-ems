@@ -42,7 +42,6 @@ export function WerteDialog({
   onClose,
   anfang,
   heute = isoTag(new Date()),
-  steuerung = 'block',
 }: {
   open: boolean;
   /** Das Kennzeichen, das die Messstelle HEUTE trägt; null = nichts gewählt, nichts geladen. */
@@ -54,12 +53,6 @@ export function WerteDialog({
   anfang?: { art: KartenArt; wert: string };
   /** Der heutige Tag (JJJJ-MM-TT) — die Grenze des Blätterns. */
   heute?: string;
-  /**
-   * Wie Zeitraum-Art und Datum als EIN Bedienelement stehen (Änderungswunsch des Captains zur
-   * Vorschau): `leiste` — Tag|Monat und ‹ Datum › in einer Zeile; `block` — ein Kasten, oben
-   * Tag|Monat, darunter ‹ Datum ›. Bis zur Freigabe beide, danach bleibt eine.
-   */
-  steuerung?: 'leiste' | 'block';
 }) {
   const [art, setArt] = useState<KartenArt>(anfang?.art ?? 'tag');
   const [tag, setTag] = useState(anfang?.art === 'tag' ? anfang.wert : verschiebe(heute, -1));
@@ -113,7 +106,8 @@ export function WerteDialog({
       <div className="vp-wk">
         {/* Nicht im Kopf: dort schnitte die Kopfzeile den Namen bei 375 px ab. */}
         <p className="vp-wk-messstelle">{titel}</p>
-        <div className={`vp-wk-zeitwahl is-${steuerung}`} role="group" aria-label="Zeitraum">
+        {/* EIN Bedienelement (Captain 14.09.2026, Variante B): ein Kasten, oben Tag|Monat, darunter ‹ Datum ›. */}
+        <div className="vp-wk-zeitwahl" role="group" aria-label="Zeitraum">
           <ZeitSegment label="Tag oder Monat" optionen={ARTEN} wert={art} onWert={umschalten} />
           <div className="vp-wk-datumzeile">
             <button type="button" className="vp-wk-schritt" aria-label="Vorheriger Zeitraum" onClick={() => blaettern(-1)}>

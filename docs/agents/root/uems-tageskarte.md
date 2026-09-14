@@ -28,10 +28,11 @@ beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: geles
 4. **Die Herkunft steht an der Karte, nicht in jeder Zeile** (Zeilen: Wort · Verlauf). Nur mit
    Zahl, nur vollständig/unvollständig, nur `zaehlerstand`/`differenzen`.
 5. **Zeitraum-Wahl = EIN Bedienelement** (Änderungswunsch zur Vorschau): Tag|Monat, Pfeile und
-   `VpDatePicker` in einem Rahmen `.vp-wk-zeitwahl`, Teile ohne eigene Ränder. Bis zur Freigabe zwei
-   Fassungen (`steuerung` `block` = Vorgabe, `leiste`); die Leiste passt „September 2026“ bei 375 px nur
-   ohne Kalender-Symbol. Umschalten behält den Zeitraum (Tag → sein Monat). Der E2E-Test meldet auch
-   ein abgeschnittenes Datum (`.vp-picker-wert` mit Auslassungspunkten) als Querlauf.
+   `VpDatePicker` in einem Rahmen `.vp-wk-zeitwahl`, Teile ohne eigene Ränder — ein Kasten, oben
+   Tag|Monat je halbe Breite, darunter ‹ Datum › (Captain 14.09.2026: Variante B; die einzeilige Leiste
+   passte „September 2026“ bei 375 px nur ohne Kalender-Symbol und ist verworfen). Umschalten behält den
+   Zeitraum (Tag → SEIN Monat, nicht der heutige). Der E2E-Test meldet auch ein abgeschnittenes Datum
+   (`.vp-picker-wert` mit Auslassungspunkten) als Querlauf.
 6. **375 px:** der Messstellen-Name steht im Körper, nicht im Modal-Kopf (dort schneidet `.dhead`
    ab); `.dbody` hat `overflow-x: hidden`, ein Querlauf wäre dort UNSICHTBAR abgeschnitten — der
    E2E-Test prüft darum jedes Element-Rechteck, nicht nur `scrollWidth`.

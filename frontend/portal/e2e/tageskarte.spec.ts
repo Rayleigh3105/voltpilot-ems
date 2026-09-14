@@ -181,37 +181,36 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await bilder(page, '6-ohne-werte');
   });
 
-  // Die Zeitraum-Wahl als EIN Bedienelement — beide Varianten bis zur Freigabe.
-  for (const steuerung of ['leiste', 'block'] as const) {
-    test(`Zeitraum-Wahl „${steuerung}“: Tag|Monat und Datum in einem Rahmen, blättern und umschalten`, async ({ page }) => {
-      await oeffne(page, `ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03&steuerung=${steuerung}`);
-      const wahl = page.getByRole('group', { name: 'Zeitraum' });
-      await expect(wahl.getByRole('tab', { name: 'Tag' })).toHaveAttribute('aria-selected', 'true');
-      await expect(wahl).toContainText('03.11.2026');
-      // Segment, Knöpfe und Datumsfeld liegen IN einem Rahmen.
-      const rahmen = await wahl.boundingBox();
-      for (const teil of [wahl.getByRole('tab', { name: 'Monat' }), wahl.getByLabel('Vorheriger Zeitraum'), wahl.getByLabel('Nächster Zeitraum')]) {
-        const b = (await teil.boundingBox())!;
-        expect(b.x).toBeGreaterThanOrEqual(rahmen!.x);
-        expect(b.x + b.width).toBeLessThanOrEqual(rahmen!.x + rahmen!.width + 0.5);
-      }
-      await keinQuerlauf(page);
-      await bilder(page, `v-${steuerung}-tag`);
-      await wahl.getByLabel('Vorheriger Zeitraum').click();
-      await expect(wahl).toContainText('02.11.2026');
-      await expect(page.getByTestId('werte-karte')).toContainText('Verlauf 100\u00a0%');
-      await wahl.getByRole('tab', { name: 'Monat' }).click();
-      await expect(wahl).toContainText('November 2026');
-      await page.goto(`/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=monat&wert=2026-10&steuerung=${steuerung}`);
-      await expect(page.getByTestId('werte-karte')).toContainText('55.100\u00a0kWh');
-      await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('Oktober 2026');
-      await keinQuerlauf(page);
-      await bilder(page, `v-${steuerung}-monat`);
-      // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über dem Fehlerhinweis).
-      await page.goto(`/e2e/tageskarte.html?ms=MS-06&art=monat&wert=2026-09&steuerung=${steuerung}`);
-      await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('September 2026');
-      await expect(page.getByRole('alert')).toBeVisible();
-      await keinQuerlauf(page);
-    });
-  }
+  // Die Zeitraum-Wahl als EIN Bedienelement (Captain 14.09.2026: Variante B, ein Kasten mit zwei Zeilen).
+  test('Zeitraum-Wahl: Tag|Monat und Datum in einem Rahmen, blättern und umschalten behält den Zeitraum', async ({ page }) => {
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03');
+    const wahl = page.getByRole('group', { name: 'Zeitraum' });
+    await expect(wahl.getByRole('tab', { name: 'Tag' })).toHaveAttribute('aria-selected', 'true');
+    await expect(wahl).toContainText('03.11.2026');
+    // Segment, Knöpfe und Datumsfeld liegen IN einem Rahmen.
+    const rahmen = await wahl.boundingBox();
+    for (const teil of [wahl.getByRole('tab', { name: 'Monat' }), wahl.getByLabel('Vorheriger Zeitraum'), wahl.getByLabel('Nächster Zeitraum')]) {
+      const b = (await teil.boundingBox())!;
+      expect(b.x).toBeGreaterThanOrEqual(rahmen!.x);
+      expect(b.x + b.width).toBeLessThanOrEqual(rahmen!.x + rahmen!.width + 0.5);
+    }
+    await keinQuerlauf(page);
+    await bilder(page, 'zeitwahl-tag');
+    await wahl.getByLabel('Vorheriger Zeitraum').click();
+    await expect(wahl).toContainText('02.11.2026');
+    await expect(page.getByTestId('werte-karte')).toContainText('Verlauf 100\u00a0%');
+    // Vom Tag in SEINEN Monat — nicht in den heutigen (Fehler der ersten Vorschau).
+    await wahl.getByRole('tab', { name: 'Monat' }).click();
+    await expect(wahl).toContainText('November 2026');
+    await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=monat&wert=2026-10');
+    await expect(page.getByTestId('werte-karte')).toContainText('55.100\u00a0kWh');
+    await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('Oktober 2026');
+    await keinQuerlauf(page);
+    await bilder(page, 'zeitwahl-monat');
+    // Der längste Monatsname steht ganz — auch ohne Werte (die Wahl steht über dem Fehlerhinweis).
+    await page.goto('/e2e/tageskarte.html?ms=MS-06&art=monat&wert=2026-09');
+    await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('September 2026');
+    await expect(page.getByRole('alert')).toBeVisible();
+    await keinQuerlauf(page);
+  });
 });
