@@ -858,11 +858,19 @@ public final class EreignisVokabular {
         }
     }
 
+    /**
+     * Ein Messwert trägt immer {@code raw}, {@code decoded} und {@code qualitaet}. {@code decoded}
+     * ist {@code null}, wenn der Kanal keinen decodierten Wert liefert ({@code measurement-samples}
+     * 2.1 lässt ihn weg, etwa ein OCPP-Protokollwert) — nie weggelassen, damit zwei gleiche Werte
+     * nicht in zwei Formen ankommen, und nie 0.
+     */
     private static boolean istMesswert(JsonNode w) {
-        if (!w.isObject() || w.size() != 3) {
+        if (!w.isObject() || w.size() != 3 || !w.has("decoded")) {
             return false;
         }
-        return skalar(w.path("raw")) && skalar(w.path("decoded")) && w.path("qualitaet").isTextual();
+        JsonNode decoded = w.get("decoded");
+        return skalar(w.path("raw")) && (decoded.isNull() || skalar(decoded))
+                && w.path("qualitaet").isTextual();
     }
 
     private static boolean istGanzListe(JsonNode w) {

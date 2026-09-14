@@ -102,11 +102,10 @@ Writer verwirft sie und zählt sie, er meldet sie nie.
 einem Neustart urteilt der erste Umschlag einer Box deshalb gar nicht über die Sequenz — lieber
 kein Ereignis als eine erfundene Lücke.
 
-⚠ **Bekannte Grenze:** ein `duplicate_conflict` an einem Kanal OHNE `decoded` reist heute nicht —
-`EreignisVokabular` verlangt in einem Messwert drei Skalare (`raw`, `decoded`, `qualitaet`). Die
-Meldung wird abgelehnt und gezählt (`ergebnis="verworfen"`), der WERT ist davon unberührt. Die
-Weitung gehört in den Ereignis-Vertrag (Klasse `MESSWERT`, Vektor-Fall, beide Zwillinge), nicht in
-den Writer.
+⚠ Ein `duplicate_conflict` an einem Kanal OHNE `decoded` reist: der Writer schreibt das fehlende
+`decoded` als `null`, und der Ereignis-Vertrag nimmt genau diese Form an (Klasse `MESSWERT`, Fall
+`ms14-ladepunkt-abweichender-wert-ohne-decoded`). Ein ganz WEGGELASSENES `decoded` bleibt
+`schema_verletzt` — ändert man `MesswertHerkunft.wertFelder`, bricht die Meldung wieder.
 
 ## Die Abfragezahl wächst nicht mit der Zahl der Werte
 

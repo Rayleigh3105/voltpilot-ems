@@ -3037,6 +3037,89 @@
       }
     },
     {
+      "name": "ms14-ladepunkt-abweichender-wert-ohne-decoded",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 3, §4.8; mqtt-measurement-samples 2.1 (decoded optional); Nacharbeit zu PR 694",
+      "why": "Am Ladepunkt kommt zur Messzeit 14:12 ein zweiter, anderer OCPP-Zählerstand. OCPP liefert den Protokollwert ohne decodierten Wert, also trägt jeder Messwert decoded: null — die Meldung reist trotzdem, und der Satz nennt den Rohwert.",
+      "annahme": "Messzeit, Zählerstände, Sequenzen und die Einheit Wh (OCPP-Vorgabe für einen Energie-Zählerstand ohne unit) sind angenommen — die Referenz nennt am Ladepunkt keine Stände. Dass OCPP keinen decodierten Wert liefert, folgt aus dem Katalog (scale = protocol_value).",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b5",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T13:12:04Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "OCPP-Zählerstand",
+          "messstelle": "MS-14",
+          "messzeit": "2026-11-18T13:12:00Z",
+          "gespeicherter_wert": {
+            "raw": 1843250,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 1843260,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            20417,
+            20418
+          ],
+          "einheit": "Wh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zweiter Wert für 18.11.2026 14:12 abgewiesen: 1.843.260 Wh statt 1.843.250 Wh — der erste Wert bleibt"
+        ]
+      }
+    },
+    {
+      "name": "messwert-ohne-decoded-feld-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "events-vocabulary §3 (Messwert); mqtt-measurement-samples 2.1",
+      "why": "Fehlt decoded im Messwert ganz, statt null zu tragen, ist die Form verletzt: ein Wert hat genau eine Schreibweise, sonst hielte die Prüfung zwei gleiche Werte für verschieden.",
+      "annahme": "Messzeit, Zählerstände, Sequenzen und die Einheit Wh (OCPP-Vorgabe für einen Energie-Zählerstand ohne unit) sind angenommen — die Referenz nennt am Ladepunkt keine Stände. Dass OCPP keinen decodierten Wert liefert, folgt aus dem Katalog (scale = protocol_value).",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b6",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T13:12:04Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "OCPP-Zählerstand",
+          "messstelle": "MS-14",
+          "messzeit": "2026-11-18T13:12:00Z",
+          "gespeicherter_wert": {
+            "raw": 1843250,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 1843260,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            20417,
+            20418
+          ],
+          "einheit": "Wh"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
       "name": "uebergabe-dq3-offen-bis-zur-quittung",
       "pruefung": "ereignis",
       "bezug": "AP-06 E9, AP-07 §4.8 handover, §5.2; Referenz 10.04.2027 07:30",

@@ -99,7 +99,11 @@ Jedes Ereignis trägt:
   Cloud (sie kennt die Quellenbindung zur Messzeit) — die Box kennt keine Messstellen; ein
   Messkanal ohne Komponente ist keine Reihe.
 - **die Felder der Art** — geschlossen: ein Feld, das die Art nicht kennt, wird nicht still
-  mitgeschleppt (`schema_verletzt`). Die Typen stehen je Feld in `vokabular.felder`.
+  mitgeschleppt (`schema_verletzt`). Die Typen stehen je Feld in `vokabular.felder`. Ein
+  **Messwert** (`gespeicherter_wert`, `abgewiesener_wert`) trägt immer `raw`, `decoded` und
+  `qualitaet`; `decoded` ist `null`, wenn der Kanal keinen decodierten Wert liefert
+  (`measurement-samples` 2.1 lässt ihn weg, etwa ein OCPP-Protokollwert) — nie weggelassen
+  (`schema_verletzt`), damit ein Wert genau eine Schreibweise hat, und nie 0.
 
 **Fortschreibung statt Änderung (append-only).** Ein offenes Ereignis wird fortgeschrieben,
 nie geändert: dieselbe `ereignis_id`, dieselbe Art, derselbe Bezug, dasselbe `von`; ein
@@ -357,7 +361,7 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-86 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+97 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
@@ -365,6 +369,7 @@ verworfenen Fall; A = mit `annahme` (siehe §9).
 | Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) · vom Lücken-Melder der api (`cloud`, IP-9): Reihen-Lücke offen, geschlossen mit Nachlieferung, `backfill` (A), `verdraengung` von der Cloud verworfen |
 | Rückkehr 17:30 und Nachlieferung, A1/A3/A4 (Referenz) | Nachlieferung 3 640 Werte · Lücke MS-10 nachgeliefert 17:31 · 188 Datenpakete fehlen (falsche Anzahl verworfen) · Paketzählung neu · MS-10 nach Abschluss eingegangen (A: Puffer der reparierten Box; Raster verletzt verworfen) |
 | Zählerwechsel MS-06, 18.11.2026 10:40 (Referenz) | Z-5a → Z-5b mit Ständen · Lücke 10:40–10:47 mit Ursache · gleicher Einbau / nicht auf der Minute / im Voraus / von der Box verworfen · abweichender Wert 10:39 (gleicher Wert verworfen) |
+| Abweichender Wert am Ladepunkt MS-14 (A) | zweiter OCPP-Zählerstand ohne decodierten Wert (`decoded: null`) · `decoded` fehlt ganz verworfen |
 | Übergabe DQ-3, 10.04.2027 07:30 (Referenz) | offen bis zur Quittung · Quittung schließt · an dieselbe Box / nicht auf der Minute / Ende vor Beginn verworfen · Rückgabe 12.04. (A) · nicht zuständige Box 07:32 (über eine Stunde verworfen) |
 | Kartenzähler-Rücksetzung EK-3 (A) | `counter_reset` 6 184,37 → 0 · bestätigt als Grenze ohne Gerätewechsel · mit Gerätewechsel / steigender Stand verworfen |
 | Überlauf Impulszähler K-6/MS-07, 20.10.2026 (F7, AP-08 IP-4) | `counter_overflow` 64 954 → 185 (767 ≤ 1 667) · Sprung 12 457 → 100 über dem Höchstzuwachs verworfen |

@@ -512,7 +512,8 @@ function feldText(feld: string, e: Ereignis, namen: Namen, zone: string): string
     case 'stand':
       return `${zahlText(Number(w))}${einheit(e)}`;
     case 'messwert': {
-      const m = w as { raw: unknown; decoded?: unknown };
+      // decoded ist null, wenn der Kanal keinen decodierten Wert liefert — dann spricht der Rohwert.
+      const m = w as { raw: unknown; decoded: unknown };
       const x = m.decoded ?? m.raw;
       return typeof x === 'number' ? `${zahlText(x)}${einheit(e)}` : wertText(x);
     }
