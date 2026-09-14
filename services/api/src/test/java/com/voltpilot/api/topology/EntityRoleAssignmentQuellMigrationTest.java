@@ -94,6 +94,22 @@ class EntityRoleAssignmentQuellMigrationTest {
     }
 
     @Test
+    void hoechstensEinMassgeblicherJeGeraetUndRolle() {
+        UUID t = mandant("Primary");
+        UUID site = site(t);
+        UUID entity = komponente(t, site);
+        zuordnung(t, site, entity, "pv_power_kw", null, "pv", true);
+        // Ein zweiter Massgeblicher fuer dasselbe (Geraet, Rolle) laeuft in den partiellen Unique-Index.
+        abgelehnt("uq_entity_role_primary", () ->
+                zuordnung(t, site, entity, "battery_power_kw", null, "pv", true));
+        // Ein NICHT-Massgeblicher desselben (Geraet, Rolle) ist erlaubt (Index ist partiell).
+        zuordnung(t, site, entity, "power_kw", null, "pv", false);
+        // Und ein Massgeblicher fuer eine ANDERE Rolle desselben Geraets ist erlaubt.
+        zuordnung(t, site, entity, "soc_pct", null, "storage", true);
+        assertThat(zahl(t)).isEqualTo(3);
+    }
+
+    @Test
     void derMandantReistImFremdschluesselMit() {
         UUID a = mandant("FK A");
         UUID b = mandant("FK B");

@@ -102,7 +102,7 @@ class SiteRollenApiTest {
     void kundeSetztUndLiestDenMassgeblichenPvWertEinesGeraets() throws Exception {
         Welt w = welt();
         UUID entity = komponente(w, "Wechselrichter 1");
-        UUID ms = gesamtwert(w);
+        UUID ms = gesamtwert(w, entity);
         String pfad = "/api/v1/sites/" + w.anlage() + "/komponenten/" + entity + "/rollen/pv";
 
         // Ein Gesamtwert wird zugeordnet — noch nichts abgeloest.
@@ -146,6 +146,23 @@ class SiteRollenApiTest {
         String pfad = "/api/v1/sites/" + w.anlage() + "/komponenten/" + entity + "/rollen/pv";
         assertThat(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(gemessen)).status()).isEqualTo(400);
         assertThat(ruf(w, HttpMethod.PUT, pfad, gesamtwertWert(UUID.randomUUID())).status()).isEqualTo(404);
+    }
+
+    @Test
+    void einGesamtwertEinerFremdenAnlageDesselbenMandantenWirdAbgelehnt() throws Exception {
+        Welt a = welt();
+        Welt b = zweiteAnlage(a);                 // gleicher Mandant, andere Anlage
+        UUID entityA = komponente(a, "WR A");
+        UUID entityB = komponente(b, "WR B");
+        UUID msA = gesamtwert(a, entityA);        // ein Gesamtwert aus einem Kanal von Anlage A
+
+        // An ein Geraet auf Anlage B zuordnen -> 400 (der Gesamtwert gehoert zu Anlage A).
+        String pfadB = "/api/v1/sites/" + b.anlage() + "/komponenten/" + entityB + "/rollen/pv";
+        assertThat(ruf(a, HttpMethod.PUT, pfadB, gesamtwertWert(msA)).status()).isEqualTo(400);
+
+        // An das Geraet auf Anlage A -> 200 (same-site, alles korrekt).
+        String pfadA = "/api/v1/sites/" + a.anlage() + "/komponenten/" + entityA + "/rollen/pv";
+        assertThat(ruf(a, HttpMethod.PUT, pfadA, gesamtwertWert(msA)).status()).isEqualTo(200);
     }
 
     // ================================================= kanonischer Rollen-Wert der Anlage
@@ -216,6 +233,17 @@ class SiteRollenApiTest {
         return new Welt(t, anlage, box);
     }
 
+    /** Eine zweite Anlage (Site + Box) im SELBEN Mandanten — für den within-tenant-cross-site-Fall. */
+    private Welt zweiteAnlage(Welt w) {
+        int nr = NR.incrementAndGet();
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) "
+                + "VALUES (?, 'Anlage B #" + nr + "', now()) RETURNING id", UUID.class, w.mandant());
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name, "
+                + "status, created_at) VALUES (?, ?, ?, 'Box B', 'claimed', now()) RETURNING id",
+                UUID.class, w.mandant(), anlage, "EB-" + nr);
+        return new Welt(w.mandant(), anlage, box);
+    }
+
     private UUID komponente(Welt w, String label) {
         return root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
                 + "entity_type, device_id, control, communication, created_at) VALUES (?, ?, "
@@ -223,8 +251,15 @@ class SiteRollenApiTest {
                 UUID.class, w.mandant(), w.anlage(), label, w.box());
     }
 
-    private UUID gesamtwert(Welt w) {
-        return messstelle(w, "berechnet");
+    /** Ein Gesamtwert (berechnete Messstelle), gebaut aus EINEM Kanal des Geräts {@code entity}
+     *  — damit er (über seine Terme) zur Anlage dieses Geräts gehört. */
+    private UUID gesamtwert(Welt w, UUID entity) {
+        UUID ms = messstelle(w, "berechnet");
+        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, "
+                + "eingang_art, entity_id, point_key, vorzeichen, faktor, gilt_als_erzeugung) "
+                + "VALUES (?, ?, 0, 'messkanal', ?, 'deye.hybrid_3p.pv.pv1-power', '+', 1, false)",
+                w.mandant(), ms, entity);
+        return ms;
     }
 
     private UUID gemesseneMessstelle(Welt w) {

@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -105,33 +106,48 @@ public class RollenZuordnungService {
         }
         Zuordnung vorher = repo.primaer(entityId, role).orElse(null);
         RollenDto.Wert zugeordnet;
-        if (MESSKANAL.equals(e.art())) {
-            String capability = e.capability() == null ? "" : e.capability().trim();
-            if (capability.isEmpty()) {
-                throw badRequest("Ein Messkanal-Wert braucht einen Kanal (capability).");
+        try {
+            if (MESSKANAL.equals(e.art())) {
+                String capability = e.capability() == null ? "" : e.capability().trim();
+                if (capability.isEmpty()) {
+                    throw badRequest("Ein Messkanal-Wert braucht einen Kanal (capability).");
+                }
+                repo.primaerLoesen(entityId, role);
+                repo.setzeKanal(siteId, entityId, capability, role);
+                zugeordnet = new RollenDto.Wert(MESSKANAL, capability, null, capability);
+            } else if (GESAMTWERT.equals(e.art())) {
+                UUID quell = e.quellMessstelleId();
+                if (quell == null) {
+                    throw badRequest("Ein Gesamtwert-Wert braucht eine Messstelle (quell_messstelle_id).");
+                }
+                Messstelle m = messstellen.finde(quell).orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+                if (!MessstelleRegeln.BERECHNET.equals(m.art())) {
+                    throw badRequest("Nur ein Gesamtwert (berechnete Messstelle) kann einer Rolle "
+                            + "zugeordnet werden.");
+                }
+                if (m.archiviertAm() != null) {
+                    throw badRequest("Diese Messstelle ist archiviert und kann nicht zugeordnet werden.");
+                }
+                // Same-Site: der Gesamtwert muss zu DIESER Anlage gehoeren (Ableitung ueber seine
+                // Terme), sonst summierte sich ein fremd-anlagiger Wert unter den Gerätenamen dieser
+                // Anlage (Review vp-review-agg-r1 SOLLTE 2).
+                if (!repo.gehoertZuSite(quell, siteId)) {
+                    throw badRequest("Dieser Gesamtwert gehört zu einer anderen Anlage und kann "
+                            + "diesem Gerät nicht zugeordnet werden.");
+                }
+                repo.primaerLoesen(entityId, role);
+                repo.setzeMessstelle(siteId, entityId, quell, role);
+                zugeordnet = new RollenDto.Wert(GESAMTWERT, null, quell, m.name());
+            } else {
+                throw badRequest("Die Art ist 'messkanal' oder 'gesamtwert'.");
             }
-            repo.primaerLoesen(entityId, role);
-            repo.setzeKanal(siteId, entityId, capability, role);
-            zugeordnet = new RollenDto.Wert(MESSKANAL, capability, null, capability);
-        } else if (GESAMTWERT.equals(e.art())) {
-            UUID quell = e.quellMessstelleId();
-            if (quell == null) {
-                throw badRequest("Ein Gesamtwert-Wert braucht eine Messstelle (quell_messstelle_id).");
-            }
-            Messstelle m = messstellen.finde(quell).orElseThrow(() ->
-                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
-            if (!MessstelleRegeln.BERECHNET.equals(m.art())) {
-                throw badRequest("Nur ein Gesamtwert (berechnete Messstelle) kann einer Rolle "
-                        + "zugeordnet werden.");
-            }
-            if (m.archiviertAm() != null) {
-                throw badRequest("Diese Messstelle ist archiviert und kann nicht zugeordnet werden.");
-            }
-            repo.primaerLoesen(entityId, role);
-            repo.setzeMessstelle(siteId, entityId, quell, role);
-            zugeordnet = new RollenDto.Wert(GESAMTWERT, null, quell, m.name());
-        } else {
-            throw badRequest("Die Art ist 'messkanal' oder 'gesamtwert'.");
+        } catch (DuplicateKeyException konflikt) {
+            // Der partielle Unique-Index uq_entity_role_primary (V20260914100200) hat gegriffen:
+            // ein nebenlaeufiger zweiter Schreiber hat die Rolle gerade massgeblich belegt. Sauber
+            // in 409 statt eine zweite Wahrheit (stille Doppelzaehlung) - Review SOLLTE 1.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese Rolle wird gerade anderweitig zugeordnet - bitte erneut versuchen.");
         }
         RollenDto.Wert abgeloest = (vorher != null && !derselbeWert(vorher, zugeordnet))
                 ? alsWert(vorher) : null;
