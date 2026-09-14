@@ -1299,6 +1299,80 @@ paths:
                         name: { type: string }
 
         "409": { description: The site still has devices; remove them first. }
+  /api/v1/sites/{siteId}/standort/vorschau:
+    get:
+      tags: [ortsstruktur]
+      summary: Folgen-Vorschau - was die Zuordnung der Anlage zu einem Standort bewirken würde (UEMS AP-02 IP-11, T6).
+      description: >
+        Schreibt nichts. Urteilt mit derselben Regel und denselben Fakten wie
+        `PUT /api/v1/sites/{siteId}/standort` und antwortet in DERSELBEN Form
+        (`protokoll` leer) - was die Vorschau ankündigt, tritt beim Eintrag ein.
+        Eine Ablehnung ist dieselbe wie beim Eintrag (Status, Code, Satz).
+        Rechte: `anlage.zuordnen`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: standortId, in: query, required: true, schema: { type: string, format: uuid } }
+        - name: gueltigAb
+          in: query
+          required: false
+          description: Der erste Tag der neuen Zuordnung; fehlend = heute in der Zeitzone des Ziels.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Die Folgen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlageUmzug" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/sites/{siteId}/standort:
+    put:
+      tags: [ortsstruktur]
+      summary: Eine Anlage einem Standort zuordnen oder umziehen, gültig ab einem Tag (UEMS AP-02 IP-11, T6, A11).
+      description: >
+        Die Zuordnung ist eine Aussage über Zugehörigkeit, kein Eingriff in den
+        Betrieb: geschrieben werden NUR `anlage_standort` (die laufende
+        Zuordnung endet am Vortag, die neue erbt ihr Ende) und das
+        Änderungsprotokoll. Box-Heimat, MQTT-Topics `ems/{t}/{Anlage}/…`,
+        Freigaben, Betriebsmodell, Ladepark-Rahmen, Fahrpläne, Messstellen,
+        Netzanschluss und die Teilnahme an "Steuern & Optimieren" bleiben; es
+        wird kein Befehl, keine Konfiguration und kein Override gesendet
+        (`befehle` = 0). Ab `gueltigAb` zählen Standort-Karten und Berichte die
+        Anlage beim neuen Standort; ein Tag in der Zukunft ist geplant und wirkt
+        erst dann, einer in der Vergangenheit ist erlaubt und rückwirkend
+        sichtbar (E2). Die Regel ist docs/contracts/v2/ortsbaum-vectors.json
+        (Familie `ueberlappung`/`eintrag`, Vorgang verschieben). Abgelehnt mit
+        dem Satz des Vertrags: 400 `ziel_ist_bisheriger_eltern` (`feld`
+        standortId), 422 `vor_dem_ersten_intervall`, 409 `gleicher_tag` (am Tag
+        beginnt schon eine Zuordnung), 409 `objekt_archiviert`, 422
+        `ziel_gab_es_noch_nicht`, 409 `ziel_archiviert`; 400
+        `anfrage_ungueltig` (unbekannter Standort, fehlende oder falsche
+        Felder, Begründung über 500 Zeichen); eine fremde Anlage ist 404. Je
+        ein Protokolleintrag "verschoben" an der Anlage, am neuen und - wenn es
+        einen gab - am bisherigen Standort, mit Urheber und Begründung. Rechte:
+        `anlage.zuordnen`, mit `gueltigAb` vor heute zusätzlich
+        `aenderung.rueckwirkend`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnlageUmzugAnfrage" }
+      responses:
+        "200":
+          description: Eingetragen - die Folgen mit den frisch gelesenen Zuordnungen und den Protokolleinträgen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlageUmzug" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/sites/{siteId}/deletion-preview:
     get:
       tags: [sites]
@@ -16356,6 +16430,9 @@ components:
         (422) → `feld` (standortId) und `standorte` (die Auswahl);
         `ziel_archiviert` (409) und `anfrage_ungueltig` (400) → `feld`.
         Löschen ohne Historie (IP-15): `loeschen_gesperrt` (409) → `historie`.
+        Anlage zuordnen/umziehen (IP-11): `vor_dem_ersten_intervall` (422),
+        `objekt_archiviert` (409), `gleicher_tag` (409) → `feld` (gueltigAb);
+        `ziel_ist_bisheriger_eltern` (400) → `feld` (standortId).
       required: [code, message]
       properties:
         code:
@@ -16363,7 +16440,8 @@ components:
           enum: [anfrage_ungueltig, nicht_gefunden, name_belegt, kurzzeichen_belegt, archiviert,
                  archivieren_gesperrt, wiederherstellen_gesperrt, ziel_art_unzulaessig,
                  ziel_gab_es_noch_nicht, ziel_archiviert, flaeche_ungueltig, gab_es_noch_nicht,
-                 gleiche_flaeche, standort_waehlen, loeschen_gesperrt]
+                 gleiche_flaeche, standort_waehlen, loeschen_gesperrt, vor_dem_ersten_intervall,
+                 objekt_archiviert, gleicher_tag, ziel_ist_bisheriger_eltern]
         message: { type: string }
         feld: { type: string }
         verweis:
@@ -16806,6 +16884,82 @@ components:
             standort:
               nullable: true
               allOf: [{ $ref: "#/components/schemas/StandortBezug" }]
+    AnlageUmzugAnfrage:
+      type: object
+      additionalProperties: false
+      required: [standortId]
+      properties:
+        standortId: { type: string, format: uuid }
+        gueltigAb: { type: string, format: date, description: Fehlend = heute in der Zeitzone des Ziels. }
+        begruendung: { type: string, maxLength: 500, nullable: true }
+    AnlageUmzugStandort:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+    AnlageUmzugZuordnung:
+      type: object
+      properties:
+        standort: { $ref: "#/components/schemas/AnlageUmzugStandort" }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true, description: Der letzte Tag, einschließlich. }
+        zustand: { type: string, enum: [gueltig, geplant, beendet, aufgehoben] }
+    AnlageUmzug:
+      type: object
+      description: >
+        Vorschau und Eintrag der Zuordnung einer Anlage (UEMS AP-02 IP-11). `bleibt`
+        nennt in fester Reihenfolge, was die Zuordnung nie berührt - `box` nur mit
+        einer eingebauten Box, `ladepark_rahmen` nur mit Ladepark-Rahmen;
+        `befehle` ist immer 0.
+      properties:
+        anlageId: { type: string, format: uuid }
+        anlageName: { type: string }
+        bisher:
+          nullable: true
+          description: Der Standort am "gültig ab" ohne die Zuordnung; null = noch keiner.
+          allOf: [{ $ref: "#/components/schemas/AnlageUmzugStandort" }]
+        neu: { $ref: "#/components/schemas/AnlageUmzugStandort" }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true, description: Von der laufenden Zuordnung geerbt. }
+        danach:
+          nullable: true
+          description: Die schon geplante Zuordnung ab dem Tag nach `gueltigBis`.
+          allOf: [{ $ref: "#/components/schemas/AnlageUmzugStandort" }]
+        rueckwirkung: { $ref: "#/components/schemas/OrtRueckwirkung" }
+        zuordnungen:
+          type: array
+          description: Alle Zuordnungen der Anlage nach dem Eintrag, nach Beginn.
+          items: { $ref: "#/components/schemas/AnlageUmzugZuordnung" }
+        bleibt:
+          type: array
+          items: { type: string, enum: [box, topics, freigaben, betriebsmodell, ladepark_rahmen, fahrplaene, messstellen] }
+        boxen: { type: integer, description: Eingebaute Boxen der Anlage. }
+        netzanschluss:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            kennzeichen: { type: string }
+        steuern:
+          type: object
+          nullable: true
+          description: Die Teilnahme an "Steuern & Optimieren" und der Standort ihrer Funktion - sie bleibt.
+          properties:
+            funktion: { type: string, enum: [messen, steuern] }
+            zustand: { type: string }
+            standort: { $ref: "#/components/schemas/AnlageUmzugStandort" }
+        befehle: { type: integer, enum: [0] }
+        begruendung: { type: string, nullable: true }
+        protokoll:
+          type: array
+          description: In der Vorschau leer; nach dem Eintrag Anlage, neuer und bisheriger Standort.
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              objektArt: { type: string, enum: [anlage, standort] }
+              objektId: { type: string, format: uuid }
     CreateTenantRequest:
       type: object
       required: [name]

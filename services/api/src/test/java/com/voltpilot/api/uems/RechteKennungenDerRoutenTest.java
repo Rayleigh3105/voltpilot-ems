@@ -56,7 +56,8 @@ class RechteKennungenDerRoutenTest {
             "DeviceMeasurementSelectionController", "BezugsgroesseController",
             "KostenstelleProzessController", "MessstelleWerteController", "VerteilungController",
             "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
-            "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController");
+            "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController",
+            "AnlageStandortController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");
