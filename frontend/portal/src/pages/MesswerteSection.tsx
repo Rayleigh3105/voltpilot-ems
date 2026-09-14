@@ -212,7 +212,13 @@ function EnergieDiagrammKarte({
   const kern = messwerteKernaussage(
     energieBilanz(history),
     zeitraumWort(range),
-    vorher ? { pct: energieBilanz(vorher).eigenverbrauchPct, name: vglName } : null,
+    vorher
+      ? {
+          pct: energieBilanz(vorher).eigenverbrauchPct,
+          unplausibel: energieBilanz(vorher).eigenverbrauchUnplausibel,
+          name: vglName,
+        }
+      : null,
   );
 
   return (

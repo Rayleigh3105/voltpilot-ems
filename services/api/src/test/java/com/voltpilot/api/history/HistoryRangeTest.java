@@ -80,6 +80,54 @@ class HistoryRangeTest {
     }
 
     /**
+     * AP-10 E16 Nr. 5, the normal case: meters that add up deliver the SAME
+     * number as before the clamp was lifted - same value, same scale - and the
+     * flag says so. The repair must not move a single plausible figure.
+     */
+    @Test
+    void totalsPlausibleRatiosAreUnchangedAndNotFlagged() {
+        HistoryTotalsDto t = HistoryService.totals(List.of(
+                bucket(5, 4, 3, 1, 0.30), bucket(5, 4, 1, 1, null)), null);
+        assertThat(t.autarkiePct()).isEqualTo(new BigDecimal("60.0"));
+        assertThat(t.eigenverbrauchPct()).isEqualTo(new BigDecimal("75.0"));
+        assertThat(t.autarkieUnplausibel()).isFalse();
+        assertThat(t.eigenverbrauchUnplausibel()).isFalse();
+
+        // The edges of the range are plausible: no import at all is 100 %
+        // autark, exporting everything generated is 0 % Eigenverbrauch.
+        HistoryTotalsDto edges = HistoryService.totals(List.of(bucket(10, 8, 0, 8, null)), null);
+        assertThat(edges.autarkiePct()).isEqualTo(new BigDecimal("100.0"));
+        assertThat(edges.eigenverbrauchPct()).isEqualTo(new BigDecimal("0.0"));
+        assertThat(edges.autarkieUnplausibel()).isFalse();
+        assertThat(edges.eigenverbrauchUnplausibel()).isFalse();
+    }
+
+    /**
+     * AP-10 E16 Nr. 5: meters that do NOT add up are reported, not bent into
+     * 0..100. Import above consumption and export above generation give
+     * negative shares; before the fix both read a confident 0.0 - and a
+     * negative import a perfect 100.0 % Autarkie.
+     */
+    @Test
+    void totalsImplausibleRatiosTravelUnclampedWithFlag() {
+        // consumption 10, import 12 -> (1 - 12/10) * 100 = -20.0
+        // pv 8, export 10          -> (8 - 10)/8 * 100  = -25.0
+        HistoryTotalsDto below = HistoryService.totals(List.of(bucket(10, 8, 12, 10, null)), null);
+        assertThat(below.autarkiePct()).isEqualTo(new BigDecimal("-20.0"));
+        assertThat(below.eigenverbrauchPct()).isEqualTo(new BigDecimal("-25.0"));
+        assertThat(below.autarkieUnplausibel()).isTrue();
+        assertThat(below.eigenverbrauchUnplausibel()).isTrue();
+
+        // A negative import (a meter counting the wrong way) -> 110.0 % Autarkie.
+        HistoryTotalsDto above = HistoryService.totals(List.of(bucket(10, 8, -1, 2, null)), null);
+        assertThat(above.autarkiePct()).isEqualTo(new BigDecimal("110.0"));
+        assertThat(above.autarkieUnplausibel()).isTrue();
+        // Each ratio carries its own flag: this one's meters add up.
+        assertThat(above.eigenverbrauchPct()).isEqualTo(new BigDecimal("75.0"));
+        assertThat(above.eigenverbrauchUnplausibel()).isFalse();
+    }
+
+    /**
      * Audit V2/X1: a 0-bucket period must return "—" for EVERY aggregate, not a
      * confident 0,0 kWh next to an honest "noch keine Daten". Before the fix the
      * energy sums answered 0.0 while the cost fields correctly answered null.
@@ -93,6 +141,9 @@ class HistoryRangeTest {
         assertThat(empty.gridExportKwh()).isNull();
         assertThat(empty.autarkiePct()).isNull(); // no consumption -> undefined
         assertThat(empty.eigenverbrauchPct()).isNull(); // no PV -> undefined
+        // Unknown is neither plausible nor implausible.
+        assertThat(empty.autarkieUnplausibel()).isNull();
+        assertThat(empty.eigenverbrauchUnplausibel()).isNull();
         assertThat(empty.gridCostEur()).isNull(); // no priced bucket at all
         assertThat(empty.batterySavingsPlannedEur()).isNull();
     }

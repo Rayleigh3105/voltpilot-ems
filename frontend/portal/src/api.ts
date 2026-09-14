@@ -702,8 +702,17 @@ export interface HistoryTotals {
    * customer-facing plan line stays ABSENT rather than showing the old one.
    */
   steuerungPlannedEur?: number | null;
+  /** Ungeklemmt — außerhalb 0…100 % trägt `autarkieUnplausibel` es (AP-10 E16 Nr. 5). */
   autarkiePct: number | null;
+  /** Ungeklemmt — außerhalb 0…100 % trägt `eigenverbrauchUnplausibel` es. */
   eigenverbrauchPct: number | null;
+  /**
+   * Die Quote liegt außerhalb 0…100 %: die Messwerte passen nicht zusammen.
+   * OPTIONAL, weil ein älterer Server es nicht liefert — gelesen wird es nur über
+   * `quoteUnplausibel`, das dann am Wertebereich prüft.
+   */
+  autarkieUnplausibel?: boolean | null;
+  eigenverbrauchUnplausibel?: boolean | null;
 }
 
 export type ProtocolEventType =

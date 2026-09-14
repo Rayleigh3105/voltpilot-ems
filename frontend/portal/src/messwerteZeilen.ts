@@ -1,4 +1,5 @@
 import { NBSP } from './format';
+import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import type { DeltaView } from './historieVergleich';
 import { delta } from './historieVergleich';
 import { ENERGIE_WERTUNG } from './historieVergleich';
@@ -73,10 +74,15 @@ export interface MesswerteZeile {
 export interface MesswerteQuote {
   key: 'autarkie' | 'eigenverbrauch';
   name: string;
-  /** Die Zahl als Text, oder `null` = nicht berechenbar. */
+  /** Die Zahl als Text (ungeklemmt), oder `null` = nicht berechenbar. */
   wert: string | null;
-  /** Der eine erklärende Satz unter der Zahl. */
+  /**
+   * Der eine erklärende Satz unter der Zahl — bei einer Quote außerhalb 0…100 %
+   * statt der Erklärung „Messwerte passen nicht zusammen (…)" (AP-10 E16 Nr. 5).
+   */
   satz: string;
+  /** Die Quote liegt außerhalb 0…100 %. */
+  unplausibel: boolean;
 }
 
 /** de-DE mit geschütztem Leerzeichen vor der Einheit — die Hausform. */
@@ -131,17 +137,37 @@ export function messwerteZeilen(
  */
 export function messwerteQuoten(bilanz: EnergieBilanz): MesswerteQuote[] {
   return [
-    {
-      key: 'autarkie',
-      name: 'Autarkie',
-      wert: pct(bilanz.autarkiePct),
-      satz: 'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
-    },
-    {
-      key: 'eigenverbrauch',
-      name: 'Eigenverbrauch',
-      wert: pct(bilanz.eigenverbrauchPct),
-      satz: 'Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.',
-    },
+    quote(
+      'autarkie',
+      'Autarkie',
+      bilanz.autarkiePct,
+      bilanz.autarkieUnplausibel,
+      'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
+    ),
+    quote(
+      'eigenverbrauch',
+      'Eigenverbrauch',
+      bilanz.eigenverbrauchPct,
+      bilanz.eigenverbrauchUnplausibel,
+      'Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.',
+    ),
   ];
+}
+
+/**
+ * Eine Quoten-Zeile. Außerhalb 0…100 % wird die Zahl NICHT in den Bereich
+ * gebogen (AP-10 E16 Nr. 5): sie steht ungeklemmt, und statt der Erklärung, die
+ * einen echten Anteil voraussetzt, steht der Satz aus dem Bilanz-Vertrag.
+ */
+function quote(
+  key: MesswerteQuote['key'],
+  name: string,
+  wert: number | null,
+  flag: boolean | null | undefined,
+  satz: string,
+): MesswerteQuote {
+  if (wert != null && Number.isFinite(wert) && quoteUnplausibel(wert, flag)) {
+    return { key, name, wert: quoteZahl(wert), satz: quoteSatz(wert), unplausibel: true };
+  }
+  return { key, name, wert: pct(wert), satz, unplausibel: false };
 }

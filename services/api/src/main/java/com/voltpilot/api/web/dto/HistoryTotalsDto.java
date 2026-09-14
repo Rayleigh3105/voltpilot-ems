@@ -58,11 +58,19 @@ import java.math.BigDecimal;
  *       {@code batterySavingsPlannedEur}, kept for one release so the portal can
  *       switch independently. Same value; do not add new readers.</li>
  *   <li>{@code autarkiePct} (Autarkiegrad) = (1 - grid import / consumption)
- *       x 100, clamped to 0..100; null when consumption is zero or unknown.</li>
+ *       x 100, <b>not clamped</b>; null when consumption is zero or unknown.</li>
  *   <li>{@code eigenverbrauchPct} (Eigenverbrauchsquote) = (pv generated -
- *       grid export) / pv generated x 100, clamped to 0..100; null when no PV
+ *       grid export) / pv generated x 100, <b>not clamped</b>; null when no PV
  *       was generated. Approximation: all exported energy is attributed to PV
  *       (battery-to-grid export is not separated in v1).</li>
+ *   <li>{@code autarkieUnplausibel} / {@code eigenverbrauchUnplausibel} = the
+ *       delivered ratio lies outside 0..100 - the meters do not add up (import
+ *       above consumption, export above generation). The value is NOT bent
+ *       back into the range (AP-10 E16 Nr. 5): a clamped 100 % would read as a
+ *       perfect result. The portal then says "Messwerte passen nicht zusammen"
+ *       instead of drawing the ratio. Null exactly when the ratio is null
+ *       (unknown is not "plausible"); derived here, once, from the delivered
+ *       value, so no caller can send a value and a flag that disagree.</li>
  * </ul>
  */
 public record HistoryTotalsDto(
@@ -78,7 +86,9 @@ public record HistoryTotalsDto(
         BigDecimal batterySavingsEur,
         BigDecimal steuerungPlannedEur,
         BigDecimal autarkiePct,
-        BigDecimal eigenverbrauchPct) {
+        BigDecimal eigenverbrauchPct,
+        Boolean autarkieUnplausibel,
+        Boolean eigenverbrauchUnplausibel) {
 
     /**
      * Canonical constructor for callers that carry the planned savings once:
@@ -102,6 +112,15 @@ public record HistoryTotalsDto(
         return new HistoryTotalsDto(consumptionKwh, pvGenerationKwh, gridImportKwh, gridExportKwh,
                 gridCostEur, tarifArt, tarifPriced, batterySavingsPlannedEur,
                 batterySavingsPlannedEur, steuerungPlannedEur,
-                autarkiePct, eigenverbrauchPct);
+                autarkiePct, eigenverbrauchPct,
+                unplausibel(autarkiePct), unplausibel(eigenverbrauchPct));
+    }
+
+    /** A share outside 0..100 cannot be a share; null stays null. */
+    static Boolean unplausibel(BigDecimal pct) {
+        if (pct == null) {
+            return null;
+        }
+        return pct.signum() < 0 || pct.compareTo(BigDecimal.valueOf(100)) > 0;
     }
 }
