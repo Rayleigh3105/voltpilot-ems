@@ -41,8 +41,11 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    Sie gilt JE PERIODE und kommt aus `fassung` der Route für GENAU die gezeigte Periode: der Oktober
    ist vorläufig, obwohl der 25.10. darin endgültig ist — nie aus Tagen oder Monat abgeleitet. Nur ein
    gesprochener Schritt spricht sie; `null` (keine Quelle) zeigt nichts, nie „endgültig“ als Vorgabe.
-   Die Zeilen tragen sie nicht (wie die Herkunft). Als viertes Abzeichen neben „Verlauf 85 %“ läse
-   sie sich wie ein Teil der Vollständigkeit — darum der Kopf; `e2e/tageskarte.spec.ts` prüft den Ort.
+   Die Zeilen tragen sie nicht (wie die Herkunft). Captain 14.09.2026 zur Vorschau: Variante A, der
+   Kopf („Finde A gut.“). ⚠ **Nicht aus Symmetrie in die Abzeichen-Reihe schieben:** „vorläufig“ ist
+   keine Aussage über die Vollständigkeit, sondern über die Haltbarkeit der Zahl — als viertes
+   Abzeichen neben „Verlauf 85 %“ (gleiche Reihe, gleiche Farben) sähe es aus wie dieselbe Kategorie
+   (Variante B, verworfen). `e2e/tageskarte.spec.ts` prüft den Ort.
 6. **375 px:** der Messstellen-Name steht im Körper, nicht im Modal-Kopf (dort schneidet `.dhead`
    ab); `.dbody` hat `overflow-x: hidden`, ein Querlauf wäre dort UNSICHTBAR abgeschnitten — der
    E2E-Test prüft darum jedes Element-Rechteck, nicht nur `scrollWidth`.

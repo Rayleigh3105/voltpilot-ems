@@ -14,6 +14,9 @@
  * Die Fassung („vorläufig“ · „endgültig“) steht im Kopf neben dem Titel der
  * Periode, IMMER in beiden Fällen — getrennt von Zustand und Verlauf, weil sie
  * etwas anderes sagt: ob die Zahl feststeht, nicht ob sie vollständig ist.
+ * Nicht in die Abzeichen-Reihe verschieben: dort sähe „vorläufig“ neben
+ * „Verlauf 85 %“ wie dieselbe Kategorie aus (Captain 14.09.2026: Variante A,
+ * `docs/agents/root/uems-tageskarte.md` Falle 7).
  */
 import { Badge } from '../../designsystem/components/core/Badge';
 import { TRENNER } from '../uemsErgebnis';
