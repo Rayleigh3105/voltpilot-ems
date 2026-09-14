@@ -456,7 +456,8 @@ export interface StandAm {
   anlagen: { kennzeichen: string; standort: string | null }[];
 }
 
-function bestandSatz(grund: Exclude<Bestand, 'vorhanden'>, name: string, tag: Tag): string {
+/** „Am 15.09.2026 gab es Werk Ahrenberg im Portal noch nicht.“ (§5.9) — der Satz, den auch das Lesemodell spricht. */
+export function bestandSatz(grund: Exclude<Bestand, 'vorhanden'>, name: string, tag: Tag): string {
   return grund === 'gab_es_noch_nicht'
     ? `Am ${datumText(tag)} gab es ${name} im Portal noch nicht.`
     : `Am ${datumText(tag)} war ${name} archiviert.`;

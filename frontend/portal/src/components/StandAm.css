@@ -1,0 +1,62 @@
+/*
+ * „Stand am …“ (UEMS AP-02 IP-13, Mockup H1): Banner und Datumsfeld.
+ * Eigene Datei, weil die Standort-Übersicht (AP-01) es später ebenfalls trägt.
+ * „Zurück zu heute“ ist ein Verweis im Satz (H1), kein Knopf in eigener Zeile.
+ */
+
+.vp-sa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-sa-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-left: 3px solid var(--vp-c-primary);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-fg);
+}
+
+.vp-sa-icon {
+  display: inline-flex;
+  flex: none;
+  padding-top: 2px;
+  color: var(--vp-c-primary);
+}
+
+.vp-sa-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-sa-text b {
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-sa-zurueck {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: underline;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Das Feld ist ein Tag — es muss nicht die ganze Kartenbreite einnehmen. */
+.vp-sa-feld {
+  width: min(100%, 16rem);
+}
