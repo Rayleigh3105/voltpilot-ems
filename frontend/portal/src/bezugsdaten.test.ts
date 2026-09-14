@@ -30,7 +30,7 @@ import {
   type Dez,
   type Umrechnung,
 } from './bezugsdaten';
-import { ABLEHNUNGEN, LESARTEN } from './bezugsgroesse';
+import { ABLEHNUNGEN, EINGABE_SAETZE, GANZE_ZAHLEN, LESARTEN } from './bezugsgroesse';
 
 /**
  * Die Regeln der BEZUGSDATEN (UEMS AP-09 IP-1) gegen die EINE geteilte
@@ -145,6 +145,9 @@ describe('Bezugsdaten-Vertrag: Form der Vektor-Datei', () => {
     expect(portal).toEqual(datei);
     expect(ABLEHNUNGEN.einheit_unbekannt.satz).toBe(vectors.befund_saetze.einheit_unbekannt);
     expect([...LESARTEN]).toEqual(vectors.verwalten.lesarten);
+    // AP-09 IP-7: die Sätze nach einem Wert und der Zusatz für ganze Zahlen.
+    expect(EINGABE_SAETZE).toEqual(vectors.verwalten.eingabe.urteile);
+    expect(GANZE_ZAHLEN).toBe(vectors.verwalten.eingabe.ganze_zahlen);
   });
 
   it('jede Regel ist deklariert, und jede Lücke im Portal ist begründet', () => {

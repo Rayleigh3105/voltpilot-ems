@@ -133,8 +133,8 @@ macht Fassung 2 bei Version 1, solange der Wert vorläufig ist (K17).
 | rückwirkende Definitions-Fassung | vorläufig nachziehen, endgültig „Berechnung geändert (Fassung f)“ | IP-9 |
 
 Das Ereignis-Vokabular führt beides als **Reservierung** (`events-vocabulary-vectors.json` Block `reserviert`): `correction`
-mit Bezug `bezugsgroesse` legt AP-09 IP-7 an, `kennzahl_neu_gebildet` (Urheber `cloud`) legt AP-11 IP-6 an. Bis dahin ist
-keines ein Wort des Vokabulars; `KennzahlVectorsTest` prüft, dass Reservierung und Anlage sich nicht widersprechen.
+mit Bezug `bezugsgroesse` legt AP-09 IP-7 an (seit V20260915010000 angelegt), `kennzahl_neu_gebildet` (Urheber `cloud`) legt
+AP-11 IP-6 an — bis dahin ist es kein Wort des Vokabulars; `KennzahlVectorsTest` prüft, dass Reservierung und Anlage sich nicht widersprechen.
 
 ## 10. Geltungsbereich und Rechte (E6, E10)
 

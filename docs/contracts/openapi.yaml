@@ -9545,12 +9545,13 @@ paths:
   /api/v1/bezugsgroessen/{id}/werte:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      - { name: von, in: query, required: false, schema: { type: string, format: date }, description: "Erster Tag (einschließlich)." }
-      - { name: bis, in: query, required: false, schema: { type: string, format: date }, description: "Letzter Tag (EINSCHLIESSLICH)." }
-      - { name: fassungen, in: query, required: false, schema: { type: string, enum: [wirksam, alle], default: wirksam } }
     get:
       tags: [bezugsgroessen]
       summary: Die Werte im Zeitraum mit ihren Fassungen und der Herkunft je Fassung.
+      parameters:
+        - { name: von, in: query, required: false, schema: { type: string, format: date }, description: "Erster Tag (einschließlich)." }
+        - { name: bis, in: query, required: false, schema: { type: string, format: date }, description: "Letzter Tag (EINSCHLIESSLICH)." }
+        - { name: fassungen, in: query, required: false, schema: { type: string, enum: [wirksam, alle], default: wirksam } }
       description: >
         Recht `messwerte.ansehen` („Werte, Herkunft, Fassungen ansehen“). Ein Wert ist
         ein Schlüssel - eine Periode (`periode_von`/`periode_bis`, der letzte Tag
@@ -9561,10 +9562,11 @@ paths:
         ihrer Herkunft; `alle` die ganze Kette. Den Stand jeder Fassung („wirksam bis
         Fassung 2“) und den wirksamen Betrag rechnet die Regel `fassung` des Vertrags
         (BezugsdatenRegeln.fassungen). Nach einer Rücknahme ist `wirksamer_betrag` null,
-        nie 0. Trägt eine Kette eine Vier-Augen-Fassung (Vorschlag, Ablehnung,
-        Freigeber), ist `stand_offen` true, `stand` und `wirksamer_betrag` null und alle
-        Fassungen werden gezeigt - wie eine freigegebene Berichtigung zählt, legt AP-09
-        IP-7 fest. `von` nach `bis` = 400 `zeitraum_ungueltig`; ein unbekanntes Wort in
+        nie 0. Eine freigegebene Berichtigung ist EINE wirksame Fassung mit Urheber und
+        Freigeber (AP-09 IP-7, Vertrag B5); ein offener Vorschlag ist noch keine Fassung und
+        steht als `vorschlag` am Wert. Trägt eine Kette dennoch eine gespeicherte Vorschlags-
+        oder Ablehnungs-Fassung, ist `stand_offen` true, `stand` und `wirksamer_betrag` null
+        und alle Fassungen werden gezeigt. `von` nach `bis` = 400 `zeitraum_ungueltig`; ein unbekanntes Wort in
         `fassungen` = 400 `wort_unbekannt`.
       responses:
         "200":
@@ -9575,6 +9577,87 @@ paths:
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+    post:
+      tags: [bezugsgroessen]
+      summary: Einen Wert für eine abgeschlossene Periode eingeben (AP-09 IP-7).
+      description: >
+        Recht `bezugsgroesse.eingeben`. Prüfreihenfolge `verwalten.pruefreihenfolge.eingeben`:
+        archiviert (409 `archiviert`) → nur ein Periodenwert (422 `kein_periodenwert`) → die
+        Periode (422 `periode_passt_nicht`, `periode_nicht_zu_ende` - Z4) → die Zahl (422
+        `zahl_unlesbar`, bei Stück, Personen und Schichten mit `hinweis` „Stück sind ganze
+        Zahlen.“ - U5) → nicht negativ (422 `wert_negativ` - U6) → ein ANDERER wirksamer Wert
+        (409 `konflikt_anderer_wert` mit `wirksamer_betrag` - der Weg ist die Berichtigung, F5).
+        Ein Erstwert ist Fassung 1 ohne Begründung und ohne Freigabe, auch bei Vier-Augen an
+        (F1): 201 `neu`, kein Ereignis. Derselbe Betrag noch einmal ist eine Wiederholung: 200
+        `wiederholung`, nichts geschrieben. Ein unplausibler, gültiger Wert (eine Betriebszeit
+        über der Stundenzahl der Periode, bei einer Messstelle als Bezug) geht durch und trägt
+        nur den Hinweis `wert_unplausibel` (U6). Eine Ablehnung schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsgroesseWertAnfrage" }
+            example: { periode: "2026-10", wert: "48.200" }
+      responses:
+        "200":
+          description: Wiederholung - derselbe Betrag ist schon gespeichert, nichts geschrieben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseEingabe" }
+        "201":
+          description: Gespeichert als Erstwert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseEingabe" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bezugsgroessen/{id}/werte/{periode}/berichtigung:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: periode, in: path, required: true, schema: { type: string }, description: "Die Periode des Werts, z. B. `2026-10` (wie `BezugsgroesseWertAnfrage.periode`)." }
+    post:
+      tags: [bezugsgroessen]
+      summary: Einen gespeicherten Wert berichtigen - Fassung n + 1 oder, bei Vier-Augen an, ein Vorschlag (AP-09 IP-7).
+      description: >
+        Recht `bezugsgroesse.eingeben`. Prüfreihenfolge `verwalten.pruefreihenfolge.berichtigen`:
+        dieselben Prüfungen des Werts wie beim Eingeben → Begründung mit 10 bis 500 Zeichen (422
+        `begruendung_zu_kurz`, `begruendung_zu_lang` - F2) → es gibt einen wirksamen Wert (409
+        `kein_wert`) → kein offener Vorschlag (409 `vorschlag_offen` - F3). Derselbe Betrag wie
+        der wirksame ist eine Wiederholung (200, nichts geschrieben). Jede Berichtigung ist ein
+        Vorgang `BK-<Jahr>-<lfd. Nr.>`. Vier-Augen aus (Vorgabe): 201 `berichtigung` - Fassung
+        n + 1 ist sofort wirksam, Fassung n bleibt lesbar („wirksam bis Fassung n + 1“), und es
+        entsteht das Ereignis `correction` mit Bezug `bezugsgroesse` (F4). Vier-Augen an: 201
+        `vorschlag` - der Wert bleibt, wie er ist, der Vorschlag steht als `vorschlag` am Wert;
+        freigegeben wird über `POST /api/v1/korrekturen/{kennung}/freigeben`, nie von der
+        Erstellerin (403 `zweite_person_noetig`). Erst die Freigabe schreibt die Fassung - mit
+        Urheber UND Freigeber - und das Ereignis. Eine Ablehnung schreibt nichts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BezugsgroesseBerichtigungAnfrage" }
+            example:
+              wert: "48.200"
+              begruendung: "Tippfehler — eine Null fehlte (Montagebericht Oktober)"
+      responses:
+        "200":
+          description: Wiederholung - derselbe Betrag ist schon wirksam, nichts geschrieben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseEingabe" }
+        "201":
+          description: Berichtigt (Fassung n + 1) oder als Vorschlag gespeichert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsgroesseEingabe" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
   /api/v1/bezugsgroessen/{id}/stammdatum:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -10312,7 +10395,7 @@ paths:
         "409": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
   /api/v1/korrekturen/{kennung}/freigeben:
     parameters:
-      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^K-[0-9]{4}-[0-9]{4,}$" } }
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^(K|BK)-[0-9]{4}-[0-9]{4,}$" }, description: "K-… eine Korrektur einer Reihe (AP-08), BK-… die Berichtigung eines Bezugsgrößen-Werts (AP-09 IP-7)." }
     post:
       tags: [korrekturen]
       summary: Gibt einen Korrektur-Vorschlag frei - unter der Vier-Augen-Einstellung dieses Augenblicks.
@@ -10322,7 +10405,11 @@ paths:
         `rolle_noetig`; 403 `zweite_person_noetig`, wenn bei Vier-Augen an der Ersteller freigibt - auch mit
         Recht) → Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`) → Stand `vorschlag` (409
         `status_passt_nicht`). Die Freigabe protokolliert Ersteller, Freigeber, Zeitpunkt und Begründung und
-        hält die geprüfte Einstellung fest; die Neuberechnung übernimmt die Kaskade (AP-08 IP-17).
+        hält die geprüfte Einstellung fest; die Neuberechnung übernimmt die Kaskade (AP-08 IP-17). Seit AP-09
+        IP-7 auch die Berichtigung eines Bezugsgrößen-Werts (`BK-…`): dieselbe Reihenfolge und dieselben
+        Ablehnungen; die Freigabe schreibt die Wert-Fassung (Urheber = Ersteller, Freigeber = wer freigibt) und
+        das Ereignis `correction` mit Bezug `bezugsgroesse`. Hat sich der Wert seit dem Vorschlag geändert, ist
+        das 409 `gleichzeitig`. Ein `BK-…` wird nicht zurückgenommen (404 an `…/zuruecknehmen`).
       requestBody:
         required: true
         content:
@@ -10344,7 +10431,7 @@ paths:
         "422": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
   /api/v1/korrekturen/{kennung}/zuruecknehmen:
     parameters:
-      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^K-[0-9]{4}-[0-9]{4,}$" } }
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^(K|BK)-[0-9]{4}-[0-9]{4,}$" }, description: "K-… eine Korrektur einer Reihe (AP-08), BK-… die Berichtigung eines Bezugsgrößen-Werts (AP-09 IP-7)." }
     post:
       tags: [korrekturen]
       summary: Nimmt eine freigegebene Korrektur zurück - sie bleibt sichtbar.
@@ -19244,20 +19331,27 @@ components:
         `verwalten.ablehnungen` des Bezugsdaten-Vertrags: 400 `anfrage_ungueltig`
         (`feld`), `wort_unbekannt` (`feld`, `erlaubt`), `einheit_unbekannt`,
         `kennzeichen_format`, `zeitraum_ungueltig`, `wert_ungueltig` (`feld`); 404
-        `nicht_gefunden`; 409 `kennzeichen_belegt`, `archiviert`, `hat_werte` (`werte`); 422
+        `nicht_gefunden`; 409 `kennzeichen_belegt`, `archiviert`, `hat_werte` (`werte`),
+        `konflikt_anderer_wert` (`wirksamer_betrag`), `kein_wert`, `vorschlag_offen`; 422
         `periode_passt_nicht_zur_wertart`, `flaeche_aus_struktur`, `kein_stammdatum`
-        (`wertart`), `geltung_nicht_waehlbar`, `geltung_unbekannt`, `bedeutung_fest` (`felder`).
+        (`wertart`), `kein_periodenwert` (`wertart`), `periode_passt_nicht`, `periode_nicht_zu_ende`,
+        `zahl_unlesbar` (`feld`, bei ganzen Zahlen `hinweis`), `wert_negativ`, `begruendung_zu_kurz`,
+        `begruendung_zu_lang` (`zeichen`), `geltung_nicht_waehlbar`, `geltung_unbekannt`,
+        `bedeutung_fest` (`felder`).
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, wort_unbekannt, einheit_unbekannt, kennzeichen_format, zeitraum_ungueltig, wert_ungueltig, periode_passt_nicht_zur_wertart, flaeche_aus_struktur, kein_stammdatum, geltung_nicht_waehlbar, geltung_unbekannt, bedeutung_fest, kennzeichen_belegt, archiviert, hat_werte, nicht_gefunden]
+          enum: [anfrage_ungueltig, wort_unbekannt, einheit_unbekannt, kennzeichen_format, zeitraum_ungueltig, wert_ungueltig, periode_passt_nicht_zur_wertart, flaeche_aus_struktur, kein_stammdatum, kein_periodenwert, periode_passt_nicht, periode_nicht_zu_ende, zahl_unlesbar, wert_negativ, begruendung_zu_kurz, begruendung_zu_lang, geltung_nicht_waehlbar, geltung_unbekannt, bedeutung_fest, kennzeichen_belegt, archiviert, hat_werte, konflikt_anderer_wert, kein_wert, vorschlag_offen, nicht_gefunden]
         message: { type: string }
         feld: { type: string }
         erlaubt: { type: array, items: { type: string } }
         felder: { type: array, items: { type: string, enum: [wertart, einheit, periode_art, geltung_art, geltung_id] } }
         werte: { type: integer }
-        wertart: { type: string, description: "`kein_stammdatum`: die Wertart der Bezugsgröße." }
+        wertart: { type: string, description: "`kein_stammdatum`, `kein_periodenwert`: die Wertart der Bezugsgröße." }
+        hinweis: { type: string, description: "`zahl_unlesbar` bei Stück, Personen und Schichten: „Stück sind ganze Zahlen.“ (U5)." }
+        wirksamer_betrag: { type: string, description: "`konflikt_anderer_wert`: der wirksame Betrag des Werts (F5)." }
+        zeichen: { type: integer, description: "`begruendung_zu_kurz`, `begruendung_zu_lang`: wie viele Zeichen die Begründung hat." }
     BezugsgroesseAnfrage:
       type: object
       additionalProperties: false
@@ -19417,7 +19511,7 @@ components:
         eingetragen_am: { type: string, format: date-time }
     BezugsgroesseWert:
       type: object
-      required: [periode_von, periode_bis, zeitpunkt, zeitzone, wirksamer_betrag, wirksame_fassung, stand_offen, fassungen]
+      required: [periode_von, periode_bis, zeitpunkt, zeitzone, wirksamer_betrag, wirksame_fassung, stand_offen, fassungen, vorschlag]
       properties:
         periode_von: { type: string, format: date, nullable: true }
         periode_bis: { type: string, format: date, nullable: true, description: "Der LETZTE Tag der Periode, einschließlich." }
@@ -19427,6 +19521,10 @@ components:
         wirksame_fassung: { type: integer, nullable: true }
         stand_offen: { type: boolean }
         fassungen: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseFassung" } }
+        vorschlag:
+          nullable: true
+          description: "AP-09 IP-7: die offene Berichtigung dieses Werts (Vier-Augen an) - noch keine Fassung; null, wenn keine offen ist."
+          allOf: [{ $ref: "#/components/schemas/BezugsgroesseVorschlag" }]
     BezugsgroesseWerte:
       type: object
       required: [bezugsgroesse_id, kennzeichen, wertart, einheit, periode_art, von, bis, fassungen, werte]
@@ -19440,6 +19538,54 @@ components:
         bis: { type: string, format: date, nullable: true }
         fassungen: { type: string, enum: [wirksam, alle] }
         werte: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseWert" } }
+    BezugsgroesseWertAnfrage:
+      type: object
+      additionalProperties: false
+      required: [periode, wert]
+      description: >
+        AP-09 IP-7: ein Wert für eine Periode. `periode` nennt die Periode selbst (Z3: „2026-10“,
+        „10/2026“, „Oktober 2026“, „2026-W40“, „2026“); `wert` ist der Text, wie ein Mensch ihn tippt -
+        deutsch, Punkt = Tausender, Komma = Dezimal („48.200“, „312.400,5“).
+      properties:
+        periode: { type: string }
+        wert: { type: string }
+    BezugsgroesseBerichtigungAnfrage:
+      type: object
+      additionalProperties: false
+      required: [wert, begruendung]
+      properties:
+        wert: { type: string, description: "Der neue Wert als Text (wie `BezugsgroesseWertAnfrage.wert`)." }
+        begruendung: { type: string, description: "10 bis 500 Zeichen (F2)." }
+    BezugsgroesseHinweis:
+      type: object
+      required: [code, satz]
+      properties:
+        code: { type: string, enum: [wert_unplausibel] }
+        satz: { type: string }
+    BezugsgroesseVorschlag:
+      type: object
+      description: "AP-09 IP-7: die offene Berichtigung eines Werts (Vier-Augen an) - bis zur Freigabe gilt die wirksame Fassung."
+      required: [kennung, betrag, ersetzt_fassung, begruendung, urheber, eingetragen_am]
+      properties:
+        kennung: { type: string, pattern: "^BK-[0-9]{4}-[0-9]{4,}$" }
+        betrag: { type: string }
+        ersetzt_fassung: { type: integer, minimum: 1 }
+        begruendung: { type: string }
+        urheber: { $ref: "#/components/schemas/BezugsgroessePerson" }
+        eingetragen_am: { type: string, format: date-time }
+    BezugsgroesseEingabe:
+      type: object
+      description: >
+        AP-09 IP-7: die Antwort auf eine Eingabe oder Berichtigung - `urteil` mit seinem Satz aus dem
+        Vertrag (verwalten.eingabe.urteile), die Kennung des Vorgangs (nur bei einer Berichtigung), die
+        Hinweise (U6, sie verhindern nichts) und der Wert mit allen Fassungen.
+      required: [urteil, satz, kennung, hinweise, wert]
+      properties:
+        urteil: { type: string, enum: [neu, wiederholung, berichtigung, vorschlag] }
+        satz: { type: string }
+        kennung: { type: string, nullable: true, pattern: "^BK-[0-9]{4}-[0-9]{4,}$" }
+        hinweise: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseHinweis" } }
+        wert: { $ref: "#/components/schemas/BezugsgroesseWert" }
     BezugsdatenZuordnung:
       type: object
       description: C3 - die Zuordnung der Spalten (Form `vorschau_zuordnung` des Bezugsdaten-Vertrags). Genau eins von Bezug-Spalte und `bezugsgroesse`.

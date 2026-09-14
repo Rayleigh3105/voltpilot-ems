@@ -263,7 +263,7 @@
     "verwalten": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["herkunft", "kennzeichen", "fest_nach_erstem_wert", "immer_aenderbar", "pruefreihenfolge", "lesarten", "ablehnungen"],
+      "required": ["herkunft", "kennzeichen", "fest_nach_erstem_wert", "immer_aenderbar", "pruefreihenfolge", "lesarten", "eingabe", "ablehnungen"],
       "description": "AP-09 IP-5: das Verwalten einer Bezugsgröße (M1–M6) — Kennzeichen-Vergabe, was nach dem ersten Wert fest bleibt, die Prüfreihenfolge je Vorgang, die Lesarten des Lesemodells und der GESCHLOSSENE Satz der Ablehnungen mit Status und Kundensatz. Die Regel `verwalten` der Fälle prüft ihn.",
       "properties": {
         "herkunft": { "type": "string", "minLength": 1 },
@@ -295,14 +295,16 @@
         "pruefreihenfolge": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum"],
+          "required": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum", "eingeben", "berichtigen"],
           "description": "Je Vorgang die Reihenfolge der Prüfungen — die ERSTE, die nicht besteht, ist die Ablehnung.",
           "properties": {
             "anlegen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "aendern": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "archivieren": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
             "loeschen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
-            "stammdatum": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "E15/S4 (AP-09 IP-6): ein Wert eines Stammdatums ab einem Tag." }
+            "stammdatum": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "E15/S4 (AP-09 IP-6): ein Wert eines Stammdatums ab einem Tag." },
+            "eingeben": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "F1/F5 (AP-09 IP-7): ein Wert für eine Periode." },
+            "berichtigen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "F2/F3 (AP-09 IP-7): die Berichtigung eines gespeicherten Werts." }
           }
         },
         "lesarten": {
@@ -311,6 +313,36 @@
           "uniqueItems": true,
           "items": { "type": "string", "enum": ["wirksam", "alle"] },
           "description": "`GET …/{id}/werte?fassungen=` — die erste ist die Vorgabe."
+        },
+        "eingabe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["herkunft", "urteile", "ganze_zahlen", "kennung"],
+          "description": "AP-09 IP-7: was die Schnittstelle nach einem eingegebenen oder berichtigten Wert sagt (F1–F5), der Zusatz zu `zahl_unlesbar` bei ganzen Zahlen (U5) und die Kennung des Vorgangs einer Berichtigung.",
+          "properties": {
+            "herkunft": { "type": "string", "minLength": 1 },
+            "urteile": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["neu", "wiederholung", "berichtigung", "vorschlag"],
+              "properties": {
+                "neu": { "type": "string", "minLength": 1 },
+                "wiederholung": { "type": "string", "minLength": 1 },
+                "berichtigung": { "type": "string", "minLength": 1 },
+                "vorschlag": { "type": "string", "minLength": 1 }
+              }
+            },
+            "ganze_zahlen": { "type": "string", "minLength": 1, "description": "U5: `{einheit}` ist die Einheit der Bezugsgröße (Stück, Personen, Schichten)." },
+            "kennung": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["praefix", "muster"],
+              "properties": {
+                "praefix": { "type": "string", "const": "BK" },
+                "muster": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
         },
         "ablehnungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ablehnung" } },
         "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
@@ -479,12 +511,22 @@
         "periode_passt_nicht_zur_wertart",
         "flaeche_aus_struktur",
         "kein_stammdatum",
+        "kein_periodenwert",
+        "periode_passt_nicht",
+        "periode_nicht_zu_ende",
+        "zahl_unlesbar",
+        "wert_negativ",
+        "begruendung_zu_kurz",
+        "begruendung_zu_lang",
         "geltung_nicht_waehlbar",
         "geltung_unbekannt",
         "bedeutung_fest",
         "kennzeichen_belegt",
         "archiviert",
         "hat_werte",
+        "konflikt_anderer_wert",
+        "kein_wert",
+        "vorschlag_offen",
         "nicht_gefunden"
       ],
       "description": "AP-09 IP-5: der geschlossene Satz der Ablehnungen der Bezugsgrößen-Schnittstelle."
@@ -530,14 +572,21 @@
       "required": ["vorgang"],
       "description": "verwalten (M1–M6): der Eingang eines Vorgangs an einer Bezugsgröße.",
       "properties": {
-        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum"] },
+        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum", "eingeben", "berichtigen"] },
         "entwurf": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
         "bestand": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
         "archiviert": { "type": "boolean" },
         "werte": { "type": "integer", "minimum": 0, "description": "Wie viele Wert-Zeilen (alle Fassungen) die Bezugsgröße trägt." },
         "waehlbar": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Die Geltungsbereich-Arten, deren Objekte gebaut sind (E1: „wählbar, sobald gebaut“)." },
         "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." },
-        "wert": { "type": ["string", "null"], "description": "stammdatum (E15): der Wert, wie die Schnittstelle ihn liest — Dezimaltext, nichts wird umgewandelt." }
+        "wert": { "type": ["string", "null"], "description": "stammdatum (E15): der Wert, wie die Schnittstelle ihn liest — Dezimaltext, nichts wird umgewandelt." },
+        "wertart": { "type": "string", "minLength": 1, "description": "eingeben · berichtigen (AP-09 IP-7): die Wertart der Bezugsgröße." },
+        "periode_befund": { "anyOf": [{ "$ref": "#/$defs/befund" }, { "type": "null" }], "description": "eingeben · berichtigen: der Befund der Periode (Regel `periode`), oder null." },
+        "zahl_befund": { "anyOf": [{ "$ref": "#/$defs/befund" }, { "type": "null" }], "description": "eingeben · berichtigen: der Befund der Zahl (Regel `zahl`), oder null." },
+        "betrag": { "type": ["string", "null"], "description": "eingeben · berichtigen: der gelesene Betrag, oder null (nicht lesbar)." },
+        "wirksamer_betrag": { "type": ["string", "null"], "description": "eingeben · berichtigen: der wirksame Betrag des Werts (Regel `fassung`), null = kein Wert." },
+        "begruendung": { "type": ["string", "null"], "description": "berichtigen (F2): die Begründung, wie sie ankam." },
+        "vorschlag_offen": { "type": "boolean", "description": "berichtigen (F3): für diesen Wert liegt ein offener Vorschlag vor." }
       }
     },
 

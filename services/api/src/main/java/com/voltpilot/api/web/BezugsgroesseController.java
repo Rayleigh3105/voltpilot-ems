@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.voltpilot.api.uems.BezugsdatenRegeln;
 import com.voltpilot.api.uems.BezugsgroesseAbgelehnt;
 import com.voltpilot.api.uems.BezugsgroesseRegeln;
 import com.voltpilot.api.uems.BezugsgroesseRegeln.Ablehnung;
 import com.voltpilot.api.uems.BezugsgroesseService;
+import com.voltpilot.api.uems.BezugswertService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BezugsgroesseDto;
 import java.net.URI;
@@ -58,10 +60,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class BezugsgroesseController {
 
     private final BezugsgroesseService bezugsgroessen;
+    private final BezugswertService bezugswerte;
     private final ObjectMapper streng;
 
-    public BezugsgroesseController(BezugsgroesseService bezugsgroessen, ObjectMapper json) {
+    public BezugsgroesseController(BezugsgroesseService bezugsgroessen, BezugswertService bezugswerte, ObjectMapper json) {
         this.bezugsgroessen = bezugsgroessen;
+        this.bezugswerte = bezugswerte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -95,6 +99,34 @@ public class BezugsgroesseController {
             throw new BezugsgroesseAbgelehnt(Ablehnung.WORT_UNBEKANNT, fakten);
         }
         return bezugsgroessen.werte(id, tag("von", von), tag("bis", bis), lesart);
+    }
+
+    /**
+     * Recht: {@code bezugsgroesse.eingeben} („Bezugsgröße eingeben / berichtigen (manuell)“). Ein Wert für eine
+     * abgeschlossene Periode (Z4) — F1: Fassung 1 ohne Begründung und ohne Freigabe (201 {@code neu}); derselbe Betrag
+     * noch einmal ist eine Wiederholung (200, nichts geschrieben); ein anderer ist 409 {@code konflikt_anderer_wert} —
+     * der Weg ist die Berichtigung (F5). AP-09 IP-7.
+     */
+    @PostMapping("/{id}/werte")
+    public ResponseEntity<BezugsgroesseDto.Eingabe> eingeben(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        BezugsgroesseDto.WertAnfrage a = streng(body, BezugsgroesseDto.WertAnfrage.class);
+        return eingabeAntwort(bezugswerte.eingeben(id, pflicht("periode", a.periode()), pflicht("wert", a.wert()),
+                akteur(auth)));
+    }
+
+    /**
+     * Recht: {@code bezugsgroesse.eingeben}. Die Berichtigung eines gespeicherten Werts (F2–F4): Fassung n + 1 mit
+     * Begründung (201 {@code berichtigung}); bei Vier-Augen an ein Vorschlag {@code BK-…} (201 {@code vorschlag}), den eine
+     * zweite Person über {@code POST /api/v1/korrekturen/{kennung}/freigeben} freigibt; derselbe Betrag ist eine
+     * Wiederholung (200). AP-09 IP-7.
+     */
+    @PostMapping("/{id}/werte/{periode}/berichtigung")
+    public ResponseEntity<BezugsgroesseDto.Eingabe> berichtigen(@PathVariable UUID id, @PathVariable String periode,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        BezugsgroesseDto.BerichtigungAnfrage a = streng(body, BezugsgroesseDto.BerichtigungAnfrage.class);
+        return eingabeAntwort(bezugswerte.berichtigen(id, pflicht("periode", periode), pflicht("wert", a.wert()),
+                a.begruendung(), akteur(auth)));
     }
 
     /**
@@ -211,6 +243,20 @@ public class BezugsgroesseController {
             }
         }
         return a;
+    }
+
+    /** 201, wenn etwas geschrieben wurde (Fassung oder Vorschlag); 200 bei einer Wiederholung. */
+    private static ResponseEntity<BezugsgroesseDto.Eingabe> eingabeAntwort(BezugsgroesseDto.Eingabe e) {
+        return ResponseEntity.status(BezugsdatenRegeln.WIEDERHOLUNG.equals(e.urteil()) ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(e);
+    }
+
+    /** Ein Pflichtfeld als Text — fehlt es oder ist es leer, 400 {@code anfrage_ungueltig} mit {@code feld}. */
+    private static String pflicht(String feld, String text) {
+        if (text == null || text.isBlank()) {
+            throw BezugsgroesseAbgelehnt.anfrage(feld);
+        }
+        return text.strip();
     }
 
     /** Ein leerer Text ist „nicht angegeben“ — nichts wird sonst umgewandelt (auch nicht die Groß-/Kleinschreibung). */

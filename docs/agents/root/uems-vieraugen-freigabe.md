@@ -35,6 +35,9 @@ Baut auf IP-12 (`uems-korrektur-ersatzwert.md`), IP-14 (`uems-korrektur-vorschla
 - **Ein Vorschlag des Systems** (`actor_sub` NULL) hält niemanden auf: bei an gibt jede berechtigte Person frei.
 - **Widerruf (§5 wörtlich):** der Bearbeiter nur die eigene und nur bei aus; Energiemanager/Kundenadministrator ohne
   Ersteller-Sperre, auch bei an. Den Ersatzwert-Widerruf regelt `ersatzwert.erfassen` (W-R12, Captain-Frage bis IP-16).
+- **Seit AP-09 IP-7** gibt dieselbe Route auch `BK-…` frei (die Berichtigung eines Bezugsgrößen-Werts): ein Zweig in
+  `freigeben`, Reihenfolge und Ablehnungen gleich; Wert-Fassung und `correction` schreibt `uems/BezugswertService` in
+  derselben Transaktion (`uems-bezugswert-eingeben.md`). `KENNUNG` im Controller und der OpenAPI-Pfad sind `^(K|BK)-…`.
 - **Nicht gebaut:** Ablehnen eines Vorschlags, Anlegen von Korrekturen/Ersatzwerten (IP-16 samt Portal),
   Kundenadministratoren-Namen im Ablehnungssatz (API kennt sie nicht, AP-03 IP-2), jede weitere Durchsetzung.
 

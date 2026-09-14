@@ -286,12 +286,44 @@
         "wertart",
         "flaeche",
         "wert"
+      ],
+      "eingeben": [
+        "archiviert",
+        "wertart",
+        "periode",
+        "zahl",
+        "wert_negativ",
+        "wert_vorhanden"
+      ],
+      "berichtigen": [
+        "archiviert",
+        "wertart",
+        "periode",
+        "zahl",
+        "wert_negativ",
+        "begruendung",
+        "kein_wert",
+        "vorschlag_offen"
       ]
     },
     "lesarten": [
       "wirksam",
       "alle"
     ],
+    "eingabe": {
+      "herkunft": "UEMS AP-09 §4.5 F1–F5, §4.4 U5 — nachgetragen mit AP-09 IP-7 am 14.09.2026",
+      "urteile": {
+        "neu": "Der Wert ist gespeichert.",
+        "wiederholung": "Bereits gespeichert, keine Änderung.",
+        "berichtigung": "Berichtigt — die bisherige Fassung bleibt lesbar.",
+        "vorschlag": "Vorschlag gesendet — bis zur Freigabe gilt der bisherige Wert."
+      },
+      "ganze_zahlen": "{einheit} sind ganze Zahlen.",
+      "kennung": {
+        "praefix": "BK",
+        "muster": "^BK-[0-9]{4}-[0-9]{4,}$"
+      }
+    },
     "ablehnungen": [
       {
         "code": "anfrage_ungueltig",
@@ -348,6 +380,48 @@
         "satz": "Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen."
       },
       {
+        "code": "kein_periodenwert",
+        "status": 422,
+        "regel": "F1 · M1",
+        "satz": "Werte je Periode gibt es nur für eine Bezugsgröße mit Periodenwerten."
+      },
+      {
+        "code": "periode_passt_nicht",
+        "status": 422,
+        "regel": "Z2",
+        "satz": "Der gelieferte Zeitraum ist keine Periode dieser Bezugsgröße."
+      },
+      {
+        "code": "periode_nicht_zu_ende",
+        "status": 422,
+        "regel": "Z4 · E16",
+        "satz": "Diese Periode ist noch nicht zu Ende."
+      },
+      {
+        "code": "zahl_unlesbar",
+        "status": 422,
+        "regel": "U4 · U5",
+        "satz": "Diese Zahl ist nicht lesbar."
+      },
+      {
+        "code": "wert_negativ",
+        "status": 422,
+        "regel": "U6",
+        "satz": "Ein Wert unter null wird nicht übernommen."
+      },
+      {
+        "code": "begruendung_zu_kurz",
+        "status": 422,
+        "regel": "F2",
+        "satz": "Bitte begründen Sie die Berichtigung (mindestens 10 Zeichen)."
+      },
+      {
+        "code": "begruendung_zu_lang",
+        "status": 422,
+        "regel": "F2",
+        "satz": "Eine Begründung hat höchstens 500 Zeichen."
+      },
+      {
         "code": "geltung_nicht_waehlbar",
         "status": 422,
         "regel": "E1",
@@ -384,6 +458,24 @@
         "satz": "Eine Bezugsgröße mit Werten wird nicht gelöscht. Archivieren Sie sie stattdessen."
       },
       {
+        "code": "konflikt_anderer_wert",
+        "status": 409,
+        "regel": "F5",
+        "satz": "Für diesen Zeitraum gibt es schon einen anderen Wert."
+      },
+      {
+        "code": "kein_wert",
+        "status": 409,
+        "regel": "F1 · F2",
+        "satz": "Für diese Periode gibt es noch keinen Wert — geben Sie ihn zuerst ein."
+      },
+      {
+        "code": "vorschlag_offen",
+        "status": 409,
+        "regel": "F3 · E6",
+        "satz": "Für diesen Wert liegt schon ein Vorschlag vor. Bis zur Entscheidung ist keine zweite Berichtigung möglich."
+      },
+      {
         "code": "nicht_gefunden",
         "status": 404,
         "regel": "Mandantenzaun",
@@ -395,7 +487,8 @@
       "`einheit_unbekannt` ist dasselbe Wort mit demselben Satz wie der Befund in `befund_saetze` — die Tests halten beide gleich.",
       "`geltung_nicht_waehlbar` spricht, solange Prozess und Kostenstelle keine Objekte haben (Tabellen AP-09 IP-4: keine Verweis-Spalte). Welche Geltungsbereiche wählbar sind, ist darum ein EINGANG der Regel (`waehlbar`), kein Wort des Vokabulars.",
       "`geltung_unbekannt` antwortet gleich für ein Objekt, das es nicht gibt, und für eines eines anderen Kundenbereichs — die Antwort verrät nichts.",
-      "`lesarten`: `GET …/{id}/werte?fassungen=` — `wirksam` (Vorgabe) liefert je Schlüssel die wirksame Fassung mit ihrer Herkunft, `alle` die ganze Kette; die Kette und ihr Stand kommen aus der Regel `fassung`."
+      "`lesarten`: `GET …/{id}/werte?fassungen=` — `wirksam` (Vorgabe) liefert je Schlüssel die wirksame Fassung mit ihrer Herkunft, `alle` die ganze Kette; die Kette und ihr Stand kommen aus der Regel `fassung`.",
+      "`eingabe` (AP-09 IP-7): `POST …/{id}/werte` prüft in `pruefreihenfolge.eingeben`, `POST …/{id}/werte/{periode}/berichtigung` in `pruefreihenfolge.berichtigen`. Die Ablehnungen, die ein Befund sind (`periode_passt_nicht`, `periode_nicht_zu_ende`, `zahl_unlesbar`, `wert_negativ`, `konflikt_anderer_wert`), sprechen den Satz aus `befund_saetze`; `zahl_unlesbar` trägt bei Stück, Personen und Schichten dazu den Zusatz `ganze_zahlen`. Derselbe Betrag ist keine Ablehnung, sondern eine Wiederholung (Regel `urteil`) und schreibt nichts. Eine Berichtigung ist der Vorgang `kennung` (BK-<Jahr>-<lfd. Nr.>); ihre Freigabe läuft über `POST /api/v1/korrekturen/{kennung}/freigeben` (AP-08 IP-15)."
     ]
   },
   "arten": {
@@ -2106,6 +2199,13 @@
       "grund": "Die Vorlage rechnet Werte, nicht das Verwalten der Bezugsgröße; M1–M6 standen nur in §4.2 des Konzepts. AP-09 IP-5 trägt sie als Prüfungen in die Fälle nach, in deren Bezugsgröße sie spielen — keine bestehende Prüfung, kein Betrag und kein Ergebnis der Vorlage ändert sich."
     },
     {
+      "fall": "B4, B5 · Regel verwalten (eingeben, berichtigen)",
+      "feld": "pruefungen (regel `verwalten`, Vorgänge eingeben und berichtigen)",
+      "vorlage": null,
+      "statt": "zehn Prüfungen der Vorgänge eingeben und berichtigen",
+      "grund": "Die Vorlage nennt die Ablehnungen der Eingabe nur als Fehlertexte der Bedienabläufe (§5); AP-09 IP-7 trägt sie mit der Schnittstelle als Prüfungen in die Fälle nach, in denen sie spielen (B4 Eingabe, B5 Konflikt und Berichtigung). Kein Betrag, keine Fassung und kein Ergebnis der Vorlage ändert sich."
+    },
+    {
       "fall": "B1 · Regel csv",
       "feld": "gegeben.datei.kodierung",
       "vorlage": "Windows-1252",
@@ -3600,6 +3700,86 @@
           "ergebnis": {
             "ablehnung": "geltung_nicht_waehlbar"
           }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Wert eingeben: Oktober 2026 ist zu Ende, „48.200“ lesbar, noch kein Wert — erlaubt, Fassung 1 ohne Begründung (F1)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": null,
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "„48.200,5“ Stück: abgelehnt mit zahl_unlesbar — Stück sind ganze Zahlen (U5)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": "zahl_unlesbar",
+              "betrag": null,
+              "wirksamer_betrag": null,
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "zahl_unlesbar"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "November 2026 am 03.11.2026: abgelehnt mit periode_nicht_zu_ende (Z4)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": "periode_nicht_zu_ende",
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": null,
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "periode_nicht_zu_ende"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "„-48.200“: eine negative Menge ist abgelehnt mit wert_negativ (U6)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "-48200",
+              "wirksamer_betrag": null,
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "wert_negativ"
+          }
         }
       ],
       "beschreibend": {
@@ -4033,6 +4213,126 @@
           },
           "ergebnis": {
             "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Ein zweiter Wert für Oktober 2026 (48 200 statt 4 820) wird kein Eintrag — der Weg ist die Berichtigung (F5)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": "4820",
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "konflikt_anderer_wert"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Derselbe Wert noch einmal (4 820) ist keine Ablehnung: eine Wiederholung, sie schreibt nichts (F5)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "eingeben",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "4820",
+              "wirksamer_betrag": "4820",
+              "begruendung": null,
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Berichtigen mit Begründung: erlaubt — Fassung 2 (Vier-Augen aus) oder Vorschlag (an) entscheidet der Schreibweg (F2, F3)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "berichtigen",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": "4820",
+              "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": null
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Berichtigen mit „Vertippt“ (8 Zeichen): abgelehnt mit begruendung_zu_kurz (F2)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "berichtigen",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": "4820",
+              "begruendung": "Vertippt",
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "begruendung_zu_kurz"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Eine zweite Berichtigung, während der Vorschlag offen ist: abgelehnt mit vorschlag_offen (F3)",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "berichtigen",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": "4820",
+              "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+              "vorschlag_offen": true
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "vorschlag_offen"
+          }
+        },
+        {
+          "regel": "verwalten",
+          "name": "Berichtigen, wo es noch keinen wirksamen Wert gibt: abgelehnt mit kein_wert",
+          "eingang": {
+            "verwaltung": {
+              "vorgang": "berichtigen",
+              "wertart": "periodenwert",
+              "archiviert": false,
+              "periode_befund": null,
+              "zahl_befund": null,
+              "betrag": "48200",
+              "wirksamer_betrag": null,
+              "begruendung": "Tippfehler — eine Null fehlte (Montagebericht Oktober)",
+              "vorschlag_offen": false
+            }
+          },
+          "ergebnis": {
+            "ablehnung": "kein_wert"
           }
         }
       ],

@@ -1528,17 +1528,15 @@
         }
       }
     },
-    "art_correction": {
+        "art_correction": {
       "type": "object",
-      "description": "correction — Korrektur. Urheber: cloud, kunde.",
+      "description": "correction — Korrektur. Urheber: cloud, kunde. Seit AP-09 IP-7 GENAU EIN Bezug: die Reihe (komponente + messkanal) oder die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu); beides zugleich prüft die Regel.",
       "additionalProperties": false,
       "required": [
         "ereignis_id",
         "art",
         "von",
         "bis",
-        "komponente",
-        "messkanal",
         "korrektur",
         "korrektur_art",
         "status"
@@ -1556,12 +1554,6 @@
         "bis": {
           "$ref": "#/$defs/zeit_utc"
         },
-        "komponente": {
-          "$ref": "#/$defs/kennung"
-        },
-        "messkanal": {
-          "$ref": "#/$defs/messkanal"
-        },
         "korrektur": {
           "$ref": "#/$defs/kennung"
         },
@@ -1571,13 +1563,46 @@
         "status": {
           "$ref": "#/$defs/korrektur_status"
         },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
         "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "bezugsgroesse": {
           "$ref": "#/$defs/kennung"
         },
         "ersatzwert": {
           "$ref": "#/$defs/kennung"
+        },
+        "fassung_alt": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "fassung_neu": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "import": {
+          "$ref": "#/$defs/kennung"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "komponente",
+            "messkanal"
+          ]
+        },
+        {
+          "required": [
+            "bezugsgroesse",
+            "fassung_alt",
+            "fassung_neu"
+          ]
+        }
+      ]
     },
     "art_verteilung_geaendert": {
       "type": "object",

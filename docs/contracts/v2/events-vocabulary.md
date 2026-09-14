@@ -146,7 +146,7 @@ Felder, die eine Fortschreibung setzen darf.
 | `bitfield_change` | Statusbits | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `text_change` | Text | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `substitute` | Ersatzwert | kunde | — | [von, bis) · Messzeit | komponente, messkanal (+ messstelle) | `ersatzwert`, `methode`, `status` | — |
-| `correction` | Korrektur | cloud · kunde | — | [von, bis) · Messzeit | komponente, messkanal (+ messstelle) | `korrektur`, `korrektur_art`, `status` | — |
+| `correction` | Korrektur | cloud · kunde | — | [von, bis) · Messzeit | GENAU EINER: komponente, messkanal (+ messstelle) ODER bezugsgroesse (mit `fassung_alt`, `fassung_neu`) | `korrektur`, `korrektur_art`, `status` | — |
 | `verteilung_geaendert` | Verteilung geändert | kunde | — | Zeitpunkt · Messzeit | messstelle | `eingetragen_am` | — |
 | `bilanz_neu_berechnet` | Bilanz neu berechnet | cloud | — | [von, bis) · Messzeit | messstelle | `ausloeser` | — |
 
@@ -215,6 +215,21 @@ kein gemessener Wert“; die Namen der Methoden und Arten stehen in der Vektor-D
 spricht nie das Vertragswort. Dieselben Wörter prüfen die Tabellen über
 `messreihe_korrektur_vokabular()`. Migration `V20260913190000__uems_korrektur_ersatzwert.sql`.
 
+**Berichtigung eines Bezugsgrößen-Werts (AP-09 IP-7, F4, additiv).** `correction` trifft seitdem GENAU
+EINEN Bezug: die Reihe (`komponente` + `messkanal`, wie bisher) ODER die Bezugsgröße — `bezugsgroesse`
+(ihr Kennzeichen zur Zeit der Meldung) mit `fassung_alt` und `fassung_neu` (die wirksame Fassung des Werts
+vorher und nachher, `fassung_neu` > `fassung_alt`) und optional `import` (`I-<Jahr>-<lfd. Nr.>`, erst mit
+AP-09 IP-13). Die Kennung ist dann der Vorgang der Berichtigung `BK-<Jahr>-<lfd. Nr.>` (Tabelle
+`bezugsgroesse_berichtigung`), die Art immer `wert_berichtigt`, [von, bis) die Periode des Werts
+(Mitternacht in der Zeitzone des Standorts — auf dem Viertelstunden-Raster). Gemeldet wird NUR die wirksame
+Fassung ≥ 2 (`freigegeben`, Urheber `kunde`): ein Erstwert meldet nichts, ein offener Vorschlag auch nicht.
+Die Listen des Vokabulars nennen darum keinen der beiden Bezüge als Pflicht; was dem gewählten Bezug fehlt,
+ist `schema_verletzt` wie zuvor („Pflichtfeld komponente“), beides zugleich oder Fassungen an einer Reihe sind
+`regel_verletzt` — jede Meldung, die vorher angenommen oder verworfen wurde, bleibt es mit demselben Grund.
+Kundensatz etwa „Korrektur BK-2026-0001 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt
+(mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2“. Migration `V20260915010000__uems_bezugswert_berichtigung.sql`,
+Schreibweg `uems-bezugswert-eingeben.md` (Wegweiser).
+
 **Verteilung geändert (AP-10 IP-8, E11/E12, additiv).** `verteilung_geaendert` ist das 27. Wort und
 das erste, dessen Bezug NUR die Messstelle ist — eine Verteilung auf Kostenstellen hängt an keiner
 Reihe, darum stehen `komponente` und `messkanal` nie darin (die Regel „Messstelle nur mit der ganzen
@@ -238,8 +253,9 @@ Vektor-Datei nennt, was spätere Pakete anlegen: `correction` mit Bezug `bezugsg
 eine wirksame Fassung ≥ 2 oder die Rücknahme eines Bezugsgrößen-Werts; gelesen vom Nenner-Auslöser der
 Kennzahl-Kaskade AP-11 IP-9, der NUR Kennzahlen und Berichte neu bildet, keine Messreihen-Stufe) und
 `kennzahl_neu_gebildet` (Urheber `cloud`, Bezug die Kennzahl; AP-11 IP-6 — ein endgültiger Kennzahl-Wert
-wurde als Version n + 1 neu gebildet, Pflicht der Anlass). Bis dahin kennen weder `vokabular.arten` noch
-die Tabelle noch eine Prüfung sie; eine Meldung damit wird abgelehnt. Wer einen Eintrag anlegt, trägt
+wurde als Version n + 1 neu gebildet, Pflicht der Anlass). `correction` mit Bezug `bezugsgroesse` ist seit AP-09 IP-7 angelegt (siehe
+„Berichtigung eines Bezugsgrößen-Werts“); `kennzahl_neu_gebildet` kennt bis AP-11 IP-6 weder `vokabular.arten` noch
+die Tabelle noch eine Prüfung, eine Meldung damit wird abgelehnt. Wer einen Eintrag anlegt, trägt
 ihn in `vokabular.arten` ein (Migration nach dem höchsten ausgelieferten Stand); `KennzahlVectorsTest`
 prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennzahl:
 [`kennzahl.md`](./kennzahl.md).

@@ -48,7 +48,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1")
 public class KorrekturFreigabeController {
 
-    private static final Pattern KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
+    /** K-… eine Korrektur einer Reihe (AP-08), BK-… die Berichtigung eines Bezugsgrößen-Werts (AP-09 IP-7). */
+    private static final Pattern KENNUNG = Pattern.compile("^(K|BK)-[0-9]{4}-[0-9]{4,}$");
 
     private final KorrekturFreigabeService dienst;
     private final ObjectMapper streng;

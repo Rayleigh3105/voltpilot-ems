@@ -175,7 +175,8 @@ public final class BezugsgroesseDto {
 
     /**
      * Ein Wert = ein Schlüssel (Periode bzw. Zeitpunkt) mit seinen Fassungen. {@code wirksamer_betrag}
-     * ist {@code null} nach einer Rücknahme — nie 0 — und solange {@code stand_offen}.
+     * ist {@code null} nach einer Rücknahme — nie 0 — und solange {@code stand_offen}. {@code vorschlag}: die
+     * offene Berichtigung (Vier-Augen an, AP-09 IP-7) — sie ist noch keine Fassung; {@code null}, wenn keine offen ist.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Wert(
@@ -186,7 +187,38 @@ public final class BezugsgroesseDto {
             String wirksamerBetrag,
             Integer wirksameFassung,
             boolean standOffen,
-            List<Fassung> fassungen) {}
+            List<Fassung> fassungen,
+            Vorschlag vorschlag) {}
+
+    /**
+     * {@code POST /api/v1/bezugsgroessen/{id}/werte} (AP-09 IP-7): die Periode, wie die Regel {@code periode} sie liest
+     * („2026-10“, „Oktober 2026“), und der Wert, wie ein Mensch ihn tippt („48.200“).
+     */
+    public record WertAnfrage(String periode, String wert) {}
+
+    /** {@code POST …/{id}/werte/{periode}/berichtigung}: der neue Wert als Text und die Begründung (10 bis 500 Zeichen). */
+    public record BerichtigungAnfrage(String wert, String begruendung) {}
+
+    /** Ein Hinweis zu einem angenommenen Wert (U6 {@code wert_unplausibel}) — er informiert, er verhindert nichts. */
+    public record Hinweis(String code, String satz) {}
+
+    /** Die offene Berichtigung eines Werts (F3): bis zur Freigabe gilt die wirksame Fassung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Vorschlag(
+            String kennung,
+            String betrag,
+            int ersetztFassung,
+            String begruendung,
+            Person urheber,
+            OffsetDateTime eingetragenAm) {}
+
+    /**
+     * Die Antwort auf eine Eingabe oder Berichtigung (AP-09 IP-7): {@code urteil} {@code neu} · {@code wiederholung} ·
+     * {@code berichtigung} · {@code vorschlag} mit seinem Satz aus dem Vertrag, die Kennung des Vorgangs
+     * ({@code BK-…}, nur bei einer Berichtigung), die Hinweise und der Wert mit allen Fassungen.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Eingabe(String urteil, String satz, String kennung, List<Hinweis> hinweise, Wert wert) {}
 
     /** {@code GET /api/v1/bezugsgroessen/{id}/werte}: der Zeitraum, die Lesart und die Werte. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

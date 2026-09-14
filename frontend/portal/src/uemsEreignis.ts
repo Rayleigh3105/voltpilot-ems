@@ -154,6 +154,10 @@ export const FELDTYP: Record<string, Feldtyp> = {
   status: 'wort',
   korrektur: 'kennung',
   korrektur_art: 'wort',
+  bezugsgroesse: 'kennung',
+  fassung_alt: 'ganz_ab_1',
+  fassung_neu: 'ganz_ab_1',
+  import: 'kennung',
   ausloeser: 'kennung',
 };
 
@@ -382,7 +386,11 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
       abgelehnt: 'Korrektur {korrektur} abgelehnt für {von} bis {bis}: {korrektur_art} — die Werte bleiben unverändert',
       zurueckgenommen: 'Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}',
     },
-    zusaetze: { ersatzwert: ' ({ersatzwert})' },
+    zusaetze: {
+      ersatzwert: ' ({ersatzwert})',
+      bezugsgroesse: ' · Bezugsgröße {bezugsgroesse}, Fassung {fassung_alt} → {fassung_neu}',
+      import: ' · Import {import}',
+    },
   },
   verteilung_geaendert: {
     name: 'Verteilung geändert',

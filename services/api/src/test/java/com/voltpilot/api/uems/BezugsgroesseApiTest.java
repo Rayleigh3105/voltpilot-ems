@@ -13,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -47,9 +49,10 @@ import org.testcontainers.utility.DockerImageName;
  * /api/v1/bezugsgroessen}, {@code GET/PUT/DELETE …/{id}}, {@code POST …/{id}/archivieren} und das
  * Lesemodell {@code GET …/{id}/werte?von&bis&fassungen=}.
  *
- * <p>⚠ Werte schreibt diese Schnittstelle NICHT (Eingabe und Berichtigung sind AP-09 IP-7, der Import
- * IP-13). Die Fassungen der Lesemodell-Tests schreibt der Test deshalb so in die Tabelle, wie der
- * Vertrag sie beschreibt (B4/B5/B14) — geprüft wird, was die Schnittstelle daraus liest.
+ * <p>Werte schreibt die Schnittstelle seit AP-09 IP-7 (Eingabe, Berichtigung, Vier-Augen —
+ * {@code BezugswertEingabeApiTest}); den Import schreibt IP-13. Die Fassungen der Lesemodell-Tests schreibt
+ * dieser Test weiter so in die Tabelle, wie der Vertrag sie beschreibt (B4/B5/B14) — geprüft wird, was die
+ * Schnittstelle daraus liest.
  *
  * <p>Jede Ablehnung wird mit Code, Status UND dem Kundensatz aus der Vektor-Datei geprüft und mit dem
  * Nachweis, dass die vier Tabellen des Kundenbereichs danach Zeichen für Zeichen dieselben sind. Der
@@ -256,6 +259,33 @@ class BezugsgroesseApiTest {
         abgelehntMitFeld(w, HttpMethod.PUT, gut + "/" + mitarbeitende.body().get("id").asText() + "/stammdatum",
                 Map.of("wert", "0", "gueltig_ab", "2026-01-01"), "wert_ungueltig", "wert");
 
+        // AP-09 IP-7: einen Wert eingeben und berichtigen — an einer EIGENEN Bezugsgröße, damit M1/M6 unten ihre
+        // eine Wert-Zeile behalten. Die Fälle selbst stehen in BezugswertEingabeApiTest; hier kommt jeder Code einmal.
+        String eingabePfad = gut + "/" + anlegen(w, "BZ-0003") + "/werte";
+        abgelehnt(w, HttpMethod.POST, gut + "/" + mitarbeitende.body().get("id").asText() + "/werte",
+                Map.of("periode", "2025-10", "wert", "180"), "kein_periodenwert");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad, Map.of("periode", "KW 40", "wert", "100"),
+                "periode_passt_nicht", "periode");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad, Map.of("periode",
+                YearMonth.now(ZoneId.of("Europe/Berlin")).toString(), "wert", "100"), "periode_nicht_zu_ende", "periode");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad, Map.of("periode", "2025-09", "wert", "12,3,4"),
+                "zahl_unlesbar", "wert");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad, Map.of("periode", "2025-09", "wert", "-5"), "wert_negativ", "wert");
+        abgelehnt(w, HttpMethod.POST, eingabePfad + "/2025-09/berichtigung",
+                Map.of("wert", "100", "begruendung", "Ablesung nachgetragen"), "kein_wert");
+        assertThat(ruf(w, HttpMethod.POST, eingabePfad, Map.of("periode", "2025-09", "wert", "100")).status()).isEqualTo(201);
+        abgelehnt(w, HttpMethod.POST, eingabePfad, Map.of("periode", "2025-09", "wert", "200"), "konflikt_anderer_wert");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad + "/2025-09/berichtigung",
+                Map.of("wert", "200", "begruendung", "zu kurz"), "begruendung_zu_kurz", "begruendung");
+        abgelehntMitFeld(w, HttpMethod.POST, eingabePfad + "/2025-09/berichtigung",
+                Map.of("wert", "200", "begruendung", "x".repeat(501)), "begruendung_zu_lang", "begruendung");
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = true WHERE tenant_id = ?", w.mandant());
+        assertThat(ruf(w, HttpMethod.POST, eingabePfad + "/2025-09/berichtigung",
+                Map.of("wert", "200", "begruendung", "Ablesung nachgetragen")).status()).isEqualTo(201);
+        abgelehnt(w, HttpMethod.POST, eingabePfad + "/2025-09/berichtigung",
+                Map.of("wert", "300", "begruendung", "Noch einmal nachgezählt"), "vorschlag_offen");
+        root.update("UPDATE unternehmen SET vieraugen_freigabe = NULL WHERE tenant_id = ?", w.mandant());
+
         // M1: nach dem ersten Wert bleibt die Bedeutung fest — Name und Kennzeichen nicht.
         erstwert(w, bg, 1, "erstwert", "wirksam", "4820", null);
         Antwort fest = abgelehnt(w, HttpMethod.PUT, gut + "/" + bg, anfrage("BZ-0001", "Produktionsmenge", "periodenwert",
@@ -354,7 +384,7 @@ class BezugsgroesseApiTest {
         JsonNode wert = alle.body().at("/werte/0");
         assertThat(alle.body().get("werte")).hasSize(1);
         assertThat(felder(wert)).containsExactly("periode_von", "periode_bis", "zeitpunkt", "zeitzone",
-                "wirksamer_betrag", "wirksame_fassung", "stand_offen", "fassungen");
+                "wirksamer_betrag", "wirksame_fassung", "stand_offen", "fassungen", "vorschlag");
         assertThat(wert.get("periode_von").asText()).isEqualTo("2025-10-01");
         assertThat(wert.get("periode_bis").asText()).isEqualTo("2025-10-31");
         assertThat(wert.get("wirksamer_betrag").asText()).isEqualTo("48200");
@@ -611,11 +641,11 @@ class BezugsgroesseApiTest {
         return a.body().get("werte").findValuesAsText("periode_von");
     }
 
-    /** Die fünf Tabellen des Kundenbereichs als Text — vor und nach einer Ablehnung derselbe. */
+    /** Die Tabellen der Bezugsgrößen im Kundenbereich als Text — vor und nach einer Ablehnung derselbe. */
     private static String zustand(Welt w) {
         StringBuilder s = new StringBuilder();
         for (String tabelle : List.of("bezugsgroesse", "bezugsgroesse_kennzeichen_verlauf", "bezugsgroesse_wert",
-                "bezugsgroesse_stammdatum", "bezugsgroesse_aenderung")) {
+                "bezugsgroesse_stammdatum", "bezugsgroesse_aenderung", "bezugsgroesse_berichtigung")) {
             s.append(tabelle).append('=').append(root.queryForObject("SELECT coalesce(string_agg(to_jsonb(t)::text, '|' "
                     + "ORDER BY to_jsonb(t)::text), '') FROM " + tabelle + " t WHERE tenant_id = ?", String.class, w.mandant()))
                     .append('\n');
