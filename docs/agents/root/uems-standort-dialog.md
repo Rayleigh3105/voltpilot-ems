@@ -41,4 +41,5 @@ IP-3/IP-4 (`uems-standort-lesemodell-unternehmen-st.md`, `uems-standort-schreibr
    bis zu drei bleibt, wie sie war. Die Zeitzone „vom Unternehmen“ steht UNTER dem Feld, im Auslöser
    würde „Europe/Berlin (vom Unternehmen)“ bei 375 px abgeschnitten.
 8. **Nicht hier:** „Stand am …“ (IP-13), Archivieren/Wiederherstellen (IP-15), Anlage zuordnen
-   (IP-11), Datenlage je Standort („14 von 14 Messstellen liefern“), Ortsbaum (IP-7).
+   (IP-11), Datenlage je Standort („14 von 14 Messstellen liefern“). Der Ortsbaum (IP-7) steht seit
+   IP-7 unter dem Kopf jeder Karte (`uems-ortsbaum-portal.md`).

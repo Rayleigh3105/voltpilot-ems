@@ -8,6 +8,7 @@ import {
   bestandZweiAnlagen,
   werkLindach,
 } from '../test/standorteFixtures';
+import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { StandortePage } from './StandortePage';
 
 /** Geschütztes Leerzeichen (U+00A0) — Zahl und Wort brechen nie auseinander. */
@@ -19,6 +20,10 @@ function verdrahte(liste = ahrenbergHeute(), unternehmen = ahrenbergUnternehmen(
   vi.spyOn(api, 'standorte').mockResolvedValue(liste);
   vi.spyOn(api, 'unternehmen').mockResolvedValue(unternehmen);
   vi.spyOn(api, 'standortKurzzeichenVorschlag').mockResolvedValue({ kurzzeichen: 'ST-3' });
+  // AP-02 IP-7: jede Karte liest ihren Ortsbaum.
+  vi.spyOn(api, 'standortOrte').mockImplementation(async (id) =>
+    id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg(),
+  );
 }
 
 afterEach(() => {
@@ -37,6 +42,17 @@ describe('StandortePage', () => {
     expect(koepfe[1].textContent).toContain(`Am Bahndamm 12, Lindach · 2${NB}Gebäude · 1${NB}Anlage · 2${NB}600${NB}m²`);
     expect(screen.queryByTestId('noch-nicht-zugeordnet')).toBeNull();
     expect(screen.queryByText('Archiviert')).toBeNull();
+  });
+
+  it('AP-02 IP-7: jede Karte trägt unter dem Kopf ihren Ortsbaum', async () => {
+    verdrahte();
+    render(<StandortePage />);
+    await screen.findByRole('button', { name: 'Lagerhalle Lindach bearbeiten' });
+    const karten = screen.getAllByTestId('ortsbaum');
+    expect(karten).toHaveLength(2);
+    expect(within(karten[0]).getByText('Halle 1')).toBeInTheDocument();
+    expect(within(karten[1]).getByText('Montagehalle Lindach')).toBeInTheDocument();
+    expect(api.standortOrte).toHaveBeenCalledTimes(2);
   });
 
   it('„Bearbeiten“ im Standort-Kopf öffnet den Dialog, Abbrechen gibt den Fokus zurück', async () => {
@@ -103,6 +119,7 @@ describe('StandortePage', () => {
   it('ein Ladefehler nennt den Grund und bietet „Erneut versuchen“', async () => {
     vi.spyOn(api, 'standorte').mockRejectedValueOnce(new Error('Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.'));
     vi.spyOn(api, 'unternehmen').mockResolvedValue(ahrenbergUnternehmen());
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumAhrenberg());
     render(<StandortePage />);
     expect((await screen.findByRole('alert')).textContent).toContain('nicht erreichbar');
     vi.mocked(api.standorte).mockResolvedValue(ahrenbergHeute());

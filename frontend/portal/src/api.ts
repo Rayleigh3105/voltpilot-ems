@@ -6082,6 +6082,33 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // ---- Ortsstruktur: Gebäude und Bereiche (UEMS AP-02 IP-5; Fläche dazu IP-7)
+  /** Der Ortsbaum eines Standorts zum Stichtag (ohne: heute) — Gebäude mit Bereichen und „direkt am Standort“. */
+  standortOrte: (standortId: string, stichtag?: string) =>
+    request<OrtsbaumAmStichtag>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/orte${
+        stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''
+      }`,
+    ),
+
+  /** Legt ein Gebäude oder einen Bereich an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  ortAnlegen: (standortId: string, body: OrtAnlegen) =>
+    request<Ort>(`/api/v1/standorte/${encodeURIComponent(standortId)}/orte`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Schreibt die einfachen Felder eines Gebäudes oder Bereichs — die GANZE Menge. */
+  ortBearbeiten: (ortId: string, body: OrtBearbeiten) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Bezugsfläche eines Gebäudes oder Bereichs ab einem Tag (E3). */
+  ortFlaeche: (ortId: string, body: OrtFlaeche) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/flaeche`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
   kostenstellen: (stichtag?: string) =>
     request<{ stichtag: string | null; kostenstellen: Kostenstelle[] }>(

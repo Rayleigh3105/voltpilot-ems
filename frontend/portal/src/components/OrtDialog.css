@@ -1,0 +1,15 @@
+/*
+ * Gebäude- und Bereich-Dialog (UEMS AP-02 IP-7). Der Stapel ist `vp-sd` aus dem
+ * Standort-Dialog; hier nur die Reihe „Bezugsfläche (m²) · Gültig ab“.
+ * ⚠ 375 px: beide Felder stehen untereinander, erst ab 22 rem nebeneinander.
+ */
+
+.vp-od-flaeche {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.vp-od-ab {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
