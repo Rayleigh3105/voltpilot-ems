@@ -886,7 +886,8 @@
         "wechsel": { "type": "array", "items": { "$ref": "#/$defs/zustandswechsel" }, "description": "kanal: die Statuswechsel innerhalb der Periode." },
         "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." },
         "verwaltung": { "$ref": "#/$defs/verwaltung" },
-        "csv": { "$ref": "#/$defs/csv_eingang", "description": "csv (C1, AP-09 IP-11): die Datei als Bytes und was die Vorlage festhält." }
+        "csv": { "$ref": "#/$defs/csv_eingang", "description": "csv (C1, AP-09 IP-11): die Datei als Bytes und was die Vorlage festhält." },
+        "vorschau": { "$ref": "#/$defs/vorschau_eingang", "description": "vorschau (C2–C5, AP-09 IP-12): die Datei, die Zuordnung und was schon gespeichert ist." }
       }
     },
 
@@ -975,7 +976,8 @@
         "ablehnung": { "anyOf": [{ "$ref": "#/$defs/ablehnung_code" }, { "type": "null" }], "description": "verwalten: die Ablehnung, oder null — der Vorgang ist erlaubt." },
         "ablehnung_felder": { "type": "array", "items": { "$ref": "#/$defs/bezugsgroesse_feld" }, "description": "verwalten (`bedeutung_fest`): die Felder, die nach dem ersten Wert nicht geändert werden." },
         "kennzeichen_vorschlag": { "type": "string", "minLength": 1, "description": "verwalten (M2): das Kennzeichen, das der Server ohne Angabe vergibt." },
-        "csv": { "$ref": "#/$defs/csv_ergebnis", "description": "csv (C1, AP-09 IP-11): was der Leser aus der Datei macht." }
+        "csv": { "$ref": "#/$defs/csv_ergebnis", "description": "csv (C1, AP-09 IP-11): was der Leser aus der Datei macht." },
+        "vorschau": { "$ref": "#/$defs/vorschau_ergebnis", "description": "vorschau (C2–C5, AP-09 IP-12): die Vorschau der ganzen Datei — sie schreibt nichts." }
       }
     },
 
@@ -1079,6 +1081,172 @@
       }
     },
 
+    "vorschau_zuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["csv", "spalten", "deutung", "zahlformat", "einheit", "bezugsgroesse", "bezug_tabelle", "synonyme"],
+      "description": "vorschau (C3): die Zuordnung, wie die Route sie nimmt. Spalten 1-basiert. `einheit` gilt ohne Einheitsspalte (U3), `bezugsgroesse` (ein Kennzeichen) ohne Bezug-Spalte; genau eins von Bezug-Spalte und `bezugsgroesse`.",
+      "properties": {
+        "csv": {
+          "anyOf": [{ "type": "null" }, {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kodierung": { "$ref": "#/$defs/csv_kodierung" },
+              "trennzeichen": { "$ref": "#/$defs/csv_trennzeichen" },
+              "kopfzeile": { "type": "boolean" }
+            }
+          }]
+        },
+        "spalten": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["periode", "bis", "wert", "einheit", "bezug", "bemerkung"],
+          "properties": {
+            "periode": { "type": "integer", "minimum": 1, "description": "Periode, Periodenbeginn/-ende, „von“ oder Zeitpunkt (Z3)." },
+            "bis": { "type": ["integer", "null"], "minimum": 1, "description": "Nur bei der Deutung von_bis." },
+            "wert": { "type": "integer", "minimum": 1 },
+            "einheit": { "type": ["integer", "null"], "minimum": 1 },
+            "bezug": { "type": ["integer", "null"], "minimum": 1 },
+            "bemerkung": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        },
+        "deutung": { "type": "string", "enum": ["periode", "periodenbeginn", "periodenende", "von_bis", "zeitpunkt"] },
+        "zahlformat": { "type": "string", "enum": ["de", "en", "auto"] },
+        "einheit": { "type": ["string", "null"], "minLength": 1 },
+        "bezugsgroesse": { "type": ["string", "null"], "pattern": "^BZ-[0-9]+$" },
+        "bezug_tabelle": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^BZ-[0-9]+$" } },
+        "synonyme": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+      }
+    },
+
+    "vorschau_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei", "zuordnung", "bezugsgroessen", "bestand", "importe_dieser_datei", "jetzt"],
+      "properties": {
+        "datei": { "$ref": "#/$defs/csv_datei" },
+        "zuordnung": { "$ref": "#/$defs/vorschau_zuordnung" },
+        "bezugsgroessen": {
+          "type": "array",
+          "description": "Die Bezugsgrößen, die Werte aufnehmen können, mit der Zeitzone ihres Standorts (Z1). `id` ist Teil des Zeilen-Fingerabdrucks.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennzeichen", "id", "wertart", "einheit", "periode_art", "zeitzone", "einheiten_gebunden"],
+            "properties": {
+              "kennzeichen": { "type": "string", "pattern": "^BZ-[0-9]+$" },
+              "id": { "type": "string", "format": "uuid" },
+              "wertart": { "type": "string", "enum": ["periodenwert", "stand"] },
+              "einheit": { "type": "string", "minLength": 1 },
+              "periode_art": { "type": ["string", "null"] },
+              "zeitzone": { "type": "string", "minLength": 1 },
+              "einheiten_gebunden": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "bestand": {
+          "type": "array",
+          "description": "Der wirksame Stand je belegtem Schlüssel: Periodenschlüssel oder Zeitpunkt in UTC.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bezugsgroesse", "schluessel", "betrag", "fassung", "import_kennung"],
+            "properties": {
+              "bezugsgroesse": { "type": "string", "pattern": "^BZ-[0-9]+$" },
+              "schluessel": { "type": "string", "minLength": 1 },
+              "betrag": { "$ref": "#/$defs/betrag" },
+              "fassung": { "type": "integer", "minimum": 1 },
+              "import_kennung": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "importe_dieser_datei": {
+          "type": "array",
+          "description": "Was die Datenbank über gespeicherte Importe mit DIESEM Datei-Fingerabdruck sagt: Kennung, heutiger Status, Zeitpunkt.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "status", "am"],
+            "properties": {
+              "kennung": { "type": "string", "pattern": "^I-[0-9]{4}-[0-9]{4,}$" },
+              "status": { "type": "string", "enum": ["uebernommen", "teilweise_uebernommen", "wiederholt", "zurueckgenommen", "verworfen"] },
+              "am": { "$ref": "#/$defs/zeitpunkt" }
+            }
+          }
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+
+    "vorschau_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei", "frueherer_import", "zeilen", "import"],
+      "properties": {
+        "datei": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "bytes", "befund", "zusatz", "kodierung", "trennzeichen", "kopfzeile", "datenzeilen"],
+          "properties": {
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "C2/E8: SHA-256 der hochgeladenen Bytes." },
+            "bytes": { "type": "integer", "minimum": 0 },
+            "befund": { "anyOf": [{ "type": "string", "enum": ["datei_zu_gross", "kodierung_unlesbar", "keine_datenzeilen"] }, { "type": "null" }] },
+            "zusatz": { "anyOf": [{ "$ref": "#/$defs/csv_zusatz" }, { "type": "null" }] },
+            "kodierung": { "anyOf": [{ "$ref": "#/$defs/csv_kodierung" }, { "type": "null" }] },
+            "trennzeichen": { "anyOf": [{ "$ref": "#/$defs/csv_trennzeichen" }, { "type": "null" }] },
+            "kopfzeile": { "type": ["boolean", "null"] },
+            "datenzeilen": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "frueherer_import": {
+          "anyOf": [{ "type": "null" }, {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "status"],
+            "description": "Der jüngste gespeicherte Import dieser Datei, der etwas geschrieben hat — die Grundlage von `datei_bekannt`.",
+            "properties": {
+              "kennung": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }]
+        },
+        "zeilen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nr", "bezugsgroesse", "schluessel", "betrag", "einheit", "urteil", "befunde", "fingerabdruck"],
+            "properties": {
+              "nr": { "type": "integer", "minimum": 1 },
+              "bezugsgroesse": { "type": ["string", "null"] },
+              "schluessel": { "type": ["string", "null"], "description": "Der FACHLICHE Schlüssel (C2) zur Anzeige — null, bevor die Zeile die Stufe Schlüssel erreicht." },
+              "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+              "einheit": { "type": ["string", "null"] },
+              "urteil": { "$ref": "#/$defs/urteil_wort" },
+              "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" } },
+              "fingerabdruck": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "C2: SHA-256 von `<bezugsgroesse_id>|<schluessel>|<betrag>` — nie der Zeilentext." }
+            }
+          }
+        },
+        "import": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "zaehler", "uebernahme_moeglich", "import_datensatz", "bestaetigung", "aenderungen", "befunde"],
+          "description": "Was die Regel `import` über diese Zeilen sagt — dieselben Felder.",
+          "properties": {
+            "status": { "type": ["string", "null"] },
+            "zaehler": { "$ref": "#/$defs/zaehler" },
+            "uebernahme_moeglich": { "type": "boolean" },
+            "import_datensatz": { "type": "boolean" },
+            "bestaetigung": { "type": ["string", "null"] },
+            "aenderungen": { "type": "integer", "minimum": 0 },
+            "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" } }
+          }
+        }
+      }
+    },
+
     "pruefung": {
       "type": "object",
       "additionalProperties": false,
@@ -1086,7 +1254,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "verwalten", "csv"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "verwalten", "csv", "vorschau"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

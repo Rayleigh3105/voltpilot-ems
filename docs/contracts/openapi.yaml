@@ -9414,6 +9414,47 @@ paths:
               schema: { $ref: "#/components/schemas/Bezugsflaechen" }
         "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/bezugsdaten/importe/vorschau:
+    post:
+      tags: [bezugsgroessen]
+      summary: Die Vorschau eines CSV-Imports - sie zeigt jedes Urteil und schreibt nichts (AP-09 IP-12).
+      description: >
+        Recht `bezugsgroesse.importieren` (AP-09 §4.11). Liest die Datei (C1: ≤ 5 242 880 Bytes,
+        ≤ 100 000 Datenzeilen, UTF-8 oder Windows-1252), wendet die Zuordnung an (C3) und urteilt je
+        Datenzeile in der Prüfreihenfolge Zahl → Einheit → Periode/Zeit → Bezug → Schlüssel (C5, Befunde
+        C8 mit Kundensatz). SCHREIBT NICHTS - keinen Wert, keinen Import, keine Vorlage, und nicht die
+        Datei (E14); zweimal dieselbe Anfrage gegen denselben Bestand ist dieselbe Antwort. Fingerabdruck
+        der Datei = SHA-256 der Bytes; Fingerabdruck der Zeile = SHA-256 von Bezugsgröße + Periode bzw.
+        Zeitpunkt + Betrag in der Einheit der Bezugsgröße (C2/E8), nie der Zeilentext. `datei_bekannt` ist
+        ein HINWEIS, keine Abweisung. Die `vorschau.kennung` gehört 30 Minuten lang zu genau diesem
+        Ergebnis; sie reserviert nichts - die Übernahme (IP-13) bringt die Datei noch einmal mit, rechnet
+        neu und nennt eine abgelaufene oder veraltete Kennung. Was an der Zuordnung nicht stimmt, ist 400
+        `anfrage_ungueltig` mit `feld`; was an der DATEI nicht stimmt, ist ein Befund in `datei.befund`
+        (200), eine Datei über der Upload-Grenze 413 mit demselben Befund.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [datei, zuordnung]
+              properties:
+                datei: { type: string, format: binary, description: "Die CSV-Datei (C1)." }
+                zuordnung:
+                  type: string
+                  description: "JSON der Form BezugsdatenZuordnung (C3)."
+            encoding:
+              zuordnung: { contentType: application/json }
+      responses:
+        "200":
+          description: Die Vorschau.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BezugsdatenImportVorschau" }
+        "400": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: Die Datei ist größer als 5 242 880 Bytes - Befund `datei_zu_gross`, Zusatz `zu_viele_bytes`.
   /api/v1/unternehmen/kostenstellen:
     get:
       tags: [kostenstellen-prozesse]
@@ -18675,6 +18716,137 @@ components:
         bis: { type: string, format: date, nullable: true }
         fassungen: { type: string, enum: [wirksam, alle] }
         werte: { type: array, items: { $ref: "#/components/schemas/BezugsgroesseWert" } }
+    BezugsdatenZuordnung:
+      type: object
+      description: C3 - die Zuordnung der Spalten (Form `vorschau_zuordnung` des Bezugsdaten-Vertrags). Genau eins von Bezug-Spalte und `bezugsgroesse`.
+      required: [spalten, deutung, zahlformat]
+      additionalProperties: false
+      properties:
+        csv:
+          type: object
+          nullable: true
+          additionalProperties: false
+          properties:
+            kodierung: { type: string, enum: [utf-8, windows-1252] }
+            trennzeichen: { type: string, enum: [";", ",", "\t"] }
+            kopfzeile: { type: boolean }
+        spalten:
+          type: object
+          additionalProperties: false
+          description: 1-basierte Spalten je Rolle.
+          properties:
+            periode: { type: integer, minimum: 1 }
+            bis: { type: integer, minimum: 1, nullable: true }
+            wert: { type: integer, minimum: 1 }
+            einheit: { type: integer, minimum: 1, nullable: true }
+            bezug: { type: integer, minimum: 1, nullable: true }
+            bemerkung: { type: integer, minimum: 1, nullable: true }
+        deutung: { type: string, enum: [periode, periodenbeginn, periodenende, von_bis, zeitpunkt] }
+        zahlformat: { type: string, enum: [de, en, auto] }
+        einheit: { type: string, nullable: true, description: "Feste Einheit ohne Einheitsspalte (U3)." }
+        bezugsgroesse: { type: string, nullable: true, description: "Kennzeichen für die ganze Datei, ohne Bezug-Spalte." }
+        bezug_tabelle: { type: object, additionalProperties: { type: string } }
+        synonyme: { type: object, additionalProperties: { type: string } }
+    BezugsdatenBefund:
+      type: object
+      required: [befund, satz, hinweis]
+      properties:
+        befund: { type: string, enum: [datei_bekannt, zeile_bekannt, konflikt_anderer_wert, einheit_unbekannt, einheit_umgerechnet, periode_passt_nicht, periode_nicht_zu_ende, zeit_mehrdeutig, zeit_nicht_vorhanden, zahl_unlesbar, datum_unlesbar, bezug_unbekannt, wert_negativ, wert_unplausibel, keine_datenzeilen, datei_zu_gross, kodierung_unlesbar] }
+        satz: { type: string }
+        hinweis: { type: boolean, description: "Ein Hinweis verhindert die Zeile nicht." }
+    BezugsdatenImportVorschau:
+      type: object
+      required: [vorschau, datei, frueherer_import, zeilen, import]
+      properties:
+        vorschau:
+          type: object
+          required: [kennung, status, ausgestellt_am, gueltig_bis, ergebnis_fingerabdruck]
+          properties:
+            kennung: { type: string, pattern: "^VS1\\.[0-9]+\\.[0-9a-f]{32}$" }
+            status: { type: string, enum: [vorschau] }
+            ausgestellt_am: { type: string, format: date-time }
+            gueltig_bis: { type: string, format: date-time, description: "ausgestellt_am + 30 Minuten." }
+            ergebnis_fingerabdruck: { type: string }
+        datei:
+          type: object
+          required: [name, bytes, sha256, befund, zusatz, zusatz_satz, zeile, kodierung, bom, trennzeichen, kopfzeile, kopf, spalten, datenzeilen]
+          properties:
+            name: { type: string, nullable: true }
+            bytes: { type: integer }
+            sha256: { type: string }
+            befund: { allOf: [{ $ref: "#/components/schemas/BezugsdatenBefund" }], nullable: true }
+            zusatz: { type: string, nullable: true }
+            zusatz_satz: { type: string, nullable: true }
+            zeile: { type: integer, nullable: true }
+            kodierung: { type: string, nullable: true }
+            bom: { type: boolean, nullable: true }
+            trennzeichen: { type: string, nullable: true }
+            kopfzeile: { type: boolean, nullable: true }
+            kopf: { type: array, nullable: true, items: { type: string } }
+            spalten: { type: integer, nullable: true }
+            datenzeilen: { type: integer, nullable: true }
+        frueherer_import:
+          type: object
+          nullable: true
+          required: [kennung, status, am]
+          properties:
+            kennung: { type: string }
+            status: { type: string }
+            am: { type: string, format: date-time }
+        zeilen: { type: array, items: { $ref: "#/components/schemas/BezugsdatenVorschauZeile" } }
+        import:
+          type: object
+          required: [status, zaehler, uebernahme_moeglich, import_datensatz, bestaetigung, aenderungen, befunde]
+          properties:
+            status: { type: string, nullable: true }
+            zaehler:
+              type: object
+              required: [zeilen, neu, wiederholung, konflikt, berichtigung, uebersprungen, abgelehnt, mit_hinweis]
+              properties:
+                zeilen: { type: integer }
+                neu: { type: integer }
+                wiederholung: { type: integer }
+                konflikt: { type: integer }
+                berichtigung: { type: integer }
+                uebersprungen: { type: integer }
+                abgelehnt: { type: integer }
+                mit_hinweis: { type: integer }
+            uebernahme_moeglich: { type: boolean }
+            import_datensatz: { type: boolean }
+            bestaetigung: { type: string, nullable: true }
+            aenderungen: { type: integer }
+            befunde: { type: array, items: { $ref: "#/components/schemas/BezugsdatenBefund" } }
+    BezugsdatenVorschauZeile:
+      type: object
+      required: [nr, felder, bezugsgroesse, bezugsgroesse_id, schluessel, periode_von, periode_bis, zeitpunkt, betrag, einheit, geliefert, urteil, befunde, fingerabdruck, bestand]
+      properties:
+        nr: { type: integer, description: "Die Zeile der Datei." }
+        felder: { type: array, items: { type: string }, description: "Zur Anzeige neutralisiert (C1)." }
+        bezugsgroesse: { type: string, nullable: true }
+        bezugsgroesse_id: { type: string, format: uuid, nullable: true }
+        schluessel: { type: string, nullable: true }
+        periode_von: { type: string, format: date, nullable: true }
+        periode_bis: { type: string, format: date, nullable: true, description: "Letzter Tag EINSCHLIESSLICH." }
+        zeitpunkt: { type: string, format: date-time, nullable: true }
+        betrag: { type: string, nullable: true, description: "Dezimaltext in der Einheit der Bezugsgröße." }
+        einheit: { type: string, nullable: true }
+        geliefert:
+          type: object
+          required: [wert, einheit]
+          properties:
+            wert: { type: string, nullable: true }
+            einheit: { type: string, nullable: true }
+        urteil: { type: string, enum: [neu, wiederholung, konflikt, berichtigung, uebersprungen, abgelehnt] }
+        befunde: { type: array, items: { $ref: "#/components/schemas/BezugsdatenBefund" } }
+        fingerabdruck: { type: string, nullable: true }
+        bestand:
+          type: object
+          nullable: true
+          required: [betrag, fassung, import_kennung]
+          properties:
+            betrag: { type: string }
+            fassung: { type: integer }
+            import_kennung: { type: string, nullable: true }
     MessstelleWerte:
       type: object
       description: Das Lese-Modell „Werte je Messstelle“ (AP-08 IP-9). Jede Zahl steht in `messstelle.einheit`.

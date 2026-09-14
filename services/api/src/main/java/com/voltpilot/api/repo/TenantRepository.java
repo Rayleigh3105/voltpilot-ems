@@ -255,8 +255,11 @@ public class TenantRepository {
                 // Kostenstelle and Prozess (V20260913160000) follow everything that points at
                 // them (Bezugsgroessen, Verteilungs-Terme, the Messstelle's Prozess intervals and
                 // Kostenstellen-Anteile, V20260913230000); sub-processes go before their parent
-                // (the self reference is RESTRICT, checked row by row).
+                // (the self reference is RESTRICT, checked row by row). The imports of
+                // Bezugsdaten (V20260914173000) go before everything: a row before its
+                // import (RESTRICT), an import before the template version it names.
                 for (String table : new String[] {
+                        "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage",
                         "bezugsgroesse_wert", "bezugsgroesse_stammdatum", "bezugsgroesse_kennzeichen_verlauf",
                         "bezugsgroesse",
                         "bezugsgroesse_aenderung",

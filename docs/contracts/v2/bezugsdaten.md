@@ -96,6 +96,7 @@ tun, in einem Satz:
 | `stammdatum` | E17/S3: Welchen Wert hat die Fläche für die Periode Oktober 2026 — und welcher Übergang liegt in der Periode? |
 | `stammdatum_eintrag` | E15/S4: Was ändert ein neuer Wert ab einem Tag an den Intervallen eines Stammdatums? |
 | `kanal` | K1–K7: Wie lange war der Ladepunkt „Charging“? |
+| `vorschau` | C2–C5/C8 (seit IP-12, §10): Was sagt die Vorschau über eine ganze Datei — je Zeile, je Datei, mit beiden Fingerabdrücken? |
 
 Die **Prüfreihenfolge** (`regeln.pruefreihenfolge`) ist Teil des Vertrags und
 **ergebnisrelevant**: Zahl → Einheit → Periode → Zeit → Bezug → Schlüssel. In B13 wird die
@@ -196,8 +197,8 @@ Bei den beiden Plan-Abnahmen ist genau der geprüfte Teil der Kern: bei B2 ist e
 unveränderte Betrag 312 400 kg samt `aenderungen: 0`, bei B6 der **Nenner** 3 100 / 3 100 /
 3 400 m². Die Division daraus ist AP-11.
 
-Ebenfalls nicht hier: der Fingerabdruck der Datei (C2, SHA-256 — IP-12; den CSV-Leser C1 trägt
-seit IP-11 §9), die Tabellen (IP-4), die Routen (IP-5 ff.), die Portal-Flächen (IP-9 ff.) und die
+Ebenfalls nicht hier: den CSV-Leser C1 trägt seit IP-11 §9, die Vorschau mit beiden Fingerabdrücken
+(C2) seit IP-12 §10, die Tabellen (IP-4), die Routen (IP-5 ff.), die Portal-Flächen (IP-9 ff.) und die
 Rechte-Zeilen (W8, `rechte-matrix.json` seit IP-5). Dieser Vertrag beginnt bei der schon zerlegten Zeile; ob eine Datei
 bekannt ist, bekommt die Regel `urteil` als Eingang.
 
@@ -321,3 +322,50 @@ nur Leerzeilen) und B13; die übrigen Erkennungs-Fälle stehen in `csv.pruefunge
   was in der Datei steht.
 
 Keine Route, keine Tabelle, keine Migration, kein Fingerabdruck: das beginnt mit IP-12.
+
+## 10. Die Vorschau eines Imports (C2–C5, C8, nachgetragen mit AP-09 IP-12 am 14.09.2026)
+
+**Die Vorschau zeigt alles und schreibt nichts.** Die Regel **`vorschau`** legt fest, was aus einer
+ganzen Datei und einer Zuordnung wird: je Datenzeile ein Urteil mit Befunden, je Datei ein
+Fingerabdruck und die Zähler der Regel `import`. Sie steht an B1 (neu; dieselben Werte in anderer
+Spaltenreihenfolge), B2 (`datei_bekannt`; nur ein Import, der etwas geschrieben hat, macht die Datei
+bekannt), B9 (t statt kg; Gegenprobe ohne Einheitsspalte), B10 (Zeitumstellung in einer Datei; Offset
+in der Datei), B11 (KW 40), B12 (nur Kopfzeile; 0 Byte) und B13 („lbs“/„Paletten“; Gegenprobe
+widersprüchliche Datei) — 14 Prüfungen. Umsetzung: Java `uems/ImportVorschau` (rein), die Route
+`POST /api/v1/bezugsdaten/importe/vorschau` (multipart) liest in einer Nur-Lese-Transaktion; einen
+TS-Zwilling gibt es nicht (`zwillinge_grund.vorschau`).
+
+- **Aufgerufen, nicht nachgebaut:** Bytes → `CsvLeser` (§9); Zahl, Einheit, Periode, Zeit,
+  Plausibilität, Urteil, Zähler → die Regeln dieses Vertrags. Die Vorschau fügt nur die Zuordnung
+  der Spalten, die Dubletten INNERHALB der Datei und die Fingerabdrücke hinzu.
+- **Die Zuordnung** (`$defs/vorschau_zuordnung`): Spalten 1-basiert je Rolle (`periode`, `bis` nur bei
+  `von_bis`, `wert`, `einheit`, `bezug`, `bemerkung`), Deutung, Zahlformat, feste Einheit (U3), feste
+  Bezugsgröße ODER Bezug-Spalte mit `bezug_tabelle` (Text → Kennzeichen; ein Text, der selbst ein
+  Kennzeichen ist, trifft auch), Synonyme (U2), und was der Leser nicht erkennen soll (`csv`). Dieselbe
+  Form wird eine Vorlage (C9, IP-14).
+- **Prüfreihenfolge je Zeile:** Zahl → Einheit → Periode bzw. Zeit, dann die Plausibilität → Bezug →
+  Schlüssel. Die erste Stufe mit einem Befund, der die Zeile verhindert, spricht; ein Hinweis läuft
+  weiter. Ohne auflösbaren Bezug gibt es keine Zieleinheit: nach der Zahl spricht der Bezug. Ein
+  gelesener Betrag bleibt an der abgelehnten Zeile stehen (B10, B11), damit man sieht, was geliefert
+  wurde.
+- **Dubletten in der Datei (§4.7):** Zeilen, die die Stufe Schlüssel erreichen, mit gleichem Schlüssel
+  und anderem Betrag → ALLE `konflikt_anderer_wert`, abgelehnt; mit gleichem Betrag zählt die erste,
+  jede weitere ist ihre `wiederholung`. Eine früher abgelehnte Zeile vergleicht sich mit niemandem (B13).
+- ⚠ **Zwei Fingerabdrücke (C2/E8).** Die DATEI: SHA-256 der hochgeladenen Bytes. Die ZEILE: SHA-256
+  von `<bezugsgroesse_id>|<schluessel>|<betrag>` — Schlüssel = Periodenschlüssel (`2026-10`) bzw.
+  Zeitpunkt in UTC, Betrag in der Einheit der Bezugsgröße ohne nachlaufende Nullen. **Nie der
+  Zeilentext:** andere Spaltenreihenfolge, anderes Trennzeichen oder t statt kg sind dieselbe Zeile
+  (B1, B9 tragen denselben Wert).
+- ⚠ **`datei_bekannt` ist eine Auskunft, keine Abweisung** (Hinweis): der jüngste gespeicherte Import
+  derselben Datei mit dem Status `uebernommen`, `teilweise_uebernommen` oder `zurueckgenommen`. Eine
+  Wiederholung und ein verworfener Import haben nichts geschrieben und machen die Datei nicht bekannt.
+- **Bestand:** der wirksame Stand je Schlüssel aus dem Lesemodell (§7); ein zurückgenommener Wert hat
+  keinen Betrag, der Schlüssel ist frei.
+- ⚠ **Die Vorschau-Kennung** (`VS1.<Sekunde>.<32 hex>`) bindet Kundenbereich, Ergebnis-Fingerabdruck
+  und Ausstellungszeit und gehört **30 Minuten** zu genau diesem Ergebnis
+  (`ImportVorschau.kennungPruefen`: `gueltig` · `abgelaufen` · `veraltet` · `unlesbar`). Sie ist
+  kein Auftrag und keine Reservierung, kein Geheimnis und keine Berechtigung: die Übernahme (IP-13)
+  bringt die Datei noch einmal mit, rechnet die Vorschau neu und vergleicht.
+- **E14:** die Datei wird nie gespeichert. Die Tabellen `bezugsdaten_import`/`_zeile`/`bezugsdaten_vorlage`
+  (V20260914173000) nehmen erst die Übernahme und die Vorlagen auf — Fingerabdruck, Metadaten, je Zeile
+  Urteil, Befunde, Schlüssel und der Zeilentext für zwei Jahre.

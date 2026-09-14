@@ -84,7 +84,14 @@ class UemsBezugsgroesseMigrationTest {
 
     /** Die Listen-Vokabulare des Vertrags, die diese Tabellen speichern — in der Reihenfolge der Funktion. */
     private static final List<String> LISTEN = List.of("wertart", "geltung_art", "periode_art", "herkunft_art",
-            "vorgang", "status");
+            "vorgang", "status", "import_status", "zeilen_urteil", "befunde");
+
+    /**
+     * Die Listen aus dem Block {@code csv}, die ein Import speichert (seit AP-09 IP-12,
+     * V20260914173000) — Vokabular der Funktion → Liste des Blocks, in der Reihenfolge der Funktion.
+     */
+    private static final List<List<String>> CSV_LISTEN = List.of(
+            List.of("kodierung", "kodierungen"), List.of("trennzeichen", "trennzeichen"));
 
     /** Jede Spalte, die ein Vertragswort trägt: Tabelle, Spalte, CHECK, Vokabular. */
     private static final List<List<String>> VOKABULAR_CHECKS = List.of(
@@ -163,6 +170,12 @@ class UemsBezugsgroesseMigrationTest {
             int nr = 0;
             for (JsonNode wort : vertrag.path("vokabulare").path(liste)) {
                 ausDemVertrag.add(zeile(liste, ++nr, wort.asText(), null));
+            }
+        }
+        for (List<String> liste : CSV_LISTEN) {
+            int n = 0;
+            for (JsonNode wort : vertrag.path("csv").path(liste.get(1))) {
+                ausDemVertrag.add(zeile(liste.get(0), ++n, wort.asText(), null));
             }
         }
         int nr = 0;

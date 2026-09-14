@@ -2023,6 +2023,9 @@
     ],
     "stammdatum_eintrag": [
       "java"
+    ],
+    "vorschau": [
+      "java"
     ]
   },
   "zwillinge_grund": {
@@ -2032,7 +2035,8 @@
     "kanal": "Die Zustandsdauer entsteht im Verdichtungs-Weg (K1–K7) aus Rohwerten, die das Portal nie sieht.",
     "verwalten": "Anlegen, Ändern, Archivieren und Löschen einer Bezugsgröße sind der Schreibweg des Servers (M1–M6 brauchen die gespeicherten Werte und die je belegten Kennzeichen). Das Portal zeigt die Ablehnung mit ihrem Kundensatz — den geschlossenen Satz `verwalten.ablehnungen` prüft der TS-Test gegen `bezugsgroesse.ts`.",
     "csv": "Die Datei liest der Server beim Hochladen (C1, E14 Multipart); das Portal bekommt Kodierung, Trennzeichen, Kopfzeile und Zeilen fertig und zeigt sie — es liest keine Datei selbst.",
-    "stammdatum_eintrag": "Ein Wert eines Stammdatums ab einem Tag ist der Schreibweg des Servers (E15/S4, `PUT /api/v1/bezugsgroessen/{id}/stammdatum`); das Portal schickt Wert und Tag und zeigt die Intervalle, die zurückkommen."
+    "stammdatum_eintrag": "Ein Wert eines Stammdatums ab einem Tag ist der Schreibweg des Servers (E15/S4, `PUT /api/v1/bezugsgroessen/{id}/stammdatum`); das Portal schickt Wert und Tag und zeigt die Intervalle, die zurückkommen.",
+    "vorschau": "Die Vorschau einer ganzen Datei rechnet der Server (AP-09 IP-12, Java uems/ImportVorschau): die Datei wird hochgeladen, nie im Portal gelesen und nie aufbewahrt (E14). Das Portal zeigt Urteile, Befunde und Zähler, die es bekommt — ihre Regeln `urteil` und `import` stehen weiter in beiden Sprachen."
   },
   "_abweichungen": [
     {
@@ -2090,11 +2094,6 @@
       "fall": "B8",
       "feld": "kalendermonat · tag_20_10",
       "warum": "Die ZUORDNUNG eines Ablesezeitraums zu einem Monat prüft die Regel `zuordnung`, die MENGE die Verbrauchsregel. Dass der November und der 20.10. „keine Werte“ tragen, ist eine Aussage des AP-08-Lesemodells über Perioden ohne zugeordneten Zeitraum (IP-8); ein Lesemodell gibt es in diesem Paket nicht."
-    },
-    {
-      "fall": "B1, B12, B13",
-      "feld": "gegeben.datei.sha256 (Fingerabdruck)",
-      "warum": "Kodierung, Trennzeichen und Kopfzeile prüft seit AP-09 IP-11 die Regel `csv` (Java uems/CsvLeser). Den Fingerabdruck der Datei (C2/E8, SHA-256) bildet erst die Vorschau (IP-12); ob eine Datei bekannt ist, bekommt die Regel `urteil` als Eingang `datei_fingerabdruck_bekannt`."
     },
     {
       "fall": "alle",
@@ -2488,6 +2487,194 @@
               ]
             }
           }
+        },
+        {
+          "regel": "vorschau",
+          "name": "ERP-Datei für Oktober: 1 neu, Datei unbekannt, nichts geschrieben",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "zeilenende": "\r\n",
+                "kodierung": "windows-1252"
+              },
+              "zuordnung": {
+                "csv": {
+                  "kodierung": "windows-1252"
+                },
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "e55a16af08e1bf089cf33e703f914b05ea085758dee82c31a5de0a6ba690d673",
+                "bytes": 77,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "windows-1252",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "neu",
+                  "befunde": [],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                }
+              ],
+              "import": {
+                "status": "uebernommen",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 1,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": true,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 1,
+                "befunde": []
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Dieselben Werte in anderer Spaltenreihenfolge mit „,“: andere Datei, DIESELBE Zeile (C2 — Schlüssel, nicht Text)",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Einheit,Menge,Periode,Artikelgruppe",
+                  "kg,\"312.400,0\",2026-10,Spritzguss gesamt"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 3,
+                  "bis": null,
+                  "wert": 2,
+                  "einheit": 1,
+                  "bezug": 4,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "752e5c3b70acbc0798e06e53189e578ea0622e73b4bae6f7372ecee662c93da0",
+                "bytes": 77,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ",",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "neu",
+                  "befunde": [],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                }
+              ],
+              "import": {
+                "status": "uebernommen",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 1,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": true,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 1,
+                "befunde": []
+              }
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -2642,6 +2829,238 @@
             ],
             "ereignisse": [],
             "wirksamer_betrag": "312400.0"
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Dieselbe Datei ein zweites Mal: datei_bekannt als Hinweis, 1 Wiederholung, 0 Änderungen",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "zeilenende": "\r\n",
+                "kodierung": "windows-1252"
+              },
+              "zuordnung": {
+                "csv": {
+                  "kodierung": "windows-1252"
+                },
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [
+                {
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "2026-10",
+                  "betrag": "312400.0",
+                  "fassung": 1,
+                  "import_kennung": "I-2026-0001"
+                }
+              ],
+              "importe_dieser_datei": [
+                {
+                  "kennung": "I-2026-0001",
+                  "status": "uebernommen",
+                  "am": "2026-11-03T09:12:00+01:00"
+                }
+              ],
+              "jetzt": "2026-11-04T10:00:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "e55a16af08e1bf089cf33e703f914b05ea085758dee82c31a5de0a6ba690d673",
+                "bytes": 77,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "windows-1252",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": {
+                "kennung": "I-2026-0001",
+                "status": "uebernommen"
+              },
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "wiederholung",
+                  "befunde": [
+                    "datei_bekannt"
+                  ],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                }
+              ],
+              "import": {
+                "status": "wiederholt",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 0,
+                  "wiederholung": 1,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 1
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": [
+                  "datei_bekannt"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Nur ein Import, der etwas geschrieben hat, macht die Datei bekannt: eine Wiederholung und ein verworfener zählen nicht",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg"
+                ],
+                "zeilenende": "\r\n",
+                "kodierung": "windows-1252"
+              },
+              "zuordnung": {
+                "csv": {
+                  "kodierung": "windows-1252"
+                },
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [
+                {
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "2026-10",
+                  "betrag": "312400.0",
+                  "fassung": 1,
+                  "import_kennung": "I-2026-0001"
+                }
+              ],
+              "importe_dieser_datei": [
+                {
+                  "kennung": "I-2026-0002",
+                  "status": "wiederholt",
+                  "am": "2026-11-04T10:05:00+01:00"
+                },
+                {
+                  "kennung": "I-2026-0003",
+                  "status": "verworfen",
+                  "am": "2026-11-04T10:06:00+01:00"
+                }
+              ],
+              "jetzt": "2026-11-04T10:10:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "e55a16af08e1bf089cf33e703f914b05ea085758dee82c31a5de0a6ba690d673",
+                "bytes": 77,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "windows-1252",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "wiederholung",
+                  "befunde": [],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                }
+              ],
+              "import": {
+                "status": "wiederholt",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 0,
+                  "wiederholung": 1,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
+            }
           }
         }
       ],
@@ -4992,6 +5411,210 @@
             "aenderungen": 0,
             "befunde": []
           }
+        },
+        {
+          "regel": "vorschau",
+          "name": "312,4 t gegen 312 400 kg: umgerechnet, Wiederholung — und DERSELBE Zeilen-Fingerabdruck wie B1",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312,4;t"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [
+                {
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "2026-10",
+                  "betrag": "312400.0",
+                  "fassung": 1,
+                  "import_kennung": "I-2026-0001"
+                }
+              ],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "7927249f145985e3680f9aab1edd285236fe4eb3845f4760285998afc420a82f",
+                "bytes": 70,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "wiederholung",
+                  "befunde": [
+                    "einheit_umgerechnet"
+                  ],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                }
+              ],
+              "import": {
+                "status": "wiederholt",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 0,
+                  "wiederholung": 1,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 1
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Gegenprobe: ohne Einheitsspalte gilt kg — 312,4 kg ist ein Konflikt, sichtbar VOR dem Schreiben",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge",
+                  "2026-10;Spritzguss gesamt;312,4"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": null,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [
+                {
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "2026-10",
+                  "betrag": "312400.0",
+                  "fassung": 1,
+                  "import_kennung": "I-2026-0001"
+                }
+              ],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "4a793701d764530a39f4870208c8b137999299531f2019ccc5c620de9b1597e5",
+                "bytes": 60,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312.4",
+                  "einheit": "kg",
+                  "urteil": "konflikt",
+                  "befunde": [
+                    "konflikt_anderer_wert"
+                  ],
+                  "fingerabdruck": "40242d103a639f1c1d4640a4aace442bc848690532b6326efadbb5980821ec26"
+                }
+              ],
+              "import": {
+                "status": "wiederholt",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 0,
+                  "wiederholung": 0,
+                  "konflikt": 1,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -5230,6 +5853,249 @@
             "aenderungen": 2,
             "befunde": []
           }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Zeitumstellung in einer Datei: zwei Zeitpunkte abgelehnt, zwei Tageswerte neu (25 h plausibel, 23,5 h Hinweis)",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Datum;Bezug;Wert;Einheit",
+                  "25.10.2026 02:30;Gaszähler MS-21;1.234,5;m³",
+                  "28.03.2027 02:30;Gaszähler MS-21;1.240,0;m³",
+                  "25.10.2026;Ladepunkt Halle 2;24,5;h",
+                  "28.03.2027;Ladepunkt Halle 2;23,5;h"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Gaszähler MS-21": "BZ-6",
+                  "Ladepunkt Halle 2": "BZ-5"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-5",
+                  "id": "b2000000-0000-4000-8000-000000000005",
+                  "wertart": "periodenwert",
+                  "einheit": "h",
+                  "periode_art": "tag",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                },
+                {
+                  "kennzeichen": "BZ-6",
+                  "id": "b2000000-0000-4000-8000-000000000006",
+                  "wertart": "stand",
+                  "einheit": "m³",
+                  "periode_art": null,
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2027-04-01T08:00:00+02:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "ea87ea5f2bf6448162353512ec59e6d7412409dd4b996b1513cf7ad906124874",
+                "bytes": 189,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 4
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-6",
+                  "schluessel": null,
+                  "betrag": "1234.5",
+                  "einheit": "m³",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "zeit_mehrdeutig"
+                  ],
+                  "fingerabdruck": null
+                },
+                {
+                  "nr": 3,
+                  "bezugsgroesse": "BZ-6",
+                  "schluessel": null,
+                  "betrag": "1240.0",
+                  "einheit": "m³",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "zeit_nicht_vorhanden"
+                  ],
+                  "fingerabdruck": null
+                },
+                {
+                  "nr": 4,
+                  "bezugsgroesse": "BZ-5",
+                  "schluessel": "BZ-5 · 2026-10-25",
+                  "betrag": "24.5",
+                  "einheit": "h",
+                  "urteil": "neu",
+                  "befunde": [],
+                  "fingerabdruck": "29e3b99e96fe730f4f1c7db6f14713e4f448e5237a5f06d59ea2608b8cd1f09c"
+                },
+                {
+                  "nr": 5,
+                  "bezugsgroesse": "BZ-5",
+                  "schluessel": "BZ-5 · 2027-03-28",
+                  "betrag": "23.5",
+                  "einheit": "h",
+                  "urteil": "neu",
+                  "befunde": [
+                    "wert_unplausibel"
+                  ],
+                  "fingerabdruck": "d38ea26920569eebc4789be49312087442547c8cc8f68444f3c7e4f196645701"
+                }
+              ],
+              "import": {
+                "status": "teilweise_uebernommen",
+                "zaehler": {
+                  "zeilen": 4,
+                  "neu": 2,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 2,
+                  "mit_hinweis": 1
+                },
+                "uebernahme_moeglich": true,
+                "import_datensatz": true,
+                "bestaetigung": "2 von 4 Zeilen übernehmen",
+                "aenderungen": 2,
+                "befunde": []
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Mit Offset in der Datei ist dieselbe Stunde eindeutig (Z5): 02:30 MEZ = 01:30 UTC, neu",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Datum;Bezug;Wert;Einheit",
+                  "2026-10-25T02:30+01:00;Gaszähler MS-21;1.234,5;m³"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Gaszähler MS-21": "BZ-6",
+                  "Ladepunkt Halle 2": "BZ-5"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-5",
+                  "id": "b2000000-0000-4000-8000-000000000005",
+                  "wertart": "periodenwert",
+                  "einheit": "h",
+                  "periode_art": "tag",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                },
+                {
+                  "kennzeichen": "BZ-6",
+                  "id": "b2000000-0000-4000-8000-000000000006",
+                  "wertart": "stand",
+                  "einheit": "m³",
+                  "periode_art": null,
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2027-04-01T08:00:00+02:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "50b6181500c3018eb7dc62f8ace83500a0809ea33576f8cc82fbb20b41f2a3e2",
+                "bytes": 77,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-6",
+                  "schluessel": "BZ-6 · 2026-10-25T02:30:00+01:00",
+                  "betrag": "1234.5",
+                  "einheit": "m³",
+                  "urteil": "neu",
+                  "befunde": [],
+                  "fingerabdruck": "c76f4074d8d7ab9709a1af1debf5ca3fd8ffa52954ba024ca629846caf3230a3"
+                }
+              ],
+              "import": {
+                "status": "uebernommen",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 1,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": true,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 1,
+                "befunde": []
+              }
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -5422,6 +6288,100 @@
             "aenderungen": 0,
             "befunde": []
           }
+        },
+        {
+          "regel": "vorschau",
+          "name": "KW 40 in der Monatsreihe: periode_passt_nicht, nie geteilt — verworfen, 0 Änderungen",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Von;Bis;Artikelgruppe;Menge",
+                  "28.09.2026;04.10.2026;Spritzguss gesamt;71.300"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": 2,
+                  "wert": 4,
+                  "einheit": null,
+                  "bezug": 3,
+                  "bemerkung": null
+                },
+                "deutung": "von_bis",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "0859d9737d4da44d94d64b064102a328ba6c465ed13dace3e45403ddc4f16007",
+                "bytes": 75,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 1
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": null,
+                  "betrag": "71300",
+                  "einheit": "kg",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "periode_passt_nicht"
+                  ],
+                  "fingerabdruck": null
+                }
+              ],
+              "import": {
+                "status": "verworfen",
+                "zaehler": {
+                  "zeilen": 1,
+                  "neu": 0,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 1,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -5574,6 +6534,168 @@
               "spalten": null,
               "datenzeilen": null,
               "zeilen": []
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Nur die Kopfzeile: keine_datenzeilen, keine Übernahme, kein Import-Datensatz",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "f7c41309d68203ee476d32a2968a55f2cd764b30f24e0fdc279c734b08f31bfd",
+                "bytes": 36,
+                "befund": "keine_datenzeilen",
+                "zusatz": "nur_kopfzeile",
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 0
+              },
+              "frueherer_import": null,
+              "zeilen": [],
+              "import": {
+                "status": null,
+                "zaehler": {
+                  "zeilen": 0,
+                  "neu": 0,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": false,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": [
+                  "keine_datenzeilen"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "0 Byte: keine_datenzeilen mit Zusatz leer_0_byte — der Fingerabdruck der leeren Datei steht trotzdem",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": []
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "bytes": 0,
+                "befund": "keine_datenzeilen",
+                "zusatz": "leer_0_byte",
+                "kodierung": null,
+                "trennzeichen": null,
+                "kopfzeile": null,
+                "datenzeilen": null
+              },
+              "frueherer_import": null,
+              "zeilen": [],
+              "import": {
+                "status": null,
+                "zaehler": {
+                  "zeilen": 0,
+                  "neu": 0,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 0,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": false,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": [
+                  "keine_datenzeilen"
+                ]
+              }
             }
           }
         }
@@ -5883,6 +7005,390 @@
                   ]
                 }
               ]
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "„lbs“ und „Paletten“ abgelehnt, BEVOR ein Schlüssel verglichen wird — die kg-Zeile bleibt neu, 1 von 3",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "2026-10;Spritzguss Export;688.720;lbs",
+                  "2026-10;Montage;96;Paletten"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1",
+                  "Spritzguss Export": "BZ-1",
+                  "Montage": "BZ-2"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                },
+                {
+                  "kennzeichen": "BZ-2",
+                  "id": "b2000000-0000-4000-8000-000000000002",
+                  "wertart": "periodenwert",
+                  "einheit": "Stück",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "805fe5a750bc77d4309d0e53405b6ea09eb028a19303fe2d7d72349324fe507a",
+                "bytes": 141,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 3
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "neu",
+                  "befunde": [],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                },
+                {
+                  "nr": 3,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": null,
+                  "betrag": null,
+                  "einheit": "kg",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "einheit_unbekannt"
+                  ],
+                  "fingerabdruck": null
+                },
+                {
+                  "nr": 4,
+                  "bezugsgroesse": "BZ-2",
+                  "schluessel": null,
+                  "betrag": null,
+                  "einheit": "Stück",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "einheit_unbekannt"
+                  ],
+                  "fingerabdruck": null
+                }
+              ],
+              "import": {
+                "status": "teilweise_uebernommen",
+                "zaehler": {
+                  "zeilen": 3,
+                  "neu": 1,
+                  "wiederholung": 0,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 2,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": true,
+                "import_datensatz": true,
+                "bestaetigung": "1 von 3 Zeilen übernehmen",
+                "aenderungen": 1,
+                "befunde": []
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Variante nach B1: die kg-Zeile ist eine Wiederholung, 0 Änderungen",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "2026-10;Spritzguss Export;688.720;lbs",
+                  "2026-10;Montage;96;Paletten"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1",
+                  "Spritzguss Export": "BZ-1",
+                  "Montage": "BZ-2"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                },
+                {
+                  "kennzeichen": "BZ-2",
+                  "id": "b2000000-0000-4000-8000-000000000002",
+                  "wertart": "periodenwert",
+                  "einheit": "Stück",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [
+                {
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "2026-10",
+                  "betrag": "312400.0",
+                  "fassung": 1,
+                  "import_kennung": "I-2026-0001"
+                }
+              ],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "805fe5a750bc77d4309d0e53405b6ea09eb028a19303fe2d7d72349324fe507a",
+                "bytes": 141,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 3
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "wiederholung",
+                  "befunde": [],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                },
+                {
+                  "nr": 3,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": null,
+                  "betrag": null,
+                  "einheit": "kg",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "einheit_unbekannt"
+                  ],
+                  "fingerabdruck": null
+                },
+                {
+                  "nr": 4,
+                  "bezugsgroesse": "BZ-2",
+                  "schluessel": null,
+                  "betrag": null,
+                  "einheit": "Stück",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "einheit_unbekannt"
+                  ],
+                  "fingerabdruck": null
+                }
+              ],
+              "import": {
+                "status": "teilweise_uebernommen",
+                "zaehler": {
+                  "zeilen": 3,
+                  "neu": 0,
+                  "wiederholung": 1,
+                  "konflikt": 0,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 2,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
+            }
+          }
+        },
+        {
+          "regel": "vorschau",
+          "name": "Gegenprobe zur Reihenfolge: in kg hätten beide Zeilen denselben Schlüssel mit anderem Betrag — die Datei ist in sich widersprüchlich, beide abgelehnt (§4.7)",
+          "eingang": {
+            "vorschau": {
+              "datei": {
+                "zeilen": [
+                  "Periode;Artikelgruppe;Menge;Einheit",
+                  "2026-10;Spritzguss gesamt;312.400,0;kg",
+                  "2026-10;Spritzguss Export;688.720;kg"
+                ]
+              },
+              "zuordnung": {
+                "csv": null,
+                "spalten": {
+                  "periode": 1,
+                  "bis": null,
+                  "wert": 3,
+                  "einheit": 4,
+                  "bezug": 2,
+                  "bemerkung": null
+                },
+                "deutung": "periode",
+                "zahlformat": "de",
+                "einheit": null,
+                "bezugsgroesse": null,
+                "bezug_tabelle": {
+                  "Spritzguss gesamt": "BZ-1",
+                  "Spritzguss Export": "BZ-1",
+                  "Montage": "BZ-2"
+                },
+                "synonyme": {}
+              },
+              "bezugsgroessen": [
+                {
+                  "kennzeichen": "BZ-1",
+                  "id": "b2000000-0000-4000-8000-000000000001",
+                  "wertart": "periodenwert",
+                  "einheit": "kg",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                },
+                {
+                  "kennzeichen": "BZ-2",
+                  "id": "b2000000-0000-4000-8000-000000000002",
+                  "wertart": "periodenwert",
+                  "einheit": "Stück",
+                  "periode_art": "monat",
+                  "zeitzone": "Europe/Berlin",
+                  "einheiten_gebunden": 1
+                }
+              ],
+              "bestand": [],
+              "importe_dieser_datei": [],
+              "jetzt": "2026-11-03T09:12:00+01:00"
+            }
+          },
+          "ergebnis": {
+            "vorschau": {
+              "datei": {
+                "sha256": "39453ef10f9240cea746ff0e947a29d8ef332885f0680e967101c870febb9372",
+                "bytes": 112,
+                "befund": null,
+                "zusatz": null,
+                "kodierung": "utf-8",
+                "trennzeichen": ";",
+                "kopfzeile": true,
+                "datenzeilen": 2
+              },
+              "frueherer_import": null,
+              "zeilen": [
+                {
+                  "nr": 2,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "312400",
+                  "einheit": "kg",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "konflikt_anderer_wert"
+                  ],
+                  "fingerabdruck": "d7f19547f0850f5b1a8b18cc9ce8e161c6327fe1ff8c532ba10f0def46d5437d"
+                },
+                {
+                  "nr": 3,
+                  "bezugsgroesse": "BZ-1",
+                  "schluessel": "BZ-1 · 2026-10",
+                  "betrag": "688720",
+                  "einheit": "kg",
+                  "urteil": "abgelehnt",
+                  "befunde": [
+                    "konflikt_anderer_wert"
+                  ],
+                  "fingerabdruck": "870ee9f72e682c5030a3de380758bab3e5a5c4974d545a6bd6e9fc6db75a3614"
+                }
+              ],
+              "import": {
+                "status": "verworfen",
+                "zaehler": {
+                  "zeilen": 2,
+                  "neu": 0,
+                  "wiederholung": 0,
+                  "konflikt": 2,
+                  "berichtigung": 0,
+                  "uebersprungen": 0,
+                  "abgelehnt": 2,
+                  "mit_hinweis": 0
+                },
+                "uebernahme_moeglich": false,
+                "import_datensatz": true,
+                "bestaetigung": null,
+                "aenderungen": 0,
+                "befunde": []
+              }
             }
           }
         }

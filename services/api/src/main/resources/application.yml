@@ -10,6 +10,16 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}
 
+  # Datei-Upload der Bezugsdaten-Vorschau (UEMS AP-09 E14, IP-12): 5MB ist Springs 5 x 1024 x 1024 =
+  # 5 242 880 Bytes, dieselbe Zahl wie CsvLeser.BYTES_HOECHSTENS. Die Anfrage darf etwas groesser sein
+  # (Zuordnung + Multipart-Rahmen). Lazily: erst die Route liest die Teile - so antwortet sie selbst mit
+  # dem Befund `datei_zu_gross` statt eines rohen Fehlers. Ingress-Grenze im gitops-Repo pruefen.
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+      resolve-lazily: true
+
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
@@ -452,6 +462,13 @@ voltpilot:
       enabled: ${VOLTPILOT_UEMS_KASKADE_ENABLED:true}
       interval-ms: ${VOLTPILOT_UEMS_KASKADE_INTERVAL_MS:300000}
       je-lauf: ${VOLTPILOT_UEMS_KASKADE_JE_LAUF:50}
+    # Zeilentexte eines Bezugsdaten-Imports bleiben zwei Jahre (AP-09 E14, IP-12): ein taeglicher Lauf
+    # entfernt aeltere Texte; Urteil, Schluessel und Fingerabdruck bleiben. Die Frist steht in der
+    # Datenbank (bezugsdaten_zeilentext_frist()). Vorgabe AN, im Testlauf AUS (surefire); wer ihn
+    # prueft, ruft ZeilentextAufbewahrung.lauf() selbst.
+    zeilentexte:
+      enabled: ${VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_ZEILENTEXTE_CRON:0 17 3 * * *}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's
