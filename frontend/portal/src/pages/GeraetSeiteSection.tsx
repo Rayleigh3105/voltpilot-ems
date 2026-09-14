@@ -50,6 +50,7 @@ import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
+import { GeraetHerkunft } from '../components/GeraetHerkunft';
 import {
   anlageRoute,
   befehleGeraetHash,
@@ -1324,6 +1325,14 @@ export function GeraetSeiteSection({
                 ))}
               </ul>
             )}
+            {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
+                Herkunftskette von der Technik-Seite — welches Gerät eingebaut
+                ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
+                auflösbares UEMS-Gerät rendert es gar nichts (wie das Protokoll). */}
+            <GeraetHerkunft
+              siteId={site.id}
+              komponenten={view.komponenten.map((c) => ({ entityId: c.entityId, label: c.label }))}
+            />
             {/* ⚠ Der BMS-Block steht NUR da, wenn eine Batterie per CAN an
                 diesem Gerät hängt (P4) - sonst gar nicht. Ein Kasten, der
                 erklärt, dass er nichts weiß, ist genau die Wand, die dieser
