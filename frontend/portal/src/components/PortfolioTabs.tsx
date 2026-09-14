@@ -25,7 +25,8 @@ export function portfolioTabHash(
 /**
  * Die REITER der FLOTTEN-EBENE: Übersicht · Messwerte · Erlöse
  * (Navigations-Runde „zwei Ebenen", Konzept `data/vp-portfolio-konzept-r2`
- * §5.2 + §8 Stufe S4, Captain-Entscheid E3).
+ * §5.2 + §8 Stufe S4, Captain-Entscheid E3) — seit UEMS AP-02 IP-6 mit
+ * „Standorte“ nach der Übersicht (bis die Ebenen-Navigation aus AP-01 steht).
  *
  * Sie ersetzen die Seitenleisten-Gruppe „Alle Anlagen": die zwei
  * Historie-Welten des Portfolios verlassen das Menü und werden Reiter der
@@ -70,7 +71,12 @@ export function PortfolioTabs({
     onNavigate(target);
   };
   return (
-    <div className="vp-bereich-tabs" role="tablist" aria-label={`Reiter der Ebene ${fleetLabel}`}>
+    <div
+      // Vier Reiter passen am Telefon nur mit schmalerem Polster (BereichTabs.css).
+      className={welten.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}
+      role="tablist"
+      aria-label={`Reiter der Ebene ${fleetLabel}`}
+    >
       <button
         type="button"
         role="tab"

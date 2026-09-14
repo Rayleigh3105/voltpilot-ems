@@ -92,6 +92,9 @@ const UebersichtPage = lazy(() =>
 const PortfolioPage = lazy(() =>
   PAGE_CHUNK.portfolio().then((m) => ({ default: m.PortfolioPage })),
 );
+const StandortePage = lazy(() =>
+  PAGE_CHUNK['portfolio-standorte']().then((m) => ({ default: m.StandortePage })),
+);
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
 );
@@ -1041,6 +1044,8 @@ function UnifiedPortal() {
           )}
           {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der
               Portfolio-EBENE, tragen also dieselben Anlagen wie die Landung. */}
+          {/* UEMS AP-02 IP-6: „Unternehmen › Standorte“ als Reiter der Übersicht. */}
+          {page === 'portfolio-standorte' && <StandortePage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={sites} />}
           {page === 'uebersicht' && (

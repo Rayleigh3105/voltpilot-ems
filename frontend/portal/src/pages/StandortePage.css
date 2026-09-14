@@ -1,0 +1,109 @@
+/*
+ * „Unternehmen › Standorte“ (UEMS AP-02 IP-6, Mockup T1). Nur diese Seite;
+ * Klassen mit `vp-st-`, damit nichts in Portfolio-Tabellen oder -KPIs greift.
+ * ⚠ 375 px: Name und Kurzzeichen umbrechen, der Knopf rutscht unter den Text.
+ */
+
+.vp-st {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-st-seitenkopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-st-titel {
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.vp-st-titel h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+}
+
+.vp-st-titel p {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-st-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-st-karte {
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-st-karte-still {
+  background: var(--vp-c-muted);
+}
+
+.vp-st-hinweis {
+  margin: 0 0 var(--vp-c-space-2);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-st-karte-still .vp-st-kz {
+  background: var(--vp-c-card);
+}
+
+.vp-st-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin-top: var(--vp-c-space-2);
+}
+
+.vp-st-gruppe-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-st-anlage {
+  padding: 0;
+}
+
+.vp-st-anlage-link {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  color: var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.vp-st-anlage-link:hover,
+.vp-st-anlage-link:focus-visible {
+  color: var(--vp-c-primary);
+}

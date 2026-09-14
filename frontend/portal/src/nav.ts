@@ -20,6 +20,7 @@ import type { IconName } from '../designsystem/components/core/Icon';
 export type PageId =
   | 'hilfe'
   | 'portfolio'
+  | 'portfolio-standorte'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'uebersicht'
@@ -176,6 +177,12 @@ export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', ic
  * unverändert eine Seite je Id kennt.
  */
 export const PORTFOLIO_WELT_PAGES: PageDef[] = [
+  // UEMS AP-02 IP-6: „Unternehmen › Standorte“ wohnt hier, bis die
+  // Ebenen-Navigation aus AP-01 IP-5/IP-7 steht (`#/portfolio/standorte`) —
+  // der Report nennt den Weg „erreichbar über die Standort-Übersicht“. Kein
+  // Historie-Reiter: `PORTFOLIO_TAB_HASH` kennt ihn nicht, ein Zeitraum reist
+  // nicht mit. `#/standorte` bleibt die Alt-Adresse der Technik.
+  { id: 'portfolio-standorte', label: 'Standorte', icon: 'map-pin' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];

@@ -32,6 +32,7 @@ export const PAGE_CHUNK = {
   onboarding: () => import('./Onboarding'),
   uebersicht: () => import('./pages/UebersichtPage'),
   portfolio: () => import('./pages/PortfolioPage'),
+  'portfolio-standorte': () => import('./pages/StandortePage'),
   'portfolio-messwerte': () => import('./pages/PortfolioMesswerte'),
   'portfolio-erloese': () => import('./pages/PortfolioErloese'),
   mandanten: () => import('./pages/admin/MandantenPage'),
