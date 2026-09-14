@@ -24,6 +24,10 @@ import {
  * Quelle). Mit `TAGESKARTE_BILDER=<Ordner>` legt der Lauf je Fall ein Bild des
  * ersten Bildschirms und eines der ganzen Fläche ab — die Vorschau für die
  * Freigabe.
+ *
+ * Seit ergebnis-zustand 1.7 (Captain 14.09.2026 „Ja, immer zeigen“) sagt die
+ * Karte in BEIDEN Fällen, ob die Zahl vorläufig oder endgültig ist — im Kopf,
+ * getrennt von Zustand und Verlauf.
  */
 
 const ANTWORTEN: Record<string, () => MessstelleWerte> = {
@@ -105,6 +109,15 @@ async function bilder(page: Page, datei: string) {
   await page.setViewportSize({ width: BREITE, height: 812 });
 }
 
+/** Die Fassung steht im Kopf der Karte, nicht bei Zustand und Verlauf — und sie ist genau eine. */
+async function fassung(page: Page, wort: 'vorläufig' | 'endgültig') {
+  const karte = page.getByTestId('werte-karte');
+  await expect(karte.getByTestId('werte-fassung')).toHaveCount(1);
+  await expect(karte.locator('.vp-wk-kopf').getByTestId('werte-fassung')).toHaveText(wort);
+  await expect(karte.locator('.vp-wk-abzeichen')).not.toContainText(wort);
+  await expect(page.locator('.vp-wk-liste')).not.toContainText(/vorläufig|endgültig/);
+}
+
 const zeile = (page: Page, name: string) =>
   page.getByTestId('werte-zeile').filter({ has: page.locator('.vp-wk-zeile-name', { hasText: new RegExp(`^${name}$`) }) });
 
@@ -116,6 +129,7 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(karte).toContainText('vollständig (Menge aus Zählerständen)');
     await expect(karte).toContainText('Verlauf 100 %');
     await expect(page.getByTestId('werte-zeile')).toHaveCount(24);
+    await fassung(page, 'endgültig');
     await keinQuerlauf(page);
     await bilder(page, '1-gewoehnlicher-tag');
   });
@@ -133,6 +147,7 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     }
     await expect(zeile(page, '17:00–18:00').locator('.vp-wk-zeile-zahl')).toHaveText('46,4 kWh');
     await expect(page.locator('.vp-wk-zeile-zahl', { hasText: /^0,0/ })).toHaveCount(0);
+    await fassung(page, 'vorläufig');
     await keinQuerlauf(page);
     await bilder(page, '2-tag-mit-luecke');
   });
@@ -144,6 +159,8 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(page.getByTestId('werte-zeile')).toHaveCount(25);
     await expect(zeile(page, '02:00–03:00 MESZ')).toHaveCount(1);
     await expect(zeile(page, '02:00–03:00 MEZ')).toHaveCount(1);
+    // Kopf mit Titel, Fassung und Tagesdauer — der engste Kopf, den die Karte hat.
+    await fassung(page, 'endgültig');
     await keinQuerlauf(page);
     await bilder(page, '3-fuenfundzwanzig-stunden');
   });
@@ -165,6 +182,8 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(karte).toContainText('55.100 kWh');
     await expect(page.getByTestId('werte-zeile')).toHaveCount(31);
     await expect(zeile(page, 'So 25.10.')).toContainText('25 Stunden (Zeitumstellung)');
+    // Der Oktober ist vorläufig, obwohl der 25.10. darin endgültig ist — jede Periode sagt ihre eigene.
+    await fassung(page, 'vorläufig');
     await keinQuerlauf(page);
     await bilder(page, '5-monat');
   });
@@ -177,8 +196,39 @@ test.describe('Tages- und Monatskarte bei 375 px', () => {
     await expect(karte).not.toContainText('Verlauf');
     await expect(page.locator('.vp-wk-zeile-zahl', { hasText: '—' })).toHaveCount(24);
     await expect(page.locator('.vp-modal')).not.toContainText(/\b0,0\b|\b0 m³/);
+    // Die Route kennt keine Fassung: es steht keine da, auch nicht „endgültig“.
+    await expect(page.getByTestId('werte-fassung')).toHaveCount(0);
     await keinQuerlauf(page);
     await bilder(page, '6-ohne-werte');
+  });
+
+  // ergebnis-zustand 1.7: immer zeigen, beide Fälle — blättern wechselt die Fassung mit der Periode.
+  test('die Fassung: der vorläufige 03.11., der endgültige 02.11., der vorläufige Oktober mit dem endgültigen 25.10.', async ({ page }) => {
+    await oeffne(page, 'ms=MS-10&name=Netzbezug%20Halle%202&art=tag&wert=2026-11-03');
+    await fassung(page, 'vorläufig');
+    await expect(page.getByTestId('werte-fassung')).toHaveAttribute('data-fassung', 'vorlaeufig');
+    // Die Fassung steht im Kopf neben dem Titel, in einer Zeile mit ihm.
+    const titel = (await page.locator('.vp-wk-titel').boundingBox())!;
+    const abzeichen = (await page.getByTestId('werte-fassung').boundingBox())!;
+    expect(Math.abs(titel.y + titel.height / 2 - (abzeichen.y + abzeichen.height / 2))).toBeLessThan(4);
+    await keinQuerlauf(page);
+    await bilder(page, '7-vorlaeufiger-tag');
+    await page.getByRole('group', { name: 'Zeitraum' }).getByLabel('Vorheriger Zeitraum').click();
+    await expect(page.getByRole('group', { name: 'Zeitraum' })).toContainText('02.11.2026');
+    await fassung(page, 'endgültig');
+    await expect(page.getByTestId('werte-fassung')).toHaveAttribute('data-fassung', 'endgueltig');
+    await keinQuerlauf(page);
+    await bilder(page, '8-endgueltiger-tag');
+    await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=monat&wert=2026-10');
+    await expect(page.getByTestId('werte-karte')).toContainText('55.100\u00a0kWh');
+    await fassung(page, 'vorläufig');
+    await keinQuerlauf(page);
+    await bilder(page, '9-vorlaeufiger-monat');
+    await page.goto('/e2e/tageskarte.html?ms=MS-06&name=Spritzguss%20SG01–SG06&art=tag&wert=2026-10-25');
+    await expect(page.getByTestId('werte-karte')).toContainText('720\u00a0kWh');
+    await fassung(page, 'endgültig');
+    await keinQuerlauf(page);
+    await bilder(page, '10-endgueltiger-tag-im-vorlaeufigen-monat');
   });
 
   // Die Zeitraum-Wahl als EIN Bedienelement (Captain 14.09.2026: Variante B, ein Kasten mit zwei Zeilen).

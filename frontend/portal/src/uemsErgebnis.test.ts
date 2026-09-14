@@ -6,6 +6,7 @@ import {
   ANZEIGE_EINHEITEN,
   DEZIMAL,
   EBENEN,
+  FASSUNG_KENNZEICHEN,
   FRUEHERE_FASSUNGEN,
   HERKUNFT_ZUSTAENDE,
   KENNZEICHEN,
@@ -26,6 +27,7 @@ import {
   anfang,
   erkenne,
   ersatzwert,
+  fassung,
   korrigiert,
   menge,
   pruefe,
@@ -114,6 +116,10 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
     expect(HERKUNFT_ZUSTAENDE).toEqual(vektoren.mengen_herkunft.zustaende);
     expect(vektoren.mengen_herkunft.form).toBe('{zustand} ({herkunft})');
     expect(vektoren.mengen_herkunft.nur_mit_zahl).toBe(true);
+    // Seit 1.7 (AP-08 IP-11): die Fassung der Periode als Kennzeichen.
+    expect(FASSUNG_KENNZEICHEN).toEqual(vektoren.fassung.kennzeichen);
+    expect(vektoren.fassung.ohne_fassung).toBeNull();
+    expect(vektoren.fassung.hoechstens_eine).toBe(true);
   });
 
   it('jedes Muster erkennt sein Beispiel und spricht es zurück', () => {
@@ -139,7 +145,7 @@ describe('uemsErgebnis — Vertrag und Vokabular', () => {
 
   it('jede Familie, jedes Zustandswort und jeder Verstoß ist abgedeckt', () => {
     expect(new Set(faelle.map((f) => f.familie))).toEqual(
-      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz', 'herkunft']),
+      new Set(['zahl', 'menge', 'ergebnis', 'erkennen', 'tagesdauer', 'raster', 'uhr', 'rundungsdifferenz', 'herkunft', 'fassung']),
     );
     const gesprochen = faelle.filter((f) => f.familie === 'ergebnis' && f.erwartet.satz !== null).map((f) => f.eingang.zustand);
     for (const z of ZUSTAENDE) expect(gesprochen).toContain(z.wort);
@@ -258,6 +264,11 @@ describe('uemsErgebnis — die Fälle der Vektor-Datei', () => {
           else expect(zustandMitHerkunft(ein.zustand, ein.herleitung, ein.wert)).toBe(erw.text);
           break;
         }
+        case 'fassung': {
+          if (erw.unbekannt) expect(() => fassung(ein.fassung)).toThrow();
+          else expect(fassung(ein.fassung)).toBe(erw.text);
+          break;
+        }
         default:
           throw new Error(`unbekannte Familie ${fall.familie}`);
       }
@@ -358,5 +369,25 @@ describe('uemsErgebnis — das Kennzeichen „korrigiert (Version n)“ (seit 1.
     }
     expect(saetze.length).toBeGreaterThan(0);
     for (const k of saetze) expect(erkenne(k)?.muster.schluessel).toBe('korrigiert');
+  });
+});
+
+describe('uemsErgebnis — die Fassung „vorläufig“ · „endgültig“ (seit 1.7, AP-08 IP-11)', () => {
+  it('beide Wörter sind Kennzeichen mit Rang 90, keines ist mehr vorgesehen', () => {
+    expect(fassung('vorlaeufig')).toBe('vorläufig');
+    expect(fassung('endgueltig')).toBe('endgültig');
+    expect(erkenne('vorläufig')?.muster.rang).toBe(90);
+    expect(erkenne('endgültig')?.muster.rang).toBe(90);
+    expect(VORGESEHEN.map((v) => v.wort)).not.toContain('vorläufig');
+    expect(VORGESEHEN.map((v) => v.wort)).not.toContain('endgültig');
+    // Der Wortlaut ist der, den das Vokabular der Verbrauchsregel führt — kein neues Wort.
+    const vokabular = lies('verbrauch-vectors.json').kennzeichen as string[];
+    expect(vokabular).toContain(fassung('vorlaeufig'));
+    expect(vokabular).toContain(fassung('endgueltig'));
+  });
+
+  it('ohne Fassung wird nichts gesprochen, und kein Zustandswort ist eine Fassung', () => {
+    expect(fassung(null)).toBeNull();
+    for (const z of ZUSTAENDE) expect(() => fassung(z.wort)).toThrow();
   });
 });

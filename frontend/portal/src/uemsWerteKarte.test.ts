@@ -19,7 +19,7 @@ import {
   ohneQuelleTag,
   schritt,
 } from './test/werteKarteFixtures';
-import { OHNE_ZAHL, TRENNER, satz, tagesdauer } from './uemsErgebnis';
+import { OHNE_ZAHL, TRENNER, ZUSTAENDE, fassung, satz, tagesdauer } from './uemsErgebnis';
 import { anfragen, karte, liste, monatTitel, tagTitel } from './uemsWerteKarte';
 
 /**
@@ -194,6 +194,65 @@ describe('uemsWerteKarte — Monat (F16) und die Tagesliste', () => {
     expect(sonntag.tagesdauer).toBe('25 Stunden (Zeitumstellung)');
     expect(zeilen.filter((z) => z.tagesdauer !== null)).toHaveLength(1);
     expect(zeilen.every((z) => /^\d{1,3}(\.\d{3})* kWh$/.test(z.zahl))).toBe(true);
+  });
+});
+
+/**
+ * ergebnis-zustand 1.7 — Captain 14.09.2026 „Ja, immer zeigen“: wer eine Zahl
+ * abrechnet, muss wissen, ob sie sich noch ändern kann. Die Karte sagt darum in
+ * BEIDEN Fällen, was die Route für genau die gezeigte Periode liefert.
+ */
+describe('uemsWerteKarte — die Fassung der gezeigten Periode: vorläufig oder endgültig', () => {
+  it('ein endgültiger Tag sagt „endgültig“ — der Normalfall wird gesagt, nicht weggelassen', () => {
+    const k = karte(normalTag())!;
+    expect([k.fassung, k.fassungWert]).toEqual(['endgültig', 'endgueltig']);
+    expect(k.zustand).toBe('vollständig (Menge aus Zählerständen)');
+  });
+
+  it('ein vorläufiger Tag sagt „vorläufig“ — ganz zuletzt im Satz des Vertrags', () => {
+    const k = karte(f8Tag())!;
+    expect([k.fassung, k.fassungWert]).toEqual(['vorläufig', 'vorlaeufig']);
+    const mitFassung = [k.zahl, 'vollständig', k.abdeckung, ...k.kennzeichen, k.fassung].join(TRENNER);
+    expect(mitFassung).toBe(vertragsSatz('F8', 'Tag vorläufig: die Fassung steht ganz zuletzt (seit 1.7)'));
+  });
+
+  it('ein vorläufiger Monat mit endgültigen Tagen: jede Periode sagt ihre eigene Fassung, nichts wird abgeleitet', () => {
+    const monat = karte(f16Monat())!;
+    expect(monat.fassung).toBe('vorläufig');
+    expect(monat.zustand).toBe('vollständig (Menge aus Zählerständen)');
+    const tage = f16Tage().werte;
+    expect(tage.filter((w) => w.fassung === 'endgueltig')).toHaveLength(28);
+    // Der 25.10. liegt im vorläufigen Oktober und ist selbst endgültig.
+    expect(karte(f13Tag())!.fassung).toBe('endgültig');
+    // Die Zeilen tragen die Fassung nicht (wie die Herkunft: nur an der Karte).
+    expect(liste(f16Tage()).some((z) => 'fassung' in z)).toBe(false);
+  });
+
+  it('die Fassung ist das Wort des Vertrags und nie ein Zustandswort', () => {
+    for (const a of [normalTag(), f8Tag(), f16Monat()]) {
+      const k = karte(a)!;
+      expect(k.fassung).toBe(fassung(a.werte[0].fassung));
+      expect(ZUSTAENDE.map((z) => z.wort)).not.toContain(k.fassung);
+      expect(k.zustand).not.toContain(k.fassung!);
+    }
+  });
+
+  it('ohne Fassung der Route, ohne gesprochenen Schritt oder mit fremdem Wert steht keine Fassung', () => {
+    expect(karte(ohneQuelleTag())!.fassung).toBeNull();
+    const nochNicht = f8Tag();
+    nochNicht.werte = [schritt({ von: nochNicht.werte[0].von, bis: nochNicht.werte[0].bis, grund: 'noch_nicht_gebildet', quelle: null })];
+    expect(nochNicht.werte[0].fassung).toBe('vorlaeufig');
+    expect(karte(nochNicht)).toMatchObject({ zustand: null, fassung: null, fassungWert: null });
+    const fremd = f8Tag();
+    fremd.werte = [{ ...fremd.werte[0], fassung: 'vollständig' as never }];
+    expect(karte(fremd)).toMatchObject({ zustand: 'vollständig (Menge aus Zählerständen)', fassung: null });
+  });
+
+  it('„keine Werte“ innerhalb der Frist ist vorläufig — dann sagt die Karte beides, nebeneinander', () => {
+    // Ein Tag ohne einen Rohwert kann innerhalb von sieben Tagen noch Werte bekommen (F9).
+    const a = f8Tag();
+    a.werte = [{ ...a.werte[0], menge: null, zustand: 'keine Werte', erhalten: 0, abdeckung_prozent: 0, kennzeichen: [] }];
+    expect(karte(a)).toMatchObject({ zahl: OHNE_ZAHL, zustand: 'keine Werte', fassung: 'vorläufig' });
   });
 });
 

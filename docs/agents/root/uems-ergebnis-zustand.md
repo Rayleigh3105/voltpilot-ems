@@ -22,12 +22,14 @@ mit `ergebnis-zustand-vectors.json` und Schema.
   Kennzeichen, wenn er auf genau EIN Muster passt — auch eine gut gemeinte Umformulierung ist ein
   unbekannter Satz. Ein geänderter Wortlaut ist eine neue Fassung: der alte kommt nach
   `fruehere_fassungen` (erkannt, nie mehr gesprochen), weil er schon gespeichert ist. Die übrigen Vokabular-Wörter (nachgeliefert,
-  korrigiert (Version n), vorläufig/endgültig, Ablesezeitraum) sind `kennzeichen_vorgesehen`: ihren
-  Wortlaut legt das erzeugende Paket fest. Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
+  Ablesezeitraum) sind `kennzeichen_vorgesehen`: ihren Wortlaut legt das erzeugende Paket fest. Seit 1.4 ist „mit Ersatzwert (Methode „{methode}“, {kennung})“
   aktiv — Rang 70, Methodenname in Kundensprache (`uems-ersatzwert-methoden.md`). Seit 1.5 ist „korrigiert (Version
   {version})“ aktiv — Rang 80, Version ≥ 2, kein Datum; gesprochen von der Korrektur-Kaskade (`uems-korrektur-kaskade.md`).
   Seit 1.6 steht die Herkunft der Menge am Zustandswort („vollständig (Menge aus Zählerständen)“,
   `zustandMitHerkunft`, Block `mengen_herkunft`) — gesprochen von der Tageskarte (`uems-tageskarte.md`).
+  Seit 1.7 sind „vorläufig“ und „endgültig“ Kennzeichen — Rang 90, ganz zuletzt, aus dem Feld `fassung`
+  der Route (`fassung`, Block `fassung`), höchstens EINES je Liste (sonst `kennzeichen_doppelt`), `null`
+  spricht nichts; Captain 14.09.2026 „Ja, immer zeigen“ — beide Fälle, nie nur der Ausnahmefall.
 - **Die Reihenfolge ist Vertrag:** der Rang steigt nie (Anteil 10 → Rand 20–22 → Strecke 30 →
   Neustart 40 → Werte 50 → Integration 60), die Sätze der Gerätegrenze stehen in fester Folge.
   In Rang 30 wird die zeitliche Folge NICHT an HH:MM geprüft (ein Monat hat zwei Tage 09:12).

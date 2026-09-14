@@ -3,7 +3,9 @@
 Die erste Portal-Fläche, auf der ein Kunde liest, **wie belastbar** seine Verbrauchszahl ist. Sie
 zeigt drei Dinge nebeneinander, nie nur das erste: die Menge, ihren Zustand samt Herkunft
 („vollständig (Menge aus Zählerständen)“) und die Abdeckung des Verlaufs („Verlauf 85 %“) — dass
-beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: gelesen und AUFGERUFEN.
+beides zugleich stimmt, ist E1. Dazu sagt die Karte IMMER, ob die Zahl feststeht: „vorläufig“ oder
+„endgültig“ (ergebnis-zustand 1.7, Captain 14.09.2026 „Ja, immer zeigen“ — wer abrechnet, muss wissen,
+ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: gelesen und AUFGERUFEN.
 
 | Teil | Datei |
 |---|---|
@@ -12,6 +14,7 @@ beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: geles
 | Wirt heute | `GesamtwertKarten` (Zeilenmenü „Tages- und Monatswerte“) — die Messstellen-Seite (AP-04 IP-8) ruft denselben Dialog |
 | Daten | `api.messstelleWerte(kennzeichen, raster, von, bis)` → `GET /api/v1/messstellen/{kennzeichen}/werte` (IP-9, `uems-werte-je-messstelle.md`) |
 | Vertrag (additiv 1.6) | `mengen_herkunft` + Familie `herkunft`: `ErgebnisZustand.zustandMitHerkunft` ⟷ `uemsErgebnis.zustandMitHerkunft`; `teile` (nur TS) zerlegt `satz` |
+| Vertrag (additiv 1.7) | Kennzeichen `vorlaeufig`/`endgueltig` (Rang 90) + Block `fassung` + Familie `fassung`: `ErgebnisZustand.fassung` ⟷ `uemsErgebnis.fassung` |
 | 375 px + Bilder | `e2e/tageskarte.spec.ts` (+ Bühne `tageskarte.html/.tsx`, Antworten `src/test/werteKarteFixtures.ts`); `TAGESKARTE_BILDER=<Ordner>` legt Bilder ab |
 
 ## Die Fallen
@@ -33,6 +36,13 @@ beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: geles
    passte „September 2026“ bei 375 px nur ohne Kalender-Symbol und ist verworfen). Umschalten behält den
    Zeitraum (Tag → SEIN Monat, nicht der heutige). Der E2E-Test meldet auch ein abgeschnittenes Datum
    (`.vp-picker-wert` mit Auslassungspunkten) als Querlauf.
+7. **Die Fassung steht IMMER, im Kopf neben dem Titel** (`data-testid="werte-fassung"`), in beiden
+   Fällen — getrennt von Zustand und Verlauf, weil sie etwas anderes sagt (feststehend ≠ vollständig).
+   Sie gilt JE PERIODE und kommt aus `fassung` der Route für GENAU die gezeigte Periode: der Oktober
+   ist vorläufig, obwohl der 25.10. darin endgültig ist — nie aus Tagen oder Monat abgeleitet. Nur ein
+   gesprochener Schritt spricht sie; `null` (keine Quelle) zeigt nichts, nie „endgültig“ als Vorgabe.
+   Die Zeilen tragen sie nicht (wie die Herkunft). Als viertes Abzeichen neben „Verlauf 85 %“ läse
+   sie sich wie ein Teil der Vollständigkeit — darum der Kopf; `e2e/tageskarte.spec.ts` prüft den Ort.
 6. **375 px:** der Messstellen-Name steht im Körper, nicht im Modal-Kopf (dort schneidet `.dhead`
    ab); `.dbody` hat `overflow-x: hidden`, ein Querlauf wäre dort UNSICHTBAR abgeschnitten — der
    E2E-Test prüft darum jedes Element-Rechteck, nicht nur `scrollWidth`.
@@ -42,6 +52,5 @@ beides zugleich stimmt, ist E1. Keine Route, kein Backend, keine Rechnung: geles
 - „— 14 Viertelstunden ohne Werte“ (Report F8) liefert das Lese-Modell nicht; nicht in der Fläche gezählt.
 - Kein Kundensatz für `grund` (noch nicht gebildet, Quelle teilweise, Anteil nicht gespeichert …):
   die Karte zeigt nur den Strich.
-- vorläufig/endgültig (`fassung`) ist im Vokabular nur „vorgesehen“ — nicht gezeigt.
 - Momentanwert-Messstellen (Mittel/Min/Max) haben keinen Satz — nur der Strich.
 - Messstellen ohne Portal-Seite: nur berechnete Messstellen haben heute einen Wirt.

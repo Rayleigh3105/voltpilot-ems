@@ -44,7 +44,8 @@ import java.util.regex.Pattern;
  *       MESZ/MEZ, die fehlende erscheint nicht ({@link #raster}, {@link #tagesdauer}); die
  *       Stundenzahl wird bei {@link BezugsPeriode#stundenDesTages} bestellt, nie hier gezählt.
  *   <li><b>Die Herkunft der Menge am Zustandswort (E1, seit 1.6)</b> — „vollständig (Menge aus
- *       Zählerständen)“ neben „Verlauf 85 %“ ({@link #zustandMitHerkunft}).
+ *       Zählerständen)“ neben „Verlauf 85 %“ ({@link #zustandMitHerkunft}); seit 1.7 die Fassung der
+ *       Periode als Kennzeichen „vorläufig“ · „endgültig“ ({@link #fassung}).
  * </ol>
  *
  * <p><b>Rein:</b> ohne Spring, ohne Datenbank, ohne Uhr. Die Sprech-Funktionen prüfen die
@@ -176,7 +177,11 @@ public final class ErgebnisZustand {
             // Seit 1.5 (AP-08 IP-17): ganz zuletzt die Version — sie sagt etwas über die ganze Zahl, nicht über
             // einen Teil. Version 1 ist das Original und nie „korrigiert“.
             new Muster("korrigiert", "korrigiert (Version {version})", Map.of("version", "ganzzahl_ab_2"),
-                    "korrigiert (Version n)", 80, false, true, null, null));
+                    "korrigiert (Version n)", 80, false, true, null, null),
+            // Seit 1.7 (AP-08 IP-11, Captain 14.09.2026): ganz zuletzt die Fassung — ob die ganze Zahl sich noch
+            // ändern kann. Höchstens EINE je Liste (FASSUNG_KENNZEICHEN); sie ist nicht der Zustand (Vollständigkeit).
+            new Muster("vorlaeufig", "vorläufig", Map.of(), "vorläufig", 90, false, true, null, null),
+            new Muster("endgueltig", "endgültig", Map.of(), "endgültig", 90, false, true, null, null));
 
     /**
      * Ein Wortlaut, den eine frühere Fassung sprach und der gespeichert sein kann. Er wird als das
@@ -199,10 +204,6 @@ public final class ErgebnisZustand {
 
     public static final List<Vorgesehen> VORGESEHEN = List.of(
             new Vorgesehen("nachgeliefert", "nachgeliefert", "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"),
-            new Vorgesehen("vorläufig", "vorläufig",
-                    "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"),
-            new Vorgesehen("endgültig", "endgültig",
-                    "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"),
             new Vorgesehen("Ablesezeitraum", "Ablesezeitraum",
                     "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"));
 
@@ -366,6 +367,36 @@ public final class ErgebnisZustand {
         return e != null && "korrigiert".equals(e.muster().schluessel());
     }
 
+    /**
+     * Seit 1.7 (AP-08 IP-11): je Wert des Feldes {@code fassung} der Route „Werte je Messstelle“ der Schlüssel des
+     * Kennzeichens, das gesprochen wird.
+     */
+    public static final Map<String, String> FASSUNG_KENNZEICHEN = fassungKennzeichen();
+
+    private static Map<String, String> fassungKennzeichen() {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("vorlaeufig", "vorlaeufig");
+        m.put("endgueltig", "endgueltig");
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * „vorläufig“ bzw. „endgültig“ — Rang 90, seit 1.7 (Captain 14.09.2026 „Ja, immer zeigen“: wer eine Zahl
+     * abrechnet, muss wissen, ob sie sich noch ändern kann). Gesprochen wird, was die Route für GENAU diese Periode
+     * liefert, in beiden Fällen; {@code null} (die Route kennt keine Fassung) spricht nichts — nie „endgültig“ als
+     * Vorgabe. Ein fremder Wert (auch ein Zustandswort) wird nicht gesprochen.
+     */
+    public static String fassung(String wert) {
+        if (wert == null) {
+            return null;
+        }
+        String schluessel = FASSUNG_KENNZEICHEN.get(wert);
+        if (schluessel == null) {
+            throw new IllegalArgumentException("unbekannte Fassung " + wert);
+        }
+        return sprich(schluessel, Map.of());
+    }
+
     /** „Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren“. */
     public static String neustart(String uhr, long verlustS) {
         return sprich("neustart", Map.of(UHR, uhr, "verlust_s", Long.toString(verlustS)));
@@ -487,6 +518,11 @@ public final class ErgebnisZustand {
                 continue;
             }
             Muster m = k.muster();
+            // Seit 1.7: eine Periode hat höchstens EINE Fassung — „vorläufig · endgültig“ ist doppelt.
+            if (FASSUNG_KENNZEICHEN.containsValue(m.schluessel()) && FASSUNG_KENNZEICHEN.values().stream()
+                    .anyMatch(f -> !f.equals(m.schluessel()) && gesehen.contains(f))) {
+                v.add(KENNZEICHEN_DOPPELT);
+            }
             if (!gesehen.add(m.schluessel()) && m.einmalig()) {
                 v.add(KENNZEICHEN_DOPPELT);
             }

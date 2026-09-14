@@ -10,6 +10,10 @@
  *
  * Mobil zuerst (375 px): die Zahl steht groß, Zustand und Verlauf daneben als
  * Abzeichen, die sich umbrechen; ein Kennzeichen wird nie gekürzt.
+ *
+ * Die Fassung („vorläufig“ · „endgültig“) steht im Kopf neben dem Titel der
+ * Periode, IMMER in beiden Fällen — getrennt von Zustand und Verlauf, weil sie
+ * etwas anderes sagt: ob die Zahl feststeht, nicht ob sie vollständig ist.
  */
 import { Badge } from '../../designsystem/components/core/Badge';
 import { TRENNER } from '../uemsErgebnis';
@@ -21,6 +25,16 @@ export function WerteKarte({ karte }: { karte: Karte }) {
     <section className="vp-wk-karte" aria-label={karte.titel} data-testid="werte-karte">
       <div className="vp-wk-kopf">
         <span className="vp-wk-titel">{karte.titel}</span>
+        {karte.fassung && (
+          <Badge
+            variant={karte.fassungWert === 'endgueltig' ? 'ok' : 'warn'}
+            className="vp-wk-fassung"
+            data-testid="werte-fassung"
+            data-fassung={karte.fassungWert ?? undefined}
+          >
+            {karte.fassung}
+          </Badge>
+        )}
         {karte.tagesdauer && <Badge variant="tint">{karte.tagesdauer}</Badge>}
       </div>
       <div className="vp-wk-zahl">{karte.zahl}</div>

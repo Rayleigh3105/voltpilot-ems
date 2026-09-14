@@ -21,7 +21,8 @@
  *  4. die Sommerzeit-Beschriftung (E10): Ortszeit des Standorts, die doppelte
  *     Stunde mit MESZ/MEZ, die fehlende erscheint nicht;
  *  5. seit 1.6 die Herkunft der Menge am Zustandswort (E1): „vollständig
- *     (Menge aus Zählerständen)“ neben „Verlauf 85 %“.
+ *     (Menge aus Zählerständen)“ neben „Verlauf 85 %“; seit 1.7 die Fassung
+ *     der Periode als Kennzeichen („vorläufig“ · „endgültig“, `fassung`).
  *
  * REIN: kein Netz, kein Zustand, keine Uhr.
  */
@@ -133,6 +134,10 @@ export const KENNZEICHEN: Muster[] = [
   // Seit 1.5 (AP-08 IP-17): ganz zuletzt die Version — sie sagt etwas über die ganze Zahl, nicht über einen Teil.
   // Version 1 ist das Original und nie „korrigiert“.
   m('korrigiert', 'korrigiert (Version {version})', { version: 'ganzzahl_ab_2' }, 'korrigiert (Version n)', 80, false, true),
+  // Seit 1.7 (AP-08 IP-11, Captain 14.09.2026): ganz zuletzt die Fassung — ob die ganze Zahl sich noch ändern kann.
+  // Höchstens EINE je Liste (FASSUNG_KENNZEICHEN); sie ist nicht der Zustand (Vollständigkeit).
+  m('vorlaeufig', 'vorläufig', {}, 'vorläufig', 90, false, true),
+  m('endgueltig', 'endgültig', {}, 'endgültig', 90, false, true),
 ];
 
 /**
@@ -164,8 +169,6 @@ export type Vorgesehen = { wort: string; anfang: string; wortlautMit: string };
 /** Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. */
 export const VORGESEHEN: Vorgesehen[] = [
   { wort: 'nachgeliefert', anfang: 'nachgeliefert', wortlautMit: 'AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)' },
-  { wort: 'vorläufig', anfang: 'vorläufig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
-  { wort: 'endgültig', anfang: 'endgültig', wortlautMit: 'AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)' },
   { wort: 'Ablesezeitraum', anfang: 'Ablesezeitraum', wortlautMit: 'AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)' },
 ];
 
@@ -229,6 +232,29 @@ export const ersatzwert = (methode: string, kennung: string): string => {
 export const korrigiert = (version: number): string => {
   if (!Number.isInteger(version) || version < 2) throw new Error(`Version ${version} ist nie korrigiert`);
   return sprich('korrigiert', { version: String(version) });
+};
+
+/**
+ * Seit 1.7 (AP-08 IP-11): je Wert des Feldes `fassung` der Route „Werte je
+ * Messstelle“ der Schlüssel des Kennzeichens, das gesprochen wird.
+ */
+export const FASSUNG_KENNZEICHEN: Record<string, string> = {
+  vorlaeufig: 'vorlaeufig',
+  endgueltig: 'endgueltig',
+};
+
+/**
+ * „vorläufig“ bzw. „endgültig“ — Rang 90, seit 1.7 (Captain 14.09.2026 „Ja,
+ * immer zeigen“: wer eine Zahl abrechnet, muss wissen, ob sie sich noch ändern
+ * kann). Gesprochen wird, was die Route für GENAU diese Periode liefert, in
+ * beiden Fällen; `null` (die Route kennt keine Fassung) spricht nichts — nie
+ * „endgültig“ als Vorgabe. Ein fremder Wert (auch ein Zustandswort) wird nicht
+ * gesprochen.
+ */
+export const fassung = (wert: string | null): string | null => {
+  if (wert === null) return null;
+  if (!Object.prototype.hasOwnProperty.call(FASSUNG_KENNZEICHEN, wert)) throw new Error(`unbekannte Fassung ${wert}`);
+  return sprich(FASSUNG_KENNZEICHEN[wert], {});
 };
 
 /** Der feste Anfang eines Musters bis zum ersten Platzhalter. */
@@ -320,6 +346,11 @@ export const pruefe = (e: Ergebnis): Verstoss[] => {
     }
     const km = k.muster;
     if (gesehen.has(km.schluessel) && km.einmalig) v.add('kennzeichen_doppelt');
+    // Seit 1.7: eine Periode hat höchstens EINE Fassung — „vorläufig · endgültig“ ist doppelt.
+    const fassungen = Object.values(FASSUNG_KENNZEICHEN);
+    if (fassungen.includes(km.schluessel) && fassungen.some((f) => f !== km.schluessel && gesehen.has(f))) {
+      v.add('kennzeichen_doppelt');
+    }
     gesehen.add(km.schluessel);
     if (km.rang < rang) v.add('kennzeichen_reihenfolge');
     rang = Math.max(rang, km.rang);
