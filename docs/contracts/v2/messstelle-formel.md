@@ -83,8 +83,8 @@ Beide Felder sind optional; ein Term ohne sie verhält sich genau wie heute.
 | `anteil` | `gesamt` (Vorgabe) \| `positiv` \| `negativ` — welcher Anteil eines Messwerts eingeht. Eine Speicher-Messstelle mit der Richtung „Laden / Entladen“ geht mit ZWEI Termen ein: dem positiven (Laden) und dem negativen (Entladen), nie als Saldo und nie nur mit einer Hälfte. |
 
 Die Schreibweise ist die von `MessstelleFormelDto`: **snake_case in der Schnittstelle**
-(`terme[].entity_id`, `terme[].point_key`, `terme[].quell_messstelle_id`, neu
-`terme[].verteilung_ziel` und `terme[].anteil`), camelCase nur im Java-Record. Das Portal wandelt
+(`terme[].entity_id`, `terme[].point_key`, `terme[].quell_messstelle_id`,
+`terme[].gilt_als_erzeugung`, neu `terme[].verteilung_ziel` und `terme[].anteil`), camelCase nur im Java-Record. Das Portal wandelt
 nichts um — ein camelCase-Feld wäre dort still `undefined`.
 
 ## 2. Die abgeleitete Hauptgröße (`formelGroesse`)
@@ -101,8 +101,11 @@ ist sie sofort katalogkonform:
   kennt (z. B. ein Netto einer Größe ohne `richtungslos`), ist das ebenfalls `groessen_gemischt`
   (Grund `richtung`).
 - Ein Messwert **ohne Vertrags-Richtung** (ein Vorzeichen-Wert `import_export`, oder ein Kanal,
-  dem der Katalog keine Richtung gibt) ist kein Term — sein Anteil (Messstellen-Vertrag §5, seit
-  AP-08 IP-7 an der Quellenbindung) ist als Term-Feld `anteil` noch benannt abgelehnt (§1.1).
+  dem der Katalog keine Richtung gibt) ist kein Term — es sei denn, der Term trägt den
+  **AP-08-Haken `gilt_als_erzeugung`** (§2.2). Ohne Haken bleibt ein solcher Messwert
+  richtungslos und darf nicht summiert werden (wie im Messstellen-Vertrag §5). Sein Anteil
+  (Messstellen-Vertrag §5, seit AP-08 IP-7 an der Quellenbindung) ist als Term-Feld `anteil`
+  noch benannt abgelehnt (§1.1).
 
 ### 2.1 Die Ergebnis-Richtung je Typ (AP-10 E1)
 
@@ -119,6 +122,23 @@ Der Eintrag `Wirkenergie · saldiert` steht seit AP-10 IP-4 in [`messstelle.md`]
 §2 und `MessstelleRegeln.GROESSEN_KATALOG` (Feld `richtungen_nur_berechnet`); das Vokabular dazu
 bleibt [`bilanz-vectors.json`](./bilanz-vectors.json) (`vokabulare.richtung_berechnet_additiv`),
 beide Tests halten Katalog und Vokabular gleich.
+
+### 2.2 Der AP-08-Haken „gilt als Erzeugung" am Term (AP-08)
+
+Diese Stelle löst die in §2 reservierte AP-08-Frage ein — additiv, ein optionales Feld am Term
+(`gewichtete_summe`):
+
+| Feld | Regel |
+|---|---|
+| `gilt_als_erzeugung` | boolean, Vorgabe `false`. Nur an einem **Messkanal**-Term und nur an einem Kanal **ohne Katalog-Richtung** (der Katalog gibt keine, z. B. der Deye Gen-Port `generator-power`, `direction: null`). Mit gesetztem Haken ist der richtungslose Kanal als Term **zulässig** und zählt in der Richtungs-Ableitung (§2) als **Erzeugung** — so bleibt eine Summe aus lauter `+`-Erzeugungs-Termen `Erzeugung`, statt an dem einen richtungslosen Gen-Port zu `richtungslos` zu degradieren. |
+
+Der Haken gilt **nur für einen richtungslosen Kanal**: an einem Kanal **mit** Katalog-Richtung
+(auch der Katalog-Richtung `richtungslos` aus `direction: none`) weist der Dienst ihn ab
+(`anfrage_ungueltig`, Feld `terme[i].gilt_als_erzeugung`) — ein wirkungsloser Schalter wäre
+unehrlich. An einem `messstelle`- und an einem `verteilung`-Term (§1.1) ist er ebenfalls unzulässig. Die Regel steht rein in beiden
+Zwillingen (`MessstelleFormelRegeln.erzeugungsHakenErlaubt` / `richtungMitErzeugungsHaken`,
+`uemsMessstelleFormel.ts`) und in den Vektoren (`cases.haken`); der normale Erzeugungs-Kanal
+(PV 1/2/3, Katalog-Richtung `generation`) braucht den Haken nie.
 
 ## 3. Die Berechnung (Cloud, `MessstelleFormelBerechnung`/`gewichteteSumme`)
 
@@ -233,7 +253,7 @@ E15 auf `messstelle.formel` (Lesen bleibt `messstelle.ansehen`/`messwerte.ansehe
 E6 = A ist gebaut: Viertelstunde, Tag, Monat und Jahr einer berechneten Messstelle (`gewichtete_summe`,
 `rest`) liegen in der Speicherklasse — Spur `berechnet` von `messreihe_viertelstunde`, `messreihe_tag`,
 `messreihe_periode` (`messstelle_id`, `formel_fassung_id`, `formel_typ`; ohne Reihe) — mit ihren
-Eingängen in `bilanzwert_eingang` (`V20260914100000`). Gerechnet vom Stundenlauf NACH den gemessenen
+Eingängen in `bilanzwert_eingang` (`V20260914100300`). Gerechnet vom Stundenlauf NACH den gemessenen
 Stufen, in der Abhängigkeitsordnung der Fassungen; ein Formel-Kreis wird benannt abgelehnt
 (`formel_kreis`/`haengt_an_kreis`). Der Wert je Periode ist `periodenwert` (§6.2) über die
 Periodenwerte der Eingänge (nie Summe der Viertelstunden), vorläufig/endgültig über die Eingänge.

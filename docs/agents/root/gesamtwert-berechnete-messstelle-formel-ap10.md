@@ -20,9 +20,14 @@ sich selbst; `→ messstelle` RESTRICT, `→ measurement_point` CASCADE.
 **Ableitung (`formelGroesse`):** die Hauptgröße kommt aus den Termen (alle dieselbe
 Vertrags-Größe, sonst `groessen_gemischt`); Richtung = gemeinsame Richtung bei allen `+`, sonst
 `richtungslos`. ⚠ Ein Kanal OHNE Vertrags-Richtung (`generator-power` im Katalog `direction:
-null`, oder ein `import_export`-Vorzeichen-Wert) ist KEIN Term — daher ist der Anker im Test die
-drei MPPT-Tracker `deye.hybrid_3p.pv.pv1-power … pv3-power` (Wirkleistung · Erzeugung · kW), nicht
-der Generator.
+null`, oder ein `import_export`-Vorzeichen-Wert) ist KEIN Term — ES SEI DENN, der Messkanal-Term
+trägt den AP-08-Haken `gilt_als_erzeugung` (Migration `V20260914100000`, Vertrag
+`messstelle-formel.md` §2.2, Regeln `MessstelleFormelRegeln.erzeugungsHakenErlaubt`/
+`richtungMitErzeugungsHaken` + TS-Zwilling + Vektoren `cases.haken`). Der Haken macht den
+richtungslosen Kanal als Term zulässig und lässt ihn als `Erzeugung` zählen — nur an einem Kanal
+OHNE Katalog-Richtung (der Server lehnt ihn auf einem gerichteten Kanal ab). So bleibt der
+Ankerfall `PV1+PV2+PV3+Gen-Port` eine reine `Erzeugung`-Summe statt zu `richtungslos` zu
+degradieren.
 
 **Berechnung (Cloud, `MessstelleFormelService`):** Live-Wert aus den frischesten Samples
 (`device_measurement_sample`), Verlauf je 15-min-Bucket aus `device_measurement_rollup_15m`; die

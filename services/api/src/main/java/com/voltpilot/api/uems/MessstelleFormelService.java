@@ -139,7 +139,8 @@ public class MessstelleFormelService {
      * {@code anteil == null} ist {@code gesamt} (so wird es auch gespeichert).
      */
     private record Bindung(String eingangArt, UUID entityId, String pointKey, UUID quellMessstelleId,
-            String vorzeichen, double faktor, Groesse groesse, UUID verteilungZiel, String anteil) {}
+            String vorzeichen, double faktor, boolean giltAlsErzeugung, Groesse groesse, UUID verteilungZiel,
+            String anteil) {}
 
     /**
      * Legt eine berechnete Messstelle mit ihrer Formel an — in EINER Transaktion mit dem
@@ -241,6 +242,7 @@ public class MessstelleFormelService {
     /** Der Eingang eines Terms, aufgelöst: Messkanal, Baustein oder Verteilungs-Anteil einer Messstelle. */
     private Bindung eingang(MessstelleFormelDto.TermEingabe t, String feld, String vorzeichen, double faktor,
             String anteil) {
+        boolean haken = Boolean.TRUE.equals(t.giltAlsErzeugung());
         if (MESSKANAL.equals(t.eingangArt())) {
             if (t.entityId() == null || leerAlsNull(t.pointKey()) == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
@@ -249,23 +251,39 @@ public class MessstelleFormelService {
             if (!werte.komponenteGehoert(t.entityId())) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
             }
-            Groesse g = kanalGroesse(t.pointKey());
+            // AP-08: der Haken „gilt als Erzeugung" nur auf einem Kanal OHNE Katalog-Richtung —
+            // sonst ein wirkungsloser Schalter (die Regel steht in beiden Zwillingen).
+            if (haken && !MessstelleFormelRegeln.erzeugungsHakenErlaubt(kanalRichtung(t.pointKey()))) {
+                throw MessstelleFormelAbgelehnt.anfrage(feld + ".gilt_als_erzeugung",
+                        "„Gilt als Erzeugung“ ist nur für einen Kanal ohne eigene Richtung — "
+                                + "dieser Kanal trägt schon eine.");
+            }
+            Groesse g = kanalGroesse(t.pointKey(), haken);
             if (g == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
                         "Dieser Messwert hat keine Vertrags-Messgröße — er kann kein Term sein.");
             }
-            return new Bindung(MESSKANAL, t.entityId(), t.pointKey(), null, vorzeichen, faktor, g, null, anteil);
+            return new Bindung(MESSKANAL, t.entityId(), t.pointKey(), null, vorzeichen, faktor, haken, g, null,
+                    anteil);
         }
         if (MESSSTELLE.equals(t.eingangArt())) {
+            if (haken) {
+                throw MessstelleFormelAbgelehnt.anfrage(feld + ".gilt_als_erzeugung",
+                        "„Gilt als Erzeugung“ gilt nur für einen Messkanal-Term.");
+            }
             if (t.quellMessstelleId() == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld, "Ein Baustein-Term braucht eine Messstelle.");
             }
             Messstelle quell = messstellen.finde(t.quellMessstelleId()).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
-            return new Bindung(MESSSTELLE, null, null, quell.id(), vorzeichen, faktor, quell.hauptgroesse(), null,
-                    anteil);
+            return new Bindung(MESSSTELLE, null, null, quell.id(), vorzeichen, faktor, false, quell.hauptgroesse(),
+                    null, anteil);
         }
         if (VERTEILUNG.equals(t.eingangArt())) {
+            if (haken) {
+                throw MessstelleFormelAbgelehnt.anfrage(feld + ".gilt_als_erzeugung",
+                        "„Gilt als Erzeugung“ gilt nur für einen Messkanal-Term.");
+            }
             if (t.quellMessstelleId() == null || t.verteilungZiel() == null) {
                 throw MessstelleFormelAbgelehnt.anfrage(feld,
                         "Ein Verteilungs-Term braucht die Messstelle und die Kostenstelle.");
@@ -273,7 +291,7 @@ public class MessstelleFormelService {
             Messstelle quell = messstellen.finde(t.quellMessstelleId()).orElseThrow(() ->
                     new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
             // Größe und Richtung eines Verteilungs-Terms sind die seiner Quell-Messstelle (§1.1).
-            return new Bindung(VERTEILUNG, null, null, quell.id(), vorzeichen, faktor, quell.hauptgroesse(),
+            return new Bindung(VERTEILUNG, null, null, quell.id(), vorzeichen, faktor, false, quell.hauptgroesse(),
                     t.verteilungZiel(), anteil);
         }
         throw MessstelleFormelAbgelehnt.anfrage(feld + ".eingang_art",
@@ -300,7 +318,8 @@ public class MessstelleFormelService {
         for (TermZeile t : fassung.map(f -> terme.derFassung(f.id())).orElse(List.of())) {
             aus.add(new MessstelleFormelDto.Term(t.position(), t.eingangArt(), t.entityId(),
                     t.pointKey(), t.quellMessstelleId(), t.vorzeichen(), t.faktor(),
-                    dtoGroesse(groesse(t)), eingerichtet(t), t.verteilungZiel(), t.anteil()));
+                    t.giltAlsErzeugung(), dtoGroesse(groesse(t)), eingerichtet(t), t.verteilungZiel(),
+                    t.anteil()));
         }
         Groesse h = m.hauptgroesse();
         MessstelleFormelDto.FassungAm fassungAm = am == null ? null
@@ -451,7 +470,8 @@ public class MessstelleFormelService {
         for (int i = 0; i < bindungen.size(); i++) {
             Bindung b = bindungen.get(i);
             terme.anlegen(fassung, messstelle, i, b.eingangArt(), b.entityId(), b.pointKey(),
-                    b.quellMessstelleId(), b.vorzeichen(), b.faktor(), b.verteilungZiel(), b.anteil());
+                    b.quellMessstelleId(), b.vorzeichen(), b.faktor(), b.verteilungZiel(), b.anteil(),
+                    b.giltAlsErzeugung());
         }
     }
 
@@ -973,14 +993,17 @@ public class MessstelleFormelService {
      * die VERTRAGS-Wertart (Momentanwert · Zählerstand · Intervallmenge), abgeleitet aus der Größe
      * und der Wertart des KANALS ({@code gauge}/{@code counter}) — nicht die des Kanals selbst.
      */
-    private Groesse kanalGroesse(String pointKey) {
+    private Groesse kanalGroesse(String pointKey, boolean giltAlsErzeugung) {
         Point p = katalog.resolve(pointKey);
         Semantik s = katalog.semantik(pointKey);
         if (p == null || s == null) {
             return null;
         }
         String groesse = MesskanalAbbildung.groesse(s.quantity());
-        String richtung = MesskanalAbbildung.richtung(s.direction());
+        // AP-08: ein richtungsloser Kanal (Katalog ohne Richtung) traegt mit gesetztem Haken die
+        // Richtung Erzeugung — sonst bleibt er ohne Richtung und kann kein Term sein.
+        String richtung = MessstelleFormelRegeln.richtungMitErzeugungsHaken(
+                MesskanalAbbildung.richtung(s.direction()), giltAlsErzeugung);
         String kanalWertart = MesskanalAbbildung.wertart(p.aggregationKind());
         if (groesse == null || richtung == null || kanalWertart == null || p.unit() == null) {
             return null;
@@ -990,6 +1013,12 @@ public class MessstelleFormelService {
             return null;
         }
         return new Groesse(groesse, richtung, p.unit(), wertart);
+    }
+
+    /** Die Katalog-Richtung eines Messkanals (oder {@code null}, wenn der Katalog keine gibt). */
+    private String kanalRichtung(String pointKey) {
+        Semantik s = katalog.semantik(pointKey);
+        return s == null ? null : MesskanalAbbildung.richtung(s.direction());
     }
 
     /** Die Vertrags-Wertart: eine Momentan-Größe ist Momentanwert; ein Zähler ist Zählerstand,
@@ -1014,7 +1043,7 @@ public class MessstelleFormelService {
 
     private Groesse groesse(TermZeile t) {
         if (MESSKANAL.equals(t.eingangArt())) {
-            return kanalGroesse(t.pointKey());
+            return kanalGroesse(t.pointKey(), t.giltAlsErzeugung());
         }
         return messstellen.finde(t.quellMessstelleId()).map(Messstelle::hauptgroesse).orElse(null);
     }
@@ -1063,6 +1092,9 @@ public class MessstelleFormelService {
                     b.quellMessstelleId() == null ? null : b.quellMessstelleId().toString());
             term.put("vorzeichen", b.vorzeichen());
             term.put("faktor", b.faktor());
+            if (b.giltAlsErzeugung()) {
+                term.put("gilt_als_erzeugung", true);
+            }
             // AP-10 IP-5: nur, wenn der Term sie trägt — ein Term ohne sie protokolliert wie vorher.
             if (b.verteilungZiel() != null) {
                 term.put("verteilung_ziel", b.verteilungZiel().toString());

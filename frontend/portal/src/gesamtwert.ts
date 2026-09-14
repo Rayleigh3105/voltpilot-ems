@@ -29,9 +29,11 @@ import { fmtNum } from './format';
 import { GESAMTWERT } from './glossar';
 import type { Groesse } from './uemsMessstelle';
 import {
+  erzeugungsHakenErlaubt,
   formelGroesse,
   gewichteteSumme,
   normiere,
+  richtungMitErzeugungsHaken,
   type Summand,
   type Term as FormelTerm,
 } from './uemsMessstelleFormel';
@@ -130,11 +132,25 @@ export interface TermEntwurf {
   quelle: Quellwert;
   vorzeichen: '+' | '-';
   faktor: number;
+  /**
+   * AP-08-Haken: ein richtungsloser Kanal (der Gen-Port ohne Katalog-Richtung) zählt mit
+   * gesetztem Haken als Erzeugung. Nur bei `hakenAnwendbar(quelle)` sinnvoll; sonst ignoriert.
+   */
+  giltAlsErzeugung?: boolean;
 }
 
 /** Ein frischer Term aus einem gewählten Quell-Wert — Vorgabe „+" und Faktor 1. */
 export function termAus(quelle: Quellwert): TermEntwurf {
   return { quelle, vorzeichen: '+', faktor: 1 };
+}
+
+/**
+ * Darf am Quell-Wert `q` der Haken „gilt als Erzeugung" (AP-08) angeboten werden? NUR für einen
+ * Kanal, der eine Vertrags-Größe trägt (summierbar), aber KEINE Katalog-Richtung (`richtung ==
+ * null` — der Gen-Port). Der Normalfall (PV 1/2/3 mit Richtung `Erzeugung`) braucht ihn nie.
+ */
+export function hakenAnwendbar(q: Quellwert): boolean {
+  return summierbar(q) && erzeugungsHakenErlaubt(q.richtung);
 }
 
 /** Der Entwurf des Assistenten — dieselben Angaben, jede darf noch fehlen. */
@@ -153,11 +169,16 @@ export function leererEntwurf(): Entwurf {
 // Ableitung: Größe, Einheit, Live-Wert
 // ---------------------------------------------------------------------------
 
-/** Ein Entwurfs-Term als Formel-Term (für die Größen-Ableitung des Zwillings). */
+/**
+ * Ein Entwurfs-Term als Formel-Term (für die Größen-Ableitung des Zwillings). Die Richtung ist die
+ * WIRKSAME Richtung: ein richtungsloser Kanal mit gesetztem AP-08-Haken zählt als Erzeugung
+ * (`richtungMitErzeugungsHaken`), sonst die Katalog-Richtung des Quell-Werts.
+ */
 function alsFormelTerm(t: TermEntwurf): FormelTerm {
+  const richtung = richtungMitErzeugungsHaken(t.quelle.richtung, t.giltAlsErzeugung ?? false);
   return {
     groesse: t.quelle.groesse ?? '',
-    richtung: t.quelle.richtung ?? '',
+    richtung: richtung ?? '',
     einheit: t.quelle.einheit ?? '',
     wertart: t.quelle.wertart ?? '',
     vorzeichen: t.vorzeichen,
@@ -306,6 +327,26 @@ export function schritt1Fertig(terme: TermEntwurf[]): boolean {
   return terme.length > 0 && !groessenGemischt(terme);
 }
 
+/**
+ * Die richtungslosen Terme (Gen-Port ohne Katalog-Richtung), denen die AP-08-Entscheidung
+ * „gilt als Erzeugung" noch fehlt. Ein solcher Term ist NICHT speicherbar: der Server leitet
+ * für einen richtungslosen Kanal ohne diesen Haken keine Vertrags-Messgröße ab und lehnt den
+ * Term mit 400 ab (`MessstelleFormelService.kanalGroesse` → null). Wer diese Liste vor dem
+ * Speichern prüft, sperrt client-seitig mit erklärtem Grund - der 400 wird nie provoziert.
+ */
+export function richtungsloseOhneEntscheidung(terme: TermEntwurf[]): TermEntwurf[] {
+  return terme.filter((t) => hakenAnwendbar(t.quelle) && !(t.giltAlsErzeugung ?? false));
+}
+
+/** Der erklärte Grund, wenn ein richtungsloser Term noch keine Erzeugungs-Entscheidung trägt. */
+export function richtungsEntscheidungSatz(namen: string[]): string {
+  if (namen.length === 0) return '';
+  const liste = namen.join(', ');
+  return namen.length === 1
+    ? `Für „${liste}" steht keine Richtung fest. Bitte entscheiden Sie zuerst, ob seine Leistung als Erzeugung mitzählt.`
+    : `Für „${liste}" steht keine Richtung fest. Bitte entscheiden Sie zuerst, ob ihre Leistung als Erzeugung mitzählt.`;
+}
+
 // ---------------------------------------------------------------------------
 // Die Server-Anfrage (POST /api/v1/messstellen/berechnet)
 // ---------------------------------------------------------------------------
@@ -317,6 +358,8 @@ export interface TermAnfrage {
   point_key: string;
   vorzeichen: '+' | '-';
   faktor: number;
+  /** AP-08: nur gesetzt für einen richtungslosen Kanal, der als Erzeugung zählen soll. */
+  gilt_als_erzeugung?: boolean;
 }
 
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
@@ -330,11 +373,14 @@ export function alsAnfrage(entwurf: Entwurf): AnlegenAnfrage {
   return {
     name: entwurf.name.trim(),
     terme: entwurf.terme.map((t) => ({
-      eingang_art: 'messkanal',
+      eingang_art: 'messkanal' as const,
       entity_id: t.quelle.entityId,
       point_key: t.quelle.channel,
       vorzeichen: t.vorzeichen,
       faktor: t.faktor,
+      // Nur senden, wenn wirklich gesetzt UND anwendbar (richtungsloser Kanal) — additiv,
+      // sonst lässt der Server das Feld weg (fehlend = false).
+      ...(t.giltAlsErzeugung && hakenAnwendbar(t.quelle) ? { gilt_als_erzeugung: true } : {}),
     })),
   };
 }

@@ -31,7 +31,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * Die Migration {@code V20260914100000} (UEMS AP-10 IP-10, E6 = A): die Spur {@code berechnet} in der vorhandenen
+ * Die Migration {@code V20260914100300} (UEMS AP-10 IP-10, E6 = A): die Spur {@code berechnet} in der vorhandenen
  * Speicherklasse und die Eingänge eines berechneten Werts.
  *
  * <ul>
@@ -46,7 +46,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsBerechnetePeriodenwerteMigrationTest {
 
-    private static final String DIESE = "20260914100000";
+    private static final String DIESE = "20260914100300";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String ADMIN_USER = "voltpilot_admin";

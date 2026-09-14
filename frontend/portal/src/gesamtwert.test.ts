@@ -6,6 +6,7 @@ import {
   alsAnfrage,
   entwurfFehler,
   frischeVon,
+  hakenAnwendbar,
   istPvErzeugung,
   groessenGemischt,
   leererEntwurf,
@@ -13,6 +14,8 @@ import {
   passt,
   punkt,
   rechenzeile,
+  richtungsEntscheidungSatz,
+  richtungsloseOhneEntscheidung,
   schritt1Fertig,
   sperrgrund,
   summierbar,
@@ -159,6 +162,83 @@ describe('gesamtwert · reine PV-Erzeugung (für den Namensvorschlag)', () => {
     expect(istPvErzeugung([termAus(q())])).toBe(true);
     expect(istPvErzeugung([termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug' }))])).toBe(false);
     expect(istPvErzeugung([])).toBe(false);
+  });
+});
+
+describe('gesamtwert · AP-08-Haken „gilt als Erzeugung" (Gen-Port)', () => {
+  // Der Gen-Port: Wirkleistung, aber im Katalog OHNE Richtung (direction: null).
+  const genPort = q({ channel: 'generator_power_kw', name: 'Gen-Port', richtung: null, wert: 3.1 });
+
+  it('der Haken ist nur am richtungslosen, summierbaren Kanal anwendbar', () => {
+    expect(hakenAnwendbar(genPort)).toBe(true);
+    expect(hakenAnwendbar(q())).toBe(false); // PV 1 hat schon die Richtung Erzeugung
+    expect(hakenAnwendbar(q({ groesse: null, richtung: null }))).toBe(false); // kein Zahlenwert
+  });
+
+  it('der Gen-Port ist summierbar und passt zur PV-Summe', () => {
+    expect(summierbar(genPort)).toBe(true);
+    expect(passt(genPort, [q()])).toBe(true);
+  });
+
+  it('OHNE Haken degradiert der Gen-Port die Summe zu richtungslos → nicht PV', () => {
+    const terme = [termAus(q()), termAus(genPort)];
+    expect(abgeleiteteGroesse(terme)?.richtung).toBe('richtungslos');
+    expect(istPvErzeugung(terme)).toBe(false);
+  });
+
+  it('MIT Haken bleibt die Summe Erzeugung → PV', () => {
+    const terme = [termAus(q()), { ...termAus(genPort), giltAlsErzeugung: true }];
+    expect(abgeleiteteGroesse(terme)?.richtung).toBe('Erzeugung');
+    expect(istPvErzeugung(terme)).toBe(true);
+  });
+
+  it('alsAnfrage sendet gilt_als_erzeugung nur für den geflaggten richtungslosen Term', () => {
+    const anfrage = alsAnfrage({
+      id: null,
+      name: 'Gesamt-PV',
+      terme: [termAus(q()), { ...termAus(genPort), giltAlsErzeugung: true }],
+    });
+    expect(anfrage.terme[0].gilt_als_erzeugung).toBeUndefined();
+    expect(anfrage.terme[1].gilt_als_erzeugung).toBe(true);
+  });
+});
+
+describe('gesamtwert · Hart-Riegel: richtungsloser Term ohne Entscheidung sperrt das Speichern (B1)', () => {
+  // Der Gen-Port über den natürlichen „+ Beobachten"-Pfad: richtungslos, OHNE Haken.
+  const genPortOhne = q({ channel: 'generator_power_kw', name: 'Gen-Port', richtung: null, wert: 3.1 });
+
+  it('REGRESSION (Reviewer-Repro): ein richtungsloser Term ohne Haken degradiert NICHT zu gemischt', () => {
+    // Genau die Falle aus dem Review: die Summe bleibt größenverträglich (richtungslos ist eine
+    // gültige Größe), also fängt `schritt1Fertig` allein den Bruch NICHT ab - erst der Riegel tut es.
+    const terme = [termAus(q()), termAus(genPortOhne)];
+    expect(schritt1Fertig(terme)).toBe(true);
+    // Der Server würde diesen richtungslosen Term ohne Haken mit 400 ablehnen …
+    const anfrage = alsAnfrage({ id: null, name: 'PV gesamt', terme });
+    expect(anfrage.terme[1].gilt_als_erzeugung).toBeUndefined();
+    // … deshalb sperrt der Riegel client-seitig und nennt den offenen Term.
+    expect(richtungsloseOhneEntscheidung(terme)).toHaveLength(1);
+    expect(richtungsloseOhneEntscheidung(terme)[0].quelle.name).toBe('Gen-Port');
+  });
+
+  it('mit gesetzter Entscheidung ist kein Term mehr offen', () => {
+    const terme = [termAus(q()), { ...termAus(genPortOhne), giltAlsErzeugung: true }];
+    expect(richtungsloseOhneEntscheidung(terme)).toHaveLength(0);
+  });
+
+  it('gerichtete Terme (PV-Stränge, Netto aus +Bezug −Erzeugung) sind nie „offen"', () => {
+    expect(richtungsloseOhneEntscheidung([termAus(q()), termAus(q({ channel: 'pv2' }))])).toHaveLength(0);
+    const netto = [
+      termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug', wert: 3 })),
+      { ...termAus(q({ groesse: 'Wirkleistung', richtung: 'Erzeugung', wert: 5 })), vorzeichen: '-' as const },
+    ];
+    expect(richtungsloseOhneEntscheidung(netto)).toHaveLength(0);
+  });
+
+  it('der erklärte Grund nennt den offenen Term (nicht der generische Serverfehler)', () => {
+    expect(richtungsEntscheidungSatz(['Gen-Port'])).toContain('Gen-Port');
+    expect(richtungsEntscheidungSatz(['Gen-Port'])).toMatch(/als Erzeugung/);
+    expect(richtungsEntscheidungSatz(['A', 'B'])).toContain('A, B');
+    expect(richtungsEntscheidungSatz([])).toBe('');
   });
 });
 

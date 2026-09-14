@@ -56,16 +56,30 @@ Mocks (Unit + E2E) MÜSSEN snake_case liefern, sonst grünen sie am falschen Ver
 
 ## Die Anzeige danach
 
-- **Cockpit-Karten** `src/components/GesamtwertKarten.tsx`: auf „Meine Anlage" unter dem
-  Baustein-Stapel (`pages/AnlagenPage.tsx`, nur wenn ≥1 Gesamtwert). Live-Wert aus
-  `GET …/{id}/wert`, dezentes „berechnet", Lebenszyklus über `RowMenu` (umbenennen via
-  `PUT …/{id}` mit Kennzeichen + Notiz; anhalten/fortsetzen; archivieren statt hartem Löschen
-  via `ConfirmDialog`).
-- ⚠ **„gilt als Gesamt-PV" (Konzept §2.2) ist NICHT gebaut**: die Anzeige-Rolle bräuchte ein
-  server-persistiertes Feld (Backend-Umbau, ausserhalb dieser Frontend-Aufgabe) UND ein echtes
-  Umlenken der Cockpit-PV/des Energieflusses. Ein Schalter, der nur `localStorage` schreibt und
-  nur seine eigene Karte färbt, wäre ein wirkungsloser Knopf mit falschem Versprechen — deshalb
-  weggelassen (Hausregel „kein Knopf ohne Wirkung"), bis ein Backend-Inkrement die Rolle trägt.
+- **Gesamtwert-Anzeige + Einstieg** `src/components/GesamtwertKarten.tsx`: seit vp-agg (Konzept
+  `data/vp-agg-konzept3-r8` §2.5) **nicht mehr auf der Cockpit-Bühne**, sondern in
+  **„Verlauf › Messwerte"** (`pages/MesswerteSection.tsx`) — dort leben Einstieg (der
+  „+ Gesamtwert"-Knopf öffnet den `GesamtwertDialog`) UND Anzeige gemeinsam (Prop `eingebettet` =
+  Host trägt Überschrift + Einstieg, die Karten lassen ihren eigenen Kopf weg). Der GERÄTEFREIE
+  Gesamtwert gehört zu den Auswertungen, nicht auf die Bühne. Live-Wert aus `GET …/{id}/wert`,
+  dezentes „berechnet", Lebenszyklus über `RowMenu` (umbenennen via `PUT …/{id}` mit Kennzeichen +
+  Notiz; anhalten/fortsetzen; archivieren statt hartem Löschen via `ConfirmDialog`).
+- **Cockpit-PV = kanonische Rolle mit Rückfall (GEBAUT, vp-agg §2.4).** Die frühere Notiz „gilt als
+  Gesamt-PV ist nicht gebaut" gilt NICHT mehr. Forgejo-PR #758 baute die verallgemeinerte
+  Rollen-Zuordnung (`entity_role_assignment`: je (Gerät, Rolle=pv) EIN Kanal ODER EIN Gesamtwert) +
+  die Kunden-PV-API `GET /api/v1/sites/{id}/rollen/pv` (`RollenZuordnungService.kanonisch` →
+  `RollenDto.KanonischerWert`: ehrliche Teil-Summe, jedes Gerät benannt — liefernd mit Wert oder
+  stumm mit Grund, nie eine stille Teilsumme). Das Cockpit liest die PV nun von dort:
+  **`OverviewController` mischt je Anlage die kanonische PV in `OverviewLiveDto.pvKw` ein** (statt
+  `telemetry.pv_power_kw`), WENN eine Standort-PV-Zuordnung existiert — sonst RÜCKFALL auf die
+  Roh-Telemetrie (`RollenZuordnungService.pvJeAnlage`, flottenweit in EINER Abfrage; die kanonische
+  Summe darf `null` sein → PV „unbekannt", nie eine 0). Das Frontend liest weiter `snap.pvKw`
+  (`fleet.ts`), Portfolio-Summen bleiben dadurch konsistent. Unter dem Fluss zeigt der Cockpit-Hero
+  die Herkunft: `src/components/PvRollenBreakdown.tsx` (reine Ableitung `src/pvRolle.ts`, gated auf
+  `hasFlow`) — dezentes „berechnet" + auf Tipp „So setzt sich Ihre PV-Produktion zusammen" je Gerät
+  (stummes Gerät „liefert gerade nicht", Teil-Summe „aus N von M Geräten"). Ohne Zuordnung rendert
+  sie nichts (Rückfall bleibt unmarkiert) und die rohe Quellen-Aufteilung (`PvBreakdownLine`) bleibt.
+  ⚠ NICHT umgelenkt: der Optimizer-Nowcast (separater Folgeschritt) und der Box-Steuerpfad.
 - **Verlauf-Ast** in `src/components/VerlaufExplorer.tsx`: ein eigener Ast „Berechnete Werte"
   neben den gemessenen Komponenten; die synthetische `entityId` `berechnet-<uuid>` trägt KEINEN
   Doppelpunkt (Deep-Link `m={entityId}:{channel}` trennt am ersten). Reine Helfer in
@@ -79,9 +93,12 @@ Mocks (Unit + E2E) MÜSSEN snake_case liefern, sonst grünen sie am falschen Ver
 ## Prüfen
 
 ```bash
-npx vitest run src/gesamtwert.test.ts src/gesamtwertQuelle.test.ts src/verlauf.test.ts src/components/GesamtwertDialog.test.tsx src/copy.test.ts
+npx vitest run src/gesamtwert.test.ts src/gesamtwertQuelle.test.ts src/verlauf.test.ts src/pvRolle.test.ts src/components/GesamtwertDialog.test.tsx src/copy.test.ts
 npx playwright test e2e/gesamtwert.spec.ts   # SUN-30K durchspielen + Anzeige, Layout 375/768/1440
 ```
+
+Backend-Seite der Cockpit-Umlenkung (vp-agg §2.4): `SiteRollenApiTest` (Umlenkung + Rückfall +
+„null statt 0 bei stummer Zuordnung" gegen `GET /api/v1/overview`).
 
 ⚠ `e2e/gesamtwert.spec.ts` zieht den schweren Chart-Graphen herein; unter voller Parallelität
 kompiliert der Dev-Server ihn kalt in mehreren Workern gleichzeitig (selten über der Frist),

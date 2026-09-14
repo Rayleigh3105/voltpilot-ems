@@ -6,7 +6,7 @@ gespeichert. Bericht `data/vp-uems-ap10-bilanzen/report.md` §8 IP-10, §4.5, E6
 
 | Was | Wo |
 |---|---|
-| Migration | `V20260914100000`: an `messreihe_viertelstunde` / `_tag` / `messreihe_periode` die Spur-Spalten `messstelle_id`, `formel_fassung_id`, `formel_typ` (Bestand NULL), `…_spur_chk`, Teil-Index `uq_…_berechnet`; neu `bilanzwert_eingang` (Hypertable, 10 Jahre, RLS + FORCE) und `messreihe_berechnet_stand` (Nachholen je Messstelle) |
+| Migration | `V20260914100300`: an `messreihe_viertelstunde` / `_tag` / `messreihe_periode` die Spur-Spalten `messstelle_id`, `formel_fassung_id`, `formel_typ` (Bestand NULL), `…_spur_chk`, Teil-Index `uq_…_berechnet`; neu `bilanzwert_eingang` (Hypertable, 10 Jahre, RLS + FORCE) und `messreihe_berechnet_stand` (Nachholen je Messstelle) |
 | Regel (rein) | `uems/BerechnetePeriode`: `rechne` (ruft `MessstelleFormelRegeln.periodenwert` + `TagRegeln.zustand`), `reihenfolge` (Abhängigkeitsordnung, Kreis über `MessstelleFormelRegeln.zyklus`) |
 | Lauf | `uems/BerechnetePeriodenLauf` im Stundentakt `EndgueltigkeitLaeufer` NACH `TagVerdichter`/`PeriodeVerdichter`, vor den Korrektur-Vorschlägen |
 | Speicher | `uems/BerechnetePeriodenRepository` (schreibt über die Lauf-Transaktion, liest hinter RLS) |

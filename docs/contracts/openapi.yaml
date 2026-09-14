@@ -18111,8 +18111,9 @@ components:
       description: >
         Ein Term der Formel, wie er gespeichert ist (snake_case - das Portal wandelt nichts um).
         `verteilung_ziel` und `anteil` (AP-10 IP-5) stehen nur im Körper, wenn der Term sie trägt;
-        ein Term ohne sie (`anteil` = gesamt) antwortet wie vor IP-5.
-      required: [position, eingang_art, vorzeichen, faktor, eingerichtet]
+        ein Term ohne sie (`anteil` = gesamt) antwortet wie vor IP-5. `gilt_als_erzeugung` ist der
+        AP-08-Haken (`messstelle-formel.md` §2.2) und steht immer da.
+      required: [position, eingang_art, vorzeichen, faktor, gilt_als_erzeugung, eingerichtet]
       properties:
         position: { type: integer }
         eingang_art: { type: string, enum: [messkanal, messstelle, verteilung] }
@@ -18121,6 +18122,9 @@ components:
         quell_messstelle_id: { type: string, format: uuid, nullable: true }
         vorzeichen: { type: string, enum: ["+", "-"] }
         faktor: { type: number }
+        gilt_als_erzeugung:
+          type: boolean
+          description: AP-08-Haken - ein Messkanal ohne Katalog-Richtung zählt als Erzeugung; sonst false.
         groesse:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessGroesse" }]
@@ -18194,6 +18198,7 @@ components:
               quell_messstelle_id: { type: string, format: uuid }
               vorzeichen: { type: string, enum: ["+", "-"] }
               faktor: { type: number, description: "Fehlend = 1, nie 0; bei verteilung nur 1." }
+              gilt_als_erzeugung: { type: boolean, description: "Fehlend = false. AP-08-Haken, nur an einem messkanal-Term ohne Katalog-Richtung (messstelle-formel.md §2.2), sonst 400." }
               verteilung_ziel: { type: string, format: uuid, description: "Nur bei eingang_art = verteilung: die Kostenstelle." }
               anteil:
                 type: string

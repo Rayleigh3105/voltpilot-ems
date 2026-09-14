@@ -62,12 +62,13 @@ class MessstelleFormelSchnittstelleVertragTest {
                 .containsExactlyElementsOf(felder(MessstelleFormelDto.Term.class));
         // AP-10 IP-5: verteilung_ziel und anteil stehen nur da, wenn der Term sie trägt — darum
         // optional in api.ts und nicht Pflicht in der OpenAPI; die Felder von vor IP-5 bleiben Pflicht.
+        // AP-08 (PR 758, mit dem main-Merge): gilt_als_erzeugung steht immer da.
         assertThat(felder(MessstelleFormelDto.Term.class)).containsExactly("position", "eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet",
-                "verteilung_ziel", "anteil");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "gilt_als_erzeugung", "groesse",
+                "eingerichtet", "verteilung_ziel", "anteil");
         assertThat(interfaceFelder("MessstelleFormelTerm")).containsExactly("position", "eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet",
-                "verteilung_ziel?", "anteil?");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "gilt_als_erzeugung", "groesse",
+                "eingerichtet", "verteilung_ziel?", "anteil?");
         assertThat(liste(schema("MessstelleFormelTerm"), "required"))
                 .doesNotContain("verteilung_ziel", "anteil");
         assertThat(liste(schema("MessstelleFormelTerm"), "properties", "eingang_art", "enum"))
@@ -100,7 +101,8 @@ class MessstelleFormelSchnittstelleVertragTest {
                 .containsExactly("gueltig_ab", "formel_typ?", "terme", "begruendung?");
         // Die Term-Eingabe der Fassung ist die des Anlegens.
         assertThat(felder(MessstelleFormelDto.TermEingabe.class)).containsExactly("eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "verteilung_ziel", "anteil");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "gilt_als_erzeugung", "verteilung_ziel",
+                "anteil");
         Map<String, Object> termEingabe = map(map(map(schema, "properties"), "terme"), "items");
         assertThat(map(termEingabe, "properties").keySet())
                 .containsExactlyElementsOf(felder(MessstelleFormelDto.TermEingabe.class));

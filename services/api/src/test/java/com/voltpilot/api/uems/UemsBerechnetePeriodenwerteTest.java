@@ -41,7 +41,7 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Die Periodenwerte berechneter Messstellen (UEMS AP-10 IP-10, E6 = A) gegen die echte Kette: Flyway-Schema
- * ({@code V20260914100000}), RLS, das Lese-Modell „Werte je Messstelle“ als Leser der Eingänge UND der Ergebnisse,
+ * ({@code V20260914100300}), RLS, das Lese-Modell „Werte je Messstelle“ als Leser der Eingänge UND der Ergebnisse,
  * und der Lauf {@link BerechnetePeriodenLauf}, wie der Stundentakt ihn ruft.
  *
  * <p>Die Welten sind Ausschnitte des Referenzunternehmens Ahrenberg ({@code uems-referenzunternehmen.json}): Werk
