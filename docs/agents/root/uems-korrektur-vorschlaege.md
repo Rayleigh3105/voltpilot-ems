@@ -74,7 +74,8 @@ Fachlicher Schlüssel = Kundenbereich + Art + Reihe + Zeitraum, nie ein Zeitstem
 
 ## Grenzen und Befunde
 
-- Nur die Viertelstunde: Tag/Monat/Jahr in der Vorschau und jede Version bildet die Kaskade (IP-17); Freigabe und
+- Nur die Viertelstunde: Tag/Monat/Jahr und jede Version bildet die Kaskade (`uems-korrektur-kaskade.md`; sie wendet
+  die Vorschau „neu“ an, `Stand.gleich` vergleicht ohne „korrigiert (Version n)“); Freigabe und
   Vier-Augen IP-15, Route und Portal IP-16.
 - Liegt ein wirksamer Ersatzwert auf derselben Viertelstunde, zeigt „neu“ die Rohwert-Rechnung (ohne Ersatzwert).
 - Befund AP-07: `SpaetankunftMelder` rührt eine erledigte Zeile nie wieder an — eine Welle, die NACH dem Bündeln

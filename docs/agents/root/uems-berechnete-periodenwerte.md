@@ -55,7 +55,14 @@ gespeichert. Bericht `data/vp-uems-ap10-bilanzen/report.md` §8 IP-10, §4.5, E6
 (`kennzeichen_neu`, `kennzeichen_befristet`), `uemsBilanz.ts`, `api.ts`, OpenAPI `BilanzLive`. Alles entfernt; die
 Tests prüfen jetzt das Fehlen. Der Verlauf (`verlauf.ts` `seriesFromMessstelleVerlauf`) liest `punkte` unverändert.
 
+## Nach einer Korrektur (AP-08 IP-17)
+
+Versionen ≥ 2 bildet die Kaskade an `BerechnetePeriodenLauf.nachKorrektur` (dieselbe Ordnung, derselbe Kreis, dieselbe
+Rechnung, Eingänge in ihrer neuesten Version) und speichert sie in `messreihe_periode_version`, ihre Eingänge in
+`bilanzwert_eingang` mit `version` = n — `uems-korrektur-kaskade.md`. Eine Summe ohne einen Eingang mit Wert trägt
+seitdem keine Menge mehr (vorher 0 und CHECK-Fehler).
+
 ## Nicht gebaut
 
-Korrektur-Kaskade und Versionen > 1 (IP-11), Herkunft aus `bilanzwert_eingang` (IP-12), Portal (IP-14), verteilte
+Herkunft aus `bilanzwert_eingang` (IP-12), Portal (IP-14), verteilte
 Werte (IP-11), Rechte-Durchsetzung (AP-03), eine Periodenzahl über einen Termwechsel.

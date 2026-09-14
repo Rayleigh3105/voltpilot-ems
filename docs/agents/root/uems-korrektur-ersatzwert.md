@@ -14,7 +14,8 @@ steht er **nie** in `device_measurement_sample`, `messreihe_viertelstunde` oder 
 in seiner eigenen Tabelle: mit Kennung `EW-<Jahr>-<lfd. Nr.>`, Methode, **Pflicht-Begründung**
 (10–500 Zeichen), Urheber — und **widerrufbar** (Rücknahme als Fortschreibung, nie gelöscht). Kein
 Rohwert wird angefasst. Die Tabelle trägt die Methode, sie wendet sie nicht an: die Rechnung (Werte je
-Viertelstunde, Kennzeichen, Versionen) ist seit IP-13 `uems-ersatzwert-methoden.md`, die Kaskade IP-17.
+Viertelstunde, Kennzeichen, Versionen) ist seit IP-13 `uems-ersatzwert-methoden.md`, die Kaskade seit IP-17
+`uems-korrektur-kaskade.md`.
 
 ## Die sieben Methoden (E7) und die Unterscheidung in der Datenbank
 

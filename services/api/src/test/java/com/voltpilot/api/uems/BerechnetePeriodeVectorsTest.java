@@ -195,4 +195,21 @@ class BerechnetePeriodeVectorsTest {
         assertThat(BerechnetePeriode.reihenfolge(Map.of("MS-40", List.of("MS-40"))).abgelehnt())
                 .extracting(BerechnetePeriode.Abgelehnt::kette).containsExactly(List.of("MS-40", "MS-40"));
     }
+
+    /**
+     * Befund AP-08 IP-17: eine gewichtete Summe, deren EINZIGER Eingang in der Periode keine Menge hat (F10: die
+     * Viertelstunde 14:00 mit „nur einem Stand“), heißt „keine Werte“ — und trägt dann keine Zahl, auch nicht die 0 der
+     * leeren Summe. Vorher schrieb der Lauf 0 und scheiterte an {@code messreihe_viertelstunde_keine_werte_chk}.
+     */
+    @Test
+    void eineSummeOhneEinenEingangMitWertTraegtKeineZahl() {
+        BerechnetePeriode.Eingang ohne = new BerechnetePeriode.Eingang("MS-10", null, null, "+", BigDecimal.ONE, null,
+                "unvollständig", 7, 1, List.of("nur ein Stand in der Periode — keine Menge bildbar"),
+                ViertelstundeRegeln.ENDGUELTIG, null);
+        BerechnetePeriode.Urteil u = BerechnetePeriode.rechne(MessstelleFormelRegeln.GEWICHTETE_SUMME, "kWh",
+                "viertelstunde", List.of(ohne), ENDE, SPAETER, List.of());
+        assertThat(u.grund()).isNull();
+        assertThat(u.ergebnis().mengeZustand()).isEqualTo(BilanzAbleitung.KEINE_WERTE);
+        assertThat(u.ergebnis().menge()).as("keine Werte ist nie 0").isNull();
+    }
 }

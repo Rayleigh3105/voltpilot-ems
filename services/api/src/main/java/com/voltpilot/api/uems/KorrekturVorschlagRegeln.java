@@ -157,10 +157,14 @@ public final class KorrekturVorschlagRegeln {
             return new Stand(null, null, KEINE_WERTE, List.of(), null, null, null, null, null);
         }
 
-        /** Dieselbe Aussage — ohne die Version, die nur sagt, WO der Stand steht. */
+        /**
+         * Dieselbe Aussage — ohne die Version, die nur sagt, WO der Stand steht. Darum zählt auch das Kennzeichen
+         * „korrigiert (Version n)“ nicht (AP-08 IP-17): „alt“ einer korrigierten Viertelstunde trägt es, „neu“ aus der
+         * Verdichtung nie — dieselben Zahlen sind keine Änderung.
+         */
         public boolean gleich(Stand o) {
             return zahlGleich(menge, o.menge) && Objects.equals(mengeZustand, o.mengeZustand)
-                    && kennzeichen.equals(o.kennzeichen)
+                    && ohneVersion(kennzeichen).equals(ohneVersion(o.kennzeichen))
                     && Objects.equals(erhalten, o.erhalten) && Objects.equals(erwartet, o.erwartet)
                     && Objects.equals(abdeckungProzent, o.abdeckungProzent) && zahlGleich(mittel, o.mittel)
                     && zahlGleich(energie, o.energie);
@@ -183,6 +187,10 @@ public final class KorrekturVorschlagRegeln {
             n.put("mittel", text(mittel));
             n.put("energie", text(energie));
             return n;
+        }
+
+        private static List<String> ohneVersion(List<String> saetze) {
+            return saetze.stream().filter(k -> !ErgebnisZustand.istKorrigiert(k)).toList();
         }
 
         private static boolean zahlGleich(BigDecimal a, BigDecimal b) {

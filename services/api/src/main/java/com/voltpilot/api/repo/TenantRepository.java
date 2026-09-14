@@ -190,6 +190,10 @@ public class TenantRepository {
                 // (AP-08 IP-13): append-only versions + a work state, the tenant held by RESTRICT.
                 deleteByTenant(con, "messreihe_viertelstunde_version", tenantId);
                 deleteByTenant(con, "messreihe_ersatzwert_wirkung", tenantId);
+                // The correction cascade (AP-08 IP-17): append-only day/month/year and computed versions plus
+                // the per-cause work state, the tenant held by RESTRICT - the same one way out.
+                deleteByTenant(con, "messreihe_periode_version", tenantId);
+                deleteByTenant(con, "messreihe_kaskade_wirkung", tenantId);
                 // Month and year values and their work list (AP-08 IP-5): hypertable + queue,
                 // no FK — the same one way out.
                 deleteByTenant(con, "messreihe_periode", tenantId);

@@ -184,11 +184,14 @@ public class BerechnetePeriodenLauf {
     /** Die Formel eines Tages: Fassung, Typ, Terme — {@code null}, wenn an dem Tag nichts gerechnet wird. */
     record TagesFormel(UUID fassungId, String typ, List<TermRef> terme) {}
 
-    private record Kontext(UUID tenant, ZoneId zone, String zoneHerkunft, Instant jetzt, LocalDate heute,
+    record Kontext(UUID tenant, ZoneId zone, String zoneHerkunft, Instant jetzt, LocalDate heute,
             Map<UUID, Messstelle> nachId, Map<UUID, List<FassungMitRest>> fassungen,
             Map<UUID, List<TermZeile>> termeJeFassung, BilanzStellungen.Stand stand) {}
 
-    private void mandant(UUID tenant, Instant jetzt, Zaehler z) {
+    /** Der Kontext eines Kundenbereichs und seine berechneten Messstellen — {@code null}, wenn er keine hat. */
+    private record Aufbau(Kontext k, List<Messstelle> berechnete) {}
+
+    private Aufbau aufbau(UUID tenant, Instant jetzt) {
         ZoneKette zone = zone();
         LocalDate heute = TagRegeln.tag(jetzt, zone.zone());
         Map<UUID, Messstelle> nachId = new LinkedHashMap<>();
@@ -198,15 +201,45 @@ public class BerechnetePeriodenLauf {
                 .filter(m -> !MOMENTANWERT.equals(m.hauptgroesse().wertart()))
                 .toList();
         if (berechnete.isEmpty()) {
-            return;
+            return null;
         }
         Map<UUID, List<FassungMitRest>> fassungen = reste.fassungen(berechnete.stream().map(Messstelle::id).toList())
                 .stream().collect(Collectors.groupingBy(FassungMitRest::messstelleId, LinkedHashMap::new,
                         Collectors.toList()));
         Map<UUID, List<TermZeile>> termeJeFassung = terme.derFassungen(fassungen.values().stream()
                 .flatMap(List::stream).map(FassungMitRest::id).toList());
-        Kontext k = new Kontext(tenant, zone.zone(), zone.herkunft(), jetzt, heute, nachId, fassungen, termeJeFassung,
-                stellungen.lesen());
+        return new Aufbau(new Kontext(tenant, zone.zone(), zone.herkunft(), jetzt, heute, nachId, fassungen,
+                termeJeFassung, stellungen.lesen()), berechnete);
+    }
+
+    /**
+     * Die berechneten Messstellen, die {@code m} an den Tagen {@code [von, bis]} liest (Terme, beim {@code rest} aus der
+     * Stellung) oder in irgendeiner Fassung als Baustein nennt — die Kanten der Abhängigkeitsordnung.
+     */
+    private List<String> kanten(Kontext k, Messstelle m, LocalDate von, LocalDate bis) {
+        Set<String> kanten = new LinkedHashSet<>();
+        for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
+            TagesFormel f = formel(k, m, tag);
+            if (f != null) {
+                f.terme().stream().filter(TermRef::berechnet).map(TermRef::kennzeichen).forEach(kanten::add);
+            }
+        }
+        k.fassungen().getOrDefault(m.id(), List.of()).forEach(fs -> k.termeJeFassung().getOrDefault(fs.id(), List.of())
+                .stream().filter(t -> t.quellMessstelleId() != null)
+                .map(t -> k.nachId().get(t.quellMessstelleId()))
+                .filter(q -> q != null && MessstelleRegeln.BERECHNET.equals(q.art()))
+                .forEach(q -> kanten.add(q.kennzeichen())));
+        return List.copyOf(kanten);
+    }
+
+    private void mandant(UUID tenant, Instant jetzt, Zaehler z) {
+        Aufbau aufbau = aufbau(tenant, jetzt);
+        if (aufbau == null) {
+            return;
+        }
+        Kontext k = aufbau.k();
+        List<Messstelle> berechnete = aufbau.berechnete();
+        LocalDate heute = k.heute();
 
         // Welche Tage je Messstelle in Frage kommen — die Obermenge, aus der die Kanten der Stellung stammen.
         LocalDate fensterBeginn = heute.minusDays(FENSTER_TAGE);
@@ -220,19 +253,7 @@ public class BerechnetePeriodenLauf {
             Stand s = stand(tenant, m.id(), fensterBeginn);
             staende.put(m.id(), s);
             nachKennzeichen.put(m.kennzeichen(), m);
-            Set<String> kanten = new LinkedHashSet<>();
-            for (LocalDate tag = s.nachgeholtAb().minusDays(NACHHOLEN_TAGE); !tag.isAfter(heute); tag = tag.plusDays(1)) {
-                TagesFormel f = formel(k, m, tag);
-                if (f != null) {
-                    f.terme().stream().filter(TermRef::berechnet).map(TermRef::kennzeichen).forEach(kanten::add);
-                }
-            }
-            fassungen.getOrDefault(m.id(), List.of()).forEach(fs -> termeJeFassung.getOrDefault(fs.id(), List.of())
-                    .stream().filter(t -> t.quellMessstelleId() != null)
-                    .map(t -> nachId.get(t.quellMessstelleId()))
-                    .filter(q -> q != null && MessstelleRegeln.BERECHNET.equals(q.art()))
-                    .forEach(q -> kanten.add(q.kennzeichen())));
-            lesen.put(m.kennzeichen(), List.copyOf(kanten));
+            lesen.put(m.kennzeichen(), kanten(k, m, s.nachgeholtAb().minusDays(NACHHOLEN_TAGE), heute));
         }
 
         BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(lesen);
@@ -282,6 +303,124 @@ public class BerechnetePeriodenLauf {
         }
     }
 
+    // ------------------------------------------------------------------------------ nach einer Korrektur (IP-17)
+
+    /** Was die Kaskade je berechneter Messstelle bekommt: ihre Zeilen im Zeitraum, gerechnet und NICHT geschrieben. */
+    record Neuberechnet(Messstelle messstelle, List<BerechnetePeriodenRepository.Zeile> zeilen) {}
+
+    /**
+     * Die Eingänge, wie die Kaskade sie sieht: was der Lauf liest ({@code gelesen}, Version 1), überlagert mit der
+     * neuesten Version jedes Eingangs — auch der, die die Kaskade in DIESER Transaktion gerade geschrieben hat.
+     */
+    @FunctionalInterface
+    interface Ueberlagerung {
+        Map<Instant, BerechnetePeriode.Eingang> ueberlagern(Kontext k, TermRef ref, String ebene, LocalDate von,
+                LocalDate bis, Map<Instant, BerechnetePeriode.Eingang> gelesen);
+    }
+
+    /** Übernimmt die Zeilen EINER Messstelle — gerufen in der Abhängigkeitsordnung, bevor die nächste rechnet. */
+    @FunctionalInterface
+    interface Uebernahme {
+        void uebernehmen(Neuberechnet n) throws SQLException;
+    }
+
+    /**
+     * AP-08 IP-17 — die Anschlussstelle der Korrektur-Kaskade (E9) an DIESEM Lauf: dieselbe Abhängigkeitsordnung
+     * ({@link BerechnetePeriode#reihenfolge}, derselbe benannt abgelehnte Kreis), dieselben Formeln je Tag, dieselben
+     * Leser und dieselbe Rechnung ({@link #zeile}) — nur mit den überlagerten Eingängen und ohne zu schreiben. Die Kaskade
+     * vergleicht und schreibt die Versionen selbst; sie ruft das hier in IHRER Transaktion, darum übergibt sie jede
+     * Messstelle ({@code uebernahme}), bevor die nächste in der Ordnung rechnet.
+     *
+     * @param von erster betroffener Tag (Zone des Kundenbereichs, wie der Lauf)
+     * @param bis letzter betroffener Tag, einschließlich; Monate und Jahre dieser Tage kommen dazu
+     * @param ebenen die Ebenen, die gerechnet werden ({@code viertelstunde} und {@code tag} gehen nur zusammen)
+     * @return die Messstellen, die nicht gerechnet wurden — Kreis ({@link BerechnetePeriode#FORMEL_KREIS}) oder
+     *     daran hängend ({@link BerechnetePeriode#HAENGT_AN_KREIS})
+     */
+    List<BerechnetePeriode.Abgelehnt> nachKorrektur(UUID tenant, LocalDate von, LocalDate bis, Set<String> ebenen,
+            Instant jetzt, Ueberlagerung ueberlagerung, Uebernahme uebernahme) throws SQLException {
+        UUID vorher = TenantContext.get();
+        TenantContext.set(tenant);
+        try {
+            Aufbau a = aufbau(tenant, jetzt);
+            if (a == null) {
+                return List.of();
+            }
+            Kontext k = a.k();
+            Map<String, List<String>> lesen = new LinkedHashMap<>();
+            Map<String, Messstelle> nachKennzeichen = new LinkedHashMap<>();
+            for (Messstelle m : a.berechnete()) {
+                nachKennzeichen.put(m.kennzeichen(), m);
+                lesen.put(m.kennzeichen(), kanten(k, m, von, bis));
+            }
+            BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(lesen);
+            for (BerechnetePeriode.Abgelehnt ab : r.abgelehnt()) {
+                log.warn("UEMS Korrektur-Kaskade: berechnete Messstelle {} abgelehnt ({}): {}", ab.messstelle(),
+                        ab.grund(), String.join(" → ", ab.kette()));
+            }
+            Leser leser = (kk, ref, ebene, v, b) -> ueberlagerung.ueberlagern(kk, ref, ebene, v, b, lies(kk, ref, ebene, v, b));
+            for (String kz : r.ordnung()) {
+                Messstelle m = nachKennzeichen.get(kz);
+                Map<LocalDate, TagesFormel> formeln = new TreeMap<>();
+                for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
+                    TagesFormel f = formel(k, m, tag);
+                    if (f != null) {
+                        formeln.put(tag, f);
+                    }
+                }
+                if (formeln.isEmpty()) {
+                    continue;
+                }
+                List<BerechnetePeriodenRepository.Zeile> zeilen = new ArrayList<>();
+                if (ebenen.contains(BerechnetePeriodenRepository.VIERTELSTUNDE)
+                        || ebenen.contains(BerechnetePeriodenRepository.TAG)) {
+                    for (List<LocalDate> scheibe : scheiben(formeln.keySet())) {
+                        Scheibe sch = scheibeRechnen(k, m, scheibe, formeln, leser);
+                        zeilen.addAll(sch.viertelstunden());
+                        zeilen.addAll(sch.tage());
+                    }
+                }
+                Set<LocalDate> monate = new TreeSet<>();
+                Set<LocalDate> jahre = new TreeSet<>();
+                formeln.keySet().forEach(t -> {
+                    monate.add(t.withDayOfMonth(1));
+                    jahre.add(t.withDayOfYear(1));
+                });
+                for (LocalDate monat : ebenen.contains(BerechnetePeriodenRepository.MONAT) ? monate : Set.<LocalDate>of()) {
+                    periodeRechnen(k, m, BerechnetePeriodenRepository.MONAT, monat, monat.plusMonths(1), leser)
+                            .ifPresent(zeilen::add);
+                }
+                for (LocalDate jahr : ebenen.contains(BerechnetePeriodenRepository.JAHR) ? jahre : Set.<LocalDate>of()) {
+                    periodeRechnen(k, m, BerechnetePeriodenRepository.JAHR, jahr, jahr.plusYears(1), leser)
+                            .ifPresent(zeilen::add);
+                }
+                uebernahme.uebernehmen(new Neuberechnet(m, List.copyOf(zeilen)));
+            }
+            return r.abgelehnt();
+        } finally {
+            if (vorher == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(vorher);
+            }
+        }
+    }
+
+    /** Die Zone der berechneten Zeilen dieses Kundenbereichs — dieselbe Kette wie der Lauf. */
+    ZoneId zoneDesKundenbereichs(UUID tenant) {
+        UUID vorher = TenantContext.get();
+        TenantContext.set(tenant);
+        try {
+            return zone().zone();
+        } finally {
+            if (vorher == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(vorher);
+            }
+        }
+    }
+
     // ------------------------------------------------------------------------------ eine Messstelle
 
     private void rechneMessstelle(Kontext k, Messstelle m, TreeSet<LocalDate> kandidaten, Zaehler z) {
@@ -292,17 +431,7 @@ public class BerechnetePeriodenLauf {
                 formeln.put(tag, f);
             }
         }
-        // Tagesscheiben: zusammenhängende Tage, höchstens SCHEIBE_TAGE lang.
-        List<List<LocalDate>> scheiben = new ArrayList<>();
-        for (LocalDate tag : formeln.keySet()) {
-            List<LocalDate> letzte = scheiben.isEmpty() ? null : scheiben.get(scheiben.size() - 1);
-            if (letzte != null && letzte.get(letzte.size() - 1).plusDays(1).equals(tag) && letzte.size() < SCHEIBE_TAGE) {
-                letzte.add(tag);
-            } else {
-                scheiben.add(new ArrayList<>(List.of(tag)));
-            }
-        }
-        for (List<LocalDate> scheibe : scheiben) {
+        for (List<LocalDate> scheibe : scheiben(formeln.keySet())) {
             scheibe(k, m, scheibe, formeln, z);
         }
         Set<LocalDate> monate = new TreeSet<>();
@@ -319,8 +448,46 @@ public class BerechnetePeriodenLauf {
         }
     }
 
+    /** Tagesscheiben: zusammenhängende Tage, höchstens SCHEIBE_TAGE lang. */
+    private static List<List<LocalDate>> scheiben(Set<LocalDate> tage) {
+        List<List<LocalDate>> scheiben = new ArrayList<>();
+        for (LocalDate tag : new TreeSet<>(tage)) {
+            List<LocalDate> letzte = scheiben.isEmpty() ? null : scheiben.get(scheiben.size() - 1);
+            if (letzte != null && letzte.get(letzte.size() - 1).plusDays(1).equals(tag) && letzte.size() < SCHEIBE_TAGE) {
+                letzte.add(tag);
+            } else {
+                scheiben.add(new ArrayList<>(List.of(tag)));
+            }
+        }
+        return scheiben;
+    }
+
     /** Viertelstunden und Tage einer zusammenhängenden Tagesscheibe — in EINER Transaktion. */
     private void scheibe(Kontext k, Messstelle m, List<LocalDate> tage, Map<LocalDate, TagesFormel> formeln, Zaehler z) {
+        Scheibe sch = scheibeRechnen(k, m, tage, formeln, this::lies);
+        // Gezählt wird erst nach dem Commit — eine zurückgerollte Scheibe hat nichts geschrieben.
+        inTransaktion(con -> {
+            sperren(con, k.tenant(), m.id());
+            return List.of(
+                    speicher.schreiben(con, k.tenant(), m.id(), BerechnetePeriodenRepository.VIERTELSTUNDE,
+                            sch.viertelstunden(), k.jetzt()),
+                    speicher.schreiben(con, k.tenant(), m.id(), BerechnetePeriodenRepository.TAG, sch.tage(),
+                            k.jetzt()));
+        }).forEach(z::add);
+    }
+
+    /** Die Eingänge EINES Terms je Periodenbeginn über {@code [von, bis]} — der Lauf liest sie, die Kaskade überlagert. */
+    @FunctionalInterface
+    interface Leser {
+        Map<Instant, BerechnetePeriode.Eingang> lies(Kontext k, TermRef ref, String ebene, LocalDate von, LocalDate bis);
+    }
+
+    private record Scheibe(List<BerechnetePeriodenRepository.Zeile> viertelstunden,
+            List<BerechnetePeriodenRepository.Zeile> tage) {}
+
+    /** Die Viertelstunden und Tage einer Tagesscheibe — gerechnet, nicht geschrieben. */
+    private Scheibe scheibeRechnen(Kontext k, Messstelle m, List<LocalDate> tage, Map<LocalDate, TagesFormel> formeln,
+            Leser leser) {
         LocalDate von = tage.get(0);
         LocalDate bis = tage.get(tage.size() - 1);
         Map<String, TermRef> quellen = new LinkedHashMap<>();
@@ -328,8 +495,8 @@ public class BerechnetePeriodenLauf {
         Map<String, Map<Instant, BerechnetePeriode.Eingang>> viertel = new HashMap<>();
         Map<String, Map<Instant, BerechnetePeriode.Eingang>> tageswerte = new HashMap<>();
         quellen.forEach((q, ref) -> {
-            viertel.put(q, lies(k, ref, BerechnetePeriodenRepository.VIERTELSTUNDE, von, bis));
-            tageswerte.put(q, lies(k, ref, BerechnetePeriodenRepository.TAG, von, bis));
+            viertel.put(q, leser.lies(k, ref, BerechnetePeriodenRepository.VIERTELSTUNDE, von, bis));
+            tageswerte.put(q, leser.lies(k, ref, BerechnetePeriodenRepository.TAG, von, bis));
         });
 
         String einheit = m.hauptgroesse().einheit();
@@ -346,13 +513,7 @@ public class BerechnetePeriodenLauf {
             }
             zeile(k, f, einheit, BerechnetePeriodenRepository.TAG, beginn, ende, tag, tageswerte).ifPresent(ts::add);
         }
-        // Gezählt wird erst nach dem Commit — eine zurückgerollte Scheibe hat nichts geschrieben.
-        inTransaktion(con -> {
-            sperren(con, k.tenant(), m.id());
-            return List.of(
-                    speicher.schreiben(con, k.tenant(), m.id(), BerechnetePeriodenRepository.VIERTELSTUNDE, vs, k.jetzt()),
-                    speicher.schreiben(con, k.tenant(), m.id(), BerechnetePeriodenRepository.TAG, ts, k.jetzt()));
-        }).forEach(z::add);
+        return new Scheibe(vs, ts);
     }
 
     /**
@@ -360,6 +521,19 @@ public class BerechnetePeriodenLauf {
      * denselben Termen gilt — sonst keine Zeile ({@link #TERME_WECHSELN}).
      */
     private void periode(Kontext k, Messstelle m, String ebene, LocalDate erster, LocalDate naechster, Zaehler z) {
+        Optional<BerechnetePeriodenRepository.Zeile> zeile = periodeRechnen(k, m, ebene, erster, naechster, this::lies);
+        if (zeile.isEmpty()) {
+            return;
+        }
+        z.add(inTransaktion(con -> {
+            sperren(con, k.tenant(), m.id());
+            return speicher.schreiben(con, k.tenant(), m.id(), ebene, List.of(zeile.get()), k.jetzt());
+        }));
+    }
+
+    /** Monat oder Jahr — gerechnet, nicht geschrieben; leer ohne gemeinsame Formel oder ohne Ergebnis. */
+    private Optional<BerechnetePeriodenRepository.Zeile> periodeRechnen(Kontext k, Messstelle m, String ebene,
+            LocalDate erster, LocalDate naechster, Leser leser) {
         TagesFormel gemeinsam = null;
         for (LocalDate tag = erster; tag.isBefore(naechster); tag = tag.plusDays(1)) {
             TagesFormel f = formel(k, m, tag);
@@ -370,27 +544,19 @@ public class BerechnetePeriodenLauf {
                 gemeinsam = f;
             } else if (!gemeinsam.equals(f)) {
                 log.debug("UEMS berechnete Periodenwerte: {} {} {} — {}", m.kennzeichen(), ebene, erster, TERME_WECHSELN);
-                return;
+                return Optional.empty();
             }
         }
         if (gemeinsam == null) {
-            return;
+            return Optional.empty();
         }
         Map<String, Map<Instant, BerechnetePeriode.Eingang>> gelesen = new HashMap<>();
         for (TermRef ref : gemeinsam.terme()) {
-            gelesen.computeIfAbsent(ref.quelle(), q -> lies(k, ref, ebene, erster, naechster.minusDays(1)));
+            gelesen.computeIfAbsent(ref.quelle(), q -> leser.lies(k, ref, ebene, erster, naechster.minusDays(1)));
         }
         Instant beginn = TagRegeln.beginn(erster, k.zone());
         Instant ende = TagRegeln.beginn(naechster, k.zone());
-        Optional<BerechnetePeriodenRepository.Zeile> zeile = zeile(k, gemeinsam, m.hauptgroesse().einheit(), ebene,
-                beginn, ende, erster, gelesen);
-        if (zeile.isEmpty()) {
-            return;
-        }
-        z.add(inTransaktion(con -> {
-            sperren(con, k.tenant(), m.id());
-            return speicher.schreiben(con, k.tenant(), m.id(), ebene, List.of(zeile.get()), k.jetzt());
-        }));
+        return zeile(k, gemeinsam, m.hauptgroesse().einheit(), ebene, beginn, ende, erster, gelesen);
     }
 
     /** Die Zeile EINER Periode aus den gelesenen Eingängen — leer, wenn die Regel keine ergibt. */

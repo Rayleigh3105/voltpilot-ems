@@ -481,4 +481,32 @@ class ErgebnisZustandVectorsTest {
         assertThat(ErgebnisZustand.lueckeZuwachs("14:00", "17:31", new BigDecimal("337.600"), "kWh"))
                 .isEqualTo("Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar");
     }
+
+    /**
+     * Seit 1.5 (AP-08 IP-17): „korrigiert (Version n)“ ist ein Kennzeichen, kein vorgesehenes Wort — derselbe Wortlaut,
+     * den die Bilanz (bilanz-vectors.json, F14) für eine berechnete Messstelle schon spricht. Version 1 ist nie korrigiert.
+     */
+    @Test
+    void dieVersionSprichtDieKaskadeUndVersionEinsIstNieKorrigiert() throws Exception {
+        assertThat(ErgebnisZustand.korrigiert(2)).isEqualTo("korrigiert (Version 2)");
+        assertThat(ErgebnisZustand.korrigiert(12)).isEqualTo("korrigiert (Version 12)");
+        assertThat(ErgebnisZustand.istKorrigiert("korrigiert (Version 3)")).isTrue();
+        assertThat(ErgebnisZustand.istKorrigiert("korrigiert (Version 1)")).isFalse();
+        assertThat(ErgebnisZustand.istKorrigiert("nachgeliefert")).isFalse();
+        assertThatThrownBy(() -> ErgebnisZustand.korrigiert(1)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(ErgebnisZustand.VORGESEHEN).extracting(Vorgesehen::wort).doesNotContain("korrigiert (Version n)");
+
+        // Derselbe Satz wie in der Bilanz-Kaskade — kein zweiter Wortlaut.
+        List<String> bilanz = new ArrayList<>();
+        for (JsonNode fall : lies(VECTORS.resolveSibling("bilanz-vectors.json")).path("cases")) {
+            for (JsonNode p : fall.path("pruefungen")) {
+                p.path("ergebnis").path("kennzeichen").forEach(k -> {
+                    if (k.asText().startsWith("korrigiert")) {
+                        bilanz.add(k.asText());
+                    }
+                });
+            }
+        }
+        assertThat(bilanz).isNotEmpty().allSatisfy(k -> assertThat(ErgebnisZustand.istKorrigiert(k)).isTrue());
+    }
 }

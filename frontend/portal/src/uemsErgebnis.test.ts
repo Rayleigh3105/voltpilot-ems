@@ -24,6 +24,7 @@ import {
   anfang,
   erkenne,
   ersatzwert,
+  korrigiert,
   menge,
   pruefe,
   pruefeMenge,
@@ -311,5 +312,30 @@ describe('uemsErgebnis — das Kennzeichen „mit Ersatzwert (Methode …)“ (s
       }
     }
     expect(gesehen).toBeGreaterThan(20);
+  });
+});
+
+describe('uemsErgebnis — das Kennzeichen „korrigiert (Version n)“ (seit 1.5, AP-08 IP-17)', () => {
+  it('spricht die Version, Version 1 ist nie korrigiert', () => {
+    expect(korrigiert(2)).toBe('korrigiert (Version 2)');
+    expect(erkenne('korrigiert (Version 3)')?.muster.schluessel).toBe('korrigiert');
+    expect(erkenne('korrigiert (Version 1)')).toBeNull();
+    expect(vorgesehen('korrigiert (Version 1)')).toBe(false);
+    expect(() => korrigiert(1)).toThrow();
+    expect(VORGESEHEN.map((v) => v.wort)).not.toContain('korrigiert (Version n)');
+  });
+
+  it('ist derselbe Satz, den die Bilanz-Kaskade spricht', () => {
+    const bilanz = lies('bilanz-vectors.json');
+    const saetze: string[] = [];
+    for (const fall of bilanz.cases as Json[]) {
+      for (const p of (fall.pruefungen ?? []) as Json[]) {
+        for (const k of (p.ergebnis?.kennzeichen ?? []) as string[]) {
+          if (k.startsWith('korrigiert')) saetze.push(k);
+        }
+      }
+    }
+    expect(saetze.length).toBeGreaterThan(0);
+    for (const k of saetze) expect(erkenne(k)?.muster.schluessel).toBe('korrigiert');
   });
 });

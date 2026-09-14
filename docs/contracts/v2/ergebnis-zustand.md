@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 13.09.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 14.09.2026 · Vertrag 1.5 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -65,6 +65,7 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 50 | gemessene Zeit {minuten}:{sekunden} min von {periode_min} min | — | ja |
 | 60 | aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit) | aus Leistung integriert | nein |
 | 70 | mit Ersatzwert (Methode „{methode}“, {kennung}) — `{methode}` ist der Name in Kundensprache (`vokabular.ersatzwert_methode[].name` der Ereignis-Vektoren), `{kennung}` EW-<Jahr>-<Nr.>; zuletzt, nach allem, was gemessen ist (seit 1.4, AP-08 IP-13) | mit Ersatzwert (Methode …) | nein |
+| 80 | korrigiert (Version {version}) — `{version}` ≥ 2 (Version 1 ist das Original); ganz zuletzt, die Version sagt etwas über die ganze Zahl. Gesprochen von der Korrektur-Kaskade an jeder Stufe, deren Version sie schreibt; kein Datum im Satz (die Versions-Historie, IP-18); derselbe Wortlaut wie in `bilanz-vectors.json` F14 (seit 1.5, AP-08 IP-17) | korrigiert (Version n) | nein |
 
 **Reihenfolge:** der Rang steigt in einer Liste nie (`kennzeichen_reihenfolge`); die Sätze der
 Gerätegrenze stehen in fester Folge (`kennzeichen_folge`); ein einmaliges Kennzeichen steht nie
@@ -83,8 +84,8 @@ endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände�
 {von}–{bis}: Zuwachs {zuwachs} gemessen, …“ mit `dezimal_punkt` („Zuwachs 337.600“, bis 1.2) — gleicher
 Text, anderer Platzhalter: das heutige Muster nimmt „337.600“ nicht an.
 
-**Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · korrigiert (Version n) ·
-vorläufig · endgültig · Ablesezeitraum. Ihren Wortlaut legt das
+**Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert ·
+vorläufig · endgültig · Ablesezeitraum („korrigiert (Version n)“ bis 1.4, seit 1.5 Kennzeichen). Ihren Wortlaut legt das
 Paket fest, das sie erzeugt (`kennzeichen_vorgesehen.wortlaut_mit`); bis dahin ist ein solcher
 Satz `kennzeichen_vorgesehen`, kein Kennzeichen.
 
@@ -187,5 +188,6 @@ ist. Die wichtigsten:
 
 Keine Route und kein Lese-Modell (IP-9), keine Fläche und keine Karte (IP-10/IP-11), keine
 Ersatzwert-Methoden (IP-13), keine Korrekturen (IP-12 ff.), keine Migration. Die Bilanz-Kennzeichen
-(berechnet (…), nicht zugeordnet, saldiert, korrigiert (Version n)) sind Teil von
-[`bilanz.md`](./bilanz.md), nicht dieser Liste.
+(berechnet (…), nicht zugeordnet, saldiert) sind Teil von
+[`bilanz.md`](./bilanz.md), nicht dieser Liste; „korrigiert (Version n)“ steht seit 1.5 mit demselben Wortlaut in
+beiden.

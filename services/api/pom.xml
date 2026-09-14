@@ -275,6 +275,10 @@
                              AUSGELIEFERTE Vorgabe AN ist, prueft
                              ErsatzwertWiringTest an der echten application.yml. -->
                         <voltpilot.uems.ersatzwert.enabled>false</voltpilot.uems.ersatzwert.enabled>
+                        <!-- Die Korrektur-Kaskade (AP-08 IP-17): dieselbe Falle, im
+                             Testlauf aus, in PRODUKTION an. KorrekturKaskadeWiringTest
+                             prueft die ausgelieferte Vorgabe. -->
+                        <voltpilot.uems.kaskade.enabled>false</voltpilot.uems.kaskade.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

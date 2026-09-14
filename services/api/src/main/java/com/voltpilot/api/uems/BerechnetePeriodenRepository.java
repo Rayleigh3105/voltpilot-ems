@@ -302,11 +302,20 @@ public class BerechnetePeriodenRepository {
 
     private void eingaengeEinfuegen(Connection con, UUID tenant, UUID messstelleId, Zeile z, Instant jetzt)
             throws SQLException {
+        eingaengeEinfuegen(con, tenant, messstelleId, z, 1, jetzt);
+    }
+
+    /**
+     * Die Eingänge einer Zeile in ihrer {@code version} — Version 1 schreibt der Lauf, jede weitere die Korrektur-Kaskade
+     * (AP-08 IP-17): so nennt die Herkunft einer Version ihre Eingänge in DEREN Version.
+     */
+    static void eingaengeEinfuegen(Connection con, UUID tenant, UUID messstelleId, Zeile z, int version, Instant jetzt)
+            throws SQLException {
         try (PreparedStatement ps = con.prepareStatement("INSERT INTO bilanzwert_eingang (periode_beginn, tenant_id, "
                 + "messstelle_id, periode, version, position, eingang_messstelle_id, eingang_kennzeichen, entity_id, "
                 + "messkanal, rolle, anteil, vorzeichen, faktor, menge, menge_zustand, fassung, abdeckung_prozent, "
                 + "eingang_version, kennzeichen, grund, berechnet_am) "
-                + "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)")) {
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?)")) {
             int position = 0;
             for (EingangZeile ez : z.eingaenge()) {
                 BerechnetePeriode.Eingang e = ez.eingang();
@@ -315,6 +324,7 @@ public class BerechnetePeriodenRepository {
                 ps.setObject(p++, tenant);
                 ps.setObject(p++, messstelleId);
                 ps.setString(p++, z.ebene());
+                ps.setInt(p++, version);
                 ps.setInt(p++, position++);
                 ps.setObject(p++, ez.messstelleId(), Types.OTHER);
                 ps.setString(p++, ez.messstelleId() == null ? null : ez.kennzeichen());
