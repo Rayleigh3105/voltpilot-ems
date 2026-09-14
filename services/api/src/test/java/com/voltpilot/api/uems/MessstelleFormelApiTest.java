@@ -211,6 +211,54 @@ class MessstelleFormelApiTest {
         assertThat(a.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
     }
 
+    // ============================================= AP-08: „gilt als Erzeugung"
+
+    @Test
+    void derRichtungsloseGenPortIstMitHakenErzeugungUndBleibtInDerSummeErzeugung() throws Exception {
+        Welt w = welt();
+        selektion(w, OHNE_RICHTUNG);
+        // PV1 12,4 + PV2 8,0 + PV3 3,1 + Gen-Port 2,0 = 25,5 kW, Richtung Erzeugung.
+        probe(w, PV1, 12400);
+        probe(w, PV2, 8000);
+        probe(w, PV3, 3100);
+        probe(w, OHNE_RICHTUNG, 2000);
+
+        JsonNode ms = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Gesamt-PV", term(w, PV1), term(w, PV2), term(w, PV3),
+                        termHaken(w, OHNE_RICHTUNG))), 201);
+        // Die Summe aus lauter +-Erzeugungs-Termen bleibt Erzeugung (statt zu richtungslos zu degradieren).
+        assertThat(ms.at("/hauptgroesse/richtung").asText()).isEqualTo("Erzeugung");
+        UUID id = UUID.fromString(ms.get("id").asText());
+
+        JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/wert", null), 200);
+        assertThat(wert.get("wert").asDouble()).isEqualTo(25.5);
+
+        JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/formel", null), 200);
+        assertThat(formel.at("/terme/0/gilt_als_erzeugung").asBoolean()).isFalse();  // PV1, gerichtet
+        assertThat(formel.at("/terme/3/gilt_als_erzeugung").asBoolean()).isTrue();   // Gen-Port
+        assertThat(formel.at("/terme/3/groesse/richtung").asText()).isEqualTo("Erzeugung");
+    }
+
+    @Test
+    void derRichtungsloseGenPortOhneHakenBleibtKeinTerm() throws Exception {
+        Welt w = welt();
+        Antwort a = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Unsinn", term(w, OHNE_RICHTUNG)));
+        assertThat(a.status()).isEqualTo(400);
+        assertThat(a.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+    }
+
+    @Test
+    void derHakenAufEinemGerichtetenKanalWirdAbgelehnt() throws Exception {
+        Welt w = welt();
+        // PV1 trägt schon die Katalog-Richtung Erzeugung — der Haken wäre wirkungslos, also 400.
+        Antwort a = ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("Unsinn", termHaken(w, PV1)));
+        assertThat(a.status()).isEqualTo(400);
+        assertThat(a.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+        assertThat(a.body().get("feld").asText()).isEqualTo("terme[0].gilt_als_erzeugung");
+    }
+
     // ================================================================ RLS
 
     @Test
@@ -359,6 +407,23 @@ class MessstelleFormelApiTest {
         t.put("point_key", pointKey);
         t.put("vorzeichen", "+");
         return t;
+    }
+
+    /** Ein Messkanal-Term mit gesetztem AP-08-Haken „gilt als Erzeugung". */
+    private static Map<String, Object> termHaken(Welt w, String pointKey) {
+        Map<String, Object> t = term(w, pointKey);
+        t.put("gilt_als_erzeugung", true);
+        return t;
+    }
+
+    /** Schaltet einen weiteren Kanal der Komponente als beobachtet ein (wie in {@link #welt()}). */
+    private void selektion(Welt w, String pointKey) {
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, "
+                + "point_key, enabled, cadence_s, desired_revision, enabled_at, catalog_version, "
+                + "changed_by, apply_status, retention_class, long_term_strategy) VALUES (?, ?, ?, ?, ?, "
+                + "true, 60, 1, now(), '2026.09.11.1', 'test', 'pending_edge', 'energy_counter', "
+                + "'fifteen_minute') ON CONFLICT DO NOTHING", w.mandant(), w.anlage(), w.box(),
+                w.komponente(), pointKey);
     }
 
     /** Ein Baustein-Term: eine andere Messstelle als Eingang. */

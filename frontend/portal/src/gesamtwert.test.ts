@@ -6,6 +6,7 @@ import {
   alsAnfrage,
   entwurfFehler,
   frischeVon,
+  hakenAnwendbar,
   istPvErzeugung,
   groessenGemischt,
   leererEntwurf,
@@ -159,6 +160,44 @@ describe('gesamtwert · reine PV-Erzeugung (für den Namensvorschlag)', () => {
     expect(istPvErzeugung([termAus(q())])).toBe(true);
     expect(istPvErzeugung([termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug' }))])).toBe(false);
     expect(istPvErzeugung([])).toBe(false);
+  });
+});
+
+describe('gesamtwert · AP-08-Haken „gilt als Erzeugung" (Gen-Port)', () => {
+  // Der Gen-Port: Wirkleistung, aber im Katalog OHNE Richtung (direction: null).
+  const genPort = q({ channel: 'generator_power_kw', name: 'Gen-Port', richtung: null, wert: 3.1 });
+
+  it('der Haken ist nur am richtungslosen, summierbaren Kanal anwendbar', () => {
+    expect(hakenAnwendbar(genPort)).toBe(true);
+    expect(hakenAnwendbar(q())).toBe(false); // PV 1 hat schon die Richtung Erzeugung
+    expect(hakenAnwendbar(q({ groesse: null, richtung: null }))).toBe(false); // kein Zahlenwert
+  });
+
+  it('der Gen-Port ist summierbar und passt zur PV-Summe', () => {
+    expect(summierbar(genPort)).toBe(true);
+    expect(passt(genPort, [q()])).toBe(true);
+  });
+
+  it('OHNE Haken degradiert der Gen-Port die Summe zu richtungslos → nicht PV', () => {
+    const terme = [termAus(q()), termAus(genPort)];
+    expect(abgeleiteteGroesse(terme)?.richtung).toBe('richtungslos');
+    expect(istPvErzeugung(terme)).toBe(false);
+  });
+
+  it('MIT Haken bleibt die Summe Erzeugung → PV', () => {
+    const terme = [termAus(q()), { ...termAus(genPort), giltAlsErzeugung: true }];
+    expect(abgeleiteteGroesse(terme)?.richtung).toBe('Erzeugung');
+    expect(istPvErzeugung(terme)).toBe(true);
+  });
+
+  it('alsAnfrage sendet gilt_als_erzeugung nur für den geflaggten richtungslosen Term', () => {
+    const anfrage = alsAnfrage({
+      id: null,
+      name: 'Gesamt-PV',
+      terme: [termAus(q()), { ...termAus(genPort), giltAlsErzeugung: true }],
+    });
+    expect(anfrage.terme[0].gilt_als_erzeugung).toBeUndefined();
+    expect(anfrage.terme[1].gilt_als_erzeugung).toBe(true);
   });
 });
 

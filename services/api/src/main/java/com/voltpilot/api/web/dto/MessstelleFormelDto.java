@@ -18,7 +18,9 @@ public final class MessstelleFormelDto {
     /**
      * Ein Term der Anfrage. {@code eingang_art} ist {@code messkanal} (dann {@code entity_id} +
      * {@code point_key}) oder {@code messstelle} (dann {@code quell_messstelle_id}). {@code faktor}
-     * fehlend = 1; {@code vorzeichen} {@code +} oder {@code -}.
+     * fehlend = 1; {@code vorzeichen} {@code +} oder {@code -}. {@code gilt_als_erzeugung} (AP-08,
+     * fehlend = false) macht einen richtungslosen Messkanal als Term zulaessig und laesst ihn in
+     * der Summe als Erzeugung zaehlen — nur an einem Kanal OHNE Katalog-Richtung.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TermEingabe(
@@ -27,7 +29,8 @@ public final class MessstelleFormelDto {
             String pointKey,
             UUID quellMessstelleId,
             String vorzeichen,
-            Double faktor) {}
+            Double faktor,
+            Boolean giltAlsErzeugung) {}
 
     /**
      * {@code POST /api/v1/messstellen/berechnet}. Das Kennzeichen wird automatisch vergeben (E7);
@@ -52,6 +55,7 @@ public final class MessstelleFormelDto {
             UUID quellMessstelleId,
             String vorzeichen,
             double faktor,
+            boolean giltAlsErzeugung,
             Groesse groesse,
             boolean eingerichtet) {}
 

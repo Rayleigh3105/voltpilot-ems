@@ -3,9 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   EINHEITEN_NORMIERUNG,
+  erzeugungsHakenErlaubt,
   FEHLER,
   formelGroesse,
   gewichteteSumme,
+  richtungMitErzeugungsHaken,
   SUMME_NACHKOMMASTELLEN,
   zyklus,
   type Summand,
@@ -47,5 +49,15 @@ describe('gewichteteSumme — der Wert, und null statt Teilsumme', () => {
   it.each(faelle('summe'))('Summe: $name', (c) => {
     const u = gewichteteSumme(c.input.ziel_einheit, c.input.terme as Summand[]);
     expect({ wert: u.wert, unvollstaendig: u.unvollstaendig, fehlende: u.fehlende }).toEqual(c.expected);
+  });
+});
+
+describe('AP-08 „gilt als Erzeugung"-Haken — nur am richtungslosen Kanal', () => {
+  it.each(faelle('haken'))('Haken: $name', (c) => {
+    const richtung: string | null = c.input.katalog_richtung ?? null;
+    expect({
+      erlaubt: erzeugungsHakenErlaubt(richtung),
+      richtung: richtungMitErzeugungsHaken(richtung, c.input.gilt_als_erzeugung),
+    }).toEqual(c.expected);
   });
 });

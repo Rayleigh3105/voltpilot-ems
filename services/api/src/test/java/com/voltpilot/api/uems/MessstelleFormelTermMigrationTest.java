@@ -81,8 +81,8 @@ class MessstelleFormelTermMigrationTest {
         UUID quellA = gemessen(a, "MS-0002");
         UUID formelB = berechnet(b, "MS-0001");
         UUID quellB = gemessen(b, "MS-0002");
-        alsTue(a, () -> terme.anlegen(formelA, 0, "messstelle", null, null, quellA, "+", 1.0));
-        alsTue(b, () -> terme.anlegen(formelB, 0, "messstelle", null, null, quellB, "+", 1.0));
+        alsTue(a, () -> terme.anlegen(formelA, 0, "messstelle", null, null, quellA, "+", 1.0, false));
+        alsTue(b, () -> terme.anlegen(formelB, 0, "messstelle", null, null, quellB, "+", 1.0, false));
 
         // ENABLE + FORCE + eine Policy, die USING UND WITH CHECK an app.tenant_id bindet.
         assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
@@ -116,9 +116,9 @@ class MessstelleFormelTermMigrationTest {
         UUID gemessen = gemessen(t, "MS-0002");
         // An der gemessenen: der Trigger lehnt ab.
         abgelehnt("messstelle_formel_term_nur_berechnet", () ->
-                alsTue(t, () -> terme.anlegen(gemessen, 0, "messstelle", null, null, berechnet, "+", 1.0)));
+                alsTue(t, () -> terme.anlegen(gemessen, 0, "messstelle", null, null, berechnet, "+", 1.0, false)));
         // An der berechneten: nimmt an.
-        alsTue(t, () -> terme.anlegen(berechnet, 0, "messstelle", null, null, gemessen, "+", 1.0));
+        alsTue(t, () -> terme.anlegen(berechnet, 0, "messstelle", null, null, gemessen, "+", 1.0, false));
         assertThat(als(t, () -> terme.derMessstelle(berechnet))).hasSize(1);
     }
 

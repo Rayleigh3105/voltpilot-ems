@@ -40,9 +40,21 @@ Die exakte Serialisierung und Sonderfälle stehen in den Vektoren und Ableitunge
 
 - `GET /api/v1/sites/{siteId}/topology`: Entitäten und abgeleitete Topologie, mandantengebunden.
 - Edge-`/api/state` beziehungsweise `/api/stream`: lokale Topologie zusätzlich zu kompatiblen skalaren Feldern.
-- `PUT /api/v1/admin/sites/{siteId}/topology-roles`: Rollen-/Primary-Overrides in `entity_role_assignment`.
+- `PUT /api/v1/admin/sites/{siteId}/topology-roles` bzw. `PUT /api/v1/sites/{siteId}/topology-roles`: Rollen-/Primary-Overrides nativer Kanäle in `entity_role_assignment` (admin bzw. Kunde über RLS).
 
 Lokale Standardableitung und Cloud-Overrides nicht gleichsetzen. Quellen: Go-`internal/topology`, Portal-`topology.ts`, API-`TopologyDeriver`.
+
+## Geräteseitiger Rollen-Wert („verwenden als")
+
+Die Rollen-Zuordnung `entity_role_assignment` ist verallgemeinert (`V20260914100100`): der maßgebliche Wert einer Rolle je Gerät ist ENTWEDER ein nativer Kanal (`capability`) ODER ein Gesamtwert / eine berechnete Messstelle (`quell_messstelle_id`) — genau eines von beiden (CHECK), der Mandant reist im zusammengesetzten Fremdschlüssel mit. Kein zweites Modell.
+
+- **Kunden-Fläche** (`SiteRollenController`, RLS wie jede `/api/v1/sites/**`-Route, fremde Anlage → 404):
+  - `GET/PUT /api/v1/sites/{siteId}/komponenten/{entityId}/rollen/{role}`: den maßgeblichen Rollen-Wert eines Geräts lesen/setzen. Ab Tag 1 nur `role = pv`; die Struktur trägt `grid`/`storage`/`consumer` nach.
+  - `GET /api/v1/sites/{siteId}/rollen/{role}`: der kanonische, über alle Geräte-Zuordnungen zusammengefasste Rollen-Wert der Anlage (bisher nur `pv` = Summe).
+- **Konflikt = Ablösung (is_primary).** Höchstens ein maßgeblicher Wert je (Gerät, Rolle), service-geführt. Ein zweiter Wert auf dieselbe Rolle ersetzt den vorigen; die Antwort nennt den abgelösten Wert.
+- **Ehrlichkeit.** Der kanonische Wert ist eine benannte Teil-Summe: jedes zugeordnete Gerät ist genannt (liefernd mit Wert, oder stumm mit Grund `kein_wert`/`veraltet`/`unvollstaendig`/`archiviert`), nie eine stille Teilsumme. Innerhalb eines Geräts gilt die Gesamtwert-Regel `null` statt Teilsumme; eine archivierte zugeordnete Messstelle wird aufgelöst (als unaufgelöst benannt), nie stumm weitergezeigt.
+- **Rückfall.** `zuordnung_vorhanden = false` (keine PV-Zuordnung an der Anlage) → der Wert ist `null` und die Cockpit-Anzeige bleibt bei der Roh-Telemetrie `telemetry.pv_power_kw` (die Umlenkung ist ein eigener Schritt, hier nur der Lese-Vertrag).
+- **Trennung vom Lesemodell.** Das Topologie-Lesemodell (`GET …/topology`, `TopologyDeriver`) liest weiterhin nur die nativen `capability`-Overrides; Gesamtwert-Zuordnungen (`capability` NULL) sind dort gefiltert und bleiben byte-identisch unsichtbar.
 
 ## Eigene Batterie ausdrücklich zuordnen
 

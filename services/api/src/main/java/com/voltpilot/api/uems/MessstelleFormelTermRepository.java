@@ -23,29 +23,32 @@ public class MessstelleFormelTermRepository {
 
     /** Ein gespeicherter Term, in seiner Reihenfolge. */
     public record TermZeile(UUID id, int position, String eingangArt, UUID entityId, String pointKey,
-            UUID quellMessstelleId, String vorzeichen, double faktor) {}
+            UUID quellMessstelleId, String vorzeichen, double faktor, boolean giltAlsErzeugung) {}
 
     /** Ob eine Formel Terme hat und ob JEDER Term-Eingang eingerichtet ist (fehlt: eingaenge). */
     public record FormelStand(boolean vorhanden, boolean eingerichtet) {}
 
     public List<TermZeile> derMessstelle(UUID messstelleId) {
         return jdbc.query("SELECT id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
-                + "vorzeichen, faktor FROM messstelle_formel_term WHERE messstelle_id = ? ORDER BY position",
+                + "vorzeichen, faktor, gilt_als_erzeugung FROM messstelle_formel_term "
+                + "WHERE messstelle_id = ? ORDER BY position",
                 (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
                         rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
                         rs.getString("point_key"), rs.getObject("quell_messstelle_id", UUID.class),
-                        rs.getString("vorzeichen"), rs.getDouble("faktor")),
+                        rs.getString("vorzeichen"), rs.getDouble("faktor"),
+                        rs.getBoolean("gilt_als_erzeugung")),
                 messstelleId);
     }
 
     /** Legt einen Term an; {@code tenant_id} aus dem {@link TenantContext} (die Policy prüft ihn). */
     public void anlegen(UUID messstelleId, int position, String eingangArt, UUID entityId,
-            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor) {
+            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor,
+            boolean giltAlsErzeugung) {
         jdbc.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, "
-                + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor) "
-                + "VALUES (?,?,?,?,?,?,?,?,?)",
+                + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor, "
+                + "gilt_als_erzeugung) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 TenantContext.get(), messstelleId, position, eingangArt, entityId, pointKey,
-                quellMessstelleId, vorzeichen, faktor);
+                quellMessstelleId, vorzeichen, faktor, giltAlsErzeugung);
     }
 
     /**

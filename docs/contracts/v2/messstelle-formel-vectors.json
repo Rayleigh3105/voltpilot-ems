@@ -261,6 +261,38 @@
         },
         "expected": {"wert": null, "unvollstaendig": true, "fehlende": [0, 2]}
       }
+    ],
+    "haken": [
+      {
+        "name": "gen-port-richtungslos-mit-haken-zaehlt-als-erzeugung",
+        "why": "Der Ankerfall: der Gen-Port traegt im Katalog KEINE Richtung (direction: null -> katalog_richtung null). Mit gesetztem AP-08-Haken ist er als Term zulaessig (erlaubt) und zaehlt als Erzeugung - so bleibt PV1+PV2+PV3+Gen-Port eine reine Erzeugungs-Summe.",
+        "input": {"katalog_richtung": null, "gilt_als_erzeugung": true},
+        "expected": {"erlaubt": true, "richtung": "Erzeugung"}
+      },
+      {
+        "name": "gen-port-richtungslos-ohne-haken-bleibt-ohne-richtung",
+        "why": "Derselbe richtungslose Kanal ohne Haken: der Haken DUERFTE gesetzt werden (erlaubt), ist es aber nicht - der Kanal bleibt ohne Richtung (null) und kann damit kein Term sein (er wuerde die Summe zu richtungslos degradieren).",
+        "input": {"katalog_richtung": null, "gilt_als_erzeugung": false},
+        "expected": {"erlaubt": true, "richtung": null}
+      },
+      {
+        "name": "gerichteter-erzeuger-haken-abgelehnt",
+        "why": "Ein Kanal MIT Katalog-Richtung (Erzeugung, z. B. pv1-power) traegt den Haken nicht - er waere wirkungslos. Der Haken ist NICHT erlaubt; die Richtung bleibt die des Katalogs.",
+        "input": {"katalog_richtung": "Erzeugung", "gilt_als_erzeugung": true},
+        "expected": {"erlaubt": false, "richtung": "Erzeugung"}
+      },
+      {
+        "name": "katalog-richtungslos-ist-eine-richtung-haken-abgelehnt",
+        "why": "Ein Kanal, dem der Katalog die Richtung 'richtungslos' GIBT (direction: none), hat sehr wohl eine Katalog-Richtung - der Haken ist NICHT erlaubt und aendert nichts. Klar getrennt vom Fall 'gar keine Katalog-Richtung' (null) oben.",
+        "input": {"katalog_richtung": "richtungslos", "gilt_als_erzeugung": true},
+        "expected": {"erlaubt": false, "richtung": "richtungslos"}
+      },
+      {
+        "name": "gerichteter-bezug-ohne-haken",
+        "why": "Ein gerichteter Kanal ohne Haken: nicht erlaubt (waere wirkungslos), Richtung unveraendert.",
+        "input": {"katalog_richtung": "Bezug", "gilt_als_erzeugung": false},
+        "expected": {"erlaubt": false, "richtung": "Bezug"}
+      }
     ]
   }
 }

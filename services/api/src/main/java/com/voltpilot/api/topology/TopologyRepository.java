@@ -176,11 +176,16 @@ public class TopologyRepository {
                         rs.getTimestamp("received_at").toInstant()));
     }
 
-    /** The site's stored role overrides (empty for a defaults-only site). */
+    /**
+     * The site's stored role overrides (empty for a defaults-only site). Only the NATIVE-channel
+     * overrides (capability set) feed the topology read-model; a role assignment that names a
+     * Gesamtwert (quell_messstelle_id, capability NULL) is consumed by the RollenZuordnungService,
+     * not here, so it is filtered out and the read-model stays byte-identical.
+     */
     public List<RoleOverride> overrides(UUID siteId) {
         return jdbc.query(
                 "SELECT entity_id, capability, role, is_primary FROM entity_role_assignment "
-                        + "WHERE site_id = ? ORDER BY entity_id, capability",
+                        + "WHERE site_id = ? AND capability IS NOT NULL ORDER BY entity_id, capability",
                 (rs, n) -> new RoleOverride(
                         rs.getObject("entity_id", UUID.class),
                         rs.getString("capability"),
