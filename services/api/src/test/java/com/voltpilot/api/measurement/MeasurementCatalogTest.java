@@ -3,6 +3,7 @@ package com.voltpilot.api.measurement;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,39 @@ class MeasurementCatalogTest {
         assertThat(selected.points()).extracting(MeasurementCatalog.Point::pointKey)
                 .containsExactly(key);
         assertThat(selected.points().get(0).selected()).isTrue();
+    }
+
+    /**
+     * Der geräteseitige Summenwert-Assistent (Konzept vp-agg-konzept3-r8) braucht die
+     * Katalog-Größe/Richtung JE ROHEM Register - nicht nur für die selektierten Messkanäle -,
+     * damit sein Guard ehrlich sperren (kW ≠ kWh) und den Gen-Port-Haken (direction == null)
+     * nur dort anbieten kann. Darum trägt {@link MeasurementCatalog.Point} quantity/direction
+     * additiv, deckungsgleich mit der {@code semantik}-Map; ältere Clients ignorieren die Felder.
+     */
+    @Test
+    void pointsCarryCatalogQuantityAndDirectionForTheSumValueGuard() {
+        MeasurementCatalog.Point pv = catalog.resolve("deye.hybrid_3p.pv.pv1-power");
+        assertThat(pv).isNotNull();
+        assertThat(pv.quantity()).isEqualTo("active_power");
+        assertThat(pv.direction()).isEqualTo("generation");
+
+        // Der Gen-Port ist richtungslos (direction == null) - nur hier gilt der AP-08-Haken.
+        MeasurementCatalog.Point genPort = catalog.resolve("deye.hybrid_1p.load.generator-power");
+        assertThat(genPort).isNotNull();
+        assertThat(genPort.quantity()).isEqualTo("active_power");
+        assertThat(genPort.direction()).isNull();
+
+        // Ein dynamischer Modul-Punkt trägt die Semantik seiner Vorlage über instantiate().
+        MeasurementCatalog.Point modul = catalog.resolve("sunspec.model_160.module[7].dcwh");
+        assertThat(modul).isNotNull();
+        assertThat(modul.quantity()).isEqualTo("active_energy");
+        assertThat(modul.direction()).isEqualTo("generation");
+
+        // Die Point-Felder sind deckungsgleich mit der bestehenden semantik()-Map.
+        for (MeasurementCatalog.Point p : List.of(pv, genPort, modul)) {
+            assertThat(new MeasurementCatalog.Semantik(p.quantity(), p.direction()))
+                    .isEqualTo(catalog.semantik(p.pointKey()));
+        }
     }
 
     @Test

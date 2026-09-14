@@ -142,6 +142,10 @@ public class DeviceMeasurementSelectionController {
      * selector/address/API key/measurand, unit, group and point key. Facet counts
      * in the response drive the group and semantic-status filters.
      *
+     * <p>Jeder Punkt trägt zusätzlich die rohen Katalogwörter {@code quantity}/{@code direction}
+     * (Größe/Richtung, {@code null} = nicht belegt) - additiv, damit der geräteseitige
+     * Summenwert-Assistent auch noch nicht beobachtete Register ehrlich einordnen kann.
+     *
      * <p>Recht: {@code mess_selektion.bearbeiten} - die Auswahlliste dazu.
      */
     @GetMapping("/catalog")

@@ -377,6 +377,9 @@ export function eigenePunkte(
         labelSource: 'Eigenes Register',
         semanticStatus: 'unknown',
         aggregationKind: 'gauge',
+        // Ein eigenes Register trägt keine Katalog-Semantik (Größe/Richtung).
+        quantity: null,
+        direction: null,
         defaultCadenceS: definition.cadenceS,
         minCadenceS: 1,
         longTermCadenceS: null,
