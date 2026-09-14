@@ -1,46 +1,6 @@
-/* Die Standort-Übersicht (UEMS AP-01 IP-5). Nur der Kopf-Abstand und die
-   Anlagen-Liste unter einem Unternehmen; das Cockpit bringt seine Regeln mit. */
+/* Die Standort-Übersicht (UEMS AP-01 IP-5/IP-6). Nur der Kopf-Abstand; darunter
+   steht das Portfolio-Cockpit mit der Ebene „Standort" und bringt seine Regeln mit. */
 
 .vp-standort-uebersicht-kopf {
   margin-bottom: var(--vp-space-4);
-}
-
-.vp-standort-anlagen h2 {
-  margin: 0 0 var(--vp-space-3);
-  font-size: var(--vp-text-base);
-}
-
-.vp-standort-anlagen ul {
-  display: grid;
-  gap: var(--vp-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vp-standort-anlage {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-space-2);
-  width: 100%;
-  min-height: 44px;
-  padding: var(--vp-space-2) var(--vp-space-3);
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-sm);
-  background: none;
-  font: inherit;
-  color: var(--vp-text-dark);
-  text-align: left;
-  cursor: pointer;
-}
-
-.vp-standort-anlage span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-standort-anlage:hover {
-  color: var(--vp-action);
-  background: var(--vp-bg-light);
 }

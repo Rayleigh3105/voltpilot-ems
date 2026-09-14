@@ -442,3 +442,50 @@
   border-top: 1px solid var(--vp-border, #e9ecef);
   cursor: default;
 }
+
+/*
+ * UEMS AP-01 IP-6 — die Standort-Gruppen der Unternehmens-Übersicht: EINE
+ * Tabelle, je Standort ein `tbody` mit der Standort-Karte als Kopfzeile, damit
+ * die Spalten aller Standorte untereinander fluchten.
+ */
+.vp-at .vp-at-gruppe th {
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: inherit;
+  font-weight: 400;
+  color: inherit;
+  vertical-align: top;
+  padding: 14px 12px 12px;
+  background: var(--vp-surface-2, #f8f9fa);
+}
+
+.vp-at tbody + tbody .vp-at-gruppe th {
+  border-top: 1px solid var(--vp-border, #e9ecef);
+}
+
+.vp-at .vp-at-leer td {
+  color: var(--vp-text-muted, #6c757d);
+  white-space: normal;
+}
+
+/* Telefon: je Standort ein Abschnitt — die Karte, darunter seine Anlagen-Karten. */
+.vp-at-gruppen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-5, 20px);
+  min-width: 0;
+}
+
+.vp-at-gruppe-karten {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-at-gruppe-karten > .vp-at-leer {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--vp-text-muted, #6c757d);
+}

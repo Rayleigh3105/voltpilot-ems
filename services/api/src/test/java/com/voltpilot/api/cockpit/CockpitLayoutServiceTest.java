@@ -120,7 +120,7 @@ class CockpitLayoutServiceTest {
     void derPortfolioKatalogTraegtSeineEigenenBausteine() {
         var portfolio = katalog.bausteine("portfolio");
         assertThat(portfolio.stream().map(b -> b.id())).containsExactly("flotten-status",
-                "erloese", "speicher", "lastspitzen", "ladepunkte", "pv-jetzt", "erzeugung-heute",
+                "datenlage", "netzbezug-gesamt", "erloese", "speicher", "lastspitzen", "ladepunkte", "pv-jetzt", "erzeugung-heute",
                 "verbrauch-heute", "netz-heute", "anlagen");
         // Pflicht sind der Kopf und die Anlagen-Liste: eine Flotten-Fläche ohne
         // ihre Anlagen wäre keine.

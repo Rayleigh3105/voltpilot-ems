@@ -121,8 +121,9 @@ test('Rechner: jedes Glied des Pfades führt eine Ebene hinauf', async ({ page }
   await kopf.getByRole('button', { name: 'Werk Ahrenberg', exact: true }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${ST1}`);
   await expect(kopf.locator('.here')).toHaveText('Werk Ahrenberg');
-  // Unter einem Unternehmen: die Anlagen des Standorts als Liste, keine Summe über fremde Anlagen.
-  await expect(page.getByRole('heading', { name: 'Anlagen an diesem Standort' })).toBeVisible();
+  // Unter einem Unternehmen: dieselbe Übersicht, auf den Standort gefiltert (IP-6) — nur seine Anlagen.
+  await expect(page.getByRole('button', { name: 'Anlage Werk Ahrenberg – Halle 2 öffnen' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Anlage Werk Lindach öffnen' })).toHaveCount(0);
   await kopf.getByRole('button', { name: 'Ahrenberg', exact: true }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio');
   await expect(kopf.locator('.here')).toHaveText('Ahrenberg');

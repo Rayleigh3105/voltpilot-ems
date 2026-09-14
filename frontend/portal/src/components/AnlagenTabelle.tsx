@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useIsPhone } from '../useIsPhone';
 import { fmtNum } from '../format';
 import type { AnlagenZeile, Dichte, SpaltenId } from '../portfolioCockpit';
@@ -33,11 +34,26 @@ export interface AnlagenTabelleProps {
   onOeffnen: (siteId: string) => void;
   /** Die Vorschau der aufgeklappten Zeile; null = lädt noch. */
   vorschau: VorschauZeile[] | null;
+  /**
+   * UEMS AP-01 IP-6: die Zeilen nach Standorten gruppiert, je Gruppe ein Kopf
+   * (die Standort-Karte). Fehlt es, rendert die Tabelle ungruppiert wie bisher.
+   * Die Spalten gelten für ALLE Gruppen — eine Tabelle, damit sie untereinander
+   * fluchten.
+   */
+  gruppen?: AnlagenGruppe[] | null;
+}
+
+/** Eine Gruppe der Tabelle: ihr Kopf, ihre Zeilen, und der Satz, wenn sie keine hat. */
+export interface AnlagenGruppe {
+  key: string;
+  kopf: ReactNode;
+  zeilen: AnlagenZeile[];
+  leer: string | null;
 }
 
 export function AnlagenTabelle(props: AnlagenTabelleProps) {
   const phone = useIsPhone();
-  if (props.zeilen.length === 0) return null;
+  if (props.zeilen.length === 0 && !props.gruppen?.length) return null;
   return phone ? <Karten {...props} /> : <Tabelle {...props} />;
 }
 
@@ -167,11 +183,77 @@ function VorschauBlock({
 // Desktop
 // ---------------------------------------------------------------------------
 
-function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau }: AnlagenTabelleProps) {
+function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau, gruppen }: AnlagenTabelleProps) {
   // Bewegung P6: die Zeilen staffeln beim ERSTEN Blick auf das Portfolio, nie
   // beim zweiten (`src/staffel.ts`). Beide Formen teilen den Schlüssel — es
   // ist dieselbe Liste, nur einmal als Tabelle und einmal als Karten.
   const staffel = useStaffel('portfolio-anlagen');
+  const breite = spalten.length + 2;
+  const reihe = (z: AnlagenZeile) => {
+    const auf = offen === z.id;
+    return [
+      <tr
+        key={z.id}
+        className={`vp-at-zeile${auf ? ' is-offen' : ''}`}
+        onClick={() => onOeffnen(z.id)}
+      >
+        <td>
+          <div className="vp-at-name-cell">
+            <button
+              type="button"
+              className="vp-at-name"
+              aria-label={`Anlage ${z.name} öffnen`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOeffnen(z.id);
+              }}
+            >
+              <span className="vp-at-name-text">
+                <b>{z.name}</b>
+                {z.unterzeile && <span className="vp-at-sub">{z.unterzeile}</span>}
+                <Warnzeile z={z} />
+              </span>
+            </button>
+            <button
+              type="button"
+              className="vp-at-details"
+              aria-expanded={auf}
+              aria-controls={`anlage-vorschau-${z.id}`}
+              aria-label={`Details zu ${z.name} ${auf ? 'ausblenden' : 'anzeigen'}`}
+              title={`Details ${auf ? 'ausblenden' : 'anzeigen'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle(z.id);
+              }}
+            >
+              <span className="vp-at-chev" aria-hidden="true">
+                <Icon name="chevron-right" size={16} />
+              </span>
+            </button>
+          </div>
+        </td>
+        {spalten.map((s) => (
+          <td key={s} className="num">
+            {zelleFuer(s, z)}
+          </td>
+        ))}
+        <td>
+          <Zustand z={z} />
+        </td>
+      </tr>,
+      auf ? (
+        <tr
+          key={`${z.id}-vor`}
+          id={`anlage-vorschau-${z.id}`}
+          className="vp-at-vorschau"
+        >
+          <td colSpan={spalten.length + 2}>
+            <VorschauBlock zeilen={vorschau} onOeffnen={() => onOeffnen(z.id)} />
+          </td>
+        </tr>
+      ) : null,
+    ];
+  };
   return (
     <div className="vp-at-wrap">
       <table className="vp-at" data-dichte={dichte}>
@@ -189,73 +271,25 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
             <th scope="col">Zustand</th>
           </tr>
         </thead>
-        <tbody className={staffel}>
-          {zeilen.map((z) => {
-            const auf = offen === z.id;
-            return [
-              <tr
-                key={z.id}
-                className={`vp-at-zeile${auf ? ' is-offen' : ''}`}
-                onClick={() => onOeffnen(z.id)}
-              >
-                <td>
-                  <div className="vp-at-name-cell">
-                    <button
-                      type="button"
-                      className="vp-at-name"
-                      aria-label={`Anlage ${z.name} öffnen`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOeffnen(z.id);
-                      }}
-                    >
-                      <span className="vp-at-name-text">
-                        <b>{z.name}</b>
-                        {z.unterzeile && <span className="vp-at-sub">{z.unterzeile}</span>}
-                        <Warnzeile z={z} />
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="vp-at-details"
-                      aria-expanded={auf}
-                      aria-controls={`anlage-vorschau-${z.id}`}
-                      aria-label={`Details zu ${z.name} ${auf ? 'ausblenden' : 'anzeigen'}`}
-                      title={`Details ${auf ? 'ausblenden' : 'anzeigen'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggle(z.id);
-                      }}
-                    >
-                      <span className="vp-at-chev" aria-hidden="true">
-                        <Icon name="chevron-right" size={16} />
-                      </span>
-                    </button>
-                  </div>
-                </td>
-                {spalten.map((s) => (
-                  <td key={s} className="num">
-                    {zelleFuer(s, z)}
-                  </td>
-                ))}
-                <td>
-                  <Zustand z={z} />
-                </td>
-              </tr>,
-              auf ? (
-                <tr
-                  key={`${z.id}-vor`}
-                  id={`anlage-vorschau-${z.id}`}
-                  className="vp-at-vorschau"
-                >
-                  <td colSpan={spalten.length + 2}>
-                    <VorschauBlock zeilen={vorschau} onOeffnen={() => onOeffnen(z.id)} />
-                  </td>
+        {gruppen ? (
+          gruppen.map((g) => (
+            <tbody key={g.key} className={staffel}>
+              <tr className="vp-at-gruppe">
+                <th scope="rowgroup" colSpan={breite}>
+                  {g.kopf}
+                </th>
+              </tr>
+              {g.zeilen.length === 0 && g.leer && (
+                <tr className="vp-at-leer">
+                  <td colSpan={breite}>{g.leer}</td>
                 </tr>
-              ) : null,
-            ];
-          })}
-        </tbody>
+              )}
+              {g.zeilen.map(reihe)}
+            </tbody>
+          ))
+        ) : (
+          <tbody className={staffel}>{zeilen.map(reihe)}</tbody>
+        )}
       </table>
     </div>
   );
@@ -271,98 +305,110 @@ function Tabelle({ zeilen, spalten, dichte, offen, onToggle, onOeffnen, vorschau
  * Vorschau bzw. auf der Anlagen-Seite. Eine Kachel ohne Wert erscheint gar
  * nicht.
  */
-function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau }: AnlagenTabelleProps) {
+function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen }: AnlagenTabelleProps) {
   const zeigt = new Set(spalten);
   const staffel = useStaffel('portfolio-anlagen');
+  const liste = staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten';
+  const karte = (z: AnlagenZeile) => {
+    const auf = offen === z.id;
+    const nums: { id: SpaltenId; label: string }[] = [];
+    if (zeigt.has('pv-jetzt') && z.pvJetztKw != null) nums.push({ id: 'pv-jetzt', label: 'PV jetzt' });
+    if (zeigt.has('speicher') && z.ladestandPct != null) nums.push({ id: 'speicher', label: 'Speicher' });
+    if (zeigt.has('netz-heute') && z.netz) nums.push({ id: 'netz-heute', label: 'Netz jetzt' });
+    return (
+      <article key={z.id} className="vp-at-karte" onClick={() => onOeffnen(z.id)}>
+        <div className="vp-at-karte-kopf">
+          <button
+            type="button"
+            className="vp-at-karte-open"
+            aria-label={`${z.name} ${z.zustand.wort}${z.zustand.alter ? ` · ${z.zustand.alter}` : ''} – Anlage öffnen`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOeffnen(z.id);
+            }}
+          >
+            <span className={`vp-at-dot is-${z.zustand.ton}`} aria-hidden="true" />
+            <span className="vp-at-karte-name">
+              {z.name}
+              <span className="vp-at-sub">
+                {z.zustand.wort}
+                {z.zustand.alter ? ` · ${z.zustand.alter}` : ''}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="vp-at-details"
+            aria-expanded={auf}
+            aria-controls={`anlage-vorschau-${z.id}`}
+            aria-label={`Details zu ${z.name} ${auf ? 'ausblenden' : 'anzeigen'}`}
+            title={`Details ${auf ? 'ausblenden' : 'anzeigen'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(z.id);
+            }}
+          >
+            <span className="vp-at-chev" aria-hidden="true">
+              <Icon name="chevron-right" size={16} />
+            </span>
+          </button>
+        </div>
+        <Warnzeile z={z} />
+        {nums.length > 0 && (
+          <div className="vp-at-karte-nums" data-count={nums.length}>
+            {nums.map((n) => (
+              <div key={n.id}>
+                <span className="l">{n.label}</span>
+                <span className="v">{zelleFuer(n.id, z)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="vp-at-karte-fuss">
+          {zeigt.has('erloese') && z.heuteEur != null ? (
+            <span className="vp-at-karte-heute">
+              {SPALTEN_KOPF.erloese.titel} {signiertesGeld(z.heuteEur)}{' '}
+              <span className="u">€</span>
+            </span>
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            className="vp-at-open"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOeffnen(z.id);
+            }}
+          >
+            Öffnen <Icon name="chevron-right" size={14} />
+          </button>
+        </div>
+        {auf && (
+          <div
+            id={`anlage-vorschau-${z.id}`}
+            className="vp-at-karte-vor"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <VorschauBlock zeilen={vorschau} onOeffnen={() => onOeffnen(z.id)} />
+          </div>
+        )}
+      </article>
+    );
+  };
+  if (!gruppen) return <div className={liste}>{zeilen.map(karte)}</div>;
   return (
-    <div className={staffel ? `vp-at-karten ${staffel}` : 'vp-at-karten'}>
-      {zeilen.map((z) => {
-        const auf = offen === z.id;
-        const nums: { id: SpaltenId; label: string }[] = [];
-        if (zeigt.has('pv-jetzt') && z.pvJetztKw != null) nums.push({ id: 'pv-jetzt', label: 'PV jetzt' });
-        if (zeigt.has('speicher') && z.ladestandPct != null) nums.push({ id: 'speicher', label: 'Speicher' });
-        if (zeigt.has('netz-heute') && z.netz) nums.push({ id: 'netz-heute', label: 'Netz jetzt' });
-        return (
-          <article key={z.id} className="vp-at-karte" onClick={() => onOeffnen(z.id)}>
-            <div className="vp-at-karte-kopf">
-              <button
-                type="button"
-                className="vp-at-karte-open"
-                aria-label={`${z.name} ${z.zustand.wort}${z.zustand.alter ? ` · ${z.zustand.alter}` : ''} – Anlage öffnen`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOeffnen(z.id);
-                }}
-              >
-                <span className={`vp-at-dot is-${z.zustand.ton}`} aria-hidden="true" />
-                <span className="vp-at-karte-name">
-                  {z.name}
-                  <span className="vp-at-sub">
-                    {z.zustand.wort}
-                    {z.zustand.alter ? ` · ${z.zustand.alter}` : ''}
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="vp-at-details"
-                aria-expanded={auf}
-                aria-controls={`anlage-vorschau-${z.id}`}
-                aria-label={`Details zu ${z.name} ${auf ? 'ausblenden' : 'anzeigen'}`}
-                title={`Details ${auf ? 'ausblenden' : 'anzeigen'}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle(z.id);
-                }}
-              >
-                <span className="vp-at-chev" aria-hidden="true">
-                  <Icon name="chevron-right" size={16} />
-                </span>
-              </button>
-            </div>
-            <Warnzeile z={z} />
-            {nums.length > 0 && (
-              <div className="vp-at-karte-nums" data-count={nums.length}>
-                {nums.map((n) => (
-                  <div key={n.id}>
-                    <span className="l">{n.label}</span>
-                    <span className="v">{zelleFuer(n.id, z)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="vp-at-karte-fuss">
-              {zeigt.has('erloese') && z.heuteEur != null ? (
-                <span className="vp-at-karte-heute">
-                  {SPALTEN_KOPF.erloese.titel} {signiertesGeld(z.heuteEur)}{' '}
-                  <span className="u">€</span>
-                </span>
-              ) : (
-                <span />
-              )}
-              <button
-                type="button"
-                className="vp-at-open"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOeffnen(z.id);
-                }}
-              >
-                Öffnen <Icon name="chevron-right" size={14} />
-              </button>
-            </div>
-            {auf && (
-              <div
-                id={`anlage-vorschau-${z.id}`}
-                className="vp-at-karte-vor"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <VorschauBlock zeilen={vorschau} onOeffnen={() => onOeffnen(z.id)} />
-              </div>
-            )}
-          </article>
-        );
-      })}
+    <div className="vp-at-gruppen">
+      {gruppen.map((g) => (
+        <section key={g.key} className="vp-at-gruppe-karten">
+          {g.kopf}
+          {g.zeilen.length === 0 && g.leer ? (
+            <p className="vp-at-leer">{g.leer}</p>
+          ) : (
+            <div className={liste}>{g.zeilen.map(karte)}</div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
