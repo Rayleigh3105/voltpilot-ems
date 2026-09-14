@@ -12,6 +12,8 @@ import {
   hakenAnwendbar,
   leererEntwurf,
   punkt,
+  richtungsEntscheidungSatz,
+  richtungsloseOhneEntscheidung,
   schluessel,
   schritt1Fertig,
   termAus,
@@ -30,6 +32,7 @@ import {
   sperrKurz,
   suchePasst,
   unterzeile,
+  vorauswahl,
   zeileAus,
   zuQuellwert,
   type RegisterZeile,
@@ -132,8 +135,11 @@ export function SummenwertAssistent({
 
   /**
    * Die beobachteten „Messwerte" + die Revision (für „+ Beobachten"). `precheck`
-   * hakt den Schnellpfad (Erzeugungs-Stränge + Gen-Port) EINMAL vorab an - eine
-   * spätere Neuladung (nach dem Beobachten) lässt die Auswahl des Kunden stehen.
+   * hakt EINMAL nur die Katalog-Erzeugungs-Stränge (PV 1/2/3, `richtung === 'Erzeugung'`)
+   * vorab an. Richtungslose Register (der Gen-Port UND generische `direction:null`-Kanäle
+   * wie `load-consumption-power` oder `work-mode.pv-power`) werden NIE still mitgezählt -
+   * sie kommen ausschließlich über die ausdrückliche Kunden-Entscheidung (Schalter) in die
+   * Summe. Eine spätere Neuladung (nach dem Beobachten) lässt die Auswahl des Kunden stehen.
    */
   async function ladeBeobachtet(precheck: boolean): Promise<RegisterZeile[]> {
     try {
@@ -145,13 +151,10 @@ export function SummenwertAssistent({
       setBeobachtet(obs);
       if (sel) setRevision(sel.desiredRevision);
       if (precheck) {
-        const vorab = obs.filter((z) => z.summierbar && (z.richtung === 'Erzeugung' || z.richtungslos));
+        const vorab = vorauswahl(obs);
         setEntwurf((e) => ({
           ...e,
-          terme: vorab.map((z) => {
-            const t = termAus(zuQuellwert(z, geraetName));
-            return z.richtungslos && hakenAnwendbar(t.quelle) ? { ...t, giltAlsErzeugung: true } : t;
-          }),
+          terme: vorab.map((z) => termAus(zuQuellwert(z, geraetName))),
         }));
       }
       return obs;
@@ -173,9 +176,15 @@ export function SummenwertAssistent({
     () => (beobachtet ?? []).filter((z) => suchePasst(z, query)),
     [beobachtet, query],
   );
-  const genPort = beobachteteGefiltert.find((z) => z.richtungslos);
+  // Gerichtete Messwerte als Zeilen; JEDES richtungslose Register (nicht nur das erste) als
+  // ausdrückliche Erzeugungs-Entscheidung - kein unsichtbarer Term, keine stille Zählung.
   const messwerte = beobachteteGefiltert.filter((z) => !z.richtungslos);
+  const entscheidungen = beobachteteGefiltert.filter((z) => z.richtungslos);
   const alleGruppe = gruppen(alle, query).alle;
+  // Client-seitiger Hart-Riegel (B1): ein richtungsloser Term ohne Erzeugungs-Entscheidung
+  // ist nicht speicherbar (der Server lehnt ihn mit 400 ab). Statt den 400 zu provozieren,
+  // sperrt der Assistent das Speichern und nennt den Grund.
+  const offeneRichtung = richtungsloseOhneEntscheidung(entwurf.terme);
 
   function toggle(zeile: RegisterZeile, giltAlsErzeugung = false) {
     const key = schluessel({ entityId: zeile.entityId, channel: zeile.pointKey });
@@ -206,12 +215,15 @@ export function SummenwertAssistent({
         entityId,
       );
       setRevision(st.desiredRevision);
-      // Das Register ist jetzt beobachtet: die Listen neu laden (OHNE den
-      // Schnellpfad neu zu setzen) und die frische Zeile in die Summe aufnehmen.
+      // Das Register ist jetzt beobachtet: die Listen neu laden (OHNE den Schnellpfad neu zu
+      // setzen). Ein gerichtetes Register (PV-Strang) wandert direkt in die Summe; ein
+      // RICHTUNGSLOSES (Gen-Port & Co.) NICHT - es erscheint jetzt als ausdrückliche
+      // Entscheidung (Schalter) in den Messwerten. So entsteht nie ein richtungsloser Term
+      // ohne Entscheidung (den der Server mit 400 ablehnen würde).
       const obs = await ladeBeobachtet(false);
       void ladeAlle(query);
       const frisch = obs.find((z) => z.pointKey === zeile.pointKey) ?? zeile;
-      toggle(frisch);
+      if (!frisch.richtungslos) toggle(frisch);
     } catch (e) {
       setServerFehler(fehlerText(e, 'Das Beobachten ist gerade nicht gelungen.'));
     } finally {
@@ -247,7 +259,11 @@ export function SummenwertAssistent({
     }
   }
 
-  const kannSpeichern = schritt1Fertig(entwurf.terme) && name.trim().length > 0 && !vorschauWert.unvollstaendig;
+  const kannSpeichern =
+    schritt1Fertig(entwurf.terme)
+    && offeneRichtung.length === 0
+    && name.trim().length > 0
+    && !vorschauWert.unvollstaendig;
 
   return (
     <Modal
@@ -334,8 +350,8 @@ export function SummenwertAssistent({
           ) : (
             <>
               {messwerte.map((z) => Zeile(z))}
-              {genPort && GenPortVorschlag(genPort)}
-              {messwerte.length === 0 && !genPort && (
+              {entscheidungen.map((z) => Entscheidung(z))}
+              {messwerte.length === 0 && entscheidungen.length === 0 && (
                 <p className="vp-sw-hint">Noch keine beobachteten Messwerte an diesem Gerät.</p>
               )}
             </>
@@ -367,6 +383,11 @@ export function SummenwertAssistent({
         </div>
         {vorschauWert.unvollstaendig && entwurf.terme.length > 0 && (
           <p className="vp-sw-warn">{unvollstaendigSatz(vorschauWert.fehlende)}</p>
+        )}
+        {offeneRichtung.length > 0 && (
+          <p className="vp-sw-warn" role="alert">
+            {richtungsEntscheidungSatz(offeneRichtung.map((t) => t.quelle.name))}
+          </p>
         )}
       </section>
     );
@@ -424,19 +445,38 @@ export function SummenwertAssistent({
     );
   }
 
-  /** Der Gen-Port als erklärte Frage mit Schalter (der AP-08-Haken „gilt als Erzeugung"). */
-  function GenPortVorschlag(zeile: RegisterZeile) {
+  /**
+   * Eine richtungslose Register-Entscheidung mit Schalter (der AP-08-Haken „gilt als Erzeugung").
+   * NUR der wirklich ambivalente Gen-Port (`zeile.genPort`) trägt die erklärte Gen-Port-Frage
+   * („Mikrowechselrichter?"); jedes andere richtungslose Register bekommt die NEUTRALE
+   * Erzeugungs-Frage - kein irreführendes Gen-Port-Wording. Der Schalter setzt die Entscheidung;
+   * erst dann zählt das Register mit (nie still, nie ohne Entscheidung).
+   */
+  function Entscheidung(zeile: RegisterZeile) {
     const key = schluessel({ entityId: zeile.entityId, channel: zeile.pointKey });
     const an = gewaehlteKeys.has(key);
+    const wert = zeile.wert != null ? <b>{wertText(zeile.wert, zeile.einheit ?? '')}</b> : null;
     return (
       <div className="vp-sw-suggest">
         <div className="vp-sw-suggest-body">
-          <p className="vp-sw-suggest-q">Am Gen-Port hängt ein Mikrowechselrichter?</p>
-          <p className="vp-sw-suggest-why">
-            Dann zählt seine Erzeugung mit.
-            {zeile.wert != null && <> Er misst gerade <b>{wertText(zeile.wert, zeile.einheit ?? '')}</b>.</>}
-          </p>
-          <span className="vp-sw-ap">löst die Richtung dieses Anschlusses auf</span>
+          {zeile.genPort ? (
+            <>
+              <p className="vp-sw-suggest-q">Am Gen-Port hängt ein Mikrowechselrichter?</p>
+              <p className="vp-sw-suggest-why">
+                Dann zählt seine Erzeugung mit.{wert && <> Er misst gerade {wert}.</>}
+              </p>
+              <span className="vp-sw-ap">löst die Richtung dieses Anschlusses auf</span>
+            </>
+          ) : (
+            <>
+              <p className="vp-sw-suggest-q">Zählt „{zeile.name}" als Erzeugung?</p>
+              <p className="vp-sw-suggest-why">
+                Dieses Register trägt keine Richtung - Sie entscheiden, ob seine Leistung als
+                Erzeugung mitzählt.{wert && <> Es misst gerade {wert}.</>}
+              </p>
+              <span className="vp-sw-ap">löst die Richtung dieses Registers auf</span>
+            </>
+          )}
         </div>
         <Switch checked={an} onChange={() => toggle(zeile, true)} label={an ? 'Zählt mit' : 'Aus'} />
       </div>

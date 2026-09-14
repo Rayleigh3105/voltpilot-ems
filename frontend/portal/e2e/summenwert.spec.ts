@@ -9,9 +9,19 @@ test.describe.configure({ retries: 2 });
  * Der geräteseitige Summenwert-Assistent, Ankerfall Deye SUN-30K
  * (Konzept vp-agg-konzept3-r8): aus ALLEN Registern des Geräts wird „PV gesamt"
  * = PV 1 + PV 2 + PV 3 + Gen-Port (= 15,5 kW) gebaut und der Rolle PV-Produktion
- * zugeordnet. Nicht summierbare Register erscheinen sichtbar, aber gesperrt mit
- * Grund. Die Cloud ist per `page.route` verdrahtet (quantity/direction je Punkt
- * wie seit PR „Summenwert-Fundament" + Katalog-Serialisierung).
+ * zugeordnet.
+ *
+ * ⚠ ECHTE Katalog-Lage (fix-forward B1/B2): der Gen-Port
+ * (`…generator-smartload-microinverter.generator-power`) ist im Deye-Katalog
+ * `recommended:false`, also NICHT standard-beobachtet. Der captain-Ankerfall geht
+ * deshalb über den NATÜRLICHEN Weg: „+ Beobachten" hebt den Gen-Port in die
+ * Aufzeichnung, danach entscheidet der Kunde am Schalter, dass er als Erzeugung
+ * mitzählt - erst dann wandert er in die Summe (15,5 kW) und der Speichern-Aufruf
+ * trägt `gilt_als_erzeugung`. Die frühere Fixture setzte den Gen-Port künstlich
+ * `selected:true` und maskierte so den 400-Sackgassen-Save (B1).
+ *
+ * Die Cloud ist per `page.route` STATEFUL verdrahtet: „+ Beobachten" schaltet ein
+ * Register echt frei (quantity/direction je Punkt wie seit „Summenwert-Fundament").
  */
 
 /** Ein Katalog-Punkt mit sinnvollen Vorgaben; jede Eigenschaft ist überschreibbar. */
@@ -61,23 +71,57 @@ function catPoint(over: Record<string, unknown>) {
   };
 }
 
-const BEOBACHTET = [
-  catPoint({ pointKey: 'pv1', labelDe: 'PV 1', selected: true, recorded: true, decodedValue: '5.2', lastReadAt: '2026-09-12T09:45:00Z', selectedCadenceS: 5 }),
-  catPoint({ pointKey: 'pv2', labelDe: 'PV 2', selected: true, recorded: true, decodedValue: '4.1', lastReadAt: '2026-09-12T09:45:00Z', selectedCadenceS: 5 }),
-  catPoint({ pointKey: 'pv3', labelDe: 'PV 3', selected: true, recorded: true, decodedValue: '3.1', lastReadAt: '2026-09-12T09:45:00Z', selectedCadenceS: 5 }),
-  catPoint({ pointKey: 'genport', labelDe: 'Gen-Port', direction: null, selected: true, recorded: true, decodedValue: '3.1', lastReadAt: '2026-09-12T09:45:00Z', selectedCadenceS: 5 }),
-];
+/** Das volle Register-Inventar des Geräts (Katalog-Stammdaten, ohne Beobachtungs-Zustand). */
+const P: Record<string, ReturnType<typeof catPoint>> = {
+  pv1: catPoint({ pointKey: 'pv1', labelDe: 'PV 1', group: 'PV' }),
+  pv2: catPoint({ pointKey: 'pv2', labelDe: 'PV 2', group: 'PV' }),
+  pv3: catPoint({ pointKey: 'pv3', labelDe: 'PV 3', group: 'PV' }),
+  // Ein beobachtetes, RICHTUNGSLOSES Nicht-Erzeugungs-Register (Hausverbrauch): es darf NICHT
+  // still als PV mitgezählt werden (B2) und trägt die NEUTRALE Erzeugungs-Frage (Verengung).
+  hausverbrauch: catPoint({
+    pointKey: 'deye.hybrid_3p.load.load-consumption-power', labelDe: 'Hausverbrauch',
+    group: 'Load', direction: null, recommended: true,
+  }),
+  // Der ECHTE Gen-Port: richtungslos UND ambivalenter Anschluss-Kanal, `recommended:false`.
+  genport: catPoint({
+    pointKey: 'deye.hybrid_3p.generator-smartload-microinverter.generator-power', labelDe: 'Gen-Port',
+    group: 'Generator/SmartLoad/Microinverter', direction: null, recommended: false,
+  }),
+  ct: catPoint({ pointKey: 'ct', labelDe: 'Externe Erzeugung (CT-Klemme)', group: 'PV' }),
+  battV: catPoint({ pointKey: 'batt-v', labelDe: 'Batteriespannung', group: 'Batterie', quantity: 'voltage', direction: null, unit: 'V' }),
+  temp: catPoint({ pointKey: 'temp', labelDe: 'Modultemperatur', group: 'Temperaturen', quantity: 'temperature', direction: null, unit: '°C' }),
+  state: catPoint({ pointKey: 'state', labelDe: 'Betriebszustand', group: 'Zustände', quantity: null, direction: null, aggregationKind: 'text', unit: null }),
+  netzE: catPoint({ pointKey: 'netz-e', labelDe: 'Netzarbeit', group: 'Netz', quantity: 'active_energy', direction: 'import', aggregationKind: 'counter', unit: 'kWh' }),
+};
+const ALLE_PUNKTE = Object.values(P);
 
-const ALLE = [
-  catPoint({ pointKey: 'ct', labelDe: 'Externe Erzeugung (CT-Klemme)', group: 'PV', decodedValue: null }),
-  catPoint({ pointKey: 'batt-v', labelDe: 'Batteriespannung', group: 'Batterie', quantity: 'voltage', direction: null, unit: 'V' }),
-  catPoint({ pointKey: 'temp', labelDe: 'Modultemperatur', group: 'Temperaturen', quantity: 'temperature', direction: null, unit: '°C' }),
-  catPoint({ pointKey: 'state', labelDe: 'Betriebszustand', group: 'Zustände', quantity: null, direction: null, aggregationKind: 'text', unit: null }),
-  catPoint({ pointKey: 'netz-e', labelDe: 'Netzarbeit', group: 'Netz', quantity: 'active_energy', direction: 'import', aggregationKind: 'counter', unit: 'kWh' }),
-];
+/** Der Live-Wert je Register (nur wenn beobachtet). PV 1+2+3 = 12,4; + Gen-Port 3,1 = 15,5. */
+const LIVE: Record<string, string> = {
+  pv1: '5.2', pv2: '4.1', pv3: '3.1',
+  'deye.hybrid_3p.load.load-consumption-power': '2.0',
+  'deye.hybrid_3p.generator-smartload-microinverter.generator-power': '3.1',
+};
+
+/** Einen Katalog-Punkt mit dem aktuellen Beobachtungs-Zustand ausstatten. */
+function stamp(p: ReturnType<typeof catPoint>, observed: Set<string>) {
+  const sel = observed.has(p.pointKey as string);
+  return {
+    ...p,
+    selected: sel,
+    recorded: sel,
+    decodedValue: sel ? LIVE[p.pointKey as string] ?? null : null,
+    lastReadAt: sel ? '2026-09-12T09:45:00Z' : null,
+    selectedCadenceS: sel ? 5 : null,
+  };
+}
 
 async function mock(page: Page) {
   const state: { assigned: null | Record<string, unknown> } = { assigned: null };
+  // Der Beobachtungs-Zustand ist ECHT veränderlich: PV 1/2/3 + Hausverbrauch stehen (der
+  // Gen-Port NICHT); „+ Beobachten" schaltet weitere Register frei.
+  const observed = new Set<string>(['pv1', 'pv2', 'pv3', 'deye.hybrid_3p.load.load-consumption-power']);
+  let revision = 1;
+
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -92,10 +136,11 @@ async function mock(page: Page) {
       return route.fulfill({ json: { entity_id: 'inv', role: 'pv', zugeordnet: state.assigned } });
     }
 
-    // Katalog: beobachtete (selectedOnly) vs. alle Register
+    // Katalog: beobachtete (selectedOnly) vs. alle Register - beide aus dem aktuellen Zustand.
     if (path.endsWith('/measurement-selection/catalog')) {
       const nurSelektiert = url.searchParams.get('selectedOnly') === 'true';
-      const points = nurSelektiert ? BEOBACHTET : ALLE;
+      const alle = ALLE_PUNKTE.map((p) => stamp(p, observed));
+      const points = nurSelektiert ? alle.filter((p) => p.selected) : alle;
       return route.fulfill({
         json: {
           catalogVersion: '2026.09.11.1', edgeMinVersion: '1.0',
@@ -105,11 +150,15 @@ async function mock(page: Page) {
         },
       });
     }
-    if (path.endsWith('/measurement-selection')) {
-      return route.fulfill({ json: { deviceId: 'd1', siteId: 'site-e2e', entityId: 'inv', desiredRevision: 1, catalogVersion: '2026.09.11.1', status: 'applied', statusReason: '', activationNotice: '', disableNotice: '', selections: [], volumeEstimate: { enabledPointCount: 4, samplesPerMinute: 48, requestsPerMinute: 12, dutyCyclePercent: 63, softWarning: false, hardRejected: false, reasons: [], rawGbPerYear: 0.4, longTermGbPerYear: 0.1, totalGbPerYear: 0.5, retentionSummary: '' } } });
-    }
+    // „+ Beobachten": ein Register echt freischalten.
     if (/\/measurement-selection\/[^/]+$/.test(path) && method === 'PUT') {
-      return route.fulfill({ json: { deviceId: 'd1', siteId: 'site-e2e', entityId: 'inv', desiredRevision: 2, catalogVersion: '2026.09.11.1', status: 'pending_edge', statusReason: '', activationNotice: '', disableNotice: '', selections: [], volumeEstimate: { enabledPointCount: 5, samplesPerMinute: 60, requestsPerMinute: 15, dutyCyclePercent: 68, softWarning: false, hardRejected: false, reasons: [], rawGbPerYear: 0.5, longTermGbPerYear: 0.1, totalGbPerYear: 0.6, retentionSummary: '' } } });
+      const pointKey = decodeURIComponent(path.split('/').pop() ?? '');
+      observed.add(pointKey);
+      revision += 1;
+      return route.fulfill({ json: selektionsState(revision, observed.size) });
+    }
+    if (path.endsWith('/measurement-selection')) {
+      return route.fulfill({ json: selektionsState(revision, observed.size) });
     }
 
     // Gesamtwert anlegen + Live-Wert
@@ -124,6 +173,20 @@ async function mock(page: Page) {
   });
 }
 
+/** Ein Selektions-Zustand mit passender Revision + Volumen-Schätzung. */
+function selektionsState(revision: number, enabled: number) {
+  return {
+    deviceId: 'd1', siteId: 'site-e2e', entityId: 'inv', desiredRevision: revision,
+    catalogVersion: '2026.09.11.1', status: 'applied', statusReason: '', activationNotice: '',
+    disableNotice: '', selections: [],
+    volumeEstimate: {
+      enabledPointCount: enabled, samplesPerMinute: enabled * 12, requestsPerMinute: enabled * 3,
+      dutyCyclePercent: 63, softWarning: false, hardRejected: false, reasons: [],
+      rawGbPerYear: 0.4, longTermGbPerYear: 0.1, totalGbPerYear: 0.5, retentionSummary: '',
+    },
+  };
+}
+
 /** Öffnet die Geräteseiten-Karte und ihren Assistenten. */
 async function assistentOeffnen(page: Page) {
   await page.goto('/e2e/summenwert.html');
@@ -131,7 +194,7 @@ async function assistentOeffnen(page: Page) {
   return page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
 }
 
-test('SUN-30K: der Assistent baut „PV gesamt" aus allen Registern und ordnet PV-Produktion zu', async ({ page }, testInfo) => {
+test('SUN-30K: Gen-Port über „+ Beobachten" aufnehmen, als Erzeugung entscheiden, speichern gelingt', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'Ankerlauf einmal (Logik ist engine-unabhängig)');
   test.slow();
   await mock(page);
@@ -145,35 +208,66 @@ test('SUN-30K: der Assistent baut „PV gesamt" aus allen Registern und ordnet P
   await page.getByRole('button', { name: /Summenwert anlegen/ }).click();
   const dialog = page.getByRole('dialog', { name: /Gesamtwert|Fertig/ });
 
-  // Schritt 1: Name-Vorschlag „PV gesamt", die Erzeugungs-Stränge vorab an.
+  // Schritt 1: Name-Vorschlag „PV gesamt", nur die Erzeugungs-Stränge vorab an.
   await expect(dialog.getByLabel('Name des Gesamtwerts')).toHaveValue('PV gesamt');
   await expect(dialog.getByText('PV 1')).toBeVisible();
-  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toBeVisible();
 
-  // Die Summenzeile trägt 15,5 kW (PV 1+2+3 + Gen-Port).
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('15,5');
+  // B2 · der Gen-Port ist NICHT vorab dabei (recommended:false, unbeobachtet): die Summe
+  // trägt PV 1+2+3 = 12,4 kW, NICHT 15,5. Keine stille Gen-Port-Zählung.
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toHaveCount(0);
 
-  // „Alle Register": ein rohes summierbares Register bietet „Beobachten"; die
-  // nicht summierbaren erscheinen sichtbar, aber gesperrt MIT Grund.
+  // B2 · das beobachtete richtungslose Nicht-Erzeugungs-Register (Hausverbrauch) wird NICHT
+  // still mitgezählt und trägt die NEUTRALE Erzeugungs-Frage (kein Gen-Port-Wording).
+  await expect(dialog.getByText('Zählt „Hausverbrauch" als Erzeugung?')).toBeVisible();
+
+  // „Alle Register": der Gen-Port ist ein rohes summierbares Register mit „+ Beobachten";
+  // die nicht summierbaren erscheinen sichtbar, aber gesperrt MIT Grund.
   await expect(dialog.getByText('Externe Erzeugung (CT-Klemme)')).toBeVisible();
-  await expect(dialog.getByRole('button', { name: /Beobachten/ }).first()).toBeVisible();
   await expect(dialog.getByText('keine Messgröße').first()).toBeVisible();
   await expect(dialog.getByText('kein Zahlenwert').first()).toBeVisible();
   await expect(dialog.getByText('andere Messgröße').first()).toBeVisible();
-
-  // Schritt 2: verwenden als PV-Produktion; die weiteren Rollen als „folgt"-Chips.
-  await expect(dialog.getByText('Diesen Wert verwenden als …')).toBeVisible();
-  await expect(dialog.getByText('Netz · folgt')).toBeVisible();
-
-  // Schritt 1 (Quellenliste aus allen Registern) und Schritt 2 (verwenden als).
   await dialog.screenshot({ path: 'e2e/shots/summenwert-desktop.png' });
+
+  // Der ECHTE Ankerpfad: den Gen-Port über „+ Beobachten" aufnehmen …
+  const genRow = dialog.locator('.vp-sw-row', { hasText: 'Gen-Port' });
+  await genRow.getByRole('button', { name: /Beobachten/ }).click();
+
+  // … jetzt erscheint er als erklärte Gen-Port-Frage (NICHT still gezählt: Summe noch 12,4) …
+  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toBeVisible();
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+
+  // … der Kunde entscheidet am Schalter, dass er als Erzeugung mitzählt → 15,5 kW.
+  const genSuggest = dialog.locator('.vp-sw-suggest', { hasText: 'Mikrowechselrichter' });
+  await genSuggest.locator('label').click();
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('15,5');
   await dialog.getByText('Diesen Wert verwenden als …').scrollIntoViewIfNeeded();
   await dialog.screenshot({ path: 'e2e/shots/summenwert-desktop-schritt2.png' });
 
+  // Speichern gelingt (früher: Server-400-Sackgasse) - der Summenwert ist die PV-Produktion.
   await dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ }).click();
-
-  // Fertig: der Summenwert ist die PV-Produktion dieses Geräts.
   await expect(dialog.getByText('ist die PV-Produktion dieses Geräts')).toBeVisible();
+});
+
+test('SUN-30K: ohne Erzeugungs-Entscheidung sperrt der Assistent nicht den PV-Grundfall', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'einmal');
+  test.slow();
+  await mock(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const dialog = await assistentOeffnen(page);
+
+  // Der PV-Grundfall (PV 1+2+3, ohne Gen-Port) ist speicherbar - der richtungslose Gen-Port
+  // ist gar kein Term, also keine offene Entscheidung, kein Riegel, keine Sackgasse.
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+  await expect(dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ })).toBeEnabled();
+
+  // Nimmt der Kunde den Gen-Port auf, ist er zunächst NICHT im Term (Summe bleibt 12,4) - der
+  // Speichern-Weg des Grundfalls bleibt offen, bis er sich für den Gen-Port entscheidet.
+  const genRow = dialog.locator('.vp-sw-row', { hasText: 'Gen-Port' });
+  await genRow.getByRole('button', { name: /Beobachten/ }).click();
+  await expect(dialog.getByText('Am Gen-Port hängt ein Mikrowechselrichter?')).toBeVisible();
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
+  await expect(dialog.getByRole('button', { name: /Verwenden als PV-Produktion/ })).toBeEnabled();
 });
 
 test('Handy 375: der Assistent als Vollbild-Schrittfolge, sauber und vollständig', async ({ page }, testInfo) => {
@@ -184,7 +278,8 @@ test('Handy 375: der Assistent als Vollbild-Schrittfolge, sauber und vollständi
   const dialog = await assistentOeffnen(page);
 
   await expect(dialog.getByText('Summenwert bauen - aus allen Registern')).toBeVisible();
-  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('15,5');
+  // Der Default-Summenwert (PV 1+2+3, ohne Gen-Port) = 12,4 kW.
+  await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
   await expect(dialog.getByText('Diesen Wert verwenden als …')).toBeVisible();
 
   // Das Vollbild-Sheet als Element aufnehmen (nicht fullPage - der fixe Sheet
@@ -206,7 +301,7 @@ for (const width of [375, 768, 1440]) {
     await mock(page);
     await page.setViewportSize({ width, height: 900 });
     const dialog = await assistentOeffnen(page);
-    await expect(dialog.locator('.vp-sw-sum-v')).toContainText('15,5');
+    await expect(dialog.locator('.vp-sw-sum-v')).toContainText('12,4');
 
     const seitenUeberlauf = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

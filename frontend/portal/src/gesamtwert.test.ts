@@ -14,6 +14,8 @@ import {
   passt,
   punkt,
   rechenzeile,
+  richtungsEntscheidungSatz,
+  richtungsloseOhneEntscheidung,
   schritt1Fertig,
   sperrgrund,
   summierbar,
@@ -198,6 +200,45 @@ describe('gesamtwert · AP-08-Haken „gilt als Erzeugung" (Gen-Port)', () => {
     });
     expect(anfrage.terme[0].gilt_als_erzeugung).toBeUndefined();
     expect(anfrage.terme[1].gilt_als_erzeugung).toBe(true);
+  });
+});
+
+describe('gesamtwert · Hart-Riegel: richtungsloser Term ohne Entscheidung sperrt das Speichern (B1)', () => {
+  // Der Gen-Port über den natürlichen „+ Beobachten"-Pfad: richtungslos, OHNE Haken.
+  const genPortOhne = q({ channel: 'generator_power_kw', name: 'Gen-Port', richtung: null, wert: 3.1 });
+
+  it('REGRESSION (Reviewer-Repro): ein richtungsloser Term ohne Haken degradiert NICHT zu gemischt', () => {
+    // Genau die Falle aus dem Review: die Summe bleibt größenverträglich (richtungslos ist eine
+    // gültige Größe), also fängt `schritt1Fertig` allein den Bruch NICHT ab - erst der Riegel tut es.
+    const terme = [termAus(q()), termAus(genPortOhne)];
+    expect(schritt1Fertig(terme)).toBe(true);
+    // Der Server würde diesen richtungslosen Term ohne Haken mit 400 ablehnen …
+    const anfrage = alsAnfrage({ id: null, name: 'PV gesamt', terme });
+    expect(anfrage.terme[1].gilt_als_erzeugung).toBeUndefined();
+    // … deshalb sperrt der Riegel client-seitig und nennt den offenen Term.
+    expect(richtungsloseOhneEntscheidung(terme)).toHaveLength(1);
+    expect(richtungsloseOhneEntscheidung(terme)[0].quelle.name).toBe('Gen-Port');
+  });
+
+  it('mit gesetzter Entscheidung ist kein Term mehr offen', () => {
+    const terme = [termAus(q()), { ...termAus(genPortOhne), giltAlsErzeugung: true }];
+    expect(richtungsloseOhneEntscheidung(terme)).toHaveLength(0);
+  });
+
+  it('gerichtete Terme (PV-Stränge, Netto aus +Bezug −Erzeugung) sind nie „offen"', () => {
+    expect(richtungsloseOhneEntscheidung([termAus(q()), termAus(q({ channel: 'pv2' }))])).toHaveLength(0);
+    const netto = [
+      termAus(q({ groesse: 'Wirkleistung', richtung: 'Bezug', wert: 3 })),
+      { ...termAus(q({ groesse: 'Wirkleistung', richtung: 'Erzeugung', wert: 5 })), vorzeichen: '-' as const },
+    ];
+    expect(richtungsloseOhneEntscheidung(netto)).toHaveLength(0);
+  });
+
+  it('der erklärte Grund nennt den offenen Term (nicht der generische Serverfehler)', () => {
+    expect(richtungsEntscheidungSatz(['Gen-Port'])).toContain('Gen-Port');
+    expect(richtungsEntscheidungSatz(['Gen-Port'])).toMatch(/als Erzeugung/);
+    expect(richtungsEntscheidungSatz(['A', 'B'])).toContain('A, B');
+    expect(richtungsEntscheidungSatz([])).toBe('');
   });
 });
 

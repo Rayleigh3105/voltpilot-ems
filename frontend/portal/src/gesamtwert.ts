@@ -327,6 +327,26 @@ export function schritt1Fertig(terme: TermEntwurf[]): boolean {
   return terme.length > 0 && !groessenGemischt(terme);
 }
 
+/**
+ * Die richtungslosen Terme (Gen-Port ohne Katalog-Richtung), denen die AP-08-Entscheidung
+ * „gilt als Erzeugung" noch fehlt. Ein solcher Term ist NICHT speicherbar: der Server leitet
+ * für einen richtungslosen Kanal ohne diesen Haken keine Vertrags-Messgröße ab und lehnt den
+ * Term mit 400 ab (`MessstelleFormelService.kanalGroesse` → null). Wer diese Liste vor dem
+ * Speichern prüft, sperrt client-seitig mit erklärtem Grund - der 400 wird nie provoziert.
+ */
+export function richtungsloseOhneEntscheidung(terme: TermEntwurf[]): TermEntwurf[] {
+  return terme.filter((t) => hakenAnwendbar(t.quelle) && !(t.giltAlsErzeugung ?? false));
+}
+
+/** Der erklärte Grund, wenn ein richtungsloser Term noch keine Erzeugungs-Entscheidung trägt. */
+export function richtungsEntscheidungSatz(namen: string[]): string {
+  if (namen.length === 0) return '';
+  const liste = namen.join(', ');
+  return namen.length === 1
+    ? `Für „${liste}" steht keine Richtung fest. Bitte entscheiden Sie zuerst, ob seine Leistung als Erzeugung mitzählt.`
+    : `Für „${liste}" steht keine Richtung fest. Bitte entscheiden Sie zuerst, ob ihre Leistung als Erzeugung mitzählt.`;
+}
+
 // ---------------------------------------------------------------------------
 // Die Server-Anfrage (POST /api/v1/messstellen/berechnet)
 // ---------------------------------------------------------------------------
