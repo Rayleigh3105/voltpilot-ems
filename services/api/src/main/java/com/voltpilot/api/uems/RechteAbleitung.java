@@ -31,11 +31,13 @@ import java.util.Map;
  * Vektoren ({@code docs/contracts/v2/rechte-vectors.json}). <b>Wer die Regel ändert, ändert
  * beide Seiten und die Vektor-Datei.</b>
  *
- * <h2>⚠ Noch ruft niemand an</h2>
+ * <h2>⚠ Noch ruft fast niemand an</h2>
  *
  * Keine Zuweisungstabelle (IP-2), kein {@code ZugriffContext} und kein {@code /me} (IP-4), kein
  * Filter und kein {@code @Recht}-Interceptor (IP-5 … IP-7), keine Fläche (IP-12). Diese Klasse
- * ist der Vertrag, gegen den die Durchsetzung gebaut wird — sie selbst erzwingt nichts.
+ * ist der Vertrag, gegen den die Durchsetzung gebaut wird — sie selbst erzwingt nichts. Die
+ * einzige Ausnahme sind die Korrektur-Routen (AP-08 IP-15, {@code KorrekturRechte}): sie rufen
+ * {@link #darf} und {@link #korrekturEntscheiden} mit dem heutigen Aufrufer an.
  *
  * <h2>Geltungsbereich vor Aktion (Invariante 4, W2)</h2>
  *
@@ -337,7 +339,8 @@ public final class RechteAbleitung {
         LETZTER_KUNDENADMINISTRATOR("letzter_kundenadministrator", 409),
         STANDORT_FEHLT("standort_fehlt", 422),
         HOECHSTENS_12_MONATE("hoechstens_12_monate", 422),
-        GRUND_FEHLT("grund_fehlt", 422);
+        GRUND_FEHLT("grund_fehlt", 422),
+        ZWEITE_PERSON_NOETIG("zweite_person_noetig", 403);
 
         private final String code;
         private final int http;
@@ -399,6 +402,7 @@ public final class RechteAbleitung {
         t.put("standort_fehlt", "Wählen Sie mindestens einen Standort.");
         t.put("grund_fehlt", "Für einen Notfall-Zugriff ist ein Grund Pflicht.");
         t.put("letzter_kundenadministrator", "{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.");
+        t.put("zweite_person", "Freigabe durch eine zweite Person.");
         return Map.copyOf(t);
     }
 
@@ -764,6 +768,57 @@ public final class RechteAbleitung {
         return text(
                 namen.size() == 1 ? "weg_ein_kundenadministrator" : "weg_kundenadministratoren",
                 "namen", ZustandAbleitung.aufzaehlung(namen));
+    }
+
+    // ------------------------------------------------------- Vier-Augen (AP-08 E8)
+
+    /** Die Aktion, die eine Korrektur wirksam macht (AP-08 §4.8, E8). */
+    public static final String KORREKTUR_FREIGEBEN = "korrektur.freigeben";
+
+    /** Die Aktion, die eine freigegebene Korrektur widerruft (AP-08 §5). */
+    public static final String KORREKTUR_ZURUECKNEHMEN = "korrektur.zuruecknehmen";
+
+    /**
+     * Darf {@code b} diese Korrektur freigeben oder zurücknehmen? (AP-08 E8, IP-15 — Familie
+     * {@code vieraugen}.) Erst {@link #darf} — was dort nicht erlaubt ist, bleibt, wie es ist
+     * (404 vor 403; der Unterstützer bekommt immer {@code recht_fehlt}). Dann die Bedingungen,
+     * die keine Zelle tragen kann:
+     * <ul>
+     *   <li>der Bearbeiter gibt nur bei Vier-Augen aus frei (W10) und nimmt nur bei aus und nur die
+     *       eigene zurück (§5) — sonst 403 {@code recht_fehlt} mit {@code rolle_noetig}
+     *       Energiemanager;</li>
+     *   <li>bei Vier-Augen an gibt nie der Ersteller frei — auch mit Recht, auch als
+     *       Kundenadministrator: 403 {@code zweite_person_noetig}.</li>
+     * </ul>
+     *
+     * @param ersteller die Kennung der Person, die die Korrektur angelegt hat; {@code null} = ein
+     *     Vorschlag des Systems (E14), der von keiner Person stammt
+     * @param vierAugen die Einstellung des Unternehmens zum Zeitpunkt DIESER Entscheidung
+     */
+    public static DarfErgebnis korrekturEntscheiden(
+            Matrix m, Benutzer b, Kundenbereich k, String aktion, Ziel ziel, Instant jetzt,
+            String ersteller, boolean vierAugen) {
+        boolean freigeben = KORREKTUR_FREIGEBEN.equals(aktion);
+        if (!freigeben && !KORREKTUR_ZURUECKNEHMEN.equals(aktion)) {
+            throw new IllegalArgumentException("keine Entscheidung über eine Korrektur: " + aktion);
+        }
+        DarfErgebnis d = darf(m, b, k, aktion, ziel, jetzt);
+        if (!d.darf()) {
+            return d;
+        }
+        boolean eigene = ersteller != null && ersteller.equals(b.kennung());
+        if (d.rolle() == Rolle.BEARBEITER && (vierAugen || (!freigeben && !eigene))) {
+            String weg = wegZumKundenadministrator(k);
+            return new DarfErgebnis(false, true, 403, Grund.RECHT_FEHLT, d.standort(), null,
+                    Rolle.ENERGIEMANAGER, null, TEXTE.get("recht_fehlt") + (weg == null ? "" : " " + weg));
+        }
+        if (freigeben && vierAugen && eigene) {
+            String weg = wegZumKundenadministrator(new Kundenbereich(k.name(), k.standorte(),
+                    k.kundenadministratoren().stream().filter(p -> !p.kennung().equals(b.kennung())).toList()));
+            return new DarfErgebnis(false, true, 403, Grund.ZWEITE_PERSON_NOETIG, d.standort(), null, null, null,
+                    TEXTE.get("zweite_person") + (weg == null ? "" : " " + weg));
+        }
+        return d;
     }
 
     // -------------------------------------------------------- sichtbare Standorte

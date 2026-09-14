@@ -62,6 +62,23 @@
     "                  sonst ist es mit einer Unterstützung NIE möglich (E9: Exporte, Korrekturen,",
     "                  Berichtsfreigabe, Löschen, Benutzer, Freigabe, Start).",
     "",
+    "═══ FAMILIE vieraugen — korrekturEntscheiden(benutzer, aktion, ziel, ersteller, vieraugen) (AP-08 E8, IP-15) ═══",
+    "",
+    "Nur `korrektur.freigeben` und `korrektur.zuruecknehmen`. `vieraugen` ist die Einstellung des",
+    "Unternehmens ZUM ZEITPUNKT DER ENTSCHEIDUNG (Vorgabe aus); `ersteller` die Kennung der Person, die",
+    "die Korrektur angelegt hat (null = ein Vorschlag des Systems, keine Person). Reihenfolge:",
+    "  1. darf(benutzer, aktion, ziel) — trifft es nicht zu, gilt sein Ergebnis unverändert (404 vor 403;",
+    "     ein Unterstützer bekommt immer 403 `recht_fehlt` ohne rolle_noetig: E9 „nie“).",
+    "  2. Die Rolle, die das Recht gibt, ist der Bearbeiter:",
+    "       freigeben    — nur bei aus (W10); bei an 403 `recht_fehlt`, rolle_noetig energiemanager.",
+    "       zurücknehmen — nur bei aus UND nur die eigene (§5); sonst 403 `recht_fehlt`, rolle_noetig",
+    "                      energiemanager.",
+    "  3. freigeben bei an: ist der Anfragende der Ersteller → 403 `zweite_person_noetig`",
+    "     („Freigabe durch eine zweite Person.“ + Weg zu den Kundenadministratoren OHNE ihn selbst) —",
+    "     auch mit Recht, auch als Kundenadministrator.",
+    "  4. Sonst 200 wie darf. Der Widerruf kennt keine Ersteller-Sperre für Energiemanager und",
+    "     Kundenadministrator (§5 wörtlich).",
+    "",
     "═══ FAMILIE sichtbare_standorte — sichtbareStandorte(benutzer) ═══",
     "",
     "Die Standorte des Kundenbereichs (in seiner Reihenfolge), die eine wirksame Zuweisung deckt,",
@@ -130,7 +147,7 @@
   ],
   "schema_version": "1.0",
   "$schema_datei": "./rechte.schema.json",
-  "herkunft": "UEMS AP-03 §4.1–§4.9 und §7 (A1–A16), Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026; Nachträge AP-04 §6.7, AP-05 §6, AP-06 §4.8, AP-07 §4.10; Matrix ./rechte-matrix.json; Beispielwelt ./uems-referenzunternehmen.json",
+  "herkunft": "UEMS AP-03 §4.1–§4.9 und §7 (A1–A16), Entscheide E1, E2, E4, E5, E6, E8, E9, E10, E13, E15 vom 10.09.2026; Nachträge AP-04 §6.7, AP-05 §6, AP-06 §4.8, AP-07 §4.10; Matrix ./rechte-matrix.json; Beispielwelt ./uems-referenzunternehmen.json · AP-08 §4.8 und §5 mit E8 (AP-08 IP-15, Familie vieraugen)",
   "matrix": "./rechte-matrix.json",
   "referenzunternehmen": "./uems-referenzunternehmen.json",
   "zeitzone": "Europe/Berlin",
@@ -141,7 +158,8 @@
     "ocpp_stufe",
     "unterstuetzung",
     "entzug",
-    "aenderung"
+    "aenderung",
+    "vieraugen"
   ],
   "abnahmefaelle": [
     "A1",
@@ -250,6 +268,10 @@
     {
       "code": "grund_fehlt",
       "http": 422
+    },
+    {
+      "code": "zweite_person_noetig",
+      "http": 403
     }
   ],
   "regeln": {
@@ -293,7 +315,8 @@
     "hoechstens_12_monate": "Eine Unterstützung ist höchstens 12 Monate gültig. Sie können sie jederzeit verlängern.",
     "standort_fehlt": "Wählen Sie mindestens einen Standort.",
     "grund_fehlt": "Für einen Notfall-Zugriff ist ein Grund Pflicht.",
-    "letzter_kundenadministrator": "{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person."
+    "letzter_kundenadministrator": "{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.",
+    "zweite_person": "Freigabe durch eine zweite Person."
   },
   "widersprueche": [
     {
@@ -404,6 +427,16 @@
       "faelle": [
         "a5-voss-sieht-werk-ahrenberg",
         "w11-voss-export-mit-herkunfts-spalten-403"
+      ]
+    },
+    {
+      "kennung": "W-R12",
+      "titel": "Wer einen Ersatzwert widerruft",
+      "stelle": "AP-08 §4.8: „Ersatzwert erfassen / zurücknehmen — Bearbeiter (je Standort) · Energiemanager · Kundenadministrator — nie Unterstützer“ · §5 „Eine Korrektur oder einen Ersatzwert widerrufen — Energiemanager · Kundenadministrator (Bearbeiter nur für eigene, wenn Vier-Augen aus)“",
+      "aufloesung": "Der Rechte-Abschnitt §4.8 gilt für den Ersatzwert wörtlich: `ersatzwert.erfassen` (U U S - - - -) erfasst und nimmt zurück. Die Bedingung aus §5 (nur eigene, nur bei aus) trägt `korrektur.zuruecknehmen` — für Korrekturen. Captain-Frage bis zur Ersatzwert-Route (AP-08 IP-16): gilt §5 auch für den Ersatzwert, bekommt der Widerruf dort dieselbe Familie `vieraugen`.",
+      "faelle": [
+        "ip15-peter-erfasst-ersatzwert-werk-lindach",
+        "ip15-zurueck-aus-peter-fremde-403"
       ]
     }
   ],
@@ -11276,6 +11309,1933 @@
         "rolle_noetig": null,
         "umfang_noetig": null,
         "text": "Ihr Zugriff auf Werk Lindach wurde beendet."
+      }
+    },
+    {
+      "name": "ip15-jonas-stellt-vieraugen-ein",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "E8: der Kundenadministrator stellt „Freigabe durch eine zweite Person“ je Unternehmen ein — Ziel ist das Unternehmen.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "vieraugen.einstellen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2027-01-25T10:05:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": null,
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-ines-vieraugen-einstellen-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "E8: nur der Kundenadministrator ändert die Vier-Augen-Einstellung — die Energiemanagerin, die selbst freigibt, nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "vieraugen.einstellen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": "kundenadministrator",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-voss-vieraugen-einstellen-403-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Unterstützer nie: Lena Voss (VoltPilot-Support, wirksame Unterstützung) ändert die Einstellung des Kunden nicht — ohne rolle_noetig und ohne umfang_noetig.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "vieraugen.einstellen",
+        "ziel": {
+          "standort": null,
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-ines-darf-korrektur-freigeben",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-08 §4.8: die Energiemanagerin prüft und gibt frei (unternehmensweit); ob sie es bei dieser Korrektur darf, sagt die Familie vieraugen.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-peter-darf-freigeben-werk-lindach",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "W10/E8: die Zelle des Bearbeiters ist S — freigeben darf er nur bei Vier-Augen aus (Familie vieraugen), und nur an seinem Standort Werk Lindach.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-peter-freigeben-werk-ahrenberg-404",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Fremd ist 404: eine Korrektur an Werk Ahrenberg liegt außerhalb von Peters Geltungsbereich — ihre Existenz wird nie bestätigt, auch nicht durch ein 403.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "ip15-voss-freigeben-403-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "E8/AP-08 §4.8: ein Unterstützer gibt NIE frei — Lena Voss sieht die Werte von Werk Ahrenberg (Umfang „Ansehen“), entscheidet aber nicht über die Zahlen des Kunden.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-brunner-freigeben-403-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Unterstützer nie, unabhängig vom Umfang: auch „Einrichten und Bedienen“ (Thomas Brunner) gibt keine Korrektur frei — kein umfang_noetig, weil kein Umfang es gäbe.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-12-01T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-peter-erfasst-ersatzwert-werk-lindach",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-08 §4.8 / W-R12: Ersatzwert erfassen und zurücknehmen — Bearbeiter je Standort, Zellen wie AP-03 Z. 202.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ersatzwert.erfassen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-brunner-ersatzwert-403-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-08 §4.8: Ersatzwert — nie Unterstützer, auch mit dem größten Umfang.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ersatzwert.erfassen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-12-01T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-ines-darf-korrektur-zuruecknehmen",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "AP-08 §5: Energiemanager und Kundenadministrator widerrufen eine Korrektur.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-claudia-zuruecknehmen-403",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Die Leserin widerruft nichts: 403 mit der kleinsten Rolle, deren Zelle es trägt (Bearbeiter; die Bedingung „nur eigene, nur bei aus“ prüft die Familie vieraugen).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "CB",
+          "name": "Claudia Berger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "leser",
+              "standorte": [
+                "ST-1",
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-voss-zuruecknehmen-403-nie",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": null,
+      "why": "Unterstützer nie — auch nicht beim Widerruf.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-aus-ines-gibt-eigene-frei",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E8 Vorgabe aus: Ines Kaltenbach erstellt K-2027-0002 und gibt sie selbst frei — der Bericht nennt „freigegeben von der Erstellerin“.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-an-ines-eigene-403-zweite-person",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E8 an: Ersteller ≠ Freigeber — Ines hat K-2027-0002 erstellt und wird abgewiesen, obwohl sie das Recht hätte; der Satz nennt den Weg zum Kundenadministrator.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "zweite_person_noetig",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Freigabe durch eine zweite Person. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-an-jonas-gibt-frei-was-ines-erstellt",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E8 an: Jonas Wendlinger (Kundenadministrator) gibt die Korrektur der Erstellerin Ines frei — die zweite Person.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2027-01-25T10:05:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "kundenadministrator",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-an-jonas-eigene-403-ohne-weg",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E8 an gilt auch für den Kundenadministrator: seine eigene Korrektur gibt eine zweite Person frei. Der Weg nennt nie ihn selbst — gibt es keinen weiteren Kundenadministrator, bleibt der Satz ohne Weg.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "JW",
+          "name": "Jonas Wendlinger",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "kundenadministrator",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2024-03-12T00:00:00+01:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2027-01-25T10:05:00+01:00",
+        "ersteller": "JW",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "zweite_person_noetig",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Freigabe durch eine zweite Person."
+      }
+    },
+    {
+      "name": "ip15-an-system-vorschlag-ines-gibt-frei",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E14/E8 an: einen Vorschlag des Systems (Ersteller VoltPilot, ohne Person) gibt die Energiemanagerin als zweite Person frei — der Mensch prüft, was die Maschine vorschlägt.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": null,
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-aus-peter-gibt-eigene-frei",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "W10 Vorgabe aus: der Bearbeiter erfasst UND gibt frei — AP-03 bleibt wörtlich gültig.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "PH",
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-an-peter-403-energiemanager-noetig",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "E8 an: Freigeber ist Energiemanager oder Kundenadministrator — der Bearbeiter wird abgewiesen, auch bei einer fremden Korrektur; rolle_noetig nennt die kleinste Rolle, die bei an freigibt.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-an-peter-fremd-404-vor-vieraugen",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Geltungsbereich vor allem: eine Korrektur an Werk Ahrenberg ist für Peter 404 — die Vier-Augen-Prüfung verrät ihre Existenz nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "PH",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": false,
+        "http": 404,
+        "grund": "ausserhalb_geltungsbereich",
+        "standort": null,
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Diese Seite gibt es für Sie nicht."
+      }
+    },
+    {
+      "name": "ip15-aus-voss-403-nie",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Unterstützer nie, auch bei Vier-Augen aus: das Recht fehlt, bevor die Einstellung gefragt wird.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00",
+        "ersteller": null,
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-an-voss-403-nie",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Unterstützer nie, auch bei Vier-Augen an — derselbe Grund wie bei aus, nie „zweite Person“.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-aus-brunner-eigene-403-nie",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Unterstützer nie, unabhängig vom Umfang und davon, wer erstellt hat.",
+      "annahme": "Thomas Brunner hat die Korrektur erstellt — ein Unterstützer erfasst sie nie; der Fall zeigt, dass auch das die Freigabe nicht öffnet.",
+      "input": {
+        "benutzer": {
+          "kennung": "TB",
+          "name": "Thomas Brunner",
+          "konto": "partner",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "einrichten_und_bedienen",
+              "art": "installateur",
+              "gueltig_ab": "2026-11-24T09:40:00+01:00",
+              "gueltig_bis": "2026-12-15",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.freigeben",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-12-01T12:00:00+01:00",
+        "ersteller": "TB",
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-zurueck-aus-peter-eigene",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "AP-08 §5: der Bearbeiter widerruft seine eigene Korrektur, wenn Vier-Augen aus ist.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "PH",
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-zurueck-aus-peter-fremde-403",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "AP-08 §5: „Bearbeiter nur für eigene“ — die Korrektur von Ines widerruft Peter nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": false
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-zurueck-an-peter-eigene-403",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "AP-08 §5: „… wenn Vier-Augen aus“ — bei an widerruft der Bearbeiter auch seine eigene nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "PH",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-2",
+        "rolle": null,
+        "rolle_noetig": "energiemanager",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
+    },
+    {
+      "name": "ip15-zurueck-an-ines-eigene",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "AP-08 §5 wörtlich: den Widerruf beschränkt der Bedienablauf nur für den Bearbeiter — die Energiemanagerin widerruft auch bei an ihre eigene Korrektur (der Widerruf stellt den Stand VOR der Korrektur her).",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "IK",
+          "name": "Ines Kaltenbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "energiemanager",
+              "standorte": null,
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-12T10:15:00+01:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-1",
+        "rolle": "energiemanager",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "ip15-zurueck-an-voss-403-nie",
+      "familie": "vieraugen",
+      "ableitung": "korrektur_entscheiden",
+      "abnahme": null,
+      "why": "Unterstützer nie — auch beim Widerruf und unabhängig von der Einstellung.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "LV",
+          "name": "Lena Voss",
+          "konto": "plattform",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "unterstuetzer",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": "ansehen",
+              "art": "voltpilot",
+              "gueltig_ab": "2026-10-21T00:00:00+02:00",
+              "gueltig_bis": "2026-10-28",
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "korrektur.zuruecknehmen",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-22T12:00:00+02:00",
+        "ersteller": "IK",
+        "vieraugen": true
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
       }
     }
   ]

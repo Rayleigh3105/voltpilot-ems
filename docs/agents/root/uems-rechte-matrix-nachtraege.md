@@ -26,6 +26,10 @@ Neue Zeilen: `messstelle.ansehen` (AP-04), `ereignisse.ansehen` (AP-07, wie `mes
 `datenquelle.bearbeiten`, `datenquelle.zustaendigkeit`, `datenquelle.ansehen` (AP-06, eigene Gruppe
 „Datenquellen und Boxen“). Umbenannt: `messstelle.quelle_binden` → `messstelle.quelle` (AP-04 nennt
 die Kennung, W-R8). Keine neuen Zellen-Codes, `RechteAbleitung` Java/TS unverändert.
+Seit AP-08 IP-15: `ersatzwert.erfassen` (wie `korrektur.erfassen`, bis dahin nur zugeordnet), `korrektur.freigeben`,
+`vieraugen.einstellen` (AP-08 §4.8, vorher „Regeln ohne Zeile“) und `korrektur.zuruecknehmen` (eigener Abschnitt
+AP-08 §5); die Bedingung „Ersteller ≠ Freigeber, Bearbeiter nur bei aus“ ist die Familie `vieraugen` (neu in beiden
+Zwillingen, `uems-vieraugen-freigabe.md`).
 
 ## Die benannten Widersprüche (rechte-vectors.json)
 
@@ -37,6 +41,9 @@ die Kennung, W-R8). Keine neuen Zellen-Codes, `RechteAbleitung` Java/TS unverän
   (AP-06, EM U) + `geraet.einrichten`, keine eigene Zeile.
 - **W-R11** Unterstützer „Ansehen“ sieht die Herkunft (`messwerte.ansehen`), exportiert sie nicht
   (`export.standort` bleibt `-`, AP-07 nennt dafür AP-03).
+- **W-R12** ⚠ Den Ersatzwert widerruft `ersatzwert.erfassen` (AP-08 §4.8 wörtlich, Bearbeiter S), obwohl §5
+  „Bearbeiter nur für eigene, wenn Vier-Augen aus“ sagt — die Bedingung trägt nur `korrektur.zuruecknehmen`.
+  Captain-Frage bis zur Ersatzwert-Route (IP-16).
 
 ## Die Routen-Kommentare sind geprüft
 
