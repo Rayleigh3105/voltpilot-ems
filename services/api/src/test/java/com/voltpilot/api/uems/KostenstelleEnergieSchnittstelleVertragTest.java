@@ -48,6 +48,10 @@ class KostenstelleEnergieSchnittstelleVertragTest {
         formen.put("KostenstelleEnergiePosten", KostenstelleEnergieDto.Posten.class);
         formen.put("KostenstelleEnergieMessstelle", KostenstelleEnergieDto.MessstelleRef.class);
         formen.put("KostenstelleEnergieTag", KostenstelleEnergieDto.Tag.class);
+        formen.put("KostenstelleEnergieDoppelzaehlung", KostenstelleEnergieDto.Doppelzaehlung.class);
+        formen.put("KostenstelleEnergieEnthalten", KostenstelleEnergieDto.Enthalten.class);
+        formen.put("KostenstelleEnergieZeitraum", KostenstelleEnergieDto.Zeitraum.class);
+        formen.put("KostenstelleEnergieNichtPruefbar", KostenstelleEnergieDto.NichtPruefbar.class);
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -70,6 +74,16 @@ class KostenstelleEnergieSchnittstelleVertragTest {
         List<Object> alle = new ArrayList<>(block);
         alle.addAll(tag);
         assertThat(alle).containsExactlyInAnyOrderElementsOf(KostenstelleEnergieRegeln.GRUENDE);
+    }
+
+    /** Umfang und Kreis-Gründe der Warnung vor doppelter Zählung sind die der Regel — ein neues Wort braucht beide Stellen. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieWoerterDerDoppelzaehlungSindDieDerRegel() {
+        assertThat((List<String>) ((Map<String, Object>) eigenschaften("KostenstelleEnergieEnthalten").get("umfang"))
+                .get("enum")).containsExactlyElementsOf(KostenstelleDoppelzaehlung.UMFAENGE);
+        assertThat((List<String>) ((Map<String, Object>) eigenschaften("KostenstelleEnergieNichtPruefbar").get("grund"))
+                .get("enum")).containsExactly(BerechnetePeriode.FORMEL_KREIS, BerechnetePeriode.HAENGT_AN_KREIS);
     }
 
     /** Die Perioden sind die des Dienstes; die Route nennt ihr Recht — eingetragen, nicht durchgesetzt. */

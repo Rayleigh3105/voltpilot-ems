@@ -2,6 +2,7 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.KostenstelleProzessRepository.Art;
 import com.voltpilot.api.uems.MessstelleRepository.Messstelle;
 import com.voltpilot.api.web.dto.KostenstelleEnergieDto;
@@ -38,6 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
  *       {@link VerteilungRegeln#amTag}, {@link VerteilungRegeln#erbe} und die Summenregel der Bilanz.</li>
  *   <li>Die Herkunft je Posten baut {@link BilanzwertHerkunft} (E13); der Messwert-Herkunftsvertrag bleibt
  *       unberührt.</li>
+ *   <li>Welcher Posten in welchem bereits enthalten ist, sagt {@link KostenstelleDoppelzaehlung} (Captain-Entscheid
+ *       14.09.2026: warnen, keine Zahl ändern) — aus den Formeln je Tag, wie {@link BerechnetePeriodenLauf} sie rechnet,
+ *       und über dieselben Quellen wie die Zahlen. Die Warnung steht neben den Blöcken und berührt keinen.</li>
  * </ul>
  *
  * <p><b>Nichts wird gespeichert.</b> Ein verteilter Wert entsteht beim Lesen und trägt die Version seiner Quelle;
@@ -61,15 +65,17 @@ public class KostenstelleEnergieService {
     private final KostenstelleEnergieRepository lesen;
     private final MessstelleRepository messstellen;
     private final MessstelleWerteService werte;
+    private final BerechnetePeriodenLauf berechnete;
 
     private volatile Clock uhr = Clock.systemUTC();
 
     public KostenstelleEnergieService(KostenstelleProzessRepository objekte, KostenstelleEnergieRepository lesen,
-            MessstelleRepository messstellen, MessstelleWerteService werte) {
+            MessstelleRepository messstellen, MessstelleWerteService werte, BerechnetePeriodenLauf berechnete) {
         this.objekte = objekte;
         this.lesen = lesen;
         this.messstellen = messstellen;
         this.werte = werte;
+        this.berechnete = berechnete;
     }
 
     /** Nur für Tests: die Uhr für „heute“ und {@code berechnet_am}. */
@@ -137,6 +143,9 @@ public class KostenstelleEnergieService {
 
         KostenstelleEnergieRegeln.Urteil u = KostenstelleEnergieRegeln.energie(k.kennzeichen(), von, bis, ziele,
                 quellen);
+        // Die Warnung liest dieselben Quellen und rechnet NICHTS an u: sie steht neben den Blöcken.
+        KostenstelleDoppelzaehlung.Urteil doppelt = KostenstelleDoppelzaehlung.pruefe(k.kennzeichen(), von, bis, ziele,
+                quellen, formeln(von, bis, jetzt));
         String berechnetAm = MessstelleWerteRegeln.iso(jetzt, zone);
         Herkunft h = new Herkunft(k.kennzeichen(), periode, schluessel(periode, von), berechnetAm, zone,
                 nachKennzeichen, tageswerte, anlaesse, tagesHerkunft);
@@ -145,7 +154,59 @@ public class KostenstelleEnergieService {
                         k.gueltigBis()),
                 periode, tag, von, bis, zone.getId(), version, berechnetAm,
                 block(u.gemessen(), h, true), block(u.verteilt(), h, true), block(u.berechnet(), h, true),
-                block(u.summe(), h, true), block(u.nichtVerteilt(), h, false));
+                block(u.summe(), h, true), block(u.nichtVerteilt(), h, false), doppelzaehlung(doppelt));
+    }
+
+    // ------------------------------------------------------------------------------ Doppelzählung
+
+    /**
+     * Die Formeln der berechneten Messstellen je Tag aus {@link BerechnetePeriodenLauf#formelnJeTag} (dieselbe Stelle,
+     * die rechnet), zu Tagen mit gleichen Termen zusammengelegt. Beim {@code rest} geht ein Zufluss mit +, Abfluss und
+     * zugeordnet mit − ein ({@link BilanzAbleitung}); ein Messkanal-Term ist keine Messstelle.
+     */
+    private List<KostenstelleDoppelzaehlung.Formel> formeln(LocalDate von, LocalDate bis, Instant jetzt) {
+        Map<UUID, String> ziele = lesen.kennzeichenDerZiele();
+        List<KostenstelleDoppelzaehlung.Formel> raus = new ArrayList<>();
+        berechnete.formelnJeTag(TenantContext.get(), von, bis, jetzt).forEach((kz, jeTag) -> {
+            LocalDate ab = null;
+            LocalDate letzter = null;
+            List<KostenstelleDoppelzaehlung.Term> terme = null;
+            for (Map.Entry<LocalDate, BerechnetePeriodenLauf.TagesFormel> e : jeTag.entrySet()) {
+                List<KostenstelleDoppelzaehlung.Term> heute = e.getValue().terme().stream()
+                        .map(t -> term(t, ziele)).toList();
+                if (terme != null && terme.equals(heute) && e.getKey().equals(letzter.plusDays(1))) {
+                    letzter = e.getKey();
+                    continue;
+                }
+                if (terme != null) {
+                    raus.add(new KostenstelleDoppelzaehlung.Formel(kz, ab, letzter, terme));
+                }
+                ab = e.getKey();
+                letzter = ab;
+                terme = heute;
+            }
+            if (terme != null) {
+                raus.add(new KostenstelleDoppelzaehlung.Formel(kz, ab, letzter, terme));
+            }
+        });
+        return raus;
+    }
+
+    private static KostenstelleDoppelzaehlung.Term term(BerechnetePeriodenLauf.TermRef t, Map<UUID, String> ziele) {
+        String vorzeichen = t.rolle() == null ? t.vorzeichen()
+                : BilanzAbleitung.ZUFLUSS.equals(t.rolle()) ? "+" : KostenstelleDoppelzaehlung.VORZEICHEN_MINUS;
+        return new KostenstelleDoppelzaehlung.Term(t.entityId() != null ? null : t.kennzeichen(),
+                t.verteilungZiel() == null ? null : ziele.get(t.verteilungZiel()), t.anteil(), vorzeichen, t.faktor());
+    }
+
+    private static KostenstelleEnergieDto.Doppelzaehlung doppelzaehlung(KostenstelleDoppelzaehlung.Urteil u) {
+        return new KostenstelleEnergieDto.Doppelzaehlung(
+                u.enthalten().stream().map(e -> new KostenstelleEnergieDto.Enthalten(e.teil(), e.summe(), e.umfang(),
+                        e.kette(), e.zeitraeume().stream()
+                                .map(z -> new KostenstelleEnergieDto.Zeitraum(z.von(), z.bis())).toList(),
+                        e.satz())).toList(),
+                u.nichtPruefbar().stream().map(n -> new KostenstelleEnergieDto.NichtPruefbar(n.messstelle(), n.grund(),
+                        n.kette(), n.satz())).toList());
     }
 
     // ------------------------------------------------------------------------------ Tageswerte

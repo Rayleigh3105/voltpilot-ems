@@ -441,6 +441,171 @@ class KostenstelleEnergieApiTest {
         assertThat(sicht.path("nicht_verteilt").path("menge").decimalValue()).isEqualByComparingTo("7");
     }
 
+    // ============================================================================ Doppelzählung (Captain 14.09.2026)
+
+    /**
+     * <b>Die Zahlen sind vorher und nachher zeichengleich.</b> Die Warnung vor doppelter Zählung ändert keine Zahl: jede
+     * Antwort der Sicht ist bis zum neuen, letzten Feld {@code doppelzaehlung} Zeichen für Zeichen die Antwort, die der
+     * Stand VOR der Warnung (uems cf9b8bb7) auf dieselbe Welt gab ({@code uems/doppelzaehlung-vorher/}, Kennungen als
+     * {@code <id>}) — der Tag, der Monat und die Welt, in der MS-20 vollständig ist und die Summe 5 650 kWh MS-06 und MS-11
+     * wirklich doppelt zählt. Und der Abruf schreibt nichts (Bestandsschutz-Vergleich über jede Tabelle).
+     */
+    @Test
+    void dieZahlenSindZeichengleich() throws Exception {
+        Welt w = spritzguss("Werk Ahrenberg – Spritzguss (zeichengleich)", true);
+        Welt ohne = spritzguss("Werk Ahrenberg – Spritzguss (ohne Anteil MS-07)", false);
+        kostenstellenSicht.uhrStellen(Clock.fixed(Instant.parse("2026-10-31T23:15:00Z"), ZoneId.of("UTC")));
+        try {
+            Map<String, String> vorDemAbruf = Bestandsschutz.fingerabdruck(root, List.of());
+            String tag = roh(w, w.kostenstellen().get("4100"), "periode=tag&am=2026-10-16");
+            String monat = roh(w, w.kostenstellen().get("4100"), "periode=monat&am=2026-10-15");
+            String doppelt = roh(ohne, ohne.kostenstellen().get("4100"), "periode=tag&am=2026-10-16");
+            assertThat(Bestandsschutz.abweichungen(vorDemAbruf, Bestandsschutz.fingerabdruck(root, List.of())))
+                    .as("die Sicht schreibt nichts").isEmpty();
+
+            assertThat(ohneWarnung(tag)).as("Tag").isEqualTo(vorher("4100-tag.json"));
+            assertThat(ohneWarnung(monat)).as("Monat").isEqualTo(vorher("4100-monat.json"));
+            assertThat(ohneWarnung(doppelt)).as("MS-20 vollständig").isEqualTo(vorher("4100-tag-ohne-anteil-ms07.json"));
+            JsonNode sicht = MAPPER.readTree(doppelt);
+            assertThat(sicht.path("summe").path("menge").decimalValue()).as("die doppelte Summe bleibt stehen")
+                    .isEqualByComparingTo("5650");
+            assertThat(saetze(sicht)).containsExactly("MS-06 ist bereits in MS-20 enthalten",
+                    "MS-11 ist bereits in MS-20 enthalten");
+        } finally {
+            kostenstellenSicht.uhrStellen(Clock.systemUTC());
+        }
+    }
+
+    /**
+     * Der Referenzfall: MS-20 (= MS-06 + MS-11 + Anteil 4100 von MS-07) geht zu 100 % an 4100, MS-06, MS-11 und MS-07
+     * (70 %) auch — die Sicht nennt alle drei als bereits in MS-20 enthalten, ganz, an jedem Tag des Oktobers, mit dem Satz
+     * aus dem Vertrag; MS-08 steht in keiner Formel und wird nicht genannt. Der Anteil 4100 von MS-07 ist genau der Posten
+     * MS-07 an 4100 — auch wenn MS-20 ihn heute noch ohne Menge führt, ist er enthalten. 4200 hat keine Überdeckung.
+     */
+    @Test
+    void derReferenzfallWarntUndEineSaubereKostenstelleNicht() throws Exception {
+        Welt w = spritzguss("Werk Ahrenberg – Spritzguss (Referenzfall)", true);
+        JsonNode sicht = energie(w, w.kostenstellen().get("4100"), "periode=monat&am=2026-10-15");
+        JsonNode enthalten = sicht.path("doppelzaehlung").path("enthalten");
+        assertThat(saetze(sicht)).containsExactly("MS-06 ist bereits in MS-20 enthalten",
+                "MS-07 ist bereits in MS-20 enthalten", "MS-11 ist bereits in MS-20 enthalten");
+        for (JsonNode e : enthalten) {
+            assertThat(e.path("summe").asText()).isEqualTo("MS-20");
+            assertThat(e.path("umfang").asText()).isEqualTo("ganz");
+            assertThat(texte(e.path("kette"))).containsExactly("MS-20", e.path("teil").asText());
+            assertThat(e.path("zeitraeume").toString()).isEqualTo("[{\"von\":\"2026-10-01\",\"bis\":\"2026-10-31\"}]");
+        }
+        assertThat(sicht.path("doppelzaehlung").path("nicht_pruefbar")).isEmpty();
+        assertThat(kennzeichenDerPosten(sicht.path("berechnet"))).as("die Summe bleibt ein Posten").containsExactly("MS-20");
+        assertThat(kennzeichenDerPosten(sicht.path("gemessen"))).as("die Teile bleiben Posten")
+                .containsExactly("MS-06", "MS-08", "MS-11");
+
+        JsonNode sauber = energie(w, w.kostenstellen().get("4200"), "periode=monat&am=2026-10-15");
+        assertThat(kennzeichenDerPosten(sauber.path("verteilt"))).containsExactly("MS-07");
+        assertThat(sauber.path("doppelzaehlung").toString()).isEqualTo("{\"enthalten\":[],\"nicht_pruefbar\":[]}");
+    }
+
+    /**
+     * Der Mandantenzaun: die Formeln und Verteilungen eines fremden Kundenbereichs erzeugen keine Warnung — Werk Y hat
+     * dieselben Kennzeichen an 4100, aber MS-20 ist dort gemessen und hat keine Formel.
+     */
+    @Test
+    void dieWarnungHaeltDenMandantenzaun() throws Exception {
+        spritzguss("Werk X – Spritzguss (fremd)", true);
+        Welt y = welt("Werk Y – Spritzguss");
+        for (String ms : List.of("MS-06", "MS-11", "MS-20")) {
+            messstelle(y, ms, null, null);
+        }
+        kostenstelle(y, "4100", "Spritzguss", "2026-10-01", null);
+        for (String ms : List.of("MS-06", "MS-11", "MS-20")) {
+            verteilung(y, ms, List.of(new Anteil("4100", "100", "2026-10-01", null)));
+            tageswert(y, ms, LocalDate.parse("2026-10-16"), "100");
+        }
+        JsonNode sicht = energie(y, y.kostenstellen().get("4100"), "periode=tag&am=2026-10-16");
+        assertThat(kennzeichenDerPosten(sicht.path("gemessen"))).containsExactly("MS-06", "MS-11", "MS-20");
+        assertThat(sicht.path("doppelzaehlung").toString()).isEqualTo("{\"enthalten\":[],\"nicht_pruefbar\":[]}");
+    }
+
+    /**
+     * Kostenstelle 4100 der Referenzdatei im Oktober 2026: MS-06, MS-08, MS-11 zu 100 %, MS-07 zu 70 % (30 % an 4200) und
+     * die Prozess-Summe MS-20 = MS-06 + MS-11 + Anteil 4100 von MS-07 zu 100 % — drei Tage mit Werten, MS-20 vom Lauf.
+     */
+    private Welt spritzguss(String name, boolean anteilVonMs07) {
+        Welt w = welt(name);
+        for (String ms : List.of("MS-06", "MS-07", "MS-08", "MS-11")) {
+            messstelle(w, ms, null, null);
+        }
+        kostenstelle(w, "4100", "Spritzguss", "2026-10-01", null);
+        kostenstelle(w, "4200", "Montage", "2026-10-01", null);
+        List<String[]> terme = new ArrayList<>(List.of(new String[] {"messstelle", "MS-06", null},
+                new String[] {"messstelle", "MS-11", null}));
+        if (anteilVonMs07) {
+            terme.add(new String[] {"verteilung", "MS-07", "4100"});
+        }
+        summe(w, "MS-20", terme);
+        verteilung(w, "MS-06", List.of(new Anteil("4100", "100", "2026-10-01", null)));
+        verteilung(w, "MS-07", List.of(new Anteil("4100", "70", "2026-10-01", null),
+                new Anteil("4200", "30", "2026-10-01", null)));
+        verteilung(w, "MS-08", List.of(new Anteil("4100", "100", "2026-10-01", null)));
+        verteilung(w, "MS-11", List.of(new Anteil("4100", "100", "2026-10-01", null)));
+        verteilung(w, "MS-20", List.of(new Anteil("4100", "100", "2026-10-01", null)));
+        LocalDate tag = LocalDate.parse("2026-10-15");
+        for (int i = 0; i < 3; i++) {
+            tageswert(w, "MS-06", tag.plusDays(i), "1800");
+            tageswert(w, "MS-07", tag.plusDays(i), "500");
+            tageswert(w, "MS-08", tag.plusDays(i), "300");
+            tageswert(w, "MS-11", tag.plusDays(i), "700");
+        }
+        lauf.lauf(Instant.parse("2026-10-20T12:00:00Z"));
+        return w;
+    }
+
+    /** Eine berechnete Summe (Fassung 1, {@code gewichtete_summe}); je Term {Art, Quelle, Verteilungsziel oder null}. */
+    private void summe(Welt w, String kennzeichen, List<String[]> terme) {
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?, ?, ?, 'berechnet', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', "
+                + "'Intervallmenge') RETURNING id", UUID.class, w.mandant(), kennzeichen, "Prozess Spritzguss gesamt");
+        UUID fassung = root.queryForObject("INSERT INTO messstelle_formel_fassung (tenant_id, messstelle_id, nummer, "
+                + "formel_typ, herkunft, actor_sub, actor_name, actor_art) VALUES (?, ?, 1, 'gewichtete_summe', 'anlage', "
+                + "'sub-test', 'Test', 'kunde') RETURNING id", UUID.class, w.mandant(), ms);
+        int position = 0;
+        for (String[] t : terme) {
+            root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, eingang_art, "
+                    + "quell_messstelle_id, vorzeichen, faktor, verteilung_ziel) VALUES (?, ?, ?, ?, ?, ?, '+', 1, ?)",
+                    w.mandant(), ms, fassung, position++, t[0], w.messstellen().get(t[1]),
+                    t[2] == null ? null : w.kostenstellen().get(t[2]));
+        }
+        w.messstellen().put(kennzeichen, ms);
+    }
+
+    /** Die Antwort OHNE das letzte Feld {@code doppelzaehlung} — als Text, sonst unberührt. */
+    private static String ohneWarnung(String antwort) {
+        int feld = antwort.lastIndexOf(",\"doppelzaehlung\":");
+        assertThat(feld).as("doppelzaehlung ist das letzte Feld").isPositive();
+        assertThat(antwort.indexOf("\"nicht_verteilt\":")).as("…nach nicht_verteilt").isLessThan(feld);
+        return antwort.substring(0, feld) + "}";
+    }
+
+    private static String vorher(String datei) throws Exception {
+        String text = new String(KostenstelleEnergieApiTest.class.getResourceAsStream("/uems/doppelzaehlung-vorher/" + datei)
+                .readAllBytes(), StandardCharsets.UTF_8);
+        return text.endsWith("\n") ? text.substring(0, text.length() - 1) : text;
+    }
+
+    private static List<String> saetze(JsonNode sicht) {
+        List<String> raus = new ArrayList<>();
+        sicht.path("doppelzaehlung").path("enthalten").forEach(e -> raus.add(e.path("satz").asText()));
+        return raus;
+    }
+
+    /** Die Antwort als Text, jede Kennung als {@code <id>} — die Welt legt sie je Lauf neu an. */
+    private String roh(Welt w, UUID kostenstelle, String abfrage) throws Exception {
+        MvcResult r = abrufen(w, kostenstelle, abfrage);
+        String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(r.getResponse().getStatus()).as(text).isEqualTo(200);
+        return text.replaceAll("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<id>");
+    }
+
     // ================================================================ Welten
 
     private record Welt(UUID mandant, UUID unternehmen, UUID anlage, Map<String, UUID> messstellen,

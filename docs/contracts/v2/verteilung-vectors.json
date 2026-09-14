@@ -21,9 +21,10 @@
     "Fassung 1.2 (AP-10 IP-11, 14.09.2026): Regel `kostenstelle` — was eine Kostenstelle über eine",
     "Periode bekommt (gemessen · verteilt · berechnet) und was daneben NIEMANDEM gehört (nicht verteilt),",
     "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar).",
-    "Fassung 1.3 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`."
+    "Fassung 1.3 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`.",
+    "Fassung 1.4 (Captain-Entscheid 14.09.2026, „Warnen — die Sicht sagt, welcher Posten in welchem enthalten ist, und ändert keine Zahl.“): Regel `doppelzaehlung` — welcher Posten einer Kostenstelle an welchen Tagen bereits in einem anderen enthalten ist (aus den Formeln je Tag, rekursiv über die Abhängigkeitsordnung, Kreis benannt), ganz oder zum Teil, nie mit einer Menge; Sätze `doppelt_*`. Die Regel `kostenstelle` und jede ihrer Erwartungen bleiben zeichengleich."
   ],
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "$schema_datei": "./verteilung.schema.json",
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -39,7 +40,8 @@
     "Eine Verteilung ist eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage, Muster A), Summe je Tag genau 100 % an jedem Tag mit Zeilen, sonst „nicht verteilt“; sie wirkt je Tag (Tagesanteile, nie Stichtag) und endet mit ihrem Ziel (E11/E12). Keine dynamischen Schlüssel.",
     "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14).",
     "Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens einer Nachkommastelle, jedes Ziel besteht am Tag, die Summe ist 100 %; eine neue Zeile endet mit ihrem Ziel, und an keinem Tag danach bleibt ein Rest ≠ 100 %; derselbe Satz noch einmal ändert nichts; ein Satz am Tag der laufenden Fassung ist nur als Korrektur erlaubt (aufheben + neu); ein leerer Satz heißt ab dem Tag „nicht verteilt“.",
-    "Die Kostenstellen-Sicht (`kostenstelle`, AP-10 IP-11) nennt vier Herkünfte nebeneinander: gemessen (eine gemessene Messstelle zu 100 %), verteilt (zu einem Anteil unter 100 %), berechnet (eine berechnete Messstelle, gleich zu welchem Anteil) und nicht verteilt (ein Tageswert ohne Verteilungszeile) — nicht verteilt gehört keiner Kostenstelle, wird nie aufgeteilt und nie weggelassen; jeder Tag mit seinem Anteil, die Periode ist die Summe der Tage; ohne Zuordnung keine Menge, nie 0."
+    "Die Kostenstellen-Sicht (`kostenstelle`, AP-10 IP-11) nennt vier Herkünfte nebeneinander: gemessen (eine gemessene Messstelle zu 100 %), verteilt (zu einem Anteil unter 100 %), berechnet (eine berechnete Messstelle, gleich zu welchem Anteil) und nicht verteilt (ein Tageswert ohne Verteilungszeile) — nicht verteilt gehört keiner Kostenstelle, wird nie aufgeteilt und nie weggelassen; jeder Tag mit seinem Anteil, die Periode ist die Summe der Tage; ohne Zuordnung keine Menge, nie 0.",
+    "Die Kostenstellen-Sicht warnt vor doppelter Zählung (`doppelzaehlung`, Captain-Entscheid 14.09.2026) und ändert keine Zahl: je Tag ist ein Posten in einer berechneten Messstelle derselben Kostenstelle enthalten, wenn beide an diesem Tag eine Zeile an sie haben und die Formel des Tages ihn trägt — auch über Stufen. Ganz, wenn Anteil der Summe × Beitrag des Terms ≥ 100 % ist, sonst zum Teil; ein Term „Anteil 4200 von MS-07“ trägt einen anderen Teil als der Posten MS-07 an 4100, ein abgezogener Term ist nicht enthalten. Ein Kreis wird benannt, nie aufgelöst."
   ],
   "vokabulare": {
     "term_art": [
@@ -94,6 +96,14 @@
       "kein_tageswert",
       "quelle_keine_werte",
       "rest_unplausibel"
+    ],
+    "doppelzaehlung_umfang": [
+      "ganz",
+      "teilweise"
+    ],
+    "doppelzaehlung_grund": [
+      "formel_kreis",
+      "haengt_an_kreis"
     ]
   },
   "regeln": {
@@ -102,7 +112,17 @@
     "anteil_max": 100,
     "anteil_nachkommastellen": 1,
     "menge_nachkommastellen": 6,
-    "ziel_art": "kostenstelle"
+    "ziel_art": "kostenstelle",
+    "doppelzaehlung_verbotene_woerter": [
+      "Term",
+      "Überdeckung",
+      "Fassung",
+      "Koeffizient",
+      "Aggregat",
+      "doppelzaehlung",
+      "formel_kreis",
+      "haengt_an_kreis"
+    ]
   },
   "saetze": {
     "rest_zugeordnet": "{menge} {einheit} sind keiner Messstelle zugeordnet",
@@ -114,7 +134,11 @@
     "nicht_verteilt": "nicht verteilt",
     "verteilt": "verteilt ({anteil} % von {quelle})",
     "erbe_rest_unplausibel": "keine Werte (Rest unplausibel)",
-    "verteilung_geaendert": "Verteilung geändert am {tag}"
+    "verteilung_geaendert": "Verteilung geändert am {tag}",
+    "doppelt_enthalten": "{teil} ist bereits in {summe} enthalten",
+    "doppelt_enthalten_teilweise": "{teil} ist zum Teil bereits in {summe} enthalten",
+    "doppelt_kreis": "Ob {messstelle} einen anderen Posten enthält, ist nicht prüfbar: ihre Formel führt im Kreis ({kette})",
+    "doppelt_haengt_an_kreis": "Ob {messstelle} einen anderen Posten enthält, ist nicht prüfbar: sie baut auf einer Formel auf, die im Kreis führt ({kette})"
   },
   "zwillinge": {
     "satz": [
@@ -150,11 +174,15 @@
     ],
     "kostenstelle": [
       "java"
+    ],
+    "doppelzaehlung": [
+      "java"
     ]
   },
   "zwillinge_grund": {
     "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel.",
-    "kostenstelle": "Die Kostenstellen-Sicht (gemessen · verteilt · berechnet · nicht verteilt) wird SERVERSEITIG aus den gespeicherten Tageswerten gebildet und reist fertig über `GET /api/v1/unternehmen/kostenstellen/{id}/energie` ins Portal; die eine Regel dafür lebt in `KostenstelleEnergieRegeln` (sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz an). Ein TS-Zwilling wäre eine zweite Umsetzung derselben Regel — das Portal zeigt nur an (IP-15)."
+    "kostenstelle": "Die Kostenstellen-Sicht (gemessen · verteilt · berechnet · nicht verteilt) wird SERVERSEITIG aus den gespeicherten Tageswerten gebildet und reist fertig über `GET /api/v1/unternehmen/kostenstellen/{id}/energie` ins Portal; die eine Regel dafür lebt in `KostenstelleEnergieRegeln` (sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz an). Ein TS-Zwilling wäre eine zweite Umsetzung derselben Regel — das Portal zeigt nur an (IP-15).",
+    "doppelzaehlung": "Die Warnung vor doppelter Zählung gehört zur Kostenstellen-Sicht und wird wie sie SERVERSEITIG gebildet (`KostenstelleDoppelzaehlung`, gerufen in `KostenstelleEnergieService` mit den Formeln je Tag aus `BerechnetePeriodenLauf`); sie reist fertig mit Satz über `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (`doppelzaehlung`) ins Portal. Ein TS-Zwilling wäre eine zweite Umsetzung — das Portal zeigt nur an (IP-15)."
   },
   "leseweg": {
     "herkunft": "UEMS AP-10 §8 IP-5 („Anteil über den AP-08-IP-7-Leseweg — bis dahin 422 `anteil_wartet_auf_ap08`, benannt, nie geraten; Verteilungs-Term liest den Anteil des Tages“), §1.1 von messstelle-formel.md; nachgetragen mit AP-10 IP-5 am 13.09.2026. Die zweite Ablehnung `verteilung_wartet_auf_ip8` ist die Anweisung von firstmate vom 13.09.2026: beim Bau fehlte neben AP-08 IP-7 auch die Verteilung selbst (AP-10 IP-8) — zwei fehlende Fähigkeiten, zwei Sätze. Eingelöst mit AP-10 IP-8 am 13.09.2026: der Zweig `verteilung` liest die Zeilen der Verteilung am Tag (`messstelle_verteilung`) und rechnet den Anteil über `VerteilungRegeln.term` — `verteilung_wartet_auf_ip8` gibt es nicht mehr.",
@@ -1231,13 +1259,2228 @@
             "kennzeichen": [],
             "fehler": "nicht_verteilt"
           }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Referenzfall: MS-06, MS-07 (70 % an 4100) und MS-11 sind an 4100 bereits in MS-20 enthalten — MS-08 nicht; keine Zahl der Sicht ändert sich",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "4200 ist sauber: MS-07 (30 %) und MS-12 stecken in keinem Posten von 4200 — keine Warnung",
+          "eingang": {
+            "kostenstelle": "4200",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Ein Term „Anteil 4200 von MS-07“ trägt einen ANDEREN Teil als der Posten MS-07 an 4100 — der ist nicht enthalten",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4200",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Die Summe geht nur zu 50 % an 4100: ihre Teile sind dort zum Teil enthalten — der Satz nennt keine Menge",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "50",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "50",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "teilweise",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist zum Teil bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "teilweise",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist zum Teil bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "teilweise",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist zum Teil bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Liest die Summe MS-07 ganz, ist der Posten MS-07 (70 % an 4100) ganz darin enthalten",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Liest die Summe nur den positiven Teil eines Messwerts, ist der Posten zum Teil enthalten",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "positiv",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "teilweise",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist zum Teil bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Rekursiv: MS-20 = MS-23 + Anteil 4100 von MS-07, MS-23 = MS-06 + MS-11 ohne eigene Kostenstelle — MS-06 und MS-11 stecken eine Ebene tiefer in MS-20",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-23",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-23",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-23",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-23",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Rekursiv mit der Zwischenstufe an derselben Kostenstelle: jede Stufe nennt, was sie enthält",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-23",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-23",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-23",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-23",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-23",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-23",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-23"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-23 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-06",
+                "summe": "MS-23",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-23",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-23 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-23",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-23",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-23 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Je Tag: geht MS-06 ab 15.10. an 4200, ist es an 4100 nur bis 14.10. in MS-20 enthalten",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-10-14",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-08",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-12",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-07",
+                    "verteilung_ziel": "4100",
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [
+              {
+                "teil": "MS-06",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-06"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-14"
+                  }
+                ],
+                "satz": "MS-06 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-07",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-07"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-07 ist bereits in MS-20 enthalten"
+              },
+              {
+                "teil": "MS-11",
+                "summe": "MS-20",
+                "umfang": "ganz",
+                "kette": [
+                  "MS-20",
+                  "MS-11"
+                ],
+                "zeitraeume": [
+                  {
+                    "von": "2026-10-01",
+                    "bis": "2026-10-31"
+                  }
+                ],
+                "satz": "MS-11 ist bereits in MS-20 enthalten"
+              }
+            ],
+            "nicht_pruefbar": []
+          }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Ein Kreis wird benannt abgelehnt: MS-20 liest MS-23, MS-23 liest MS-20 — und MS-24, das MS-20 liest, hängt daran; nichts wird still als „nicht enthalten“ gemeldet",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2026-10-01",
+            "bis": "2026-10-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-06",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-11",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-20",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-24",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-20",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-06",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-23",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-23",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-20",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-24",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-20",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-11",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [],
+            "nicht_pruefbar": [
+              {
+                "messstelle": "MS-20",
+                "grund": "formel_kreis",
+                "kette": [
+                  "MS-20",
+                  "MS-23",
+                  "MS-20"
+                ],
+                "satz": "Ob MS-20 einen anderen Posten enthält, ist nicht prüfbar: ihre Formel führt im Kreis (MS-20 → MS-23 → MS-20)"
+              },
+              {
+                "messstelle": "MS-24",
+                "grund": "haengt_an_kreis",
+                "kette": [
+                  "MS-24",
+                  "MS-20",
+                  "MS-23",
+                  "MS-20"
+                ],
+                "satz": "Ob MS-24 einen anderen Posten enthält, ist nicht prüfbar: sie baut auf einer Formel auf, die im Kreis führt (MS-24 → MS-20 → MS-23 → MS-20)"
+              }
+            ]
+          }
         }
       ],
       "beschreibend": {
         "anzeige": "Prozess Spritzguss gesamt · Oktober 2026 · 88 630 kWh (gemessen 77 500 + verteilt 11 130)",
         "ms20_kwh": 88630.0
       },
-      "annahmen": []
+      "annahmen": [
+        "Regel `doppelzaehlung`: MS-12 an 4200 und die Tage im Oktober 2026 wie in der Referenzdatei; die Varianten „Anteil 4200 von MS-07“, MS-20 zu 50 % an 4100/4300, MS-07 als ganzer Term, der positive Teil von MS-11, MS-23 (Zwischenstufe), MS-24, der Kreis MS-20 ⟷ MS-23 und MS-06 ab 15.10. an 4200 sind Annahmen."
+      ]
     },
     {
       "name": "f12-kostenstelle-9000-endet-31-12-2026",
@@ -4074,12 +6317,127 @@
               ]
             }
           }
+        },
+        {
+          "regel": "doppelzaehlung",
+          "name": "Ein abgezogener Eingang ist nicht enthalten: der Rest MS-22 = MS-16 − MS-17 − MS-18 und MS-17 an 4300 zählen nichts doppelt — keine Warnung",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-10-18",
+            "bis": "2026-10-18",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-17",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-18",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              },
+              {
+                "messstelle": "MS-22",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": []
+              }
+            ],
+            "formeln": [
+              {
+                "messstelle": "MS-22",
+                "gueltig_ab": null,
+                "gueltig_bis": null,
+                "terme": [
+                  {
+                    "messstelle": "MS-16",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "+",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-17",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "-",
+                    "faktor": "1"
+                  },
+                  {
+                    "messstelle": "MS-18",
+                    "verteilung_ziel": null,
+                    "anteil": "gesamt",
+                    "vorzeichen": "-",
+                    "faktor": "1"
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "enthalten": [],
+            "nicht_pruefbar": []
+          }
         }
       ],
       "beschreibend": {
         "anzeige": "Kostenstelle 4300 Logistik · 18.10.2026 · gemessen 58 kWh (MS-17, korrigiert Version 2) · nicht verteilt: MS-16 100 kWh, MS-22 Lindach nicht zugeordnet 12 kWh (Version 1: 10 kWh)"
       },
-      "annahmen": []
+      "annahmen": [
+        "Regel `doppelzaehlung`: MS-22 zu 100 % an 4300 ab 15.10.2026 ist eine Annahme (wie F3/F6); die Terme des Rests kommen aus der Stellung (Zufluss +, zugeordnet −)."
+      ]
     }
   ]
 }
