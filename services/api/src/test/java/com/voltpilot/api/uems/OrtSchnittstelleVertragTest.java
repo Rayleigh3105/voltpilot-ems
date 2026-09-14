@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.web.dto.AnlageUmzugDto;
 import com.voltpilot.api.web.dto.OrtDto;
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,6 +92,24 @@ class OrtSchnittstelleVertragTest {
         assertThat(map(schema("OrtsbaumDirektAmStandort"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(OrtsbaumLesemodell.DirektAmStandort.class.getRecordComponents())
                         .map(c -> c.getName()).toList());
+    }
+
+    /** Anlage zuordnen/umziehen (IP-11): Rumpf und Antwort sind die Formen der Schnittstelle. */
+    @Test
+    void dieFormenDesUmzugsSindDieDerSchnittstelle() {
+        Map<String, Class<?>> formen = Map.of(
+                "AnlageUmzugAnfrage", AnlageUmzugDto.Anfrage.class,
+                "AnlageUmzug", AnlageUmzugDto.Umzug.class,
+                "AnlageUmzugStandort", AnlageUmzugDto.StandortRef.class,
+                "AnlageUmzugZuordnung", AnlageUmzugDto.Zuordnung.class);
+        formen.forEach((name, form) -> {
+            List<String> felder = Arrays.stream(form.getRecordComponents()).map(c -> c.getName()).toList();
+            assertThat(map(schema(name), "properties").keySet()).as(name).containsExactlyInAnyOrderElementsOf(felder);
+        });
+        assertThat(liste(schema("AnlageUmzug"), "properties", "bleibt", "items", "enum"))
+                .containsExactlyElementsOf(AnlageUmzugService.BLEIBT);
+        assertThat(OrtAbgelehnt.CODES).contains("vor_dem_ersten_intervall", "objekt_archiviert", "gleicher_tag",
+                "ziel_ist_bisheriger_eltern");
     }
 
     @SuppressWarnings("unchecked")

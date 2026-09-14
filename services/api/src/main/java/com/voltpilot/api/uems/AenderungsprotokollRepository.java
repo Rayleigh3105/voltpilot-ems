@@ -145,7 +145,7 @@ public class AenderungsprotokollRepository {
             SELECT 'ort', o.id, o.art,
                    o.objekt_id, o.objekt_art,
                    coalesce(s.kurzzeichen, ok.kurzzeichen), coalesce(u.name, s.name, ok.name, si.name),
-                   (o.gilt_ab::timestamp AT TIME ZONE ?::text), o.created_at, o.rueckwirkend, NULL,
+                   (o.gilt_ab::timestamp AT TIME ZONE ?::text), o.created_at, o.rueckwirkend, o.neu->>'begruendung',
                    NULL, o.alt::text, o.neu::text,
                    o.akteur_name,
                    NULL,

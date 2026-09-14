@@ -76,7 +76,7 @@ public final class AenderungSatz {
             case "archiviert" -> was + " archiviert";
             case "wiederhergestellt" -> was + " wiederhergestellt";
             case "geloescht" -> was + " gelöscht";
-            case "verschoben" -> was + " verschoben" + zielZusatz(neu);
+            case "verschoben" -> verschoben(was, bezugArt, neu);
             case "korrigiert" -> "Zuordnung berichtigt" + zielZusatz(neu);
             case "flaeche_geaendert" -> "Bezugsfläche geändert" + wechsel(text(alt, "flaeche_m2"),
                     text(neu, "flaeche_m2"), " m²");
@@ -128,6 +128,29 @@ public final class AenderungSatz {
                     : label + " „" + vorher + "“ → „" + nachher + "“");
         });
         return teile.isEmpty() ? "" : ": " + String.join(", ", teile);
+    }
+
+    /**
+     * „verschoben“: ein Ort an einen anderen Knoten (Kennzeichen des Ziels) — oder die Zuordnung
+     * einer ANLAGE (AP-02 IP-9/IP-11), die jede Seite erzählt: an der Anlage „Standort zugeordnet:
+     * Werk Ahrenberg Nord (ST-3)“, am neuen Standort „Anlage zugeordnet: …“, am bisherigen
+     * „Anlage zieht um: … → Werk Ahrenberg Nord“.
+     */
+    private static String verschoben(String was, String bezugArt, JsonNode neu) {
+        String anlage = text(neu, "anlage_name");
+        String richtung = text(neu, "richtung");
+        if ("standort".equals(bezugArt) && anlage != null && richtung != null) {
+            String nach = text(neu, "nach_standort_name");
+            return "hinaus".equals(richtung)
+                    ? "Anlage zieht um: " + anlage + (nach == null ? "" : " → " + nach)
+                    : "Anlage zugeordnet: " + anlage;
+        }
+        String standort = text(neu, "standort_name");
+        if ("anlage".equals(bezugArt) && standort != null) {
+            String kz = text(neu, "standort_kurzzeichen");
+            return "Standort zugeordnet: " + standort + (kz == null ? "" : " (" + kz + ")");
+        }
+        return was + " verschoben" + zielZusatz(neu);
     }
 
     private static String zielZusatz(JsonNode neu) {

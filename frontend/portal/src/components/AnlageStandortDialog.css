@@ -1,0 +1,105 @@
+/*
+ * „Anlage zuordnen“ (UEMS AP-02 IP-11, Mockup T6b). Die Schale ist `vp-sd` aus dem
+ * Standort-Dialog, Kopf und Verlauf die aus „Fläche ändern“; hier die Folgen-Karte mit
+ * ihren zwei Teilen „Das ändert sich“ · „Das bleibt, wie es ist“.
+ * ⚠ 375 px: jeder Satz bricht um, nie über den Rand (`min-width: 0`, `overflow-wrap`).
+ */
+
+.vp-au-folgen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-au-teil {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1, 4px);
+  min-width: 0;
+}
+
+.vp-au-teil h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-au-teil ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1, 4px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-au-teil li {
+  display: flex;
+  gap: var(--vp-c-space-2);
+  align-items: baseline;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-au-aendert li::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 0.5em;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+  align-self: flex-start;
+}
+
+.vp-au-haken {
+  flex: none;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-au-befehl {
+  margin: var(--vp-c-space-1, 4px) 0 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-au-folgen-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-au-ergebnis {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.vp-au-verlauf-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-au-verlauf-zeitraum {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-13, 13px);
+}
+
+.vp-au-chip {
+  flex: none;
+  padding: 0 var(--vp-c-space-2);
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-13, 13px);
+}

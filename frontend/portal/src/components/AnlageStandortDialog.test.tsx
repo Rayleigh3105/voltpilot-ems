@@ -1,0 +1,215 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { api, ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import { standortDerAnlage } from '../anlageStandort';
+import { FOLGEN_WAEHLEN } from '../anlageUmziehen';
+import { ahrenbergHeute, FIXTURE_IDS, werkAhrenberg } from '../test/standorteFixtures';
+import { AnlageStandortDialog } from './AnlageStandortDialog';
+import { AnlageStandortZeile } from './AnlageStandortZeile';
+
+/**
+ * UEMS AP-02 IP-11 — Dialog T6b „Anlage zuordnen“ und sein Einstieg an der Zeile „Standort“
+ * (T6a). Halle 2 (AN-2) zieht von Werk Ahrenberg (ST-1) nach Werk Ahrenberg Nord (ST-3); die
+ * Folgen kommen aus der Vorschau des Servers, der Dialog setzt sie nur in Sätze.
+ */
+
+const NORD = '5a1d0000-0000-4000-8000-000000000003';
+const ST1 = { id: FIXTURE_IDS.st1, kurzzeichen: 'ST-1', name: 'Werk Ahrenberg' };
+const ST3 = { id: NORD, kurzzeichen: 'ST-3', name: 'Werk Ahrenberg Nord' };
+const HALLE_2 = 'Werk Ahrenberg – Halle 2';
+
+function mitNord(): StandorteAmStichtag {
+  const a = ahrenbergHeute();
+  return {
+    ...a,
+    stichtag: '2027-02-20',
+    standorte: [...a.standorte, werkAhrenberg({ id: NORD, kurzzeichen: 'ST-3', name: 'Werk Ahrenberg Nord', anlagen: [] })],
+  };
+}
+
+function umzug(over: Partial<AnlageUmzug> = {}): AnlageUmzug {
+  return {
+    anlageId: FIXTURE_IDS.an2,
+    anlageName: HALLE_2,
+    bisher: ST1,
+    neu: ST3,
+    gueltigAb: '2027-02-20',
+    gueltigBis: null,
+    danach: null,
+    rueckwirkung: { art: 'ab_heute', tage: 0, abzeichen: null },
+    zuordnungen: [
+      { standort: ST1, gueltigAb: '2026-10-01', gueltigBis: '2027-02-19', zustand: 'beendet' },
+      { standort: ST3, gueltigAb: '2027-02-20', gueltigBis: null, zustand: 'gueltig' },
+    ],
+    bleibt: ['box', 'topics', 'freigaben', 'betriebsmodell', 'ladepark_rahmen', 'fahrplaene', 'messstellen'],
+    boxen: 1,
+    netzanschluss: { id: 'na-2', kennzeichen: 'NA-2' },
+    steuern: null,
+    befehle: 0,
+    begruendung: null,
+    protokoll: [],
+    ...over,
+  };
+}
+
+function oeffne(onClose = vi.fn(), onGespeichert = vi.fn()) {
+  render(
+    <AnlageStandortDialog
+      open
+      anlageId={FIXTURE_IDS.an2}
+      anlageName={HALLE_2}
+      standorte={mitNord()}
+      onClose={onClose}
+      onGespeichert={onGespeichert}
+    />,
+  );
+  return { onClose, onGespeichert };
+}
+
+function waehleNord() {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Neuer Standort *' }));
+  fireEvent.click(screen.getByRole('option', { name: /Werk Ahrenberg Nord \(ST-3\)/ }));
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('Dialog „Anlage zuordnen“ (T6b)', () => {
+  it('T6: die Folgen-Karte nennt, was sich ändert, die vier Dinge, die bleiben, und dass nichts gesendet wird', async () => {
+    const vorschau = vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    oeffne();
+    expect(screen.getByText('Anlage zuordnen')).toBeInTheDocument();
+    expect(screen.getByText(FOLGEN_WAEHLEN)).toBeInTheDocument();
+    expect(vorschau).not.toHaveBeenCalled();
+
+    waehleNord();
+    const karte = await screen.findByTestId('umzug-folgen');
+    expect(vorschau).toHaveBeenCalledWith(FIXTURE_IDS.an2, NORD, '2027-02-20');
+    expect(within(karte).getByRole('heading', { name: 'Das ändert sich' })).toBeInTheDocument();
+    expect(within(karte).getByText('Ab 20.02.2027 gehört die Anlage zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
+    expect(within(karte).getByText('Bis 19.02.2027 gehört sie weiter zu Werk Ahrenberg (ST-1).')).toBeInTheDocument();
+
+    const bleibt = within(karte).getByRole('heading', { name: 'Das bleibt, wie es ist' }).parentElement!;
+    for (const ding of [/VoltPilot-Box/, /Datenwege/, /Freigaben/, /Betriebsmodell/]) {
+      expect(within(bleibt).getByText(ding)).toBeInTheDocument();
+    }
+    expect(within(bleibt).getByText('Messstellen bleiben an ihrem Ort.')).toBeInTheDocument();
+    expect(within(bleibt).getByText('Die Anlage bleibt an ihrem Netzanschluss NA-2.')).toBeInTheDocument();
+    expect(within(karte).getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeInTheDocument();
+  });
+
+  it('speichert mit Begründung, zeigt die Zuordnungen des Servers und meldet sich mit „Fertig“', async () => {
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    const put = vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(
+      umzug({ begruendung: 'Halle 2 gehört ab jetzt zu Nord.', protokoll: [{ id: 7, objektArt: 'anlage', objektId: FIXTURE_IDS.an2 }] }),
+    );
+    const { onGespeichert } = oeffne();
+    waehleNord();
+    await screen.findByTestId('umzug-folgen');
+    fireEvent.change(screen.getByLabelText('Begründung (freiwillig)'), { target: { value: '  Halle 2 gehört ab jetzt zu Nord. ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+
+    expect(await screen.findByText('Zuordnung gespeichert')).toBeInTheDocument();
+    expect(put).toHaveBeenCalledWith(FIXTURE_IDS.an2, {
+      standortId: NORD,
+      gueltigAb: '2027-02-20',
+      begruendung: 'Halle 2 gehört ab jetzt zu Nord.',
+    });
+    expect(screen.getByText('Werk Ahrenberg – Halle 2 gehört ab 20.02.2027 zu Werk Ahrenberg Nord (ST-3).')).toBeInTheDocument();
+    const verlauf = screen.getByRole('heading', { name: 'Zuordnungen der Anlage' }).parentElement!;
+    expect(within(verlauf).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Werk Ahrenberg (ST-1)01.10.2026 – 19.02.2027beendet',
+      'Werk Ahrenberg Nord (ST-3)ab 20.02.2027gilt',
+    ]);
+    expect(screen.getByText('Es wird kein Befehl an die Anlage gesendet.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    expect(onGespeichert).toHaveBeenCalledWith(expect.objectContaining({ anlageId: FIXTURE_IDS.an2 }));
+  });
+
+  it('eine Ablehnung der Vorschau steht mit dem Satz des Servers am Feld — und keine Folgen-Karte', async () => {
+    const satz = 'Für den 20.02.2027 gibt es schon eine Zuordnung (Werk Ahrenberg Nord). Ändern Sie diese, statt eine zweite anzulegen.';
+    vi.spyOn(api, 'anlageStandortVorschau').mockRejectedValue(
+      new ApiError(409, satz, { code: 'gleicher_tag', message: satz, feld: 'gueltigAb' }),
+    );
+    oeffne();
+    waehleNord();
+    expect(await screen.findByText(satz)).toBeInTheDocument();
+    expect(screen.queryByTestId('umzug-folgen')).toBeNull();
+  });
+
+  it('lehnt der Eintrag ab, bleibt der Dialog offen und der Satz steht am Standort', async () => {
+    const satz = 'Werk Ahrenberg – Halle 2 ist bereits Werk Ahrenberg Nord zugeordnet.';
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    vi.spyOn(api, 'anlageStandortSetzen').mockRejectedValue(
+      new ApiError(400, satz, { code: 'ziel_ist_bisheriger_eltern', message: satz, feld: 'standortId' }),
+    );
+    oeffne();
+    waehleNord();
+    await screen.findByTestId('umzug-folgen');
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    expect(await screen.findByText(satz)).toBeInTheDocument();
+    expect(screen.queryByText('Zuordnung gespeichert')).toBeNull();
+  });
+
+  it('ohne Wahl: der Satz am Feld, keine Vorschau, kein Eintrag; „Abbrechen“ schließt', () => {
+    const vorschau = vi.spyOn(api, 'anlageStandortVorschau');
+    const put = vi.spyOn(api, 'anlageStandortSetzen');
+    const { onClose } = oeffne();
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    expect(screen.getByText('Bitte wählen Sie den Standort, zu dem die Anlage gehören soll.')).toBeInTheDocument();
+    expect(vorschau).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('Zeile „Standort“ in „Meine Anlage“ (T6a → T6b)', () => {
+  function zeile(antwort: StandorteAmStichtag, onGeaendert = vi.fn()) {
+    const a = standortDerAnlage(antwort, FIXTURE_IDS.an2)!;
+    render(
+      <dl>
+        <AnlageStandortZeile anlageStandort={a} antwort={antwort} onGeaendert={onGeaendert} />
+      </dl>,
+    );
+    return onGeaendert;
+  }
+
+  it('„Anderem Standort zuordnen“ öffnet den Dialog; nach „Fertig“ lädt „Meine Anlage“ neu', async () => {
+    const standorte = vi.spyOn(api, 'standorte');
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    vi.spyOn(api, 'anlageStandortSetzen').mockResolvedValue(umzug());
+    const onGeaendert = zeile(mitNord());
+    expect(standorte).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: `Anderem Standort zuordnen: ${HALLE_2}` }));
+    expect(screen.getByText('Anlage zuordnen')).toBeInTheDocument();
+    waehleNord();
+    await screen.findByTestId('umzug-folgen');
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
+    expect(onGeaendert).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('Zuordnung gespeichert')).toBeNull());
+  });
+
+  it('eine geplante Zuordnung steht in der Zeile: „bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)“', async () => {
+    const heute = mitNord();
+    const ahrenberg = heute.standorte[0];
+    heute.standorte[0] = {
+      ...ahrenberg,
+      anlagen: ahrenberg.anlagen.map((x) => (x.id === FIXTURE_IDS.an2 ? { ...x, gueltigBis: '2027-02-28' } : x)),
+    };
+    const maerz = mitNord();
+    maerz.stichtag = '2027-03-01';
+    maerz.standorte[0] = { ...maerz.standorte[0], anlagen: maerz.standorte[0].anlagen.filter((x) => x.id !== FIXTURE_IDS.an2) };
+    maerz.standorte[2] = {
+      ...maerz.standorte[2],
+      anlagen: [{ id: FIXTURE_IDS.an2, name: HALLE_2, gueltigAb: '2027-03-01', gueltigBis: null }],
+    };
+    const standorte = vi.spyOn(api, 'standorte').mockResolvedValue(maerz);
+    zeile(heute);
+    expect(await screen.findByText('bis 28.02.2027 · ab 01.03.2027: Werk Ahrenberg Nord (ST-3)')).toBeInTheDocument();
+    expect(standorte).toHaveBeenCalledWith('2027-03-01');
+  });
+});

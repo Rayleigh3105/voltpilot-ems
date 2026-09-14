@@ -2918,6 +2918,62 @@ export interface StandortAnlage {
   gueltigBis: string | null;
 }
 
+// ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
+
+/** Rumpf von `PUT /api/v1/sites/{id}/standort`; `gueltigAb` fehlend = heute am Ziel. */
+export interface AnlageUmzugAnfrage {
+  standortId: string;
+  gueltigAb?: string;
+  begruendung?: string;
+}
+
+export interface AnlageUmzugStandort {
+  id: string;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+
+/** Was eine Zuordnung nie berührt — die Codes des Servers in der Reihenfolge der Folgen-Karte. */
+export type AnlageUmzugBleibt =
+  | 'box'
+  | 'topics'
+  | 'freigaben'
+  | 'betriebsmodell'
+  | 'ladepark_rahmen'
+  | 'fahrplaene'
+  | 'messstellen';
+
+/**
+ * Vorschau (`GET …/standort/vorschau`) und Eintrag (`PUT …/standort`) antworten gleich: was die
+ * Zuordnung bewirkt. `protokoll` ist in der Vorschau leer, `befehle` immer 0.
+ */
+export interface AnlageUmzug {
+  anlageId: string;
+  anlageName: string;
+  /** Der Standort am „gültig ab“ ohne die Zuordnung; `null` = noch keiner. */
+  bisher: AnlageUmzugStandort | null;
+  neu: AnlageUmzugStandort;
+  gueltigAb: string;
+  /** Das Ende der neuen Zuordnung, von der laufenden geerbt; `null` = offen. */
+  gueltigBis: string | null;
+  /** Die schon geplante Zuordnung ab dem Tag nach `gueltigBis`. */
+  danach: AnlageUmzugStandort | null;
+  rueckwirkung: OrtRueckwirkung;
+  zuordnungen: {
+    standort: AnlageUmzugStandort;
+    gueltigAb: string;
+    gueltigBis: string | null;
+    zustand: 'gueltig' | 'geplant' | 'beendet' | 'aufgehoben';
+  }[];
+  bleibt: AnlageUmzugBleibt[];
+  boxen: number;
+  netzanschluss: { id: string; kennzeichen: string } | null;
+  steuern: { funktion: 'messen' | 'steuern'; zustand: string; standort: AnlageUmzugStandort } | null;
+  befehle: number;
+  begruendung: string | null;
+  protokoll: { id: number; objektArt: 'anlage' | 'standort'; objektId: string }[];
+}
+
 /**
  * Ein Standort zum Stichtag. Zeitgültig sind `bestand`, `anlagen`, die Zahlen
  * und die Fläche; Name, Adresse, Zeitzone, Zustand und `esFehlt` stehen wie
@@ -3073,7 +3129,12 @@ export interface OrtFehler {
     | 'gab_es_noch_nicht'
     | 'gleiche_flaeche'
     // Löschen ohne Historie (IP-15)
-    | 'loeschen_gesperrt';
+    | 'loeschen_gesperrt'
+    // Anlage zuordnen/umziehen (IP-11): die übrigen Gründe des Vertrags beim Eintrag.
+    | 'vor_dem_ersten_intervall'
+    | 'objekt_archiviert'
+    | 'gleicher_tag'
+    | 'ziel_ist_bisheriger_eltern';
   message: string;
   feld?: string;
   verweis?: OrtVerweis;
@@ -6554,6 +6615,21 @@ export const api = {
     request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/wiederherstellen`, {
       method: 'POST',
       ...(name ? { body: JSON.stringify({ name }) } : {}),
+    }),
+
+  /** Die Folgen, bevor eine Anlage einem Standort zugeordnet wird (UEMS AP-02 IP-11) — schreibt nichts. */
+  anlageStandortVorschau: (siteId: string, standortId: string, gueltigAb: string) =>
+    request<AnlageUmzug>(
+      `/api/v1/sites/${encodeURIComponent(siteId)}/standort/vorschau?standortId=${encodeURIComponent(
+        standortId,
+      )}&gueltigAb=${encodeURIComponent(gueltigAb)}`,
+    ),
+
+  /** Ordnet die Anlage ab `gueltigAb` einem Standort zu; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  anlageStandortSetzen: (siteId: string, body: AnlageUmzugAnfrage) =>
+    request<AnlageUmzug>(`/api/v1/sites/${encodeURIComponent(siteId)}/standort`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     }),
 
   /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */

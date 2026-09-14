@@ -121,6 +121,16 @@ class AenderungSatzTest {
                 .isEqualTo("Bereich verschoben: G-2");
         assertThat(satz("bereich", "korrigiert", null, "{\"kennzeichen\":\"G-2\"}"))
                 .isEqualTo("Zuordnung berichtigt: G-2");
+        // Die Zuordnung einer Anlage (IP-9/IP-11) erzählt jede Seite — Anlage, neuer, bisheriger Standort.
+        assertThat(satz("anlage", "verschoben", null, "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\","
+                + "\"standort_name\":\"Werk Ahrenberg Nord\",\"standort_kurzzeichen\":\"ST-3\"}"))
+                .isEqualTo("Standort zugeordnet: Werk Ahrenberg Nord (ST-3)");
+        assertThat(satz("standort", "verschoben", null,
+                "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\",\"richtung\":\"hinzu\"}"))
+                .isEqualTo("Anlage zugeordnet: Werk Ahrenberg – Halle 2");
+        assertThat(satz("standort", "verschoben", null, "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\","
+                + "\"richtung\":\"hinaus\",\"nach_standort_name\":\"Werk Ahrenberg Nord\"}"))
+                .isEqualTo("Anlage zieht um: Werk Ahrenberg – Halle 2 → Werk Ahrenberg Nord");
         assertThat(satz("bereich", "flaeche_geaendert", "{\"flaeche_m2\":1200}", "{\"flaeche_m2\":1400}"))
                 .isEqualTo("Bezugsfläche geändert: 1200 m² → 1400 m²");
         assertThat(satz("standort", "archiviert", null, null)).isEqualTo("Standort archiviert");

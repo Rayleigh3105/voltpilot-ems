@@ -50,6 +50,16 @@ public final class OrtAbgelehnt extends RuntimeException {
         GAB_ES_NOCH_NICHT("gab_es_noch_nicht", 422),
         /** Dieselbe Fläche gilt an dem Tag schon — es gäbe nichts zu ändern. */
         GLEICHE_FLAECHE("gleiche_flaeche", 400),
+        // Anlage zuordnen/umziehen (IP-11): die übrigen Gründe des Vertrags beim Eintrag
+        // (OrtsbaumAbleitung#eintrag, Vorgang VERSCHIEBEN) mit seinem Satz, Status nach §5.10.
+        /** „gültig ab“ liegt vor der ersten Zuordnung der Anlage. */
+        VOR_DEM_ERSTEN_INTERVALL("vor_dem_ersten_intervall", 422),
+        /** Am „gültig ab“ gilt keine Zuordnung der Anlage mehr (sie ist dort beendet). */
+        OBJEKT_ARCHIVIERT("objekt_archiviert", 409),
+        /** Am „gültig ab“ beginnt schon eine Zuordnung — ändern statt eine zweite anlegen. */
+        GLEICHER_TAG("gleicher_tag", 409),
+        /** Die Anlage gehört an dem Tag schon zu diesem Standort. */
+        ZIEL_IST_BISHERIGER_ELTERN("ziel_ist_bisheriger_eltern", 400),
         /**
          * Eine neue Anlage ohne {@code standortId} in einem Kundenbereich mit MEHREREN Standorten
          * (IP-9, §6.3: vorbelegt nur bei genau einem); {@code standorte} nennt die Auswahl.
