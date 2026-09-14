@@ -178,6 +178,18 @@ Die Sätze stehen in `saetze` der Vektor-Datei und als Konstanten in beiden Zwil
 
 Ein 403 `rolle_noetig` spricht den Wortlaut von `RechteAbleitung` — eine Rechte-Wahrheit, kein zweiter Satz hier.
 
+### Die Schnittstelle (IP-5)
+
+`/api/v1/kennzahlen` antwortet jede Ablehnung als `{code, message, …Fakten}` aus dem geschlossenen Satz
+`schnittstelle.ablehnungen` der Vektor-Datei (Vertrag = `KennzahlAbgelehnt` = OpenAPI `KennzahlFehler`): 400
+`anfrage_ungueltig` (`feld`) · `kennzeichen_format`; 403 `recht_fehlt` mit `rolle_noetig` — Satz und Rolle aus
+`RechteAbleitung.darf`, auch für den 403 „`rolle_noetig`“ oben; 404 `nicht_gefunden` — fremd ist nicht da, außerhalb des
+Geltungsbereichs mit dem Satz der Rechte-Ableitung; 409 `kennzeichen_belegt` · `archiviert` · `hat_werte` („KZ-0001 hat
+Werte — archivieren Sie sie.“) · `wird_gelesen`; 422 die Regel-Codes der Tabelle mit dem Satz der Regel. Eine Ablehnung
+schreibt nichts, die Vorschau schreibt nie (Nur-Lese-Transaktion). Gelöscht wird nur ohne Wert und ohne lesende Kennzahl;
+das Kennzeichen bleibt belegt. Das Protokoll bleibt bei seinen drei Wörtern: Anlegen = `kennzahl_fassung_eingetragen`
+(Fassung 1), Stammdaten ändern und Löschen = `kennzahl_geaendert` (beim Löschen ist `neu` leer).
+
 ## 13. Wörter (E12)
 
 Kennzahl · Berechnung · Fassung (datierter Stand der Berechnung) · Version (Stand des Werts) · Vorlage · Menge ·

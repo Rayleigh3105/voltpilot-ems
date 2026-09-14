@@ -264,6 +264,28 @@
     "wort_bezugsgroesse": "Bezugsgröße",
     "wort_kennzahl": "Kennzahl"
   },
+  "schnittstelle": {
+    "_comment": "Der GESCHLOSSENE Satz der Ablehnungen von /api/v1/kennzahlen (AP-11 IP-5): Vertrag = Java KennzahlAbgelehnt = OpenAPI KennzahlFehler (KennzahlSchnittstelleVertragTest). quelle schnittstelle: der Satz steht hier ({kennzahl}/{leser} füllt die Schnittstelle); quelle regel: der Satz kommt aus KennzahlRegeln (Vorlagen in `saetze`), eine Regel kann auch anfrage_ungueltig schärfen (nur_stammdaten, zusammenfassung_zu_klein); quelle rechte: der Satz der Rechte-Ableitung (RechteAbleitung.TEXTE, AP-03) — hier steht keiner. Ein 404 außerhalb des Geltungsbereichs spricht ebenfalls den Satz der Rechte-Ableitung. `fakten` nennt die Felder neben code und message.",
+    "ablehnungen": [
+      { "code": "anfrage_ungueltig", "status": 400, "quelle": "schnittstelle", "satz": "Die Anfrage ist unvollständig oder nennt ein Feld, das es hier nicht gibt.", "fakten": ["feld"] },
+      { "code": "kennzeichen_format", "status": 400, "quelle": "schnittstelle", "satz": "Ein Kennzeichen hat 2 bis 16 Zeichen: Großbuchstaben, Ziffern, Punkt, Bindestrich oder Schrägstrich.", "fakten": ["feld"] },
+      { "code": "recht_fehlt", "status": 403, "quelle": "rechte", "satz": null, "fakten": ["rolle_noetig"] },
+      { "code": "nicht_gefunden", "status": 404, "quelle": "schnittstelle", "satz": "Diese Kennzahl gibt es nicht.", "fakten": [] },
+      { "code": "kennzeichen_belegt", "status": 409, "quelle": "schnittstelle", "satz": "Dieses Kennzeichen trägt oder trug schon eine andere Kennzahl.", "fakten": ["feld"] },
+      { "code": "archiviert", "status": 409, "quelle": "schnittstelle", "satz": "Diese Kennzahl ist archiviert und wird nicht mehr geändert.", "fakten": [] },
+      { "code": "hat_werte", "status": 409, "quelle": "schnittstelle", "satz": "{kennzahl} hat Werte — archivieren Sie sie.", "fakten": ["werte"] },
+      { "code": "wird_gelesen", "status": 409, "quelle": "schnittstelle", "satz": "{kennzahl} wird von {leser} gelesen — archivieren Sie sie stattdessen.", "fakten": ["leser"] },
+      { "code": "periode_passt_nicht", "status": 422, "quelle": "regel", "satz": null, "fakten": ["grundperiode", "perioden"] },
+      { "code": "einheit_unpassend", "status": 422, "quelle": "regel", "satz": null, "fakten": [] },
+      { "code": "groesse_unbekannt", "status": 422, "quelle": "regel", "satz": null, "fakten": ["eingang"] },
+      { "code": "eingang_ausserhalb_geltung", "status": 422, "quelle": "regel", "satz": null, "fakten": ["eingang"] },
+      { "code": "formel_zyklus", "status": 422, "quelle": "regel", "satz": null, "fakten": ["kette"] },
+      { "code": "fassung_ueberlappt", "status": 422, "quelle": "regel", "satz": null, "fakten": ["fassung", "gueltig_ab"] },
+      { "code": "geltung_unbekannt", "status": 422, "quelle": "regel", "satz": null, "fakten": ["feld"] },
+      { "code": "eingang_unbekannt", "status": 422, "quelle": "regel", "satz": null, "fakten": ["eingang"] },
+      { "code": "rechenform_unbekannt", "status": 422, "quelle": "regel", "satz": null, "fakten": ["feld"] }
+    ]
+  },
   "verbotene_woerter": [
     "Mittel",
     "Durchschnitt",

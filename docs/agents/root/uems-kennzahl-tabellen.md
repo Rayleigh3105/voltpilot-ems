@@ -12,13 +12,15 @@ Constraint, und der Test spielt die Vektoren gegen die Datenbank. Muster: `uems-
 - `kennzahl`: Kennzeichen (KZ-…), Name, `rechenform`, `geltung_art` + GENAU EINE Verweis-Spalte
   (`unternehmen_id` · `standort_id` · `ort_id` mit `ort_art` · `prozess_id` · `kostenstelle_id` · `messstelle_id`),
   Verantwortlicher als Akteur-Schnappschuss (`verantwortlich_sub/_name`, kein FK bis AP-03 IP-2), `zweck`, `archiviert_am`.
-- `kennzahl_kennzeichen_verlauf`: jedes je getragene Kennzeichen (Trigger, SECURITY DEFINER).
+- `kennzahl_kennzeichen_verlauf`: jedes je getragene Kennzeichen (Trigger, SECURITY DEFINER); seit
+  `V20260915020000` bleibt es beim Löschen als Grabstein (`kennzahl_id` NULL).
 - `kennzahl_fassung`: die Berechnung — Spalten ZEILENGLEICH zu `messstelle_formel_fassung` (`kennzahl_id` statt
   `messstelle_id`, `rechenform` statt `formel_typ`, ohne `rest_hauptzaehler_id`) plus `komplement`, `faktor`, `einheit`.
 - `kennzahl_eingang`: die Eingänge je Fassung (`rolle`, `art`, genau ein Verweis).
 - `kennzahl_wert` + `kennzahl_wert_eingang`: Wert je Periode × Version und was er von jedem Eingang las.
 - `kennzahl_aenderung`: das Protokoll.
-- Keine Route (IP-5), kein Rechenlauf und kein Ereignis `kennzahl_neu_gebildet` (IP-6), kein Lesemodell (IP-7).
+- Routen und Lesemodell der Definition: `uems-kennzahl-schreibwege.md` (IP-5). Kein Rechenlauf und kein Ereignis
+  `kennzahl_neu_gebildet` (IP-6), kein Lesemodell der Werte (IP-7).
 
 ## ⚠ Werte: append-only für JEDE Rolle — Nachziehen ist eine neue Zeile
 
@@ -79,6 +81,8 @@ Constraint, und der Test spielt die Vektoren gegen die Datenbank. Muster: `uems-
   nicht löschbar; ein Ort mit Kennzahl scheitert in `uems_ort_loeschen` am FK `kennzahl_ort_fk` (23503 —
   `OrtService` bildet 23503 auf Historie ab). **Für IP-5:** `OrtRepository.mitBezugsgroesse()` und das Löschen
   einer Bezugsgröße (`BezugsgroesseService.schreibe`) kennen die Kennzahl noch nicht — mit den ersten
-  Kennzahl-Zeilen dort ergänzen, sonst sagt die Vorschau „löschbar" und die DB lehnt ab.
+  Kennzahl-Zeilen dort ergänzen, sonst sagt die Vorschau „löschbar" und die DB lehnt ab. **Seit IP-5:** die
+  Ort-Löschvorschau kennt `hat_kennzahlen`; ⚠ das Löschen einer Bezugsgröße noch nicht (siehe
+  `uems-kennzahl-schreibwege.md`).
 - `TenantRepository.offboard` räumt VOR den Bezugsgrößen ab: Werte über die Funktion, dann `kennzahl_eingang`,
   `kennzahl_fassung`, `kennzahl_kennzeichen_verlauf`, `kennzahl`, `kennzahl_aenderung`.

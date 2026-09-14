@@ -195,6 +195,7 @@ function loeschenHinweis(gruende: OrtLoeschGrund[]): string {
     hat_flaeche: 'Fläche',
     hat_kinder: 'Bereiche',
     hat_bezugsgroessen: 'Bezugsgrößen',
+    hat_kennzahlen: 'Kennzahlen',
   };
   const liste = aufzaehlung(gruende.map((g) => worte[g]));
   return `Löschen geht nicht: hier gibt es Historie${liste ? ` (${liste})` : ''}. Alles andere wird archiviert.`;

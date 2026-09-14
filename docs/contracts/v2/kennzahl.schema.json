@@ -5,7 +5,7 @@
   "description": "Die Form von kennzahl-vectors.json. Die Datei legt fest, wie aus Menge und Bezugsgröße (oder Teil und Ganzem, oder mehreren Kennzahlen) eine Kennzahl mit Zustand, Richtung, Abdeckung, Kennzeichen, Fassung und Version wird — und wann eine Definition abgelehnt wird. Zwei Zwillinge prüfen JEDE Regel, die `zwillinge` ihnen zuschreibt: Java services/api .../uems/KennzahlVectorsTest (KennzahlRegeln) und TypeScript frontend/portal/src/uemsKennzahl.test.ts (uemsKennzahl.ts). Beträge sind Dezimaltext und werden auf `regeln.vergleich_nachkommastellen` verglichen; null heißt „keine Werte“, nie 0.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "zustand_rang", "perioden", "rechte", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "cases"],
+  "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "zustand_rang", "perioden", "rechte", "regeln", "saetze", "schnittstelle", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieser Datei. Erweiterungen sind additiv." },
@@ -84,6 +84,25 @@
       }
     },
     "saetze": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "schnittstelle": {
+      "type": "object", "additionalProperties": false, "required": ["_comment", "ablehnungen"],
+      "properties": {
+        "_comment": { "type": "string", "minLength": 1 },
+        "ablehnungen": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "status", "quelle", "satz", "fakten"],
+            "properties": {
+              "code": { "type": "string", "pattern": "^[a-z_]+$" },
+              "status": { "type": "integer", "enum": [400, 403, 404, 409, 422] },
+              "quelle": { "type": "string", "enum": ["schnittstelle", "regel", "rechte"] },
+              "satz": { "type": ["string", "null"], "minLength": 1 },
+              "fakten": { "type": "array", "items": { "type": "string", "pattern": "^[a-z_]+$" } }
+            }
+          }
+        }
+      }
+    },
     "verbotene_woerter": { "$ref": "#/$defs/woerter" },
     "zwillinge": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string", "enum": ["java", "ts"] } } },
     "zwillinge_grund": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },

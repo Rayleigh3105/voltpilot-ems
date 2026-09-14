@@ -74,6 +74,11 @@ class UemsKennzahlMigrationTest {
     private static final Path VEKTOREN = Path.of("..", "..", "docs", "contracts", "v2", "kennzahl-vectors.json");
     private static final Path REFERENZ = Path.of("..", "..", "docs", "contracts", "v2", "uems-referenzunternehmen.json");
     private static final Path MIGRATIONEN = Path.of("src", "main", "resources", "db", "migration");
+    /**
+     * Migrationen, die auf den Kennzahl-Tabellen AUFBAUEN (AP-11 IP-5: Löschen ohne Wert) — ohne diese Migration gibt
+     * es ihre Tabellen nicht; in der späten Ankunft kommen sie darum mit ihr, nicht vor ihr.
+     */
+    private static final List<String> BAUEN_DARAUF_AUF = List.of("20260915020000");
     private static final List<String> TABELLEN = List.of("kennzahl", "kennzahl_kennzeichen_verlauf", "kennzahl_fassung",
             "kennzahl_eingang", "kennzahl_wert", "kennzahl_wert_eingang", "kennzahl_aenderung");
 
@@ -727,7 +732,8 @@ class UemsKennzahlMigrationTest {
     }
 
     /**
-     * Out-of-order: eine Datenbank, auf der ALLE anderen Migrationen schon liegen, bekommt diese als späte Ankunft —
+     * Out-of-order: eine Datenbank, auf der ALLE anderen Migrationen schon liegen (außer denen, die auf ihr aufbauen —
+     * {@link #BAUEN_DARAUF_AUF}), bekommt diese als späte Ankunft —
      * und hat danach dieselben Tabellen, Constraints und Vokabulare wie die frische Datenbank in Versionsreihenfolge.
      */
     @Test
@@ -736,7 +742,9 @@ class UemsKennzahlMigrationTest {
         Path ohneDiese = Files.createTempDirectory("migrationen-ohne-kennzahl");
         try (var dateien = Files.list(MIGRATIONEN)) {
             for (Path datei : dateien.toList()) {
-                if (!datei.getFileName().toString().startsWith("V" + DIESE + "__")) {
+                String name = datei.getFileName().toString();
+                if (!name.startsWith("V" + DIESE + "__")
+                        && BAUEN_DARAUF_AUF.stream().noneMatch(v -> name.startsWith("V" + v + "__"))) {
                     Files.copy(datei, ohneDiese.resolve(datei.getFileName()));
                 }
             }
@@ -744,7 +752,9 @@ class UemsKennzahlMigrationTest {
         String url = POSTGRES.getJdbcUrl().replaceFirst("/voltpilot(?=\\?|$)", "/voltpilot_spaet");
         flyway(url).locations("filesystem:" + ohneDiese.toAbsolutePath()).load().migrate();
         MigrateResult spaet = flyway(url).outOfOrder(true).load().migrate();
-        assertThat(spaet.migrations).extracting(m -> m.version).containsExactly(DIESE);
+        List<String> spaeteAnkunft = new ArrayList<>(List.of(DIESE));
+        spaeteAnkunft.addAll(BAUEN_DARAUF_AUF);
+        assertThat(spaet.migrations).extracting(m -> m.version).containsExactlyElementsOf(spaeteAnkunft);
 
         JdbcTemplate db = new JdbcTemplate(ds(url, POSTGRES.getUsername(), POSTGRES.getPassword()));
         for (String sql : List.of(
