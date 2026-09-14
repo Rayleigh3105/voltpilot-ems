@@ -246,6 +246,21 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // The Kennzahlen (V20260915003000) go before everything they read or apply to
+                // (Bezugsgroessen, Messstellen, Orte, Prozesse, Kostenstellen, Standort, Unternehmen).
+                // Their values are append-only for EVERY role - not even the admin role holds DELETE -
+                // so one narrow SECURITY DEFINER function, executable only by it, removes them. Then an
+                // input binding before its Fassung, a Fassung and the Kennzeichen occupancy before the
+                // Kennzahl; the protocol holds only the tenant (RESTRICT).
+                try (var ps = con.prepareStatement("SELECT uems_kennzahlwerte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
+                for (String table : new String[] {
+                        "kennzahl_eingang", "kennzahl_fassung", "kennzahl_kennzeichen_verlauf", "kennzahl",
+                        "kennzahl_aenderung"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
                 // The Bezugsgroessen (V20260913104500) go first: a value's Fassungen and
                 // the Kennzeichen occupancy before their Bezugsgroesse, the Bezugsgroesse
                 // before the Messstelle, Ort, Standort or Unternehmen it applies to. Its
