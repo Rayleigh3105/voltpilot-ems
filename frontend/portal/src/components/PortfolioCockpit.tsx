@@ -33,9 +33,11 @@ import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import {
   anlagenDerEbene,
   funktionenDesStandorts,
+  funktionenKarte,
   geldAnlagen,
   kopfzeile,
   standortGruppen,
+  standortLeerzustand,
   type UebersichtEbene,
 } from '../uebersicht';
 import { useCockpitLayout } from '../useCockpitLayout';
@@ -47,8 +49,9 @@ import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
 import { AddDeviceDrawer } from './DeviceDrawers';
 import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
+import { FunktionenKarte } from './FunktionenKarte';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
-import { ErrorState, Skeleton } from './States';
+import { EmptyState, ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
 // LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
 import { LIVE_POLL_MS } from '../pollCadence';
@@ -450,6 +453,9 @@ export function PortfolioCockpit({
       : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
+  // AP-01 IP-8: ein Standort ohne Anlage zeigt Grund und nächsten Schritt statt
+  // einer leeren Tabelle.
+  const leerStandort = ebene?.art === 'standort' ? standortLeerzustand(ebene.standort) : null;
 
   return (
     <>
@@ -493,20 +499,39 @@ export function PortfolioCockpit({
         className="vp-portfolio-anlagen"
         aria-label={ebene?.art === 'unternehmen' ? 'Anlagen nach Standort' : 'Meine Anlagen'}
       >
-        {ebene?.art === 'standort' && zeilen.length === 0 && (
-          <p className="vp-portfolio-ruhe">Diesem Standort ist heute keine Anlage zugeordnet.</p>
+        {leerStandort ? (
+          <EmptyState
+            icon="map-pin"
+            category="primary"
+            title={leerStandort.titel}
+            description={
+              <>
+                {leerStandort.satz}{' '}
+                <span className="vp-portfolio-schritt">
+                  <strong>Nächster Schritt:</strong> {leerStandort.schritt}.
+                </span>
+              </>
+            }
+          />
+        ) : (
+          <AnlagenTabelle
+            gruppen={gruppen}
+            zeilen={zeilen}
+            spalten={spalten}
+            dichte={dichte}
+            offen={offen}
+            onToggle={(id) => setOffen((cur) => (cur === id ? null : id))}
+            onOeffnen={(id) => onNavigate(anlageRoute(id))}
+            vorschau={vorschau}
+          />
         )}
-        <AnlagenTabelle
-          gruppen={gruppen}
-          zeilen={zeilen}
-          spalten={spalten}
-          dichte={dichte}
-          offen={offen}
-          onToggle={(id) => setOffen((cur) => (cur === id ? null : id))}
-          onOeffnen={(id) => onNavigate(anlageRoute(id))}
-          vorschau={vorschau}
-        />
       </section>
+
+      {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
+          eines Betreibers bleibt zeichengleich. */}
+      {ebene && (
+        <FunktionenKarte abschnitte={funktionenKarte(ebene, funktionen ?? null)} laedt={funktionen === undefined} />
+      )}
 
       {isPhone && (
         <div className="vp-portfolio-fuss">

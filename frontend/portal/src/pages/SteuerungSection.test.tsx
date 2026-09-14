@@ -7,6 +7,9 @@ import type { SiteProfile } from '../profiles';
 import type { Consumer, ConsumerOptions } from '../consumers/types';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { DURCH_VOLTPILOT } from '../betriebsmodelle';
+import { OHNE_STEUERBARE_KOMPONENTE } from '../steuerungArea';
+import { ahrenbergFunktionen } from '../test/funktionenFixtures';
+import { FIXTURE_IDS } from '../test/standorteFixtures';
 
 // The read-only canvas preview needs real layout; the derivation it renders is
 // covered by the flow-editor tests.
@@ -1167,5 +1170,86 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
 
     fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
     expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * UEMS AP-01 IP-8 · der Leerzustand „Diese Anlage misst nur" (Konzept §5.5,
+ * A8) — Referenzunternehmen Ahrenberg: Halle 1 steuert, Halle 2 misst mit dem
+ * Ladepunkt „Parkplatz Halle 2", Werk Lindach hat weder die Funktion noch eine
+ * steuerbare Komponente. Er steht ÜBER den Zonen; der nächste Schritt ist ein
+ * benannter Hinweis, kein Knopf — nur „Gerät anbinden" hat heute ein Ziel.
+ */
+describe('UEMS AP-01 IP-8 · „Diese Anlage misst nur"', () => {
+  const { an1, an2, an3 } = FIXTURE_IDS;
+  const nurNetz = () =>
+    BOUND.entities.mockResolvedValue([
+      { id: 'e-grid', entityType: 'grid-meter', label: 'Netzanschluss', measure: ['power_kw'], actuate: [] },
+    ]);
+
+  it('Fassung „Standort mit Funktion" (Halle 2): nennt Halle 1 und „aufnehmen" — kein Knopf, die Zonen bleiben', async () => {
+    setup();
+    nurNetz();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue({
+      verbraucher: [{
+        entityId: 'k-9',
+        name: 'Ladepunkt Parkplatz Halle 2',
+        typ: 'ev-charger',
+        typLabel: 'Ladepunkt',
+        ladepunkt: true,
+        chargePointId: 'AHR-LP-01',
+        steuerart: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'mindestleistung' },
+        regeln: 0,
+      }],
+      ladepunkte: { standard: null, standardFolger: 0, gesamt: 1, rahmen: null },
+      rangliste: [],
+    } as never);
+    render(<SteuerungSection site={{ ...site, id: an2, name: 'Werk Ahrenberg – Halle 2' }} />);
+
+    const hinweis = await screen.findByTestId('nur-messen');
+    expect(hinweis.dataset.fassung).toBe('standort-mit-funktion');
+    expect(within(hinweis).getByRole('heading', { name: 'Diese Anlage misst nur.' })).toBeInTheDocument();
+    expect(hinweis.textContent).toContain(
+      'Am Standort Werk Ahrenberg läuft Steuern & Optimieren bereits (Werk Ahrenberg – Halle 1). '
+      + 'Wenn VoltPilot „Ladepunkt Parkplatz Halle 2“ steuern soll, nehmen Sie diese Anlage auf — nichts schaltet, bevor Sie starten.',
+    );
+    expect(hinweis.textContent).toContain('Nächster Schritt: Werk Ahrenberg – Halle 2 aufnehmen');
+    // Bewusst KEIN Knopf: den Assistenten „Steuern & Optimieren" gibt es noch nicht.
+    expect(within(hinweis).queryAllByRole('button')).toHaveLength(0);
+    // Er ersetzt nichts: die Regeln (und damit die heutigen Wege) stehen darunter.
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+  });
+
+  it('Fassung „Standort ohne Funktion" (Werk Lindach, A8): ohne steuerbare Komponente führt der Weg zu den Komponenten', async () => {
+    setup();
+    nurNetz();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    const onOpenSub = vi.fn();
+    render(<SteuerungSection site={{ ...site, id: an3, name: 'Werk Lindach' }} onOpenSub={onOpenSub} />);
+
+    const hinweis = await screen.findByTestId('nur-messen');
+    expect(hinweis.dataset.fassung).toBe('standort-ohne-funktion');
+    expect(hinweis.textContent).toContain(OHNE_STEUERBARE_KOMPONENTE);
+    // Kein „einrichten", solange nichts Steuerbares da ist — sondern der Weg.
+    expect(hinweis.textContent).not.toContain('einrichten');
+    const knoepfe = within(hinweis).getAllByRole('button');
+    expect(knoepfe.map((k) => k.textContent)).toEqual(['Gerät anbinden']);
+    fireEvent.click(knoepfe[0]);
+    expect(onOpenSub).toHaveBeenCalledWith('modell');
+  });
+
+  it('eine steuernde Anlage und eine Anlage ohne Funktionen bekommen keinen Leerzustand', async () => {
+    setup();
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    const halle1 = render(<SteuerungSection site={{ ...site, id: an1 }} />);
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.queryByTestId('nur-messen')).toBeNull();
+    halle1.unmount();
+
+    vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('älteres Backend'));
+    render(<SteuerungSection site={{ ...site, id: an3 }} />);
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.queryByTestId('nur-messen')).toBeNull();
   });
 });

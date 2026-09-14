@@ -5,6 +5,7 @@ import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
 import * as surfaceHook from '../useAnlageSurface';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../surface';
+import { GELD_UNTERSEITEN, ohneGeld } from '../anlageGeld';
 import { periodLabel } from '../anlage';
 import { readFace, rememberFace } from '../anlageFace';
 
@@ -1709,5 +1710,95 @@ describe('Anwendungs-Programm Stufe 5 · die eigene Auswertung im Cockpit', () =
     fireEvent.click(getByLabelText('Cockpit anpassen'));
     await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
     expect(getByText('+ Eigene Auswertung')).toBeTruthy();
+  });
+});
+
+/**
+ * UEMS AP-01 IP-8 · die Geld-Regel JE ANLAGE (A13 — Captain 10.09.2026: „Die
+ * Messdatenkunden brauchen keine Geldanzeige."). Geprüft wird der GERENDERTE
+ * Text, und zwar mit JEDER Geld-Quelle, die das Cockpit kennt: Erlöse und
+ * Netto vom Server, Leistungspreis, dynamischer Tarif, Markt-Knoten. Ein
+ * künftiger Geld-Baustein, der an `anlageGeld` vorbeigeht, macht ihn rot.
+ */
+describe('UEMS AP-01 IP-8 · eine Anlage ohne Steuerung, Erzeuger und Speicher zeigt nirgends eine Geldzahl', () => {
+  const GELD = /€|\bEUR\b|ct\/kWh|Unterm Strich|Marktpreis|Erlös/;
+
+  function geldUeberall() {
+    vi.spyOn(api, 'siteEarnings').mockResolvedValue({
+      from: '2026-11-15T00:00:00+01:00',
+      to: '2099-01-01T00:00:00+01:00',
+      nettoErgebnisEur: 42.5,
+      eigenverbrauchsWertEur: 88.25,
+      einspeiseErloesEur: 11,
+      actualEur: 45.75,
+      savedEur: 12,
+      peakShaving: {
+        leistungspreisEurKw: 95,
+        abrechnung: 'jahr',
+        periodStart: '2026-01-01',
+        peakKw: 180,
+        baselinePeakKw: 210,
+        avoidedKw: 30,
+        avoidedEur: 3600,
+        history: [],
+      },
+    } as never);
+  }
+
+  function mockGeldfrei() {
+    vi.spyOn(surfaceHook, 'useAnlageSurface').mockReturnValue({
+      surface: ohneGeld(anlageSurface(MULTI)),
+      profiles: null,
+      entities: null,
+      loading: false,
+      failed: false,
+    } as never);
+  }
+
+  async function fertig(container: HTMLElement) {
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    await waitFor(() => expect(api.siteEarnings).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('Gegenprobe: dieselbe Anlage MIT Geld zeigt Geld — sonst bewiese der nächste Test nichts', async () => {
+    geldUeberall();
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await fertig(container);
+    await waitFor(() => expect(container.textContent).toMatch(GELD));
+  });
+
+  it('Cockpit: kein Geld-Held, keine Steuerungs-Karte, keine Marktpreise — kein einziges Euro-Zeichen', async () => {
+    geldUeberall();
+    mockAdaptive(true, TOPO);
+    mockGeldfrei();
+    const { container } = renderSeite();
+    await fertig(container);
+    expect(container.textContent).not.toMatch(GELD);
+    expect(container.querySelector('.vp-sp-link')).toBeNull();
+  });
+
+  it('Verlauf: kein Reiter nennt Geld, und ein Lesezeichen auf eine Geld-Seite zeigt die Messwerte', async () => {
+    geldUeberall();
+    for (const sub of GELD_UNTERSEITEN) {
+      const { container, unmount } = render(
+        <AnlagenPage
+          sites={[site]}
+          devices={[]}
+          devicesFetchedAt={null}
+          route={{ page: 'anlagen', siteId: 's-1', sub }}
+          onNavigate={() => {}}
+          onReload={() => {}}
+          surface={ohneGeld(anlageSurface(MULTI))}
+        />,
+      );
+      const reiter = [...container.querySelectorAll('.vp-bereich-tab')].map((t) => t.textContent);
+      expect(reiter, sub).toEqual(['Messwerte', 'Prognose', 'Wetter']);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(container.textContent, sub).not.toMatch(GELD);
+      unmount();
+    }
   });
 });

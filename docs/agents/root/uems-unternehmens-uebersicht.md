@@ -37,6 +37,6 @@ Standort-Schnappschuss aus IP-5 (`uems-startansicht.md`).
    (der Name ist ein Knopf), und `.vp-at-gruppe th` hebt Versalien und `nowrap` des Tabellenkopfs auf.
 7. **Funktionen:** `undefined` = lädt („Wird geladen …“), `null` = nicht abrufbar (eigener Satz); nie eine
    leere Zeile. Bei `kein_objekt` streicht `funktionsZeilen` den doppelten Funktionsnamen aus dem Server-Satz.
-8. **Nicht hier:** Knöpfe „einrichten“/„aufnehmen“ und die Funktions-Karte (IP-8), Telefon-Leiste je Ebene
-   (IP-7), Messstellen-Datenlage in der Kopfzeile (AP-04); die Erlöse-Welt selbst ist nur auf die
-   Geld-Anlagen gefiltert, nicht umgebaut.
+8. **Nicht hier:** Telefon-Leiste je Ebene (IP-7), Messstellen-Datenlage in der Kopfzeile (AP-04); die
+   Erlöse-Welt selbst ist nur auf die Geld-Anlagen gefiltert, nicht umgebaut. Die Karte „Funktionen" mit dem
+   nächsten Schritt und die Geld-Regel JE ANLAGE stehen seit IP-8 in `uems-leerzustaende.md`.

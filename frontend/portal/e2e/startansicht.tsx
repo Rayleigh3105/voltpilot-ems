@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, type Overview, type OverviewSite, type Site } from '../src/api';
+import { api, type FunktionStandort, type Overview, type OverviewSite, type Site } from '../src/api';
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
-import { anlageSidebar } from '../src/anlageNav';
+import { ohneGeld } from '../src/anlageGeld';
+import { activeAreaKey, anlageSidebar } from '../src/anlageNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
   canonicalShellRoute,
@@ -19,8 +20,10 @@ import {
   type ShellInput,
 } from '../src/betriebsart';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
+import { consumersApi } from '../src/consumers/consumersApi';
 import { healthBadge } from '../src/health';
 import { anlageRoute, hashForRoute, pageRoute, standortRoute, type PageId, type Route } from '../src/nav';
+import { AnlagenPage } from '../src/pages/AnlagenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
 import { AppShell } from '../src/shell/AppShell';
@@ -61,6 +64,11 @@ import '../src/index.css';
  * öffnet Halle 1, `&ansicht=werk` die Standort-Übersicht Werk Ahrenberg,
  * `&ansicht=lindach` die Standort-Übersicht Werk Lindach. `&messen=bestand`
  * zeigt „Messen & Auswerten" wie nach dem Umstieg (A11: noch nicht eingerichtet).
+ *
+ * AP-01 IP-8: `&ansicht=steuerung-halle2` / `&ansicht=steuerung-lindach` öffnen
+ * die ECHTE Steuerungsseite der zwei Anlagen, die nur messen (Halle 2 mit dem
+ * Ladepunkt K-9, Werk Lindach ohne steuerbare Komponente); `bild=vor-lindach`
+ * ist Ahrenberg mit angelegtem Werk Lindach, aber noch ohne Anlage AN-3.
  */
 
 const { an1, an2, an3, st2 } = FIXTURE_IDS;
@@ -134,6 +142,12 @@ const SZENEN = {
     liste: { ...ahrenbergHeute(), standorte: [werkLindach()] },
     unternehmen: ahrenbergUnternehmen(),
   },
+  /** IP-8: Werk Lindach ist angelegt, AN-3 noch nicht — der Leerzustand der Standort-Übersicht. */
+  'vor-lindach': {
+    sites: [halle1, halle2],
+    liste: { ...ahrenbergHeute(), standorte: [werkAhrenberg(), werkLindach({ anlagen: [], anlagenZahl: 0 })] },
+    unternehmen: ahrenbergUnternehmen({ anlagenZahl: 2 }),
+  },
 };
 
 const szene = SZENEN[bild as keyof typeof SZENEN] ?? SZENEN.einzel;
@@ -161,16 +175,96 @@ Object.assign(api, {
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () =>
     ahrenbergFunktionen({
-      standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)].filter((f) =>
-        szene.liste.standorte.some((s) => s.id === f.id),
-      ),
+      standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)]
+        .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
+        .map(ohneAnlage),
     }),
+  // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
+  // Leerzustand und Zonen lesen; der Rest antwortet wie ein älteres Backend.
+  siteEntities: async (id: string) => ({ registry: null, localSetup: [], staleOnDevice: [], entities: komponentenVon(id) }),
+  siteVerbraucher: async (id: string) => verbraucherVon(id),
+  entityStrategies: async () => ({}),
+  usageProfile: nichtGestellt,
+  siteProfiles: nichtGestellt,
+  siteAssets: nichtGestellt,
+  siteChargers: nichtGestellt,
+  siteFahrzeuge: nichtGestellt,
+  curtailmentStatus: nichtGestellt,
+  siteInterventions: nichtGestellt,
+  siteRuleEvents: nichtGestellt,
+  suggestionStates: nichtGestellt,
 });
+Object.assign(consumersApi, {
+  options: async () => ({ types: [], signals: [], intents: [], hasStorage: false, reportedSources: [] }),
+  list: async () => [],
+  status: async () => [],
+  overrides: async () => [],
+  fulfillment: async () => ({ tasks: [] }),
+});
+// Die Regeln der Anlage: keine. Nur die zwei Flow-Routen gehen über `fetch`.
+const echtesFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
+  if (/^\/api\/v1\/sites\/[^/]+\/flows$/.test(url.pathname)) return Response.json([]);
+  if (url.pathname.endsWith('/flow-node-governance')) return Response.json({ gatedNodes: [] });
+  return echtesFetch(input, init);
+};
+
+async function nichtGestellt(): Promise<never> {
+  throw new Error('In der Bühne nicht gestellt.');
+}
+
+/** IP-8: ein Standort ohne Anlage misst noch nicht und hat keine Teilnahme. */
+function ohneAnlage(f: FunktionStandort): FunktionStandort {
+  const hier = szene.liste.standorte.find((s) => s.id === f.id);
+  if (!hier || hier.anlagen.length > 0) return f;
+  return { ...f, messen: funktionWerkLindach('bestand').messen, steuern: { ...f.steuern, anlagen: [] } };
+}
+
+/** Die Komponenten der zwei Messanlagen aus dem Referenzunternehmen (Halle 2: Netz + K-9; Lindach: Netz). */
+function komponentenVon(id: string) {
+  const netz = { id: `${id}-netz`, entityType: 'grid-meter', typeLabel: 'Netzanschluss', role: 'grid', label: 'Hauptzähler', capabilities: { measure: [{ channel: 'power_kw' }] } };
+  if (id !== an2) return [netz];
+  return [
+    netz,
+    { id: 'k-9', entityType: 'ev-charger', typeLabel: 'Ladepunkt', role: 'consumer', label: 'Ladepunkt Parkplatz Halle 2 (22 kW)', capabilities: { measure: [{ channel: 'power_kw' }] } },
+  ];
+}
+
+/** Die Verbraucher-Zone: Halle 2 trägt K-9 („Nur messen", keine Steuerart gesetzt), Lindach nichts. */
+function verbraucherVon(id: string) {
+  const k9 = {
+    entityId: 'k-9',
+    name: 'Ladepunkt Parkplatz Halle 2 (22 kW)',
+    typ: 'ev-charger',
+    typLabel: 'Ladepunkt',
+    ladepunkt: true,
+    chargePointId: 'AHR-LP-01',
+    steuerart: { quelle: 'sofort', herkunft: 'ohne' },
+    regeln: 0,
+  };
+  const zuHalle2 = id === an2;
+  return {
+    verbraucher: zuHalle2 ? [k9] : [],
+    ladepunkte: { standard: null, standardFolger: 0, gesamt: zuHalle2 ? 1 : 0, rahmen: null },
+    rangliste: [],
+  };
+}
 
 const surface = anlageSurface({
   entities: [{ id: 'speicher', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
   config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
 } as Parameters<typeof anlageSurface>[0]);
+
+/** IP-8: Halle 1 wie bisher; die zwei Messanlagen mit dem Lese-Modell OHNE Geld, wie `useAnlageSurface` es bildet. */
+function surfaceVon(id: string) {
+  if (id === an1) return surface;
+  return ohneGeld(
+    anlageSurface({ entities: komponentenVon(id), config: { plantKind: 'eigenverbrauch', tarifArt: 'ohne' } } as Parameters<
+      typeof anlageSurface
+    >[0]),
+  );
+}
 
 const FLOTTE = 'Meine Anlagen';
 
@@ -184,7 +278,11 @@ function Vorschau() {
     kanonisch(
       ansicht === 'anlage'
         ? anlageRoute(an1)
-        : ansicht === 'lindach'
+        : ansicht === 'steuerung-halle2'
+          ? anlageRoute(an2, 'steuerung')
+          : ansicht === 'steuerung-lindach'
+            ? anlageRoute(an3, 'steuerung')
+            : ansicht === 'lindach'
           ? standortRoute(st2)
           : ansicht === 'werk'
             ? standortRoute(FIXTURE_IDS.st1)
@@ -240,9 +338,9 @@ function Vorschau() {
                 rueckwege,
               }),
               onSelectSite: (id) => navigate(anlageRoute(id)),
-              sidebar: anlageSidebar(surface, 0),
-              activeKey: 'cockpit',
-              onOpenSub: () => undefined,
+              sidebar: anlageSidebar(surfaceVon(site.id), 0),
+              activeKey: activeAreaKey(route.sub ?? null),
+              onOpenSub: (sub) => navigate(anlageRoute(site.id, sub ?? null)),
               onOpenPage: (p) => navigate(p),
               onOpenFleet: flotte ? () => navigate(flottenLandung(shell)) : null,
               health: healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } }),
@@ -252,7 +350,18 @@ function Vorschau() {
       }
       ortsPfad={!site && pfad.hier ? { vor: pfad.vor.map(eintrag), hier: pfad.hier } : null}
     >
-      {site && (
+      {site && route.sub && (
+        <AnlagenPage
+          sites={sites}
+          devices={[]}
+          devicesFetchedAt={null}
+          route={route}
+          onNavigate={navigate}
+          onReload={() => undefined}
+          surface={surfaceVon(site.id)}
+        />
+      )}
+      {site && !route.sub && (
         <div className="vp-page-head">
           <div className="titles">
             <h1>{site.name}</h1>

@@ -335,6 +335,12 @@ export interface AnlageSurface {
   moneyStreams: MoneyStream[];
   /** base ∪ Modus-Deep-Views, kanonisch sortiert, dedupliziert. */
   deepViews: DeepViewId[];
+  /**
+   * UEMS AP-01 IP-8, Geld-Regel je Anlage: `true` = die Anlage zeigt kein Geld
+   * (`anlageGeld.ohneGeld` hat Blöcke, Ströme und Ansichten schon gefiltert).
+   * Fehlt das Feld, gilt alles wie vorher.
+   */
+  geldfrei?: boolean;
 }
 
 // ---------------------------------------------------------------------------

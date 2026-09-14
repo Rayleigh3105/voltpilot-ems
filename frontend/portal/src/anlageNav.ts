@@ -142,7 +142,7 @@ export const HELP_ITEM: SidebarItem = {
  * jemand die Cockpit-Karte, kann der Reiter entfallen — der Wächter „nichts
  * ist verwaist" merkt es sofort.
  */
-const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
+export const VERLAUF_TABS: { key: string; label: string; sub: AnlagenSub; view: DeepViewId | null }[] = [
   { key: 'messwerte', label: 'Messwerte', sub: 'messwerte', view: null },
   { key: 'erloese', label: 'Erlöse', sub: 'erloese', view: 'erloes-historie' },
   { key: 'marktpreise', label: 'Marktpreise', sub: 'marktpreise', view: 'marktpreise' },

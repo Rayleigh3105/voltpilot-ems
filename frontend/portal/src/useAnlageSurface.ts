@@ -6,6 +6,7 @@ import {
   aufmerksamkeit,
   type Aufmerksamkeit,
 } from './steuerungAufmerksamkeit';
+import { anlageAufEbene, anlageOhneGeld, ohneGeld } from './anlageGeld';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
 
 /**
@@ -106,25 +107,37 @@ export function useAnlageSurface(
       // Fail-soft like everything else here - an older backend simply yields
       // no states, and the surface is byte-identical to before M3.
       api.siteProfiles(siteId).catch(() => null),
-    ]).then(([profile, entities, flows, shelf]) => {
+      // UEMS AP-01 IP-8, Geld-Regel je Anlage. Die Funktionen sagen, ob die
+      // Anlage auf einer Ebene steht und ob sie steuert; nur dann braucht es
+      // ihre Zeile der Übersicht (Erzeuger/Speicher — derselbe Fakt wie auf der
+      // Ebene). Er gehört in DIESE Entscheidung: sonst stünde das Geld einen
+      // Augenblick da und verschwände. Ohne Funktionen bleibt alles wie vorher.
+      api
+        .funktionen()
+        .catch(() => null)
+        .then(async (funktionen) => {
+          if (!anlageAufEbene(siteId, funktionen)) return { funktionen, zeile: null };
+          const overview = await api.overview().catch(() => null);
+          return { funktionen, zeile: overview?.sites.find((s) => s.id === siteId) ?? null };
+        }),
+    ]).then(([profile, entities, flows, shelf, geld]) => {
       if (!active) return;
       setProfiles(shelf);
       setEntityList(entities?.entities ?? null);
-      setSurface(
-        anlageSurface({
-          signals: profile?.signals ?? null,
-          config: {
-            plantKind,
-            tarifArt,
-            netzladenErlaubt: netzladen,
-            leistungspreisEurKw: leistungspreis,
-          },
-          // FlowSummary is structurally a SurfaceFlow (report §1.2).
-          flows: (flows as SurfaceFlow[] | null) ?? null,
-          entities: entities?.entities ?? null,
-          profileStates: profileStatesFrom(shelf),
-        }),
-      );
+      const projektion = anlageSurface({
+        signals: profile?.signals ?? null,
+        config: {
+          plantKind,
+          tarifArt,
+          netzladenErlaubt: netzladen,
+          leistungspreisEurKw: leistungspreis,
+        },
+        // FlowSummary is structurally a SurfaceFlow (report §1.2).
+        flows: (flows as SurfaceFlow[] | null) ?? null,
+        entities: entities?.entities ?? null,
+        profileStates: profileStatesFrom(shelf),
+      });
+      setSurface(anlageOhneGeld(siteId, geld.funktionen, geld.zeile) ? ohneGeld(projektion) : projektion);
       setFailed(entitiesFailed);
       setLoading(false);
     });

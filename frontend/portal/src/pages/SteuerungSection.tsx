@@ -27,6 +27,7 @@ import {
   ApiError,
   api,
   type EarningsSite,
+  type Funktionen,
   type Site,
   type SiteAsset,
   type SiteCharging,
@@ -34,6 +35,7 @@ import {
 import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { JetztZone } from '../components/JetztZone';
+import { NurMessenHinweis } from '../components/NurMessenHinweis';
 import { SteuerungIntro } from '../components/SteuerungIntro';
 import { LadeparkRahmenKarte } from '../components/LadeparkRahmenKarte';
 import { RegelnKapsel } from '../components/RegelnKapsel';
@@ -61,7 +63,9 @@ import {
   PROFILE_CAPSULE_INTRO,
   PROFILE_CAPSULE_TITLE,
   PROTECTION_INTRO,
+  nurMessenLeerzustand,
   protectionItems,
+  storageEntities,
 } from '../steuerungArea';
 import {
   betriebsmodellZone,
@@ -141,6 +145,9 @@ export function SteuerungSection({
   // P7: die Ladekarten. null = nicht geladen bzw. ein älteres Backend - der
   // Abschnitt erscheint dann gar nicht, statt eine leere Liste zu behaupten.
   const [fahrzeuge, setFahrzeuge] = useState<SiteFahrzeuge | null>(null);
+  // UEMS AP-01 IP-8: die Funktionen des Standorts — daraus der Leerzustand
+  // „Diese Anlage misst nur". Fail-soft: ohne sie bleibt die Seite wie vorher.
+  const [funktionen, setFunktionen] = useState<Funktionen | null>(null);
   /**
    * Die Komponente, deren Steuerart gerade bearbeitet wird (P2) - ein interner
    * Sub-View-State wie `editing`, kein neuer Routen-Parameter.
@@ -220,9 +227,11 @@ export function SteuerungSection({
       // wie der Rest - ein älteres Backend kennt die Route nicht, und dann
       // erscheint der Abschnitt gar nicht statt leer.
       api.siteFahrzeuge(site.id).catch(() => null),
+      api.funktionen().catch(() => null),
     ])
       .then(([list, entityList, gov, profile, money, shelf, siteAssets, chargePoints,
-        verbraucherZone, fahrzeugListe]) => {
+        verbraucherZone, fahrzeugListe, funktionenAntwort]) => {
+        setFunktionen(funktionenAntwort);
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -242,6 +251,27 @@ export function SteuerungSection({
   useEffect(() => {
     reload();
   }, [reload]);
+
+  /**
+   * UEMS AP-01 IP-8: „Diese Anlage misst nur" — nur, wenn die Anlage auf einem
+   * Standort steht und nicht teilnimmt. Steuerbar sind die Komponenten der
+   * Verbraucher-Zone und der Speicher (dieselbe Menge, die „Freigabe" in
+   * `FunktionFakten` prüft); ohne Zone (älteres Backend) ist sie unbekannt, nie leer.
+   */
+  const nurMessen = useMemo(
+    () =>
+      nurMessenLeerzustand({
+        siteId: site.id,
+        funktionen,
+        steuerbar: verbraucher
+          ? [
+              ...storageEntities(entities).map((e) => e.label),
+              ...verbraucher.verbraucher.map((v) => v.name ?? v.typLabel),
+            ]
+          : null,
+      }),
+    [site.id, funktionen, verbraucher, entities],
+  );
 
   const enabledGatedTypes = useMemo(
     () => (governance?.gatedNodes ?? []).filter((n) => n.enabled).map((n) => n.type),
@@ -657,6 +687,16 @@ export function SteuerungSection({
               Drei Zonen in drei Sätzen, einmal wegklickbar, je ORGANISATION
               gemerkt. Er steht ÜBER den Zonen, weil er sie erklärt - und er
               rendert sich selbst weg, sobald der Kunde ihn gesehen hat. */}
+          {/* --- UEMS AP-01 IP-8 · „Diese Anlage misst nur" -----------------
+              Grund und nächster Schritt ÜBER den Zonen, nie statt ihrer:
+              Steuerart, Regeln und Schutz bleiben die heutigen Wege. */}
+          {nurMessen && (
+            <NurMessenHinweis
+              leer={nurMessen}
+              onGeraetAnbinden={onOpenSub ? () => onOpenSub('modell') : undefined}
+            />
+          )}
+
           <SteuerungIntro />
 
           {/* --- Zone ① · Jetzt (Konzept b3 §3.2, Stufe 1) ------------------

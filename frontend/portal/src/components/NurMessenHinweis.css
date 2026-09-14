@@ -1,0 +1,82 @@
+/*
+ * DER LEERZUSTAND „DIESE ANLAGE MISST NUR" (UEMS AP-01 IP-8) — über den Zonen
+ * der Steuerungsseite. Variante C: weiße Karte, 1-px-Rahmen, Radius 16 px.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-nurmessen {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-4, 16px);
+  padding: var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-nurmessen-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-nurmessen-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-nurmessen-text h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-nurmessen-text p {
+  margin: 6px 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.vp-nurmessen-text .vp-nurmessen-schritt {
+  color: #0f172a;
+}
+
+.vp-nurmessen-schritt-wort {
+  font-weight: 600;
+}
+
+/* Der einzige Weg mit heutigem Ziel (A8): „Gerät anbinden" — Trefferfläche 44 px. */
+.vp-nurmessen-weg {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .vp-nurmessen {
+    padding: var(--vp-space-4, 16px);
+  }
+
+  .vp-nurmessen-icon {
+    display: none;
+  }
+}
