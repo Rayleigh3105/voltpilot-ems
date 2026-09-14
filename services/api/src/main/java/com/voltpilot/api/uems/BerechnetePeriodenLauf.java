@@ -171,9 +171,12 @@ public class BerechnetePeriodenLauf {
 
     // ------------------------------------------------------------------------------ ein Kundenbereich
 
-    /** Ein Term eines Tages: woher der Eingang kommt und wie er eingeht. */
+    /**
+     * Ein Term eines Tages: woher der Eingang kommt und wie er eingeht. {@code verteilungZiel} ist die Kostenstelle eines
+     * Verteilungs-Terms („Anteil 4100 von MS-07“), sonst {@code null}.
+     */
     record TermRef(UUID messstelleId, String kennzeichen, boolean berechnet, UUID entityId, String messkanal,
-            String rolle, String anteil, String vorzeichen, BigDecimal faktor, String grund) {
+            String rolle, String anteil, String vorzeichen, BigDecimal faktor, String grund, UUID verteilungZiel) {
 
         /** Der Leseschlüssel: dieselbe Reihe wird je Scheibe einmal gelesen. */
         String quelle() {
@@ -618,14 +621,14 @@ public class BerechnetePeriodenLauf {
                 Messstelle q = k.stand().nachKennzeichen().get(t.messstelle());
                 refs.add(new TermRef(q == null ? null : q.id(), t.messstelle(),
                         q != null && MessstelleRegeln.BERECHNET.equals(q.art()), null, null, t.rolle(), t.anteil(), null,
-                        null, q == null ? NICHT_LESBAR : anteilGrund(t.anteil())));
+                        null, q == null ? NICHT_LESBAR : anteilGrund(t.anteil()), null));
             }
         } else if (MessstelleFormelRegeln.GEWICHTETE_SUMME.equals(fassung.formelTyp())) {
             for (TermZeile t : k.termeJeFassung().getOrDefault(fassung.id(), List.of())) {
                 BigDecimal faktor = BigDecimal.valueOf(t.faktor());
                 if ("messkanal".equals(t.eingangArt())) {
                     refs.add(new TermRef(null, null, false, t.entityId(), t.pointKey(), null, t.anteil(), t.vorzeichen(),
-                            faktor, anteilGrund(t.anteil())));
+                            faktor, anteilGrund(t.anteil()), null));
                     continue;
                 }
                 Messstelle q = k.nachId().get(t.quellMessstelleId());
@@ -633,12 +636,37 @@ public class BerechnetePeriodenLauf {
                         : "verteilung".equals(t.eingangArt()) ? VERTEILUNG_NICHT_GESPEICHERT : anteilGrund(t.anteil());
                 refs.add(new TermRef(t.quellMessstelleId(), q == null ? String.valueOf(t.quellMessstelleId())
                         : q.kennzeichen(), q != null && MessstelleRegeln.BERECHNET.equals(q.art()), null, null, null,
-                        t.anteil(), t.vorzeichen(), faktor, grund));
+                        t.anteil(), t.vorzeichen(), faktor, grund, t.verteilungZiel()));
             }
         } else {
             return null;
         }
         return refs.isEmpty() ? null : new TagesFormel(fassung.id(), fassung.formelTyp(), List.copyOf(refs));
+    }
+
+    /**
+     * Die Formeln der berechneten Messstellen je Tag {@code [von, bis]}, genau so, wie DIESER Lauf sie rechnet
+     * ({@link #formel}: Fassung des Tages, beim {@code rest} die Terme aus der Stellung) — für die Warnung vor doppelter
+     * Zählung in der Kostenstellen-Sicht ({@link KostenstelleDoppelzaehlung}). Liest keine Werte und schreibt nichts; ein
+     * Tag ohne Formel fehlt. Leer, wenn der Kundenbereich keine berechnete Messstelle hat.
+     */
+    Map<String, Map<LocalDate, TagesFormel>> formelnJeTag(UUID tenant, LocalDate von, LocalDate bis, Instant jetzt) {
+        Aufbau a = aufbau(tenant, jetzt);
+        if (a == null) {
+            return Map.of();
+        }
+        Map<String, Map<LocalDate, TagesFormel>> raus = new LinkedHashMap<>();
+        for (Messstelle m : a.berechnete()) {
+            Map<LocalDate, TagesFormel> je = new TreeMap<>();
+            for (LocalDate tag = von; !tag.isAfter(bis); tag = tag.plusDays(1)) {
+                TagesFormel f = formel(a.k(), m, tag);
+                if (f != null) {
+                    je.put(tag, f);
+                }
+            }
+            raus.put(m.kennzeichen(), je);
+        }
+        return raus;
     }
 
     private static String anteilGrund(String anteil) {

@@ -93,6 +93,35 @@ class VerteilungVectorsTest {
                 .containsExactly(VerteilungRegeln.VERTEILT, VerteilungRegeln.NICHT_VERTEILT);
     }
 
+    /**
+     * Die Warnung vor doppelter Zählung spricht mit den Sätzen des Vertrags — Zeichen für Zeichen, ohne internes Wort —
+     * und kennt genau seine Vokabulare.
+     */
+    @Test
+    void dieDoppelzaehlungSprichtMitDenSaetzenDesVertrags() throws Exception {
+        JsonNode v = vektoren();
+        JsonNode saetze = v.path("saetze");
+        assertThat(saetze.path("doppelt_enthalten").asText()).isEqualTo(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN);
+        assertThat(saetze.path("doppelt_enthalten_teilweise").asText())
+                .isEqualTo(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN_TEILWEISE);
+        assertThat(saetze.path("doppelt_kreis").asText()).isEqualTo(KostenstelleDoppelzaehlung.SATZ_KREIS);
+        assertThat(saetze.path("doppelt_haengt_an_kreis").asText())
+                .isEqualTo(KostenstelleDoppelzaehlung.SATZ_HAENGT_AN_KREIS);
+        assertThat(texte(v.path("vokabulare").path("doppelzaehlung_umfang")))
+                .containsExactlyElementsOf(KostenstelleDoppelzaehlung.UMFAENGE);
+        assertThat(texte(v.path("vokabulare").path("doppelzaehlung_grund")))
+                .containsExactly(BerechnetePeriode.FORMEL_KREIS, BerechnetePeriode.HAENGT_AN_KREIS);
+        List<String> verboten = texte(v.path("regeln").path("doppelzaehlung_verbotene_woerter"));
+        assertThat(verboten).isNotEmpty();
+        for (String satz : List.of(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN,
+                KostenstelleDoppelzaehlung.SATZ_ENTHALTEN_TEILWEISE, KostenstelleDoppelzaehlung.SATZ_KREIS,
+                KostenstelleDoppelzaehlung.SATZ_HAENGT_AN_KREIS)) {
+            for (String wort : verboten) {
+                assertThat(satz).as("ein Kundensatz ohne internes Wort").doesNotContainIgnoringCase(wort);
+            }
+        }
+    }
+
     /** Jede Regel ist deklariert, jede Lücke im Portal begründet. */
     @Test
     void jedeRegelIstDeklariertUndJedeLueckeBegruendet() throws Exception {
@@ -293,24 +322,7 @@ class VerteilungVectorsTest {
                         .isEmpty();
             }
             case "kostenstelle" -> {
-                List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
-                for (JsonNode q : ein.path("quellen")) {
-                    List<KostenstelleEnergieRegeln.Anteil> anteile = new ArrayList<>();
-                    for (JsonNode a : q.path("anteile")) {
-                        anteile.add(new KostenstelleEnergieRegeln.Anteil(a.path("kostenstelle").asText(),
-                                bd(a.path("anteil_prozent")), tag(a.path("gueltig_ab")), tag(a.path("gueltig_bis")),
-                                a.path("fassung").asInt()));
-                    }
-                    List<KostenstelleEnergieRegeln.Tageswert> tage = new ArrayList<>();
-                    for (JsonNode t : q.path("tage")) {
-                        tage.add(new KostenstelleEnergieRegeln.Tageswert(tag(t.path("tag")), bd(t.path("menge")),
-                                t.path("zustand").asText(), ganz(t.path("abdeckung_prozent")), t.path("version").asInt(),
-                                texte(t.path("kennzeichen"))));
-                    }
-                    quellen.add(new KostenstelleEnergieRegeln.Quelle(q.path("messstelle").asText(),
-                            q.path("art").asText(), q.path("groesse").asText(), q.path("richtung").asText(),
-                            q.path("einheit").asText(), anteile, tage));
-                }
+                List<KostenstelleEnergieRegeln.Quelle> quellen = quellen(ein.path("quellen"));
                 KostenstelleEnergieRegeln.Urteil ist = KostenstelleEnergieRegeln.energie(
                         ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
                         ziele(ein.path("ziele")), quellen);
@@ -319,6 +331,40 @@ class VerteilungVectorsTest {
                 blockGleich(ist.berechnet(), soll.path("berechnet"), why + " · berechnet");
                 blockGleich(ist.summe(), soll.path("summe"), why + " · Summe der Kostenstelle");
                 blockGleich(ist.nichtVerteilt(), soll.path("nicht_verteilt"), why + " · nicht verteilt");
+            }
+            case "doppelzaehlung" -> {
+                List<KostenstelleDoppelzaehlung.Formel> formeln = new ArrayList<>();
+                for (JsonNode f : ein.path("formeln")) {
+                    List<KostenstelleDoppelzaehlung.Term> terme = new ArrayList<>();
+                    f.path("terme").forEach(t -> terme.add(new KostenstelleDoppelzaehlung.Term(str(t.path("messstelle")),
+                            str(t.path("verteilung_ziel")), str(t.path("anteil")), str(t.path("vorzeichen")),
+                            bd(t.path("faktor")))));
+                    formeln.add(new KostenstelleDoppelzaehlung.Formel(f.path("messstelle").asText(),
+                            tag(f.path("gueltig_ab")), tag(f.path("gueltig_bis")), terme));
+                }
+                KostenstelleDoppelzaehlung.Urteil ist = KostenstelleDoppelzaehlung.pruefe(
+                        ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
+                        ziele(ein.path("ziele")), quellen(ein.path("quellen")), formeln);
+                List<String> enthalten = new ArrayList<>();
+                ist.enthalten().forEach(e -> enthalten.add(e.teil() + " in " + e.summe() + " · " + e.umfang() + " · "
+                        + e.kette() + " · " + e.zeitraeume().stream().map(z -> z.von() + ".." + z.bis()).toList()
+                        + " · " + e.satz()));
+                List<String> sollEnthalten = new ArrayList<>();
+                soll.path("enthalten").forEach(e -> {
+                    List<String> zeitraeume = new ArrayList<>();
+                    e.path("zeitraeume").forEach(z -> zeitraeume.add(z.path("von").asText() + ".." + z.path("bis").asText()));
+                    sollEnthalten.add(e.path("teil").asText() + " in " + e.path("summe").asText() + " · "
+                            + e.path("umfang").asText() + " · " + texte(e.path("kette")) + " · " + zeitraeume + " · "
+                            + e.path("satz").asText());
+                });
+                assertThat(enthalten).as(why + " · enthalten").containsExactlyElementsOf(sollEnthalten);
+                List<String> nicht = new ArrayList<>();
+                ist.nichtPruefbar().forEach(n -> nicht.add(n.messstelle() + " · " + n.grund() + " · " + n.kette() + " · "
+                        + n.satz()));
+                List<String> sollNicht = new ArrayList<>();
+                soll.path("nicht_pruefbar").forEach(n -> sollNicht.add(n.path("messstelle").asText() + " · "
+                        + n.path("grund").asText() + " · " + texte(n.path("kette")) + " · " + n.path("satz").asText()));
+                assertThat(nicht).as(why + " · nicht prüfbar").containsExactlyElementsOf(sollNicht);
             }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
@@ -356,6 +402,28 @@ class VerteilungVectorsTest {
                 assertThat(tagIst.grund()).as(hier + " · Grund " + t).isEqualTo(str(stichprobe.path("grund")));
             }
         }
+    }
+
+    private static List<KostenstelleEnergieRegeln.Quelle> quellen(JsonNode n) {
+        List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
+        for (JsonNode q : n) {
+            List<KostenstelleEnergieRegeln.Anteil> anteile = new ArrayList<>();
+            for (JsonNode a : q.path("anteile")) {
+                anteile.add(new KostenstelleEnergieRegeln.Anteil(a.path("kostenstelle").asText(),
+                        bd(a.path("anteil_prozent")), tag(a.path("gueltig_ab")), tag(a.path("gueltig_bis")),
+                        a.path("fassung").asInt()));
+            }
+            List<KostenstelleEnergieRegeln.Tageswert> tage = new ArrayList<>();
+            for (JsonNode t : q.path("tage")) {
+                tage.add(new KostenstelleEnergieRegeln.Tageswert(tag(t.path("tag")), bd(t.path("menge")),
+                        t.path("zustand").asText(), ganz(t.path("abdeckung_prozent")), t.path("version").asInt(),
+                        texte(t.path("kennzeichen"))));
+            }
+            quellen.add(new KostenstelleEnergieRegeln.Quelle(q.path("messstelle").asText(),
+                    q.path("art").asText(), q.path("groesse").asText(), q.path("richtung").asText(),
+                    q.path("einheit").asText(), anteile, tage));
+        }
+        return quellen;
     }
 
     private static List<String> sollNamen(JsonNode posten) {

@@ -9583,7 +9583,9 @@ paths:
         ohne Angabe die neueste - mit `version=1` stehen die Zahlen, wie sie vor jeder Korrektur galten.
         Ein Posten trägt die höchste Version seiner Tage mit EINMAL „korrigiert (Version n)“ und seine
         Herkunft nach bilanzwert-herkunft (Art `verteilt`). Nichts wird gespeichert; `berechnet_am` ist
-        der Zeitpunkt dieser Sicht. Liest nur.
+        der Zeitpunkt dieser Sicht. Liest nur. `doppelzaehlung` (Captain-Entscheid 14.09.2026) warnt,
+        welcher Posten in welchem bereits enthalten ist (Regel `doppelzaehlung`, Formeln je Tag, rekursiv,
+        Kreis benannt) - und ändert keine Zahl: kein Posten fehlt, keine Summe wird bereinigt.
       parameters:
         - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
         - { name: am, in: query, required: false, schema: { type: string, format: date } }
@@ -18398,7 +18400,7 @@ components:
       description: >
         Die Kostenstellen-Sicht (AP-10 IP-11). `summe` = gemessen + verteilt + berechnet (ohne Posten);
         `nicht_verteilt` zählt dort nie mit.
-      required: [kostenstelle, periode, am, von, bis, zeitzone, version, berechnet_am, gemessen, verteilt, berechnet, summe, nicht_verteilt]
+      required: [kostenstelle, periode, am, von, bis, zeitzone, version, berechnet_am, gemessen, verteilt, berechnet, summe, nicht_verteilt, doppelzaehlung]
       properties:
         kostenstelle: { $ref: "#/components/schemas/KostenstelleEnergieKostenstelle" }
         periode: { type: string, enum: [tag, monat, jahr] }
@@ -18413,6 +18415,7 @@ components:
         berechnet: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
         summe: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
         nicht_verteilt: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+        doppelzaehlung: { $ref: "#/components/schemas/KostenstelleEnergieDoppelzaehlung" }
     KostenstelleEnergieKostenstelle:
       type: object
       required: [id, kennzeichen, name, gueltig_ab, gueltig_bis]
@@ -18491,6 +18494,39 @@ components:
           nullable: true
           description: "AP-10 IP-12: {satz, fehlt} nach bilanzwert-herkunft.schema.json (Art berechnet) am gespeicherten Tageswert einer BERECHNETEN Quelle in der gezeigten Version; null = nicht berechnet (gemessene Quelle) oder kein Tageswert."
           additionalProperties: true
+    KostenstelleEnergieDoppelzaehlung:
+      type: object
+      description: >
+        Die Warnung vor doppelter Zählung - NEBEN den Blöcken, sie ändert keine Zahl. Beide Listen leer =
+        kein Posten ist in einem anderen enthalten.
+      required: [enthalten, nicht_pruefbar]
+      properties:
+        enthalten: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieEnthalten" } }
+        nicht_pruefbar: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieNichtPruefbar" } }
+    KostenstelleEnergieEnthalten:
+      type: object
+      required: [teil, summe, umfang, kette, zeitraeume, satz]
+      properties:
+        teil: { type: string, example: MS-06 }
+        summe: { type: string, example: MS-20 }
+        umfang: { type: string, enum: [ganz, teilweise], description: "Nie eine Menge: ganz, wenn Anteil der Summe × Beitrag des Terms ≥ 100 %, sonst zum Teil." }
+        kette: { type: array, items: { type: string }, example: [MS-20, MS-06], description: "Der Weg durch die Formeln, die Summe zuerst." }
+        zeitraeume: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieZeitraum" } }
+        satz: { type: string, example: MS-06 ist bereits in MS-20 enthalten }
+    KostenstelleEnergieZeitraum:
+      type: object
+      required: [von, bis]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der letzte Tag, einschließlich." }
+    KostenstelleEnergieNichtPruefbar:
+      type: object
+      required: [messstelle, grund, kette, satz]
+      properties:
+        messstelle: { type: string, example: MS-20 }
+        grund: { type: string, enum: [formel_kreis, haengt_an_kreis] }
+        kette: { type: array, items: { type: string }, example: [MS-20, MS-23, MS-20] }
+        satz: { type: string }
     VerteilungFehler:
       type: object
       description: >

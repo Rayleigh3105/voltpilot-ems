@@ -1,7 +1,7 @@
 # Verteilungs-Vertrag: eine Messstelle auf Kostenstellen (UEMS AP-10)
 
-Stand 14.09.2026 · Vertrag 1.2 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
-E12, E13 vom 12.09.2026.
+Stand 14.09.2026 · Vertrag 1.4 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
+E12, E13 vom 12.09.2026; Regel `doppelzaehlung` nach dem Captain-Entscheid vom 14.09.2026.
 
 Eine **feste Verteilung** ist eine eigene zeitgültige Beziehung **Messstelle → Kostenstelle** mit
 Anteil (Tage, Muster A). Sie verteilt MENGEN, nie Stammdaten, und sie wirkt je Tag auf die
@@ -13,6 +13,7 @@ Tagesmenge.
 | [`verteilung.schema.json`](./verteilung.schema.json) | das Schema für Vokabulare, Regeln und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/api/.../uems/VerteilungRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
 | `services/api/.../uems/KostenstelleEnergieRegeln.java` | die Regel `kostenstelle` (rein, nur Java — sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz) |
+| `services/api/.../uems/KostenstelleDoppelzaehlung.java` | die Regel `doppelzaehlung` (rein, nur Java — sie RUFT `am_tag` und die Abhängigkeitsordnung `BerechnetePeriode.reihenfolge`) |
 | `frontend/portal/src/uemsVerteilung.ts` | der **TypeScript-Zwilling** |
 | `…/uems/VerteilungVectorsTest.java` · `…/src/uemsVerteilung.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
 
@@ -22,10 +23,11 @@ Tagesmenge.
 > (`uems/VerteilungService` → `satz_ab_tag`), das Lesen `GET …/verteilung?am=` (`am_tag`) und der Leseweg
 > des Formel-Terms (`AnteilLeseweg#lies` → `am_tag` + `term`). Tabelle `messstelle_verteilung`
 > (`V20260913230000`). Seit AP-10 IP-11 die Kostenstellen-Sicht
-> `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (`uems/KostenstelleEnergieService` → `kostenstelle`).
+> `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (`uems/KostenstelleEnergieService` → `kostenstelle`,
+> seit 14.09.2026 daneben `doppelzaehlung` mit den Formeln je Tag aus `BerechnetePeriodenLauf.formelnJeTag`).
 > Der Verteilen-Dialog kommt mit IP-15.
 
-## 1. Die neun Regeln
+## 1. Die zehn Regeln
 
 | Regel | Was sie beantwortet |
 |---|---|
@@ -38,6 +40,7 @@ Tagesmenge.
 | `term` | E11/F11: Wie liest ein Formel-Term „Anteil 4100 von MS-07“? |
 | `herkunft` | §4.7/E13: Woher kommt dieser verteilte Wert? (gemeinsam mit [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md)) |
 | `kostenstelle` | AP-10 IP-11, §5.7: Was bekommt eine Kostenstelle über eine Periode — gemessen · verteilt · berechnet — und was gehört daneben niemandem (nicht verteilt)? |
+| `doppelzaehlung` | Captain-Entscheid 14.09.2026: Welcher Posten einer Kostenstelle ist an welchen Tagen bereits in einem anderen enthalten — ohne eine Zahl zu ändern? |
 
 ## 2. Die Fallen
 
@@ -95,6 +98,18 @@ Tagesmenge.
    `grund: keine_zuordnung` (F12: nicht „9010 Druckluft 0 kWh“); ein zugeordneter Tag ohne Wert ist
    „keine Werte“. Verschiedene Größen, Richtungen oder Einheiten werden nie zu einer Zahl
    (`groessen_gemischt`, je Größe eine Summe — Erzeugung und Abgabe an 9000 bleiben getrennt).
+13. **Die Sicht warnt vor doppelter Zählung und ändert keine Zahl (`doppelzaehlung`).** Geht eine
+   berechnete Messstelle an eine Kostenstelle, an die auch Messstellen ihrer Formel gehen, zählt deren
+   `summe` sie doppelt (F11: MS-20 = MS-06 + MS-11 + Anteil 4100 von MS-07, alle an 4100). Kein Posten
+   wird ausgelassen, keine Summe bereinigt, keine Zuordnung abgelehnt — die Sicht nennt je Paar den
+   Satz „MS-06 ist bereits in MS-20 enthalten“ und die Tage. Je TAG (die Verteilung wirkt je Tag),
+   rekursiv über die Abhängigkeitsordnung der Formeln (ein Kreis wird mit `formel_kreis`/
+   `haengt_an_kreis` benannt, nie aufgelöst). **Anteile:** nie eine Menge — „ganz“, wenn Anteil der Summe
+   × Beitrag des Terms ≥ 100 % ist, sonst „zum Teil“; ein Term „Anteil 4200 von MS-07“ trägt einen
+   anderen Teil als der Posten MS-07 an 4100 (keine Warnung), ein abgezogener Term (−, beim Rest Abfluss
+   und zugeordnet) ist nicht enthalten, ein Term auf den positiven/negativen Teil eines Messwerts trägt
+   höchstens zum Teil. Es zählt die Einrichtung, nicht der Wert von heute: ein Term ohne Menge ist
+   trotzdem enthalten. Nur Posten derselben Größe, Richtung und Einheit; ein Messkanal-Term ist kein Posten.
 
 ## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5, eingelöst mit IP-8)
 

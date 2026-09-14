@@ -4,14 +4,16 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
  * Was die Kostenstellen-Sicht (UEMS AP-10 IP-11) liest und nirgends sonst gelesen wird: die Anteile des GANZEN
- * Kundenbereichs über einen Zeitraum, die Kostenstellen mit ihren Tagen und die Tageswerte ab Version 2. Jede Abfrage
+ * Kundenbereichs über einen Zeitraum, die Kostenstellen mit ihren Tagen (und Kennungen) und die Tageswerte ab Version 2. Jede Abfrage
  * läuft unter RLS — ein fremder Kundenbereich hat keine Zeilen. Hier wird nichts geschrieben.
  */
 @Repository
@@ -60,6 +62,16 @@ public class KostenstelleEnergieRepository {
         return jdbc.query("SELECT kennzeichen, gueltig_ab, gueltig_bis FROM kostenstelle ORDER BY kennzeichen",
                 (rs, n) -> new Ziel(rs.getString("kennzeichen"), rs.getObject("gueltig_ab", LocalDate.class),
                         rs.getObject("gueltig_bis", LocalDate.class)));
+    }
+
+    /** Das Kennzeichen jeder Kostenstelle nach ihrer Kennung — das Ziel eines Verteilungs-Terms trägt die Kennung. */
+    public Map<UUID, String> kennzeichenDerZiele() {
+        Map<UUID, String> raus = new HashMap<>();
+        jdbc.query("SELECT id, kennzeichen FROM kostenstelle",
+                rs -> {
+                    raus.put(rs.getObject("id", UUID.class), rs.getString("kennzeichen"));
+                });
+        return raus;
     }
 
     /** Die Zeitzone des Unternehmens — {@code null} ohne Unternehmen. */

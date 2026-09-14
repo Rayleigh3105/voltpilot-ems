@@ -22,11 +22,12 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
 | Route | `GET /api/v1/unternehmen/kostenstellen/{id}/energie?periode=tag\|monat\|jahr&am=&version=` (`web/KostenstelleEnergieController`, `web/dto/KostenstelleEnergieDto`) |
 | Regel (rein) | `uems/KostenstelleEnergieRegeln.energie` — RUFT `VerteilungRegeln.amTag`/`.erbe` und `BilanzAbleitung.summeOhneAnzeige`; Vertrag Regel `kostenstelle` in `verteilung-vectors.json` 1.2 (F6, F12, F13, F14), nur Java (`zwillinge_grund`) |
 | Dienst | `uems/KostenstelleEnergieService` (Tageswerte über `MessstelleWerteService`, Versionen ≥ 2 über `KostenstelleEnergieRepository.versionen`, Herkunft über `BilanzwertHerkunft`) |
+| Warnung vor doppelter Zählung | `uems/KostenstelleDoppelzaehlung.pruefe` (rein, Regel `doppelzaehlung` in `verteilung-vectors.json` 1.4) über dieselben Quellen + `BerechnetePeriodenLauf.formelnJeTag` → Feld `doppelzaehlung` (letztes Feld, `enthalten[]`/`nicht_pruefbar[]`) — ändert keine Zahl |
 | Kaskaden-Anschluss | `uems/BilanzNeuBerechnet.melden`, gerufen in `KorrekturKaskade.verarbeiten` — KEINE zweite Kaskade |
 | Migration | `V20260914140000__uems_bilanz_neu_berechnet.sql`: nur das Vokabular (Funktion + Art-CHECK), keine Tabelle |
 | Ereignis | `bilanz_neu_berechnet` (28. Art, nur `cloud`, [von, bis) = die Tage, Bezug NUR die Messstelle, Pflicht `ausloeser` K-…/EW-…) — api + writer `EreignisVokabular`, ingest `BoxEventsValidator.ARTEN`, `uemsEreignis.ts`, `events-raw.event.schema.json` |
 | Rechte | `messstelle.ansehen` (Anmerkung in `rechte-matrix.json`), eingetragen, nicht durchgesetzt |
-| Tests | `VerteilungVectorsTest` · `KostenstelleEnergieSchnittstelleVertragTest` (rein) · `KostenstelleEnergieApiTest` (5) · `UemsBilanzNeuBerechnetMigrationTest` (5) · `UemsKorrekturKaskadeTest` (+2) |
+| Tests | `VerteilungVectorsTest` · `KostenstelleEnergieSchnittstelleVertragTest` (rein) · `KostenstelleEnergieApiTest` (10, davon `dieZahlenSindZeichengleich` gegen `src/test/resources/uems/doppelzaehlung-vorher/`) · `UemsBilanzNeuBerechnetMigrationTest` (5) · `UemsKorrekturKaskadeTest` (+2) |
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,KostenstelleEnergieSchnittstelleVertragTest,EreignisVokabularVectorsTest')
@@ -59,9 +60,13 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
 
 ## Befunde (benannt, nicht still gelöst)
 
-- **Doppelte Zählung im Referenzunternehmen:** MS-20 (Prozess-Summe aus MS-06 + MS-11 + Anteil MS-07) geht zu 100 % an
-  4100, MS-06 und MS-11 ebenfalls — die Sicht zeigt jeden Posten ehrlich, ihre `summe` zählt die Teile dann doppelt.
-  Eine Regel „ein berechneter Posten schließt seine Eingänge aus“ gibt es nicht; das ist eine Frage an die Stammdaten.
+- **Doppelte Zählung im Referenzunternehmen — seit 14.09.2026 GEWARNT, nicht behoben (Captain-Entscheid „Warnen — die
+  Sicht sagt, welcher Posten in welchem enthalten ist, und ändert keine Zahl“):** MS-20 (MS-06 + MS-11 + Anteil 4100
+  von MS-07) geht zu 100 % an 4100, MS-06, MS-11 und MS-07 (70 %) ebenfalls — die Sicht zeigt jeden Posten weiter
+  ehrlich und ihre `summe` zählt weiter doppelt, aber `doppelzaehlung.enthalten` sagt „MS-06 ist bereits in MS-20
+  enthalten“ (auch MS-07: der Term „Anteil 4100“ ist genau dieser Posten, obwohl MS-20 ihn heute ohne Menge führt).
+  ⚠ Wer die Warnung anfasst, fährt `dieZahlenSindZeichengleich`: jede Antwort bis `doppelzaehlung` byte-gleich zum
+  Stand vor der Warnung. Anteile, Kreis, Abzug: Falle 13 in `docs/contracts/v2/verteilung.md`.
 - **Hauptzähler stehen unter „nicht verteilt“:** die Verteilung kennt keine Stellung; MS-01/MS-10/MS-16 („verteilt
   über Unterzähler“) haben keine Zeile und stehen darum dort. Ob ein Hauptzähler mit Unterzählern ausgenommen wird,
   entscheidet die Fläche (IP-15) oder ein Konzept-Nachtrag.
