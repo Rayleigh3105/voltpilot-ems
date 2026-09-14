@@ -1959,6 +1959,8 @@ export interface MessstelleFormelTerm {
   quell_messstelle_id: string | null;
   vorzeichen: string;
   faktor: number;
+  /** AP-08: der Haken „gilt als Erzeugung“ an einem richtungslosen Kanal (`messstelle-formel.md` §2.2). */
+  gilt_als_erzeugung: boolean;
   groesse: MessstelleGroesse | null;
   eingerichtet: boolean;
   /** AP-10 IP-5: nur bei `eingang_art` = `verteilung` — die Kostenstelle. */
