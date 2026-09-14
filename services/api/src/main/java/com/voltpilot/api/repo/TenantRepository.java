@@ -286,6 +286,9 @@ public class TenantRepository {
                         // only the tenant (RESTRICT).
                         "anlage_netzanschluss", "netzanschluss_kennzeichen", "netzanschluss",
                         "netzanschluss_kennzeichen_seq", "netzanschluss_aenderung",
+                        // The Funktionen (V20260914190000): a Teilnahme before its Funktion
+                        // (RESTRICT), the Funktion before its Standort.
+                        "funktion_teilnahme", "funktion",
                         "standort_vorschlag", "anlage_standort", "standort", "ort_kurzzeichen",
                         "ort_kurzzeichen_seq",
                         "unternehmen"}) {

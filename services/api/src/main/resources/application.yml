@@ -392,6 +392,14 @@ voltpilot:
   uems:
     bestandsuebernahme:
       enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
+    # UEMS AP-01 IP-2: der UMSTIEG „Bestand → Zustand" der Funktionen läuft direkt
+    # NACH der Bestandsübernahme der Standorte (FunktionBestandLaeufer, kein Takt):
+    # eine heute zugeordnete Anlage mit laufender Betriebsweise wird Teilnahme
+    # `aktiv` (übernommen), ihr Standort trägt den höchsten Zustand. Idempotent,
+    # lesend gegenüber dem Bestand (kein Push, kein Kommando, kein Ruhe-Eintrag).
+    # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
+    funktion-bestand:
+      enabled: ${VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED:true}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt

@@ -20,11 +20,12 @@ lebt seit IP-1 als Vertrag:
   Zustandsvokabular (`ZustandAbleitung` / `uemsZustand.ts`), statt es nachzubauen.
   **Wer die Regel ändert, ändert beide Seiten UND die Vektor-Datei.**
 
-## ⚠ Noch ruft niemand an
+## ⚠ Wer anruft
 
-IP-1 stellt NICHTS um: keine Tabelle (IP-2 `funktion`/`funktion_teilnahme` backfillt nach
-dieser Regel), kein Endpunkt (IP-3), keine Fläche (IP-8/IP-11); Steuerung, Publisher und Box
-sind unberührt. Der Ruhe-Eintrag ohne Ende (IP-4) ist hier nur ein gelesener FAKT.
+Seit IP-2 ruft der Umstieg aus dem Bestand `bestand` und `standort` an und schreibt das Ergebnis
+nach `funktion`/`funktion_teilnahme` (`uems-funktionen.md`). Noch kein Endpunkt (IP-3), keine
+Fläche (IP-8/IP-11); Steuerung, Publisher und Box sind unberührt. Der Ruhe-Eintrag ohne Ende
+(IP-4) ist hier nur ein gelesener FAKT.
 
 ## Die fünf Fakten, die man ohne Nachlesen braucht
 

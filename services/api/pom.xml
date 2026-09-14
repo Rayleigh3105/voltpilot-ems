@@ -241,6 +241,11 @@
                              BestandsuebernahmeWiringTest an der echten
                              application.yml. -->
                         <voltpilot.uems.bestandsuebernahme.enabled>false</voltpilot.uems.bestandsuebernahme.enabled>
+                        <!-- Der Umstieg der Funktionen (UEMS AP-01 IP-2) folgt der
+                             Bestandsuebernahme und ist dieselbe Falle: im Testlauf
+                             aus, in PRODUKTION an. Wer ihn prueft, ruft
+                             FunktionBestandLaeufer.lauf() selbst. -->
+                        <voltpilot.uems.funktion-bestand.enabled>false</voltpilot.uems.funktion-bestand.enabled>
                         <!-- Der Verdichtungs-Takt der Viertelstundenwerte (UEMS
                              AP-07 IP-12) ist dieselbe @Scheduled-Falle - im
                              Testlauf aus, in PRODUKTION an (application.yml,

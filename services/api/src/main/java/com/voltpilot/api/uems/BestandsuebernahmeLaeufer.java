@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -66,6 +68,15 @@ public class BestandsuebernahmeLaeufer {
         }
     }
 
+    /**
+     * Die Stelle dieses Start-Laufs unter den {@link ApplicationReadyEvent}-Hörern: VOR den
+     * unsortierten (die Vorgabe ist {@link Ordered#LOWEST_PRECEDENCE}), damit wer auf den Standorten
+     * aufbaut, sich mit {@code ORDER + 1} zugesagt DANACH einreihen kann — der Umstieg der
+     * Funktionen ({@link FunktionBestandLaeufer}). Ohne Angabe ist die Reihenfolge zweier Hörer
+     * nicht zugesagt.
+     */
+    public static final int ORDER = Ordered.LOWEST_PRECEDENCE - 100;
+
     private final JdbcTemplate adminJdbc;
     private final BestandsuebernahmeService dienst;
     private final boolean enabled;
@@ -79,6 +90,7 @@ public class BestandsuebernahmeLaeufer {
     }
 
     @EventListener(ApplicationReadyEvent.class)
+    @Order(ORDER)
     public void beimStart() {
         if (!enabled) {
             log.info("UEMS-Bestandsübernahme der Standorte abgeschaltet "
