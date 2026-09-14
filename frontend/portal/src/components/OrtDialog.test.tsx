@@ -216,3 +216,35 @@ describe('OrtDialog — bearbeiten', () => {
     ]);
   });
 });
+
+describe('OrtDialog — „Fläche ändern“ (AP-02 IP-8, T7)', () => {
+  it('öffnet den Flächen-Dialog darüber; danach steht die neue Fläche hier, und Schließen lädt den Baum neu', async () => {
+    const antwort = ortsbaumAhrenberg({ stichtag: '2027-01-15' });
+    const halle2 = ortsbaumSicht(antwort).knoten.find((k) => k.name === 'Halle 2')!;
+    const put = vi.spyOn(api, 'ortFlaeche').mockResolvedValue(
+      ortNachSchreiben({
+        flaechen: [
+          { m2: 3100, gueltigAb: '2026-10-01', gueltigBis: '2027-01-14', zustand: 'beendet' },
+          { m2: 3400, gueltigAb: '2027-01-15', gueltigBis: null, zustand: 'gueltig' },
+        ],
+        rueckwirkung: { art: 'ab_heute', tage: 0, abzeichen: null },
+      }),
+    );
+    const p = zeige({ antwort, knoten: halle2 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fläche ändern: Halle 2' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Fläche ändern' });
+    fireEvent.change(within(dialog).getByLabelText('Neue Fläche (m²) *'), { target: { value: '3400' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Fläche speichern' }));
+    expect(await screen.findByRole('heading', { name: 'Verlauf der Fläche' })).toBeInTheDocument();
+    expect(put).toHaveBeenCalledWith(ORT_IDS.g2, { m2: 3400, gueltigAb: '2027-01-15' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Fläche gespeichert' })).toBeNull());
+    expect(document.querySelector('.vp-sd-flaeche')?.textContent).toBe(`Bezugsfläche3${NB}400${NB}m²`);
+    // Gespeichert ist schon — auch „Abbrechen“ lässt den Baum neu laden, sonst stünde dort die alte Fläche.
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(p.onGespeichert).toHaveBeenCalled();
+    expect(p.onClose).not.toHaveBeenCalled();
+  });
+});

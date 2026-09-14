@@ -95,6 +95,9 @@ export const UEMS_UNTERNEHMEN = 'Unternehmen';
 /** Ein räumlich abgegrenzter Ort des Unternehmens mit Adresse. */
 export const UEMS_STANDORT = 'Standort';
 
+/** Die Koordinaten-Zeile der Anlage, wenn neben ihr das Objekt „Standort“ steht (AP-02 W4). */
+export const UEMS_STANDORT_AUF_DER_KARTE = 'Standort auf der Karte';
+
 /** Die optionale zweite Ebene des Ortsbaums. */
 export const UEMS_GEBAEUDE = 'Gebäude';
 

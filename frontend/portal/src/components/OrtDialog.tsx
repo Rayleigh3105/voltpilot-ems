@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
@@ -24,10 +24,12 @@ import {
   type OrtFeldFehler,
   type OrtFormular,
 } from '../ortsbaum';
+import { KNOPF_FLAECHE_AENDERN } from '../flaecheAendern';
 import { alsOrtFehler, NUTZUNGEN } from '../standorte';
 import { m2Text } from '../uemsOrtsbaum';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
+import { FlaecheDialog } from './FlaecheDialog';
 import './StandortDialog.css';
 import './OrtDialog.css';
 
@@ -44,7 +46,9 @@ import './OrtDialog.css';
  * Verschieben mit „gültig ab“ (IP-12) und steht hier nur lesend.
  * ⚠ Die Fläche: beim Anlegen die erste (ab „Gültig ab“ = erster Tag des Knotens),
  * beim Bearbeiten nur, solange es keine gibt (`PUT …/flaeche`). Eine vorhandene
- * steht lesend da — ändern mit Verlauf ist IP-8 (T7).
+ * steht lesend da; „Fläche ändern“ öffnet darüber den Flächen-Dialog mit „gültig
+ * ab“ und Verlauf (IP-8, T7). Danach steht hier die heute gültige Fläche aus der
+ * Antwort, und auch „Abbrechen“ lädt den Baum neu — sonst stünde dort die alte.
  */
 export function OrtDialog({
   open,
@@ -84,6 +88,10 @@ export function OrtDialog({
   const [serverFehler, setServerFehler] = useState<OrtFeldFehler>({});
   const [allgemein, setAllgemein] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [flaecheOffen, setFlaecheOffen] = useState(false);
+  /** Nach „Fläche ändern“: die Fläche, die laut Antwort heute gilt. */
+  const [flaecheNeu, setFlaecheNeu] = useState<{ m2: number | null } | null>(null);
+  const flaecheKnopf = useRef<HTMLButtonElement>(null);
 
   const pruefung = useMemo(
     () => ortPruefen(art, fassung, form, antwort, knoten),
@@ -93,6 +101,13 @@ export function OrtDialog({
   const ziele = useMemo(() => (art === 'bereich' && !knoten ? bereichZiele(antwort) : []), [art, knoten, antwort]);
   const vorhandeneFlaeche = knoten?.quelle?.flaecheM2 ?? null;
   const flaecheEingabe = fassung === 'anlegen' || vorhandeneFlaeche == null;
+  const flaecheAnzeige = flaecheNeu ? flaecheNeu.m2 : vorhandeneFlaeche;
+  const schliessen = flaecheNeu ? onGespeichert : onClose;
+
+  function zurueckZurFlaeche() {
+    setFlaecheOffen(false);
+    requestAnimationFrame(() => flaecheKnopf.current?.focus());
+  }
 
   function setze<K extends keyof OrtFormular>(feld: K, wert: OrtFormular[K]) {
     setForm((f) => ({ ...f, [feld]: wert }));
@@ -182,11 +197,11 @@ export function OrtDialog({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={schliessen}
       title={titel}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={schliessen}>
             Abbrechen
           </Button>
           <Button type="submit" form={`${basis}-form`} disabled={busy}>
@@ -282,11 +297,24 @@ export function OrtDialog({
             </div>
           </div>
         ) : (
-          vorhandeneFlaeche != null && (
-            <div className="vp-sd-flaeche">
-              <span className="vp-sd-flaeche-label">Bezugsfläche</span>
-              <span className="vp-sd-flaeche-wert">{m2Text(vorhandeneFlaeche)}</span>
-            </div>
+          flaecheAnzeige != null && (
+            <>
+              <div className="vp-sd-flaeche">
+                <span className="vp-sd-flaeche-label">Bezugsfläche</span>
+                <span className="vp-sd-flaeche-wert">{m2Text(flaecheAnzeige)}</span>
+              </div>
+              {knoten?.id && (
+                <button
+                  ref={flaecheKnopf}
+                  type="button"
+                  className="vp-sd-verweis"
+                  aria-label={`${KNOPF_FLAECHE_AENDERN}: ${knoten.name}`}
+                  onClick={() => setFlaecheOffen(true)}
+                >
+                  {KNOPF_FLAECHE_AENDERN}
+                </button>
+              )}
+            </>
           )
         )}
 
@@ -318,6 +346,23 @@ export function OrtDialog({
           </div>
         )}
       </form>
+      {flaecheOffen && knoten?.id && (
+        <FlaecheDialog
+          open
+          ortId={knoten.id}
+          name={knoten.name}
+          kurzzeichen={knoten.kurzzeichen}
+          flaecheHeute={flaecheAnzeige}
+          heute={antwort.stichtag}
+          zeitzone={standort.zeitzone}
+          onClose={zurueckZurFlaeche}
+          onGespeichert={(ort) => {
+            const heute = ort.flaechen.find((f) => f.zustand === 'gueltig') ?? null;
+            setFlaecheNeu({ m2: heute ? heute.m2 : null });
+            zurueckZurFlaeche();
+          }}
+        />
+      )}
     </Modal>
   );
 }
