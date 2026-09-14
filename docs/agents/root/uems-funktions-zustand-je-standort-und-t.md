@@ -23,8 +23,8 @@ lebt seit IP-1 als Vertrag:
 ## ⚠ Wer anruft
 
 Seit IP-2 ruft der Umstieg aus dem Bestand `bestand` und `standort` an und schreibt das Ergebnis
-nach `funktion`/`funktion_teilnahme` (`uems-funktionen.md`). Noch kein Endpunkt (IP-3), keine
-Fläche (IP-8/IP-11); Steuerung, Publisher und Box sind unberührt. Der Ruhe-Eintrag ohne Ende
+nach `funktion`/`funktion_teilnahme` (`uems-funktionen.md`). Seit IP-3 rufen die Routen `teilnahme`,
+`standort`, `messen` und beide Übergänge an (`uems-funktionen-routen.md`); keine Fläche (IP-8/IP-11). Der Ruhe-Eintrag ohne Ende
 (IP-4) ist hier nur ein gelesener FAKT.
 
 ## Die fünf Fakten, die man ohne Nachlesen braucht

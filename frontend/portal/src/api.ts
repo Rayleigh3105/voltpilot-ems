@@ -26,6 +26,7 @@ export type {
   SurplusPolicy,
 } from './ladepunkte';
 import type { SiteVerbraucher } from './verbraucherZone';
+import type { Aktion as FunktionAktion, FunktionZustand, Pruefung as FunktionPruefung } from './uemsFunktion';
 export type { SiteVerbraucher } from './verbraucherZone';
 import type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
 export type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
@@ -3096,6 +3097,126 @@ export interface Ort {
   flaechen: OrtFlaechenStand[];
   /** Zum „gültig ab“ dieses Vorgangs; `null` beim Bearbeiten. */
   rueckwirkung: OrtRueckwirkung | null;
+}
+
+// ---- Funktionen je Standort (UEMS AP-01 IP-3) --------------------------------
+
+/**
+ * `GET /api/v1/funktionen` (snake_case wie der Vertrag `funktion-zustand`): je nicht archiviertem
+ * Standort beide Funktionen, dazu „läuft an x von y Standorten“. Zustände, Prüfungen und Aktionen
+ * sind die Wörter von `uemsFunktion.ts`; jeder Satz kommt fertig vom Server. NUR Typen — die
+ * Flächen sind AP-01 IP-5 bis IP-8.
+ */
+export interface Funktionen {
+  unternehmen: FunktionUnternehmen;
+  standorte: FunktionStandort[];
+}
+
+export interface FunktionUnternehmen {
+  messen: FunktionVerbreitung;
+  steuern: FunktionVerbreitung;
+}
+
+/** „Steuern & Optimieren läuft an 1 von 2 Standorten“; `text` null ohne Standort. */
+export interface FunktionVerbreitung {
+  laeuft_an: number;
+  standorte: number;
+  text: string | null;
+}
+
+export interface FunktionStandort {
+  id: string;
+  kurzzeichen: string;
+  name: string;
+  zeitzone: string;
+  messen: FunktionMessen;
+  steuern: FunktionSteuern;
+}
+
+export interface FunktionMessen {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  fehlt: string[];
+  datenlage: string | null;
+}
+
+/** Der höchste Zustand der Teilnahmen; `aktionen` = die Standort-Aktionen, die jetzt erlaubt wären. */
+export interface FunktionSteuern {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  fehlt: string[];
+  aktionen: FunktionAktion[];
+  anlagen: FunktionAnlage[];
+}
+
+export interface FunktionAnlage {
+  id: string;
+  name: string;
+  teilnahme: FunktionTeilnahme;
+}
+
+/**
+ * Die Teilnahme einer Anlage. `pruefliste` nur in entwurf, eingerichtet und angehalten;
+ * `wege` je roter Zeile, was zu tun ist; ein Knopf nur für eine Aktion aus `aktionen` (R2).
+ */
+export interface FunktionTeilnahme {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  uebernommen: boolean;
+  pruefliste: FunktionPruefZeile[];
+  fehlt: string[];
+  wege: FunktionWeg[];
+  aktionen: FunktionAktion[];
+}
+
+/** `bestanden: null` = nicht prüfbar, nie „bestanden“. */
+export interface FunktionPruefZeile {
+  pruefung: FunktionPruefung;
+  bestanden: boolean | null;
+}
+
+export interface FunktionWeg {
+  pruefung: FunktionPruefung;
+  satz: string;
+}
+
+/** `PUT /api/v1/sites/{id}/funktionen/steuern` bzw. `/api/v1/standorte/{id}/funktionen/steuern`. */
+export interface FunktionSteuernAnfrage {
+  aktion: 'starten' | 'anhalten' | 'fortsetzen' | 'beenden';
+}
+
+export interface FunktionSteuernErgebnis {
+  aktion: FunktionSteuernAnfrage['aktion'];
+  betroffen: FunktionAnlageRef[];
+  standort: FunktionStandort;
+}
+
+export interface FunktionAnlageRef {
+  id: string;
+  name: string;
+}
+
+/** Die Ablehnungen der Funktions-Schnittstelle (`uems/FunktionAbgelehnt`, OpenAPI `FunktionFehler`). */
+export type FunktionFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'nicht_aufgenommen'
+  | 'pruefliste_offen'
+  | 'noch_nicht_gestartet'
+  | 'laeuft_bereits'
+  | 'ist_angehalten'
+  | 'bereits_angehalten'
+  | 'beendet';
+
+/** `{code, message, fehlt, wege}` — bei `pruefliste_offen` die roten Zeilen. */
+export interface FunktionFehler {
+  code: FunktionFehlerCode;
+  message: string;
+  fehlt: string[];
+  wege: FunktionWeg[];
 }
 
 // ---- Messstelle zuordnen: Ort und elektrische Stellung (UEMS AP-04 IP-7) -----

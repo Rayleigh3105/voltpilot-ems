@@ -19,8 +19,8 @@ nur ANGEWANDT. Beweis: `UemsFunktionMigrationTest`, `FunktionBestandApiTest`,
   `(funktion_id, tenant_id, funktion='steuern')` nur an „Steuern“. `archiviert` ⟺ `archiviert_am`
   bzw. `beendet_am`; `angehalten` braucht `angehalten_seit`; `entwurf`/`eingerichtet` tragen weder
   Start noch Anhalten. Die Beobachtungen „liefert Daten“/„steuert“ werden nie gespeichert.
-- Kein Endpunkt, keine Fläche, kein Übergang starten/anhalten (IP-3/IP-4). Messen bekommt beim
-  Umstieg KEIN Objekt (A11). Der Löschweg einer Anlage beendet ihre Teilnahme noch nicht (offen
+- Die Übergänge starten/anhalten/fortsetzen/beenden schreibt seit IP-3 `FunktionService`
+  (`uems-funktionen-routen.md`); keine Fläche. Messen bekommt beim Umstieg KEIN Objekt (A11). Der Löschweg einer Anlage beendet ihre Teilnahme noch nicht (offen
   für IP-3) — die Zeile bleibt stehen (W5, kein FK auf `site`, Einfüge-Trigger
   `funktion_teilnahme_site_fk`).
 

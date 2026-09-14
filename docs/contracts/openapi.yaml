@@ -263,6 +263,14 @@ tags:
       ändert sich der Rest von selbst. Eine Rest-MESSSTELLE entsteht nur auf menschlichen Wunsch
       („Rest anlegen“), mit protokolliertem Urheber und nie zweimal. Rechte eingetragen, nicht
       durchgesetzt (AP-03).
+  - name: funktionen
+    description: >
+      UEMS-Funktionen je Standort (AP-01 IP-3, E6 = C, R1/R2): „Messen & Auswerten“ und „Steuern &
+      Optimieren“ mit Zustand, „es fehlt“ und je Anlage der Teilnahme samt Prüfliste; die Regel ist der
+      Vertrag docs/contracts/v2/funktion-zustand.schema.json (FunktionZustandAbleitung). Starten und
+      Fortsetzen prüfen die Liste in derselben Transaktion erneut; Anhalten und Beenden setzen die Ruhe
+      bis zum Start (device_override, herkunft `funktion`, ohne Ende). Rechte eingetragen, nicht
+      durchgesetzt (AP-03); fremd = 404.
   - name: verteilung
     description: >
       UEMS-Verteilung einer Messstelle auf Kostenstellen (AP-10 IP-8, Konzept §4.6, E11 = A,
@@ -8932,6 +8940,74 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/funktionen:
+    get:
+      tags: [funktionen]
+      summary: Je nicht archiviertem Standort beide Funktionen mit Zustand, „es fehlt“ und der Teilnahme je Anlage - dazu „läuft an x von y Standorten“.
+      description: >
+        Recht: heute lesend - keine eigene Kennung. Steuern & Optimieren am Standort ist der höchste
+        Zustand seiner Teilnahmen; eine Anlage ohne Teilnahme ist `kein_objekt` („Diese Anlage misst
+        nur“). Die Prüfliste steht nur in entwurf, eingerichtet und angehalten; `wege` nennt je roter
+        Zeile, was zu tun ist; `aktionen` sind die Übergänge, die jetzt erlaubt wären. Liest nur.
+      responses:
+        "200":
+          description: Die Funktionen des Unternehmens.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Funktionen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/sites/{siteId}/funktionen/steuern:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [funktionen]
+      summary: Steuern & Optimieren einer Anlage starten, anhalten, fortsetzen oder beenden.
+      description: >
+        Recht `steuerung.starten_beenden` (starten, beenden) bzw. `steuerung.anhalten_fortsetzen`
+        (anhalten, fortsetzen). Starten und Fortsetzen prüfen die Liste IN der Transaktion erneut (R1/R2);
+        ist sie rot, antwortet 409 `pruefliste_offen` mit `fehlt` und `wege`, und nichts ist geschrieben.
+        Starten/Fortsetzen heben die Ruhe auf, Anhalten/Beenden setzen sie (ohne Ende); der Registry-Push
+        folgt nach dem Commit. Die Funktion des Standorts zieht nach.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FunktionSteuernAnfrage" }
+      responses:
+        "200":
+          description: Übergang ausgeführt; der Standort, wie er danach steht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunktionSteuernErgebnis" }
+        "400": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "409": { $ref: "#/components/responses/FunktionAbgelehnt" }
+  /api/v1/standorte/{standortId}/funktionen/steuern:
+    parameters:
+      - { name: standortId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [funktionen]
+      summary: Steuern & Optimieren für den ganzen Standort anhalten, fortsetzen oder beenden - alle Teilnahmen, für die der Übergang erlaubt ist.
+      description: >
+        Recht `steuerung.anhalten_fortsetzen` (anhalten, fortsetzen) bzw. `steuerung.starten_beenden`
+        (beenden). Gestartet wird je Anlage (`starten` hier = 400). Fortsetzen ist ganz oder gar nicht:
+        ist eine Prüfliste rot, wird keine Teilnahme fortgesetzt (409 `pruefliste_offen`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FunktionSteuernAnfrage" }
+      responses:
+        "200":
+          description: Übergang ausgeführt; `betroffen` sind die Anlagen, deren Teilnahme sich geändert hat.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunktionSteuernErgebnis" }
+        "400": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FunktionAbgelehnt" }
+        "409": { $ref: "#/components/responses/FunktionAbgelehnt" }
   /api/v1/sites/{siteId}/bilanz:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -10152,6 +10228,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/NetzanschlussFehler" }
+    FunktionAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. 400 `anfrage_ungueltig`, 404 `nicht_gefunden` (fremd, nie 403),
+        409 mit dem Grund des Vertrags funktion-zustand und seinem Satz; bei `pruefliste_offen` die roten
+        Zeilen als `fehlt` und `wege` (uems/FunktionAbgelehnt).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/FunktionFehler" }
     BilanzAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus
@@ -18238,6 +18322,112 @@ components:
         kennzeichen: { type: string }
         am: { type: string, format: date, nullable: true }
         prozesse: { type: array, items: { $ref: "#/components/schemas/MessstelleProzessZuordnung" } }
+    FunktionFehler:
+      type: object
+      required: [code, message, fehlt, wege]
+      properties:
+        code: { type: string, enum: [anfrage_ungueltig, nicht_gefunden, nicht_aufgenommen, pruefliste_offen, noch_nicht_gestartet, laeuft_bereits, ist_angehalten, bereits_angehalten, beendet] }
+        message: { type: string }
+        fehlt: { type: array, items: { type: string } }
+        wege: { type: array, items: { $ref: "#/components/schemas/FunktionWeg" } }
+    Funktionen:
+      type: object
+      required: [unternehmen, standorte]
+      properties:
+        unternehmen: { $ref: "#/components/schemas/FunktionUnternehmen" }
+        standorte: { type: array, items: { $ref: "#/components/schemas/FunktionStandort" } }
+    FunktionUnternehmen:
+      type: object
+      required: [messen, steuern]
+      properties:
+        messen: { $ref: "#/components/schemas/FunktionVerbreitung" }
+        steuern: { $ref: "#/components/schemas/FunktionVerbreitung" }
+    FunktionVerbreitung:
+      type: object
+      required: [laeuft_an, standorte, text]
+      properties:
+        laeuft_an: { type: integer, description: "Standorte, an denen die Funktion aktiv ist." }
+        standorte: { type: integer, description: "Alle nicht archivierten Standorte." }
+        text: { type: string, nullable: true, description: "„Steuern & Optimieren läuft an 1 von 2 Standorten“; null ohne Standort." }
+    FunktionStandort:
+      type: object
+      required: [id, kurzzeichen, name, zeitzone, messen, steuern]
+      properties:
+        id: { type: string, format: uuid }
+        kurzzeichen: { type: string }
+        name: { type: string }
+        zeitzone: { type: string }
+        messen: { $ref: "#/components/schemas/FunktionMessen" }
+        steuern: { $ref: "#/components/schemas/FunktionSteuern" }
+    FunktionMessen:
+      type: object
+      required: [zustand, seit, text, fehlt, datenlage]
+      properties:
+        zustand: { type: string, enum: [kein_objekt, archiviert, entwurf, aktiv] }
+        seit: { type: string, format: date-time, nullable: true }
+        text: { type: string }
+        fehlt: { type: array, items: { type: string } }
+        datenlage: { type: string, nullable: true }
+    FunktionSteuern:
+      type: object
+      required: [zustand, seit, text, fehlt, aktionen, anlagen]
+      properties:
+        zustand: { type: string, enum: [kein_objekt, archiviert, entwurf, eingerichtet, angehalten, aktiv] }
+        seit: { type: string, format: date-time, nullable: true }
+        text: { type: string }
+        fehlt: { type: array, items: { type: string } }
+        aktionen: { type: array, items: { type: string, enum: [anhalten, fortsetzen, beenden] } }
+        anlagen: { type: array, items: { $ref: "#/components/schemas/FunktionAnlage" } }
+    FunktionAnlage:
+      type: object
+      required: [id, name, teilnahme]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        teilnahme: { $ref: "#/components/schemas/FunktionTeilnahme" }
+    FunktionTeilnahme:
+      type: object
+      required: [zustand, seit, text, uebernommen, pruefliste, fehlt, wege, aktionen]
+      properties:
+        zustand: { type: string, enum: [kein_objekt, archiviert, entwurf, eingerichtet, angehalten, aktiv] }
+        seit: { type: string, format: date-time, nullable: true }
+        text: { type: string }
+        uebernommen: { type: boolean }
+        pruefliste: { type: array, items: { $ref: "#/components/schemas/FunktionPruefZeile" } }
+        fehlt: { type: array, items: { type: string } }
+        wege: { type: array, items: { $ref: "#/components/schemas/FunktionWeg" } }
+        aktionen: { type: array, items: { type: string, enum: [starten, anhalten, fortsetzen, beenden] } }
+    FunktionPruefZeile:
+      type: object
+      required: [pruefung, bestanden]
+      properties:
+        pruefung: { type: string, enum: [box, freigabe, verbindungstest, grenze, hauptzaehler, betriebsweise] }
+        bestanden: { type: boolean, nullable: true, description: "null = nicht prüfbar, nie „bestanden“." }
+    FunktionWeg:
+      type: object
+      required: [pruefung, satz]
+      properties:
+        pruefung: { type: string, enum: [box, freigabe, verbindungstest, grenze, hauptzaehler, betriebsweise] }
+        satz: { type: string }
+    FunktionSteuernAnfrage:
+      type: object
+      additionalProperties: false
+      required: [aktion]
+      properties:
+        aktion: { type: string, enum: [starten, anhalten, fortsetzen, beenden] }
+    FunktionSteuernErgebnis:
+      type: object
+      required: [aktion, betroffen, standort]
+      properties:
+        aktion: { type: string, enum: [starten, anhalten, fortsetzen, beenden] }
+        betroffen: { type: array, items: { $ref: "#/components/schemas/FunktionAnlageRef" } }
+        standort: { $ref: "#/components/schemas/FunktionStandort" }
+    FunktionAnlageRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
     BilanzFehler:
       type: object
       description: >
