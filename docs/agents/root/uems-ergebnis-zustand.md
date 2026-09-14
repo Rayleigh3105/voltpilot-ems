@@ -75,6 +75,8 @@ Fassung beider Vektor-Dateien (+ Python-Zwilling, `fruehere_fassungen` für gesp
 „mit Ablesestände“ (Dativ) ist so in 1.1 erledigt; „Zuwachs 337.600“ und die feste Zone Europe/Berlin
 in 1.3: „Zuwachs 337,6 kWh“ nach der Anzeige-Einheit (Wh/MWh → kWh, varh → kvarh, m³; gespeichert
 bleibt die Zähler-Einheit; `rundung.kennzeichen_ebene` = Viertelstunde, weil der Satz unverändert bis
-ins Jahr wandert; ohne Anzeige-Einheit `luecke_zuwachs_ohne_einheit` ohne Zahl). ⚠ Ein Muster, das nur
+ins Jahr wandert; ohne Anzeige-Einheit `luecke_zuwachs_ohne_einheit` ohne Zahl). Seit 1.8
+VAh/kVAh → kVAh (Scheinarbeit, NIE kWh) und Wmin → kWh über `teiler` 60000 — die Katalog-Einheiten
+stehen in [`uems-katalog-einheiten.md`](uems-katalog-einheiten.md). ⚠ Ein Muster, das nur
 seinen PLATZHALTER ändert, spricht mit den alten Werten denselben Text — die frühere Fassung beweist
 sich dann über den Platzhalter, nicht über den Wortlaut.

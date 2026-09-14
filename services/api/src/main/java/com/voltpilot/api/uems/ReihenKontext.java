@@ -24,7 +24,7 @@ import java.util.UUID;
  *
  * @param einheit die GESPEICHERTE Einheit der Reihe, wie der Zähler sie liefert (Katalog-Messkanal:
  *     Wh, kWh, MWh, varh, kvarh, m³ …); {@code null} = unbekannt, nie geraten. Angezeigt wird sie über
- *     {@link ErgebnisZustand#menge} (kWh · kvarh · m³).
+ *     {@link ErgebnisZustand#menge} (kWh · kvarh · kVAh · m³).
  * @param zeitzone die Zeitzone des STANDORTS (E10), in der ein Kennzeichen seine Uhrzeiten nennt
  */
 public record ReihenKontext(String einheit, ZoneId zeitzone) {
