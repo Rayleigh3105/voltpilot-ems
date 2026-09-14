@@ -69,10 +69,10 @@ async function oeffne(page: Page, breite: number, heute = '2027-02-20') {
 const baum = (page: Page) => page.getByTestId('ortsbaum').first();
 
 async function menue(page: Page, name: string) {
-  const knopf = baum(page).getByRole('button', { name: `Aktionen: ${name}` });
+  const knopf = baum(page).getByRole('button', { name: `Aktionen: ${name}`, exact: true });
   await knopf.scrollIntoViewIfNeeded();
   await knopf.click();
-  const gruppe = page.getByRole('group', { name: `Aktionen: ${name}` });
+  const gruppe = page.getByRole('group', { name: `Aktionen: ${name}`, exact: true });
   await expect(gruppe).toBeVisible();
   return gruppe;
 }

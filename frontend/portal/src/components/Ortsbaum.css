@@ -101,7 +101,7 @@
   max-width: 100%;
   margin: 4px 0 0;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--vp-c-radius-sm);
   background: var(--vp-c-muted);
   color: var(--vp-c-primary);
   font-size: var(--vp-c-fs-12);
