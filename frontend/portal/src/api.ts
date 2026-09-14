@@ -948,6 +948,14 @@ export interface MeasurementCatalogPoint {
   labelSource: string | null;
   semanticStatus: 'known' | 'vendor_label_only' | 'unknown';
   aggregationKind: string;
+  /**
+   * Die ROHEN Katalogwörter der Messgröße/Richtung (`active_power`, `generation`
+   * …), `null` = nicht belegt (z. B. der richtungslose Gen-Port). Additiv, damit
+   * der Summenwert-Assistent auch noch nicht beobachtete Register einordnen kann;
+   * die Kundenwörter leitet `registerAbbildung.ts` daraus ab.
+   */
+  quantity: string | null;
+  direction: string | null;
   defaultCadenceS: number | null;
   minCadenceS: number | null;
   longTermCadenceS: number | null;
@@ -1430,6 +1438,14 @@ export interface SiteEntity {
    * backend simply omits the field).
    */
   orphanedPin?: boolean | null;
+  /**
+   * „composed" = a platform-SYNTHESIZED base row (the grid-meter / house-load
+   * derived from the gateway). The delete gate mirrors the server
+   * (vp-komp-loeschen E2): a component without a pin is deletable UNLESS it
+   * carries this marker, so a never-connected producer can be removed while the
+   * plant's derived base stays protected. Absent on an older backend.
+   */
+  sourceKind?: string | null;
 }
 
 /** The composed registry Soll + the edge's echoed revision. */
@@ -2159,6 +2175,38 @@ export interface MessstelleWerte {
   werte: MessstelleWerteWert[];
 }
 
+/**
+ * Der Beitrag EINES Geräts zum kanonischen Rollen-Wert (`RollenDto.GeraetBeitrag`). ⚠ snake_case
+ * wie das echte Backend (`@JsonNaming` = SnakeCase) — `request()` wandelt NICHT um. Ehrlich
+ * benannt: `liefernd` mit `wert`, oder stumm mit `grund` (`kein_wert` · `veraltet` ·
+ * `unvollstaendig` · `archiviert` · `kein_geraet`) — nie eine stille Teilsumme.
+ */
+export interface RollenGeraetBeitrag {
+  entity_id: string;
+  name: string;
+  /** `messkanal` (nativer Kanal) oder `gesamtwert` (berechneter Summenwert). */
+  art: string;
+  wert: number | null;
+  liefernd: boolean;
+  grund: string | null;
+}
+
+/**
+ * Der kanonische, über alle Geräte zusammengefasste Rollen-Wert einer Anlage
+ * (`GET /api/v1/sites/{id}/rollen/{role}`, `RollenDto.KanonischerWert`, snake_case). Existiert keine
+ * Zuordnung, ist `zuordnung_vorhanden = false` und das Cockpit bleibt bei `telemetry.pv_power_kw`.
+ * `unvollstaendig` = mindestens ein zugeordnetes Gerät liefert gerade nicht (in `geraete` benannt).
+ */
+export interface RollenKanonischerWert {
+  role: string;
+  zuordnung_vorhanden: boolean;
+  wert: number | null;
+  einheit: string;
+  unvollstaendig: boolean;
+  geraete: RollenGeraetBeitrag[];
+  stand: string | null;
+}
+
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
 export interface BerechneteMessstelleAnlegen {
   name: string;
@@ -2169,6 +2217,8 @@ export interface BerechneteMessstelleAnlegen {
     quell_messstelle_id?: string;
     vorzeichen: '+' | '-';
     faktor: number;
+    /** AP-08: nur bei einem richtungslosen Kanal, der als Erzeugung zählen soll. */
+    gilt_als_erzeugung?: boolean;
     /**
      * AP-10 IP-5: die Kostenstelle eines Verteilungs-Terms; seit AP-10 IP-8 liest der Term den Anteil
      * des Tages aus der Verteilung (eine unbekannte Kostenstelle ist 404).
@@ -2575,6 +2625,47 @@ export interface BezugsgroesseWerte {
   bis: string | null;
   fassungen: BezugsgroesseLesart;
   werte: BezugsgroesseWert[];
+}
+
+/**
+ * Ein zugeordneter Rollen-Wert (`RollenDto.Wert`, PR 758): ENTWEDER ein Messwert-
+ * Kanal (`art = messkanal`, `capability`) ODER ein Gesamtwert (`art = gesamtwert`,
+ * `quell_messstelle_id`). `name` ist der Anzeigename des Werts. snake_case wie am
+ * Vertrag (`@JsonNaming`).
+ */
+export interface RollenWert {
+  art: 'messkanal' | 'gesamtwert';
+  capability: string | null;
+  quell_messstelle_id: string | null;
+  name: string | null;
+}
+
+/**
+ * Der maßgebliche Rollen-Wert EINES Geräts (`GET …/komponenten/{entityId}/rollen/{role}`,
+ * `RollenDto.GeraetRolle`). `zugeordnet == null` heißt: keine Zuordnung, das Cockpit
+ * bleibt beim Rückfall auf die Roh-Telemetrie.
+ */
+export interface GeraetRolle {
+  entity_id: string;
+  role: string;
+  zugeordnet: RollenWert | null;
+}
+
+/** Der Anfrage-Körper von `PUT …/komponenten/{entityId}/rollen/{role}` (`RollenDto.Eingabe`). */
+export interface RollenEingabe {
+  art: 'messkanal' | 'gesamtwert';
+  capability?: string;
+  quell_messstelle_id?: string;
+}
+
+/**
+ * Die Antwort eines Zuordnens (`RollenDto.ZuordnungAntwort`): der jetzt maßgebliche Wert
+ * und - beim Konfliktfall - der abgelöste vorige Wert (`abgeloest == null`, wenn keiner
+ * abgelöst wurde).
+ */
+export interface RollenZuordnungAntwort {
+  zugeordnet: RollenWert;
+  abgeloest: RollenWert | null;
 }
 
 /**
@@ -6115,6 +6206,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+  /**
+   * „Batterie am Standort abmelden" (vp-komp-loeschen E1): remove the site's
+   * battery as one coherent action - the nameplate the optimizer reads, the
+   * battery entity's flow-claim orphan and the entity/measurement point go
+   * together, so nothing keeps planning a phantom battery. Recorded telemetry
+   * is KEPT; only the live visibility ends. Returns the remaining assets.
+   */
+  unregisterBattery: (siteId: string) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/battery`, { method: 'DELETE' }),
   mastrLookup: (siteId: string, einheitNummer: string) =>
     request<MastrPreview>(`/api/v1/sites/${siteId}/mastr-lookup`, {
       method: 'POST',
@@ -6249,6 +6349,32 @@ export const api = {
 
   /** Der Live-Wert einer berechneten Messstelle (null, wenn unvollständig). */
   messstelleWert: (id: string) => request<MessstelleWert>(`/api/v1/messstellen/${id}/wert`),
+
+  /**
+   * Der kanonische, über alle Geräte zusammengefasste Rollen-Wert einer Anlage (heute nur `pv`) —
+   * die Zahl, die das Cockpit statt `telemetry.pv_power_kw` zeigt, wenn eine Zuordnung existiert,
+   * samt der Ehrlichkeits-Aufschlüsselung je Gerät. `zuordnung_vorhanden = false` = Rückfall.
+   */
+  rollenWert: (siteId: string, role: string) =>
+    request<RollenKanonischerWert>(`/api/v1/sites/${siteId}/rollen/${role}`),
+
+  /**
+   * Der maßgebliche Rollen-Wert EINES Geräts (Konzept vp-agg „verwenden als",
+   * PR 758); `zugeordnet == null` = keine Zuordnung.
+   */
+  geraetRolle: (siteId: string, entityId: string, role: string) =>
+    request<GeraetRolle>(`/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`),
+
+  /**
+   * Setzt den maßgeblichen Rollen-Wert eines Geräts (nativer Kanal ODER Gesamtwert);
+   * die Antwort nennt den abgelösten Wert (is_primary-Semantik, Ersetzen statt doppelt
+   * zählen).
+   */
+  rolleZuordnen: (siteId: string, entityId: string, role: string, body: RollenEingabe) =>
+    request<RollenZuordnungAntwort>(
+      `/api/v1/sites/${siteId}/komponenten/${entityId}/rollen/${role}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
 
   /** Der Verlauf einer berechneten Messstelle (je 15 min die Summe, sonst null). */
   messstelleVerlauf: (id: string, range?: string) =>

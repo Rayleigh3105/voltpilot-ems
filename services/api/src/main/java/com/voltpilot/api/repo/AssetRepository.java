@@ -198,6 +198,20 @@ public class AssetRepository {
         return updated > 0;
     }
 
+    /**
+     * Remove the site's battery nameplate row (kWh/kW). The heart of "Batterie
+     * am Standort abmelden" (vp-komp-loeschen E1): the optimizer reads the
+     * battery from {@code asset}, NOT from {@code measurement_point}, so leaving
+     * this row behind would keep it planning a PHANTOM battery the portal no
+     * longer shows. Deliberately the primary battery row only; RLS scopes it to
+     * the caller's tenant. Returns true when a row was removed.
+     */
+    public boolean deleteBattery(UUID siteId) {
+        return jdbc.update(
+                "DELETE FROM asset WHERE site_id = ? AND type = 'battery' AND is_primary",
+                siteId) > 0;
+    }
+
     private static SiteAssetDto mapAsset(ResultSet rs, int rowNum) throws SQLException {
         Timestamp fetched = rs.getTimestamp("registry_fetched_at");
         java.sql.Date commissioned = rs.getDate("commissioned_on");

@@ -25,9 +25,11 @@ public class MessstelleFormelTermRepository {
     /**
      * Ein gespeicherter Term, in seiner Reihenfolge. {@code verteilungZiel} und {@code anteil} kamen
      * mit AP-10 IP-5 (V20260913143000): {@code anteil == null} ist die Vorgabe {@code gesamt}.
+     * {@code giltAlsErzeugung} ist der AP-08-Haken (V20260914100000), Vorgabe {@code false}.
      */
     public record TermZeile(UUID id, int position, String eingangArt, UUID entityId, String pointKey,
-            UUID quellMessstelleId, String vorzeichen, double faktor, UUID verteilungZiel, String anteil) {}
+            UUID quellMessstelleId, String vorzeichen, double faktor, boolean giltAlsErzeugung,
+            UUID verteilungZiel, String anteil) {}
 
     /** Ob eine Formel Terme hat und ob JEDER Term-Eingang eingerichtet ist (fehlt: eingaenge). */
     public record FormelStand(boolean vorhanden, boolean eingerichtet) {}
@@ -35,7 +37,7 @@ public class MessstelleFormelTermRepository {
     /** Alle Terme der Messstelle über ALLE ihre Fassungen, nach Fassung und Reihenfolge. */
     public List<TermZeile> derMessstelle(UUID messstelleId) {
         return jdbc.query("SELECT t.id, t.position, t.eingang_art, t.entity_id, t.point_key, "
-                + "t.quell_messstelle_id, t.vorzeichen, t.faktor, t.verteilung_ziel, t.anteil "
+                + "t.quell_messstelle_id, t.vorzeichen, t.faktor, t.gilt_als_erzeugung, t.verteilung_ziel, t.anteil "
                 + "FROM messstelle_formel_term t "
                 + "JOIN messstelle_formel_fassung f ON f.id = t.fassung_id "
                 + "WHERE t.messstelle_id = ? ORDER BY f.nummer, t.position",
@@ -45,7 +47,7 @@ public class MessstelleFormelTermRepository {
     /** Die Terme EINER Fassung in Reihenfolge — die Formel eines Tages (AP-10 IP-3). */
     public List<TermZeile> derFassung(UUID fassungId) {
         return jdbc.query("SELECT id, position, eingang_art, entity_id, point_key, quell_messstelle_id, "
-                + "vorzeichen, faktor, verteilung_ziel, anteil FROM messstelle_formel_term "
+                + "vorzeichen, faktor, gilt_als_erzeugung, verteilung_ziel, anteil FROM messstelle_formel_term "
                 + "WHERE fassung_id = ? ORDER BY position",
                 TERM, fassungId);
     }
@@ -61,7 +63,8 @@ public class MessstelleFormelTermRepository {
         }
         jdbc.query(con -> {
             var ps = con.prepareStatement("SELECT fassung_id, id, position, eingang_art, entity_id, point_key, "
-                    + "quell_messstelle_id, vorzeichen, faktor, verteilung_ziel, anteil FROM messstelle_formel_term "
+                    + "quell_messstelle_id, vorzeichen, faktor, gilt_als_erzeugung, verteilung_ziel, anteil "
+                    + "FROM messstelle_formel_term "
                     + "WHERE fassung_id = ANY (?) ORDER BY fassung_id, position");
             ps.setArray(1, con.createArrayOf("uuid", fassungen.toArray()));
             return ps;
@@ -76,7 +79,7 @@ public class MessstelleFormelTermRepository {
             (rs, n) -> new TermZeile(rs.getObject("id", UUID.class), rs.getInt("position"),
                     rs.getString("eingang_art"), rs.getObject("entity_id", UUID.class),
                     rs.getString("point_key"), rs.getObject("quell_messstelle_id", UUID.class),
-                    rs.getString("vorzeichen"), rs.getDouble("faktor"),
+                    rs.getString("vorzeichen"), rs.getDouble("faktor"), rs.getBoolean("gilt_als_erzeugung"),
                     rs.getObject("verteilung_ziel", UUID.class), rs.getString("anteil"));
 
     /** Legt einen Term in seiner Fassung an; {@code tenant_id} aus dem {@link TenantContext}. */
@@ -94,11 +97,35 @@ public class MessstelleFormelTermRepository {
     public void anlegen(UUID fassungId, UUID messstelleId, int position, String eingangArt, UUID entityId,
             String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor, UUID verteilungZiel,
             String anteil) {
+        anlegen(fassungId, messstelleId, position, eingangArt, entityId, pointKey, quellMessstelleId, vorzeichen,
+                faktor, verteilungZiel, anteil, false);
+    }
+
+    /**
+     * Legt einen Term mit allen Feldern an: Verteilungs-Ziel und Anteil (AP-10 IP-5) und der AP-08-Haken
+     * {@code giltAlsErzeugung}. Ob der Haken an diesem Kanal zulässig ist, prüft vorher der Dienst
+     * ({@link MessstelleFormelRegeln#erzeugungsHakenErlaubt}) — hier wird nur geschrieben.
+     */
+    public void anlegen(UUID fassungId, UUID messstelleId, int position, String eingangArt, UUID entityId,
+            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor, UUID verteilungZiel,
+            String anteil, boolean giltAlsErzeugung) {
         jdbc.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, fassung_id, position, "
                 + "eingang_art, entity_id, point_key, quell_messstelle_id, vorzeichen, faktor, verteilung_ziel, "
-                + "anteil) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                + "anteil, gilt_als_erzeugung) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 TenantContext.get(), messstelleId, fassungId, position, eingangArt, entityId, pointKey,
-                quellMessstelleId, vorzeichen, faktor, verteilungZiel, anteil);
+                quellMessstelleId, vorzeichen, faktor, verteilungZiel, anteil, giltAlsErzeugung);
+    }
+
+    /**
+     * Legt einen Term OHNE Fassung mit dem AP-08-Haken an (der Schreibweg von PR #758 auf dem Weg von
+     * PR #688): die Datenbank legt ihn in die EINZIGE Fassung der Messstelle, wie
+     * {@link #anlegen(UUID, int, String, UUID, String, UUID, String, double)}.
+     */
+    public void anlegen(UUID messstelleId, int position, String eingangArt, UUID entityId,
+            String pointKey, UUID quellMessstelleId, String vorzeichen, double faktor,
+            boolean giltAlsErzeugung) {
+        anlegen(null, messstelleId, position, eingangArt, entityId, pointKey, quellMessstelleId, vorzeichen,
+                faktor, null, null, giltAlsErzeugung);
     }
 
     /**

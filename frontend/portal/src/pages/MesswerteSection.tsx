@@ -32,6 +32,10 @@ import { useIsPhone } from '../useIsPhone';
 import type { AnlageSurface } from '../surface';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 
+import { Icon } from '../../designsystem/components/core/Icon';
+import { GESAMTWERT } from '../glossar';
+import { GesamtwertDialog } from '../components/GesamtwertDialog';
+import { GesamtwertKarten } from '../components/GesamtwertKarten';
 import { ChartHeadline } from '../components/ChartExplain';
 import { Aufklapper } from '../components/Aufklapper';
 import { VerlaufKarte } from '../components/VerlaufKarte';
@@ -366,6 +370,11 @@ export function MesswerteSection({
   const [modusWahl, setModusWahl] = useState<VergleichsModus>(() =>
     parseVergleichModus(window.location.hash),
   );
+  // vp-agg §2.5/C: der gerätefreie Gesamtwert-Assistent ist aus der Cockpit-Bühne
+  // hierher (Auswertungen/Verlauf) umgezogen. Ein Speichern erhöht die Version, an
+  // der die Anzeige (`GesamtwertKarten`) hängt.
+  const [gwOffen, setGwOffen] = useState(false);
+  const [gwVersion, setGwVersion] = useState(0);
 
   const isPhone = useIsPhone();
   const at = isoDate(anchor);
@@ -579,6 +588,35 @@ export function MesswerteSection({
           </Aufklapper>
         </div>
       </section>
+
+      {/* vp-agg §2.5/C: der gerätefreie Gesamtwert - aus der Cockpit-Bühne hierher
+          umgezogen. Einstieg (der „+ Gesamtwert"-Knopf) UND Anzeige
+          (`GesamtwertKarten`, eingebettet ohne eigenen Kopf) leben hier gemeinsam;
+          ohne einen einzigen Gesamtwert bleibt nur der Einstieg. */}
+      <section className="vp-section">
+        <div className="vp-c-card">
+          <div className="vp-gwk-head">
+            <h3>Zusammengestellte Werte</h3>
+            <button type="button" className="vp-gwk-neu" onClick={() => setGwOffen(true)}>
+              <Icon name="plus" size={15} /> {GESAMTWERT}
+            </button>
+          </div>
+          <p className="vp-c-note">
+            Stellen Sie aus den Messwerten Ihrer Geräte einen eigenen Gesamtwert zusammen - er
+            erscheint dann hier mit einem dezenten „berechnet".
+          </p>
+          <GesamtwertKarten siteId={site.id} version={gwVersion} eingebettet />
+        </div>
+      </section>
+
+      {gwOffen && (
+        <GesamtwertDialog
+          open
+          siteId={site.id}
+          onClose={() => setGwOffen(false)}
+          onGespeichert={() => setGwVersion((v) => v + 1)}
+        />
+      )}
     </>
   );
 }

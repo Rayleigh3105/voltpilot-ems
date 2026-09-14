@@ -183,3 +183,165 @@
     text-align: left;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Kanonische PV-ROLLE unter dem Cockpit-Fluss (vp-agg §2.4/B).
+
+   Ein dezenter, aufklappbarer Streifen: „Gesamt-PV · berechnet · <Zahl> ▾".
+   Ein Tipp öffnet die ehrliche Aufschlüsselung je Gerät (stummes Gerät benannt)
+   und die Teil-Summe „aus N von M Geräten". Farbsprache = PV-Ton wie das
+   restliche Panel; jede Zelle `min-width: 0` + umbruchsicher für 375 px.
+--------------------------------------------------------------------------- */
+.vp-pvrolle {
+  margin-top: var(--vp-space-3);
+  min-width: 0;
+  width: 100%;
+}
+
+.vp-pvrolle-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border: 1px solid var(--vp-flow-pv, #e8a33d);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-flow-pv-soft, #fff8ef);
+  color: var(--vp-flow-ink, #1a1a1a);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.vp-pvrolle-kopf > svg {
+  flex: none;
+  color: var(--vp-flow-pv, #e8a33d);
+}
+
+.vp-pvrolle-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Das Herkunfts-Merkmal „berechnet" - dezent, wie auf den Gesamtwert-Karten. */
+.vp-pvrolle-calc {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--vp-text-gray, #6b7280);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.vp-pvrolle-wert {
+  margin-left: auto;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pvrolle-chevron {
+  flex: none;
+  display: inline-flex;
+  color: var(--vp-text-gray, #6b7280);
+  /* Der zentrale Schalter `--vp-motion-scale` (index.css) verstummt die Bewegung
+     bei `prefers-reduced-motion` - deshalb hier kein eigener Media-Block. */
+  transition: transform var(--vp-motion-fast) var(--vp-ease-out);
+}
+
+.vp-pvrolle-kopf[aria-expanded='true'] .vp-pvrolle-chevron {
+  transform: rotate(180deg);
+}
+
+.vp-pvrolle-auf {
+  padding: var(--vp-space-3) var(--vp-space-3) var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-pvrolle-sub {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+.vp-pvrolle-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vp-pvrolle-zeile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  padding: 6px 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--vp-border-soft, rgba(0, 0, 0, 0.06));
+}
+
+.vp-pvrolle-zeile:last-child {
+  border-bottom: none;
+}
+
+.vp-pvrolle-name {
+  font-size: 0.83rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-pvrolle-zwert {
+  font-size: 0.83rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ein stummes Gerät bleibt lesbar benannt, nur leiser - kein Alarm, kein Rot. */
+.vp-pvrolle-zeile.stumm .vp-pvrolle-name {
+  color: var(--vp-text-gray, #6b7280);
+}
+
+.vp-pvrolle-leer {
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--vp-text-gray, #6b7280);
+  white-space: nowrap;
+}
+
+.vp-pvrolle-summe {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-2);
+  padding-top: var(--vp-space-2);
+  border-top: 2px solid var(--vp-flow-pv, #e8a33d);
+  min-width: 0;
+}
+
+.vp-pvrolle-summe-k {
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-pvrolle-teil {
+  font-weight: 600;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+.vp-pvrolle-summe-v {
+  font-size: 1rem;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

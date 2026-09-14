@@ -66,10 +66,19 @@ public class MeasurementCatalog {
         }
     }
 
+    /**
+     * Ein Katalog-Punkt, wie ihn {@code GET …/measurement-selection/catalog} liefert. {@code
+     * quantity}/{@code direction} sind die ROHEN Katalogwörter der Größe/Richtung ({@code null} =
+     * nicht belegt, z. B. der richtungslose Gen-Port) — additiv ergänzt, damit der geräteseitige
+     * Summenwert-Assistent (Konzept vp-agg-konzept3-r8) seinen Guard auch auf noch nicht
+     * beobachtete Register anwenden kann; sie decken sich mit {@link #semantik(String)}. Ältere
+     * Clients ignorieren die zusätzlichen Felder.
+     */
     public record Point(String family, String pointKey, String sourceKind, JsonNode address,
             String selector, Integer widthBits, String valueType, Boolean signed, String endian,
             JsonNode scale, String unit, String group, String labelDe, String labelSource,
-            String semanticStatus, String aggregationKind, Integer defaultCadenceS,
+            String semanticStatus, String aggregationKind, String quantity, String direction,
+            Integer defaultCadenceS,
             Integer minCadenceS, Integer longTermCadenceS, String pollGroup, String sourceUrl,
             String sourceCommit, String sourceRevision, boolean readable, String edgeMinVersion,
             boolean dynamic, boolean recommended, RetentionView retention,
@@ -91,7 +100,8 @@ public class MeasurementCatalog {
                     * MeasurementBudget.BYTES_PER_SAMPLE);
             return new Point(family, pointKey, sourceKind, address, selector, widthBits, valueType,
                     signed, endian, scale, unit, group, labelDe, labelSource, semanticStatus,
-                    aggregationKind, defaultCadenceS, minCadenceS, longTermCadenceS, pollGroup,
+                    aggregationKind, quantity, direction, defaultCadenceS, minCadenceS,
+                    longTermCadenceS, pollGroup,
                     sourceUrl, sourceCommit, sourceRevision, readable, edgeMinVersion, dynamic,
                     recommended, retention, seen || familyAvailable, availability, reason,
                     wasRecorded, cadence != null, cadence,
@@ -115,7 +125,8 @@ public class MeasurementCatalog {
             return new Point(family, actualKey, sourceKind, address,
                     selector.replace("[*]", "[" + index + "]"), widthBits, valueType, signed,
                     endian, scale, unit, group, labelDe, labelSource, semanticStatus,
-                    aggregationKind, defaultCadenceS, minCadenceS, longTermCadenceS,
+                    aggregationKind, quantity, direction, defaultCadenceS, minCadenceS,
+                    longTermCadenceS,
                     pollGroup.replace("[*]", "[" + index + "]"), sourceUrl, sourceCommit,
                     sourceRevision, readable, edgeMinVersion, false, recommended, retention,
                     false, "not_configured", "Noch nicht vom Gerät bestätigt.", false, false,
@@ -157,6 +168,7 @@ public class MeasurementCatalog {
                     copyOrNull(n.get("scale")), text(n, "unit"), text(n, "group"),
                     text(n, "label_de"), text(n, "label_source"),
                     text(n, "semantic_status"), text(n, "aggregation_kind"),
+                    text(n, "quantity"), text(n, "direction"),
                     nullableInt(n.get("default_cadence_s")),
                     nullableInt(n.get("min_cadence_s")),
                     nullableInt(n.get("long_term_cadence_s")), text(n, "poll_group"),

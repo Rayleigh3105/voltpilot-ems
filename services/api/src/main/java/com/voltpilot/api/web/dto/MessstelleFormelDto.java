@@ -23,7 +23,9 @@ public final class MessstelleFormelDto {
      * IP-5 — {@code verteilung} (dann {@code quell_messstelle_id} + {@code verteilung_ziel}, die
      * Kostenstelle). {@code faktor} fehlend = 1; {@code vorzeichen} {@code +} oder {@code -};
      * {@code anteil} fehlend = {@code gesamt}. Ein Anteil, der (noch) nicht lesbar ist, wird benannt
-     * abgelehnt ({@code AnteilLeseweg}).
+     * abgelehnt ({@code AnteilLeseweg}). {@code gilt_als_erzeugung} (AP-08, fehlend = false) macht
+     * einen richtungslosen Messkanal als Term zulaessig und laesst ihn in der Summe als Erzeugung
+     * zaehlen — nur an einem Kanal OHNE Katalog-Richtung.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record TermEingabe(
@@ -33,6 +35,7 @@ public final class MessstelleFormelDto {
             UUID quellMessstelleId,
             String vorzeichen,
             Double faktor,
+            Boolean giltAlsErzeugung,
             UUID verteilungZiel,
             String anteil) {}
 
@@ -62,6 +65,7 @@ public final class MessstelleFormelDto {
             UUID quellMessstelleId,
             String vorzeichen,
             double faktor,
+            boolean giltAlsErzeugung,
             Groesse groesse,
             boolean eingerichtet,
             @JsonInclude(JsonInclude.Include.NON_NULL) UUID verteilungZiel,

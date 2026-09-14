@@ -9,6 +9,7 @@ import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.OverviewRepository;
 import com.voltpilot.api.repo.SiteProfileStateRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.topology.RollenZuordnungService;
 import com.voltpilot.api.uems.StandortLesemodell.StandortBezug;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.web.dto.OverviewDto;
@@ -18,6 +19,7 @@ import com.voltpilot.api.web.dto.OverviewDto.OverviewLiveDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewSiteDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewTotalsDto;
 import com.voltpilot.api.web.dto.OverviewDto.RoleCountsDto;
+import com.voltpilot.api.web.dto.RollenDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -70,17 +72,20 @@ public class OverviewController {
     private final AnwendungKatalog anwendungen;
     private final SiteProfileStateRepository profileStates;
     private final StandortLesemodellService standortLesemodell;
+    private final RollenZuordnungService rollen;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
             EntityTypeCatalog catalog, AnwendungKatalog anwendungen,
             SiteProfileStateRepository profileStates,
-            StandortLesemodellService standortLesemodell) {
+            StandortLesemodellService standortLesemodell,
+            RollenZuordnungService rollen) {
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
         this.anwendungen = anwendungen;
         this.profileStates = profileStates;
         this.standortLesemodell = standortLesemodell;
+        this.rollen = rollen;
     }
 
     @GetMapping
@@ -111,6 +116,11 @@ public class OverviewController {
         // UEMS AP-02 IP-3: der Standort je Anlage heute - additiv, null solange
         // eine Anlage keinem Standort zugeordnet ist (heute: jede).
         Map<UUID, StandortBezug> standortJeAnlage = standortLesemodell.bezugJeAnlage();
+        // vp-agg §2.4: die KANONISCHE PV-Rolle je Anlage - eine flottenweite
+        // Zuordnungs-Abfrage. Anlagen mit einer Standort-PV-Zuordnung bekommen ihren
+        // (ehrlich benannten) Summenwert statt telemetry.pv_power_kw beigemischt;
+        // Anlagen ohne Zuordnung sind ABWESEND und bleiben bei der Roh-Telemetrie.
+        Map<UUID, RollenDto.KanonischerWert> pvKanonisch = rollen.pvJeAnlage();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -128,8 +138,7 @@ public class OverviewController {
             totalOnline += onlineCount;
 
             OverviewRepository.LiveRow liveRow = livePerSite.get(site.id());
-            OverviewLiveDto live = liveRow == null ? null : new OverviewLiveDto(
-                    liveRow.ts(), liveRow.pvKw(), liveRow.loadKw(), liveRow.gridKw(), liveRow.socPct());
+            OverviewLiveDto live = liveDto(liveRow, pvKanonisch.get(site.id()));
             if (liveRow != null && !liveRow.ts().isBefore(freshnessCutoff)) {
                 liveSitesCovered++;
             }
@@ -182,6 +191,28 @@ public class OverviewController {
                         siteRows.size(), totalDevices, totalOnline, totalSavings, liveSitesCovered,
                         storage.capacityKwh(), storage.powerKw()),
                 dailySavings);
+    }
+
+    /**
+     * Der Live-Schnappschuss einer Anlage — mit der KANONISCHEN PV-Rolle beigemischt (vp-agg §2.4):
+     * existiert eine Standort-PV-Zuordnung ({@code zuordnungVorhanden}), ersetzt ihr ehrlich benannter
+     * Summenwert den rohen {@code telemetry.pv_power_kw}; sonst RUECKFALL auf die Roh-Telemetrie — fuer
+     * Anlagen ohne Zuordnung aendert sich nichts. Die kanonische Summe darf {@code null} sein
+     * (zugeordnet, aber gerade kein Geraet liefernd) — dann bleibt PV UNBEKANNT (—), nie eine erfundene
+     * 0. Haus/Netz/Ladestand und der Zeitstempel bleiben die Roh-Telemetrie; ohne Roh-Zeile bleibt der
+     * Schnappschuss {@code null} wie bisher.
+     */
+    private static OverviewLiveDto liveDto(OverviewRepository.LiveRow liveRow,
+            RollenDto.KanonischerWert pvRolle) {
+        if (liveRow == null) {
+            return null;
+        }
+        BigDecimal pvKw = liveRow.pvKw();
+        if (pvRolle != null && pvRolle.zuordnungVorhanden()) {
+            pvKw = pvRolle.wert() == null ? null : BigDecimal.valueOf(pvRolle.wert());
+        }
+        return new OverviewLiveDto(liveRow.ts(), pvKw, liveRow.loadKw(), liveRow.gridKw(),
+                liveRow.socPct());
     }
 
     /**

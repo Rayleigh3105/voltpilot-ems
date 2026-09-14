@@ -42,6 +42,35 @@ export type FehlerCode = (typeof FEHLER)[number]['code'];
 
 const RICHTUNGSLOS = 'richtungslos';
 
+/** Die Vertrags-Richtung, die der AP-08-Haken einem richtungslosen Kanal gibt. */
+export const ERZEUGUNG = 'Erzeugung';
+
+// -------------------------------------------- AP-08: „gilt als Erzeugung"
+
+/**
+ * Darf der per-Term-Haken „gilt als Erzeugung" gesetzt werden? NUR für einen Kanal OHNE
+ * Vertrags-Richtung (`katalogRichtung == null` — der Katalog gibt keine, z. B. der Gen-Port
+ * `direction: null`). Ein Kanal MIT Katalog-Richtung (auch `richtungslos` aus `direction: none`)
+ * trägt den Haken nicht — er wäre ein wirkungsloser Schalter. Die in `messstelle-formel.md` §2
+ * reservierte AP-08-Stelle; Zwilling `MessstelleFormelRegeln.erzeugungsHakenErlaubt`.
+ */
+export function erzeugungsHakenErlaubt(katalogRichtung: string | null): boolean {
+  return katalogRichtung == null;
+}
+
+/**
+ * Die WIRKSAME Richtung eines Terms: ein richtungsloser Kanal (`katalogRichtung == null`) zählt
+ * mit gesetztem Haken als `Erzeugung`, sonst behält der Term seine Katalog-Richtung. So bleibt
+ * eine Summe aus lauter `+`-Erzeugungs-Termen `Erzeugung`, statt an einem richtungslosen Gen-Port
+ * zu `richtungslos` zu degradieren. Zwilling `MessstelleFormelRegeln.richtungMitErzeugungsHaken`.
+ */
+export function richtungMitErzeugungsHaken(
+  katalogRichtung: string | null,
+  giltAlsErzeugung: boolean,
+): string | null {
+  return giltAlsErzeugung && katalogRichtung == null ? ERZEUGUNG : katalogRichtung;
+}
+
 // ----------------------------------------------------------- Größe ableiten
 
 /** Ein Term, so wie er zur Ableitung der Hauptgröße gesehen wird. */
