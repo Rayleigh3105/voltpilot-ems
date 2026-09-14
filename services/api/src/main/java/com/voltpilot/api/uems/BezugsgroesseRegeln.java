@@ -43,9 +43,13 @@ public final class BezugsgroesseRegeln {
         KENNZEICHEN_FORMAT("kennzeichen_format", 400,
                 "Ein Kennzeichen hat 2 bis 16 Zeichen: Großbuchstaben, Ziffern, Punkt, Bindestrich oder Schrägstrich."),
         ZEITRAUM_UNGUELTIG("zeitraum_ungueltig", 400, "Der Zeitraum endet vor seinem Beginn."),
+        WERT_UNGUELTIG("wert_ungueltig", 400,
+                "Bitte geben Sie den Wert als Zahl größer als 0 an, mit Punkt und höchstens sechs Nachkommastellen, z. B. 180."),
         PERIODE_PASST_NICHT_ZUR_WERTART("periode_passt_nicht_zur_wertart", 422,
                 "Nur ein Periodenwert hat eine Periode (Tag, Woche, Monat oder Jahr); ein Stand und ein Stammdatum haben keine."),
         FLAECHE_AUS_STRUKTUR("flaeche_aus_struktur", 422, "Flächen pflegen Sie am Gebäude."),
+        KEIN_STAMMDATUM("kein_stammdatum", 422,
+                "Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen."),
         GELTUNG_NICHT_WAEHLBAR("geltung_nicht_waehlbar", 422,
                 "Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar."),
         GELTUNG_UNBEKANNT("geltung_unbekannt", 422, "Den gewählten Geltungsbereich gibt es nicht."),
@@ -223,6 +227,46 @@ public final class BezugsgroesseRegeln {
             felder.add("geltung_id");
         }
         return List.copyOf(felder);
+    }
+
+    // ------------------------------------------------------------ Stammdatum (E15, S4)
+
+    /** Die Wertart, die Gültigkeiten statt Fassungen hat (§4.3 S1). */
+    public static final String STAMMDATUM = "stammdatum";
+
+    /** E15: ein Wert eines Stammdatums — Dezimaltext mit Punkt, wie jeder Betrag der Schnittstelle ({@code NUMERIC(18,6)}). */
+    private static final Pattern WERT = Pattern.compile("^[0-9]{1,12}(\\.[0-9]{1,6})?$");
+
+    /**
+     * E15/S4: ein Wert eines Stammdatums ab einem Tag, in der Prüfreihenfolge
+     * {@code verwalten.pruefreihenfolge.stammdatum}: archiviert (M6) → nur ein Stammdatum hat
+     * Gültigkeiten (S1) → eine Fläche steht in der Ortsstruktur und wird dort gepflegt (M4, E17) → der
+     * Wert ist eine Zahl größer als 0 („nicht erhoben“ ist keine Zeile, nie eine 0 — wie die Fläche).
+     * Wie der Wert die Intervalle ändert, sagt {@link BezugsdatenRegeln#stammdatumEintrag}.
+     */
+    public static Urteil stammdatum(Entwurf bestand, boolean archiviert, String wert, Vokabular v) {
+        if (archiviert) {
+            return abgelehnt(Ablehnung.ARCHIVIERT);
+        }
+        if (!STAMMDATUM.equals(bestand.wertart())) {
+            return abgelehnt(Ablehnung.KEIN_STAMMDATUM, "wertart", bestand.wertart());
+        }
+        if (GROESSE_FLAECHE.equals(BezugsEinheit.groesseVon(bestand.einheit(), v.einheiten()))) {
+            return abgelehnt(Ablehnung.FLAECHE_AUS_STRUKTUR, "feld", "einheit");
+        }
+        if (stammdatumWert(wert) == null) {
+            return abgelehnt(Ablehnung.WERT_UNGUELTIG, "feld", "wert");
+        }
+        return Urteil.ERLAUBT;
+    }
+
+    /** Der Wert als Zahl — {@code null}, wenn der Text keine Zahl größer als 0 in der Form des Vertrags ist. Nichts wird gerundet. */
+    public static java.math.BigDecimal stammdatumWert(String wert) {
+        if (wert == null || !WERT.matcher(wert).matches()) {
+            return null;
+        }
+        java.math.BigDecimal zahl = new java.math.BigDecimal(wert);
+        return zahl.signum() > 0 ? zahl : null;
     }
 
     // ---------------------------------------------------------------- archivieren, löschen

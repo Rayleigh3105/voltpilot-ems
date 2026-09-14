@@ -27,6 +27,7 @@ class BezugsgroesseSchnittstelleVertragTest {
 
     private static final Path CONTRACTS = Path.of("..", "..", "docs", "contracts");
     private static Map<String, Object> schemas;
+    private static Map<String, Object> pfade;
     private static JsonNode vertrag;
 
     @BeforeAll
@@ -35,6 +36,7 @@ class BezugsgroesseSchnittstelleVertragTest {
         try (InputStream in = Files.newInputStream(CONTRACTS.resolve("openapi.yaml"))) {
             Map<String, Object> openapi = new Yaml().load(in);
             schemas = (Map<String, Object>) ((Map<String, Object>) openapi.get("components")).get("schemas");
+            pfade = (Map<String, Object>) openapi.get("paths");
         }
         vertrag = new ObjectMapper().readTree(CONTRACTS.resolve("v2").resolve("bezugsdaten-vectors.json").toFile());
     }
@@ -70,21 +72,46 @@ class BezugsgroesseSchnittstelleVertragTest {
     /** Jede Form der Antwort und der Anfrage hat in OpenAPI genau die Felder des DTO (snake_case). */
     @Test
     void dieFormenSindZeichengleich() {
-        Map<String, Class<? extends Record>> formen = Map.of(
-                "BezugsgroesseAnfrage", BezugsgroesseDto.Anfrage.class,
-                "Bezugsgroesse", BezugsgroesseDto.Bezugsgroesse.class,
-                "BezugsgroesseListe", BezugsgroesseDto.Liste.class,
-                "BezugsgroessePerson", BezugsgroesseDto.Person.class,
-                "BezugsgroesseHerkunft", BezugsgroesseDto.Herkunft.class,
-                "BezugsgroesseFassung", BezugsgroesseDto.Fassung.class,
-                "BezugsgroesseWert", BezugsgroesseDto.Wert.class,
-                "BezugsgroesseWerte", BezugsgroesseDto.Werte.class);
+        Map<String, Class<? extends Record>> formen = Map.ofEntries(
+                Map.entry("BezugsgroesseAnfrage", BezugsgroesseDto.Anfrage.class),
+                Map.entry("Bezugsgroesse", BezugsgroesseDto.Bezugsgroesse.class),
+                Map.entry("BezugsgroesseListe", BezugsgroesseDto.Liste.class),
+                Map.entry("BezugsgroessePerson", BezugsgroesseDto.Person.class),
+                Map.entry("BezugsgroesseHerkunft", BezugsgroesseDto.Herkunft.class),
+                Map.entry("BezugsgroesseFassung", BezugsgroesseDto.Fassung.class),
+                Map.entry("BezugsgroesseWert", BezugsgroesseDto.Wert.class),
+                Map.entry("BezugsgroesseWerte", BezugsgroesseDto.Werte.class),
+                Map.entry("Bezugsflaeche", BezugsgroesseDto.Bezugsflaeche.class),
+                Map.entry("BezugsgroesseStichtagwert", BezugsgroesseDto.Stichtagwert.class),
+                Map.entry("BezugsflaecheWerte", BezugsgroesseDto.BezugsflaecheWerte.class),
+                Map.entry("Bezugsflaechen", BezugsgroesseDto.Bezugsflaechen.class),
+                Map.entry("BezugsgroesseStammdatumAnfrage", BezugsgroesseDto.StammdatumAnfrage.class),
+                Map.entry("BezugsgroesseStammdatumIntervall", BezugsgroesseDto.StammdatumIntervall.class),
+                Map.entry("BezugsgroesseStammdatum", BezugsgroesseDto.Stammdatum.class));
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
                     PropertyNamingStrategies.SnakeCaseStrategy.INSTANCE.translate(c.getName())));
             assertThat(eigenschaften(schema)).as(schema).containsExactlyElementsOf(felder);
         });
+    }
+
+    /**
+     * AP-09 IP-6 (E17): eine gelesene Bezugsfläche ist nicht schreibbar — die Route kennt nur GET, die Form sagt
+     * {@code schreibbar: false}, und die Herkunft ist die Ortsstruktur. Die Einheit der Fläche kommt aus dem
+     * Vokabular (Größe {@code flaeche}).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieBezugsflaecheHatKeinenSchreibweg() {
+        Map<String, Object> pfad = (Map<String, Object>) pfade.get("/api/v1/bezugsflaechen");
+        assertThat(pfad.keySet()).containsExactly("get");
+        assertThat(liste(eigenschaft("Bezugsflaeche", "schreibbar"), "enum")).containsExactly("false");
+        assertThat(liste(eigenschaft("Bezugsflaeche", "herkunft_art"), "enum")).containsExactly("stammdatum_ap02");
+        assertThat(liste(eigenschaft("Bezugsflaeche", "einheit"), "enum"))
+                .containsExactlyElementsOf(texte(vertrag.path("einheiten").path("flaeche")));
+        assertThat(((Map<String, Object>) pfade.get("/api/v1/bezugsgroessen/{id}/stammdatum")).keySet())
+                .containsExactlyInAnyOrder("parameters", "get", "put");
     }
 
     @SuppressWarnings("unchecked")

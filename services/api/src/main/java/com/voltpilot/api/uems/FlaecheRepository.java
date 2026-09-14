@@ -27,7 +27,7 @@ import org.springframework.stereotype.Repository;
 public class FlaecheRepository {
 
     private static final String SPALTEN =
-            "id, standort_id, ort_id, m2, gueltig_ab, gueltig_bis, aufgehoben_am";
+            "id, standort_id, ort_id, m2, gueltig_ab, gueltig_bis, aufgehoben_am, created_at";
 
     private final JdbcTemplate jdbc;
 
@@ -35,9 +35,18 @@ public class FlaecheRepository {
         this.jdbc = jdbc;
     }
 
-    /** Genau eines von {@code standortId} / {@code ortId} ist gesetzt. */
+    /**
+     * Genau eines von {@code standortId} / {@code ortId} ist gesetzt. {@code createdAt} ist der Eintrag —
+     * AP-09 IP-6 liest daraus das Abzeichen „rückwirkend (n Tage)“ der Bezugsfläche.
+     */
     public record Flaeche(UUID id, UUID standortId, UUID ortId, int m2, LocalDate gueltigAb,
-            LocalDate gueltigBis, Instant aufgehobenAm) {
+            LocalDate gueltigBis, Instant aufgehobenAm, Instant createdAt) {
+
+        /** Ohne Eintragszeit — die Form vor AP-09 IP-6. */
+        public Flaeche(UUID id, UUID standortId, UUID ortId, int m2, LocalDate gueltigAb,
+                LocalDate gueltigBis, Instant aufgehobenAm) {
+            this(id, standortId, ortId, m2, gueltigAb, gueltigBis, aufgehobenAm, null);
+        }
 
         public boolean aufgehoben() {
             return aufgehobenAm != null;
@@ -91,6 +100,7 @@ public class FlaecheRepository {
 
     private static Flaeche map(ResultSet rs, int n) throws SQLException {
         Timestamp aufgehoben = rs.getTimestamp("aufgehoben_am");
+        Timestamp eingetragen = rs.getTimestamp("created_at");
         return new Flaeche(
                 rs.getObject("id", UUID.class),
                 rs.getObject("standort_id", UUID.class),
@@ -98,6 +108,7 @@ public class FlaecheRepository {
                 rs.getInt("m2"),
                 rs.getObject("gueltig_ab", LocalDate.class),
                 rs.getObject("gueltig_bis", LocalDate.class),
-                aufgehoben == null ? null : aufgehoben.toInstant());
+                aufgehoben == null ? null : aufgehoben.toInstant(),
+                eingetragen == null ? null : eingetragen.toInstant());
     }
 }

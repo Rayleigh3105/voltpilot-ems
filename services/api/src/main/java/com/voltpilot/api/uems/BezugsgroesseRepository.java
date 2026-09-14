@@ -75,8 +75,9 @@ public class BezugsgroesseRepository {
             + "b.geltung_art, coalesce(b.unternehmen_id, b.standort_id, b.ort_id, b.prozess_id, b.kostenstelle_id, "
             + "b.messstelle_id) AS geltung_id, "
             + "coalesce(u.name, s.name, o.name, p.name, k.name, m.name, m.kennzeichen) AS geltung_name, "
-            + "EXISTS (SELECT 1 FROM bezugsgroesse_wert w WHERE w.bezugsgroesse_id = b.id "
-            + "AND w.tenant_id = b.tenant_id) AS hat_werte, b.archiviert_am, b.created_at "
+            + "(EXISTS (SELECT 1 FROM bezugsgroesse_wert w WHERE w.bezugsgroesse_id = b.id "
+            + "AND w.tenant_id = b.tenant_id) OR EXISTS (SELECT 1 FROM bezugsgroesse_stammdatum sd "
+            + "WHERE sd.bezugsgroesse_id = b.id AND sd.tenant_id = b.tenant_id)) AS hat_werte, b.archiviert_am, b.created_at "
             + "FROM bezugsgroesse b "
             + "LEFT JOIN unternehmen u ON u.id = b.unternehmen_id AND u.tenant_id = b.tenant_id "
             + "LEFT JOIN standort s ON s.id = b.standort_id AND s.tenant_id = b.tenant_id "
@@ -150,9 +151,61 @@ public class BezugsgroesseRepository {
                 + "WHERE bezugsgroesse_id IS DISTINCT FROM ?", String.class, id);
     }
 
+    /** M1/M6: die Wert-Zeilen — alle Fassungen UND jedes Intervall eines Stammdatums (auch ein aufgehobenes). */
     public long werteZahl(UUID id) {
-        Long n = jdbc.queryForObject("SELECT count(*) FROM bezugsgroesse_wert WHERE bezugsgroesse_id = ?", Long.class, id);
+        Long n = jdbc.queryForObject("SELECT (SELECT count(*) FROM bezugsgroesse_wert WHERE bezugsgroesse_id = ?) "
+                + "+ (SELECT count(*) FROM bezugsgroesse_stammdatum WHERE bezugsgroesse_id = ?)", Long.class, id, id);
         return n == null ? 0 : n;
+    }
+
+    // ------------------------------------------------------------ Stammdatum (E15, V20260914151500)
+
+    /** Ein Intervall eines Stammdatums; {@code gueltigBis} ist der LETZTE Tag, {@code aufgehobenAm} eine Korrektur. */
+    public record StammdatumZeile(UUID id, BigDecimal wert, LocalDate gueltigAb, LocalDate gueltigBis,
+            Instant aufgehobenAm, Instant createdAt) {
+
+        public boolean aufgehoben() {
+            return aufgehobenAm != null;
+        }
+    }
+
+    /** Alle Intervalle, aufgehobene eingeschlossen, nach Beginn und Eintrag. */
+    public List<StammdatumZeile> stammdaten(UUID id) {
+        return jdbc.query("SELECT id, wert, gueltig_ab, gueltig_bis, aufgehoben_am, created_at "
+                + "FROM bezugsgroesse_stammdatum WHERE bezugsgroesse_id = ? ORDER BY gueltig_ab, created_at, id",
+                (rs, n) -> new StammdatumZeile(rs.getObject("id", UUID.class), rs.getBigDecimal("wert"),
+                        rs.getObject("gueltig_ab", LocalDate.class), rs.getObject("gueltig_bis", LocalDate.class),
+                        instant(rs, "aufgehoben_am"), instant(rs, "created_at")), id);
+    }
+
+    /** Ein neues Intervall; Wertart und Einheit reisen als Kopie mit (M1-Fremdschlüssel). */
+    public void stammdatumEintragen(UUID tenant, UUID id, String wertart, String einheit, BigDecimal wert,
+            LocalDate gueltigAb, LocalDate gueltigBis, String createdBy) {
+        jdbc.update("INSERT INTO bezugsgroesse_stammdatum (tenant_id, bezugsgroesse_id, wertart, einheit, wert, "
+                + "gueltig_ab, gueltig_bis, created_by) VALUES (?,?,?,?,?,?,?,?)",
+                tenant, id, wertart, einheit, wert, gueltigAb, gueltigBis, createdBy);
+    }
+
+    /** Beendet ein nicht aufgehobenes Intervall am Tag {@code gueltigBis}, einschließlich. */
+    public boolean stammdatumBeenden(UUID zeile, LocalDate gueltigBis) {
+        return jdbc.update("UPDATE bezugsgroesse_stammdatum SET gueltig_bis = ? WHERE id = ? AND aufgehoben_am IS NULL",
+                gueltigBis, zeile) == 1;
+    }
+
+    /** Hebt ein Intervall auf (Korrektur): es bleibt lesbar, belegt aber keinen Tag mehr. */
+    public boolean stammdatumAufheben(UUID zeile) {
+        return jdbc.update("UPDATE bezugsgroesse_stammdatum SET aufgehoben_am = now() WHERE id = ? AND aufgehoben_am IS NULL",
+                zeile) == 1;
+    }
+
+    /**
+     * Die Zeitzone, in der die Tage einer Bezugsgröße liegen: die ihres Standorts, sonst die des Unternehmens
+     * (Z1) — {@code Europe/Berlin}, wenn der Kundenbereich keines hat.
+     */
+    public String zeitzone(UUID id) {
+        return jdbc.queryForObject("SELECT coalesce((SELECT s.zeitzone FROM bezugsgroesse b JOIN standort s "
+                + "ON s.id = b.standort_id AND s.tenant_id = b.tenant_id WHERE b.id = ?), "
+                + "(SELECT u.zeitzone FROM unternehmen u ORDER BY u.id LIMIT 1), 'Europe/Berlin')", String.class, id);
     }
 
     /** Gibt es das Objekt des Geltungsbereichs im Kundenbereich? Ein fremdes ist unter RLS nicht da. */
@@ -246,6 +299,15 @@ public class BezugsgroesseRepository {
                 + "rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) "
                 + "VALUES (?,?,?,?::jsonb,?::jsonb, now(), false, ?,?,?,?)", tenant, id, art, altJson, neuJson,
                 wer.sub(), wer.name(), wer.rolle(), wer.art());
+    }
+
+    /** Ein Protokolleintrag mit „gilt ab“ und „rückwirkend“ (S4); die Eintragszeit setzt die Datenbank. */
+    public void protokoll(UUID tenant, UUID id, String art, String altJson, String neuJson, Instant giltAb,
+            boolean rueckwirkend, ProtokollAkteur wer) {
+        jdbc.update("INSERT INTO bezugsgroesse_aenderung (tenant_id, bezugsgroesse_id, art, alt, neu, gilt_ab, "
+                + "rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) "
+                + "VALUES (?,?,?,?::jsonb,?::jsonb,?,?,?,?,?,?)", tenant, id, art, altJson, neuJson, Timestamp.from(giltAb),
+                rueckwirkend, wer.sub(), wer.name(), wer.rolle(), wer.art());
     }
 
     private static UUID[] verweis(String art, UUID id) {

@@ -250,13 +250,15 @@ public class TenantRepository {
                 // the Kennzeichen occupancy before their Bezugsgroesse, the Bezugsgroesse
                 // before the Messstelle, Ort, Standort or Unternehmen it applies to. Its
                 // protocol has no FK to the Bezugsgroesse but holds the tenant (RESTRICT),
-                // so - unlike the older journals - it goes with the company.
+                // so - unlike the older journals - it goes with the company. The Stammdaten
+                // with validity (V20260914151500) are values too: before their Bezugsgroesse.
                 // Kostenstelle and Prozess (V20260913160000) follow everything that points at
                 // them (Bezugsgroessen, Verteilungs-Terme, the Messstelle's Prozess intervals and
                 // Kostenstellen-Anteile, V20260913230000); sub-processes go before their parent
                 // (the self reference is RESTRICT, checked row by row).
                 for (String table : new String[] {
-                        "bezugsgroesse_wert", "bezugsgroesse_kennzeichen_verlauf", "bezugsgroesse",
+                        "bezugsgroesse_wert", "bezugsgroesse_stammdatum", "bezugsgroesse_kennzeichen_verlauf",
+                        "bezugsgroesse",
                         "bezugsgroesse_aenderung",
                         "messstelle_formel_term", "messstelle_formel_fassung",
                         "messstelle_prozess", "messstelle_verteilung"}) {

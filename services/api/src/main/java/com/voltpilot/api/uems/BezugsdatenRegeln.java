@@ -210,12 +210,40 @@ public final class BezugsdatenRegeln {
     /** Ein zeitgültiges Stammdatum (AP-02). {@code gueltigBis} ist der LETZTE Tag. */
     public record Intervall(BigDecimal betrag, LocalDate gueltigAb, LocalDate gueltigBis, LocalDate eingetragenAm) {}
 
-    /** E17: der Wert je Periode am Stichtag — und wie weit ein Eintrag zurückwirkt. */
+    /**
+     * S3: an {@code tag} (00:00) gilt ein anderer Wert als am Vortag. {@code alt} {@code null}: vorher
+     * war keiner erhoben; {@code neu} {@code null}: ab dem Tag ist keiner erhoben.
+     */
+    public record Wechsel(LocalDate tag, BigDecimal alt, BigDecimal neu) {}
+
+    /**
+     * E17: der Wert je Periode am Stichtag — und wie weit ein Eintrag zurückwirkt. {@code wechsel} je
+     * Periode: die Übergänge NACH ihrem ersten Tag bis einschließlich zum Stichtag (S3); die Sätze dazu
+     * stehen in {@code kennzeichen}, in derselben Reihenfolge.
+     */
     public record Stammdatenstand(
             Map<String, BigDecimal> jePeriode,
             Map<String, LocalDate> stichtage,
             long rueckwirkendTage,
-            List<Ereignis> ereignisse) {}
+            List<Ereignis> ereignisse,
+            Map<String, List<Wechsel>> wechsel,
+            Map<String, List<String>> kennzeichen) {}
+
+    /**
+     * E15/S4: was ein neuer Wert ab {@code gueltigAb} an den wirksamen Intervallen ändert — dieselbe
+     * Mechanik wie die Bezugsfläche der Ortsstruktur ({@link OrtsbaumAbleitung#flaecheEintrag}).
+     * {@code unveraendert}: an dem Tag gilt schon genau dieser Wert, nichts wird geschrieben.
+     * {@code beendet}: das laufende Intervall mit seinem NEUEN letzten Tag (dem Vortag).
+     * {@code aufgehoben}: das Intervall, das am selben Tag begann (Korrektur) — es bleibt lesbar.
+     * {@code neu}: das neue Intervall; es erbt das Ende des laufenden bzw. endet vor dem nächsten.
+     */
+    public record StammdatumEintrag(
+            boolean unveraendert, Intervall beendet, Intervall aufgehoben, Intervall neu) {
+
+        public boolean korrektur() {
+            return aufgehoben != null;
+        }
+    }
 
     /** Ein Statuswechsel eines Zustands-Kanals. */
     public record Zustandswechsel(Instant zeit, String zustand) {}
@@ -694,23 +722,29 @@ public final class BezugsdatenRegeln {
      * <p>Ein neuer Wert ab Tag X ändert deshalb keine Periode vor X — und erzeugt kein Ereignis
      * für sie (Plan-Abnahme 2, §7 B6). Eine Periode ohne gültiges Intervall hat „keine Werte“,
      * nie 0.
+     *
+     * <p>S3: ändert sich der Wert NACH dem ersten Tag der Periode (bis einschließlich zum Stichtag),
+     * nennt die Periode jeden Übergang als Kennzeichen — „Fläche geändert am 01.01.2027 (3.100 →
+     * 3.400 m²)“. Gelesen wird trotzdem nur der Stichtag: ein zeitgewichtetes Mittel ist eine
+     * AP-11-Formel, nie diese Regel. Ein Übergang genau am ersten Tag der Periode liegt nicht IN ihr.
+     *
+     * @param bezeichnung wie das Stammdatum im Satz heißt („Fläche“, „Mitarbeitende“)
+     * @param einheit die Einheit der Bezugsgröße, wie sie im Satz steht
      */
-    public static Stammdatenstand stammdatum(List<Intervall> intervalle, List<String> perioden, String periodeArt) {
+    public static Stammdatenstand stammdatum(
+            List<Intervall> intervalle, List<String> perioden, String periodeArt, String bezeichnung, String einheit) {
         Map<String, BigDecimal> jePeriode = new LinkedHashMap<>();
         Map<String, LocalDate> stichtage = new LinkedHashMap<>();
+        Map<String, List<Wechsel>> wechsel = new LinkedHashMap<>();
+        Map<String, List<String>> kennzeichen = new LinkedHashMap<>();
         for (String p : perioden) {
-            LocalDate stichtag = BezugsPeriode.spanneVon(p, periodeArt)[1];
+            LocalDate[] spanne = BezugsPeriode.spanneVon(p, periodeArt);
+            LocalDate stichtag = spanne[1];
             stichtage.put(p, stichtag);
-            BigDecimal betrag = null;
-            for (Intervall i : intervalle) {
-                boolean ab = !stichtag.isBefore(i.gueltigAb());
-                boolean bis = i.gueltigBis() == null || !stichtag.isAfter(i.gueltigBis());
-                if (ab && bis) {
-                    betrag = i.betrag();
-                    break;
-                }
-            }
-            jePeriode.put(p, betrag);
+            jePeriode.put(p, wertAm(intervalle, stichtag));
+            List<Wechsel> inPeriode = wechselIn(intervalle, spanne[0], stichtag);
+            wechsel.put(p, inPeriode);
+            kennzeichen.put(p, inPeriode.stream().map(w -> stammdatumSatz(bezeichnung, w, einheit)).toList());
         }
         long rueckwirkend = 0;
         for (Intervall i : intervalle) {
@@ -723,7 +757,126 @@ public final class BezugsdatenRegeln {
                 Collections.unmodifiableMap(jePeriode),
                 Collections.unmodifiableMap(stichtage),
                 rueckwirkend,
-                List.of());
+                List.of(),
+                Collections.unmodifiableMap(wechsel),
+                Collections.unmodifiableMap(kennzeichen));
+    }
+
+    /** Der Wert, der am {@code tag} gilt — {@code null}, wenn keiner erhoben ist (nie 0). */
+    public static BigDecimal wertAm(List<Intervall> intervalle, LocalDate tag) {
+        for (Intervall i : intervalle) {
+            if (!tag.isBefore(i.gueltigAb()) && (i.gueltigBis() == null || !tag.isAfter(i.gueltigBis()))) {
+                return i.betrag();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * S3: die Tage in {@code (erster, letzter]}, an denen ein anderer Wert gilt als am Vortag — nach Tag
+     * sortiert. Zahlen werden numerisch verglichen („3100“ = „3100.0“): zwei aneinanderstoßende
+     * Intervalle mit demselben Wert sind kein Übergang.
+     */
+    static List<Wechsel> wechselIn(List<Intervall> intervalle, LocalDate erster, LocalDate letzter) {
+        java.util.TreeSet<LocalDate> kandidaten = new java.util.TreeSet<>();
+        for (Intervall i : intervalle) {
+            kandidaten.add(i.gueltigAb());
+            if (i.gueltigBis() != null) {
+                kandidaten.add(i.gueltigBis().plusDays(1));
+            }
+        }
+        List<Wechsel> aus = new ArrayList<>();
+        for (LocalDate tag : kandidaten) {
+            if (!tag.isAfter(erster) || tag.isAfter(letzter)) {
+                continue;
+            }
+            BigDecimal alt = wertAm(intervalle, tag.minusDays(1));
+            BigDecimal neu = wertAm(intervalle, tag);
+            boolean gleich = alt == null ? neu == null : neu != null && alt.compareTo(neu) == 0;
+            if (!gleich) {
+                aus.add(new Wechsel(tag, alt, neu));
+            }
+        }
+        return List.copyOf(aus);
+    }
+
+    /** S3: der Satz „geändert am“ — ein Wert vorher und nachher. */
+    public static final String STAMMDATUM_GEAENDERT = "{bezeichnung} geändert am {tag} ({alt} → {neu} {einheit})";
+
+    /** S3: vor dem Übergang war kein Wert erhoben. */
+    public static final String STAMMDATUM_BEGINNT = "{bezeichnung} erst ab {tag} erhoben ({neu} {einheit})";
+
+    /** S3: ab dem Übergang ist kein Wert erhoben; {@code tag} ist der LETZTE Tag mit Wert. */
+    public static final String STAMMDATUM_ENDET = "{bezeichnung} nur bis {tag} erhoben ({alt} {einheit})";
+
+    /**
+     * S3: der Kundensatz zu einem Übergang, aus den Vorlagen des Vertrags ({@code stammdatum_saetze}).
+     * Die Zahl steht wie jede angezeigte Zahl (E11): Tausenderpunkt, Komma, ungerundet — ein
+     * Stammdatum ist ein erhobener Wert, kein gerechneter.
+     */
+    public static String stammdatumSatz(String bezeichnung, Wechsel w, String einheit) {
+        String vorlage = w.alt() == null ? STAMMDATUM_BEGINNT : w.neu() == null ? STAMMDATUM_ENDET : STAMMDATUM_GEAENDERT;
+        LocalDate tag = w.neu() == null ? w.tag().minusDays(1) : w.tag();
+        return vorlage
+                .replace("{bezeichnung}", bezeichnung)
+                .replace("{tag}", OrtsbaumAbleitung.datumText(tag))
+                .replace("{alt}", w.alt() == null ? "" : stammdatumZahl(w.alt()))
+                .replace("{neu}", w.neu() == null ? "" : stammdatumZahl(w.neu()))
+                .replace("{einheit}", einheit);
+    }
+
+    /** E11 ohne Rundung: „3.100“, „172,5“ — die Zeichen aus {@link ErgebnisZustand}. */
+    static String stammdatumZahl(BigDecimal wert) {
+        String klartext = wert.stripTrailingZeros().toPlainString();
+        int punkt = klartext.indexOf('.');
+        String ganz = punkt < 0 ? klartext : klartext.substring(0, punkt);
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < ganz.length(); i++) {
+            if (i > 0 && (ganz.length() - i) % 3 == 0) {
+                s.append(ErgebnisZustand.TAUSENDER);
+            }
+            s.append(ganz.charAt(i));
+        }
+        if (punkt >= 0) {
+            s.append(ErgebnisZustand.DEZIMAL).append(klartext.substring(punkt + 1));
+        }
+        return s.toString();
+    }
+
+    /**
+     * E15/S4: ein neuer Wert eines Stammdatums ab einem Tag — byte-genau die Mechanik der Bezugsfläche
+     * ({@link OrtsbaumAbleitung#flaecheEintrag}, AP-02 §4.3): das laufende Intervall endet am VORTAG,
+     * das neue erbt dessen Ende (auch das vor einem geplanten); in einer Lücke endet es am Vortag des
+     * nächsten. Beginnt am Tag schon eines, ist es eine Korrektur: es wird aufgehoben, nie
+     * umgeschrieben. Gilt am Tag schon genau dieser Wert, ändert sich nichts.
+     *
+     * @param wirksame die nicht aufgehobenen Intervalle ({@code eingetragenAm} spielt keine Rolle)
+     */
+    public static StammdatumEintrag stammdatumEintrag(List<Intervall> wirksame, LocalDate gueltigAb, BigDecimal wert) {
+        List<Intervall> liste = wirksame.stream()
+                .sorted(java.util.Comparator.comparing(Intervall::gueltigAb))
+                .toList();
+        Intervall laufend = liste.stream()
+                .filter(i -> !gueltigAb.isBefore(i.gueltigAb())
+                        && (i.gueltigBis() == null || !gueltigAb.isAfter(i.gueltigBis())))
+                .findFirst()
+                .orElse(null);
+        if (laufend != null && laufend.betrag().compareTo(wert) == 0) {
+            return new StammdatumEintrag(true, null, null, null);
+        }
+        boolean korrektur = laufend != null && laufend.gueltigAb().equals(gueltigAb);
+        LocalDate bis = laufend != null
+                ? laufend.gueltigBis()
+                : liste.stream()
+                        .map(Intervall::gueltigAb)
+                        .filter(t -> t.isAfter(gueltigAb))
+                        .findFirst()
+                        .map(t -> t.minusDays(1))
+                        .orElse(null);
+        Intervall beendet = laufend != null && !korrektur
+                ? new Intervall(laufend.betrag(), laufend.gueltigAb(), gueltigAb.minusDays(1), laufend.eingetragenAm())
+                : null;
+        return new StammdatumEintrag(false, beendet, korrektur ? laufend : null, new Intervall(wert, gueltigAb, bis, null));
     }
 
     // ------------------------------------------------------------------- K1–K7 — der Kanal

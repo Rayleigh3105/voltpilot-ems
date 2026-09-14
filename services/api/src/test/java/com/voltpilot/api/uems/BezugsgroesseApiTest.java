@@ -247,6 +247,15 @@ class BezugsgroesseApiTest {
         abgelehnt(w, HttpMethod.POST, gut, anfrage(null, "X", "periodenwert", "kg", "monat", "standort",
                 fremd.standort()), "geltung_unbekannt");
 
+        // AP-09 IP-6: ein Wert ab einem Tag gibt es nur für ein Stammdatum (E15) — und nur als Zahl größer als 0.
+        abgelehnt(w, HttpMethod.PUT, gut + "/" + bg + "/stammdatum", Map.of("wert", "180", "gueltig_ab", "2026-01-01"),
+                "kein_stammdatum");
+        Antwort mitarbeitende = ruf(w, HttpMethod.POST, gut, anfrage(null, "Mitarbeitende", "stammdatum", "Personen", null,
+                "unternehmen", w.unternehmen()));
+        assertThat(mitarbeitende.status()).as(mitarbeitende.body().toString()).isEqualTo(201);
+        abgelehntMitFeld(w, HttpMethod.PUT, gut + "/" + mitarbeitende.body().get("id").asText() + "/stammdatum",
+                Map.of("wert", "0", "gueltig_ab", "2026-01-01"), "wert_ungueltig", "wert");
+
         // M1: nach dem ersten Wert bleibt die Bedeutung fest — Name und Kennzeichen nicht.
         erstwert(w, bg, 1, "erstwert", "wirksam", "4820", null);
         Antwort fest = abgelehnt(w, HttpMethod.PUT, gut + "/" + bg, anfrage("BZ-0001", "Produktionsmenge", "periodenwert",
@@ -602,11 +611,11 @@ class BezugsgroesseApiTest {
         return a.body().get("werte").findValuesAsText("periode_von");
     }
 
-    /** Die vier Tabellen des Kundenbereichs als Text — vor und nach einer Ablehnung derselbe. */
+    /** Die fünf Tabellen des Kundenbereichs als Text — vor und nach einer Ablehnung derselbe. */
     private static String zustand(Welt w) {
         StringBuilder s = new StringBuilder();
         for (String tabelle : List.of("bezugsgroesse", "bezugsgroesse_kennzeichen_verlauf", "bezugsgroesse_wert",
-                "bezugsgroesse_aenderung")) {
+                "bezugsgroesse_stammdatum", "bezugsgroesse_aenderung")) {
             s.append(tabelle).append('=').append(root.queryForObject("SELECT coalesce(string_agg(to_jsonb(t)::text, '|' "
                     + "ORDER BY to_jsonb(t)::text), '') FROM " + tabelle + " t WHERE tenant_id = ?", String.class, w.mandant()))
                     .append('\n');

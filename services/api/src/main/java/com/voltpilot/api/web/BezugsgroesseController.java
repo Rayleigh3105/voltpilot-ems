@@ -97,6 +97,37 @@ public class BezugsgroesseController {
         return bezugsgroessen.werte(id, tag("von", von), tag("bis", bis), lesart);
     }
 
+    /**
+     * Recht: {@code messwerte.ansehen}. Die Intervalle eines Stammdatums (E15, AP-09 IP-6); mit
+     * {@code periode_art}, {@code von} und {@code bis} (Tage, der letzte einschließlich) zusätzlich der Wert je
+     * Periode am Stichtag = dem letzten Tag der Periode (E17) mit den Übergängen als Kennzeichen (S3).
+     */
+    @GetMapping("/{id}/stammdatum")
+    public BezugsgroesseDto.Stammdatum stammdatum(@PathVariable UUID id,
+            @RequestParam(name = "periode_art", required = false) String periodeArt,
+            @RequestParam(required = false) String von,
+            @RequestParam(required = false) String bis) {
+        return bezugsgroessen.stammdatum(id, leer(periodeArt), tag("von", von), tag("bis", bis));
+    }
+
+    /**
+     * Recht: {@code bezugsgroesse.eingeben} („Bezugsgröße eingeben / berichtigen (manuell)“). Ein Wert eines
+     * Stammdatums ab einem Tag (E15/S4) — {@code {"wert": "180", "gueltig_ab": "2026-10-01"}}. Eine Bezugsfläche
+     * wird hier nie geschrieben: sie steht in der Ortsstruktur (M4, E17).
+     */
+    @PutMapping("/{id}/stammdatum")
+    public BezugsgroesseDto.Stammdatum stammdatumEintragen(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        BezugsgroesseDto.StammdatumAnfrage a = streng(body, BezugsgroesseDto.StammdatumAnfrage.class);
+        if (a.wert() == null || a.wert().isBlank()) {
+            throw BezugsgroesseAbgelehnt.anfrage("wert");
+        }
+        if (a.gueltigAb() == null || a.gueltigAb().isBlank()) {
+            throw BezugsgroesseAbgelehnt.anfrage("gueltig_ab");
+        }
+        return bezugsgroessen.stammdatumEintragen(id, a.wert(), tag("gueltig_ab", a.gueltigAb()), akteur(auth));
+    }
+
     /** Recht: {@code bezugsgroesse.verwalten} (AP-09 §4.11, W8). */
     @PostMapping
     public ResponseEntity<BezugsgroesseDto.Bezugsgroesse> anlegen(
@@ -145,12 +176,27 @@ public class BezugsgroesseController {
 
     /** Der strenge Mapper: ein JSON-Objekt, nur bekannte Felder, jedes Text oder {@code null}, die ID eine ID. */
     private BezugsgroesseRegeln.Entwurf entwurf(JsonNode body) {
+        BezugsgroesseDto.Anfrage a = streng(body, BezugsgroesseDto.Anfrage.class);
+        String geltungId = a.geltungId();
+        if (geltungId != null && !geltungId.isBlank()) {
+            try {
+                geltungId = UUID.fromString(geltungId.strip()).toString();
+            } catch (IllegalArgumentException e) {
+                throw BezugsgroesseAbgelehnt.anfrage("geltung_id");
+            }
+        }
+        return new BezugsgroesseRegeln.Entwurf(leer(a.kennzeichen()), a.name() == null ? null : a.name().strip(),
+                leer(a.wertart()), leer(a.einheit()), leer(a.periodeArt()), leer(a.geltungArt()), geltungId);
+    }
+
+    /** Ein JSON-Objekt mit nur bekannten Feldern, jedes Text oder {@code null} — sonst 400 {@code anfrage_ungueltig} mit {@code feld}. */
+    private <T> T streng(JsonNode body, Class<T> form) {
         if (body == null || !body.isObject()) {
             throw BezugsgroesseAbgelehnt.anfrage("");
         }
-        BezugsgroesseDto.Anfrage a;
+        T a;
         try {
-            a = streng.treeToValue(body, BezugsgroesseDto.Anfrage.class);
+            a = streng.treeToValue(body, form);
         } catch (UnrecognizedPropertyException e) {
             throw BezugsgroesseAbgelehnt.anfrage(e.getPropertyName());
         } catch (JsonMappingException e) {
@@ -164,16 +210,7 @@ public class BezugsgroesseController {
                 throw BezugsgroesseAbgelehnt.anfrage(f.getKey());
             }
         }
-        String geltungId = a.geltungId();
-        if (geltungId != null && !geltungId.isBlank()) {
-            try {
-                geltungId = UUID.fromString(geltungId.strip()).toString();
-            } catch (IllegalArgumentException e) {
-                throw BezugsgroesseAbgelehnt.anfrage("geltung_id");
-            }
-        }
-        return new BezugsgroesseRegeln.Entwurf(leer(a.kennzeichen()), a.name() == null ? null : a.name().strip(),
-                leer(a.wertart()), leer(a.einheit()), leer(a.periodeArt()), leer(a.geltungArt()), geltungId);
+        return a;
     }
 
     /** Ein leerer Text ist „nicht angegeben“ — nichts wird sonst umgewandelt (auch nicht die Groß-/Kleinschreibung). */

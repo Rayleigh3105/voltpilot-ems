@@ -187,6 +187,18 @@ class BezugsdatenVectorsTest {
                 .as("wählbar ist eine Teilmenge des Vokabulars").containsAll(BezugsgroesseRegeln.GELTUNG_WAEHLBAR);
     }
 
+    /** S3 (AP-09 IP-6): die Vorlagen der Kennzeichen-Sätze sind Zeichen für Zeichen die des Vertrags. */
+    @Test
+    void dieStammdatumSaetzeSindDieDesVertrags() throws Exception {
+        JsonNode saetze = vektoren().path("stammdatum_saetze");
+        assertThat(BezugsdatenRegeln.STAMMDATUM_GEAENDERT).isEqualTo(saetze.path("geaendert").asText());
+        assertThat(BezugsdatenRegeln.STAMMDATUM_BEGINNT).isEqualTo(saetze.path("beginnt").asText());
+        assertThat(BezugsdatenRegeln.STAMMDATUM_ENDET).isEqualTo(saetze.path("endet").asText());
+        assertThat(texte(vektoren().path("verwalten").path("pruefreihenfolge").path("stammdatum")))
+                .containsExactly("archiviert", "wertart", "flaeche", "wert");
+        assertThat(BezugsgroesseRegeln.STAMMDATUM).isIn(texte(vektoren().path("vokabulare").path("wertart")));
+    }
+
     /**
      * Die Zustandswörter sind DIESELBEN wie im schon gemergten Verbrauchsvertrag — zwei Wortlaute
      * für dieselbe Aussage wären genau die Drift, die diese Dateien verhindern sollen.
@@ -479,8 +491,8 @@ class BezugsdatenVectorsTest {
                                 i.path("eingetragen_am").isNull() || i.path("eingetragen_am").isMissingNode()
                                         ? null
                                         : LocalDate.parse(i.path("eingetragen_am").asText()))));
-                Stammdatenstand ist = BezugsdatenRegeln.stammdatum(
-                        intervalle, texte(ein.path("perioden")), ein.path("periode_art").asText());
+                Stammdatenstand ist = BezugsdatenRegeln.stammdatum(intervalle, texte(ein.path("perioden")),
+                        ein.path("periode_art").asText(), ein.path("bezeichnung").asText(), ein.path("einheit").asText());
                 soll.path("je_periode").fields().forEachRemaining(e -> betrag(
                         why + " · Nenner " + e.getKey(), e.getValue(), ist.jePeriode().get(e.getKey())));
                 soll.path("stichtage").fields().forEachRemaining(e -> assertThat(
@@ -491,6 +503,35 @@ class BezugsdatenVectorsTest {
                         .as(why + " · rueckwirkend_tage")
                         .isEqualTo(soll.path("rueckwirkend_tage").asLong());
                 assertThat(ist.ereignisse()).as(why + " · Ereignisse (Plan-Abnahme 2: keine)").isEmpty();
+                assertThat(ist.wechsel().keySet()).as(why + " · Perioden mit Übergängen")
+                        .containsExactlyElementsOf(texte(ein.path("perioden")));
+                soll.path("wechsel_je_periode").fields().forEachRemaining(e -> {
+                    List<BezugsdatenRegeln.Wechsel> erwartet = new ArrayList<>();
+                    e.getValue().forEach(w -> erwartet.add(new BezugsdatenRegeln.Wechsel(
+                            LocalDate.parse(w.path("tag").asText()), dezimal(w.path("alt")), dezimal(w.path("neu")))));
+                    List<BezugsdatenRegeln.Wechsel> wechsel = ist.wechsel().get(e.getKey());
+                    assertThat(wechsel).as(why + " · Übergänge " + e.getKey()).hasSize(erwartet.size());
+                    for (int i = 0; i < erwartet.size(); i++) {
+                        assertThat(wechsel.get(i).tag()).as(why + " · Übergang " + i).isEqualTo(erwartet.get(i).tag());
+                        betrag(why + " · alt", e.getValue().get(i).path("alt"), wechsel.get(i).alt());
+                        betrag(why + " · neu", e.getValue().get(i).path("neu"), wechsel.get(i).neu());
+                    }
+                });
+                soll.path("kennzeichen_je_periode").fields().forEachRemaining(e -> assertThat(
+                                ist.kennzeichen().get(e.getKey()))
+                        .as(why + " · Kennzeichen " + e.getKey() + " (Text UND Reihenfolge)")
+                        .containsExactlyElementsOf(texte(e.getValue())));
+            }
+            case "stammdatum_eintrag" -> {
+                List<Intervall> wirksame = new ArrayList<>();
+                ein.path("intervalle").forEach(i -> wirksame.add(intervall(i)));
+                BezugsdatenRegeln.StammdatumEintrag ist = BezugsdatenRegeln.stammdatumEintrag(
+                        wirksame, LocalDate.parse(ein.path("gueltig_ab").asText()), dezimal(ein.path("wert")));
+                JsonNode e = soll.path("eintrag");
+                assertThat(ist.unveraendert()).as(why + " · unveraendert").isEqualTo(e.path("unveraendert").asBoolean());
+                intervallGleich(why + " · beendet", e.path("beendet"), ist.beendet());
+                intervallGleich(why + " · aufgehoben", e.path("aufgehoben"), ist.aufgehoben());
+                intervallGleich(why + " · neu", e.path("neu"), ist.neu());
             }
             case "kanal" -> {
                 List<Zustandswechsel> wechsel = new ArrayList<>();
@@ -540,6 +581,28 @@ class BezugsdatenVectorsTest {
         }
     }
 
+    /** Ein Intervall der Vektor-Datei; {@code gueltig_bis}/{@code eingetragen_am} dürfen fehlen. */
+    private static Intervall intervall(JsonNode i) {
+        return new Intervall(dezimal(i.path("betrag")), LocalDate.parse(i.path("gueltig_ab").asText()),
+                i.path("gueltig_bis").isNull() || i.path("gueltig_bis").isMissingNode()
+                        ? null : LocalDate.parse(i.path("gueltig_bis").asText()),
+                i.path("eingetragen_am").isNull() || i.path("eingetragen_am").isMissingNode()
+                        ? null : LocalDate.parse(i.path("eingetragen_am").asText()));
+    }
+
+    /** S4: Betrag numerisch, Tage genau; {@code null} in der Datei heißt: kein solches Intervall. */
+    private static void intervallGleich(String why, JsonNode soll, Intervall ist) {
+        if (soll.isNull() || soll.isMissingNode()) {
+            assertThat(ist).as(why).isNull();
+            return;
+        }
+        assertThat(ist).as(why).isNotNull();
+        betrag(why + " · betrag", soll.path("betrag"), ist.betrag());
+        assertThat(ist.gueltigAb()).as(why + " · gueltig_ab").isEqualTo(LocalDate.parse(soll.path("gueltig_ab").asText()));
+        assertThat(ist.gueltigBis()).as(why + " · gueltig_bis").isEqualTo(
+                soll.path("gueltig_bis").isNull() ? null : LocalDate.parse(soll.path("gueltig_bis").asText()));
+    }
+
     /** AP-09 IP-5: ein Vorgang der Regel {@code verwalten} gegen {@link BezugsgroesseRegeln}. */
     private static BezugsgroesseRegeln.Urteil verwalten(JsonNode wurzel, JsonNode vw) {
         JsonNode vok = wurzel.path("vokabulare");
@@ -553,6 +616,8 @@ class BezugsdatenVectorsTest {
                     texte(vw.path("belegt")));
             case "archivieren" -> BezugsgroesseRegeln.archivieren(vw.path("archiviert").asBoolean());
             case "loeschen" -> BezugsgroesseRegeln.loeschen(vw.path("werte").asLong());
+            case "stammdatum" -> BezugsgroesseRegeln.stammdatum(entwurf(vw.path("bestand")), vw.path("archiviert").asBoolean(),
+                    text(vw.path("wert")), v);
             default -> throw new IllegalStateException("unbekannter Vorgang " + vw.path("vorgang").asText());
         };
     }

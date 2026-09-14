@@ -49,8 +49,92 @@ public final class BezugsgroesseDto {
             OffsetDateTime archiviertAm,
             OffsetDateTime angelegtAm) {}
 
-    /** {@code GET /api/v1/bezugsgroessen}: archivierte eingeschlossen, nach Kennzeichen. */
-    public record Liste(List<Bezugsgroesse> bezugsgroessen) {}
+    /**
+     * {@code GET /api/v1/bezugsgroessen}: archivierte eingeschlossen, nach Kennzeichen — und, getrennt davon,
+     * die Bezugsflächen, die in der Ortsstruktur stehen (AP-09 IP-6, E17). Sie haben keine ID und kein
+     * Kennzeichen einer Bezugsgröße: sie werden GELESEN, nie hier gespeichert.
+     */
+    public record Liste(List<Bezugsgroesse> bezugsgroessen, List<Bezugsflaeche> bezugsflaechen) {}
+
+    /**
+     * Eine Bezugsfläche aus der Ortsstruktur ({@code flaeche_gueltigkeit}, AP-02) als Bezugsgröße: Wertart
+     * {@code stammdatum}, Einheit m², Herkunft {@code stammdatum_ap02}. {@code schreibbar} ist immer
+     * {@code false} — wer sie ändern will, ändert die Ortsstruktur ({@code pflegen} sagt es in Kundensprache).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bezugsflaeche(
+            String name,
+            String wertart,
+            String einheit,
+            String herkunftArt,
+            String geltungArt,
+            UUID geltungId,
+            String geltungKennzeichen,
+            String geltungName,
+            boolean schreibbar,
+            String pflegen) {}
+
+    /**
+     * Der Wert eines Stammdatums für EINE Periode, gelesen am Stichtag = dem LETZTEN Tag der Periode (E17).
+     * {@code betrag} {@code null} heißt „nicht erhoben“, nie 0. {@code kennzeichen}: jeder Übergang nach dem
+     * ersten Tag der Periode (S3). {@code quelle} nur bei einer Bezugsfläche ({@code eigen} ·
+     * {@code aus_gebaeuden_summiert}); {@code gilt_ab}/{@code eingetragen_am}/{@code abzeichen} beschreiben das
+     * Intervall, das am Stichtag gilt — bei einer summierten Fläche gibt es keines.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Stichtagwert(
+            String periode,
+            LocalDate von,
+            LocalDate stichtag,
+            String betrag,
+            String quelle,
+            LocalDate giltAb,
+            LocalDate eingetragenAm,
+            String abzeichen,
+            List<String> kennzeichen) {}
+
+    /** Eine Bezugsfläche mit ihren Werten je Periode. */
+    public record BezugsflaecheWerte(Bezugsflaeche bezugsflaeche, List<Stichtagwert> perioden) {}
+
+    /** {@code GET /api/v1/bezugsflaechen?periode_art&von&bis}: jede Bezugsfläche der Ortsstruktur mit ihren Werten. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bezugsflaechen(String periodeArt, LocalDate von, LocalDate bis, List<BezugsflaecheWerte> bezugsflaechen) {}
+
+    /** {@code PUT /api/v1/bezugsgroessen/{id}/stammdatum}: ein Wert ab einem Tag (E15). Beide Felder Text. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record StammdatumAnfrage(String wert, String gueltigAb) {}
+
+    /**
+     * Ein Intervall eines Stammdatums: {@code gueltig_bis} ist der LETZTE Tag ({@code null} offen), ein
+     * aufgehobenes ist eine Korrektur und bleibt lesbar. {@code abzeichen} „rückwirkend (n Tage)“, wenn der
+     * Eintrag nach „gültig ab“ lag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record StammdatumIntervall(
+            String wert,
+            LocalDate gueltigAb,
+            LocalDate gueltigBis,
+            OffsetDateTime aufgehobenAm,
+            OffsetDateTime eingetragenAm,
+            String abzeichen) {}
+
+    /**
+     * {@code GET/PUT /api/v1/bezugsgroessen/{id}/stammdatum}: die Intervalle eines Stammdatums, das AP-09 selbst
+     * hält (E15), und — wenn nach Perioden gefragt — der Wert je Periode am Stichtag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Stammdatum(
+            UUID bezugsgroesseId,
+            String kennzeichen,
+            String name,
+            String einheit,
+            String zeitzone,
+            boolean schreibbar,
+            List<StammdatumIntervall> intervalle,
+            String periodeArt,
+            LocalDate von,
+            LocalDate bis,
+            List<Stichtagwert> perioden) {}
 
     /** Wer eine Fassung eingetragen oder freigegeben hat — im Akteur-Vokabular von AP-03, ohne Subject. */
     public record Person(String name, String rolle, String art) {}

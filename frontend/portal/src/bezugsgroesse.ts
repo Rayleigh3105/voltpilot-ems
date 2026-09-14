@@ -3,7 +3,8 @@ import { EINHEIT_UNBEKANNT, SAETZE as EINHEIT_SAETZE } from './bezugsEinheit';
 /**
  * Das VERWALTEN einer Bezugsgröße im Portal (UEMS AP-09 IP-5): der GESCHLOSSENE
  * Satz der Ablehnungen der Schnittstelle `/api/v1/bezugsgroessen` mit Status
- * und Kundensatz, und die Lesarten des Lesemodells.
+ * und Kundensatz (seit AP-09 IP-6 auch der Stammdatum-Route und von
+ * `/api/v1/bezugsflaechen`), und die Lesarten des Lesemodells.
  *
  * Die Wahrheit steht in `docs/contracts/v2/bezugsdaten-vectors.json` (Block
  * `verwalten`); `bezugsdaten.test.ts` hält diese Datei Zeile für Zeile daran,
@@ -26,11 +27,19 @@ export const ABLEHNUNGEN = {
     satz: 'Ein Kennzeichen hat 2 bis 16 Zeichen: Großbuchstaben, Ziffern, Punkt, Bindestrich oder Schrägstrich.',
   },
   zeitraum_ungueltig: { status: 400, satz: 'Der Zeitraum endet vor seinem Beginn.' },
+  wert_ungueltig: {
+    status: 400,
+    satz: 'Bitte geben Sie den Wert als Zahl größer als 0 an, mit Punkt und höchstens sechs Nachkommastellen, z. B. 180.',
+  },
   periode_passt_nicht_zur_wertart: {
     status: 422,
     satz: 'Nur ein Periodenwert hat eine Periode (Tag, Woche, Monat oder Jahr); ein Stand und ein Stammdatum haben keine.',
   },
   flaeche_aus_struktur: { status: 422, satz: 'Flächen pflegen Sie am Gebäude.' },
+  kein_stammdatum: {
+    status: 422,
+    satz: 'Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen.',
+  },
   geltung_nicht_waehlbar: {
     status: 422,
     satz: 'Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar.',
