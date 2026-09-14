@@ -577,6 +577,7 @@ class BezugsdatenVectorsTest {
                 }
             }
             case "csv" -> CsvVektoren.pruefe(why, ein.path("csv"), soll.path("csv"));
+            case "vorschau" -> VorschauVektoren.pruefe(why, wurzel, ein.path("vorschau"), soll.path("vorschau"));
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
     }

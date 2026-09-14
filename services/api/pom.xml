@@ -279,6 +279,11 @@
                              Testlauf aus, in PRODUKTION an. KorrekturKaskadeWiringTest
                              prueft die ausgelieferte Vorgabe. -->
                         <voltpilot.uems.kaskade.enabled>false</voltpilot.uems.kaskade.enabled>
+                        <!-- Die Zeilentext-Aufbewahrung (AP-09 IP-12): dieselbe Falle, im
+                             Testlauf aus, in PRODUKTION an.
+                             ZeilentextAufbewahrungWiringTest prueft die ausgelieferte
+                             Vorgabe. -->
+                        <voltpilot.uems.zeilentexte.enabled>false</voltpilot.uems.zeilentexte.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

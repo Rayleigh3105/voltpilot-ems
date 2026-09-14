@@ -63,6 +63,16 @@ public final class BezugsEinheit {
     public record Umrechnung(String von, String nach, Integer zehnerpotenz, Integer teiler, Integer nachkommastellen) {}
 
     /**
+     * U1: die erlaubten Umrechnungen für die Schreib- und Vorschauwege des Servers (seit AP-09 IP-12) —
+     * Zeile für Zeile der Block {@code umrechnung} der Vektor-Datei ({@code ImportVorschauTest} prüft
+     * das). Die Tests der Regel rechnen weiter mit dem Block selbst.
+     */
+    public static final List<Umrechnung> UMRECHNUNGEN = List.of(
+            new Umrechnung("t", "kg", 3, null, null),
+            new Umrechnung("l", "m³", -3, null, null),
+            new Umrechnung("min", "h", null, 60, 4));
+
+    /**
      * U1–U3 — der gelieferte Betrag wird auf die Einheit der Bezugsgröße gebracht.
      *
      * <p>Keine gelieferte Einheit heißt: die Einheit der Bezugsgröße gilt (U3). Eine Einheit
