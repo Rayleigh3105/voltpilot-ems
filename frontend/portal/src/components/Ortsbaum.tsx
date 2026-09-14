@@ -45,37 +45,51 @@ const ICON: Record<Knoten['art'], 'building' | 'layers' | 'map-pin'> = {
  * Standort-Übersicht aus AP-01 ihn später unverändert tragen kann; bis dahin
  * steht er in jeder Karte der Liste „Standorte“ unter dem Standort-Kopf.
  *
- * Nicht hier: Verschieben (IP-12), „Stand am …“ (IP-13), Archivieren (IP-15),
- * die Fläche ÄNDERN mit Verlauf (IP-8, T7) und die Datenlage je Knoten.
+ * „Stand am …“ (IP-13): mit `stichtag` liest der Baum den Stand dieses Tages
+ * (`?stichtag=`) und bietet keinen Schreibweg an — kein Anlegen, kein Stift,
+ * kein „Fläche eintragen“. Datumsfeld und Banner trägt der Wirt (`StandAm`).
+ *
+ * Nicht hier: Verschieben (IP-12), Archivieren (IP-15), die Fläche ÄNDERN mit
+ * Verlauf (IP-8, T7) und die Datenlage je Knoten.
  */
 export function Ortsbaum({
   standort,
+  stichtag = null,
   onGeaendert,
 }: {
   standort: StandortAmStichtag;
+  /** „Stand am …“ (IP-13): `null` = heute, mit Schreibwegen. */
+  stichtag?: string | null;
   /** Nach jedem Speichern — die Zahlen im Standort-Kopf („3 Gebäude“) ändern sich mit. */
   onGeaendert?: () => void;
 }) {
   const titelId = `vp-ob-${useId().replace(/:/g, '')}`;
-  const [antwort, setAntwort] = useState<OrtsbaumAmStichtag | null>(null);
+  // Die Antwort merkt sich, für welchen Tag sie gilt: nach einem Wechsel des Stichtags steht
+  // nie der Baum des vorigen Tages unter dem Banner des neuen (veraltet ist nicht aktuell).
+  const [geladen, setGeladen] = useState<{ fuer: string | null; daten: OrtsbaumAmStichtag } | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(true);
   const [dialog, setDialog] = useState<DialogZustand | null>(null);
   // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
   // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
   const ausloeser = useRef<HTMLElement | null>(null);
+  const anfrage = useRef(0);
 
   const laden = useCallback(async () => {
+    const nummer = ++anfrage.current;
     setLaedt(true);
     setLadeFehler(null);
     try {
-      setAntwort(await api.standortOrte(standort.id));
+      const daten = await (stichtag ? api.standortOrte(standort.id, stichtag) : api.standortOrte(standort.id));
+      if (nummer === anfrage.current) setGeladen({ fuer: stichtag, daten });
     } catch (e) {
-      setLadeFehler(e instanceof Error ? e.message : 'Die Gebäude konnten nicht geladen werden.');
+      if (nummer === anfrage.current)
+        setLadeFehler(e instanceof Error ? e.message : 'Die Gebäude konnten nicht geladen werden.');
     } finally {
-      setLaedt(false);
+      if (nummer === anfrage.current) setLaedt(false);
     }
-  }, [standort.id]);
+  }, [standort.id, stichtag]);
+  const antwort = geladen && geladen.fuer === stichtag ? geladen.daten : null;
 
   useEffect(() => {
     void laden();
@@ -96,7 +110,8 @@ export function Ortsbaum({
 
   const sicht = antwort ? ortsbaumSicht(antwort) : null;
   // Ein archivierter Standort nimmt nichts Neues an — ein Knopf, der nichts bewirken kann, wird nicht angeboten (§5.3).
-  const kannSchreiben = standort.zustand !== 'archiviert';
+  // „Stand am …“ zeigt die Vergangenheit, man ändert sie dort nicht (IP-13, H1).
+  const kannSchreiben = standort.zustand !== 'archiviert' && !stichtag;
   const alleKnoten = sicht ? sicht.knoten.flatMap((k) => [k, ...k.kinder]) : [];
 
   function zeile(k: Knoten) {

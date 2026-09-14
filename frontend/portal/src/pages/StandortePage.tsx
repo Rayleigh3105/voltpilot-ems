@@ -3,9 +3,10 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
 import { Ortsbaum } from '../components/Ortsbaum';
+import { StandAm } from '../components/StandAm';
 import { StandortDialog } from '../components/StandortDialog';
 import { StandortKopf } from '../components/StandortKopf';
-import { archiviertText, standortListe } from '../standorte';
+import { standAmListe } from '../standAm';
 import './StandortePage.css';
 
 /**
@@ -22,15 +23,26 @@ import './StandortePage.css';
  * Seit IP-7 trägt jede Karte unter dem Kopf den Ortsbaum „Standort › Gebäude“
  * (`Ortsbaum`, T3) mit den Dialogen für Gebäude und Bereich.
  *
- * Nicht hier: „Stand am …“ (IP-13), Archivieren/Wiederherstellen (IP-15),
- * Anlage zuordnen (IP-11), die Datenlage je Standort und die Eingabe der
- * Bezugsfläche (keine Schreibroute für den Standort).
+ * Seit IP-13 steht über der Liste „Stand am …“ (H1, A12): ist ein Stichtag
+ * gesetzt, liest die Seite ihn (`?stichtag=`), ihre Karten und Ortsbäume zeigen
+ * den Stand dieses Tages, ein Standort, den es da noch nicht gab, steht mit
+ * seinem Satz an seinem Platz — und kein Schreibweg ist angeboten. EIN Datumsfeld
+ * für die ganze Seite: die Ortsbäume der Karten folgen ihm (Vorschau IP-13).
+ *
+ * Nicht hier: Archivieren/Wiederherstellen (IP-15), Anlage zuordnen (IP-11),
+ * die Datenlage je Standort und die Eingabe der Bezugsfläche (keine
+ * Schreibroute für den Standort).
  */
 export function StandortePage() {
   const [liste, setListe] = useState<StandorteAmStichtag | null>(null);
   const [unternehmen, setUnternehmen] = useState<Unternehmen | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(true);
+  /** Heute nach dem Server (die Antwort ohne Stichtag) — die Vorgabe des Datumsfelds. */
+  const [heute, setHeute] = useState<string | null>(null);
+  /** „Stand am …“: `null` = heute, mit Schreibwegen. */
+  const [stichtag, setStichtag] = useState<string | null>(null);
+  const anfrage = useRef(0);
   const [dialog, setDialog] = useState<{ standort: StandortAmStichtag | null; schluessel: number } | null>(
     null,
   );
@@ -39,18 +51,26 @@ export function StandortePage() {
   const ausloeser = useRef<HTMLElement | null>(null);
 
   const laden = useCallback(async () => {
+    const nummer = ++anfrage.current;
     setLaedt(true);
     setLadeFehler(null);
     try {
-      const [l, u] = await Promise.all([api.standorte(), api.unternehmen().catch(() => null)]);
+      const [l, u] = await Promise.all([
+        stichtag ? api.standorte(stichtag) : api.standorte(),
+        api.unternehmen().catch(() => null),
+      ]);
+      // Eine überholte Antwort (der Tag wurde inzwischen gewechselt) zeigt nichts mehr.
+      if (nummer !== anfrage.current) return;
       setListe(l);
       setUnternehmen(u);
+      if (!stichtag) setHeute(l.stichtag);
     } catch (e) {
-      setLadeFehler(e instanceof Error ? e.message : 'Die Standorte konnten nicht geladen werden.');
+      if (nummer === anfrage.current)
+        setLadeFehler(e instanceof Error ? e.message : 'Die Standorte konnten nicht geladen werden.');
     } finally {
-      setLaedt(false);
+      if (nummer === anfrage.current) setLaedt(false);
     }
-  }, []);
+  }, [stichtag]);
 
   useEffect(() => {
     void laden();
@@ -69,10 +89,12 @@ export function StandortePage() {
     });
   }
 
-  const sicht = liste ? standortListe(liste) : null;
+  // Die Liste gilt für den Tag, nach dem gefragt wurde — bis die Antwort da ist, steht keine vom vorigen Tag.
+  const aktuell = liste && liste.stichtag === (stichtag ?? heute) ? liste : null;
+  const sicht = aktuell ? standAmListe(aktuell, stichtag) : null;
   // Ohne Unternehmen lehnt der Server das Anlegen ab — ein Knopf, der nichts
-  // bewirken kann, wird nicht angeboten (§5.3).
-  const kannAnlegen = unternehmen?.zustand === 'angelegt';
+  // bewirken kann, wird nicht angeboten (§5.3). „Stand am …“ ändert nichts (H1).
+  const kannAnlegen = unternehmen?.zustand === 'angelegt' && !stichtag;
 
   return (
     <section className="vp-st" aria-labelledby="vp-st-titel">
@@ -91,7 +113,9 @@ export function StandortePage() {
         )}
       </div>
 
-      {laedt && !liste && (
+      {heute && <StandAm heute={heute} stichtag={stichtag} onStichtag={setStichtag} />}
+
+      {laedt && !aktuell && (
         <div className="vp-st-karte vp-st-hinweis" aria-busy="true">
           Standorte werden geladen …
         </div>
@@ -107,18 +131,32 @@ export function StandortePage() {
 
       {sicht && (
         <>
-          {sicht.standorte.length === 0 ? (
+          {sicht.eintraege.length === 0 ? (
             <div className="vp-st-karte vp-st-hinweis">Noch kein Standort angelegt.</div>
           ) : (
             <ul className="vp-st-liste" aria-label="Standorte">
-              {sicht.standorte.map((s) => (
-                <li key={s.id} className="vp-st-karte">
-                  <StandortKopf standort={s} onBearbeiten={(st, von) => oeffne(st, von)} />
-                  {/* AP-02 IP-7: der Ortsbaum „Standort › Gebäude“ — bis die Standort-Übersicht
-                      aus AP-01 steht, unter dem Kopf jeder Karte. */}
-                  <Ortsbaum standort={s} onGeaendert={() => void laden()} />
-                </li>
-              ))}
+              {sicht.eintraege.map((e) =>
+                e.art === 'standort' ? (
+                  <li key={e.standort.id} className="vp-st-karte">
+                    <StandortKopf
+                      standort={e.standort}
+                      onBearbeiten={stichtag ? undefined : (st, von) => oeffne(st, von)}
+                    />
+                    {/* AP-02 IP-7: der Ortsbaum „Standort › Gebäude“ — bis die Standort-Übersicht
+                        aus AP-01 steht, unter dem Kopf jeder Karte; er folgt dem Stichtag der Seite. */}
+                    <Ortsbaum standort={e.standort} stichtag={stichtag} onGeaendert={() => void laden()} />
+                  </li>
+                ) : (
+                  // „Stand am …“: gab es an dem Tag noch nicht — benannt an seinem Platz, nie weggelassen (A12).
+                  <li key={e.standort.id} className="vp-st-karte vp-st-karte-still" data-testid="gab-es-noch-nicht">
+                    <p className="vp-st-name">
+                      <span className="vp-st-name-text">{e.standort.name}</span>
+                      <span className="vp-st-kz">{e.standort.kurzzeichen}</span>
+                    </p>
+                    <p className="vp-st-zeile">{e.satz}</p>
+                  </li>
+                ),
+              )}
             </ul>
           )}
 
@@ -128,13 +166,13 @@ export function StandortePage() {
                 Archiviert
               </h2>
               <ul className="vp-st-liste">
-                {sicht.archiviert.map((s) => (
+                {sicht.archiviert.map(({ standort: s, satz }) => (
                   <li key={s.id} className="vp-st-karte vp-st-karte-still">
                     <p className="vp-st-name">
                       <span className="vp-st-name-text">{s.name}</span>
                       <span className="vp-st-kz">{s.kurzzeichen}</span>
                     </p>
-                    <p className="vp-st-zeile">{archiviertText(s)}</p>
+                    <p className="vp-st-zeile">{satz}</p>
                   </li>
                 ))}
               </ul>
@@ -161,14 +199,14 @@ export function StandortePage() {
         </>
       )}
 
-      {dialog && liste && (
+      {dialog && liste && heute && !stichtag && (
         <StandortDialog
           key={dialog.schluessel}
           open
           standort={dialog.standort}
           unternehmen={unternehmen}
           standorte={liste.standorte}
-          heute={liste.stichtag}
+          heute={heute}
           onClose={schliesse}
           onOeffnen={(s) => oeffne(s, null)}
           onGespeichert={() => {
