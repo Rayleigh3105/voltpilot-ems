@@ -8,6 +8,7 @@ import type {
   OrtsbaumAmStichtag,
   OrtsbaumArchivierterOrt,
   OrtsbaumBereich,
+  OrtsbaumDanach,
   OrtsbaumGebaeude,
 } from './api';
 import {
@@ -101,6 +102,8 @@ export interface Knoten {
   archiviertAm: string | null;
   /** IP-15: was man heute mit dem Knoten tun kann (`null` mit Stichtag und am Zweig „Direkt am Standort“). */
   aktionen: OrtAktionen | null;
+  /** IP-12 (V4): wohin der Knoten nach dem Ende seiner Zuordnung zieht — das Abzeichen „ab … → …“. */
+  danach?: OrtsbaumDanach | null;
   /** Woran ein Bereich hängt — für den Dialog „Bereich bearbeiten“. */
   eltern: { art: 'gebaeude' | 'standort'; name: string } | null;
   quelle: OrtsbaumGebaeude | OrtsbaumBereich | null;
@@ -148,6 +151,7 @@ function bereichKnoten(b: OrtsbaumBereich, eltern: Knoten['eltern']): Knoten {
     archiviert: b.zustand === 'archiviert',
     archiviertAm: null,
     aktionen: b.aktionen ?? null,
+    danach: b.danach ?? null,
     eltern,
     quelle: b,
     kinder: [],
@@ -200,6 +204,7 @@ export function ortsbaumSicht(antwort: OrtsbaumAmStichtag): OrtsbaumSicht {
       archiviert,
       archiviertAm: null,
       aktionen: g.aktionen ?? null,
+      danach: g.danach ?? null,
       eltern: null,
       quelle: g,
       kinder,

@@ -21,12 +21,15 @@ export type MenueEintrag =
   | { art: 'wiederherstellen'; knopf: true; text: string }
   | { art: 'wiederherstellen_gesperrt'; knopf: false; text: string }
   | { art: 'loeschen'; knopf: true; text: string }
-  | { art: 'loeschen_gesperrt'; knopf: false; text: string };
+  | { art: 'loeschen_gesperrt'; knopf: false; text: string }
+  | { art: 'verschieben'; knopf: true; text: string }
+  | { art: 'verschieben_gesperrt'; knopf: false; text: string };
 
 export const KNOPF_ARCHIVIEREN = 'Archivieren …';
 export const KNOPF_ARCHIVIEREN_GESPERRT = 'Archivieren nicht möglich …';
 export const KNOPF_WIEDERHERSTELLEN = 'Wiederherstellen …';
 export const KNOPF_LOESCHEN = 'Löschen …';
+export const KNOPF_VERSCHIEBEN = 'Verschieben …';
 
 /**
  * Das Menü eines Knotens aus seinen `aktionen`. Ohne `aktionen` (mit Stichtag) gibt es keins.
@@ -35,6 +38,15 @@ export const KNOPF_LOESCHEN = 'Löschen …';
 export function menueEintraege(aktionen: OrtAktionen | null | undefined): MenueEintrag[] {
   if (!aktionen) return [];
   const out: MenueEintrag[] = [];
+  // IP-12 (V1): „Verschieben …“ steht vor „Archivieren …“ — gibt es kein Ziel, steht der Grund da.
+  const v = aktionen.verschieben;
+  if (v) {
+    out.push(
+      v.erlaubt
+        ? { art: 'verschieben', knopf: true, text: KNOPF_VERSCHIEBEN }
+        : { art: 'verschieben_gesperrt', knopf: false, text: v.text ?? 'Verschieben ist gerade nicht möglich.' },
+    );
+  }
   const a = aktionen.archivieren;
   if (a) {
     out.push(

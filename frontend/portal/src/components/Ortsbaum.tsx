@@ -16,9 +16,11 @@ import {
   type OrtFeld,
 } from '../ortsbaum';
 import { archiviertAmText, menueEintraege, type MenueEintrag } from '../ortArchiv';
+import { danachAbzeichen } from '../ortVerschieben';
 import { ArchivierenDialog, type ArchivAktion } from './ArchivierenDialog';
 import { OrtDialog } from './OrtDialog';
 import { OrtMenue } from './OrtMenue';
+import { VerschiebenDialog } from './VerschiebenDialog';
 import './StandortKopf.css';
 import './Ortsbaum.css';
 
@@ -77,6 +79,7 @@ export function Ortsbaum({
   const [laedt, setLaedt] = useState(true);
   const [dialog, setDialog] = useState<DialogZustand | null>(null);
   const [aktion, setAktion] = useState<{ art: ArchivAktion; knoten: Knoten; schluessel: number } | null>(null);
+  const [verschieben, setVerschieben] = useState<{ knoten: Knoten; schluessel: number } | null>(null);
   // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
   // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
   const ausloeser = useRef<HTMLElement | null>(null);
@@ -120,11 +123,25 @@ export function Ortsbaum({
   }
 
   function waehle(eintrag: MenueEintrag, knoten: Knoten, von: HTMLElement) {
+    // IP-12 (V1 → V2): „Verschieben …“ öffnet den eigenen Dialog.
+    if (eintrag.art === 'verschieben') {
+      ausloeser.current = von;
+      setVerschieben((v) => ({ knoten, schluessel: (v?.schluessel ?? 0) + 1 }));
+      return;
+    }
     const art: ArchivAktion | null =
       eintrag.art === 'archivieren_gesperrt' ? 'gesperrt' : eintrag.knopf ? eintrag.art : null;
     if (!art) return;
     ausloeser.current = von;
     setAktion((a) => ({ art, knoten, schluessel: (a?.schluessel ?? 0) + 1 }));
+  }
+
+  function schliesseVerschieben() {
+    setVerschieben(null);
+    const ziel = ausloeser.current;
+    requestAnimationFrame(() => {
+      if (ziel?.isConnected) ziel.focus();
+    });
   }
 
   function schliesseAktion() {
@@ -155,6 +172,12 @@ export function Ortsbaum({
             {k.kurzzeichen && <span className="vp-st-kz">{k.kurzzeichen}</span>}
           </p>
           {k.zeile && <p className="vp-ob-beschreibung">{k.zeile}</p>}
+          {/* IP-12 (V4): bis zum Stichtag steht der Knoten noch hier — und sagt, wohin er dann zieht. */}
+          {k.danach && !k.archiviert && (
+            <p className="vp-ob-danach" data-testid="danach">
+              {danachAbzeichen(k.danach)}
+            </p>
+          )}
           {k.archiviertAm && (
             <p className="vp-ob-archiviert-am" data-testid="archiviert-am">
               {archiviertAmText(k.archiviertAm)}
@@ -373,6 +396,28 @@ export function Ortsbaum({
           onClose={schliesseAktion}
           onFertig={() => {
             schliesseAktion();
+            void laden();
+            onGeaendert?.();
+          }}
+        />
+      )}
+
+      {verschieben && verschieben.knoten.id && verschieben.knoten.aktionen?.verschieben && antwort && (
+        <VerschiebenDialog
+          key={verschieben.schluessel}
+          open
+          ort={{
+            id: verschieben.knoten.id,
+            art: verschieben.knoten.art === 'gebaeude' ? 'gebaeude' : 'bereich',
+            name: verschieben.knoten.name,
+            kurzzeichen: verschieben.knoten.kurzzeichen ?? '',
+            eltern: verschieben.knoten.eltern?.name ?? standort.name,
+          }}
+          ziele={verschieben.knoten.aktionen.verschieben.ziele}
+          heute={antwort.stichtag}
+          onClose={schliesseVerschieben}
+          onFertig={() => {
+            schliesseVerschieben();
             void laden();
             onGeaendert?.();
           }}

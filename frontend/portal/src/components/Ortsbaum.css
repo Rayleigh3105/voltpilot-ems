@@ -95,6 +95,21 @@
   opacity: 0.7;
 }
 
+/* IP-12 (V4): „ab 01.03.2027 → Werk Ahrenberg Nord“ — bricht bei 375 px um, nie über den Rand. */
+.vp-ob-danach {
+  display: inline-block;
+  max-width: 100%;
+  margin: 4px 0 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
 .vp-ob-archiviert-am {
   margin: 2px 0 0;
   color: var(--vp-c-muted-fg);
