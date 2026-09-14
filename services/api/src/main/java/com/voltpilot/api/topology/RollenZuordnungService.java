@@ -15,7 +15,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -167,7 +169,34 @@ public class RollenZuordnungService {
             throw badRequest("Ein zusammengefasster Rollen-Wert gibt es bisher nur fuer 'pv'.");
         }
         pruefeAnlage(siteId);
-        List<Zuordnung> primaere = repo.primaereDerAnlage(siteId, role);
+        return baueKanonisch(siteId, role, repo.primaereDerAnlage(siteId, role));
+    }
+
+    /**
+     * Der kanonische PV-Rollen-Wert JE ANLAGE fuer die Cockpit-Uebersicht ({@code GET /api/v1/overview}):
+     * dieselbe ehrliche Aggregation wie {@link #kanonisch(UUID, String)}, nur flottenweit aus EINER
+     * Zuordnungs-Abfrage ({@link RollenZuordnungRepository#primaereJeAnlage}) statt einer je Anlage.
+     * Anlagen OHNE PV-Zuordnung sind ABWESEND — der Aufrufer faellt fuer sie auf
+     * {@code telemetry.pv_power_kw} zurueck. Kein {@code pruefeAnlage} je Anlage: die RLS-Abfrage
+     * liefert ohnehin nur die eigenen Anlagen des Mandanten.
+     */
+    public Map<UUID, RollenDto.KanonischerWert> pvJeAnlage() {
+        Map<UUID, List<Zuordnung>> jeAnlage = repo.primaereJeAnlage(ROLLE_PV);
+        Map<UUID, RollenDto.KanonischerWert> out = new HashMap<>();
+        for (Map.Entry<UUID, List<Zuordnung>> e : jeAnlage.entrySet()) {
+            out.put(e.getKey(), baueKanonisch(e.getKey(), ROLLE_PV, e.getValue()));
+        }
+        return out;
+    }
+
+    /**
+     * Baut den kanonischen Rollen-Wert aus den bereits gelesenen massgeblichen Zuordnungen — die
+     * gemeinsame ehrliche Aggregation von {@link #kanonisch} und {@link #pvJeAnlage}: jedes Geraet ist
+     * benannt (liefernd mit Wert, oder stumm mit Grund), die Summe ist die Teil-Summe der liefernden
+     * (nie eine stille Teilsumme), und ein unvollstaendiger Gesamtwert INNERHALB eines Geraets bleibt
+     * {@code null}.
+     */
+    private RollenDto.KanonischerWert baueKanonisch(UUID siteId, String role, List<Zuordnung> primaere) {
         List<RollenDto.GeraetBeitrag> beitraege = new ArrayList<>();
         Double summe = null;
         boolean unvollstaendig = false;

@@ -16,6 +16,7 @@ import {
   type History,
   type HistoryTotals,
   type Overview,
+  type RollenKanonischerWert,
   type SchedulePlan,
   type Site,
   type SiteEarnings,
@@ -77,8 +78,6 @@ import {
 } from '../eigeneAuswertung';
 import { EigenerBaustein } from '../components/EigeneAuswertung';
 import { EigeneAuswertungDialog } from '../components/EigeneAuswertungDialog';
-import { GesamtwertDialog } from '../components/GesamtwertDialog';
-import { GesamtwertKarten } from '../components/GesamtwertKarten';
 import {
   AnpassenHuelle,
   AnpassenLeiste,
@@ -1496,10 +1495,13 @@ export function AnlageSeite({
   const [eigenDialog, setEigenDialog] = useState<
     { offen: true; bearbeiten: EigeneAuswertungDef | null } | null
   >(null);
-  // Der Gesamtwert-Assistent (berechnete Messstelle, AP-10). Ein Speichern
-  // erhöht die Version, an der die Anzeige-Flächen (Cockpit, Verlauf) hängen.
-  const [gesamtwertOffen, setGesamtwertOffen] = useState(false);
-  const [gesamtwertVersion, setGesamtwertVersion] = useState(0);
+  // vp-agg §2.4/B · die kanonische PV-ROLLE der Anlage: existiert eine
+  // Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und
+  // der Fluss zeigt die zusammengefasste Rolle statt telemetry.pv_power_kw. Der
+  // Abruf frischt mit dem Live-Schnappschuss auf (`ovSite.live.ts`), damit die
+  // Aufschlüsselung nicht neben der Flusszahl driftet. Fail-soft: ohne Antwort /
+  // ohne Zuordnung bleibt die Fläche stumm (der Rückfall ist unmarkiert).
+  const [pvRollen, setPvRollen] = useState<RollenKanonischerWert | null>(null);
   // ⚠ Der Abruf hängt an den GESPEICHERTEN Auswertungen, nicht am Entwurf: der
   // Server beantwortet genau die gespeicherten, und der Schlüssel ändert sich
   // damit exakt dann, wenn ein Speichern gelandet ist. Am Entwurf zu hängen
@@ -1527,6 +1529,24 @@ export function AnlageSeite({
       aktiv = false;
     };
   }, [site.id, eigenIds, reloadKey]);
+  // vp-agg §2.4/B: die kanonische PV-Rolle der Anlage. Der Schlüssel schliesst
+  // `ovSite.live.ts` ein, damit die Aufschlüsselung mit dem Live-Fluss mitzieht
+  // statt bis zum nächsten Anlagenwechsel einzufrieren. Fail-soft.
+  const liveTs = ovSite?.live?.ts ?? null;
+  useEffect(() => {
+    let aktiv = true;
+    api.rollenWert(site.id, 'pv').then(
+      (r) => {
+        if (aktiv) setPvRollen(r);
+      },
+      () => {
+        if (aktiv) setPvRollen(null);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, liveTs, reloadKey]);
   const eigenWerteById = useMemo(() => werteNachId(eigenWerte), [eigenWerte]);
   /**
    * Der Stift AN der Zeile einer eigenen Auswertung — nur dort. Ein Baustein
@@ -1618,6 +1638,7 @@ export function AnlageSeite({
           stale={heroStale}
           sources={sources}
           pins={siteEntityPins}
+          pvRollen={pvRollen}
           consumers={consumersView}
           onOpenConsumers={() => onOpenSub('steuerung')}
           onOpenSub={onOpenSub}
@@ -1759,14 +1780,10 @@ export function AnlageSeite({
           onAbbrechen={() => setEigenDialog(null)}
         />
       )}
-      {gesamtwertOffen && (
-        <GesamtwertDialog
-          open
-          siteId={site.id}
-          onClose={() => setGesamtwertOffen(false)}
-          onGespeichert={() => setGesamtwertVersion((v) => v + 1)}
-        />
-      )}
+      {/* vp-agg §2.5/C: der gerätefreie Gesamtwert-Assistent (Einstieg +
+          Anzeige) ist aus der Cockpit-Bühne in die Auswertungen-/Verlauf-Fläche
+          umgezogen (`MesswerteSection`). Die Cockpit-PV-Rolle (§2.4/B) bleibt
+          hier - sie ist etwas anderes als ein frei zusammengestellter Wert. */}
       {/* Der Link „‹ Alle Anlagen" ist mit der Navigations-Runde „zwei
           Ebenen" ERSATZLOS entfallen (E3): der Pfad in der Kopfzeile
           („Portfolio › Solarpark Dachau ▾") IST der Rückweg, und zwei
@@ -1962,9 +1979,9 @@ export function AnlageSeite({
               >
                 + Eigene Auswertung
               </Button>
-              <Button variant="ghost" onClick={() => setGesamtwertOffen(true)}>
-                + Gesamtwert
-              </Button>
+              {/* vp-agg §2.5/C: „+ Gesamtwert" ist aus der Cockpit-Bühne entfernt
+                  und lebt jetzt in „Verlauf › Messwerte" (der gerätefreie
+                  Summenwert gehört zu den Auswertungen, nicht auf die Bühne). */}
               <p className="vp-eigen-hinweis">
                 {eigenDeckelSatz(layout.eigene.length) ??
                   (layout.eigene.length === 0 ? EIGEN_LEER_SATZ : null)}
@@ -2026,16 +2043,11 @@ export function AnlageSeite({
             />
           )}
 
-          {/* Die zusammengestellten Werte (berechnete Messstellen, AP-10):
-              erscheinen wie gemessene, mit dezentem „berechnet". Ohne einen
-              einzigen rendert die Fläche nichts. */}
-          {!layout.anpassen && (
-            <GesamtwertKarten
-              siteId={site.id}
-              version={gesamtwertVersion}
-              onNeu={() => setGesamtwertOffen(true)}
-            />
-          )}
+          {/* vp-agg §2.5/C: die zusammengestellten Werte (Gesamtwerte) sind aus
+              der Cockpit-Bühne nach „Verlauf › Messwerte" umgezogen - Einstieg
+              und Anzeige leben dort gemeinsam (`MesswerteSection`). Die
+              Cockpit-PV-Rolle unter dem Fluss (§2.4/B) bleibt hiervon
+              unberührt. */}
         </div>
       ) : (
         /* ===== Ehrlicher Endzustand: Anlage MIT Daten, ohne Komponenten ====

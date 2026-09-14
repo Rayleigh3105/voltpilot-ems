@@ -217,6 +217,36 @@ class SiteRollenApiTest {
                 .isEqualTo(400);
     }
 
+    // ================================================= Cockpit-Uebersicht: Umlenkung + Rueckfall
+
+    @Test
+    void dieUebersichtUebernimmtDieKanonischePvMitRueckfall() throws Exception {
+        Welt w = welt();
+        UUID e1 = komponente(w, "WR 1");
+        // Roh-Telemetrie der Anlage: pv_power_kw = 99 — der Rueckfall, wenn nichts zugeordnet ist.
+        telemetrieLegacy(w, 99.0);
+
+        // Ohne PV-Zuordnung zeigt die Uebersicht die Roh-Zahl (nichts aendert sich).
+        assertThat(uebersichtPv(w, w.anlage())).as("Rueckfall auf telemetry.pv_power_kw").isEqualTo(99.0);
+
+        // Mit einer PV-Zuordnung eines frischen 5-kW-Kanals zeigt die Uebersicht die KANONISCHE Zahl.
+        ordneKanalZu(w, e1);
+        telemetrie(w, e1, 5.0, 0);
+        assertThat(uebersichtPv(w, w.anlage()))
+                .as("kanonische PV-Rolle statt telemetry.pv_power_kw").isEqualTo(5.0);
+    }
+
+    @Test
+    void eineZugeordneteAberStummeAnlageZeigtKeinePvNieEineNull() throws Exception {
+        Welt w = welt();
+        UUID e1 = komponente(w, "WR 1");
+        telemetrieLegacy(w, 99.0);       // Roh-Telemetrie liegt vor …
+        ordneKanalZu(w, e1);             // … aber die Zuordnung liefert nichts (kein frischer v2-Wert).
+
+        // Ehrlich: zugeordnet, aber stumm -> PV unbekannt (null), nie ein Rueckfall auf 99 und nie 0.
+        assertThat(uebersichtPv(w, w.anlage())).as("null statt Rueckfall/0 bei stummer Zuordnung").isNull();
+    }
+
     // ================================================================ die Welt
 
     private record Welt(UUID mandant, UUID anlage, UUID box) {}
@@ -284,6 +314,29 @@ class SiteRollenApiTest {
                 + "entity_id, channel, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 Timestamp.from(zeit), Timestamp.from(zeit), w.mandant(), w.anlage(), w.box(),
                 entity.toString(), PV, kw);
+    }
+
+    /** Die ROH-Telemetrie der Anlage ({@code telemetry.pv_power_kw}) — der Cockpit-Rueckfall. */
+    private void telemetrieLegacy(Welt w, double pvKw) {
+        Instant zeit = Instant.now();
+        root.update("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, "
+                + "pv_power_kw) VALUES (?, ?, ?, ?, ?, ?)",
+                Timestamp.from(zeit), Timestamp.from(zeit), w.mandant(), w.anlage(), w.box(), pvKw);
+    }
+
+    /** Der PV-Live-Wert einer Anlage in {@code GET /api/v1/overview} (null, wenn keiner). */
+    private Double uebersichtPv(Welt w, UUID site) throws Exception {
+        JsonNode ov = ok(ruf(w, HttpMethod.GET, "/api/v1/overview", null), 200);
+        for (JsonNode s : ov.get("sites")) {
+            if (site.toString().equals(s.get("id").asText())) {
+                JsonNode live = s.get("live");
+                if (live == null || live.isNull() || live.get("pvKw").isNull()) {
+                    return null;
+                }
+                return live.get("pvKw").asDouble();
+            }
+        }
+        return null;
     }
 
     // ================================================================ das Gerüst

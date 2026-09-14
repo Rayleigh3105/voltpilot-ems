@@ -1964,6 +1964,38 @@ export interface MessstelleVerlauf {
   punkte: MessstelleVerlaufPunkt[];
 }
 
+/**
+ * Der Beitrag EINES Geräts zum kanonischen Rollen-Wert (`RollenDto.GeraetBeitrag`). ⚠ snake_case
+ * wie das echte Backend (`@JsonNaming` = SnakeCase) — `request()` wandelt NICHT um. Ehrlich
+ * benannt: `liefernd` mit `wert`, oder stumm mit `grund` (`kein_wert` · `veraltet` ·
+ * `unvollstaendig` · `archiviert` · `kein_geraet`) — nie eine stille Teilsumme.
+ */
+export interface RollenGeraetBeitrag {
+  entity_id: string;
+  name: string;
+  /** `messkanal` (nativer Kanal) oder `gesamtwert` (berechneter Summenwert). */
+  art: string;
+  wert: number | null;
+  liefernd: boolean;
+  grund: string | null;
+}
+
+/**
+ * Der kanonische, über alle Geräte zusammengefasste Rollen-Wert einer Anlage
+ * (`GET /api/v1/sites/{id}/rollen/{role}`, `RollenDto.KanonischerWert`, snake_case). Existiert keine
+ * Zuordnung, ist `zuordnung_vorhanden = false` und das Cockpit bleibt bei `telemetry.pv_power_kw`.
+ * `unvollstaendig` = mindestens ein zugeordnetes Gerät liefert gerade nicht (in `geraete` benannt).
+ */
+export interface RollenKanonischerWert {
+  role: string;
+  zuordnung_vorhanden: boolean;
+  wert: number | null;
+  einheit: string;
+  unvollstaendig: boolean;
+  geraete: RollenGeraetBeitrag[];
+  stand: string | null;
+}
+
 /** Der Körper von `POST /api/v1/messstellen/berechnet`. */
 export interface BerechneteMessstelleAnlegen {
   name: string;
@@ -5404,6 +5436,14 @@ export const api = {
 
   /** Der Live-Wert einer berechneten Messstelle (null, wenn unvollständig). */
   messstelleWert: (id: string) => request<MessstelleWert>(`/api/v1/messstellen/${id}/wert`),
+
+  /**
+   * Der kanonische, über alle Geräte zusammengefasste Rollen-Wert einer Anlage (heute nur `pv`) —
+   * die Zahl, die das Cockpit statt `telemetry.pv_power_kw` zeigt, wenn eine Zuordnung existiert,
+   * samt der Ehrlichkeits-Aufschlüsselung je Gerät. `zuordnung_vorhanden = false` = Rückfall.
+   */
+  rollenWert: (siteId: string, role: string) =>
+    request<RollenKanonischerWert>(`/api/v1/sites/${siteId}/rollen/${role}`),
 
   /** Der Verlauf einer berechneten Messstelle (je 15 min die Summe, sonst null). */
   messstelleVerlauf: (id: string, range?: string) =>
