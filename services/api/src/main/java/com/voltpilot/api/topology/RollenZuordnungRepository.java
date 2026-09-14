@@ -3,7 +3,10 @@ package com.voltpilot.api.topology;
 import com.voltpilot.api.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -54,6 +57,24 @@ public class RollenZuordnungRepository {
         return jdbc.query("SELECT " + SPALTEN + " FROM entity_role_assignment "
                 + "WHERE site_id = ? AND role = ? AND is_primary = TRUE ORDER BY entity_id, id",
                 RollenZuordnungRepository::map, siteId, role);
+    }
+
+    /**
+     * Alle massgeblichen Zuordnungen einer Rolle ueber die GANZE Flotte des Mandanten, gruppiert je
+     * Anlage — die eine Zuordnungs-Abfrage der Cockpit-Uebersicht (statt einer je Anlage). RLS-gezaeunt
+     * wie die uebrigen Uebersichts-Abfragen ({@code OverviewRepository}): KEIN Anlagen-Praedikat, der
+     * Mandant ist die RLS. Anlagen ohne Zuordnung sind ABWESEND — der Aufrufer faellt fuer sie auf
+     * {@code telemetry.pv_power_kw} zurueck.
+     */
+    public Map<UUID, List<Zuordnung>> primaereJeAnlage(String role) {
+        Map<UUID, List<Zuordnung>> jeAnlage = new HashMap<>();
+        jdbc.query("SELECT site_id, " + SPALTEN + " FROM entity_role_assignment "
+                + "WHERE role = ? AND is_primary = TRUE ORDER BY site_id, entity_id, id",
+                rs -> {
+                    jeAnlage.computeIfAbsent(rs.getObject("site_id", UUID.class), k -> new ArrayList<>())
+                            .add(map(rs, 0));
+                }, role);
+        return jeAnlage;
     }
 
     /**

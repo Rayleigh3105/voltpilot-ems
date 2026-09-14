@@ -31,12 +31,19 @@ export function GesamtwertKarten({
   siteId,
   version,
   onNeu,
+  eingebettet = false,
 }: {
   siteId: string;
   /** Erhöht sich, wenn ein neuer Gesamtwert angelegt wurde — dann neu laden. */
   version: number;
   /** Öffnet den Assistenten für einen weiteren Gesamtwert. */
   onNeu?: () => void;
+  /**
+   * Eingebettet unter einer fremden Überschrift (vp-agg §2.5/C: die Auswertungen-Fläche trägt Titel
+   * UND den „+ Gesamtwert"-Einstieg): dann entfällt der EIGENE Kopf, sonst stünde die Überschrift
+   * doppelt. Ohne diese Angabe (freistehend) bleibt der Kopf wie bisher.
+   */
+  eingebettet?: boolean;
 }) {
   const [zeilen, setZeilen] = useState<GwZeile[] | null>(null);
   const [umbenennen, setUmbenennen] = useState<{ id: string; name: string } | null>(null);
@@ -106,14 +113,16 @@ export function GesamtwertKarten({
 
   return (
     <section className="vp-gwk" aria-label={`${GESAMTWERT}e`}>
-      <div className="vp-gwk-head">
-        <h3>Zusammengestellte Werte</h3>
-        {onNeu && (
-          <button type="button" className="vp-gwk-neu" onClick={onNeu}>
-            <Icon name="plus" size={15} /> {GESAMTWERT}
-          </button>
-        )}
-      </div>
+      {!eingebettet && (
+        <div className="vp-gwk-head">
+          <h3>Zusammengestellte Werte</h3>
+          {onNeu && (
+            <button type="button" className="vp-gwk-neu" onClick={onNeu}>
+              <Icon name="plus" size={15} /> {GESAMTWERT}
+            </button>
+          )}
+        </div>
+      )}
       <div className="vp-gwk-grid">
         {zeilen.map((z) => (
           <Karte

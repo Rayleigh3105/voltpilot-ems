@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { SiteEntity, SiteSource, SiteTopology } from '../api';
+import type { RollenKanonischerWert, SiteEntity, SiteSource, SiteTopology } from '../api';
 import type { CockpitHeroView } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
@@ -11,6 +11,7 @@ import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
+import { PvRollenBreakdown } from './PvRollenBreakdown';
 import { ConsumerStrip } from './ConsumerStrip';
 import { CockpitErgebnis, ErgebnisRing } from './erloese/CockpitErgebnis';
 import './CockpitBlocks.css';
@@ -68,6 +69,7 @@ export function CockpitHero({
   rename = null,
   consumers = null,
   onOpenConsumers,
+  pvRollen = null,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -140,8 +142,18 @@ export function CockpitHero({
    */
   consumers?: ConsumerStripView | null;
   onOpenConsumers?: () => void;
+  /**
+   * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
+   * Standort-PV-Zuordnung, trägt die Cockpit-Zahl ein dezentes „berechnet" und ein Tipp öffnet die
+   * Aufschlüsselung je Gerät. null / keine Zuordnung = das Cockpit bleibt beim Rückfall
+   * `telemetry.pv_power_kw` und die Fläche rendert nichts.
+   */
+  pvRollen?: RollenKanonischerWert | null;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
+  // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
+  // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
+  const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
   // ⚠ SEIT P5 wohnen die Ringe IN der Erlöskarte (Konzept §3.7): Label · Zahl
   //   · Zeitraum-Segment · Speicher-Sektion · Ringe. Sie sind deshalb kein
   //   eigener Leisten-Block mehr — ein zweiter Block hätte dieselbe Kennzahl
@@ -184,8 +196,13 @@ export function CockpitHero({
         {/* Auf einer migrierten Anlage trägt der PV-Knoten seine Zusammensetzung
             selbst (ein Tipp darauf öffnet sie) - die immer sichtbare Zeile wäre
             dann eine zweite, widersprechbare Wahrheit. Die v1-Anlage behält sie:
-            ihr Fluss hat keinen anklickbaren PV-Knoten. */}
-        {hasFlow && !topology && <PvBreakdownLine sources={sources} />}
+            ihr Fluss hat keinen anklickbaren PV-Knoten. Existiert eine kanonische
+            PV-Rolle, tritt die rohe Quellen-Aufteilung zurück (sie erklärte sonst
+            eine andere Zahl als die gezeigte). */}
+        {hasFlow && !topology && !pvRolleAktiv && <PvBreakdownLine sources={sources} />}
+        {/* vp-agg §2.4/B: die kanonische PV-Rolle - „berechnet" + Aufschlüsselung
+            je Gerät auf Tipp. Ohne Zuordnung rendert sie nichts. */}
+        {hasFlow && <PvRollenBreakdown wert={pvRollen ?? null} />}
         <ConsumerStrip view={consumers} onOpen={onOpenConsumers} />
       </div>
 
