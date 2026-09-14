@@ -16,6 +16,8 @@ import {
   type TarifArt,
 } from '../api';
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
+import { standortWaehlenSatz, standortWahl, standortWahlHinweis, type StandortWahl } from '../anlageStandort';
+import { alsOrtFehler } from '../standorte';
 import { isPlatformAdmin } from '../auth';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
@@ -390,6 +392,32 @@ function AnlageStep({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  // UEMS AP-02 IP-8: der Standort der neuen Anlage — vorbelegt bei genau einem,
+  // zur Wahl bei mehreren. Ohne Standort-Objekt (oder unlesbar) kein Picker und
+  // kein `standortId`: der Schritt bleibt, wie er war (AnlageFlow.standort.test.tsx).
+  const [standortAuswahl, setStandortAuswahl] = useState<StandortWahl | null>(null);
+  const [standortId, setStandortId] = useState<string | null>(null);
+  const [standortFehler, setStandortFehler] = useState<string | null>(null);
+  const [standorteRunde, setStandorteRunde] = useState(0);
+
+  useEffect(() => {
+    let aktiv = true;
+    api
+      .standorte()
+      .then((antwort) => {
+        if (!aktiv) return;
+        const wahl = standortWahl(antwort);
+        setStandortAuswahl(wahl);
+        setStandortId(wahl?.vorbelegt ?? null);
+      })
+      .catch(() => {
+        // Unlesbar: kein Picker. Bei genau einem Standort ordnet der Server selbst zu,
+        // bei mehreren antwortet er 422 mit seinem Satz (siehe `submit`).
+      });
+    return () => {
+      aktiv = false;
+    };
+  }, [standorteRunde]);
 
   const valid = name.trim().length > 0;
   // "Gleicher Standort wie …": Anlagen the customer already placed on the map.
@@ -417,6 +445,11 @@ function AnlageStep({
       // Never a silently-disabled button - point at the missing field instead.
       setTouched(true);
       nameRef.current?.focus();
+      return;
+    }
+    if (standortAuswahl && !standortId) {
+      setStandortFehler(standortWaehlenSatz(standortAuswahl.optionen.length));
+      document.getElementById('flow-standort')?.focus();
       return;
     }
     const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
@@ -464,6 +497,7 @@ function AnlageStep({
         tarifParamCtKwh: tarifParamValue,
         netzladenErlaubt: netzladen,
         maxFeedInKw: maxFeedInValue,
+        ...(standortId ? { standortId } : {}),
       });
       if (supplyPatch) {
         // Best-effort: the site exists; a sheet write failure must not block
@@ -476,6 +510,14 @@ function AnlageStep({
       }
       onCreated(site);
     } catch (e) {
+      const abgelehnt = e instanceof ApiError ? alsOrtFehler(e.body) : null;
+      const code: string | undefined = abgelehnt?.code;
+      if (abgelehnt && code === 'standort_waehlen') {
+        // Der Server kennt mehrere Standorte, die Auswahl hier (noch) nicht: sein Satz an den Picker, Auswahl neu lesen.
+        setStandortFehler(abgelehnt.message);
+        setStandorteRunde((r) => r + 1);
+        return;
+      }
       setErr(
         e instanceof ApiError && e.status === 400
           ? 'Bitte prüfen Sie den Namen Ihrer Anlage.'
@@ -506,6 +548,21 @@ function AnlageStep({
           onBlur={() => setTouched(true)}
           error={touched && !valid ? 'Bitte geben Sie einen Namen für Ihre Anlage ein.' : null}
         />
+        {standortAuswahl && (
+          <VpPicker
+            id="flow-standort"
+            label="Standort *"
+            placeholder="Standort wählen"
+            options={standortAuswahl.optionen}
+            value={standortId}
+            onChange={(v) => {
+              setStandortId(v);
+              setStandortFehler(null);
+            }}
+            hint={standortWahlHinweis(standortAuswahl, standortId) ?? undefined}
+            error={standortFehler}
+          />
+        )}
         {reusable.length > 0 && (
           <div className="vp-reuse-loc">
             <span className="vp-reuse-loc-lbl">Gleicher Standort wie</span>

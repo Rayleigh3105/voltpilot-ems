@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { TechnikSection } from './AnlageTechnik';
 import { api, ApiError, type Site, type StandorteAmStichtag } from '../api';
-import { ahrenbergHeute } from '../test/standorteFixtures';
+import { DIALOG_TITEL } from '../standorte';
+import { ahrenbergHeute, ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
 
 /**
  * UEMS AP-02 IP-8 — Bestandsschutz der Karte „Meine Anlage“: ein Kunde, dessen
@@ -127,4 +128,28 @@ describe('Meine Anlage ohne Standort-Objekt — byte-identisch (AP-02 IP-8)', ()
       );
     });
   }
+});
+
+describe('Meine Anlage mit Standort-Objekt — beide Zeilen benannt (AP-02 IP-8, T6a, W4)', () => {
+  it('„Standort“ (das Objekt) und darunter „Standort auf der Karte“ (die Koordinaten)', async () => {
+    const halle2: Site = { ...hof, id: FIXTURE_IDS.an2, name: 'Werk Ahrenberg – Halle 2' };
+    await karte(halle2, async () => ahrenbergHeute());
+    const el = document.getElementById('technik-anlage')!;
+    const labels = [...el.querySelectorAll('dt')].map((dt) => dt.textContent);
+    expect(labels.slice(0, 3)).toEqual(['Name', 'Standort', 'Standort auf der Karte']);
+    const objekt = el.querySelectorAll('.vp-kv-row')[1] as HTMLElement;
+    expect(within(objekt).getByText('Werk Ahrenberg (ST-1)')).toBeInTheDocument();
+    expect(within(objekt).getByText('Gewerbering 7, Ahrenberg · seit 01.10.2026')).toBeInTheDocument();
+    expect(within(el).queryByRole('button', { name: /Adresse nachtragen/ })).toBeNull();
+  });
+
+  it('der automatisch angelegte Standort sagt, was fehlt, und bietet „Adresse nachtragen“ an', async () => {
+    const halle1: Site = { ...hof, id: FIXTURE_IDS.an1, name: 'Werk Ahrenberg – Halle 1' };
+    vi.spyOn(api, 'unternehmen').mockResolvedValue(ahrenbergUnternehmen());
+    await karte(halle1, async () => bestandEineAnlage());
+    const el = document.getElementById('technik-anlage')!;
+    expect(within(el).getByText(/Noch nicht eingerichtet — es fehlt: Adresse/)).toBeInTheDocument();
+    fireEvent.click(within(el).getByRole('button', { name: 'Adresse nachtragen: Werk Ahrenberg – Halle 1' }));
+    expect(await screen.findByText(DIALOG_TITEL.vervollstaendigen)).toBeInTheDocument();
+  });
 });

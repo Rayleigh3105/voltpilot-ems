@@ -56,6 +56,8 @@ import {
 } from '../installApp';
 import { protectionItems } from '../steuerungArea';
 import { LocationMap } from '../components/LocationMap';
+import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
+import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
@@ -353,6 +355,9 @@ export function TechnikSection({
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
   const isPhone = useIsPhone();
+  // UEMS AP-02 IP-8 (T6a, W4): das Objekt „Standort“ der Anlage. Ohne eines bleibt
+  // „Meine Anlage“ Zeichen für Zeichen, wie sie war (AnlageTechnik.standort.test.tsx).
+  const { anlageStandort, antwort: standortAntwort, neuLaden: standortNeuLaden } = useAnlageStandort(site.id);
   // Der Zustand der App-Einrichtung DIESES Geräts (PWA-Hülle). Er hängt am
   // selben Speicher wie `InstallAppPanel` darin, damit die zugeklappte
   // Telefon-Karte nie etwas anderes zusammenfasst als ihr Inhalt.
@@ -504,8 +509,15 @@ export function TechnikSection({
               <dt className="vp-kv-k">Name</dt>
               <dd className="vp-kv-v">{site.name}</dd>
             </div>
+            {anlageStandort && standortAntwort && (
+              <AnlageStandortZeile
+                anlageStandort={anlageStandort}
+                antwort={standortAntwort}
+                onGeaendert={standortNeuLaden}
+              />
+            )}
             <div className="vp-kv-row">
-              <dt className="vp-kv-k">Standort</dt>
+              <dt className="vp-kv-k">{koordinatenLabel(anlageStandort)}</dt>
               <dd className="vp-kv-v">
                 {fmtCoords(site.latitude, site.longitude) ?? (
                   <span className="vp-muted">noch nicht hinterlegt</span>

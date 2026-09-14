@@ -95,6 +95,8 @@ Der Standort ist die Rechte-Einheit (AP-03: „Zugriff auf ausgewählte Standort
 
 > **Verfeinert durch AP-02 E9:** „gültig ab“ ist ein TAG, wirksam 00:00 Uhr in der Zeitzone des Standorts — die Zeitzone ist damit ein Pflicht-Stammdatum des Standorts.
 
+> **Verfeinert durch AP-02 W4 (IP-8):** Stehen das Objekt und das Koordinaten-Feld auf EINER Karte (Anlage › Einstellungen › „Meine Anlage“), heißt die Objekt-Zeile „Standort“ (Name, Kurzzeichen, Adresse, seit) und die Koordinaten-Zeile in der Anzeige „Standort auf der Karte“ — das Label, das sie beim Bearbeiten schon trägt. Ohne Standort-Objekt bleibt die Karte, wie sie ist; E9 = B bleibt.
+
 > **Verfeinert durch AP-02 E1/E12:** Archivieren ist der Normalweg, Löschen nur für Objekte OHNE jede Historie. Archiviert wird nur ohne aktive Messstellen und Anlagen; leere Kinder werden mitarchiviert.
 
 > **Verfeinert durch AP-02 E8/E10:** Kurzzeichen (ST-1, G-1, B-1) werden automatisch vergeben, sind änderbar, je Kundenbereich eindeutig und werden nie wiederverwendet. Ein automatisch angelegter Standort bleibt Entwurf, bis die Adresse steht — sichtbar nur auf Standort-Flächen, er blockiert nichts.
