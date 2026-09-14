@@ -16,9 +16,10 @@
     "1.5 (AP-08 IP-17, additiv): „korrigiert (Version n)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen korrigiert — Rang 80, ganz zuletzt: die Version sagt etwas über die ganze Zahl, nicht über einen Teil. Wortlaut „korrigiert (Version {version})“ mit version ≥ 2 (Version 1 ist das Original und nie korrigiert), derselbe Satz, den bilanz-vectors.json (F14) für berechnete Messstellen schon spricht. Gesprochen von der Korrektur-Kaskade (uems/KorrekturKaskade) an jeder Stufe, deren Version sie schreibt; kein Datum im Satz — wann und von wem, sagt die Versions-Historie (IP-18).",
     "1.6 (AP-08 IP-11, additiv): mengen_herkunft — die Herkunft der Menge steht am Zustandswort, damit „vollständig“ neben „Verlauf 85 %“ lesbar ist (E1 = A: der Zustand der MENGE folgt aus den Periodenständen, die Abdeckung des VERLAUFS steht daneben): „vollständig (Menge aus Zählerständen)“. Nur an vollständig und unvollständig, nur MIT Zahl, nur bei den Herleitungen der Quellenbindung, die einen Zählerstand lesen (zaehlerstand, differenzen); integration spricht schon ihr Kennzeichen „aus Leistung integriert“, ein Momentanwert hat keine Menge, ohne Herleitung (berechnete Messstelle) steht das Wort allein. Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11 — kein neuer Satz, keine neue Regel für den Zustand selbst.",
     "1.7 (AP-08 IP-11, additiv, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind keine vorgesehenen Wörter mehr, sondern die Kennzeichen vorlaeufig und endgueltig — Rang 90, ganz zuletzt: die Fassung sagt über die ganze Zahl, ob sie sich noch ändern kann (wer eine Zahl abrechnet, muss das wissen). Wortlaut = das Wort, wie es kennzeichen_vorgesehen seit 1.0 führte, ohne Datum. Block fassung: das Feld fassung der Route „Werte je Messstelle“ (vorlaeufig · endgueltig) wird GENAU dieses Kennzeichen, null spricht nichts (die Route kennt die Fassung nicht) — nie abgeleitet, nie aus einer anderen Periode. Höchstens EINE Fassung je Liste (zwei = kennzeichen_doppelt). Die Fassung ist NICHT der Zustand (vollständig · unvollständig · keine Werte · mit Ersatzwert): der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist — beide stehen nebeneinander. Gespeichert wird der Satz nirgends; gesprochen von der Tages- und Monatskarte für die gezeigte Periode, immer, in beiden Fällen.",
+    "1.8 (Katalog-Einheiten, additiv, firstmate 14.09.2026): Scheinarbeit hat eine EIGENE Anzeige-Einheit — VAh und kVAh werden kVAh (Stellen wie kWh), nie als kWh getarnt: Scheinarbeit ist nicht in Wirkarbeit umrechenbar. Wmin (Wirkarbeit in Wattminuten, Shelly Gen1) wird kWh mit dem neuen, optionalen teiler 60000 — 1/60000 ist kein endlicher Dezimalfaktor, darum rechnet menge() wert × faktor ÷ teiler und rundet den EXAKTEN Quotienten kaufmännisch. „0,1 kWh“ ist KEINE Einheit, sondern eine Einheit mit eingebackenem Faktor; der Faktor gehört an die Skalierung des Katalogs und die Einheit bleibt einheit_unbekannt.",
     "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.7",
+  "schema_version": "1.8",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -58,7 +59,7 @@
     "sekunden": "[0-5][0-9]",
     "dezimal_punkt": "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
     "dezimal_klartext": "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
-    "menge": "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9] (?:kWh|kvarh|m³)",
+    "menge": "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9] (?:kWh|kvarh|kVAh|m³)",
     "ersatzwert_methode": "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)",
     "ersatzwert_kennung": "EW-[0-9]{4}-[0-9]{4,}"
   },
@@ -426,6 +427,11 @@
       {"einheit": "kvarh", "ebene": "tag", "stellen": 0},
       {"einheit": "kvarh", "ebene": "monat", "stellen": 0},
       {"einheit": "kvarh", "ebene": "jahr", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "viertelstunde", "stellen": 1},
+      {"einheit": "kVAh", "ebene": "stunde", "stellen": 1},
+      {"einheit": "kVAh", "ebene": "tag", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "monat", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "jahr", "stellen": 0},
       {"einheit": "kW", "ebene": null, "stellen": 1},
       {"einheit": "%", "ebene": null, "stellen": 0},
       {"einheit": "m³", "ebene": null, "stellen": 1},
@@ -435,11 +441,14 @@
       {"gespeichert": "Wh", "angezeigt": "kWh", "faktor": "0.001"},
       {"gespeichert": "kWh", "angezeigt": "kWh", "faktor": "1"},
       {"gespeichert": "MWh", "angezeigt": "kWh", "faktor": "1000"},
+      {"gespeichert": "Wmin", "angezeigt": "kWh", "faktor": "1", "teiler": "60000"},
       {"gespeichert": "varh", "angezeigt": "kvarh", "faktor": "0.001"},
       {"gespeichert": "kvarh", "angezeigt": "kvarh", "faktor": "1"},
+      {"gespeichert": "VAh", "angezeigt": "kVAh", "faktor": "0.001"},
+      {"gespeichert": "kVAh", "angezeigt": "kVAh", "faktor": "1"},
       {"gespeichert": "m³", "angezeigt": "m³", "faktor": "1"}
     ],
-    "anzeige_einheit_warum": "Ableitung aus E11 (firstmate 13.09.2026, kein Captain-Entscheid): gespeichert bleibt, was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen, mit den Stellen von E11 auf dieser Einheit — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. Blindarbeit ist Arbeit und rundet darum wie kWh.",
+    "anzeige_einheit_warum": "Ableitung aus E11 (firstmate 13.09.2026, kein Captain-Entscheid): gespeichert bleibt, was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen, mit den Stellen von E11 auf dieser Einheit — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. Blindarbeit ist Arbeit und rundet darum wie kWh. Seit 1.8: Scheinarbeit (VAh, kVAh) wird kVAh mit denselben Stellen — eine EIGENE Anzeige-Einheit, nie kWh, denn Scheinarbeit ist nicht in Wirkarbeit umrechenbar; Wmin ist Wirkarbeit und wird kWh über teiler 60000 (gespeicherter Wert × faktor ÷ teiler, exakt kaufmännisch gerundet).",
     "kennzeichen_ebene": "viertelstunde",
     "kennzeichen_ebene_warum": "Eine Menge IN einem Kennzeichen spricht die Stellen der Viertelstunde: der Satz wandert unverändert von der Viertelstunde in Tag, Monat und Jahr (VerbrauchRegeln.zaehlerstandAusTeilperioden übernimmt ihn) und wird nie umgeschrieben — er darf also nicht je Periode anders runden.",
     "differenz_satz": "Summe der angezeigten Werte {summe} · Rundungsdifferenz {differenz}",
@@ -1530,7 +1539,7 @@
       "name": "Lücken-Zuwachs einer Reihe ohne bekannte Einheit",
       "familie": "erkennen",
       "fall": "konstruiert",
-      "why": "Ohne Anzeige-Einheit (Katalog ohne Einheit, VAh …) steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.",
+      "why": "Ohne Anzeige-Einheit (Katalog ohne Einheit, „0,1 kWh“ …) steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.",
       "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar"},
       "erwartet": {"schluessel": "luecke_zuwachs_ohne_einheit", "werte": {"von": "14:00", "bis": "17:31"}, "fruehere_fassung": false, "vorgesehen": false}
     },
@@ -1999,9 +2008,65 @@
       "name": "gespeicherte Einheit ohne Anzeige-Einheit",
       "familie": "menge",
       "fall": "konstruiert",
-      "why": "VAh (Scheinarbeit) steht in keiner Anzeige-Einheit — eine neue ist eine Vertragsänderung, nie ein Durchreichen.",
-      "eingang": {"wert": "100", "einheit": "VAh", "ebene": "viertelstunde"},
+      "why": "„0,1 kWh“ ist keine Einheit, sondern eine mit eingebackenem Faktor — der Faktor gehört an die Skalierung des Katalogs. Eine neue Einheit ist eine Vertragsänderung, nie ein Durchreichen (bis 1.7 stand hier VAh).",
+      "eingang": {"wert": "100", "einheit": "0,1 kWh", "ebene": "viertelstunde"},
       "erwartet": {"verstoesse": ["einheit_unbekannt"], "text": null}
+    },
+    {
+      "name": "Scheinarbeit eines VAh-Zählers in kVAh, nie als kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Scheinarbeit ist NICHT in Wirkarbeit umrechenbar: sie hat ihre eigene Anzeige-Einheit kVAh mit den Stellen von kWh (seit 1.8). Eine Scheinarbeit als kWh wäre eine falsche Rechnung beim Kunden.",
+      "eingang": {"wert": "337600.000", "einheit": "VAh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kVAh"}
+    },
+    {
+      "name": "Scheinarbeit am Tag ganz",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "kVAh rundet wie kWh: Tag, Monat, Jahr ohne Nachkommastelle.",
+      "eingang": {"wert": "2304.5", "einheit": "kVAh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.305 kVAh"}
+    },
+    {
+      "name": "kVAh ohne Ebene",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wie kWh braucht Scheinarbeit die Ebene — sie bestimmt die Stellen.",
+      "eingang": {"wert": "100", "einheit": "VAh", "ebene": null},
+      "erwartet": {"verstoesse": ["ebene_fehlt"], "text": null}
+    },
+    {
+      "name": "Wirkarbeit eines Wmin-Zählers in kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wmin ist Wirkarbeit in Wattminuten: 20 256 000 Wmin ÷ 60 000 = 337,6 kWh (seit 1.8, teiler 60000).",
+      "eingang": {"wert": "20256000", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Wmin: der exakte Quotient wird kaufmännisch gerundet",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "3 000 Wmin sind genau 0,05 kWh — die halbe Stelle geht von der Null weg („0,1 kWh“). Gerundet wird der EXAKTE Quotient, nie ein vorher abgeschnittener Faktor 0,0000167.",
+      "eingang": {"wert": "3000", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "0,1 kWh"}
+    },
+    {
+      "name": "Wmin knapp unter der halben Stelle",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "2 999 Wmin sind 0,049983… kWh — kaufmännisch „0,0 kWh“. Mit einem abgeschnittenen Faktor 0,0000167 wären es 0,0500833 und damit falsch „0,1 kWh“.",
+      "eingang": {"wert": "2999", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "0,0 kWh"}
+    },
+    {
+      "name": "Wmin am Jahr mit Tausenderpunkt",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Der Jahreswert eines Wmin-Zählers heißt wie jeder Wirkarbeits-Jahreswert „… kWh“ ohne Nachkommastelle: 88 938 000 000 Wmin = 1.482.300 kWh.",
+      "eingang": {"wert": "88938000000", "einheit": "Wmin", "ebene": "jahr"},
+      "erwartet": {"verstoesse": [], "text": "1.482.300 kWh"}
     },
     {
       "name": "kvarh ohne Ebene",

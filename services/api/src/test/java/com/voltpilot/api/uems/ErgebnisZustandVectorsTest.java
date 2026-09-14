@@ -139,8 +139,10 @@ class ErgebnisZustandVectorsTest {
                 s.path("einheit").asText(), textOderNull(s.get("ebene")), s.path("stellen").asInt())));
         assertThat(ErgebnisZustand.STELLEN).containsExactlyElementsOf(stellen);
         List<AnzeigeEinheit> anzeige = new ArrayList<>();
+        // Seit 1.8: teiler ist optional (fehlt = 1) — Wmin → kWh ÷ 60000.
         rundung.path("anzeige_einheiten").forEach(a -> anzeige.add(new AnzeigeEinheit(a.path("gespeichert").asText(),
-                a.path("angezeigt").asText(), new BigDecimal(a.path("faktor").asText()))));
+                a.path("angezeigt").asText(), new BigDecimal(a.path("faktor").asText()),
+                new BigDecimal(a.path("teiler").asText("1")))));
         assertThat(ErgebnisZustand.ANZEIGE_EINHEITEN).containsExactlyElementsOf(anzeige);
         assertThat(ErgebnisZustand.KENNZEICHEN_EBENE).isEqualTo(rundung.path("kennzeichen_ebene").asText());
 
@@ -485,6 +487,24 @@ class ErgebnisZustandVectorsTest {
                 von, bis, Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null);
         assertThat(ohne.kennzeichen()).contains(
                 "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar");
+    }
+
+    /**
+     * Katalog-Einheiten (1.8): Scheinarbeit steht in kVAh, NIE als kWh; Wmin ist Wirkarbeit und wird kWh;
+     * „0,1 kWh“ trägt einen eingebackenen Faktor und bleibt ohne Zahl — nie um den Faktor 10 falsch.
+     */
+    @Test
+    void katalogEinheitenSprechenIhreEigeneAnzeigeEinheit() {
+        assertThat(ErgebnisZustand.lueckeZuwachs("14:00", "17:31", new BigDecimal("337600"), "VAh"))
+                .isEqualTo("Lücke 14:00–17:31: Zuwachs 337,6\u00A0kVAh gemessen, nicht auf Viertelstunden verteilbar")
+                .doesNotContain("kWh");
+        assertThat(ErgebnisZustand.lueckeZuwachs("14:00", "17:31", new BigDecimal("20256000"), "Wmin"))
+                .isEqualTo("Lücke 14:00–17:31: Zuwachs 337,6\u00A0kWh gemessen, nicht auf Viertelstunden verteilbar");
+        assertThat(ErgebnisZustand.lueckeZuwachs("14:00", "17:31", new BigDecimal("3376"), "0,1 kWh"))
+                .isEqualTo("Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar");
+        assertThat(ErgebnisZustand.erkenne(
+                "Lücke 14:00–17:31: Zuwachs 337,6\u00A0kVAh gemessen, nicht auf Viertelstunden verteilbar").muster()
+                .schluessel()).isEqualTo("luecke_zuwachs");
     }
 
     /** Befund Sommerzeit/Zone: die Uhrzeit spricht die Zone des Standorts, die der Träger mitbringt (E10). */

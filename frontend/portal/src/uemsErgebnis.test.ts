@@ -307,6 +307,16 @@ describe('uemsErgebnis — die alten Kundensätze kommen nicht zurück', () => {
     expect(erkenne(neu)?.fruehereFassung).toBe(false);
   });
 
+  it('Katalog-Einheiten (1.8): Scheinarbeit bleibt kVAh, Wmin wird kWh, „0,1 kWh“ hat keine Zahl', () => {
+    const schein = `Lücke 14:00–17:31: Zuwachs ${menge('337600', 'VAh', KENNZEICHEN_EBENE)} gemessen, nicht auf Viertelstunden verteilbar`;
+    expect(schein).toBe(`Lücke 14:00–17:31: Zuwachs 337,6${VOR_EINHEIT}kVAh gemessen, nicht auf Viertelstunden verteilbar`);
+    expect(schein).not.toContain('kWh');
+    expect(erkenne(schein)?.muster.schluessel).toBe('luecke_zuwachs');
+    expect(menge('20256000', 'Wmin', KENNZEICHEN_EBENE)).toBe(`337,6${VOR_EINHEIT}kWh`);
+    expect(menge('2999', 'Wmin', KENNZEICHEN_EBENE)).toBe(`0,0${VOR_EINHEIT}kWh`);
+    expect(pruefeMenge('0,1 kWh', KENNZEICHEN_EBENE)).toEqual(['einheit_unbekannt']);
+  });
+
   it('Sommerzeit: 02:30 am 25.10.2026 ist nie mehr ohne Zusatz', () => {
     const erste = uhr(Date.parse('2026-10-25T00:30:00Z'), 'Europe/Berlin');
     const zweite = uhr(Date.parse('2026-10-25T01:30:00Z'), 'Europe/Berlin');

@@ -128,6 +128,20 @@ deklarierten Wertebereich. Der Katalog trägt ihn als zwei optionale Punktfelder
   python3 catalog/measurement-points/tools/validate.py --ohne-wertebereich
   ```
 
+## Zähler ohne Anzeige-Einheit
+
+`unit` nennt die Einheit des **dekodierten** Werts (nach `scale`); gerechnet und gespeichert wird
+`decoded`. Die Cloud spricht eine Zählermenge nur in einer Anzeige-Einheit des Vertrags
+[`ergebnis-zustand`](../../docs/contracts/v2/ergebnis-zustand.md) §3 (Wh/kWh/MWh/Wmin → kWh,
+varh/kvarh → kvarh, VAh/kVAh → kVAh, m³). Jeder Zähler, dessen Einheit dort fehlt, steht mit Art und
+Grund in `ZAEHLER_OHNE_ANZEIGE_EINHEIT` (`tools/semantics.py`); `validate.py` lehnt einen
+unbenannten Zähler ohne Einheit ab, `test_semantics.py` hält die Liste gegen den Vertrag. Heute 45:
+29 ohne Energie (Zyklen, Ereignisse, Revisionen), 4 OCPP-Register mit der Einheit im konkreten
+Schlüssel, 8 go-e-Keys mit der Einheit nur im Text, 4 KACO-Punkte in „0,1 kWh“ (der Faktor steht
+schon an `scale`, der Name ist die Register-Einheit). ⚠ Ein Nachtrag an `unit` ändert ein Box-Feld
+und hebt den Laufzeitstand (nächster Abschnitt) — die Box liest `unit` zwar nicht, aber die
+Palette trägt es.
+
 ## Inhaltsstand und Laufzeitstand
 
 Das Artefakt trägt ZWEI Stände. `VERSION` → `catalog_version` ist der **Inhaltsstand**: er

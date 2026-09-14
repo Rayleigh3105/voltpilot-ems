@@ -106,13 +106,31 @@ Die **Ebene** bestimmt die Nachkommastellen, nie die Fläche: `zahl(wert, einhei
 | m³ | 1 („1.240,0 m³“) — jede Ebene | | | | |
 | kVA | 1 („630,0 kVA“) — jede Ebene; Anschluss-Scheinleistung = „Leistung“ in E11 (seit 1.2) | | | | |
 | kvarh | 1 | 1 | 0 | 0 | 0 — Blindarbeit ist Arbeit und rundet wie kWh (seit 1.3) |
+| kVAh | 1 | 1 | 0 | 0 | 0 — Scheinarbeit ist Arbeit und rundet wie kWh, bleibt aber kVAh (seit 1.8) |
 
 **Anzeige-Einheit (seit 1.3, Ableitung aus E11 — kein Captain-Entscheid).** Gespeichert bleibt,
 was der Zähler liefert (Wh, kWh, MWh, varh, kvarh, m³); **angezeigt** wird kWh für Wirkarbeit,
 kvarh für Blindarbeit, m³ für Volumen, mit den Stellen dieser Tabelle — so wie der Jahreswert
 „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. `menge(wert, gespeicherte Einheit, ebene)` rechnet mit
 dem festen Faktor aus `rundung.anzeige_einheiten` um und ruft `zahl` an („337600 Wh“ → „337,6 kWh“);
-eine Einheit ohne Eintrag (unbekannt, VAh …) ist `einheit_unbekannt`. Eine Menge **in einem
+eine Einheit ohne Eintrag (unbekannt, „0,1 kWh“ …) ist `einheit_unbekannt`.
+
+**Scheinarbeit und Wattminuten (seit 1.8).** Aus dem Messpunkt-Katalog kommen zwei weitere
+Zähler-Einheiten:
+
+- **VAh (Scheinarbeit, SunSpec 122/201–203) wird kVAh** — eine EIGENE Anzeige-Einheit mit den
+  Stellen von kWh, **nie kWh**. Scheinarbeit ist nicht in Wirkarbeit umrechenbar (dazu fehlt der
+  Leistungsfaktor über die Zeit); eine Scheinarbeit, die als Wirkarbeit dasteht, ist eine falsche
+  Rechnung beim Kunden, kein Anzeigefehler. kVAh gespeichert bleibt kVAh.
+- **Wmin (Wirkarbeit in Wattminuten, Shelly Gen1 `meters[].total`) wird kWh** mit dem optionalen
+  Feld `teiler` = 60000: angezeigt wird `wert × faktor ÷ teiler`, und gerundet wird der **exakte
+  Quotient** (2 999 Wmin = 0,049983… → „0,0 kWh“; ein abgeschnittener Faktor 0,0000167 ergäbe
+  falsch „0,1 kWh“). Fehlt `teiler`, ist er 1.
+- **„0,1 kWh“ ist keine Einheit**, sondern eine Einheit mit eingebackenem Faktor (KACO `eto`/`etd`).
+  Der Faktor gehört an die Skalierung des Katalogs (`scale`), nie in den Einheiten-Namen — sonst
+  rechnet jemand zweimal damit oder gar nicht. Sie bleibt `einheit_unbekannt`; der Satz steht ohne
+  Zahl, bis der Katalog die Einheit des dekodierten Werts nennt (siehe
+  `docs/agents/root/uems-katalog-einheiten.md`). Eine Menge **in einem
 Kennzeichen** spricht die Stellen von `rundung.kennzeichen_ebene` = Viertelstunde: der Satz wandert
 unverändert von der Viertelstunde bis ins Jahr und darf nicht je Periode anders runden
 („Zuwachs 337,6 kWh“ auch am Tag).

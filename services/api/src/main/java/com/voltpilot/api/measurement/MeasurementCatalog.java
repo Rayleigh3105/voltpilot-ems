@@ -37,6 +37,26 @@ public class MeasurementCatalog {
     public static final Set<String> SEMANTIC_STATUSES =
             Set.of("known", "vendor_label_only", "unknown");
     private static final Pattern MODULE_INDEX = Pattern.compile("\\[([0-9]{1,3})]", Pattern.CASE_INSENSITIVE);
+    /** Jeder Abschnitt {@code […]} eines konkreten Schlüssels — die Vorlage trägt {@code [*]} (wie der Writer). */
+    private static final Pattern ABSCHNITT = Pattern.compile("\\[[^]\\r\\n]+]");
+    /** Der letzte Abschnitt eines konkreten OCPP-Schlüssels, wie die Palette ihn schreibt (ocppPointKey). */
+    private static final Pattern OCPP_EINHEIT = Pattern.compile("\\.unit\\[([a-z0-9-]+)]$");
+
+    /**
+     * OCPP 1.6 {@code UnitOfMeasure} je Schlüssel-Abschnitt {@code unit[…]}, so geschrieben, wie die Palette
+     * ihn bildet (klein, anderes Zeichen als „-“, {@code measurement-driver.js} {@code ocppPointKey}). Die
+     * Einheit eines OCPP-Messwerts steht NICHT im Katalog ({@code scale} = {@code protocol_value}): die
+     * Station nennt sie in jedem SampledValue, und die Palette schreibt sie in den konkreten Schlüssel der
+     * Reihe. {@code unit[none]} — die Station nannte keine — bleibt unbekannt: OCPP nimmt dann für Energie
+     * „Wh“ an, aber eine Station, die kWh ohne Einheit schickt, läge um den Faktor 1 000 daneben. Benannt,
+     * nicht geraten.
+     */
+    static final Map<String, String> OCPP_EINHEITEN = Map.ofEntries(
+            Map.entry("wh", "Wh"), Map.entry("kwh", "kWh"), Map.entry("varh", "varh"),
+            Map.entry("kvarh", "kvarh"), Map.entry("w", "W"), Map.entry("kw", "kW"), Map.entry("va", "VA"),
+            Map.entry("kva", "kVA"), Map.entry("var", "var"), Map.entry("kvar", "kvar"), Map.entry("a", "A"),
+            Map.entry("v", "V"), Map.entry("k", "K"), Map.entry("celcius", "°C"), Map.entry("celsius", "°C"),
+            Map.entry("fahrenheit", "°F"), Map.entry("percent", "%"));
 
     public record RetentionView(String retentionClass, int rawRetentionDays,
             Integer longTermCadenceS, String longTermStrategy) {
@@ -195,10 +215,23 @@ public class MeasurementCatalog {
     /**
      * Die Einheit eines Messkanals, wie der Katalog sie nennt; {@code null} ohne Eintrag oder ohne
      * Einheit. Die UEMS-Verdichtung liest die Einheit einer Reihe NUR hier ({@code uems.ReihenKontext}).
+     * Ein OCPP-Messwert ({@code scale} = {@code protocol_value}) hat keine Katalog-Einheit; seine steht
+     * im konkreten Schlüssel ({@code …unit[wh]} → „Wh“, {@link #OCPP_EINHEITEN}). Die Vorlage selbst
+     * ({@code unit[*]}) und {@code unit[none]} haben keine.
      */
     public String einheit(String pointKey) {
         Point p = resolve(pointKey);
-        return p == null ? null : p.unit();
+        if (p != null && p.unit() != null) {
+            return p.unit();
+        }
+        Point vorlage = p != null || pointKey == null ? p : byKey.get(ABSCHNITT.matcher(pointKey).replaceAll("[*]"));
+        if (vorlage == null || vorlage.scale() == null
+                || !"protocol_value".equals(vorlage.scale().path("kind").asText())
+                || !vorlage.pointKey().endsWith(".unit[*]")) {
+            return null;
+        }
+        Matcher m = OCPP_EINHEIT.matcher(pointKey);
+        return m.find() ? OCPP_EINHEITEN.get(m.group(1)) : null;
     }
 
     public Point resolve(String pointKey) {
