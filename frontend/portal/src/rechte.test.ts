@@ -15,6 +15,7 @@ import {
   HOECHSTENS_MONATE,
   KONTEN,
   KONTO_ZUSTAENDE,
+  korrekturEntscheiden,
   matrixAus,
   NOTFALL_STUNDEN,
   OCPP_STUFEN,
@@ -67,6 +68,7 @@ type Ableitung =
   | 'unterstuetzung'
   | 'gewaehren'
   | 'handeingriff'
+  | 'korrektur_entscheiden'
   | 'zuweisung_aendern';
 
 interface Fall {
@@ -209,6 +211,17 @@ function rechne(c: Fall): unknown {
         ZONE,
       );
     }
+    case 'korrektur_entscheiden':
+      return korrekturEntscheiden(
+        matrix,
+        benutzer(i.benutzer),
+        kundenbereich(i.kundenbereich),
+        i.aktion,
+        ziel(i.ziel),
+        i.jetzt,
+        i.ersteller,
+        i.vieraugen,
+      );
     case 'zuweisung_aendern':
       return zuweisungAendern(
         matrix,

@@ -1191,6 +1191,75 @@
         "voltpilot_betrieb": "-"
       },
       "anmerkung": "AP-09 W8: „U U S - - - -“ — Bearbeiter nur für Geltungsbereiche seines Standorts, nie Unterstützer. Seit AP-09 IP-5 nennen `POST /api/v1/bezugsgroessen`, `PUT`/`DELETE …/{id}` und `POST …/{id}/archivieren` die Kennung; auch das Löschen einer Bezugsgröße ohne Wert (M6)."
+    },
+    {
+      "kennung": "ersatzwert.erfassen",
+      "gruppe": "messdaten",
+      "kundenwort": "Ersatzwert erfassen / zurücknehmen",
+      "herkunft": "AP-08 §4.8 (AP-03 Z. 202, IP-15)",
+      "nachtrag": "AP-08 §4.8",
+      "wie": "korrektur.erfassen",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "AP-08 §4.8 nennt als Recht die Konzept-Zeile `korrektur.erfassen` (AP-03 Z. 202); AP-08 IP-15 gibt dem Ersatzwert eine eigene Kennung mit denselben Zellen — nie der Unterstützer. Auch der Widerruf eines Ersatzwerts gehört hierher (§4.8 wörtlich, W-R12). Die Route kommt mit AP-08 IP-16."
+    },
+    {
+      "kennung": "korrektur.freigeben",
+      "gruppe": "messdaten",
+      "kundenwort": "Korrektur prüfen und freigeben",
+      "herkunft": "AP-08 §4.8 (E8, IP-15)",
+      "nachtrag": "AP-08 §4.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "E8: bei Vier-Augen an gibt eine zweite Person frei (Ersteller ≠ Freigeber), und nur Energiemanager oder Kundenadministrator; der Bearbeiter nur bei Vier-Augen aus. Die Zelle sagt, wer überhaupt freigeben kann — Einstellung und Ersteller prüft `korrekturEntscheiden` (rechte-vectors.json, Familie `vieraugen`). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/freigeben` die Kennung und setzt sie durch."
+    },
+    {
+      "kennung": "korrektur.zuruecknehmen",
+      "gruppe": "messdaten",
+      "kundenwort": "Korrektur zurücknehmen (widerrufen)",
+      "herkunft": "AP-08 §5 (Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, IP-15)",
+      "nachtrag": "AP-08 §5",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "Bearbeiter nur für eigene Korrekturen und nur bei Vier-Augen aus — die Bedingung prüft `korrekturEntscheiden` (Familie `vieraugen`). Die Zeile regelt die Korrektur; den Ersatzwert widerruft `ersatzwert.erfassen` (§4.8 wörtlich, W-R12). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/zuruecknehmen` die Kennung und setzt sie durch."
+    },
+    {
+      "kennung": "vieraugen.einstellen",
+      "gruppe": "messdaten",
+      "kundenwort": "Vier-Augen-Einstellung ändern",
+      "herkunft": "AP-08 §4.8 (E8, IP-15)",
+      "nachtrag": "AP-08 §4.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "-",
+        "bearbeiter": "-",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-"
+      },
+      "anmerkung": "E8: „Konfigurierbar je Unternehmen durch den Kundenadministrator: ‚Freigabe durch eine zweite Person‘ aus (Vorgabe) oder an“. Seit AP-08 IP-15 nennt `PUT /api/v1/unternehmen/vieraugen` die Kennung und setzt sie durch; gelesen wird ohne eigene Kennung (`GET /api/v1/unternehmen/vieraugen`, wie das Unternehmen-Lesemodell)."
     }
   ],
   "nachtraege": [
@@ -1515,7 +1584,7 @@
         },
         {
           "wortlaut": "Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08)",
-          "wo": "noch keine Zeile — sie entstehen mit AP-08 IP-15; die Freigabe an Bezugsgrößen mit AP-09 IP-7"
+          "wo": "`korrektur.freigeben` und `vieraugen.einstellen` stehen seit AP-08 IP-15 (Nachtrag AP-08 §4.8); die Freigabe an Bezugsgrößen kommt mit AP-09 IP-7"
         },
         {
           "wortlaut": "Werte, Fassungen, Importe löschen — niemand (Offboarding ausgenommen)",
@@ -1543,10 +1612,10 @@
           "wer": "Bearbeiter (je Standort) · Energiemanager · Kundenadministrator — nie Unterstützer",
           "recht": "AP-03 Z. 202",
           "kennungen": [
-            "korrektur.erfassen"
+            "ersatzwert.erfassen"
           ],
-          "zuordnung": "zugeordnet",
-          "anmerkung": "Die Route kommt mit AP-08 IP-13."
+          "zuordnung": "neu",
+          "anmerkung": "AP-08 IP-15 gibt dem Ersatzwert eine eigene Kennung mit den Zellen der genannten Zeile AP-03 Z. 202 (`korrektur.erfassen`). Die Route kommt mit AP-08 IP-16."
         },
         {
           "handlung": "Korrektur vorschlagen (Ablesestände, Umklassifizierung, Wert berichtigen)",
@@ -1557,20 +1626,55 @@
           ],
           "zuordnung": "zugeordnet",
           "anmerkung": "Die Routen kommen mit AP-08 IP-12 ff."
+        },
+        {
+          "handlung": "Korrektur prüfen und freigeben",
+          "wer": "Energiemanager · Kundenadministrator; Bearbeiter nur, wenn Vier-Augen aus (E8); Ersteller ≠ Freigeber bei Vier-Augen an",
+          "recht": "E8",
+          "kennungen": [
+            "korrektur.freigeben"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Die Zelle nennt, wer freigeben kann; „nur, wenn Vier-Augen aus“ und „Ersteller ≠ Freigeber“ stehen in rechte-vectors.json, Familie `vieraugen`. Bis AP-08 IP-15 stand die Handlung unter den Regeln ohne Zeile."
+        },
+        {
+          "handlung": "Vier-Augen-Einstellung ändern",
+          "wer": "Kundenadministrator",
+          "recht": "E8",
+          "kennungen": [
+            "vieraugen.einstellen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Die Einstellung je Unternehmen, Vorgabe aus (E8). Bis AP-08 IP-15 stand die Handlung unter den Regeln ohne Zeile."
         }
       ],
       "regeln": [
         {
-          "wortlaut": "Korrektur prüfen und freigeben — Energiemanager · Kundenadministrator; Bearbeiter nur, wenn Vier-Augen aus (E8); Ersteller ≠ Freigeber bei Vier-Augen an",
-          "wo": "noch keine Zeile — `korrektur.freigeben` entsteht mit AP-08 IP-15 (dieselbe Regel steht unter AP-09 §4.11)"
-        },
-        {
-          "wortlaut": "Vier-Augen-Einstellung ändern — Kundenadministrator (E8)",
-          "wo": "noch keine Zeile — `vieraugen.einstellen` entsteht mit AP-08 IP-15"
-        },
-        {
           "wortlaut": "Rohwerte, Ereignisse, Korrekturen löschen — niemand (AP-07 E8/E11; Offboarding ausgenommen)",
           "wo": "keine Zeile — die Tabellen lassen es nicht zu (`messreihe_ereignis` append-only; der Purge lehnt Messstellen-gebundene Reihen ab, AP-07 IP-11)"
+        }
+      ]
+    },
+    {
+      "abschnitt": "AP-08 §5",
+      "titel": "Bedienabläufe (Widerruf)",
+      "konzept": "UEMS AP-08 Verbrauch — report.md §5, Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, abgenommen mit E1–E15 = A am 11.09.2026",
+      "handlungen": [
+        {
+          "handlung": "Eine Korrektur oder einen Ersatzwert widerrufen",
+          "wer": "Energiemanager · Kundenadministrator (Bearbeiter nur für eigene, wenn Vier-Augen aus)",
+          "recht": null,
+          "kennungen": [
+            "korrektur.zuruecknehmen"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Für den Ersatzwert gilt die Zeile aus §4.8 wörtlich (`ersatzwert.erfassen`, W-R12)."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Bei Vier-Augen an ist der Knopf für den Ersteller gesperrt: „Freigabe durch eine zweite Person (Jonas Wendlinger, …)“ (§5, Bedienablauf „Einen Korrektur-Vorschlag prüfen und freigeben“)",
+          "wo": "rechte-vectors.json, Familie `vieraugen`: 403 `zweite_person_noetig` mit dem Satz „Freigabe durch eine zweite Person.“ und dem Weg zu den übrigen Kundenadministratoren; der Knopf ist AP-08 IP-16"
         }
       ]
     }

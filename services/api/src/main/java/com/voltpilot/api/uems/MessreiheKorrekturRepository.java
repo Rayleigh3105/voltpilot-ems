@@ -27,12 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Eine Korrektur beginnt IMMER als Vorschlag (E14: nie automatisch) und wird freigegeben oder
  * abgelehnt; eine freigegebene kann zurückgenommen werden. Jeder Schritt ist eine weitere Fassung
  * mit Urheber und Zeitpunkt — Ersteller und Freigeber sind zwei Fassungen, nie zwei Spalten. Ob eine
- * Person freigeben DARF (Vier-Augen, E8) ist nicht diese Stelle (IP-15), und keine Freigabe rechnet
- * hier etwas neu (Kaskade IP-17).
+ * Person freigeben DARF (Vier-Augen, E8), entscheidet {@link KorrekturFreigabeService} (IP-15), und
+ * keine Freigabe rechnet hier etwas neu (Kaskade IP-17).
  *
  * <p>Die Erkennung „Rohwert nach der Frist“ steht weiter in {@code messreihe_korrektur_vorschlag}
  * (AP-07 IP-13) — die Vorstufe; aus ihr macht IP-14 eine Korrektur der Art
- * {@code nachlieferung_nach_endgueltigkeit}. Noch ruft niemand an.
+ * {@code nachlieferung_nach_endgueltigkeit}. Freigabe und Rücknahme ruft seit IP-15 der Schreibweg
+ * der Korrektur-Routen an.
  */
 @Repository
 public class MessreiheKorrekturRepository {
@@ -102,6 +103,26 @@ public class MessreiheKorrekturRepository {
     @Transactional
     public Korrektur freigeben(UUID tenantId, String kennung, String grund, ProtokollAkteur akteur) {
         return fortschreiben(tenantId, kennung, EreignisVokabular.KORREKTUR_STATUS.get(1), grund, akteur);
+    }
+
+    /**
+     * Gibt einen Vorschlag frei wie {@link #freigeben(UUID, String, String, ProtokollAkteur)} und hält an
+     * derselben Fassung fest, welche Vier-Augen-Einstellung in diesem Augenblick galt (AP-08 IP-15, Spalte
+     * {@code freigabe_vieraugen}, V20260914201500). Die Datenbank verlangt dann eine Begründung und lehnt bei
+     * {@code vierAugen} den Ersteller als Freigeber ab ({@code messreihe_korrektur_zweite_person}).
+     */
+    @Transactional
+    public Korrektur freigeben(UUID tenantId, String kennung, String begruendung, ProtokollAkteur akteur,
+            boolean vierAugen) {
+        int naechste = MessreiheFassungen.fassungen(jdbc, TABELLE, tenantId, kennung).size() + 1;
+        if (naechste == 1) {
+            throw new IllegalArgumentException("keine Korrektur " + kennung);
+        }
+        jdbc.update("INSERT INTO messreihe_korrektur (tenant_id, kennung, fassung, status, grund, "
+                + "actor_sub, actor_name, actor_rolle, actor_art, freigabe_vieraugen) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                tenantId, kennung, naechste, EreignisVokabular.KORREKTUR_STATUS.get(1), begruendung,
+                akteur.sub(), akteur.name(), akteur.rolle(), akteur.art(), vierAugen);
+        return lies(tenantId, kennung).orElseThrow();
     }
 
     /** Lehnt einen Vorschlag mit Grund ab — die Werte bleiben, wie sie sind. */

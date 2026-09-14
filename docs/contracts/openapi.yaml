@@ -242,6 +242,13 @@ tags:
       `messwerte.ansehen` fürs Lesen - noch nicht durchgesetzt (AP-03), es gilt
       authenticated(). Werte eingeben/berichtigen (IP-7), Import (IP-11 ff.) und
       Kanalbindung (IP-17) kommen mit ihren Paketen.
+  - name: korrekturen
+    description: >
+      UEMS Vier Augen bei Korrekturen (AP-08 IP-15, Entscheid E8 = A): „Freigabe durch eine zweite
+      Person“ je Unternehmen, Vorgabe AUS, eingestellt nur vom Kundenadministrator; bei an gibt nie
+      der Ersteller frei, ein Unterstützer gibt nie frei. Die ersten UEMS-Routen, die ihr Recht
+      DURCHSETZEN (rechte-matrix.json über RechteAbleitung): fremd ist 404 `nicht_gefunden`, ein 403
+      gilt nur im eigenen Kundenbereich. Die Einstellung wirkt zum Zeitpunkt der Freigabe.
   - name: kostenstellen-prozesse
     description: >
       UEMS-Kostenstellen und -Prozesse (AP-10 IP-7, Konzept §4.2/§5.7, AP-00 E5): die
@@ -10104,6 +10111,108 @@ paths:
         "404": { $ref: "#/components/responses/VerteilungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerteilungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+  /api/v1/unternehmen/vieraugen:
+    get:
+      tags: [korrekturen]
+      summary: Die Vier-Augen-Einstellung des Unternehmens.
+      description: >
+        Lesend, ohne eigene Kennung (wie das Unternehmen-Lesemodell). `vorgabe` true = nie eingestellt -
+        dann gilt die Vorgabe aus (`vieraugen` false), auch ohne Unternehmen-Zeile.
+      responses:
+        "200":
+          description: Die Einstellung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VierAugen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+    put:
+      tags: [korrekturen]
+      summary: Schaltet „Freigabe durch eine zweite Person“ an oder aus.
+      description: >
+        Recht `vieraugen.einstellen` - nur der Kundenadministrator; ein Unterstützer (Plattform-Admin im
+        Kundenbereich) bekommt 403 `recht_fehlt`. Jede Änderung steht im Änderungsprotokoll des
+        Unternehmens (`bearbeitet`, Feld `vieraugen_freigabe`); ändert sich nichts, wird nichts geschrieben.
+        Die Einstellung wirkt ab der nächsten Freigabe - eine gespeicherte Freigabe bleibt, wie sie ist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VierAugenSetzen" }
+            example:
+              vieraugen: true
+      responses:
+        "200":
+          description: Die Einstellung danach.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VierAugen" }
+        "400": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "404": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "409": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+  /api/v1/korrekturen/{kennung}/freigeben:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^K-[0-9]{4}-[0-9]{4,}$" } }
+    post:
+      tags: [korrekturen]
+      summary: Gibt einen Korrektur-Vorschlag frei - unter der Vier-Augen-Einstellung dieses Augenblicks.
+      description: >
+        Recht `korrektur.freigeben`. Reihenfolge: Korrektur des eigenen Kundenbereichs (sonst 404
+        `nicht_gefunden`, auch fremd) → Recht mit Einstellung und Ersteller (403 `recht_fehlt` mit
+        `rolle_noetig`; 403 `zweite_person_noetig`, wenn bei Vier-Augen an der Ersteller freigibt - auch mit
+        Recht) → Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`) → Stand `vorschlag` (409
+        `status_passt_nicht`). Die Freigabe protokolliert Ersteller, Freigeber, Zeitpunkt und Begründung und
+        hält die geprüfte Einstellung fest; die Neuberechnung übernimmt die Kaskade (AP-08 IP-17).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KorrekturFreigeben" }
+            example:
+              begruendung: "Nachlieferung nach Endgültigkeit (Box Halle 2 repariert)"
+      responses:
+        "200":
+          description: Freigegeben - mit dem Protokoll der vier Angaben.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KorrekturEntscheidung" }
+        "400": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "404": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "409": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "422": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+  /api/v1/korrekturen/{kennung}/zuruecknehmen:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^K-[0-9]{4}-[0-9]{4,}$" } }
+    post:
+      tags: [korrekturen]
+      summary: Nimmt eine freigegebene Korrektur zurück - sie bleibt sichtbar.
+      description: >
+        Recht `korrektur.zuruecknehmen` (AP-08 §5): Energiemanager und Kundenadministrator, der Bearbeiter nur
+        die eigene und nur bei Vier-Augen aus; nie der Unterstützer. Grund 10 bis 500 Zeichen (422
+        `begruendung_fehlt`), Stand `freigegeben` (409 `status_passt_nicht`). Fremd ist 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KorrekturZuruecknehmen" }
+            example:
+              grund: "Die Box hat den Puffer doppelt geschickt."
+      responses:
+        "200":
+          description: Zurückgenommen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KorrekturEntscheidung" }
+        "400": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "404": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "409": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
+        "422": { $ref: "#/components/responses/KorrekturFreigabeAbgelehnt" }
 components:
   securitySchemes:
     bearerAuth:
@@ -10212,6 +10321,14 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/KostenstelleProzessFehler" }
+    KorrekturFreigabeAbgelehnt:
+      description: >
+        Abgelehnt, nichts geschrieben. Code, Status und der deutsche `message`-Satz kommen aus dem
+        geschlossenen Satz (uems/KorrekturFreigabeAbgelehnt); ein 403 trägt den Satz der
+        Rechte-Ableitung. Dazu die Fakten.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/KorrekturFreigabeFehler" }
     VerteilungAbgelehnt:
       description: >
         Abgelehnt, nichts geschrieben - auch kein Protokolleintrag und kein Ereignis. Code,
@@ -19949,3 +20066,69 @@ components:
           properties:
             id: { type: string, format: uuid }
             wert_text: { type: string }
+    VierAugen:
+      type: object
+      required: [vieraugen, vorgabe]
+      properties:
+        vieraugen: { type: boolean, description: "„Freigabe durch eine zweite Person“ gilt." }
+        vorgabe: { type: boolean, description: "Nie eingestellt - es gilt die Vorgabe aus." }
+    VierAugenSetzen:
+      type: object
+      required: [vieraugen]
+      additionalProperties: false
+      properties:
+        vieraugen: { type: boolean }
+    KorrekturFreigeben:
+      type: object
+      required: [begruendung]
+      additionalProperties: false
+      properties:
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    KorrekturZuruecknehmen:
+      type: object
+      required: [grund]
+      additionalProperties: false
+      properties:
+        grund: { type: string, minLength: 10, maxLength: 500 }
+    KorrekturUrheber:
+      type: object
+      required: [name, rolle, art]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string, enum: [kunde, unterstuetzung, voltpilot, notfall] }
+    KorrekturEntscheidung:
+      type: object
+      description: >
+        Die Entscheidung mit den vier Angaben aus E8: `ersteller` (Fassung 1), `entschieden_von`,
+        `entschieden_am`, `begruendung` (die neue Fassung). `vieraugen` ist die Einstellung, unter der
+        freigegeben wurde (null beim Zurücknehmen); `von_ersteller` = Ersteller und Entscheider sind
+        dieselbe Person (bei einer Freigabe nur unter Vier-Augen aus möglich).
+      required: [kennung, status, fassung, ersteller, entschieden_von, entschieden_am, begruendung, vieraugen, von_ersteller]
+      properties:
+        kennung: { type: string }
+        status: { type: string, enum: [freigegeben, zurueckgenommen] }
+        fassung: { type: integer, minimum: 2 }
+        ersteller: { $ref: "#/components/schemas/KorrekturUrheber" }
+        entschieden_von: { $ref: "#/components/schemas/KorrekturUrheber" }
+        entschieden_am: { type: string, format: date-time }
+        begruendung: { type: string }
+        vieraugen: { type: boolean, nullable: true }
+        von_ersteller: { type: boolean }
+    KorrekturFreigabeFehler:
+      type: object
+      description: >
+        Die Ablehnung der Korrektur-Routen (AP-08 IP-15): 400 `anfrage_ungueltig` (`feld`); 403
+        `recht_fehlt` (`rolle_noetig`, null bei einem Unterstützer - „nie“), `zweite_person_noetig`
+        (`rolle_noetig` null); 404 `nicht_gefunden`; 409 `status_passt_nicht` (`status`), `gleichzeitig`,
+        `unternehmen_nicht_angelegt`; 422 `begruendung_fehlt` (`feld`, `zeichen`).
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, zweite_person_noetig, begruendung_fehlt, status_passt_nicht, gleichzeitig, unternehmen_nicht_angelegt]
+        message: { type: string }
+        feld: { type: string }
+        rolle_noetig: { type: string, nullable: true }
+        status: { type: string }
+        zeichen: { type: integer }

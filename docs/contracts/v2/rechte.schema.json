@@ -41,7 +41,7 @@
       "type": "array",
       "minItems": 7,
       "items": {
-        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen"]
       }
     },
     "abnahmefaelle": {
@@ -208,7 +208,8 @@
         "letzter_kundenadministrator",
         "standort_fehlt",
         "hoechstens_12_monate",
-        "grund_fehlt"
+        "grund_fehlt",
+        "zweite_person_noetig"
       ]
     },
     "aktion_kennung": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" },
@@ -559,7 +560,7 @@
       "properties": {
         "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "familie": {
-          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen"]
         },
         "ableitung": {
           "description": "Welche Funktion der Fall fährt.",
@@ -573,7 +574,8 @@
             "unterstuetzung",
             "gewaehren",
             "handeingriff",
-            "zuweisung_aendern"
+            "zuweisung_aendern",
+            "korrektur_entscheiden"
           ]
         },
         "abnahme": { "type": ["string", "null"], "pattern": "^A[0-9]+$" },
@@ -660,6 +662,15 @@
             "setzer": { "$ref": "#/$defs/benutzer" }
           },
           "additionalProperties": false
+        },
+        "ersteller": {
+          "description": "korrektur_entscheiden: die Kennung der Person, die die Korrektur angelegt hat — null = ein Vorschlag des Systems (AP-08 E14).",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "vieraugen": {
+          "description": "korrektur_entscheiden: „Freigabe durch eine zweite Person“ des Unternehmens zum Zeitpunkt der Entscheidung (AP-08 E8, Vorgabe aus).",
+          "type": "boolean"
         },
         "handelnder": { "$ref": "#/$defs/benutzer" },
         "betroffener": { "$ref": "#/$defs/person" },

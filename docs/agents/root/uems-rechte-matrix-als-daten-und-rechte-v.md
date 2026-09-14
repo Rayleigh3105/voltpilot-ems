@@ -34,6 +34,8 @@ IP-1 erzwingt NICHTS: keine Zuweisungstabelle (IP-2 backfillt jeden Kundenbenutz
 Kundenadministrator, E12), kein `ZugriffContext`/`/me` (IP-4), keine RLS-Policy `site_scope` (IP-5),
 kein `@Recht`-Interceptor (IP-6/IP-7), keine Fläche (IP-12 macht `rollen.ts` zur Rechte-Quelle
 und ruft `rechte.ts`). `TenantFilter`, `SecurityConfig`, `OcppActionPolicy` und Keycloak sind unberührt.
+**Einzige Ausnahme seit AP-08 IP-15:** die Korrektur-Routen setzen `darf` und die Familie `vieraugen`
+(`korrekturEntscheiden`, Grund `zweite_person_noetig`) mit dem heutigen Aufrufer durch — `uems-vieraugen-freigabe.md`.
 
 ## Die Fakten, die man ohne Nachlesen braucht
 

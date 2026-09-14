@@ -468,6 +468,10 @@ class RechteAbleitungVectorsTest {
                                 h.path("gesetzt_von").asText(), benutzer(h.path("setzer"))),
                         kundenbereich(in.path("kundenbereich")), instant(in.path("jetzt")), zone));
             }
+            case "korrektur_entscheiden" -> alsJson(RechteAbleitung.korrekturEntscheiden(m,
+                    benutzer(in.path("benutzer")), kundenbereich(in.path("kundenbereich")), in.path("aktion").asText(),
+                    ziel(in.path("ziel")), instant(in.path("jetzt")), textOderNull(in.path("ersteller")),
+                    in.path("vieraugen").asBoolean()));
             case "zuweisung_aendern" -> {
                 JsonNode a = in.path("aenderung");
                 yield alsJson(RechteAbleitung.zuweisungAendern(m, benutzer(in.path("handelnder")),
@@ -805,6 +809,9 @@ class RechteAbleitungVectorsTest {
             }
             if (in.has("betroffener")) {
                 person(in.path("betroffener"));
+            }
+            if (in.hasNonNull("ersteller") && !personen.containsKey(in.path("ersteller").asText())) {
+                unbekannt("Ersteller " + in.path("ersteller").asText());
             }
             if (in.has("kundenbereich")) {
                 kundenbereich(in.path("kundenbereich"));

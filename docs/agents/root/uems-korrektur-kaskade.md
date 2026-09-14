@@ -80,8 +80,9 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
 
 ## Nicht gebaut
 
-Freigabe-Route und Vier-Augen (IP-15), Portal (IP-16), Kennzahlen (AP-11) und Berichte (AP-12) nur als Naht, keine
-Rechte-Durchsetzung. Versionen lesen und die Historie je Periode sind seit IP-18 gebaut (`uems-versionen-lesen.md`).
+Portal (IP-16), Kennzahlen (AP-11) und Berichte (AP-12) nur als Naht. Versionen lesen und die Historie je Periode sind
+seit IP-18 gebaut (`uems-versionen-lesen.md`). Freigabe- und Rücknahme-Route mit Vier-Augen und Rechte-Durchsetzung: seit
+IP-15 (`uems-vieraugen-freigabe.md`) — die Kaskade liest weiter nur die Fassungen.
 
 ## Prüfen
 

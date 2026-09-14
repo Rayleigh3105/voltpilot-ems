@@ -112,6 +112,7 @@ export const GRUENDE = {
   standort_fehlt: 422,
   hoechstens_12_monate: 422,
   grund_fehlt: 422,
+  zweite_person_noetig: 403,
 } as const;
 export type Grund = keyof typeof GRUENDE;
 
@@ -161,6 +162,7 @@ export const TEXTE = {
   grund_fehlt: 'Für einen Notfall-Zugriff ist ein Grund Pflicht.',
   letzter_kundenadministrator:
     '{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.',
+  zweite_person: 'Freigabe durch eine zweite Person.',
 } as const;
 
 function text(schluessel: keyof typeof TEXTE, werte: Record<string, string> = {}): string {
@@ -510,6 +512,65 @@ export function darf(
     umfangNoetig,
     text: TEXTE.recht_fehlt + (weg === null ? '' : ` ${weg}`),
   };
+}
+
+// ─────────────────────────────────────────────────── Vier-Augen (AP-08 E8)
+
+/**
+ * Darf `b` diese Korrektur freigeben oder zurücknehmen? (AP-08 E8, IP-15 — Familie
+ * `vieraugen`.) Erst `darf` — was dort nicht erlaubt ist, bleibt, wie es ist. Dann: der
+ * Bearbeiter gibt nur bei Vier-Augen aus frei und nimmt nur bei aus und nur die eigene zurück
+ * (sonst 403 `recht_fehlt`, `rolleNoetig` Energiemanager); bei an gibt nie der Ersteller frei —
+ * auch mit Recht (403 `zweite_person_noetig`).
+ *
+ * @param ersteller Kennung der Person, die die Korrektur angelegt hat; `null` = Vorschlag des Systems
+ * @param vierAugen die Einstellung des Unternehmens zum Zeitpunkt DIESER Entscheidung
+ */
+export function korrekturEntscheiden(
+  m: Matrix,
+  b: Benutzer,
+  k: Kundenbereich,
+  aktion: 'korrektur.freigeben' | 'korrektur.zuruecknehmen',
+  ziel: Ziel,
+  jetzt: string,
+  ersteller: string | null,
+  vierAugen: boolean,
+): DarfErgebnis {
+  const freigeben = aktion === 'korrektur.freigeben';
+  if (!freigeben && aktion !== 'korrektur.zuruecknehmen') {
+    throw new Error(`keine Entscheidung über eine Korrektur: ${aktion}`);
+  }
+  const d = darf(m, b, k, aktion, ziel, jetzt);
+  if (!d.darf) return d;
+  const eigene = ersteller !== null && ersteller === b.kennung;
+  if (d.rolle === 'bearbeiter' && (vierAugen || (!freigeben && !eigene))) {
+    const weg = wegZumKundenadministrator(k);
+    return {
+      ...d,
+      darf: false,
+      http: 403,
+      grund: 'recht_fehlt',
+      rolle: null,
+      rolleNoetig: 'energiemanager',
+      text: TEXTE.recht_fehlt + (weg === null ? '' : ` ${weg}`),
+    };
+  }
+  if (freigeben && vierAugen && eigene) {
+    // Der Weg nennt nie den Ersteller selbst.
+    const weg = wegZumKundenadministrator({
+      ...k,
+      kundenadministratoren: k.kundenadministratoren.filter((p) => p.kennung !== b.kennung),
+    });
+    return {
+      ...d,
+      darf: false,
+      http: 403,
+      grund: 'zweite_person_noetig',
+      rolle: null,
+      text: TEXTE.zweite_person + (weg === null ? '' : ` ${weg}`),
+    };
+  }
+  return d;
 }
 
 // ────────────────────────────────────────────────────── sichtbare Standorte
