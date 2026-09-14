@@ -241,6 +241,18 @@ GLOSSAR += [
      "beispiel": "MS-19 „Netzbezug gesamt Unternehmen“ = MS-01 + MS-10 + MS-16 = 174 400 kWh im Oktober 2026 (3 von 3 Systemen).",
      "heute": "Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.",
      "abgrenzung": "Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert)."},
+    {"id": "kennzahl", "sicht": "org", "begriff": "Kennzahl", "nachtrag": "AP-11 §4.1 (E1, E2, E5)",
+     "kurz": "Ein eigenes Objekt, das Mengen teilt: Menge je Bezugsgröße, Teil am Ganzen oder Summe durch Summe über Kennzahlen — mit Zustand, Richtung, Fassung und Version.",
+     "lang": "Eine Kennzahl hat ein Kennzeichen (KZ-0001), genau einen Geltungsbereich, einen Verantwortlichen und einen Zweck. Ihre Berechnung lebt in tagesgültigen Fassungen, ihr Wert je Periode in Versionen. Sie summiert nie selbst (Summen sind Gesamtwerte) und mittelt nie Quotienten: eine Unternehmenszahl aus Gebäuden ist Summe durch Summe. Eine Zahl gibt es nur mit Menge UND Bezugsgröße und einer Bezugsgröße ungleich 0; ist ein Eingang unvollständig, steht die Richtung dabei (mindestens, höchstens).",
+     "beispiel": "KZ-0001 Halle 2 im Oktober 2026: 6 100 kWh ÷ 41 000 Stück = 0,15 kWh je Stück; KZ-0003 Unternehmen: (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,20 kWh je Stück.",
+     "heute": "Heute nicht vorhanden; das Wort benennt bisher den Aggregat-Schritt der Eigenen Auswertung (AP-11 W7). Die Regeln stehen als Vertrag in `docs/contracts/v2/kennzahl.md` samt Vektoren (`kennzahl-vectors.json`, Zwillinge `uems/KennzahlRegeln` ⟷ `uemsKennzahl.ts`, AP-11 IP-1/IP-3); Tabellen, Rechenlauf und Fläche kommen mit AP-11 IP-4 ff.",
+     "abgrenzung": "Nicht die Messstelle (die misst oder summiert, sie teilt nicht), nicht der Gesamtwert (eine berechnete Messstelle), nicht die Bezugsgröße (der Nenner), nicht ein Mittelwert."},
+    {"id": "kennzahlvorlage", "sicht": "org", "begriff": "Kennzahlvorlage", "nachtrag": "AP-11 §4.12 (E9)",
+     "kurz": "Ein Katalog-Eintrag, der das Anlegen einer Kennzahl vorbelegt: Rechenform, Name, Zweck und die Erwartung an Menge und Bezugsgröße.",
+     "lang": "Eine Vorlage ist nie selbst eine Kennzahl und hat keine Fassungen. Aus ihr entsteht eine Kennzahl mit neuem Kennzeichen und Fassung 1; Eingänge und Geltungsbereich werden immer neu gebunden. Wer eine bestehende Kennzahl kopiert, übernimmt Form, Name und Zweck ebenso — und bindet ebenso neu.",
+     "beispiel": "Aus „Stromeinsatz je Stück — {Geltungsbereich}“ legt Peter Hollerbach KZ-0002 für die Montagehalle Lindach an.",
+     "heute": "Heute nicht vorhanden. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20); der Katalog `kennzahl-vorlagen.json` kommt mit AP-11 IP-10.",
+     "abgrenzung": "Nicht die Zuordnungs-Vorlage eines Imports (die deutet eine Datei), nicht eine Kundenvorlage mit eigenen Fassungen (E9, nicht gewählt)."},
 ]
 
 # ---------------------------------------------------------------------------------------------

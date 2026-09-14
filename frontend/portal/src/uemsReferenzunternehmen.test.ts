@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -126,7 +127,7 @@ const register = (): { reg: Map<string, string>; doppelt: string[] } => {
   merke('unternehmen', daten.unternehmen.kennzeichen);
   for (const s of [
     'standorte', 'gebaeude', 'bereiche', 'prozesse', 'kostenstellen', 'netzanschluesse',
-    'anlagen', 'boxen', 'datenquellen', 'geraete', 'komponenten', 'messstellen', 'bezugsgroessen',
+    'anlagen', 'boxen', 'datenquellen', 'geraete', 'komponenten', 'messstellen', 'bezugsgroessen', 'kennzahlen',
   ]) {
     for (const o of daten[s] as any[]) merke(s, o.kennzeichen);
   }
@@ -201,8 +202,24 @@ const verweise = (): Array<[string, string, string[]]> => {
     if (b.geltung_art === 'prozess' && b.geltung) {
       out.push([`${b.kennzeichen}.geltung`, b.geltung, ['prozesse']]);
     }
+    // Fassung 1.3 (AP-11 E13): die Gebäude-Stückzahlen BZ-6 und BZ-7.
+    if (b.geltung_art === 'gebaeude' && b.geltung) out.push([`${b.kennzeichen}.geltung`, b.geltung, ['gebaeude']]);
     // Fassung 1.2 (AP-09 E1/W5): eine Bezugsgröße kann an einer Messstelle hängen.
     if (b.messstelle) out.push([`${b.kennzeichen}.messstelle`, b.messstelle, ['messstellen']]);
+  }
+  // Fassung 1.3 (AP-11 E13): eine Kennzahl verweist NUR über Kennzeichen — auf ihre Menge, ihre
+  // Bezugsgröße (beim Stammdatum mit dem Gebäude), ihre Paare, ihr Geltungsobjekt und die Person.
+  const GELTUNG: Record<string, string> = {
+    unternehmen: 'unternehmen', standort: 'standorte', gebaeude: 'gebaeude', bereich: 'bereiche',
+    prozess: 'prozesse', kostenstelle: 'kostenstellen', messstelle: 'messstellen',
+  };
+  for (const k of daten.kennzahlen as any[]) {
+    out.push([`${k.kennzeichen}.geltung`, k.geltung, [GELTUNG[k.geltung_art]]]);
+    out.push([`${k.kennzeichen}.verantwortlich`, k.verantwortlich, ['personen']]);
+    if (k.zaehler) out.push([`${k.kennzeichen}.zaehler`, k.zaehler, ['messstellen']]);
+    if (k.nenner) out.push([`${k.kennzeichen}.nenner`, k.nenner, ['bezugsgroessen']]);
+    if (k.nenner_ort) out.push([`${k.kennzeichen}.nenner_ort`, k.nenner_ort, ['gebaeude']]);
+    for (const p of (k.paare ?? []) as string[]) out.push([`${k.kennzeichen}.paar`, p, ['kennzahlen']]);
   }
   // Welcher Elternknoten wem erlaubt ist, prüft „hängt jeden Ort zeitgültig an seinen Elternknoten“.
   const VON: Record<string, string[]> = {
@@ -239,6 +256,9 @@ describe('UEMS-Referenzunternehmen — Form', () => {
     expect(daten.datenquellen).toHaveLength(7);
     expect(daten.geraete).toHaveLength(10);
     expect(daten.messstellen).toHaveLength(22);
+    // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
+    expect(daten.bezugsgroessen).toHaveLength(7);
+    expect(daten.kennzahlen).toHaveLength(5);
 
     // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst NACH
     // der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte EK-7, die
@@ -894,5 +914,85 @@ describe('UEMS-Referenzunternehmen — Fassung 1.2', () => {
       }
     }
     expect(fehler).toEqual([]);
+  });
+});
+
+describe('UEMS-Referenzunternehmen — Fassung 1.3 (AP-11 E13)', () => {
+  /** Der Fingerabdruck der Fassung 1.2, kanonisch geschrieben, aus origin/uems vor AP-11 IP-2 — derselbe wie im Java-Zwilling. */
+  const FASSUNG_1_2_SHA256 = '33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd';
+  /** So viele Zeilen hatte `_comment` in Fassung 1.2 — Fassung 1.3 hängt nur an. */
+  const KOMMENTAR_ZEILEN_1_2 = 64;
+
+  /** Kanonisch: Schlüssel sortiert, kein Leerraum, Zahlen in ihrer kürzesten Schreibweise („46“, nie „46.0“). */
+  const kanonisch = (x: unknown): string => {
+    if (Array.isArray(x)) return `[${x.map(kanonisch).join(',')}]`;
+    if (x !== null && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${kanonisch(o[k])}`).join(',')}}`;
+    }
+    return JSON.stringify(x);
+  };
+
+  /**
+   * Diff-Test: nimmt man GENAU die Zusätze der Fassung 1.3 heraus und setzt Fassung und Stand
+   * zurück, ist die Datei Zeichen für Zeichen die Fassung 1.2 — kein Feld hat seinen Wert geändert.
+   */
+  it('ist ohne ihre Zusätze Zeichen für Zeichen die Fassung 1.2', () => {
+    const d = structuredClone(daten) as Record<string, any>;
+    expect(d.version).toBe('1.3');
+    d.version = '1.2';
+    d.stand = '2026-09-12';
+    expect(d._comment.length).toBeGreaterThan(KOMMENTAR_ZEILEN_1_2);
+    d._comment = d._comment.slice(0, KOMMENTAR_ZEILEN_1_2);
+    expect(d._herkunft.fassung_1_3).toBeDefined();
+    delete d._herkunft.fassung_1_3;
+    const bezugsgroessen = d.bezugsgroessen.length;
+    d.bezugsgroessen = d.bezugsgroessen.filter((b: any) => !['BZ-6', 'BZ-7'].includes(b.kennzeichen));
+    expect(bezugsgroessen - d.bezugsgroessen.length).toBe(2);
+    expect(d.kennzahlen).toBeDefined();
+    delete d.kennzahlen;
+    const zeilen = d.zeitachse.length;
+    d.zeitachse = d.zeitachse.filter(
+      (z: any) => !(z.zeitpunkt === '2026-11-03T00:00:00+01:00' && z.herkunft.startsWith('AP-11')),
+    );
+    expect(zeilen - d.zeitachse.length).toBe(1);
+    expect(createHash('sha256').update(kanonisch(d), 'utf8').digest('hex')).toBe(FASSUNG_1_2_SHA256);
+  });
+
+  /**
+   * BZ-6 + BZ-7 = BZ-2; jede Kennzahl rechnet ihren Oktoberwert aus den Werten, auf die ihre
+   * Kennzeichen zeigen; eine Zusammenfassung ist Summe durch Summe und nie die festgehaltene Zahl,
+   * die NICHT entsteht; `kennzahl_beispiel` ist KZ-0004 auf 2 Stellen.
+   */
+  it('rechnet jede Kennzahl aus ihren Kennzeichen — Summe durch Summe, BZ-6 + BZ-7 = BZ-2', () => {
+    const bz = new Map<string, any>((daten.bezugsgroessen as any[]).map((b) => [b.kennzeichen, b]));
+    const kz = new Map<string, any>((daten.kennzahlen as any[]).map((k) => [k.kennzeichen, k]));
+    expect([...kz.keys()]).toEqual(['KZ-0001', 'KZ-0002', 'KZ-0003', 'KZ-0004', 'KZ-0005']);
+    expect(bz.get('BZ-6').oktober_2026_wert + bz.get('BZ-7').oktober_2026_wert).toBe(bz.get('BZ-2').oktober_2026_wert);
+    const vier = (x: number): number => Math.round(x * 10000) / 10000;
+    const flaecheAm = (gebaeude: string, tag: string): number | null =>
+      ((daten.gebaeude as any[]).find((g) => g.kennzeichen === gebaeude)?.bezugsflaechen as any[] ?? [])
+        .find((f) => giltAm(f, tag))?.flaeche_m2 ?? null;
+    const fehler: string[] = [];
+    for (const k of kz.values()) {
+      if (k.rechenform === 'zusammenfassung') {
+        const paare = (k.paare as string[]).map((p) => kz.get(p));
+        const z = paare.reduce((s, p) => s + p.oktober_2026_zaehler, 0);
+        const n = paare.reduce((s, p) => s + p.oktober_2026_nenner, 0);
+        if (z !== k.oktober_2026_zaehler || n !== k.oktober_2026_nenner) {
+          fehler.push(`${k.kennzeichen}: Zähler und Nenner sind nicht die Summen der Paare`);
+        }
+        if (k.mittel_ungewichtet_nicht_gebildet === k.oktober_2026_wert) {
+          fehler.push(`${k.kennzeichen}: der Wert ist die Zahl, die nicht entstehen darf`);
+        }
+      } else {
+        const soll = k.nenner_ort ? flaecheAm(k.nenner_ort, '2026-10-31') : bz.get(k.nenner).oktober_2026_wert;
+        if (soll !== k.oktober_2026_nenner) fehler.push(`${k.kennzeichen}: Nenner ist nicht der Wert von ${k.nenner}`);
+      }
+      const wert = vier(k.oktober_2026_zaehler / k.oktober_2026_nenner);
+      if (wert !== k.oktober_2026_wert) fehler.push(`${k.kennzeichen}: ${wert}, nicht ${k.oktober_2026_wert}`);
+    }
+    expect(fehler).toEqual([]);
+    expect(daten.kennzahl_beispiel.ergebnis).toBe(Math.round(kz.get('KZ-0004').oktober_2026_wert * 100) / 100);
   });
 });

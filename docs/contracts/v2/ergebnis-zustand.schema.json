@@ -8,7 +8,7 @@
   "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "mengen_herkunft", "fassung", "befunde", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
-    "schema_version": { "type": "string", "const": "1.8", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "schema_version": { "type": "string", "const": "1.9", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
     "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
@@ -70,6 +70,47 @@
           "anfang": { "type": "string", "minLength": 1 },
           "wortlaut_mit": { "type": "string", "minLength": 1 }
         }
+      }
+    },
+    "kennzahl_kennzeichen": {
+      "type": "object", "additionalProperties": false,
+      "description": "Seit 1.9 (AP-11 IP-1, E4 Q8): die Kennzeichen-Sätze eines Kennzahl-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge. Die Verbrauchs-Liste `kennzeichen` bleibt unberührt.",
+      "required": ["herkunft", "platzhalter", "saetze", "erbend", "reihenfolge"],
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+        "saetze": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["schluessel", "muster", "platzhalter", "rang", "herkunft", "stelle", "ohne_zahl", "beispiel", "fall"],
+            "properties": {
+              "schluessel": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "muster": { "type": "string", "minLength": 1 },
+              "platzhalter": { "type": "object", "additionalProperties": { "type": "string" } },
+              "rang": { "type": "integer", "minimum": 1 },
+              "herkunft": { "type": "string", "enum": ["eigen", "geerbt", "beides"] },
+              "stelle": { "type": "string", "enum": ["wert", "eingang"] },
+              "ohne_zahl": { "type": "boolean" },
+              "beispiel": { "type": "string", "minLength": 1 },
+              "fall": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "erbend": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["muster", "als", "von", "warum"],
+            "properties": {
+              "muster": { "type": "string", "minLength": 1 },
+              "als": { "type": "string", "minLength": 1 },
+              "von": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["messstelle", "bezugsgroesse", "kennzahl"] } },
+              "warum": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "reihenfolge": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       }
     },
     "verstoesse": {

@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 11 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 13 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -44,6 +44,8 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Bilanzdifferenz](#bilanzdifferenz) — Sicht Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)
 - [Feste Verteilung](#feste-verteilung) — Sicht Organisation · Nachtrag AP-10 §4.6 (E11, E12)
 - [Berechnete Messstelle](#berechnete-messstelle) — Sicht Zustand · Nachtrag AP-10 §4.1 (E1, E5)
+- [Kennzahl](#kennzahl) — Sicht Organisation · Nachtrag AP-11 §4.1 (E1, E2, E5)
+- [Kennzahlvorlage](#kennzahlvorlage) — Sicht Organisation · Nachtrag AP-11 §4.12 (E9)
 
 ## Kundenbereich
 
@@ -660,3 +662,31 @@ Drei Typen: die gewichtete Summe (Terme mit Vorzeichen und Faktor), der Rest (di
 **Heute im Code.** Gebaut ist die gewichtete Summe (`messstelle_formel_term`, `docs/contracts/v2/messstelle-formel.md`). Die Typen `rest` und `saldo` und die Fassungen stehen als Vertrag in `bilanz.md` und in `messstelle-formel.md` §0/§6; den Code ziehen AP-10 IP-3/IP-4 nach.
 
 **Abgrenzung.** Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert).
+
+## Kennzahl
+
+*Sicht: Organisation · Nachtrag AP-11 §4.1 (E1, E2, E5)*
+
+**Ein eigenes Objekt, das Mengen teilt: Menge je Bezugsgröße, Teil am Ganzen oder Summe durch Summe über Kennzahlen — mit Zustand, Richtung, Fassung und Version.**
+
+Eine Kennzahl hat ein Kennzeichen (KZ-0001), genau einen Geltungsbereich, einen Verantwortlichen und einen Zweck. Ihre Berechnung lebt in tagesgültigen Fassungen, ihr Wert je Periode in Versionen. Sie summiert nie selbst (Summen sind Gesamtwerte) und mittelt nie Quotienten: eine Unternehmenszahl aus Gebäuden ist Summe durch Summe. Eine Zahl gibt es nur mit Menge UND Bezugsgröße und einer Bezugsgröße ungleich 0; ist ein Eingang unvollständig, steht die Richtung dabei (mindestens, höchstens).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** KZ-0001 Halle 2 im Oktober 2026: 6 100 kWh ÷ 41 000 Stück = 0,15 kWh je Stück; KZ-0003 Unternehmen: (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,20 kWh je Stück.
+
+**Heute im Code.** Heute nicht vorhanden; das Wort benennt bisher den Aggregat-Schritt der Eigenen Auswertung (AP-11 W7). Die Regeln stehen als Vertrag in `docs/contracts/v2/kennzahl.md` samt Vektoren (`kennzahl-vectors.json`, Zwillinge `uems/KennzahlRegeln` ⟷ `uemsKennzahl.ts`, AP-11 IP-1/IP-3); Tabellen, Rechenlauf und Fläche kommen mit AP-11 IP-4 ff.
+
+**Abgrenzung.** Nicht die Messstelle (die misst oder summiert, sie teilt nicht), nicht der Gesamtwert (eine berechnete Messstelle), nicht die Bezugsgröße (der Nenner), nicht ein Mittelwert.
+
+## Kennzahlvorlage
+
+*Sicht: Organisation · Nachtrag AP-11 §4.12 (E9)*
+
+**Ein Katalog-Eintrag, der das Anlegen einer Kennzahl vorbelegt: Rechenform, Name, Zweck und die Erwartung an Menge und Bezugsgröße.**
+
+Eine Vorlage ist nie selbst eine Kennzahl und hat keine Fassungen. Aus ihr entsteht eine Kennzahl mit neuem Kennzeichen und Fassung 1; Eingänge und Geltungsbereich werden immer neu gebunden. Wer eine bestehende Kennzahl kopiert, übernimmt Form, Name und Zweck ebenso — und bindet ebenso neu.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Aus „Stromeinsatz je Stück — {Geltungsbereich}“ legt Peter Hollerbach KZ-0002 für die Montagehalle Lindach an.
+
+**Heute im Code.** Heute nicht vorhanden. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20); der Katalog `kennzahl-vorlagen.json` kommt mit AP-11 IP-10.
+
+**Abgrenzung.** Nicht die Zuordnungs-Vorlage eines Imports (die deutet eine Datei), nicht eine Kundenvorlage mit eigenen Fassungen (E9, nicht gewählt).

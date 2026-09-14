@@ -233,6 +233,17 @@ Kostenstellen verteilt ist. Nur `cloud` (gerechnet hat das System; die Entscheid
 Kennung ist abgeleitet, eine Wiederholung schreibt nichts. Gelesen werden die Werte über
 `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (Migration `V20260914140000__uems_bilanz_neu_berechnet.sql`).
 
+**Reserviert (AP-11 IP-1, additiv — KEIN Wort des Vokabulars).** Der Block `reserviert` der
+Vektor-Datei nennt, was spätere Pakete anlegen: `correction` mit Bezug `bezugsgroesse` (AP-09 IP-7 —
+eine wirksame Fassung ≥ 2 oder die Rücknahme eines Bezugsgrößen-Werts; gelesen vom Nenner-Auslöser der
+Kennzahl-Kaskade AP-11 IP-9, der NUR Kennzahlen und Berichte neu bildet, keine Messreihen-Stufe) und
+`kennzahl_neu_gebildet` (Urheber `cloud`, Bezug die Kennzahl; AP-11 IP-6 — ein endgültiger Kennzahl-Wert
+wurde als Version n + 1 neu gebildet, Pflicht der Anlass). Bis dahin kennen weder `vokabular.arten` noch
+die Tabelle noch eine Prüfung sie; eine Meldung damit wird abgelehnt. Wer einen Eintrag anlegt, trägt
+ihn in `vokabular.arten` ein (Migration nach dem höchsten ausgelieferten Stand); `KennzahlVectorsTest`
+prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennzahl:
+[`kennzahl.md`](./kennzahl.md).
+
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
 deutsch und Namen aus dem, was die Fläche kennt — etwa „Zählerwechsel am 18.11.2026 10:40:

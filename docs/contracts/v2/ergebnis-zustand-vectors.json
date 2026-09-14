@@ -17,9 +17,10 @@
     "1.6 (AP-08 IP-11, additiv): mengen_herkunft — die Herkunft der Menge steht am Zustandswort, damit „vollständig“ neben „Verlauf 85 %“ lesbar ist (E1 = A: der Zustand der MENGE folgt aus den Periodenständen, die Abdeckung des VERLAUFS steht daneben): „vollständig (Menge aus Zählerständen)“. Nur an vollständig und unvollständig, nur MIT Zahl, nur bei den Herleitungen der Quellenbindung, die einen Zählerstand lesen (zaehlerstand, differenzen); integration spricht schon ihr Kennzeichen „aus Leistung integriert“, ein Momentanwert hat keine Menge, ohne Herleitung (berechnete Messstelle) steht das Wort allein. Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11 — kein neuer Satz, keine neue Regel für den Zustand selbst.",
     "1.7 (AP-08 IP-11, additiv, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind keine vorgesehenen Wörter mehr, sondern die Kennzeichen vorlaeufig und endgueltig — Rang 90, ganz zuletzt: die Fassung sagt über die ganze Zahl, ob sie sich noch ändern kann (wer eine Zahl abrechnet, muss das wissen). Wortlaut = das Wort, wie es kennzeichen_vorgesehen seit 1.0 führte, ohne Datum. Block fassung: das Feld fassung der Route „Werte je Messstelle“ (vorlaeufig · endgueltig) wird GENAU dieses Kennzeichen, null spricht nichts (die Route kennt die Fassung nicht) — nie abgeleitet, nie aus einer anderen Periode. Höchstens EINE Fassung je Liste (zwei = kennzeichen_doppelt). Die Fassung ist NICHT der Zustand (vollständig · unvollständig · keine Werte · mit Ersatzwert): der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist — beide stehen nebeneinander. Gespeichert wird der Satz nirgends; gesprochen von der Tages- und Monatskarte für die gezeigte Periode, immer, in beiden Fällen.",
     "1.8 (Katalog-Einheiten, additiv, firstmate 14.09.2026): Scheinarbeit hat eine EIGENE Anzeige-Einheit — VAh und kVAh werden kVAh (Stellen wie kWh), nie als kWh getarnt: Scheinarbeit ist nicht in Wirkarbeit umrechenbar. Wmin (Wirkarbeit in Wattminuten, Shelly Gen1) wird kWh mit dem neuen, optionalen teiler 60000 — 1/60000 ist kein endlicher Dezimalfaktor, darum rechnet menge() wert × faktor ÷ teiler und rundet den EXAKTEN Quotienten kaufmännisch. „0,1 kWh“ ist KEINE Einheit, sondern eine Einheit mit eingebackenem Faktor; der Faktor gehört an die Skalierung des Katalogs und die Einheit bleibt einheit_unbekannt.",
-    "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
+    "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert.",
+    "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist."
   ],
-  "schema_version": "1.8",
+  "schema_version": "1.9",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -386,6 +387,409 @@
       "wortlaut_mit": "AP-09 (Ablesungen einer Messstelle ohne Datenquelle, F17)"
     }
   ],
+  "kennzahl_kennzeichen": {
+    "herkunft": "UEMS AP-11 §4.7 (Q2, Q3, Q5, Q8, Q9), §4.9 (V2, V5), §4.11 (G3), §7 Vokabular `kennzeichen_neu` — Entscheid E4 vom 14.09.2026, IP-1. Gesprochen von uems/KennzahlRegeln ⟷ uemsKennzahl.ts gegen kennzahl-vectors.json.",
+    "platzhalter": {
+      "datum": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+      "text": ".+",
+      "bezeichnung": "(?!Berechnung\\b).+",
+      "objekt": "(?:MS-[0-9]{2,}|BZ-[0-9]+|KZ-[0-9]{4,})",
+      "geltung": "(?:U|[A-Z]{1,2}-[0-9]+|[0-9]{4})",
+      "ganzzahl": "(?:0|[1-9][0-9]*)",
+      "ganzzahl_ab_2": "(?:[2-9]|[1-9][0-9]+)",
+      "wort": "(?:Gebäuden|Standorten|Bereichen|Prozessen|Kostenstellen|Messstellen|Kennzahlen|Tagen|Wochen|Monaten|Jahren|Systemen)"
+    },
+    "saetze": [
+      {
+        "schluessel": "berechnet_kennzahl",
+        "muster": "berechnet (Kennzahl)",
+        "platzhalter": {},
+        "rang": 10,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "berechnet (Kennzahl)",
+        "fall": "K1"
+      },
+      {
+        "schluessel": "enthaelt_berechnet",
+        "muster": "enthält berechnet ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 20,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "enthält berechnet (Summe)",
+        "fall": "K4"
+      },
+      {
+        "schluessel": "enthaelt_verteilt",
+        "muster": "enthält verteilt ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 21,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "enthält verteilt (70 % von MS-07)",
+        "fall": "K5"
+      },
+      {
+        "schluessel": "gewichtet",
+        "muster": "gewichtet (Summe ÷ Summe)",
+        "platzhalter": {},
+        "rang": 30,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "gewichtet (Summe ÷ Summe)",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "untergrenze",
+        "muster": "Untergrenze — Menge unvollständig ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Untergrenze — Menge unvollständig (MS-16 fehlt)",
+        "fall": "K10"
+      },
+      {
+        "schluessel": "obergrenze",
+        "muster": "Obergrenze — Bezugsgröße unvollständig ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Obergrenze — Bezugsgröße unvollständig (Ladezeit: 1 h ohne Statuswerte)",
+        "fall": "K11"
+      },
+      {
+        "schluessel": "richtung_unbestimmt",
+        "muster": "Richtung unbestimmt — Menge und Bezugsgröße unvollständig",
+        "platzhalter": {},
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Richtung unbestimmt — Menge und Bezugsgröße unvollständig",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "nenner_null",
+        "muster": "Nenner 0 ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 41,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Nenner 0 (BZ-7 August 2027: 0 Stück)",
+        "fall": "K9"
+      },
+      {
+        "schluessel": "ab",
+        "muster": "ab {datum}",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "rang": 50,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "ab 15.10.2026",
+        "fall": "K2"
+      },
+      {
+        "schluessel": "mit_ersatzwert",
+        "muster": "mit Ersatzwert ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 51,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "stammdatum_geaendert",
+        "muster": "{bezeichnung} geändert am {datum} ({wechsel})",
+        "platzhalter": {
+          "bezeichnung": "bezeichnung",
+          "datum": "datum",
+          "wechsel": "text"
+        },
+        "rang": 52,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Fläche geändert am 01.01.2027 (3.100 → 3.400 m²)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "berechnung_geaendert_am",
+        "muster": "Berechnung geändert am {datum} (Fassung {von} → {nach})",
+        "platzhalter": {
+          "datum": "datum",
+          "von": "ganzzahl",
+          "nach": "ganzzahl_ab_2"
+        },
+        "rang": 55,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Berechnung geändert am 15.03.2027 (Fassung 1 → 2)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "x_von_y",
+        "muster": "{mit} von {gesamt} {wort}",
+        "platzhalter": {
+          "mit": "ganzzahl",
+          "gesamt": "ganzzahl",
+          "wort": "wort"
+        },
+        "rang": 60,
+        "herkunft": "beides",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "2 von 2 Gebäuden",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "x_von_y_fehlt",
+        "muster": "{mit} von {gesamt} {wort} ({fehlt})",
+        "platzhalter": {
+          "mit": "ganzzahl",
+          "gesamt": "ganzzahl",
+          "wort": "wort",
+          "fehlt": "text"
+        },
+        "rang": 60,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "1 von 2 Gebäuden (KZ-0002 fehlt)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "ab_mit_geltung",
+        "muster": "{geltung} ab {datum}",
+        "platzhalter": {
+          "geltung": "geltung",
+          "datum": "datum"
+        },
+        "rang": 70,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "G-5 ab 15.10.2026",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "unplausibel_ueber_100",
+        "muster": "unplausibel (über 100 %)",
+        "platzhalter": {},
+        "rang": 80,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "unplausibel (über 100 %)",
+        "fall": "K15"
+      },
+      {
+        "schluessel": "unplausibel_negativ",
+        "muster": "unplausibel (negativ)",
+        "platzhalter": {},
+        "rang": 80,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "unplausibel (negativ)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "eingang_ausserhalb",
+        "muster": "Eingang {objekt} seit {datum} außerhalb von {name}",
+        "platzhalter": {
+          "objekt": "objekt",
+          "datum": "datum",
+          "name": "text"
+        },
+        "rang": 81,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Eingang MS-08 seit 01.03.2027 außerhalb von Halle 1",
+        "fall": "K22"
+      },
+      {
+        "schluessel": "bezugsgroesse_archiviert",
+        "muster": "Bezugsgröße archiviert ({objekt})",
+        "platzhalter": {
+          "objekt": "objekt"
+        },
+        "rang": 82,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Bezugsgröße archiviert (BZ-3)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "eingang_archiviert",
+        "muster": "Eingang archiviert ({objekt})",
+        "platzhalter": {
+          "objekt": "objekt"
+        },
+        "rang": 82,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Eingang archiviert (KZ-0002)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "korrigiert",
+        "muster": "korrigiert (Version {version})",
+        "platzhalter": {
+          "version": "ganzzahl_ab_2"
+        },
+        "rang": 90,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "korrigiert (Version 2)",
+        "fall": "K6"
+      },
+      {
+        "schluessel": "berechnung_geaendert",
+        "muster": "Berechnung geändert (Fassung {fassung})",
+        "platzhalter": {
+          "fassung": "ganzzahl_ab_2"
+        },
+        "rang": 90,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Berechnung geändert (Fassung 2)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "nenner_zurueckgenommen",
+        "muster": "Nenner zurückgenommen ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 91,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Nenner zurückgenommen (BZ-1 Oktober 2026)",
+        "fall": "K19"
+      },
+      {
+        "schluessel": "stichtag",
+        "muster": "Stichtag {datum}",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "rang": 100,
+        "herkunft": "eigen",
+        "stelle": "eingang",
+        "ohne_zahl": false,
+        "beispiel": "Stichtag 31.10.2026",
+        "fall": "K12"
+      }
+    ],
+    "erbend": [
+      {
+        "muster": "^berechnet \\((?!Kennzahl\\)$).+\\)$",
+        "als": "enthält {0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Ein Gesamtwert (berechnete Messstelle, AP-10) als Menge: die Kennzahl ENTHÄLT eine Rechnung, sie ist keine (§4.4, Q8)."
+      },
+      {
+        "muster": "^verteilt \\(.+\\)$",
+        "als": "enthält {0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Wie AP-10 `kennzeichen_erbend`: ein verteilter Anteil bleibt an jeder Zahl sichtbar, die ihn enthält."
+      },
+      {
+        "muster": "^enthält (?:berechnet|verteilt) \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Ein Gesamtwert, der schon „enthält …“ sagt (MS-20), reicht den Satz unverändert weiter (K5)."
+      },
+      {
+        "muster": "^ab \\d{2}\\.\\d{2}\\.\\d{4}$",
+        "als": "{0}",
+        "von": [
+          "messstelle",
+          "bezugsgroesse"
+        ],
+        "warum": "P4: die Periode gilt erst ab dem Bestehen des Eingangs — kein Fehlbestand (K2)."
+      },
+      {
+        "muster": "^ab \\d{2}\\.\\d{2}\\.\\d{4}$",
+        "als": "{geltung} {0}",
+        "von": [
+          "kennzahl"
+        ],
+        "warum": "Q8: aus einer Kennzahl mit dem Geltungsobjekt davor — „G-5 ab 15.10.2026“ (K3)."
+      },
+      {
+        "muster": "^mit Ersatzwert \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "AP-08 E7: ein Ersatzwert bleibt an jeder Zahl sichtbar, die ihn enthält."
+      },
+      {
+        "muster": "^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse"
+        ],
+        "warum": "AP-09 S3: ändert sich ein Stammdatum in der Periode, nennt sie den Übergang — gelesen wird trotzdem nur der Stichtag."
+      },
+      {
+        "muster": "^\\d+ von \\d+ Systemen$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "AP-10: ein Gesamtwert, dem Systeme fehlen, sagt es; die Kennzahl verschweigt es nicht (K10)."
+      }
+    ],
+    "reihenfolge": [
+      "Der Rang steigt in einer Liste nie; Sätze gleichen Rangs stehen in der Folge, in der sie entstehen (Menge vor Bezugsgröße, Paare in ihrer Reihenfolge).",
+      "Ein Satz steht höchstens einmal — derselbe geerbte Satz aus zwei Eingängen einmal.",
+      "Ohne Zahl stehen nur die Sätze mit `ohne_zahl: true` da: nie „berechnet (Kennzahl)“ und nichts Geerbtes (K8, K9, K19).",
+      "Eine gröbere Periode aus ihren Teilperioden ersetzt jedes „ab …“ der Teile (auch mit Geltungsobjekt) durch ihr eigenes und behält einen geerbten Satz „x von y …“ nur, wenn er in JEDER Teilperiode gleich lautet (K14).",
+      "`stelle: eingang` heißt: der Satz steht nur am Eingang der Herkunft, nie in der Liste des Werts („Stichtag 31.10.2026“, K12)."
+    ]
+  },
   "verstoesse": [
     "zustand_unbekannt",
     "einheit_unbekannt",

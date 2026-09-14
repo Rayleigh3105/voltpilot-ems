@@ -81,6 +81,8 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`verteilung.md`](./verteilung.md) + [`verteilung-vectors.json`](./verteilung-vectors.json) + [`verteilung.schema.json`](./verteilung.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`netzanschluss.md`](./netzanschluss.md) + [`netzanschluss-vectors.json`](./netzanschluss-vectors.json) + [`netzanschluss.schema.json`](./netzanschluss.schema.json) | Schema, Regeln und gemeinsame Testvektoren. |
 | [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md) + [`bilanzwert-herkunft.schema.json`](./bilanzwert-herkunft.schema.json) + [`bilanzwert-herkunft-vectors.json`](./bilanzwert-herkunft-vectors.json) | Schema, Regeln und gemeinsame Testvektoren; seit 1.1 die Ableitung der Routen aus gespeicherten Zeilen. |
+| [`kennzahl.md`](./kennzahl.md) + [`kennzahl-vectors.json`](./kennzahl-vectors.json) + [`kennzahl.schema.json`](./kennzahl.schema.json) | Schema, Regeln und gemeinsame Testvektoren der Kennzahl (AP-11): Rechenformen, Perioden, Einheiten, Qualität, Summe ÷ Summe, Geltung. |
+| [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + [`kennzahlwert-herkunft.schema.json`](./kennzahlwert-herkunft.schema.json) | Schema und Regeln der Herkunft eines Kennzahl-Werts; die Fälle stehen in `kennzahl-vectors.json`. |
 
 ## Ergänzende Entscheidungen
 

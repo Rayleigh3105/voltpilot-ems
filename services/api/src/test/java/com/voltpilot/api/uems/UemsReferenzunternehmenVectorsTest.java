@@ -4,22 +4,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.Rueckwirkung;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungEingang;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.RueckwirkungErgebnis;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.DynamicTest;
@@ -108,6 +117,9 @@ class UemsReferenzunternehmenVectorsTest {
         assertThat(d.get("datenquellen")).as("Datenquellen").hasSize(7);
         assertThat(d.get("geraete")).as("Geräte").hasSize(10);
         assertThat(d.get("messstellen")).as("Messstellen").hasSize(22);
+        // Fassung 1.3 (AP-11 E13): BZ-6 und BZ-7 als Gebäude-Stückzahlen, fünf Kennzahlen.
+        assertThat(d.get("bezugsgroessen")).as("Bezugsgrößen").hasSize(7);
+        assertThat(d.get("kennzahlen")).as("Kennzahlen").hasSize(5);
 
         // Boxen, Komponenten und Kostenstellen tragen auch Objekte, die erst
         // NACH der Momentaufnahme entstehen (Nachfolger-Box E-2′, Energiekarte
@@ -1178,12 +1190,170 @@ class UemsReferenzunternehmenVectorsTest {
         return out;
     }
 
+    // ------------------------------------------------------- Fassung 1.3 (AP-11 IP-2, E13)
+
+    /**
+     * Der Fingerabdruck der Fassung 1.2, {@link #kanonisch} geschrieben und aus {@code origin/uems}
+     * vor AP-11 IP-2 berechnet (14.09.2026). Der TS-Zwilling trägt denselben Wert.
+     */
+    static final String FASSUNG_1_2_SHA256 = "33d0893e68193b0503b2dfcd6903e1f5743fb53f6ff49019a52221c0d73d25bd";
+
+    /** So viele Zeilen hatte {@code _comment} in Fassung 1.2 — Fassung 1.3 hängt nur an. */
+    static final int KOMMENTAR_ZEILEN_1_2 = 64;
+
+    /**
+     * Diff-Test (AP-11 IP-2): nimmt man GENAU die Zusätze der Fassung 1.3 heraus — BZ-6 und BZ-7, den
+     * Block {@code kennzahlen}, die Zeile der Zeitachse vom 03.11.2026, die Herkunft {@code fassung_1_3}
+     * und die angehängten Kommentarzeilen — und setzt Fassung und Stand zurück, ist die Datei Zeichen für
+     * Zeichen die Fassung 1.2. Kein Feld hat seinen Wert geändert, keins ist verschwunden.
+     */
+    @Test
+    void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        assertThat(d.path("version").asText()).isEqualTo("1.3");
+        d.put("version", "1.2");
+        d.put("stand", "2026-09-12");
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).as("_comment wächst nur hinten").isGreaterThan(KOMMENTAR_ZEILEN_1_2);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_2) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_3")).as("_herkunft.fassung_1_3").isNotNull();
+        entferne((ArrayNode) d.get("bezugsgroessen"),
+                b -> List.of("BZ-6", "BZ-7").contains(b.path("kennzeichen").asText()), 2);
+        assertThat(d.remove("kennzahlen")).as("kennzahlen").isNotNull();
+        entferne((ArrayNode) d.get("zeitachse"),
+                z -> z.path("zeitpunkt").asText().equals("2026-11-03T00:00:00+01:00")
+                        && z.path("herkunft").asText().startsWith("AP-11"), 1);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.2").isEqualTo(FASSUNG_1_2_SHA256);
+    }
+
+    /**
+     * Fassung 1.3: BZ-6 + BZ-7 = BZ-2; jede Kennzahl rechnet ihren Oktoberwert aus den Werten, auf die
+     * ihre Kennzeichen zeigen (beim Stammdatum die Fläche am letzten Tag); eine Zusammenfassung ist
+     * Summe durch Summe ihrer Paare und nie die festgehaltene Zahl, die NICHT entsteht;
+     * {@code kennzahl_beispiel} ist KZ-0004 auf 2 Stellen.
+     */
+    @Test
+    void dieKennzahlenDerFassung13RechnenAusIhrenKennzeichen() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> bz = new LinkedHashMap<>();
+        kinder(d.get("bezugsgroessen")).forEach(b -> bz.put(b.get("kennzeichen").asText(), b));
+        Map<String, JsonNode> kz = new LinkedHashMap<>();
+        kinder(d.get("kennzahlen")).forEach(k -> kz.put(k.get("kennzeichen").asText(), k));
+        assertThat(kz.keySet()).containsExactly("KZ-0001", "KZ-0002", "KZ-0003", "KZ-0004", "KZ-0005");
+        assertThat(bz.get("BZ-6").get("oktober_2026_wert").decimalValue()
+                .add(bz.get("BZ-7").get("oktober_2026_wert").decimalValue()))
+                .as("BZ-6 + BZ-7 = BZ-2")
+                .isEqualByComparingTo(bz.get("BZ-2").get("oktober_2026_wert").decimalValue());
+
+        List<String> fehler = new ArrayList<>();
+        for (JsonNode k : kz.values()) {
+            String name = k.get("kennzeichen").asText();
+            BigDecimal zaehler = k.get("oktober_2026_zaehler").decimalValue();
+            BigDecimal nenner = k.get("oktober_2026_nenner").decimalValue();
+            BigDecimal gespeichert = k.get("oktober_2026_wert").decimalValue();
+            if ("zusammenfassung".equals(k.get("rechenform").asText())) {
+                BigDecimal summeZ = BigDecimal.ZERO;
+                BigDecimal summeN = BigDecimal.ZERO;
+                for (JsonNode p : kinder(k.get("paare"))) {
+                    summeZ = summeZ.add(kz.get(p.asText()).get("oktober_2026_zaehler").decimalValue());
+                    summeN = summeN.add(kz.get(p.asText()).get("oktober_2026_nenner").decimalValue());
+                }
+                if (summeZ.compareTo(zaehler) != 0 || summeN.compareTo(nenner) != 0) {
+                    fehler.add(name + ": Zähler und Nenner sind nicht die Summen der Paare");
+                }
+                if (k.hasNonNull("mittel_ungewichtet_nicht_gebildet")
+                        && k.get("mittel_ungewichtet_nicht_gebildet").decimalValue().compareTo(gespeichert) == 0) {
+                    fehler.add(name + ": der Wert ist die Zahl, die nicht entstehen darf");
+                }
+            } else {
+                BigDecimal soll = k.hasNonNull("nenner_ort")
+                        ? flaecheAm(d, k.get("nenner_ort").asText(), LocalDate.of(2026, 10, 31))
+                        : bz.get(k.get("nenner").asText()).get("oktober_2026_wert").decimalValue();
+                if (soll == null || soll.compareTo(nenner) != 0) {
+                    fehler.add(name + ": Nenner " + nenner + " ist nicht der Wert von " + k.get("nenner").asText());
+                }
+            }
+            BigDecimal wert = zaehler.divide(nenner, 4, RoundingMode.HALF_UP);
+            if (wert.compareTo(gespeichert) != 0) {
+                fehler.add(name + ": " + zaehler + " ÷ " + nenner + " = " + wert + ", nicht " + gespeichert);
+            }
+        }
+        assertThat(fehler).isEmpty();
+        assertThat(d.at("/kennzahl_beispiel/ergebnis").decimalValue())
+                .as("kennzahl_beispiel = round(KZ-0004, 2)")
+                .isEqualByComparingTo(kz.get("KZ-0004").get("oktober_2026_wert").decimalValue()
+                        .setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private static BigDecimal flaecheAm(JsonNode d, String gebaeude, LocalDate tag) {
+        for (JsonNode g : kinder(d.get("gebaeude"))) {
+            if (!g.get("kennzeichen").asText().equals(gebaeude)) {
+                continue;
+            }
+            for (JsonNode f : kinder(g.get("bezugsflaechen"))) {
+                LocalDate ab = LocalDate.parse(f.get("gueltig_ab").asText());
+                LocalDate bis = f.hasNonNull("gueltig_bis") ? LocalDate.parse(f.get("gueltig_bis").asText()) : null;
+                if (!tag.isBefore(ab) && (bis == null || !tag.isAfter(bis))) {
+                    return f.get("flaeche_m2").decimalValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void entferne(ArrayNode liste, Predicate<JsonNode> weg, int erwartet) {
+        int entfernt = 0;
+        for (int i = liste.size() - 1; i >= 0; i--) {
+            if (weg.test(liste.get(i))) {
+                liste.remove(i);
+                entfernt++;
+            }
+        }
+        assertThat(entfernt).as("Zusätze der Fassung 1.3").isEqualTo(erwartet);
+    }
+
+    private static final ObjectMapper KANON = new ObjectMapper();
+
+    /** Kanonisch: Schlüssel sortiert, kein Leerraum, Zahlen ohne nachgestellte Nullen („46.0“ → „46“). */
+    static String kanonisch(JsonNode n) throws Exception {
+        if (n.isObject()) {
+            List<String> namen = new ArrayList<>();
+            n.fieldNames().forEachRemaining(namen::add);
+            Collections.sort(namen);
+            List<String> teile = new ArrayList<>();
+            for (String name : namen) {
+                teile.add(KANON.writeValueAsString(name) + ":" + kanonisch(n.get(name)));
+            }
+            return "{" + String.join(",", teile) + "}";
+        }
+        if (n.isArray()) {
+            List<String> teile = new ArrayList<>();
+            for (JsonNode e : n) {
+                teile.add(kanonisch(e));
+            }
+            return "[" + String.join(",", teile) + "]";
+        }
+        if (n.isNumber()) {
+            return n.decimalValue().stripTrailingZeros().toPlainString();
+        }
+        if (n.isTextual()) {
+            return KANON.writeValueAsString(n.asText());
+        }
+        return n.toString();
+    }
+
+    private static String sha256(String text) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+    }
+
     private static void kennzeichenRegister(JsonNode d, Map<String, String> reg,
             List<String> fehler) {
         merke(reg, fehler, "unternehmen", d.at("/unternehmen/kennzeichen").asText());
         for (String s : List.of("standorte", "gebaeude", "bereiche", "prozesse", "kostenstellen",
                 "netzanschluesse", "anlagen", "boxen", "datenquellen", "geraete", "komponenten",
-                "messstellen", "bezugsgroessen")) {
+                "messstellen", "bezugsgroessen", "kennzahlen")) {
             for (JsonNode o : kinder(d.get(s))) {
                 merke(reg, fehler, s, o.get("kennzeichen").asText());
             }
@@ -1317,10 +1487,40 @@ class UemsReferenzunternehmenVectorsTest {
                 out.add(new Verweis(b.get("kennzeichen").asText() + ".geltung",
                         b.get("geltung").asText(), "prozesse"));
             }
+            // Fassung 1.3 (AP-11 E13): die Gebäude-Stückzahlen BZ-6 und BZ-7.
+            if ("gebaeude".equals(b.get("geltung_art").asText()) && b.hasNonNull("geltung")) {
+                out.add(new Verweis(b.get("kennzeichen").asText() + ".geltung",
+                        b.get("geltung").asText(), "gebaeude"));
+            }
             // Fassung 1.2 (AP-09 E1/W5): eine Bezugsgröße kann an einer Messstelle hängen.
             if (b.hasNonNull("messstelle")) {
                 out.add(new Verweis(b.get("kennzeichen").asText() + ".messstelle",
                         b.get("messstelle").asText(), "messstellen"));
+            }
+        }
+        // Fassung 1.3 (AP-11 E13): eine Kennzahl verweist NUR über Kennzeichen — auf ihre Menge, ihre
+        // Bezugsgröße (beim Stammdatum mit dem Gebäude), ihre Paare, ihr Geltungsobjekt und die Person.
+        Map<String, String> geltungGattung = Map.of("unternehmen", "unternehmen", "standort", "standorte",
+                "gebaeude", "gebaeude", "bereich", "bereiche", "prozess", "prozesse",
+                "kostenstelle", "kostenstellen", "messstelle", "messstellen");
+        for (JsonNode k : kinder(d.get("kennzahlen"))) {
+            String kz = k.get("kennzeichen").asText();
+            out.add(new Verweis(kz + ".geltung", k.get("geltung").asText(),
+                    geltungGattung.get(k.get("geltung_art").asText())));
+            out.add(new Verweis(kz + ".verantwortlich", k.get("verantwortlich").asText(), "personen"));
+            if (k.hasNonNull("zaehler")) {
+                out.add(new Verweis(kz + ".zaehler", k.get("zaehler").asText(), "messstellen"));
+            }
+            if (k.hasNonNull("nenner")) {
+                out.add(new Verweis(kz + ".nenner", k.get("nenner").asText(), "bezugsgroessen"));
+            }
+            if (k.hasNonNull("nenner_ort")) {
+                out.add(new Verweis(kz + ".nenner_ort", k.get("nenner_ort").asText(), "gebaeude"));
+            }
+            if (k.hasNonNull("paare")) {
+                for (JsonNode p : kinder(k.get("paare"))) {
+                    out.add(new Verweis(kz + ".paar", p.asText(), "kennzahlen"));
+                }
             }
         }
         // Welcher Elternknoten wem erlaubt ist, prüft jederOrtHaengtZeitgueltigAnSeinemElternknoten.

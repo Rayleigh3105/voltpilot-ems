@@ -1,7 +1,7 @@
 {
-  "version": "1.2",
+  "version": "1.3",
   "beschreibung": "Referenzunternehmen „Kunststoffwerk Ahrenberg GmbH“ — die EINE geteilte Beispiel-Anlagenwelt des Programms Unternehmens-Energiemanagement (UEMS). Alle Folgepakete, Mockups, Abnahmefälle und Tests benutzen DIESE Daten unverändert. Alles ist frei erfunden: kein Bezug zu Pilsting, Herzogau oder SWERK, keine Kennungen aus dem laufenden Stack, keine echten Zählernummern.",
-  "stand": "2026-09-12",
+  "stand": "2026-09-14",
   "_comment": [
     "Diese Datei ist die maschinenlesbare Fassung von AP-00 §4.4 (Referenzunternehmen),",
     "erweitert um die Verfeinerungen aus AP-01…AP-07. Sie wird von ZWEI Zwillingen",
@@ -66,7 +66,23 @@
     "  Die Anteile auf die Kostenstelle 9000 (MS-02, MS-03, MS-04, MS-09) bekommen",
     "  `gueltig_bis: 2026-12-31`: kein Anteil gilt über das Bestehen seines Ziels",
     "  hinaus (Befund AP-10 W8). Nachfolge-Anteile bleiben offen — „nicht verteilt“",
-    "  ist die ehrliche Antwort, nicht ein stilles Umhängen auf 9010/9020."
+    "  ist die ehrliche Antwort, nicht ein stilles Umhängen auf 9010/9020.",
+    "",
+    "FASSUNG 1.3 (14.09.2026) — additiv, aus AP-11 IP-2 (Entscheid E13 = A). Jede",
+    "Angabe der Fassung 1.2 behält ihren Wert — beide Zwillinge prüfen das als",
+    "Diff-Test gegen den Fingerabdruck der Fassung 1.2. Neu sind nur:",
+    "  BEZUGSGRÖSSEN: BZ-6 „Gutteile Montage Halle 2“ (Gebäude G-2, 41 000 Stück im",
+    "  Oktober 2026) und BZ-7 „Gutteile Montage Lindach“ (Gebäude G-5, 7 200 Stück,",
+    "  ab 15.10.2026). Zusammen sind sie genau BZ-2 (48 200 Stück); BZ-2 bleibt,",
+    "  wie sie ist, und nichts wird nach Energie verteilt (AP-11 W6).",
+    "  KENNZAHLEN: der Block `kennzahlen[]` mit KZ-0001 … KZ-0005 — Rechenform,",
+    "  Eingänge NUR über Kennzeichen, Geltungsbereich, Verantwortlicher (Kürzel),",
+    "  Zweck, Einheit als ungekürztes Paar und der Oktoberwert auf 4 Stellen.",
+    "  KZ-0003 fasst KZ-0001 und KZ-0002 als Summe durch Summe zusammen:",
+    "  (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,2012. `mittel_ungewichtet_nicht_gebildet`",
+    "  hält fest, welche Zahl dabei NICHT entsteht (kennzahl.md, Q5).",
+    "  `kennzahl_beispiel` bleibt; sein Ergebnis ist KZ-0004 auf 2 Stellen.",
+    "  ZEITACHSE: am 03.11.2026 entstehen die fünf Kennzahlen, je in Fassung 1."
   ],
   "_herkunft": {
     "grundbestand": "AP-00 §4.4 (data/vp-uems-ap00-fachmodell/referenz.py und report.md §4.4), Captain-Entscheide E1–E12 vom 10.09.2026",
@@ -83,6 +99,7 @@
     "komponenten": "AP-00 §4.4 (E12: eine Komponente je Energiekarte) · Steckplätze und Stromwandler der Energiekarten (AP-05 Erhebungsbogen B1–B3, E4)",
     "messstellen": "AP-00 §4.4 · Hauptgröße + Nebengrößen (AP-04 E1), Kennzeichen-Format (AP-04 E7), elektrische Stellung „Unterzähler von“ (AP-04 E12), zeitgültige führende Quelle (AP-04 §4.2), Kadenz je Quellenbindung und Wertart je Kanal (AP-07 E9/E12), Vergleichsquelle an MS-01 aus der AP-04-Feldtabelle §4.1 (E3) ab dem Zeitpunkt des AP-04-Protokolls 20.11.2026 08:30 — eingetragen von Ines Kaltenbach an MS-01 (das Protokoll nennt MS-06 und Elektro Brunner, dessen Unterstützung erst am 24.11.2026 beginnt; Entscheid firstmate 11.09.2026)",
     "fassung_1_2": "AP-09 IP-2 (W5: `einheit_code`, `periode_code`, `wertart`, `geltung_art`, `messstelle`, BZ-5, `MS-21.ablesungen[]`) und AP-10 IP-2 (E19 = A: MS-22, `tag_2026_10_18_kwh`, MS-04 Laden/Entladen als Zahlen, MS-09 = 54 580, Ende der 9000-Anteile, `formel_typ`) — beide am 12.09.2026 entschieden",
+    "fassung_1_3": "AP-11 IP-2 (E13 = A, 14.09.2026): BZ-6, BZ-7, `kennzahlen[]` KZ-0001 … KZ-0005 und die Zeitachse am 03.11.2026 — die Zahlen sind die der Abnahmefälle K1–K5 und K12 aus dem Konzept AP-11 §7",
     "personen": "AP-00 §4.4 (vier Personen) · vollständiger Personen-Satz mit Rollen, Geltungsbereichen und Unterstützungszugriffen aus AP-03 §4.1",
     "zeitachse": "AP-00 §4.4 · Box-Ausfall Halle 2 am 03.11.2026 mit Rückkehr um 17:30 und Nachlieferung (AP-00 §7.6, AP-06 A2, AP-07 A3), danach Box-Tausch am 04.11.2026 (AP-06 A5), Zählerwechsel-Zeitpunkt (AP-04 E2), Unterstützungszeiträume (AP-03 §4.1), Hardwareblatt-Fassungen und Wandlertausch (AP-05 §4.1)",
     "bewusst_ausgelassen": "Standort ST-3 „Werk Ahrenberg Nord“ (ab 20.02.2027) und die daran hängende Person Sabine Rauch aus AP-03 §4.1 — AP-00 §4.4 führt das Referenzunternehmen mit ZWEI Standorten, und die Abnahme dieses Pakets zählt zwei."
@@ -1009,7 +1026,13 @@
       "oktober_2026_wert": null, "oktober_2026_beschreibung": "Halle 1 4 200 · Halle 2 3 100 · Verwaltung 1 150 · Lagerhalle Lindach 1 800 · Montagehalle Lindach 800 — die Zahlen stehen zeitgültig an den Gebäuden (`gebaeude[].bezugsflaechen`)" },
     { "kennzeichen": "BZ-5", "name": "Ladezeit Ladepunkt Halle 2", "einheit": "h", "einheit_code": "h", "periode": "täglich", "periode_code": "tag", "wertart": "periodenwert",
       "herkunft": "Messkanal K-9 · OCPP-Status „Charging“ (AP-09 §4.9)", "geltung_art": "messstelle", "geltung": null, "messstelle": "MS-14",
-      "oktober_2026_wert": null, "oktober_2026_beschreibung": "keine Werte im Oktober 2026 — der Zustands-Kanal ist noch nicht gebunden; den Tageswert 4,9667 h für den 02.12.2026 rechnet der Abnahmefall B7 in `bezugsdaten-vectors.json`" }
+      "oktober_2026_wert": null, "oktober_2026_beschreibung": "keine Werte im Oktober 2026 — der Zustands-Kanal ist noch nicht gebunden; den Tageswert 4,9667 h für den 02.12.2026 rechnet der Abnahmefall B7 in `bezugsdaten-vectors.json`" },
+    { "kennzeichen": "BZ-6", "name": "Gutteile Montage Halle 2", "einheit": "Stück", "einheit_code": "Stück", "periode": "monatlich", "periode_code": "monat", "wertart": "periodenwert",
+      "herkunft": "manuelle Eingabe (AP-09)", "geltung_art": "gebaeude", "geltung": "G-2", "messstelle": null,
+      "oktober_2026_wert": 41000, "oktober_2026_beschreibung": null },
+    { "kennzeichen": "BZ-7", "name": "Gutteile Montage Lindach", "einheit": "Stück", "einheit_code": "Stück", "periode": "monatlich", "periode_code": "monat", "wertart": "periodenwert",
+      "herkunft": "manuelle Eingabe (AP-09)", "geltung_art": "gebaeude", "geltung": "G-5", "messstelle": null,
+      "oktober_2026_wert": 7200, "oktober_2026_beschreibung": "ab 15.10.2026 (Montage Lindach)" }
   ],
 
   "kennzahl_beispiel": {
@@ -1018,6 +1041,30 @@
     "ergebnis": 0.28,
     "einheit": "kWh/kg"
   },
+
+  "kennzahlen": [
+    { "kennzeichen": "KZ-0001", "name": "Stromeinsatz Montage je Stück — Halle 2", "rechenform": "quotient",
+      "zaehler": "MS-12", "nenner": "BZ-6", "nenner_ort": null, "paare": null, "geltung_art": "gebaeude", "geltung": "G-2", "verantwortlich": "IK",
+      "zweck": "Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.", "einheit": "kWh/Stück",
+      "oktober_2026_zaehler": 6100, "oktober_2026_nenner": 41000, "oktober_2026_wert": 0.1488, "hinweis": "Abnahmefall K1: 6 100 kWh ÷ 41 000 Stück = 0,15 kWh je Stück" },
+    { "kennzeichen": "KZ-0002", "name": "Stromeinsatz Montage je Stück — Montagehalle Lindach", "rechenform": "quotient",
+      "zaehler": "MS-18", "nenner": "BZ-7", "nenner_ort": null, "paare": null, "geltung_art": "gebaeude", "geltung": "G-5", "verantwortlich": "PH",
+      "zweck": "Spezifischer Stromeinsatz der Montagehalle Lindach je Gutteil.", "einheit": "kWh/Stück",
+      "oktober_2026_zaehler": 3600, "oktober_2026_nenner": 7200, "oktober_2026_wert": 0.5, "hinweis": "Abnahmefall K2: 3 600 kWh ÷ 7 200 Stück = 0,50 kWh je Stück, ab 15.10.2026; angelegt aus der Vorlage „Stromeinsatz je Stück“ (K20)" },
+    { "kennzeichen": "KZ-0003", "name": "Stromeinsatz Montage je Stück — Unternehmen", "rechenform": "zusammenfassung",
+      "zaehler": null, "nenner": null, "nenner_ort": null, "paare": ["KZ-0001", "KZ-0002"], "geltung_art": "unternehmen", "geltung": "U", "verantwortlich": "IK",
+      "zweck": "Stromeinsatz der Montage je Gutteil über beide Gebäude, gewichtet (Summe ÷ Summe).", "einheit": "kWh/Stück",
+      "oktober_2026_zaehler": 9700, "oktober_2026_nenner": 48200, "oktober_2026_wert": 0.2012, "mittel_ungewichtet_nicht_gebildet": 0.3244,
+      "hinweis": "Abnahmefall K3: (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,20 kWh je Stück" },
+    { "kennzeichen": "KZ-0004", "name": "Stromeinsatz Spritzguss je kg", "rechenform": "quotient",
+      "zaehler": "MS-20", "nenner": "BZ-1", "nenner_ort": null, "paare": null, "geltung_art": "prozess", "geltung": "P-1", "verantwortlich": "IK",
+      "zweck": "Stromeinsatz des Spritzgusses je kg Granulat — dieselbe Rechnung wie `kennzahl_beispiel`.", "einheit": "kWh/kg",
+      "oktober_2026_zaehler": 88630, "oktober_2026_nenner": 312400, "oktober_2026_wert": 0.2837, "hinweis": "Abnahmefall K5: 88 630 kWh ÷ 312 400 kg = 0,28 kWh je kg" },
+    { "kennzeichen": "KZ-0005", "name": "Netzbezug je m² — Halle 2", "rechenform": "quotient",
+      "zaehler": "MS-10", "nenner": "BZ-4", "nenner_ort": "G-2", "paare": null, "geltung_art": "gebaeude", "geltung": "G-2", "verantwortlich": "IK",
+      "zweck": "Netzbezug der Halle 2 je m² Bezugsfläche — die Fläche am letzten Tag der Periode.", "einheit": "kWh/m²",
+      "oktober_2026_zaehler": 36900, "oktober_2026_nenner": 3100, "oktober_2026_wert": 11.9032, "hinweis": "Abnahmefall K12: 36 900 kWh ÷ 3 100 m² (Fläche von G-2 am 31.10.2026) = 11,90 kWh je m²" }
+  ],
 
   "zuordnungen": [
     { "art": "ort_eltern", "von": "ST-1", "nach": null, "gueltig_ab": "2024-03-12", "gueltig_bis": null, "eingetragen_am": "2026-10-01", "abzeichen": "rückwirkend (933 Tage)", "hinweis": "Bestandsübernahme: automatisch aus der Bestandsanlage AN-1 angelegt, besteht seit deren Beginn — sonst hinge AN-1 an einem Standort, den es nicht gibt (AP-02 E5, §4.4-Protokoll)" },
@@ -1082,6 +1129,7 @@
     { "zeitpunkt": "2026-10-20T10:15:00+02:00", "genauigkeit": "minute", "ereignis": "Momentaufnahme aller Beispielwerte (Momentanleistung)", "herkunft": "AP-00 §4.4" },
     { "zeitpunkt": "2026-10-21T00:00:00+02:00", "genauigkeit": "tag", "ereignis": "VoltPilot-Support (Lena Voss) fragt Unterstützung für ST-1 an, Umfang „Ansehen“; Jonas Wendlinger gewährt sie am selben Tag (Speicher-Diagnose)", "herkunft": "AP-03 §4.1" },
     { "zeitpunkt": "2026-10-29T00:00:00+01:00", "genauigkeit": "minute", "ereignis": "Unterstützung des VoltPilot-Supports endet planmäßig: ihr Enddatum 28.10.2026 gilt einschließlich, der Zugriff endet um 00:00 des Folgetags", "herkunft": "AP-03 §4.1, E6; Entscheid firstmate 11.09.2026 (Enddatum einschließlich)" },
+    { "zeitpunkt": "2026-11-03T00:00:00+01:00", "genauigkeit": "tag", "ereignis": "Ines Kaltenbach legt die Kennzahlen KZ-0001, KZ-0003, KZ-0004 und KZ-0005 an, Peter Hollerbach KZ-0002 aus der Vorlage „Stromeinsatz je Stück“ — jede mit Fassung 1 „gilt seit Beginn“", "herkunft": "AP-11 §7 (K1, K20), E13" },
     { "zeitpunkt": "2026-11-03T14:00:00+01:00", "genauigkeit": "minute", "ereignis": "Ausfall Box Halle 2 (E-2): letzter Herzschlag, die Verbindung ist weg — die Box liest weiter und puffert; ab 14:05 DQ-4/DQ-5 „liefert keine Daten seit 14:00“, MS-10…MS-15 unvollständig — nie 0", "herkunft": "AP-00 §7.6, AP-06 A2, AP-07 A3" },
     { "zeitpunkt": "2026-11-03T17:30:00+01:00", "genauigkeit": "minute", "ereignis": "Box Halle 2 wieder verbunden: erste Lesung 17:31, 17:31–17:34 liefert sie die gepufferten Werte 14:00–17:30 nach (Zustellart „nachgeliefert“) — die Lücke schließt sich, der Tageswert Halle 2 ist vollständig. Elektro Brunner findet die Ursache, ein defektes Netzteil; die Box läuft bis zum Tausch weiter, Ersatzgerät VP-BOX-2027-0090 bestellt", "herkunft": "AP-00 §7.6, AP-06 A2, AP-07 A3, AP-06 §Abnahmefall Box-Tausch" },
     { "zeitpunkt": "2026-11-04T09:20:00+01:00", "genauigkeit": "minute", "ereignis": "Jonas Wendlinger verbindet die neue Box und wählt „als Nachfolger von Box Halle 2“", "herkunft": "AP-06 §Abnahmefall Box-Tausch" },

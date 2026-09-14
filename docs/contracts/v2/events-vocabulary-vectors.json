@@ -1924,6 +1924,30 @@
       "data_gap"
     ]
   },
+  "reserviert": [
+    {
+      "art": "correction",
+      "bezug": "bezugsgroesse",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-09 IP-7 — der Schreibweg der Bezugsgrößen-Werte (Berichtigung als Fassung n + 1, Rücknahme); Aufgabe vp-uems-b09-wert-eingeben",
+      "gelesen_von": "AP-11 IP-9 — der Nenner-Auslöser der Kaskade (`Betroffen.bezugsgroessen`)",
+      "regel": "Eine wirksame Fassung ≥ 2 oder die Rücknahme eines Werts einer Bezugsgröße meldet `correction` mit Bezug `bezugsgroesse` (Kennzeichen BZ-…) und der Periode. Die Kaskade bildet daraufhin NUR Kennzahlen und Berichte neu, keine Messreihen-Stufe (AP-11 E8, W1). Eine Fassung 1 ist keine Korrektur (AP-09 F1/F4).",
+      "bis_dahin": "Reserviert, nicht angelegt: `vokabular.arten`, die Tabelle und die Prüfung kennen den Bezug nicht, eine Meldung damit wird abgelehnt. Legt AP-09 IP-7 ihn an, gilt dessen Eintrag in `vokabular.arten`; diese Reservierung ändert kein Verhalten."
+    },
+    {
+      "art": "kennzahl_neu_gebildet",
+      "bezug": "kennzahl",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-11 IP-6 — der Rechenlauf (Migration dort, Version nach dem höchsten ausgelieferten Stand)",
+      "gelesen_von": "AP-12 — die Revision freigegebener Berichte",
+      "regel": "Der Rechenlauf oder die Kaskade hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet — „korrigiert (Version n)“ nach einem Eingang, „Berechnung geändert (Fassung n)“ nach einer rückwirkenden Fassung. Pflicht ist der Anlass. Vorläufige Werte ziehen ohne Meldung nach (AP-11 V3).",
+      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-11 IP-1."
+    }
+  ],
   "cases": [
     {
       "name": "ausfall-e2-luecke-je-box-offen",

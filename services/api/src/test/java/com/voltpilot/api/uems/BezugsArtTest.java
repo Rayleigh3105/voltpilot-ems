@@ -188,7 +188,7 @@ class BezugsArtTest {
                         .contains("„" + geltung + "“");
             }
         }
-        assertThat(beispiele).as("BZ-1 … BZ-5").containsExactlyInAnyOrderElementsOf(referenz.keySet());
+        assertThat(beispiele).as("BZ-1 … BZ-7").containsExactlyInAnyOrderElementsOf(referenz.keySet());
     }
 
     /** Eine Einheit, die die Art nicht führt, passt nicht — auch wenn sie im Vokabular steht. */

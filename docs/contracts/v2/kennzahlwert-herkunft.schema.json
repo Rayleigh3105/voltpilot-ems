@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/kennzahlwert-herkunft.schema.json",
+  "title": "Herkunft eines Kennzahl-Werts (UEMS AP-11)",
+  "description": "Die Hülle {satz, fehlt} am Wert einer Kennzahl — nach dem Muster von bilanzwert-herkunft. Ein Satz nennt die Kennzahl, ihre Rechenform, die gelesene Definitions-Fassung, die Periode, den Rechenzeitpunkt, die Version samt Anlass und JEDEN Eingang mit dem Wert, den er beim Bilden trug (Version bzw. Fassung), dazu das Ergebnis mit denselben Kennzeichen, die neben der Zahl stehen. Fehlt eine Pflichtangabe, ist der Satz null und `fehlt` nennt jede — nie eine halbe Herkunft. Beträge sind Dezimaltext; null heißt „keine Werte“, nie 0. Gebaut und geprüft von uems/KennzahlRegeln ⟷ uemsKennzahl.ts gegen kennzahl-vectors.json (Regel `herkunft`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["satz", "fehlt"],
+  "properties": {
+    "satz": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/satz" }] },
+    "fehlt": {
+      "type": "array",
+      "description": "Die fehlenden Pflichtangaben — leer genau dann, wenn ein Satz da ist.",
+      "items": { "type": "string", "enum": ["kennzahl", "definition_fassung", "berechnet_am", "eingaenge", "anlass"] }
+    }
+  },
+  "$defs": {
+    "dezimal": { "type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$" },
+    "betrag": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimal" }] },
+    "zustand": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+    "satz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art", "kennzahl", "rechenform", "definition_fassung", "periode", "berechnet_am", "version", "anlass", "eingaenge", "ergebnis"],
+      "properties": {
+        "art": { "type": "string", "const": "kennzahl", "description": "Neben `berechnet` und `verteilt` (bilanzwert-herkunft) die dritte Herkunft eines nicht gemessenen Werts." },
+        "kennzahl": { "type": "string", "minLength": 1, "description": "Kennzeichen der Kennzahl (KZ-0001 …)." },
+        "rechenform": { "type": "string", "enum": ["quotient", "anteil", "zusammenfassung"] },
+        "definition_fassung": { "type": "integer", "minimum": 1, "description": "Die Fassung der Berechnung, die am letzten Tag der Periode galt (V2)." },
+        "periode": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["art", "schluessel"],
+          "properties": {
+            "art": { "type": "string", "enum": ["tag", "woche", "monat", "jahr"] },
+            "schluessel": { "type": "string", "minLength": 4, "description": "2026-10-05 · 2026-W40 · 2026-10 · 2026" }
+          }
+        },
+        "berechnet_am": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$" },
+        "version": { "type": "integer", "minimum": 1, "description": "Die Version des Werts; ab 2 ist `anlass` Pflicht." },
+        "anlass": { "type": ["string", "null"], "description": "Warum neu gebildet wurde — die Korrektur, die Berichtigung oder die Fassung; bei Version 1 leer." },
+        "eingaenge": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/eingang" } },
+        "ergebnis": { "$ref": "#/$defs/ergebnis" }
+      }
+    },
+    "eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rolle", "art", "objekt", "wert", "zaehler", "nenner", "einheit", "zustand", "abdeckung_prozent", "version", "fassung", "kennzeichen"],
+      "properties": {
+        "rolle": { "type": "string", "enum": ["zaehler", "nenner", "paar"], "description": "Menge, Bezugsgröße oder ein Paar einer Zusammenfassung." },
+        "art": { "type": "string", "enum": ["messstelle", "bezugsgroesse", "kennzahl"] },
+        "objekt": { "type": "string", "minLength": 1, "description": "Kennzeichen des Eingangs (MS-12, BZ-6, KZ-0001) — beim Stammdatum ohne eigenes Kennzeichen seine Bezeichnung." },
+        "wert": { "$ref": "#/$defs/betrag" },
+        "zaehler": { "$ref": "#/$defs/betrag", "description": "Nur bei `paar`: der Zähler der Kennzahl in ihrer Version." },
+        "nenner": { "$ref": "#/$defs/betrag", "description": "Nur bei `paar`: der Nenner der Kennzahl in ihrer Version." },
+        "einheit": { "type": "string", "minLength": 1 },
+        "zustand": { "$ref": "#/$defs/zustand" },
+        "abdeckung_prozent": { "$ref": "#/$defs/betrag" },
+        "version": { "type": ["integer", "null"], "description": "Messstelle und Kennzahl: die gelesene Version." },
+        "fassung": { "type": ["integer", "null"], "description": "Bezugsgröße mit Periodenwert: die gelesene Fassung; ein Stammdatum hat keine." },
+        "kennzeichen": { "type": "array", "items": { "type": "string" }, "description": "Die eigenen Kennzeichen des Eingangs — unverändert, auch die, die nicht an die Kennzahl erben." }
+      }
+    },
+    "ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wert", "einheit", "zustand", "richtung", "grund", "abdeckung_prozent", "kennzeichen"],
+      "properties": {
+        "wert": { "$ref": "#/$defs/betrag" },
+        "einheit": { "type": "string", "minLength": 1 },
+        "zustand": { "$ref": "#/$defs/zustand" },
+        "richtung": { "enum": ["untergrenze", "obergrenze", "unbestimmt", null] },
+        "grund": { "enum": [null, "nenner_fehlt", "nenner_null", "zaehler_fehlt", "periode_nicht_zu_ende", "vor_bestehen", "haengt_an_kreis", "eingang_archiviert"] },
+        "abdeckung_prozent": { "$ref": "#/$defs/betrag" },
+        "kennzeichen": { "type": "array", "items": { "type": "string" }, "description": "Genau die Liste, die neben der Zahl steht (Regel 5 von bilanzwert-herkunft)." }
+      }
+    }
+  }
+}

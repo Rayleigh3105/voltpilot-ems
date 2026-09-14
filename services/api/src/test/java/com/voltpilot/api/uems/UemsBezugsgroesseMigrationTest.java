@@ -477,7 +477,7 @@ class UemsBezugsgroesseMigrationTest {
             bezugsgroesse(root, k, kz, bz.path("wertart").asText(), bz.path("einheit_code").asText(), periode, geltung);
         }
         assertThat(root.queryForList("SELECT kennzeichen FROM bezugsgroesse WHERE tenant_id = ? ORDER BY kennzeichen",
-                String.class, k.tenant())).containsExactly("BZ-1", "BZ-2", "BZ-3", "BZ-5");
+                String.class, k.tenant())).containsExactly("BZ-1", "BZ-2", "BZ-3", "BZ-5", "BZ-6", "BZ-7");
         assertThat(root.queryForList("SELECT b.kennzeichen FROM bezugsgroesse b JOIN prozess p ON p.id = b.prozess_id "
                 + "WHERE b.tenant_id = ? ORDER BY b.kennzeichen", String.class, k.tenant()))
                 .containsExactly("BZ-1", "BZ-2", "BZ-3");

@@ -702,6 +702,15 @@ public final class ErgebnisZustand {
         return wert == null ? OHNE_ZAHL : text(wert.setScale(stellen, RoundingMode.HALF_UP), einheit);
     }
 
+    /**
+     * Dieselbe Schreibweise wie {@link #zahl} mit FESTEN Stellen — für eine Einheit, die keine Ebene hat: der Quotient
+     * einer Kennzahl („0,15 kWh je Stück“, AP-11 U4, {@code kennzahl.md}). Additiv seit AP-11 IP-3; die Rundung der
+     * Mengen je Ebene bleibt {@link #zahl}.
+     */
+    public static String zahlMitStellen(BigDecimal wert, int stellen, String einheit) {
+        return wert == null ? OHNE_ZAHL : text(wert.setScale(stellen, RoundingMode.HALF_UP), einheit);
+    }
+
     private static String text(BigDecimal gerundet, String einheit) {
         String klartext = gerundet.abs().toPlainString();
         int punkt = klartext.indexOf('.');
