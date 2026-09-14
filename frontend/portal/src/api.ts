@@ -3071,13 +3071,17 @@ export interface OrtFehler {
     | 'ziel_archiviert'
     | 'flaeche_ungueltig'
     | 'gab_es_noch_nicht'
-    | 'gleiche_flaeche';
+    | 'gleiche_flaeche'
+    // Löschen ohne Historie (IP-15)
+    | 'loeschen_gesperrt';
   message: string;
   feld?: string;
   verweis?: OrtVerweis;
   archiviert_am?: string | null;
   grund?: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt';
   gruende?: ArchivSperrgrund[];
+  /** `loeschen_gesperrt`: was der Ort je getragen hat. */
+  historie?: OrtLoeschGrund[];
 }
 
 // ---- UEMS-Ortsstruktur: Gebäude und Bereiche (AP-02 IP-5) -------------------
@@ -3109,6 +3113,8 @@ export interface OrtsbaumBereich {
    * seiner Bereiche; AP-04 IP-7); 0, wenn keine — `null` nur ohne Messstellen-Quelle.
    */
   messstellenZahl: number | null;
+  /** IP-15: was man heute mit dem Knoten tun kann; `null` mit Stichtag. */
+  aktionen?: OrtAktionen | null;
 }
 
 export interface OrtsbaumGebaeude extends OrtsbaumBereich {
@@ -3132,6 +3138,52 @@ export interface OrtsbaumAmStichtag {
   gebaeudeOhneFlaeche: string[];
   gebaeude: OrtsbaumGebaeude[];
   direktAmStandort: { bereiche: OrtsbaumBereich[]; messstellenZahl: number | null } | null;
+  /** IP-15 (Z3): die am Stichtag archivierten Gebäude und Bereiche dieses Standorts. */
+  archiviert?: OrtsbaumArchivierterOrt[];
+  /** IP-15: was man heute mit dem Standort tun kann (nur `archivieren`); `null` mit Stichtag. */
+  aktionen?: OrtAktionen | null;
+}
+
+/** IP-15: warum ein Ort nicht gelöscht wird (E1); `hat_bezugsgroessen` ergänzt die Datenbank. */
+export type OrtLoeschGrund = 'hat_messstellen' | 'hat_anlagen' | 'hat_flaeche' | 'hat_kinder' | 'hat_bezugsgroessen';
+
+/**
+ * IP-15: was man HEUTE mit einem Knoten tun kann, bevor jemand drückt — dieselben Urteile und
+ * Sätze wie die Schreibrouten. Was nicht zum Knoten gehört, ist `null`.
+ */
+export interface OrtAktionen {
+  archivieren: {
+    erlaubt: boolean;
+    /** Gesperrt: der Satz mit Grund und Weg (Z1). */
+    text: string | null;
+    gruende: ArchivSperrgrund[];
+    /** Erlaubt: der letzte Tag der Zuordnung (gestern). */
+    letzterTag: string | null;
+    mitarchiviert: { id: string; art: 'gebaeude' | 'bereich'; kurzzeichen: string; name: string }[];
+  } | null;
+  wiederherstellen: {
+    erlaubt: boolean;
+    grund: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt' | null;
+    text: string | null;
+    /** Der erste Tag des neuen Intervalls (heute). */
+    ab: string;
+  } | null;
+  loeschen: { erlaubt: boolean; gruende: OrtLoeschGrund[]; text: string | null } | null;
+}
+
+/** IP-15 (Z3): ein am Stichtag archiviertes Gebäude oder ein archivierter Bereich. */
+export interface OrtsbaumArchivierterOrt {
+  id: string;
+  art: 'gebaeude' | 'bereich';
+  kurzzeichen: string;
+  name: string;
+  nutzung: Nutzung[] | null;
+  /** Der Archivtag (ISO-Tag). */
+  archiviertAm: string;
+  /** Der Knoten, an dem der Ort zuletzt hing. */
+  elternId: string;
+  elternArt: 'standort' | 'gebaeude';
+  aktionen: OrtAktionen | null;
 }
 
 /** POST /api/v1/standorte/{id}/orte */
@@ -6481,6 +6533,25 @@ export const api = {
     request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/flaeche`, {
       method: 'PUT',
       body: JSON.stringify(body),
+    }),
+
+  // ---- Archivieren · Wiederherstellen · Löschen (UEMS AP-02 IP-15); eine Ablehnung trägt OrtFehler.
+  ortArchivieren: (ortId: string) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/archivieren`, { method: 'POST' }),
+  /** `name`: das Umbenennen im selben Dialog, wenn der alte Name inzwischen vergeben ist. */
+  ortWiederherstellen: (ortId: string, name?: string) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/wiederherstellen`, {
+      method: 'POST',
+      ...(name ? { body: JSON.stringify({ name }) } : {}),
+    }),
+  /** Nur ohne Historie (E1) — sonst 409 `loeschen_gesperrt`. */
+  ortLoeschen: (ortId: string) => request<void>(`/api/v1/orte/${encodeURIComponent(ortId)}`, { method: 'DELETE' }),
+  standortArchivieren: (id: string) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/archivieren`, { method: 'POST' }),
+  standortWiederherstellen: (id: string, name?: string) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/wiederherstellen`, {
+      method: 'POST',
+      ...(name ? { body: JSON.stringify({ name }) } : {}),
     }),
 
   /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
