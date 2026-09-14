@@ -369,3 +369,31 @@ TS-Zwilling gibt es nicht (`zwillinge_grund.vorschau`).
 - **E14:** die Datei wird nie gespeichert. Die Tabellen `bezugsdaten_import`/`_zeile`/`bezugsdaten_vorlage`
   (V20260914173000) nehmen erst die Übernahme und die Vorlagen auf — Fingerabdruck, Metadaten, je Zeile
   Urteil, Befunde, Schlüssel und der Zeilentext für zwei Jahre.
+
+## 11. Lesart als Nenner (nachgetragen mit AP-11 IP-1 am 14.09.2026)
+
+Eine Kennzahl ([`kennzahl.md`](./kennzahl.md)) liest eine Bezugsgröße als Nenner. Dafür ändert dieser Vertrag
+nichts an Werten, Fassungen oder Befunden — er legt fest, WIE sie gelesen werden:
+
+- **Status → Zustand (AP-11 Q1).** Die wirksame Fassung der Periode ist „vollständig“. Kein wirksamer Wert —
+  nicht eingegeben, nur `vorschlag`, `zurueckgenommen`, `abgelehnt` — ist „keine Werte“ mit Grund `nenner_fehlt`;
+  eine zurückgenommene Fassung nennt zusätzlich „Nenner zurückgenommen (BZ-… <Periode>)“. Ein Wert aus einem
+  Messkanal (§8, B7) trägt seinen Zustand und seine Abdeckung aus AP-08 mit.
+- **Stichtag (E17).** Ein Stammdatum gilt am LETZTEN Tag der Periode — gelesen über `BezugsdatenRegeln.wertAm`.
+  Ändert es sich in der Periode, erbt die Kennzahl den Satz „… geändert am …“ (S3) und rechnet trotzdem nur mit dem
+  Stichtag; ein zeitgewichtetes Mittel gibt es nicht.
+- **Perioden als Wertregel.** Ein Periodenwert wird nie verteilt oder interpoliert (Z2). Eine Kennzahl hat nur die
+  Perioden, in denen die Periode ihres Nenners restlos aufgeht (Tag → Woche · Monat · Jahr, Monat → Jahr; eine Woche
+  geht in nichts auf); sonst `periode_passt_nicht` — dasselbe Wort wie hier. Ein Wochen-Nenner speist nur
+  Wochen-Kennzahlen.
+- **Laufende Periode (Z4).** Ein Periodenwert entsteht erst nach dem Ende seiner Periode; bis dahin ist die Kennzahl
+  „keine Werte“ mit Grund `periode_nicht_zu_ende` — nie eine Hochrechnung. Ein Stammdatum-Nenner gibt einen
+  vorläufigen Wert.
+- **Einheiten (§6.6).** Die Einheit einer Bezugsgröße wird nie umgerechnet; das Einheiten-Paar der Kennzahl spricht
+  sie in der Einzahl („kWh je Person“).
+- **Korrektur des Nenners.** Eine wirksame Fassung ≥ 2 und eine Rücknahme melden `correction` mit Bezug
+  `bezugsgroesse` — im Ereignis-Vokabular reserviert, angelegt vom Schreibweg AP-09 IP-7; die Kaskade der Kennzahl
+  (AP-11 IP-9) bildet daraufhin Version n + 1. Eine Fassung 1 ist keine Korrektur (F1/F4).
+
+Die Fälle stehen in `kennzahl-vectors.json`: K8 (Nenner fehlt), K9 (Nenner 0), K12 (Stichtag), K13 (Periode passt
+nicht), K19 (zurückgenommen), K21 (laufende Periode).

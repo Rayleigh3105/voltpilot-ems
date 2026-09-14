@@ -527,6 +527,13 @@ export const zahl = (wert: Betrag, einheit: string, ebene: string | null): strin
 };
 
 /**
+ * Dieselbe Schreibweise wie `zahl` mit FESTEN Stellen — für eine Einheit ohne Ebene: der Quotient
+ * einer Kennzahl („0,15 kWh je Stück“, AP-11 U4, `kennzahl.md`). Additiv seit AP-11 IP-3.
+ */
+export const zahlMitStellen = (wert: Betrag, stellen: number, einheit: string): string =>
+  wert === null ? OHNE_ZAHL : text(dezRunde(zuDez(wert), stellen), einheit);
+
+/**
  * Die Anzeige-Einheit einer GESPEICHERTEN Einheit (seit 1.3, Ableitung aus E11): gespeichert bleibt,
  * was der Zähler liefert; angezeigt wird kWh · kvarh · kVAh (seit 1.8, nie als kWh) · m³ —
  * „1.482.300 kWh“, nie „1.482,3 MWh“.

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_LEBENSZYKLUS } from './glossar';
+import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 
 /**
@@ -931,5 +932,60 @@ describe('UEMS AP-02 IP-15 · Archivieren, Wiederherstellen und Löschen spreche
       expect(texte.filter((t) => verboten.test(t)), datei).toEqual([]);
     }
     expect(FORBIDDEN_INTERN.some(({ re }) => re.test('Der Grabstein bleibt'))).toBe(true);
+  });
+});
+
+/**
+ * UEMS AP-11 IP-3 — die Sätze der Kennzahl. Ihr Wortlaut steht im Vertrag (`kennzahl-vectors.json`
+ * `saetze`, `ergebnis-zustand-vectors.json` `kennzahl_kennzeichen`), gesprochen von `uemsKennzahl.ts`
+ * ⟷ `KennzahlRegeln.java`. Dieser Abschnitt liest jeden Satz, jedes Kennzeichen-Muster und jeden
+ * erwarteten Kundensatz, jede Anzeige und jedes Kennzeichen der Vektoren gegen die Wörterbücher — und
+ * gegen die Wörter, die auf einer Kennzahl-Fläche nie stehen (§4.13). Ein GEERBTER Satz (etwa
+ * „enthält verteilt (70 % von MS-07)“) gehört seinem Vertrag (AP-10) und wird hier nur auf Wörter
+ * geprüft, nicht auf die Zahlform.
+ */
+describe('UEMS AP-11 IP-3 · die Kennzahl-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vektoren = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/kennzahl-vectors.json'), 'utf8'));
+  const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+
+  const saetze = (): Array<{ wo: string; text: string; eigen: boolean }> => {
+    const out: Array<{ wo: string; text: string; eigen: boolean }> = [];
+    for (const [schluessel, text] of Object.entries(KENNZAHL_SAETZE)) out.push({ wo: `Satz ${schluessel}`, text: ohnePlatz(text), eigen: true });
+    for (const k of KENNZAHL_KENNZEICHEN) out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster), eigen: k.herkunft !== 'geerbt' });
+    for (const fall of vektoren.cases) {
+      for (const p of fall.pruefungen) {
+        for (const t of [p.ergebnis.kundensatz, p.ergebnis.anzeige]) {
+          if (typeof t === 'string') out.push({ wo: `${fall.id} ${p.name}`, text: t, eigen: true });
+        }
+        for (const t of p.ergebnis.kennzeichen ?? []) {
+          out.push({ wo: `${fall.id} Kennzeichen`, text: t, eigen: kennzahlKennzeichen(t)?.herkunft !== 'geerbt' });
+        }
+      }
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(150);
+  });
+
+  it('kein Kennzahl-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text, eigen } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...(eigen ? ERGEBNIS_INTERN : [])]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('keine Kennzahl spricht von KPI, Metrik, Kenngröße, Dashboard, Widget, Template, Durchschnitt oder Mittel (§4.13)', () => {
+    const verboten = new RegExp(`(^|[^\\p{L}])(${KENNZAHL_VERBOTEN.join('|')})([^\\p{L}]|$)`, 'u');
+    expect(saetze().filter(({ text }) => verboten.test(text)).map(({ wo, text }) => `${wo}: ${text}`)).toEqual([]);
+    // …und der Wächter beißt.
+    expect(verboten.test('Durchschnitt je Stück')).toBe(true);
+    expect(verboten.test('KPI Halle 2')).toBe(true);
+    expect(verboten.test('gewichtet (Summe ÷ Summe)')).toBe(false);
   });
 });
