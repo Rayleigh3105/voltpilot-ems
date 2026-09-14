@@ -47,8 +47,8 @@ führenden Bindungen DERSELBEN Reihe ihn ganz decken — ein Zählerwechsel an d
 „keine Werte“), `quelle_teilweise` (Bindung beginnt/endet im Schritt oder zwei Reihen),
 `anteil_nicht_gespeichert` (⚠ Befund: die Speicherklassen tragen den GANZEN Wert der Reihe; MS-01/MS-02
 mit Vorzeichen-Kanal haben hier noch keine Menge), `berechnet` (seit AP-10 IP-10 nur noch Stunde und Formel mit Momentanwert — Viertelstunde/Tag/Monat/Jahr liest eine berechnete Messstelle aus ihrer Spur, `uems-berechnete-periodenwerte.md`), `ohne_menge_gespeichert`
-(endgültiger Tag von vor IP-5), `version_nicht_gespeichert` (`?version=n` ≠ gespeicherte Version;
-frühere Fassungen = IP-18).
+(endgültiger Tag von vor IP-5), `version_nicht_gespeichert` (`?version=n` fehlt an diesem Schritt; seit IP-18 zeigt
+die Route ohne Angabe die neueste Version, `version_nicht_gebildet` an der Stunde — `uems-versionen-lesen.md`).
 
 ## Anfrage
 

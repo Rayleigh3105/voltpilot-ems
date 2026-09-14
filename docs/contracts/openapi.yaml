@@ -9842,7 +9842,7 @@ paths:
       - { name: raster, in: query, required: true, schema: { type: string, enum: [viertelstunde, stunde, tag, monat, jahr] } }
       - { name: von, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Ein Tag (JJJJ-MM-TT, sein Beginn in der Zeitzone des Standorts) oder ein Zeitpunkt mit Versatz - auf einer Grenze des Rasters." }
       - { name: bis, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Ein Tag = der LETZTE Tag einschließlich; ein Zeitpunkt mit Versatz = ausschließlich. Auf einer Grenze des Rasters." }
-      - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Nur Schritte dieser Version tragen eine Zahl; frühere Fassungen liest erst AP-08 IP-18." }
+      - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "AP-08 IP-18: ohne Angabe zeigt jeder Schritt seine NEUESTE Version; mit `version=n` genau Version n - die damalige Zahl (Version 1 = die Zeile der Verdichtung). Fehlt n an einem Schritt, sagt er `version_nicht_gespeichert` und nennt in `versionen` seine neueste; gibt es n an KEINEM Schritt, ist die Anfrage 404 `version_gibt_es_nicht`." }
     get:
       tags: [messstellen]
       summary: Die Werte je Messstelle - Menge bzw. Mittel/Min/Max je Schritt, nie ohne Zustand, Abdeckung und Kennzeichen.
@@ -9862,7 +9862,11 @@ paths:
         Messstelle (AP-10 IP-10) liest Viertelstunde, Tag, Monat und Jahr aus ihrer gespeicherten
         Spur `berechnet` (ohne Rohwerte: `erhalten`/`erwartet`/`quelle` null); ohne Zeile
         `noch_nicht_gebildet`, die Stunde und eine Formel mit Momentanwert weiter `berechnet`.
-        Eine fremde Messstelle ist 404, nie 403.
+        Versionen (AP-08 IP-18): Versionen ab 2 stehen in `messreihe_viertelstunde_version` bzw.
+        `messreihe_periode_version`; ohne `version` zeigt jeder Schritt die neueste, `versionen`
+        zählt sie (die Naht der Portal-Fläche „Versionen“ am Wert). Die Stunde hat keine eigenen
+        Versionen: trägt eine ihrer Viertelstunden eine spätere, sagt sie `version_nicht_gebildet`
+        (mit `version=1` die damalige Stunde). Eine fremde Messstelle ist 404, nie 403.
       responses:
         "200":
           description: Die Werte.
@@ -9871,6 +9875,43 @@ paths:
               schema: { $ref: "#/components/schemas/MessstelleWerte" }
         "400": { $ref: "#/components/responses/MessstelleWerteAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Die Messstelle gibt es nicht (`{message}`) - oder die angefragte Version an keinem Schritt.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/MessstelleWerteVersionGibtEsNicht" }
+                  - { type: object, required: [message], properties: { message: { type: string } } }
+  /api/v1/messstellen/{kennzeichen}/werte/versionen:
+    parameters:
+      - { name: kennzeichen, in: path, required: true, schema: { type: string, example: MS-10 }, description: "Das Kennzeichen, das die Messstelle HEUTE trägt." }
+      - { name: raster, in: query, required: true, schema: { type: string, enum: [viertelstunde, tag, monat, jahr] }, description: "Die Stunde hat keine eigenen Versionen (400 `raster_ohne_versionen`)." }
+      - { name: von, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Wie an `…/werte`." }
+      - { name: bis, in: query, required: true, schema: { type: string, example: "2026-11-03" }, description: "Wie an `…/werte`; `von` und `bis` umfassen GENAU EINEN Schritt (sonst 400 `nicht_genau_eine_periode`)." }
+    get:
+      tags: [messstellen]
+      summary: Die Versions-Historie einer Periode - was vorher dastand, was jetzt, wer es wann warum geändert hat.
+      description: >
+        Recht `messwerte.ansehen` (AP-08 §4.8, keine Durchsetzung bis AP-03). UEMS AP-08 IP-18.
+        Je Version `wert_alt` (Version n − 1) und `wert_neu` (Version n), beide genau so, wie
+        `…/werte?version=` sie zeigt; Version 1 ist die Zahl der Verdichtung ohne Entscheidung.
+        `entscheidungen` sind die Fassungen der Ersatzwerte (`EW-…`) und Korrekturen (`K-…`), die
+        Version n gegenüber n − 1 ausmachen, mit Urheber (`wer`), Zeitpunkt (`wann`) und dem Text,
+        den der Mensch DAZU geschrieben hat (`warum`: an der anlegenden Fassung die Begründung, an
+        Freigabe oder Rücknahme ihr Grund). Fehlt er, ist `warum` null und `fehlt` nennt „warum“ -
+        nie ein erfundener Grund; die anlegende Fassung steht an einer späteren unter `angelegt`.
+        Eine Periode ohne Korrektur hat genau eine Version. Nichts wird gerechnet oder geschrieben.
+        Eine fremde Messstelle ist 404, nie 403.
+      responses:
+        "200":
+          description: Die Historie.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessstelleWerteHistorie" }
+        "400": { $ref: "#/components/responses/MessstelleWerteAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Die Messstelle gibt es nicht. }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/messstellen/{id}/prozesse:
     parameters:
@@ -18893,7 +18934,7 @@ components:
         beides. Ungerundet; gerundet wird nur angezeigt (E11).
       required: [von, bis, beschriftung, stunden, tagesdauer, menge, mittel, min, max, zustand, kennzeichen,
         erhalten, erwartet, abdeckung_prozent, fassung, endgueltig_ab, version, gebildet_aus, quelle, grund, ereignisse,
-        herkunft]
+        herkunft, versionen]
       properties:
         von: { type: string }
         bis: { type: string }
@@ -18911,14 +18952,14 @@ components:
         abdeckung_prozent: { type: integer, nullable: true, description: "Abgeschnitten, nie auf 100 gerundet." }
         fassung: { type: string, nullable: true, enum: [vorlaeufig, endgueltig] }
         endgueltig_ab: { type: string, nullable: true }
-        version: { type: integer, nullable: true }
+        version: { type: integer, nullable: true, description: "Die Version, deren Zahl der Schritt zeigt - ohne Anfrage die neueste (AP-08 IP-18)." }
         gebildet_aus: { type: string, nullable: true, enum: [viertelstunde, zeitraum, tag, monat, jahr] }
         quelle: { type: string, format: uuid, nullable: true, description: "Die Bindung, deren Reihe den Schritt beantwortet." }
         grund:
           type: string
           nullable: true
           enum: [keine_quelle, quelle_teilweise, anteil_nicht_gespeichert, berechnet, noch_nicht_gebildet,
-            ohne_menge_gespeichert, version_nicht_gespeichert]
+            ohne_menge_gespeichert, version_nicht_gespeichert, version_nicht_gebildet]
           description: Warum der Schritt keine Zahl trägt, obwohl die Anfrage gültig ist.
         ereignisse: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteEreignis" } }
         herkunft:
@@ -18926,6 +18967,79 @@ components:
           nullable: true
           description: "AP-10 IP-12: {satz, fehlt} nach bilanzwert-herkunft.schema.json an jeder BERECHNETEN Zahl (Spur berechnet, Eingänge aus bilanzwert_eingang). null = nicht berechnet: ein gemessener Schritt oder einer ohne Zahl (grund gesetzt)."
           additionalProperties: true
+        versionen: { type: integer, nullable: true, description: "AP-08 IP-18, die NAHT der Portal-Fläche „Versionen“ am Wert: wie viele Versionen die Periode hat (ab 2 gibt es eine Historie unter …/werte/versionen). null an der Stunde (keine eigenen Versionen), ohne Reihe und wo nichts gebildet ist." }
+    MessstelleWerteHistorie:
+      type: object
+      description: Die Versions-Historie EINER Periode (AP-08 IP-18). `grund` nur, wenn die Periode keine Versionen hat.
+      required: [messstelle, raster, von, bis, zeitzone, zeitzone_herkunft, grund, versionen]
+      properties:
+        messstelle: { $ref: "#/components/schemas/MessstelleWerteMessstelle" }
+        raster: { type: string, enum: [viertelstunde, tag, monat, jahr] }
+        von: { type: string }
+        bis: { type: string }
+        zeitzone: { type: string }
+        zeitzone_herkunft: { type: string }
+        grund: { type: string, nullable: true, description: "Ein Wort von MessstelleWerteWert.grund - warum die Periode keine Versionen hat." }
+        versionen: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteVersion" } }
+    MessstelleWerteVersion:
+      type: object
+      required: [version, wert_alt, wert_neu, gebildet_am, nachgezogen_am, anlass, entscheidungen]
+      properties:
+        version: { type: integer, minimum: 1 }
+        wert_alt: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteWert" }], nullable: true, description: "Was vorher dastand: Version n − 1 wie …/werte?version=n-1; an Version 1 null." }
+        wert_neu: { $ref: "#/components/schemas/MessstelleWerteWert" }
+        gebildet_am: { type: string, nullable: true, description: "Wann die Zeile geschrieben wurde (Version 1: von der Verdichtung; ohne Zeile null)." }
+        nachgezogen_am: { type: string, nullable: true, description: "Eine vorläufige Version wächst mit ihrer Grundlage (IP-17) - wann zuletzt." }
+        anlass: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteAnlass" }], nullable: true }
+        entscheidungen: { type: array, items: { $ref: "#/components/schemas/MessstelleWerteEntscheidung" } }
+    MessstelleWerteAnlass:
+      type: object
+      required: [kennung, fassung]
+      properties:
+        kennung: { type: string, example: EW-2026-0003 }
+        fassung: { type: integer, minimum: 1 }
+    MessstelleWerteEntscheidung:
+      type: object
+      required: [vorgang, kennung, fassung, status, methode, art, wer, wann, warum, beleg, fehlt, angelegt]
+      properties:
+        vorgang: { type: string, enum: [ersatzwert, korrektur] }
+        kennung: { type: string }
+        fassung: { type: integer, minimum: 1 }
+        status: { type: string, nullable: true }
+        methode: { type: string, nullable: true }
+        art: { type: string, nullable: true }
+        wer: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteUrheber" }], nullable: true }
+        wann: { type: string, nullable: true }
+        warum: { type: string, nullable: true, description: "Der Text dieser Fassung (Begründung bzw. Grund) - null, wenn keiner geschrieben wurde." }
+        beleg: { type: string, nullable: true }
+        fehlt: { type: array, items: { type: string, enum: [warum, fassung] } }
+        angelegt: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteAngelegt" }], nullable: true }
+    MessstelleWerteUrheber:
+      type: object
+      required: [name, rolle, art]
+      properties:
+        name: { type: string }
+        rolle: { type: string, nullable: true }
+        art: { type: string }
+    MessstelleWerteAngelegt:
+      type: object
+      required: [wer, wann, warum, beleg]
+      properties:
+        wer: { $ref: "#/components/schemas/MessstelleWerteUrheber" }
+        wann: { type: string }
+        warum: { type: string, nullable: true }
+        beleg: { type: string, nullable: true }
+    MessstelleWerteVersionGibtEsNicht:
+      type: object
+      description: Die angefragte Version gibt es an keinem Schritt der Anfrage (AP-08 IP-18).
+      required: [code, message, feld, grund, version, hoechste_version]
+      properties:
+        code: { type: string, enum: [version_gibt_es_nicht] }
+        message: { type: string }
+        feld: { type: string, enum: [version] }
+        grund: { type: string, enum: [version_gibt_es_nicht] }
+        version: { type: integer }
+        hoechste_version: { type: integer }
     MessstelleWerteEreignis:
       type: object
       description: Ein Verweis auf eine Meldung des Ereignis-Vertrags - der Inhalt bleibt dort.
@@ -18945,7 +19059,7 @@ components:
         grund:
           type: string
           enum: [fehlt, raster_unbekannt, form, nicht_im_raster, von_nicht_vor_bis, ausserhalb, zu_viele_schritte,
-            version_ungueltig]
+            version_ungueltig, raster_ohne_versionen, nicht_genau_eine_periode]
     MessstelleFormelFehler:
       type: object
       description: >

@@ -94,7 +94,11 @@ public final class MessstelleWerteRegeln {
         /** Mehr Schritte, als eine Antwort trägt. */
         ZU_VIELE_SCHRITTE("zu_viele_schritte"),
         /** Die Version ist keine ganze Zahl ab 1. */
-        VERSION_UNGUELTIG("version_ungueltig");
+        VERSION_UNGUELTIG("version_ungueltig"),
+        /** Die Versions-Historie (AP-08 IP-18) gibt es nur für gespeicherte Perioden — die Stunde ist keine. */
+        RASTER_OHNE_VERSIONEN("raster_ohne_versionen"),
+        /** Die Versions-Historie gilt GENAU EINER Periode; {@code von} und {@code bis} umfassen mehr als eine. */
+        NICHT_GENAU_EINE_PERIODE("nicht_genau_eine_periode");
 
         private final String wort;
 
@@ -163,6 +167,28 @@ public final class MessstelleWerteRegeln {
             }
         }
         return new Form(r, v, b, n);
+    }
+
+    /**
+     * Die Form der Anfrage an die Versions-Historie (AP-08 IP-18): wie {@link #form} ohne {@code version}, und nur für
+     * gespeicherte Perioden — die Stunde hat keine eigenen Versionen.
+     */
+    public static Form historieForm(String raster, String von, String bis) {
+        Form f = form(raster, von, bis, null);
+        if (f.raster() == Raster.STUNDE) {
+            throw ab("raster", Grund.RASTER_OHNE_VERSIONEN, "Die Stunde ist keine gespeicherte Periode und hat keine "
+                    + "eigenen Versionen — Versionen stehen je Viertelstunde, Tag, Monat und Jahr.");
+        }
+        return f;
+    }
+
+    /** Die Periode der Versions-Historie: der Zeitraum hat GENAU EINEN Schritt. */
+    public static Schritt einePeriode(Zeitraum z) {
+        if (z.schritte().size() != 1) {
+            throw ab("bis", Grund.NICHT_GENAU_EINE_PERIODE, "Die Versionen gelten einer Periode — „von“ und „bis“ "
+                    + "umfassen " + z.schritte().size() + " Schritte im Raster „" + z.raster().wort() + "“.");
+        }
+        return z.schritte().get(0);
     }
 
     private static Zeitangabe zeitangabe(String feld, String text) {
@@ -314,8 +340,18 @@ public final class MessstelleWerteRegeln {
          * AP-08 IP-5): sie trägt keine Menge und keinen Zustand und wird nie neu geschrieben.
          */
         OHNE_MENGE_GESPEICHERT("ohne_menge_gespeichert"),
-        /** Die angefragte Version ist für diesen Schritt nicht gespeichert (frühere Fassungen: IP-18). */
-        VERSION_NICHT_GESPEICHERT("version_nicht_gespeichert");
+        /**
+         * Die angefragte Version ist für diesen Schritt nicht gespeichert — {@code versionen} nennt seine neueste
+         * (AP-08 IP-18). Gibt es sie an keinem Schritt der Anfrage, ist die ganze Anfrage abgelehnt
+         * ({@link WertVersionenRegeln.VersionGibtEsNicht}).
+         */
+        VERSION_NICHT_GESPEICHERT("version_nicht_gespeichert"),
+        /**
+         * Die Stunde ist keine Speicherklasse und hat keine eigenen Versionen: eine ihrer Viertelstunden trägt eine
+         * spätere Version, die Stunde aber ist nur aus Version 1 gebildet (AP-08 IP-18) — ihre Zahl wäre die von
+         * damals. Mit {@code version=1} steht sie da; die spätere Zahl je Viertelstunde oder Tag.
+         */
+        VERSION_NICHT_GEBILDET("version_nicht_gebildet");
 
         private final String wort;
 

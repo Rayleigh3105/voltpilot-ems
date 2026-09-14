@@ -80,8 +80,8 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
 
 ## Nicht gebaut
 
-Freigabe-Route und Vier-Augen (IP-15), Portal (IP-16), Versionen lesen/Historie (IP-18 — das Lese-Modell zeigt weiter
-Version 1), Kennzahlen (AP-11) und Berichte (AP-12) nur als Naht, keine Rechte-Durchsetzung.
+Freigabe-Route und Vier-Augen (IP-15), Portal (IP-16), Kennzahlen (AP-11) und Berichte (AP-12) nur als Naht, keine
+Rechte-Durchsetzung. Versionen lesen und die Historie je Periode sind seit IP-18 gebaut (`uems-versionen-lesen.md`).
 
 ## Prüfen
 

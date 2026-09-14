@@ -2,9 +2,11 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.MessstelleWerteService;
+import com.voltpilot.api.uems.WertVersionenRegeln;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,6 +54,36 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String bis,
             @RequestParam(required = false) String version) {
         return werte.werte(kennzeichen, raster, von, bis, version);
+    }
+
+    /**
+     * Recht: {@code messwerte.ansehen} (AP-08 §4.8 „Werte, Zustände, Kennzeichen, Versionen ansehen“). Die
+     * Versions-Historie EINER Periode (AP-08 IP-18): je Version der Wert davor und danach, wer, wann, warum.
+     * {@code raster} viertelstunde · tag · monat · jahr (die Stunde hat keine eigenen Versionen); {@code von} und
+     * {@code bis} wie an {@code …/werte}, genau ein Schritt.
+     */
+    @GetMapping("/{kennzeichen}/werte/versionen")
+    public MessstelleWerteDto.Historie versionen(@PathVariable String kennzeichen,
+            @RequestParam(required = false) String raster,
+            @RequestParam(required = false) String von,
+            @RequestParam(required = false) String bis) {
+        return werte.historie(kennzeichen, raster, von, bis);
+    }
+
+    /**
+     * 404 {@code version_gibt_es_nicht}: die angefragte Version gibt es an keinem Schritt — benannt, mit der neuesten,
+     * nie eine leere Antwort und nie stillschweigend die höchste.
+     */
+    @ExceptionHandler(WertVersionenRegeln.VersionGibtEsNicht.class)
+    public ResponseEntity<Map<String, Object>> versionGibtEsNicht(WertVersionenRegeln.VersionGibtEsNicht e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", WertVersionenRegeln.VersionGibtEsNicht.CODE);
+        body.put("message", e.getMessage());
+        body.put("feld", "version");
+        body.put("grund", WertVersionenRegeln.VersionGibtEsNicht.CODE);
+        body.put("version", e.version());
+        body.put("hoechste_version", e.hoechste());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     /** {@code {code, message, feld, grund}} — dieselbe Form wie jede Ablehnung der Messstellen-Schnittstelle. */

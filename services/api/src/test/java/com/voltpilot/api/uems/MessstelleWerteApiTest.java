@@ -445,17 +445,26 @@ class MessstelleWerteApiTest {
         anfrage(v, "version", "version_ungueltig");
     }
 
+    /**
+     * AP-08 IP-18: ein Tag ohne Korrektur hat genau Version 1 — {@code version=2} ist keine leere Antwort und nicht
+     * stillschweigend Version 1, sondern die benannte Ablehnung mit der neuesten (vor IP-18 stand hier ein Schritt
+     * ohne Zahl mit {@code version_nicht_gespeichert}; der bleibt Schritten, denen die Version in einem Zeitraum fehlt,
+     * den Fall F21 fährt {@code MessstelleWerteVersionenApiTest}).
+     */
     @Test
-    void eineVersionDieNichtGespeichertIstTraegtKeineZahl() throws Exception {
+    void eineVersionDieEsNirgendsGibtWirdBenanntAbgelehnt() throws Exception {
         JsonNode eins = ok(mvcGet(KB, "/api/v1/messstellen/MS-10/werte?raster=tag&von=2026-11-03&bis=2026-11-03&version=1"))
                 .path("werte").get(0);
         assertThat(eins.path("menge").decimalValue()).isEqualByComparingTo("2304.0");
         assertThat(eins.path("version").asInt()).isEqualTo(1);
-        JsonNode zwei = ok(mvcGet(KB, "/api/v1/messstellen/MS-10/werte?raster=tag&von=2026-11-03&bis=2026-11-03&version=2"))
-                .path("werte").get(0);
-        assertThat(zwei.path("menge").isNull()).isTrue();
-        assertThat(zwei.path("zustand").isNull()).isTrue();
-        assertThat(zwei.path("grund").asText()).isEqualTo("version_nicht_gespeichert");
+        assertThat(eins.path("versionen").asInt()).isEqualTo(1);
+        Antwort zwei = mvcGet(KB, "/api/v1/messstellen/MS-10/werte?raster=tag&von=2026-11-03&bis=2026-11-03&version=2");
+        assertThat(zwei.status()).as(zwei.body().toString()).isEqualTo(404);
+        assertThat(zwei.body().path("code").asText()).isEqualTo("version_gibt_es_nicht");
+        assertThat(zwei.body().path("feld").asText()).isEqualTo("version");
+        assertThat(zwei.body().path("version").asInt()).isEqualTo(2);
+        assertThat(zwei.body().path("hoechste_version").asInt()).isEqualTo(1);
+        assertThat(zwei.body().path("message").asText()).contains("Version 2");
     }
 
     // ============================================================ Vertrag, Felder, Bestand

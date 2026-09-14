@@ -29,10 +29,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -80,6 +82,7 @@ public class MessstelleWerteService {
     private final SpeicherklasseHistorie historie;
     private final BerechnetePeriodenRepository berechnete;
     private final BilanzwertHerkunftLeser herkunft;
+    private final WertVersionenLeser versionen;
 
     private volatile Clock uhr = Clock.systemUTC();
 
@@ -94,6 +97,7 @@ public class MessstelleWerteService {
         this.historie = historie;
         this.berechnete = berechnete;
         this.herkunft = new BilanzwertHerkunftLeser(berechnete);
+        this.versionen = new WertVersionenLeser(jdbc);
     }
 
     /** Die Herkunft gespeicherter berechneter Werte (AP-10 IP-12) — derselbe Leser für Bilanz und Kostenstelle. */
@@ -109,6 +113,102 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis,
             String version) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
+        Lesung l = lesen(kennzeichen, form);
+        Zeitraum z = l.z();
+        Zone zone = l.zone();
+
+        // Eine Version, die es an keinem Schritt gibt, ist eine benannte Ablehnung — nie leer, nie die höchste.
+        int hoechste = 1;
+        for (Map.Entry<Schritt, Deckung> e : l.deckung().entrySet()) {
+            hoechste = Math.max(hoechste, hoechsteVersion(l, e.getKey(), e.getValue()));
+        }
+        WertVersionenRegeln.pruefeVorhanden(form.version(), hoechste);
+
+        Map<Instant, Map<String, Object>> herkuenfte = herkuenfte(l, beginn -> {
+            WertVersionenRegeln.Wahl w = WertVersionenRegeln.wahl(
+                    nummern(l.spurVersionen().getOrDefault(beginn, List.of())), form.version());
+            return w.gespeichert() ? w.version() : null;
+        });
+        List<MessstelleWerteDto.Wert> werte = new ArrayList<>();
+        for (Map.Entry<Schritt, Deckung> e : l.deckung().entrySet()) {
+            werte.add(schritt(l, e.getKey(), e.getValue(), form.version(), herkuenfte));
+        }
+
+        return new MessstelleWerteDto.Werte(
+                new MessstelleWerteDto.Messstelle(l.m().id(), l.m().kennzeichen(), l.m().name(), l.m().art(),
+                        l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(), l.haupt().wertart()),
+                z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
+                MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
+                quellen(l), List.copyOf(werte));
+    }
+
+    /**
+     * Die Versions-Historie EINER Periode (AP-08 IP-18): je Version der Wert, genau wie {@code version=n} ihn zeigt,
+     * der Wert davor, und die Entscheidungen, die sie ausmachen — wer, wann, warum, aus den Fassungen der Vorgänge
+     * gelesen. Version 1 ist die Zahl der Verdichtung. Eine Periode ohne Korrektur hat genau eine Version.
+     */
+    public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis) {
+        Form form = pruefe(() -> MessstelleWerteRegeln.historieForm(raster, von, bis));
+        Lesung l = lesen(kennzeichen, form);
+        Schritt s = pruefe(() -> MessstelleWerteRegeln.einePeriode(l.z()));
+        Deckung d = l.deckung().get(s);
+        ZoneId zone = l.zone().id();
+        MessstelleWerteDto.Messstelle messstelle = new MessstelleWerteDto.Messstelle(l.m().id(), l.m().kennzeichen(),
+                l.m().name(), l.m().art(), l.haupt().groesse(), l.haupt().richtung(), l.haupt().einheit(),
+                l.haupt().wertart());
+
+        MessstelleWerteDto.Wert neueste = wertIn(l, s, d, null);
+        List<MessstelleWerteDto.Version> liste = new ArrayList<>();
+        String grund = null;
+        if (neueste.versionen() == null) {
+            // Die Periode gehört der Messstelle nicht (ganz) oder ist noch nicht gebildet: keine Version, der Grund steht da.
+            grund = neueste.grund();
+        } else {
+            List<WertVersionenLeser.Version> spaetere = spaetereVersionen(l, s, d);
+            Set<String> kennungen = new LinkedHashSet<>();
+            spaetere.forEach(v -> {
+                kennungen.addAll(v.wirkt());
+                kennungen.add(v.anlassKennung());
+            });
+            List<WertVersionenLeser.Fassung> fassungen = kennungen.isEmpty() ? List.of()
+                    : versionen.fassungen(l.tenant(), kennungen);
+            List<WertVersionenRegeln.Fassung> fuerRegeln = fassungen.stream()
+                    .map(WertVersionenLeser.Fassung::fuerRegeln).toList();
+            MessstelleWerteDto.Wert vorher = null;
+            List<String> wirkteVorher = List.of();
+            for (int n = 1; n <= neueste.versionen(); n++) {
+                MessstelleWerteDto.Wert wert = wertIn(l, s, d, n);
+                if (n == 1) {
+                    liste.add(new MessstelleWerteDto.Version(1, null, wert, iso(ersteGebildet(l, s, d), zone), null,
+                            null, List.of()));
+                } else {
+                    WertVersionenLeser.Version v = finde(spaetere, n);
+                    List<MessstelleWerteDto.Entscheidung> entscheidungen = WertVersionenRegeln.entscheidungen(
+                                    wirkteVorher, v.wirkt(),
+                                    new WertVersionenRegeln.Schluessel(v.anlassKennung(), v.anlassFassung()),
+                                    fuerRegeln, v.gebildetAm())
+                            .stream().map(k -> entscheidung(k, fassungen, zone)).toList();
+                    liste.add(new MessstelleWerteDto.Version(n, vorher, wert, iso(v.gebildetAm(), zone),
+                            iso(v.nachgezogenAm(), zone), new MessstelleWerteDto.Anlass(v.anlassKennung(),
+                                    v.anlassFassung()), entscheidungen));
+                    wirkteVorher = v.wirkt();
+                }
+                vorher = wert;
+            }
+        }
+        return new MessstelleWerteDto.Historie(messstelle, l.z().raster().wort(), MessstelleWerteRegeln.iso(s.von(), zone),
+                MessstelleWerteRegeln.iso(s.bis(), zone), zone.getId(), l.zone().herkunft(), grund, List.copyOf(liste));
+    }
+
+    // ------------------------------------------------------------------------------ Lesen
+
+    /** Was eine Anfrage liest, bevor ein Schritt eine Version wählt — für Werte und Historie derselbe Zug. */
+    private record Lesung(UUID tenant, Messstelle m, MessstelleRegeln.Groesse haupt, Zone zone, Zeitraum z,
+            Instant jetzt, List<Quelle> imZeitraum, Map<Schritt, Deckung> deckung, Map<Reihe, Gelesen> gelesen,
+            Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur,
+            Map<Instant, List<WertVersionenLeser.Version>> spurVersionen, Beschriftung beschriftung) {}
+
+    private Lesung lesen(String kennzeichen, Form form) {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
@@ -139,43 +239,23 @@ public class MessstelleWerteService {
                 .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte)));
 
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z);
-        Map<Instant, Map<String, Object>> herkuenfte = spur == null || spur.isEmpty() ? Map.of()
-                : herkunft.umschlaege(m.id(), m.kennzeichen(), z.raster().wort(), z.von(), z.bis(), zone.id(), f -> {
-                    BerechnetePeriodenRepository.Gespeichert g = spur.get(f.beginn());
-                    return g == null ? null : new BilanzwertHerkunftLeser.Wert(g.version(),
-                            new BilanzwertHerkunft.Ergebnis(BilanzwertHerkunft.betrag(g.menge()), g.mengeZustand(),
-                                    g.abdeckungProzent(), g.kennzeichen()));
-                });
-        Beschriftung beschriftung = new Beschriftung(z);
-        List<MessstelleWerteDto.Wert> werte = new ArrayList<>();
-        for (Map.Entry<Schritt, Deckung> e : deckung.entrySet()) {
-            Schritt s = e.getKey();
-            Deckung d = e.getValue();
-            Rahmen r = new Rahmen(MessstelleWerteRegeln.iso(s.von(), zone.id()),
-                    MessstelleWerteRegeln.iso(s.bis(), zone.id()), beschriftung.von(s), stunden(z, s),
-                    z.raster() == Raster.TAG ? ErgebnisZustand.tagesdauer(TagRegeln.tag(s.von(), zone.id()), zone.id())
-                            : null);
-            werte.add(spur != null ? berechnet(r, s, spur.get(s.von()), z, form.version(), herkuenfte.get(s.von()))
-                    : d.reihe() == null ? ohneReihe(r, d.grund())
-                    : wert(r, s, d, gelesen.get(d.reihe()), z, form.version(), jetzt));
-        }
-
-        return new MessstelleWerteDto.Werte(
-                new MessstelleWerteDto.Messstelle(m.id(), m.kennzeichen(), m.name(), m.art(), haupt.groesse(),
-                        haupt.richtung(), haupt.einheit(), haupt.wertart()),
-                z.raster().wort(), MessstelleWerteRegeln.iso(z.von(), zone.id()),
-                MessstelleWerteRegeln.iso(z.bis(), zone.id()), zone.id().getId(), zone.herkunft(), form.version(),
-                imZeitraum.stream().map(q -> new MessstelleWerteDto.Quelle(q.id(), q.entityId(), q.kanal(),
-                        q.herleitung(), q.anteil(), MessstelleWerteRegeln.iso(q.gueltigAb(), zone.id()),
-                        q.gueltigBis() == null ? null : MessstelleWerteRegeln.iso(q.gueltigBis(), zone.id()))).toList(),
-                List.copyOf(werte));
+        Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
+                : versionen.perioden(tenant, z.raster().wort(), null, null, m.id(), z.von(), z.bis());
+        return new Lesung(tenant, m, haupt, zone, z, jetzt, imZeitraum, deckung, gelesen, spur, spurVersionen,
+                new Beschriftung(z));
     }
 
-    // ------------------------------------------------------------------------------ Lesen
+    private static List<MessstelleWerteDto.Quelle> quellen(Lesung l) {
+        ZoneId zone = l.zone().id();
+        return l.imZeitraum().stream().map(q -> new MessstelleWerteDto.Quelle(q.id(), q.entityId(), q.kanal(),
+                q.herleitung(), q.anteil(), MessstelleWerteRegeln.iso(q.gueltigAb(), zone),
+                q.gueltigBis() == null ? null : MessstelleWerteRegeln.iso(q.gueltigBis(), zone))).toList();
+    }
 
-    /** Was für EINE Reihe gelesen wurde — über den Lesepfad, ein Zug je Speicherklasse. */
+    /** Was für EINE Reihe gelesen wurde — über den Lesepfad, ein Zug je Speicherklasse, dazu ihre Versionen ab 2. */
     private record Gelesen(Map<Instant, Zeile> zeilen, Map<Instant, Zeile> viertelstunden, List<Verweis> ereignisse,
-            Set<Instant> mitDaten, Integer selektionS, Map<UUID, List<KadenzRegeln.Fassung>> fassungen) {}
+            Set<Instant> mitDaten, Integer selektionS, Map<UUID, List<KadenzRegeln.Fassung>> fassungen,
+            Map<Instant, List<WertVersionenLeser.Version>> versionen) {}
 
     private Gelesen lies(UUID tenant, Reihe reihe, Zeitraum z, List<Schritt> schritte) {
         Instant a = schritte.get(0).von();
@@ -195,6 +275,11 @@ public class MessstelleWerteService {
             case MONAT, JAHR -> historie.perioden(tenant, e, k, z.raster().wort(), a, b)
                     .forEach(x -> zeilen.put(x.zeit(), x));
         }
+        // Die Versionen ab 2 (Ersatzwert-Lauf, Kaskade): je Periode; die Stunde fragt ihre Viertelstunden.
+        Map<Instant, List<WertVersionenLeser.Version>> spaetere = switch (z.raster()) {
+            case VIERTELSTUNDE, STUNDE -> versionen.viertelstunden(tenant, e, k, a, b);
+            case TAG, MONAT, JAHR -> versionen.perioden(tenant, z.raster().wort(), e, k, null, a, b);
+        };
         // Welche Perioden ohne Zeile schon etwas darunter tragen — für die Stunde die fehlenden
         // Viertelstunden, sonst die fehlenden Schritte selbst.
         List<Schritt> offen = new ArrayList<>();
@@ -212,7 +297,7 @@ public class MessstelleWerteService {
         Set<Instant> mitDaten = new HashSet<>(historie.mitDaten(tenant, e, k,
                 offen.stream().map(Schritt::von).toList(), offen.stream().map(Schritt::bis).toList()));
         return new Gelesen(zeilen, viertel, historie.ereignisVerweise(tenant, e, k, a, b), mitDaten,
-                offen.isEmpty() ? null : selektionS(tenant, e, k), new HashMap<>());
+                offen.isEmpty() ? null : selektionS(tenant, e, k), new HashMap<>(), spaetere);
     }
 
     // ------------------------------------------------------------------ Die Spur berechnet (AP-10 IP-10)
@@ -231,57 +316,227 @@ public class MessstelleWerteService {
     }
 
     /**
-     * Ein Schritt einer berechneten Messstelle: die gespeicherte Zeile mit Menge, Zustand, Kennzeichen, Abdeckung
-     * und vorläufig/endgültig — ohne Zeile ist sie noch nicht gebildet (der Lauf rechnet nach den gemessenen).
-     * Eine berechnete Zeile hat keine Rohwerte: {@code erhalten}/{@code erwartet} und {@code quelle} bleiben leer.
+     * Die Herkunft je Beginn der Spur (AP-10 IP-12) — für die Version, die der Schritt zeigt ({@code version} je
+     * Beginn, {@code null} = keine Zahl): ab Version 2 mit den Eingängen DIESER Version und ihrem Anlass.
      */
-    private static MessstelleWerteDto.Wert berechnet(Rahmen r, Schritt s,
-            BerechnetePeriodenRepository.Gespeichert zeile, Zeitraum z, Integer version, Map<String, Object> herkunft) {
+    private Map<Instant, Map<String, Object>> herkuenfte(Lesung l, Function<Instant, Integer> version) {
+        if (l.spur() == null || (l.spur().isEmpty() && l.spurVersionen().isEmpty())) {
+            return Map.of();
+        }
+        return herkunft.umschlaege(l.m().id(), l.m().kennzeichen(), l.z().raster().wort(), l.z().von(), l.z().bis(),
+                l.zone().id(), f -> {
+                    Integer v = version.apply(f.beginn());
+                    if (v == null) {
+                        return null;
+                    }
+                    if (v == 1) {
+                        BerechnetePeriodenRepository.Gespeichert g = l.spur().get(f.beginn());
+                        return g == null ? null : new BilanzwertHerkunftLeser.Wert(1, new BilanzwertHerkunft.Ergebnis(
+                                BilanzwertHerkunft.betrag(g.menge()), g.mengeZustand(), g.abdeckungProzent(),
+                                g.kennzeichen()));
+                    }
+                    WertVersionenLeser.Version x = finde(l.spurVersionen().getOrDefault(f.beginn(), List.of()), v);
+                    return x == null ? null : new BilanzwertHerkunftLeser.Wert(v, new BilanzwertHerkunft.Ergebnis(
+                            BilanzwertHerkunft.betrag(x.menge()), x.mengeZustand(), x.abdeckungProzent(),
+                            x.kennzeichen()));
+                });
+    }
+
+    /**
+     * Ein Schritt einer berechneten Messstelle: die gespeicherte Zeile (Version 1) oder ihre Version ab 2 mit Menge,
+     * Zustand, Kennzeichen, Abdeckung und vorläufig/endgültig — ohne jede Zeile ist sie noch nicht gebildet (der Lauf
+     * rechnet nach den gemessenen). Eine berechnete Zeile hat keine Rohwerte: {@code erhalten}/{@code erwartet} und
+     * {@code quelle} bleiben leer.
+     */
+    private static MessstelleWerteDto.Wert berechnet(Rahmen r, BerechnetePeriodenRepository.Gespeichert zeile,
+            List<WertVersionenLeser.Version> spaetere, Zeitraum z, Integer version, Map<String, Object> herkunft) {
+        if (zeile == null && spaetere.isEmpty()) {
+            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                    null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
+                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of(), null, null);
+        }
+        WertVersionenRegeln.Wahl w = WertVersionenRegeln.wahl(nummern(spaetere), version);
+        if (!w.gespeichert()) {
+            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                    null, null, null, null, null, List.of(), null, null, null, null, null, null, null, null,
+                    OhneZahl.VERSION_NICHT_GESPEICHERT.wort(), List.of(), null, w.hoechste());
+        }
+        String endgueltigAb = zeile == null ? null : iso(zeile.endgueltigAb(), z.zone());
+        if (w.version() > 1) {
+            WertVersionenLeser.Version v = finde(spaetere, w.version());
+            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                    v.menge(), null, null, null, v.mengeZustand(), v.kennzeichen(), null, null, v.abdeckungProzent(),
+                    v.zustand(), endgueltigAb, v.version(), gebildetAus(z.raster()), null, null, List.of(), herkunft,
+                    w.hoechste());
+        }
         if (zeile == null) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
-                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of(), null);
-        }
-        if (version != null && version != zeile.version()) {
-            return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
-                    null, null, null, null, null, List.of(), null, null, null, null, null, null, null, null,
-                    OhneZahl.VERSION_NICHT_GESPEICHERT.wort(), List.of(), null);
+                    null, null, null, OhneZahl.NOCH_NICHT_GEBILDET.wort(), List.of(), null, w.hoechste());
         }
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 zeile.menge(), null, null, null, zeile.mengeZustand(), zeile.kennzeichen(), null, null,
-                zeile.abdeckungProzent(), zeile.zustand(), iso(zeile.endgueltigAb(), z.zone()), zeile.version(),
-                gebildetAus(z.raster()), null, null, List.of(), herkunft);
+                zeile.abdeckungProzent(), zeile.zustand(), endgueltigAb, zeile.version(), gebildetAus(z.raster()), null,
+                null, List.of(), herkunft, w.hoechste());
     }
 
     // ------------------------------------------------------------------------ Ein Schritt
 
     private record Rahmen(String von, String bis, String beschriftung, Long stunden, String tagesdauer) {}
 
+    private MessstelleWerteDto.Wert schritt(Lesung l, Schritt s, Deckung d, Integer version,
+            Map<Instant, Map<String, Object>> herkuenfte) {
+        Zeitraum z = l.z();
+        ZoneId zone = l.zone().id();
+        Rahmen r = new Rahmen(MessstelleWerteRegeln.iso(s.von(), zone), MessstelleWerteRegeln.iso(s.bis(), zone),
+                l.beschriftung().von(s), stunden(z, s),
+                z.raster() == Raster.TAG ? ErgebnisZustand.tagesdauer(TagRegeln.tag(s.von(), zone), zone) : null);
+        if (l.spur() != null) {
+            return berechnet(r, l.spur().get(s.von()), l.spurVersionen().getOrDefault(s.von(), List.of()), z, version,
+                    herkuenfte.get(s.von()));
+        }
+        return d.reihe() == null ? ohneReihe(r, d.grund())
+                : wert(r, s, d, l.gelesen().get(d.reihe()), z, version, l.jetzt());
+    }
+
+    /** Ein Schritt in genau einer Version — {@code null} = die neueste; für die Historie je Version einzeln. */
+    private MessstelleWerteDto.Wert wertIn(Lesung l, Schritt s, Deckung d, Integer version) {
+        Map<Instant, Map<String, Object>> herkuenfte = herkuenfte(l, beginn -> {
+            WertVersionenRegeln.Wahl w = WertVersionenRegeln.wahl(
+                    nummern(l.spurVersionen().getOrDefault(beginn, List.of())), version);
+            return beginn.equals(s.von()) && w.gespeichert() ? w.version() : null;
+        });
+        return schritt(l, s, d, version, herkuenfte);
+    }
+
+    /** Die gespeicherten Versionen ab 2 eines Schritts, älteste zuerst. */
+    private static List<WertVersionenLeser.Version> spaetereVersionen(Lesung l, Schritt s, Deckung d) {
+        if (l.spur() != null) {
+            return l.spurVersionen().getOrDefault(s.von(), List.of());
+        }
+        return d.reihe() == null ? List.of()
+                : l.gelesen().get(d.reihe()).versionen().getOrDefault(s.von(), List.of());
+    }
+
+    /** Die neueste Version eines Schritts — an der Stunde die ihrer Viertelstunden (sie selbst hat keine). */
+    private static int hoechsteVersion(Lesung l, Schritt s, Deckung d) {
+        if (l.spur() == null && d.reihe() != null && l.z().raster() == Raster.STUNDE) {
+            return hoechsteDerViertelstunden(l.gelesen().get(d.reihe()), s);
+        }
+        return WertVersionenRegeln.wahl(nummern(spaetereVersionen(l, s, d)), null).hoechste();
+    }
+
+    private static int hoechsteDerViertelstunden(Gelesen g, Schritt s) {
+        int hoechste = 1;
+        for (Instant q = s.von(); q.isBefore(s.bis()); q = q.plusSeconds(900)) {
+            hoechste = Math.max(hoechste, WertVersionenRegeln.wahl(
+                    nummern(g.versionen().getOrDefault(q, List.of())), null).hoechste());
+        }
+        return hoechste;
+    }
+
+    /** Wann die Verdichtung Version 1 des Schritts gebildet hat — {@code null} ohne Zeile. */
+    private Instant ersteGebildet(Lesung l, Schritt s, Deckung d) {
+        if (l.spur() != null) {
+            return versionen.ersteGebildet(l.tenant(), l.z().raster().wort(), null, null, l.m().id(), s.von());
+        }
+        return versionen.ersteGebildet(l.tenant(), l.z().raster().wort(), d.reihe().entityId(), d.reihe().kanal(), null,
+                s.von());
+    }
+
     private MessstelleWerteDto.Wert wert(Rahmen r, Schritt s, Deckung d, Gelesen g, Zeitraum z, Integer version,
             Instant jetzt) {
         Bindung b = d.bindung();
         List<MessstelleWerteDto.Ereignis> ereignisse = ereignisse(g.ereignisse(), s, z.zone());
         Zeile zeile = g.zeilen().get(s.von());
-        if (z.raster() == Raster.STUNDE && zeile != null) {
-            return stunde(r, s, b, zeile, g, z, version, jetzt, ereignisse);
+        if (z.raster() == Raster.STUNDE) {
+            // Die Stunde hat keine eigenen Versionen: trägt eine Viertelstunde eine spätere, als die gefragte Zahl
+            // der Stunde gebildet wäre, steht keine Zahl da — nie die von Version 1 unter einem anderen Etikett.
+            int spaetere = hoechsteDerViertelstunden(g, s);
+            int gefragt = version == null ? spaetere : version;
+            if (gefragt > 1) {
+                return leer(r, b, spaetere >= gefragt ? OhneZahl.VERSION_NICHT_GEBILDET
+                        : OhneZahl.VERSION_NICHT_GESPEICHERT, ereignisse, null);
+            }
+            return zeile != null ? stunde(r, s, b, zeile, g, z, jetzt, ereignisse)
+                    : ohneZeile(r, s, b, g, z, jetzt, ereignisse, null);
+        }
+        List<WertVersionenLeser.Version> spaetere = g.versionen().getOrDefault(s.von(), List.of());
+        WertVersionenRegeln.Wahl w = WertVersionenRegeln.wahl(nummern(spaetere), version);
+        if (!w.gespeichert()) {
+            return leer(r, b, OhneZahl.VERSION_NICHT_GESPEICHERT, ereignisse, w.hoechste());
+        }
+        if (w.version() > 1) {
+            return ausVersion(r, s, b, zeile, finde(spaetere, w.version()), g, z, jetzt, ereignisse, w.hoechste());
         }
         if (zeile == null) {
-            return ohneZeile(r, s, b, g, z, jetzt, ereignisse);
-        }
-        if (version != null && !version.equals(zeile.version())) {
-            return leer(r, b, OhneZahl.VERSION_NICHT_GESPEICHERT, ereignisse);
+            return ohneZeile(r, s, b, g, z, jetzt, ereignisse, w.hoechste());
         }
         if (zeile.mengeZustand() == null) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), zeile.erhalten(), zeile.erwartet(),
                     zeile.abdeckungProzent(), zeile.zustand(), iso(zeile.endgueltigAb(), z.zone()), zeile.version(),
-                    gebildetAus(z.raster()), b.id(), OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null);
+                    gebildetAus(z.raster()), b.id(), OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null,
+                    w.hoechste());
         }
         Zahlen n = zahlen(b, zeile);
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile),
                 zeile.erhalten(), zeile.erwartet(), zeile.abdeckungProzent(), zeile.zustand(),
-                iso(zeile.endgueltigAb(), z.zone()), zeile.version(), gebildetAus(z.raster()), b.id(), null, ereignisse, null);
+                iso(zeile.endgueltigAb(), z.zone()), zeile.version(), gebildetAus(z.raster()), b.id(), null, ereignisse,
+                null, w.hoechste());
+    }
+
+    /**
+     * Ein Schritt in einer Version ab 2 — Zahl, Zustand und Kennzeichen stehen in der Version. Ihre Rohwert-Fakten
+     * ebenfalls, wenn die Kaskade sie schrieb; eine Viertelstunde des Ersatzwert-Laufs hat die Fakten von Version 1
+     * (in einer Lücke: 0 von den erwarteten Werten, wie Version 1 „keine Werte“ sie nennt). Vorläufig/endgültig der
+     * Basis — eine Version ändert es nicht.
+     */
+    private MessstelleWerteDto.Wert ausVersion(Rahmen r, Schritt s, Bindung b, Zeile zeile, WertVersionenLeser.Version v,
+            Gelesen g, Zeitraum z, Instant jetzt, List<MessstelleWerteDto.Ereignis> ereignisse, int hoechste) {
+        Integer erhalten;
+        Integer erwartet;
+        Integer abdeckung;
+        BigDecimal mittel = null;
+        BigDecimal min = null;
+        BigDecimal max = null;
+        BigDecimal energie = null;
+        if (v.mitFakten()) {
+            erhalten = v.erhalten();
+            erwartet = v.erwartet();
+            abdeckung = v.abdeckungProzent();
+            mittel = v.mittel();
+            min = v.min();
+            max = v.max();
+            energie = v.energie();
+        } else if (zeile != null) {
+            erhalten = zeile.erhalten();
+            erwartet = zeile.erwartet();
+            abdeckung = zeile.abdeckungProzent();
+            mittel = zeile.wert();
+            min = zeile.minimum();
+            max = zeile.maximum();
+            energie = zeile.energie() == null ? null : zeile.energie().wert();
+        } else {
+            erhalten = 0;
+            erwartet = erwartetOhneZeile(b, g, s.von(), s.bis());
+            abdeckung = SpeicherklasseHistorie.abdeckung(0, erwartet);
+        }
+        String fassung = v.zustand() != null ? v.zustand() : zeile != null ? zeile.zustand()
+                : TagRegeln.zustand(0, 0, TagRegeln.endgueltigAb(s.bis()), jetzt);
+        Zahlen n = switch (b.herleitung()) {
+            case "momentanwert" -> new Zahlen(null, mittel, min, max);
+            case "integration" -> {
+                EnergieAusLeistung e = EnergieAusLeistung.aus(energie, v.kennzeichen());
+                yield new Zahlen(e == null ? null : e.wert(), null, null, null);
+            }
+            default -> new Zahlen(v.menge(), null, null, null);
+        };
+        return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                n.menge(), n.mittel(), n.min(), n.max(), v.mengeZustand(), v.kennzeichen(), erhalten, erwartet,
+                abdeckung, fassung, zeile == null ? null : iso(zeile.endgueltigAb(), z.zone()), v.version(),
+                gebildetAus(z.raster()), b.id(), null, ereignisse, null, hoechste);
     }
 
     /**
@@ -289,10 +544,11 @@ public class MessstelleWerteService {
      * Zeitraum und Kadenz zur Messzeit — eine fehlende Viertelstunde zählt mit ihrer Erwartung, F8 17:00:
      * 29 von 60). Die Viertelstunden liest diese Route nur noch für das, was die Stundenzeile nicht sagt:
      * ob eine davon erst Rohwerte hat (noch nicht gebildet), ob alle dieselbe Version tragen, und
-     * vorläufig/endgültig nach {@link TagRegeln#zustand} mit der Frist des Stunden-Endes.
+     * vorläufig/endgültig nach {@link TagRegeln#zustand} mit der Frist des Stunden-Endes. Gelesen wird sie nur
+     * in Version 1 — eine spätere hat {@link #wert} schon benannt.
      */
     private MessstelleWerteDto.Wert stunde(Rahmen r, Schritt s, Bindung b, Zeile zeile, Gelesen g, Zeitraum z,
-            Integer version, Instant jetzt, List<MessstelleWerteDto.Ereignis> ereignisse) {
+            Instant jetzt, List<MessstelleWerteDto.Ereignis> ereignisse) {
         int vorhanden = 0;
         int endgueltig = 0;
         Set<Integer> versionen = new HashSet<>();
@@ -302,7 +558,7 @@ public class MessstelleWerteService {
                 // Eine Viertelstunde der Stunde hat Rohwerte, aber noch keine Zeile: die Stunde ist nicht fertig gebildet.
                 return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                         null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG,
-                        null, null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null);
+                        null, null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null, null);
             }
             if (v == null) {
                 continue;
@@ -311,9 +567,6 @@ public class MessstelleWerteService {
             endgueltig += ViertelstundeRegeln.ENDGUELTIG.equals(v.zustand()) ? 1 : 0;
             versionen.add(v.version());
         }
-        if (version != null && !(versionen.size() == 1 && versionen.contains(version))) {
-            return leer(r, b, OhneZahl.VERSION_NICHT_GESPEICHERT, ereignisse);
-        }
         String fassung = TagRegeln.zustand(vorhanden, endgueltig, TagRegeln.endgueltigAb(s.bis()), jetzt);
         Instant endgueltigAb = TagRegeln.endgueltigAb(s.bis());
         if (zeile.mengeZustand() == null) {
@@ -321,31 +574,35 @@ public class MessstelleWerteService {
                     null, null, null, null, null, List.of(), zeile.erhalten(), zeile.erwartet(),
                     zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
                     versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(),
-                    OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null);
+                    OhneZahl.OHNE_MENGE_GESPEICHERT.wort(), ereignisse, null, null);
         }
         Zahlen n = zahlen(b, zeile);
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 n.menge(), n.mittel(), n.min(), n.max(), zeile.mengeZustand(), kennzeichen(zeile), zeile.erhalten(),
                 zeile.erwartet(), zeile.abdeckungProzent(), fassung, iso(endgueltigAb, z.zone()),
-                versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(), null, ereignisse, null);
+                versionen.size() == 1 ? versionen.iterator().next() : null, "zeitraum", b.id(), null, ereignisse, null,
+                null);
     }
 
-    /** Ein Schritt ohne gespeicherte Zeile: noch nicht gebildet — oder wirklich „keine Werte“. */
+    /**
+     * Ein Schritt ohne gespeicherte Zeile: noch nicht gebildet — oder wirklich „keine Werte“ (dann Version 1 einer
+     * Periode, die {@code versionen} zählt; an der Stunde {@code null}).
+     */
     private MessstelleWerteDto.Wert ohneZeile(Rahmen r, Schritt s, Bindung b, Gelesen g, Zeitraum z, Instant jetzt,
-            List<MessstelleWerteDto.Ereignis> ereignisse) {
+            List<MessstelleWerteDto.Ereignis> ereignisse, Integer versionen) {
         boolean darunter = z.raster() == Raster.STUNDE
                 ? stundeMitDaten(s, g) : g.mitDaten().contains(s.von());
         if (darunter) {
             return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                     null, null, null, null, null, List.of(), null, null, null, ViertelstundeRegeln.VORLAEUFIG, null,
-                    null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null);
+                    null, null, b.id(), OhneZahl.NOCH_NICHT_GEBILDET.wort(), ereignisse, null, null);
         }
         int erwartet = erwartetOhneZeile(b, g, s.von(), s.bis());
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, ErgebnisZustand.KEINE_WERTE, List.of(), 0, erwartet,
                 SpeicherklasseHistorie.abdeckung(0, erwartet),
                 TagRegeln.zustand(0, 0, TagRegeln.endgueltigAb(s.bis()), jetzt), null, null, null, b.id(), null,
-                ereignisse, null);
+                ereignisse, null, versionen);
     }
 
     private static boolean stundeMitDaten(Schritt s, Gelesen g) {
@@ -357,19 +614,62 @@ public class MessstelleWerteService {
         return false;
     }
 
-    /** Ein Schritt ohne Reihe: keine Quelle („keine Werte“) oder ein benannter Grund ohne Zustand. */
+    /** Ein Schritt ohne Reihe: keine Quelle („keine Werte“) oder ein benannter Grund ohne Zustand — ohne Versionen. */
     private static MessstelleWerteDto.Wert ohneReihe(Rahmen r, OhneZahl grund) {
         String zustand = grund == OhneZahl.KEINE_QUELLE ? ErgebnisZustand.KEINE_WERTE : null;
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, zustand, List.of(), null, null, null, null, null, null, null, null,
-                grund.wort(), List.of(), null);
+                grund.wort(), List.of(), null, null);
     }
 
     private static MessstelleWerteDto.Wert leer(Rahmen r, Bindung b, OhneZahl grund,
-            List<MessstelleWerteDto.Ereignis> ereignisse) {
+            List<MessstelleWerteDto.Ereignis> ereignisse, Integer versionen) {
         return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
                 null, null, null, null, null, List.of(), null, null, null, null, null, null, null, b.id(),
-                grund.wort(), ereignisse, null);
+                grund.wort(), ereignisse, null, versionen);
+    }
+
+    // ------------------------------------------------------------------------ Versionen (AP-08 IP-18)
+
+    private static List<Integer> nummern(List<WertVersionenLeser.Version> versionen) {
+        return versionen.stream().map(WertVersionenLeser.Version::version).toList();
+    }
+
+    private static WertVersionenLeser.Version finde(List<WertVersionenLeser.Version> versionen, int version) {
+        return versionen.stream().filter(v -> v.version() == version).findFirst().orElse(null);
+    }
+
+    /**
+     * Eine Entscheidung, wie sie gespeichert ist: Urheber und Zeitpunkt ihrer Fassung, das „warum“ als der Text, den
+     * der Mensch DAZU geschrieben hat — fehlt er, nennt {@code fehlt} es, ein Grund wird nicht erfunden.
+     */
+    private static MessstelleWerteDto.Entscheidung entscheidung(WertVersionenRegeln.Schluessel k,
+            List<WertVersionenLeser.Fassung> fassungen, ZoneId zone) {
+        String vorgang = WertVersionenRegeln.Vorgang.aus(k.kennung()).wort();
+        WertVersionenLeser.Fassung f = fassung(fassungen, k.kennung(), k.fassung());
+        if (f == null) {
+            return new MessstelleWerteDto.Entscheidung(vorgang, k.kennung(), k.fassung(), null, null, null, null, null,
+                    null, null, List.of(WertVersionenRegeln.FEHLT_FASSUNG), null);
+        }
+        WertVersionenLeser.Fassung erste = f.fassung() == 1 ? f : fassung(fassungen, k.kennung(), 1);
+        String warum = WertVersionenRegeln.begruendung(f.fassung(), f.begruendung(), f.grund());
+        MessstelleWerteDto.Angelegt angelegt = f.fassung() == 1 || erste == null ? null
+                : new MessstelleWerteDto.Angelegt(urheber(erste), iso(erste.am(), zone),
+                        WertVersionenRegeln.begruendung(1, erste.begruendung(), erste.grund()), erste.beleg());
+        return new MessstelleWerteDto.Entscheidung(vorgang, f.kennung(), f.fassung(), f.status(),
+                erste == null ? null : erste.methode(), erste == null ? null : erste.art(), urheber(f),
+                iso(f.am(), zone), warum, f.beleg(),
+                warum == null ? List.of(WertVersionenRegeln.FEHLT_WARUM) : List.of(), angelegt);
+    }
+
+    private static WertVersionenLeser.Fassung fassung(List<WertVersionenLeser.Fassung> fassungen, String kennung,
+            int fassung) {
+        return fassungen.stream().filter(f -> f.kennung().equals(kennung) && f.fassung() == fassung).findFirst()
+                .orElse(null);
+    }
+
+    private static MessstelleWerteDto.Urheber urheber(WertVersionenLeser.Fassung f) {
+        return new MessstelleWerteDto.Urheber(f.actorName(), f.actorRolle(), f.actorArt());
     }
 
     private record Zahlen(BigDecimal menge, BigDecimal mittel, BigDecimal min, BigDecimal max) {}

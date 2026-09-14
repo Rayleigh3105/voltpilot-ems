@@ -56,6 +56,10 @@ public final class MessstelleWerteDto {
      *     ({@code MessstelleWerteRegeln.OhneZahl}); {@code null}, wenn er aus der Speicherklasse kommt
      * @param herkunft die Hülle {@code {satz, fehlt}} nach {@code bilanzwert-herkunft.schema.json} (AP-10 IP-12) an
      *     jeder BERECHNETEN Zahl; {@code null} heißt „nicht berechnet“ — ein gemessener Schritt oder einer ohne Zahl
+     * @param version die Version, deren Zahl der Schritt zeigt — ohne Anfrage die neueste (AP-08 IP-18)
+     * @param versionen die NAHT für die Portal-Fläche „Versionen“ am Wert (AP-08 IP-18): wie viele Versionen die
+     *     Periode hat (ab 2 gibt es eine Historie unter {@code …/werte/versionen}); {@code null}, wo der Schritt keine
+     *     eigene Periode hat (die Stunde) oder noch nicht gebildet ist
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -81,7 +85,88 @@ public final class MessstelleWerteDto {
             UUID quelle,
             String grund,
             List<Ereignis> ereignisse,
-            Map<String, Object> herkunft) {}
+            Map<String, Object> herkunft,
+            Integer versionen) {}
+
+    /**
+     * Die Versions-Historie EINER Periode (AP-08 IP-18, {@code GET …/werte/versionen}): je Version der Wert, der
+     * vorher dastand, der neue, und wer ihn wann warum geändert hat. Version 1 ist die Zahl der Verdichtung — ohne
+     * Entscheidung. {@code grund} (ein Wort von {@code MessstelleWerteRegeln.OhneZahl}) steht nur, wenn die Periode
+     * keine Versionen hat, weil sie dieser Messstelle nicht gehört oder noch nicht gebildet ist.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Historie(
+            Messstelle messstelle,
+            String raster,
+            String von,
+            String bis,
+            String zeitzone,
+            String zeitzoneHerkunft,
+            String grund,
+            List<Version> versionen) {}
+
+    /**
+     * Eine Version der Periode.
+     *
+     * @param wertAlt was vorher dastand (Version n − 1, genau so, wie {@code version=n-1} ihn zeigt); an Version 1
+     *     {@code null}
+     * @param wertNeu diese Version, genau so, wie {@code version=n} sie zeigt
+     * @param gebildetAm wann die Zeile geschrieben wurde (Version 1: von der Verdichtung)
+     * @param nachgezogenAm eine vorläufige Version wächst mit ihrer Grundlage (IP-17) — wann zuletzt; sonst {@code null}
+     * @param anlass die Fassung des Vorgangs, die die Version auslöste; an Version 1 {@code null}
+     * @param entscheidungen wer wann warum — alle Fassungen, die diese Version gegenüber der vorigen ausmachen
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Version(
+            int version,
+            Wert wertAlt,
+            Wert wertNeu,
+            String gebildetAm,
+            String nachgezogenAm,
+            Anlass anlass,
+            List<Entscheidung> entscheidungen) {}
+
+    /** Kennung und Fassung eines Ersatzwerts ({@code EW-…}) oder einer Korrektur ({@code K-…}). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Anlass(String kennung, int fassung) {}
+
+    /**
+     * Eine Entscheidung: eine Fassung eines Vorgangs mit ihrem Urheber, ihrem Zeitpunkt und dem Text, den der Mensch
+     * DAZU geschrieben hat (anlegende Fassung: die Begründung, jede weitere: ihr Grund).
+     *
+     * @param warum {@code null} = keiner geschrieben; dann nennt {@code fehlt} „warum“ — nie ein erfundener Grund
+     * @param fehlt was an der Entscheidung nicht bekannt ist ({@code warum} · {@code fassung}), sonst leer
+     * @param angelegt an einer späteren Fassung (Freigabe, Rücknahme) die anlegende Fassung des Vorgangs mit IHRER
+     *     Begründung und IHREM Urheber; an Fassung 1 {@code null}
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Entscheidung(
+            String vorgang,
+            String kennung,
+            int fassung,
+            String status,
+            String methode,
+            String art,
+            Urheber wer,
+            String wann,
+            String warum,
+            String beleg,
+            List<String> fehlt,
+            Angelegt angelegt) {}
+
+    /** Der Urheber einer Fassung, wie er gespeichert ist ({@code actor_name}, {@code actor_rolle}, {@code actor_art}). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Urheber(String name, String rolle, String art) {}
+
+    /** Die anlegende Fassung eines Vorgangs — was eingetragen bzw. vorgeschlagen wurde, von wem, wann, warum. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Angelegt(Urheber wer, String wann, String warum, String beleg) {}
 
     /** Ein Verweis auf eine Meldung des Ereignis-Vertrags — Kennung, Art, Zeit; der Inhalt bleibt dort. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

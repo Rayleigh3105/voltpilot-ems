@@ -664,7 +664,9 @@ public class BerechnetePeriodenLauf {
         }
         List<MessstelleWerteDto.Wert> gelesen;
         try {
-            gelesen = werte.werte(ref.kennzeichen(), ebene, von.toString(), bis.toString(), null).werte();
+            // Version 1 der Eingänge: spätere Versionen überlagert allein die Kaskade (nachKorrektur, AP-08 IP-17) —
+            // das Lese-Modell zeigt ohne Angabe seit IP-18 die neueste.
+            gelesen = werte.werte(ref.kennzeichen(), ebene, von.toString(), bis.toString(), "1").werte();
         } catch (ResponseStatusException | MessstelleAbgelehnt e) {
             log.warn("UEMS berechnete Periodenwerte: Eingang {} ({} {}–{}) nicht lesbar: {}", ref.kennzeichen(), ebene,
                     von, bis, e.getMessage());
