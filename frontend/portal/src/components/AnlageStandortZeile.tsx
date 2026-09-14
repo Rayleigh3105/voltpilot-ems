@@ -83,24 +83,17 @@ export function AnlageStandortZeile({
       <dd className="vp-kv-v vp-as">
         <span className="vp-as-name">{z.name}</span>
         {z.zeile && <span className="vp-as-zeile">{z.zeile}</span>}
-        {z.fehlt && (
-          <span className="vp-as-zeile">
-            {z.fehlt}
-            {standort.zustand !== 'archiviert' && (
-              <>
-                {' — '}
-                <button
-                  ref={ausloeser}
-                  type="button"
-                  className="vp-as-verweis"
-                  aria-label={`${KNOPF_ADRESSE_NACHTRAGEN}: ${standort.name}`}
-                  onClick={() => void oeffne()}
-                >
-                  {KNOPF_ADRESSE_NACHTRAGEN}
-                </button>
-              </>
-            )}
-          </span>
+        {z.fehlt && <span className="vp-as-zeile">{z.fehlt}</span>}
+        {z.fehlt && standort.zustand !== 'archiviert' && (
+          <button
+            ref={ausloeser}
+            type="button"
+            className="vp-as-verweis"
+            aria-label={`${KNOPF_ADRESSE_NACHTRAGEN}: ${standort.name}`}
+            onClick={() => void oeffne()}
+          >
+            {KNOPF_ADRESSE_NACHTRAGEN}
+          </button>
         )}
         {dialog && (
           <StandortDialog

@@ -35,7 +35,7 @@ geschrieben über die Routen aus IP-5 (`uems-orte-schreibweg-gebaeude-bereich-fl
 5. **Fläche**: beim Anlegen die erste Fläche ab „Gültig ab“ (= erster Tag des Knotens, POST
    `flaecheM2` + `gueltigAb`); beim Bearbeiten nur, solange es keine gibt („für kWh/m² fehlt die
    Fläche — Fläche eintragen“ öffnet den Dialog an der Fläche) — erst PUT der Stammdaten, dann PUT
-   `…/flaeche`. Eine vorhandene Fläche steht lesend da; ändern mit Verlauf ist IP-8 (T7).
+   `…/flaeche`. Eine vorhandene Fläche steht lesend da; „Fläche ändern“ darunter öffnet den Flächen-Dialog mit Verlauf (IP-8, `uems-flaeche-aendern-portal.md`).
 6. **„Hängt an“ nur beim Anlegen eines Bereichs**; beim Bearbeiten lesend — umhängen ist Verschieben
    mit „gültig ab“ (IP-12). L1 „Bereich direkt am Standort anlegen“ wählt den Standort vor und sendet
    OHNE `elternId`. Ohne Wahl steht der Vertrags-Satz am Feld, nie eine stille Vorbelegung.
