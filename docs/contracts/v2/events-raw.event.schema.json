@@ -410,6 +410,9 @@
         },
         {
           "$ref": "#/$defs/art_verteilung_geaendert"
+        },
+        {
+          "$ref": "#/$defs/art_bilanz_neu_berechnet"
         }
       ]
     },
@@ -1596,6 +1599,39 @@
         },
         "eingetragen_am": {
           "$ref": "#/$defs/zeit_utc"
+        }
+      }
+    },
+    "art_bilanz_neu_berechnet": {
+      "type": "object",
+      "description": "bilanz_neu_berechnet — Bilanz neu berechnet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "messstelle",
+        "ausloeser"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bilanz_neu_berechnet"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ausloeser": {
+          "$ref": "#/$defs/kennung"
         }
       }
     }

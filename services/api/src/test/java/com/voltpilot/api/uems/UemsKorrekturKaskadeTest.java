@@ -11,6 +11,7 @@ import com.voltpilot.api.measurement.SpeicherklasseHistorie;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.KostenstelleEnergieDto;
 import com.voltpilot.api.uems.EreignisVokabular.Urheber;
 import com.voltpilot.api.uems.MessreiheKorrekturRepository.Korrektur;
 import java.math.BigDecimal;
@@ -172,6 +173,11 @@ class UemsKorrekturKaskadeTest {
     private static Map<String, Object> f12MonatV1;
     private static KorrekturKaskade.Lauf f12Lauf;
     private static KorrekturKaskade.Lauf widerruf;
+    private static MessstelleWerteService werte;
+    private static List<Map<String, Object>> bilanzMeldungen;
+    private static KostenstelleEnergieDto.Energie logistikNeu;
+    private static KostenstelleEnergieDto.Energie logistikVersionEins;
+    private static KostenstelleEnergieDto.Energie montageNeu;
 
     // =========================================================================== Aufbau
 
@@ -233,7 +239,7 @@ class UemsKorrekturKaskadeTest {
         als(FREMD, () -> korrekturen.freigeben(FREMD, f10Fremd, null, INES));
         vorDerKaskade = Bestandsschutz.fingerabdruck(root, KASKADE);
         eingaengeV1Vorher = Bestandsschutz.inhalt(root, "bilanzwert_eingang", "t.version = 1");
-        meldungenVorher = Bestandsschutz.inhalt(root, "messreihe_ereignis", "NOT (t.art = 'correction' AND t.urheber = 'kunde')");
+        meldungenVorher = Bestandsschutz.inhalt(root, "messreihe_ereignis", "NOT (t.art = 'correction' AND t.urheber = 'kunde') AND t.art <> 'bilanz_neu_berechnet'");
         vorDemAbbruch = Bestandsschutz.fingerabdruck(root, List.of());
 
         // ---- Abbruchsicher: die Kennzahlen-Naht bricht NACH allen Stufen ab — nichts Halbes bleibt --------------
@@ -250,9 +256,18 @@ class UemsKorrekturKaskadeTest {
 
         // ---- Die Kaskade ----------------------------------------------------------------------------------------
         lauf = kaskade.lauf(T_KASKADE);
+        // AP-10 IP-11: die Meldungen der Neuberechnung und die Kostenstellen-Sicht direkt nach der Kaskade.
+        bilanzMeldungen = root.queryForList("SELECT kennungen ->> 'messstelle' AS messstelle, nutzlast ->> 'ausloeser' "
+                + "AS ausloeser, urheber, von, bis, messstelle_id FROM messreihe_ereignis WHERE tenant_id = ? "
+                + "AND art = 'bilanz_neu_berechnet' ORDER BY 1", KB);
+        KostenstelleEnergieService kostenstellen = new KostenstelleEnergieService(new KostenstelleProzessRepository(app),
+                new KostenstelleEnergieRepository(app), new MessstelleRepository(app), werte);
+        logistikNeu = als(KB, () -> kostenstellen.energie(IDS.get("4300"), "tag", TAG, null));
+        logistikVersionEins = als(KB, () -> kostenstellen.energie(IDS.get("4300"), "tag", TAG, "1"));
+        montageNeu = als(KB, () -> kostenstellen.energie(IDS.get("4200"), "tag", TAG, null));
         nachDerKaskade = Bestandsschutz.fingerabdruck(root, KASKADE);
         eingaengeV1Nachher = Bestandsschutz.inhalt(root, "bilanzwert_eingang", "t.version = 1");
-        meldungenNachher = Bestandsschutz.inhalt(root, "messreihe_ereignis", "NOT (t.art = 'correction' AND t.urheber = 'kunde')");
+        meldungenNachher = Bestandsschutz.inhalt(root, "messreihe_ereignis", "NOT (t.art = 'correction' AND t.urheber = 'kunde') AND t.art <> 'bilanz_neu_berechnet'");
         nachErstemLauf = Bestandsschutz.fingerabdruck(root, List.of());
         entwurfNachDerFreigabe = berichte.eintrag("BR-2026-11-ENTWURF").inhalt();
         bestandNachDerKaskade = alleVersionen();
@@ -404,6 +419,52 @@ class UemsKorrekturKaskadeTest {
         // MS-19 vorher wie nachher „keine Werte“ mit derselben Abdeckung — eine gleiche Zahl bekommt keine neue Version.
         assertThat(zahl("SELECT count(*) FROM messreihe_periode_version WHERE messstelle_id = ? AND ebene = 'monat'",
                 IDS.get("MS-19"))).as("MS-19 Monat").isPositive();
+    }
+
+    /**
+     * AP-10 IP-11 — der Anschluss an DIESE Kaskade, keine zweite: in derselben Transaktion meldet sie
+     * {@code bilanz_neu_berechnet} für jede Messstelle, deren Bilanz-Werte sich geändert haben — die berechneten MS-15 und
+     * MS-19 (neue Versionen) und die gemessene MS-10, weil sie auf 4300 verteilt ist. Urheber cloud, Auslöser die
+     * Korrektur, [von, bis) = der Tag in der Zeitzone des Kundenbereichs; KR-1/KR-2 (Kreis) melden nichts.
+     */
+    @Test
+    void dieKaskadeMeldetBilanzNeuBerechnetJeBetroffenerMessstelle() {
+        assertThat(bilanzMeldungen).extracting(m -> m.get("messstelle")).containsExactly("MS-10", "MS-15", "MS-19");
+        assertThat(bilanzMeldungen.get(1).get("messstelle_id")).isEqualTo(IDS.get("MS-15"));
+        for (Map<String, Object> m : bilanzMeldungen) {
+            assertThat(m.get("ausloeser")).isEqualTo(f10);
+            assertThat(m.get("urheber")).isEqualTo("cloud");
+            assertThat(((Timestamp) m.get("von")).toInstant()).isEqualTo(Instant.parse("2026-11-02T23:00:00Z"));
+            assertThat(((Timestamp) m.get("bis")).toInstant()).isEqualTo(Instant.parse("2026-11-03T23:00:00Z"));
+            assertThat(m.get("messstelle_id")).as("die Messstelle ist aufgelöst").isNotNull();
+        }
+        assertThat(zahl("SELECT count(*) FROM messreihe_ereignis WHERE art = 'bilanz_neu_berechnet' AND tenant_id = ? "
+                + "AND nutzlast ->> 'ausloeser' = ?", FREMD, f10Fremd)).as("der fremde Kundenbereich meldet SEINE")
+                .isOne();
+    }
+
+    /**
+     * AP-10 IP-11 — nach der Kaskade liest die Kostenstellen-Sicht Version 2: 4300 bekommt MS-10 als gemessenen Wert mit
+     * „korrigiert (Version 2)“, 4200 den Baustein MS-15 als berechneten; mit {@code version=1} steht Version 1 daneben,
+     * ohne „korrigiert“ — die damalige Zahl bleibt lesbar.
+     */
+    @Test
+    void dieKostenstellenSichtLiestNachDerKaskadeVersionZweiUndVersionEinsBleibtLesbar() {
+        KostenstelleEnergieDto.Posten ms10 = logistikNeu.gemessen().posten().get(0);
+        assertThat(ms10.messstelle().kennzeichen()).isEqualTo("MS-10");
+        assertThat(ms10.version()).isEqualTo(2);
+        assertThat(ms10.kennzeichen()).last().isEqualTo("korrigiert (Version 2)");
+        assertThat(ms10.menge()).isEqualByComparingTo(((BigDecimal) versionAus(versionenNachKaskade, "F10", "tag", TAG, 2)
+                .get("menge")));
+        assertThat(String.valueOf(ms10.herkunft().get("fehlt"))).isEqualTo("[]");
+        KostenstelleEnergieDto.Posten ms10v1 = logistikVersionEins.gemessen().posten().get(0);
+        assertThat(ms10v1.version()).isEqualTo(1);
+        assertThat(ms10v1.kennzeichen()).noneMatch(ErgebnisZustand::istKorrigiert);
+        assertThat(ms10v1.menge()).isEqualByComparingTo((BigDecimal) tagV1.get("menge"));
+        KostenstelleEnergieDto.Posten ms15 = montageNeu.berechnet().posten().get(0);
+        assertThat(ms15.messstelle().kennzeichen()).isEqualTo("MS-15");
+        assertThat(ms15.version()).isEqualTo(2);
+        assertThat(ms15.kennzeichen()).last().isEqualTo("korrigiert (Version 2)");
     }
 
     /** Ein Kreis endet: KR-1 ↔ KR-2 wird in der Kaskade benannt abgelehnt — dieselbe Ordnung wie im Lauf. */
@@ -703,7 +764,7 @@ class UemsKorrekturKaskadeTest {
         MessstelleQuelleRepository quellen = new MessstelleQuelleRepository(app);
         SpeicherklasseHistorie historie = new SpeicherklasseHistorie(app, katalog);
         BerechnetePeriodenRepository speicher = new BerechnetePeriodenRepository(app);
-        MessstelleWerteService werte = new MessstelleWerteService(app, ms, quellen, new QuelleKadenzRepository(app),
+        werte = new MessstelleWerteService(app, ms, quellen, new QuelleKadenzRepository(app),
                 new MesskanalService(app, new SiteRepository(app), katalog, JSON, new GeraetRepository(app), quellen),
                 historie, speicher);
         return new BerechnetePeriodenLauf(admin, app, ms, new BilanzRestRepository(app),
@@ -723,6 +784,7 @@ class UemsKorrekturKaskadeTest {
             root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) "
                     + "VALUES (?, ?, ?, DATE '2024-01-01')", t, an, st);
             IDS.put("AN:" + t, an);
+            IDS.put("U:" + t, u);
         }
         reihe(KB, "F10");
         reihe(KB, "F12");
@@ -764,6 +826,11 @@ class UemsKorrekturKaskadeTest {
                 + "messstelle_id = ?), 1, 'messstelle', ?, '+', 1)", KB, kr1, kr1, kr2);
         IDS.put("KR-1", kr1);
         IDS.put("KR-2", kr2);
+        // AP-10 IP-11: MS-10 geht zu 100 % an 4300 (gemessen), der Summen-Baustein MS-15 an 4200 (berechnet).
+        IDS.put("4300", kostenstelle(KB, "4300", "Logistik"));
+        IDS.put("4200", kostenstelle(KB, "4200", "Montage"));
+        verteilung(KB, ms10, IDS.get("4300"));
+        verteilung(KB, ms15, IDS.get("4200"));
         UUID fremd10 = gemessen(FREMD, "MS-10", "ZF");
         IDS.put("MS-15:" + FREMD, summe(FREMD, "MS-15", List.of(fremd10)));
     }
@@ -779,6 +846,17 @@ class UemsKorrekturKaskadeTest {
                 + "actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, ?, 'counter', 'zaehlerstand', 'fuehrend', "
                 + "'2024-03-12T00:00:00Z', true, now(), 'sub', 'Probe', 'kunde')", tenant, ms, IDS.get(reihe), geraet, KANAL);
         return ms;
+    }
+
+    private static UUID kostenstelle(UUID tenant, String kennzeichen, String name) {
+        return uuid("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, gueltig_ab) VALUES (?, ?, ?, "
+                + "?, DATE '2026-10-01') RETURNING id", tenant, IDS.get("U:" + tenant), kennzeichen, name);
+    }
+
+    private static void verteilung(UUID tenant, UUID messstelle, UUID kostenstelle) {
+        root.update("INSERT INTO messstelle_verteilung (tenant_id, messstelle_id, kostenstelle_id, anteil_prozent, "
+                + "gueltig_ab, created_by) VALUES (?, ?, ?, 100, DATE '2026-10-01', 'test')", tenant, messstelle,
+                kostenstelle);
     }
 
     private static UUID summe(UUID tenant, String kennzeichen, List<UUID> bausteine) {

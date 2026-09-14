@@ -448,8 +448,11 @@ public final class BilanzAbleitung {
                 s.fehlend(), s.kennzeichen(), anzeige);
     }
 
-    /** Die Summe ohne Kundensatz — die Standort-Ebene ({@link #ebene}) spricht ihn nicht. */
-    private static SummeUrteil summeOhneAnzeige(List<Summand> eingaenge) {
+    /**
+     * Die Summe ohne Kundensatz — die Standort-Ebene ({@link #ebene}) spricht ihn nicht, und die Kostenstellen-Sicht
+     * ({@link KostenstelleEnergieRegeln}, AP-10 IP-11) summiert damit Posten beliebiger Einheit.
+     */
+    static SummeUrteil summeOhneAnzeige(List<Summand> eingaenge) {
         BigDecimal menge = BigDecimal.ZERO;
         int vorhanden = 0;
         List<String> fehlend = new ArrayList<>();

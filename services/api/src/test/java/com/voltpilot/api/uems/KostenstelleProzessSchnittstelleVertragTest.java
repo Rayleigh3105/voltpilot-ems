@@ -72,7 +72,8 @@ class KostenstelleProzessSchnittstelleVertragTest {
     void keineRouteLoescht() {
         List<String> eigene = pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/unternehmen/kostenstellen")
                 || p.startsWith("/api/v1/unternehmen/prozesse") || p.equals("/api/v1/messstellen/{id}/prozesse")).toList();
-        assertThat(eigene).hasSize(7);
+        // Sieben aus AP-10 IP-7, die achte ist die Kostenstellen-Sicht (AP-10 IP-11, GET …/{id}/energie).
+        assertThat(eigene).hasSize(8);
         for (String p : eigene) {
             assertThat(((Map<String, Object>) pfade.get(p)).keySet()).as(p).doesNotContain("delete");
         }

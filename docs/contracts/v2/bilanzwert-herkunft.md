@@ -19,8 +19,12 @@ Formel-Fassung und jeden EINGANG mit seiner Version.
 Beide Vektor-Tests halten den gebauten Satz zusätzlich gegen dieses Schema: die Form ist damit
 nicht nur beschrieben, sondern bewiesen.
 
-> **Wer anruft (Stand AP-10 IP-1): niemand.** Die Herkunfts-Karte im Portal und die Antworten der
-> Bilanz-Routen kommen mit IP-9, IP-12 und IP-14.
+> **Wer anruft (Stand AP-10 IP-11):** die Kostenstellen-Sicht
+> `GET /api/v1/unternehmen/kostenstellen/{id}/energie` — je Posten ein Satz der Art `verteilt` (Ziel =
+> die Kostenstelle, Verteilungs-Fassung des letzten verteilten Tages, EIN Eingang = die Quelle über dieselben
+> Tage mit ihrer höchsten Version, ab Version 2 der Auslöser aus der Version der Quelle, `berechnet_am` =
+> Zeitpunkt der Sicht, denn verteilte Werte werden nie gespeichert). Die Antworten der Bilanz-Routen (IP-9,
+> IP-10) und die Herkunfts-Karte im Portal kommen mit IP-12 und IP-14.
 
 ## 1. Was im Satz steht
 

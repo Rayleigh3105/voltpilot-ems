@@ -23,6 +23,7 @@ IP-13 (`uems-ersatzwert-methoden.md`), IP-14 (`uems-korrektur-vorschlaege.md`) u
 | Naht AP-11 | `uems/KennzahlenNaht` (Bean `Keine`: leer, kein Vorgriff) |
 | Naht AP-12 | `uems/BerichteNaht` (Bean `Keine`: kennt keinen Bericht) |
 | Migration | `V20260914120000`: `messreihe_viertelstunde_version` + Anlass `K-…` + Rohwert-Fakten; `messreihe_periode_version`; `messreihe_kaskade_wirkung` |
+| Meldung AP-10 IP-11 | `uems/BilanzNeuBerechnet.melden` in derselben Transaktion: `bilanz_neu_berechnet` je berechneter Messstelle mit neuer Version und je gemessener Messstelle einer korrigierten Reihe mit Anteil (`uems-kostenstelle-energie.md`) |
 | Vertrag | `ergebnis-zustand-vectors.json` 1.5: Kennzeichen `korrigiert` (derselbe Wortlaut wie `bilanz-vectors.json` F14) |
 
 ## Was ein Anlass ist

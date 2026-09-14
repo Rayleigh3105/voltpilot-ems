@@ -66,5 +66,5 @@ gelöscht**. Eine Messstelle gehört je Tag zu 0..n Prozessen, ohne Anteil. Konz
   P-1 endet 31.12.2026 — ein Wert für März 2027 bleibt speicherbar, das Beenden meldet nichts (die
   Bezugsgröße hat keine Tage, ihre Werte schon). Entscheidung bei AP-10 IP-11 bzw. AP-09 IP-7.
 
-**Nicht gebaut:** Kostenstellen-Lesemodell (IP-11), Portal (IP-15), Durchsetzung (AP-03). Die Verteilung
-steht seit IP-8 (`uems-verteilung.md`).
+**Nicht gebaut:** Portal (IP-15), Durchsetzung (AP-03). Die Verteilung
+steht seit IP-8 (`uems-verteilung.md`), die Kostenstellen-Sicht seit IP-11 (`uems-kostenstelle-energie.md`).

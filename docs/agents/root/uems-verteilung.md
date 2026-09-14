@@ -55,5 +55,8 @@ verteilten Tage. Vertrag `docs/contracts/v2/verteilung.md` (Fassung 1.1), Konzep
 `api.ts`. An seiner Stelle prüft `MessstelleFormelService.bindung`, dass die Kostenstelle des Terms da ist
 (404). Ohne Zeile am Tag nennen Wert und Verlauf den Term als fehlend mit `nicht_verteilt`.
 
+✅ **Seit AP-10 IP-11** liest die Kostenstellen-Sicht die Verteilung je Tag (gemessen · verteilt · berechnet · nicht
+verteilt, `uems-kostenstelle-energie.md`).
+
 **Nicht gebaut:** Bilanz-Lesemodell (IP-9), Periodenwerte berechneter/verteilter Messstellen (IP-10),
-Kostenstellen-Lesemodell und Kaskade (IP-11), Herkunft (IP-12), Portal (IP-15), Durchsetzung (AP-03).
+Herkunft in den Bilanz-Antworten (IP-12), Portal (IP-15), Durchsetzung (AP-03).

@@ -16,9 +16,13 @@
     "",
     "Fassung 1.1 (AP-10 IP-8, 13.09.2026): Regel `satz_ab_tag` — der Schreibweg `PUT …/verteilung`",
     "als EINE reine Regel (Satz ab Tag: Anteil, Ziel, Summe, Ende mit dem Ziel, Wiederholung,",
-    "Korrektur am selben Tag, Fassung); im Block `leseweg` ist `verteilung_wartet_auf_ip8` eingelöst."
+    "Korrektur am selben Tag, Fassung); im Block `leseweg` ist `verteilung_wartet_auf_ip8` eingelöst.",
+    "",
+    "Fassung 1.2 (AP-10 IP-11, 14.09.2026): Regel `kostenstelle` — was eine Kostenstelle über eine",
+    "Periode bekommt (gemessen · verteilt · berechnet) und was daneben NIEMANDEM gehört (nicht verteilt),",
+    "je Tag mit seinem Anteil; Fall F14 (Korrektur eines Eingangs, Version 1 bleibt lesbar)."
   ],
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "$schema_datei": "./verteilung.schema.json",
   "herkunft": "UEMS AP-10 §4.6 (Verteilung), §4.5 (Fortpflanzung, Zeile „Verteilung“), §4.9 (Invarianten 5, 6); Entscheide E4, E11, E12, E13 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -33,7 +37,8 @@
     "Fortpflanzung (E2): Summe = Summe der vorhandenen Eingänge mit Zustand „schlechtester Eingang“ und Nennung der fehlenden („mindestens …“); Differenz und Saldo bei einem nicht vollständigen Eingang = „keine Werte“; Verteilung erbt; der Live-Wert bleibt `null` statt Teilsumme.",
     "Eine Verteilung ist eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage, Muster A), Summe je Tag genau 100 % an jedem Tag mit Zeilen, sonst „nicht verteilt“; sie wirkt je Tag (Tagesanteile, nie Stichtag) und endet mit ihrem Ziel (E11/E12). Keine dynamischen Schlüssel.",
     "Formeln sind tagesgenau zeitgültig (Fassungen, E5); Terme vom Typ `rest` kommen aus der Stellung, Terme vom Typ `verteilung` verweisen auf die Verteilung (F11); eine Korrektur eines Eingangs erzeugt Version n + 1 der berechneten Messstelle, Version 1 bleibt lesbar (F14).",
-    "Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens einer Nachkommastelle, jedes Ziel besteht am Tag, die Summe ist 100 %; eine neue Zeile endet mit ihrem Ziel, und an keinem Tag danach bleibt ein Rest ≠ 100 %; derselbe Satz noch einmal ändert nichts; ein Satz am Tag der laufenden Fassung ist nur als Korrektur erlaubt (aufheben + neu); ein leerer Satz heißt ab dem Tag „nicht verteilt“."
+    "Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`): jeder Anteil in (0, 100] mit höchstens einer Nachkommastelle, jedes Ziel besteht am Tag, die Summe ist 100 %; eine neue Zeile endet mit ihrem Ziel, und an keinem Tag danach bleibt ein Rest ≠ 100 %; derselbe Satz noch einmal ändert nichts; ein Satz am Tag der laufenden Fassung ist nur als Korrektur erlaubt (aufheben + neu); ein leerer Satz heißt ab dem Tag „nicht verteilt“.",
+    "Die Kostenstellen-Sicht (`kostenstelle`, AP-10 IP-11) nennt vier Herkünfte nebeneinander: gemessen (eine gemessene Messstelle zu 100 %), verteilt (zu einem Anteil unter 100 %), berechnet (eine berechnete Messstelle, gleich zu welchem Anteil) und nicht verteilt (ein Tageswert ohne Verteilungszeile) — nicht verteilt gehört keiner Kostenstelle, wird nie aufgeteilt und nie weggelassen; jeder Tag mit seinem Anteil, die Periode ist die Summe der Tage; ohne Zuordnung keine Menge, nie 0."
   ],
   "vokabulare": {
     "term_art": [
@@ -75,6 +80,19 @@
     "erbe_grund": [
       "rest_unplausibel",
       "quelle_keine_werte"
+    ],
+    "herkunft_kostenstelle": [
+      "gemessen",
+      "verteilt",
+      "berechnet",
+      "nicht verteilt"
+    ],
+    "kostenstelle_grund": [
+      "keine_zuordnung",
+      "groessen_gemischt",
+      "kein_tageswert",
+      "quelle_keine_werte",
+      "rest_unplausibel"
     ]
   },
   "regeln": {
@@ -94,7 +112,8 @@
     "ebene_x_von_y": "{mit_werten} von {gesamt} {wort}",
     "nicht_verteilt": "nicht verteilt",
     "verteilt": "verteilt ({anteil} % von {quelle})",
-    "erbe_rest_unplausibel": "keine Werte (Rest unplausibel)"
+    "erbe_rest_unplausibel": "keine Werte (Rest unplausibel)",
+    "verteilung_geaendert": "Verteilung geändert am {tag}"
   },
   "zwillinge": {
     "satz": [
@@ -127,10 +146,14 @@
     ],
     "herkunft": [
       "java"
+    ],
+    "kostenstelle": [
+      "java"
     ]
   },
   "zwillinge_grund": {
-    "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel."
+    "herkunft": "Der Herkunfts-Satz eines verteilten Werts wird SERVERSEITIG gebaut und reist fertig ins Portal (bilanzwert-herkunft.md); die eine Regel dafür lebt in `BilanzwertHerkunft` und wird von `uemsBilanz.ts` nur ANGEZEIGT, nie gebildet. Der Bilanz-Vertrag prüft sie in beiden Sprachen — hier wäre der TS-Zwilling eine zweite Umsetzung derselben Regel.",
+    "kostenstelle": "Die Kostenstellen-Sicht (gemessen · verteilt · berechnet · nicht verteilt) wird SERVERSEITIG aus den gespeicherten Tageswerten gebildet und reist fertig über `GET /api/v1/unternehmen/kostenstellen/{id}/energie` ins Portal; die eine Regel dafür lebt in `KostenstelleEnergieRegeln` (sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz an). Ein TS-Zwilling wäre eine zweite Umsetzung derselben Regel — das Portal zeigt nur an (IP-15)."
   },
   "leseweg": {
     "herkunft": "UEMS AP-10 §8 IP-5 („Anteil über den AP-08-IP-7-Leseweg — bis dahin 422 `anteil_wartet_auf_ap08`, benannt, nie geraten; Verteilungs-Term liest den Anteil des Tages“), §1.1 von messstelle-formel.md; nachgetragen mit AP-10 IP-5 am 13.09.2026. Die zweite Ablehnung `verteilung_wartet_auf_ip8` ist die Anweisung von firstmate vom 13.09.2026: beim Bau fehlte neben AP-08 IP-7 auch die Verteilung selbst (AP-10 IP-8) — zwei fehlende Fähigkeiten, zwei Sätze. Eingelöst mit AP-10 IP-8 am 13.09.2026: der Zweig `verteilung` liest die Zeilen der Verteilung am Tag (`messstelle_verteilung`) und rechnet den Anteil über `VerteilungRegeln.term` — `verteilung_wartet_auf_ip8` gibt es nicht mehr.",
@@ -297,6 +320,20 @@
       "vorlage": null,
       "statt": "2019-01-01",
       "grund": "Die Vorlage nennt für 4100, 4200 und 4300 kein Anlegedatum. Die Prüfung „das Ziel besteht an jedem Tag des Intervalls“ braucht eines; gewählt ist ein Tag deutlich vor allen Fällen, damit er nie das Ergebnis trägt. Das ENDE der Kostenstelle 9000 (31.12.2026) steht dagegen in der Vorlage und ist ergebnisrelevant (F12)."
+    },
+    {
+      "fall": "F12 · Anzeige 2027",
+      "feld": "beschreibend.anzeige („9010 Druckluft 0 kWh verteilt“)",
+      "vorlage": "0 kWh",
+      "statt": "keine Menge, Grund keine_zuordnung",
+      "grund": "Eine Kostenstelle ohne Zuordnung hat keinen Verbrauch von 0 — sie hat keinen. Die Regel `kostenstelle` liefert darum `menge: null` mit `grund: keine_zuordnung`; eine 0 sähe aus wie gemessen und wäre eine Behauptung."
+    },
+    {
+      "fall": "F12, F14 · Tageswerte der Kostenstellen-Sicht",
+      "feld": "kostenstelle.eingang.quellen[].tage",
+      "vorlage": null,
+      "statt": "MS-03 480 kWh (31.12.2026, 15.01.2027), MS-02 95 kWh (31.12.2026); MS-22 an 4300 am 08.11.2026 (F6)",
+      "grund": "Die Vorlage nennt für MS-03/MS-02 keine Tageswerte (nur „14 900 kWh im Vormonat“) und für MS-22 keine Kostenstelle; die Zahlen tragen nur die Form der Prüfung (100 % → gemessen, keine Zeile → nicht verteilt, Erzeugung ≠ Abgabe, negativer Rest). F14 nimmt die Zahlen der Vorlage unverändert."
     }
   ],
   "_nicht_geprueft": [
@@ -444,6 +481,122 @@
               "keine Werte (Rest unplausibel)"
             ],
             "grund": "rest_unplausibel"
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Ein negativer Rest an 4300 ist berechnet, trägt „keine Werte (Rest unplausibel)“ und nie −5 kWh oder 0",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-11-08",
+            "bis": "2026-11-08",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-22",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-11-08",
+                    "menge": "-5",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": [
+                      "berechnet (Differenz)",
+                      "unplausibel (negativ)"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": "kWh",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-22",
+                  "art": "berechnet",
+                  "menge": null,
+                  "zustand": "keine Werte",
+                  "version": 1,
+                  "kennzeichen": [
+                    "keine Werte (Rest unplausibel)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-11-08",
+                      "anteil_prozent": "100",
+                      "menge": null,
+                      "grund": "rest_unplausibel"
+                    }
+                  ]
+                }
+              ]
+            },
+            "summe": {
+              "menge": null,
+              "einheit": "kWh",
+              "zustand": "keine Werte",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
           }
         }
       ],
@@ -1418,6 +1571,404 @@
             "tage_rueckwirkend": 4,
             "unveraendert": true
           }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Dezember 2026: MS-03 geht zu 100 % an 9000 — die Herkunft heißt gemessen, das Kennzeichen „verteilt (100 % von MS-03)“",
+          "eingang": {
+            "kostenstelle": "9000",
+            "von": "2026-12-31",
+            "bis": "2026-12-31",
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-03",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Erzeugung",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "9000",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-12-31",
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-12-31",
+                    "menge": "480",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": "480",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-03",
+                  "art": "gemessen",
+                  "menge": "480",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-03)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-12-31",
+                      "anteil_prozent": "100",
+                      "menge": "480",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "480",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Januar 2027: 9010 hat KEINE Menge (nie 0 kWh) — MS-03 steht daneben als „nicht verteilt“ und wird nicht auf 9010 umgehängt; MS-04 ohne jede Menge steht nicht darin (nichts gemessen, nichts offen)",
+          "eingang": {
+            "kostenstelle": "9010",
+            "von": "2027-01-15",
+            "bis": "2027-01-15",
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-03",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Erzeugung",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "9000",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-12-31",
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2027-01-15",
+                    "menge": "480",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-04",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "9000",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-12-31",
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2027-01-15",
+                    "menge": null,
+                    "zustand": "keine Werte",
+                    "abdeckung_prozent": 0,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": "480",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-03",
+                  "art": "gemessen",
+                  "menge": "480",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "nicht verteilt"
+                  ],
+                  "fassungen": [],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2027-01-15",
+                      "anteil_prozent": null,
+                      "menge": "480",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Erzeugung und Abgabe an derselben Kostenstelle werden nie zu einer Zahl: je Größe und Richtung eine Summe",
+          "eingang": {
+            "kostenstelle": "9000",
+            "von": "2026-12-31",
+            "bis": "2026-12-31",
+            "ziele": [
+              {
+                "kostenstelle": "9000",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": "2026-12-31"
+              },
+              {
+                "kostenstelle": "9010",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "9020",
+                "gueltig_ab": "2027-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-03",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Erzeugung",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "9000",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-12-31",
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-12-31",
+                    "menge": "480",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-02",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Abgabe",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "9000",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2026-12-31",
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-12-31",
+                    "menge": "95",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "groessen_gemischt",
+              "anzahl_summen": 2,
+              "posten": [
+                {
+                  "messstelle": "MS-02",
+                  "art": "gemessen",
+                  "menge": "95",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-02)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": []
+                },
+                {
+                  "messstelle": "MS-03",
+                  "art": "gemessen",
+                  "menge": "480",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-03)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": []
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "groessen_gemischt",
+              "anzahl_summen": 2,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -2260,6 +2811,772 @@
             "tage_rueckwirkend": 0,
             "unveraendert": false
           }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Kostenstelle 4100 · Januar 2027: verteilt 10000 kWh aus den Tagesanteilen (70 % bis 14.01., 60 % ab 15.01.) — nie ein Stichtag, und nichts ist nicht verteilt",
+          "eingang": {
+            "kostenstelle": "4100",
+            "von": "2027-01-01",
+            "bis": "2027-01-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2027-01-14",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2027-01-14",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "60",
+                    "gueltig_ab": "2027-01-15",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "40",
+                    "gueltig_ab": "2027-01-15",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2027-01-01",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-02",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-03",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-04",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-05",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-06",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-07",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-08",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-09",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-10",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-11",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-12",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-13",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-14",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-15",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-16",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-17",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-18",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-19",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-20",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-21",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-22",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-23",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-24",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-25",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-26",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-27",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-28",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-29",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-30",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-31",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": "10000",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-07",
+                  "art": "gemessen",
+                  "menge": "10000",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (70 % von MS-07)",
+                    "verteilt (60 % von MS-07)",
+                    "Verteilung geändert am 15.01.2027"
+                  ],
+                  "fassungen": [
+                    1,
+                    2
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2027-01-14",
+                      "anteil_prozent": "70",
+                      "menge": "350",
+                      "grund": null
+                    },
+                    {
+                      "tag": "2027-01-15",
+                      "anteil_prozent": "60",
+                      "menge": "300",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "10000",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Kostenstelle 4200 · Januar 2027: verteilt 5500 kWh aus den Tagesanteilen (30 % bis 14.01., 40 % ab 15.01.) — nie ein Stichtag, und nichts ist nicht verteilt",
+          "eingang": {
+            "kostenstelle": "4200",
+            "von": "2027-01-01",
+            "bis": "2027-01-31",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-07",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "70",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2027-01-14",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "30",
+                    "gueltig_ab": "2026-10-01",
+                    "gueltig_bis": "2027-01-14",
+                    "fassung": 1
+                  },
+                  {
+                    "kostenstelle": "4100",
+                    "anteil_prozent": "60",
+                    "gueltig_ab": "2027-01-15",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  },
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "40",
+                    "gueltig_ab": "2027-01-15",
+                    "gueltig_bis": null,
+                    "fassung": 2
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2027-01-01",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-02",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-03",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-04",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-05",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-06",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-07",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-08",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-09",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-10",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-11",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-12",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-13",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-14",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-15",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-16",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-17",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-18",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-19",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-20",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-21",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-22",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-23",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-24",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-25",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-26",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-27",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-28",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-29",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-30",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  },
+                  {
+                    "tag": "2027-01-31",
+                    "menge": "500",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "verteilt": {
+              "menge": "5500",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-07",
+                  "art": "gemessen",
+                  "menge": "5500",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (30 % von MS-07)",
+                    "verteilt (40 % von MS-07)",
+                    "Verteilung geändert am 15.01.2027"
+                  ],
+                  "fassungen": [
+                    1,
+                    2
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2027-01-14",
+                      "anteil_prozent": "30",
+                      "menge": "150",
+                      "grund": null
+                    },
+                    {
+                      "tag": "2027-01-15",
+                      "anteil_prozent": "40",
+                      "menge": "200",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "5500",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": null,
+              "posten": []
+            }
+          }
         }
       ],
       "beschreibend": {
@@ -2276,6 +3593,472 @@
       "annahmen": [
         "Die Änderung der Verteilung, der 20.01.2027 und die Tagesmenge 500 kWh sind Annahmen."
       ]
+    },
+    {
+      "name": "f14-korrektur-eines-eingangs-kostenstellen-sicht",
+      "id": "F14",
+      "familie": "korrektur",
+      "abnahme": "Vektoren F14 (v2 = 12, v1 lesbar) — AP-10 §8 IP-11",
+      "titel": "Ein Eingang wird korrigiert (MS-17: 60 → 58 kWh) — der Rest bekommt Version 2, Version 1 bleibt lesbar",
+      "why": "Die Korrektur-Kaskade (AP-08 §6.3 Punkt 4) in der Kostenstellen-Sicht: ein verteilter Wert trägt die Version seiner Quelle, der Rest MS-22 steht mit Version 2 unter „nicht verteilt“ — und die Sicht über Version 1 sagt weiter, was vorher galt.",
+      "anlage": "AN-3",
+      "periode": "Tag 2026-10-18",
+      "einheit": "kWh",
+      "schritte": [
+        "MS-22 Version 2 = 100 − 58 − 30 = 12 kWh, Kennzeichen „berechnet (Differenz) · nicht zugeordnet · korrigiert (Version 2)“ (bilanz-vectors.json F14).",
+        "MS-17 geht seit 15.10.2026 zu 100 % an 4300, MS-18 an 4200; MS-16 und MS-22 haben keine Kostenstelle (Referenzdatei: „—“).",
+        "Kostenstelle 4300 am 18.10.2026: gemessen 58 kWh (Version 2); nicht verteilt 100 kWh (MS-16) + 12 kWh (MS-22, Version 2) — der Rest wird NICHT auf 4200/4300 umgelegt.",
+        "Mit den Tageswerten von Version 1 dieselbe Sicht: 60 kWh und 10 kWh — die damalige Zahl bleibt auffindbar."
+      ],
+      "pruefungen": [
+        {
+          "regel": "kostenstelle",
+          "name": "Version 2: 4300 bekommt MS-17 mit 58 kWh „korrigiert (Version 2)“; nicht verteilt stehen MS-16 und der Rest MS-22 mit 12 kWh (Version 2)",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-10-18",
+            "bis": "2026-10-18",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-16",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "100",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-17",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "58",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 2,
+                    "kennzeichen": [
+                      "korrigiert (Version 2)"
+                    ]
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-18",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "30",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-22",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "12",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 2,
+                    "kennzeichen": [
+                      "berechnet (Differenz)",
+                      "nicht zugeordnet",
+                      "korrigiert (Version 2)"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": "58",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-17",
+                  "art": "gemessen",
+                  "menge": "58",
+                  "zustand": "vollständig",
+                  "version": 2,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-17)",
+                    "korrigiert (Version 2)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": "100",
+                      "menge": "58",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "58",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": "112",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-16",
+                  "art": "gemessen",
+                  "menge": "100",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "nicht verteilt"
+                  ],
+                  "fassungen": [],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": null,
+                      "menge": "100",
+                      "grund": null
+                    }
+                  ]
+                },
+                {
+                  "messstelle": "MS-22",
+                  "art": "berechnet",
+                  "menge": "12",
+                  "zustand": "vollständig",
+                  "version": 2,
+                  "kennzeichen": [
+                    "nicht verteilt",
+                    "berechnet (Differenz)",
+                    "nicht zugeordnet",
+                    "korrigiert (Version 2)"
+                  ],
+                  "fassungen": [],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": null,
+                      "menge": "12",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "regel": "kostenstelle",
+          "name": "Version 1 bleibt lesbar: dieselbe Sicht mit den Tageswerten von Version 1 — 4300 60 kWh, Rest MS-22 10 kWh",
+          "eingang": {
+            "kostenstelle": "4300",
+            "von": "2026-10-18",
+            "bis": "2026-10-18",
+            "ziele": [
+              {
+                "kostenstelle": "4100",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4200",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              },
+              {
+                "kostenstelle": "4300",
+                "gueltig_ab": "2019-01-01",
+                "gueltig_bis": null
+              }
+            ],
+            "quellen": [
+              {
+                "messstelle": "MS-16",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "100",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-17",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4300",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "60",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-18",
+                "art": "gemessen",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [
+                  {
+                    "kostenstelle": "4200",
+                    "anteil_prozent": "100",
+                    "gueltig_ab": "2026-10-15",
+                    "gueltig_bis": null,
+                    "fassung": 1
+                  }
+                ],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "30",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": []
+                  }
+                ]
+              },
+              {
+                "messstelle": "MS-22",
+                "art": "berechnet",
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "anteile": [],
+                "tage": [
+                  {
+                    "tag": "2026-10-18",
+                    "menge": "10",
+                    "zustand": "vollständig",
+                    "abdeckung_prozent": 100,
+                    "version": 1,
+                    "kennzeichen": [
+                      "berechnet (Differenz)",
+                      "nicht zugeordnet"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "ergebnis": {
+            "gemessen": {
+              "menge": "60",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-17",
+                  "art": "gemessen",
+                  "menge": "60",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "verteilt (100 % von MS-17)"
+                  ],
+                  "fassungen": [
+                    1
+                  ],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": "100",
+                      "menge": "60",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            },
+            "verteilt": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "berechnet": {
+              "menge": null,
+              "einheit": null,
+              "zustand": null,
+              "grund": "keine_zuordnung",
+              "posten": []
+            },
+            "summe": {
+              "menge": "60",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": []
+            },
+            "nicht_verteilt": {
+              "menge": "110",
+              "einheit": "kWh",
+              "zustand": "vollständig",
+              "grund": null,
+              "posten": [
+                {
+                  "messstelle": "MS-16",
+                  "art": "gemessen",
+                  "menge": "100",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "nicht verteilt"
+                  ],
+                  "fassungen": [],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": null,
+                      "menge": "100",
+                      "grund": null
+                    }
+                  ]
+                },
+                {
+                  "messstelle": "MS-22",
+                  "art": "berechnet",
+                  "menge": "10",
+                  "zustand": "vollständig",
+                  "version": 1,
+                  "kennzeichen": [
+                    "nicht verteilt",
+                    "berechnet (Differenz)",
+                    "nicht zugeordnet"
+                  ],
+                  "fassungen": [],
+                  "tage_stichproben": [
+                    {
+                      "tag": "2026-10-18",
+                      "anteil_prozent": null,
+                      "menge": "10",
+                      "grund": null
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "beschreibend": {
+        "anzeige": "Kostenstelle 4300 Logistik · 18.10.2026 · gemessen 58 kWh (MS-17, korrigiert Version 2) · nicht verteilt: MS-16 100 kWh, MS-22 Lindach nicht zugeordnet 12 kWh (Version 1: 10 kWh)"
+      },
+      "annahmen": []
     }
   ]
 }

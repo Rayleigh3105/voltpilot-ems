@@ -9438,6 +9438,42 @@ paths:
         "404": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "409": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
         "422": { $ref: "#/components/responses/KostenstelleProzessAbgelehnt" }
+  /api/v1/unternehmen/kostenstellen/{id}/energie:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [kostenstellen-prozesse]
+      summary: Was eine Kostenstelle verbraucht hat - gemessen, verteilt, berechnet - und daneben, was niemandem gehört (nicht verteilt).
+      description: >
+        Recht `messstelle.ansehen` (AP-10 §4.10, eingetragen, nicht durchgesetzt). Die Periode `tag` ·
+        `monat` (Vorgabe) · `jahr`, die `am` enthält (Vorgabe heute, Zeitzone des Unternehmens).
+        Vier Herkünfte nebeneinander (KostenstelleEnergieRegeln, Regel `kostenstelle` in
+        verteilung-vectors.json): `gemessen` = eine gemessene Messstelle geht an dem Tag zu 100 % an
+        die Kostenstelle, `verteilt` = zu einem Anteil unter 100 %, `berechnet` = eine berechnete
+        Messstelle (gleich zu welchem Anteil), `nicht_verteilt` = ein Tageswert ohne Verteilungszeile.
+        `nicht_verteilt` gehört KEINER Kostenstelle: es steht in jeder Kostenstellen-Sicht daneben,
+        wird nie aufgeteilt, nie weggelassen und zählt in `summe` nie mit. Jeder Tag wird mit SEINEM
+        Anteil verteilt (E12, `tage`); die Periode ist die Summe der Tage. Ohne Zuordnung KEINE Menge
+        (`menge` null, `grund` `keine_zuordnung`) - nie 0; verschiedene Größen, Richtungen oder
+        Einheiten werden nie zu einer Zahl (`groessen_gemischt`, je Größe eine `summen`-Zeile).
+        `version`: je Tag die höchste Version bis dahin (Korrektur-Kaskade, `messreihe_periode_version`);
+        ohne Angabe die neueste - mit `version=1` stehen die Zahlen, wie sie vor jeder Korrektur galten.
+        Ein Posten trägt die höchste Version seiner Tage mit EINMAL „korrigiert (Version n)“ und seine
+        Herkunft nach bilanzwert-herkunft (Art `verteilt`). Nichts wird gespeichert; `berechnet_am` ist
+        der Zeitpunkt dieser Sicht. Liest nur.
+      parameters:
+        - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
+        - { name: am, in: query, required: false, schema: { type: string, format: date } }
+        - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Die Kostenstellen-Sicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KostenstelleEnergie" }
+        "400": { $ref: "#/components/responses/BilanzAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/unternehmen/prozesse:
     get:
       tags: [kostenstellen-prozesse]
@@ -18187,6 +18223,99 @@ components:
         neu: { type: boolean }
         hauptzaehler: { $ref: "#/components/schemas/BilanzMessstelleRef" }
         messstelle: { $ref: "#/components/schemas/Messstelle" }
+    KostenstelleEnergie:
+      type: object
+      description: >
+        Die Kostenstellen-Sicht (AP-10 IP-11). `summe` = gemessen + verteilt + berechnet (ohne Posten);
+        `nicht_verteilt` zählt dort nie mit.
+      required: [kostenstelle, periode, am, von, bis, zeitzone, version, berechnet_am, gemessen, verteilt, berechnet, summe, nicht_verteilt]
+      properties:
+        kostenstelle: { $ref: "#/components/schemas/KostenstelleEnergieKostenstelle" }
+        periode: { type: string, enum: [tag, monat, jahr] }
+        am: { type: string, format: date }
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der letzte Tag, einschließlich." }
+        zeitzone: { type: string, example: Europe/Berlin }
+        version: { type: integer, nullable: true, description: "Die angefragte Version; null = je Tag die neueste." }
+        berechnet_am: { type: string, example: "2027-02-01T00:15:00+01:00" }
+        gemessen: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+        verteilt: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+        berechnet: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+        summe: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+        nicht_verteilt: { $ref: "#/components/schemas/KostenstelleEnergieBlock" }
+    KostenstelleEnergieKostenstelle:
+      type: object
+      required: [id, kennzeichen, name, gueltig_ab, gueltig_bis]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: "4100" }
+        name: { type: string, example: Spritzguss }
+        gueltig_ab: { type: string, format: date }
+        gueltig_bis: { type: string, format: date, nullable: true }
+    KostenstelleEnergieBlock:
+      type: object
+      required: [menge, einheit, zustand, grund, summen, posten]
+      properties:
+        menge: { type: number, nullable: true, description: "Ungerundet; nur bei GENAU einer Größe. null = keine Menge, nie 0." }
+        einheit: { type: string, nullable: true, example: kWh }
+        zustand: { type: string, nullable: true }
+        grund: { type: string, nullable: true, enum: [keine_zuordnung, groessen_gemischt, null] }
+        summen: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieSumme" } }
+        posten: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergiePosten" } }
+    KostenstelleEnergieSumme:
+      type: object
+      required: [groesse, richtung, einheit, menge, zustand, abdeckung_prozent, vorhanden, gesamt, fehlend]
+      properties:
+        groesse: { type: string, example: Wirkenergie }
+        richtung: { type: string, example: Bezug }
+        einheit: { type: string, example: kWh }
+        menge: { type: number, nullable: true }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        vorhanden: { type: integer }
+        gesamt: { type: integer }
+        fehlend: { type: array, items: { type: string } }
+    KostenstelleEnergiePosten:
+      type: object
+      required: [messstelle, groesse, richtung, einheit, menge, zustand, abdeckung_prozent, version, kennzeichen, fassungen, fehlend, tage, herkunft]
+      properties:
+        messstelle: { $ref: "#/components/schemas/KostenstelleEnergieMessstelle" }
+        groesse: { type: string }
+        richtung: { type: string }
+        einheit: { type: string }
+        menge: { type: number, nullable: true, description: "Summe der Tagesanteile; null = keine Werte, nie 0." }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer, description: "Die höchste Version der Tage." }
+        kennzeichen: { type: array, items: { type: string }, example: ["verteilt (70 % von MS-07)", "verteilt (60 % von MS-07)", "Verteilung geändert am 15.01.2027"] }
+        fassungen: { type: array, items: { type: integer }, description: "Die Verteilungs-Fassungen der Tage; bei nicht_verteilt leer." }
+        fehlend: { type: array, items: { type: string }, description: "Tage ohne Menge." }
+        tage: { type: array, items: { $ref: "#/components/schemas/KostenstelleEnergieTag" } }
+        herkunft:
+          type: object
+          nullable: true
+          description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null."
+          additionalProperties: true
+    KostenstelleEnergieMessstelle:
+      type: object
+      required: [id, kennzeichen, name, art]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: MS-07 }
+        name: { type: string, nullable: true }
+        art: { type: string, enum: [gemessen, berechnet] }
+    KostenstelleEnergieTag:
+      type: object
+      required: [tag, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund]
+      properties:
+        tag: { type: string, format: date }
+        anteil_prozent: { type: number, nullable: true, description: "Der Anteil DIESES Tages; bei nicht_verteilt null." }
+        quelle_menge: { type: number, nullable: true }
+        menge: { type: number, nullable: true }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer }
+        grund: { type: string, nullable: true, enum: [kein_tageswert, quelle_keine_werte, rest_unplausibel, null] }
     VerteilungFehler:
       type: object
       description: >

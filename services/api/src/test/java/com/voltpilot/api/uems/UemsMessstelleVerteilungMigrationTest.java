@@ -319,7 +319,8 @@ class UemsMessstelleVerteilungMigrationTest {
     @Test
     void dasEreignisVokabularUndDasProtokollKennenDieVerteilung() {
         assertThat(root.queryForList("SELECT art FROM messreihe_ereignis_vokabular()", String.class))
-                .endsWith("verteilung_geaendert")
+                // AP-10 IP-11 hängt bilanz_neu_berechnet dahinter an — additiv, die Reihenfolge bleibt.
+                .containsSubsequence("correction", "verteilung_geaendert")
                 .containsExactlyElementsOf(Arrays.stream(EreignisVokabular.Art.values())
                         .map(EreignisVokabular.Art::code).toList());
         Map<String, Object> v = root.queryForMap("SELECT array_to_string(urheber, ',') AS u, zeitform AS z, "

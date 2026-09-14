@@ -64,7 +64,7 @@ import org.testcontainers.utility.DockerImageName;
  * zeichengleich, nichts wird zurückgeschrieben); das Vokabular der Datenbank ist Zeile für Zeile
  * das von {@link EreignisVokabular} und die CHECKs urteilen wie die Klasse; JEDER Fall der
  * Vektor-Datei {@code events-vocabulary-vectors.json} läuft durch den Schreibweg und bekommt dort
- * dasselbe Urteil (jede der 27 Arten landet in der Tabelle); eine Wiederholung erzeugt keine
+ * dasselbe Urteil (jede der 28 Arten landet in der Tabelle); eine Wiederholung erzeugt keine
  * zweite Zeile, eine Fortschreibung eine weitere; der Zaun steht; niemand ändert, die App löscht
  * nie; Anlage, Box, Komponente und Datenaufzeichnung zu löschen lässt die Ereignisse stehen, nur
  * das Offboarding räumt sie. Keine Retention, keine Kompression: {@code DataRetentionPolicyTest}.
@@ -362,7 +362,7 @@ class MessreiheEreignisMigrationTest {
                 }
             }
         }
-        tests.add(DynamicTest.dynamicTest("jede der 27 Arten steht in der Tabelle", () ->
+        tests.add(DynamicTest.dynamicTest("jede der 28 Arten steht in der Tabelle", () ->
                 assertThat(root.queryForList("SELECT DISTINCT art FROM messreihe_ereignis WHERE tenant_id = ? "
                         + "AND NOT aus_bestand", String.class, kb))
                         .containsExactlyInAnyOrderElementsOf(Stream.of(Art.values()).map(Art::code).toList())));
