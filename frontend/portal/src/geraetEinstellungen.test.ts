@@ -183,8 +183,9 @@ describe('Prüfung vor dem Eintragen — dieselbe Reihenfolge wie der Server', (
   });
 
   it('der Knopf nennt den Zeitpunkt, „jetzt“ ist die Minute in Europe/Berlin', () => {
-    expect(eintragenText('2027-02-01', '08:00')).toBe('Einstellung ab 01.02.2027, 08:00 Uhr eintragen');
-    expect(eintragenText('', '08:00')).toBe('Einstellung eintragen');
+    expect(eintragenText('2027-02-01', '08:00')).toBe('Ab 01.02.2027, 08:00 Uhr eintragen');
+    expect(eintragenText('2027-02-01', '00:00')).toBe('Ab 01.02.2027 eintragen');
+    expect(eintragenText('', '08:00')).toBe('Eintragen');
     expect(jetztEingabe('2026-11-18T09:40:31Z')).toEqual({ datum: '2026-11-18', uhrzeit: '10:40' });
   });
 
@@ -384,7 +385,10 @@ describe('Karte „Einstellungen“: der Wert, der jetzt gilt, und die Historie'
       namen,
     );
     expect(g.titel).toBe('Wandlerverhältnis Strom');
-    expect(g.quelle).toBe('Komponente Zähler Energiekarte EK-2');
+    // Die Seite trägt nur EK-2: ihr Name stünde doppelt da. Mit einer zweiten Komponente steht er da.
+    expect(g.quelle).toBeNull();
+    expect(einstellungGruppen(einstellungen([fassung()]), JETZT, { ...namen, komponenten: new Map([...namen.komponenten, ['k-8-1', 'EK-1']]) })[0].quelle)
+      .toBe('Komponente Zähler Energiekarte EK-2');
     expect(g.wert).toBe('250/5 A');
     expect(g.detail).toBe('angewendet — mit der Verbindung zugestellt · gilt seit 01.10.2026');
     expect(g.geplant).toBe('Ab 01.02.2027: 400/5 A');
@@ -419,7 +423,7 @@ describe('Karte „Einstellungen“: der Wert, der jetzt gilt, und die Historie'
       namen,
     );
     expect(gruppen.map((g) => [g.titel, g.quelle, g.wert, g.geplant])).toEqual([
-      ['Wandlerverhältnis Strom', 'Komponente Zähler Energiekarte EK-2', '400/5 A', null],
+      ['Wandlerverhältnis Strom', null, '400/5 A', null],
       ['Vorzeichen umgekehrt', 'Messwert Wirkleistung', 'ja', null],
     ]);
     expect(gruppen[1].historie[0].marken).toEqual(['rückwirkend']);

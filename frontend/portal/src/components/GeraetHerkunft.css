@@ -209,6 +209,13 @@
 
 /* --- Dialog „Ändern ab <Zeitpunkt>" --------------------------------------- */
 
+/* Der Knopf nennt den Zeitpunkt; reicht die Zeile trotzdem nicht (große
+   Schrift), bricht sein Text um, statt über den Rand zu laufen. */
+.vp-modal:has(.vp-einst) .dfoot > .vp-btn {
+  max-width: 100%;
+  white-space: normal;
+}
+
 .vp-einst fieldset {
   display: grid;
   gap: 8px;

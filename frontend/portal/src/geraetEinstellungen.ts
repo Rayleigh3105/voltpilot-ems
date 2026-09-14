@@ -260,6 +260,9 @@ function quelleWort(f: EinstellungFassung, namen: EinstellungNamen): string | nu
   if (f.kanal !== null) {
     return `Messwert ${namen.kanaele.get(`${f.entity_id}|${f.kanal}`) ?? channelLabel(f.kanal)}`;
   }
+  // Trägt die Seite nur DIESE Komponente, wäre ihr Name hier eine Wiederholung
+  // der Überschrift (bei 375 px drei Zeilen, gemessen am EK-2-Bild).
+  if (namen.komponenten.size === 1) return null;
   return `Komponente ${namen.komponenten.get(f.entity_id)}`;
 }
 
@@ -538,10 +541,14 @@ export function aenderungPruefen(
   };
 }
 
-/** „Einstellung ab 01.02.2027 eintragen“ — der Knopf nennt den Zeitpunkt, der eingetragen wird. */
+/**
+ * „Ab 01.02.2027, 08:00 Uhr eintragen“ — der Knopf nennt den Zeitpunkt, der
+ * eingetragen wird. Kurz genug für eine Zeile bei 375 px neben „Abbrechen“
+ * (gemessen: „Einstellung ab … eintragen“ lief über den Rand).
+ */
 export function eintragenText(datum: string, uhrzeit: string): string {
   const ab = zeitpunktAus(datum, uhrzeit);
-  return 'fehler' in ab ? 'Einstellung eintragen' : `Einstellung ab ${zeitpunktText(ab.iso)} eintragen`;
+  return 'fehler' in ab ? 'Eintragen' : `Ab ${zeitpunktText(ab.iso)} eintragen`;
 }
 
 /** Die zwei Wege, wie eine Einstellung wirkt — Wortlaut der Wahl im Dialog (W1). */

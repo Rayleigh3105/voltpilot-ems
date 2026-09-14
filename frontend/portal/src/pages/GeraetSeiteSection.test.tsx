@@ -22,6 +22,7 @@ import {
   type SiteSource,
   type SiteTopology,
 } from '../api';
+import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
 
 const site: Site = {
   id: 's-1',
@@ -478,6 +479,28 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByRole('heading', { name: 'BMS' })).toBeInTheDocument();
     expect(screen.getByText('Ladestand laut BMS')).toBeInTheDocument();
     expect(screen.getByText('Shenggao Electric CAN')).toBeInTheDocument();
+  });
+
+  // UEMS AP-04 IP-12: die Sektion „Komponenten — Was misst und steuert es?"
+  // trägt Gerät, Einstellungen und Messkanäle - ergänzt, nicht neu gebaut:
+  // die Komponenten-Zeilen stehen weiter darüber.
+  it('trägt in „Komponenten“ die Karte „Gerät“, die Einstellungen und die Messkanäle mit „speist …“', async () => {
+    stub();
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({
+      geraete: [{ ...gr4Z5b(), komponenten: [{ entity_id: 'batt', gueltig_ab: '2026-11-18T10:40:00+01:00', gueltig_bis: null }] }],
+    });
+    vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue(k5Kanaele());
+    vi.spyOn(api, 'geraetEinstellungen').mockResolvedValue(gr4Einstellungen());
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    const sektion = await screen.findByTestId('sektion-komponenten');
+    const karte = await within(sektion).findByTestId('geraet-karte');
+    expect(within(karte).getByText('Zähler Z-5b')).toBeInTheDocument();
+    expect(within(karte).getByText('Wechselrichter Scheune')).toBeInTheDocument();
+    expect(await within(sektion).findByTestId('geraet-einstellungen')).toBeInTheDocument();
+    expect(within(sektion).getAllByText('speist MS-06 (führend)')).toHaveLength(2);
+    expect(api.komponenteMesskanaele).toHaveBeenCalledWith('s-1', 'batt');
   });
 
   it('zeigt die gespeicherte Anbindung eines Geräts', async () => {

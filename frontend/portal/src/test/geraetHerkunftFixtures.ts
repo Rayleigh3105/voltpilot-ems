@@ -252,6 +252,17 @@ export function c1Einstellungen(): GeraetEinstellungen {
   };
 }
 
+/** Stand VOR dem Eintrag (A5 als Dialog): 250/5 A gilt bis auf Weiteres. */
+export const JETZT_VOR_A5 = '2027-01-19T15:00:00+01:00';
+
+export function c1EinstellungenVorA5(): GeraetEinstellungen {
+  const e = c1Einstellungen();
+  const historie = e.historie
+    .filter((f) => f.herkunft === 'bestand')
+    .map((f) => ({ ...f, gueltig_bis: null }));
+  return { ...e, stichtag: JETZT_VOR_A5, gueltig: historie, historie };
+}
+
 /** Die Namen der vier Energiekarten-Komponenten aus der Referenz. */
 export const K8_NAMEN: Record<string, string> = {
   [K8[0]]: 'Zähler Energiekarte EK-1 (Hauptmessung Halle 2)',

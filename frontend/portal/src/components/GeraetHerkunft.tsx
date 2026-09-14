@@ -200,7 +200,7 @@ export function GeraetHerkunft({
               iconLeft={<Icon name="plus" size={14} />}
               onClick={() => setZiel({ art: null, entityId: null, kanal: null, bezug: `Für ${karte.titel}` })}
             >
-              Weitere Einstellung eintragen
+              {gruppen.length === 0 ? 'Einstellung eintragen' : 'Weitere Einstellung eintragen'}
             </Button>
           </div>
         )}

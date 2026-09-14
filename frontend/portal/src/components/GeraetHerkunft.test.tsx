@@ -76,7 +76,7 @@ describe('GeraetHerkunft', () => {
     gr4();
     const einst = await screen.findByTestId('geraet-einstellungen');
     expect(await within(einst).findByText(/Für dieses Gerät ist keine Einstellung erfasst/)).toBeInTheDocument();
-    expect(within(einst).getByRole('button', { name: 'Weitere Einstellung eintragen' })).toBeInTheDocument();
+    expect(within(einst).getByRole('button', { name: 'Einstellung eintragen' })).toBeInTheDocument();
   });
 
   it('Karte „Einstellungen“ an EK-2: gilt 250/5 A, angekündigt 400/5 A — nur die Fassungen DIESER Komponente', async () => {
@@ -119,7 +119,7 @@ describe('GeraetHerkunft', () => {
     expect(within(dialog).getByText('bisher 400/5 A')).toBeInTheDocument();
     expect(within(folgen).getByText('Werte vor dem 01.03.2027, 08:00 Uhr bleiben unverändert.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Einstellung ab 01.03.2027, 08:00 Uhr eintragen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ab 01.03.2027, 08:00 Uhr eintragen' }));
     await waitFor(() => expect(eintragen).toHaveBeenCalledTimes(1));
     expect(eintragen).toHaveBeenCalledWith('g-c1', {
       entity_id: K8[1],
