@@ -12,6 +12,14 @@
   min-width: 0;
 }
 
+/* Die Karte „Gerät“ folgt direkt auf die Komponenten-Zeilen: dieselbe
+   Trennlinie wie zwischen zwei Blöcken, sonst klebt ihr Kopf an der Zeile. */
+.vp-geraet-komps + .vp-gh {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-4, 16px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
 .vp-gh-titel {
   display: flex;
   flex-wrap: wrap;
