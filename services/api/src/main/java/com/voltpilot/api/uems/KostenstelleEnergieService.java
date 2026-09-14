@@ -157,7 +157,9 @@ public class KostenstelleEnergieService {
      */
     private Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage(Messstelle m, LocalDate von, LocalDate bis,
             Integer version, Map<LocalDate, String> anlass) {
-        MessstelleWerteDto.Werte w = werte.werte(m.kennzeichen(), "tag", von.toString(), bis.toString(), null);
+        // Ausdrücklich Version 1: ohne Angabe zeigt das Lese-Modell seit AP-08 IP-18 die neueste; die Auswahl bis
+        // „version“ trifft diese Sicht unten selbst.
+        MessstelleWerteDto.Werte w = werte.werte(m.kennzeichen(), "tag", von.toString(), bis.toString(), "1");
         Map<UUID, MessstelleWerteDto.Quelle> bindungen = new HashMap<>();
         w.quellen().forEach(q -> bindungen.put(q.id(), q));
         boolean berechnet = MessstelleRegeln.BERECHNET.equals(m.art());
