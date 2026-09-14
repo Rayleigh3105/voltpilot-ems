@@ -213,8 +213,10 @@ class MessstelleFormelVerteilungsTermApiTest {
         assertThat(root.queryForObject("SELECT count(*) FROM messstelle_formel_term WHERE messstelle_id = ? "
                 + "AND anteil IS NULL AND verteilung_ziel IS NULL", Long.class, id)).isOne();
         JsonNode formel = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/formel", null), 200);
+        // AP-08 (PR 758, mit dem main-Merge): gilt_als_erzeugung steht seitdem an jedem Term.
         assertThat(felder(formel.at("/terme/0"))).containsExactly("position", "eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "gilt_als_erzeugung",
+                "groesse", "eingerichtet");
     }
 
     @Test

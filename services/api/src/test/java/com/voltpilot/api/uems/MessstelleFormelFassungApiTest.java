@@ -128,8 +128,10 @@ class MessstelleFormelFassungApiTest {
         assertThat(ohne.status()).isEqualTo(200);
         assertThat(felder(ohne.body())).containsExactly("messstelle_id", "schema_version", "hauptgroesse", "terme",
                 "formel_vorhanden", "eingaenge_eingerichtet");
+        // AP-08 (PR 758, mit dem main-Merge): gilt_als_erzeugung steht seitdem an jedem Term.
         assertThat(felder(ohne.body().at("/terme/0"))).containsExactly("position", "eingang_art", "entity_id",
-                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "groesse", "eingerichtet");
+                "point_key", "quell_messstelle_id", "vorzeichen", "faktor", "gilt_als_erzeugung",
+                "groesse", "eingerichtet");
         assertThat(ohne.body().get("schema_version").asText()).isEqualTo("1.0");
         assertThat(ohne.body().get("terme")).hasSize(2);
 
