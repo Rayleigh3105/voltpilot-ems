@@ -1,0 +1,58 @@
+/*
+ * Der Standort-Kopf (UEMS AP-02 IP-6): Name, Kurzzeichen, Zeile, „es fehlt“.
+ * Eigene Datei, weil die Standort-Übersicht (AP-01) ihn später ebenfalls trägt.
+ */
+
+.vp-st-kopf-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-st-kopf-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.vp-st-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-title);
+}
+
+.vp-st-name-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-st-kz {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
+
+.vp-st-zeile {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-st-fehlt {
+  margin: var(--vp-c-space-2) 0 0;
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}

@@ -4601,7 +4601,12 @@ export interface SiteEarnings extends CockpitMoney {
 }
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  /**
+   * `body`: der JSON-Körper der Ablehnung, wie der Server ihn schickte (additiv,
+   * UEMS AP-02 IP-6) — die Ortsstruktur braucht `code`, `feld` und `verweis`
+   * aus {@link OrtFehler}, nicht nur den Satz. Ohne JSON-Körper `undefined`.
+   */
+  constructor(readonly status: number, message: string, readonly body?: unknown) {
     super(message);
   }
 }
@@ -4693,13 +4698,15 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       res.status === 403
         ? 'Dafür ist Ihr Konto nicht freigeschaltet. VoltPilot richtet das für Sie ein.'
         : 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
+    let errorBody: unknown;
     try {
       const body = await res.json();
+      errorBody = body;
       if (body && typeof body.message === 'string' && body.message) message = body.message;
     } catch {
       // non-JSON error body: keep the generic message
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, errorBody);
   }
   // 201 with body for claim; others JSON. 204 would be empty.
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -6050,6 +6057,31 @@ export const api = {
   /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
   messstelleArchivieren: (id: string) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
+  // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
+  /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */
+  unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
+
+  /** Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“. */
+  standorte: (stichtag?: string) =>
+    request<StandorteAmStichtag>(
+      `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
+  /** Das Kurzzeichen, das ein neuer Standort bekäme — bewegt den Zähler nicht. */
+  standortKurzzeichenVorschlag: () =>
+    request<StandortKurzzeichenVorschlag>('/api/v1/standorte/kurzzeichen-vorschlag'),
+
+  /** Legt einen Standort an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  standortAnlegen: (body: StandortStammdaten) =>
+    request<StandortAmStichtag>('/api/v1/standorte', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Schreibt die Stammdaten eines Standorts — die GANZE Menge, ein fehlendes Feld ist leer. */
+  standortBearbeiten: (id: string, body: StandortStammdaten) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
   /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
   kostenstellen: (stichtag?: string) =>
     request<{ stichtag: string | null; kostenstellen: Kostenstelle[] }>(

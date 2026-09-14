@@ -116,10 +116,11 @@ describe('Die Flotten-Ebene in der Schale: EIN Eintrag, keine Gruppe', () => {
 
 /**
  * Die zwei Welten, jetzt als REITER: Übersicht · Messwerte · Erlöse. Sie
- * navigieren zwischen drei Seiten DERSELBEN Ebene.
+ * navigieren zwischen Seiten DERSELBEN Ebene. Seit UEMS AP-02 IP-6 steht
+ * „Standorte“ dazwischen (bis die Ebenen-Navigation aus AP-01 kommt).
  */
 describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
-  it('trägt die drei Reiter und navigiert', () => {
+  it('trägt die vier Reiter und navigiert', () => {
     const onNavigate = vi.fn();
     render(
       <PortfolioTabs
@@ -131,10 +132,15 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     );
     expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
       'Übersicht',
+      'Standorte',
       'Messwerte',
       'Erlöse',
     ]);
     expect(reiter().getAttribute('aria-label')).toBe('Reiter der Ebene Portfolio');
+    fireEvent.click(screen.getByRole('tab', { name: 'Standorte' }));
+    expect(onNavigate).toHaveBeenCalledWith('portfolio-standorte');
+    // Vier Reiter: am Telefon das dichtere Polster (375 px, gemessen in e2e/standorte.spec.ts).
+    expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(true);
     fireEvent.click(screen.getByRole('tab', { name: 'Messwerte' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-messwerte');
     fireEvent.click(screen.getByRole('tab', { name: 'Erlöse' }));
@@ -180,6 +186,8 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     );
     expect(screen.getByRole('tab', { name: 'Messwerte' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Erlöse' })).toBeNull();
+    // Drei Reiter passen mit dem gewohnten Polster — die Leiste bleibt, wie sie war.
+    expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(false);
   });
 
   it('zeigt sie trotzdem, wenn sie per Lesezeichen offen ist - nie eine Sackgasse', () => {

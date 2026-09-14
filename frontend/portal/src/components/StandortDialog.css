@@ -1,0 +1,81 @@
+/*
+ * Der Standort-Dialog (UEMS AP-02 IP-6, Mockup T2). Der Rahmen ist das
+ * zentrierte `Modal` (am Telefon Vollbild); hier wohnt nur der Formular-Stapel.
+ * ⚠ 375 px: jedes Flex-Kind darf schrumpfen (`min-width: 0`), PLZ und Ort
+ * stehen erst ab 360 px Formularbreite nebeneinander.
+ */
+
+.vp-sd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-sd > * {
+  min-width: 0;
+}
+
+.vp-sd-vorspann {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-sd-kz {
+  white-space: nowrap;
+}
+
+.vp-sd-verweis {
+  align-self: flex-start;
+  margin-top: calc(-1 * var(--vp-c-space-2));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.vp-sd-reihe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-4);
+}
+
+.vp-sd-plz {
+  flex: 1 1 7rem;
+  min-width: 0;
+}
+
+.vp-sd-ort {
+  flex: 3 1 12rem;
+  min-width: 0;
+}
+
+.vp-sd-flaeche {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-sd-flaeche-label {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-sd-flaeche-wert {
+  color: var(--vp-c-muted-fg);
+}

@@ -174,4 +174,12 @@ html.vp-vt-fade .vp-welt-strich {
     min-height: 44px;
     padding: 0 var(--vp-space-3, 0.75rem);
   }
+  /* UEMS AP-02 IP-6: VIER Reiter der Übersicht (Übersicht · Standorte ·
+     Messwerte · Erlöse) sind mit 12 px Polster 347 px breit — bei 375 px
+     bleiben 343 px, „Erlöse“ wäre 4 px angeschnitten. GEMESSEN mit 8 px:
+     315 px, passt bei 375 und 360 px. Nur die Leiste mit vier Reitern wird
+     dichter (`PortfolioTabs`), jede Leiste mit bis zu drei bleibt, wie sie war. */
+  .vp-bereich-tabs-dicht .vp-bereich-tab {
+    padding: 0 var(--vp-space-2, 0.5rem);
+  }
 }
