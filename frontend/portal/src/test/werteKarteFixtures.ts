@@ -7,6 +7,13 @@
  * Beschriftung und Tagesdauer setzt hier — wie in der Route — der
  * Ergebnis-Vertrag (`raster`, `tagesdauer`); die Zahlen sind die der Fälle
  * F8, F13, F14 und F16. Nie ins Produktionsbündel importieren.
+ *
+ * Die Fassung (vorläufig/endgültig) je Periode wie die Route sie liefert — je
+ * Periode für sich, nie aus einer anderen abgeleitet. Ein Tag steht sieben Tage
+ * nach seinem Ende fest, ein Monat sieben Tage nach seinem letzten Tag (E5).
+ * Gelesen am 10.11.2026: der 02.11. ist endgültig, der 03.11. noch vorläufig.
+ * Gelesen am 05.11.2026: der Oktober ist vorläufig (bis 08.11.), seine Tage bis
+ * zum 28.10. sind schon endgültig, 29.–31.10. noch nicht.
  */
 
 import type { MessstelleWerte, MessstelleWerteRaster, MessstelleWerteWert } from '../api';
@@ -147,6 +154,7 @@ export const NUR_EIN_STAND = 'nur ein Stand in der Periode — keine Menge bildb
 export const f8Tag = (): MessstelleWerte =>
   antwort(MS_10, 'tag', '2026-11-03T00:00:00+01:00', '2026-11-04T00:00:00+01:00', [
     tagSchritt('2026-11-03', {
+      fassung: 'vorlaeufig',
       menge: 2304.0,
       zustand: 'vollständig',
       erhalten: 1230,
@@ -176,16 +184,18 @@ export const normalTag = (): MessstelleWerte =>
   ]);
 
 export const normalStunden = (): MessstelleWerte =>
-  antwort(MS_10, 'stunde', '2026-11-02T00:00:00+01:00', '2026-11-03T00:00:00+01:00', stundenDes('2026-11-02', () => voll(96.0, 60)));
+  antwort(MS_10, 'stunde', '2026-11-02T00:00:00+01:00', '2026-11-03T00:00:00+01:00', stundenDes('2026-11-02', () => ({ ...voll(96.0, 60), fassung: 'endgueltig' })));
 
 // ------------------------------------------------------------------ F13 / F14 · MS-06 · Grundlast 28,8 kW
 
-/** 25.10.2026: 720,0 kWh in 25 Stunden. */
+/** 25.10.2026: 720,0 kWh in 25 Stunden — endgültig, ein Tag im vorläufigen Oktober. */
 export const f13Tag = (): MessstelleWerte =>
-  antwort(MS_06, 'tag', '2026-10-25T00:00:00+02:00', '2026-10-26T00:00:00+01:00', [tagSchritt('2026-10-25', voll(720.0, 1500))]);
+  antwort(MS_06, 'tag', '2026-10-25T00:00:00+02:00', '2026-10-26T00:00:00+01:00', [
+    tagSchritt('2026-10-25', { ...voll(720.0, 1500), fassung: 'endgueltig' }),
+  ]);
 
 export const f13Stunden = (): MessstelleWerte =>
-  antwort(MS_06, 'stunde', '2026-10-25T00:00:00+02:00', '2026-10-26T00:00:00+01:00', stundenDes('2026-10-25', () => voll(28.8, 60)));
+  antwort(MS_06, 'stunde', '2026-10-25T00:00:00+02:00', '2026-10-26T00:00:00+01:00', stundenDes('2026-10-25', () => ({ ...voll(28.8, 60), fassung: 'endgueltig' })));
 
 /** 28.03.2027: 662,4 kWh in 23 Stunden. */
 export const f14Tag = (): MessstelleWerte =>
@@ -196,7 +206,7 @@ export const f14Stunden = (): MessstelleWerte =>
 
 // ------------------------------------------------------------------ F16 · MS-06 · Oktober 2026
 
-/** Oktober 2026: 55 100,0 kWh aus den Ständen, 44 700 von 44 700 Werten (F16). */
+/** Oktober 2026: 55 100,0 kWh aus den Ständen, 44 700 von 44 700 Werten (F16) — vorläufig bis 08.11.2026. */
 export const f16Monat = (): MessstelleWerte =>
   antwort(MS_06, 'monat', '2026-10-01T00:00:00+02:00', '2026-11-01T00:00:00+01:00', [
     schritt({
@@ -205,10 +215,14 @@ export const f16Monat = (): MessstelleWerte =>
       stunden: 745,
       gebildet_aus: 'monat',
       ...voll(55100.0, 44700),
+      fassung: 'vorlaeufig',
     }),
   ]);
 
-/** Die Tage des Oktobers 2026: im Mittel +1,2327 kWh je Minute (F16), der 25.10. mit 25 Stunden. */
+/**
+ * Die Tage des Oktobers 2026: im Mittel +1,2327 kWh je Minute (F16), der 25.10. mit 25 Stunden; bis zum 28.10.
+ * endgültig, 29.–31.10. noch vorläufig.
+ */
 export const f16Tage = (): MessstelleWerte => {
   const tage = Array.from({ length: 31 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
   return antwort(
@@ -218,7 +232,10 @@ export const f16Tage = (): MessstelleWerte => {
     '2026-11-01T00:00:00+01:00',
     tage.map((tag) => {
       const minuten = stundenDesTages(tag, ZONE) * 60;
-      return tagSchritt(tag, voll(Math.round((minuten * 55100 * 1000) / 44700) / 1000, minuten));
+      return tagSchritt(tag, {
+        ...voll(Math.round((minuten * 55100 * 1000) / 44700) / 1000, minuten),
+        fassung: tag <= '2026-10-28' ? 'endgueltig' : 'vorlaeufig',
+      });
     }),
   );
 };

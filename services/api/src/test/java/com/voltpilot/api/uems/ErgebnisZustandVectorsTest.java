@@ -163,6 +163,15 @@ class ErgebnisZustandVectorsTest {
         assertThat(herkunft.path("form").asText()).isEqualTo("{zustand} ({herkunft})");
         assertThat(herkunft.path("nur_mit_zahl").asBoolean()).isTrue();
 
+        // Seit 1.7 (AP-08 IP-11): die Fassung der Periode als Kennzeichen.
+        JsonNode fassung = v.path("fassung");
+        Map<String, String> fassungKennzeichen = new LinkedHashMap<>();
+        fassung.path("kennzeichen").fields()
+                .forEachRemaining(e -> fassungKennzeichen.put(e.getKey(), e.getValue().asText()));
+        assertThat(ErgebnisZustand.FASSUNG_KENNZEICHEN).containsExactlyEntriesOf(fassungKennzeichen);
+        assertThat(fassung.path("ohne_fassung").isNull()).isTrue();
+        assertThat(fassung.path("hoechstens_eine").asBoolean()).isTrue();
+
         // Die Vorgabe der Ebenen ist dieselbe Kette wie die der Lücken-Zuordnung (E2).
         assertThat(ErgebnisZustand.EBENEN).containsExactlyElementsOf(VerbrauchRegeln.LUECKE_ZEITRAEUME);
     }
@@ -350,6 +359,14 @@ class ErgebnisZustandVectorsTest {
                     assertThat(ErgebnisZustand.zustandMitHerkunft(zustand, herleitung, wert)).isEqualTo(text);
                 }
             }
+            case "fassung" -> {
+                String wert = textOderNull(ein.get("fassung"));
+                if (erw.path("unbekannt").asBoolean()) {
+                    assertThatThrownBy(() -> ErgebnisZustand.fassung(wert)).isInstanceOf(IllegalArgumentException.class);
+                } else {
+                    assertThat(ErgebnisZustand.fassung(wert)).isEqualTo(textOderNull(erw.get("text")));
+                }
+            }
             default -> throw new AssertionError("unbekannte Familie " + fall.path("familie").asText());
         }
     }
@@ -365,7 +382,7 @@ class ErgebnisZustandVectorsTest {
             }
         }
         assertThat(familien).contains("zahl", "menge", "ergebnis", "erkennen", "tagesdauer", "raster", "uhr",
-                "rundungsdifferenz", "herkunft");
+                "rundungsdifferenz", "herkunft", "fassung");
         assertThat(gesprocheneZustaende).containsAll(
                 ErgebnisZustand.ZUSTAENDE.stream().map(Zustand::wort).toList());
         // Jeder Verstoß des Vokabulars fliegt in mindestens einem Fall auf.
@@ -530,5 +547,24 @@ class ErgebnisZustandVectorsTest {
             }
         }
         assertThat(bilanz).isNotEmpty().allSatisfy(k -> assertThat(ErgebnisZustand.istKorrigiert(k)).isTrue());
+    }
+
+    /**
+     * Seit 1.7 (AP-08 IP-11, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind Kennzeichen mit
+     * Rang 90, kein vorgesehenes Wort mehr — und ihr Wortlaut ist das Wort, das das Vokabular der Verbrauchsregel führt.
+     */
+    @Test
+    void dieFassungIstEinKennzeichenMitDemWortDesVokabulars() throws Exception {
+        assertThat(ErgebnisZustand.fassung("vorlaeufig")).isEqualTo("vorläufig");
+        assertThat(ErgebnisZustand.fassung("endgueltig")).isEqualTo("endgültig");
+        assertThat(ErgebnisZustand.fassung(null)).isNull();
+        assertThat(ErgebnisZustand.erkenne("vorläufig").muster().rang()).isEqualTo(90);
+        assertThat(ErgebnisZustand.erkenne("endgültig").muster().rang()).isEqualTo(90);
+        assertThat(ErgebnisZustand.VORGESEHEN).extracting(Vorgesehen::wort).doesNotContain("vorläufig", "endgültig");
+        for (Zustand z : ErgebnisZustand.ZUSTAENDE) {
+            assertThatThrownBy(() -> ErgebnisZustand.fassung(z.wort())).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(texte(lies(VERBRAUCH).path("kennzeichen")))
+                .contains(ErgebnisZustand.fassung("vorlaeufig"), ErgebnisZustand.fassung("endgueltig"));
     }
 }

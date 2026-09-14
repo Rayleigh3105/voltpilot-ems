@@ -15,9 +15,10 @@
     "1.4 (AP-08 IP-13, additiv): „mit Ersatzwert (Methode …)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen mit_ersatzwert — Rang 70, zuletzt: was ein Mensch gesetzt hat, nach allem, was gemessen ist. Die Methode steht mit ihrem Namen in Kundensprache (vokabular.ersatzwert_methode[].name der Ereignis-Vektoren, Platzhalter ersatzwert_methode), die Kennung EW-<Jahr>-<Nr.> (Platzhalter ersatzwert_kennung). Gesprochen von VerbrauchRegeln.mitErsatzwerten ⟷ verbrauch.mit_ersatzwerten; jede Kennzeichen-Erwartung des Blocks ersatzwerte von verbrauch-vectors.json steht in der Liste.",
     "1.5 (AP-08 IP-17, additiv): „korrigiert (Version n)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen korrigiert — Rang 80, ganz zuletzt: die Version sagt etwas über die ganze Zahl, nicht über einen Teil. Wortlaut „korrigiert (Version {version})“ mit version ≥ 2 (Version 1 ist das Original und nie korrigiert), derselbe Satz, den bilanz-vectors.json (F14) für berechnete Messstellen schon spricht. Gesprochen von der Korrektur-Kaskade (uems/KorrekturKaskade) an jeder Stufe, deren Version sie schreibt; kein Datum im Satz — wann und von wem, sagt die Versions-Historie (IP-18).",
     "1.6 (AP-08 IP-11, additiv): mengen_herkunft — die Herkunft der Menge steht am Zustandswort, damit „vollständig“ neben „Verlauf 85 %“ lesbar ist (E1 = A: der Zustand der MENGE folgt aus den Periodenständen, die Abdeckung des VERLAUFS steht daneben): „vollständig (Menge aus Zählerständen)“. Nur an vollständig und unvollständig, nur MIT Zahl, nur bei den Herleitungen der Quellenbindung, die einen Zählerstand lesen (zaehlerstand, differenzen); integration spricht schon ihr Kennzeichen „aus Leistung integriert“, ein Momentanwert hat keine Menge, ohne Herleitung (berechnete Messstelle) steht das Wort allein. Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11 — kein neuer Satz, keine neue Regel für den Zustand selbst.",
-    "befunde: Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
+    "1.7 (AP-08 IP-11, additiv, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind keine vorgesehenen Wörter mehr, sondern die Kennzeichen vorlaeufig und endgueltig — Rang 90, ganz zuletzt: die Fassung sagt über die ganze Zahl, ob sie sich noch ändern kann (wer eine Zahl abrechnet, muss das wissen). Wortlaut = das Wort, wie es kennzeichen_vorgesehen seit 1.0 führte, ohne Datum. Block fassung: das Feld fassung der Route „Werte je Messstelle“ (vorlaeufig · endgueltig) wird GENAU dieses Kennzeichen, null spricht nichts (die Route kennt die Fassung nicht) — nie abgeleitet, nie aus einer anderen Periode. Höchstens EINE Fassung je Liste (zwei = kennzeichen_doppelt). Die Fassung ist NICHT der Zustand (vollständig · unvollständig · keine Werte · mit Ersatzwert): der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist — beide stehen nebeneinander. Gespeichert wird der Satz nirgends; gesprochen von der Tages- und Monatskarte für die gezeigte Periode, immer, in beiden Fällen.",
+    "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert."
   ],
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "$schema_datei": "./ergebnis-zustand.schema.json",
   "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
   "zeitzone": "Europe/Berlin",
@@ -326,6 +327,32 @@
       "verlangt_danach": null,
       "beispiel": "korrigiert (Version 2)",
       "fall": "F10"
+    },
+    {
+      "schluessel": "vorlaeufig",
+      "muster": "vorläufig",
+      "platzhalter": {},
+      "wort": "vorläufig",
+      "rang": 90,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "vorläufig",
+      "fall": "F9"
+    },
+    {
+      "schluessel": "endgueltig",
+      "muster": "endgültig",
+      "platzhalter": {},
+      "wort": "endgültig",
+      "rang": 90,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "endgültig",
+      "fall": "F10"
     }
   ],
   "fruehere_fassungen": [
@@ -351,16 +378,6 @@
       "wort": "nachgeliefert",
       "anfang": "nachgeliefert",
       "wortlaut_mit": "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"
-    },
-    {
-      "wort": "vorläufig",
-      "anfang": "vorläufig",
-      "wortlaut_mit": "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"
-    },
-    {
-      "wort": "endgültig",
-      "anfang": "endgültig",
-      "wortlaut_mit": "AP-08 IP-9 (Fassung vorläufig/endgültig im Lese-Modell)"
     },
     {
       "wort": "Ablesezeitraum",
@@ -445,6 +462,15 @@
       "integration": null,
       "momentanwert": null
     }
+  },
+  "fassung": {
+    "quelle": "GET /api/v1/messstellen/{kennzeichen}/werte · werte[].fassung",
+    "kennzeichen": {
+      "vorlaeufig": "vorlaeufig",
+      "endgueltig": "endgueltig"
+    },
+    "ohne_fassung": null,
+    "hoechstens_eine": true
   },
   "befunde": [
     {
@@ -1311,6 +1337,96 @@
       "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
     },
     {
+      "name": "Tag vorläufig: die Fassung steht ganz zuletzt (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "MS-10 am 03.11.2026, gelesen am 04.11.: die Menge ist vollständig, der Verlauf hat eine Lücke — und die Zahl kann sich noch ändern (Nachlieferung innerhalb von 7 Tagen, F9). Die Fassung sagt etwas über die ganze Zahl und steht nach jedem anderen Kennzeichen.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "85",
+        "kennzeichen": ["Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar", "vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar · vorläufig"}
+    },
+    {
+      "name": "Monat vorläufig, vollständig gemessen (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F16",
+      "why": "Oktober 2026: jede Viertelstunde gezählt, aber der Monatswert ist vorläufig, bis seine letzte Viertelstunde endgültig ist. Vollständig und vorläufig zugleich — zwei verschiedene Aussagen.",
+      "eingang": {
+        "wert": "55100.000",
+        "einheit": "kWh",
+        "ebene": "monat",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "55.100 kWh · vollständig · Verlauf 100 % · vorläufig"}
+    },
+    {
+      "name": "endgültig nach der Korrektur-Version (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Eine endgültige Viertelstunde in Version 2: Rang 80 vor Rang 90 — erst welche Version, dann ob sie feststeht.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)", "endgültig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "24,0 kWh · vollständig · Verlauf 100 % · korrigiert (Version 2) · endgültig"}
+    },
+    {
+      "name": "keine Werte, aber vorläufig (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F9",
+      "why": "Eine Viertelstunde ohne Rohwert kann innerhalb der Frist noch Werte bekommen. Die Fassung nennt keinen Fehlbestand und verträgt sich darum mit „keine Werte“ — ohne Zahl bleibt der Strich.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte · vorläufig"}
+    },
+    {
+      "name": "Gegenprobe: vorläufig und endgültig zugleich (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Eine Periode hat genau EINE Fassung (fassung.hoechstens_eine) — beide Wörter nebeneinander widersprechen sich, auch wenn jedes für sich einmalig ist.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["vorläufig", "endgültig"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: die Fassung vor einem Kennzeichen des Verlaufs (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Rang 90 steht ganz zuletzt; davor gestellt verletzt sie die Reihenfolge.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "85",
+        "kennzeichen": ["endgültig", "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
       "name": "Gegenprobe: einmaliges Kennzeichen doppelt",
       "familie": "ergebnis",
       "fall": "F3",
@@ -1488,6 +1604,30 @@
       "fall": "F10",
       "why": "Version 1 ist das Original; der Platzhalter nimmt erst 2 an. Und der alte Anfang macht den Satz nicht mehr vorgesehen.",
       "eingang": {"satz": "korrigiert (Version 1)"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "vorläufig (seit 1.7)",
+      "familie": "erkennen",
+      "fall": "F9",
+      "why": "Seit 1.7 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "vorläufig"},
+      "erwartet": {"schluessel": "vorlaeufig", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "endgültig (seit 1.7)",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Seit 1.7 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "endgültig"},
+      "erwartet": {"schluessel": "endgueltig", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "die Fassung trägt kein Datum",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Wann eine Zahl endgültig wurde, sagt die Route (endgueltig_ab), nicht der Satz. Der alte Anfang macht einen längeren Satz nicht mehr vorgesehen — er ist fremd.",
+      "eingang": {"satz": "endgültig seit 10.11.2026"},
       "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
     },
     {
@@ -2000,6 +2140,46 @@
       "why": "„vorläufig“ ist die Fassung, kein Zustandswort — ein fremdes Wort wird nicht gesprochen.",
       "eingang": {"zustand": "vorläufig", "herleitung": "zaehlerstand", "wert": "36.000"},
       "erwartet": {"text": null}
+    },
+    {
+      "name": "die Route sagt vorlaeufig",
+      "familie": "fassung",
+      "fall": "F9",
+      "why": "Captain 14.09.2026 „Ja, immer zeigen“: wer eine Zahl abrechnet, muss wissen, ob sie sich noch ändern kann.",
+      "eingang": {"fassung": "vorlaeufig"},
+      "erwartet": {"text": "vorläufig", "unbekannt": false}
+    },
+    {
+      "name": "die Route sagt endgueltig",
+      "familie": "fassung",
+      "fall": "F10",
+      "why": "Auch der Normalfall wird gesagt — der Kunde soll nie die Abwesenheit eines Wortes deuten müssen.",
+      "eingang": {"fassung": "endgueltig"},
+      "erwartet": {"text": "endgültig", "unbekannt": false}
+    },
+    {
+      "name": "die Route kennt keine Fassung",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "MS-21 ohne Datenquelle: kein Schritt, keine Fassung. Nichts wird gesprochen — „endgültig“ als Vorgabe wäre eine abgeleitete Behauptung.",
+      "eingang": {"fassung": null},
+      "erwartet": {"text": null, "unbekannt": false}
+    },
+    {
+      "name": "das Kundenwort ist kein Wert der Route",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "Die Route liefert vorlaeufig · endgueltig; ein fremder Wert wird nicht gesprochen.",
+      "eingang": {"fassung": "vorläufig"},
+      "erwartet": {"text": null, "unbekannt": true}
+    },
+    {
+      "name": "die Vollständigkeit ist keine Fassung",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "vollständig · unvollständig · keine Werte sagen, ob die Zahl VOLLSTÄNDIG ist; die Fassung, ob sie FESTSTEHT. Das eine wird nie als das andere gesprochen.",
+      "eingang": {"fassung": "vollständig"},
+      "erwartet": {"text": null, "unbekannt": true}
     }
   ]
 }

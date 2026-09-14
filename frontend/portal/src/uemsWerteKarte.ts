@@ -6,6 +6,11 @@
  * Die Karte zeigt DREI Dinge nebeneinander, nie nur das erste: die Menge, ihren
  * Zustand samt Herkunft („vollständig (Menge aus Zählerständen)“) und die
  * Abdeckung des Verlaufs („Verlauf 85 %“) — dass beides zugleich stimmt, ist E1.
+ * Dazu sagt die Karte IMMER, ob die Zahl feststeht: „vorläufig“ oder
+ * „endgültig“ (ergebnis-zustand 1.7, Captain 14.09.2026 „Ja, immer zeigen“) —
+ * was die Route für GENAU die gezeigte Periode liefert, nie abgeleitet (ein
+ * vorläufiger Monat kann endgültige Tage haben). Die Fassung ist nicht der
+ * Zustand: der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist.
  *
  * Hier wird NICHTS gerechnet und kein Satz formuliert:
  *  - Zahl, Zustand, Verlauf und Kennzeichen kommen aus dem Ergebnis-Vertrag
@@ -25,9 +30,11 @@ import type { MessstelleWerte, MessstelleWerteRaster, MessstelleWerteWert } from
 import { MONATE, WOCHENTAGE } from './picker/datum';
 import {
   ANZEIGE_EINHEITEN,
+  FASSUNG_KENNZEICHEN,
   KEINE_WERTE,
   OHNE_ZAHL,
   VOLLSTAENDIG,
+  fassung,
   menge,
   pruefe,
   pruefeMenge,
@@ -61,6 +68,13 @@ export interface Karte extends WertAnzeige {
   titel: string;
   /** Nur am Tag: „25 Stunden (Zeitumstellung)“ bzw. „23 Stunden (Zeitumstellung)“. */
   tagesdauer: string | null;
+  /**
+   * „vorläufig“ bzw. „endgültig“ für GENAU diese Periode (`fassung` der Route);
+   * `null` = die Route kennt keine Fassung oder der Schritt wird nicht gesprochen.
+   */
+  fassung: string | null;
+  /** Der Wert der Route zur Fassung — nur für die Darstellung (Ton), nie für einen Satz. */
+  fassungWert: MessstelleWerteWert['fassung'];
 }
 
 /** Eine Zeile der Liste: eine Stunde des Tages bzw. ein Tag des Monats. */
@@ -174,10 +188,16 @@ export const anzeige = (
 export const karte = (antwort: MessstelleWerte): Karte | null => {
   const w = antwort.werte[0];
   if (!w) return null;
+  const a = anzeige(antwort, w, true);
+  // Die Fassung spricht nur ein gesprochener Schritt, und nur mit einem Wert, den der Vertrag kennt.
+  const bekannt = w.fassung !== null && Object.prototype.hasOwnProperty.call(FASSUNG_KENNZEICHEN, w.fassung);
+  const gesprochen = a.zustand !== null && bekannt;
   return {
-    ...anzeige(antwort, w, true),
+    ...a,
     titel: antwort.raster === 'monat' ? monatTitel(w.von) : tagTitel(w.von),
     tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
+    fassung: gesprochen ? fassung(w.fassung) : null,
+    fassungWert: gesprochen ? w.fassung : null,
   };
 };
 

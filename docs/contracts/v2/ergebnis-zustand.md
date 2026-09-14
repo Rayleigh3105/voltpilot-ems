@@ -1,6 +1,6 @@
 # Ergebnis-Zustand: eine Zahl sagt selbst, wie belastbar sie ist (UEMS AP-08 IP-8)
 
-Stand 14.09.2026 · Vertrag 1.6 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
+Stand 14.09.2026 · Vertrag 1.7 · Konzept `data/vp-uems-ap08-verbrauch` §4.1 (Ergebnis-Zustand,
 Kennzeichen), §4.5 (Zustände), Entscheide **E10** (Sommerzeit) und **E11** (Rundung) vom
 11.09.2026 · Beispielwelt [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json)
 (Kunststoffwerk Ahrenberg GmbH).
@@ -39,7 +39,8 @@ nicht zusammenpassen: „keine Werte“ mit `0` ist `zahl_verboten` (unbekannt i
 einen Satz, der sagt was fehlt, ist `unvollstaendig_ohne_grund`.
 
 ⚠ Nicht verwechseln: `zustand` der Speicherklassen (vorläufig/endgültig, AP-07 E5) ist **nicht**
-dieser Zustand (`menge_zustand`).
+dieser Zustand (`menge_zustand`). Seit 1.7 wird die Fassung als eigenes Kennzeichen gesprochen
+(Rang 90, §5) — neben dem Zustand, nie an seiner Stelle.
 
 ## 2. Die Kennzeichen-Liste (geschlossen, nach Wortlaut UND Reihenfolge)
 
@@ -65,11 +66,12 @@ heute spricht — beide Zwillinge beweisen es an jeder Erwartung von `verbrauch-
 | 50 | gemessene Zeit {minuten}:{sekunden} min von {periode_min} min | — | ja |
 | 60 | aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit) | aus Leistung integriert | nein |
 | 70 | mit Ersatzwert (Methode „{methode}“, {kennung}) — `{methode}` ist der Name in Kundensprache (`vokabular.ersatzwert_methode[].name` der Ereignis-Vektoren), `{kennung}` EW-<Jahr>-<Nr.>; zuletzt, nach allem, was gemessen ist (seit 1.4, AP-08 IP-13) | mit Ersatzwert (Methode …) | nein |
-| 80 | korrigiert (Version {version}) — `{version}` ≥ 2 (Version 1 ist das Original); ganz zuletzt, die Version sagt etwas über die ganze Zahl. Gesprochen von der Korrektur-Kaskade an jeder Stufe, deren Version sie schreibt; kein Datum im Satz (die Versions-Historie, IP-18); derselbe Wortlaut wie in `bilanz-vectors.json` F14 (seit 1.5, AP-08 IP-17) | korrigiert (Version n) | nein |
+| 80 | korrigiert (Version {version}) — `{version}` ≥ 2 (Version 1 ist das Original); danach nur noch die Fassung, die Version sagt etwas über die ganze Zahl. Gesprochen von der Korrektur-Kaskade an jeder Stufe, deren Version sie schreibt; kein Datum im Satz (die Versions-Historie, IP-18); derselbe Wortlaut wie in `bilanz-vectors.json` F14 (seit 1.5, AP-08 IP-17) | korrigiert (Version n) | nein |
+| 90 | vorläufig · endgültig — die Fassung der Periode, ob die ganze Zahl sich noch ändern kann; ganz zuletzt, nach der Version. Aus `fassung` der Route, höchstens EINE je Liste; nie gespeichert, gesprochen von der Tages- und Monatskarte (seit 1.7, AP-08 IP-11, §5) | vorläufig · endgültig | nein |
 
 **Reihenfolge:** der Rang steigt in einer Liste nie (`kennzeichen_reihenfolge`); die Sätze der
 Gerätegrenze stehen in fester Folge (`kennzeichen_folge`); ein einmaliges Kennzeichen steht nie
-doppelt. Innerhalb von Rang 30 stehen die Sätze in zeitlicher Folge — die Uhrzeit HH:MM allein
+doppelt, und von „vorläufig“ und „endgültig“ steht höchstens eines da. Innerhalb von Rang 30 stehen die Sätze in zeitlicher Folge — die Uhrzeit HH:MM allein
 beweist das über Tagesgrenzen nicht (ein Monat kann zwei Rücksetzungen um 09:12 haben) und wird
 darum **nicht** verglichen.
 
@@ -84,8 +86,8 @@ endgültige behält den alten. Heute: „Gerätegrenze {uhr} mit Ablesestände�
 {von}–{bis}: Zuwachs {zuwachs} gemessen, …“ mit `dezimal_punkt` („Zuwachs 337.600“, bis 1.2) — gleicher
 Text, anderer Platzhalter: das heutige Muster nimmt „337.600“ nicht an.
 
-**Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert ·
-vorläufig · endgültig · Ablesezeitraum („korrigiert (Version n)“ bis 1.4, seit 1.5 Kennzeichen). Ihren Wortlaut legt das
+**Vorgesehen** sind die übrigen Wörter des Vokabulars — nachgeliefert · Ablesezeitraum
+(„korrigiert (Version n)“ bis 1.4, seit 1.5 Kennzeichen; „vorläufig“ und „endgültig“ bis 1.6, seit 1.7 Kennzeichen). Ihren Wortlaut legt das
 Paket fest, das sie erzeugt (`kennzeichen_vorgesehen.wortlaut_mit`); bis dahin ist ein solcher
 Satz `kennzeichen_vorgesehen`, kein Kennzeichen.
 
@@ -181,6 +183,32 @@ Nur an **vollständig** und **unvollständig**, nur **mit Zahl** („— · unvo
 Herkunft; „mit Ersatzwert“ sagt Methode und Kennung im Kennzeichen). Ein fremdes Zustandswort oder
 eine fremde Herleitung wird nicht gesprochen. Java `ErgebnisZustand.zustandMitHerkunft` ⟷ TS
 `uemsErgebnis.zustandMitHerkunft`.
+
+**Die Fassung: vorläufig oder endgültig (seit 1.7, AP-08 IP-11, Captain 14.09.2026 „Ja, immer
+zeigen“).** Wer eine Zahl abrechnet, muss wissen, ob sie sich noch ändern kann. Die Variante „nur
+vorläufig zeigen, endgültig ist der Normalfall“ ist verworfen: dann müsste der Kunde die
+Abwesenheit eines Wortes deuten. Darum sind „vorläufig“ und „endgültig“ Kennzeichen mit **Rang 90**
+— ganz zuletzt, nach „korrigiert (Version n)“: erst welche Version, dann ob sie feststeht. Der
+Wortlaut ist das Wort, das `kennzeichen_vorgesehen` seit 1.0 führte, ohne Datum.
+
+| `fassung` der Route (`werte[].fassung`) | gesprochen |
+|---|---|
+| `vorlaeufig` | „vorläufig“ |
+| `endgueltig` | „endgültig“ |
+| `null` (die Route kennt keine Fassung) | nichts — nie „endgültig“ als Vorgabe |
+| ein anderer Wert | nicht gesprochen (Fehler) |
+
+- **Je Periode, nie abgeleitet.** Gesprochen wird, was die Route für GENAU diese Periode liefert.
+  Ein Monat wird erst endgültig, wenn alle seine Tage endgültig sind und seine Frist abgelaufen ist
+  — seine ersten Tage sind es oft lange vorher; den umgekehrten Fall gibt es nicht.
+- **Nicht der Zustand.** vollständig · unvollständig · keine Werte · mit Ersatzwert sagen, ob die
+  Zahl VOLLSTÄNDIG ist; die Fassung, ob sie FESTSTEHT. „— · keine Werte · vorläufig“ ist gültig:
+  eine Viertelstunde ohne Rohwert kann innerhalb der Frist noch Werte bekommen.
+- **Höchstens eine Fassung je Liste** (`fassung.hoechstens_eine`): „vorläufig · endgültig“ ist
+  `kennzeichen_doppelt`.
+- Gespeichert wird der Satz nirgends — die Speicherklassen führen die Fassung als Spalte `zustand`.
+  Gesprochen wird er von der Tages- und Monatskarte (Block `fassung`, Familie `fassung`): Java
+  `ErgebnisZustand.fassung` ⟷ TS `uemsErgebnis.fassung`.
 
 ## 6. Befunde der Inventur
 
