@@ -83,7 +83,10 @@ class ComponentCapabilitiesRepairMigrationTest {
         point(NETZ, "grid-meter", "grid-meter", NUR_POWER);
         point(VERBRAUCHER, "consumer", "generic-load", NUR_POWER);
 
-        flyway().load().migrate();
+        // GENAU bis zum Reparaturlauf migrieren: dieser Test prüft SEINEN engen Zaun.
+        // Der spätere Backfill V20260915120000 heilt die erweiterte Zeile absichtlich
+        // breiter (eigener Test), also darf er hier nicht mitlaufen.
+        flyway().target("20260909010000").load().migrate();
 
         assertThat(channels(HYBRID_KAPUTT))
                 .as("ohne pv_power_kw hat das Schaltbild keinen PV-Knoten")
