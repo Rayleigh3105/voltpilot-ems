@@ -447,6 +447,19 @@ describe('resolveAnlage - one resolution for the shell AND the page', () => {
  * dorthin bleibt offen. Still heißt nicht Sackgasse.
  */
 describe('Steuern-Regel · Erreichbarkeit: eine Anlage, die nur misst, behält den Bereich „Steuerung"', () => {
+  it('eine frisch angelegte Anlage ohne Komponente (Modus „nur messen“ im Anlege-Fluss): „Steuerung“ steht mit Ziel', () => {
+    const frisch = anlageSurface({ entities: [], config: { plantKind: 'eigenverbrauch' } });
+    const sidebar = anlageSidebar(frisch);
+    expect(sidebar.bereiche.find((b) => b.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    expect(bottomBarSlots(sidebar).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+  });
+
   it('nur ein Netzzähler: „Steuerung" steht in der Seitenleiste UND als Telefon-Kachel, jeweils mit Ziel', () => {
     const nurMessen = anlageSurface({
       entities: [{ id: 'e-netz', entityType: 'grid-meter', capabilities: { measure: [{ channel: 'power_kw' }] } }],

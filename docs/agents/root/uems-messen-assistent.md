@@ -42,7 +42,8 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
    Einspeiseleistung, „PV & Speicher" und Betriebsmodell. Ohne Anlage am Standort nennt Schritt 2 den Zustand
    und WO die Anlage entsteht (`keineAnlageWeg`: genau eine Anlage → „Anlage hinzufügen" oben, sonst
    „Anlage anlegen" auf der Übersicht), ohne Knopf, dazu „Anderen Standort wählen" und „Später fortsetzen".
-   Eine reine Messanlage ohne Steuer- und Geldwörter anzulegen ist ein eigenes Folgepaket.
+   Seit dem Modus „nur messen“ (`uems-messanlage.md`) spricht der Anlage-Assistent an einem Standort, der nur
+   misst, weder von Steuern noch von Geld; der Hinweis bleibt trotzdem ein Satz ohne Knopf (eigene Entscheidung).
 6. **Schritte 3–5 sind eingehängt** (`GEBAUTE_SCHRITTE` = 1…5; eine Bühne kann mit `gebaut` weniger tragen, `vor`
    betritt nie einen ungebauten Schritt). Ohne Anlage am Standort bleibt Schritt 2 trotzdem bei „Später fortsetzen"
    (Entscheid 002) — kein „Weiter" in eine leere Liste. „Fertig" (5) löscht den Entwurf und hat kein Zurück.

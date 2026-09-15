@@ -255,8 +255,9 @@ export function keineAnlageSatz(standortName: string): string {
 
 /**
  * WO der Kunde die Anlage anlegt — ein benannter Weg ohne Knopf (firstmate 002,
- * Entscheid A): der Anlage-Assistent spricht von Netzladen, Einspeiseleistung und
- * Betriebsmodell und gehört darum nicht in „Messen & Auswerten". Still heißt
+ * Entscheid A): der Anlage-Assistent ist ein eigener Fluss und gehört nicht in
+ * „Messen & Auswerten". An einem Standort, der nur misst, spricht er seit dem Modus
+ * „nur messen“ (`anlegeNurMessen.ts`) nicht mehr von Steuern oder Geld. Still heißt
  * aber nicht Sackgasse: der Satz nennt den Knopf, den der Kunde heute sieht —
  * mit genau einer Anlage „Anlage hinzufügen" oben in der Kopfzeile
  * (`addAnlage.showAddAnlageButton`), sonst „Anlage anlegen" auf der Übersicht
