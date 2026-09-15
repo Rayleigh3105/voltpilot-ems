@@ -235,6 +235,10 @@ tags:
       und ohne lesende Kennzahl - löschen; die Berechnung ab einem Tag als Fassung n + 1 (auch
       rückwirkend) und die Fassung an einem Stichtag; die Vorschau prüft und rechnet die letzten
       drei Perioden in einer Nur-Lese-Transaktion. Regeln: docs/contracts/v2/kennzahl.md.
+  - name: berichte
+    description: >
+      UEMS-Berichte (AP-12): die vier VoltPilot-Vorlagen mit Fassungsnummer und festen Abschnitten
+      (IP-5, V2). Regeln: docs/contracts/v2/bericht.md.
   - name: bezugsgroessen
     description: >
       UEMS-Bezugsgrößen (AP-09 IP-5): die Zahl, mit der Energie verglichen wird
@@ -9875,6 +9879,24 @@ paths:
         "404": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "409": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
         "422": { $ref: "#/components/responses/BezugsgroesseAbgelehnt" }
+  /api/v1/bericht-vorlagen:
+    get:
+      tags: [berichte]
+      summary: Die Berichtsvorlagen - vier VoltPilot-Vorlagen mit Fassung und festen Abschnitten (V2).
+      description: >
+        Keine eigene Rechte-Kennung: der Katalog ist für jede angemeldete Person derselbe und nennt
+        keine Daten eines Kundenbereichs. UEMS AP-12 IP-5. Die Antwort ist die Datei
+        docs/contracts/v2/bericht-vorlagen.json Byte für Byte (API-Ressource berichte/bericht-vorlagen.json,
+        Portal-Kopie frontend/portal/src/berichte/); ihre Form ist
+        docs/contracts/v2/bericht.schema.json $defs/vorlagen_datei. Eine neue Fassung ändert keinen
+        Berichtsstand (V3).
+      responses:
+        "200":
+          description: Der Vorlagen-Katalog.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/bezugsflaechen:
     get:
       tags: [bezugsgroessen]

@@ -167,6 +167,17 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <!-- UEMS AP-12 IP-5 (RW1): META-INF/build-info.properties (Version, Build-Zeit) für das
+                         Regelwerk-Verzeichnis im Kopf jedes Berichts-Abzugs (BerichtRegelwerk). Die Git-Kennung
+                         kommt aus dem Deployment (VOLTPILOT_BUILD) - im Docker-Build gibt es kein .git. -->
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

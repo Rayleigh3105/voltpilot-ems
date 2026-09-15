@@ -123,7 +123,21 @@ public class MessstelleWerteService {
     MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis, String version,
             WertVersionenLeser versionen) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
-        Lesung l = lesen(kennzeichen, form, versionen);
+        return werte(lesen(kennzeichen, form, versionen), form);
+    }
+
+    /**
+     * Die Werte einer Messstelle, deren Mandanten der Aufrufer AUSDRÜCKLICH nennt — stets die neueste Version (UEMS
+     * AP-12 IP-5). Die Bildung eines Berichts-Abzugs liest über die Verbindung ihres Aufrufers; die Kaskade hält eine
+     * der Verwaltungsrolle, an der keine RLS filtert — darum nie über das Kennzeichen allein ({@link BerichtAbzugBildung}).
+     * Die Versionen liest der Leser dieses Dienstes, also dieselbe Verbindung.
+     */
+    MessstelleWerteDto.Werte werte(UUID tenant, Messstelle m, String raster, String von, String bis) {
+        Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, null));
+        return werte(lesen(tenant, m, form, versionen), form);
+    }
+
+    private MessstelleWerteDto.Werte werte(Lesung l, Form form) {
         Zeitraum z = l.z();
         Zone zone = l.zone();
 
@@ -222,6 +236,10 @@ public class MessstelleWerteService {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+        return lesen(tenant, m, form, versionen);
+    }
+
+    private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
         List<Quelle> fuehrend = quellen.derMessstelle(m.id()).stream()
                 .filter(q -> "fuehrend".equals(q.rolle()))
