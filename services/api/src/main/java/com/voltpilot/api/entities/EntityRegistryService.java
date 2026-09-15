@@ -13,12 +13,15 @@ import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
+import com.voltpilot.api.uems.PushJeBox;
 import com.voltpilot.api.uems.RuheRegel;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -87,9 +90,24 @@ public class EntityRegistryService {
      */
     private static final String COMPOSED_LABEL = null;
 
-    /** Outcome of a best-effort registry push. */
+    /**
+     * Outcome of a best-effort registry push. {@code deviceId} is the lead box; {@code boxen} lists
+     * every box of a push je Box (UEMS AP-06 IP-6) with whether it got its push - empty on the
+     * Bestand path (one push to the lead box, exactly as before).
+     */
     public record PushOutcome(boolean attempted, boolean published, String reason,
-            UUID deviceId) {
+            UUID deviceId, List<BoxZustellung> boxen) {
+
+        /** Ob EINE Box ihren Push bekommen hat. */
+        public record BoxZustellung(UUID deviceId, boolean published) {}
+
+        public PushOutcome {
+            boxen = boxen == null ? List.of() : List.copyOf(boxen);
+        }
+
+        public PushOutcome(boolean attempted, boolean published, String reason, UUID deviceId) {
+            this(attempted, published, reason, deviceId, List.of());
+        }
 
         static PushOutcome notConfigured() {
             return new PushOutcome(false, false, "mqtt_not_configured", null);
@@ -101,6 +119,21 @@ public class EntityRegistryService {
 
         static PushOutcome result(boolean ok, UUID deviceId) {
             return new PushOutcome(true, ok, ok ? null : "publish_failed", deviceId);
+        }
+
+        /** Der Push je Box: zugestellt heißt er nur, wenn JEDE Box ihren bekommen hat (W7). */
+        static PushOutcome jeBox(UUID fuehrend, List<BoxZustellung> boxen) {
+            boolean alle = boxen.stream().allMatch(BoxZustellung::published);
+            return new PushOutcome(true, alle, alle ? null : "publish_failed", fuehrend, boxen);
+        }
+
+        /**
+         * Ob mindestens eine Box den neuen Stand HAT und mindestens eine nicht - der Fall, in dem eine
+         * zurückgerollte Übernahme ihre Boxen zurückstellen muss (W7).
+         */
+        public boolean teilweiseZugestellt() {
+            return boxen.stream().anyMatch(BoxZustellung::published)
+                    && boxen.stream().anyMatch(b -> !b.published());
         }
     }
 
@@ -497,6 +530,10 @@ public class EntityRegistryService {
      * Compose the current registry push payload and publish it retained to the
      * site's gateway device. Never throws; a missing publisher/gateway or a
      * broker failure is reported in the outcome only.
+     *
+     * <p>UEMS AP-06 IP-6: sobald eine Entität der Anlage eine Datenquelle trägt, stellt
+     * {@link #pushJeBox} jeder Box ihren eigenen Push zu. Ohne jede Datenquelle - der Stand jeder
+     * Bestandsanlage - bleibt es Zeile für Zeile der eine Push an die führende Box.
      */
     public PushOutcome pushRegistryBestEffort(UUID siteId) {
         UUID tenantId = TenantContext.get();
@@ -506,6 +543,10 @@ public class EntityRegistryService {
             log.warn("v2 entity registry for site {} not pushed: no unambiguous gateway device "
                     + "({})", siteId, lead.grund().code());
             return PushOutcome.noGateway();
+        }
+        Map<UUID, UUID> quellen = repo.datenquelleJeEntitaet(siteId);
+        if (!quellen.isEmpty()) {
+            return pushJeBox(tenantId, siteId, gateway, quellen);
         }
         // The composed revision is the Soll the edge is expected to echo in
         // its heartbeat (E1b bidirectional sync) - recorded even when the
@@ -520,6 +561,47 @@ public class EntityRegistryService {
             return PushOutcome.notConfigured();
         }
         return PushOutcome.result(pub.publishRegistry(tenantId, siteId, gateway, payload), gateway);
+    }
+
+    /**
+     * Der Push je Box (UEMS AP-06 IP-6, E4 = A): jede Box bekommt ihren eigenen vollständigen
+     * Sollbestand aus genau den Entitäten, deren Datenquelle sie ZUM ZEITPUNKT liest; die
+     * Anlagen-Rollen nur die führende Box. Welche Entität wohin gehört, entscheidet allein
+     * {@link PushJeBox}; eine ausgelassene Entität steht mit Grund im Log, nie still an einer Box.
+     *
+     * <p>Alles oder nichts je Box (W7): ERST werden alle Nutzlasten gebaut - scheitert eine, ist
+     * nichts aufgezeichnet und nichts zugestellt -, DANN steht das Soll aller Boxen in EINER
+     * Anweisung, und erst zuletzt wird zugestellt. Zugestellt heißt der Ausgang nur, wenn jede Box
+     * ihren Push bekommen hat.
+     */
+    private PushOutcome pushJeBox(UUID tenantId, UUID siteId, UUID fuehrend, Map<UUID, UUID> quellen) {
+        Instant now = clock.instant();
+        List<EntityRow> rows = repo.entitiesForSite(siteId);
+        List<PushJeBox.Entitaet> entitaeten = new ArrayList<>();
+        Map<UUID, EntityRow> zeilen = new LinkedHashMap<>();
+        for (EntityRow row : rows) {
+            entitaeten.add(new PushJeBox.Entitaet(row.id(), row.entityType(), quellen.get(row.id())));
+            zeilen.put(row.id(), row);
+        }
+        PushJeBox.Verteilung verteilung = PushJeBox.verteilen(entitaeten, fuehrend, repo.siteDeviceIds(siteId),
+                repo.zustaendigkeitenDerQuellen(siteId), now, repo.boxenMitSoll(siteId));
+        for (PushJeBox.Auslass auslass : verteilung.ausgelassen()) {
+            log.warn("v2 entity registry for site {}: entity {} is in no box push ({})", siteId,
+                    auslass.entitaet(), auslass.grund().code());
+        }
+        String authority = repo.componentAuthority(siteId);
+        Map<UUID, byte[]> payloads = new LinkedHashMap<>();
+        verteilung.boxen().forEach((box, ids) -> payloads.put(box, composePush(tenantId, siteId, box, now,
+                ids.stream().map(zeilen::get).toList(), authority)));
+        repo.upsertRegistryStates(siteId, tenantId, List.copyOf(payloads.keySet()), now.toString());
+        EntityRegistryPublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            return PushOutcome.notConfigured();
+        }
+        List<PushOutcome.BoxZustellung> zustellungen = new ArrayList<>();
+        payloads.forEach((box, payload) -> zustellungen.add(
+                new PushOutcome.BoxZustellung(box, pub.publishRegistry(tenantId, siteId, box, payload))));
+        return PushOutcome.jeBox(fuehrend, zustellungen);
     }
 
     // ---- E1b: catalog-driven entity CRUD (arbitrary types) ------------------

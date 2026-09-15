@@ -43,6 +43,8 @@ Referenz), `DatenquelleSchnittstelleVertragTest`.
   `komponente_hat_quelle`; eine an der Box schon vergebene Adresse 409 `adresse_an_box_vergeben`
   (die Liste zeigt sie vorher mit `grund`). Zwei Bestätigungen derselben Anlage serialisiert
   `pg_advisory_xact_lock`; die zweite zählt `unveraendert`.
-- **Push-Gleichheit ist eine Eigenschaft der Spalten.** Registry-Push (`ROW_COLUMNS`),
-  Flow-Aktivierung und `LeadDeviceService` lesen weder `data_source_id` noch die neuen Tabellen;
-  wer das ändert (IP-6), bricht `bisZurBestaetigungAendertSichNichtsUndDanachDieselbenPushes`.
+- **Push-Gleichheit bei EINER Box, Push je Box bei mehreren (seit IP-6).** Flow-Aktivierung und
+  `LeadDeviceService` lesen weder `data_source_id` noch die neuen Tabellen; der Registry-Push liest sie
+  seit IP-6 (`uems-registry-push-je-box.md`): bei einer Box bleibt er nach der Bestätigung gleich
+  (`bisZurBestaetigungAendertSichNichtsUndDanachDieselbenPushes`), bei A9 bekommt die Lese-Box ihren
+  eigenen Push mit genau ihrer Quelle. Die Übernahme selbst löst keinen Push aus (IP-7).

@@ -413,32 +413,108 @@ public class EntityRegistryRepository {
 
     // ---- Bidirectional sync state (E1b) ------------------------------------
 
-    /** The last composed Soll of one site (entity_registry_state), or null. */
+    /**
+     * The last composed Soll of one site (entity_registry_state), or null. Seit UEMS AP-06 IP-6 hält
+     * die Tabelle eine Zeile je (Anlage, Box); {@link #registryState} liest die JÜNGSTE. Ein Push-Lauf
+     * schreibt alle seine Boxen mit derselben Revision, und eine Anlage mit einer Box hat genau ihre
+     * eine Zeile wie bisher.
+     */
     public record RegistryState(UUID deviceId, String revision, java.time.Instant composedAt) {}
 
     /**
      * Record the freshly composed Soll revision - on EVERY compose, even when
      * the best-effort publish fails (the Soll changed regardless; the edge's
-     * echoed revision is compared against exactly this value).
+     * echoed revision is compared against exactly this value). Je (Anlage, Box) seit IP-6: eine
+     * andere Box überschreibt die Zeile nicht mehr, sie bekommt ihre eigene.
      */
     public void upsertRegistryState(UUID siteId, UUID tenantId, UUID deviceId, String revision) {
         jdbc.update(
                 "INSERT INTO entity_registry_state (site_id, tenant_id, device_id, revision, composed_at) "
                         + "VALUES (?, ?, ?, ?, now()) "
-                        + "ON CONFLICT (site_id) DO UPDATE SET device_id = EXCLUDED.device_id, "
+                        + "ON CONFLICT (tenant_id, site_id, device_id) DO UPDATE SET "
                         + "revision = EXCLUDED.revision, composed_at = EXCLUDED.composed_at",
                 siteId, tenantId, deviceId, revision);
     }
 
+    /**
+     * Das Soll ALLER Boxen eines Push-Laufs je Box (UEMS AP-06 IP-6, W7) in EINER Anweisung: die
+     * Revision steht an jeder dieser Boxen oder an keiner, auch ohne umgebende Transaktion.
+     */
+    public void upsertRegistryStates(UUID siteId, UUID tenantId, List<UUID> deviceIds, String revision) {
+        if (deviceIds.isEmpty()) {
+            return;
+        }
+        StringBuilder sql = new StringBuilder("INSERT INTO entity_registry_state "
+                + "(site_id, tenant_id, device_id, revision, composed_at) VALUES ");
+        List<Object> args = new java.util.ArrayList<>();
+        for (int i = 0; i < deviceIds.size(); i++) {
+            sql.append(i == 0 ? "" : ", ").append("(?, ?, ?, ?, now())");
+            args.add(siteId);
+            args.add(tenantId);
+            args.add(deviceIds.get(i));
+            args.add(revision);
+        }
+        sql.append(" ON CONFLICT (tenant_id, site_id, device_id) DO UPDATE SET "
+                + "revision = EXCLUDED.revision, composed_at = EXCLUDED.composed_at");
+        jdbc.update(sql.toString(), args.toArray());
+    }
+
     public RegistryState registryState(UUID siteId) {
         List<RegistryState> rows = jdbc.query(
-                "SELECT device_id, revision, composed_at FROM entity_registry_state WHERE site_id = ?",
+                "SELECT device_id, revision, composed_at FROM entity_registry_state WHERE site_id = ? "
+                        + "ORDER BY composed_at DESC, device_id NULLS LAST LIMIT 1",
                 (rs, n) -> new RegistryState(
                         rs.getObject("device_id", UUID.class),
                         rs.getString("revision"),
                         rs.getTimestamp("composed_at").toInstant()),
                 siteId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Die Boxen, für die diese Anlage schon ein Soll aufgezeichnet hat (UEMS AP-06 IP-6): sie
+     * bekommen ihre Vollmenge weiter, auch eine leere, damit sie eine Quelle sicher vergessen.
+     */
+    public List<UUID> boxenMitSoll(UUID siteId) {
+        return jdbc.query("SELECT device_id FROM entity_registry_state WHERE site_id = ? "
+                        + "AND device_id IS NOT NULL ORDER BY device_id",
+                (rs, n) -> rs.getObject("device_id", UUID.class), siteId);
+    }
+
+    /**
+     * Die Datenquelle je v2-Entität der Anlage ({@code measurement_point.data_source_id}), nur die
+     * gesetzten, in Push-Reihenfolge. Leer ist der Stand jeder Bestandsanlage (UEMS AP-06 IP-6: dann
+     * bleibt der Registry-Push der eine Push an die führende Box).
+     */
+    public java.util.Map<UUID, UUID> datenquelleJeEntitaet(UUID siteId) {
+        java.util.Map<UUID, UUID> out = new java.util.LinkedHashMap<>();
+        jdbc.query("SELECT id, data_source_id FROM measurement_point WHERE site_id = ? "
+                        + "AND entity_type IS NOT NULL AND data_source_id IS NOT NULL ORDER BY created_at, id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("id", UUID.class), rs.getObject("data_source_id", UUID.class)),
+                siteId);
+        return out;
+    }
+
+    /**
+     * Alle Zeiträume der Datenquellen, hinter denen Entitäten dieser Anlage antworten — auch
+     * beendete und geplante. Welche Box zum Zeitpunkt liest, entscheidet die reine Regel
+     * ({@code uems.PushJeBox} über {@code DatenquelleRegeln.zustaendigeBox}), nicht diese Abfrage.
+     */
+    public List<com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum> zustaendigkeitenDerQuellen(UUID siteId) {
+        return jdbc.query("SELECT a.id, a.data_source_id, a.device_id, a.effective_from, a.effective_to "
+                        + "FROM data_source_assignment a WHERE a.data_source_id IN (SELECT mp.data_source_id "
+                        + "FROM measurement_point mp WHERE mp.site_id = ? AND mp.data_source_id IS NOT NULL) "
+                        + "ORDER BY a.data_source_id, a.effective_from, a.id",
+                (rs, n) -> {
+                    java.time.OffsetDateTime bis = rs.getObject("effective_to", java.time.OffsetDateTime.class);
+                    return new com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum(
+                            rs.getObject("id", UUID.class), rs.getObject("data_source_id", UUID.class),
+                            rs.getObject("device_id", UUID.class),
+                            rs.getObject("effective_from", java.time.OffsetDateTime.class).toInstant(),
+                            bis == null ? null : bis.toInstant());
+                },
+                siteId);
     }
 
     /** The site's battery asset slice, or null when the site has no battery. */

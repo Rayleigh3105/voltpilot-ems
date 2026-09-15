@@ -242,6 +242,11 @@ public class AdminEntityRegistryController {
             // getaktete Lauf protokolliert.
             return new ComponentAdoptionService.Outcome(
                     ComponentAdoption.Verdict.INCOMPLETE_REPORT, e.getMessage(), 0);
+        } catch (ComponentAdoptionService.PushNotDeliveredException e) {
+            // UEMS AP-06 W7: hat eine Box den Push der zurückgerollten Übernahme schon, stellt das
+            // sie zurück; der Ausgang der Route bleibt, wie er war.
+            adoption.nachAbbruchZurueckstellen(siteId, e);
+            throw e;
         }
     }
 

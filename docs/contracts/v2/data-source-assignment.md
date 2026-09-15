@@ -17,14 +17,14 @@ Portal genau dasselbe Urteil und derselbe Kundensatz wird.
 
 **Wer die Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> ⚠ **Wer anruft (Stand IP-4):** die Datenquellen-Schnittstelle
+> ⚠ **Wer anruft (Stand IP-6):** die Datenquellen-Schnittstelle
 > `/api/v1/sites/{siteId}/data-sources` (`DatenquelleService`: anlegen, von genau der Box
 > prüfen, zuweisen) über die Tabellen aus IP-2, und die Vorschlagsliste der Bestands-Übernahme
 > `…/data-sources/vorschlag` + `…/vorschlag/uebernehmen` (`DatenquelleVorschlagService`, §8). Noch
-> NICHT: die Liste im Übernahme-Assistenten des Portals und der Push je Box (IP-6) — Registry-Push,
-> Mess-Plan und Herzschlag sind unverändert, eine gespeicherte Zuständigkeit erreicht also noch
-> keine Box. Heute ist die lesende Box weiter implizit `measurement_point.device_id` bzw. die
-> führende Box der Anlage.
+> NICHT: die Liste im Übernahme-Assistenten des Portals. Seit IP-6 stellt der Registry-Push je Box zu
+> (§8 „Der Push je Box“); Mess-Plan und Herzschlag sind unverändert, und wer eine Zuständigkeit
+> schreibt, löst noch keinen Push aus (die Übergabe zum Zeitpunkt ist IP-7) — die Zuständigkeit
+> erreicht ihre Box mit dem nächsten Registry-Push der Anlage.
 
 ## 1. Begriffe
 
@@ -216,6 +216,32 @@ Die Box des Speichers gilt wie bis IP-5 ohne Anmelde-Prüfung. Für jede Bestand
 `site.lead_device_id` NULL; dann ist die führende Box genau die der alten Einzel-Gateway-Weiche,
 und wo die keine hatte, bleibt das Beobachtbare gleich (kein Push, `refused(no_gateway_device)`,
 Vorschau-Grund `no_claimed_device` bzw. `multiple_devices_no_battery_link`).
+
+**Der Push je Box (IP-6, E4 = A, W7).** Der Registry-Push (`…/v2/entities`) geht je Box: jede Box
+bekommt ihren eigenen vollständigen Sollbestand aus genau den Komponenten, deren Datenquelle sie ZUM
+Zeitpunkt des Pushs liest (§4, halboffen); die Anlagen-Rollen — Netz-Summe `grid-meter`, Haus-Summe
+`house-load`, Speicher `battery-hybrid` — stehen nur im Push der führenden Box. Die Regel ist
+`uems/PushJeBox` (rein), in Prüfreihenfolge:
+
+1. Ohne führende Box kein Push, auch keiner je Box (`keine_fuehrende_box`) — wie bis IP-5.
+2. Trägt keine Komponente der Anlage eine Datenquelle (jede Bestandsanlage bis zur Bestätigung der
+   Vorschlagsliste), bleibt es der eine Push an die führende Box, Byte für Byte.
+3. Eine Anlagen-Rolle gehört der führenden Box. Liest ihre Quelle eine andere Box, steht sie in
+   keinem Push (`anlagen_rolle_an_anderer_box`); liest keine Box sie: `quelle_ohne_zustaendige_box`.
+4. Eine Komponente ohne Datenquelle gehört der führenden Box.
+5. Eine Komponente mit Datenquelle gehört der Box, die die Quelle zum Zeitpunkt liest. Liest keine:
+   `quelle_ohne_zustaendige_box`; liest eine Box, die weder in der Anlage angemeldet noch ihre
+   führende Box ist: `box_ausserhalb_der_anlage` — der Anlagen-übergreifende Fall wartet auf IP-7
+   (A3, 10.04.2027 07:30: K-4 … K-7 stehen dann in keinem Push, nie bei Box Halle 1).
+
+Einen Push bekommen die führende Box, jede Box mit mindestens einer Komponente und jede Box der
+Anlage, für die schon ein Soll aufgezeichnet ist — auch mit leerer Menge, damit sie eine Quelle, die
+sie nicht mehr liest, sicher vergisst. Die Mengen sind disjunkt durch Bau: jede Komponente wird genau
+einmal entschieden. Das Soll steht je (Anlage, Box) in `entity_registry_state`. Ein Push-Lauf baut
+ERST alle Nutzlasten, schreibt DANN das Soll aller Boxen in einer Anweisung und stellt zuletzt zu;
+zugestellt heißt er nur, wenn jede Box ihren Push bekommen hat. Die Bestands-Übernahme
+(Einheitsmodell Stufe 2) gilt erst mit beiden Pushes; hatte eine Box ihren schon, stellt ein neuer
+Push nach dem Rückrollen beide zurück.
 
 **Bestands-Übernahme (A9, A12, IP-4):** die vorhandenen Komponenten werden nach Box + Protokoll +
 Adresse zu Vorschlägen gruppiert (Reihenfolge des ersten Auftretens, Kennzeichen ab der
