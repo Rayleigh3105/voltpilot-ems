@@ -1,8 +1,12 @@
-# UEMS-Fläche: Assistent „Messen & Auswerten" — der Rahmen mit Schritt 1 und 2 (AP-01 IP-9a)
+# UEMS-Fläche: Assistent „Messen & Auswerten" — Rahmen, Schritt 1 und 2 (AP-01 IP-9a), Schritte 3 bis 5 (IP-9b)
 
 Neu am 15.09.2026 (AP-01 IP-9a, Konzept §5.2; Entscheide firstmate 001 = A Schreibweg, 002 = A Standort ohne
 Anlage). Keine Migration. Ein kleiner Schreibweg, den IP-3 ausdrücklich hierher gelegt hat
 (`uems-funktionen-routen.md`: „Messen hat noch keinen Schreibweg (IP-9a)").
+
+Schritte 3–5 neu am 15.09.2026 (AP-01 IP-9b, Konzept §5.2): KEINE Route, keine Migration. Schritt 3 ruft die
+Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`) und für Gebäude/Bereich
+`PUT /api/v1/messstellen/{id}/ort`; Schritt 4 liest `GET /funktionen`, `/standorte`, das Register und `/devices`.
 
 | Teil | Datei |
 |---|---|
@@ -11,6 +15,10 @@ Anlage). Keine Migration. Ein kleiner Schreibweg, den IP-3 ausdrücklich hierher
 | Fläche: Schale `AnlegenDialog`, Schritt 1 (`VpPicker` + `StandortDialog`), Schritt 2 (`AddDeviceDrawer`, `AnlegenFlow`) | `src/components/MessenAssistent.tsx` (+ `.css`, `.test.tsx`) |
 | 375/1440 px + Bilder | `e2e/messen-assistent.spec.ts` auf der Bühne `messen-assistent.html/.tsx`; `MESSEN_ASSISTENT_BILDER=<Ordner>` |
 | Fixture „Messen im Entwurf" (Satz aus `messen()`) | `src/test/funktionenFixtures.ts` `funktionMessenEntwurf` |
+| Schritte 3–5 rein: Auswahl, Hauptzähler-Regel, Anfrage, Ort-Korrekturen, Prüfliste (`fehltArt` + Fakten), Fertig-Satz | `messenAssistent.ts` · `messenAssistentSchritte.test.ts` |
+| Fläche Schritte 3–5 | `MessenAssistent.tsx` · `components/MessenAssistentSchritte.test.tsx`; Spec-Fall „Schritt 3 → 4 → 5" |
+| Fixture WAGO C-1 / Halle 2 (GEBILDET von `vorschlagsliste` und `messen()`) | `src/test/messenAssistentFixtures.ts` |
+| API: C-1 ergibt vier Messstellen, genau ein Hauptzähler je Anlage (Satz aus PR 788) | `MessstelleVorschlagApiTest` `wagoC1…`, `einBestehenderHauptzaehler…` |
 
 ## Die Fallen
 
@@ -35,9 +43,9 @@ Anlage). Keine Migration. Ein kleiner Schreibweg, den IP-3 ausdrücklich hierher
    und WO die Anlage entsteht (`keineAnlageWeg`: genau eine Anlage → „Anlage hinzufügen" oben, sonst
    „Anlage anlegen" auf der Übersicht), ohne Knopf, dazu „Anderen Standort wählen" und „Später fortsetzen".
    Eine reine Messanlage ohne Steuer- und Geldwörter anzulegen ist ein eigenes Folgepaket.
-6. **Schritte 3–5 (IP-9b) einhängen:** Rumpf in `MessenAssistent.tsx` rendern und `GEBAUTE_SCHRITTE` ergänzen.
-   `vor` betritt nie einen ungebauten Schritt; ohne Schritt 3 endet Schritt 2 mit „Später fortsetzen", mit ihm
-   von selbst mit „Weiter". Fertig (5) sollte den Entwurf mit `entwurfVerwerfen` löschen.
+6. **Schritte 3–5 sind eingehängt** (`GEBAUTE_SCHRITTE` = 1…5; eine Bühne kann mit `gebaut` weniger tragen, `vor`
+   betritt nie einen ungebauten Schritt). Ohne Anlage am Standort bleibt Schritt 2 trotzdem bei „Später fortsetzen"
+   (Entscheid 002) — kein „Weiter" in eine leere Liste. „Fertig" (5) löscht den Entwurf und hat kein Zurück.
 8. **375 px:** am Telefon heißt die Schale nur „Messen & Auswerten" (`MESSEN_TITEL_KURZ`) — neben Zurück-Pfeil und
    Kreuz wurde „… einrichten" zu „Messen & Auswerten ein…" gekürzt (Variante B empfohlen; A „Titel umbrechen"
    hätte die gemeinsame Kopf-CSS des Anlege-Dialogs geändert, nur als Foto gezeigt). „Anderen Standort wählen"
@@ -46,11 +54,35 @@ Anlage). Keine Migration. Ein kleiner Schreibweg, den IP-3 ausdrücklich hierher
    Hinweis; `messenEinstieg(fs, entwurf)` liefert ihr Text und Start („Messen & Auswerten für Werk Lindach
    einrichten" / „Einrichtung fortsetzen (Schritt 2 von 5)"), der Knopf ist eine eigene Entscheidung.
 
+9. **Die Liste urteilt, Schritt 3 wählt nur.** Was vorgeschlagen wird und mit welcher Stellung, entscheidet der
+   Server (`vorschlagsliste`). Zurück geht jede gewählte Zeile wie gezeigt — nur `name` darf anders sein; ein
+   leerer Name fehlt in der Anfrage. 409 `vorschlag_geaendert` lädt die Liste neu, der Satz bleibt stehen.
+10. **Hauptzähler-Regel vor dem Senden:** `hauptzaehlerFehlt` spricht den Satz von `MessstelleVorschlagService.bezug`
+    Wort für Wort (der Test liest die Java-Datei) — kein zweiter Satz. Ein Unterzähler eines BESTEHENDEN
+    Hauptzählers hängt an nichts; einen zweiten Hauptzähler schlägt die Liste nie vor (die Netzmessung wird
+    `vergleich_kandidat`). Den 409 `hauptzaehler_vorhanden` spricht nur die AP-04-Stellungsroute.
+11. **Ort = zweiter Schreibweg, keine gemeinsame Transaktion.** Die Übernahme setzt den STANDORT ab dem
+    Verlaufsbeginn; Gebäude/Bereich schreibt `ortKorrekturen` danach als `korrektur: true` am Tag `orte[].gueltig_ab`
+    (nur, wo die Messstelle noch am vorgeschlagenen Standort steht). Scheitert ein Ort, stehen die Messstellen
+    trotzdem — Schritt 3 nennt „MS-… bleibt am Standort …: <Satz des Servers>" und geht mit „Weiter" weiter.
+12. **Prüfliste: das Urteil ist die Regel, die Sätze sind Fakten.** Rot/grün je Zeile aus `funktion.messen.fehlt`
+    (Wörter von `messen()`; `fehltArt` ordnet zu, der Test hält jedes Wort der Vektoren fest), die Sätze aus
+    Standort, `/devices` (5-min-Fenster wie `FunktionFakten`), Register und `datenlage`. „Weiter" nur bei
+    `zustand = aktiv`; die Zeile „Hauptzähler" nur, wo die Regel einen verlangt oder das Register einen kennt.
+13. **Befund: `funktion.eingerichtet_am` schreibt für Messen niemand** (`FunktionRepository.zustandSetzen` rufen nur
+    der Bestands-Läufer und die Steuern-Teilnahmen). „aktiv" gilt, solange `fehlt` leer ist; fällt eine Messstelle
+    aus, liest der Standort wieder „Entwurf", und „Eingerichtet am …" (§5.2) erscheint nie. Braucht einen eigenen
+    Schreibweg — nicht still im Lesen nachholen.
+14. **Konzept-Satz gekürzt:** §5.2 „Kennzahlen und Berichte richten Sie unter Unternehmen › Kennzahlen ein" zeigt auf
+    eine Seite, die es noch nicht gibt (AP-13) — „Fertig" nennt stattdessen „Messstellen ansehen"
+    (`standortMessstellenRoute`). Mit AP-13 den Satz ergänzen.
+
 ## Prüfen
 
 ```bash
 (cd services/api && ./mvnw test -Dtest='FunktionApiTest')                    # 7, Testcontainers
 (cd services/api && ./mvnw test -Dtest='FunktionSchnittstelleVertragTest')    # 4, rein
-(cd frontend/portal && npx vitest run src/messenAssistent.test.ts src/components/MessenAssistent.test.tsx src/copy.test.ts)
+(cd services/api && ./mvnw test -Dtest='MessstelleVorschlagApiTest')          # 8, Testcontainers (IP-9b: 2)
+(cd frontend/portal && npx vitest run src/messenAssistent.test.ts src/messenAssistentSchritte.test.ts src/components/MessenAssistent.test.tsx src/components/MessenAssistentSchritte.test.tsx src/copy.test.ts)
 (cd frontend/portal && npx playwright test e2e/messen-assistent.spec.ts --project=desktop-chromium)
 ```
