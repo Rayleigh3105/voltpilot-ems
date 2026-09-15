@@ -149,7 +149,7 @@ describe('O3 · Standort-Übersicht Werk Lindach am 18.10.2026', () => {
     const bild = energiebilanzBaustein({ ebene: LINDACH, periode: 'tag', am, heute, anlagen: bilanzen([an3], 'tag', am) })!;
     expect(`Netzbezug ${eben(bild.summe!.text)}`).toBe(O3.erwartet.energiebilanz);
     expect(JSON.stringify(bild)).not.toContain('zugeordnet');
-    expect(bild.gruppen[0].systeme[0].ziel).toEqual({ page: 'anlagen', siteId: an3, sub: 'messwerte' });
+    expect(bild.gruppen[0].systeme[0].ziel).toEqual({ page: 'anlagen', siteId: an3, sub: 'energiebilanz' });
   });
 
   it('Gebäude-Zeilen: Lagerhalle 60 kWh, Montagehalle 30 kWh (je 1 Messstelle) — der Rest 10 kWh bleibt an der Anlage (Ü4)', () => {

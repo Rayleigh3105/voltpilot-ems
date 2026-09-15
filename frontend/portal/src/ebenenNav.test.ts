@@ -220,6 +220,18 @@ describe('die REITER entstehen aus dem M0-Read-Model', () => {
     ]);
   });
 
+  it('trägt „Energiebilanz" nur mit Hauptzähler in der Stellung — direkt nach „Messwerte", sonst zeichengleich (UEMS AP-13 IP-8)', () => {
+    for (const surface of [MARKT, PRIVAT, ALLE]) {
+      expect(tabsOf(anlageBereiche(surface), 'verlauf')).not.toContain('energiebilanz');
+      const mit = tabsOf(anlageBereiche({ ...surface!, energiebilanz: true }), 'verlauf');
+      expect(mit.slice(0, 2)).toEqual(['messwerte', 'energiebilanz']);
+      expect(mit.filter((k) => k !== 'energiebilanz')).toEqual(tabsOf(anlageBereiche(surface), 'verlauf'));
+    }
+    const sidebar = anlageSidebar({ ...ALLE!, energiebilanz: true });
+    expect(tabsFor(sidebar, 'energiebilanz').map((x) => x.label)).toContain('Energiebilanz');
+    expect(bereichLabel(sidebar, 'energiebilanz')).toBe('Verlauf');
+  });
+
   it('gibt dem Bereich „Anlage" nur Komponenten und Einstellungen', () => {
     for (const surface of [MARKT, PRIVAT, null]) {
       expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik']);

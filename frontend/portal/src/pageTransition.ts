@@ -120,6 +120,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   wetter: SUB_CHUNK.daten,
   marktpreise: SUB_CHUNK.daten,
   messwerte: SUB_CHUNK.messwerte,
+  energiebilanz: SUB_CHUNK.energiebilanz,
   erloese: SUB_CHUNK.erloese,
   modell: SUB_CHUNK.modell,
   geraet: SUB_CHUNK.geraet,

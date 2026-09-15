@@ -3057,6 +3057,8 @@ export interface BilanzRest {
   fehlend: string[];
   kennzeichen: string[];
   kundensatz: string | null;
+  /** AP-10 IP-12: die Hülle `{satz, fehlt}` nach `bilanzwert-herkunft.schema.json` (Art `berechnet`, Typ `rest`). */
+  herkunft?: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
 }
 
 export interface BilanzEingang {
