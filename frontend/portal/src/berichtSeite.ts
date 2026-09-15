@@ -54,8 +54,18 @@ export const LADEFEHLER = 'Die Berichte konnten nicht geladen werden.';
 export const LADEFEHLER_SEITE = 'Der Bericht konnte nicht geladen werden.';
 export const LADEFEHLER_STAND = 'Dieser Stand konnte nicht geladen werden.';
 export const LEER = 'Es gibt noch keinen Bericht.';
+/** AP-13 IP-2: „Berichte dieses Standorts“ ohne Eintrag — ein Unternehmensbericht zählt dort nicht. */
+export const LEER_STANDORT = 'Für diesen Standort gibt es noch keinen Bericht.';
 export const NICHT_GEFUNDEN = 'Diesen Bericht gibt es nicht (mehr).';
 export const ZUR_LISTE = `Alle ${UEMS_BERICHTE}`;
+
+/**
+ * AP-13 IP-2 (Ü8, K3): „Berichte dieses Standorts“ — nur Berichte mit `geltung_art = standort` für genau diesen
+ * Standort; ein Unternehmensbericht erscheint dort nicht (R-A1).
+ */
+export function amStandort<B extends Pick<Bericht, 'geltung_art' | 'geltung_id'>>(liste: readonly B[], standortId: string): B[] {
+  return liste.filter((b) => b.geltung_art === 'standort' && b.geltung_id === standortId);
+}
 export const ARCHIVIERT = 'archiviert';
 /** Die Wahl über den Reitern: „Berichtsstand“ — die Reiter selbst heißen „Nr. 1“ … und „Entwurf“. */
 export const STAND_WAHL = UEMS_BERICHTSSTAND;

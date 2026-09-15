@@ -106,8 +106,18 @@ export const LADEN = 'Kennzahlen werden geladen …';
 export const LADEFEHLER = 'Die Kennzahlen konnten nicht geladen werden.';
 export const WERTE_FEHLER = 'Die Werte konnten nicht geladen werden.';
 export const LEER = 'Es gibt noch keine Kennzahl.';
+/** AP-13 IP-2: „Kennzahlen dieses Standorts“ ohne Eintrag — am Unternehmen kann es trotzdem welche geben. */
+export const LEER_STANDORT = 'Für diesen Standort gibt es noch keine Kennzahl.';
 export const NICHT_GEFUNDEN = 'Diese Kennzahl gibt es nicht (mehr).';
 export const ZUR_LISTE = 'Alle Kennzahlen';
+
+/**
+ * AP-13 IP-2 (Ü8): die Kennzahlen, deren Geltung im Standort liegt — Standort, Gebäude oder Prozess mit Ort dort.
+ * `standort_id` nennt ihn der Server (G1); eine Unternehmens-Kennzahl (`standort_id = null`) erscheint nie (R-A1).
+ */
+export function amStandort<K extends Pick<Kennzahl, 'standort_id'>>(liste: readonly K[], standortId: string): K[] {
+  return liste.filter((k) => k.standort_id === standortId);
+}
 export const ARCHIVIERT = 'archiviert';
 /**
  * R-A7 (AP-03 R-A6/R-A7, AP-11 §4.11): eine Kennzahl über Standorte, die der Leser nicht alle sieht — ihre

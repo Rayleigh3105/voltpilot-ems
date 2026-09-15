@@ -420,6 +420,12 @@
   min-width: 0;
 }
 
+/* AP-13 IP-2: „Kennzahlen dieses Standorts“ nennt den Standort unter dem Titel — beide teilen sich die Spalte links. */
+.vp-kz-kopf-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
 .vp-kz-aktionen {
   display: flex;
   flex-wrap: wrap;

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { MessstelleGroesse } from './api';
 import { EBENEN_SEITEN, type EbenenLesemodell, type EbenenSeiten } from './ebenenNav';
-import { parseRoute, standortRoute } from './nav';
+import { parseRoute } from './nav';
 import { ahrenbergFunktionen } from './test/funktionenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
 import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixtures';
@@ -140,10 +140,10 @@ describe('uemsOberflaechen · Kacheln je Lesemodell über ebenenBereiche — O17
     kennzahlen: ahrenbergKennzahlen(),
   };
   const BETRIEBSKUNDE: EbenenLesemodell = { ...MESSKUNDE, funktionen: ahrenbergFunktionen({ messen: 'bestand' }), kennzahlen: [] };
-  /** Das Bild, sobald IP-2 Gebäude und Anlagen des Standorts einhängt — nur, um O17 „nach IP-2“ zu prüfen. */
-  const NACH_IP2: EbenenSeiten = (ort) =>
+  /** Das Bild VOR AP-13 IP-2: am Standort hatten nur Übersicht und Messstellen eine Seite (O17 „heute“ im Konzept). */
+  const VOR_IP2: EbenenSeiten = (ort) =>
     ort.art === 'standort'
-      ? { ...EBENEN_SEITEN(ort), gebaeude: standortRoute(ort.standortId), anlagen: standortRoute(ort.standortId) }
+      ? { uebersicht: EBENEN_SEITEN(ort).uebersicht, messstellen: EBENEN_SEITEN(ort).messstellen }
       : EBENEN_SEITEN(ort);
 
   it('Unternehmen: fünf Bereiche, fünf Kacheln, Leiste', () => {
@@ -153,22 +153,32 @@ describe('uemsOberflaechen · Kacheln je Lesemodell über ebenenBereiche — O17
     expect(u.kacheln).toHaveLength(fall('O17').erwartet.kacheln_u);
   });
 
-  it('Werk Ahrenberg heute: vier Bereiche, zwei Kacheln (Reiter), keine Leiste', () => {
+  it('Werk Ahrenberg vor IP-2: vier Bereiche, zwei Kacheln (Reiter), keine Leiste', () => {
     const g = fall('O17').gegeben;
-    expect(kacheln(WERK, MESSKUNDE)).toEqual({ bereiche: g.bereiche_st1, kacheln: g.kacheln_st1_heute, leiste: g.leiste_st1_heute });
+    expect(kacheln(WERK, MESSKUNDE, VOR_IP2)).toEqual({ bereiche: g.bereiche_st1, kacheln: g.kacheln_st1_heute, leiste: g.leiste_st1_heute });
   });
 
-  it('nach IP-2: Werk Ahrenberg vier Kacheln, Werk Lindach drei — beide mit Leiste', () => {
+  it('seit IP-2 (die Seiten von heute): Werk Ahrenberg vier Kacheln, Werk Lindach drei — beide mit Leiste', () => {
     const g = fall('O17').gegeben;
-    const werk = kacheln(WERK, MESSKUNDE, NACH_IP2);
+    const werk = kacheln(WERK, MESSKUNDE);
     expect(werk).toEqual({ bereiche: g.bereiche_st1, kacheln: g.kacheln_st1_nach_ip2, leiste: g.leiste_st1_nach_ip2 });
     expect(werk.kacheln).toHaveLength(fall('O17').erwartet.kacheln_st1);
-    const lindach = kacheln(LINDACH, MESSKUNDE, NACH_IP2);
+    const lindach = kacheln(LINDACH, MESSKUNDE);
     expect([lindach.kacheln, lindach.leiste]).toEqual([g.kacheln_st2_nach_ip2, g.leiste_st2_nach_ip2]);
   });
 
-  it('O18: ein reiner Betriebskunde hat heute auf keiner Ebene eine Leiste', () => {
-    for (const ort of [UNTERNEHMEN, WERK, LINDACH]) expect(kacheln(ort, BETRIEBSKUNDE).leiste).toBe(false);
+  it('O18: ein reiner Betriebskunde ohne Gebäude hat auf keiner Ebene eine Leiste', () => {
+    const g = fall('O18').gegeben;
+    const betrieb: EbenenLesemodell = {
+      standorte: [werkAhrenberg({ gebaeudeZahl: 0 })],
+      funktionen: ahrenbergFunktionen({ messen: 'bestand' }),
+      kennzahlen: [],
+    };
+    expect(kacheln(UNTERNEHMEN, betrieb).bereiche).toEqual(g.betriebskunde_bereiche_u);
+    expect(kacheln(WERK, betrieb).bereiche).toEqual(g.betriebskunde_bereiche_st);
+    for (const ort of [UNTERNEHMEN, WERK]) expect(kacheln(ort, betrieb).leiste).toBe(g.betriebskunde_leiste);
+    // Zwei Standorte ohne Messen: am Unternehmen Übersicht · Standorte — ebenfalls keine Leiste.
+    expect(kacheln(UNTERNEHMEN, BETRIEBSKUNDE).leiste).toBe(false);
   });
 });
 

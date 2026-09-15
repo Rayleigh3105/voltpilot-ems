@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type OrtAktionen, type OrtsbaumAmStichtag, type StandortAmStichtag } from '../api';
@@ -57,12 +57,20 @@ const ICON: Record<Knoten['art'], 'building' | 'layers' | 'map-pin'> = {
  *
  * Nicht hier: Verschieben (IP-12), Archivieren (IP-15), die Fläche ÄNDERN mit
  * Verlauf (IP-8, T7) und die Datenlage je Knoten.
+ *
+ * UEMS AP-13 IP-2 (E4 = A): „Standort › Gebäude“ trägt den Baum als eigene Seite
+ * (`StandortGebaeudePage`) und nennt seine Überschrift schon selbst
+ * (`titelVersteckt`). `gebaeudeKarte` ist die Hülle der Karte je Gebäude: gibt
+ * sie für ein Gebäude Inhalt zurück, klappt die Zeile ihn auf — IP-10 reicht die
+ * Blöcke Energie · Messstellen · Kennzahlen herein. Ohne Inhalt kein Aufklapper.
  */
 export function Ortsbaum({
   standort,
   stichtag = null,
   onGeaendert,
   onAktionen,
+  titelVersteckt = false,
+  gebaeudeKarte,
 }: {
   standort: StandortAmStichtag;
   /** „Stand am …“ (IP-13): `null` = heute, mit Schreibwegen. */
@@ -71,8 +79,13 @@ export function Ortsbaum({
   onGeaendert?: () => void;
   /** IP-15: was man heute mit dem Standort selbst tun kann — sein Menü sitzt im Standort-Kopf. */
   onAktionen?: (aktionen: OrtAktionen | null) => void;
+  /** AP-13 IP-2: die Seite trägt „Gebäude“ schon als Überschrift — hier bleibt sie nur für Screenreader. */
+  titelVersteckt?: boolean;
+  /** AP-13 IP-2: der Inhalt der Karte eines Gebäudes; `null`/`undefined` = keine Karte, kein Aufklapper. */
+  gebaeudeKarte?: (gebaeude: Knoten) => ReactNode;
 }) {
   const titelId = `vp-ob-${useId().replace(/:/g, '')}`;
+  const [offen, setOffen] = useState<ReadonlySet<string>>(new Set());
   // Die Antwort merkt sich, für welchen Tag sie gilt: nach einem Wechsel des Stichtags steht
   // nie der Baum des vorigen Tages unter dem Banner des neuen (veraltet ist nicht aktuell).
   const [geladen, setGeladen] = useState<{ fuer: string | null; daten: OrtsbaumAmStichtag } | null>(null);
@@ -273,7 +286,7 @@ export function Ortsbaum({
   return (
     <section className="vp-ob" aria-labelledby={titelId} data-testid="ortsbaum">
       <div className="vp-ob-kopf">
-        <h3 id={titelId} className="vp-ob-titel">
+        <h3 id={titelId} className={titelVersteckt ? 'vp-ob-titel vp-sr-only' : 'vp-ob-titel'}>
           {TITEL_GEBAEUDE}
         </h3>
         {sicht && !sicht.leer && kannSchreiben && (
@@ -379,20 +392,50 @@ export function Ortsbaum({
 
       {sicht && sicht.knoten.length > 0 && (
         <ul className="vp-ob-baum" aria-labelledby={titelId}>
-          {sicht.knoten.map((k) => (
-            <li key={k.schluessel} className="vp-ob-knoten" data-art={k.art}>
-              {zeile(k)}
-              {k.kinder.length > 0 && (
-                <ul className="vp-ob-kinder">
-                  {k.kinder.map((b) => (
-                    <li key={b.schluessel} className="vp-ob-knoten" data-art={b.art}>
-                      {zeile(b)}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
+          {sicht.knoten.map((k) => {
+            const karte = k.art === 'gebaeude' && gebaeudeKarte ? gebaeudeKarte(k) : null;
+            const hatKarte = karte !== null && karte !== undefined && karte !== false;
+            const aufgeklappt = hatKarte && offen.has(k.schluessel);
+            const karteId = `${titelId}-karte-${k.schluessel}`;
+            return (
+              <li key={k.schluessel} className="vp-ob-knoten" data-art={k.art}>
+                {zeile(k)}
+                {hatKarte && (
+                  <button
+                    type="button"
+                    className="vp-ob-aufklapper"
+                    aria-expanded={aufgeklappt}
+                    aria-controls={karteId}
+                    aria-label={`${k.name}: Karte ${aufgeklappt ? 'zuklappen' : 'aufklappen'}`}
+                    onClick={() =>
+                      setOffen((alt) => {
+                        const neu = new Set(alt);
+                        if (neu.has(k.schluessel)) neu.delete(k.schluessel);
+                        else neu.add(k.schluessel);
+                        return neu;
+                      })
+                    }
+                  >
+                    <Icon name={aufgeklappt ? 'chevron-down' : 'chevron-right'} size={18} />
+                  </button>
+                )}
+                {aufgeklappt && (
+                  <div id={karteId} className="vp-ob-karte" data-testid="gebaeude-karte">
+                    {karte}
+                  </div>
+                )}
+                {k.kinder.length > 0 && (
+                  <ul className="vp-ob-kinder">
+                    {k.kinder.map((b) => (
+                      <li key={b.schluessel} className="vp-ob-knoten" data-art={b.art}>
+                        {zeile(b)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

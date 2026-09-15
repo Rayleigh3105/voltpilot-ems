@@ -12,12 +12,15 @@ import {
   heuteIn,
   LADEFEHLER,
   LADEN,
+  amStandort,
   LEER,
+  LEER_STANDORT,
   listenKarte,
   TITEL,
   type ListenKarte,
   type ListenWerte,
 } from '../kennzahlKarte';
+import { STANDORT_KENNZAHLEN } from '../ebenenNav';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { KennzahlSeite } from './KennzahlSeite';
 import './KennzahlenPage.css';
@@ -42,12 +45,15 @@ export function KennzahlenPage({
   onOeffnen,
   onListe,
   zone = VORGABE_ZEITZONE,
+  standort = null,
 }: {
   kennzahlId?: string | null;
   onOeffnen: (id: string) => void;
   onListe: () => void;
   /** Die Zeitzone, in der „heute“ liegt. */
   zone?: string;
+  /** AP-13 IP-2 (Ü8): „Kennzahlen dieses Standorts“ — die Liste nur mit Geltung im Standort; `null` = das Unternehmen. */
+  standort?: { id: string; name: string } | null;
 }) {
   const [assistent, setAssistent] = useState<{ quelle: KopieVon | null; aendern?: KopieVon } | null>(null);
   const [neu, setNeu] = useState(0);
@@ -75,6 +81,7 @@ export function KennzahlenPage({
           id={kennzahlId}
           zone={zone}
           onListe={onListe}
+          zurListe={standort ? STANDORT_KENNZAHLEN : undefined}
           onKopieren={(quelle) => setAssistent({ quelle })}
           onBerechnungAendern={(quelle) => setAssistent({ quelle: null, aendern: quelle })}
         />
@@ -84,24 +91,43 @@ export function KennzahlenPage({
   }
   return (
     <>
-      <KennzahlenListe key={neu} zone={zone} onOeffnen={onOeffnen} onAnlegen={() => setAssistent({ quelle: null })} />
+      <KennzahlenListe
+        key={neu}
+        zone={zone}
+        standort={standort}
+        onOeffnen={onOeffnen}
+        onAnlegen={() => setAssistent({ quelle: null })}
+      />
       {dialog}
     </>
   );
 }
 
-function KennzahlenListe({ zone, onOeffnen, onAnlegen }: { zone: string; onOeffnen: (id: string) => void; onAnlegen: () => void }) {
+function KennzahlenListe({
+  zone,
+  standort,
+  onOeffnen,
+  onAnlegen,
+}: {
+  zone: string;
+  standort: { id: string; name: string } | null;
+  onOeffnen: (id: string) => void;
+  onAnlegen: () => void;
+}) {
   const [liste, setListe] = useState<Kennzahl[] | null>(null);
   const [werte, setWerte] = useState<Record<string, ListenWerte>>({});
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
+  const standortId = standort?.id ?? null;
 
   useEffect(() => {
     let aktiv = true;
     setFehler(false);
     api.kennzahlen().then(
-      ({ kennzahlen }) => {
+      ({ kennzahlen: alle }) => {
         if (!aktiv) return;
+        // Am Standort nur, was dort gilt — und nur deren Werte werden gelesen.
+        const kennzahlen = standortId ? amStandort(alle, standortId) : alle;
         setListe(kennzahlen);
         setWerte({});
         const heute = heuteIn(zone, Date.now());
@@ -124,7 +150,7 @@ function KennzahlenListe({ zone, onOeffnen, onAnlegen }: { zone: string; onOeffn
     return () => {
       aktiv = false;
     };
-  }, [zone, versuch]);
+  }, [zone, versuch, standortId]);
 
   // Archivierte stehen hinten — sonst die Reihenfolge der Route.
   const sortiert = liste ? [...liste].sort((a, b) => Number(a.archiviert_am !== null) - Number(b.archiviert_am !== null)) : [];
@@ -132,7 +158,14 @@ function KennzahlenListe({ zone, onOeffnen, onAnlegen }: { zone: string; onOeffn
   return (
     <div className="vp-kz" data-testid="kennzahlen">
       <header className="vp-kz-kopf vp-kz-kopf-aktion">
-        <h1>{TITEL}</h1>
+        {standort ? (
+          <div className="vp-kz-kopf-text">
+            <h1>{STANDORT_KENNZAHLEN}</h1>
+            <p>{standort.name}</p>
+          </div>
+        ) : (
+          <h1>{TITEL}</h1>
+        )}
         <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={onAnlegen} data-testid="kennzahl-anlegen-knopf">
           {KNOPF_ANLEGEN}
         </Button>
@@ -145,7 +178,7 @@ function KennzahlenListe({ zone, onOeffnen, onAnlegen }: { zone: string; onOeffn
         </div>
       ) : liste.length === 0 ? (
         <p className="vp-kz-leer">
-          {LEER} {LEER_SATZ}
+          {standort ? LEER_STANDORT : LEER} {LEER_SATZ}
         </p>
       ) : (
         <ul className="vp-kz-liste">

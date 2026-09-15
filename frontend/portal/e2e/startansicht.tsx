@@ -22,6 +22,7 @@ import {
   ebenenTitel,
   type EbenenLesemodell,
   type EbenenSeiten,
+  standortEinstiege,
 } from '../src/ebenenNav';
 import { anlagenOptionen } from '../src/anlagenWahl';
 import {
@@ -47,6 +48,7 @@ import {
   hashForRoute,
   kennzahlRoute,
   pageRoute,
+  standortBereichRoute,
   standortMessstellenRoute,
   standortRoute,
   type PageId,
@@ -69,8 +71,10 @@ import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
-import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
+import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
+import { StandortAnlagenPage } from '../src/pages/StandortAnlagenPage';
+import { StandortGebaeudePage } from '../src/pages/StandortGebaeudePage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
 import {
@@ -338,6 +342,15 @@ const SZENEN = {
 };
 
 const szene = SZENEN[bild as keyof typeof SZENEN] ?? SZENEN.einzel;
+/**
+ * AP-13 IP-2: `&orte=leer` — Werk Lindach ohne Gebäude und Bereiche (Z4): der Ortsbaum zeigt L1 aus AP-02, und
+ * „Gebäude“ ist kein Bereich (keine Kachel, kein Reiter); die Adresse `…/gebaeude` gilt trotzdem.
+ */
+const ORTE_LEER = params.get('orte') === 'leer';
+if (ORTE_LEER) {
+  const liste = szene.liste as { standorte: { id: string; gebaeudeZahl: number | null }[] };
+  liste.standorte = liste.standorte.map((s) => (s.id === werkLindach().id ? { ...s, gebaeudeZahl: 0 } : s));
+}
 const sites = szene.sites as Site[];
 const siteIds = sites.map((s) => s.id);
 
@@ -369,7 +382,8 @@ Object.assign(api, {
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
   standorte: async () => structuredClone(szene.liste),
-  standortOrte: async (id: string) => (id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg()),
+  standortOrte: async (id: string) =>
+    id === werkLindach().id ? (ORTE_LEER ? ortsbaumLindachOhneGebaeude() : ortsbaumLindach()) : ortsbaumAhrenberg(),
   // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
   kennzahlen: async () => ({ kennzahlen: kennzahlenDerBuehne() }),
   kennzahl: async (id: string) => kennzahlDerBuehne(id),
@@ -583,6 +597,19 @@ function Vorschau() {
           ? standortRoute(st2)
           : ansicht === 'werk'
             ? standortRoute(FIXTURE_IDS.st1)
+            // AP-13 IP-2: die Seiten des Standorts.
+            : ansicht === 'werk-gebaeude'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude')
+            : ansicht === 'werk-anlagen'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'anlagen')
+            : ansicht === 'werk-kennzahlen'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'kennzahlen')
+            : ansicht === 'werk-berichte'
+              ? standortBereichRoute(FIXTURE_IDS.st1, 'berichte')
+            : ansicht === 'lindach-gebaeude'
+              ? standortBereichRoute(st2, 'gebaeude')
+            : ansicht === 'lindach-anlagen'
+              ? standortBereichRoute(st2, 'anlagen')
             : ansicht === 'messstellen'
               ? pageRoute('portfolio-messstellen')
               : ansicht === 'werk-messstellen'
@@ -647,6 +674,13 @@ function Vorschau() {
   const leiste = params.get('reiter') === 'alle' ? [] : kacheln.map((k) => k.key);
   const standortReiter =
     route.page === 'standort' && ebene.art !== 'standort' && ort?.art === 'standort' ? ebenenReiter(ort, lesemodell) : [];
+  // AP-13 IP-2, wie `App.tsx`: als oberste Ebene bringt der Standort Gebäude · Anlagen in die Reiter mit;
+  // seine Übersicht bekommt die Einstiege „Kennzahlen/Berichte dieses Standorts“.
+  const standortObenReiter =
+    ebene.art === 'standort' && ort?.art === 'standort'
+      ? ebenenReiter(ort, lesemodell).filter((r) => r.key === 'gebaeude' || r.key === 'anlagen')
+      : [];
+  const einstiege = ort?.art === 'standort' ? standortEinstiege(ort, lesemodell) : [];
   const portfolioReiter = (page: PageId) => (
     <PortfolioTabs
       page={page}
@@ -657,6 +691,9 @@ function Vorschau() {
       leiste={leiste}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
+      standortBereiche={standortObenReiter}
+      standortAktiv={ebenenAktiv(route.page, route.standortBereich)}
+      onOpenBereich={navigate}
     />
   );
   const messstellenEbene =
@@ -749,6 +786,30 @@ function Vorschau() {
               onNavigate={navigate}
               onReload={() => undefined}
               betriebsart="endkunde"
+              einstiege={einstiege}
+            />
+          )}
+          {route.standortBereich === 'gebaeude' && <StandortGebaeudePage key={standort.id} standort={standort} />}
+          {route.standortBereich === 'anlagen' && (
+            <StandortAnlagenPage standort={standort} sites={sites} onNavigate={navigate} onReload={() => undefined} betriebsart="endkunde" />
+          )}
+          {route.standortBereich === 'kennzahlen' && (
+            <KennzahlenPage
+              key={standort.id}
+              standort={{ id: standort.id, name: standort.name }}
+              zone={standort.zeitzone}
+              kennzahlId={route.kennzahlId ?? null}
+              onOeffnen={(id) => navigate(kennzahlRoute(id, standort.id))}
+              onListe={() => navigate(standortBereichRoute(standort.id, 'kennzahlen'))}
+            />
+          )}
+          {route.standortBereich === 'berichte' && (
+            <BerichtePage
+              key={standort.id}
+              standort={{ id: standort.id, name: standort.name }}
+              kennung={route.berichtKennung ?? null}
+              onOeffnen={(kennung) => navigate(berichtRoute(kennung, standort.id))}
+              onListe={() => navigate(standortBereichRoute(standort.id, 'berichte'))}
             />
           )}
         </>

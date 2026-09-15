@@ -79,8 +79,9 @@ export interface EbenenBild {
 /**
  * Die Kacheln einer Ebene — dieselbe Regel wie `ebenenLeiste`, aber ohne die
  * Kacheln unter der Schwelle wegzuwerfen: die Bühne und der gemessene Weg (IP-13)
- * brauchen „2 Kacheln, keine Leiste“ ebenso wie „4 Kacheln, Leiste“. Wer eine
- * Seite einhängt (IP-2: Gebäude, Anlagen), trägt sie in `EBENEN_SEITEN` ein.
+ * brauchen „2 Kacheln, keine Leiste“ ebenso wie „4 Kacheln, Leiste“. Seit IP-2
+ * stehen Gebäude und Anlagen des Standorts in `EBENEN_SEITEN` — Werk Ahrenberg
+ * vier Kacheln, Werk Lindach drei; wer eine weitere Seite einhängt, trägt sie dort ein.
  */
 export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeiten = EBENEN_SEITEN): EbenenBild {
   const ziele = seiten(ort);

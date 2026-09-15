@@ -60,12 +60,15 @@ export function KennzahlSeite({
   id,
   zone,
   onListe,
+  zurListe = ZUR_LISTE,
   onKopieren,
   onBerechnungAendern,
 }: {
   id: string;
   zone: string;
   onListe: () => void;
+  /** Das Wort des Rückwegs — am Standort „Kennzahlen dieses Standorts“ (AP-13 IP-2), sonst „Alle Kennzahlen“. */
+  zurListe?: string;
   /** AP-11 IP-14 (§5.2): „Kopieren“ — Form, Name und Zweck gehen in den Assistenten, die Eingänge nicht. */
   onKopieren?: (quelle: KopieVon) => void;
   /** AP-11 IP-15 (§5.4): „Berechnung ändern ab …“ — derselbe Assistent im Modus „ändern“, er gehört der Welt. */
@@ -161,7 +164,7 @@ export function KennzahlSeite({
   const zurueck = (
     <button type="button" className="vp-kz-zurueck" onClick={onListe}>
       <Icon name="chevron-left" size={18} />
-      {ZUR_LISTE}
+      {zurListe}
     </button>
   );
 
