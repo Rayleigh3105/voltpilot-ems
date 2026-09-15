@@ -212,7 +212,8 @@ class UemsKorrekturErsatzwertMigrationTest {
         assertThat(ew).containsEntry("u", "kunde").containsEntry("p", "ersatzwert,methode,status");
         Map<String, Object> k = root.queryForMap("SELECT array_to_string(urheber, ',') AS u, array_to_string(felder, ',') "
                 + "AS f FROM messreihe_ereignis_vokabular() WHERE art = 'correction'");
-        assertThat(k).containsEntry("u", "cloud,kunde").containsEntry("f", "ersatzwert");
+        // AP-09 IP-7 hängt die Felder der Bezugsgröße an — additiv, `ersatzwert` bleibt vorn.
+        assertThat(k).containsEntry("u", "cloud,kunde").containsEntry("f", "ersatzwert,fassung_alt,fassung_neu,import");
         // Jeder angenommene Fall der beiden Arten landet über den Schreibweg in der Tabelle.
         Kunde kb = kunde("Ereignisse Ersatzwert");
         int angehaengt = 0;
@@ -234,7 +235,9 @@ class UemsKorrekturErsatzwertMigrationTest {
             angehaengt += angenommen ? 1 : 0;
         }
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? "
-                + "AND art IN ('substitute', 'correction')", Integer.class, kb.tenant())).isEqualTo(angehaengt).isEqualTo(7);
+                + "AND art IN ('substitute', 'correction')", Integer.class, kb.tenant())).isEqualTo(angehaengt)
+                // AP-09 IP-7: dazu die Berichtigung des Bezugsgrößen-Werts BK-2026-0001 (Bezug bezugsgroesse).
+                .isEqualTo(8);
     }
 
     // ============================================================ E7 in der Datenbank

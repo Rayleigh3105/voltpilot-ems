@@ -600,11 +600,27 @@
       },
       "korrektur": {
         "typ": "kennung",
-        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6)."
+        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6); an einer Bezugsgröße der Vorgang der Berichtigung BK-<Jahr>-<lfd. Nr.> (AP-09 IP-7)."
       },
       "korrektur_art": {
         "typ": "wort",
         "beschreibung": "Die Art der Korrektur (vokabular.korrektur_art, AP-08 §4.6)."
+      },
+      "bezugsgroesse": {
+        "typ": "kennung",
+        "beschreibung": "Die Bezugsgröße, deren Wert berichtigt wurde — ihr Kennzeichen zur Zeit der Meldung, statt der Reihe (AP-09 IP-7)."
+      },
+      "fassung_alt": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die wirksame Fassung des Bezugsgrößen-Werts vor der Berichtigung (AP-09 F4)."
+      },
+      "fassung_neu": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Fassung des Bezugsgrößen-Werts, die mit dieser Meldung wirksam ist — größer als fassung_alt (AP-09 F4)."
+      },
+      "import": {
+        "typ": "kennung",
+        "beschreibung": "Der Import der Bezugsdaten, aus dem die Berichtigung kam: I-<Jahr>-<lfd. Nr.> (AP-09 C2, IP-13)."
       },
       "ausloeser": {
         "typ": "kennung",
@@ -1744,12 +1760,12 @@
           "offen_erlaubt": false,
           "achse": "messzeit"
         },
-        "bezug_pflicht": [
-          "komponente",
-          "messkanal"
-        ],
+        "bezug_pflicht": [],
         "bezug_erlaubt": [
-          "messstelle"
+          "komponente",
+          "messkanal",
+          "messstelle",
+          "bezugsgroesse"
         ],
         "pflicht": [
           "korrektur",
@@ -1757,7 +1773,10 @@
           "status"
         ],
         "felder": [
-          "ersatzwert"
+          "ersatzwert",
+          "fassung_alt",
+          "fassung_neu",
+          "import"
         ],
         "fortschreibbar": [],
         "mqtt": null,
@@ -1769,18 +1788,21 @@
           "zurueckgenommen": "Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}"
         },
         "zusaetze": {
-          "ersatzwert": " ({ersatzwert})"
+          "ersatzwert": " ({ersatzwert})",
+          "bezugsgroesse": " · Bezugsgröße {bezugsgroesse}, Fassung {fassung_alt} → {fassung_neu}",
+          "import": " · Import {import}"
         },
         "regeln": [
-          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); eine Meldung je betroffener Reihe.",
-          "`korrektur` hat die Form K-<Jahr>-<lfd. Nr.>. Jeder Statuswechsel ist eine NEUE Meldung (eigene ereignis_id) — nie fortgeschrieben, nie gelöscht.",
+          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); eine Meldung je betroffener Reihe bzw. je berichtigtem Wert einer Bezugsgröße (dann die Periode des Werts, Mitternacht in der Zeitzone des Standorts).",
+          "`korrektur` hat die Form K-<Jahr>-<lfd. Nr.> (Reihe) bzw. BK-<Jahr>-<lfd. Nr.> (Bezugsgröße, AP-09 IP-7). Jeder Statuswechsel ist eine NEUE Meldung (eigene ereignis_id) — nie fortgeschrieben, nie gelöscht.",
           "Nie automatisch (E14): die Cloud meldet nur `vorschlag`; freigegeben, abgelehnt und zurueckgenommen meldet ein Mensch (kunde).",
           "`ersatzwert` steht genau bei korrektur_art ersatzwert.",
-          "freigegeben und zurueckgenommen lösen die Neuberechnung (E9) und die Revision freigegebener Berichte (AP-12) aus — die Kaskade selbst ist AP-08 IP-17."
+          "freigegeben und zurueckgenommen lösen die Neuberechnung (E9) und die Revision freigegebener Berichte (AP-12) aus — die Kaskade selbst ist AP-08 IP-17.",
+          "AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) ODER die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu, optional import I-<Jahr>-<lfd. Nr.>). Was dem gewählten Bezug fehlt, ist schema_verletzt (wie vorher); beides zugleich oder Fassungen und Import an einer Reihe sind regel_verletzt. An einer Bezugsgröße ist die Art wert_berichtigt und fassung_neu größer als fassung_alt; gemeldet wird nur die wirksame Fassung ≥ 2 (F4), nie ein Erstwert oder ein offener Vorschlag."
         ],
         "bestand": false,
         "nie_geloescht": true,
-        "herkunft": "AP-08 §4.4, §4.6, E8, E9, E14 (Tabelle messreihe_korrektur, Lieferpaket IP-12)"
+        "herkunft": "AP-08 §4.4, §4.6, E8, E9, E14 (Tabelle messreihe_korrektur, Lieferpaket IP-12); AP-09 §4.5 F4, §6.1 (Bezug bezugsgroesse, Tabelle bezugsgroesse_berichtigung, Lieferpaket IP-7)"
       },
       {
         "art": "verteilung_geaendert",
@@ -1934,7 +1956,7 @@
       "angelegt_von": "AP-09 IP-7 — der Schreibweg der Bezugsgrößen-Werte (Berichtigung als Fassung n + 1, Rücknahme); Aufgabe vp-uems-b09-wert-eingeben",
       "gelesen_von": "AP-11 IP-9 — der Nenner-Auslöser der Kaskade (`Betroffen.bezugsgroessen`)",
       "regel": "Eine wirksame Fassung ≥ 2 oder die Rücknahme eines Werts einer Bezugsgröße meldet `correction` mit Bezug `bezugsgroesse` (Kennzeichen BZ-…) und der Periode. Die Kaskade bildet daraufhin NUR Kennzahlen und Berichte neu, keine Messreihen-Stufe (AP-11 E8, W1). Eine Fassung 1 ist keine Korrektur (AP-09 F1/F4).",
-      "bis_dahin": "Reserviert, nicht angelegt: `vokabular.arten`, die Tabelle und die Prüfung kennen den Bezug nicht, eine Meldung damit wird abgelehnt. Legt AP-09 IP-7 ihn an, gilt dessen Eintrag in `vokabular.arten`; diese Reservierung ändert kein Verhalten."
+      "bis_dahin": "Eingelöst mit AP-09 IP-7 (V20260915010000): `vokabular.arten` → `correction` kennt den Bezug `bezugsgroesse` (mit `fassung_alt`, `fassung_neu`, Kennung BK-…); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Nachweis für die Kennzahl stehen und ändert kein Verhalten."
     },
     {
       "art": "kennzahl_neu_gebildet",
@@ -4704,6 +4726,203 @@
           "korrektur": "K-2026-0008",
           "korrektur_art": "ersatzwert",
           "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bk-2026-0001-bz-2-oktober-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Ines Kaltenbach berichtigt die Gutteile Montage (BZ-2) für Oktober 2026 von 4 820 auf 48 200 Stück; mit der Freigabe ist Fassung 2 wirksam — eine Meldung, Bezug die Bezugsgröße statt einer Reihe.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000901",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur BK-2026-0001 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt (mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2"
+        ]
+      }
+    },
+    {
+      "name": "bezugsgroesse-ohne-fassung-neu-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "An einer Bezugsgröße nennt die Meldung, welche Fassung vorher und welche jetzt wirksam ist — ohne die neue ist nicht nachvollziehbar, was die Kennzahl neu bildet.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000902",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-ohne-bezug-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5; AP-09 IP-7 (genau ein Bezug)",
+      "why": "Eine Korrektur ohne Reihe und ohne Bezugsgröße trifft nichts — wie vor AP-09 IP-7 fehlt ein Pflichtfeld.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000903",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-an-reihe-und-bezugsgroesse-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-7 (genau ein Bezug)",
+      "why": "Eine Meldung trifft GENAU EINEN Bezug: eine Reihe und zugleich eine Bezugsgröße wäre zweimal gezählt.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000904",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "fassungen-an-einer-reihe-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-7 (Fassungen nur an einer Bezugsgröße)",
+      "why": "Eine Korrektur an einer Reihe hat keine Wert-Fassungen — sie trägt ihre Versionen in den Viertelstunden.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000905",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bezugsgroesse-mit-korrektur-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Die Berichtigung eines Bezugsgrößen-Werts ist der Vorgang BK-…, nie eine Korrektur K-… einer Reihe.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000906",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bezugsgroesse-fassung-neu-nicht-groesser-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Die neue Fassung folgt auf die alte (F2: Fassung n + 1) — dieselbe Nummer wäre keine Berichtigung.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000907",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 2,
+          "fassung_neu": 2
         }
       },
       "expected": {

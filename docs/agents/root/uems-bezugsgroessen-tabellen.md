@@ -21,8 +21,8 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
   (jsonb-Array), Urheber `actor_*`, Freigeber `freigeber_*`, `created_at`.
 - `bezugsgroesse_aenderung`: das Protokoll der Bezugsgröße (`angelegt` · `bearbeitet` · `archiviert`).
 - Routen und Lesemodell seit IP-5 (`uems-bezugsgroessen-routen.md`); Stammdaten mit Gültigkeit seit IP-6 in
-  `bezugsgroesse_stammdatum` (`uems-bezugsflaechen-stammdaten.md`); keine Eingabe/
-  Vier-Augen (IP-7), kein Import (IP-11 ff.), keine Kanalbindung (IP-17).
+  `bezugsgroesse_stammdatum` (`uems-bezugsflaechen-stammdaten.md`); Eingabe/Vier-Augen seit IP-7 mit dem Vorgang
+  `bezugsgroesse_berichtigung` (`uems-bezugswert-eingeben.md`), kein Import (IP-11 ff.), keine Kanalbindung (IP-17).
 
 ## ⚠ Die Fassungs-Eigenschaft
 
@@ -80,7 +80,7 @@ dieselbe zeitlose Hälfte als Constraint, und der Test spielt die Vektoren gegen
 
 ## Offboarding
 
-`TenantRepository.offboard` löscht `bezugsgroesse_wert`, `bezugsgroesse_kennzeichen_verlauf`,
+`TenantRepository.offboard` löscht `bezugsgroesse_berichtigung` (IP-7), `bezugsgroesse_wert`, `bezugsgroesse_kennzeichen_verlauf`,
 `bezugsgroesse`, `bezugsgroesse_aenderung` VOR Messstellen, Orten, Standort und Unternehmen. Anders
 als die älteren Journale hält das Protokoll den Mandanten per FK (RESTRICT) und geht mit dem
 Kundenbereich; ohne diese Zeilen ließe sich ein Kundenbereich mit Bezugsgrößen nicht löschen (PR 706).

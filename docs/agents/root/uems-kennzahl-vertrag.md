@@ -41,4 +41,5 @@ Regeln an (Tabellen IP-4, Routen IP-5, Lauf IP-6, Werte IP-7, Kaskade IP-8/IP-9,
 - **Befund K18 (Claudia):** der Konzeptkatalog lässt die standortbeschränkte Leserin Unternehmens-Kennzahlen sehen; W3 und
   `RechteAbleitung.darf` sagen nein. Der Vertrag folgt W3; AP-03 IP-11 ist die Stelle, es anders zu entscheiden.
 - **Reservierung, keine Anlage:** `correction` mit Bezug `bezugsgroesse` (AP-09 IP-7) und `kennzahl_neu_gebildet` (AP-11 IP-6)
-  stehen im Block `reserviert`, nicht in `vokabular.arten` — keine Migration. `KennzahlVectorsTest` akzeptiert beide Stände.
+  stehen im Block `reserviert` — keine Migration hier. `correction`/`bezugsgroesse` ist seit AP-09 IP-7 zusätzlich in
+  `vokabular.arten` angelegt (`uems-bezugswert-eingeben.md`); `KennzahlVectorsTest` akzeptiert beide Stände.

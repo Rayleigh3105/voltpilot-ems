@@ -392,8 +392,27 @@ nichts an Werten, Fassungen oder Befunden — er legt fest, WIE sie gelesen werd
 - **Einheiten (§6.6).** Die Einheit einer Bezugsgröße wird nie umgerechnet; das Einheiten-Paar der Kennzahl spricht
   sie in der Einzahl („kWh je Person“).
 - **Korrektur des Nenners.** Eine wirksame Fassung ≥ 2 und eine Rücknahme melden `correction` mit Bezug
-  `bezugsgroesse` — im Ereignis-Vokabular reserviert, angelegt vom Schreibweg AP-09 IP-7; die Kaskade der Kennzahl
+  `bezugsgroesse` — seit AP-09 IP-7 im Ereignis-Vokabular angelegt (§12); die Kaskade der Kennzahl
   (AP-11 IP-9) bildet daraufhin Version n + 1. Eine Fassung 1 ist keine Korrektur (F1/F4).
 
 Die Fälle stehen in `kennzahl-vectors.json`: K8 (Nenner fehlt), K9 (Nenner 0), K12 (Stichtag), K13 (Periode passt
 nicht), K19 (zurückgenommen), K21 (laufende Periode).
+
+## 12. Einen Wert eingeben und berichtigen (F1–F5, nachgetragen mit AP-09 IP-7 am 14.09.2026)
+
+Der Block **`verwalten`** trägt seitdem auch den Schreibweg der Werte:
+
+- **`pruefreihenfolge.eingeben`** (`POST /api/v1/bezugsgroessen/{id}/werte`) und **`.berichtigen`**
+  (`POST …/{id}/werte/{periode}/berichtigung`) — die erste nicht bestandene Prüfung ist die Antwort.
+  Die Regel `verwalten` prüft beide Vorgänge in B4 und B5 mit `uems/BezugsgroesseRegeln.eingeben|berichtigen`.
+- **Zehn Ablehnungen mehr** im geschlossenen Satz. Fünf davon sind Befunde und sprechen deren Satz aus
+  `befund_saetze` (`periode_passt_nicht`, `periode_nicht_zu_ende`, `zahl_unlesbar`, `wert_negativ`,
+  `konflikt_anderer_wert`); `zahl_unlesbar` trägt bei Stück, Personen und Schichten zusätzlich den Satz
+  `eingabe.ganze_zahlen` („Stück sind ganze Zahlen.“, U5).
+- **`eingabe.urteile`** — was die Schnittstelle nach einem Wert sagt: `neu` (Fassung 1, F1 — ohne Begründung,
+  ohne Freigabe), `wiederholung` (derselbe Betrag: nichts wird geschrieben, F5), `berichtigung` (Fassung n + 1
+  sofort wirksam, Vier-Augen aus) und `vorschlag` (Vier-Augen an: bis zur Freigabe gilt der bisherige Wert).
+- **`eingabe.kennung`** — jede Berichtigung ist ein Vorgang `BK-<Jahr>-<lfd. Nr.>`; freigegeben wird er über
+  `POST /api/v1/korrekturen/{kennung}/freigeben` (AP-08 IP-15). Erst die Freigabe schreibt die Wert-Fassung —
+  in der Nummerierung der Regel `fassung` (B5: Fassung 2 wirksam, Urheber UND Freigeber an derselben Fassung)
+  — und das Ereignis `correction` mit Bezug `bezugsgroesse` (`events-vocabulary.md`).

@@ -41,9 +41,10 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   `BezugsdatenRegeln.fassungen` — AUFGERUFEN. `fassungen=wirksam` (Vorgabe) = je Schlüssel die
   Fassung mit dem wirksamen Betrag samt Herkunft, `alle` = ganze Kette. Nach einer Rücknahme ist
   `wirksamer_betrag` null, nie 0. `von`/`bis` Tage, letzter EINSCHLIESSLICH; ein Stand zählt nach
-  seinem Tag in SEINER `zeitzone`. ⚠ **Befund 5 bleibt IP-7:** trägt eine Kette einen Vorschlag,
-  eine Ablehnung oder einen Freigeber (oder ersetzt eine Fassung nicht ihre Vorfassung), ist
-  `stand_offen` true, `stand`/`wirksamer_betrag` null und alle Fassungen werden gezeigt.
+  seinem Tag in SEINER `zeitzone`. ⚠ **Befund 5, seit IP-7 aufgelöst:** eine freigegebene Berichtigung
+  ist EINE wirksame Fassung mit Freigeber und wird abgeleitet; nur eine gespeicherte Vorschlags- oder
+  Ablehnungs-Fassung (kein Schreibweg legt sie an) oder eine Fassung, die ihre Vorfassung nicht ersetzt, macht
+  `stand_offen` true. Offene Vorschläge stehen als `vorschlag` am Wert (`uems-bezugswert-eingeben.md`).
 - **Herkunft je Fassung:** `herkunft {art, von_hand, import_kennung, import_zeile, geliefert_text,
   geliefert_einheit}`, `urheber`/`freigeber {name, rolle, art}` (kein Subject), `eingetragen_am`,
   `begruendung`, `ersetzt_fassung`.
@@ -52,7 +53,8 @@ Unterbau: `uems-bezugsgroessen-tabellen.md`; Vertrag: `docs/contracts/v2/bezugsd
   fremd = 404 `nicht_gefunden`. `ablesung.erfassen` bekommt seine Zeile erst mit IP-8.
 - **Seit IP-6:** `bezugsflaechen` an der Liste, `GET/PUT …/{id}/stammdatum` und zwei weitere Ablehnungen
   (`wert_ungueltig`, `kein_stammdatum`) — `uems-bezugsflaechen-stammdaten.md`.
-- **Nicht gebaut:** Werte schreiben (IP-7 — die Tests schreiben Fassungen direkt in die Tabelle),
+- **Werte schreiben seit IP-7:** `uems-bezugswert-eingeben.md` (die Lesemodell-Tests schreiben weiter direkt).
+- **Nicht gebaut:**
   keine Art-Spalte (Vokabular seit 13.09.2026 im Block `arten`, noch ohne Spalte), kein Import,
   keine Kanalbindung (M5 = IP-17), keine Portal-Fläche.
 

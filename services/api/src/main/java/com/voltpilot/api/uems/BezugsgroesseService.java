@@ -55,13 +55,15 @@ public class BezugsgroesseService {
 
     private final BezugsgroesseRepository repo;
     private final BezugsflaecheLesemodell bezugsflaechen;
+    private final BezugswertRepository berichtigungen;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
 
     public BezugsgroesseService(BezugsgroesseRepository repo, BezugsflaecheLesemodell bezugsflaechen,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            BezugswertRepository berichtigungen, PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.repo = repo;
         this.bezugsflaechen = bezugsflaechen;
+        this.berichtigungen = berichtigungen;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
     }
@@ -92,9 +94,11 @@ public class BezugsgroesseService {
         for (WertZeile w : repo.werte(id, von, bis)) {
             jeSchluessel.computeIfAbsent(w.periodeVon() + "|" + w.zeitpunkt(), k -> new ArrayList<>()).add(w);
         }
+        // AP-09 IP-7: der offene Vorschlag gehört zum Wert, ist aber noch keine Fassung.
+        Map<LocalDate, BezugswertRepository.Berichtigung> offen = berichtigungen.offene(TenantContext.get(), id);
         List<BezugsgroesseDto.Wert> werte = new ArrayList<>();
         for (List<WertZeile> kette : jeSchluessel.values()) {
-            werte.add(wert(kette, "alle".equals(lesart)));
+            werte.add(wert(kette, "alle".equals(lesart), offen.get(kette.get(0).periodeVon())));
         }
         return new BezugsgroesseDto.Werte(b.id(), b.kennzeichen(), b.wertart(), b.einheit(), b.periodeArt(), von, bis,
                 lesart, werte);
@@ -104,13 +108,15 @@ public class BezugsgroesseService {
      * Ein Schlüssel mit seiner Kette. Den Stand jeder Fassung und den wirksamen Betrag rechnet die
      * Regel {@code fassung} aus den gespeicherten Vorgängen — AUFGERUFEN, nicht nachgebaut.
      *
-     * <p>⚠ Die Regel beschreibt Ketten, in denen jede Fassung ihre Vorfassung ersetzt und keine
-     * Vier-Augen-Entscheidung steht. Trägt die Kette einen Vorschlag, eine Ablehnung oder einen
-     * Freigeber, ist ihr Stand OFFEN ({@code stand_offen}, {@code stand} und
-     * {@code wirksamer_betrag} {@code null}): wie eine freigegebene Berichtigung zählt, löst AP-09
-     * IP-7 auf — dieses Lesemodell nimmt es nicht vorweg und zeigt die gespeicherten Fassungen.
+     * <p>Seit AP-09 IP-7 ist eine freigegebene Berichtigung EINE wirksame Fassung mit Urheber UND Freigeber
+     * (Vertrag B5) — die Regel liest sie wie jede andere. Ein offener Vorschlag steht nicht in der Kette,
+     * sondern im Vorgang ({@code bezugsgroesse_berichtigung}) und kommt als {@code vorschlag}. ⚠ Trägt eine
+     * Kette dennoch eine GESPEICHERTE Vorschlags- oder Ablehnungs-Fassung (kein Schreibweg legt sie an) oder
+     * ersetzt eine Fassung nicht ihre Vorfassung, bleibt ihr Stand OFFEN ({@code stand_offen}, {@code stand}
+     * und {@code wirksamer_betrag} {@code null}) und alle gespeicherten Fassungen werden gezeigt.
      */
-    private BezugsgroesseDto.Wert wert(List<WertZeile> kette, boolean alle) {
+    private BezugsgroesseDto.Wert wert(List<WertZeile> kette, boolean alle,
+            BezugswertRepository.Berichtigung vorschlag) {
         WertZeile erste = kette.get(0);
         ZoneId zone = ZoneId.of(erste.zeitzone());
         Fassungsverlauf verlauf = ableitbar(kette) ? BezugsdatenRegeln.fassungen(false, kette.stream()
@@ -136,15 +142,15 @@ public class BezugsgroesseService {
         return new BezugsgroesseDto.Wert(erste.periodeVon(), erste.periodeBis(),
                 erste.zeitpunkt() == null ? null : erste.zeitpunkt().atZone(zone).toOffsetDateTime(),
                 erste.zeitzone(), verlauf == null ? null : text(verlauf.wirksamerBetrag()),
-                verlauf == null ? null : wirksam, verlauf == null, gezeigt);
+                verlauf == null ? null : wirksam, verlauf == null, gezeigt, vorschlag(vorschlag, zone));
     }
 
     /** Die Kette, die die Regel {@code fassung} beschreibt: lückenlos, jede ersetzt ihre Vorfassung, ohne Vier-Augen. */
     private static boolean ableitbar(List<WertZeile> kette) {
         for (int i = 0; i < kette.size(); i++) {
             WertZeile w = kette.get(i);
-            boolean vierAugen = BezugsdatenRegeln.VORSCHLAG.equals(w.status())
-                    || "abgelehnt".equals(w.status()) || w.freigeberName() != null;
+            // Ein Freigeber an einer wirksamen Fassung ist eine freigegebene Berichtigung (IP-7) — ableitbar.
+            boolean vierAugen = BezugsdatenRegeln.VORSCHLAG.equals(w.status()) || "abgelehnt".equals(w.status());
             boolean folgt = w.fassung() == i + 1
                     && (i == 0 ? w.ersetztFassung() == null : Objects.equals(w.ersetztFassung(), i));
             if (vierAugen || !folgt) {
@@ -163,6 +169,17 @@ public class BezugsgroesseService {
                 w.freigeberName() == null ? null
                         : new BezugsgroesseDto.Person(w.freigeberName(), w.freigeberRolle(), w.freigeberArt()),
                 w.createdAt().atZone(zone).toOffsetDateTime());
+    }
+
+    /** Die offene Berichtigung als Form — Betrag, Begründung, Ersteller und wann sie vorgeschlagen wurde. */
+    private static BezugsgroesseDto.Vorschlag vorschlag(BezugswertRepository.Berichtigung v, ZoneId zone) {
+        if (v == null) {
+            return null;
+        }
+        ProtokollAkteur p = v.ersteller();
+        return new BezugsgroesseDto.Vorschlag(v.kennung(), text(v.betrag()), v.ersetztFassung(), v.begruendung(),
+                new BezugsgroesseDto.Person(p.name(), p.rolle(), p.art()),
+                v.fassungen().get(0).am().atZone(zone).toOffsetDateTime());
     }
 
     // ------------------------------------------------------------ Stammdatum (E15, IP-6)

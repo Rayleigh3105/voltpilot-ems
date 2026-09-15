@@ -261,6 +261,11 @@ public final class EreignisVokabular {
         f.put("status", Typ.WORT);
         f.put("korrektur", Typ.KENNUNG);
         f.put("korrektur_art", Typ.WORT);
+        // AP-09 IP-7 (additiv): die Berichtigung eines Bezugsgrößen-Werts — Bezug, Fassungen, Import.
+        f.put("bezugsgroesse", Typ.KENNUNG);
+        f.put("fassung_alt", Typ.GANZ_AB_1);
+        f.put("fassung_neu", Typ.GANZ_AB_1);
+        f.put("import", Typ.KENNUNG);
         // AP-10 IP-11 (additiv): was eine Neuberechnung der Bilanz auslöste (K-… oder EW-…).
         f.put("ausloeser", Typ.KENNUNG);
         FELDER = Collections.unmodifiableMap(f);
@@ -339,6 +344,17 @@ public final class EreignisVokabular {
     private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
     /** AP-10 IP-11 — der Auslöser einer Neuberechnung ist eine Korrektur oder ein Ersatzwert. */
     private static final Pattern AUSLOESER_KENNUNG = Pattern.compile("^(K|EW)-[0-9]{4}-[0-9]{4,}$");
+    /** AP-09 IP-7 — der Vorgang einer Berichtigung eines Bezugsgrößen-Werts (bezugsgroesse_berichtigung). */
+    private static final Pattern BERICHTIGUNG_KENNUNG = Pattern.compile("^BK-[0-9]{4}-[0-9]{4,}$");
+    /** AP-09 IP-7 — ein Import der Bezugsdaten (C2). */
+    private static final Pattern IMPORT_KENNUNG = Pattern.compile("^I-[0-9]{4}-[0-9]{4,}$");
+
+    /** AP-09 IP-7 — die Art, mit der ein Bezugsgrößen-Wert berichtigt wird. */
+    public static final String KORREKTUR_ART_BEZUGSWERT = "wert_berichtigt";
+
+    /** AP-09 IP-7 — der Bezug einer Korrektur: die Reihe ODER die Bezugsgröße mit ihren Fassungen. */
+    public static final List<String> KORREKTUR_BEZUG_REIHE = List.of("komponente", "messkanal");
+    public static final List<String> KORREKTUR_BEZUG_BEZUGSGROESSE = List.of("bezugsgroesse", "fassung_alt", "fassung_neu");
 
     /**
      * Die Fehlerklassen je Datenquelle (AP-06 E5) — im api-Zwilling aus {@code
@@ -459,9 +475,13 @@ public final class EreignisVokabular {
         SUBSTITUTE("substitute", EnumSet.of(KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
                 List.of("komponente", "messkanal"), List.of("messstelle"),
                 List.of("ersatzwert", "methode", "status"), List.of(), List.of(), null, null),
+        // AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) oder die Bezugsgröße
+        // mit fassung_alt/fassung_neu (optional import). Die Listen nennen keinen als Pflicht; das
+        // Entweder-oder prüfen pruefeFelder (was fehlt) und pruefeRegeln (nicht beides).
         CORRECTION("correction", EnumSet.of(CLOUD, KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
-                List.of("komponente", "messkanal"), List.of("messstelle"),
-                List.of("korrektur", "korrektur_art", "status"), List.of("ersatzwert"), List.of(),
+                List.of(), List.of("komponente", "messkanal", "messstelle", "bezugsgroesse"),
+                List.of("korrektur", "korrektur_art", "status"),
+                List.of("ersatzwert", "fassung_alt", "fassung_neu", "import"), List.of(),
                 null, null),
         // AP-10 IP-8 (additiv): die Verteilung einer Messstelle auf Kostenstellen hat sich ab einem
         // Tag geändert — Bezug NUR die Messstelle (eine Verteilung hängt an keiner Reihe), nur aus
@@ -804,6 +824,15 @@ public final class EreignisVokabular {
                 throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
             }
         }
+        // AP-09 IP-7: eine Korrektur trifft die Reihe ODER die Bezugsgröße — was dem gewählten Bezug fehlt,
+        // ist ein Pflichtfeld wie zuvor (ohne beide also weiter „Pflichtfeld komponente“).
+        if (art == Art.CORRECTION) {
+            for (String p : e.has("bezugsgroesse") ? KORREKTUR_BEZUG_BEZUGSGROESSE : KORREKTUR_BEZUG_REIHE) {
+                if (!e.hasNonNull(p)) {
+                    throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
+                }
+            }
+        }
         for (Iterator<Map.Entry<String, JsonNode>> it = e.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> f = it.next();
             if (!typPasst(FELDER.get(f.getKey()), f.getValue())) {
@@ -1058,7 +1087,16 @@ public final class EreignisVokabular {
                 }
             }
             case CORRECTION -> {
-                if (!KORREKTUR_KENNUNG.matcher(e.get("korrektur").asText()).matches()) {
+                // AP-09 IP-7: nicht beides — und Fassungen und Import gibt es nur an einer Bezugsgröße.
+                boolean anBezugsgroesse = e.has("bezugsgroesse");
+                if (anBezugsgroesse && (e.has("komponente") || e.has("messkanal"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Reihe oder Bezugsgröße, nicht beides");
+                }
+                if (!anBezugsgroesse && (e.has("fassung_alt") || e.has("fassung_neu") || e.has("import"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Fassungen und Import nur an einer Bezugsgröße");
+                }
+                Pattern kennung = anBezugsgroesse ? BERICHTIGUNG_KENNUNG : KORREKTUR_KENNUNG;
+                if (!kennung.matcher(e.get("korrektur").asText()).matches()) {
                     throw nein(Grund.REGEL_VERLETZT, "keine Korrektur-Kennung");
                 }
                 // E14: nie automatisch — über Freigabe, Ablehnung und Rücknahme entscheidet ein Mensch.
@@ -1071,6 +1109,17 @@ public final class EreignisVokabular {
                 }
                 if (mitErsatzwert && !ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
                     throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
+                if (anBezugsgroesse) {
+                    if (!KORREKTUR_ART_BEZUGSWERT.equals(e.get("korrektur_art").asText())) {
+                        throw nein(Grund.REGEL_VERLETZT, "ein Bezugsgrößen-Wert wird berichtigt");
+                    }
+                    if (e.get("fassung_neu").asLong() <= e.get("fassung_alt").asLong()) {
+                        throw nein(Grund.REGEL_VERLETZT, "fassung_neu folgt nicht auf fassung_alt");
+                    }
+                    if (e.has("import") && !IMPORT_KENNUNG.matcher(e.get("import").asText()).matches()) {
+                        throw nein(Grund.REGEL_VERLETZT, "keine Import-Kennung");
+                    }
                 }
             }
             case BILANZ_NEU_BERECHNET -> {

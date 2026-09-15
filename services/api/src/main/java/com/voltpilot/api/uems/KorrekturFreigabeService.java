@@ -58,14 +58,16 @@ public class KorrekturFreigabeService {
     private final JdbcTemplate jdbc;
     private final MessreiheKorrekturRepository korrekturen;
     private final OrtProtokoll protokoll;
+    private final BezugswertService bezugswerte;
     private final TransactionTemplate transaktion;
     private volatile Clock uhr = Clock.systemUTC();
 
     public KorrekturFreigabeService(JdbcTemplate jdbc, MessreiheKorrekturRepository korrekturen,
-            OrtProtokoll protokoll, PlatformTransactionManager transactionManager) {
+            OrtProtokoll protokoll, BezugswertService bezugswerte, PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.korrekturen = korrekturen;
         this.protokoll = protokoll;
+        this.bezugswerte = bezugswerte;
         this.transaktion = new TransactionTemplate(transactionManager);
     }
 
@@ -147,6 +149,9 @@ public class KorrekturFreigabeService {
         Instant jetzt = uhr.instant();
         return entscheide(() -> transaktion.execute(tx -> {
             boolean an = einstellungGesperrt(tenant);
+            if (kennung.startsWith(BezugsgroesseRegeln.BERICHTIGUNG_PRAEFIX + "-")) {
+                return bezugswertFreigeben(tenant, kennung, begruendung, wer, an, jetzt);
+            }
             Korrektur k = korrektur(tenant, kennung);
             DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_FREIGEBEN,
                     k.ersteller().sub(), an, jetzt);
@@ -177,6 +182,29 @@ public class KorrekturFreigabeService {
             Korrektur neu = korrekturen.zuruecknehmen(tenant, kennung, grund, wer);
             return new Entscheidung(neu, letzte(neu), null);
         }));
+    }
+
+    /**
+     * AP-09 IP-7: die Berichtigung eines Bezugsgrößen-Werts ({@code BK-…}) — dieselbe Route, dieselbe Reihenfolge
+     * (Vorgang des eigenen Kundenbereichs → Recht mit Einstellung und Ersteller → Begründung → Stand {@code vorschlag}),
+     * dieselben Ablehnungen. Die Wert-Fassung und das Ereignis {@code correction} schreibt {@link BezugswertService}
+     * in DIESER Transaktion.
+     */
+    private Entscheidung bezugswertFreigeben(UUID tenant, String kennung, String begruendung, ProtokollAkteur wer,
+            boolean an, Instant jetzt) {
+        BezugswertRepository.Berichtigung v = bezugswerte.vorgang(tenant, kennung)
+                .orElseThrow(() -> KorrekturFreigabeAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN));
+        DarfErgebnis d = KorrekturRechte.entscheiden(wer, KorrekturRechte.KORREKTUR_FREIGEBEN, v.ersteller().sub(), an,
+                jetzt);
+        if (!d.darf()) {
+            throw KorrekturFreigabeAbgelehnt.rechte(d);
+        }
+        pruefeBegruendung(begruendung, "begruendung");
+        if (!EreignisVokabular.KORREKTUR_STATUS.get(0).equals(v.status())) {
+            throw KorrekturFreigabeAbgelehnt.von(Ablehnung.STATUS_PASST_NICHT, Map.of("status", v.status()));
+        }
+        Korrektur neu = bezugswerte.freigeben(tenant, v, begruendung, wer, an);
+        return new Entscheidung(neu, letzte(neu), an);
     }
 
     // ------------------------------------------------------------------ Hilfen

@@ -200,6 +200,31 @@ class BezugsdatenVectorsTest {
     }
 
     /**
+     * AP-09 IP-7: die Sätze nach einem Wert, der Zusatz für ganze Zahlen, die Kennung der Berichtigung und die
+     * Prüfreihenfolgen sind die des Vertrags — und eine Ablehnung, die ein Befund ist, spricht dessen Satz.
+     */
+    @Test
+    void dieEingabeSprichtDieSaetzeDesVertrags() throws Exception {
+        JsonNode vw = vektoren().path("verwalten");
+        JsonNode eingabe = vw.path("eingabe");
+        java.util.Map<String, String> urteile = new java.util.LinkedHashMap<>();
+        eingabe.path("urteile").fields().forEachRemaining(f -> urteile.put(f.getKey(), f.getValue().asText()));
+        assertThat(BezugsgroesseRegeln.EINGABE_SAETZE).isEqualTo(urteile);
+        assertThat(BezugsgroesseRegeln.GANZE_ZAHLEN).isEqualTo(eingabe.path("ganze_zahlen").asText());
+        assertThat(BezugsgroesseRegeln.BERICHTIGUNG_PRAEFIX).isEqualTo(eingabe.path("kennung").path("praefix").asText());
+        assertThat(BezugsgroesseRegeln.BERICHTIGUNG_MUSTER).isEqualTo(eingabe.path("kennung").path("muster").asText());
+        assertThat(texte(vw.path("pruefreihenfolge").path("eingeben")))
+                .containsExactly("archiviert", "wertart", "periode", "zahl", "wert_negativ", "wert_vorhanden");
+        assertThat(texte(vw.path("pruefreihenfolge").path("berichtigen"))).containsExactly("archiviert", "wertart",
+                "periode", "zahl", "wert_negativ", "begruendung", "kein_wert", "vorschlag_offen");
+        for (String befund : List.of("periode_passt_nicht", "periode_nicht_zu_ende", "zahl_unlesbar", "wert_negativ",
+                "konflikt_anderer_wert")) {
+            assertThat(BezugsgroesseRegeln.Ablehnung.valueOf(befund.toUpperCase(java.util.Locale.ROOT)).satz()).as(befund)
+                    .isEqualTo(vektoren().path("befund_saetze").path(befund).asText());
+        }
+    }
+
+    /**
      * Die Zustandswörter sind DIESELBEN wie im schon gemergten Verbrauchsvertrag — zwei Wortlaute
      * für dieselbe Aussage wären genau die Drift, die diese Dateien verhindern sollen.
      */
@@ -619,8 +644,17 @@ class BezugsdatenVectorsTest {
             case "loeschen" -> BezugsgroesseRegeln.loeschen(vw.path("werte").asLong());
             case "stammdatum" -> BezugsgroesseRegeln.stammdatum(entwurf(vw.path("bestand")), vw.path("archiviert").asBoolean(),
                     text(vw.path("wert")), v);
+            case "eingeben" -> BezugsgroesseRegeln.eingeben(werteingang(vw));
+            case "berichtigen" -> BezugsgroesseRegeln.berichtigen(werteingang(vw));
             default -> throw new IllegalStateException("unbekannter Vorgang " + vw.path("vorgang").asText());
         };
+    }
+
+    /** AP-09 IP-7: der Eingang der Vorgänge {@code eingeben} und {@code berichtigen}. */
+    private static BezugsgroesseRegeln.Werteingang werteingang(JsonNode vw) {
+        return new BezugsgroesseRegeln.Werteingang(text(vw.path("wertart")), vw.path("archiviert").asBoolean(),
+                text(vw.path("periode_befund")), text(vw.path("zahl_befund")), dezimal(vw.path("betrag")),
+                dezimal(vw.path("wirksamer_betrag")), text(vw.path("begruendung")), vw.path("vorschlag_offen").asBoolean());
     }
 
     private static BezugsgroesseRegeln.Entwurf entwurf(JsonNode e) {

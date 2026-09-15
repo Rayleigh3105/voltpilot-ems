@@ -87,7 +87,12 @@ class BezugsgroesseSchnittstelleVertragTest {
                 Map.entry("Bezugsflaechen", BezugsgroesseDto.Bezugsflaechen.class),
                 Map.entry("BezugsgroesseStammdatumAnfrage", BezugsgroesseDto.StammdatumAnfrage.class),
                 Map.entry("BezugsgroesseStammdatumIntervall", BezugsgroesseDto.StammdatumIntervall.class),
-                Map.entry("BezugsgroesseStammdatum", BezugsgroesseDto.Stammdatum.class));
+                Map.entry("BezugsgroesseStammdatum", BezugsgroesseDto.Stammdatum.class),
+                Map.entry("BezugsgroesseWertAnfrage", BezugsgroesseDto.WertAnfrage.class),
+                Map.entry("BezugsgroesseBerichtigungAnfrage", BezugsgroesseDto.BerichtigungAnfrage.class),
+                Map.entry("BezugsgroesseHinweis", BezugsgroesseDto.Hinweis.class),
+                Map.entry("BezugsgroesseVorschlag", BezugsgroesseDto.Vorschlag.class),
+                Map.entry("BezugsgroesseEingabe", BezugsgroesseDto.Eingabe.class));
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -112,6 +117,19 @@ class BezugsgroesseSchnittstelleVertragTest {
                 .containsExactlyElementsOf(texte(vertrag.path("einheiten").path("flaeche")));
         assertThat(((Map<String, Object>) pfade.get("/api/v1/bezugsgroessen/{id}/stammdatum")).keySet())
                 .containsExactlyInAnyOrder("parameters", "get", "put");
+    }
+
+    /** AP-09 IP-7: die Urteile und Hinweise der Eingabe sind die des Vertrags, und beide Schreibwege stehen in OpenAPI. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieEingabeIstDieDesVertrags() {
+        assertThat(liste(eigenschaft("BezugsgroesseEingabe", "urteil"), "enum"))
+                .containsExactlyInAnyOrderElementsOf(BezugsgroesseRegeln.EINGABE_SAETZE.keySet());
+        assertThat(BezugsdatenRegeln.HINWEIS_BEFUNDE).containsAll(liste(eigenschaft("BezugsgroesseHinweis", "code"), "enum"));
+        assertThat(((Map<String, Object>) pfade.get("/api/v1/bezugsgroessen/{id}/werte")).keySet())
+                .containsExactlyInAnyOrder("parameters", "get", "post");
+        assertThat(((Map<String, Object>) pfade.get("/api/v1/bezugsgroessen/{id}/werte/{periode}/berichtigung")).keySet())
+                .containsExactlyInAnyOrder("parameters", "post");
     }
 
     @SuppressWarnings("unchecked")

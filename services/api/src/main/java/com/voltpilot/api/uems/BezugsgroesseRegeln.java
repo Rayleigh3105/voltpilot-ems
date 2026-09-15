@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -50,6 +51,13 @@ public final class BezugsgroesseRegeln {
         FLAECHE_AUS_STRUKTUR("flaeche_aus_struktur", 422, "Flächen pflegen Sie am Gebäude."),
         KEIN_STAMMDATUM("kein_stammdatum", 422,
                 "Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen."),
+        KEIN_PERIODENWERT("kein_periodenwert", 422, "Werte je Periode gibt es nur für eine Bezugsgröße mit Periodenwerten."),
+        PERIODE_PASST_NICHT("periode_passt_nicht", 422, "Der gelieferte Zeitraum ist keine Periode dieser Bezugsgröße."),
+        PERIODE_NICHT_ZU_ENDE("periode_nicht_zu_ende", 422, "Diese Periode ist noch nicht zu Ende."),
+        ZAHL_UNLESBAR("zahl_unlesbar", 422, "Diese Zahl ist nicht lesbar."),
+        WERT_NEGATIV("wert_negativ", 422, "Ein Wert unter null wird nicht übernommen."),
+        BEGRUENDUNG_ZU_KURZ("begruendung_zu_kurz", 422, "Bitte begründen Sie die Berichtigung (mindestens 10 Zeichen)."),
+        BEGRUENDUNG_ZU_LANG("begruendung_zu_lang", 422, "Eine Begründung hat höchstens 500 Zeichen."),
         GELTUNG_NICHT_WAEHLBAR("geltung_nicht_waehlbar", 422,
                 "Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar."),
         GELTUNG_UNBEKANNT("geltung_unbekannt", 422, "Den gewählten Geltungsbereich gibt es nicht."),
@@ -59,6 +67,9 @@ public final class BezugsgroesseRegeln {
         KENNZEICHEN_BELEGT("kennzeichen_belegt", 409, "Dieses Kennzeichen trägt oder trug schon eine andere Bezugsgröße."),
         ARCHIVIERT("archiviert", 409, "Diese Bezugsgröße ist archiviert und wird nicht mehr geändert."),
         HAT_WERTE("hat_werte", 409, "Eine Bezugsgröße mit Werten wird nicht gelöscht. Archivieren Sie sie stattdessen."),
+        KONFLIKT_ANDERER_WERT("konflikt_anderer_wert", 409, "Für diesen Zeitraum gibt es schon einen anderen Wert."),
+        KEIN_WERT("kein_wert", 409, "Für diese Periode gibt es noch keinen Wert — geben Sie ihn zuerst ein."),
+        VORSCHLAG_OFFEN("vorschlag_offen", 409, "Für diesen Wert liegt schon ein Vorschlag vor. Bis zur Entscheidung ist keine zweite Berichtigung möglich."),
         NICHT_GEFUNDEN("nicht_gefunden", 404, "Diese Bezugsgröße gibt es nicht.");
 
         private final String code;
@@ -170,6 +181,100 @@ public final class BezugsgroesseRegeln {
         }
         if (e.kennzeichen() != null && belegt.contains(e.kennzeichen())) {
             return abgelehnt(Ablehnung.KENNZEICHEN_BELEGT, "feld", "kennzeichen");
+        }
+        return Urteil.ERLAUBT;
+    }
+
+    // --------------------------------------------------------- F1–F5 — einen Wert eingeben und berichtigen
+
+    /** AP-09 IP-7: was die Schnittstelle nach einem Wert sagt — Zeile für Zeile {@code verwalten.eingabe.urteile}. */
+    public static final Map<String, String> EINGABE_SAETZE = Map.of(
+            BezugsdatenRegeln.NEU, "Der Wert ist gespeichert.",
+            BezugsdatenRegeln.WIEDERHOLUNG, "Bereits gespeichert, keine Änderung.",
+            BezugsdatenRegeln.BERICHTIGUNG, "Berichtigt — die bisherige Fassung bleibt lesbar.",
+            BezugsdatenRegeln.VORSCHLAG, "Vorschlag gesendet — bis zur Freigabe gilt der bisherige Wert.");
+
+    /** U5: der Zusatz zu {@code zahl_unlesbar}, wenn die Einheit ganze Zahlen verlangt — {@code {einheit}} ist sie. */
+    public static final String GANZE_ZAHLEN = "{einheit} sind ganze Zahlen.";
+
+    /** Der Vorgang einer Berichtigung: {@code BK-<Jahr>-<lfd. Nr.>} je Kundenbereich (Tabelle bezugsgroesse_berichtigung). */
+    public static final String BERICHTIGUNG_PRAEFIX = "BK";
+
+    public static final String BERICHTIGUNG_MUSTER = "^BK-[0-9]{4}-[0-9]{4,}$";
+
+    /**
+     * Was die Regel über einen Wert wissen muss — gelesen hat es der Schreibweg: die Wertart und der Stand der
+     * Bezugsgröße, die Befunde der Periode ({@link BezugsPeriode}) und der Zahl ({@link BezugsdatenRegeln#zahl}),
+     * der gelesene Betrag, der wirksame Betrag des Schlüssels (Regel {@code fassung}; {@code null} = kein Wert),
+     * die Begründung und ob ein Vorschlag offen ist.
+     */
+    public record Werteingang(String wertart, boolean archiviert, String periodeBefund, String zahlBefund,
+            BigDecimal betrag, BigDecimal wirksamerBetrag, String begruendung, boolean vorschlagOffen) {}
+
+    /**
+     * F1/F5 — einen Wert eingeben, in der Prüfreihenfolge {@code verwalten.pruefreihenfolge.eingeben}:
+     * archiviert (M6) → nur ein Periodenwert → die Periode (Z2/Z4) → die Zahl (U4/U5) → nicht negativ (U6) →
+     * schon ein ANDERER wirksamer Wert (F5: der Weg ist die Berichtigung). Derselbe Betrag ist erlaubt — er ist
+     * eine Wiederholung und schreibt nichts ({@link BezugsdatenRegeln#urteil}). Ein Erstwert braucht keine
+     * Begründung und keine Freigabe (F1).
+     */
+    public static Urteil eingeben(Werteingang w) {
+        Urteil wert = wertPruefen(w);
+        if (!wert.erlaubt()) {
+            return wert;
+        }
+        if (w.wirksamerBetrag() != null && w.wirksamerBetrag().compareTo(w.betrag()) != 0) {
+            return new Urteil(Ablehnung.KONFLIKT_ANDERER_WERT,
+                    Map.of("wirksamer_betrag", w.wirksamerBetrag().stripTrailingZeros().toPlainString()));
+        }
+        return Urteil.ERLAUBT;
+    }
+
+    /**
+     * F2/F3 — einen gespeicherten Wert berichtigen, in der Prüfreihenfolge
+     * {@code verwalten.pruefreihenfolge.berichtigen}: dieselben Prüfungen des Werts wie beim Eingeben →
+     * Begründung mit 10 bis 500 Zeichen (F2) → es gibt einen wirksamen Wert → kein offener Vorschlag (F3: bis zur
+     * Entscheidung keine zweite Berichtigung). Derselbe Betrag ist erlaubt — eine Wiederholung, sie schreibt nichts.
+     */
+    public static Urteil berichtigen(Werteingang w) {
+        Urteil wert = wertPruefen(w);
+        if (!wert.erlaubt()) {
+            return wert;
+        }
+        String text = w.begruendung() == null ? "" : w.begruendung().strip();
+        int zeichen = text.codePointCount(0, text.length());
+        if (zeichen < BezugsdatenRegeln.BEGRUENDUNG_MIN_ZEICHEN) {
+            return new Urteil(Ablehnung.BEGRUENDUNG_ZU_KURZ, Map.of("feld", "begruendung", "zeichen", zeichen));
+        }
+        if (zeichen > BezugsdatenRegeln.BEGRUENDUNG_MAX_ZEICHEN) {
+            return new Urteil(Ablehnung.BEGRUENDUNG_ZU_LANG, Map.of("feld", "begruendung", "zeichen", zeichen));
+        }
+        if (w.wirksamerBetrag() == null) {
+            return new Urteil(Ablehnung.KEIN_WERT, Map.of());
+        }
+        if (w.vorschlagOffen()) {
+            return new Urteil(Ablehnung.VORSCHLAG_OFFEN, Map.of());
+        }
+        return Urteil.ERLAUBT;
+    }
+
+    private static Urteil wertPruefen(Werteingang w) {
+        if (w.archiviert()) {
+            return new Urteil(Ablehnung.ARCHIVIERT, Map.of());
+        }
+        if (!PERIODENWERT.equals(w.wertart())) {
+            return new Urteil(Ablehnung.KEIN_PERIODENWERT, Map.of("wertart", String.valueOf(w.wertart())));
+        }
+        if (w.periodeBefund() != null) {
+            Ablehnung a = BezugsdatenRegeln.PERIODE_NICHT_ZU_ENDE.equals(w.periodeBefund())
+                    ? Ablehnung.PERIODE_NICHT_ZU_ENDE : Ablehnung.PERIODE_PASST_NICHT;
+            return new Urteil(a, Map.of("feld", "periode"));
+        }
+        if (w.zahlBefund() != null || w.betrag() == null) {
+            return new Urteil(Ablehnung.ZAHL_UNLESBAR, Map.of("feld", "wert"));
+        }
+        if (w.betrag().signum() < 0) {
+            return new Urteil(Ablehnung.WERT_NEGATIV, Map.of("feld", "wert"));
         }
         return Urteil.ERLAUBT;
     }

@@ -40,6 +40,13 @@ export const ABLEHNUNGEN = {
     status: 422,
     satz: 'Eine Gültigkeit ab einem Tag hat nur ein Stammdatum. Periodenwerte und Stände werden als Werte eingetragen.',
   },
+  kein_periodenwert: { status: 422, satz: 'Werte je Periode gibt es nur für eine Bezugsgröße mit Periodenwerten.' },
+  periode_passt_nicht: { status: 422, satz: 'Der gelieferte Zeitraum ist keine Periode dieser Bezugsgröße.' },
+  periode_nicht_zu_ende: { status: 422, satz: 'Diese Periode ist noch nicht zu Ende.' },
+  zahl_unlesbar: { status: 422, satz: 'Diese Zahl ist nicht lesbar.' },
+  wert_negativ: { status: 422, satz: 'Ein Wert unter null wird nicht übernommen.' },
+  begruendung_zu_kurz: { status: 422, satz: 'Bitte begründen Sie die Berichtigung (mindestens 10 Zeichen).' },
+  begruendung_zu_lang: { status: 422, satz: 'Eine Begründung hat höchstens 500 Zeichen.' },
   geltung_nicht_waehlbar: {
     status: 422,
     satz: 'Prozesse und Kostenstellen sind als Geltungsbereich noch nicht wählbar.',
@@ -58,8 +65,22 @@ export const ABLEHNUNGEN = {
     status: 409,
     satz: 'Eine Bezugsgröße mit Werten wird nicht gelöscht. Archivieren Sie sie stattdessen.',
   },
+  konflikt_anderer_wert: { status: 409, satz: 'Für diesen Zeitraum gibt es schon einen anderen Wert.' },
+  kein_wert: { status: 409, satz: 'Für diese Periode gibt es noch keinen Wert — geben Sie ihn zuerst ein.' },
+  vorschlag_offen: { status: 409, satz: 'Für diesen Wert liegt schon ein Vorschlag vor. Bis zur Entscheidung ist keine zweite Berichtigung möglich.' },
   nicht_gefunden: { status: 404, satz: 'Diese Bezugsgröße gibt es nicht.' },
 } as const;
+
+/** AP-09 IP-7: was die Schnittstelle nach einem Wert sagt — Zeile für Zeile `verwalten.eingabe.urteile`. */
+export const EINGABE_SAETZE = {
+  neu: 'Der Wert ist gespeichert.',
+  wiederholung: 'Bereits gespeichert, keine Änderung.',
+  berichtigung: 'Berichtigt — die bisherige Fassung bleibt lesbar.',
+  vorschlag: 'Vorschlag gesendet — bis zur Freigabe gilt der bisherige Wert.',
+} as const;
+
+/** U5: der Zusatz zu `zahl_unlesbar` bei Stück, Personen und Schichten (`{einheit}`). */
+export const GANZE_ZAHLEN = '{einheit} sind ganze Zahlen.';
 
 /** Ein Code aus dem geschlossenen Satz der Ablehnungen. */
 export type BezugsgroesseAblehnungCode = keyof typeof ABLEHNUNGEN;
