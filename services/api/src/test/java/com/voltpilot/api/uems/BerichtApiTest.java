@@ -1,0 +1,765 @@
+package com.voltpilot.api.uems;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
+import com.voltpilot.api.uems.RechteAbleitung.Konto;
+import com.voltpilot.api.uems.RechteAbleitung.KontoZustand;
+import com.voltpilot.api.uems.RechteAbleitung.Rolle;
+import com.voltpilot.api.uems.RechteAbleitung.Zuweisung;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * Die Berichts-Routen (UEMS AP-12 IP-7, Meilenstein „Bericht freigebbar“) gegen die echte Kette: JWT → TenantFilter →
+ * Controller → {@link BerichtRechte} → RLS → Datenbank. Personen aus dem Referenzunternehmen Ahrenberg (B13); ihre
+ * Zuweisungen setzt der Test an der einen Naht {@link KennzahlAufrufer} ein.
+ *
+ * <p>Die Entwürfe sind die Abzüge {@code BR-2026-0001/1} und {@code /2} aus {@code bericht-vectors.json}, kanonisch
+ * geschrieben — so ist „der Stand ist Byte für Byte der Entwurf“ an der Prüfsumme des Vektors nachprüfbar. Die Bildung
+ * selbst prüft {@code BerichtAbzugBildungTest}; hier bildet nur das Anlegen.
+ *
+ * <p>Die Abnahme: B4 (422/422/409 mit Codes), B5 (Ordnung), B13 (jede Zeile mit Route, die Teilansicht), F5, die
+ * byte-gleiche Kopie, die geprüfte Prüfsumme, Vergleich, Verwerfen, Revision Nr. 2, Archivieren, Anlegen. Jede Ablehnung
+ * schreibt nichts.
+ */
+@Testcontainers(disabledWithoutDocker = true)
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("local")
+class BerichtApiTest {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper EXAKT = new ObjectMapper()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true));
+    private static final String APP_USER = "voltpilot_app";
+    private static final String APP_PW = "voltpilot_app_test_pw";
+    private static final String PFAD = "/api/v1/berichte";
+    private static final Map<String, Benutzer> PERSONEN = new ConcurrentHashMap<>();
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("voltpilot")
+            .withUsername("voltpilot")
+            .withPassword("voltpilot_dev_pw");
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> APP_USER);
+        registry.add("spring.datasource.password", () -> APP_PW);
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
+        registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
+        registry.add("voltpilot.security.oidc.enabled", () -> "true");
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri",
+                () -> "http://127.0.0.1:9/realms/voltpilot");
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                () -> "http://127.0.0.1:9/realms/voltpilot/protocol/openid-connect/certs");
+    }
+
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    BerichtService dienst;
+
+    @MockBean
+    KennzahlAufrufer aufrufer;
+
+    private static JdbcTemplate root;
+    private static final AtomicInteger NR = new AtomicInteger();
+    private static String nummerEins;
+    private static String nummerZwei;
+
+    private record Wer(String sub, String name, UUID kundenbereich, boolean plattform) {}
+
+    private record Antwort(int status, JsonNode body, String text) {}
+
+    /** Ein Kundenbereich mit Unternehmen, zwei Werken und den sechs Personen aus B13 (plus Lena Voss, Plattform). */
+    private record Welt(UUID mandant, UUID unternehmen, UUID st1, UUID st2, Wer jonas, Wer ines, Wer peter, Wer murat,
+            Wer claudia, Wer thomas, Wer voss) {}
+
+    @BeforeAll
+    static void verbinde() throws Exception {
+        root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()));
+        JsonNode vektoren = EXAKT.readTree(Files.readString(Path.of("..", "..", "docs", "contracts", "v2",
+                "bericht-vectors.json")));
+        nummerEins = BerichtRegeln.kanonisch(vektoren.path("abzuege").path("BR-2026-0001/1"));
+        nummerZwei = BerichtRegeln.kanonisch(vektoren.path("abzuege").path("BR-2026-0001/2"));
+        assertThat(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b79d0fb8");
+    }
+
+    @BeforeEach
+    void naht() {
+        doAnswer(inv -> {
+            ProtokollAkteur a = inv.getArgument(0);
+            Benutzer b = PERSONEN.get(a.sub());
+            return b != null ? b : KorrekturRechte.benutzer(a);
+        }).when(aufrufer).benutzer(any());
+    }
+
+    @AfterEach
+    void uhrZurueck() {
+        dienst.uhrStellen(Clock.systemUTC());
+    }
+
+    // =========================================================================== B4
+
+    /** B4 a/b/c: Zeitraum läuft (422) · Werte vorläufig (422) · Entwurf veraltet (409) — dann Nr. 1 mit dem neuen Datenstand. */
+    @Test
+    void b4DreiAblehnungenMitIhrenCodesDannNummerEins() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        String k = PFAD + "/BR-2026-0001";
+
+        // a) 20.10.2026: der Oktober läuft
+        entwurf(w, st, vorlaeufig(nummerEins), "2026-10-20T10:00:00+02:00");
+        uhr("2026-10-20T10:30:00+02:00");
+        Antwort a = abgelehnt(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-10-20T10:00:00+02:00")),
+                422, "zeitraum_nicht_zu_ende");
+        assertThat(a.body().get("message").asText()).isEqualTo(
+                "Der Oktober 2026 ist noch nicht zu Ende — ein Berichtsstand ist ab dem 08.11.2026 möglich (7 Tage nach Monatsende).");
+        assertThat(a.body().get("moeglich_ab").asText()).isEqualTo("2026-11-08T00:00:00+01:00");
+
+        // b) 05.11.2026: jeder Wert vorläufig (endgültig ab 08.11.)
+        entwurf(w, st, vorlaeufig(nummerEins), "2026-11-05T08:50:00+01:00");
+        uhr("2026-11-05T09:00:00+01:00");
+        Antwort b = abgelehnt(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-05T08:50:00+01:00")),
+                422, "werte_vorlaeufig");
+        int werte = EXAKT.readTree(nummerEins).path("werte").size();
+        List<String> quellen = new ArrayList<>();
+        EXAKT.readTree(nummerEins).path("werte").forEach(x -> {
+            if (!quellen.contains(x.path("quelle").asText())) {
+                quellen.add(x.path("quelle").asText());
+            }
+        });
+        assertThat(b.body().get("vorlaeufig").asInt()).isEqualTo(werte);
+        assertThat(b.body().get("vorlaeufige")).as("jede Quelle einmal").isEqualTo(MAPPER.valueToTree(quellen));
+        assertThat(b.body().get("moeglich_ab").asText()).isEqualTo("2026-11-08T00:00:00+01:00");
+        assertThat(b.body().get("message").asText()).startsWith(werte + " Werte sind noch vorläufig (endgültig ab 08.11.2026): MS-01 ")
+                .endsWith(", … — ein Berichtsstand braucht endgültige Werte.");
+
+        // c) Unternehmensbericht, 12.11.2026: die Kaskade hat den Entwurf um 10:05:33 neu gebildet, Jonas sah 10.11. 08:57
+        UUID u = bericht(w, "BR-2026-0002", "monatsbericht_unternehmen", null, "2026-10");
+        String ku = PFAD + "/BR-2026-0002";
+        entwurf(w, u, nummerZwei, "2026-11-12T10:05:33+01:00");
+        uhr("2026-11-12T10:12:00+01:00");
+        Antwort c = abgelehnt(ruf(w.jonas(), HttpMethod.POST, ku + "/freigeben", datenstand("2026-11-10T08:57:00+01:00")),
+                409, "entwurf_veraltet");
+        assertThat(c.body().get("datenstand_uebermittelt").asText()).isEqualTo("2026-11-10T08:57:00+01:00");
+        assertThat(c.body().get("datenstand_aktuell").asText()).isEqualTo("2026-11-12T10:05:33+01:00");
+        assertThat(c.body().get("message").asText()).startsWith("Der Entwurf hat sich seit dem 10.11.2026 08:57 geändert");
+        assertThat(zaehle("bericht_stand", w)).isZero();
+        assertThat(zaehle("bericht_aenderung", w)).isZero();
+
+        uhr("2026-11-12T10:20:00+01:00");
+        Antwort zweiter = ok(ruf(w.jonas(), HttpMethod.POST, ku + "/freigeben", datenstand("2026-11-12T10:05:33+01:00")), 201);
+        assertThat(zweiter.body().get("nr").asInt()).isEqualTo(1);
+        assertThat(Instant.parse(zweiter.body().get("datenstand").asText())).isEqualTo(t("2026-11-12T10:05:33+01:00"));
+        assertThat(Instant.parse(zweiter.body().get("freigegeben_am").asText())).isEqualTo(t("2026-11-12T10:20:00+01:00"));
+        assertThat(zweiter.body().get("freigegeben_von")).isEqualTo(MAPPER.readTree(
+                "{\"name\": \"Jonas Wendlinger\", \"rolle\": \"kundenadministrator\"}"));
+    }
+
+    /** Das Recht prüft die Route VOR F1: Peter (Lindach) bekommt am laufenden Ahrenberg-Bericht 404, nie die 422. */
+    @Test
+    void dasRechtPrueftDieRouteVorDenVoraussetzungen() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, vorlaeufig(nummerEins), "2026-10-20T10:00:00+02:00");
+        uhr("2026-10-20T10:30:00+02:00");
+        String f = PFAD + "/BR-2026-0001/freigeben";
+        abgelehnt(ruf(w.peter(), HttpMethod.POST, f, datenstand("2026-10-20T10:00:00+02:00")), 404, "nicht_gefunden");
+        verboten(ruf(w.claudia(), HttpMethod.POST, f, datenstand("2026-10-20T10:00:00+02:00")));
+        verboten(ruf(w.voss(), HttpMethod.POST, f, datenstand("2026-10-20T10:00:00+02:00")));
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD + "/BR-2026-9999/freigeben", datenstand("2026-10-20T10:00:00+02:00")),
+                404, "nicht_gefunden");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD + "/nicht-da/freigeben", datenstand("2026-10-20T10:00:00+02:00")),
+                404, "nicht_gefunden");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, f, Map.of("entwurf_datenstand", "gestern")), 400, "anfrage_ungueltig");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, f, Map.of("datenstand", "2026-10-20T10:00:00+02:00")), 400,
+                "anfrage_ungueltig");
+        assertThat(zaehle("bericht_stand", w) + zaehle("bericht_aenderung", w)).isZero();
+    }
+
+    // =========================================================================== B5, Kopie, F5
+
+    /**
+     * B5 und der Kern von E1: Nr. 1 ist der Entwurf Byte für Byte — dieselbe Prüfsumme wie der Vektor, derselbe Text in
+     * der Datenbank und in der Antwort; Monatslauf < endgültig ab < Datenstand < Freigabe. Dann F5: dieselbe Freigabe noch
+     * einmal ist 200 mit derselben Nr. und schreibt nichts.
+     */
+    @Test
+    void b5DieFreigabeKopiertDenEntwurfByteGleichUndIstIdempotent() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+
+        Antwort nr1 = ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+        JsonNode s = nr1.body();
+        assertThat(s.get("nr").asInt()).isEqualTo(1);
+        assertThat(s.get("pruefsumme").asText()).isEqualTo(BerichtRegeln.pruefsumme(nummerEins)).startsWith("sha256:b79d0fb8");
+        assertThat(s.get("pruefsumme_geprueft").asBoolean()).isTrue();
+        assertThat(nr1.text()).contains("\"abzug\":" + nummerEins + "}");
+
+        Map<String, Object> db = root.queryForMap("SELECT s.abzug = e.abzug AS gleich, "
+                + "convert_to(s.abzug, 'UTF8') = convert_to(e.abzug, 'UTF8') AS bytegleich, octet_length(s.abzug) AS laenge, "
+                + "s.pruefsumme = e.pruefsumme AS summe, s.datenstand = e.datenstand AS datenstand, s.freigeber_rolle, "
+                + "s.freigeber_name, s.darstellung::text AS darstellung FROM bericht_stand s JOIN bericht_entwurf e "
+                + "ON e.bericht_id = s.bericht_id WHERE s.bericht_id = ? AND s.nr = 1", st);
+        assertThat(db.get("gleich")).isEqualTo(true);
+        assertThat(db.get("bytegleich")).isEqualTo(true);
+        assertThat(((Number) db.get("laenge")).intValue()).isEqualTo(nummerEins.getBytes(StandardCharsets.UTF_8).length);
+        assertThat(db.get("summe")).isEqualTo(true);
+        assertThat(db.get("datenstand")).isEqualTo(true);
+        assertThat(db.get("freigeber_rolle")).isEqualTo("energiemanager");
+        assertThat(db.get("freigeber_name")).isEqualTo("Ines Kaltenbach");
+        assertThat(EXAKT.readTree((String) db.get("darstellung")))
+                .isEqualTo(EXAKT.readTree(nummerEins).path("kopf").path("darstellung"));
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_quelle WHERE bericht_id = ? AND stand_nr = 1", Long.class,
+                st)).isEqualTo(root.queryForObject("SELECT count(*) FROM bericht_quelle WHERE bericht_id = ? AND stand_nr IS NULL",
+                        Long.class, st)).isPositive();
+
+        // B5 — die Ordnung, und der Kopf nennt beides
+        JsonNode abzug = EXAKT.readTree(nummerEins);
+        Instant monatslauf = BerichtService.zeiten(abzug, "berechnet_am").stream().max(Instant::compareTo).orElseThrow();
+        Instant endgueltig = BerichtService.zeiten(abzug, "endgueltig_ab").stream().max(Instant::compareTo).orElseThrow();
+        Instant ds = Instant.parse(s.get("datenstand").asText());
+        Instant frei = Instant.parse(s.get("freigegeben_am").asText());
+        assertThat(List.of(monatslauf, endgueltig, ds, frei)).containsExactly(t("2026-11-01T00:20:00+01:00"),
+                t("2026-11-08T00:00:00+01:00"), t("2026-11-10T08:55:00+01:00"), t("2026-11-10T09:02:00+01:00"));
+        assertThat(s.get("kopf").asText()).isEqualTo(
+                "Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach");
+
+        // Ereignis und Protokoll
+        Map<String, Object> e = root.queryForMap("SELECT count(*) AS n, min(nutzlast->>'pruefsumme') AS summe, "
+                + "min(nutzlast->>'datenstand') AS ds, min(kennungen->>'bericht') AS bericht, min(urheber) AS urheber "
+                + "FROM messreihe_ereignis WHERE tenant_id = ? AND art = 'bericht_freigegeben'", w.mandant());
+        assertThat(((Number) e.get("n")).intValue()).isEqualTo(1);
+        assertThat(e.get("summe")).isEqualTo(s.get("pruefsumme").asText());
+        assertThat(e.get("ds")).isEqualTo("2026-11-10T07:55:00Z");
+        assertThat(e.get("bericht")).isEqualTo("BR-2026-0001");
+        assertThat(e.get("urheber")).isEqualTo("kunde");
+        assertThat(root.queryForList("SELECT art FROM bericht_aenderung WHERE bericht_id = ?", String.class, st))
+                .containsExactly("freigeben");
+
+        // F5 — dieselbe Freigabe noch einmal
+        uhr("2026-11-10T09:05:00+01:00");
+        Antwort wieder = ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T07:55:00Z")), 200);
+        assertThat(wieder.body().get("nr").asInt()).isEqualTo(1);
+        assertThat(wieder.body().get("freigegeben_am").asText()).isEqualTo(s.get("freigegeben_am").asText());
+        assertThat(zaehle("bericht_stand", w)).isEqualTo(1);
+        assertThat(zaehle("bericht_aenderung", w)).isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? "
+                + "AND art = 'bericht_freigegeben'", Long.class, w.mandant())).isEqualTo(1);
+
+        // Der Stand ist lesbar — und seine Prüfsumme geprüft
+        Antwort gelesen = ok(ruf(w.claudia(), HttpMethod.GET, k + "/staende/1", null), 200);
+        assertThat(gelesen.text()).contains("\"abzug\":" + nummerEins + "}");
+        assertThat(gelesen.body().get("teilansicht")).isEqualTo(MAPPER.readTree("[\"Werk Ahrenberg\", \"Werk Lindach\"]"));
+        Antwort keiner = abgelehnt(ruf(w.ines(), HttpMethod.GET, k + "/staende/3", null), 404, "stand_gibt_es_nicht");
+        assertThat(keiner.body().get("message").asText())
+                .isEqualTo("Berichtsstand Nr. 3 gibt es nicht — der neueste ist Nr. 1 vom 10.11.2026.");
+    }
+
+    /** A6 — ein Stand, dessen Text nicht mehr zur Prüfsumme passt, verlässt den Server nie: 500 {@code abzug_beschaedigt}. */
+    @Test
+    void einBeschaedigterAbzugWirdNieAusgeliefert() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, PFAD + "/BR-2026-0001/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+
+        // Die Datenbank lässt das nie zu (Trigger + CHECK) — der Test nimmt beide für einen Augenblick weg.
+        root.execute("ALTER TABLE bericht_stand DISABLE TRIGGER bericht_stand_append_only");
+        root.execute("ALTER TABLE bericht_stand DROP CONSTRAINT bericht_stand_pruefsumme_chk");
+        try {
+            root.update("UPDATE bericht_stand SET abzug = replace(abzug, '\"Werk Ahrenberg\"', '\"Werk Ahrenbrg\"') "
+                    + "WHERE bericht_id = ? AND nr = 1", st);
+        } finally {
+            root.execute("ALTER TABLE bericht_stand ADD CONSTRAINT bericht_stand_pruefsumme_chk "
+                    + "CHECK (pruefsumme = bericht_pruefsumme(abzug)) NOT VALID");
+            root.execute("ALTER TABLE bericht_stand ENABLE TRIGGER bericht_stand_append_only");
+        }
+        Antwort a = abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/BR-2026-0001/staende/1", null), 500, "abzug_beschaedigt");
+        assertThat(a.body().get("message").asText()).isEqualTo(
+                "Der Berichtsstand Nr. 1 kann nicht gelesen werden: die Prüfsumme stimmt nicht. Bitte wenden Sie sich an VoltPilot.");
+        assertThat(a.text()).doesNotContain("Werk Ahrenbrg");
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/BR-2026-0001/entwurf/vergleich?gegen=1", null), 500,
+                "abzug_beschaedigt");
+    }
+
+    // =========================================================================== B13
+
+    /**
+     * B13 an den Routen: jede Zeile, die in diesem Paket eine Route hat (die vier Export-Zeilen haben ihre Route mit IP-10 —
+     * ihr Urteil prüft {@code BerichtRechteTest}), dazu die Teilansicht und die Liste. Keine Ablehnung schreibt etwas.
+     */
+    @Test
+    void b13DieZeilenDerMatrixAnDenRoutenUndDieTeilansicht() throws Exception {
+        Welt w = welt();
+        UUID ahrenberg = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        UUID lindach = bericht(w, "BR-2026-0003", "monatsbericht_standort", w.st2(), "2026-10");
+        UUID unternehmen = bericht(w, "BR-2026-0002", "monatsbericht_unternehmen", null, "2026-10");
+        for (UUID b : List.of(ahrenberg, lindach, unternehmen)) {
+            entwurf(w, b, nummerEins, "2026-11-10T08:55:00+01:00");
+        }
+        uhr("2026-11-25T10:00:00+01:00");
+        String st1 = PFAD + "/BR-2026-0001";
+        String st2 = PFAD + "/BR-2026-0003";
+        String u = PFAD + "/BR-2026-0002";
+
+        // 1. Thomas (Unterstützer) bericht.standort_abrufen ST-1 → 403 — kein Kopf, kein Entwurf, keine Liste
+        verboten(ruf(w.thomas(), HttpMethod.GET, st1, null));
+        verboten(ruf(w.thomas(), HttpMethod.GET, st1 + "/entwurf", null));
+        verboten(ruf(w.thomas(), HttpMethod.GET, PFAD, null));
+        verboten(ruf(w.voss(), HttpMethod.GET, st1 + "/entwurf", null));
+        verboten(ruf(w.voss(), HttpMethod.GET, PFAD, null));
+        // 3. Claudia (Leserin) bericht.standort_abrufen ST-1 → ja
+        Antwort claudia = ok(ruf(w.claudia(), HttpMethod.GET, st1 + "/entwurf", null), 200);
+        assertThat(claudia.body().get("neu_gebildet").asBoolean()).isFalse();
+        assertThat(claudia.body().get("teilansicht")).isEqualTo(MAPPER.readTree("[\"Werk Ahrenberg\", \"Werk Lindach\"]"));
+        // 5. Claudia bericht.standort_freigeben ST-1 → 403
+        verboten(ruf(w.claudia(), HttpMethod.POST, st1 + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")));
+        // 7. Peter (Bearbeiter Lindach) bericht.standort_freigeben ST-1 → 404 — auch lesen
+        abgelehnt(ruf(w.peter(), HttpMethod.POST, st1 + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 404,
+                "nicht_gefunden");
+        abgelehnt(ruf(w.peter(), HttpMethod.GET, st1, null), 404, "nicht_gefunden");
+        // 8. Peter bericht.unternehmen → 403
+        verboten(ruf(w.peter(), HttpMethod.GET, u, null));
+        verboten(ruf(w.peter(), HttpMethod.POST, u + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")));
+        // 10. Murat (Bedienberechtigt Ahrenberg) bericht.standort_abrufen ST-1 → ja
+        Antwort murat = ok(ruf(w.murat(), HttpMethod.GET, st1 + "/entwurf", null), 200);
+        assertThat(murat.body().get("teilansicht")).isEqualTo(MAPPER.readTree("[\"Werk Ahrenberg\"]"));
+        // 11. Murat bericht.standort_freigeben ST-1 → 403
+        verboten(ruf(w.murat(), HttpMethod.POST, st1 + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")));
+        verboten(ruf(w.murat(), HttpMethod.POST, st1 + "/archivieren", null));
+        // 12. Ines (Energiemanagerin) bericht.unternehmen → ja, unternehmensweit ohne Teilansicht
+        Antwort ines = ok(ruf(w.ines(), HttpMethod.GET, u + "/entwurf", null), 200);
+        assertThat(ines.body().get("teilansicht").isNull()).isTrue();
+        ok(ruf(w.ines(), HttpMethod.GET, u, null), 200);
+        assertThat(zaehle("bericht_stand", w) + zaehle("bericht_aenderung", w)).isZero();
+
+        // 6. Peter bericht.standort_freigeben ST-2 → ja (201), Teilansicht „Werk Lindach“
+        Antwort peter = ok(ruf(w.peter(), HttpMethod.POST, st2 + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+        assertThat(peter.body().get("teilansicht")).isEqualTo(MAPPER.readTree("[\"Werk Lindach\"]"));
+        assertThat(peter.body().get("freigegeben_von").get("rolle").asText()).isEqualTo("bearbeiter");
+        assertThat(root.queryForObject("SELECT actor_rolle FROM bericht_aenderung WHERE bericht_id = ?", String.class, lindach))
+                .isEqualTo("bearbeiter");
+
+        // Die Liste zeigt jeder Person nur, was sie lesen darf
+        assertThat(kennungen(ok(ruf(w.peter(), HttpMethod.GET, PFAD, null), 200))).containsExactly("BR-2026-0003");
+        assertThat(kennungen(ok(ruf(w.murat(), HttpMethod.GET, PFAD, null), 200))).containsExactly("BR-2026-0001");
+        assertThat(kennungen(ok(ruf(w.claudia(), HttpMethod.GET, PFAD, null), 200)))
+                .containsExactlyInAnyOrder("BR-2026-0001", "BR-2026-0003");
+        assertThat(kennungen(ok(ruf(w.ines(), HttpMethod.GET, PFAD, null), 200)))
+                .containsExactlyInAnyOrder("BR-2026-0001", "BR-2026-0002", "BR-2026-0003");
+        assertThat(zaehle("bericht_stand", w)).isEqualTo(1);
+    }
+
+    /** Ein fremder Kundenbereich ist 404 an jeder Route — auch für eine Person mit jedem Recht. */
+    @Test
+    void einFremderKundenbereichIstUeberall404() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        uhr("2026-11-25T10:00:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        for (String pfad : List.of(k, k + "/entwurf", k + "/entwurf/vergleich?gegen=1", k + "/staende/1")) {
+            abgelehnt(ruf(fremd.jonas(), HttpMethod.GET, pfad, null), 404, "nicht_gefunden");
+        }
+        abgelehnt(ruf(fremd.jonas(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 404,
+                "nicht_gefunden");
+        abgelehnt(ruf(fremd.jonas(), HttpMethod.POST, k + "/archivieren", null), 404, "nicht_gefunden");
+        abgelehnt(ruf(fremd.jonas(), HttpMethod.POST, PFAD, Map.of("vorlage", "monatsbericht_standort",
+                "geltung_id", w.st1().toString(), "zeitraum", "2026-11")), 404, "geltung_unbekannt");
+        assertThat(ok(ruf(fremd.jonas(), HttpMethod.GET, PFAD, null), 200).body().get("berichte")).isEmpty();
+    }
+
+    // =========================================================================== Revision
+
+    /**
+     * R1–R5: ein Anstoß macht „Revision nötig“, der Vergleich nennt jede Abweichung (Regel {@code abweichungen}, aufgerufen),
+     * Verwerfen braucht eine Begründung und geht einmal, eine Revision Nr. 2 trägt den offenen Anstoß als Anlass, erledigt ihn,
+     * ersetzt Nr. 1 — und ist wieder Byte für Byte ihr Entwurf.
+     */
+    @Test
+    void revisionVergleichVerwerfenUndNummerZwei() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+        assertThat(liste(w.ines()).get("stand_text").asText()).isEqualTo("Berichtsstand Nr. 1");
+
+        // Die Kaskade (IP-8) stößt an und bildet den Entwurf neu — hier von Hand
+        UUID stand1 = root.queryForObject("SELECT id FROM bericht_stand WHERE bericht_id = ? AND nr = 1", UUID.class, st);
+        UUID verworfen = anstoss(w, stand1, "K-2026-0007", 2, "2026-11-12T10:05:33+01:00");
+        entwurf(w, st, nummerZwei, "2026-11-12T10:05:33+01:00");
+        uhr("2026-11-13T09:00:00+01:00");
+        JsonNode eintrag = liste(w.ines());
+        assertThat(eintrag.get("stand_zeichen").asText()).isEqualTo("revision_noetig");
+        assertThat(eintrag.get("stand_text").asText()).isEqualTo("Revision nötig — Korrektur K-2026-0007");
+
+        Antwort v = ok(ruf(w.claudia(), HttpMethod.GET, k + "/entwurf/vergleich?gegen=1", null), 200);
+        List<Map<String, Object>> soll = BerichtRegeln.abweichungen(EXAKT.readTree(nummerEins), EXAKT.readTree(nummerZwei))
+                .stream().map(BerichtService::abweichung).toList();
+        assertThat(soll).isNotEmpty();
+        assertThat(v.body().get("abweichungen")).isEqualTo(MAPPER.valueToTree(soll));
+        assertThat(Instant.parse(v.body().get("entwurf_datenstand").asText())).isEqualTo(t("2026-11-12T10:05:33+01:00"));
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, k + "/entwurf/vergleich?gegen=2", null), 404, "stand_gibt_es_nicht");
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, k + "/entwurf/vergleich", null), 400, "anfrage_ungueltig");
+
+        String a = k + "/anstoesse/" + verworfen + "/verwerfen";
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, a, Map.of("begruendung", "zu kurz")), 422, "begruendung_fehlt");
+        verboten(ruf(w.claudia(), HttpMethod.POST, a, Map.of("begruendung", "Korrektur betrifft nur den 31.10.")));
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, k + "/anstoesse/" + UUID.randomUUID() + "/verwerfen",
+                Map.of("begruendung", "Korrektur betrifft nur den 31.10.")), 404, "nicht_gefunden");
+        String grund = "Korrektur betrifft nur den 31.10. nach Betriebsschluss, Bericht bleibt";
+        Antwort weg = ok(ruf(w.ines(), HttpMethod.POST, a, Map.of("begruendung", grund)), 200);
+        assertThat(weg.body().get("zustand").asText()).isEqualTo("verworfen");
+        assertThat(weg.body().get("verworfen_von").get("name").asText()).isEqualTo("Ines Kaltenbach");
+        assertThat(weg.body().get("anlass_text").asText()).isEqualTo("Korrektur K-2026-0007");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, a, Map.of("begruendung", grund)), 409, "anstoss_nicht_offen");
+        assertThat(liste(w.ines()).get("stand_text").asText()).isEqualTo("Anstoß verworfen (" + grund + ")");
+
+        // Ein zweiter Anstoß — die Revision erledigt ihn
+        UUID offen = anstoss(w, stand1, "K-2026-0007", 3, "2026-11-14T08:00:00+01:00");
+        uhr("2026-11-16T14:20:00+01:00");
+        Antwort nr2 = ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-12T10:05:33+01:00")), 201);
+        assertThat(nr2.body().get("nr").asInt()).isEqualTo(2);
+        assertThat(nr2.body().get("pruefsumme").asText()).isEqualTo(BerichtRegeln.pruefsumme(nummerZwei));
+        assertThat(nr2.body().get("anlass_anstoss_id").asText()).isEqualTo(offen.toString());
+        assertThat(nr2.text()).contains("\"abzug\":" + nummerZwei + "}");
+
+        JsonNode detail = ok(ruf(w.claudia(), HttpMethod.GET, k, null), 200).body();
+        assertThat(detail.get("staende")).hasSize(2);
+        assertThat(detail.get("staende").get(0).get("ersetzt_durch_nr").asInt()).isEqualTo(2);
+        assertThat(detail.get("staende").get(1).get("ersetzt_durch_nr").isNull()).isTrue();
+        assertThat(detail.get("anstoesse").get(0).get("zustand").asText()).isEqualTo("verworfen");
+        assertThat(detail.get("anstoesse").get(1).get("zustand").asText()).isEqualTo("erledigt");
+        assertThat(detail.get("anstoesse").get(1).get("erledigt_durch_nr").asInt()).isEqualTo(2);
+        assertThat(detail.get("bericht").get("stand_text").asText()).isEqualTo("Berichtsstand Nr. 2");
+        assertThat(ok(ruf(w.claudia(), HttpMethod.GET, k + "/staende/1", null), 200).text())
+                .contains("\"abzug\":" + nummerEins + "}");
+        assertThat(root.queryForList("SELECT art FROM bericht_aenderung WHERE bericht_id = ? ORDER BY id", String.class, st))
+                .containsExactly("freigeben", "verwerfen", "freigeben");
+    }
+
+    // =========================================================================== Archivieren, Anlegen
+
+    /** V4: Archivieren verbirgt den Bericht in der Liste, der Bericht bleibt lesbar; ein zweites Mal ändert nichts. */
+    @Test
+    void archivierenVerbirgtInDerListeUndIstEinmalig() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        uhr("2026-11-20T11:00:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, k + "/archivieren", Map.of("grund", "alt")), 400, "anfrage_ungueltig");
+        Antwort a = ok(ruf(w.ines(), HttpMethod.POST, k + "/archivieren", null), 200);
+        assertThat(Instant.parse(a.body().get("archiviert_am").asText())).isEqualTo(t("2026-11-20T11:00:00+01:00"));
+        assertThat(ok(ruf(w.ines(), HttpMethod.GET, PFAD, null), 200).body().get("berichte")).isEmpty();
+        ok(ruf(w.ines(), HttpMethod.GET, k, null), 200);
+        uhr("2026-11-21T11:00:00+01:00");
+        assertThat(ok(ruf(w.ines(), HttpMethod.POST, k + "/archivieren", null), 200).body().get("archiviert_am").asText())
+                .isEqualTo(a.body().get("archiviert_am").asText());
+        assertThat(root.queryForList("SELECT art FROM bericht_aenderung WHERE bericht_id = ?", String.class, st))
+                .containsExactly("archivieren");
+    }
+
+    /**
+     * Anlegen: jede Ablehnung in ihrer Reihenfolge, dann ein Bericht mit Kennung und Entwurf (gebildet von
+     * {@link BerichtAbzugBildung}); ein späterer Abruf nach dem „endgültig ab“ bildet den Entwurf neu (D4).
+     */
+    @Test
+    void anlegenMitSeinenAblehnungenDannEntwurfUndNeubildungBeimAbruf() throws Exception {
+        Welt w = welt();
+        bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        uhr("2026-11-02T10:00:00+01:00");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, Map.of("vorlage", "monatsbericht_standort", "zeitraum", "2026-10")),
+                400, "anfrage_ungueltig");
+        Antwort vorlage = abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("wochenbericht", w.st2(), "2026-10")), 422,
+                "vorlage_unbekannt");
+        assertThat(vorlage.body().get("message").asText()).isEqualTo("Diese Berichtsvorlage gibt es nicht.");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-13")), 400,
+                "anfrage_ungueltig");
+        abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", UUID.randomUUID(), "2026-10")), 404,
+                "geltung_unbekannt");
+        abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st1(), "2026-10")), 404,
+                "nicht_gefunden");
+        verboten(ruf(w.claudia(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")));
+        verboten(ruf(w.voss(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")));
+        Antwort schon = abgelehnt(ruf(w.ines(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st1(), "2026-10")),
+                409, "bericht_gibt_es_schon");
+        assertThat(schon.body().get("message").asText())
+                .isEqualTo("Diesen Bericht gibt es schon: BR-2026-0001 (Monatsbericht Werk Ahrenberg, Oktober 2026).");
+        abgelehnt(ruf(w.jonas(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(), "2026-10")),
+                501, "unternehmensbericht_folgt");
+        verboten(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(), "2026-10")));
+        Antwort leer = abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")),
+                422, "keine_quellen");
+        assertThat(leer.body().get("message").asText()).isEqualTo("Für Werk Lindach gibt es im Oktober 2026 keine Messstellen.");
+
+        // Werk Lindach misst seit dem 15.10.2026
+        messstelle(w, "MS-18", "Montage Lindach", w.st2(), "2026-10-15");
+        Antwort september = abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(),
+                "2026-09")), 422, "keine_quellen");
+        assertThat(september.body().get("message").asText())
+                .isEqualTo("Für Werk Lindach gibt es im September 2026 keine Messstellen — der Standort besteht seit dem 15.10.2026.");
+        assertThat(zaehle("bericht_aenderung", w)).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht WHERE tenant_id = ?", Long.class, w.mandant())).isEqualTo(1);
+
+        Antwort neu = ok(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")), 201);
+        assertThat(neu.body().get("kennung").asText()).isEqualTo("BR-2026-0002");
+        assertThat(neu.body().get("stand_zeichen").asText()).isEqualTo("entwurf");
+        assertThat(neu.body().get("geltung_name").asText()).isEqualTo("Werk Lindach");
+        assertThat(neu.body().get("zeitraum_text").asText()).isEqualTo("Oktober 2026");
+        assertThat(Instant.parse(neu.body().get("entwurf_datenstand").asText())).isEqualTo(t("2026-11-02T10:00:00+01:00"));
+        Map<String, Object> e = root.queryForMap("SELECT e.gebildet_von, e.pruefsumme, e.datenstand, b.angelegt_von_name, "
+                + "(SELECT count(*) FROM bericht_quelle q WHERE q.bericht_id = b.id AND q.stand_nr IS NULL) AS quellen "
+                + "FROM bericht b JOIN bericht_entwurf e ON e.bericht_id = b.id WHERE b.tenant_id = ? AND b.kennung = 'BR-2026-0002'",
+                w.mandant());
+        assertThat(e.get("gebildet_von")).isEqualTo("anlegen");
+        assertThat(e.get("angelegt_von_name")).isEqualTo("Peter Hollerbach");
+        assertThat(((Number) e.get("quellen")).intValue()).isPositive();
+        assertThat(root.queryForList("SELECT art || '/' || actor_rolle FROM bericht_aenderung WHERE tenant_id = ?", String.class,
+                w.mandant())).containsExactly("anlegen/bearbeiter");
+
+        // Derselbe Tag: aktuell, nichts neu gebildet
+        Antwort gleich = ok(ruf(w.peter(), HttpMethod.GET, PFAD + "/BR-2026-0002/entwurf", null), 200);
+        assertThat(gleich.body().get("neu_gebildet").asBoolean()).isFalse();
+        assertThat(gleich.body().get("pruefsumme").asText()).isEqualTo(e.get("pruefsumme"));
+        assertThat(gleich.body().get("kopf").asText()).isEqualTo("Entwurf · Datenstand 02.11.2026 10:00 (MEZ)");
+
+        // Nach dem „endgültig ab“ (08.11.) ist der Entwurf veraltet, ohne dass eine Zeile sich änderte — D4 bildet neu
+        uhr("2026-11-09T08:00:00+01:00");
+        Antwort spaeter = ok(ruf(w.peter(), HttpMethod.GET, PFAD + "/BR-2026-0002/entwurf", null), 200);
+        assertThat(spaeter.body().get("neu_gebildet").asBoolean()).isTrue();
+        assertThat(spaeter.body().get("gebildet_von").asText()).isEqualTo("abruf");
+        assertThat(Instant.parse(spaeter.body().get("datenstand").asText())).isEqualTo(t("2026-11-09T08:00:00+01:00"));
+        assertThat(ok(ruf(w.peter(), HttpMethod.GET, PFAD + "/BR-2026-0002/entwurf", null), 200).body().get("neu_gebildet")
+                .asBoolean()).isFalse();
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? AND art LIKE 'bericht_%'",
+                Long.class, w.mandant())).as("die Neubildung beim Abruf meldet nichts (B6)").isZero();
+    }
+
+    // =========================================================================== Hilfen
+
+    private Welt welt() {
+        int nr = NR.incrementAndGet();
+        UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class, "Berichte #" + nr);
+        UUID u = root.queryForObject("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (?, "
+                + "'Kunststoffwerk Ahrenberg GmbH', 'Europe/Berlin') RETURNING id", UUID.class, t);
+        UUID st1 = standort(t, u, "Werk Ahrenberg", "ST-1");
+        UUID st2 = standort(t, u, "Werk Lindach", "ST-2");
+        Welt w = new Welt(t, u, st1, st2,
+                person(t, "JW", "Jonas Wendlinger", "benutzer", zuweisung("kundenadministrator", null)),
+                person(t, "IK", "Ines Kaltenbach", "benutzer", zuweisung("energiemanager", null)),
+                person(t, "PH", "Peter Hollerbach", "benutzer", zuweisung("bearbeiter", st2)),
+                person(t, "MD", "Murat Demirci", "benutzer", zuweisung("bedienberechtigt", st1)),
+                person(t, "CB", "Claudia Berger", "benutzer", new Zuweisung(Rolle.LESER, List.of(st1.toString(), st2.toString()),
+                        null, null, Instant.EPOCH, null, null)),
+                person(t, "TB", "Thomas Brunner", "partner", new Zuweisung(Rolle.UNTERSTUETZER, List.of(st1.toString()),
+                        RechteAbleitung.Umfang.vonCode("einrichten_und_bedienen"), RechteAbleitung.Art.vonCode("installateur"),
+                        Instant.EPOCH, null, null)),
+                new Wer("kc-lena-voss", "Lena Voss", t, true));
+        return w;
+    }
+
+    private static Zuweisung zuweisung(String rolle, UUID standort) {
+        return new Zuweisung(Rolle.vonCode(rolle), standort == null ? null : List.of(standort.toString()), null, null,
+                Instant.EPOCH, null, null);
+    }
+
+    private static Wer person(UUID t, String kurz, String name, String konto, Zuweisung z) {
+        Wer wer = new Wer("kc-" + kurz.toLowerCase() + "-" + t, name, t, false);
+        PERSONEN.put(wer.sub(), new Benutzer(wer.sub(), name, Konto.vonCode(konto), KontoZustand.AKTIV, List.of(z)));
+        return wer;
+    }
+
+    private static UUID standort(UUID t, UUID u, String name, String kurz) {
+        return root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                + "VALUES (?, ?, ?, ?, 'Europe/Berlin', 'aktiv') RETURNING id", UUID.class, t, u, name, kurz);
+    }
+
+    private static void messstelle(Welt w, String kennzeichen, String name, UUID standort, String ab) {
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, "
+                + "einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') "
+                + "RETURNING id", UUID.class, w.mandant(), kennzeichen, name);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, standort_id, gueltig_ab) "
+                + "VALUES (?, ?, NULL, ?, ?::date)", w.mandant(), ms, standort, ab);
+    }
+
+    /** Ein Bericht, wie ihn das Anlegen schreibt — ohne Entwurf. */
+    private static UUID bericht(Welt w, String kennung, String vorlage, UUID standort, String schluessel) {
+        boolean unternehmen = vorlage.endsWith("_unternehmen");
+        return root.queryForObject("INSERT INTO bericht (tenant_id, kennung, vorlage, vorlage_fassung, geltung_art, "
+                + "standort_id, unternehmen_id, zeitraum_art, zeitraum_schluessel, zeitzone, angelegt_von_name) "
+                + "VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 'Europe/Berlin', 'Ines Kaltenbach') RETURNING id", UUID.class, w.mandant(),
+                kennung, vorlage, unternehmen ? "unternehmen" : "standort", unternehmen ? null : standort,
+                unternehmen ? w.unternehmen() : null, vorlage.startsWith("monats") ? "monat" : "jahr", schluessel);
+    }
+
+    /** Der Entwurf mit seinem Quellenverzeichnis, wie Bildung oder Kaskade ihn schreiben; Quellen ohne lebende Zeilen. */
+    private static void entwurf(Welt w, UUID bericht, String abzug, String datenstand) {
+        Timestamp ds = Timestamp.from(t(datenstand));
+        String summe = BerichtRegeln.pruefsumme(abzug);
+        if (root.update("UPDATE bericht_entwurf SET abzug = ?, pruefsumme = ?, datenstand = ?, gebildet_von = 'kaskade' "
+                + "WHERE bericht_id = ?", abzug, summe, ds, bericht) == 0) {
+            root.update("INSERT INTO bericht_entwurf (tenant_id, bericht_id, abzug, pruefsumme, datenstand, gebildet_von) "
+                    + "VALUES (?, ?, ?, ?, ?, 'anlegen')", w.mandant(), bericht, abzug, summe, ds);
+        }
+        root.update("DELETE FROM bericht_quelle WHERE bericht_id = ? AND stand_nr IS NULL", bericht);
+        for (String[] q : List.of(new String[] {"MS-01", "Netzbezug Halle 1"}, new String[] {"MS-12", "Montage Linie M1"})) {
+            root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
+                    + "erster_tag, letzter_tag, version, fassung, name_zum_datenstand) VALUES (?, ?, NULL, 'messstelle', ?, ?, "
+                    + "'unmittelbar', '2026-10-01', '2026-10-31', 1, NULL, ?)", w.mandant(), bericht, q[0], UUID.randomUUID(),
+                    q[1]);
+        }
+    }
+
+    /** Ein offener Revisions-Anstoß, wie die Kaskade (IP-8) ihn als Verwaltungsrolle anlegt. */
+    private static UUID anstoss(Welt w, UUID stand, String kennung, int fassung, String erkannt) {
+        return root.queryForObject("INSERT INTO bericht_revision_anstoss (tenant_id, stand_id, art, anlass_kennung, "
+                + "anlass_fassung, anlass_status, erkannt_am) VALUES (?, ?, 'korrektur_freigegeben', ?, ?, 'freigegeben', ?) "
+                + "RETURNING id", UUID.class, w.mandant(), stand, kennung, fassung, Timestamp.from(t(erkannt)));
+    }
+
+    /** Die Werte des Abzugs vorläufig — ein Entwurf vor dem „endgültig ab“. */
+    private static String vorlaeufig(String abzug) throws Exception {
+        ObjectNode n = (ObjectNode) EXAKT.readTree(abzug);
+        ((ArrayNode) n.path("werte")).forEach(x -> ((ObjectNode) x).put("fassung", KennzahlRegeln.VORLAEUFIG));
+        return BerichtRegeln.kanonisch(n);
+    }
+
+    private static long zaehle(String tabelle, Welt w) {
+        return root.queryForObject("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", Long.class, w.mandant());
+    }
+
+    private static Map<String, String> datenstand(String zeit) {
+        return Map.of("entwurf_datenstand", zeit);
+    }
+
+    private static Map<String, String> anlegen(String vorlage, UUID geltung, String zeitraum) {
+        return Map.of("vorlage", vorlage, "geltung_id", geltung.toString(), "zeitraum", zeitraum);
+    }
+
+    private JsonNode liste(Wer wer) throws Exception {
+        JsonNode berichte = ok(ruf(wer, HttpMethod.GET, PFAD, null), 200).body().get("berichte");
+        assertThat(berichte).hasSize(1);
+        return berichte.get(0);
+    }
+
+    private static List<String> kennungen(Antwort a) {
+        List<String> raus = new ArrayList<>();
+        a.body().get("berichte").forEach(b -> raus.add(b.get("kennung").asText()));
+        return raus;
+    }
+
+    private void uhr(String zeit) {
+        dienst.uhrStellen(Clock.fixed(t(zeit), ZoneOffset.UTC));
+    }
+
+    private static Instant t(String zeit) {
+        return OffsetDateTime.parse(zeit).toInstant();
+    }
+
+    private static Antwort ok(Antwort a, int status) {
+        assertThat(a.status()).as(a.text()).isEqualTo(status);
+        return a;
+    }
+
+    private static Antwort abgelehnt(Antwort a, int status, String code) {
+        assertThat(a.status()).as(a.text()).isEqualTo(status);
+        assertThat(a.body().get("code").asText()).as(a.text()).isEqualTo(code);
+        assertThat(BerichtAbgelehnt.CODES).contains(code);
+        return a;
+    }
+
+    /** 403 {@code recht_fehlt} mit dem Satz der Rechte-Ableitung. */
+    private static void verboten(Antwort a) {
+        abgelehnt(a, 403, "recht_fehlt");
+        assertThat(a.body().get("message").asText()).isNotBlank();
+        assertThat(a.body().has("rolle_noetig")).isTrue();
+    }
+
+    private Antwort ruf(Wer wer, HttpMethod methode, String pfad, Object body) throws Exception {
+        MockHttpServletRequestBuilder anfrage = request(methode, pfad)
+                .with(jwt().jwt(j -> {
+                    j.subject(wer.sub());
+                    j.claim("preferred_username", wer.name());
+                    if (!wer.plattform()) {
+                        j.claim("tenant_id", wer.kundenbereich().toString());
+                    }
+                }).authorities(wer.plattform()
+                        ? List.of(new SimpleGrantedAuthority("ROLE_platform-admin")) : List.of()))
+                .contentType(MediaType.APPLICATION_JSON);
+        if (wer.plattform()) {
+            anfrage.header("X-Tenant-Id", wer.kundenbereich().toString());
+        }
+        if (body != null) {
+            anfrage.content(MAPPER.writeValueAsString(body));
+        }
+        MvcResult r = mvc.perform(anfrage).andReturn();
+        String text = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        return new Antwort(r.getResponse().getStatus(), text.isEmpty() ? NullNode.getInstance() : MAPPER.readTree(text), text);
+    }
+}
