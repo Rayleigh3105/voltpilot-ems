@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 class CockpitLayoutServiceTest {
 
     private final AnwendungKatalog katalog = new AnwendungKatalog(new ObjectMapper());
-    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog, null, new ObjectMapper());
+    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog, null, new ObjectMapper(), null);
 
     private static LayoutDoc doc(List<String> order, List<String> hidden, List<String> shown,
             String lead) {

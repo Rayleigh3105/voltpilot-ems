@@ -1,6 +1,6 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSupplyPriceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SupplyPriceDto;
@@ -63,11 +63,11 @@ public class SiteSupplyPriceController {
     private static final BigDecimal COMPONENT_MAX = new BigDecimal("999.999");
 
     private final SiteSupplyPriceRepository supplyPrices;
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
 
-    public SiteSupplyPriceController(SiteSupplyPriceRepository supplyPrices, SiteRepository sites) {
+    public SiteSupplyPriceController(SiteSupplyPriceRepository supplyPrices, Geltungsbereich geltungsbereich) {
         this.supplyPrices = supplyPrices;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
     }
 
     @GetMapping
@@ -107,9 +107,7 @@ public class SiteSupplyPriceController {
 
     /** RLS makes a foreign site invisible; that is a 404, not a 403. */
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** A component value: null clears it; otherwise a non-negative ct/kWh amount. */

@@ -3,7 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.FunktionZustandAbleitung.Aktion;
 import com.voltpilot.api.uems.FunktionZustandAbleitung.Funktion;
@@ -75,14 +75,14 @@ public class FunktionService {
     private final FunktionTeilnahmeRepository teilnahmen;
     private final FunktionFakten fakten;
     private final DeviceOverrideRepository overrides;
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final JdbcTemplate jdbc;
     private final ObjectProvider<EntityRegistryService> registry;
     private volatile Clock uhr = Clock.systemUTC();
 
     public FunktionService(StandortRepository standorte, AnlageStandortRepository zuordnungen,
             UnternehmenRepository unternehmen, FunktionRepository funktionen, FunktionTeilnahmeRepository teilnahmen,
-            FunktionFakten fakten, DeviceOverrideRepository overrides, SiteRepository sites, JdbcTemplate jdbc,
+            FunktionFakten fakten, DeviceOverrideRepository overrides, Geltungsbereich geltungsbereich, JdbcTemplate jdbc,
             ObjectProvider<EntityRegistryService> registry) {
         this.standorte = standorte;
         this.zuordnungen = zuordnungen;
@@ -91,7 +91,7 @@ public class FunktionService {
         this.teilnahmen = teilnahmen;
         this.fakten = fakten;
         this.overrides = overrides;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.jdbc = jdbc;
         this.registry = registry;
     }
@@ -135,7 +135,7 @@ public class FunktionService {
     /** {@code PUT /api/v1/sites/{id}/funktionen/steuern}: starten · anhalten · fortsetzen · beenden je Anlage. */
     @Transactional
     public FunktionDto.SteuernErgebnis steuernAnlage(UUID siteId, String aktionCode, ProtokollAkteur wer) {
-        if (!sites.existsForCurrentTenant(siteId)) {
+        if (!geltungsbereich.siteVisible(siteId)) {
             throw FunktionAbgelehnt.nichtGefunden("Anlage nicht gefunden.");
         }
         Aktion aktion = aktion(aktionCode, ANLAGEN_AKTIONEN,

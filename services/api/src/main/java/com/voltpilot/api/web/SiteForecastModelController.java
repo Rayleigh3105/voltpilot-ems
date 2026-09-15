@@ -1,13 +1,12 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.forecast.ForecastModelService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.PromoteForecastModelRequest;
 import com.voltpilot.api.web.dto.SiteForecastModelsDto;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -49,11 +48,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}/forecast-models")
 public class SiteForecastModelController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ForecastModelService models;
 
-    public SiteForecastModelController(SiteRepository sites, ForecastModelService models) {
-        this.sites = sites;
+    public SiteForecastModelController(Geltungsbereich geltungsbereich, ForecastModelService models) {
+        this.geltungsbereich = geltungsbereich;
         this.models = models;
     }
 
@@ -81,9 +80,7 @@ public class SiteForecastModelController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static String subject(Jwt caller) {

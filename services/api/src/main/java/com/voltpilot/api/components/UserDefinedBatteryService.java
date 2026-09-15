@@ -24,7 +24,7 @@ import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.flows.FlowCompilerException;
 import com.voltpilot.api.flows.FlowDeployment;
 import com.voltpilot.api.repo.FlowRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.topology.TopologyDeriver;
@@ -92,7 +92,7 @@ public class UserDefinedBatteryService {
 
     private static final Logger log = LoggerFactory.getLogger(UserDefinedBatteryService.class);
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository entityRepo;
     private final EntityRegistryService entityRegistry;
     private final EntityTypeCatalog typeCatalog;
@@ -108,14 +108,14 @@ public class UserDefinedBatteryService {
     private final ObjectMapper mapper;
     private final BerichtsBelege berichtsBelege;
 
-    public UserDefinedBatteryService(SiteRepository sites, EntityRegistryRepository entityRepo,
+    public UserDefinedBatteryService(Geltungsbereich geltungsbereich, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, EntityTypeCatalog typeCatalog,
             ComponentDefinitionRepository definitions, ComponentService components,
             SocCurveTemplateCatalog curves, ProtectionProfileCatalog profiles,
             UserDefinedBatteryFlowCompiler compiler, FlowRepository flows,
             FlowActivationService deployments, ObjectProvider<FlowCompiler> flowc,
             TopologyRepository topology, ObjectMapper mapper, BerichtsBelege berichtsBelege) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
         this.typeCatalog = typeCatalog;
@@ -216,9 +216,7 @@ public class UserDefinedBatteryService {
     // ---- Regeln -----------------------------------------------------------
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private void requirePortalManaged(UUID siteId) {

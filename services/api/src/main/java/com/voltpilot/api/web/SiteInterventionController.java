@@ -4,14 +4,13 @@ import com.voltpilot.api.interventions.DeviceOverrideService;
 import com.voltpilot.api.interventions.DeviceOverrideService.Outcome;
 import com.voltpilot.api.interventions.Handeingriff;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -57,11 +56,11 @@ public class SiteInterventionController {
     public record InterventionsDto(boolean automationPaused, Instant pausedUntil,
             List<InterventionDto> interventions) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceOverrideService service;
 
-    public SiteInterventionController(SiteRepository sites, DeviceOverrideService service) {
-        this.sites = sites;
+    public SiteInterventionController(Geltungsbereich geltungsbereich, DeviceOverrideService service) {
+        this.geltungsbereich = geltungsbereich;
         this.service = service;
     }
 
@@ -137,9 +136,7 @@ public class SiteInterventionController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": …}. */

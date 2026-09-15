@@ -5,7 +5,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtsBelege;
@@ -46,7 +46,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteBatteryController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final AssetRepository assets;
     private final DeviceRepository devices;
     private final EntityAutoComposer autoCompose;
@@ -54,11 +54,11 @@ public class SiteBatteryController {
     private final EntityRegistryRepository entities;
     private final BerichtsBelege berichtsBelege;
 
-    public SiteBatteryController(SiteRepository sites, AssetRepository assets,
+    public SiteBatteryController(Geltungsbereich geltungsbereich, AssetRepository assets,
             DeviceRepository devices, EntityAutoComposer autoCompose,
             EntityRegistryService registry, EntityRegistryRepository entities,
             BerichtsBelege berichtsBelege) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.assets = assets;
         this.devices = devices;
         this.autoCompose = autoCompose;
@@ -149,8 +149,6 @@ public class SiteBatteryController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

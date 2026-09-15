@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.measurement.SpeicherklasseHistorie;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
 import java.math.BigDecimal;
 import java.sql.Array;
@@ -769,7 +769,7 @@ public class BerichtAbzugBildung {
     private MessstelleWerteService lesemodell(JdbcTemplate j, Instant jetzt) {
         MessstelleQuelleRepository quellen = new MessstelleQuelleRepository(j);
         MessstelleWerteService s = new MessstelleWerteService(j, new MessstelleRepository(j), quellen,
-                new QuelleKadenzRepository(j), new MesskanalService(j, new SiteRepository(j), katalog, json,
+                new QuelleKadenzRepository(j), new MesskanalService(j, new Geltungsbereich(j), katalog, json,
                         new GeraetRepository(j), quellen), new SpeicherklasseHistorie(j, katalog),
                 new BerechnetePeriodenRepository(j));
         s.uhrStellen(Clock.fixed(jetzt, ZoneOffset.UTC));

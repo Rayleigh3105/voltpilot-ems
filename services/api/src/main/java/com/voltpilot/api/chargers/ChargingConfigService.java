@@ -1,7 +1,7 @@
 package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
@@ -78,7 +78,7 @@ public class ChargingConfigService {
 
     private static final int MAX_CONNECTORS = 32;
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
     private final ObjectProvider<ChargingConfigPublisher> publisher;
@@ -89,11 +89,11 @@ public class ChargingConfigService {
      */
     private final ObjectProvider<SiteVehicleRepository> vehicles;
 
-    public ChargingConfigService(SiteRepository sites, ChargingConfigRepository configs,
+    public ChargingConfigService(Geltungsbereich geltungsbereich, ChargingConfigRepository configs,
             DeviceChargerStatusRepository chargers,
             ObjectProvider<ChargingConfigPublisher> publisher,
             ObjectProvider<SiteVehicleRepository> vehicles) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.configs = configs;
         this.chargers = chargers;
         this.publisher = publisher;
@@ -510,8 +510,6 @@ public class ChargingConfigService {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

@@ -103,12 +103,6 @@ public class SiteRepository {
         return jdbc.update("DELETE FROM site WHERE id = ?", siteId) > 0;
     }
 
-    public boolean existsForCurrentTenant(UUID siteId) {
-        Integer count = jdbc.queryForObject(
-                "SELECT count(*) FROM site WHERE id = ?", Integer.class, siteId);
-        return count != null && count > 0;
-    }
-
     static SiteDto mapSite(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new SiteDto(
                 rs.getObject("id", UUID.class),

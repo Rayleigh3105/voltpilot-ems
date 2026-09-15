@@ -15,8 +15,10 @@ import java.util.stream.Collectors;
  * neben {@code app.tenant_id} die Sitzungs-Einstellungen {@code app.zugriff} ({@code unternehmen} | {@code standorte})
  * und {@code app.standort_ids} — und setzt alle drei beim Zurückgeben wieder zurück.
  *
- * <p><b>Noch liest keine Policy die beiden Einstellungen.</b> {@code site_scope} ist IP-5; bis dahin ändert der
- * Kontext an keiner Abfrage etwas. Wer ihn liest (IP-5 ff.), liest ihn HIER — nie aus einem Anfragekörper.
+ * <p><b>Die Policy {@code site_scope} (IP-5, V20260915190000) liest die beiden Einstellungen:</b> leer oder
+ * {@code unternehmen} = alle Zeilen des Kundenbereichs, {@code standorte} = nur die Standorte aus
+ * {@code app.standort_ids}. Der Prüfpunkt im Code ist {@link Geltungsbereich}. Wer den Zugriff sonst liest (IP-6 ff.),
+ * liest ihn HIER — nie aus einem Anfragekörper.
  */
 public final class ZugriffContext {
 
@@ -65,24 +67,37 @@ public final class ZugriffContext {
      * @param stand der Zeitpunkt, zu dem „wirksam" gilt
      */
     public record Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
-            List<ZugriffRepository.Zeile> zuweisungen, Instant stand) {
+            List<ZugriffRepository.Zeile> zuweisungen, Instant stand, boolean nieZugewiesen) {
 
         public Zugriff {
             Objects.requireNonNull(kundenbereich, "kundenbereich");
             zuweisungen = List.copyOf(zuweisungen);
         }
 
+        /** Ohne Bestandsregel: ein Konto, das schon einmal eine Zuweisung hatte, oder kein Kundenkonto. */
+        public Zugriff(String sub, Konto konto, UUID kundenbereich, Zugang zugang,
+                List<ZugriffRepository.Zeile> zuweisungen, Instant stand) {
+            this(sub, konto, kundenbereich, zugang, zuweisungen, stand, false);
+        }
+
         /**
          * {@code unternehmen}, wenn das Kundenkonto eine wirksame mandantenweite Zuweisung hat — und am Umschalter,
-         * der heute den ganzen Kundenbereich sieht (W3). Sonst {@code standorte}: auch ein Kundenkonto OHNE wirksame
-         * Zuweisung (der engste Zaun, sobald IP-5 ihn liest).
+         * der heute den ganzen Kundenbereich sieht (W3).
+         *
+         * <p>Ebenso ein Kundenkonto, das in diesem Kundenbereich NIE eine Zuweisung hatte ({@code nieZugewiesen}): die
+         * Bestandsregel E12 („wer noch nie eine Zuweisung hatte, wird Kundenadministrator"), die
+         * {@code ZugriffBestandLaeufer} beim Start schreibt, gilt schon in der Anfrage — der Standort-Zaun (IP-5) sperrt
+         * kein Bestandskonto aus, nur weil der Start-Lauf aus ist, noch nicht lief oder Keycloak nicht erreichte.
+         *
+         * <p>Sonst {@code standorte}: auch ein Kundenkonto, dessen Zuweisungen beendet oder erst künftig sind — der
+         * engste Zaun, ein Entzug wirkt sofort.
          */
         public Modus modus() {
             if (zugang == Zugang.UMSCHALTER) {
                 return Modus.UNTERNEHMEN;
             }
             boolean mandantenweit = zuweisungen.stream().anyMatch(z -> z.standortId() == null);
-            return zugang == Zugang.KONTO && mandantenweit ? Modus.UNTERNEHMEN : Modus.STANDORTE;
+            return zugang == Zugang.KONTO && (mandantenweit || nieZugewiesen) ? Modus.UNTERNEHMEN : Modus.STANDORTE;
         }
 
         /** Die Standorte der standortbezogenen Zuweisungen, ohne Doppel und sortiert. */

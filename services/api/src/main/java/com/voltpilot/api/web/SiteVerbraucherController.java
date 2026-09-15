@@ -1,6 +1,6 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.verbraucher.RanglisteAbleitung;
 import com.voltpilot.api.verbraucher.RanglisteService;
 import com.voltpilot.api.verbraucher.SteuerartService;
@@ -13,7 +13,6 @@ import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -78,14 +77,14 @@ public class SiteVerbraucherController {
      */
     public record RanglisteEintragRequest(@NotNull @Size(max = 32) String art, UUID entityId) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final VerbraucherService verbraucher;
     private final RanglisteService rangliste;
     private final SteuerartService steuerarten;
 
-    public SiteVerbraucherController(SiteRepository sites, VerbraucherService verbraucher,
+    public SiteVerbraucherController(Geltungsbereich geltungsbereich, VerbraucherService verbraucher,
             RanglisteService rangliste, SteuerartService steuerarten) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.verbraucher = verbraucher;
         this.rangliste = rangliste;
         this.steuerarten = steuerarten;
@@ -139,9 +138,7 @@ public class SiteVerbraucherController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /**

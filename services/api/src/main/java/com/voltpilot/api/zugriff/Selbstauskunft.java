@@ -65,14 +65,19 @@ public class Selbstauskunft {
 
     private final ZugriffRepository zugriffe;
     private final ZugriffKontextLader lader;
+    private final Geltungsbereich geltungsbereich;
 
-    public Selbstauskunft(ZugriffRepository zugriffe, ZugriffKontextLader lader) {
+    public Selbstauskunft(ZugriffRepository zugriffe, ZugriffKontextLader lader, Geltungsbereich geltungsbereich) {
         this.zugriffe = zugriffe;
         this.lader = lader;
+        this.geltungsbereich = geltungsbereich;
     }
 
     @Transactional(readOnly = true)
     public SelbstauskunftDto fuer(Authentication auth) {
+        // Die Selbstauskunft rechnet die Sichtbarkeit selbst nach dem Rechte-Vertrag (n von m Standorten, Zuweisungen
+        // an fremden Standorten) und gibt nichts Unsichtbares aus — sie liest darum ohne Standort-Zaun (IP-5).
+        geltungsbereich.ganzenKundenbereichLesen();
         Zugriff z = ZugriffContext.get();
         Jwt jwt = auth != null && auth.getPrincipal() instanceof Jwt j ? j : null;
         String sub = jwt == null ? null : jwt.getSubject();

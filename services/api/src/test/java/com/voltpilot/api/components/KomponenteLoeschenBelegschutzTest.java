@@ -20,7 +20,7 @@ import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.FlowRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.topology.TopologyRepository;
 import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtRegeln;
@@ -50,7 +50,7 @@ class KomponenteLoeschenBelegschutzTest {
             List.of(new BerichtRegeln.StandBezeichnung("BR-2026-0001", 1)));
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final SiteRepository sites = mock(SiteRepository.class);
+    private final Geltungsbereich sites = mock(Geltungsbereich.class);
     private final EntityRegistryRepository entityRepo = mock(EntityRegistryRepository.class);
     private final EntityRegistryService entityRegistry = mock(EntityRegistryService.class);
     private final ComponentDefinitionRepository definitions = mock(ComponentDefinitionRepository.class);
@@ -62,7 +62,6 @@ class KomponenteLoeschenBelegschutzTest {
 
     @BeforeEach
     void setUp() {
-        when(sites.existsForCurrentTenant(SITE)).thenReturn(true);
         when(definitions.componentAuthority(SITE)).thenReturn("portal");
     }
 

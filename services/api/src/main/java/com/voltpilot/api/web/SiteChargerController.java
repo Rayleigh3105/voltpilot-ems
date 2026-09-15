@@ -1,15 +1,13 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.SiteChargingDto;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Die LADEPUNKTE einer Anlage (Lastmanagement Stufe 3): das Standort-Budget und
@@ -36,19 +34,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteChargerController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceChargerStatusRepository chargers;
 
-    public SiteChargerController(SiteRepository sites, DeviceChargerStatusRepository chargers) {
-        this.sites = sites;
+    public SiteChargerController(Geltungsbereich geltungsbereich, DeviceChargerStatusRepository chargers) {
+        this.geltungsbereich = geltungsbereich;
         this.chargers = chargers;
     }
 
     @GetMapping("/chargers")
     public SiteChargingDto chargers(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return chargers.forSite(siteId);
     }
 }

@@ -98,9 +98,12 @@ public class ZugriffKontextLader {
         Instant jetzt = uhr.instant();
         if (konto == Konto.BENUTZER) {
             UUID tenant = TenantContext.get();
-            return tenant == null
-                    ? Ergebnis.keiner()
-                    : Ergebnis.mit(new Zugriff(sub, konto, tenant, Zugang.KONTO, zuweisungen(sub, jetzt), jetzt));
+            if (tenant == null) {
+                return Ergebnis.keiner();
+            }
+            List<Zeile> zeilen = zuweisungen(sub, jetzt);
+            return Ergebnis.mit(new Zugriff(sub, konto, tenant, Zugang.KONTO, zeilen, jetzt,
+                    zeilen.isEmpty() && nieZugewiesen(sub)));
         }
         if (kundenbereichKopf != null && !kundenbereichKopf.isBlank()) {
             return unterstuetzung(sub, konto, kundenbereichKopf.trim(), jetzt);
@@ -136,6 +139,20 @@ public class ZugriffKontextLader {
             case PLATTFORM -> z.art() == Art.VOLTPILOT || z.art() == Art.NOTFALL;
             case BENUTZER -> false;
         };
+    }
+
+    /**
+     * Die Bestandsregel E12 in der Anfrage: hatte das Kundenkonto in diesem Kundenbereich NIE eine Zuweisung — auch
+     * keine beendete oder künftige? Ein Lesefehler heißt nein, also der enge Zaun.
+     */
+    private boolean nieZugewiesen(String sub) {
+        try {
+            return !zugriffe.hatJeEineZuweisung(sub);
+        } catch (RuntimeException e) {
+            log.warn("Zuweisungs-Geschichte von {} nicht lesbar - enger Zaun: {}", sub, e.toString());
+            zaehle("fehler");
+            return false;
+        }
     }
 
     private List<Zeile> zuweisungen(String sub, Instant jetzt) {

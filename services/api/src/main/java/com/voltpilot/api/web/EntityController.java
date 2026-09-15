@@ -10,7 +10,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository.RegistryState;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EntityHistoryRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -110,17 +110,17 @@ public class EntityController {
     public record EntityHistoryDto(String range, Instant from, Instant to, int bucketMinutes,
             Map<String, List<EntityHistoryRepository.Bucket>> channels) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository registry;
     private final EntityObservedRepository observed;
     private final EntityHistoryRepository history;
     private final EntityTypeCatalog catalog;
     private final ObjectMapper mapper;
 
-    public EntityController(SiteRepository sites, EntityRegistryRepository registry,
+    public EntityController(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             EntityObservedRepository observed, EntityHistoryRepository history,
             EntityTypeCatalog catalog, ObjectMapper mapper) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.registry = registry;
         this.observed = observed;
         this.history = history;
@@ -305,8 +305,6 @@ public class EntityController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

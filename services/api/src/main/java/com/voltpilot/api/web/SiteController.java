@@ -43,6 +43,7 @@ import com.voltpilot.api.web.dto.SiteSourceDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.UpdateSiteRequest;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -82,6 +83,7 @@ public class SiteController {
     private static final int MAX_PRICE_POINTS = 1000;
 
     private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceRepository devices;
     private final SeriesRepository series;
     private final TelemetryRepository telemetry;
@@ -122,8 +124,10 @@ public class SiteController {
             AnlageStandortService anlageStandort,
             MessreihenBelege belege,
             NetzanschlussService netzanschluesse,
-            BerichtsBelege berichtsBelege) {
+            BerichtsBelege berichtsBelege,
+            Geltungsbereich geltungsbereich) {
         this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.devices = devices;
         this.series = series;
         this.telemetry = telemetry;
@@ -237,9 +241,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/deletion-preview")
     public SiteDeletionPreviewDto deletionPreview(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return series.previewForSite(siteId, devices.countForSite(siteId));
     }
 
@@ -267,9 +269,7 @@ public class SiteController {
     @DeleteMapping("/{siteId}")
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         int deviceCount = devices.countForSite(siteId);
         if (deviceCount > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -306,9 +306,7 @@ public class SiteController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         // RLS makes an out-of-tenant site invisible; treat that as 404.
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         Instant effectiveTo = to != null ? to : Instant.now();
         Instant effectiveFrom = from != null ? from : effectiveTo.minus(24, ChronoUnit.HOURS);
         return telemetry.findForSite(siteId, effectiveFrom, effectiveTo, MAX_POINTS);
@@ -400,9 +398,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/weather")
     public WeatherForecastDto weather(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         WeatherForecastDto forecast = weather.latestForSite(siteId);
         // No run stored yet: return an empty (but well-formed) forecast, not 404.
         return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
@@ -457,9 +453,7 @@ public class SiteController {
     public ForecastQualityDto forecastQuality(
             @PathVariable UUID siteId,
             @RequestParam(defaultValue = "30") int days) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         int window = Math.min(Math.max(days, 1), 90);
         LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(window);
         Map<String, String> effective = forecastModels.activeModels(siteId);
@@ -492,9 +486,7 @@ public class SiteController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "mode must be one of latest|day");
         }
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         SchedulePlanDto plan = parsed == ScheduleMode.DAY
                 ? schedules.dayAsPlanned(siteId, ScheduleMode.dayStart(Instant.now()))
                 : schedules.latestForSite(siteId);
@@ -513,9 +505,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/control-status")
     public ResponseEntity<ControlStatusDto> controlStatus(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return controlStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -535,9 +525,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/curtailment-status")
     public ResponseEntity<CurtailmentStatusDto> curtailmentStatus(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return curtailmentStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -556,9 +544,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/sources")
     public List<SiteSourceDto> siteSources(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return sourceStatus.forSite(siteId);
     }
 }

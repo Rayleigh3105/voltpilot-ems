@@ -96,6 +96,7 @@ class ZugriffZaunApiTest {
     private static final String KUNDE_KA = "sub-zaun-kundenadministrator";
     private static final String KUNDE_LESER = "sub-zaun-leser";
     private static final String KUNDE_OHNE = "sub-zaun-ohne-zuweisung";
+    private static final String KUNDE_NIE = "sub-zaun-nie-zugewiesen";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -227,7 +228,8 @@ class ZugriffZaunApiTest {
                 new String[0]);
         Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
         Konto leser = new Konto("Leser", konto(KUNDE_LESER, DEMO), new String[0]);
-        Konto ohne = new Konto("Kundenkonto ohne Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]);
+        Konto ohne = new Konto("Kundenkonto ohne wirksame Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]);
+        Konto nie = new Konto("Kundenkonto, nie zugewiesen (Bestandsregel E12)", konto(KUNDE_NIE, DEMO), new String[0]);
         String ids = "{" + demoStandort + "}";
 
         assertThat(ruf(get("/api/v1/sites"), partner).status()).isEqualTo(200);
@@ -238,6 +240,7 @@ class ZugriffZaunApiTest {
             assertThat(sitzung(leser)).isEqualTo(List.of(DEMO.toString(), "standorte", ids));
             assertThat(sitzung(umschalter)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
             assertThat(sitzung(ohne)).isEqualTo(List.of(DEMO.toString(), "standorte", "{}"));
+            assertThat(sitzung(nie)).isEqualTo(List.of(DEMO.toString(), "unternehmen", "{}"));
             assertThat(sitzung(plattformOhne)).isEqualTo(List.of("", "", ""));
         }
         Konto partnerFremd = new Konto("Partner, Kopf auf Nordwind", partner.auth(),
@@ -246,14 +249,23 @@ class ZugriffZaunApiTest {
         assertThat(sitzung(partner)).as("danach wieder die eigene").isEqualTo(List.of(DEMO.toString(), "standorte", ids));
     }
 
+    /**
+     * Bestand (AP-03 IP-4 und IP-5): „vorher" lädt der Lader nichts, also bleiben alle Sitzungs-Einstellungen leer —
+     * das ist der Stand vor IP-4 und zugleich der Stand, in dem {@code site_scope} nichts filtert. Jedes HEUTIGE Konto
+     * sieht nachher auf jeder lesenden Kundenroute Zeichen für Zeichen dasselbe: der Kundenadministrator (nach der
+     * Bestandsübernahme E12 jedes Kundenkonto), ein Kundenkonto, das noch nie eine Zuweisung hatte (dieselbe Regel in
+     * der Anfrage, auch wenn der Start-Lauf aus ist), und die Plattform mit und ohne Umschalter. Die Anlage des Demo-Standorts
+     * hängt an einem Standort, die übrigen nicht — der Zaun hätte also etwas zu filtern.
+     * Standortbeschränkte Konten ändern sich mit IP-5 absichtlich: {@link #standortbeschraenkteKontenSehenNurDieAnlagenIhrerStandorte}.
+     */
     @Test
-    void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4() throws Exception {
+    void jedesHeutigeKontoSiehtAufJederLesendenKundenrouteDasselbeWieVorIp4UndIp5() throws Exception {
         List<Route> routen = kundenrouten(true);
         List<Konto> konten = List.of(
                 new Konto("Kundenkonto (Bestandsübernahme: Kundenadministrator)", konto(KUNDE_KA, DEMO, "operator"),
                         new String[0]),
-                new Konto("Kundenkonto ohne Realm-Rolle, ohne Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]),
-                new Konto("Kundenkonto mit Standort-Zuweisung (Leser)", konto(KUNDE_LESER, DEMO), new String[0]),
+                new Konto("Kundenkonto ohne Realm-Rolle, nie zugewiesen (Bestandsregel E12)", konto(KUNDE_NIE, DEMO),
+                        new String[0]),
                 new Konto("Plattform mit X-Tenant-Id", konto("sub-zaun-plattform", null, "platform-admin"),
                         new String[] {TENANT, DEMO.toString()}),
                 new Konto("Plattform ohne Kopf", konto("sub-zaun-plattform", null, "platform-admin"),
@@ -290,6 +302,61 @@ class ZugriffZaunApiTest {
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
         assertThat(abweichungen).isEmpty();
+    }
+
+    /**
+     * Der Standort-Zaun über die Routen (AP-03 IP-5): ein Leser am Demo-Standort und ein Partner mit Unterstützung dort
+     * sehen nur die Anlage dieses Standorts; jede andere ist 404 — in der Liste, als Anlage und hinter
+     * {@code Geltungsbereich.requireSite}. Ein Kundenkonto, dessen Zuweisung beendet ist, sieht keine Anlage (Entzug).
+     * Der Kundenadministrator sieht alle — und ebenso ein Konto, das nie eine Zuweisung hatte (Bestandsregel E12).
+     */
+    @Test
+    void standortbeschraenkteKontenSehenNurDieAnlagenIhrerStandorte() throws Exception {
+        String andere = root.queryForObject("SELECT id::text FROM site WHERE tenant_id = ? AND id <> ?::uuid "
+                + "ORDER BY name LIMIT 1", String.class, DEMO, BERLIN_SITE);
+        Konto ka = new Konto("Kundenadministrator", konto(KUNDE_KA, DEMO, "operator"), new String[0]);
+        Konto leser = new Konto("Leser am Demo-Standort", konto(KUNDE_LESER, DEMO), new String[0]);
+        Konto partner = new Konto("Partner mit Unterstützung am Demo-Standort", konto(PARTNER_GEWAEHRT, null, "partner"),
+                new String[] {KUNDENBEREICH, DEMO.toString()});
+        Konto ohne = new Konto("Kundenkonto mit beendeter Zuweisung", konto(KUNDE_OHNE, DEMO), new String[0]);
+        Konto nie = new Konto("Kundenkonto, nie zugewiesen", konto(KUNDE_NIE, DEMO), new String[0]);
+
+        assertThat(anlagen(ka)).contains(BERLIN_SITE, andere).hasSizeGreaterThan(2);
+        assertThat(anlagen(nie)).as("Bestandsregel E12 in der Anfrage").isEqualTo(anlagen(ka));
+        for (Konto k : List.of(leser, partner)) {
+            assertThat(anlagen(k)).as(k.name()).containsExactly(BERLIN_SITE);
+            assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), k).status()).as(k.name()).isEqualTo(200);
+            assertThat(ruf(get("/api/v1/sites/" + andere), k).status()).as(k.name()).isEqualTo(404);
+            assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE + "/sources"), k).status()).as(k.name()).isEqualTo(200);
+            assertThat(ruf(get("/api/v1/sites/" + andere + "/sources"), k).status()).as(k.name()).isEqualTo(404);
+        }
+        assertThat(ruf(get("/api/v1/sites/" + andere + "/sources"), ka).status()).isEqualTo(200);
+        int geraeteBerlin = root.queryForObject("SELECT count(*) FROM device WHERE site_id = ?::uuid", Integer.class,
+                BERLIN_SITE);
+        int geraeteDemo = root.queryForObject("SELECT count(*) FROM device WHERE tenant_id = ?", Integer.class, DEMO);
+        assertThat(geraeteDemo).isGreaterThan(geraeteBerlin);
+        assertThat(anzahl(get("/api/v1/devices"), ka)).isEqualTo(geraeteDemo);
+        assertThat(anzahl(get("/api/v1/devices"), leser)).isEqualTo(geraeteBerlin);
+        String fremdesGeraet = root.queryForObject("SELECT id::text FROM device WHERE tenant_id = ? AND site_id <> ?::uuid "
+                + "ORDER BY id LIMIT 1", String.class, DEMO, BERLIN_SITE);
+        assertThat(ruf(MockMvcRequestBuilders.delete(URI.create("/api/v1/devices/" + fremdesGeraet)), leser).status())
+                .as("ein Gerät einer fremden Anlage ist 404, auch zum Löschen").isEqualTo(404);
+        assertThat(anlagen(ohne)).isEmpty();
+        assertThat(ruf(get("/api/v1/sites/" + BERLIN_SITE), ohne).status()).isEqualTo(404);
+    }
+
+    private int anzahl(MockHttpServletRequestBuilder anfrage, Konto k) throws Exception {
+        Antwort a = ruf(anfrage, k);
+        assertThat(a.status()).as(k.name()).isEqualTo(200);
+        return MAPPER.readTree(a.body()).size();
+    }
+
+    private List<String> anlagen(Konto k) throws Exception {
+        Antwort a = ruf(get("/api/v1/sites"), k);
+        assertThat(a.status()).as(k.name()).isEqualTo(200);
+        List<String> ids = new ArrayList<>();
+        MAPPER.readTree(a.body()).forEach(n -> ids.add(n.path("id").asText()));
+        return ids;
     }
 
     // ------------------------------------------------------------------ Routen
@@ -405,12 +472,19 @@ class ZugriffZaunApiTest {
     private static void seed() {
         demoStandort = root.queryForList("SELECT id FROM standort WHERE tenant_id = ? ORDER BY created_at, id",
                 UUID.class, DEMO).stream().findFirst().orElseGet(ZugriffZaunApiTest::neuerDemoStandort);
+        // Standort-Zaun (IP-5): die Berliner Anlage hängt am Demo-Standort, die übrigen Demo-Anlagen an keinem.
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?::uuid, ?, "
+                + "'2024-01-01')", DEMO, BERLIN_SITE, demoStandort);
         spiegel(KUNDE_KA, "benutzer");
         root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, zeitzone) "
                 + "VALUES (?, ?, 'kundenadministrator', ?, 'Europe/Berlin')", DEMO, KUNDE_KA, ab("2024-01-01"));
         spiegel(KUNDE_LESER, "benutzer");
         root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) "
                 + "VALUES (?, ?, 'leser', ?, ?, 'Europe/Berlin')", DEMO, KUNDE_LESER, demoStandort, ab("2024-01-01"));
+        spiegel(KUNDE_OHNE, "benutzer");
+        root.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, gueltig_bis, endet_am, "
+                + "zeitzone) VALUES (?, ?, 'leser', ?, ?, ?, ?, 'Europe/Berlin')", DEMO, KUNDE_OHNE, demoStandort,
+                ab("2024-01-01"), LocalDate.parse("2024-12-31"), ab("2025-01-01"));
         spiegel(PARTNER_GEWAEHRT, "partner");
         unterstuetzung(PARTNER_GEWAEHRT, "2026-01-01", "2099-12-30");
         spiegel(PARTNER_BEENDET, "partner");

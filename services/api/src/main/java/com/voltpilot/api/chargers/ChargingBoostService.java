@@ -3,7 +3,7 @@ package com.voltpilot.api.chargers;
 import com.voltpilot.api.command.CommandLog;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargeConnectorDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargePointDto;
@@ -56,14 +56,14 @@ public class ChargingBoostService {
 
     static final String EVENT_PAUSE_ENDE = "laden_pausiert_beendet";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceChargerStatusRepository chargers;
     private final CommandLogRepository commandLog;
     private final ObjectProvider<ChargingBoostPublisher> publisher;
 
-    public ChargingBoostService(SiteRepository sites, DeviceChargerStatusRepository chargers,
+    public ChargingBoostService(Geltungsbereich geltungsbereich, DeviceChargerStatusRepository chargers,
             CommandLogRepository commandLog, ObjectProvider<ChargingBoostPublisher> publisher) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.chargers = chargers;
         this.commandLog = commandLog;
         this.publisher = publisher;
@@ -107,9 +107,7 @@ public class ChargingBoostService {
      */
     public BoostResult boost(UUID siteId, String chargePointId, int connectorId, Integer minutes,
             boolean cancel, Action action, String actor) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         ChargePointDto point = point(siteId, chargePointId);
         ChargeConnectorDto connector = connector(point, connectorId);
         // ⚠ Nur ein LAUFENDER Ladevorgang lässt sich übersteuern. Eine Zusage
