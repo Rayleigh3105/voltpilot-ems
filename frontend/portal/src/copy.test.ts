@@ -22,6 +22,9 @@ import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SA
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import * as KK from './kennzahlKarte';
+import * as BS from './berichtSeite';
+import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from './test/berichtFixtures';
+import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
 import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
 import {
   fassungenVon as kennzahlFassungen,
@@ -1297,12 +1300,142 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
 });
 
 /**
+ * UEMS AP-12 IP-13 — die Welt „Berichte“ spricht die Wörter von §4.15 (E14 = A): Bericht · Berichtsvorlage · Entwurf ·
+ * Berichtsstand Nr. n · Revision · Datenstand · Quellenverzeichnis. Ein freigegebener Stand ist nie „Version“,
+ * „Ausgabe“, „Snapshot“ oder „Report“ („Version“ gehört dem Wert); „Entwurf“ steht unqualifiziert nur in dieser Welt,
+ * anderswo heißt der Entwurf eines Berichts „Berichtsentwurf“ (W7). Gelesen werden die Quelltexte der Flächen UND die
+ * Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden (B1 Nr. 1/Nr. 2, B10, B16).
+ */
+describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf · Berichtsstand Nr. n · Datenstand (E14)', () => {
+  const FLAECHEN = ['berichtSeite.ts', 'pages/BerichtePage.tsx', 'pages/BerichtSeite.tsx'];
+  const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+
+  const laufzeit = (): string[] => {
+    const out: string[] = [];
+    const tage = ['2026-11-10T09:00:00+01:00', '2026-11-13T09:00:00+01:00', '2026-11-20T09:00:00+01:00', '2026-12-03T09:00:00+01:00'];
+    for (const tag of tage) {
+      const jetzt = Date.parse(tag);
+      const detail = detailAm(jetzt);
+      const karte = BS.listenKarte(berichtAm(jetzt));
+      out.push(karte.kennung, karte.titel, karte.unter, ...[karte.stand, karte.archiviert].filter(da));
+      out.push(...BS.standWahl(detail).optionen.map((o) => o.label));
+      const ansichten: BS.Ansicht[] = [
+        { art: 'entwurf', entwurf: entwurfAm(jetzt) },
+        ...detail.staende.map((s): BS.Ansicht => ({ art: 'stand', stand: standAm(s.nr, jetzt) })),
+      ];
+      for (const a of ansichten) {
+        const k = BS.seitenKopf(detail, a, jetzt);
+        out.push(k.titel, k.vorlage, k.zeile, ...k.abzeichen.map((x) => x.text), ...[k.teilansicht].filter(da));
+        const abzug = BS.abzugAus(a.art === 'stand' ? a.stand.abzug : a.entwurf.abzug);
+        const heuteName = (kz: string) => nameHeuteAm(jetzt, kz, null);
+        for (const teil of BS.abschnitte(abzug, heuteName).abschnitte) {
+          out.push(teil.titel);
+          if (teil.art === 'kopf' || teil.art === 'qualitaet') out.push(...teil.zeilen.flatMap((z) => [z.name, z.wert]));
+          if (teil.art === 'kopf') out.push(teil.anzahl);
+          if (teil.art === 'qualitaet') out.push(...teil.korrekturen);
+          if (teil.art === 'zusammenfassung') out.push(...teil.kacheln.flatMap((z) => [z.name, z.wert]), ...[teil.zaehlung].filter(da));
+          if (teil.art === 'messstellen') out.push(...teil.vergleiche);
+          if (teil.art === 'kennzahlen') out.push(...[teil.leer].filter(da));
+          if (teil.art === 'messstellen' || teil.art === 'kennzahlen') {
+            for (const z of teil.zeilen) {
+              out.push(z.name, z.zahl, z.zustand, z.version, ...z.kennzeichenSaetze, ...z.nachweis.herkunft, ...[z.heute].filter(da));
+              out.push(z.nachweis.karte.titel, ...[z.nachweis.karte.fassung, z.nachweis.karte.abdeckung].filter(da));
+            }
+          }
+          if (teil.art === 'quellen') out.push(teil.anzahl, ...teil.zeilen.flatMap((q) => [q.name, q.stand, q.heute].filter(da)));
+        }
+        if (a.art === 'stand') {
+          const b = berichtAm(jetzt);
+          out.push(BS.heutigerWert({ antwort: heutigeWerteAm('MS-12', jetzt) }, b, a.stand).text);
+        }
+      }
+      for (const v of BS.verlaufDerStaende(detail)) out.push(v.titel, v.zeile, ...[v.anlass, v.ersetzt].filter(da), ...v.anstoesse);
+    }
+    const spaet = Date.parse('2036-11-02T10:00:00+01:00');
+    try {
+      heutigeWerteAm('MS-12', spaet);
+    } catch (fehler) {
+      out.push(BS.heutigerWert({ fehler }, berichtAm(spaet), standAm(1, spaet)).text);
+    }
+    out.push(
+      BS.TITEL, BS.LADEN, BS.LADEFEHLER, BS.LADEFEHLER_SEITE, BS.LADEFEHLER_STAND, BS.LEER, BS.NICHT_GEFUNDEN, BS.ZUR_LISTE,
+      BS.ARCHIVIERT, BS.STAND_WAHL, BS.KEIN_STAND, BS.NEU_GEBILDET, BS.PRUEFSUMME_GEPRUEFT, BS.VERLAUF_TITEL, BS.NACHWEIS,
+      BS.HEUTIGEN_WERT, BS.HEUTIGER_WERT_LAEDT, BS.HEUTIGER_WERT_FEHLER, BS.KEINE_KENNZAHLEN,
+      ...BS.ZUSAMMENFASSUNG.map(([, name]) => name), ...Object.values(BS.VERGLEICH_WORT), ...Object.values(BS.GELTUNG_WORT),
+      ...Object.values(BS.KOPF_WORT), ...Object.values(BS.QUALITAET_WORT),
+    );
+    return out;
+  };
+
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((rel) => visibleTexts(readFileSync(join(SRC, rel), 'utf8')).map((text) => ({ wo: rel, text })));
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(300);
+    expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
+    expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
+    expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
+    expect(alle).toContain('Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.');
+    expect(flaechenTexte().length).toBeGreaterThan(3);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = [...laufzeit(), ...flaechenTexte().map((t) => t.text)].flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('ein Berichtsstand ist nie „Version“, „Ausgabe“, „Snapshot“ oder „Report“ (§4.15, `VERBOTENE_WOERTER` des Vertrags)', () => {
+    const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
+    expect(texte.filter((t) => BERICHT_VERBOTEN.some((w) => t.includes(w)))).toEqual([]);
+    expect(texte.filter((t) => VERSION_AM_STAND.test(t))).toEqual([]);
+  });
+
+  it('„Entwurf“ steht unqualifiziert nur in dieser Welt — anderswo heißt der Entwurf eines Berichts „Berichtsentwurf“ (W7)', () => {
+    const violations: string[] = [];
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (FLAECHEN.includes(rel) || rel === 'uemsBericht.ts' || rel === 'glossar.ts') continue;
+      for (const text of visibleTexts(readFileSync(file, 'utf8'))) {
+        if (isKundentext(text) && /Bericht/u.test(text) && /(^|[^\p{L}])Entwurf/u.test(text)) violations.push(`${rel}: „${text.trim().slice(0, 80)}“`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Wörter kommen aus dem Glossar: Berichte, Berichtsstand, Entwurf, Datenstand, Prüfsumme, Quellenverzeichnis', () => {
+    expect(BS.TITEL).toBe(UEMS_BERICHTE);
+    expect(BS.STAND_WAHL).toBe(UEMS_BERICHTSSTAND);
+    expect(BS.KEIN_STAND).toContain(UEMS_BERICHTSSTAND);
+    expect(BS.PRUEFSUMME_GEPRUEFT).toContain(UEMS_PRUEFSUMME);
+    expect(BS.KOPF_WORT.datenstand).toBe(UEMS_DATENSTAND);
+    expect(BS.standWahl(detailAm(Date.parse('2026-11-20T09:00:00+01:00'))).optionen.at(-1)?.label).toBe(UEMS_ENTWURF);
+    const quellen = BS.abschnitte(BS.abzugAus(standAm(1, Date.parse('2026-11-20T09:00:00+01:00')).abzug)).abschnitte.find((a) => a.art === 'quellen');
+    expect(quellen?.titel).toBe(UEMS_QUELLENVERZEICHNIS);
+  });
+
+  it('die Flächen und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    for (const rel of FLAECHEN) expect(dateien).toContain(rel);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['Version des Berichts', 'Berichtsstand Version 2', 'Berichtsversion 1']) expect(VERSION_AM_STAND.test(falsch), falsch).toBe(true);
+    for (const richtig of ['Berichtsstand Nr. 2', 'Version 2 · endgültig ab 08.11.2026', 'korrigiert (Version 2)']) expect(VERSION_AM_STAND.test(richtig), richtig).toBe(false);
+  });
+});
+
+/**
  * Kundenflächen, die „Kennzahl“ HEUTE schon außerhalb der Welt sagen — benannt, damit jede neue Stelle rot wird.
  * Wer eine davon umbenennt (IP-14: „3 · Kennzahl“ der Eigenen Auswertung wird „3 · Zeitbezug“), streicht sie hier.
  */
 // Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
+  'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'components/MarktpreiseMobil.tsx', // alt
   'components/PortfolioCockpit.tsx', // alt
   'components/VerlaufExplorer.tsx', // alt

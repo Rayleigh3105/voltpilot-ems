@@ -30,7 +30,7 @@ interface Fall {
 }
 
 const FAELLE: Fall[] = [
-  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen'], aktiv: 'Übersicht' },
+  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: null },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
   { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
