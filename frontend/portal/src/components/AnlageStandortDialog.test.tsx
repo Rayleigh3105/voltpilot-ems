@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { api, ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { api, ApiError, type AnlageUmzug, type BerichteBetroffen, type StandorteAmStichtag } from '../api';
 import { standortDerAnlage } from '../anlageStandort';
 import { FOLGEN_WAEHLEN } from '../anlageUmziehen';
 import { ahrenbergHeute, FIXTURE_IDS, werkAhrenberg } from '../test/standorteFixtures';
@@ -163,6 +163,67 @@ describe('Dialog „Anlage zuordnen“ (T6b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
     expect(onClose).toHaveBeenCalled();
   });
+});
+
+describe('„Freigegebene Berichte: …“ in der Folgen-Karte (AP-12 IP-9)', () => {
+  const antwort = (over: Partial<BerichteBetroffen> = {}): BerichteBetroffen => ({
+    anlass: 'anlage_umzug_rueckwirkend',
+    gilt_ab: '2027-02-20',
+    berichte_vorhanden: true,
+    betroffen: [],
+    zitieren: [{ kennung: 'BR-2026-0001', nr: 1 }],
+    ...over,
+  });
+
+  it('die Karte nennt die Berichte — gefragt mit Anlage, „gültig ab“ und Anlass, erst mit gewähltem Standort', async () => {
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    const betroffen = vi.spyOn(api, 'berichteBetroffen').mockResolvedValue(antwort());
+    oeffne();
+    const karte = await (async () => {
+      await new Promise<void>((fertig) => setTimeout(fertig, 250));
+      expect(betroffen).not.toHaveBeenCalled();
+      waehleNord();
+      return screen.findByTestId('umzug-folgen');
+    })();
+    expect(await within(karte).findByTestId('berichte-folgen')).toHaveTextContent('Freigegebene Berichte: keine betroffen');
+    expect(betroffen).toHaveBeenCalledTimes(1);
+    expect(betroffen).toHaveBeenCalledWith(FIXTURE_IDS.an2, '2027-02-20', 'anlage_umzug_rueckwirkend');
+  });
+
+  it('mehrere betroffene Stände bekommen den Vermerk — in der Reihenfolge der Antwort', async () => {
+    vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+    vi.spyOn(api, 'berichteBetroffen').mockResolvedValue(
+      antwort({
+        betroffen: [
+          { kennung: 'BR-2026-0001', nr: 2 },
+          { kennung: 'BR-2026-0002', nr: 1 },
+        ],
+      }),
+    );
+    oeffne();
+    waehleNord();
+    expect(await screen.findByTestId('berichte-folgen')).toHaveTextContent(
+      'Freigegebene Berichte: BR-2026-0001 Nr. 2, BR-2026-0002 Nr. 1 bekommen den Vermerk „Revision nötig“',
+    );
+  });
+
+  for (const fall of ['ohne lesbaren Bericht', 'bei einer Ablehnung (403)'] as const) {
+    it(`${fall} bleibt die Zeile weg — die Karte steht, ohne Meldung`, async () => {
+      vi.spyOn(api, 'anlageStandortVorschau').mockResolvedValue(umzug());
+      const betroffen = vi.spyOn(api, 'berichteBetroffen');
+      if (fall === 'ohne lesbaren Bericht') betroffen.mockResolvedValue(antwort({ berichte_vorhanden: false }));
+      else betroffen.mockRejectedValue(new ApiError(403, 'Dafür ist Ihr Konto nicht freigeschaltet.', {}));
+      const fehler = vi.spyOn(console, 'error');
+      oeffne();
+      waehleNord();
+      const karte = await screen.findByTestId('umzug-folgen');
+      await waitFor(() => expect(betroffen).toHaveBeenCalled());
+      await act(() => new Promise<void>((fertig) => setTimeout(fertig, 0)));
+      expect(within(karte).queryByTestId('berichte-folgen')).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(fehler).not.toHaveBeenCalled();
+    });
+  }
 });
 
 describe('Zeile „Standort“ in „Meine Anlage“ (T6a → T6b)', () => {

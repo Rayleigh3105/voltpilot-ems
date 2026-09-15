@@ -156,6 +156,69 @@ class BerichtApiTest {
         dienst.uhrStellen(Clock.systemUTC());
     }
 
+    // =========================================================================== IP-9: die Folgen-Zeile
+
+    /**
+     * AP-12 IP-9, {@code GET /berichte/betroffen} — die Zeile „Freigegebene Berichte: …“. Eine rückwirkende Zuordnung am
+     * Standort ab 01.10.2026 träfe Nr. 1 (MS-12 steht in seinem Quellenverzeichnis), ab 01.11.2026 nicht mehr; zitiert wird
+     * Nr. 1 in beiden Fällen. Eine Fläche zitiert heute kein Bericht, ein Umzug trifft nie. Peter liest keinen
+     * Ahrenberg-Bericht (keine vorhanden), Thomas nirgends einen (403); fremd und falsche Art 404, kaputte Anfrage 400.
+     * Die Route schreibt nichts.
+     */
+    @Test
+    void ip9DieFolgenZeileNenntBetroffeneUndZitierendeStaende() throws Exception {
+        Welt w = welt();
+        messstelle(w, "MS-12", "Montage Linie M1", w.st1(), "2026-10-01");
+        UUID ms12 = root.queryForObject("SELECT id FROM messstelle WHERE tenant_id = ? AND kennzeichen = 'MS-12'", UUID.class,
+                w.mandant());
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, 'Halle 2') RETURNING id", UUID.class,
+                w.mandant());
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        root.update("INSERT INTO bericht_quelle (tenant_id, bericht_id, stand_nr, art, kennzeichen, objekt_id, bezug, "
+                + "erster_tag, letzter_tag, version, fassung, name_zum_datenstand) VALUES (?, ?, NULL, 'messstelle', 'MS-12', ?, "
+                + "'unmittelbar', '2026-10-01', '2026-10-31', 1, NULL, 'Montage Linie M1')", w.mandant(), st, ms12);
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, PFAD + "/BR-2026-0001/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+        uhr("2026-11-20T10:00:00+01:00");
+        long staende = zaehle("bericht_stand", w);
+        long anstoesse = zaehle("bericht_revision_anstoss", w);
+        long protokoll = zaehle("bericht_aenderung", w);
+        String zuordnung = PFAD + "/betroffen?objekt=" + w.st1() + "&anlass=zuordnung_rueckwirkend&gilt_ab=";
+
+        assertThat(ok(ruf(w.ines(), HttpMethod.GET, zuordnung + "2026-10-01", null), 200).body()).isEqualTo(MAPPER.readTree(
+                "{\"anlass\": \"zuordnung_rueckwirkend\", \"gilt_ab\": \"2026-10-01\", \"berichte_vorhanden\": true, "
+                        + "\"betroffen\": [{\"kennung\": \"BR-2026-0001\", \"nr\": 1}], "
+                        + "\"zitieren\": [{\"kennung\": \"BR-2026-0001\", \"nr\": 1}]}"));
+        JsonNode november = ok(ruf(w.ines(), HttpMethod.GET, zuordnung + "2026-11-01", null), 200).body();
+        assertThat(november.get("betroffen")).as("ab 01.11. schneidet kein Oktober").isEmpty();
+        assertThat(november.get("zitieren")).hasSize(1);
+        JsonNode flaeche = ok(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + w.st1()
+                + "&anlass=flaeche_rueckwirkend&gilt_ab=2026-10-01", null), 200).body();
+        assertThat(flaeche.get("betroffen")).as("heute zitiert kein Bericht eine Fläche").isEmpty();
+        JsonNode umzug = ok(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + anlage
+                + "&anlass=anlage_umzug_rueckwirkend&gilt_ab=2026-10-01", null), 200).body();
+        assertThat(umzug.get("betroffen")).as("kein Abzug liest den Standort einer Anlage").isEmpty();
+
+        JsonNode peter = ok(ruf(w.peter(), HttpMethod.GET, zuordnung + "2026-10-01", null), 200).body();
+        assertThat(peter.get("berichte_vorhanden").asBoolean()).isFalse();
+        assertThat(peter.get("betroffen")).isEmpty();
+        assertThat(peter.get("zitieren")).isEmpty();
+        verboten(ruf(w.thomas(), HttpMethod.GET, zuordnung + "2026-10-01", null));
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + UUID.randomUUID()
+                + "&anlass=zuordnung_rueckwirkend&gilt_ab=2026-10-01", null), 404, "nicht_gefunden");
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + w.st1()
+                + "&anlass=anlage_umzug_rueckwirkend&gilt_ab=2026-10-01", null), 404, "nicht_gefunden");
+        assertThat(abgelehnt(ruf(w.ines(), HttpMethod.GET, zuordnung + "kaputt", null), 400, "anfrage_ungueltig").body()
+                .get("feld").asText()).isEqualTo("gilt_ab");
+        abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + w.st1()
+                + "&anlass=umbenennung&gilt_ab=2026-10-01", null), 400, "anfrage_ungueltig");
+
+        assertThat(zaehle("bericht_stand", w)).isEqualTo(staende);
+        assertThat(zaehle("bericht_revision_anstoss", w)).isEqualTo(anstoesse);
+        assertThat(zaehle("bericht_aenderung", w)).isEqualTo(protokoll);
+    }
+
     // =========================================================================== B4
 
     /** B4 a/b/c: Zeitraum läuft (422) · Werte vorläufig (422) · Entwurf veraltet (409) — dann Nr. 1 mit dem neuen Datenstand. */

@@ -300,6 +300,11 @@
                              ausgelieferte Vorgabe; UemsBerichtKaskadeTest baut die Naht
                              ohne Spring. -->
                         <voltpilot.uems.berichte.enabled>false</voltpilot.uems.berichte.enabled>
+                        <!-- Der Strukturänderungs-Läufer der Berichte (AP-12 IP-9):
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an.
+                             StrukturAenderungWiringTest prueft die ausgelieferte Vorgabe;
+                             UemsStrukturAenderungTest ruft lauf() selbst. -->
+                        <voltpilot.uems.berichte.struktur.enabled>false</voltpilot.uems.berichte.struktur.enabled>
                         <!-- Die Zeilentext-Aufbewahrung (AP-09 IP-12): dieselbe Falle, im
                              Testlauf aus, in PRODUKTION an.
                              ZeilentextAufbewahrungWiringTest prueft die ausgelieferte

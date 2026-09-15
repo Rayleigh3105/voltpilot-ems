@@ -1,4 +1,5 @@
 import type { ArchivSperrgrund, OrtAktionen, OrtLoeschGrund } from './api';
+import type { BerichteFolgen } from './berichteFolgen';
 import { datumText, type Tag } from './uemsOrtsbaum';
 
 /**
@@ -127,10 +128,19 @@ export interface Folge {
   text: string;
 }
 
-/** Z2: die Folgenliste der Rückfrage „… archivieren?“. */
+/** Der Archivtag: der Tag nach dem letzten Tag — ab ihm gilt das Archivieren. `null` ohne letzten Tag. */
+export function archivTag(a: NonNullable<OrtAktionen['archivieren']>): Tag | null {
+  return a.letzterTag ? naechsterTag(a.letzterTag) : null;
+}
+
+/**
+ * Z2: die Folgenliste der Rückfrage „… archivieren?“. `berichte` ist die Zeile „Freigegebene Berichte“
+ * (AP-12 IP-9, `berichteFolgen.ts`) — sie steht zuletzt und nur, wenn es sie gibt.
+ */
 export function archivierenFolgen(
   art: ArchivObjektArt,
   a: NonNullable<OrtAktionen['archivieren']>,
+  berichte: BerichteFolgen | null = null,
 ): Folge[] {
   const letzter = a.letzterTag ?? '';
   const archivtag = naechsterTag(letzter);
@@ -158,6 +168,7 @@ export function archivierenFolgen(
     titel: 'Wiederherstellen jederzeit möglich',
     text: 'Es gilt dann ab dem Tag des Wiederherstellens; die Zeit dazwischen bleibt sichtbar.',
   });
+  if (berichte) folgen.push({ titel: berichte.titel, text: `${berichte.text}.` });
   return folgen;
 }
 

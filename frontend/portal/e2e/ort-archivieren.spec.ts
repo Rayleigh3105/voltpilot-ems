@@ -53,6 +53,26 @@ async function verdrahte(
   await page.route('**/api/v1/orte/**', (r) =>
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ortNachSchreiben()) }),
   );
+  // AP-12 IP-9 · freigegebene Berichte (Ahrenberg): vier Berichtsstände zitieren Messstellen des Orts.
+  await page.route('**/api/v1/berichte/betroffen**', (r) => {
+    const q = new URL(r.request().url()).searchParams;
+    return r.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        anlass: q.get('anlass'),
+        gilt_ab: q.get('gilt_ab'),
+        berichte_vorhanden: true,
+        betroffen: [],
+        zitieren: [
+          { kennung: 'BR-2026-0001', nr: 1 },
+          { kennung: 'BR-2026-0001', nr: 2 },
+          { kennung: 'BR-2026-0002', nr: 1 },
+          { kennung: 'BR-2026-0004', nr: 1 },
+        ],
+      }),
+    });
+  });
 }
 
 async function oeffne(
@@ -173,6 +193,11 @@ for (const breite of BREITEN) {
       const dialog = page.getByRole('dialog', { name: 'Halle 2 Lager archivieren?' });
       await expect(dialog).toContainText('Zuordnung endet am 29.06.2027');
       await expect(dialog).toContainText('Wiederherstellen jederzeit möglich');
+      // AP-12 IP-9: die letzte Folge nennt, wie viele freigegebene Berichtsstände den Ort zitieren.
+      const berichte = dialog.getByRole('listitem').last();
+      await expect(berichte).toContainText('Freigegebene Berichte');
+      await expect(berichte).toContainText('4 zitieren Messstellen dieses Orts — sie bleiben unverändert.');
+      await berichte.scrollIntoViewIfNeeded();
       await messeUndFotografiere(page, breite, 'z2-dialog');
     });
 

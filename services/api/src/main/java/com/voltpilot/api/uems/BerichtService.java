@@ -26,11 +26,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
@@ -168,6 +170,66 @@ public class BerichtService {
             irgendwoLesbar(b, k, jetzt);
         }
         return raus;
+    }
+
+    /** Ein Berichtsstand, wie ihn eine Folgen-Karte nennt: „BR-2026-0001 Nr. 2“. */
+    public record StandRef(String kennung, int nr) {}
+
+    /**
+     * Die Zeile „Freigegebene Berichte: …“ (AP-12 IP-9): {@code betroffen} = die gültigen Stände, die der
+     * Strukturänderungs-Läufer anstieße, gälte die Änderung ab {@code giltAb}; {@code zitieren} = jeder Stand, der eine
+     * Quelle des Objekts überhaupt zitiert (B12); {@code berichteVorhanden} = die Person liest hier mindestens einen Bericht.
+     */
+    public record Betroffen(String anlass, LocalDate giltAb, boolean berichteVorhanden, List<StandRef> betroffen,
+            List<StandRef> zitieren) {}
+
+    /**
+     * {@code GET /berichte/betroffen}: dieselbe Auflösung wie der Läufer ({@link StrukturAufloesung#vorschau}) und derselbe
+     * Schnitt ({@link BerichtKaskade#strukturQuellen}, {@link BerichtRegeln#betroffene(List, java.util.Collection, LocalDate)})
+     * — nur ohne Protokollzeile und ohne Datenstand-Schranke, weil die Änderung noch nicht geschrieben ist. Liest nichts, was
+     * die Person nicht lesen darf; darf sie nirgends einen Bericht lesen, 403 vor 404.
+     */
+    public Betroffen betroffen(UUID objekt, LocalDate giltAb, String anlass, ProtokollAkteur wer) {
+        UUID tenant = kundenbereich();
+        Instant jetzt = jetzt();
+        Benutzer b = aufrufer.benutzer(wer);
+        Kundenbereich k = rechteKundenbereich();
+        Set<String> lesbar = new HashSet<>();
+        for (Kopf x : repo.berichte()) {
+            if (darf(b, k, BerichtRechte.ABRUFEN, x, jetzt).darf()) {
+                lesbar.add(x.kennung());
+            }
+        }
+        if (lesbar.isEmpty()) {
+            irgendwoLesbar(b, k, jetzt);
+        }
+        String art = StrukturAufloesung.objektArt(jdbc, tenant, objekt);
+        if (art == null || !StrukturAufloesung.passt(anlass, art)) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
+        if (lesbar.isEmpty()) {
+            return new Betroffen(anlass, giltAb, false, List.of(), List.of());
+        }
+        Set<UUID> objekte = StrukturAufloesung.vorschau(jdbc, tenant, anlass, art, objekt, giltAb);
+        List<BerichtRegeln.Quelle> quellen = objekte.isEmpty() ? List.of()
+                : BerichtKaskade.strukturQuellen(jdbc, tenant, objekte, giltAb, null);
+        List<StandRef> betroffen = new ArrayList<>();
+        for (BerichteNaht.Bericht x : BerichtRegeln.betroffene(quellen, objekte.stream().map(UUID::toString).toList(),
+                giltAb)) {
+            if (x.stand() == BerichteNaht.Stand.FREIGEGEBEN && lesbar.contains(x.kennung())) {
+                quellen.stream().filter(q -> q.bericht().equals(x.kennung()) && q.nr() != null && !q.ersetzt())
+                        .mapToInt(BerichtRegeln.Quelle::nr).max()
+                        .ifPresent(nr -> betroffen.add(new StandRef(x.kennung(), nr)));
+            }
+        }
+        Set<UUID> quellenDesObjekts = StrukturAufloesung.quellenDesObjekts(jdbc, tenant, art, objekt);
+        List<StandRef> zitieren = quellenDesObjekts.isEmpty() ? List.of() : jdbc.query("SELECT DISTINCT b.kennung, "
+                + "q.stand_nr FROM bericht_quelle q JOIN bericht b ON b.id = q.bericht_id AND b.tenant_id = q.tenant_id "
+                + "WHERE q.tenant_id = ? AND q.stand_nr IS NOT NULL AND q.objekt_id = ANY (?::uuid[]) "
+                + "ORDER BY b.kennung, q.stand_nr", (rs, i) -> new StandRef(rs.getString(1), rs.getInt(2)), tenant,
+                quellenDesObjekts.stream().map(UUID::toString).toArray(String[]::new));
+        return new Betroffen(anlass, giltAb, true, List.copyOf(betroffen),
+                zitieren.stream().filter(s -> lesbar.contains(s.kennung())).toList());
     }
 
     public Detail detail(String kennung, ProtokollAkteur wer) {

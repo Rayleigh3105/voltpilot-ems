@@ -16,6 +16,7 @@ import com.voltpilot.api.uems.BerichtService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BerichtDto;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
@@ -74,6 +75,28 @@ public class BerichtController {
     @GetMapping("/berichte")
     public BerichtDto.Liste liste(Authentication auth) {
         return new BerichtDto.Liste(dienst.liste(OrtAnfrage.akteur(auth)).stream().map(BerichtController::form).toList());
+    }
+
+    /**
+     * Recht: {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} je Bericht — die Zeile „Freigegebene Berichte: …“
+     * der Folgen-Karten (Fläche ändern, Anlage zuordnen, Archivieren; AP-12 IP-9) nennt nur Stände, die die Person lesen
+     * darf; wer nirgends einen Bericht lesen darf, bekommt 403. {@code anlass} ist die Anstoß-Art einer Strukturänderung
+     * (400 sonst); ein Objekt, das der Kundenbereich nicht kennt oder das nicht zur Art passt, ist 404 {@code nicht_gefunden}.
+     * Schreibt nichts.
+     */
+    @GetMapping("/berichte/betroffen")
+    public BerichtDto.Betroffen betroffen(@RequestParam(required = false) String objekt,
+            @RequestParam(name = "gilt_ab", required = false) String giltAb, @RequestParam(required = false) String anlass,
+            Authentication auth) {
+        if (!STRUKTUR_ANLAESSE.contains(anlass)) {
+            throw BerichtAbgelehnt.anfrage("anlass");
+        }
+        UUID id = uuid(objekt, "objekt");
+        LocalDate ab = tag(giltAb, "gilt_ab");
+        BerichtService.Betroffen b = dienst.betroffen(id, ab, anlass, OrtAnfrage.akteur(auth));
+        return new BerichtDto.Betroffen(b.anlass(), b.giltAb().toString(), b.berichteVorhanden(),
+                b.betroffen().stream().map(s -> new BerichtDto.StandRef(s.kennung(), s.nr())).toList(),
+                b.zitieren().stream().map(s -> new BerichtDto.StandRef(s.kennung(), s.nr())).toList());
     }
 
     /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — Anlegen folgt dem Freigabe-Recht (G1). */
@@ -247,6 +270,28 @@ public class BerichtController {
 
     private static void pflicht(String wert, String feld) {
         if (wert == null || wert.isBlank()) {
+            throw BerichtAbgelehnt.anfrage(feld);
+        }
+    }
+
+    /** Die Anstoß-Arten einer Strukturänderung (Pfad 2) — die Werte von {@code anlass} an {@code /berichte/betroffen}. */
+    private static final List<String> STRUKTUR_ANLAESSE = List.of(BerichtRegeln.ZUORDNUNG_RUECKWIRKEND,
+            BerichtRegeln.ANLAGE_UMZUG_RUECKWIRKEND, BerichtRegeln.FLAECHE_RUECKWIRKEND, BerichtRegeln.VERTEILUNG_RUECKWIRKEND);
+
+    private static UUID uuid(String wert, String feld) {
+        pflicht(wert, feld);
+        try {
+            return UUID.fromString(wert);
+        } catch (IllegalArgumentException e) {
+            throw BerichtAbgelehnt.anfrage(feld);
+        }
+    }
+
+    private static LocalDate tag(String wert, String feld) {
+        pflicht(wert, feld);
+        try {
+            return LocalDate.parse(wert);
+        } catch (DateTimeParseException e) {
             throw BerichtAbgelehnt.anfrage(feld);
         }
     }

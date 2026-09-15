@@ -401,6 +401,14 @@ voltpilot:
       # Stand wird nie geändert. `enabled` ist der Rückbau: aus -> BerichteNaht.Keine,
       # die Tabellen bleiben. Kein eigener Takt. Vorgabe AN, im Testlauf AUS (surefire).
       enabled: ${VOLTPILOT_UEMS_BERICHTE_ENABLED:true}
+      # UEMS AP-12 IP-9: der Strukturänderungs-Läufer (Pfad 2, StrukturAenderungLaeufer).
+      # Liest rückwirkende Zuordnungen, Flächen und Verteilungen aus ort_aenderung und
+      # messstelle_aenderung (Wasserzeichen bericht_struktur_gelesen) und ruft dieselbe
+      # Naht in einer eigenen Transaktion je Protokollzeile - die Schreibwege selbst
+      # bleiben, wie sie sind. Läuft nur, wenn auch `berichte.enabled` an ist.
+      # `enabled` ist der Not-Aus. Vorgabe AN, im Testlauf AUS (surefire).
+      struktur:
+        enabled: ${VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED:true}
     bestandsuebernahme:
       enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
     # UEMS AP-01 IP-2: der UMSTIEG „Bestand → Zustand" der Funktionen läuft direkt

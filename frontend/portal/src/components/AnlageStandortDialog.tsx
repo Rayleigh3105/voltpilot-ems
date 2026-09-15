@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type AnlageUmzug, type StandorteAmStichtag } from '../api';
+import type { BerichteFolgen } from '../berichteFolgen';
 import {
   FOLGEN_AENDERT_TITEL,
   FOLGEN_BLEIBT_TITEL,
@@ -32,6 +33,7 @@ import {
   type UmzugForm,
 } from '../anlageUmziehen';
 import { alsOrtFehler } from '../standorte';
+import { useBerichteFolgen } from '../useBerichteFolgen';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import './StandortDialog.css';
@@ -77,6 +79,13 @@ export function AnlageStandortDialog({
   const pruefung = pruefeUmzug(form);
   const fehler: UmzugFehler = { ...(versucht ? pruefung : {}), ...serverFehler };
   const feldId = (feld: UmzugFeld) => `${basis}-${feld}`;
+  // AP-12 IP-9: welche freigegebenen Berichte die Zuordnung ab „gültig ab“ träfe — erst mit gewähltem Standort.
+  const berichte = useBerichteFolgen(
+    anlageId,
+    form.standortId ? form.gueltigAb : null,
+    'anlage_umzug_rueckwirkend',
+    'aendern',
+  );
 
   // Die Folgen zu jeder Wahl — die jüngste Antwort gewinnt, eine ältere wird verworfen.
   useEffect(() => {
@@ -227,7 +236,7 @@ export function AnlageStandortDialog({
               error={fehler.begruendung}
             />
             {vorschau.stand === 'da' ? (
-              <FolgenKarteAnsicht karte={folgenKarte(vorschau.umzug)} />
+              <FolgenKarteAnsicht karte={folgenKarte(vorschau.umzug)} berichte={berichte} />
             ) : vorschau.stand === 'abgelehnt' ? null : (
               <p className="vp-au-folgen-hinweis" aria-live="polite">
                 {vorschau.stand === 'pruefen' ? FOLGEN_PRUEFEN : FOLGEN_WAEHLEN}
@@ -245,7 +254,7 @@ export function AnlageStandortDialog({
   );
 }
 
-function FolgenKarteAnsicht({ karte }: { karte: FolgenKarte }) {
+function FolgenKarteAnsicht({ karte, berichte = null }: { karte: FolgenKarte; berichte?: BerichteFolgen | null }) {
   return (
     <section className="vp-au-folgen" aria-live="polite" data-testid="umzug-folgen">
       <div className="vp-au-teil">
@@ -270,6 +279,11 @@ function FolgenKarteAnsicht({ karte }: { karte: FolgenKarte }) {
         </ul>
         {karte.befehl && <p className="vp-au-befehl">{karte.befehl}</p>}
       </div>
+      {berichte && (
+        <p className="vp-au-berichte" data-testid="berichte-folgen">
+          <strong>{berichte.titel}:</strong> {berichte.text}
+        </p>
+      )}
     </section>
   );
 }

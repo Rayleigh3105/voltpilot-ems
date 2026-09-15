@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { FlaecheDialog } from './FlaecheDialog';
-import { api, ApiError } from '../api';
+import { api, ApiError, type BerichteBetroffen } from '../api';
 import { FLAECHE_SATZ } from '../uemsOrtsbaum';
 import { ORT_IDS, ortNachSchreiben } from '../test/ortsbaumFixtures';
 
@@ -141,4 +141,69 @@ describe('FlaecheDialog — „Fläche ändern“ mit Verlauf (AP-02 IP-8, T7)',
     expect(onClose).toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
   });
+});
+
+/** AP-12 IP-9: die Antwort von `GET /api/v1/berichte/betroffen` für Halle 2 (Ahrenberg). */
+const berichteAntwort = (over: Partial<BerichteBetroffen> = {}): BerichteBetroffen => ({
+  anlass: 'flaeche_rueckwirkend',
+  gilt_ab: '2027-01-01',
+  berichte_vorhanden: true,
+  betroffen: [],
+  zitieren: [
+    { kennung: 'BR-2026-0001', nr: 1 },
+    { kennung: 'BR-2026-0001', nr: 2 },
+  ],
+  ...over,
+});
+
+describe('FlaecheDialog — „Freigegebene Berichte: …“ in der Karte vor dem Speichern (AP-12 IP-9)', () => {
+  it('Halle 2 ab 01.01.2027: „Freigegebene Berichte: keine betroffen“ — gefragt mit Ort, Tag und Anlass, nach dem Speichern weg', async () => {
+    const betroffen = vi.spyOn(api, 'berichteBetroffen').mockResolvedValue(berichteAntwort());
+    vi.spyOn(api, 'ortFlaeche').mockResolvedValue(anbau());
+    oeffne();
+    // Ohne Zahl keine Karte — und keine Frage.
+    expect(screen.queryByTestId('berichte-folgen')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Neue Fläche (m²) *'), { target: { value: '3400' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Gültig ab *' }));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '1' })[0]);
+    const vorher = screen.getByTestId('flaeche-folgen');
+    const zeile = await within(vorher).findByTestId('berichte-folgen');
+    expect(zeile).toHaveTextContent('Freigegebene Berichte: keine betroffen');
+    // Die jüngste Frage gewinnt: „heute“ und dann der 01.01. innerhalb der Ruhezeit ergeben EINE Frage.
+    expect(betroffen).toHaveBeenCalledTimes(1);
+    expect(betroffen).toHaveBeenCalledWith(ORT_IDS.g2, '2027-01-01', 'flaeche_rueckwirkend');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fläche speichern' }));
+    expect(await screen.findByRole('heading', { name: 'Verlauf der Fläche' })).toBeInTheDocument();
+    expect(screen.queryByTestId('berichte-folgen')).toBeNull();
+  });
+
+  it('ein betroffener Stand: „BR-2026-0001 Nr. 2 bekommt den Vermerk „Revision nötig““', async () => {
+    vi.spyOn(api, 'berichteBetroffen').mockResolvedValue(
+      berichteAntwort({ gilt_ab: '2027-01-15', betroffen: [{ kennung: 'BR-2026-0001', nr: 2 }] }),
+    );
+    oeffne();
+    fireEvent.change(screen.getByLabelText('Neue Fläche (m²) *'), { target: { value: '3400' } });
+    expect(await screen.findByTestId('berichte-folgen')).toHaveTextContent(
+      'Freigegebene Berichte: BR-2026-0001 Nr. 2 bekommt den Vermerk „Revision nötig“',
+    );
+  });
+
+  for (const fall of ['ohne lesbaren Bericht', 'bei einer Ablehnung (403)'] as const) {
+    it(`${fall} bleibt die Zeile weg — ohne Meldung`, async () => {
+      const betroffen = vi.spyOn(api, 'berichteBetroffen');
+      if (fall === 'ohne lesbaren Bericht') betroffen.mockResolvedValue(berichteAntwort({ berichte_vorhanden: false }));
+      else betroffen.mockRejectedValue(new ApiError(403, 'Dafür ist Ihr Konto nicht freigeschaltet.', {}));
+      const fehler = vi.spyOn(console, 'error');
+      oeffne();
+      fireEvent.change(screen.getByLabelText('Neue Fläche (m²) *'), { target: { value: '3400' } });
+      await waitFor(() => expect(betroffen).toHaveBeenCalled());
+      await act(() => new Promise<void>((fertig) => setTimeout(fertig, 0)));
+      expect(screen.getByTestId('flaeche-folgen')).toBeInTheDocument();
+      expect(screen.queryByTestId('berichte-folgen')).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(fehler).not.toHaveBeenCalled();
+    });
+  }
 });

@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type Ort } from '../api';
+import type { BerichteFolgen } from '../berichteFolgen';
 import {
   FLAECHE_AENDERN_TITEL,
   FLAECHE_GESPEICHERT_TITEL,
@@ -26,6 +27,7 @@ import {
 } from '../flaecheAendern';
 import { alsOrtFehler } from '../standorte';
 import type { Tag } from '../uemsOrtsbaum';
+import { useBerichteFolgen } from '../useBerichteFolgen';
 import { VpDatePicker } from './VpDatePicker';
 import './StandortDialog.css';
 import './OrtDialog.css';
@@ -84,6 +86,8 @@ export function FlaecheDialog({
   const pruefung = useMemo(() => flaechePruefen(form), [form]);
   const fehler: FlaecheFehler = versucht ? { ...pruefung, ...serverFehler } : serverFehler;
   const vorher = useMemo(() => folgenVorher(form, heute, zeitzone), [form, heute, zeitzone]);
+  // AP-12 IP-9: welche freigegebenen Berichte die Fläche ab „gültig ab“ träfe — nur, solange die Karte „vorher“ steht.
+  const berichte = useBerichteFolgen(ortId, vorher ? form.gueltigAb : null, 'flaeche_rueckwirkend', 'aendern');
 
   function setze<K extends FlaecheFeld>(feld: K, wert: string) {
     setForm((f) => ({ ...f, [feld]: wert }));
@@ -208,7 +212,7 @@ export function FlaecheDialog({
                 />
               </div>
             </div>
-            {vorher && <FolgenKarte folgen={vorher} />}
+            {vorher && <FolgenKarte folgen={vorher} berichte={berichte} />}
             {allgemein && (
               <div className="vp-alert vp-alert-err" role="alert">
                 {allgemein}
@@ -221,13 +225,18 @@ export function FlaecheDialog({
   );
 }
 
-function FolgenKarte({ folgen }: { folgen: Folgen }) {
+function FolgenKarte({ folgen, berichte = null }: { folgen: Folgen; berichte?: BerichteFolgen | null }) {
   return (
     <section className="vp-fd-folgen" aria-live="polite" data-testid="flaeche-folgen">
       <h4>{folgen.titel}</h4>
       {folgen.saetze.map((s) => (
         <p key={s}>{s}</p>
       ))}
+      {berichte && (
+        <p data-testid="berichte-folgen">
+          <strong>{berichte.titel}:</strong> {berichte.text}
+        </p>
+      )}
     </section>
   );
 }

@@ -2,7 +2,11 @@ package com.voltpilot.api.uems;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -39,6 +43,35 @@ public interface BerichteNaht {
 
     /** Nur für einen FREIGEGEBENEN Bericht: er bleibt, wie er ist, und bekommt den Revisions-Auslöser. */
     void revisionAusloesen(Connection con, Bericht bericht, KorrekturKaskade.Betroffen betroffen) throws SQLException;
+
+    /**
+     * Was eine Zeile eines Änderungsprotokolls berührt — Pfad 2, der Strukturänderungs-Läufer (AP-12 IP-9, bericht.md B3).
+     *
+     * @param anlass die Kennung der Strukturänderung ({@link BerichtRegeln#strukturKennung}) — so steht sie am Anstoß
+     * @param anstossArt das Urteil der Regel {@link BerichtRegeln#struktur}
+     * @param objekte die IDs der Quellen, deren Zahl oder Zugehörigkeit die Änderung ab {@code giltAb} verschiebt
+     *     ({@link StrukturAufloesung}) — Messstellen, Kostenstellen, Bezugsgrößen
+     * @param giltAb der erste Tag, ab dem die Änderung gilt; Pfad 2 ist nach hinten offen
+     * @param eingetragen wann die Änderung geschrieben wurde: ein Stand oder Entwurf mit späterem Datenstand kennt sie schon
+     * @param jetzt der Zeitpunkt des Laufs (Datenstand einer Neubildung wie in Pfad 1)
+     */
+    record StrukturBetroffen(UUID tenant, String anlass, String anstossArt, Set<UUID> objekte, LocalDate giltAb,
+            Instant eingetragen, Instant jetzt) {}
+
+    /** Pfad 2: die Berichte, deren Quellen die Strukturänderung ab {@code giltAb} trifft — und die sie noch nicht kennen. */
+    default List<Bericht> betroffene(Connection con, StrukturBetroffen betroffen) throws SQLException {
+        return List.of();
+    }
+
+    /** Pfad 2, nur für einen ENTWURF — dieselbe Neubildung wie in Pfad 1. */
+    default void entwurfNeuBilden(Connection con, Bericht bericht, StrukturBetroffen betroffen) throws SQLException {
+        throw new IllegalStateException("Diese Berichts-Naht kennt keinen Strukturänderungs-Pfad: " + bericht.kennung());
+    }
+
+    /** Pfad 2, nur für einen FREIGEGEBENEN Bericht — derselbe Anstoß wie in Pfad 1, mit der Art der Strukturänderung. */
+    default void revisionAusloesen(Connection con, Bericht bericht, StrukturBetroffen betroffen) throws SQLException {
+        throw new IllegalStateException("Diese Berichts-Naht kennt keinen Strukturänderungs-Pfad: " + bericht.kennung());
+    }
 
     /** Die Berichte abgeschaltet ({@value BerichtKaskade#SCHALTER} = false, Rückbau): kein Bericht, nichts zu tun. */
     @Component

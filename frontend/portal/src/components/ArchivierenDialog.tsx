@@ -6,6 +6,7 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type OrtAktionen } from '../api';
 import {
   archivierenFolgen,
+  archivTag,
   loeschenFolgen,
   wege,
   wiederherstellenFolgen,
@@ -13,6 +14,7 @@ import {
   type Folge,
 } from '../ortArchiv';
 import { alsOrtFehler } from '../standorte';
+import { useBerichteFolgen } from '../useBerichteFolgen';
 import './StandortDialog.css';
 import './ArchivierenDialog.css';
 
@@ -58,6 +60,13 @@ export function ArchivierenDialog({
   const basis = `vp-ad-${useId().replace(/:/g, '')}`;
   const archivieren = objekt.aktionen?.archivieren ?? null;
   const zurueck = objekt.aktionen?.wiederherstellen ?? null;
+  // AP-12 IP-9: welche freigegebenen Berichtsstände Messstellen dieses Orts zitieren — gefragt ab dem Archivtag.
+  const berichte = useBerichteFolgen(
+    objekt.id,
+    aktion === 'archivieren' && archivieren ? archivTag(archivieren) : null,
+    'zuordnung_rueckwirkend',
+    objekt.art === 'standort' ? 'archivieren_standort' : 'archivieren_ort',
+  );
   const [name, setName] = useState(objekt.name);
   const [nameFehler, setNameFehler] = useState<string | null>(
     zurueck?.grund === 'name_belegt' ? zurueck.text : null,
@@ -170,7 +179,7 @@ export function ArchivierenDialog({
         {aktion === 'archivieren' && archivieren && (
           <>
             <p className="vp-sd-vorspann">{objekt.name} bleibt lesbar und in alten Berichten unverändert.</p>
-            <FolgenListe titelId={`${basis}-folgen`} folgen={archivierenFolgen(objekt.art, archivieren)} />
+            <FolgenListe titelId={`${basis}-folgen`} folgen={archivierenFolgen(objekt.art, archivieren, berichte)} />
           </>
         )}
 
