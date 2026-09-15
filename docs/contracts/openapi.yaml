@@ -1057,6 +1057,74 @@ paths:
         "404": { $ref: "#/components/responses/OrtAbgelehnt" }
         "409": { $ref: "#/components/responses/OrtAbgelehnt" }
         "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}/verschieben/vorschau:
+    get:
+      tags: [ortsstruktur]
+      summary: Was das Verschieben eines Gebäudes oder Bereichs bewirken würde - schreibt nichts (AP-02 IP-12, V2/V3, A13).
+      description: >
+        Dieselbe Regel und dieselben Fakten wie POST .../verschieben
+        (ortsbaum-vectors.json, Familien `ueberlappung` und `verschieben`) und
+        dieselbe Antwortform - nur `protokoll` ist leer. Die Folgen-Karte
+        (E11): `ziehenMit` sind die Kinder-Bereiche, `messstellenWechselnStandort`
+        die Messstellen, deren Standort sich ABGELEITET ändert (sie bleiben an
+        ihrem Ort); es BLEIBEN `bleibenAnlagen`, ihre `bleibenNetzanschluesse`
+        und ihre übrigen `bleibenMessstellen` - etwa eine, die direkt am
+        Standort hängt (A13). Nichts Elektrisches zieht mit, und es wird nichts
+        gesendet (`befehle` = 0). Lehnt ab wie der Eintrag: Status, Code,
+        `feld` und der Satz des Vertrags. Rechte: `gebaeude.pflegen`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: zielId, in: query, required: true, description: "Ein Standort - für einen Bereich auch ein Gebäude.", schema: { type: string, format: uuid } }
+        - { name: gueltigAb, in: query, required: false, description: Fehlend = heute in der Zeitzone des Standorts., schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Die Vorschau - dieselbe Form wie der Eintrag, `protokoll` leer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtVerschiebung" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
+  /api/v1/orte/{ortId}/verschieben:
+    post:
+      tags: [ortsstruktur]
+      summary: Ein Gebäude oder einen Bereich ab einem Tag verschieben (AP-02 IP-12, V4, A1/A2/A13).
+      description: >
+        Das laufende Intervall des Orts endet am Vortag von `gueltigAb`, das
+        neue am Ziel erbt dessen Ende (Invariante 4: nie überschrieben). Ein
+        Gebäude zieht zu einem anderen Standort, ein Bereich zu einem Gebäude
+        oder direkt an einen Standort - nie in einen Bereich. Geschrieben
+        werden NUR `ort_zuordnung` und GENAU EIN Protokolleintrag "verschoben"
+        am Ort ("Gebäude verschoben: Werk Ahrenberg -> Werk Ahrenberg Nord
+        (ST-3)"). Bereiche ziehen mit, Messstellen bleiben an ihrem Ort;
+        Anlagen, Netzanschlüsse, Box, Topics und alles andere bleiben (A13).
+        Zukunft = geplant, Vergangenheit = rückwirkend (sichtbar in
+        `rueckwirkung` und im Protokoll, E2). Abgelehnt: 400
+        `ziel_ist_bisheriger_eltern` / `ziel_art_unzulaessig` / `anfrage_ungueltig`,
+        409 `gleicher_tag` / `ziel_archiviert` / `objekt_archiviert` / `name_belegt`,
+        422 `vor_dem_ersten_intervall` / `ziel_gab_es_noch_nicht` - je mit dem
+        Satz des Vertrags und `feld`. Rechte: `gebaeude.pflegen`, mit
+        `gueltigAb` vor heute zusätzlich `aenderung.rueckwirkend`.
+      parameters:
+        - { name: ortId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrtVerschiebenAnfrage" }
+      responses:
+        "200":
+          description: Verschoben - die Zuordnungen frisch gelesen, dazu der Protokolleintrag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrtVerschiebung" }
+        "400": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "409": { $ref: "#/components/responses/OrtAbgelehnt" }
+        "422": { $ref: "#/components/responses/OrtAbgelehnt" }
   /api/v1/overview:
     get:
       tags: [sites]
@@ -16741,6 +16809,38 @@ components:
         loeschen:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/OrtLoeschenAktion" }]
+        verschieben:
+          nullable: true
+          description: IP-12 - nur an einem Gebäude oder Bereich, der heute im Baum steht.
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebenAktion" }]
+    OrtVerschiebenAktion:
+      type: object
+      description: >
+        IP-12 (V1/V2): wohin der Knoten heute ziehen kann - jeder Knoten, der heute
+        im Baum steht und als Elternknoten erlaubt ist (nie ein Bereich), ohne den
+        bisherigen. Ob der Tag geht, urteilt die Vorschau.
+      properties:
+        erlaubt: { type: boolean }
+        text: { type: string, nullable: true, description: Ohne Ziel - warum nicht. }
+        ziele: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebenZiel" } }
+    OrtVerschiebenZiel:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        art: { type: string, enum: [standort, gebaeude] }
+        kurzzeichen: { type: string }
+        name: { type: string }
+        standortName: { type: string, nullable: true, description: Nur beim Gebäude. }
+    OrtsbaumDanach:
+      type: object
+      description: IP-12 (V4) - die schon eingetragene Zuordnung ab dem Tag nach `gueltigBis` ("ab 01.03.2027 → Werk Ahrenberg Nord").
+      properties:
+        ab: { type: string, format: date }
+        elternId: { type: string, format: uuid }
+        elternArt: { type: string, enum: [standort, gebaeude] }
+        elternName: { type: string, nullable: true }
+        standortId: { type: string, format: uuid, nullable: true }
+        standortName: { type: string, nullable: true }
     OrtArchivierenAktion:
       type: object
       properties:
@@ -16796,6 +16896,10 @@ components:
         bereiche:
           type: array
           items: { $ref: "#/components/schemas/OrtsbaumBereich" }
+        danach:
+          nullable: true
+          description: IP-12 (V4) - wohin der Knoten nach `gueltigBis` zieht; null ohne Ende.
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDanach" }]
         aktionen:
           nullable: true
           description: IP-15 - Archivieren und Löschen; null mit Stichtag.
@@ -16815,6 +16919,10 @@ components:
         flaecheM2: { type: integer, nullable: true }
         flaecheQuelle: { type: string, nullable: true, enum: [eigen] }
         messstellenZahl: { type: integer, nullable: true, description: "Die Messstellen, deren Ort am Stichtag genau dieser Knoten ist; 0 wenn keine." }
+        danach:
+          nullable: true
+          description: IP-12 (V4) - wohin der Knoten nach `gueltigBis` zieht; null ohne Ende.
+          allOf: [{ $ref: "#/components/schemas/OrtsbaumDanach" }]
         aktionen:
           nullable: true
           description: IP-15 - Archivieren und Löschen; null mit Stichtag.
@@ -17047,6 +17155,114 @@ components:
               id: { type: integer, format: int64 }
               objektArt: { type: string, enum: [anlage, standort] }
               objektId: { type: string, format: uuid }
+    OrtVerschiebenAnfrage:
+      type: object
+      additionalProperties: false
+      required: [zielId]
+      properties:
+        zielId: { type: string, format: uuid, description: "Ein Standort - für einen Bereich auch ein Gebäude." }
+        gueltigAb: { type: string, format: date, description: Fehlend = heute in der Zeitzone des Standorts. }
+        begruendung: { type: string, maxLength: 500, nullable: true }
+    OrtVerschiebungKnoten:
+      type: object
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        art: { type: string, nullable: true, enum: [unternehmen, standort, gebaeude, bereich] }
+        kurzzeichen: { type: string, nullable: true }
+        name: { type: string, nullable: true }
+    OrtVerschiebungZuordnung:
+      type: object
+      properties:
+        eltern: { $ref: "#/components/schemas/OrtVerschiebungKnoten" }
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true, description: Der letzte Tag, einschließlich. }
+        zustand: { type: string, enum: [gueltig, geplant, beendet, aufgehoben] }
+    OrtVerschiebungMessstelle:
+      type: object
+      description: Eine Messstelle mit dem Ort, an dem sie am "gültig ab" hängt - das Verschieben ändert ihn nie.
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        kennzeichen: { type: string, example: MS-14 }
+        name: { type: string, nullable: true }
+        ort: { $ref: "#/components/schemas/OrtVerschiebungKnoten" }
+    OrtVerschiebungAnlage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        standort:
+          nullable: true
+          description: Der Standort, dem die Anlage am "gültig ab" zugeordnet ist - er bleibt.
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebungKnoten" }]
+    OrtVerschiebungNetzanschluss:
+      type: object
+      properties:
+        id: { type: string, format: uuid, nullable: true }
+        kennzeichen: { type: string, example: NA-2 }
+    OrtVerschiebungFolgen:
+      type: object
+      description: >
+        Das Urteil von OrtsbaumAbleitung.verschiebenFolgen in seiner Reihenfolge
+        (Vektor-Familie `verschieben`, Fall `a13-folgen-karte`).
+      properties:
+        ziehenMit: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungKnoten" } }
+        messstellenWechselnStandort: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungMessstelle" } }
+        bleibenAnlagen: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungAnlage" } }
+        bleibenNetzanschluesse: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungNetzanschluss" } }
+        bleibenMessstellen: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungMessstelle" } }
+    OrtVerschiebungZeitraum:
+      type: object
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: Einschließlich. }
+    OrtVerschiebungEintrag:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        objektArt: { type: string, enum: [gebaeude, bereich] }
+        objektId: { type: string, format: uuid }
+        text: { type: string, example: "Gebäude verschoben: Werk Ahrenberg → Werk Ahrenberg Nord (ST-3)" }
+        giltAb: { type: string, format: date }
+        rueckwirkend: { type: boolean }
+        wer: { type: string }
+        eingetragenAm: { type: string, format: date-time }
+    OrtVerschiebung:
+      type: object
+      description: >
+        Vorschau und Eintrag des Verschiebens eines Gebäudes oder Bereichs
+        (UEMS AP-02 IP-12) - dieselbe Form; die Vorschau ohne Protokoll.
+      properties:
+        ortId: { type: string, format: uuid }
+        art: { type: string, enum: [gebaeude, bereich] }
+        kurzzeichen: { type: string }
+        name: { type: string }
+        bisher: { $ref: "#/components/schemas/OrtVerschiebungKnoten" }
+        bisherStandort:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebungKnoten" }]
+        neu: { $ref: "#/components/schemas/OrtVerschiebungKnoten" }
+        neuStandort:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebungKnoten" }]
+        gueltigAb: { type: string, format: date }
+        gueltigBis: { type: string, format: date, nullable: true, description: Von der laufenden Zuordnung geerbt. }
+        danach:
+          nullable: true
+          description: Der Elternknoten der schon geplanten Zuordnung ab dem Tag nach `gueltigBis`.
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebungKnoten" }]
+        rueckwirkung: { $ref: "#/components/schemas/OrtRueckwirkung" }
+        rueckwirkendBetroffen:
+          nullable: true
+          description: Nur rückwirkend - die Tage, die nachträglich anders zählen (der Fakt für AP-12).
+          allOf: [{ $ref: "#/components/schemas/OrtVerschiebungZeitraum" }]
+        zuordnungen: { type: array, items: { $ref: "#/components/schemas/OrtVerschiebungZuordnung" } }
+        folgen: { $ref: "#/components/schemas/OrtVerschiebungFolgen" }
+        befehle: { type: integer, enum: [0] }
+        begruendung: { type: string, nullable: true }
+        protokoll:
+          type: array
+          description: In der Vorschau leer; nach dem Eintrag genau einer, am Ort.
+          items: { $ref: "#/components/schemas/OrtVerschiebungEintrag" }
     CreateTenantRequest:
       type: object
       required: [name]

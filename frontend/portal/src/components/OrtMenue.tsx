@@ -12,6 +12,8 @@ const ICON: Record<MenueEintrag['art'], IconName> = {
   wiederherstellen_gesperrt: 'info',
   loeschen: 'trash',
   loeschen_gesperrt: 'info',
+  verschieben: 'map-pin',
+  verschieben_gesperrt: 'info',
 };
 
 /**

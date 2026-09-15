@@ -2,6 +2,11 @@ package com.voltpilot.api.uems;
 
 import com.voltpilot.api.uems.OrtsbaumAbleitung.ArchivErgebnis;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.LoeschErgebnis;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.ElternArt;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.ObjektArt;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtAmStichtag;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.OrtArt;
+import com.voltpilot.api.uems.OrtsbaumAbleitung.StandAm;
 import com.voltpilot.api.uems.OrtsbaumAbleitung.WiederherstellErgebnis;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -36,9 +41,23 @@ public final class OrtAktionen {
     /**
      * Je Knoten genau die Aktionen, die zu seinem Zustand gehören: ein Knoten im Baum kann
      * archiviert und gelöscht werden, ein archivierter wiederhergestellt und gelöscht, der
-     * Standort archiviert (gelöscht wird er nie, §4.1). {@code null} = gehört nicht dazu.
+     * Standort archiviert (gelöscht wird er nie, §4.1). {@code null} = gehört nicht dazu. {@code verschieben}
+     * (IP-12) nur an einem Gebäude oder Bereich, der heute im Baum steht.
      */
-    public record Aktionen(Archivieren archivieren, Wiederherstellen wiederherstellen, Loeschen loeschen) {}
+    public record Aktionen(Archivieren archivieren, Wiederherstellen wiederherstellen, Loeschen loeschen,
+            Verschieben verschieben) {}
+
+    /**
+     * IP-12 (V1/V2): wohin der Knoten HEUTE ziehen kann — jeder Knoten, der heute im Baum steht
+     * ({@link OrtsbaumAbleitung#standAm}: bestehend, nicht archiviert), dessen Art der Vertrag als
+     * Elternknoten erlaubt ({@link OrtsbaumAbleitung#ERLAUBTE_ELTERN}: nie ein Bereich), OHNE den
+     * bisherigen Elternknoten (§5.10). Standorte zuerst, dann Gebäude mit ihrem Standort. Ob der Tag
+     * geht, urteilt die Vorschau. {@code erlaubt} = es gibt ein Ziel; sonst sagt {@code text}, warum nicht.
+     */
+    public record Verschieben(boolean erlaubt, String text, List<Ziel> ziele) {}
+
+    /** Ein Ziel: {@code art} standort · gebaeude; {@code standortName} nur beim Gebäude. */
+    public record Ziel(UUID id, String art, String kurzzeichen, String name, String standortName) {}
 
     /**
      * {@code erlaubt}: sonst {@code text} = der Satz mit Grund und Weg (Z1) und {@code gruende} = die
@@ -66,6 +85,7 @@ public final class OrtAktionen {
     private final StandortService.Baum baum;
     private final LocalDate heute;
     private final Set<UUID> mitBezugsgroesse;
+    private StandAm stand;
 
     /**
      * @param heute der Tag in der Zeitzone des Standorts
@@ -79,7 +99,7 @@ public final class OrtAktionen {
 
     /** Ein Gebäude oder Bereich, der heute im Baum steht. */
     public Aktionen imBaum(OrtRepository.Ort o) {
-        return new Aktionen(archivieren(o.kurzzeichen()), null, loeschen(baum, o, mitBezugsgroesse));
+        return new Aktionen(archivieren(o.kurzzeichen()), null, loeschen(baum, o, mitBezugsgroesse), verschieben(o));
     }
 
     /** Ein archiviertes Gebäude oder ein archivierter Bereich (Grabstein, Z3). */
@@ -87,12 +107,50 @@ public final class OrtAktionen {
         WiederherstellErgebnis w = OrtsbaumAbleitung.wiederherstellen(baum.baum(), o.kurzzeichen(), heute, null);
         String grund = w.grund() == null ? null : w.grund().name().toLowerCase(Locale.ROOT);
         return new Aktionen(null, new Wiederherstellen(w.erlaubt(), grund, w.text(), heute),
-                loeschen(baum, o, mitBezugsgroesse));
+                loeschen(baum, o, mitBezugsgroesse), null);
     }
 
     /** Der Standort selbst: nur Archivieren. */
     public Aktionen standort(String kurzzeichen) {
-        return new Aktionen(archivieren(kurzzeichen), null, null);
+        return new Aktionen(archivieren(kurzzeichen), null, null, null);
+    }
+
+    private Verschieben verschieben(OrtRepository.Ort o) {
+        if (stand == null) {
+            stand = OrtsbaumAbleitung.standAm(baum.baum(), heute);
+        }
+        OrtAmStichtag selbst = stand.orte().stream()
+                .filter(x -> x.kennzeichen().equals(o.kurzzeichen())).findFirst().orElse(null);
+        if (selbst == null) {
+            return null;
+        }
+        List<ElternArt> erlaubt = OrtsbaumAbleitung.ERLAUBTE_ELTERN.get(ObjektArt.valueOf(o.art().toUpperCase(Locale.ROOT)));
+        List<Ziel> standorte = new ArrayList<>();
+        List<Ziel> gebaeude = new ArrayList<>();
+        for (OrtAmStichtag k : stand.orte()) {
+            if (k.kennzeichen().equals(o.kurzzeichen()) || k.kennzeichen().equals(selbst.eltern())) {
+                continue;
+            }
+            OrtsbaumAbleitung.Ort knoten = baum.baum().ort(k.kennzeichen()).orElse(null);
+            if (knoten == null || !erlaubt.contains(ElternArt.valueOf(knoten.art().name()))) {
+                continue;
+            }
+            if (knoten.art() == OrtArt.STANDORT) {
+                standorte.add(new Ziel(baum.standorte().get(k.kennzeichen()), OrtArt.STANDORT.code(),
+                        k.kennzeichen(), knoten.name(), null));
+            } else {
+                OrtRepository.Ort g = baum.ort(k.kennzeichen());
+                gebaeude.add(new Ziel(g.id(), g.art(), g.kurzzeichen(), g.name(),
+                        baum.baum().ort(k.standort()).map(OrtsbaumAbleitung.Ort::name).orElse(null)));
+            }
+        }
+        List<Ziel> ziele = new ArrayList<>(standorte);
+        ziele.addAll(gebaeude);
+        String text = ziele.isEmpty()
+                ? o.name() + " kann nicht verschoben werden: es gibt " + ("bereich".equals(o.art())
+                        ? "kein anderes Gebäude und keinen anderen Standort." : "keinen anderen Standort.")
+                : null;
+        return new Verschieben(!ziele.isEmpty(), text, List.copyOf(ziele));
     }
 
     private Archivieren archivieren(String kz) {

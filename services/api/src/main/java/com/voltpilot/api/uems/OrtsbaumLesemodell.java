@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -63,7 +64,17 @@ public final class OrtsbaumLesemodell {
             Integer flaecheM2,
             String flaecheQuelle,
             Integer messstellenZahl,
+            Danach danach,
             OrtAktionen.Aktionen aktionen) {}
+
+    /**
+     * IP-12 (V4): wohin der Knoten nach dem Ende seiner Zuordnung am Stichtag zieht — die schon
+     * eingetragene Zuordnung ab {@code gueltigBis + 1} („ab 01.03.2027 → Werk Ahrenberg Nord“).
+     * {@code standortId}/{@code standortName}: der Standort des neuen Elternknotens an dem Tag.
+     * {@code null} an einem Knoten ohne Ende oder ohne anschließende Zuordnung (dann endet er dort).
+     */
+    public record Danach(LocalDate ab, UUID elternId, String elternArt, String elternName, UUID standortId,
+            String standortName) {}
 
     /**
      * Ein Gebäude zum Stichtag mit den Bereichen, die an dem Tag an ihm hängen. {@code aktionen}
@@ -84,6 +95,7 @@ public final class OrtsbaumLesemodell {
             String flaecheQuelle,
             Integer messstellenZahl,
             List<Bereich> bereiche,
+            Danach danach,
             OrtAktionen.Aktionen aktionen) {}
 
     /** Was am Stichtag ohne Gebäude am Standort hängt (AP-00 E3: Gebäude sind optional). */
@@ -174,7 +186,7 @@ public final class OrtsbaumLesemodell {
                         o.notiz(), o.zustand(), iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(),
                         quelle(a), zahl(zahl, o.kurzzeichen()),
                         bereicheUnter(z, amTag, o.id().toString(), stichtag, zahl, aktionen),
-                        aktionen == null ? null : aktionen.imBaum(o)));
+                        danach(z, iv), aktionen == null ? null : aktionen.imBaum(o)));
             } else if (st.equals(a.eltern())) {
                 direkt.add(bereich(z, o, a, stichtag, zahl, aktionen));
             }
@@ -296,7 +308,35 @@ public final class OrtsbaumLesemodell {
         OrtZuordnungRepository.Zuordnung iv = intervallAm(z, o.id(), stichtag);
         return new Bereich(o.id(), o.kurzzeichen(), o.name(), o.nutzung(), o.notiz(), o.zustand(),
                 iv.gueltigAb(), iv.gueltigBis(), a.flaecheM2(), quelle(a), zahl(zahl, o.kurzzeichen()),
-                aktionen == null ? null : aktionen.imBaum(o));
+                danach(z, iv), aktionen == null ? null : aktionen.imBaum(o));
+    }
+
+    /**
+     * V4: die Zuordnung, die am Tag nach {@code iv} beginnt — eine Lesung der Zeilen, kein Urteil. Hängt
+     * das neue Ziel an einem Gebäude, ist der Standort der, an dem das Gebäude an diesem Tag hängt.
+     */
+    private static Danach danach(Zeilen z, OrtZuordnungRepository.Zuordnung iv) {
+        if (iv.gueltigBis() == null) {
+            return null;
+        }
+        LocalDate ab = iv.gueltigBis().plusDays(1);
+        OrtZuordnungRepository.Zuordnung n = z.ortZuordnungen().stream()
+                .filter(x -> !x.aufgehoben() && x.ortId().equals(iv.ortId()) && x.gueltigAb().equals(ab))
+                .findFirst().orElse(null);
+        if (n == null) {
+            return null;
+        }
+        UUID standortId = n.elternStandortId() != null ? n.elternStandortId() : z.ortZuordnungen().stream()
+                .filter(x -> !x.aufgehoben() && x.ortId().equals(n.elternOrtId()) && !x.gueltigAb().isAfter(ab)
+                        && (x.gueltigBis() == null || !ab.isAfter(x.gueltigBis())))
+                .map(OrtZuordnungRepository.Zuordnung::elternStandortId)
+                .filter(Objects::nonNull).findFirst().orElse(null);
+        String standortName = z.standorte().stream().filter(s -> s.id().equals(standortId)).findFirst()
+                .map(StandortRepository.Standort::name).orElse(null);
+        String elternName = n.elternStandortId() != null ? standortName : z.orte().stream()
+                .filter(o -> o.id().equals(n.elternOrtId())).findFirst().map(OrtRepository.Ort::name).orElse(null);
+        return new Danach(ab, n.eltern(), n.elternStandortId() != null ? "standort" : "gebaeude", elternName,
+                standortId, standortName);
     }
 
     /**

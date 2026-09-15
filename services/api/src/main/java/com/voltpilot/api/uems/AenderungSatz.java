@@ -76,7 +76,7 @@ public final class AenderungSatz {
             case "archiviert" -> was + " archiviert";
             case "wiederhergestellt" -> was + " wiederhergestellt";
             case "geloescht" -> was + " gelöscht";
-            case "verschoben" -> verschoben(was, bezugArt, neu);
+            case "verschoben" -> verschoben(was, bezugArt, alt, neu);
             case "korrigiert" -> "Zuordnung berichtigt" + zielZusatz(neu);
             case "flaeche_geaendert" -> "Bezugsfläche geändert" + wechsel(text(alt, "flaeche_m2"),
                     text(neu, "flaeche_m2"), " m²");
@@ -134,9 +134,10 @@ public final class AenderungSatz {
      * „verschoben“: ein Ort an einen anderen Knoten (Kennzeichen des Ziels) — oder die Zuordnung
      * einer ANLAGE (AP-02 IP-9/IP-11), die jede Seite erzählt: an der Anlage „Standort zugeordnet:
      * Werk Ahrenberg Nord (ST-3)“, am neuen Standort „Anlage zugeordnet: …“, am bisherigen
-     * „Anlage zieht um: … → Werk Ahrenberg Nord“.
+     * „Anlage zieht um: … → Werk Ahrenberg Nord“. Ein Gebäude oder Bereich mit Namen der Elternknoten
+     * (IP-12): „Gebäude verschoben: Werk Ahrenberg → Werk Ahrenberg Nord (ST-3)“.
      */
-    private static String verschoben(String was, String bezugArt, JsonNode neu) {
+    private static String verschoben(String was, String bezugArt, JsonNode alt, JsonNode neu) {
         String anlage = text(neu, "anlage_name");
         String richtung = text(neu, "richtung");
         if ("standort".equals(bezugArt) && anlage != null && richtung != null) {
@@ -149,6 +150,12 @@ public final class AenderungSatz {
         if ("anlage".equals(bezugArt) && standort != null) {
             String kz = text(neu, "standort_kurzzeichen");
             return "Standort zugeordnet: " + standort + (kz == null ? "" : " (" + kz + ")");
+        }
+        String nach = text(neu, "eltern_name");
+        if (("gebaeude".equals(bezugArt) || "bereich".equals(bezugArt)) && nach != null) {
+            String von = text(alt, "eltern_name");
+            String kz = text(neu, "eltern_kurzzeichen");
+            return was + " verschoben: " + (von == null ? "" : von + " → ") + nach + (kz == null ? "" : " (" + kz + ")");
         }
         return was + " verschoben" + zielZusatz(neu);
     }

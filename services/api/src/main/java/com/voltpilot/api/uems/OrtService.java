@@ -585,7 +585,7 @@ public class OrtService {
      * ersten Tag und, wenn der Ort dann schon besteht, heute. Den Satz baut der Vertrag; der
      * Verweis nennt den Träger mit seinem Kurzzeichen.
      */
-    private static void nameFrei(Zeilen z, Ortsbaum baum, OrtArt art, String eltern, String name,
+    static void nameFrei(Zeilen z, Ortsbaum baum, OrtArt art, String eltern, String name,
             LocalDate ab, LocalDate heute, String ausser) {
         List<LocalDate> tage = heute.isAfter(ab) ? List.of(ab, heute) : List.of(ab);
         for (LocalDate tag : tage) {
@@ -646,9 +646,9 @@ public class OrtService {
     // ------------------------------------------------------------------ Hilfen
 
     /** Wo ein Ort heute hängt — sonst an seinem ersten (geplant) bzw. letzten (archiviert) Tag. */
-    private record Lage(UUID standortId, ZoneId zone, LocalDate tag, String eltern) {}
+    record Lage(UUID standortId, ZoneId zone, LocalDate tag, String eltern) {}
 
-    private static Lage lage(Zeilen z, Ortsbaum baum, UUID ortId, Instant jetzt) {
+    static Lage lage(Zeilen z, Ortsbaum baum, UUID ortId, Instant jetzt) {
         ZoneId vorgabe = z.zeitzone();
         LocalDate heute = jetzt.atZone(vorgabe).toLocalDate();
         List<OrtZuordnungRepository.Zuordnung> w = z.ortZuordnungen().stream()

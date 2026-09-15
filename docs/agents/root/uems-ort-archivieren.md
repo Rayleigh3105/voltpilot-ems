@@ -36,10 +36,10 @@ gefiltert wird über den Zustand, nie durch Löschen der Geschichte; gelöscht w
 7. **Stift UND Menü je Zeile (Variante A, gebaut) — nicht „Bearbeiten“ im Menü (B, Mockup V1).** Vorschau
    IP-15, gemessen bei 375 px: A lässt dem Zeilentext 132 px (Kurzzeichen bricht unter lange Namen), B 184 px.
    Gebaut ist A, weil Bearbeiten ein Tipp bleibt und der getestete Stift-Weg aus IP-7/IP-13 unverändert
-   bleibt; B ist der Kandidat, sobald „Verschieben“ (IP-12) und „Änderungen“ (H2) ins Menü kommen. Ein
+   bleibt; B ist der Kandidat, sobald „Verschieben“ (IP-12) und „Änderungen“ (H2) ins Menü kommen. IP-12 hat „Verschieben …“ ins Menü gebracht und A behalten (Vergleichsbild B in der Ansicht, `uems-ort-verschieben.md`). Ein
    archivierter Knoten hält KEINEN Stift-Platz (kein Stift, keine Datenlage-Spalte) — sonst bricht der Archivtag um.
 8. **Nicht hier:** Löschen eines Standorts (§4.1, nie), eine Messstellen-Seite im Portal für den Weg aus Z1
-   (der Satz nennt ihn, ein Link kommt mit AP-13), Verschieben (IP-12), das Änderungsprotokoll (H2).
+   (der Satz nennt ihn, ein Link kommt mit AP-13), Verschieben (IP-12, `uems-ort-verschieben.md`), das Änderungsprotokoll (H2).
 
 ## Prüfen
 

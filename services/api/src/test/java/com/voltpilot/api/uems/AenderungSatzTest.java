@@ -119,6 +119,12 @@ class AenderungSatzTest {
                 .isEqualTo("Gebäude angelegt: Halle 2");
         assertThat(satz("bereich", "verschoben", null, "{\"kennzeichen\":\"G-2\"}"))
                 .isEqualTo("Bereich verschoben: G-2");
+        // IP-12: mit den Namen der Elternknoten — alt → neu, das Kurzzeichen des Ziels.
+        assertThat(satz("gebaeude", "verschoben", "{\"eltern_name\":\"Werk Ahrenberg\",\"eltern_kurzzeichen\":\"ST-1\"}",
+                "{\"eltern_name\":\"Werk Ahrenberg Nord\",\"eltern_kurzzeichen\":\"ST-3\"}"))
+                .isEqualTo("Gebäude verschoben: Werk Ahrenberg → Werk Ahrenberg Nord (ST-3)");
+        assertThat(satz("bereich", "verschoben", null, "{\"eltern_name\":\"Halle 1\"}"))
+                .isEqualTo("Bereich verschoben: Halle 1");
         assertThat(satz("bereich", "korrigiert", null, "{\"kennzeichen\":\"G-2\"}"))
                 .isEqualTo("Zuordnung berichtigt: G-2");
         // Die Zuordnung einer Anlage (IP-9/IP-11) erzählt jede Seite — Anlage, neuer, bisheriger Standort.

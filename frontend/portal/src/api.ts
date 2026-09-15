@@ -3174,8 +3174,20 @@ export interface OrtsbaumBereich {
    * seiner Bereiche; AP-04 IP-7); 0, wenn keine — `null` nur ohne Messstellen-Quelle.
    */
   messstellenZahl: number | null;
+  /** IP-12 (V4): wohin der Knoten nach `gueltigBis` zieht — „ab 01.03.2027 → Werk Ahrenberg Nord“; `null` ohne Ende. */
+  danach?: OrtsbaumDanach | null;
   /** IP-15: was man heute mit dem Knoten tun kann; `null` mit Stichtag. */
   aktionen?: OrtAktionen | null;
+}
+
+/** IP-12 (V4): die schon eingetragene Zuordnung ab dem Tag nach `gueltigBis`. */
+export interface OrtsbaumDanach {
+  ab: string;
+  elternId: string;
+  elternArt: 'standort' | 'gebaeude';
+  elternName: string | null;
+  standortId: string | null;
+  standortName: string | null;
 }
 
 export interface OrtsbaumGebaeude extends OrtsbaumBereich {
@@ -3230,6 +3242,100 @@ export interface OrtAktionen {
     ab: string;
   } | null;
   loeschen: { erlaubt: boolean; gruende: OrtLoeschGrund[]; text: string | null } | null;
+  /** IP-12: nur an einem Gebäude oder Bereich, der heute im Baum steht. */
+  verschieben?: OrtVerschiebenAktion | null;
+}
+
+/**
+ * IP-12 (V1/V2): wohin der Knoten heute ziehen kann — jeder Knoten, der heute im Baum steht und als
+ * Elternknoten erlaubt ist (nie ein Bereich), OHNE den bisherigen. Ob der Tag geht, urteilt die Vorschau.
+ */
+export interface OrtVerschiebenAktion {
+  erlaubt: boolean;
+  /** Ohne Ziel: warum nicht. */
+  text: string | null;
+  ziele: OrtVerschiebenZiel[];
+}
+
+export interface OrtVerschiebenZiel {
+  id: string;
+  art: 'standort' | 'gebaeude';
+  kurzzeichen: string;
+  name: string;
+  /** Nur beim Gebäude. */
+  standortName: string | null;
+}
+
+/** POST /api/v1/orte/{id}/verschieben */
+export interface OrtVerschiebenAnfrage {
+  zielId: string;
+  gueltigAb?: string;
+  begruendung?: string;
+}
+
+export interface OrtVerschiebungKnoten {
+  id: string | null;
+  art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | null;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+
+/** Eine Messstelle mit dem Ort, an dem sie am „gültig ab“ hängt — das Verschieben ändert ihn nie. */
+export interface OrtVerschiebungMessstelle {
+  id: string | null;
+  kennzeichen: string;
+  name: string | null;
+  ort: OrtVerschiebungKnoten | null;
+}
+
+/**
+ * Vorschau (`GET …/verschieben/vorschau`) und Eintrag (`POST …/verschieben`) antworten gleich: was
+ * das Verschieben bewirkt. `folgen` ist das Urteil des Vertrags (E11/A13), `protokoll` in der Vorschau
+ * leer, `befehle` immer 0.
+ */
+export interface OrtVerschiebung {
+  ortId: string;
+  art: 'gebaeude' | 'bereich';
+  kurzzeichen: string;
+  name: string;
+  /** Der Elternknoten am „gültig ab“ ohne das Verschieben. */
+  bisher: OrtVerschiebungKnoten;
+  bisherStandort: OrtVerschiebungKnoten | null;
+  neu: OrtVerschiebungKnoten;
+  neuStandort: OrtVerschiebungKnoten | null;
+  gueltigAb: string;
+  /** Von der laufenden Zuordnung geerbt; `null` = offen. */
+  gueltigBis: string | null;
+  /** Der Elternknoten der schon geplanten Zuordnung ab dem Tag nach `gueltigBis`. */
+  danach: OrtVerschiebungKnoten | null;
+  rueckwirkung: OrtRueckwirkung;
+  /** Nur rückwirkend: die Tage, die nachträglich anders zählen. */
+  rueckwirkendBetroffen: { von: string; bis: string } | null;
+  zuordnungen: {
+    eltern: OrtVerschiebungKnoten;
+    gueltigAb: string;
+    gueltigBis: string | null;
+    zustand: 'gueltig' | 'geplant' | 'beendet' | 'aufgehoben';
+  }[];
+  folgen: {
+    ziehenMit: OrtVerschiebungKnoten[];
+    messstellenWechselnStandort: OrtVerschiebungMessstelle[];
+    bleibenAnlagen: { id: string; name: string; standort: OrtVerschiebungKnoten | null }[];
+    bleibenNetzanschluesse: { id: string | null; kennzeichen: string }[];
+    bleibenMessstellen: OrtVerschiebungMessstelle[];
+  };
+  befehle: number;
+  begruendung: string | null;
+  protokoll: {
+    id: number;
+    objektArt: 'gebaeude' | 'bereich';
+    objektId: string;
+    text: string;
+    giltAb: string;
+    rueckwirkend: boolean;
+    wer: string;
+    eingetragenAm: string;
+  }[];
 }
 
 /** IP-15 (Z3): ein am Stichtag archiviertes Gebäude oder ein archivierter Bereich. */
@@ -6609,6 +6715,19 @@ export const api = {
     }),
   /** Nur ohne Historie (E1) — sonst 409 `loeschen_gesperrt`. */
   ortLoeschen: (ortId: string) => request<void>(`/api/v1/orte/${encodeURIComponent(ortId)}`, { method: 'DELETE' }),
+  /** IP-12: was das Verschieben bewirken würde — schreibt nichts; eine Ablehnung trägt OrtFehler (mit `feld`). */
+  ortVerschiebenVorschau: (ortId: string, zielId: string, gueltigAb: string) =>
+    request<OrtVerschiebung>(
+      `/api/v1/orte/${encodeURIComponent(ortId)}/verschieben/vorschau?zielId=${encodeURIComponent(
+        zielId,
+      )}&gueltigAb=${encodeURIComponent(gueltigAb)}`,
+    ),
+  /** IP-12: verschiebt ab `gueltigAb`; die Antwort nennt die Zuordnungen danach und den Protokolleintrag. */
+  ortVerschieben: (ortId: string, body: OrtVerschiebenAnfrage) =>
+    request<OrtVerschiebung>(`/api/v1/orte/${encodeURIComponent(ortId)}/verschieben`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   standortArchivieren: (id: string) =>
     request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/archivieren`, { method: 'POST' }),
   standortWiederherstellen: (id: string, name?: string) =>
