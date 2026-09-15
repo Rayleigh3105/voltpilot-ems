@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -68,12 +69,30 @@ public class KennzahlEingangLeser {
     private final KennzahlRepository repo;
     private final MessstelleWerteService messwerte;
     private final BezugsgroesseService bezugswerte;
+    /** Die Versionen ab 2 der Messstellen — {@code null}: die des Lesemodells (gespeichert, Kundenbereich). */
+    private final WertVersionenLeser versionen;
 
+    @Autowired
     public KennzahlEingangLeser(KennzahlRepository repo, MessstelleWerteService messwerte,
             BezugsgroesseService bezugswerte) {
+        this(repo, messwerte, bezugswerte, null);
+    }
+
+    private KennzahlEingangLeser(KennzahlRepository repo, MessstelleWerteService messwerte,
+            BezugsgroesseService bezugswerte, WertVersionenLeser versionen) {
         this.repo = repo;
         this.messwerte = messwerte;
         this.bezugswerte = bezugswerte;
+        this.versionen = versionen;
+    }
+
+    /**
+     * Derselbe Leser für die Korrektur-Kaskade (IP-8): gespeicherte Kennzahl-Werte über {@code repo}, Messstellen-Versionen
+     * ab 2 über {@code versionen} — beide auf der Transaktion der Kaskade, damit die nächste Kennzahl liest, was die
+     * Stufen und die Kennzahl davor eben schrieben. Bezugsgrößen, Version 1 und Quellen ändert die Kaskade nicht.
+     */
+    KennzahlEingangLeser mit(KennzahlRepository repo, WertVersionenLeser versionen) {
+        return new KennzahlEingangLeser(repo, messwerte, bezugswerte, versionen);
     }
 
     // ------------------------------------------------------------------------------ je Zeitraum
@@ -158,7 +177,8 @@ public class KennzahlEingangLeser {
     private Map<String, Gelesen> messstelle(Aufgeloest x, String art, LocalDate von, LocalDate bis) {
         MessstelleWerteDto.Werte w;
         try {
-            w = messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null);
+            w = versionen == null ? messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null)
+                    : messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null, versionen);
         } catch (ResponseStatusException ex) {
             if (ex.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
                 return Map.of();

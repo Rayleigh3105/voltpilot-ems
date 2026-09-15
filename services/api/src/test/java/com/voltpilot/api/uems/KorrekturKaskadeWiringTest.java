@@ -17,12 +17,14 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 /**
  * Die Spring-Verdrahtung der Korrektur-Kaskade (UEMS AP-08 IP-17) — der Teil, den der Testcontainers-Lauf
  * ({@code UemsKorrekturKaskadeTest} ruft {@code lauf} von Hand) nie anfasst. Vorgabe AN in {@code application.yml}, AUS
- * im Testlauf ({@code pom.xml}); die beiden Nähte (Kennzahlen AP-11, Berichte AP-12) sind als LEERE Beans da.
+ * im Testlauf ({@code pom.xml}). Die Naht der Kennzahlen ist seit AP-11 IP-8 die Bean {@link KennzahlKaskade} (die Kaskade
+ * bekommt sie, nie {@link KennzahlenNaht.Keine}); die der Berichte (AP-12) ist noch LEER.
  */
 class KorrekturKaskadeWiringTest {
 
@@ -55,23 +57,31 @@ class KorrekturKaskadeWiringTest {
         BerechnetePeriodenLauf berechnetePeriodenLauf() {
             return mock(BerechnetePeriodenLauf.class);
         }
+
+        @Bean
+        KennzahlLauf kennzahlLauf() {
+            return mock(KennzahlLauf.class);
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(ctx -> ctx.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
-            .withUserConfiguration(Nachbarn.class, KennzahlenNaht.Keine.class, BerichteNaht.Keine.class,
+            .withUserConfiguration(Nachbarn.class, KennzahlKaskade.class, BerichteNaht.Keine.class,
                     KorrekturKaskade.class, KorrekturKaskadeLaeufer.class, KorrekturKaskadeSchedulingConfig.class);
 
     @Test
-    void derTaktVerdrahtetSichMitDerKaskadeUndDenLeerenNaehten() {
+    void derTaktVerdrahtetSichMitDerKaskadeUndDerKennzahlenNaht() {
         runner.withPropertyValues(SCHALTER + "=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(KorrekturKaskadeLaeufer.class);
             assertThat(context).hasSingleBean(KorrekturKaskade.class);
             assertThat(context).hasSingleBean(KorrekturKaskadeSchedulingConfig.class);
-            assertThat(context.getBean(KennzahlenNaht.class)).isInstanceOf(KennzahlenNaht.Keine.class);
+            assertThat(context).hasSingleBean(KennzahlenNaht.class);
+            assertThat(context.getBean(KennzahlenNaht.class)).isInstanceOf(KennzahlKaskade.class);
+            assertThat(context.getBean(KorrekturKaskade.class)).extracting("kennzahlen")
+                    .isSameAs(context.getBean(KennzahlKaskade.class));
             assertThat(context.getBean(BerichteNaht.class)).isInstanceOf(BerichteNaht.Keine.class);
         });
     }
@@ -101,6 +111,20 @@ class KorrekturKaskadeWiringTest {
         assertThat(kaskade.get("enabled")).isEqualTo("${VOLTPILOT_UEMS_KASKADE_ENABLED:true}");
         assertThat(kaskade.get("interval-ms")).isEqualTo("${VOLTPILOT_UEMS_KASKADE_INTERVAL_MS:300000}");
         assertThat(Files.readString(Path.of("pom.xml"))).contains("<" + SCHALTER + ">false</" + SCHALTER + ">");
+    }
+
+    /**
+     * AP-11 IP-8: die leere Naht ist keine Bean mehr — sonst gäbe es im Scan zwei Kennzahlen-Nähte und die Kaskade bekäme
+     * womöglich die, die nichts tut. Die Kennzahlen-Naht ist die einzige, und sie läuft auch mit dem Not-Aus der Kaskade.
+     */
+    @Test
+    void dieKennzahlenNahtIstGefuelltUndDieLeereKeineBeanMehr() {
+        assertThat(KennzahlenNaht.Keine.class.isAnnotationPresent(Component.class)).isFalse();
+        assertThat(KennzahlKaskade.class.isAnnotationPresent(Component.class)).isTrue();
+        runner.withPropertyValues(SCHALTER + "=false").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(KennzahlenNaht.class)).isInstanceOf(KennzahlKaskade.class);
+        });
     }
 
     /** Die Naht der Berichte kennt ohne AP-12 keinen Bericht — und die Grenze steht in der Kaskade, nicht in ihr. */

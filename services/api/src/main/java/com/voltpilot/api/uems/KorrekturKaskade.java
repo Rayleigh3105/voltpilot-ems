@@ -128,10 +128,21 @@ public class KorrekturKaskade {
      * @param messstellen die berechneten Messstellen, die eine neue Version bekamen
      * @param ereignisse die Meldungen {@code correction} dieser Verarbeitung — DER Revisions-Auslöser
      * @param versionen wie viele Versionen (alle Stufen) geschrieben wurden
+     * @param jetzt der Zeitpunkt des Laufs — dieselbe Uhr wie die Stufen (AP-11 IP-8: „läuft die Periode noch?“, und
+     *     {@code berechnet_am} der neuen Kennzahl-Versionen); {@code null} nur ohne Lauf (Vertragsvektoren der Berichte)
      */
     public record Betroffen(UUID tenant, String anlass, int fassung, String status, List<Reihe> reihen, Instant von,
             Instant bis, ZoneId zone, LocalDate ersterTag, LocalDate letzterTag, List<String> messstellen,
-            List<UUID> ereignisse, int versionen) {}
+            List<UUID> ereignisse, int versionen, Instant jetzt) {
+
+        /** Ohne Lauf — was die Vertragsvektoren der Berichte beschreiben (kein Zeitpunkt). */
+        public Betroffen(UUID tenant, String anlass, int fassung, String status, List<Reihe> reihen, Instant von,
+                Instant bis, ZoneId zone, LocalDate ersterTag, LocalDate letzterTag, List<String> messstellen,
+                List<UUID> ereignisse, int versionen) {
+            this(tenant, anlass, fassung, status, reihen, von, bis, zone, ersterTag, letzterTag, messstellen, ereignisse,
+                    versionen, null);
+        }
+    }
 
     /** Was ein Lauf tat. */
     public record Lauf(int anlaesse, int versionen, int nachgezogen, Map<String, String> abgelehnt,
@@ -351,7 +362,7 @@ public class KorrekturKaskade {
                 ersterTag, letzterTag, b.messstellen(), versionen, jetzt);
 
         Betroffen betroffen = new Betroffen(a.tenant(), a.kennung(), a.fassung(), a.status(), List.copyOf(reihen), von,
-                bis, zone, ersterTag, letzterTag, b.messstellen(), List.copyOf(ereignisse), versionen);
+                bis, zone, ersterTag, letzterTag, b.messstellen(), List.copyOf(ereignisse), versionen, jetzt);
         kennzahlen.nachKorrektur(con, betroffen);
         berichteBenachrichtigen(con, berichte, betroffen);
         return new Verarbeitet(versionen, b.kreise());

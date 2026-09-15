@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.stereotype.Component;
 
 /**
@@ -65,7 +66,8 @@ import org.springframework.stereotype.Component;
  *       {@code periode_nicht_zu_ende} (P6, K21). Ohne Zahl immer MIT Grund (Q2).</li>
  *   <li><b>Fassung und Version</b> — gerechnet wird mit der Fassung am LETZTEN Tag der Periode (V2). Ein vorläufiger Wert
  *       zieht als neue Zeile derselben Version nach, ein unveränderter schreibt nichts (V3). Ein endgültiger bleibt
- *       stehen: Version n + 1 bilden die Nähte der Kaskade (IP-8/IP-9) mit ihrem Anlass, nie der Regellauf.</li>
+ *       stehen: Version n + 1 bildet die Korrektur-Kaskade über {@link #nachKorrektur} (IP-8) mit ihrem Anlass — mit
+ *       denselben Wegen und derselben Regel, in IHRER Transaktion —, nie der Regellauf.</li>
  * </ul>
  *
  * <p>Geschrieben wird als Verwaltungsrolle (die einzige mit INSERT auf die Werte) in EINER Transaktion je Periode, je
@@ -92,6 +94,9 @@ public class KennzahlLauf {
     static final Map<String, String> WORT_ZEIT = Map.of("tag", "Tagen", "woche", "Wochen", "monat", "Monaten", "jahr",
             "Jahren");
 
+    /** Der Anlass einer Korrektur an einem Eingang — {@code kennzahl_wert.anlass_art} {@code eingang}. */
+    private static final KennzahlRegeln.Anlass EINGANG = new KennzahlRegeln.Anlass("eingang", null);
+
     private static final Pattern AB = Pattern.compile("^ab (\\d{2}\\.\\d{2}\\.\\d{4})$");
     private static final DateTimeFormatter TAG_TEXT = DateTimeFormatter.ofPattern("dd.MM.uuuu");
 
@@ -114,7 +119,22 @@ public class KennzahlLauf {
     /** Was eine Periode ergibt: das Ergebnis der Regel, was sie las, und wann ihr spätester Eingang endgültig wurde. */
     record Bildung(KennzahlRegeln.Ergebnis ergebnis, List<HerkunftEingang> eingaenge, Instant endgueltigAb) {}
 
-    private record Kontext(UUID tenant, Katalog kat, Instant jetzt, Zaehler z) {}
+    /** Was die Kaskade neu bildete: eine Kennzahl-Periode, deren endgültiger Wert Version n + 1 wurde. */
+    public record Neu(UUID kennzahl, String kennzeichen, String periodeArt, LocalDate von, LocalDate bis, ZoneId zone,
+            int version) {}
+
+    /** Was eine Neubildung der Kaskade tat (IP-8). */
+    public record Neubildung(int kennzahlen, int geschrieben, int unveraendert, List<Neu> neu,
+            List<Abgelehnt> abgelehnt) {}
+
+    /**
+     * Der Rahmen der Kaskade: ihre Transaktion, ihr Anlass, ihre Tage — {@code null} im Regellauf. Gelesen und geschrieben
+     * wird dann über {@code con}, ein endgültiger Wert wird Version n + 1, und jeder Fehler wirft.
+     */
+    private record Kaskade(Connection con, String anlass, LocalDate ersterTag, LocalDate letzterTag, List<Neu> neu) {}
+
+    private record Kontext(UUID tenant, Katalog kat, Instant jetzt, Zaehler z, KennzahlEingangLeser leser,
+            KennzahlRepository repo, Kaskade kaskade) {}
 
     /** Eine Kennzahl im Lauf: die Zeitzone ihres Geltungsbereichs, heute dort, die geprüften Fassungen. */
     private record Rahmen(Kontext kx, Zeile k, ZoneId zone, LocalDate heute, Map<UUID, Optional<Urteil>> urteile) {}
@@ -148,7 +168,7 @@ public class KennzahlLauf {
             UUID vorher = TenantContext.get();
             TenantContext.set(tenant);
             try {
-                mandant(new Kontext(tenant, kennzahlen.katalog(), jetzt, z));
+                mandant(new Kontext(tenant, kennzahlen.katalog(), jetzt, z, leser, repo, null));
             } catch (RuntimeException e) {
                 log.warn("UEMS Kennzahlen für Kundenbereich {} übersprungen: {}", tenant, e.toString());
             } finally {
@@ -177,23 +197,7 @@ public class KennzahlLauf {
     // ------------------------------------------------------------------------------ ein Kundenbereich
 
     private void mandant(Kontext kx) {
-        // Die Kanten: jede Kennzahl, die eine wirksame Fassung als Eingang nennt. Eine archivierte ist kein Schlüssel —
-        // sie rechnet nicht mehr, ihre Werte werden gelesen (V5).
-        Map<String, List<String>> lesen = new LinkedHashMap<>();
-        for (Zeile k : kx.kat().kennzahlen()) {
-            if (k.archiviertAm() != null) {
-                continue;
-            }
-            Set<String> kanten = new LinkedHashSet<>();
-            for (FassungZeile f : kx.kat().fassungen(k.id())) {
-                if (f.wirksam()) {
-                    kx.kat().eingaenge(f.id()).stream().filter(e -> KennzahlRegeln.KENNZAHL.equals(e.art()))
-                            .map(EingangZeile::kennzeichen).forEach(kanten::add);
-                }
-            }
-            lesen.put(k.kennzeichen(), List.copyOf(kanten));
-        }
-        BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(lesen);
+        BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(kanten(kx.kat()));
         for (BerechnetePeriode.Abgelehnt a : r.abgelehnt()) {
             log.warn("UEMS Kennzahlen: {} abgelehnt ({}): {}", a.messstelle(), a.grund(), String.join(" → ", a.kette()));
             kx.z().abgelehnt.add(new Abgelehnt(a.messstelle(), a.grund(), a.kette()));
@@ -208,6 +212,117 @@ public class KennzahlLauf {
                 kx.z().abgelehnt.add(new Abgelehnt(kz, NICHT_GERECHNET, List.of()));
             }
         }
+    }
+
+    /**
+     * Die Kanten der Ordnung: jede Kennzahl, die eine wirksame Fassung als Eingang nennt. Eine archivierte ist kein
+     * Schlüssel — sie rechnet nicht mehr, ihre Werte werden gelesen (V5).
+     */
+    private static Map<String, List<String>> kanten(Katalog kat) {
+        Map<String, List<String>> lesen = new LinkedHashMap<>();
+        for (Zeile k : kat.kennzahlen()) {
+            if (k.archiviertAm() != null) {
+                continue;
+            }
+            Set<String> kanten = new LinkedHashSet<>();
+            for (FassungZeile f : kat.fassungen(k.id())) {
+                if (f.wirksam()) {
+                    kat.eingaenge(f.id()).stream().filter(e -> KennzahlRegeln.KENNZAHL.equals(e.art()))
+                            .map(EingangZeile::kennzeichen).forEach(kanten::add);
+                }
+            }
+            lesen.put(k.kennzeichen(), List.copyOf(kanten));
+        }
+        return lesen;
+    }
+
+    // ------------------------------------------------------------------------------ die Korrektur-Kaskade (IP-8)
+
+    /**
+     * Die Neubildung nach einer Korrektur (AP-11 IP-8, E8 = A) — in der Transaktion {@code con} der Korrektur-Kaskade.
+     * Betroffen ist jede Kennzahl, die eine der {@code messstellen} in einer wirksamen Fassung liest, und rekursiv jede, die
+     * eine betroffene Kennzahl liest; gerechnet in der Ordnung ihrer Eingänge (dieselbe
+     * {@link BerechnetePeriode#reihenfolge} wie im Regellauf, ein Kreis bleibt benannt und ungerechnet). Neu gebildet wird
+     * jede Periode, die {@code ersterTag…letzterTag} berührt — mit denselben Wegen und derselben Regel wie im Regellauf:
+     * ein endgültiger Wert, der sich ändert, wird Version n + 1 mit {@code beleg} als Anlass („korrigiert (Version n + 1)“),
+     * ein vorläufiger zieht nach, ein unveränderter schreibt nichts. Eine nicht betroffene Kennzahl wird nicht gelesen.
+     *
+     * <p>Gelesen wird, was die Kaskade in dieser Transaktion eben schrieb ({@link KennzahlEingangLeser#mit}). Wirft bei
+     * jedem Fehler — die Kaskade rollt dann ALLES zurück. Der Schalter des Regellaufs gilt hier nicht: der Not-Aus nimmt
+     * den Stundenschritt, nie die Kaskade.
+     */
+    public Neubildung nachKorrektur(Connection con, KorrekturKaskade.Betroffen betroffen, Set<UUID> messstellen,
+            String beleg) throws SQLException {
+        Instant jetzt = Objects.requireNonNull(betroffen.jetzt(), "die Kaskade nennt den Zeitpunkt ihres Laufs");
+        UUID vorher = TenantContext.get();
+        TenantContext.set(betroffen.tenant());
+        try {
+            Katalog kat = kennzahlen.katalog();
+            Map<String, List<String>> kanten = kanten(kat);
+            Set<String> betroffene = betroffene(kat, kanten, messstellen);
+            if (betroffene.isEmpty()) {
+                return new Neubildung(0, 0, 0, List.of(), List.of());
+            }
+            JdbcTemplate transaktion = new JdbcTemplate(new SingleConnectionDataSource(con, true));
+            KennzahlRepository gespeichert = new KennzahlRepository(transaktion);
+            List<Neu> neu = new ArrayList<>();
+            Zaehler z = new Zaehler();
+            Kontext kx = new Kontext(betroffen.tenant(), kat, jetzt, z,
+                    leser.mit(gespeichert, new WertVersionenLeser(transaktion)), gespeichert,
+                    new Kaskade(con, beleg, betroffen.ersterTag(), betroffen.letzterTag(), neu));
+            BerechnetePeriode.Reihenfolge r = BerechnetePeriode.reihenfolge(kanten);
+            for (BerechnetePeriode.Abgelehnt a : r.abgelehnt()) {
+                if (betroffene.contains(a.messstelle())) {
+                    log.warn("UEMS Kennzahl-Kaskade {}: {} abgelehnt ({}): {}", betroffen.anlass(), a.messstelle(),
+                            a.grund(), String.join(" → ", a.kette()));
+                    z.abgelehnt.add(new Abgelehnt(a.messstelle(), a.grund(), a.kette()));
+                }
+            }
+            for (String kz : r.ordnung()) {
+                if (!betroffene.contains(kz)) {
+                    continue;
+                }
+                Zeile k = kat.nachKennzeichen(kz).orElseThrow();
+                z.kennzahlen++;
+                // Vor dem ersten Lesen: bis zum Ende der Kaskade schreibt kein Regellauf diese Kennzahl dazwischen.
+                sperren(con, betroffen.tenant(), k.id());
+                kennzahl(kx, k);
+            }
+            return new Neubildung(z.kennzahlen, z.geschrieben, z.unveraendert, List.copyOf(neu),
+                    List.copyOf(z.abgelehnt));
+        } finally {
+            if (vorher == null) {
+                TenantContext.clear();
+            } else {
+                TenantContext.set(vorher);
+            }
+        }
+    }
+
+    /**
+     * Wer von den Messstellen lebt: jede nicht archivierte Kennzahl mit einer davon als Eingang einer wirksamen Fassung,
+     * und rekursiv jede, die eine solche Kennzahl liest (über die Kanten der Ordnung).
+     */
+    static Set<String> betroffene(Katalog kat, Map<String, List<String>> kanten, Set<UUID> messstellen) {
+        Set<String> aus = new LinkedHashSet<>();
+        for (Zeile k : kat.kennzahlen()) {
+            if (k.archiviertAm() == null && kat.fassungen(k.id()).stream().filter(FassungZeile::wirksam)
+                    .flatMap(f -> kat.eingaenge(f.id()).stream())
+                    .anyMatch(e -> KennzahlRegeln.MESSSTELLE.equals(e.art()) && messstellen.contains(e.objektId()))) {
+                aus.add(k.kennzeichen());
+            }
+        }
+        boolean mehr = !aus.isEmpty();
+        while (mehr) {
+            mehr = false;
+            for (Map.Entry<String, List<String>> e : kanten.entrySet()) {
+                if (!aus.contains(e.getKey()) && e.getValue().stream().anyMatch(aus::contains)) {
+                    aus.add(e.getKey());
+                    mehr = true;
+                }
+            }
+        }
+        return aus;
     }
 
     // ------------------------------------------------------------------------------ eine Kennzahl
@@ -263,13 +378,15 @@ public class KennzahlLauf {
     /** Alle offenen Perioden EINER Art, je Fassung am letzten Tag gruppiert (V2). */
     private void art(Rahmen r, String art, LocalDate beginn) {
         Zeile k = r.k();
-        LocalDate von = BezugsPeriode.spanneUm(beginn, art)[0];
-        LocalDate bis = BezugsPeriode.spanneUm(r.heute(), art)[1];
-        Map<LocalDate, Gespeichert> gespeichert = repo.werte(k.id(), art, von, bis);
+        Kaskade kaskade = r.kx().kaskade();
+        // Der Regellauf: vom Beginn bis heute. Die Kaskade: jede Periode, die ihre Tage berührt — auch eine endgültige.
+        LocalDate von = BezugsPeriode.spanneUm(kaskade == null ? beginn : kaskade.ersterTag(), art)[0];
+        LocalDate bis = BezugsPeriode.spanneUm(kaskade == null ? r.heute() : kaskade.letzterTag(), art)[1];
+        Map<LocalDate, Gespeichert> gespeichert = r.kx().repo().werte(k.id(), art, von, bis);
         Map<FassungZeile, List<LocalDate[]>> jeFassung = new LinkedHashMap<>();
         for (LocalDate[] p : KennzahlEingangLeser.perioden(art, von, bis)) {
             Gespeichert g = gespeichert.get(p[0]);
-            if (g != null && g.endgueltig()) {
+            if (g != null && g.endgueltig() && kaskade == null) {
                 r.kx().z().endgueltig++;
                 continue;
             }
@@ -289,8 +406,8 @@ public class KennzahlLauf {
                 case DIREKT -> {
                     Aufgeloest zx = rolle(u, "zaehler");
                     Aufgeloest nx = rolle(u, "nenner");
-                    Map<String, Gelesen> zg = leser.lies(zx, art, a, b);
-                    Map<String, Gelesen> ng = leser.lies(nx, art, a, b);
+                    Map<String, Gelesen> zg = r.kx().leser().lies(zx, art, a, b);
+                    Map<String, Gelesen> ng = r.kx().leser().lies(nx, art, a, b);
                     for (LocalDate[] p : perioden) {
                         String s = BezugsPeriode.schluesselVon(p[0], art);
                         Gespeichert g = gespeichert.get(p[0]);
@@ -301,7 +418,7 @@ public class KennzahlLauf {
                 case EBENE -> {
                     List<Map<String, Paar>> paare = new ArrayList<>();
                     for (Aufgeloest x : u.eingaenge()) {
-                        paare.add(leser.paare(x, art, a, b));
+                        paare.add(r.kx().leser().paare(x, art, a, b));
                     }
                     for (LocalDate[] p : perioden) {
                         String s = BezugsPeriode.schluesselVon(p[0], art);
@@ -311,7 +428,7 @@ public class KennzahlLauf {
                 }
                 default -> {
                     String feiner = feinere(u.perioden(), art);
-                    Map<LocalDate, Gespeichert> eigene = repo.werte(k.id(), feiner, a, b);
+                    Map<LocalDate, Gespeichert> eigene = r.kx().repo().werte(k.id(), feiner, a, b);
                     for (LocalDate[] p : perioden) {
                         String s = BezugsPeriode.schluesselVon(p[0], art);
                         Gespeichert g = gespeichert.get(p[0]);
@@ -375,7 +492,7 @@ public class KennzahlLauf {
             n = vorlaeufig(ng);
         }
         KennzahlRegeln.Antrag a = new KennzahlRegeln.Antrag(u.rechenform(), per, u.einheit(), z.eingang(), n.eingang(),
-                u.komplement(), false, null, null, null, null, null, null, List.of(), bisher(bisher), null);
+                u.komplement(), false, null, null, null, null, null, null, List.of(), bisher(bisher), anlass(r, bisher));
         return new Bildung(KennzahlRegeln.wert(a), eingaenge, spaetestes(List.of(z, n)));
     }
 
@@ -417,7 +534,7 @@ public class KennzahlLauf {
         }
         KennzahlRegeln.Antrag a = new KennzahlRegeln.Antrag(KennzahlRegeln.ZUSAMMENFASSUNG, per, u.einheit(), null, null,
                 false, false, teile, "ebene", KennzahlEingangLeser.wortEbene(u.eingaenge()), null,
-                u.eingaenge().get(0).rechenform(), null, List.of(), bisher(bisher), null);
+                u.eingaenge().get(0).rechenform(), null, List.of(), bisher(bisher), anlass(r, bisher));
         return new Bildung(KennzahlRegeln.wert(a), eingaenge, ab);
     }
 
@@ -463,7 +580,7 @@ public class KennzahlLauf {
         KennzahlRegeln.Antrag a = new KennzahlRegeln.Antrag(KennzahlRegeln.ZUSAMMENFASSUNG, per, u.einheit(), null, null,
                 false, false, teile, "zeit", WORT_ZEIT.get(feiner), feiner, formDerTeile,
                 bestehenAb(eigene.get(teilPerioden.get(erste)[0]), teilPerioden.get(erste)[0]), List.of(), bisher(bisher),
-                null);
+                anlass(r, bisher));
         return new Bildung(KennzahlRegeln.wert(a), List.of(), ab);
     }
 
@@ -474,15 +591,22 @@ public class KennzahlLauf {
             return;
         }
         Zaehler z = r.kx().z();
+        Kaskade kaskade = r.kx().kaskade();
         KennzahlRegeln.Ergebnis e = b.ergebnis();
         String zustand = e.fassung() == null ? null
                 : KennzahlRegeln.ENDGUELTIG.equals(e.fassung()) ? ViertelstundeRegeln.ENDGUELTIG : ViertelstundeRegeln.VORLAEUFIG;
-        if (bisher != null && gleich(bisher, e, zustand, f.id(), b.eingaenge())) {
+        // Nur die Kaskade bildet einen endgültigen Wert neu — als Version n + 1, verglichen ohne die Nummer.
+        boolean neueVersion = kaskade != null && bisher != null && bisher.endgueltig();
+        if (bisher != null && gleich(r.kx().repo(), bisher, e, zustand, f.id(), b.eingaenge(), neueVersion)) {
             z.unveraendert++;
             return;
         }
         Instant am = r.kx().jetzt().truncatedTo(ChronoUnit.MICROS);
         if (bisher != null && !am.isAfter(bisher.berechnetAm())) {
+            if (kaskade != null) {
+                throw new IllegalStateException("UEMS Kennzahl " + r.k().kennzeichen() + " " + art + " " + p[0]
+                        + ": die Kaskade um " + am + " liegt nicht nach der neuesten Zeile (" + bisher.berechnetAm() + ")");
+            }
             log.warn("UEMS Kennzahl {} {} {}: der Lauf um {} liegt nicht nach der neuesten Zeile ({}) — nicht geschrieben",
                     r.k().kennzeichen(), art, p[0], am, bisher.berechnetAm());
             z.unveraendert++;
@@ -490,86 +614,25 @@ public class KennzahlLauf {
         }
         Instant endgueltigAb = ViertelstundeRegeln.ENDGUELTIG.equals(zustand)
                 ? Objects.requireNonNullElse(b.endgueltigAb(), am) : null;
-        String ausgang = inTransaktion(con -> {
-            sperren(con, r.kx().tenant(), r.k().id());
-            // Unter der Sperre: hat ein anderer Lauf die Periode inzwischen geschrieben oder endgültig gemacht?
-            try (PreparedStatement ps = con.prepareStatement("SELECT zustand, berechnet_am FROM kennzahl_wert "
-                    + "WHERE tenant_id = ? AND kennzahl_id = ? AND periode_art = ? AND periode_von = ? "
-                    + "ORDER BY version DESC NULLS LAST, berechnet_am DESC LIMIT 1")) {
-                ps.setObject(1, r.kx().tenant());
-                ps.setObject(2, r.k().id());
-                ps.setString(3, art);
-                ps.setDate(4, Date.valueOf(p[0]));
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        if (ViertelstundeRegeln.ENDGUELTIG.equals(rs.getString("zustand"))) {
-                            return "endgueltig";
-                        }
-                        if (bisher == null || !rs.getTimestamp("berechnet_am").toInstant().equals(bisher.berechnetAm())) {
-                            return "anders";
-                        }
-                    } else if (bisher != null) {
-                        return "anders";
-                    }
-                }
+        String ausgang;
+        if (kaskade == null) {
+            ausgang = inTransaktion(con -> zeile(con, r, f, art, p, bisher, b, zustand, am, endgueltigAb, false));
+        } else {
+            try {
+                ausgang = zeile(kaskade.con(), r, f, art, p, bisher, b, zustand, am, endgueltigAb, neueVersion);
+            } catch (SQLException x) {
+                throw new IllegalStateException("UEMS Kennzahl " + r.k().kennzeichen() + " " + art + " " + p[0]
+                        + ": in der Kaskade nicht geschrieben", x);
             }
-            UUID id = UUID.randomUUID();
-            try (PreparedStatement ps = con.prepareStatement("INSERT INTO kennzahl_wert (id, tenant_id, kennzahl_id, "
-                    + "periode_art, periode_von, periode_bis, zeitzone, version, wert, zaehler, nenner, menge_zustand, "
-                    + "kennzeichen, abdeckung_prozent, richtung, grund, zustand, endgueltig_ab, definition_fassung_id, "
-                    + "berechnet_am, anlass_art, anlass_kennung) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)")) {
-                ps.setObject(1, id);
-                ps.setObject(2, r.kx().tenant());
-                ps.setObject(3, r.k().id());
-                ps.setString(4, art);
-                ps.setDate(5, Date.valueOf(p[0]));
-                ps.setDate(6, Date.valueOf(p[1]));
-                ps.setString(7, r.zone().getId());
-                ps.setObject(8, e.version(), Types.INTEGER);
-                ps.setBigDecimal(9, e.wert());
-                ps.setBigDecimal(10, e.zaehler());
-                ps.setBigDecimal(11, e.nenner());
-                ps.setString(12, e.zustand());
-                ps.setString(13, alsJson(e.kennzeichen()));
-                ps.setBigDecimal(14, e.abdeckungProzent());
-                ps.setString(15, e.richtung());
-                ps.setString(16, e.grund());
-                ps.setString(17, zustand);
-                ps.setTimestamp(18, endgueltigAb == null ? null : Timestamp.from(endgueltigAb));
-                ps.setObject(19, f.id());
-                ps.setTimestamp(20, Timestamp.from(am));
-                ps.executeUpdate();
+            if (!"geschrieben".equals(ausgang)) {
+                // Unter der Sperre der Kaskade schreibt niemand dazwischen — geschah es doch, gilt nichts davon.
+                throw new IllegalStateException("UEMS Kennzahl " + r.k().kennzeichen() + " " + art + " " + p[0]
+                        + ": die neueste Zeile ist nicht mehr die gelesene (" + ausgang + ")");
             }
-            for (HerkunftEingang h : b.eingaenge()) {
-                try (PreparedStatement ps = con.prepareStatement("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, "
-                        + "kennzahl_id, position, rolle, art, objekt, messstelle_id, bezugsgroesse_id, eingang_kennzahl_id, "
-                        + "wert, zaehler, nenner, einheit, menge_zustand, abdeckung_prozent, version, fassung, kennzeichen) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")) {
-                    ps.setObject(1, r.kx().tenant());
-                    ps.setObject(2, id);
-                    ps.setObject(3, r.k().id());
-                    ps.setInt(4, h.position());
-                    ps.setString(5, h.rolle());
-                    ps.setString(6, h.art());
-                    ps.setString(7, h.objekt());
-                    ps.setObject(8, h.messstelleId(), Types.OTHER);
-                    ps.setObject(9, h.bezugsgroesseId(), Types.OTHER);
-                    ps.setObject(10, h.kennzahlId(), Types.OTHER);
-                    ps.setBigDecimal(11, h.wert());
-                    ps.setBigDecimal(12, h.zaehler());
-                    ps.setBigDecimal(13, h.nenner());
-                    ps.setString(14, h.einheit());
-                    ps.setString(15, h.mengeZustand());
-                    ps.setBigDecimal(16, h.abdeckungProzent());
-                    ps.setObject(17, h.version(), Types.INTEGER);
-                    ps.setObject(18, h.fassung(), Types.INTEGER);
-                    ps.setString(19, alsJson(h.kennzeichen()));
-                    ps.executeUpdate();
-                }
+            if (neueVersion) {
+                kaskade.neu().add(new Neu(r.k().id(), r.k().kennzeichen(), art, p[0], p[1], r.zone(), e.version()));
             }
-            return "geschrieben";
-        });
+        }
         switch (ausgang) {
             case "geschrieben" -> z.geschrieben++;
             case "endgueltig" -> z.endgueltig++;
@@ -577,15 +640,121 @@ public class KennzahlLauf {
         }
     }
 
-    /** V3: nichts Neues — dieselbe Zahl, derselbe Zustand, dieselben Kennzeichen, dieselbe Fassung, dieselben Eingänge. */
-    private boolean gleich(Gespeichert g, KennzahlRegeln.Ergebnis e, String zustand, UUID fassung,
-            List<HerkunftEingang> eingaenge) {
+    /**
+     * Eine Zeile unter der Sperre der Kennzahl. Hat ein anderer Lauf die Periode inzwischen geschrieben: {@code anders};
+     * im Regellauf bleibt ein endgültiger Wert stehen ({@code endgueltig}). Version n + 1 trägt den Anlass der Kaskade, ein
+     * Nachziehen den Anlass seiner Version — dieselbe Nummer, derselbe Anlass (Trigger {@code kennzahl_wert_version_folgt}).
+     */
+    private String zeile(Connection con, Rahmen r, FassungZeile f, String art, LocalDate[] p, Gespeichert bisher,
+            Bildung b, String zustand, Instant am, Instant endgueltigAb, boolean neueVersion) throws SQLException {
+        KennzahlRegeln.Ergebnis e = b.ergebnis();
+        sperren(con, r.kx().tenant(), r.k().id());
+        String anlassArt = neueVersion ? EINGANG.art() : null;
+        String anlassKennung = neueVersion ? r.kx().kaskade().anlass() : null;
+        // Unter der Sperre: hat ein anderer Lauf die Periode inzwischen geschrieben oder endgültig gemacht?
+        try (PreparedStatement ps = con.prepareStatement("SELECT zustand, berechnet_am, version, anlass_art, anlass_kennung "
+                + "FROM kennzahl_wert WHERE tenant_id = ? AND kennzahl_id = ? AND periode_art = ? AND periode_von = ? "
+                + "ORDER BY version DESC NULLS LAST, berechnet_am DESC LIMIT 1")) {
+            ps.setObject(1, r.kx().tenant());
+            ps.setObject(2, r.k().id());
+            ps.setString(3, art);
+            ps.setDate(4, Date.valueOf(p[0]));
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    if (r.kx().kaskade() == null && ViertelstundeRegeln.ENDGUELTIG.equals(rs.getString("zustand"))) {
+                        return "endgueltig";
+                    }
+                    if (bisher == null || !rs.getTimestamp("berechnet_am").toInstant().equals(bisher.berechnetAm())) {
+                        return "anders";
+                    }
+                    if (!neueVersion && e.version() != null
+                            && e.version().equals(rs.getObject("version", Integer.class))) {
+                        anlassArt = rs.getString("anlass_art");
+                        anlassKennung = rs.getString("anlass_kennung");
+                    }
+                } else if (bisher != null) {
+                    return "anders";
+                }
+            }
+        }
+        UUID id = UUID.randomUUID();
+        try (PreparedStatement ps = con.prepareStatement("INSERT INTO kennzahl_wert (id, tenant_id, kennzahl_id, "
+                + "periode_art, periode_von, periode_bis, zeitzone, version, wert, zaehler, nenner, menge_zustand, "
+                + "kennzeichen, abdeckung_prozent, richtung, grund, zustand, endgueltig_ab, definition_fassung_id, "
+                + "berechnet_am, anlass_art, anlass_kennung) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setObject(1, id);
+            ps.setObject(2, r.kx().tenant());
+            ps.setObject(3, r.k().id());
+            ps.setString(4, art);
+            ps.setDate(5, Date.valueOf(p[0]));
+            ps.setDate(6, Date.valueOf(p[1]));
+            ps.setString(7, r.zone().getId());
+            ps.setObject(8, e.version(), Types.INTEGER);
+            ps.setBigDecimal(9, e.wert());
+            ps.setBigDecimal(10, e.zaehler());
+            ps.setBigDecimal(11, e.nenner());
+            ps.setString(12, e.zustand());
+            ps.setString(13, alsJson(e.kennzeichen()));
+            ps.setBigDecimal(14, e.abdeckungProzent());
+            ps.setString(15, e.richtung());
+            ps.setString(16, e.grund());
+            ps.setString(17, zustand);
+            ps.setTimestamp(18, endgueltigAb == null ? null : Timestamp.from(endgueltigAb));
+            ps.setObject(19, f.id());
+            ps.setTimestamp(20, Timestamp.from(am));
+            ps.setString(21, anlassArt);
+            ps.setString(22, anlassKennung);
+            ps.executeUpdate();
+        }
+        for (HerkunftEingang h : b.eingaenge()) {
+            try (PreparedStatement ps = con.prepareStatement("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, "
+                    + "kennzahl_id, position, rolle, art, objekt, messstelle_id, bezugsgroesse_id, eingang_kennzahl_id, "
+                    + "wert, zaehler, nenner, einheit, menge_zustand, abdeckung_prozent, version, fassung, kennzeichen) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)")) {
+                ps.setObject(1, r.kx().tenant());
+                ps.setObject(2, id);
+                ps.setObject(3, r.k().id());
+                ps.setInt(4, h.position());
+                ps.setString(5, h.rolle());
+                ps.setString(6, h.art());
+                ps.setString(7, h.objekt());
+                ps.setObject(8, h.messstelleId(), Types.OTHER);
+                ps.setObject(9, h.bezugsgroesseId(), Types.OTHER);
+                ps.setObject(10, h.kennzahlId(), Types.OTHER);
+                ps.setBigDecimal(11, h.wert());
+                ps.setBigDecimal(12, h.zaehler());
+                ps.setBigDecimal(13, h.nenner());
+                ps.setString(14, h.einheit());
+                ps.setString(15, h.mengeZustand());
+                ps.setBigDecimal(16, h.abdeckungProzent());
+                ps.setObject(17, h.version(), Types.INTEGER);
+                ps.setObject(18, h.fassung(), Types.INTEGER);
+                ps.setString(19, alsJson(h.kennzeichen()));
+                ps.executeUpdate();
+            }
+        }
+        return "geschrieben";
+    }
+
+    /**
+     * V3: nichts Neues — dieselbe Zahl, derselbe Zustand, dieselben Kennzeichen, dieselbe Fassung, dieselben Eingänge. Für
+     * Version n + 1 der Kaskade ohne die Nummer und ohne ihren Satz: dieselbe Aussage aus denselben Eingängen mit neuer
+     * Nummer ist keine Neubildung.
+     */
+    private static boolean gleich(KennzahlRepository repo, Gespeichert g, KennzahlRegeln.Ergebnis e, String zustand,
+            UUID fassung, List<HerkunftEingang> eingaenge, boolean neueVersion) {
         return zahlGleich(g.wert(), e.wert()) && zahlGleich(g.zaehler(), e.zaehler()) && zahlGleich(g.nenner(), e.nenner())
-                && Objects.equals(g.mengeZustand(), e.zustand()) && g.kennzeichen().equals(e.kennzeichen())
+                && Objects.equals(g.mengeZustand(), e.zustand())
+                && ohneVersion(g.kennzeichen(), neueVersion).equals(ohneVersion(e.kennzeichen(), neueVersion))
                 && zahlGleich(g.abdeckungProzent(), e.abdeckungProzent()) && Objects.equals(g.richtung(), e.richtung())
                 && Objects.equals(g.grund(), e.grund()) && Objects.equals(g.zustand(), zustand)
-                && Objects.equals(g.version(), e.version()) && fassung.equals(g.definitionFassungId())
+                && (neueVersion || Objects.equals(g.version(), e.version())) && fassung.equals(g.definitionFassungId())
                 && repo.eingaengeText(g.id()).equals(eingaenge.stream().map(HerkunftEingang::text).toList());
+    }
+
+    private static List<String> ohneVersion(List<String> saetze, boolean neueVersion) {
+        return neueVersion ? saetze.stream().filter(s -> !KennzahlRegeln.versionSatz(s)).toList() : saetze;
     }
 
     static String eingangText(int position, String rolle, String art, String objekt, BigDecimal wert, BigDecimal zaehler,
@@ -609,6 +778,11 @@ public class KennzahlLauf {
     private static boolean laeuft(Rahmen r, KennzahlRegeln.Periode per) {
         return KennzahlRegeln.laufend(per, r.kx().jetzt().atZone(r.zone()).toOffsetDateTime(), r.zone(), null, null)
                 .laeuft();
+    }
+
+    /** Nur die Kaskade hat einen Anlass — für einen endgültigen Wert, der Version n + 1 wird (Q7). */
+    private static KennzahlRegeln.Anlass anlass(Rahmen r, Gespeichert bisher) {
+        return r.kx().kaskade() != null && bisher != null && bisher.endgueltig() ? EINGANG : null;
     }
 
     private static KennzahlRegeln.Bisher bisher(Gespeichert g) {

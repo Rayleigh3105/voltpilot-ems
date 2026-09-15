@@ -24,13 +24,14 @@ Der Kennzahl-Schritt im Stundentakt `EndgueltigkeitLaeufer`: Endgültigkeit → 
   Vorschau. 0,32 (K3) und 0,2346 (K14) prüft `UemsKennzahlRechenlaufTest` gegen JEDE Zahl des Kundenbereichs.
 - ⚠ **Zeile oder keine (P4/P6):** ohne jeden Periodenwert-Eingang keine Zeile (ein Stammdatum zählt nicht); laufende Periode
   mit Periodenwert-Nenner = „keine Werte“ `periode_nicht_zu_ende`, sonst erst, wenn alle Eingänge eine Zahl tragen.
-- ⚠ **Endgültig bleibt stehen:** der Regellauf bildet NIE Version n + 1 (kein Anlass). Das tun die Kaskaden-Nähte IP-8/IP-9.
-- ⚠ **`kennzahl_neu_gebildet` schreibt der Regellauf nicht — und muss es nicht:** der Vertrag meldet NUR einen ENDGÜLTIGEN Wert
-  als Version n + 1 mit Anlass, vorläufige ziehen ohne Meldung nach (`docs/contracts/v2/events-vocabulary-vectors.json:1969`,
-  `events-vocabulary.md:255`). Erzeuger ist die Kaskade: **IP-8** (Reihen-Pfad, AP-11 §8 „Ereignisse“) und **IP-9**
-  (Nenner-/Definitions-Auslöser, AP-11 §4.10). ⚠ Die Reservierung nennt als `angelegt_von` noch „AP-11 IP-6“
-  (`events-vocabulary-vectors.json:1967`) — die Vokabular-Migration liefert **IP-8** als erster Erzeuger mit, und trägt die
-  Zeile dort um. AP-12 erkennt eine erste Bildung oder ein Nachziehen ohne das Ereignis über die Versions-Zeilen (`berechnet_am`).
+- ⚠ **Endgültig bleibt stehen:** der Regellauf bildet NIE Version n + 1 (kein Anlass). Das tut die Kaskade über denselben
+  Code, `KennzahlLauf.nachKorrektur` (IP-8, `uems-kennzahl-kaskade.md`; der Nenner-/Definitions-Auslöser IP-9 folgt).
+- **`kennzahl_neu_gebildet` schreibt der Regellauf nicht — und muss es nicht:** der Vertrag meldet NUR einen ENDGÜLTIGEN Wert
+  als Version n + 1 mit Anlass, vorläufige ziehen ohne Meldung nach. Erzeuger ist die Kaskade (`KennzahlNeuGebildet`,
+  Vokabular seit `V20260915061500`). AP-12 erkennt eine erste Bildung oder ein Nachziehen ohne das Ereignis über die
+  Versions-Zeilen (`berechnet_am`).
+- ⚠ **Nachziehen trägt den Anlass seiner Version** (Trigger `kennzahl_wert_version_folgt`): eine vorläufige Version 2 der
+  Kaskade zieht im Regellauf mit `K-…` nach, nicht mit NULL.
 - ⚠ **V3 über den Vergleich:** unverändert = gleiche Zahl, Zustände, Kennzeichen, Fassung UND gleiche Eingänge
   (`KennzahlRepository.eingaengeText`); `berechnet_am` muss nach der neuesten Zeile liegen (Trigger), sonst Warnung ohne Zeile.
 - ⚠ **Zeit-Perioden haben keine Eingangs-Zeilen:** die Teilperioden sind Zeilen derselben Kennzahl, `kennzahl_wert_eingang`

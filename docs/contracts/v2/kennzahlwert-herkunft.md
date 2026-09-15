@@ -25,7 +25,8 @@ Route mit Regel 7 (`satz` null, `fehlt` = `eingaenge`).
 ## 1. Was im Satz steht
 
 `art = kennzahl` · Kennzeichen der Kennzahl · `rechenform` · `definition_fassung` (die Fassung der Berechnung, die am
-LETZTEN Tag der Periode galt, V2) · Periode (Art und Schlüssel) · `berechnet_am` · `version` · `anlass` · **jeder Eingang**
+LETZTEN Tag der Periode galt, V2) · Periode (Art und Schlüssel) · `berechnet_am` · `version` · `anlass` (der Beleg des Vorgangs; im Reihen-Pfad der Kaskade Kennung, Entscheidung und
+deren Tag in der Zone des Kundenbereichs — „K-2026-0007 (freigegeben 12.11.2026)“, AP-11 IP-8) · **jeder Eingang**
 mit Rolle (`zaehler` · `nenner` · `paar`), Art, `objekt` (Kennzeichen), Wert, bei einem Paar Zähler und Nenner, Einheit,
 Zustand, Abdeckung, Version (Messstelle, Kennzahl) oder Fassung (Bezugsgröße mit Periodenwert; ein Stammdatum hat keine) und
 seinen eigenen Kennzeichen · und das Ergebnis mit Wert, Einheit, Zustand, Richtung, Grund, Abdeckung und Kennzeichen.

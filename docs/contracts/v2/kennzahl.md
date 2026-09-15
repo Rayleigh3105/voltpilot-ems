@@ -13,7 +13,7 @@ ungewichtet gemittelt.“** — Halle 2 6 100 kWh ÷ 41 000 Stück = **0,15 kWh 
 | [`kennzahl-vectors.json`](./kennzahl-vectors.json) | 22 Fälle K1–K22, 120 Prüfungen, Vokabulare, Kundensätze, `zwillinge`, `_abweichungen`, `_nicht_geprueft` |
 | [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + Schema | die Herkunft eines Kennzahl-Werts (Hülle `{satz, fehlt}`) |
 | [`ergebnis-zustand-vectors.json`](./ergebnis-zustand-vectors.json) Block `kennzahl_kennzeichen` (1.9) | Wortlaut, Rang und Erbregeln der Kennzeichen ([`ergebnis-zustand.md`](./ergebnis-zustand.md) §7) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) Block `reserviert` | `correction` mit Bezug `bezugsgroesse`, `kennzahl_neu_gebildet` — reserviert, nicht angelegt |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) Block `reserviert` | `correction` mit Bezug `bezugsgroesse`, `kennzahl_neu_gebildet` — reserviert; angelegt seit V20260915010000 bzw. V20260915061500 |
 | [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) 1.3 | BZ-6, BZ-7 und `kennzahlen[]` KZ-0001 … KZ-0005 — die Fallquelle der Regel `referenz` |
 | `services/api/.../uems/KennzahlRegeln.java` | der Java-Zwilling (rein) |
 | `frontend/portal/src/uemsKennzahl.ts` | der TS-Zwilling (rein) |
@@ -134,7 +134,7 @@ macht Fassung 2 bei Version 1, solange der Wert vorläufig ist (K17).
 
 Das Ereignis-Vokabular führt beides als **Reservierung** (`events-vocabulary-vectors.json` Block `reserviert`): `correction`
 mit Bezug `bezugsgroesse` legt AP-09 IP-7 an (seit V20260915010000 angelegt), `kennzahl_neu_gebildet` (Urheber `cloud`) legt
-AP-11 IP-6 an — bis dahin ist es kein Wort des Vokabulars; `KennzahlVectorsTest` prüft, dass Reservierung und Anlage sich nicht widersprechen.
+AP-11 IP-8 an (seit V20260915061500 angelegt: Bezug `kennzahl`, Pflicht `ausloeser` und `version`); `KennzahlVectorsTest` prüft, dass Reservierung und Anlage sich nicht widersprechen.
 
 ## 10. Geltungsbereich und Rechte (E6, E10)
 

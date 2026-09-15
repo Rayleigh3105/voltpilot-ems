@@ -55,6 +55,7 @@ export const EREIGNIS_ARTEN = [
   'bericht_revision_angestossen',
   'bericht_entwurf_neu_gebildet',
   'bericht_abgerufen',
+  'kennzahl_neu_gebildet',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -171,6 +172,8 @@ export const FELDTYP: Record<string, Feldtyp> = {
   anlass_kennung: 'kennung',
   anlass_fassung: 'ganz_ab_1',
   format: 'wort',
+  kennzahl: 'kennung',
+  version: 'ganz_ab_1',
 };
 
 export interface ArtText {
@@ -444,6 +447,13 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     zeitraum: false,
     varianteNach: null,
     saetze: { standard: 'Berichtsstand Nr. {nr} von {bericht} als {format} abgerufen' },
+    zusaetze: {},
+  },
+  kennzahl_neu_gebildet: {
+    name: 'Kennzahl neu gebildet',
+    zeitraum: true,
+    varianteNach: null,
+    saetze: { standard: 'Kennzahl {kennzahl} neu gebildet für {von} bis {bis}: Version {version} nach {ausloeser}' },
     zusaetze: {},
   },
 };
