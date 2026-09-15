@@ -16,6 +16,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -80,6 +81,60 @@ public class ZugriffRepository {
         return jdbc.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, email, zustand) "
                 + "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, sub) DO NOTHING",
                 kundenbereich(), b.sub(), b.konto().code(), b.anzeigename(), b.email(), b.zustand().code()) == 1;
+    }
+
+    /** Der Spiegel des Kontos in diesem Kundenbereich, sonst leer. */
+    public Optional<BenutzerSpiegel> spiegel(String sub) {
+        return jdbc.query("SELECT sub, konto, anzeigename, email, zustand FROM benutzer WHERE tenant_id = ? AND sub = ?",
+                (rs, n) -> new BenutzerSpiegel(rs.getString("sub"), Konto.vonCode(rs.getString("konto")),
+                        rs.getString("anzeigename"), rs.getString("email"),
+                        KontoZustand.vonCode(rs.getString("zustand"))),
+                kundenbereich(), sub).stream().findFirst();
+    }
+
+    // ------------------------------------------------------------------ Kundenbereich (Selbstauskunft, IP-4)
+
+    /** Name und Zeitzone des Kundenbereichs: das Unternehmen, sonst der Mandant und Europe/Berlin. */
+    public record KundenbereichKopf(String name, ZoneId zeitzone) {}
+
+    /** Ein Standort des Kundenbereichs; {@code kurzzeichen} ist das Kennzeichen des Vertrags (ST-1 …). */
+    public record StandortEintrag(UUID id, String kurzzeichen, String name) {}
+
+    /** Eine Zuweisung mit dem Anzeigenamen ihres Kontos (ohne Spiegel: das Subject). */
+    public record MitName(Zeile zeile, String name) {}
+
+    public KundenbereichKopf kundenbereichKopf() {
+        UUID tenant = kundenbereich();
+        return jdbc.query("SELECT coalesce(u.name, t.name) AS name, coalesce(u.zeitzone, 'Europe/Berlin') AS zeitzone "
+                + "FROM tenant t LEFT JOIN unternehmen u ON u.tenant_id = t.id WHERE t.id = ?",
+                (rs, n) -> new KundenbereichKopf(rs.getString("name"), ZoneId.of(rs.getString("zeitzone"))), tenant)
+                .stream().findFirst().orElse(new KundenbereichKopf("", ZoneId.of("Europe/Berlin")));
+    }
+
+    /** Die Standorte des Kundenbereichs ohne archivierte, in der Folge der Standort-Liste. */
+    public List<StandortEintrag> standorte() {
+        return jdbc.query("SELECT id, kurzzeichen, name FROM standort WHERE tenant_id = ? AND zustand <> 'archiviert' "
+                + "ORDER BY created_at, id",
+                (rs, n) -> new StandortEintrag(rs.getObject("id", UUID.class), rs.getString("kurzzeichen"),
+                        rs.getString("name")), kundenbereich());
+    }
+
+    /**
+     * Die zu {@code jetzt} wirksamen Zuweisungen EINER Rolle im ganzen Kundenbereich, die älteste zuerst — die Folge,
+     * in der der Vertrag die Kundenadministratoren im Weg nennt („Jonas Wendlinger und Ines Kaltenbach“).
+     */
+    public List<MitName> wirksamImKundenbereich(Rolle rolle, Instant jetzt) {
+        return jdbc.query(SELECT_MIT_NAME + " WHERE z.tenant_id = ? AND z.rolle = ? "
+                + "AND public.zugriff_zeitraum(z.gueltig_ab, z.endet_am, z.beendet_am) @> ? "
+                + "ORDER BY z.gueltig_ab, z.created_at, z.id",
+                (rs, n) -> new MitName(zeile(rs, n), rs.getString("name")), kundenbereich(), rolle.code(), utc(jetzt));
+    }
+
+    /** Der Grund, mit dem eine Zuweisung eingetragen wurde (der Notfall-Zugriff trägt ihn), sonst {@code null}. */
+    public String grundDerZuweisung(UUID zugriffId) {
+        return jdbc.query("SELECT grund FROM zugriff_protokoll WHERE tenant_id = ? AND zugriff_id = ? "
+                + "AND aktion = 'zuweisen' ORDER BY id LIMIT 1", (rs, n) -> rs.getString("grund"), kundenbereich(),
+                zugriffId).stream().findFirst().orElse(null);
     }
 
     // ------------------------------------------------------------------ Zuweisungen
@@ -151,6 +206,10 @@ public class ZugriffRepository {
             + "(SELECT s.kurzzeichen FROM standort s WHERE s.id = z.standort_id AND s.tenant_id = z.tenant_id) "
             + "AS standort_kurzzeichen, z.art, z.umfang, z.gueltig_ab, z.gueltig_bis, z.endet_am, z.zeitzone, "
             + "z.gewaehrt_von, z.beendet_am, z.beendet_von, z.beendet_grund FROM zugriff z";
+
+    private static final String SELECT_MIT_NAME = SELECT.replace(" FROM zugriff z", ", coalesce((SELECT b.anzeigename "
+            + "FROM benutzer b WHERE b.tenant_id = z.tenant_id AND b.sub = z.benutzer_sub), z.benutzer_sub) AS name "
+            + "FROM zugriff z");
 
     private void protokoll(UUID tenant, String aktion, String betroffenerSub, String betroffenerName, UUID zugriffId,
             Rolle rolle, UUID standortId, Art art, Umfang umfang, Instant gueltigAb, LocalDate gueltigBis,

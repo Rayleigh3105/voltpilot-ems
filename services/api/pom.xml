@@ -169,6 +169,15 @@
                     <include>measurement-point-catalog-${measurement.catalog.version}.json</include>
                 </includes>
             </resource>
+            <!-- UEMS AP-03 IP-4: the rights matrix as data for /api/v1/me - the contract
+                 file itself, not a copy (Dockerfile copies it into the build stage). -->
+            <resource>
+                <directory>${project.basedir}/../../docs/contracts/v2</directory>
+                <targetPath>uems</targetPath>
+                <includes>
+                    <include>rechte-matrix.json</include>
+                </includes>
+            </resource>
         </resources>
         <!-- Load the canonical dev realm (single source of truth) onto the test
              classpath so the Keycloak Testcontainer imports the same realm the

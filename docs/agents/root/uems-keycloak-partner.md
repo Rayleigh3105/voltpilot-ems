@@ -30,8 +30,9 @@ und die drei OCPP-Controller `SiteOcpp*Controller` (Gleichstand). Realm: `infra/
 - ⚠ **`TestingAuthenticationToken` und MockMvc-`jwt()` laufen NICHT durch den Konverter** und haben kein `KONTO_*`.
   Wer die Kontoart prüft, baut die Authentifizierung mit `new KeycloakRealmRoleConverter().convert(jwt)`
   (Muster `TenantFilterTest.tenantFuer`).
-- ⚠ **IP-4 (`X-Kundenbereich`):** Der Partner-Zweig im `TenantFilter` liefert heute „kein Kundenbereich“. IP-4 füllt
-  ihn NUR gegen eine wirksame Unterstützung. `X-Tenant-Id` bleibt allein der Plattform vorbehalten.
+- ⚠ **IP-4 (`X-Kundenbereich`):** Der Partner-Zweig im `TenantFilter` liefert weiter „kein Kundenbereich“. Seit IP-4
+  nimmt der `ZugriffFilter` danach den Kopf NUR gegen eine wirksame Unterstützung an, sonst 404 auf jeder Kundenroute
+  (`uems-zugriff-kontext.md`). `X-Tenant-Id` bleibt allein der Plattform vorbehalten.
 - ⚠ **IP-8/IP-14:** `createPartnerUser` braucht die Rolle im Realm. Der Live-Realm braucht deshalb den Betriebsschritt
   aus `infra/prod/keycloak/README.md` VOR dem Ausrollen. Sonst kommt 404 „Realm role 'partner' not found“, und das
   Konto wird zurückgerollt. Die E-Mail ist im ganzen Realm eindeutig: Kundenkonto und Partner-Konto mit derselben

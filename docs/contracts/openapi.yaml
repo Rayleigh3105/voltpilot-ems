@@ -338,6 +338,11 @@ tags:
       (docs/contracts/v2/rechte-matrix.json) - die Durchsetzung kommt mit AP-03,
       bis dahin gilt authenticated(). Zähler- und Controllerwechsel (IP-17/IP-19)
       kommen additiv mit dem Recht `geraet.einrichten`.
+  - name: zugriff
+    description: >
+      UEMS AP-03 Rollen und Standortrechte. `GET /api/v1/me` ist die Selbstauskunft (IP-4). Partner- und
+      Plattform-Konten wählen den Kundenbereich mit `X-Kundenbereich`, angenommen nur gegen eine wirksame
+      Unterstützung - sonst 404 auf jeder Kundenroute.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -11214,6 +11219,30 @@ paths:
         "404": { $ref: "#/components/responses/VerteilungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerteilungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerteilungAbgelehnt" }
+  /api/v1/me:
+    get:
+      tags: [zugriff]
+      summary: Die Selbstauskunft - wer fragt und was er darf.
+      description: >
+        UEMS AP-03 IP-4, Recht `konto.eigenes` - jede Person liest nur sich selbst; die Route setzt nichts durch und
+        schreibt nichts. Die EINE Quelle des Portals: Name, Kontoart, Rollen, sichtbare Standorte mit den Rechten je
+        Aktion der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`, Ableitung `darf`), künftige Zuweisungen,
+        Teilansicht, Unterstützungen (eigene und gewährte) mit ihren Banner-Sätzen und die Kundenadministratoren für
+        „Grund und Weg“. `standorte`, `kuenftig`, `text` und `teilansicht` sind die Ableitung `sichtbare_standorte`
+        aus `rechte-vectors.json`. Der Kundenbereich des Kundenkontos kommt aus dem Token; Partner- und
+        Plattform-Konten wählen ihn mit `X-Kundenbereich`, der nur gegen eine wirksame Unterstützung gilt (Partner:
+        Installateur, Plattform: VoltPilot oder Notfall-Zugriff). Ohne sie antwortet diese Route mit dem eigenen Konto
+        allein (`kundenbereich` null), jede andere Kundenroute mit 404. Die Plattform erreicht Kundenbereiche bis
+        AP-03 IP-8 weiter über `X-Tenant-Id` (`zugang` = `umschalter`).
+      parameters:
+        - $ref: "#/components/parameters/Kundenbereich"
+      responses:
+        "200":
+          description: Die Selbstauskunft.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Selbstauskunft" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/unternehmen/vieraugen:
     get:
       tags: [korrekturen]
@@ -11339,6 +11368,16 @@ components:
         customer's access; an admin without the header sees zero rows
         (default-deny).
   parameters:
+    Kundenbereich:
+      name: X-Kundenbereich
+      in: header
+      required: false
+      description: >
+        UEMS AP-03 IP-4 - der Kundenbereich (Mandanten-Kennung) eines Partner- oder Plattform-Kontos. Angenommen nur
+        gegen eine wirksame Unterstützung des Kontos in genau diesem Kundenbereich; sonst 404 auf jeder Kundenroute
+        (nie 403, nie eine leere Liste) und `/api/v1/me` ohne Kundenbereich. Ein Kundenkonto ignoriert ihn;
+        `X-Tenant-Id` bleibt der Umschalter der Plattform (bis IP-8) und allein für `/api/v1/admin/**` bestimmt.
+      schema: { type: string, format: uuid }
     ProtokollVon:
       name: von
       in: query
@@ -11532,6 +11571,133 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/EinstellungFehler" }
   schemas:
+    Selbstauskunft:
+      type: object
+      description: UEMS AP-03 IP-4 - die Selbstauskunft (`GET /api/v1/me`).
+      required: [kennung, name, konto, zustand, kundenbereich, zugang, rollen, unternehmensweit, standorte,
+        unternehmen_rechte, kuenftig, text, teilansicht, unterstuetzungen, kundenadministratoren]
+      properties:
+        kennung: { type: string, nullable: true, description: Das Subject des Kontos. }
+        name: { type: string, nullable: true, description: "Anzeigename aus dem Benutzer-Spiegel, sonst aus dem Token." }
+        konto: { type: string, nullable: true, enum: [benutzer, partner, plattform] }
+        zustand: { type: string, enum: [angelegt, aktiv, gesperrt, entfernt] }
+        kundenbereich:
+          nullable: true
+          description: null ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung).
+          allOf: [{ $ref: "#/components/schemas/SelbstauskunftKundenbereich" }]
+        zugang:
+          type: string
+          nullable: true
+          enum: [konto, unterstuetzung, umschalter]
+          description: "`umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8); null ohne Kundenbereich."
+        rollen:
+          type: array
+          items: { type: string }
+          description: Die wirksamen Rollen (Kennungen der Matrix) in ihrer Folge.
+        unternehmensweit: { type: boolean }
+        standorte:
+          type: array
+          items: { $ref: "#/components/schemas/SelbstauskunftStandort" }
+        unternehmen_rechte:
+          type: array
+          items: { type: string }
+          description: Die Aktionen (Kennungen der Matrix), die der Aufrufer auf Unternehmensebene darf.
+        kuenftig:
+          type: array
+          items: { $ref: "#/components/schemas/SelbstauskunftKuenftig" }
+        text:
+          type: string
+          nullable: true
+          description: Der Satz ohne Standort („Ihnen ist derzeit kein Standort zugewiesen. …“), sonst null.
+        teilansicht:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/SelbstauskunftTeilansicht" }]
+        unterstuetzungen: { $ref: "#/components/schemas/SelbstauskunftUnterstuetzungen" }
+        kundenadministratoren:
+          type: array
+          items: { $ref: "#/components/schemas/SelbstauskunftPerson" }
+    SelbstauskunftKundenbereich:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    SelbstauskunftStandort:
+      type: object
+      required: [id, kennzeichen, name, rollen, umfang, ocpp_stufe, rechte]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, example: ST-1 }
+        name: { type: string }
+        rollen: { type: array, items: { type: string } }
+        umfang:
+          type: string
+          nullable: true
+          enum: [ansehen, einrichten, einrichten_und_bedienen]
+          description: Der höchste Umfang einer Unterstützung an diesem Standort, sonst null.
+        ocpp_stufe: { type: string, enum: [keine, CUSTOMER, SITE_ADMIN, PLATFORM] }
+        rechte:
+          type: array
+          items: { type: string }
+          description: Die Aktionen (Kennungen der Matrix), die der Aufrufer an diesem Standort darf.
+    SelbstauskunftKuenftig:
+      type: object
+      required: [standort, ab, text]
+      properties:
+        standort: { type: string }
+        ab: { type: string, format: date-time }
+        text: { type: string }
+    SelbstauskunftTeilansicht:
+      type: object
+      required: [sichtbar, gesamt, unternehmensebene, teilansicht, kopfzeile, export_kopfzeile,
+        unternehmensweite_objekte]
+      properties:
+        sichtbar: { type: integer }
+        gesamt: { type: integer }
+        unternehmensebene: { type: boolean }
+        teilansicht: { type: boolean }
+        kopfzeile: { type: string, nullable: true }
+        export_kopfzeile: { type: string, nullable: true }
+        unternehmensweite_objekte: { type: boolean }
+    SelbstauskunftUnterstuetzungen:
+      type: object
+      required: [eigene, gewaehrte]
+      properties:
+        eigene:
+          type: array
+          items: { $ref: "#/components/schemas/SelbstauskunftUnterstuetzung" }
+          description: Die wirksamen Unterstützungen des Aufrufers in diesem Kundenbereich (Partner, Plattform).
+        gewaehrte:
+          type: array
+          items: { $ref: "#/components/schemas/SelbstauskunftUnterstuetzung" }
+          description: Die wirksamen Unterstützungen an den sichtbaren Standorten des Kundenkontos.
+    SelbstauskunftUnterstuetzung:
+      type: object
+      required: [art, umfang, standorte, gueltig_ab, gueltig_bis, endet, zustand, erinnerung, unterstuetzer, banner]
+      properties:
+        art: { type: string, enum: [installateur, voltpilot, notfall] }
+        umfang: { type: string, nullable: true, enum: [ansehen, einrichten, einrichten_und_bedienen] }
+        standorte: { type: array, items: { type: string } }
+        gueltig_ab: { type: string, format: date-time }
+        gueltig_bis:
+          type: string
+          format: date
+          nullable: true
+          description: Das Enddatum (einschließlich); der Notfall-Zugriff hat keins, nur `endet`.
+        endet: { type: string, format: date-time, nullable: true }
+        zustand: { type: string, enum: [entwurf, eingerichtet, aktiv, archiviert] }
+        erinnerung: { type: boolean, description: true in den letzten sieben Tagen (nie beim Notfall-Zugriff). }
+        unterstuetzer: { $ref: "#/components/schemas/SelbstauskunftPerson" }
+        banner:
+          type: string
+          nullable: true
+          description: Der Banner-Satz - beim Kunden „… hat Zugriff auf …“, beim Unterstützer „Sie arbeiten im Kundenbereich …“.
+    SelbstauskunftPerson:
+      type: object
+      required: [kennung, name]
+      properties:
+        kennung: { type: string, description: Das Subject des Kontos. }
+        name: { type: string }
     OcppConnectorState:
       type: object
       properties:

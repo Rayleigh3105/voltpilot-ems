@@ -7,6 +7,8 @@ COPY services/api/mvnw services/api/pom.xml ./
 RUN ./mvnw -B -q dependency:go-offline
 COPY services/api/src/ src/
 COPY catalog/measurement-points/dist/ /app/catalog/measurement-points/dist/
+# Die Rechte-Matrix für /api/v1/me (UEMS AP-03 IP-4) - pom.xml legt sie ins Jar.
+COPY docs/contracts/v2/rechte-matrix.json /app/docs/contracts/v2/rechte-matrix.json
 RUN ./mvnw -B -q clean package -DskipTests
 
 # ---- run ----
