@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import jakarta.servlet.ServletException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -88,6 +89,7 @@ class ZugriffZaunApiTest {
     private static final String KUNDENBEREICH = ZugriffKontextLader.KUNDENBEREICH_HEADER;
     private static final String TENANT = "X-Tenant-Id";
     static final String SITZUNG = "/api/v1/test-sitzung";
+    private static final String AUSNAHME = "Ausnahme im Handler: ";
 
     private static final String PARTNER_GEWAEHRT = "sub-zaun-partner-gewaehrt";
     private static final String PARTNER_BEENDET = "sub-zaun-partner-beendet";
@@ -258,12 +260,16 @@ class ZugriffZaunApiTest {
                         new String[0]));
         List<String> abweichungen = new ArrayList<>();
         Set<String> fluechtig = new TreeSet<>();
+        Set<String> mitAusnahme = new TreeSet<>();
         int mitDaten = 0;
         for (Route r : routen) {
             for (Konto k : konten) {
                 Antwort vorher1 = vorher(r, k);
                 Antwort nachher = ruf(r, k);
                 Antwort vorher2 = vorher(r, k);
+                if (nachher.body().startsWith(AUSNAHME) || vorher2.body().startsWith(AUSNAHME)) {
+                    mitAusnahme.add(r + " (" + nachher.body().substring(nachher.body().indexOf(':') + 2) + ")");
+                }
                 if (vorher1.status() != vorher2.status()) {
                     fluechtig.add(r.toString());
                 } else if (nachher.status() != vorher2.status()) {
@@ -277,8 +283,9 @@ class ZugriffZaunApiTest {
                 }
             }
         }
-        System.out.printf("Bestand: %d lesende Kundenrouten × %d Konten, %d Antworten mit Daten gleich, flüchtig: %s%n",
-                routen.size(), konten.size(), mitDaten, fluechtig);
+        System.out.printf("Bestand: %d lesende Kundenrouten × %d Konten, %d Antworten mit Daten gleich, flüchtig: %s, "
+                + "Ausnahme im Handler (beide Seiten): %s%n", routen.size(), konten.size(), mitDaten, fluechtig,
+                mitAusnahme);
         assertThat(ruf(get("/api/v1/sites"), konten.get(0)).body()).contains(BERLIN_SITE);
         assertThat(routen).hasSizeGreaterThan(150);
         assertThat(mitDaten).isGreaterThan(100);
@@ -354,8 +361,16 @@ class ZugriffZaunApiTest {
         for (int i = 0; i < k.koepfe().length; i += 2) {
             anfrage.header(k.koepfe()[i], k.koepfe()[i + 1]);
         }
-        MvcResult res = mvc.perform(anfrage).andReturn();
-        return new Antwort(res.getResponse().getStatus(), res.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        try {
+            MvcResult res = mvc.perform(anfrage).andReturn();
+            return new Antwort(res.getResponse().getStatus(),
+                    res.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        } catch (ServletException e) {
+            // Scheitert ein Handler an den Platzhaltern, wäre das im Server ein 500 — so wird es auf beiden Seiten
+            // verglichen (MockMvc wirft die Ausnahme sonst durch).
+            Throwable ursache = e.getRootCause() != null ? e.getRootCause() : e;
+            return new Antwort(500, AUSNAHME + ursache.getClass().getName());
+        }
     }
 
     private static MockHttpServletRequestBuilder get(String pfad) {
