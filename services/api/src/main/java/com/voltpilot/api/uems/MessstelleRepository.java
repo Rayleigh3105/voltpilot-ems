@@ -166,6 +166,15 @@ public class MessstelleRepository {
     }
 
     /**
+     * Alle Messstellen des Mandanten {@code tenant}, den der Aufrufer AUSDRÜCKLICH nennt — für eine Verbindung der
+     * Verwaltungsrolle, an der keine RLS filtert (UEMS AP-12 IP-6, Berichts-Abzug).
+     */
+    public List<Messstelle> alle(UUID tenant) {
+        return List.copyOf(jdbc.query("SELECT " + SPALTEN + " FROM messstelle WHERE tenant_id = ? ORDER BY kennzeichen",
+                MessstelleRepository::map, tenant));
+    }
+
+    /**
      * Gibt der Messstelle ein anderes Kennzeichen; das bisherige bleibt ihr belegt.
      * {@code false}, wenn es sie im Zaun nicht gibt.
      */

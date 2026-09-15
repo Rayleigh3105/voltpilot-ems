@@ -11,9 +11,12 @@ import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -44,10 +48,11 @@ import org.testcontainers.utility.DockerImageName;
  * endgültig ab 08.11.2026) und die gespeicherte Herkunft der beiden Reste MS-09 und MS-15. Ein fremder Kundenbereich mit
  * eigenem MS-01 liegt daneben.
  *
- * <p><b>Die benannten Lücken</b> (firstmate 001 = A): Der Abzug ist byte-gleich zum Vektor bis auf fünf Stellen, und jede
- * ist als ERWARTETER IST-ZUSTAND behauptet — sobald eine Lücke sich schließt, wird dieser Test rot und die Ausnahme darf
- * weg. Kennzahlen und Bezugsgrößen bringt AP-12 IP-6; Speicher-Paar und Tagesverlauf das Folgepaket
- * {@code vp-uems-b12-tagesverlauf-speicher} (Vertrag 1.1 + AP-08-Leseweg).
+ * <p><b>Die benannten Lücken</b> (firstmate 001 = A): Der Abzug ist byte-gleich zum Vektor bis auf benannte Stellen, und
+ * jede ist als ERWARTETER IST-ZUSTAND behauptet — sobald eine Lücke sich schließt, wird dieser Test rot und die Ausnahme
+ * darf weg. Kennzahlen und Bezugsgrößen hat AP-12 IP-6 geschlossen (KZ-0001, KZ-0005, BZ-4, BZ-6 — dafür zwei benannte
+ * Abweichungen des Vektors); Speicher-Paar und Tagesverlauf bringt das Folgepaket {@code vp-uems-b12-tagesverlauf-speicher}
+ * (Vertrag 1.2 + AP-08-Leseweg).
  */
 @Testcontainers(disabledWithoutDocker = true)
 class BerichtAbzugBildungTest {
@@ -136,19 +141,28 @@ class BerichtAbzugBildungTest {
         JsonNode abzug = ist.abzug();
         ObjectNode soll = soll().deepCopy();
 
-        // Lücke 1 — AP-12 IP-6: der Kennzahlen-Abschnitt ist leer, „Keine Kennzahlen definiert“.
-        assertThat(soll.path("kennzahlen")).as("der Vektor nennt KZ-0001 und KZ-0005").hasSize(2);
-        assertThat(abzug.path("kennzahlen")).as("Keine Kennzahlen definiert — füllt sich mit AP-12 IP-6").isEmpty();
-        soll.putArray("kennzahlen");
+        // Die Lücken 1 und 2 aus AP-12 IP-5 sind geschlossen (AP-12 IP-6): der Kennzahlen-Abschnitt nennt KZ-0001 und
+        // KZ-0005 mit ihrem Nachweis, das Quellenverzeichnis alle 19 Quellen — BZ-4, BZ-6, KZ-0001, KZ-0005 eingeschlossen.
+        assertThat(texte(abzug.path("kopf").path("quellenverzeichnis"))).as("19 Quellen").hasSize(19)
+                .containsAll(QUELLEN_AP11).containsExactlyElementsOf(texte(soll.path("kopf").path("quellenverzeichnis")));
+        assertThat(abzug.path("kennzahlen")).extracting(k -> k.path("quelle").asText()).containsExactly("KZ-0001", "KZ-0005");
 
-        // Lücke 2 — AP-12 IP-6: 19 − 4 Quellen, ohne die Kennzahlen und ihre Bezugsgrößen.
-        List<String> verzeichnis = texte(soll.path("kopf").path("quellenverzeichnis"));
-        assertThat(verzeichnis).hasSize(19).containsAll(QUELLEN_AP11);
-        verzeichnis.removeAll(QUELLEN_AP11);
-        assertThat(texte(abzug.path("kopf").path("quellenverzeichnis"))).as("19 − 4 Quellen bis AP-12 IP-6")
-                .containsExactlyElementsOf(verzeichnis);
-        ArrayNode ohne = ((ObjectNode) soll.path("kopf")).putArray("quellenverzeichnis");
-        verzeichnis.forEach(ohne::add);
+        // Abweichung a zum Vektor — die Zahl ist die gespeicherte von AP-11 (10 Nachkommastellen,
+        // KennzahlRegeln.WERT_NACHKOMMASTELLEN); der Vektor schreibt sie auf 4 Stellen. Auf 4 Stellen gerundet gleich.
+        for (int i = 0; i < 2; i++) {
+            ObjectNode s = (ObjectNode) soll.path("kennzahlen").get(i);
+            JsonNode ist0 = abzug.path("kennzahlen").get(i);
+            assertThat(ist0.path("wert").decimalValue().scale()).isEqualTo(KennzahlRegeln.WERT_NACHKOMMASTELLEN);
+            assertThat(ist0.path("wert").decimalValue().setScale(4, RoundingMode.HALF_UP))
+                    .isEqualByComparingTo(s.path("wert").decimalValue());
+            s.set("wert", ist0.path("wert"));
+        }
+        // Abweichung b — KZ-0005 heißt in der Referenzdatei 1.3 „Netzbezug je m² — Halle 2“, der Vektor schreibt
+        // „Netzbezug je m² Halle 2“; der Abzug nennt den Namen zum Datenstand.
+        assertThat(soll.path("kennzahlen").get(1).path("name_zum_datenstand").asText()).isEqualTo("Netzbezug je m² Halle 2");
+        String kz0005 = kennzahlAusReferenz("KZ-0005").path("name").asText();
+        assertThat(abzug.path("kennzahlen").get(1).path("name_zum_datenstand").asText()).isEqualTo(kz0005);
+        ((ObjectNode) soll.path("kennzahlen").get(1)).put("name_zum_datenstand", kz0005);
 
         // Lücke 3 — vp-uems-b12-tagesverlauf-speicher: MS-04 („Laden / Entladen“) ist EINE Netto-Menge des Lesemodells,
         // nicht Laden 7 900 / Entladen 7 100 — ohne menge_art, mit dem Kennzeichen seiner gespeicherten Zeile.
@@ -191,43 +205,118 @@ class BerichtAbzugBildungTest {
     }
 
     @Test
-    void neunzehnMinusVierQuellen_imQuellenverzeichnisDesEntwurfs() throws Exception {
+    void neunzehnQuellen_imQuellenverzeichnisDesEntwurfs_jedeMitIhrerArt() throws Exception {
         alsVerwaltung(con -> bildung.bilden(con, bericht, DATENSTAND, "kaskade"));
         List<Map<String, Object>> zeilen = root.queryForList("SELECT art, kennzeichen, bezug, erster_tag, letzter_tag, "
                 + "version, fassung, name_zum_datenstand, stand_nr FROM bericht_quelle WHERE tenant_id = ? "
-                + "AND bericht_id = ? ORDER BY kennzeichen", KB, bericht);
-        List<String> soll = texte(soll().path("kopf").path("quellenverzeichnis"));
-        soll.removeAll(QUELLEN_AP11);
-        assertThat(zeilen).as("19 − 4: KZ-0001, KZ-0005, BZ-4, BZ-6 kommen mit AP-12 IP-6").hasSize(15);
-        assertThat(zeilen).extracting(z -> z.get("kennzeichen")).containsExactlyElementsOf(soll);
+                + "AND bericht_id = ? ORDER BY kennzeichen COLLATE \"C\"", KB, bericht);
+        assertThat(zeilen).as("19 Quellen, je eine Zeile — die Eingänge der Reste und der Kennzahlen sind selbst Quellen")
+                .extracting(z -> z.get("kennzeichen"))
+                .containsExactlyElementsOf(texte(soll().path("kopf").path("quellenverzeichnis")));
         for (Map<String, Object> z : zeilen) {
-            assertThat(z.get("art")).isEqualTo("messstelle");
-            assertThat(z.get("bezug")).as("die Eingänge der Reste sind selbst Quellen — kein mittelbarer Eintrag")
-                    .isEqualTo("unmittelbar");
+            String kz = (String) z.get("kennzeichen");
+            assertThat(z.get("bezug")).as(kz + " — B1 gruppiert alle 19 unmittelbar").isEqualTo("unmittelbar");
             assertThat(z.get("erster_tag").toString()).isEqualTo("2026-10-01");
             assertThat(z.get("letzter_tag").toString()).isEqualTo("2026-10-31");
-            assertThat(z.get("version")).isEqualTo(1);
-            assertThat(z.get("fassung")).isNull();
             assertThat(z.get("stand_nr")).as("Quellen des Entwurfs").isNull();
+            // {art, version, fassung}: Kennzahl-Version + Definitions-Fassung, Bezugsgrößen-Fassung, Stammdatum ohne.
+            String[] soll = switch (kz) {
+                case "BZ-4" -> new String[] {"stammdatum", null, null};
+                case "BZ-6" -> new String[] {"bezugsgroesse", null, "1"};
+                case "KZ-0001", "KZ-0005" -> new String[] {"kennzahl", "1", "1"};
+                default -> new String[] {"messstelle", "1", null};
+            };
+            assertThat(z.get("art")).as(kz).isEqualTo(soll[0]);
+            assertThat(z.get("version") == null ? null : z.get("version").toString()).as(kz + " Version").isEqualTo(soll[1]);
+            assertThat(z.get("fassung") == null ? null : z.get("fassung").toString()).as(kz + " Fassung").isEqualTo(soll[2]);
         }
         assertThat(zeilen.stream().filter(z -> "MS-12".equals(z.get("kennzeichen"))).findFirst().orElseThrow()
                 .get("name_zum_datenstand")).isEqualTo("Montage Linie M1");
     }
 
     @Test
-    void derKennzahlenAbschnittIstLeer_KeineKennzahlenDefiniert_bisAP12IP6() throws Exception {
-        // Stand der Prüfung: AP-11 IP-6 (Rechenlauf) und IP-7 (Werte lesen) sind im Sammelzweig — kennzahl_wert-Zeilen
-        // KÖNNEN entstehen; der Abschnitt bleibt leer, bis AP-12 IP-6 ihn liest.
-        assertThat(root.queryForObject("SELECT to_regclass('kennzahl_wert') IS NOT NULL", Boolean.class)).isTrue();
-        BerichtAbzugBildung.Ergebnis e = alsVerwaltung(con -> bildung.zusammentragen(con, bericht, DATENSTAND));
-        assertThat(e.abzug().path("kennzahlen")).as("Keine Kennzahlen definiert").isEmpty();
-        assertThat(e.quellen()).extracting(BerichtAbzugBildung.Quelle::art).containsOnly("messstelle");
+    void ohneJedeZeileInDerAbwahlSindAlleKennzahlenGewaehlt_eineAbwahlLaesstEineWeg_wiederGewaehltIstSieDa()
+            throws Exception {
+        // firstmate 001: das FEHLEN einer Zeile heißt „gewählt“ — wer die Tabelle nicht schreibt, ändert nichts.
+        assertThat(root.queryForObject("SELECT count(*) FROM bericht_kennzahl_abwahl", Long.class)).isZero();
+        TenantContext.set(KB);
+        try (Connection con = app.getConnection()) {
+            con.setAutoCommit(false);
+            try {
+                assertThat(kennzahlen(bildung.zusammentragen(con, bericht, DATENSTAND))).containsExactly("KZ-0001", "KZ-0005");
+                UUID abwahl;
+                try (PreparedStatement ps = con.prepareStatement("INSERT INTO bericht_kennzahl_abwahl (tenant_id, bericht_id, "
+                        + "kennzahl_id, abgewaehlt_von_sub, abgewaehlt_von_name) VALUES (?, ?, ?, 'sub-ik', 'Ines Kaltenbach') "
+                        + "RETURNING id")) {
+                    ps.setObject(1, KB);
+                    ps.setObject(2, bericht);
+                    ps.setObject(3, IDS.get("KZ-0005"));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        rs.next();
+                        abwahl = rs.getObject(1, UUID.class);
+                    }
+                }
+                BerichtAbzugBildung.Ergebnis ohne = bildung.zusammentragen(con, bericht, DATENSTAND);
+                assertThat(kennzahlen(ohne)).containsExactly("KZ-0001");
+                assertThat(ohne.quellen()).extracting(BerichtAbzugBildung.Quelle::kennzeichen)
+                        .doesNotContain("KZ-0005", "BZ-4").contains("MS-10", "BZ-6");
+                try (PreparedStatement ps = con.prepareStatement("UPDATE bericht_kennzahl_abwahl SET aufgehoben_am = now() "
+                        + "WHERE id = ?")) {
+                    ps.setObject(1, abwahl);
+                    ps.executeUpdate();
+                }
+                assertThat(kennzahlen(bildung.zusammentragen(con, bericht, DATENSTAND))).as("wieder gewählt")
+                        .containsExactly("KZ-0001", "KZ-0005");
+            } finally {
+                con.rollback();
+            }
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void ohneDieKennzahlTabellenEntstehtDerAbzugTrotzdem_ohneDieAbwahlTabelleSindAlleGewaehlt() throws Exception {
+        BerichtAbzugBildung.Ergebnis mit = alsVerwaltung(con -> bildung.zusammentragen(con, bericht, DATENSTAND));
+        try (Connection con = root.getDataSource().getConnection()) {
+            con.setAutoCommit(false);
+            JdbcTemplate j = new JdbcTemplate(new SingleConnectionDataSource(con, true));
+            try {
+                // Fehlt nur die Abwahl-Tabelle, sind alle Kennzahlen gewählt — auch eine, die dort abgewählt stand.
+                j.update("INSERT INTO bericht_kennzahl_abwahl (tenant_id, bericht_id, kennzahl_id, abgewaehlt_von_name) "
+                        + "VALUES (?, ?, ?, 'Ines Kaltenbach')", KB, bericht, IDS.get("KZ-0005"));
+                j.execute("ALTER TABLE bericht_kennzahl_abwahl RENAME TO bericht_kennzahl_abwahl_nicht_da");
+                assertThat(kennzahlen(bildung.zusammentragen(con, bericht, DATENSTAND))).containsExactly("KZ-0001", "KZ-0005");
+
+                // Fehlen die Kennzahl-Tabellen, ist der Abschnitt leer — und alles andere ist derselbe Abzug.
+                for (String t : List.of("kennzahl_wert_eingang", "kennzahl_wert", "kennzahl_eingang", "kennzahl_fassung",
+                        "kennzahl")) {
+                    j.execute("ALTER TABLE " + t + " RENAME TO " + t + "_nicht_da");
+                }
+                assertThat(BerichtKennzahlen.da(j, BerichtKennzahlen.TABELLEN)).isFalse();
+                BerichtAbzugBildung.Ergebnis ohne = bildung.zusammentragen(con, bericht, DATENSTAND);
+                assertThat(ohne.abzug().path("kennzahlen")).isEmpty();
+                assertThat(ohne.quellen()).extracting(BerichtAbzugBildung.Quelle::art).containsOnly("messstelle");
+                ObjectNode erwartet = mit.abzug().deepCopy();
+                erwartet.putArray("kennzahlen");
+                ArrayNode verzeichnis = ((ObjectNode) erwartet.path("kopf")).putArray("quellenverzeichnis");
+                texte(mit.abzug().path("kopf").path("quellenverzeichnis")).stream()
+                        .filter(q -> !QUELLEN_AP11.contains(q)).forEach(verzeichnis::add);
+                assertThat(ohne.text()).as("derselbe Abzug ohne Kennzahlen und ohne ihre vier Quellen")
+                        .isEqualTo(BerichtRegeln.kanonisch(erwartet));
+            } finally {
+                con.rollback();
+            }
+        }
+        assertThat(root.queryForObject("SELECT to_regclass('kennzahl_wert') IS NOT NULL "
+                + "AND to_regclass('bericht_kennzahl_abwahl') IS NOT NULL", Boolean.class)).as("zurückgerollt").isTrue();
     }
 
     @Test
     void d2JedeEinbezogeneBerechnungszeitLiegtVorDemDatenstand_sonstWirdNichtsGebildet() throws Exception {
         BerichtAbzugBildung.Ergebnis e = alsVerwaltung(con -> bildung.zusammentragen(con, bericht, DATENSTAND));
-        assertThat(e.berechnetAm()).as("15 Werte, je eine Berechnungszeit").hasSize(15).containsOnly(MONATSLAUF);
+        assertThat(e.berechnetAm()).as("15 Werte und 2 Kennzahlen (AP-12 IP-6), je eine Berechnungszeit").hasSize(17)
+                .containsOnly(MONATSLAUF);
         assertThat(BerichtRegeln.d2(e.datenstand(), e.berechnetAm(), List.of(), false)).isEmpty();
         for (JsonNode w : e.abzug().path("werte")) {
             assertThat(Instant.from(java.time.OffsetDateTime.parse(w.path("berechnet_am").asText())))
@@ -281,7 +370,7 @@ class BerichtAbzugBildungTest {
         assertThat(e.get("pruefsumme")).isEqualTo(angelegt.pruefsumme()).isEqualTo(e.get("db"));
         assertThat(e.get("gebildet_von")).isEqualTo("anlegen");
         assertThat(((Timestamp) e.get("datenstand")).toInstant()).isEqualTo(DATENSTAND);
-        assertThat(quellenDesEntwurfs()).isEqualTo(15);
+        assertThat(quellenDesEntwurfs()).as("19 Quellen seit AP-12 IP-6").isEqualTo(19);
 
         Instant kaskade = Instant.parse("2026-11-12T09:05:33Z");
         BerichtAbzugBildung.Ergebnis neu = alsVerwaltung(con -> bildung.bilden(con, bericht, kaskade, "kaskade"));
@@ -291,7 +380,7 @@ class BerichtAbzugBildungTest {
         assertThat(n.get("gebildet_von")).isEqualTo("kaskade");
         assertThat(n.get("pruefsumme")).isEqualTo(neu.pruefsumme()).isNotEqualTo(angelegt.pruefsumme());
         assertThat(((Timestamp) n.get("datenstand")).toInstant()).isEqualTo(kaskade);
-        assertThat(quellenDesEntwurfs()).as("ersetzt, nicht verdoppelt").isEqualTo(15);
+        assertThat(quellenDesEntwurfs()).as("ersetzt, nicht verdoppelt").isEqualTo(19);
 
         assertThatThrownBy(() -> alsVerwaltung(con -> bildung.bilden(con, bericht, kaskade, "freigabe")))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -418,6 +507,72 @@ class BerichtAbzugBildungTest {
                 new String[] {"MS-10", "zufluss", null}, new String[] {"MS-11", "zugeordnet", null},
                 new String[] {"MS-12", "zugeordnet", null}, new String[] {"MS-13", "zugeordnet", null},
                 new String[] {"MS-14", "zugeordnet", null}));
+        kennzahlenAnlegen();
+    }
+
+    /**
+     * KZ-0001 und KZ-0005 (Geltung Halle 2) mit ihrem Oktober-Wert, wie AP-11 ihn speichert (10 Nachkommastellen), und ihre
+     * Bezugsgrößen BZ-6 (Stück) und BZ-4 (Fläche, Stammdatum) — den Stück-Nenner setzt der Test direkt (AP-12 §8.3 Punkt 2).
+     */
+    private static void kennzahlenAnlegen() {
+        UUID g2 = IDS.get("G-2");
+        IDS.put("BZ-4", uuid("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, geltung_art, "
+                + "ort_id) VALUES (?, 'BZ-4', ?, 'stammdatum', 'm²', 'gebaeude', ?) RETURNING id", KB,
+                ausReferenz("bezugsgroessen", "BZ-4").path("name").asText(), g2));
+        IDS.put("BZ-6", uuid("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, periode_art, "
+                + "geltung_art, ort_id) VALUES (?, 'BZ-6', ?, 'periodenwert', 'Stück', 'monat', 'gebaeude', ?) RETURNING id",
+                KB, ausReferenz("bezugsgroessen", "BZ-6").path("name").asText(), g2));
+        UUID w1 = kennzahlMitOktoberwert("KZ-0001", "0.1487804878", "6100", "41000");
+        kennzahlEingang(w1, "KZ-0001", 0, "zaehler", "messstelle", "MS-12", "messstelle_id", "6100", "kWh", 1, null);
+        kennzahlEingang(w1, "KZ-0001", 1, "nenner", "bezugsgroesse", "BZ-6", "bezugsgroesse_id", "41000", "Stück", null, 1);
+        UUID w5 = kennzahlMitOktoberwert("KZ-0005", "11.9032258065", "36900", "3100");
+        kennzahlEingang(w5, "KZ-0005", 0, "zaehler", "messstelle", "MS-10", "messstelle_id", "36900", "kWh", 1, null);
+        kennzahlEingang(w5, "KZ-0005", 1, "nenner", "bezugsgroesse", "BZ-4", "bezugsgroesse_id", "3100", "m²", null, null);
+    }
+
+    /** Eine Quotienten-Kennzahl der Halle 2 mit Fassung 1 und ihrem endgültigen Oktober-Wert in Version 1. */
+    private static UUID kennzahlMitOktoberwert(String kz, String wert, String zaehler, String nenner) {
+        JsonNode k = kennzahlAusReferenz(kz);
+        UUID id = uuid("INSERT INTO kennzahl (tenant_id, kennzeichen, name, rechenform, geltung_art, ort_id, "
+                + "verantwortlich_sub, verantwortlich_name) VALUES (?, ?, ?, 'quotient', 'gebaeude', ?, 'sub-ik', "
+                + "'Ines Kaltenbach') RETURNING id", KB, kz, k.path("name").asText(), IDS.get("G-2"));
+        IDS.put(kz, id);
+        UUID fassung = uuid("INSERT INTO kennzahl_fassung (tenant_id, kennzahl_id, nummer, rechenform, herkunft, actor_sub, "
+                + "actor_name, actor_rolle, actor_art, einheit) VALUES (?, ?, 1, 'quotient', 'anlage', 'sub-ik', "
+                + "'Ines Kaltenbach', 'energiemanager', 'kunde', ?) RETURNING id", KB, id, k.path("einheit").asText());
+        return uuid("INSERT INTO kennzahl_wert (tenant_id, kennzahl_id, periode_art, periode_von, periode_bis, zeitzone, "
+                + "version, wert, zaehler, nenner, menge_zustand, kennzeichen, abdeckung_prozent, zustand, endgueltig_ab, "
+                + "definition_fassung_id, berechnet_am) VALUES (?, ?, 'monat', DATE '2026-10-01', DATE '2026-10-31', "
+                + "'Europe/Berlin', 1, ?::numeric, ?::numeric, ?::numeric, 'vollständig', ?::jsonb, 100, 'endgueltig', ?, ?, ?) "
+                + "RETURNING id", KB, id, wert, zaehler, nenner, "[\"" + KennzahlRegeln.BERECHNET_KENNZAHL + "\"]",
+                Timestamp.from(ENDGUELTIG_AB), fassung, Timestamp.from(MONATSLAUF));
+    }
+
+    private static void kennzahlEingang(UUID wert, String kz, int position, String rolle, String art, String objekt,
+            String spalte, String betrag, String einheit, Integer version, Integer fassung) {
+        root.update("INSERT INTO kennzahl_wert_eingang (tenant_id, wert_id, kennzahl_id, position, rolle, art, objekt, "
+                + spalte + ", wert, einheit, menge_zustand, abdeckung_prozent, version, fassung, kennzeichen) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::numeric, ?, 'vollständig', 100, ?, ?, '[]'::jsonb)", KB, wert,
+                IDS.get(kz), position, rolle, art, objekt, IDS.get(objekt), betrag, einheit, version, fassung);
+    }
+
+    private static JsonNode kennzahlAusReferenz(String kennzeichen) {
+        return ausReferenz("kennzahlen", kennzeichen);
+    }
+
+    private static JsonNode ausReferenz(String liste, String kennzeichen) {
+        for (JsonNode e : referenz.path(liste)) {
+            if (kennzeichen.equals(e.path("kennzeichen").asText())) {
+                return e;
+            }
+        }
+        throw new IllegalStateException(liste + " " + kennzeichen);
+    }
+
+    private static List<String> kennzahlen(BerichtAbzugBildung.Ergebnis e) {
+        List<String> aus = new ArrayList<>();
+        e.abzug().path("kennzahlen").forEach(k -> aus.add(k.path("quelle").asText()));
+        return aus;
     }
 
     private static void ort(String art, JsonNode o, UUID elternStandort, UUID elternOrt) {

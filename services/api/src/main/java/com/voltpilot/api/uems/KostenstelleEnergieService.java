@@ -95,6 +95,48 @@ public class KostenstelleEnergieService {
         ZoneId zone = zoneText == null ? ZoneId.of("UTC") : ZoneId.of(zoneText);
         Instant jetzt = uhr.instant();
         LocalDate tag = am != null ? am : LocalDate.ofInstant(jetzt, zone);
+        Sicht s = sicht(null, k, periode, tag, version, zone, jetzt);
+        // Die Warnung liest dieselben Quellen und rechnet NICHTS an u: sie steht neben den Blöcken.
+        KostenstelleDoppelzaehlung.Urteil doppelt = KostenstelleDoppelzaehlung.pruefe(k.kennzeichen(), s.von(), s.bis(),
+                s.ziele(), s.quellen(), formeln(s.von(), s.bis(), jetzt));
+        return s.antwort(doppelzaehlung(doppelt));
+    }
+
+    /**
+     * Dieselbe Sicht im Kundenbereich {@code tenant}, den der Aufrufer AUSDRÜCKLICH nennt (UEMS AP-12 IP-6): die
+     * Bildung eines Berichts-Abzugs liest über die Verbindung ihres Aufrufers, auch über die Verwaltungsrolle, an der
+     * keine RLS filtert. Die Zahlen sind die der Route ohne {@code version} (je Tag die neueste); die Warnung vor doppelter
+     * Zählung fehlt ({@code doppelzaehlung} {@code null}) — sie ändert keine Zahl und steht in keinem Abzug.
+     */
+    KostenstelleEnergieDto.Energie energie(UUID tenant, KostenstelleProzessRepository.Objekt k, String periode,
+            LocalDate am, ZoneId zone, Instant jetzt) {
+        if (tenant == null || !PERIODEN.contains(periode)) {
+            throw new IllegalArgumentException("Mandant und Periode " + PERIODEN + " sind nötig, nicht " + periode);
+        }
+        return sicht(tenant, k, periode, am, null, zone, jetzt).antwort(null);
+    }
+
+    /** Die gerechnete Sicht und was die Warnung daneben liest. */
+    private record Sicht(KostenstelleProzessRepository.Objekt k, String periode, LocalDate tag, LocalDate von,
+            LocalDate bis, ZoneId zone, Integer version, String berechnetAm, List<VerteilungRegeln.Ziel> ziele,
+            List<KostenstelleEnergieRegeln.Quelle> quellen, KostenstelleEnergieRegeln.Urteil u, Herkunft h) {
+
+        KostenstelleEnergieDto.Energie antwort(KostenstelleEnergieDto.Doppelzaehlung doppelzaehlung) {
+            return new KostenstelleEnergieDto.Energie(
+                    new KostenstelleEnergieDto.Kostenstelle(k.id(), k.kennzeichen(), k.name(), k.gueltigAb(),
+                            k.gueltigBis()),
+                    periode, tag, von, bis, zone.getId(), version, berechnetAm,
+                    block(u.gemessen(), h, true), block(u.verteilt(), h, true), block(u.berechnet(), h, true),
+                    block(u.summe(), h, true), block(u.nichtVerteilt(), h, false), doppelzaehlung);
+        }
+    }
+
+    /**
+     * Die Blöcke der Kostenstelle {@code k} über die Periode, in der {@code tag} liegt. {@code tenant} {@code null} = die
+     * Route (allein die RLS, dieselben Repository-Aufrufe wie vor AP-12 IP-6); sonst jede Abfrage im genannten Mandanten.
+     */
+    private Sicht sicht(UUID tenant, KostenstelleProzessRepository.Objekt k, String periode, LocalDate tag,
+            Integer version, ZoneId zone, Instant jetzt) {
         LocalDate von = switch (periode) {
             case "tag" -> tag;
             case "monat" -> tag.withDayOfMonth(1);
@@ -107,8 +149,9 @@ public class KostenstelleEnergieService {
         };
 
         Map<UUID, List<KostenstelleEnergieRepository.Anteil>> anteile = new HashMap<>();
-        lesen.anteile(von, bis).forEach(a -> anteile.computeIfAbsent(a.messstelleId(), x -> new ArrayList<>()).add(a));
-        List<VerteilungRegeln.Ziel> ziele = lesen.ziele().stream()
+        (tenant == null ? lesen.anteile(von, bis) : lesen.anteile(tenant, von, bis))
+                .forEach(a -> anteile.computeIfAbsent(a.messstelleId(), x -> new ArrayList<>()).add(a));
+        List<VerteilungRegeln.Ziel> ziele = (tenant == null ? lesen.ziele() : lesen.ziele(tenant)).stream()
                 .map(z -> new VerteilungRegeln.Ziel(z.kennzeichen(), z.gueltigAb(), z.gueltigBis()))
                 .toList();
 
@@ -117,14 +160,14 @@ public class KostenstelleEnergieService {
         Map<String, Map<LocalDate, String>> anlaesse = new HashMap<>();
         Map<String, Map<LocalDate, Map<String, Object>>> tagesHerkunft = new HashMap<>();
         List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
-        for (Messstelle m : messstellen.alle()) {
+        for (Messstelle m : tenant == null ? messstellen.alle() : messstellen.alle(tenant)) {
             List<KostenstelleEnergieRepository.Anteil> eigene = anteile.getOrDefault(m.id(), List.of());
             // Ohne Anteil zählt eine Messstelle nur mit, wenn sie Mengen trägt: ein Momentanwert ist nie „nicht verteilt“.
             if (eigene.isEmpty() && MOMENTANWERT.equals(m.hauptgroesse().wertart())) {
                 continue;
             }
             Map<LocalDate, String> anlass = new HashMap<>();
-            Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage = tage(m, von, bis, version, anlass);
+            Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage = tage(tenant, m, von, bis, version, anlass);
             if (eigene.isEmpty() && tage.isEmpty()) {
                 continue;
             }
@@ -143,18 +186,10 @@ public class KostenstelleEnergieService {
 
         KostenstelleEnergieRegeln.Urteil u = KostenstelleEnergieRegeln.energie(k.kennzeichen(), von, bis, ziele,
                 quellen);
-        // Die Warnung liest dieselben Quellen und rechnet NICHTS an u: sie steht neben den Blöcken.
-        KostenstelleDoppelzaehlung.Urteil doppelt = KostenstelleDoppelzaehlung.pruefe(k.kennzeichen(), von, bis, ziele,
-                quellen, formeln(von, bis, jetzt));
         String berechnetAm = MessstelleWerteRegeln.iso(jetzt, zone);
         Herkunft h = new Herkunft(k.kennzeichen(), periode, schluessel(periode, von), berechnetAm, zone,
                 nachKennzeichen, tageswerte, anlaesse, tagesHerkunft);
-        return new KostenstelleEnergieDto.Energie(
-                new KostenstelleEnergieDto.Kostenstelle(k.id(), k.kennzeichen(), k.name(), k.gueltigAb(),
-                        k.gueltigBis()),
-                periode, tag, von, bis, zone.getId(), version, berechnetAm,
-                block(u.gemessen(), h, true), block(u.verteilt(), h, true), block(u.berechnet(), h, true),
-                block(u.summe(), h, true), block(u.nichtVerteilt(), h, false), doppelzaehlung(doppelt));
+        return new Sicht(k, periode, tag, von, bis, zone, version, berechnetAm, ziele, quellen, u, h);
     }
 
     // ------------------------------------------------------------------------------ Doppelzählung
@@ -216,11 +251,13 @@ public class KostenstelleEnergieService {
      * die höchste Version bis {@code version} aus {@code messreihe_periode_version}. Ein Tag ohne gespeicherte Zeile
      * (noch nicht gebildet, keine Quelle) hat keinen Tageswert — er ist unbekannt, nicht 0.
      */
-    private Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage(Messstelle m, LocalDate von, LocalDate bis,
-            Integer version, Map<LocalDate, String> anlass) {
+    private Map<LocalDate, KostenstelleEnergieRegeln.Tageswert> tage(UUID tenant, Messstelle m, LocalDate von,
+            LocalDate bis, Integer version, Map<LocalDate, String> anlass) {
         // Ausdrücklich Version 1: ohne Angabe zeigt das Lese-Modell seit AP-08 IP-18 die neueste; die Auswahl bis
         // „version“ trifft diese Sicht unten selbst.
-        MessstelleWerteDto.Werte w = werte.werte(m.kennzeichen(), "tag", von.toString(), bis.toString(), "1");
+        MessstelleWerteDto.Werte w = tenant == null
+                ? werte.werte(m.kennzeichen(), "tag", von.toString(), bis.toString(), "1")
+                : werte.werte(tenant, m, "tag", von.toString(), bis.toString(), "1");
         Map<UUID, MessstelleWerteDto.Quelle> bindungen = new HashMap<>();
         w.quellen().forEach(q -> bindungen.put(q.id(), q));
         boolean berechnet = MessstelleRegeln.BERECHNET.equals(m.art());
@@ -240,8 +277,12 @@ public class KostenstelleEnergieService {
                 if (spur != null) {
                     Map<LocalDate, KostenstelleEnergieRepository.Version> je = versionen.computeIfAbsent(spur, s -> {
                         Map<LocalDate, KostenstelleEnergieRepository.Version> neueste = new HashMap<>();
-                        lesen.versionen(berechnet ? null : q.komponente(), berechnet ? null : q.kanal(),
-                                berechnet ? m.id() : null, von, bis, version).forEach(v -> neueste.put(v.tag(), v));
+                        (tenant == null
+                                ? lesen.versionen(berechnet ? null : q.komponente(), berechnet ? null : q.kanal(),
+                                        berechnet ? m.id() : null, von, bis, version)
+                                : lesen.versionen(tenant, berechnet ? null : q.komponente(),
+                                        berechnet ? null : q.kanal(), berechnet ? m.id() : null, von, bis, version))
+                                .forEach(v -> neueste.put(v.tag(), v));
                         return neueste;
                     });
                     KostenstelleEnergieRepository.Version v = je.get(tag);

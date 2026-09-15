@@ -255,12 +255,14 @@ public class TenantRepository {
                 // names. A Berichtsstand, the sources of a Stand, the Anstoesse, the Abrufe and the
                 // protocol are append-only for EVERY role - not even the admin role holds DELETE - so one
                 // narrow SECURITY DEFINER function, executable only by it, removes them. Then the draft
-                // before its Bericht; the Kennung counter holds only the tenant (RESTRICT).
+                // before its Bericht; the Kennung counter holds only the tenant (RESTRICT). The Kennzahl
+                // Abwahl (V20260915113000) names its Bericht (RESTRICT), so it goes before the draft.
                 try (var ps = con.prepareStatement("SELECT uems_berichte_des_kundenbereichs_entfernen(?)")) {
                     ps.setObject(1, tenantId);
                     ps.executeQuery().close();
                 }
-                for (String table : new String[] {"bericht_entwurf", "bericht", "bericht_kennung_seq"}) {
+                for (String table : new String[] {"bericht_kennzahl_abwahl", "bericht_entwurf", "bericht",
+                    "bericht_kennung_seq"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 // The Kennzahlen (V20260915003000) go before everything they read or apply to

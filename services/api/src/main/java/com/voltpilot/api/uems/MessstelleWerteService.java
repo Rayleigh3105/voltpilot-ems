@@ -133,7 +133,15 @@ public class MessstelleWerteService {
      * Die Versionen liest der Leser dieses Dienstes, also dieselbe Verbindung.
      */
     MessstelleWerteDto.Werte werte(UUID tenant, Messstelle m, String raster, String von, String bis) {
-        Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, null));
+        return werte(tenant, m, raster, von, bis, null);
+    }
+
+    /**
+     * Wie {@link #werte(UUID, Messstelle, String, String, String)}, mit {@code version} wie die Route ({@code null} =
+     * die neueste) — die Kostenstellen-Sicht fragt Version 1 und legt die späteren selbst darüber (UEMS AP-12 IP-6).
+     */
+    MessstelleWerteDto.Werte werte(UUID tenant, Messstelle m, String raster, String von, String bis, String version) {
+        Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
         return werte(lesen(tenant, m, form, versionen), form);
     }
 

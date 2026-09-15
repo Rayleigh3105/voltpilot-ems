@@ -56,11 +56,15 @@ import org.springframework.stereotype.Component;
  * filtert: jede Abfrage hier nennt {@code tenant_id}, und das Lesemodell wird mit dem Mandanten des Berichts gefragt, nie
  * über ein Kennzeichen allein.
  *
- * <p><b>Was der Abzug nach Vertrag 1.0 (noch) nicht trägt</b> — firstmate 001 = A, Folgepaket
- * {@code vp-uems-b12-tagesverlauf-speicher}: keinen Tagesverlauf ({@code $defs/abzug} kennt ihn nicht), keine
- * Vergleichswerte je Messstelle, und einen Speicher mit „Laden / Entladen“ als EINE Netto-Menge, wie das Lesemodell sie
- * führt — {@code speicher_laden_kwh}/{@code speicher_entladen_kwh} fehlen dann, unbekannt ist keine Null. Kennzahlen und
- * Bezugsgrößen bringt IP-6; bis dahin ist der Abschnitt leer („Keine Kennzahlen definiert“).
+ * <p><b>Unternehmen und Kennzahlen (AP-12 IP-6, Vertrag 1.1).</b> Am Unternehmen trägt der Abzug die Netzbezugs-Zähler
+ * der Standorte, die Unternehmens- und Prozess-Messstellen, {@code standorte} und {@code kostenstellen}
+ * ({@link BerichtUnternehmen}); an beiden Geltungen den Kennzahlen-Abschnitt nach Q4 hinter der Verfügbarkeitsprüfung
+ * seiner Tabellen ({@link BerichtKennzahlen}).
+ *
+ * <p><b>Was der Abzug (noch) nicht trägt</b> — firstmate 001 = A, Folgepaket {@code vp-uems-b12-tagesverlauf-speicher}:
+ * keinen Tagesverlauf ({@code $defs/abzug} kennt ihn nicht), keine Vergleichswerte je Messstelle, und einen Speicher mit
+ * „Laden / Entladen“ als EINE Netto-Menge, wie das Lesemodell sie führt — {@code speicher_laden_kwh}/
+ * {@code speicher_entladen_kwh} fehlen dann, unbekannt ist keine Null.
  */
 @Component
 public class BerichtAbzugBildung {
@@ -110,9 +114,9 @@ public class BerichtAbzugBildung {
             Instant datenstand, List<Quelle> quellen, List<Instant> berechnetAm) {}
 
     private record Kopf(UUID tenant, String kennung, String vorlage, String geltungArt, UUID standort,
-            String zeitraumArt, String schluessel, ZoneId zone) {}
+            UUID unternehmen, String zeitraumArt, String schluessel, ZoneId zone) {}
 
-    private record Geltung(String name, String kennzeichen, Instant archiviertAm, String unternehmen, String sitz) {}
+    record Geltung(String art, String name, String kennzeichen, Instant archiviertAm, String unternehmen, String sitz) {}
 
     private record Eingang(UUID messstelle, String kennzeichen, String messkanal, String name, String richtung,
             String rolle, String anteil, String vorzeichen, BigDecimal faktor, Integer version) {}
@@ -202,29 +206,37 @@ public class BerichtAbzugBildung {
     // ============================================================================ Zusammentragen
 
     private Ergebnis zusammentragen(JdbcTemplate j, UUID berichtId, Instant jetzt) {
-        Kopf b = j.query("SELECT tenant_id, kennung, vorlage, geltung_art, standort_id, zeitraum_art, "
+        Kopf b = j.query("SELECT tenant_id, kennung, vorlage, geltung_art, standort_id, unternehmen_id, zeitraum_art, "
                 + "zeitraum_schluessel, zeitzone FROM bericht WHERE id = ?", (rs, i) -> new Kopf(
                         rs.getObject("tenant_id", UUID.class), rs.getString("kennung"), rs.getString("vorlage"),
                         rs.getString("geltung_art"), rs.getObject("standort_id", UUID.class),
-                        rs.getString("zeitraum_art"), rs.getString("zeitraum_schluessel"),
-                        ZoneId.of(rs.getString("zeitzone"))), berichtId)
+                        rs.getObject("unternehmen_id", UUID.class), rs.getString("zeitraum_art"),
+                        rs.getString("zeitraum_schluessel"), ZoneId.of(rs.getString("zeitzone"))), berichtId)
                 .stream().findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Den Bericht " + berichtId + " gibt es nicht"));
-        if (!BerichtRegeln.STANDORT.equals(b.geltungArt())) {
-            throw new UnsupportedOperationException("Den Abzug eines Unternehmensberichts bildet AP-12 IP-6: " + b.kennung());
-        }
         UUID tenant = b.tenant();
         ZoneId zone = b.zone();
+        boolean amStandort = BerichtRegeln.STANDORT.equals(b.geltungArt());
         BerichtRegeln.Vorlage vorlage = BerichtRegeln.vorlage(b.vorlage());
         BerichtRegeln.Zeitraum z = BerichtRegeln.zeitraum(b.zeitraumArt(), b.schluessel(), zone);
-        Geltung g = geltung(j, tenant, b.standort());
         MessstelleWerteService lesemodell = lesemodell(j, jetzt);
         MessstelleRepository messstellen = new MessstelleRepository(j);
-
-        Map<UUID, TreeMap<LocalDate, String>> tage = messstellenDerGeltung(j, tenant, b.standort(), z.ersterTag(),
-                z.letzterTag());
-        List<MessstelleRepository.Messstelle> ordnung = sortiert(messstellen, tage.keySet());
         Map<UUID, List<Object[]>> stellungen = stellungen(j, tenant);
+        Geltung g = amStandort ? geltung(j, tenant, b.standort())
+                : BerichtUnternehmen.geltung(j, tenant, b.unternehmen());
+
+        // Q3 — die Messstellen des Berichts je Tag. Am Standort die seiner Orte; am Unternehmen die Netzbezugs-Zähler der
+        // Standorte (ihre Abschnitte), die Messstellen am Unternehmen und die Prozess-Messstellen ohne Ort (IP-6).
+        java.util.function.BiPredicate<MessstelleRepository.Messstelle, LocalDate> netzbezug = (m, tag) ->
+                NETZBEZUG.equals(summenSchluessel(m, stellungAm(stellungen.get(m.id()), tag)));
+        java.util.function.BiFunction<LocalDate, LocalDate, BerichtUnternehmen.Umfang> umfangAm = (von, bis) -> amStandort
+                ? new BerichtUnternehmen.Umfang(messstellenDerGeltung(j, tenant, b.standort(), von, bis), Set.of(),
+                        List.of())
+                : BerichtUnternehmen.umfang(j, tenant, b.unternehmen(), von, bis, messstellen, netzbezug);
+        BerichtUnternehmen.Umfang umfang = umfangAm.apply(z.ersterTag(), z.letzterTag());
+        Map<UUID, TreeMap<LocalDate, String>> tage = umfang.tage();
+        List<MessstelleRepository.Messstelle> ordnung = sortiert(messstellen, tage.keySet());
+        Map<UUID, BigDecimal> mengen = new HashMap<>();
 
         Set<Quelle> quellen = new LinkedHashSet<>();
         List<Instant> zeiten = new ArrayList<>();
@@ -257,8 +269,10 @@ public class BerichtAbzugBildung {
                     }
                 }
             }
+            mengen.put(m.id(), r.menge());
             String summe = summenSchluessel(m, stellungAm(stellungen.get(m.id()), t.lastKey()));
-            if (summe != null) {
+            // Am Unternehmen fasst die Zusammenfassung nur den Netzbezug (Vorlage: „Netzbezug gesamt“, IP-6).
+            if (summe != null && (amStandort || NETZBEZUG.equals(summe))) {
                 if (r.menge() == null) {
                     unbekannt.add(summe);
                 } else {
@@ -277,7 +291,9 @@ public class BerichtAbzugBildung {
         }
 
         // Q5 — die Vergleichszeiträume mit ihrem Grund; ihre Werte stehen als Quellen mit bezug = vergleich.
-        LocalDate seit = bestehtSeit(j, tenant, b.standort(), z.letzterTag());
+        LocalDate seit = amStandort ? bestehtSeit(j, tenant, b.standort(), z.letzterTag())
+                : BerichtUnternehmen.bestehtSeit(j, tenant, z.letzterTag(),
+                        tag -> !umfangAm.apply(tag, tag).tage().isEmpty());
         LocalDate beendet = g.archiviertAm() == null ? null : LocalDate.ofInstant(g.archiviertAm(), zone);
         ArrayNode vergleiche = json.createArrayNode();
         boolean beginnGenannt = false;
@@ -285,8 +301,7 @@ public class BerichtAbzugBildung {
             String grund = BerichtRegeln.vergleichGrund(v.ersterTag(), v.letzterTag(), seit, beendet, false);
             int mitWert = 0;
             if (BerichtRegeln.KEINE_WERTE.equals(grund)) {
-                Map<UUID, TreeMap<LocalDate, String>> vt = messstellenDerGeltung(j, tenant, b.standort(), v.ersterTag(),
-                        v.letzterTag());
+                Map<UUID, TreeMap<LocalDate, String>> vt = umfangAm.apply(v.ersterTag(), v.letzterTag()).tage();
                 for (MessstelleRepository.Messstelle m : sortiert(messstellen, vt.keySet())) {
                     TreeMap<LocalDate, String> t = vt.get(m.id());
                     Gelesen r = lies(j, lesemodell, tenant, m, z.art(), v.schluessel(), v.ersterTag(), v.letzterTag(),
@@ -320,6 +335,28 @@ public class BerichtAbzugBildung {
             n.put("ergebnis", ergebnis);
         }
 
+        // Q4 — die Kennzahlen, hinter der Verfügbarkeitsprüfung ihrer Tabellen; am Unternehmen dazu die Standort-Abschnitte
+        // und die Kostenstellen (IP-6). Ihre Quellen und Berechnungszeiten zählen für das Verzeichnis und für D2.
+        BerichtKennzahlen.Abschnitt kennzahlen = BerichtKennzahlen.abschnitt(j, json, tenant,
+                new BerichtKennzahlen.Umfang(berichtId, b.geltungArt(), b.standort(), b.unternehmen(),
+                        Set.copyOf(amStandort ? tage.keySet() : umfang.eigene()), Set.copyOf(tage.keySet()), z.art(),
+                        z.ersterTag(), z.letzterTag(), zone));
+        quellen.addAll(kennzahlen.quellen());
+        zeiten.addAll(kennzahlen.zeiten());
+        ArrayNode standorte = null;
+        ArrayNode kostenstellen = null;
+        if (!amStandort) {
+            Map<UUID, String> kennzeichenJeId = new HashMap<>();
+            ordnung.forEach(m -> kennzeichenJeId.put(m.id(), m.kennzeichen()));
+            standorte = BerichtUnternehmen.standorte(json, umfang, mengen, kennzeichenJeId::get);
+            // Die Kostenstellen-Sicht (AP-10 IP-11) auf DER Verbindung des Aufrufers, Mandant ausdrücklich; die Warnung
+            // vor doppelter Zählung liest sie hier nicht (kein BerechnetePeriodenLauf).
+            KostenstelleEnergieService sicht = new KostenstelleEnergieService(new KostenstelleProzessRepository(j),
+                    new KostenstelleEnergieRepository(j), messstellen, lesemodell, null);
+            kostenstellen = BerichtUnternehmen.kostenstellen(j, json, tenant, sicht, z, zone, jetzt, tage.keySet(),
+                    quellen);
+        }
+
         // D2 — kein einbezogener Wert ist jünger als der Datenstand.
         List<BerichtRegeln.Aenderung> d2 = BerichtRegeln.d2(jetzt, zeiten, List.of(), false);
         if (!d2.isEmpty()) {
@@ -333,7 +370,7 @@ public class BerichtAbzugBildung {
         kopf.put("vorlage", vorlage.schluessel());
         kopf.put("vorlage_fassung", vorlage.fassung());
         ObjectNode geltung = kopf.putObject("geltung");
-        geltung.put("art", BerichtRegeln.STANDORT);
+        geltung.put("art", g.art());
         geltung.put("kennzeichen", g.kennzeichen());
         geltung.put("name_zum_datenstand", g.name());
         kopf.put("unternehmen", g.unternehmen());
@@ -370,7 +407,11 @@ public class BerichtAbzugBildung {
         zusammenfassung.put("davon_vollstaendig", vollstaendig);
 
         abzug.set("werte", werte);
-        abzug.putArray("kennzahlen");
+        abzug.set("kennzahlen", kennzahlen.kennzahlen());
+        if (!amStandort) {
+            abzug.set("standorte", standorte);
+            abzug.set("kostenstellen", kostenstellen);
+        }
 
         ObjectNode qualitaet = abzug.putObject("qualitaet");
         qualitaet.put("abdeckung_min_prozent", abdeckungMin == null ? 0 : abdeckungMin);
@@ -604,24 +645,11 @@ public class BerichtAbzugBildung {
         return j.queryForObject("SELECT s.name, s.kurzzeichen, s.archiviert_am, u.name AS unternehmen, u.sitz_strasse, "
                 + "u.sitz_plz, u.sitz_ort FROM standort s JOIN unternehmen u ON u.id = s.unternehmen_id "
                 + "AND u.tenant_id = s.tenant_id WHERE s.id = ? AND s.tenant_id = ?", (rs, i) -> {
-                    List<String> ort = new ArrayList<>();
-                    if (rs.getString("sitz_plz") != null) {
-                        ort.add(rs.getString("sitz_plz"));
-                    }
-                    if (rs.getString("sitz_ort") != null) {
-                        ort.add(rs.getString("sitz_ort"));
-                    }
-                    List<String> sitz = new ArrayList<>();
-                    if (rs.getString("sitz_strasse") != null) {
-                        sitz.add(rs.getString("sitz_strasse"));
-                    }
-                    if (!ort.isEmpty()) {
-                        sitz.add(String.join(" ", ort));
-                    }
                     Timestamp archiviert = rs.getTimestamp("archiviert_am");
-                    return new Geltung(rs.getString("name"), rs.getString("kurzzeichen"),
+                    return new Geltung(BerichtRegeln.STANDORT, rs.getString("name"), rs.getString("kurzzeichen"),
                             archiviert == null ? null : archiviert.toInstant(), rs.getString("unternehmen"),
-                            String.join(", ", sitz));
+                            BerichtUnternehmen.sitz(rs.getString("sitz_strasse"), rs.getString("sitz_plz"),
+                                    rs.getString("sitz_ort")));
                 }, standort, tenant);
     }
 
