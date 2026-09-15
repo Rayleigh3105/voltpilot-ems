@@ -1,0 +1,242 @@
+/*
+ * DIE ÜBERSICHTS-BAUSTEINE (UEMS AP-13 IP-7, Ü1) — unter der Anlagen-Tabelle der Unternehmens- und der
+ * Standort-Übersicht, vor der Karte „Funktionen“. Dieselbe Karten-Sprache wie „Funktionen“: weiße Karte, 1-px-Rahmen,
+ * Radius 16 px; Farbe nur am Punkt (Bedeutung), der Satz bleibt ruhig. Jede Zeile ist ein Sprung (Tippfläche ≥ 44 px).
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-ub {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-6, 24px);
+  margin-top: var(--vp-space-6, 24px);
+  min-width: 0;
+}
+
+.vp-ub-baustein {
+  padding: var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-ub-titel {
+  margin: 0 0 var(--vp-space-4, 16px);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ub-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  margin-bottom: var(--vp-space-4, 16px);
+}
+
+.vp-ub-kopf .vp-ub-titel {
+  margin: 0;
+}
+
+.vp-ub-unter {
+  margin: var(--vp-space-5, 20px) 0 var(--vp-space-2, 8px);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ub-zeitwahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ub-datumzeile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vp-ub-schritt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  cursor: pointer;
+}
+
+.vp-ub-schritt:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vp-ub-zeitraum {
+  min-width: 8.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-ub-summe {
+  margin: 0 0 var(--vp-space-2, 8px);
+  font-size: 1rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.vp-ub-summe strong {
+  margin-right: 4px;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ub-summe.is-warn {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ub-hinweis {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ub-gruppe {
+  min-width: 0;
+}
+
+.vp-ub-gruppe-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: var(--vp-space-3, 12px) 0 2px;
+  font-size: 0.875rem;
+}
+
+.vp-ub-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vp-ub-zeilen > li + li {
+  border-top: 1px solid #f1f5f9;
+}
+
+.vp-ub-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-ub-zeile:hover {
+  background: #f8fafc;
+}
+
+.vp-ub-zeile:focus-visible,
+.vp-ub-schritt:focus-visible,
+.vp-ub-alle:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+}
+
+.vp-ub-zeile > svg {
+  flex: none;
+  color: #94a3b8;
+}
+
+.vp-ub-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.is-ok > .vp-ub-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.is-warn > .vp-ub-punkt {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-ub-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vp-ub-name {
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-ub-satz {
+  font-size: 0.875rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.is-warn .vp-ub-satz {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ub-zahl {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+}
+
+.vp-ub-alle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--vp-primary, #2563eb);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .vp-ub-baustein {
+    padding: var(--vp-space-4, 16px);
+  }
+
+  .vp-ub-zeitwahl {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

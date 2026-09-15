@@ -58,6 +58,9 @@ export type PortfolioBausteinId =
   | 'erzeugung-heute'
   | 'verbrauch-heute'
   | 'netz-heute'
+  | 'messstellen'
+  | 'energiebilanz'
+  | 'kennzahlen'
   | 'anlagen';
 
 /** Alle Portfolio-Bausteine aus dem EINEN Katalog, in Katalog-Reihenfolge. */
@@ -89,6 +92,11 @@ export const CANONICAL_PORTFOLIO: PortfolioBausteinId[] = [
   'erzeugung-heute',
   'verbrauch-heute',
   'netz-heute',
+  // UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — nur auf einer Übersicht und nur mit Inhalt
+  // ({@link UEMS_UEBERSICHT_BAUSTEINE}); sie rendern unter der Anlagen-Tabelle, vor der Karte „Funktionen“.
+  'messstellen',
+  'energiebilanz',
+  'kennzahlen',
   'anlagen',
 ];
 
@@ -130,6 +138,10 @@ const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
   'erzeugung-heute': { leiste: true, spalte: true },
   'verbrauch-heute': { leiste: true, spalte: true },
   'netz-heute': { leiste: true, spalte: true },
+  // UEMS AP-13 IP-7: eigene Abschnitte unter der Tabelle — weder Zelle noch Spalte.
+  messstellen: { leiste: false, spalte: false },
+  energiebilanz: { leiste: false, spalte: false },
+  kennzahlen: { leiste: false, spalte: false },
   // Die Tabelle SELBST — sie steht immer, und immer zuletzt.
   anlagen: { leiste: false, spalte: false },
 };
@@ -157,7 +169,20 @@ export const GELD_BAUSTEINE: readonly PortfolioBausteinId[] = ['erloese', 'lasts
  * AP-01 IP-6, Katalog-Einträge der Funktion „Messen & Auswerten"). Die Flotte
  * eines Betreibers oder eines Kunden ohne Standorte bleibt zeichengleich.
  */
-export const UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = ['datenlage', 'netzbezug-gesamt'];
+export const UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = [
+  'datenlage',
+  'netzbezug-gesamt',
+  'messstellen',
+  'energiebilanz',
+  'kennzahlen',
+];
+
+/**
+ * UEMS AP-13 IP-7 (E3 = A, Ü1): die drei Bausteine der Messstellen-Welt. Ob sie da sind, entscheidet ihr INHALT
+ * (`uebersichtBausteine.bausteineMitInhalt`), nicht eine Kennzahl der Anlagen — ein Baustein ohne Inhalt wird nicht
+ * angeboten und nicht gezeigt.
+ */
+export const UEMS_UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = ['messstellen', 'energiebilanz', 'kennzahlen'];
 
 /**
  * Wie dicht die Fläche rendert — die EINZIGE Wirkung der Betriebsart neben der
@@ -419,7 +444,7 @@ export function verfuegbareBausteine(input: {
    * dann gibt es die Übersichts-Bausteine, und `geld` sagt, ob die Geld-Regel
    * erfüllt ist (eine Anlage der Ebene steuert oder hat Erzeuger/Speicher).
    */
-  uebersicht?: { geld: boolean } | null;
+  uebersicht?: { geld: boolean; /** AP-13 IP-7: die Messstellen-Bausteine MIT Inhalt. */ uems?: readonly string[] } | null;
 }): PortfolioBausteinId[] {
   const aktiv = new Set(input.anwendungen);
   const out: PortfolioBausteinId[] = [];
@@ -431,6 +456,10 @@ export function verfuegbareBausteine(input: {
     if (input.uebersicht && !input.uebersicht.geld && GELD_BAUSTEINE.includes(id)) continue;
     const von = anwendungenFuerPortfolioBaustein(b.id);
     if (!von.some((a) => aktiv.has(a))) continue;
+    if (UEMS_UEBERSICHT_BAUSTEINE.includes(id)) {
+      if (input.uebersicht?.uems?.includes(id)) out.push(id);
+      continue;
+    }
     if (!bausteinHatWert(b.id, input.kennzahlen, input.anlagen)) continue;
     out.push(b.id as PortfolioBausteinId);
   }

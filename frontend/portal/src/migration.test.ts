@@ -997,6 +997,10 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
       'erzeugung-heute',
       'verbrauch-heute',
       'netz-heute',
+      // UEMS AP-13 IP-7: nur auf einer Übersicht UND nur mit Inhalt — jede andere Flotte bleibt, wie sie ist.
+      'messstellen',
+      'energiebilanz',
+      'kennzahlen',
       'anlagen',
     ]);
     expect([...CANONICAL_PORTFOLIO].sort()).toEqual(PORTFOLIO_BAUSTEINE.map((b) => b.id).sort());

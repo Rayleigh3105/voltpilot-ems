@@ -7,6 +7,7 @@ import {
   PORTFOLIO_BAUSTEINE,
   SPALTEN_KOPF,
   UEBERSICHT_BAUSTEINE,
+  UEMS_UEBERSICHT_BAUSTEINE,
   anlagenZeilen,
   bausteinOrt,
   leistenZellen,
@@ -188,11 +189,30 @@ describe('Netzbezug gesamt und Datenlage (die zwei Katalog-Bausteine der Funktio
   it('beide Bausteine gibt es NUR auf einer Ebene — jede andere Flotte bleibt zeichengleich', () => {
     const k = portfolioKennzahlen({ sites: AHRENBERG } as never, null, JETZT);
     const ohne = verfuegbareBausteine({ anwendungen: ['monitoring'], kennzahlen: k, anlagen: 3 });
-    const mit = verfuegbareBausteine({ anwendungen: ['monitoring'], kennzahlen: k, anlagen: 3, uebersicht: { geld: false } });
+    const mit = verfuegbareBausteine({
+      anwendungen: ['monitoring'],
+      kennzahlen: k,
+      anlagen: 3,
+      uebersicht: { geld: false, uems: [...UEMS_UEBERSICHT_BAUSTEINE] },
+    });
     for (const id of UEBERSICHT_BAUSTEINE) {
       expect(ohne, id).not.toContain(id);
       expect(mit, id).toContain(id);
     }
+  });
+
+  it('AP-13 IP-7: ein Baustein der Messstellen-Welt ohne Inhalt wird nicht angeboten (Ü1)', () => {
+    const k = portfolioKennzahlen({ sites: AHRENBERG } as never, null, JETZT);
+    const leer = verfuegbareBausteine({ anwendungen: ['monitoring'], kennzahlen: k, anlagen: 3, uebersicht: { geld: false, uems: [] } });
+    for (const id of UEMS_UEBERSICHT_BAUSTEINE) expect(leer, id).not.toContain(id);
+    expect(leer).toContain('datenlage');
+    const nurMessstellen = verfuegbareBausteine({
+      anwendungen: ['monitoring'],
+      kennzahlen: k,
+      anlagen: 3,
+      uebersicht: { geld: false, uems: ['messstellen'] },
+    });
+    expect(nurMessstellen.filter((id) => UEMS_UEBERSICHT_BAUSTEINE.includes(id))).toEqual(['messstellen']);
   });
 });
 
@@ -257,7 +277,7 @@ describe('die Funktionen je Standort: Messen immer, Steuern nur mit teilnehmende
         funktion: 'messen',
         label: 'Messen & Auswerten',
         zustand: 'aktiv',
-        satz: 'Eingerichtet am 01.10.2026 · 13 von 13 Messstellen liefern Daten',
+        satz: 'Eingerichtet am 01.10.2026 · 15 von 16 Messstellen liefern Daten',
         ton: 'ok',
       },
       {

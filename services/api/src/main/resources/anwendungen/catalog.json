@@ -471,6 +471,39 @@
       "aggregation_regel": "Bezug und Einspeisung werden GETRENNT summiert, nie saldiert: eine Filiale, die einspeist, darf den Bezug einer anderen nicht rechnerisch tilgen."
     },
     {
+      "id": "messstellen",
+      "label": "Messstellen",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Nennt je Standort, wie viele Messstellen Daten liefern — wörtlich die Zählung des Messstellen-Registers („15 von 16 Messstellen liefern Daten“): berechnete zählen mit, eine Messstelle ohne Datenquelle steht im Nenner. Es wird KEIN Messwert verrechnet. Nur auf der Unternehmens- und der Standort-Übersicht und nur mit Messstellen (UEMS AP-13 IP-7)."
+    },
+    {
+      "id": "energiebilanz",
+      "label": "Energiebilanz",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "summe",
+      "aggregation_regel": "Σ des Netzbezugs der Hauptzähler über die Systeme der Ebene im gewählten Zeitraum, mit „x von y Systemen“ — fehlt ein System, heißt die Zahl „mindestens …“ und nennt es. Kein eigener Rest: der Rest eines Systems steht nur an der Anlage. Am Standort dazu je Gebäude, was im Gebäude gemessen ist. Nur auf der Unternehmens- und der Standort-Übersicht (UEMS AP-13 IP-7)."
+    },
+    {
+      "id": "kennzahlen",
+      "label": "Kennzahlen",
+      "flaeche": "portfolio",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": [],
+      "aggregation": "je_anlage",
+      "aggregation_regel": "Zeigt je Kennzahl mit Geltung in der Ebene ihre Karte mit dem letzten Wert — über Kennzahlen hinweg wird nichts verrechnet. Nur auf der Unternehmens- und der Standort-Übersicht und nur mit einer Kennzahl (UEMS AP-13 IP-7)."
+    },
+    {
       "id": "anlagen",
       "label": "Anlagen",
       "flaeche": "portfolio",
@@ -558,6 +591,9 @@
           "erzeugung-heute",
           "verbrauch-heute",
           "netz-heute",
+          "messstellen",
+          "energiebilanz",
+          "kennzahlen",
           "anlagen"
         ],
         "geldstrom": null,

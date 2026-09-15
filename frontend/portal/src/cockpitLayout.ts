@@ -679,6 +679,11 @@ export function ortsHinweis(id: string): string | null {
     // Unternehmens- und Standort-Übersicht; ausblenden darf man sie.
     case 'datenlage':
       return 'Steht in der Kopfzeile Ihrer Übersicht.';
+    // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt haben ihren festen Ort unter der Anlagen-Tabelle.
+    case 'messstellen':
+    case 'energiebilanz':
+    case 'kennzahlen':
+      return 'Steht unter der Anlagen-Tabelle Ihrer Übersicht.';
     default:
       return null;
   }

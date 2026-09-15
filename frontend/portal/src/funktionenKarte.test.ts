@@ -27,7 +27,7 @@ describe('Unternehmens-Übersicht: je Funktion, je Standort Zustand und nächste
       label: 'Messen & Auswerten',
       verbreitung: 'Läuft an 2 von 2 Standorten',
       zeilen: [
-        expect.objectContaining({ name: 'Werk Ahrenberg', satz: 'Eingerichtet am 01.10.2026 · 13 von 13 Messstellen liefern Daten', schritt: null }),
+        expect.objectContaining({ name: 'Werk Ahrenberg', satz: 'Eingerichtet am 01.10.2026 · 15 von 16 Messstellen liefern Daten', schritt: null }),
         expect.objectContaining({ name: 'Werk Lindach', satz: 'Eingerichtet am 15.10.2026 · 3 von 3 Messstellen liefern Daten', schritt: null }),
       ],
     });

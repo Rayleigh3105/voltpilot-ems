@@ -230,7 +230,8 @@ function abdeckung(zeilen: MessstelleRegisterZeile[]): MessstelleRegisterAbdecku
 function passt(z: MessstelleRegisterZeile, a: MessstellenRegisterAnfrage): boolean {
   if (a.standort && z.ort.standort_id !== a.standort) return false;
   if (a.ort) {
-    const kz = Object.entries(ORTE).find(([, o]) => o.id === a.ort)?.[0];
+    // Die Route nimmt ID ODER Kurzzeichen (`MessstelleRegisterService.kurzzeichen`).
+    const kz = a.ort in ORTE ? a.ort : Object.entries(ORTE).find(([, o]) => o.id === a.ort)?.[0];
     if (!kz || !z.ort.pfad.includes(kz)) return false;
   }
   if (a.anlage && z.elektrische_stellung?.anlage !== a.anlage) return false;
