@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -24,11 +25,13 @@ import org.yaml.snakeyaml.Yaml;
  * Die Spring-Verdrahtung der Korrektur-Kaskade (UEMS AP-08 IP-17) — der Teil, den der Testcontainers-Lauf
  * ({@code UemsKorrekturKaskadeTest} ruft {@code lauf} von Hand) nie anfasst. Vorgabe AN in {@code application.yml}, AUS
  * im Testlauf ({@code pom.xml}). Die Naht der Kennzahlen ist seit AP-11 IP-8 die Bean {@link KennzahlKaskade} (die Kaskade
- * bekommt sie, nie {@link KennzahlenNaht.Keine}); die der Berichte (AP-12) ist noch LEER.
+ * bekommt sie, nie {@link KennzahlenNaht.Keine}); die der Berichte seit AP-12 IP-8 die Bean {@link BerichtKaskade}, solange
+ * ihr Flag an ist — sonst {@link BerichteNaht.Keine}.
  */
 class KorrekturKaskadeWiringTest {
 
     private static final String SCHALTER = "voltpilot.uems.kaskade.enabled";
+    private static final String BERICHTE = BerichtKaskade.SCHALTER;
 
     @Configuration(proxyBeanMethods = false)
     static class Nachbarn {
@@ -62,18 +65,23 @@ class KorrekturKaskadeWiringTest {
         KennzahlLauf kennzahlLauf() {
             return mock(KennzahlLauf.class);
         }
+
+        @Bean
+        BerichtAbzugBildung berichtAbzugBildung() {
+            return mock(BerichtAbzugBildung.class);
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(ctx -> ctx.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
-            .withUserConfiguration(Nachbarn.class, KennzahlKaskade.class, BerichteNaht.Keine.class,
+            .withUserConfiguration(Nachbarn.class, KennzahlKaskade.class, BerichtKaskade.class, BerichteNaht.Keine.class,
                     KorrekturKaskade.class, KorrekturKaskadeLaeufer.class, KorrekturKaskadeSchedulingConfig.class);
 
     @Test
     void derTaktVerdrahtetSichMitDerKaskadeUndDerKennzahlenNaht() {
-        runner.withPropertyValues(SCHALTER + "=true").run(context -> {
+        runner.withPropertyValues(SCHALTER + "=true", BERICHTE + "=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(KorrekturKaskadeLaeufer.class);
             assertThat(context).hasSingleBean(KorrekturKaskade.class);
@@ -82,7 +90,10 @@ class KorrekturKaskadeWiringTest {
             assertThat(context.getBean(KennzahlenNaht.class)).isInstanceOf(KennzahlKaskade.class);
             assertThat(context.getBean(KorrekturKaskade.class)).extracting("kennzahlen")
                     .isSameAs(context.getBean(KennzahlKaskade.class));
-            assertThat(context.getBean(BerichteNaht.class)).isInstanceOf(BerichteNaht.Keine.class);
+            assertThat(context).hasSingleBean(BerichteNaht.class);
+            assertThat(context.getBean(BerichteNaht.class)).isInstanceOf(BerichtKaskade.class);
+            assertThat(context.getBean(KorrekturKaskade.class)).extracting("berichte")
+                    .isSameAs(context.getBean(BerichtKaskade.class));
         });
     }
 
@@ -127,9 +138,58 @@ class KorrekturKaskadeWiringTest {
         });
     }
 
-    /** Die Naht der Berichte kennt ohne AP-12 keinen Bericht — und die Grenze steht in der Kaskade, nicht in ihr. */
+    /** AP-12 IP-8, der Rückbau: Flag aus → die Kaskade bekommt die leere Naht, und die Bean der Berichte gibt es nicht. */
     @Test
-    void ohneAp12GibtEsKeinenBericht() throws Exception {
+    void ohneDasFlagDerBerichteBekommtDieKaskadeDieLeereNaht() {
+        runner.withPropertyValues(SCHALTER + "=true", BERICHTE + "=false").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(BerichtKaskade.class);
+            assertThat(context).hasSingleBean(BerichteNaht.class);
+            assertThat(context.getBean(KorrekturKaskade.class)).extracting("berichte")
+                    .isInstanceOf(BerichteNaht.Keine.class);
+        });
+    }
+
+    /** Die Naht der Berichte hängt an IHREM Flag, nie am Not-Aus des Takts — wie die der Kennzahlen. */
+    @Test
+    void dieBerichteNahtHaengtNichtAmNotAusDesTakts() {
+        runner.withPropertyValues(SCHALTER + "=false", BERICHTE + "=true").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(BerichteNaht.class);
+            assertThat(context.getBean(BerichteNaht.class)).isInstanceOf(BerichtKaskade.class);
+        });
+    }
+
+    /**
+     * Die AUSGELIEFERTE Vorgabe der Berichte-Naht ist AN — auch ohne den Eintrag ({@code matchIfMissing}); die leere Naht
+     * gilt nur bei „aus“, nie zusätzlich. Der Testlauf schaltet sie aus.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void dieBerichteNahtIstAusgeliefertAnUndImTestlaufAus() throws Exception {
+        Map<String, Object> yml;
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            assertThat(in).as("application.yml auf dem Klassenpfad").isNotNull();
+            yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
+        }
+        Map<String, Object> berichte = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) yml
+                .get("voltpilot")).get("uems")).get("berichte");
+        assertThat(berichte.get("enabled")).isEqualTo("${VOLTPILOT_UEMS_BERICHTE_ENABLED:true}");
+        assertThat(Files.readString(Path.of("pom.xml"))).contains("<" + BERICHTE + ">false</" + BERICHTE + ">");
+
+        ConditionalOnProperty an = BerichtKaskade.class.getAnnotation(ConditionalOnProperty.class);
+        assertThat(an.name()).containsExactly(BERICHTE);
+        assertThat(an.havingValue()).isEqualTo("true");
+        assertThat(an.matchIfMissing()).isTrue();
+        ConditionalOnProperty aus = BerichteNaht.Keine.class.getAnnotation(ConditionalOnProperty.class);
+        assertThat(aus.name()).containsExactly(BERICHTE);
+        assertThat(aus.havingValue()).isEqualTo("false");
+        assertThat(aus.matchIfMissing()).isFalse();
+    }
+
+    /** Mit dem Flag aus kennt die Naht keinen Bericht — und die Grenze steht in der Kaskade, nicht in ihr. */
+    @Test
+    void dieLeereNahtKenntKeinenBericht() throws Exception {
         assertThat(new BerichteNaht.Keine().betroffene(null, null)).isEmpty();
     }
 }

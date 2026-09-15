@@ -12,7 +12,7 @@ Neu angelegt am 15.09.2026. Migrationen `V20260915050000__uems_bericht.sql` (Tab
   `bericht_quelle` (Entwurf: `stand_nr` NULL), `bericht_revision_anstoss`, `bericht_abruf`, `bericht_aenderung`,
   `bericht_kennung_seq`.
 - Seit IP-5 schreibt `BerichtAbzugBildung` Entwurf und Quellen des Entwurfs (`uems-bericht-abzug.md`). Noch kein
-  Unternehmens-Abzug (IP-6), keine Berichts-Route und keine Freigabe (IP-7), keine Naht und kein Läufer (IP-8/IP-9),
+  Unternehmens-Abzug (IP-6), keine Berichts-Route und keine Freigabe (IP-7), die Naht seit IP-8 (`uems-bericht-kaskade.md`), kein Läufer (IP-9),
   kein Abruf (IP-10/IP-11), keine Belegprüfung an den Löschwegen (IP-12).
 
 ## ⚠ Löschschutz (E13 S1) — nur an diesen Tabellen
