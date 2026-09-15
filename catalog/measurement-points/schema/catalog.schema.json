@@ -26,8 +26,9 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["family", "point_count", "template_count"],
+        "required": ["an_der_box", "family", "point_count", "template_count"],
         "properties": {
+          "an_der_box": {"type": "boolean", "description": "false = die Familie steht nur im Inhaltsstand und geht an keine Box (cataloglib.NOCH_NICHT_AN_DER_BOX, README „Familien noch nicht an der Box“)"},
           "family": {"type": "string", "minLength": 1},
           "point_count": {"type": "integer", "minimum": 1},
           "template_count": {"type": "integer", "minimum": 0}
@@ -49,7 +50,7 @@
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
-        "kind": {"enum": ["none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value"]},
+        "kind": {"enum": ["none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value", "unknown"]},
         "value": {},
         "point": {"type": "string", "minLength": 1}
       },
@@ -75,7 +76,7 @@
       "additionalProperties": false,
       "required": ["kind", "registers", "width_words"],
       "properties": {
-        "kind": {"const": "modbus_holding"},
+        "kind": {"enum": ["modbus_holding", "modbus_input"]},
         "registers": {
           "type": "array",
           "minItems": 1,
@@ -100,6 +101,36 @@
         },
         "width_words": {"type": "integer", "minimum": 1}
       }
+    },
+    "registerbildAddress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "kind", "offset_words", "width_words"],
+      "description": "Adresse im VoltPilot-Registerbild WAGO v1: Basisadresse, Funktionscode und Wortfolge sind Parameter je Anlage (wago-registerbild.md §2); der Offset zählt Kopf + index · Karten-Block + Feld.",
+      "properties": {
+        "base": {"const": "parameter"},
+        "kind": {"const": "registerbild_relative"},
+        "offset_words": {"type": "string", "pattern": "^[0-9]+\\+index\\*[1-9][0-9]*\\+[0-9]+$"},
+        "width_words": {"type": "integer", "minimum": 1}
+      }
+    },
+    "angabe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["art"],
+      "description": "Herkunft EINER Zahl, wie docs/contracts/v2/wago-registerbild-vectors.json: festlegung (Vertrag) · handbuch (nur für die Artikel in gilt_fuer) · zu erheben (wo).",
+      "properties": {
+        "art": {"enum": ["festlegung", "handbuch", "zu erheben"]},
+        "fundstelle": {"type": "string", "minLength": 1},
+        "gilt_fuer": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9]{3}-[0-9]{3}$"}},
+        "wert": {"type": "string", "minLength": 1},
+        "wo": {"type": "string", "minLength": 1}
+      },
+      "allOf": [
+        {"if": {"properties": {"art": {"const": "festlegung"}}}, "then": {"required": ["fundstelle"]}},
+        {"if": {"properties": {"art": {"const": "handbuch"}}}, "then": {"required": ["fundstelle", "gilt_fuer"]}},
+        {"if": {"properties": {"art": {"const": "zu erheben"}}}, "then": {"required": ["wo"]}}
+      ]
     },
     "point": {
       "type": "object",
@@ -138,8 +169,20 @@
       ],
       "properties": {
         "access": {"type": "string"},
-        "address": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/modbusAddress"}, {"$ref": "#/$defs/sunspecAddress"}]},
+        "address": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/modbusAddress"}, {"$ref": "#/$defs/sunspecAddress"}, {"$ref": "#/$defs/registerbildAddress"}]},
         "aggregation_kind": {"enum": ["gauge", "counter", "state", "event", "bitfield", "text", "none"]},
+        "angaben": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Herkunft je Zahl (UEMS AP-05 IP-4). Eine Handbuch-Angabe gilt nur für die Artikel in gilt_fuer und wird nie von einer anderen Karte geerbt; was zu erheben ist, steht nicht als Tatsache im Punkt (value_type/scale unknown, keine Einheit, kein range).",
+          "properties": {
+            "address": {"$ref": "#/$defs/angabe"},
+            "met_id": {"$ref": "#/$defs/angabe"},
+            "range": {"$ref": "#/$defs/angabe"},
+            "scale": {"$ref": "#/$defs/angabe"},
+            "value_type": {"$ref": "#/$defs/angabe"}
+          }
+        },
         "catalog_version": {"type": "string", "minLength": 1},
         "decoder": {"type": "object"},
         "default_cadence_s": {"$ref": "#/$defs/nullableInteger"},
@@ -182,6 +225,17 @@
         },
         "point_key_template": {"type": "boolean"},
         "poll_group": {"type": "string", "minLength": 1},
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["invalid", "max", "min"],
+          "description": "Wertebereich des ROHwerts vor scale (UEMS AP-05 IP-5): min … max ist ein Wert, invalid heißt „kein Messwert“ (WAGO: der größte Wert des Datentyps). Fehlt das Feld, ist nichts deklariert — nie null.",
+          "properties": {
+            "invalid": {"type": "integer"},
+            "max": {"type": "integer"},
+            "min": {"type": "integer"}
+          }
+        },
         "quantity": {"enum": ["active_energy", "active_power", "apparent_energy", "apparent_power", "current", "energy_capacity", "frequency", "power_factor", "reactive_energy", "reactive_power", "soc", "temperature", "voltage", null]},
         "readable": {"type": "boolean"},
         "recommended": {"type": "boolean"},
@@ -191,7 +245,7 @@
         "signed": {"$ref": "#/$defs/nullableBoolean"},
         "source_commit": {"$ref": "#/$defs/nullableString"},
         "source_key_raw": {"type": "string", "minLength": 1},
-        "source_kind": {"enum": ["modbus_holding", "sunspec_model", "http_api_key", "rest_json", "rpc_json", "ocpp_sampled_value"]},
+        "source_kind": {"enum": ["modbus_holding", "modbus_input", "sunspec_model", "http_api_key", "rest_json", "rpc_json", "ocpp_sampled_value", "wago_registerbild"]},
         "source_evidence": {
           "type": "array",
           "minItems": 1,

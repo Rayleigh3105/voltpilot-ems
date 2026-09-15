@@ -149,6 +149,7 @@ public class MeasurementCatalog {
     private final List<Point> points;
     private final Map<String, Point> byKey;
     private final Map<String, Semantik> semantik;
+    private final Set<String> nochNichtAnDerBox;
 
     public MeasurementCatalog(ObjectMapper mapper) {
         JsonNode root = readCanonical(mapper);
@@ -156,10 +157,23 @@ public class MeasurementCatalog {
         String runtime = text(root, "runtime_catalog_version");
         this.version = runtime == null ? inhaltsstand : runtime;
         this.edgeMinVersion = required(root, "edge_min_version");
+        // Familien, die der Inhaltsstand führt, die aber noch an KEINE Box gehen (an_der_box: false,
+        // Katalog-README „Familien noch nicht an der Box“, z. B. die WAGO-Karten bis UEMS AP-05 IP-6): ihre
+        // Punkte gibt es für die api nicht — keine Suche, keine Auswahl, keine Mess-Konfiguration, die die
+        // Box mit unknown_point ablehnen würde. Sie erscheinen mit dem Edge-Release, das sie lesen kann.
+        Set<String> zurueckgehalten = new java.util.TreeSet<>();
+        for (JsonNode f : root.path("families")) {
+            if (f.path("an_der_box").isBoolean() && !f.path("an_der_box").asBoolean()) {
+                zurueckgehalten.add(text(f, "family"));
+            }
+        }
         List<Point> loaded = new ArrayList<>();
         Map<String, Point> indexed = new LinkedHashMap<>();
         Map<String, Semantik> meanings = new LinkedHashMap<>();
         for (JsonNode n : root.path("points")) {
+            if (zurueckgehalten.contains(text(n, "family"))) {
+                continue;
+            }
             MeasurementRetention retention = MeasurementRetention.ofCatalog(n);
             Point p = new Point(text(n, "family"), text(n, "point_key"),
                     text(n, "source_kind"), copyOrNull(n.get("address")), text(n, "selector"),
@@ -191,6 +205,7 @@ public class MeasurementCatalog {
         this.points = List.copyOf(loaded);
         this.byKey = Map.copyOf(indexed);
         this.semantik = Map.copyOf(meanings);
+        this.nochNichtAnDerBox = Set.copyOf(zurueckgehalten);
     }
 
     /** The runtime version the box speaks (see the class comment). */
@@ -201,6 +216,14 @@ public class MeasurementCatalog {
     /** The content version of the packaged artifact. */
     public String inhaltsstand() {
         return inhaltsstand;
+    }
+
+    /**
+     * Die Familien des Inhaltsstands, die noch an keine Box gehen ({@code an_der_box: false}). Ihre Punkte
+     * fehlen in {@link #families()}, {@link #resolve(String)} und {@link #search}.
+     */
+    public Set<String> familienNochNichtAnDerBox() {
+        return nochNichtAnDerBox;
     }
 
     /**

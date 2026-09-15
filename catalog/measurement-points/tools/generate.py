@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from cataloglib import (
     CATALOG_VERSION,
     EDGE_MIN_VERSION,
+    NOCH_NICHT_AN_DER_BOX,
     ROOT,
     RUNTIME_CATALOG_VERSION,
     ZAEHLER_DEKLARATION_FIELDS,
@@ -754,6 +755,58 @@ def generate_builtin_inverter(source: dict[str, Any]) -> Iterable[dict[str, Any]
                 recommended=item.get("recommended", False),
                 readable=True,
             )
+
+
+def generate_wago(source: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    """Punkte je Kartentyp am VoltPilot-Registerbild WAGO v1 (UEMS AP-05 IP-4).
+
+    Die Quelle nennt je Karte und je Zahl die Herkunft (`angaben`, wie die Vektor-Datei des Vertrags).
+    Der Adapter übernimmt sie wörtlich und rät nichts dazu: eine Zahl, die für DIESE Karte nicht belegt
+    ist, steht als zu erheben da (`value_type`/`scale` unknown, keine Einheit, kein Bereich, nicht
+    lesbar). Adresse = Kopf + index · Karten-Block + Feld; Basisadresse, Funktionscode und Wortfolge
+    sind Parameter der Anlage (wago-registerbild.md §2) und darum weder `address.base` noch `endian`.
+    """
+    document = read_json(source_file(source))
+    bild = document["registerbild"]
+    offset_prefix = f"{bild['kopflaenge']}+index*{bild['kartenblocklaenge']}+"
+    for karte in document["karten"]:
+        family = karte["family"]
+        for feld in document["felder"]:
+            wert = karte["werte"][feld["key"]]
+            yield base_point(
+                family=family,
+                point_key=f"{family}.karte[*].{feld['key']}",
+                source_kind="wago_registerbild",
+                address={"base": "parameter", "kind": "registerbild_relative",
+                         "offset_words": f"{offset_prefix}{feld['offset']}",
+                         "width_words": feld["width_words"]},
+                selector=f"registerbild:v{bild['hauptversion']}/karte[*]+{feld['offset']}",
+                width_bits=feld["width_words"] * 16,
+                value_type=wert["value_type"],
+                signed=wert["signed"],
+                endian=None,
+                scale=wert["scale"],
+                unit=wert["unit"],
+                group=feld["group"],
+                label_de=feld["label_de"],
+                label_source=feld["label_source"],
+                semantic_status="known",
+                aggregation_kind=feld["aggregation_kind"],
+                default_cadence_s=document["kadenz_s"],
+                min_cadence_s=document["kadenz_s"],
+                long_term_cadence_s=long_term_cadence(
+                    wert["unit"], feld["aggregation_kind"], f"{feld['group']} {feld['key']}"),
+                poll_group=document["poll_group"],
+                source={**source, "source_url": karte["source_url"],
+                        "source_revision": karte["source_revision"]},
+                angaben=wert["angaben"],
+                **({"range": wert["range"]} if "range" in wert else {}),
+                dynamic=True,
+                point_key_template=True,
+                readable=wert["value_type"] != "unknown",
+            )
+
+
 ADAPTERS = {
     "builtin_inverter": generate_builtin_inverter,
     "deye": generate_deye,
@@ -761,6 +814,7 @@ ADAPTERS = {
     "ocpp": generate_ocpp,
     "shelly": generate_shelly,
     "sunspec": generate_sunspec,
+    "wago": generate_wago,
 }
 
 
@@ -806,6 +860,7 @@ def build_catalog() -> dict[str, Any]:
     family_counts = collections.Counter(point["family"] for point in points)
     families = [
         {
+            "an_der_box": family not in NOCH_NICHT_AN_DER_BOX,
             "family": family,
             "point_count": family_counts[family],
             "template_count": sum(bool(point.get("dynamic")) for point in points if point["family"] == family),

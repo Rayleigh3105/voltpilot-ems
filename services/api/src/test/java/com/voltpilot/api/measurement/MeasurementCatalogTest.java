@@ -2,7 +2,9 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -117,7 +119,7 @@ class MeasurementCatalogTest {
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
         assertThat(catalog.version()).isEqualTo("2026.08.26.3");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.11.1");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.16.1");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
@@ -154,5 +156,34 @@ class MeasurementCatalogTest {
                 .isEqualTo("0,1 kWh");
         assertThat(catalog.einheit("goe.api_v2.eto")).isNull();
         assertThat(catalog.einheit("gibt.es.nicht[wh].unit[wh]")).isNull();
+    }
+
+    /**
+     * UEMS AP-05 IP-4: die WAGO-Karten stehen im paketierten Inhaltsstand, gehen aber an keine Box, bis der
+     * Treiber aus IP-6 ausgeliefert ist — die api bietet sie weder in der Suche noch zur Auswahl an, und
+     * sie veröffentlicht weiter den Laufzeitstand, den jede Feld-Box spricht.
+     */
+    @Test
+    void wagoCardsAreContentButNeverOfferedWhileNoBoxReadsThem() throws Exception {
+        JsonNode paket;
+        try (InputStream in = getClass().getResourceAsStream(
+                "/measurementcatalog/measurement-point-catalog-" + catalog.inhaltsstand() + ".json")) {
+            paket = new ObjectMapper().readTree(in);
+        }
+        long wago = 0;
+        for (JsonNode p : paket.path("points")) {
+            if (p.path("family").asText().startsWith("wago.")) {
+                wago++;
+            }
+        }
+        assertThat(wago).as("27 Punkte je Karte im Inhaltsstand").isEqualTo(54);
+
+        assertThat(catalog.familienNochNichtAnDerBox()).containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
+        assertThat(catalog.families()).noneMatch(f -> f.startsWith("wago."));
+        assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNull();
+        assertThat(catalog.resolve("wago.pm495.karte[0].energy_import_total")).isNull();
+        assertThat(catalog.search("", Set.of("wago.pm494", "wago.pm495"), null, null, null, false, false,
+                Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isZero();
+        assertThat(catalog.version()).isEqualTo("2026.08.26.3");
     }
 }

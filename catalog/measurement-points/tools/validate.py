@@ -15,6 +15,7 @@ from cataloglib import (
     EDGE_MIN_VERSION,
     POINT_KEY_RE,
     ROOT,
+    NOCH_NICHT_AN_DER_BOX,
     RUNTIME_CATALOG_VERSION,
     ZAEHLER_DEKLARATION_FIELDS,
     read_json,
@@ -49,14 +50,27 @@ REQUIRED_POINT_FIELDS = {
     "source_sha256", "source_url", "unit", "value_type", "width_bits",
 }
 SOURCE_KINDS = {
-    "modbus_holding", "sunspec_model", "http_api_key", "rest_json", "rpc_json",
-    "ocpp_sampled_value",
+    "modbus_holding", "modbus_input", "sunspec_model", "http_api_key", "rest_json", "rpc_json",
+    "ocpp_sampled_value", "wago_registerbild",
 }
+MODBUS_SOURCE_KINDS = {"modbus_holding", "modbus_input"}
 AGGREGATIONS = {"gauge", "counter", "state", "event", "bitfield", "text", "none"}
 SEMANTIC_STATUSES = {"known", "vendor_label_only", "unknown"}
-SCALE_KINDS = {"none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value"}
+SCALE_KINDS = {"none", "factor", "divisor", "conditional_factor", "sunssf", "protocol_value", "unknown"}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DYNAMIC_OFFSET_RE = re.compile(r"^[0-9]+\+index\*[1-9][0-9]*\+[0-9]+$")
+# VoltPilot-Registerbild WAGO v1 (docs/contracts/v2/wago-registerbild.md §3/§4): Kopf 12, Karten-Block 42 Wörter.
+REGISTERBILD_KOPF, REGISTERBILD_KARTE = 12, 42
+# Herkunft je Zahl (UEMS AP-05 IP-4): eine Handbuch-Angabe am Punkt einer WAGO-Karte muss DEREN Artikel nennen.
+WAGO_KARTEN = {"wago.pm494": "750-494", "wago.pm495": "750-495"}
+ANGABE_ARTEN = {"festlegung", "handbuch", "zu erheben"}
+ANGABE_FELDER = {"address", "met_id", "range", "scale", "value_type"}
+WAGO_PFLICHT_ANGABEN = {"address", "scale", "value_type"}
+# Wertebereich eines Rohwerts (UEMS AP-05 IP-5) je ganzzahligem Datentyp.
+GANZZAHL_BEREICH = {
+    "uint16": (0, 2**16 - 1), "int16": (-(2**15), 2**15 - 1),
+    "uint32": (0, 2**32 - 1), "int32": (-(2**31), 2**31 - 1),
+}
 CATALOG_SCHEMA_PATH = ROOT / "schema" / "catalog.schema.json"
 MANIFEST_SCHEMA_PATH = ROOT / "schema" / "source-manifest.schema.json"
 
@@ -97,7 +111,7 @@ def validate_manifest(errors: ValidationErrors) -> dict[str, Any]:
         source_id = source.get("id")
         ids.append(source_id)
         errors.check(isinstance(source_id, str) and bool(source_id), f"{prefix} has no id")
-        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter"}, f"{prefix} has an unsupported adapter")
+        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago"}, f"{prefix} has an unsupported adapter")
         errors.check(bool(source.get("source_commit") or source.get("source_revision")), f"{prefix} has neither commit nor revision")
         if source.get("adapter") == "sunspec":
             errors.check(len(source.get("models", [])) == 19, "SunSpec manifest must pin 19 models")
@@ -123,13 +137,14 @@ def validate_address(errors: ValidationErrors, point: dict[str, Any], prefix: st
     source_kind = point.get("source_kind")
     if address is None:
         errors.check(source_kind not in {"sunspec_model"}, f"{prefix}: SunSpec address may not be null")
+        errors.check(source_kind != "wago_registerbild", f"{prefix}: Registerbild address may not be null")
         return
     errors.check(isinstance(address, dict), f"{prefix}: address must be an object or null")
     if not isinstance(address, dict):
         return
-    if source_kind == "modbus_holding":
+    if source_kind in MODBUS_SOURCE_KINDS:
         registers = address.get("registers")
-        errors.check(address.get("kind") == "modbus_holding", f"{prefix}: wrong Modbus address kind")
+        errors.check(address.get("kind") == source_kind, f"{prefix}: wrong Modbus address kind")
         errors.check(isinstance(registers, list) and bool(registers), f"{prefix}: Modbus registers must not be empty")
         if isinstance(registers, list):
             errors.check(all(isinstance(register, int) and 0 <= register <= 65535 for register in registers), f"{prefix}: invalid Modbus register")
@@ -156,6 +171,23 @@ def validate_address(errors: ValidationErrors, point: dict[str, Any], prefix: st
         if isinstance(width_words, int):
             errors.check(point.get("width_bits") == width_words * 16, f"{prefix}: SunSpec width_bits mismatch")
         errors.check(point.get("endian") == "big", f"{prefix}: SunSpec endian must be big")
+    elif source_kind == "wago_registerbild":
+        offset = address.get("offset_words")
+        width_words = address.get("width_words")
+        karte = f"{REGISTERBILD_KOPF}+index*{REGISTERBILD_KARTE}+"
+        feld = offset[len(karte):] if isinstance(offset, str) and offset.startswith(karte) else None
+        errors.check(address.get("kind") == "registerbild_relative", f"{prefix}: wrong Registerbild address kind")
+        errors.check(address.get("base") == "parameter",
+                     f"{prefix}: the Registerbild base address is a parameter per installation")
+        errors.check(feld is not None and feld.isdigit() and bool(DYNAMIC_OFFSET_RE.fullmatch(offset)),
+                     f"{prefix}: Registerbild offset must be {karte}<offset in the card block>")
+        errors.check(isinstance(width_words, int) and width_words > 0, f"{prefix}: invalid Registerbild width")
+        if feld is not None and feld.isdigit() and isinstance(width_words, int):
+            errors.check(int(feld) + width_words <= REGISTERBILD_KARTE, f"{prefix}: Registerbild field leaves the card block")
+            errors.check(point.get("width_bits") == width_words * 16, f"{prefix}: Registerbild width_bits mismatch")
+        errors.check(point.get("dynamic") is True, f"{prefix}: a Registerbild point is a template per card (karte[*])")
+        errors.check(point.get("endian") is None,
+                     f"{prefix}: the Registerbild word order is a parameter per installation, not a catalog fact")
     else:
         errors.check(False, f"{prefix}: {source_kind} may not have a register address")
 
@@ -206,6 +238,96 @@ def validate_point(errors: ValidationErrors, point: Any, index: int) -> None:
     validate_address(errors, point, prefix)
     validate_semantics(errors, point, prefix)
     validate_counter_range(errors, point, prefix)
+    validate_value_range(errors, point, prefix)
+    validate_angaben(errors, point, prefix)
+
+
+def validate_value_range(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
+    """Wertebereich des Rohwerts (AP-05 IP-5): `min` … `max` ist ein Wert, `invalid` heißt kein Messwert.
+
+    Fehlt das Feld, ist nichts deklariert. Ein null, ein Bereich außerhalb des Datentyps oder ein
+    `invalid` INNERHALB von `min` … `max` (dann fiele ein echter Wert weg) ist keine Deklaration.
+    """
+    if "range" not in point:
+        return
+    bereich = point["range"]
+    ganz = isinstance(bereich, dict) and set(bereich) == {"invalid", "max", "min"} and all(
+        isinstance(bereich[key], int) and not isinstance(bereich[key], bool) for key in bereich)
+    errors.check(ganz, f"{prefix}: range needs integer min, max and invalid (absent = not declared, never null)")
+    if not ganz:
+        return
+    grenzen = GANZZAHL_BEREICH.get(point.get("value_type"))
+    errors.check(grenzen is not None,
+                 f"{prefix}: range needs a known integer value_type, got {point.get('value_type')!r}")
+    errors.check(bereich["min"] <= bereich["max"], f"{prefix}: range min exceeds max")
+    errors.check(not bereich["min"] <= bereich["invalid"] <= bereich["max"],
+                 f"{prefix}: range invalid lies inside min … max — a real value would be dropped")
+    if grenzen is not None:
+        errors.check(all(grenzen[0] <= bereich[key] <= grenzen[1] for key in bereich),
+                     f"{prefix}: range leaves the {point['value_type']} value space")
+
+
+def validate_angaben(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
+    """Herkunft je Zahl (AP-05 IP-4): festlegung · handbuch mit `gilt_fuer` · zu erheben.
+
+    Eine Handbuch-Angabe gilt nur für die Artikel, die sie nennt — eine WAGO-Karte erbt keine Zahl einer
+    anderen Karte (Befund 4 aus IP-2). Was zu erheben ist, steht nicht als Tatsache im Punkt: kein
+    Datentyp, keine Skalierung, keine Einheit, kein Bereich, nicht lesbar.
+    """
+    family = point.get("family")
+    artikel = WAGO_KARTEN.get(family)
+    if isinstance(family, str) and family.startswith("wago."):
+        errors.check(artikel is not None, f"{prefix}: WAGO family without a card article")
+    if "angaben" not in point:
+        errors.check(artikel is None, f"{prefix}: a WAGO card point names the origin of every number (angaben)")
+        errors.check(point.get("value_type") != "unknown" and (point.get("scale") or {}).get("kind") != "unknown",
+                     f"{prefix}: an unknown value_type or scale needs angaben (zu erheben)")
+        return
+    angaben = point["angaben"]
+    errors.check(isinstance(angaben, dict), f"{prefix}: angaben must be an object")
+    if not isinstance(angaben, dict):
+        return
+    if artikel is not None:
+        fehlend = sorted(WAGO_PFLICHT_ANGABEN - set(angaben))
+        errors.check(not fehlend, f"{prefix}: a WAGO card point names the origin of {fehlend}")
+    for feld, angabe in sorted(angaben.items()):
+        stelle = f"{prefix}: angaben.{feld}"
+        errors.check(feld in ANGABE_FELDER, f"{stelle} is no catalog number")
+        if not isinstance(angabe, dict):
+            errors.check(False, f"{stelle} must be an object")
+            continue
+        art = angabe.get("art")
+        errors.check(art in ANGABE_ARTEN, f"{stelle}: invalid art {art!r}")
+        if art == "handbuch":
+            gilt = angabe.get("gilt_fuer")
+            errors.check(bool(angabe.get("fundstelle")) and isinstance(gilt, list) and bool(gilt),
+                         f"{stelle}: a manual quote needs fundstelle and gilt_fuer")
+            if artikel is not None:
+                errors.check(isinstance(gilt, list) and artikel in gilt,
+                             f"{stelle}: quoted for {gilt}, not for {artikel} — a number of another card "
+                             f"is not inherited, it is zu erheben")
+        elif art == "festlegung":
+            errors.check(bool(angabe.get("fundstelle")), f"{stelle}: a festlegung needs a fundstelle")
+        elif art == "zu erheben":
+            errors.check(bool(angabe.get("wo")), f"{stelle}: zu erheben needs wo")
+
+    def offen(feld: str) -> bool:
+        return isinstance(angaben.get(feld), dict) and angaben[feld].get("art") == "zu erheben"
+
+    errors.check(offen("value_type") == (point.get("value_type") == "unknown"),
+                 f"{prefix}: value_type is unknown exactly when angaben.value_type is zu erheben")
+    if offen("value_type"):
+        errors.check(point.get("signed") is None and point.get("readable") is False,
+                     f"{prefix}: without a value_type nothing is readable (signed null, readable false)")
+    errors.check(offen("scale") == ((point.get("scale") or {}).get("kind") == "unknown"),
+                 f"{prefix}: scale is unknown exactly when angaben.scale is zu erheben")
+    if offen("scale"):
+        errors.check(point.get("unit") is None, f"{prefix}: without a factor the decoded value has no unit")
+    if "range" in point:
+        errors.check(isinstance(angaben.get("range"), dict) and not offen("range"),
+                     f"{prefix}: a range needs a quoted origin in angaben.range")
+    elif isinstance(angaben.get("range"), dict):
+        errors.check(offen("range"), f"{prefix}: angaben.range quotes an origin, but the point declares no range")
 
 
 def validate_counter_range(errors: ValidationErrors, point: dict[str, Any], prefix: str) -> None:
@@ -302,6 +424,11 @@ def validate_runtime_version(errors: ValidationErrors, document: dict[str, Any])
         runtime_projection(document, runtime) == runtime_projection(read_json(shipped), runtime),
         f"content version changes what the box or writer reads; raise RUNTIME_VERSION (now {runtime})",
     )
+    # Die Liste hält eine NEUE Familie von der Box fern — nie eine, die dort schon ist: sonst verschwänden
+    # ihre Punkte still aus Palette und Metadaten, und beide Seiten der Gleichung oben mit ihnen.
+    ausgeliefert = {point.get("family") for point in read_json(shipped).get("points", [])}
+    zurueckgehalten = sorted(ausgeliefert & set(NOCH_NICHT_AN_DER_BOX))
+    errors.check(not zurueckgehalten, f"families already at the box cannot be withheld from it: {zurueckgehalten}")
 
 
 def validate_deye_key_lock(errors: ValidationErrors, document: dict[str, Any], points: list[dict[str, Any]]) -> None:
@@ -455,6 +582,9 @@ def validate_catalog(path: Path) -> dict[str, Any]:
             name = family.get("family")
             errors.check(family.get("point_count") == expected_counts[name], f"{name}: point_count mismatch")
             errors.check(family.get("template_count") == expected_templates[name], f"{name}: template_count mismatch")
+            errors.check(family.get("an_der_box") is (name not in NOCH_NICHT_AN_DER_BOX), f"{name}: an_der_box mismatch")
+    stale_box = sorted(set(NOCH_NICHT_AN_DER_BOX) - set(expected_counts))
+    errors.check(not stale_box, f"not-at-the-box entries name no family: {stale_box}")
 
     model_160 = [point for point in points if point.get("family") == "sunspec.model_160"]
     dynamic_160 = [point for point in model_160 if point.get("dynamic")]

@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026.09.11.1",
+  "catalog_version": "2026.09.16.1",
   "runtime_catalog_version": "2026.08.26.3",
   "deye_lock_sha256": "30d4ff814fbb0e17a2322370b6763666ce5181b6468700ab1dab3b879d737b02",
   "deye_direct_register_points": {
@@ -39,11 +39,13 @@
     "sunspec.model_203": 74,
     "sunspec.model_211": 64,
     "sunspec.model_212": 64,
-    "sunspec.model_213": 64
+    "sunspec.model_213": 64,
+    "wago.pm494": 27,
+    "wago.pm495": 27
   },
   "goe_german_source_rows": 174,
   "goe_keys_with_german_label": 177,
-  "manifest_sha256": "90acdd5641bd4907d7fdc3b6fe53a56913513fea22d81e4f78752e76152edf66",
+  "manifest_sha256": "1dbef72889ea6732058b1a9dec789a24461cd63db8e8a01a4426c3d3fb2a2662",
   "shelly_raw_manifest_sha256": "3a68c3d0bedc74b7fc1dfdd9659743df241f45350abe1c7dbd5e8d8962a74d44",
   "source_versions": {
     "builtin.inverter.runtime": "voltpilot-runtime-2026-08-26-r2",
@@ -54,43 +56,46 @@
     "goe.api_v2": "b4d7f85325f5fd7243d007f7fd639ac2db16c5da",
     "ocpp.1_6.meter_values": "a1eec917af884db0585752f909a61893aa667480",
     "shelly.status": "official-html-retrieved-2026-08-25",
-    "sunspec.models": "90b4a331dcca1d6eac69c1bead952fddcc5852e0"
+    "sunspec.models": "90b4a331dcca1d6eac69c1bead952fddcc5852e0",
+    "wago.registerbild_v1": "voltpilot-wago-registerbild-v1.0-2026-09-16"
   },
   "template_counts": {
     "kaco_http_hybrid": 2,
     "ocpp.1_6": 22,
     "shelly.gen1": 32,
     "shelly.gen2plus": 120,
-    "sunspec.model_160": 10
+    "sunspec.model_160": 10,
+    "wago.pm494": 27,
+    "wago.pm495": 27
   },
-  "total_points": 2341,
+  "total_points": 2395,
   "quantity_counts": {
-    "active_energy": 144,
-    "active_power": 184,
+    "active_energy": 148,
+    "active_power": 190,
     "apparent_energy": 49,
     "apparent_power": 39,
-    "current": 152,
+    "current": 158,
     "energy_capacity": 4,
-    "frequency": 34,
-    "null": 1107,
+    "frequency": 36,
+    "null": 1137,
     "power_factor": 40,
     "reactive_energy": 104,
     "reactive_power": 42,
     "soc": 29,
     "temperature": 128,
-    "voltage": 285
+    "voltage": 291
   },
   "direction_counts": {
     "charge": 4,
     "charge_discharge": 5,
     "discharge": 4,
-    "export": 119,
+    "export": 121,
     "generation": 55,
-    "import": 138,
+    "import": 140,
     "import_export": 49,
-    "none": 565,
-    "null": 1402
+    "none": 573,
+    "null": 1444
   },
-  "energy_points": 301,
+  "energy_points": 305,
   "energy_points_without_direction": 6
 }
