@@ -36,8 +36,10 @@ Regeln sind `docs/contracts/v2/bericht.md` B1/B4/B5/B7, R1, EW1/EW3.
 
 ## Grenzen (benannt, nicht gebaut)
 
-- **Bezugsgrößen** trägt Pfad 1 erst mit AP-11 IP-9 (`Betroffen.bezugsgroessen[]`); bis dahin Pfad 2 (AP-12 IP-9).
-  `dieBezugsgroessenTraegtPfadEinsErstMitAp11Ip9_bisDahinPfadZwei` wird rot, sobald das Feld kommt.
+- **Bezugsgrößen** trägt Pfad 1 seit AP-11 IP-9 (`Betroffen.bezugsgroessen[]`: Quellen `bezugsgroesse`/`stammdatum`, Anstoß
+  `bezugsgroesse_fassung`), ebenso eine rückwirkend geänderte Berechnung (Quellen `kennzahl`, `kennzahl_fassung_rueckwirkend`) —
+  `dieBezugsgroesseTraegtPfadEinsSeitAp11Ip9_undStoesstNieDoppeltAn`, `uems-kennzahl-ausloeser.md`. Pfad 2 (AP-12 IP-9)
+  lässt sie Pfad 1.
 - **Kennzahl-Quellen** (KZ-…) trifft Pfad 1 über ihre Messstellen (mittelbare Quellen, B3); `kennzahl_neu_gebildet` liest
   die Naht nicht.
 - **Unternehmensbericht:** der Kaskaden-Test nimmt als zweiten betroffenen Bericht den Jahresbericht ST-1; BR-2026-0002 (U)

@@ -59,6 +59,8 @@ export const KORREKTUR_FREIGEGEBEN = 'korrektur_freigegeben';
 export const KORREKTUR_ZURUECKGENOMMEN = 'korrektur_zurueckgenommen';
 export const ERSATZWERT_WIRKSAM = 'ersatzwert_wirksam';
 export const ERSATZWERT_ZURUECKGENOMMEN = 'ersatzwert_zurueckgenommen';
+export const BEZUGSGROESSE_FASSUNG = 'bezugsgroesse_fassung';
+export const KENNZAHL_FASSUNG_RUECKWIRKEND = 'kennzahl_fassung_rueckwirkend';
 export const ZUORDNUNG_RUECKWIRKEND = 'zuordnung_rueckwirkend';
 export const ANLAGE_UMZUG_RUECKWIRKEND = 'anlage_umzug_rueckwirkend';
 export const FLAECHE_RUECKWIRKEND = 'flaeche_rueckwirkend';
@@ -66,7 +68,7 @@ export const VERTEILUNG_RUECKWIRKEND = 'verteilung_rueckwirkend';
 /** B4 — die Anstoß-Arten, geschlossen. */
 export const ANSTOSS_ARTEN = [
   KORREKTUR_FREIGEGEBEN, KORREKTUR_ZURUECKGENOMMEN, ERSATZWERT_WIRKSAM, ERSATZWERT_ZURUECKGENOMMEN,
-  'bezugsgroesse_fassung', 'kennzahl_fassung_rueckwirkend', ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND,
+  BEZUGSGROESSE_FASSUNG, KENNZAHL_FASSUNG_RUECKWIRKEND, ZUORDNUNG_RUECKWIRKEND, ANLAGE_UMZUG_RUECKWIRKEND,
   FLAECHE_RUECKWIRKEND, VERTEILUNG_RUECKWIRKEND,
 ];
 export const ANSTOSS_ZUSTAENDE = ['offen', 'erledigt', 'verworfen'];
@@ -420,10 +422,15 @@ export const d4 = (datenstand: string, aenderungen: Aenderung[]): Aenderung[] =>
 
 export type Quelle = { bericht: string; nr: number | null; ersetzt: boolean; objekt: string; bezug: string; erster_tag: string; letzter_tag: string };
 export type Reihe = { entity: string; kanal: string };
-/** Die Form von `KorrekturKaskade.Betroffen` (Java). */
+/** Die Form von `KorrekturKaskade.Bezugsgroesse` (Java, AP-11 IP-9). */
+export type BetroffeneBezugsgroesse = {
+  id: string; kennzeichen: string; periode_von: string; periode_bis: string; fassung: number; status: string;
+};
+/** Die Form von `KorrekturKaskade.Betroffen` (Java); `bezugsgroessen` seit AP-11 IP-9 (fehlt = keine). */
 export type Betroffen = {
   tenant: string; anlass: string; fassung: number; status: string; reihen: Reihe[]; von: string; bis: string; zone: string;
   erster_tag: string; letzter_tag: string; messstellen: string[]; ereignisse: string[]; versionen: number;
+  bezugsgroessen?: BetroffeneBezugsgroesse[];
 };
 export type Bericht = { kennung: string; stand: 'FREIGEGEBEN' | 'ENTWURF' };
 
@@ -440,9 +447,19 @@ const schnitt = (quellen: Quelle[], objekte: Set<string>, von: string, bis: stri
     (['FREIGEGEBEN', 'ENTWURF'] as const).filter((s) => treffer.get(kennung)?.has(s)).map((stand) => ({ kennung, stand })));
 };
 
-/** B1, Pfad 1 — die Berichte, die eine Verarbeitung der Kaskade trifft (Reihen über die Quellenbindung, dazu die berechneten Messstellen). */
+const K_BERECHNUNG_GEAENDERT = 'berechnung_geaendert';
+
+/**
+ * B1, Pfad 1 — die Berichte, die eine Verarbeitung der Kaskade trifft (Reihen über die Quellenbindung, dazu die berechneten
+ * Messstellen; seit AP-11 IP-9 die Bezugsgrößen und bei geänderter Berechnung die Kennzahl selbst).
+ */
 export const betroffene = (quellen: Quelle[], b: Betroffen, bindung: (r: Reihe) => string[]): Bericht[] =>
-  schnitt(quellen, new Set([...b.reihen.flatMap(bindung), ...b.messstellen]), b.erster_tag, b.letzter_tag);
+  schnitt(quellen, new Set([
+    ...b.reihen.flatMap(bindung),
+    ...b.messstellen,
+    ...(b.bezugsgroessen ?? []).map((g) => g.kennzeichen),
+    ...(b.status === K_BERECHNUNG_GEAENDERT ? [b.anlass] : []),
+  ]), b.erster_tag, b.letzter_tag);
 
 /** B1, Pfad 2 — die Berichte, deren Quellen eine Strukturänderung ab `giltAb` trifft. */
 export const betroffeneStruktur = (quellen: Quelle[], objekte: string[], giltAb: string): Bericht[] =>
@@ -452,8 +469,13 @@ const K_FREIGEGEBEN = 'freigegeben';
 const K_ZURUECKGENOMMEN = 'zurueckgenommen';
 const K_WIRKSAM = 'wirksam';
 
-/** B4, Pfad 1 — die Anstoß-Art einer Verarbeitung der Kaskade (Korrektur K-…, Ersatzwert EW-…). */
+/**
+ * B4, Pfad 1 — die Anstoß-Art einer Verarbeitung der Kaskade (Korrektur K-…, Ersatzwert EW-…; seit AP-11 IP-9 die
+ * rückwirkend geänderte Berechnung und jede geänderte Bezugsgröße).
+ */
 export const anstossArt = (b: Betroffen): string => {
+  if (b.status === K_BERECHNUNG_GEAENDERT) return KENNZAHL_FASSUNG_RUECKWIRKEND;
+  if ((b.bezugsgroessen ?? []).length > 0) return BEZUGSGROESSE_FASSUNG;
   const korrektur = b.anlass.startsWith('K-');
   const ersatzwert = b.anlass.startsWith('EW-');
   if (korrektur && b.status === K_FREIGEGEBEN) return KORREKTUR_FREIGEGEBEN;

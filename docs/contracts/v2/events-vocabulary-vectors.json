@@ -5777,6 +5777,87 @@
       }
     },
     {
+      "name": "kennzahl-kz0004-oktober-version-2-nach-berichtigung-des-nenners",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Nenner-Auslöser, W1); Referenzfall K6 (kennzahl-vectors.json)",
+      "why": "Die Berichtigung von BZ-1 Oktober 2026 bildet KZ-0004 als Version 2 neu — derselbe Takt wie eine Korrektur, aber ohne Messreihen-Stufe; der Auslöser ist die Berichtigung, die AP-09 IP-7 als correction mit Bezug bezugsgroesse meldet.",
+      "annahme": "Die Kennung BK-2026-0001 ist angenommen: K6 nennt den Import I-2026-0003 (Annahme aus B3) nur im Beleg-Satz der Herkunft; die Meldung trägt die Kennung der Berichtigung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000210",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0004",
+          "ausloeser": "BK-2026-0001",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0004 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach BK-2026-0001"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0004-maerz-version-2-nach-geaenderter-berechnung",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Definitions-Auslöser); Referenzfall K17 (kennzahl-vectors.json)",
+      "why": "Wäre der März 2027 am 20.03. schon endgültig gewesen, bildete die rückwirkende Fassung 2 der Berechnung ihn als Version 2 „Berechnung geändert (Fassung 2)“ neu — ohne Vorgang ist der Auslöser die Kennzahl mit der Nummer ihrer neuen Fassung — ein bloßes Kennzeichen wäre keine Ursache.",
+      "annahme": "Der endgültige März ist die Annahme aus K17 („wäre der März endgültig gewesen“); die Periode endet in der Sommerzeit.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000211",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2027-02-28T23:00:00Z",
+          "bis": "2027-03-31T22:00:00Z",
+          "kennzahl": "KZ-0004",
+          "ausloeser": "KZ-0004/Fassung-2",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0004 neu gebildet für 01.03.2027 00:00 bis 01.04.2027 00:00: Version 2 nach KZ-0004/Fassung-2"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0007-januar-version-2-nach-rueckwirkendem-stammdatum",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Stammdatum-Auslöser); Referenzfälle K10 und K12 (kennzahl-vectors.json)",
+      "why": "Ein rückwirkend eingetragenes Stammdatum (Mitarbeitende BZ-8 ab 01.01.2027) bildet den schon endgültigen Januar der Kennzahl je Person als Version 2 neu — der Auslöser ist die Bezugsgröße mit dem Tag, ab dem das Stammdatum gilt.",
+      "annahme": "Die Kennzahl KZ-0007 (Netzbezug gesamt je Person, K10) und das Datum sind angenommen; K12 beschreibt dieselbe Regel für die Fläche, die heute kein Kennzahl-Eingang ist.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000212",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-12-31T23:00:00Z",
+          "bis": "2027-01-31T23:00:00Z",
+          "kennzahl": "KZ-0007",
+          "ausloeser": "BZ-8/ab-2027-01-01",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0007 neu gebildet für 01.01.2027 00:00 bis 01.02.2027 00:00: Version 2 nach BZ-8/ab-2027-01-01"
+        ]
+      }
+    },
+    {
       "name": "kennzahl-neu-gebildet-von-der-box-verworfen",
       "pruefung": "ereignis",
       "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",

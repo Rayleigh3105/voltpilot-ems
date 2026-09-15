@@ -48,8 +48,9 @@ Kennzahl durch, die davon lebt — und die alte Zahl bleibt lesbar (K7).
   Kaskade nur ihren Takt nimmt).
 - **Nachziehen trägt den Anlass seiner Version** — auch im Regellauf. Vorher schrieb er dort NULL, und der Trigger
   `kennzahl_wert_version_folgt` hätte das Nachziehen einer vorläufigen Version 2 abgewiesen.
-- **Nicht gebaut:** der Nenner- und Definitions-Auslöser (`Betroffen.bezugsgroessen`, IP-9), die Berichte (AP-12 liest
-  `kennzahl_neu_gebildet`), das Portal (IP-15).
+- **Seit IP-9** ruft die Kaskade die Naht auch ohne Messreihe: `Betroffen.bezugsgroessen` und der Status
+  `berechnung_geaendert` — `uems-kennzahl-ausloeser.md`.
+- **Nicht gebaut:** die Berichte (AP-12 liest `kennzahl_neu_gebildet`), das Portal (IP-15).
 
 ## Prüfen
 

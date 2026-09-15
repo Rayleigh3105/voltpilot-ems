@@ -32,6 +32,9 @@ IP-13 (`uems-ersatzwert-methoden.md`), IP-14 (`uems-korrektur-vorschlaege.md`) u
 - **Ersatzwert:** neueste Fassung, sobald `ErsatzwertLauf` sie gerechnet hat (`messreihe_ersatzwert_wirkung.fassung`) —
   seine Viertelstunden bildet weiter der Ersatzwert-Lauf (jetzt ebenfalls mit „korrigiert (Version n)“), die Kaskade
   folgt mit Tag, Monat, Jahr und AP-10.
+- **Seit AP-11 IP-9 ohne Stufen:** `correction` mit Bezug `bezugsgroesse` (`BK-…`), eine rückwirkende Kennzahl-Fassung
+  (`kennzahl_fassung:<ID>`) und ein rückwirkendes Stammdatum (`bezugsgroesse_stammdatum:<ID>`) rufen nur die Kennzahl- und die
+  Berichts-Naht (`ohneStufen`, `uems-kennzahl-ausloeser.md`).
 
 Ein Anlass = EINE Transaktion (Viertelstunden, Stufen, berechnete Messstellen, Meldungen, Nähte, Wirkung); ein Abbruch
 irgendwo — auch in einer Naht — rollt ALLES zurück. Eine benannte Ablehnung rollt die Stufen zurück und schreibt nur die

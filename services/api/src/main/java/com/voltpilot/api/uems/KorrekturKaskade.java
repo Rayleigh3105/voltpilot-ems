@@ -104,6 +104,10 @@ public class KorrekturKaskade {
     static final String FREIGEGEBEN = "freigegeben";
     static final String ZURUECKGENOMMEN = "zurueckgenommen";
     static final String WIRKSAM = "wirksam";
+    /** AP-11 IP-9: die Berechnung einer Kennzahl gilt rückwirkend in einer neuen Fassung — Anlass ihr Kennzeichen. */
+    static final String BERECHNUNG_GEAENDERT = "berechnung_geaendert";
+    /** AP-11 IP-9: ein Stammdatum wurde rückwirkend eingetragen — Anlass das Kennzeichen der Bezugsgröße. */
+    static final String STAMMDATUM_EINGETRAGEN = "stammdatum_eingetragen";
 
     private static final String ART_NACHLIEFERUNG = "nachlieferung_nach_endgueltigkeit";
     private static final String ART_ABLESESTAENDE = "ablesestaende_nachgetragen";
@@ -120,20 +124,44 @@ public class KorrekturKaskade {
     public record Reihe(UUID entity, String kanal) {}
 
     /**
+     * Eine Bezugsgröße, deren Wert sich für die Tage {@code periodeVon … periodeBis} (einschließlich) geändert hat (AP-11
+     * IP-9, W1): eine wirksame Fassung ≥ 2 oder eine Rücknahme ({@code correction} mit Bezug {@code bezugsgroesse}), oder
+     * ein rückwirkend eingetragenes Stammdatum ab {@code periodeVon}.
+     *
+     * @param kennzeichen das heutige Kennzeichen
+     * @param fassung die neue Fassung des Werts ({@code fassung_neu}) bzw. der wievielte Stammdatum-Eintrag
+     * @param status {@code freigegeben} · {@code zurueckgenommen} · {@code stammdatum_eingetragen}
+     */
+    public record Bezugsgroesse(UUID id, String kennzeichen, LocalDate periodeVon, LocalDate periodeBis, int fassung,
+            String status) {}
+
+    /**
      * Was eine Verarbeitung berührt hat — für die Kennzahlen (AP-11) und die Berichte (AP-12).
      *
-     * @param status {@code freigegeben} · {@code zurueckgenommen} (Korrektur) oder {@code wirksam} ·
-     *     {@code zurueckgenommen} (Ersatzwert)
+     * @param anlass die Kennung des Vorgangs ({@code K-…}, {@code EW-…}, {@code BK-…}) — oder das Kennzeichen der Kennzahl
+     *     ({@code berechnung_geaendert}) bzw. der Bezugsgröße ({@code stammdatum_eingetragen})
+     * @param status {@code freigegeben} · {@code zurueckgenommen} (Korrektur, Berichtigung eines Bezugsgrößen-Werts) oder
+     *     {@code wirksam} · {@code zurueckgenommen} (Ersatzwert); seit AP-11 IP-9 auch {@code berechnung_geaendert}
+     *     (rückwirkende Fassung der Berechnung einer Kennzahl) und {@code stammdatum_eingetragen} (rückwirkendes Stammdatum)
      * @param ersterTag erster betroffener Tag in {@code zone}, {@code letzterTag} einschließlich
      * @param messstellen die berechneten Messstellen, die eine neue Version bekamen
      * @param ereignisse die Meldungen {@code correction} dieser Verarbeitung — DER Revisions-Auslöser
      * @param versionen wie viele Versionen (alle Stufen) geschrieben wurden
      * @param jetzt der Zeitpunkt des Laufs — dieselbe Uhr wie die Stufen (AP-11 IP-8: „läuft die Periode noch?“, und
      *     {@code berechnet_am} der neuen Kennzahl-Versionen); {@code null} nur ohne Lauf (Vertragsvektoren der Berichte)
+     * @param bezugsgroessen die Bezugsgrößen, deren Wert sich geändert hat (AP-11 IP-9) — leer im Messreihen-Pfad
      */
     public record Betroffen(UUID tenant, String anlass, int fassung, String status, List<Reihe> reihen, Instant von,
             Instant bis, ZoneId zone, LocalDate ersterTag, LocalDate letzterTag, List<String> messstellen,
-            List<UUID> ereignisse, int versionen, Instant jetzt) {
+            List<UUID> ereignisse, int versionen, Instant jetzt, List<Bezugsgroesse> bezugsgroessen) {
+
+        /** Der Messreihen-Pfad (AP-08 IP-17, AP-11 IP-8): keine Bezugsgröße. */
+        public Betroffen(UUID tenant, String anlass, int fassung, String status, List<Reihe> reihen, Instant von,
+                Instant bis, ZoneId zone, LocalDate ersterTag, LocalDate letzterTag, List<String> messstellen,
+                List<UUID> ereignisse, int versionen, Instant jetzt) {
+            this(tenant, anlass, fassung, status, reihen, von, bis, zone, ersterTag, letzterTag, messstellen, ereignisse,
+                    versionen, jetzt, List.of());
+        }
 
         /** Ohne Lauf — was die Vertragsvektoren der Berichte beschreiben (kein Zeitpunkt). */
         public Betroffen(UUID tenant, String anlass, int fassung, String status, List<Reihe> reihen, Instant von,
@@ -219,7 +247,28 @@ public class KorrekturKaskade {
         return new Lauf(anlaesse, versionen, nachgezogen, Map.copyOf(abgelehnt), List.copyOf(kreise));
     }
 
-    private record Anlass(UUID tenant, String kennung, boolean korrektur, int fassung, String status) {}
+    /**
+     * Woher ein Anlass kommt. Korrektur und Ersatzwert gehen durch die Stufen der Messreihe; die Auslöser aus AP-11 IP-9
+     * berühren keine Messreihe und rufen nur die Kennzahl- und die Berichts-Naht ({@link #ohneStufen}).
+     */
+    private enum Quelle {
+        KORREKTUR, ERSATZWERT, BEZUGSGROESSE, DEFINITION, STAMMDATUM;
+
+        boolean ohneStufen() {
+            return this != KORREKTUR && this != ERSATZWERT;
+        }
+    }
+
+    /**
+     * Ein Anlass: seine Kennung in {@code messreihe_kaskade_wirkung}, die Fassung, die weiter ist als seine Wirkung, der
+     * Status; {@code objekt} = die Kennzahl ({@link Quelle#DEFINITION}) bzw. die Bezugsgröße ({@link Quelle#STAMMDATUM}).
+     */
+    private record Anlass(UUID tenant, String kennung, Quelle quelle, int fassung, String status, UUID objekt) {
+
+        boolean korrektur() {
+            return quelle == Quelle.KORREKTUR;
+        }
+    }
 
     /** Einen Anlass verarbeiten — {@code null}, wenn es keine Arbeit gibt. */
     private Zug einen(Connection con, Instant jetzt) throws SQLException {
@@ -233,7 +282,7 @@ public class KorrekturKaskade {
             }
             Savepoint sp = con.setSavepoint();
             try {
-                Verarbeitet v = verarbeiten(con, a, jetzt);
+                Verarbeitet v = a.quelle().ohneStufen() ? ohneStufen(con, a, jetzt) : verarbeiten(con, a, jetzt);
                 wirkung(con, a, v.versionen() > 0 ? GEBILDET : OHNE_WIRKUNG, v.versionen(), jetzt);
                 return new Zug(1, v.versionen(), 0, Map.of(), v.kreise());
             } catch (Abgelehnt ab) {
@@ -249,36 +298,228 @@ public class KorrekturKaskade {
 
     /**
      * Die Anlässe: Korrekturen, deren neueste Fassung eine Freigabe oder Rücknahme ist, und Ersatzwerte, deren neueste
-     * Fassung der Ersatzwert-Lauf schon gerechnet hat — jeweils weiter als ihre Wirkung, älteste Entscheidung zuerst.
+     * Fassung der Ersatzwert-Lauf schon gerechnet hat; seit AP-11 IP-9 die Meldungen {@code correction} mit Bezug
+     * {@code bezugsgroesse} (Kennung {@code BK-…}, Fassung = {@code fassung_neu}), rückwirkende Fassungen der Berechnung
+     * einer Kennzahl ({@code kennzahl_fassung:<ID>}, Fassung = Nummer) und rückwirkend eingetragene Stammdaten
+     * ({@code bezugsgroesse_stammdatum:<ID>}, Fassung = der wievielte Eintrag) — jeweils weiter als ihre Wirkung, älteste
+     * zuerst.
      */
     private static List<Anlass> kandidaten(Connection con) throws SQLException {
         List<Anlass> aus = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT tenant_id, kennung, korrektur, fassung, status FROM (
-                    SELECT n.tenant_id, n.kennung, true AS korrektur, n.fassung, n.status, n.created_at
+                SELECT tenant_id, kennung, quelle, fassung, status, objekt FROM (
+                    SELECT n.tenant_id, n.kennung, 'KORREKTUR' AS quelle, n.fassung, n.status, NULL::uuid AS objekt,
+                           n.created_at
                       FROM (SELECT DISTINCT ON (tenant_id, kennung) tenant_id, kennung, fassung, status, created_at
                               FROM messreihe_korrektur ORDER BY tenant_id, kennung, fassung DESC) n
                       LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = n.tenant_id AND w.anlass_kennung = n.kennung
                      WHERE n.status IN ('freigegeben', 'zurueckgenommen') AND n.fassung > coalesce(w.fassung, 0)
                     UNION ALL
-                    SELECT n.tenant_id, n.kennung, false, n.fassung, n.status, n.created_at
+                    SELECT n.tenant_id, n.kennung, 'ERSATZWERT', n.fassung, n.status, NULL::uuid, n.created_at
                       FROM (SELECT DISTINCT ON (tenant_id, kennung) tenant_id, kennung, fassung, status, created_at
                               FROM messreihe_ersatzwert ORDER BY tenant_id, kennung, fassung DESC) n
                       JOIN messreihe_ersatzwert_wirkung ew ON ew.tenant_id = n.tenant_id AND ew.kennung = n.kennung
                                                           AND ew.fassung >= n.fassung
                       LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = n.tenant_id AND w.anlass_kennung = n.kennung
-                     WHERE n.fassung > coalesce(w.fassung, 0)) a
-                 ORDER BY created_at, kennung LIMIT ?
+                     WHERE n.fassung > coalesce(w.fassung, 0)
+                    UNION ALL
+                    SELECT e.tenant_id, e.kennung, 'BEZUGSGROESSE', e.fassung, e.status, NULL::uuid, e.eingang
+                      FROM (SELECT tenant_id, nutzlast ->> 'korrektur' AS kennung, nutzlast ->> 'status' AS status,
+                                   coalesce((nutzlast ->> 'fassung_neu')::int, 1) AS fassung, eingang
+                              FROM messreihe_ereignis
+                             WHERE art = 'correction' AND (kennungen ->> 'bezugsgroesse') IS NOT NULL) e
+                      LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = e.tenant_id AND w.anlass_kennung = e.kennung
+                     WHERE e.status IN ('freigegeben', 'zurueckgenommen') AND e.fassung > coalesce(w.fassung, 0)
+                    UNION ALL
+                    SELECT f.tenant_id, 'kennzahl_fassung:' || f.kennzahl_id, 'DEFINITION', f.nummer,
+                           'berechnung_geaendert', f.kennzahl_id, f.eingetragen_am
+                      FROM kennzahl_fassung f
+                      LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = f.tenant_id
+                                                           AND w.anlass_kennung = 'kennzahl_fassung:' || f.kennzahl_id
+                     WHERE f.rueckwirkend AND f.aufgehoben_am IS NULL AND f.nummer > coalesce(w.fassung, 0)
+                    UNION ALL
+                    SELECT s.tenant_id, 'bezugsgroesse_stammdatum:' || s.bezugsgroesse_id, 'STAMMDATUM', s.nr,
+                           'stammdatum_eingetragen', s.bezugsgroesse_id, s.created_at
+                      FROM (SELECT tenant_id, bezugsgroesse_id, rueckwirkend, created_at,
+                                   row_number() OVER (PARTITION BY tenant_id, bezugsgroesse_id ORDER BY id)::int AS nr
+                              FROM bezugsgroesse_aenderung WHERE art = 'stammdatum_eingetragen') s
+                      LEFT JOIN messreihe_kaskade_wirkung w ON w.tenant_id = s.tenant_id
+                                                           AND w.anlass_kennung = 'bezugsgroesse_stammdatum:' || s.bezugsgroesse_id
+                     WHERE s.rueckwirkend AND s.nr > coalesce(w.fassung, 0)) a
+                 ORDER BY created_at, kennung, fassung LIMIT ?
                 """)) {
             ps.setInt(1, KANDIDATEN);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    aus.add(new Anlass(rs.getObject(1, UUID.class), rs.getString(2), rs.getBoolean(3), rs.getInt(4),
-                            rs.getString(5)));
+                    aus.add(new Anlass(rs.getObject(1, UUID.class), rs.getString(2), Quelle.valueOf(rs.getString(3)),
+                            rs.getInt(4), rs.getString(5), rs.getObject(6, UUID.class)));
                 }
             }
         }
         return aus;
+    }
+
+    // ============================================================================ Auslöser ohne Messreihe (AP-11 IP-9)
+
+    /** Die Zeitzone einer Bezugsgröße {@code b}: die ihres Standorts {@code s}, sonst die des Unternehmens. */
+    private static final String ZONE_DER_BEZUGSGROESSE = "coalesce(s.zeitzone, (SELECT u.zeitzone FROM unternehmen u "
+            + "WHERE u.tenant_id = b.tenant_id ORDER BY u.id LIMIT 1), 'Europe/Berlin')";
+
+    /**
+     * Ein Anlass, der keine Messreihe berührt (AP-11 IP-9, E8 = A, W1): die Berichtigung oder Rücknahme eines
+     * Bezugsgrößen-Werts ({@code correction} mit Bezug {@code bezugsgroesse}, Erzeuger AP-09 IP-7), eine rückwirkende
+     * Fassung der Berechnung einer Kennzahl oder ein rückwirkend eingetragenes Stammdatum. Dieselbe Transaktion, derselbe
+     * Takt, dieselbe Wirkung — aber NUR die Kennzahl- und die Berichts-Naht: keine Viertelstunde, keine Stufe, keine
+     * berechnete Messstelle, keine Meldung {@code bilanz_neu_berechnet}. Als Versionen zählt die Wirkung die
+     * Kennzahl-Werte, die die Naht in diesem Lauf schrieb.
+     */
+    private Verarbeitet ohneStufen(Connection con, Anlass a, Instant jetzt) throws SQLException {
+        ZoneId zone = berechnete.zoneDesKundenbereichs(a.tenant());
+        Betroffen betroffen = switch (a.quelle()) {
+            case BEZUGSGROESSE -> nenner(con, a, zone, jetzt);
+            case DEFINITION -> berechnung(con, a, zone, jetzt);
+            case STAMMDATUM -> stammdatum(con, a, zone, jetzt);
+            case KORREKTUR, ERSATZWERT -> throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung()
+                    + " geht durch die Stufen der Messreihe");
+        };
+        kennzahlen.nachKorrektur(con, betroffen);
+        berichteBenachrichtigen(con, berichte, betroffen);
+        return new Verarbeitet(kennzahlWerte(con, a.tenant(), jetzt), List.of());
+    }
+
+    /**
+     * {@code correction} mit Bezug {@code bezugsgroesse}: die Meldung (der Revisions-Auslöser), die Bezugsgröße — nach dem
+     * Kennzeichen der Meldung, auch wenn sie heute ein anderes trägt — und die Tage ihrer Periode in ihrer Zeitzone.
+     */
+    private static Betroffen nenner(Connection con, Anlass a, ZoneId zone, Instant jetzt) throws SQLException {
+        UUID ereignis;
+        Instant von;
+        Instant bis;
+        String kennzeichen;
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT ereignis_id, von, bis, kennungen ->> 'bezugsgroesse'
+                  FROM messreihe_ereignis
+                 WHERE tenant_id = ? AND art = 'correction' AND (kennungen ->> 'bezugsgroesse') IS NOT NULL
+                   AND nutzlast ->> 'korrektur' = ? AND coalesce((nutzlast ->> 'fassung_neu')::int, 1) = ?
+                 ORDER BY eingang, ereignis_id LIMIT 1
+                """)) {
+            ps.setObject(1, a.tenant());
+            ps.setString(2, a.kennung());
+            ps.setInt(3, a.fassung());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Korrektur-Kaskade: keine Meldung correction zu " + a.kennung()
+                            + " Fassung " + a.fassung());
+                }
+                ereignis = rs.getObject(1, UUID.class);
+                von = rs.getTimestamp(2).toInstant();
+                bis = rs.getTimestamp(3).toInstant();
+                kennzeichen = rs.getString(4);
+            }
+        }
+        try (PreparedStatement ps = con.prepareStatement("SELECT b.id, b.kennzeichen, " + ZONE_DER_BEZUGSGROESSE
+                + " FROM bezugsgroesse b LEFT JOIN standort s ON s.id = b.standort_id AND s.tenant_id = b.tenant_id "
+                + "WHERE b.tenant_id = ? AND b.id = coalesce((SELECT id FROM bezugsgroesse WHERE tenant_id = ? "
+                + "AND kennzeichen = ?), (SELECT bezugsgroesse_id FROM bezugsgroesse_kennzeichen_verlauf "
+                + "WHERE tenant_id = ? AND kennzeichen = ?))")) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.tenant());
+            ps.setString(3, kennzeichen);
+            ps.setObject(4, a.tenant());
+            ps.setString(5, kennzeichen);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung() + " nennt die Bezugsgröße "
+                            + kennzeichen + ", die es nicht gibt");
+                }
+                ZoneId eigene = ZoneId.of(rs.getString(3));
+                LocalDate periodeVon = TagRegeln.tag(von, eigene);
+                LocalDate periodeBis = TagRegeln.tag(bis.minusNanos(1), eigene);
+                LocalDate ersterTag = fruehererTag(periodeVon, TagRegeln.tag(von, zone));
+                LocalDate letzterTag = spaetererTag(periodeBis, TagRegeln.tag(bis.minusNanos(1), zone));
+                return new Betroffen(a.tenant(), a.kennung(), a.fassung(), a.status(), List.of(), von, bis, zone,
+                        ersterTag, letzterTag, List.of(), List.of(ereignis), 0, jetzt, List.of(new Bezugsgroesse(
+                                rs.getObject(1, UUID.class), rs.getString(2), periodeVon, periodeBis, a.fassung(),
+                                a.status())));
+            }
+        }
+    }
+
+    /** Eine rückwirkende Fassung der Berechnung: die Kennzahl, ab dem Tag der Fassung bis heute (oder ihrem letzten Tag). */
+    private static Betroffen berechnung(Connection con, Anlass a, ZoneId zone, Instant jetzt) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("SELECT k.kennzeichen, f.gueltig_ab, f.gueltig_bis "
+                + "FROM kennzahl_fassung f JOIN kennzahl k ON k.id = f.kennzahl_id AND k.tenant_id = f.tenant_id "
+                + "WHERE f.tenant_id = ? AND f.kennzahl_id = ? AND f.nummer = ?")) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.objekt());
+            ps.setInt(3, a.fassung());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung() + " Fassung " + a.fassung()
+                            + " nicht gefunden");
+                }
+                LocalDate ab = rs.getObject(2, LocalDate.class);
+                LocalDate bisTag = bisHeute(ab, rs.getObject(3, LocalDate.class), zone, jetzt);
+                return new Betroffen(a.tenant(), rs.getString(1), a.fassung(), a.status(), List.of(),
+                        ab.atStartOfDay(zone).toInstant(), bisTag.plusDays(1).atStartOfDay(zone).toInstant(), zone, ab,
+                        bisTag, List.of(), List.of(), 0, jetzt, List.of());
+            }
+        }
+    }
+
+    /** Ein rückwirkend eingetragenes Stammdatum: die Bezugsgröße, ab dem Tag, ab dem es gilt, bis heute. */
+    private static Betroffen stammdatum(Connection con, Anlass a, ZoneId zone, Instant jetzt) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement("SELECT b.kennzeichen, e.gilt_ab, " + ZONE_DER_BEZUGSGROESSE
+                + " FROM (SELECT bezugsgroesse_id, gilt_ab, row_number() OVER (ORDER BY id)::int AS nr "
+                + "FROM bezugsgroesse_aenderung WHERE tenant_id = ? AND bezugsgroesse_id = ? "
+                + "AND art = 'stammdatum_eingetragen') e "
+                + "JOIN bezugsgroesse b ON b.id = e.bezugsgroesse_id AND b.tenant_id = ? "
+                + "LEFT JOIN standort s ON s.id = b.standort_id AND s.tenant_id = b.tenant_id WHERE e.nr = ?")) {
+            ps.setObject(1, a.tenant());
+            ps.setObject(2, a.objekt());
+            ps.setObject(3, a.tenant());
+            ps.setInt(4, a.fassung());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new IllegalStateException("UEMS Korrektur-Kaskade: " + a.kennung() + " Eintrag " + a.fassung()
+                            + " nicht gefunden");
+                }
+                LocalDate ab = TagRegeln.tag(rs.getTimestamp(2).toInstant(), ZoneId.of(rs.getString(3)));
+                LocalDate bisTag = bisHeute(ab, null, zone, jetzt);
+                return new Betroffen(a.tenant(), rs.getString(1), a.fassung(), a.status(), List.of(),
+                        ab.atStartOfDay(zone).toInstant(), bisTag.plusDays(1).atStartOfDay(zone).toInstant(), zone, ab,
+                        bisTag, List.of(), List.of(), 0, jetzt,
+                        List.of(new Bezugsgroesse(a.objekt(), rs.getString(1), ab, bisTag, a.fassung(), a.status())));
+            }
+        }
+    }
+
+    /** Der letzte Tag einer Neubildung ab {@code ab}: heute — oder früher der letzte Tag der Fassung; nie vor {@code ab}. */
+    private static LocalDate bisHeute(LocalDate ab, LocalDate letzter, ZoneId zone, Instant jetzt) {
+        LocalDate heute = TagRegeln.tag(jetzt, zone);
+        LocalDate bis = letzter != null && letzter.isBefore(heute) ? letzter : heute;
+        return bis.isBefore(ab) ? ab : bis;
+    }
+
+    private static LocalDate fruehererTag(LocalDate a, LocalDate b) {
+        return a.isBefore(b) ? a : b;
+    }
+
+    private static LocalDate spaetererTag(LocalDate a, LocalDate b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    /** Die Kennzahl-Werte, die die Naht in diesem Lauf schrieb — sie tragen {@code berechnet_am} = der Lauf. */
+    private static int kennzahlWerte(Connection con, UUID tenant, Instant jetzt) throws SQLException {
+        try (PreparedStatement ps = con.prepareStatement(
+                "SELECT count(*) FROM kennzahl_wert WHERE tenant_id = ? AND berechnet_am = ?")) {
+            ps.setObject(1, tenant);
+            ps.setTimestamp(2, Timestamp.from(jetzt.truncatedTo(ChronoUnit.MICROS)));
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
     }
 
     // ============================================================================ Einen Anlass verarbeiten

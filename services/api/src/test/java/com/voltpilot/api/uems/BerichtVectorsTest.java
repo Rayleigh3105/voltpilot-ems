@@ -578,10 +578,14 @@ class BerichtVectorsTest {
                 r.path("kanal").asText())));
         List<UUID> ereignisse = new ArrayList<>();
         b.path("ereignisse").forEach(x -> ereignisse.add(UUID.fromString(x.asText())));
+        List<KorrekturKaskade.Bezugsgroesse> bezugsgroessen = new ArrayList<>();
+        b.path("bezugsgroessen").forEach(g -> bezugsgroessen.add(new KorrekturKaskade.Bezugsgroesse(
+                UUID.fromString(g.path("id").asText()), g.path("kennzeichen").asText(), tag(g.path("periode_von")),
+                tag(g.path("periode_bis")), g.path("fassung").asInt(), g.path("status").asText())));
         return new KorrekturKaskade.Betroffen(UUID.fromString(b.path("tenant").asText()), b.path("anlass").asText(),
                 b.path("fassung").asInt(), b.path("status").asText(), reihen, zeit(b.path("von")), zeit(b.path("bis")),
                 ZoneId.of(b.path("zone").asText()), tag(b.path("erster_tag")), tag(b.path("letzter_tag")),
-                texte(b.path("messstellen")), ereignisse, b.path("versionen").asInt());
+                texte(b.path("messstellen")), ereignisse, b.path("versionen").asInt(), null, bezugsgroessen);
     }
 
     private static String kennzeichen(JsonNode e, ZoneId zone) {

@@ -337,7 +337,7 @@
     {
       "fall": "—",
       "was": "Anstoß-Arten bezugsgroesse_fassung und kennzahl_fassung_rueckwirkend",
-      "warum": "kommen über Pfad 1 erst mit AP-11 IP-9 (`Betroffen.bezugsgroessen`); bis dahin nur Vokabular."
+      "warum": "kommen über Pfad 1 seit AP-11 IP-9 (`Betroffen.bezugsgroessen`, Status `berechnung_geaendert`) — die Regel prüfen zwei Annahme-Prüfungen in B9; ein Abzug, der sie trägt, ist hier nicht beschrieben."
     }
   ],
   "abzuege": {
@@ -4390,6 +4390,111 @@
             "struktur": {"objekte": ["BZ-4"], "gilt_ab": "2027-01-01"}
           },
           "ergebnis": {"betroffene": [["BR-2027-0001", "ENTWURF"]], "anstoss_art": null}
+        },
+        {
+          "regel": "betroffenheit",
+          "name": "Annahme (AP-11 IP-9): Pfad 1 trägt die Bezugsgröße — BZ-6 Oktober 2026 berichtigt (BK-2026-0001) trifft BR-2026-0001 Nr. 1 und den Entwurf, Lindach nicht; Anstoß bezugsgroesse_fassung",
+          "eingang": {
+            "quellen": [
+              {
+                "bericht": "BR-2026-0001",
+                "nr": 1,
+                "ersetzt": false,
+                "bezug": "unmittelbar",
+                "erster_tag": "2026-10-01",
+                "letzter_tag": "2026-10-31",
+                "objekte": ["MS-12", "BZ-6", "KZ-0001"]
+              },
+              {
+                "bericht": "BR-2026-0001",
+                "nr": null,
+                "ersetzt": false,
+                "bezug": "unmittelbar",
+                "erster_tag": "2026-10-01",
+                "letzter_tag": "2026-10-31",
+                "objekte": ["MS-12", "BZ-6", "KZ-0001"]
+              },
+              {
+                "bericht": "BR-2026-0003",
+                "nr": 1,
+                "ersetzt": false,
+                "bezug": "unmittelbar",
+                "erster_tag": "2026-10-01",
+                "letzter_tag": "2026-10-31",
+                "objekte": ["MS-18", "BZ-7", "KZ-0002"]
+              }
+            ],
+            "quellenbindung": [],
+            "betroffen": {
+              "tenant": "93e99678-5bf3-55b4-9cb3-13e16fc4a25a",
+              "anlass": "BK-2026-0001",
+              "fassung": 2,
+              "status": "freigegeben",
+              "reihen": [],
+              "von": "2026-09-30T22:00:00Z",
+              "bis": "2026-10-31T23:00:00Z",
+              "zone": "Europe/Berlin",
+              "erster_tag": "2026-10-01",
+              "letzter_tag": "2026-10-31",
+              "messstellen": [],
+              "ereignisse": [],
+              "versionen": 0,
+              "bezugsgroessen": [
+                {
+                  "id": "6b1f7a52-0c2e-5d8b-9a41-3e0f2d7c9b16",
+                  "kennzeichen": "BZ-6",
+                  "periode_von": "2026-10-01",
+                  "periode_bis": "2026-10-31",
+                  "fassung": 2,
+                  "status": "freigegeben"
+                }
+              ]
+            }
+          },
+          "ergebnis": {"betroffene": [["BR-2026-0001", "FREIGEGEBEN"], ["BR-2026-0001", "ENTWURF"]], "anstoss_art": "bezugsgroesse_fassung"}
+        },
+        {
+          "regel": "betroffenheit",
+          "name": "Annahme (AP-11 IP-9): KZ-0001 rechnet ab 01.10.2026 rückwirkend in Fassung 2 — Pfad 1 trifft, wer KZ-0001 zitiert; Anstoß kennzahl_fassung_rueckwirkend",
+          "eingang": {
+            "quellen": [
+              {
+                "bericht": "BR-2026-0001",
+                "nr": 1,
+                "ersetzt": false,
+                "bezug": "unmittelbar",
+                "erster_tag": "2026-10-01",
+                "letzter_tag": "2026-10-31",
+                "objekte": ["MS-12", "BZ-6", "KZ-0001"]
+              },
+              {
+                "bericht": "BR-2026-0003",
+                "nr": 1,
+                "ersetzt": false,
+                "bezug": "unmittelbar",
+                "erster_tag": "2026-10-01",
+                "letzter_tag": "2026-10-31",
+                "objekte": ["MS-18", "BZ-7", "KZ-0002"]
+              }
+            ],
+            "quellenbindung": [],
+            "betroffen": {
+              "tenant": "93e99678-5bf3-55b4-9cb3-13e16fc4a25a",
+              "anlass": "KZ-0001",
+              "fassung": 2,
+              "status": "berechnung_geaendert",
+              "reihen": [],
+              "von": "2026-09-30T22:00:00Z",
+              "bis": "2026-11-12T23:00:00Z",
+              "zone": "Europe/Berlin",
+              "erster_tag": "2026-10-01",
+              "letzter_tag": "2026-11-12",
+              "messstellen": [],
+              "ereignisse": [],
+              "versionen": 0
+            }
+          },
+          "ergebnis": {"betroffene": [["BR-2026-0001", "FREIGEGEBEN"]], "anstoss_art": "kennzahl_fassung_rueckwirkend"}
         }
       ]
     },

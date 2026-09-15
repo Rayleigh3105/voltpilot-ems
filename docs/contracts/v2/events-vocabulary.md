@@ -15,7 +15,7 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 |---|---|
 | [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) | der Umschlag Box → Cloud auf `ems/{tenant_id}/{site_id}/{device_id}/v2/events` |
 | [`events-raw.event.schema.json`](./events-raw.event.schema.json) | das Redpanda-Ereignis `events.raw` (beide Wege, ein Ereignis je Datensatz) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 123 Fälle im Referenzunternehmen Ahrenberg |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 126 Fälle im Referenzunternehmen Ahrenberg |
 | [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | JSON Schema 2020-12 der Vektor-Datei |
 | `services/api/.../uems/EreignisVokabular.java` | die reine PRÜFUNG: angenommen oder verworfen mit Grund |
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
@@ -269,7 +269,10 @@ Reservierung aus AP-11 IP-1 ein: die Korrektur-Kaskade (später auch der Nenner-
 AP-11 IP-9) hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist die Periode dieses
 Werts (erster Tag 00:00 bis zum Tag nach dem letzten Tag 00:00 in der Zeitzone des Unternehmens). Nur `cloud`,
 Bezug NUR die Kennzahl — `kennzahl` ist der siebte Schlüssel von `kennungen` (Kennzeichen `KZ-…`), eine
-Messstelle nennt die Meldung nie —, Pflicht `ausloeser` = die Korrektur `K-…` oder der Ersatzwert `EW-…` und
+Messstelle nennt die Meldung nie —, Pflicht `ausloeser` = die Korrektur `K-…` oder der Ersatzwert `EW-…` (seit AP-11
+IP-9 auch die Berichtigung eines Bezugsgrößen-Werts `BK-…`, die rückwirkend geänderte Berechnung als Kennzahl mit
+Fassung `KZ-0004/Fassung-2` oder das rückwirkende Stammdatum als Bezugsgröße mit Tag `BZ-8/ab-2027-01-01`; ein bloßes
+Kennzeichen wie `MS-12` bleibt `regel_verletzt`) und
 `version` = die neue Version (mindestens 2, sonst `regel_verletzt`). Version 1 bildet der Regellauf ohne Meldung;
 vorläufige Werte, die ohne neue Version nachziehen, meldet niemand. Kundensatz etwa „Kennzahl KZ-0001 neu gebildet
 für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007“ (Migration
@@ -425,7 +428,7 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-123 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+126 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |

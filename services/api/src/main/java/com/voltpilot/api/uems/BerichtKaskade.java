@@ -48,8 +48,9 @@ import org.springframework.stereotype.Component;
  * </ul>
  *
  * <p>Wirft bei jedem Fehler: die Kaskade rollt dann alles zurück, auch die Stufen der Messreihe und die Kennzahlen, und
- * versucht es im nächsten Takt (keine halbe Wahrheit). Die Bezugsgrößen ({@code Betroffen.bezugsgroessen}, AP-11 IP-9)
- * trägt Pfad 1 noch nicht — bis dahin der Strukturänderungs-Läufer (AP-12 IP-9).
+ * versucht es im nächsten Takt (keine halbe Wahrheit). Seit AP-11 IP-9 trägt Pfad 1 auch die Bezugsgrößen
+ * ({@code Betroffen.bezugsgroessen}: Quellen der Art {@code bezugsgroesse} und {@code stammdatum}) und eine rückwirkend
+ * geänderte Berechnung (Quellen der Art {@code kennzahl} mit dem Kennzeichen {@code Betroffen.anlass}).
  */
 @Component
 @ConditionalOnProperty(name = BerichtKaskade.SCHALTER, havingValue = "true", matchIfMissing = true)
@@ -75,7 +76,9 @@ public class BerichtKaskade implements BerichteNaht {
     @Override
     public List<Bericht> betroffene(Connection con, KorrekturKaskade.Betroffen b) throws SQLException {
         Set<UUID> messstellen = KennzahlKaskade.messstellen(con, b);
-        if (messstellen.isEmpty()) {
+        List<UUID> bezugsgroessen = b.bezugsgroessen().stream().map(KorrekturKaskade.Bezugsgroesse::id).toList();
+        String berechnung = KorrekturKaskade.BERECHNUNG_GEAENDERT.equals(b.status()) ? b.anlass() : null;
+        if (messstellen.isEmpty() && bezugsgroessen.isEmpty() && berechnung == null) {
             return List.of();
         }
         List<String> gebunden = new ArrayList<>();
@@ -91,20 +94,28 @@ public class BerichtKaskade implements BerichteNaht {
         }
         List<BerichtRegeln.Quelle> quellen = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
-                SELECT b.kennung, q.stand_nr, s.ersetzt_durch_nr IS NOT NULL AS ersetzt, m.kennzeichen, q.bezug,
+                SELECT b.kennung, q.stand_nr, s.ersetzt_durch_nr IS NOT NULL AS ersetzt,
+                       coalesce(m.kennzeichen, g.kennzeichen, k.kennzeichen, q.kennzeichen) AS kennzeichen, q.bezug,
                        q.erster_tag, q.letzter_tag
                   FROM bericht_quelle q
                   JOIN bericht b ON b.id = q.bericht_id AND b.tenant_id = q.tenant_id
-                  JOIN messstelle m ON m.id = q.objekt_id AND m.tenant_id = q.tenant_id
+                  LEFT JOIN messstelle m ON m.id = q.objekt_id AND m.tenant_id = q.tenant_id
+                  LEFT JOIN bezugsgroesse g ON g.id = q.objekt_id AND g.tenant_id = q.tenant_id
+                  LEFT JOIN kennzahl k ON k.id = q.objekt_id AND k.tenant_id = q.tenant_id
                   LEFT JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id
                        AND s.nr = q.stand_nr
-                 WHERE q.tenant_id = ? AND q.objekt_id = ANY (?) AND q.erster_tag <= ? AND q.letzter_tag >= ?
-                 ORDER BY b.kennung, q.stand_nr NULLS LAST, m.kennzeichen, q.bezug
+                 WHERE q.tenant_id = ? AND q.erster_tag <= ? AND q.letzter_tag >= ?
+                   AND ((m.id IS NOT NULL AND q.objekt_id = ANY (?))
+                        OR (q.art IN ('bezugsgroesse', 'stammdatum') AND q.objekt_id = ANY (?))
+                        OR (q.art = 'kennzahl' AND coalesce(k.kennzeichen, q.kennzeichen) = ?::text))
+                 ORDER BY b.kennung, q.stand_nr NULLS LAST, 4, q.bezug
                 """)) {
             ps.setObject(1, b.tenant());
-            ps.setArray(2, con.createArrayOf("uuid", messstellen.toArray()));
-            ps.setObject(3, b.letzterTag());
-            ps.setObject(4, b.ersterTag());
+            ps.setObject(2, b.letzterTag());
+            ps.setObject(3, b.ersterTag());
+            ps.setArray(4, con.createArrayOf("uuid", messstellen.toArray()));
+            ps.setArray(5, con.createArrayOf("uuid", bezugsgroessen.toArray()));
+            ps.setString(6, berechnung);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     quellen.add(new BerichtRegeln.Quelle(rs.getString("kennung"), (Integer) rs.getObject("stand_nr"),

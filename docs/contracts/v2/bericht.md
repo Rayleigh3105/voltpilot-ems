@@ -145,14 +145,16 @@ Regeln `datenstand` (`BerichtRegeln.d2`/`d3`/`d4` ⟷ `uemsBericht.d2`/`d3`/`d4`
   (`FREIGEGEBEN`, nie ein ersetzter) vor dem Entwurf (`ENTWURF`), Berichte nach Kennung sortiert — in der Sprache der Naht
   (`BerichteNaht.Bericht`). Regel `betroffenheit`:
   - **Pfad 1** `betroffene(quellen, KorrekturKaskade.Betroffen, bindung)`: Objekte = die Messstellen der Reihen (über die
-    zeitgültige Quellenbindung, die der Aufrufer liest) und `Betroffen.messstellen`; Tage `ersterTag … letzterTag`.
+    zeitgültige Quellenbindung, die der Aufrufer liest) und `Betroffen.messstellen`, seit AP-11 IP-9 die Kennzeichen von
+    `Betroffen.bezugsgroessen` und bei `berechnung_geaendert` der Anlass (die Kennzahl); Tage `ersterTag … letzterTag`.
   - **Pfad 2** `betroffene(quellen, objekte, giltAb)` (TS `betroffeneStruktur`): Objekte, die der Strukturänderungs-Läufer
     auflöst; Tage ab `gilt_ab`, offen.
 - **B2** Pfad 1 ist die Korrektur-Kaskade (PR 741); **B3** Pfad 2 der Strukturänderungs-Läufer (IP-9).
 - **B4 Anstoß-Arten** (`anstoss_art`): Pfad 1 aus Anlass und Status (`anstossArt`): `K-…` freigegeben →
   `korrektur_freigegeben`, zurückgenommen → `korrektur_zurueckgenommen`; `EW-…` wirksam → `ersatzwert_wirksam`,
   zurückgenommen → `ersatzwert_zurueckgenommen`. `bezugsgroesse_fassung` und `kennzahl_fassung_rueckwirkend` kommen über
-  Pfad 1 erst mit AP-11 IP-9. Pfad 2 aus einer Protokollzeile (Regel `struktur`):
+  Pfad 1 seit AP-11 IP-9: jede geänderte Bezugsgröße (`Betroffen.bezugsgroessen` — Fassung ≥ 2, Rücknahme, rückwirkendes
+  Stammdatum) bzw. der Status `berechnung_geaendert` (rückwirkende Fassung der Berechnung einer Kennzahl). Pfad 2 aus einer Protokollzeile (Regel `struktur`):
 
   | Protokoll | Art | Anstoß | sonst |
   |---|---|---|---|

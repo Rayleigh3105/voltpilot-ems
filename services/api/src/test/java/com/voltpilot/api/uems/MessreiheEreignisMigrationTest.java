@@ -195,7 +195,10 @@ class MessreiheEreignisMigrationTest {
                 .isEqualTo("30 days");
         List<String> indizes = root.queryForList("SELECT indexdef FROM pg_indexes WHERE tablename = "
                 + "'messreihe_ereignis' ORDER BY indexname", String.class);
-        assertThat(indizes).hasSize(6).allSatisfy(i -> assertThat(i).contains("(tenant_id,"));
+        // Sieben seit AP-11 IP-9 (V20260915150000): der Teilindex, über den die Kaskade Bezugsgrößen-Meldungen sucht.
+        assertThat(indizes).hasSize(7).allSatisfy(i -> assertThat(i).contains("(tenant_id,"));
+        assertThat(indizes).anySatisfy(i -> assertThat(i).contains("idx_messreihe_ereignis_correction_bezugsgroesse")
+                .contains("(tenant_id, eingang)"));
         assertThat(indizes).anySatisfy(i -> assertThat(i).contains("UNIQUE").contains("(tenant_id, meldung, zeit)"));
         assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
                 + "WHERE relname = 'messreihe_ereignis'", Boolean.class)).isTrue();
