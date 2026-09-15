@@ -20,6 +20,8 @@ import com.voltpilot.api.web.dto.KadenzDto;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,12 +54,13 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code …/{id}/quellen}). Die Arbeit machen {@link MessstelleService} und
  * {@link MessstelleQuelleService}.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus
  * die Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Messstelle ist 404, nie
  * 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route nennt
  * im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}, damit AP-03 sie
- * findet ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); eine eigene
- * Rechte-Annotation gibt es hier bewusst nicht.
+ * findet ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); seit AP-03 IP-6 setzt {@code @Recht} sie vor
+ * dem Handler
+ * durch (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt, ist 400
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen. Wer an {@code PUT} ein
@@ -175,6 +178,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}. */
     @PostMapping
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.DIENST)
     public ResponseEntity<MessstelleDto.Messstelle> anlegen(
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleDto.Anlegen anfrage = lies(body, MessstelleDto.Anlegen.class);
@@ -184,6 +188,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}. */
     @PutMapping("/{id}")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle bearbeiten(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.bearbeiten(id, lies(body, MessstelleDto.Bearbeiten.class), akteur(auth));
@@ -191,6 +196,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/anhalten")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle anhalten(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.anhalten(id, uebergang(body), akteur(auth));
@@ -198,6 +204,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/fortsetzen")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle fortsetzen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.fortsetzen(id, uebergang(body), akteur(auth));
@@ -205,6 +212,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/archivieren")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle archivieren(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.archivieren(id, uebergang(body), akteur(auth));
@@ -217,6 +225,7 @@ public class MessstelleController {
      * zusätzlich {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihren Orten.
      */
     @PutMapping("/{id}/ort")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle ort(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         zuordnungen.ortZuordnen(id, lies(body, MessstelleDto.OrtAendern.class), akteur(auth));
@@ -228,6 +237,7 @@ public class MessstelleController {
      * {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihrer elektrischen Stellung.
      */
     @PutMapping("/{id}/stellung")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle stellung(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         zuordnungen.stellungZuordnen(id, lies(body, MessstelleDto.StellungAendern.class), akteur(auth));
@@ -266,6 +276,7 @@ public class MessstelleController {
      * laufende Quelle, die die neue beendet hat, und die Rückwirkung.
      */
     @PostMapping("/{id}/quellen")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     public ResponseEntity<MessstelleQuelleDto.Vorgang> binden(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleQuelleDto.Vorgang v = quellen.binden(id, lies(body, MessstelleQuelleDto.Binden.class), akteur(auth));
@@ -281,6 +292,7 @@ public class MessstelleController {
      * {@code POST /api/v1/geraete/{id}/austausch}; entweder alle Wirkungen landen oder keine.
      */
     @PostMapping("/{id}/quellen/wechsel")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     @ResponseStatus(HttpStatus.CREATED)
     public ZaehlerwechselDto.Vorgang wechseln(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
@@ -292,6 +304,7 @@ public class MessstelleController {
      * Ohne Inhalt endet die Quelle jetzt. Eine Quelle wird nie gelöscht — sie endet.
      */
     @PutMapping("/{id}/quellen/{quelleId}/beenden")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     public MessstelleQuelleDto.Vorgang beenden(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleQuelleDto.Beenden b = body == null || body.isNull() ? null
@@ -319,6 +332,7 @@ public class MessstelleController {
      * bekommt dieselbe Nachricht wie bisher — nur mit dieser Zahl in {@code cadence_s}.
      */
     @PostMapping("/{id}/quellen/{quelleId}/kadenz")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     @ResponseStatus(HttpStatus.CREATED)
     public KadenzDto.Vorgang kadenzEintragen(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {

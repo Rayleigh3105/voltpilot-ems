@@ -7,6 +7,8 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateMeasurementPointRequest;
 import com.voltpilot.api.web.dto.MeasurementPointDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
@@ -87,6 +89,7 @@ public class MeasurementPointController {
      */
     @Transactional
     @PostMapping
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<MeasurementPointDto> create(@PathVariable UUID siteId,
             @Valid @RequestBody CreateMeasurementPointRequest request) {
         requireSite(siteId);
@@ -131,6 +134,7 @@ public class MeasurementPointController {
      */
     @Transactional
     @DeleteMapping("/{pointId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public List<MeasurementPointDto> delete(@PathVariable UUID siteId,
             @PathVariable UUID pointId) {
         requireSite(siteId);

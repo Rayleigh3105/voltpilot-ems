@@ -6,6 +6,8 @@ import com.voltpilot.api.uems.StandortLesemodell.StandorteAmStichtag;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.StandortService;
 import com.voltpilot.api.web.dto.StandortDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -81,6 +83,7 @@ public class StandortController {
 
     // Rechte: `standort.verwalten`.
     @PostMapping
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public ResponseEntity<StandortAmStichtag> anlegen(@RequestBody(required = false) JsonNode body,
             Authentication auth) {
         StandortAmStichtag neu = standorte.anlegen(anfrage.lies(body, StandortDto.Stammdaten.class, false),
@@ -90,6 +93,7 @@ public class StandortController {
 
     // Rechte: `standort.verwalten`.
     @PutMapping("/{standortId}")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.STANDORT)
     public StandortAmStichtag bearbeiten(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return standorte.bearbeiten(standortId, anfrage.lies(body, StandortDto.Stammdaten.class, false),
@@ -98,6 +102,7 @@ public class StandortController {
 
     // Rechte: `standort.verwalten`. Ohne Inhalt: es gibt nichts zu wählen — archiviert wird ab heute.
     @PostMapping("/{standortId}/archivieren")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.STANDORT)
     public StandortAmStichtag archivieren(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         OrtAnfrage.leer(body);
@@ -106,6 +111,7 @@ public class StandortController {
 
     // Rechte: `standort.verwalten`. Optional `{"name": …}` — das Umbenennen im selben Dialog.
     @PostMapping("/{standortId}/wiederherstellen")
+    @Recht(value = "standort.verwalten", ziel = RechtZiel.STANDORT)
     public StandortAmStichtag wiederherstellen(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return standorte.wiederherstellen(standortId,

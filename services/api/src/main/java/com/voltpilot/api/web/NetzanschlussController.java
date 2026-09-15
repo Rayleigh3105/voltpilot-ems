@@ -11,6 +11,8 @@ import com.voltpilot.api.uems.NetzanschlussAbgelehnt.Ablehnung;
 import com.voltpilot.api.uems.NetzanschlussService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.NetzanschlussDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -42,11 +44,12 @@ import org.springframework.web.server.ResponseStatusException;
  * macht {@link NetzanschlussService}, die Regeln {@code NetzanschlussRegeln}, die Grenzen hält die
  * Datenbank ({@code V20260913235000}).
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — ein fremder Standort oder ein Anschluss eines anderen Standorts ist 404
  * {@code nicht_gefunden}, nie 403. Jede Route nennt im Kommentar ihre Kennung aus
  * {@code docs/contracts/v2/rechte-matrix.json} ({@code RechteKennungenDerRoutenTest} hält sie an die
- * Matrix); durchgesetzt wird sie hier nicht.
+ * Matrix); seit AP-03 IP-6 setzt {@code @Recht} sie vor dem Handler durch
+ * (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein unbekanntes Feld (auch camelCase), ein Feld, das kein Text
  * ist (die Leistungen: Zahl oder Dezimaltext), ein Tag oder eine ID in falscher Form sind 400
@@ -76,6 +79,7 @@ public class NetzanschlussController {
 
     /** Recht: {@code netzanschluss.verwalten} (AP-10 §4.10, E15). Ohne Kennzeichen vergibt die Regel das nächste. */
     @PostMapping
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
     public ResponseEntity<NetzanschlussDto.Netzanschluss> anlegen(@PathVariable UUID standortId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         UUID id = dienst.anlegen(standortId, lies(body, NetzanschlussDto.Anschluss.class), akteur(auth));
@@ -90,6 +94,7 @@ public class NetzanschlussController {
 
     /** Recht: {@code netzanschluss.verwalten}. Die ganze Menge; ein Ende wird nur vorgezogen. */
     @PutMapping("/{id}")
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
     public NetzanschlussDto.Netzanschluss bearbeiten(@PathVariable UUID standortId, @PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         dienst.bearbeiten(standortId, id, lies(body, NetzanschlussDto.Anschluss.class), akteur(auth));
@@ -101,6 +106,7 @@ public class NetzanschlussController {
      * Ab dem Tag hängt die Anlage an diesem Anschluss — eine laufende Bindung endet am Vortag.
      */
     @PostMapping("/{id}/anlagen")
+    @Recht(value = "netzanschluss.verwalten", ziel = RechtZiel.STANDORT)
     public ResponseEntity<NetzanschlussDto.Netzanschluss> binden(@PathVariable UUID standortId, @PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         dienst.binden(standortId, id, lies(body, NetzanschlussDto.Binden.class), akteur(auth));

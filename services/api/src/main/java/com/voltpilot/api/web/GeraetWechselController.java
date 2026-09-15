@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.ZaehlerwechselService;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -60,6 +62,7 @@ public class GeraetWechselController {
      * Zeitpunkt vor jetzt außerdem {@code aenderung.rueckwirkend}.
      */
     @PostMapping("/api/v1/geraete/{id}/austausch")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.GERAET)
     @ResponseStatus(HttpStatus.CREATED)
     public ZaehlerwechselDto.Vorgang austausch(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {

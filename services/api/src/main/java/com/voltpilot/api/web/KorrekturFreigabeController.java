@@ -14,6 +14,8 @@ import com.voltpilot.api.uems.KorrekturFreigabeService.VierAugen;
 import com.voltpilot.api.uems.MessreiheFassungen.Fassung;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.KorrekturFreigabeDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.ZoneOffset;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -67,6 +69,7 @@ public class KorrekturFreigabeController {
 
     /** Recht: {@code vieraugen.einstellen} (AP-08 §4.8, E8) — nur der Kundenadministrator. */
     @PutMapping("/unternehmen/vieraugen")
+    @Recht(value = "vieraugen.einstellen", ziel = RechtZiel.UNTERNEHMEN)
     public KorrekturFreigabeDto.VierAugen vierAugenEinstellen(@RequestBody(required = false) JsonNode body,
             Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -76,6 +79,7 @@ public class KorrekturFreigabeController {
 
     /** Recht: {@code korrektur.freigeben} (AP-08 §4.8, E8) — bei Vier-Augen an nie der Ersteller. */
     @PostMapping("/korrekturen/{kennung}/freigeben")
+    @Recht(value = "korrektur.freigeben", ziel = RechtZiel.DIENST)
     public KorrekturFreigabeDto.Entscheidung freigeben(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);
@@ -86,6 +90,7 @@ public class KorrekturFreigabeController {
 
     /** Recht: {@code korrektur.zuruecknehmen} (AP-08 §5) — der Bearbeiter nur die eigene und nur bei aus. */
     @PostMapping("/korrekturen/{kennung}/zuruecknehmen")
+    @Recht(value = "korrektur.zuruecknehmen", ziel = RechtZiel.DIENST)
     public KorrekturFreigabeDto.Entscheidung zuruecknehmen(@PathVariable String kennung,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         ProtokollAkteur wer = OrtAnfrage.akteur(auth);

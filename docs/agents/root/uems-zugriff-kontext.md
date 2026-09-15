@@ -40,11 +40,13 @@ Routen), `SelbstauskunftSchnittstelleVertragTest`, `RechteKennungenDerRoutenTest
   Zuweisung hatte, trägt `unternehmen` (Bestandsregel E12); eines mit nur beendeten oder künftigen `standorte` + `{}`.
 - ⚠ Die Einstellungen gelten nur, wenn der `TenantContext` der Kundenbereich des Zugriffs ist. Ein Hörer, der im
   Anfrage-Thread umschaltet (`ZugriffBestand.beiAnlage`), bekommt sie leer.
-- ⚠ **Seit IP-5 liest ein angenommener Unterstützer nur seine Standorte; bis IP-6 schreibt er dort wie ein
-  Kundenkonto.** Heute legt keine Route eine Unterstützung an (IP-8). Wer IP-8 vor IP-6 ausliefert, öffnet genau das.
-- ⚠ **Nicht umgestellt:** `KennzahlAufrufer`, `KorrekturRechte.benutzer`, `BerichtRechte` und `ProtokollAkteur` legen
-  die Rolle weiter fest (Kundenkonto = Kundenadministrator). Wer durchsetzt, liest `ZugriffContext.get()`, nie einen
-  Anfragekörper.
+- ⚠ **Seit IP-5 liest ein angenommener Unterstützer nur seine Standorte; seit IP-6 schreibt er an den Routen mit
+  `@Recht` nur, was sein Umfang erlaubt** (`uems-rechte-schreibrouten.md`). Die Steuerungs-Schreibpfade bindet erst
+  IP-7. Heute legt keine Route eine Unterstützung an (IP-8). Wer IP-8 vor IP-7 ausliefert, öffnet genau das.
+- ⚠ **Seit IP-6 umgestellt:** `KennzahlAufrufer` (Kennzahlen, Berichte) und `KorrekturRechte.aufrufer` lesen die
+  Zuweisungen aus dem Kontext. Nur ohne Kontext und am Umschalter gilt weiter `KorrekturRechte.benutzer` (Kundenkonto =
+  Kundenadministrator). `ProtokollAkteur` legt das Protokoll-Wort weiter fest (IP-7). Wer durchsetzt, liest
+  `ZugriffContext.get()`, nie einen Anfragekörper.
 - ⚠ **Die Matrix zur Laufzeit** ist die Vertragsdatei selbst: `pom.xml` legt `docs/contracts/v2/rechte-matrix.json`
   als `uems/rechte-matrix.json` ins Jar, das `Dockerfile` kopiert sie in die Build-Stufe. Eine neue Build-Umgebung
   braucht dieselbe Zeile, sonst scheitert NUR `/me` (die Datei wird erst beim ersten Aufruf geladen). Die Routen mit

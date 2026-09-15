@@ -53,29 +53,34 @@ public class OrtRepository {
     public record Ort(UUID id, String art, String name, String kurzzeichen, List<String> nutzung,
             Integer baujahr, String notiz, String zustand, Instant archiviertAm) {}
 
+    /**
+     * Ohne {@code RETURNING}, die Kennung vergibt der Aufrufer hier: im engen Standort-Zaun (AP-03 IP-5, Policy
+     * {@code site_scope}) sieht ein Bearbeiter je Standort den neuen Ort erst, wenn seine Zuordnung steht —
+     * {@code RETURNING} läse ihn vorher und scheiterte an der Policy (AP-03 IP-6).
+     */
     public UUID anlegen(NeuerOrt o) {
-        return jdbc.query(con -> {
-            PreparedStatement ps = con.prepareStatement("INSERT INTO ort (tenant_id, art, name, "
+        UUID id = UUID.randomUUID();
+        jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement("INSERT INTO ort (id, tenant_id, art, name, "
                     + "kurzzeichen, nutzung, baujahr, notiz, zustand, created_by) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?) RETURNING id");
-            ps.setObject(1, o.tenantId());
-            ps.setString(2, o.art());
-            ps.setString(3, o.name());
-            ps.setString(4, o.kurzzeichen());
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?)");
+            ps.setObject(1, id);
+            ps.setObject(2, o.tenantId());
+            ps.setString(3, o.art());
+            ps.setString(4, o.name());
+            ps.setString(5, o.kurzzeichen());
             if (o.nutzung() == null) {
-                ps.setNull(5, Types.ARRAY);
+                ps.setNull(6, Types.ARRAY);
             } else {
-                ps.setArray(5, con.createArrayOf("text", o.nutzung().toArray(String[]::new)));
+                ps.setArray(6, con.createArrayOf("text", o.nutzung().toArray(String[]::new)));
             }
-            ps.setObject(6, o.baujahr(), Types.INTEGER);
-            ps.setString(7, o.notiz());
-            ps.setString(8, o.zustand());
-            ps.setString(9, o.createdBy());
+            ps.setObject(7, o.baujahr(), Types.INTEGER);
+            ps.setString(8, o.notiz());
+            ps.setString(9, o.zustand());
+            ps.setString(10, o.createdBy());
             return ps;
-        }, rs -> {
-            rs.next();
-            return rs.getObject(1, UUID.class);
         });
+        return id;
     }
 
     /**

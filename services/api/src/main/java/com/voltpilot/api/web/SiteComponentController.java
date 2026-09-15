@@ -23,6 +23,8 @@ import com.voltpilot.api.web.dto.SelfBuildReadResult;
 import com.voltpilot.api.web.dto.SiteComponentTemplateDto;
 import com.voltpilot.api.web.dto.SiteComponentTemplateRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,6 +100,7 @@ public class SiteComponentController {
 
     /** Anlegen. Ohne bestandenen Verbindungstest: 422 mit dem Grund. */
     @PostMapping("/components")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto create(@PathVariable UUID siteId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.create(siteId, request, subject(jwt));
@@ -105,6 +108,7 @@ public class SiteComponentController {
 
     /** Verbindung ändern - eine NEUE Fassung, die alte bleibt abrufbar. */
     @PutMapping("/components/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto update(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.update(siteId, entityId, request, subject(jwt));
@@ -132,6 +136,7 @@ public class SiteComponentController {
 
     /** Zurück auf eine frühere Fassung - ein Klick, kein Support-Fall. */
     @PostMapping("/components/{entityId}/versions/{version}/rollback")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto rollback(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @PathVariable int version, @Valid @RequestBody RollbackComponentRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -150,6 +155,7 @@ public class SiteComponentController {
      * {@code errorCode}), kein Fehler.
      */
     @PostMapping("/components/custom/read")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SelfBuildReadResult readCustom(@PathVariable UUID siteId,
             @Valid @RequestBody SelfBuildReadRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.read(siteId, request.deviceId(), request.connection(), request.channel(),
@@ -158,6 +164,7 @@ public class SiteComponentController {
 
     /** Ein selbst definiertes Modbus-Gerät anlegen. */
     @PostMapping("/components/custom")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto createCustom(@PathVariable UUID siteId,
             @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.create(siteId, request, subject(jwt));
@@ -165,6 +172,7 @@ public class SiteComponentController {
 
     /** Ein selbst definiertes Gerät ändern - eine NEUE Fassung. */
     @PutMapping("/components/custom/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto updateCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.update(siteId, entityId, request, subject(jwt));
@@ -179,6 +187,7 @@ public class SiteComponentController {
      * dieses Modell vermeidet.
      */
     @DeleteMapping("/components/custom/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.delete(siteId, entityId, subject(jwt));
@@ -202,6 +211,7 @@ public class SiteComponentController {
      * Pflicht ohne Tür wäre eine Sackgasse. Die LAN-Regel gilt unverändert.
      */
     @PostMapping("/components/battery")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto createBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -225,6 +235,7 @@ public class SiteComponentController {
      * ein Urteil über die Zuordnung, und die Fläche sagt das genau so.
      */
     @PostMapping("/components/battery/preview")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult previewBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @RequestParam(name = "entityId", required = false) UUID entityId,
@@ -237,6 +248,7 @@ public class SiteComponentController {
 
     /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
     @PutMapping("/components/battery/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto updateBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -245,6 +257,7 @@ public class SiteComponentController {
 
     /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
     @DeleteMapping("/components/battery/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto deleteBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return batteries.delete(siteId, entityId, subject(jwt));
@@ -297,6 +310,7 @@ public class SiteComponentController {
 
     /** „Duplizieren": aus einem Gerät wird eine private Vorlage dieser Anlage. */
     @PostMapping("/components/custom/{entityId}/duplicate")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> duplicate(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @Valid @RequestBody(required = false) SiteComponentTemplateRequest body,
@@ -313,6 +327,7 @@ public class SiteComponentController {
      * leere Notiz LÖSCHT sie - die Semantik des Komponenten-Alias.
      */
     @PutMapping("/component-templates/{templateRef}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> renameTemplate(@PathVariable UUID siteId,
             @PathVariable String templateRef,
             @Valid @RequestBody SiteComponentTemplateRequest body) {
@@ -321,6 +336,7 @@ public class SiteComponentController {
 
     /** Eine private Vorlage entfernen. Geräte, die daraus entstanden, bleiben. */
     @DeleteMapping("/component-templates/{templateRef}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> deleteTemplate(@PathVariable UUID siteId,
             @PathVariable String templateRef) {
         return selfBuild.deleteTemplate(siteId, templateRef);
@@ -341,6 +357,7 @@ public class SiteComponentController {
      * Register-Probe.
      */
     @PostMapping("/component-test")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult test(@PathVariable UUID siteId,
             @Valid @RequestBody ComponentTestRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -424,6 +441,7 @@ public class SiteComponentController {
      * neue Komponente" ist ein völlig normaler Ausgang.
      */
     @PostMapping("/component-match")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<ComponentMatchDto> match(@PathVariable UUID siteId,
             @Valid @RequestBody ComponentTestRequest request) {
         ComponentMatchDto hit = components.match(siteId, request.role(), request.templateRef(),

@@ -5,6 +5,8 @@ import com.voltpilot.api.uems.StandortLesemodell.UnternehmenSicht;
 import com.voltpilot.api.uems.StandortLesemodellService;
 import com.voltpilot.api.uems.UnternehmenService;
 import com.voltpilot.api.web.dto.UnternehmenDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,6 +53,7 @@ public class UnternehmenController {
 
     // Rechte: `unternehmen.bearbeiten`.
     @PutMapping
+    @Recht(value = "unternehmen.bearbeiten", ziel = RechtZiel.UNTERNEHMEN)
     public UnternehmenSicht bearbeiten(@RequestBody(required = false) JsonNode body, Authentication auth) {
         return unternehmen.bearbeiten(anfrage.lies(body, UnternehmenDto.Bearbeiten.class, false),
                 OrtAnfrage.akteur(auth));

@@ -1,0 +1,286 @@
+package com.voltpilot.api.zugriff;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Kein Kunden-Schreibpfad ohne Recht (UEMS AP-03 IP-6, §8 Prüfnachweis): jede Route unter {@code /api/v1/} außer
+ * {@code /api/v1/admin/**} mit POST, PUT, PATCH oder DELETE trägt {@link Recht} — oder steht mit Grund in
+ * {@link #OHNE_RECHT}. Gelesen wird der übersetzte Code (Spring-Annotationen, auch zusammengesetzte), nicht der
+ * Quelltext; eine neue Route in einem neuen Controller ist ohne Pflege dabei.
+ *
+ * <p>Dazu: jede Kennung steht in der Matrix-Datei, die zur Laufzeit gilt; {@link RechtZiel#DIENST} nur mit Stelle der
+ * genauen Prüfung ({@link #DIENST}); die Pfadvariable der Zielart steht im Pfad; {@link Recht} nur an Kunden-
+ * Schreibrouten. Beide Listen sind genau: ein Eintrag ohne Route (oder für eine Route, die inzwischen {@link Recht}
+ * trägt) ist ebenso rot wie eine Route ohne Eintrag.
+ *
+ * <p>Rein: kein Spring-Kontext, keine Datenbank.
+ */
+class RechtRoutenArchitekturTest {
+
+    /**
+     * Kunden-Schreibrouten, die IP-6 bewusst nicht bindet. Schlüssel {@code Controller#methode}.
+     */
+    static final Map<String, String> OHNE_RECHT = ohneRecht();
+
+    private static Map<String, String> ohneRecht() {
+        Map<String, String> m = new TreeMap<>();
+        String ip7 = "Steuerung (AP-03 §4.3 Gruppe 4) — IP-7 bindet die Steuerungs-Schreibpfade";
+        for (String r : List.of(
+                "SiteInterventionController#pause", "SiteInterventionController#resume",
+                "SiteInterventionController#startBattery", "SiteInterventionController#clearBattery",
+                "SiteConsumerController#startOverride", "SiteConsumerController#clearOverride",
+                "SiteConsumerController#pause", "SiteConsumerController#resume",
+                "SiteConsumerController#activatePolicy", "SiteConsumerController#deactivatePolicy",
+                "SiteConsumerController#putPolicy",
+                "SiteFlowController#create", "SiteFlowController#save", "SiteFlowController#saveLayout",
+                "SiteFlowController#delete", "SiteFlowController#activate", "SiteFlowController#deactivate",
+                "SiteFlowController#simulate", "SiteFlowController#validate", "SiteFlowController#autoStart",
+                "SiteChargingConfigController#save", "SiteChargingConfigController#admit",
+                "SiteChargingConfigController#remove", "SiteChargingConfigController#setChargePointSource",
+                "SiteChargingBoostController#boost",
+                "SiteOcppActionController#create", "SiteOcppActionController#intent", "SiteOcppActionController#cancel",
+                "SiteOcppControlController#save",
+                "SiteRegisterWriteController#write", "SiteRegisterWriteController#preview",
+                "SiteFahrzeugController#save", "SiteFahrzeugController#delete",
+                "SiteVerbraucherController#rangliste", "SiteVerbraucherController#setzeSteuerart",
+                "SiteProfileController#set", "SiteProfileController#setAnwendungsPreset",
+                "FunktionController#messenStandort", "FunktionController#steuernStandort",
+                "FunktionController#steuernAnlage",
+                "SiteForecastModelController#promote",
+                "SiteVorschauController#vorschau",
+                "SiteComponentController#switchRelease", "SiteComponentController#switchRevoke",
+                "SiteComponentController#switchTest", "SiteComponentController#switchCancel")) {
+            m.put(r, ip7);
+        }
+        String ohneZeile = "ohne Zeile in der Matrix — IP-7 ordnet sie mit den Steuerungs-Schreibpfaden zu";
+        m.put("SimulationController#start", ohneZeile + " (Ersparnis-Simulation, schreibt nur einen Rechenauftrag)");
+        m.put("UsageProfileController#set", ohneZeile + " (Nutzungsprofil: steuert Portal und Box)");
+        m.put("SiteSupplyPriceController#put", ohneZeile + " (Preisblatt: preist den Netzbezug des Optimierers)");
+        m.put("SiteSuggestionController#put", ohneZeile + " (Gedächtnis der Steuerungs-Vorschläge)");
+        String offen = "öffentlich (SecurityConfig permitAll) — kein Kundenkonto, kein Kundenbereich";
+        m.put("RegistrationController#register", offen);
+        m.put("EnrollmentController#submitCsr", offen);
+        return m;
+    }
+
+    /** {@link RechtZiel#DIENST}: wo die genaue Prüfung am Ziel steht. */
+    static final Map<String, String> DIENST = dienst();
+
+    private static Map<String, String> dienst() {
+        Map<String, String> m = new TreeMap<>();
+        String kennzahl = "KennzahlService.darf — Geltung der Kennzahl (Standort/Unternehmen), Aufrufer KennzahlAufrufer";
+        for (String r : List.of("anlegen", "aendern", "fassungEintragen", "archivieren", "loeschen", "vorschau")) {
+            m.put("KennzahlController#" + r, kennzahl);
+        }
+        String bericht = "BerichtService — Geltung des Berichts (G1), Aufrufer KennzahlAufrufer";
+        for (String r : List.of("anlegen", "freigeben", "archivieren", "verwerfen")) {
+            m.put("BerichtController#" + r, bericht);
+        }
+        String korrektur = "KorrekturFreigabeService über KorrekturRechte.aufrufer — Ziel Unternehmen (schließt S)";
+        m.put("KorrekturFreigabeController#freigeben", korrektur);
+        m.put("KorrekturFreigabeController#zuruecknehmen", korrektur);
+        m.put("DeviceController#claim", "DeviceController.claim — RechtPruefung.pruefen an der Anlage aus siteId");
+        m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");
+        m.put("MessstelleController#anlegen", "keine — eine neue Messstelle hängt an keinem Standort (Ort erst danach)");
+        m.put("MessstelleFormelController#anlegen", "keine — eine neue berechnete Messstelle hängt an keinem Standort");
+        m.put("BezugsdatenImportController#vorschau", "keine — die Vorschau schreibt nichts");
+        return m;
+    }
+
+    private record Route(String schluessel, Class<?> controller, Method methode, List<String> pfade,
+            Set<RequestMethod> methoden) {}
+
+    @Test
+    void jedeKundenSchreibrouteTraegtEinRechtOderStehtMitGrundInDerListe() throws Exception {
+        List<Route> routen = routen(mainController());
+        List<String> befunde = befunde(routen, OHNE_RECHT, DIENST, true);
+        long mitRecht = routen.stream().filter(r -> kundenSchreibroute(r) && r.methode().isAnnotationPresent(Recht.class))
+                .count();
+        long ohne = routen.stream().filter(r -> kundenSchreibroute(r) && !r.methode().isAnnotationPresent(Recht.class))
+                .count();
+        System.out.printf("Kunden-Schreibrouten: %d mit @Recht, %d in OHNE_RECHT%n", mitRecht, ohne);
+        assertThat(befunde).as("Befunde").isEmpty();
+        assertThat(mitRecht).as("Routen mit @Recht").isGreaterThanOrEqualTo(113);
+    }
+
+    /** Der Test beißt: eine Kunden-Schreibroute ohne {@link Recht} und ohne Eintrag fällt auf. */
+    @Test
+    void eineSchreibrouteOhneRechtFaelltAuf() {
+        List<String> befunde = befunde(routen(List.of(ProbeOhneRecht.class)), Map.of(), Map.of(), false);
+        assertThat(befunde).containsExactly(
+                "ProbeOhneRecht#schreiben: Kunden-Schreibroute ohne @Recht und ohne Eintrag in OHNE_RECHT");
+    }
+
+    /** Eine erfundene Kennung, DIENST ohne Stelle und eine fehlende Pfadvariable fallen ebenso auf. */
+    @Test
+    void falscheAngabenFallenAuf() {
+        List<String> befunde = befunde(routen(List.of(ProbeFalsch.class)), Map.of(), Map.of(), false);
+        assertThat(befunde).containsExactlyInAnyOrder(
+                "ProbeFalsch#erfunden: Kennung nicht in der Matrix: anlage.erfunden",
+                "ProbeFalsch#dienst: DIENST ohne Eintrag in DIENST (wo prüft der Dienst?)",
+                "ProbeFalsch#variable: Pfadvariable {siteId} fehlt in /api/v1/probe/{id}");
+    }
+
+    @RestController
+    @RequestMapping("/api/v1/probe")
+    static class ProbeOhneRecht {
+        @PostMapping("/{siteId}")
+        void schreiben() {
+        }
+    }
+
+    @RestController
+    @RequestMapping("/api/v1/probe")
+    static class ProbeFalsch {
+        @PostMapping("/erfunden")
+        @Recht(value = "anlage.erfunden", ziel = RechtZiel.UNTERNEHMEN)
+        void erfunden() {
+        }
+
+        @PostMapping("/dienst")
+        @Recht(value = "anlage.verwalten", ziel = RechtZiel.DIENST)
+        void dienst() {
+        }
+
+        @PostMapping("/{id}")
+        @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
+        void variable() {
+        }
+    }
+
+    // ------------------------------------------------------------------ Prüfung
+
+    private static List<String> befunde(List<Route> routen, Map<String, String> ohneRecht, Map<String, String> dienst,
+            boolean listenGenau) {
+        Set<String> kennungen = new TreeSet<>(RechteMatrixDatei.aktionen());
+        List<String> aus = new ArrayList<>();
+        Set<String> gesehenOhne = new TreeSet<>();
+        Set<String> gesehenDienst = new TreeSet<>();
+        for (Route r : routen) {
+            Recht recht = r.methode().getAnnotation(Recht.class);
+            boolean schreibend = kundenSchreibroute(r);
+            if (recht == null) {
+                if (!schreibend) {
+                    continue;
+                }
+                if (ohneRecht.containsKey(r.schluessel())) {
+                    gesehenOhne.add(r.schluessel());
+                } else {
+                    aus.add(r.schluessel() + ": Kunden-Schreibroute ohne @Recht und ohne Eintrag in OHNE_RECHT");
+                }
+                continue;
+            }
+            if (!schreibend) {
+                aus.add(r.schluessel() + ": @Recht an einer Route, die keine Kunden-Schreibroute ist " + r.pfade());
+                continue;
+            }
+            if (ohneRecht.containsKey(r.schluessel())) {
+                aus.add(r.schluessel() + ": trägt @Recht und steht trotzdem in OHNE_RECHT");
+            }
+            for (String k : recht.value()) {
+                if (!kennungen.contains(k)) {
+                    aus.add(r.schluessel() + ": Kennung nicht in der Matrix: " + k);
+                }
+            }
+            if (recht.ziel() == RechtZiel.DIENST) {
+                if (dienst.containsKey(r.schluessel())) {
+                    gesehenDienst.add(r.schluessel());
+                } else {
+                    aus.add(r.schluessel() + ": DIENST ohne Eintrag in DIENST (wo prüft der Dienst?)");
+                }
+                continue;
+            }
+            if (recht.value().length != 1) {
+                aus.add(r.schluessel() + ": mehrere Kennungen nur mit DIENST");
+            }
+            String variable = recht.variable().isEmpty() ? recht.ziel().variable() : recht.variable();
+            if (!variable.isEmpty()) {
+                for (String p : r.pfade()) {
+                    if (!p.contains("{" + variable + "}")) {
+                        aus.add(r.schluessel() + ": Pfadvariable {" + variable + "} fehlt in " + p);
+                    }
+                }
+            }
+        }
+        if (listenGenau) {
+            ohneRecht.keySet().stream().filter(k -> !gesehenOhne.contains(k))
+                    .forEach(k -> aus.add(k + ": steht in OHNE_RECHT, ist aber keine Kunden-Schreibroute ohne @Recht"));
+            dienst.keySet().stream().filter(k -> !gesehenDienst.contains(k))
+                    .forEach(k -> aus.add(k + ": steht in DIENST, trägt aber kein @Recht mit DIENST"));
+        }
+        return aus;
+    }
+
+    private static boolean kundenSchreibroute(Route r) {
+        boolean schreibend = r.methoden().stream().anyMatch(m -> m == RequestMethod.POST || m == RequestMethod.PUT
+                || m == RequestMethod.PATCH || m == RequestMethod.DELETE);
+        boolean kunde = r.pfade().stream().anyMatch(p -> p.startsWith("/api/v1/") && !p.startsWith("/api/v1/admin/"));
+        return schreibend && kunde;
+    }
+
+    private static List<Class<?>> mainController() throws Exception {
+        // Ohne Bedingungs-Auswertung: ein Controller hinter @ConditionalOnProperty (Anmeldung, Enrollment) ist in
+        // Produktion eingeschaltet und zählt mit.
+        ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false) {
+            @Override
+            protected boolean isCandidateComponent(MetadataReader leser) {
+                return leser.getAnnotationMetadata().hasAnnotation(RestController.class.getName());
+            }
+        };
+        List<Class<?>> aus = new ArrayList<>();
+        for (BeanDefinition b : scanner.findCandidateComponents("com.voltpilot.api")) {
+            Class<?> c = Class.forName(b.getBeanClassName());
+            // Nur der Produktivcode — Test-Routen (wie die Proben hier) liegen unter test-classes.
+            String ort = c.getProtectionDomain().getCodeSource().getLocation().toString();
+            if (!ort.contains("test-classes")) {
+                aus.add(c);
+            }
+        }
+        assertThat(aus).as("gefundene Controller").hasSizeGreaterThan(80);
+        return aus;
+    }
+
+    private static List<Route> routen(List<Class<?>> controller) {
+        List<Route> aus = new ArrayList<>();
+        for (Class<?> c : controller) {
+            RequestMapping basis = AnnotatedElementUtils.findMergedAnnotation(c, RequestMapping.class);
+            List<String> basen = basis == null || basis.path().length == 0 ? List.of("") : List.of(basis.path());
+            for (Method m : c.getDeclaredMethods()) {
+                RequestMapping rm = AnnotatedElementUtils.findMergedAnnotation(m, RequestMapping.class);
+                if (rm == null) {
+                    continue;
+                }
+                List<String> eigene = rm.path().length == 0 ? List.of("") : List.of(rm.path());
+                List<String> pfade = new ArrayList<>();
+                for (String b : basen) {
+                    for (String e : eigene) {
+                        pfade.add(b + e);
+                    }
+                }
+                Set<RequestMethod> methoden = new TreeSet<>(Arrays.asList(rm.method()));
+                aus.add(new Route(c.getSimpleName() + "#" + m.getName(), c, m, pfade, methoden));
+            }
+        }
+        aus.sort(Comparator.comparing(Route::schluessel));
+        return aus;
+    }
+}

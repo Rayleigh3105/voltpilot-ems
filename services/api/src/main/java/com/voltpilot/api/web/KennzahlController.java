@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.KennzahlService;
 import com.voltpilot.api.uems.KennzahlVorschauService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.KennzahlDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.time.LocalDate;
@@ -88,6 +90,7 @@ public class KennzahlController {
      * Server KZ-0001 …
      */
     @PostMapping
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<KennzahlDto.Kennzahl> anlegen(@RequestBody(required = false) JsonNode body, Authentication auth) {
         KennzahlDto.Kennzahl neu = kennzahlen.anlegen(lies(body, ANLEGEN, KennzahlDto.Anfrage.class), akteur(auth));
         return ResponseEntity.created(URI.create("/api/v1/kennzahlen/" + neu.id())).body(neu);
@@ -99,6 +102,7 @@ public class KennzahlController {
      * abgeschlossenen Perioden, nichts wird geschrieben.
      */
     @PostMapping("/vorschau")
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public KennzahlDto.Vorschau vorschau(@RequestBody(required = false) JsonNode body, Authentication auth) {
         return vorschau.vorschau(lies(body, ANLEGEN, KennzahlDto.Anfrage.class), akteur(auth));
     }
@@ -126,6 +130,7 @@ public class KennzahlController {
      * Geltungsbereich. Die GANZEN Stammdaten ohne Fassung (V4); Geltungsbereich und Rechenform sind fest.
      */
     @PutMapping("/{id}")
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public KennzahlDto.Kennzahl aendern(@PathVariable UUID id, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         return kennzahlen.aendern(id, lies(body, STAMMDATEN, KennzahlDto.StammdatenAnfrage.class), akteur(auth));
@@ -136,6 +141,7 @@ public class KennzahlController {
      * Geltungsbereich. Nur ohne einen einzigen Wert und ohne lesende Kennzahl (V5); das Kennzeichen bleibt belegt.
      */
     @DeleteMapping("/{id}")
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public ResponseEntity<Void> loeschen(@PathVariable UUID id, Authentication auth) {
         kennzahlen.loeschen(id, akteur(auth));
         return ResponseEntity.noContent().build();
@@ -146,6 +152,7 @@ public class KennzahlController {
      * Geltungsbereich. Die Werte bleiben lesbar, kein Rechenlauf mehr (V5).
      */
     @PostMapping("/{id}/archivieren")
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public KennzahlDto.Kennzahl archivieren(@PathVariable UUID id, Authentication auth) {
         return kennzahlen.archivieren(id, akteur(auth));
     }
@@ -161,6 +168,7 @@ public class KennzahlController {
      * Geltungsbereich. Fassung n + 1 ab {@code gueltig_ab}, mit Begründung, auch rückwirkend (V1, K17).
      */
     @PostMapping("/{id}/fassungen")
+    @Recht(value = {"kennzahl.standort_definieren", "kennzahl.unternehmen_definieren"}, ziel = RechtZiel.DIENST)
     public KennzahlDto.Fassungen fassungEintragen(@PathVariable UUID id, @RequestBody(required = false) JsonNode body,
             Authentication auth) {
         return kennzahlen.fassungEintragen(id, lies(body, FASSUNG, KennzahlDto.FassungAnfrage.class), akteur(auth));

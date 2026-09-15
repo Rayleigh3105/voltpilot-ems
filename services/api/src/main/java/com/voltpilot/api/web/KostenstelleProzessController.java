@@ -12,6 +12,8 @@ import com.voltpilot.api.uems.KostenstelleProzessRepository.Art;
 import com.voltpilot.api.uems.KostenstelleProzessService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.KostenstelleProzessDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -41,10 +43,12 @@ import org.springframework.web.server.ResponseStatusException;
  * Zuordnung abschneiden würde, ist 409 {@code zuordnung_besteht} mit der Liste). Die Arbeit macht
  * {@link KostenstelleProzessService}, die Grenzen hält die Datenbank ({@code V20260913160000}).
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — ein fremdes Objekt ist 404 {@code nicht_gefunden}, nie 403. Jede Route nennt im
  * Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json} (AP-10 §4.10, E15;
- * {@code RechteKennungenDerRoutenTest} hält sie an die Matrix); durchgesetzt wird sie hier nicht.
+ * {@code RechteKennungenDerRoutenTest} hält sie an die Matrix); seit AP-03 IP-6 setzt {@code @Recht} sie vor dem
+ * Handler durch
+ * (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein unbekanntes Feld (auch camelCase), ein Feld, das kein
  * Text ist (bei {@code prozesse}: keine Liste von Texten), ein Tag oder eine ID in falscher Form sind
@@ -72,6 +76,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code kostenstelle.verwalten} (AP-10 §4.10, E15). */
     @PostMapping("/unternehmen/kostenstellen")
+    @Recht(value = "kostenstelle.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public ResponseEntity<KostenstelleProzessDto.Kostenstelle> kostenstelleAnlegen(
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         UUID id = dienst.anlegen(Art.KOSTENSTELLE, lies(body, KostenstelleProzessDto.Anlegen.class), akteur(auth));
@@ -86,6 +91,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code kostenstelle.verwalten}. Nur der Name. */
     @PutMapping("/unternehmen/kostenstellen/{id}")
+    @Recht(value = "kostenstelle.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public KostenstelleProzessDto.Kostenstelle kostenstelleUmbenennen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body) {
         dienst.umbenennen(Art.KOSTENSTELLE, id, lies(body, KostenstelleProzessDto.Umbenennen.class));
@@ -94,6 +100,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code kostenstelle.verwalten}. Beenden statt löschen. */
     @PutMapping("/unternehmen/kostenstellen/{id}/beenden")
+    @Recht(value = "kostenstelle.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public KostenstelleProzessDto.Kostenstelle kostenstelleBeenden(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body) {
         dienst.beenden(Art.KOSTENSTELLE, id, lies(body, KostenstelleProzessDto.Beenden.class));
@@ -110,6 +117,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code prozess.verwalten} (AP-10 §4.10, E15). */
     @PostMapping("/unternehmen/prozesse")
+    @Recht(value = "prozess.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public ResponseEntity<KostenstelleProzessDto.Prozess> prozessAnlegen(
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         UUID id = dienst.anlegen(Art.PROZESS, lies(body, KostenstelleProzessDto.Anlegen.class), akteur(auth));
@@ -124,6 +132,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code prozess.verwalten}. Nur der Name. */
     @PutMapping("/unternehmen/prozesse/{id}")
+    @Recht(value = "prozess.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public KostenstelleProzessDto.Prozess prozessUmbenennen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body) {
         dienst.umbenennen(Art.PROZESS, id, lies(body, KostenstelleProzessDto.Umbenennen.class));
@@ -132,6 +141,7 @@ public class KostenstelleProzessController {
 
     /** Recht: {@code prozess.verwalten}. Beenden statt löschen. */
     @PutMapping("/unternehmen/prozesse/{id}/beenden")
+    @Recht(value = "prozess.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     public KostenstelleProzessDto.Prozess prozessBeenden(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body) {
         dienst.beenden(Art.PROZESS, id, lies(body, KostenstelleProzessDto.Beenden.class));
@@ -152,6 +162,7 @@ public class KostenstelleProzessController {
      * heute zusätzlich {@code aenderung.rueckwirkend}. Ab dem Tag gehört die Messstelle zu GENAU diesen Prozessen.
      */
     @PutMapping("/messstellen/{id}/prozesse")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public KostenstelleProzessDto.MessstelleProzesse prozesseSetzen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return dienst.prozesseSetzen(id, lies(body, KostenstelleProzessDto.ProzesseSetzen.class), akteur(auth));

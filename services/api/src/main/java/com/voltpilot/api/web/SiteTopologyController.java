@@ -4,6 +4,8 @@ import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.topology.TopologyService.Assignment;
 import com.voltpilot.api.topology.TopologyService.TopologyResponse;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,6 +51,7 @@ public class SiteTopologyController {
     }
 
     @PutMapping
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public TopologyResponse set(@PathVariable UUID siteId,
             @RequestBody AssignmentRequest request) {

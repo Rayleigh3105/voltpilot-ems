@@ -2,6 +2,8 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.topology.RollenZuordnungService;
 import com.voltpilot.api.web.dto.RollenDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +56,7 @@ public class SiteRollenController {
 
     /** Den massgeblichen Rollen-Wert eines Geraets setzen; der abgeloeste Wert wird genannt. */
     @PutMapping("/komponenten/{entityId}/rollen/{role}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public RollenDto.ZuordnungAntwort zuordnen(@PathVariable UUID siteId,
             @PathVariable UUID entityId, @PathVariable String role,

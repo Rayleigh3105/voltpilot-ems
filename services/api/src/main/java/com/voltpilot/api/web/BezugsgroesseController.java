@@ -14,6 +14,9 @@ import com.voltpilot.api.uems.BezugsgroesseService;
 import com.voltpilot.api.uems.BezugswertService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.BezugsgroesseDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -44,11 +47,13 @@ import org.springframework.web.server.ResponseStatusException;
  * archivieren, löschen, und die Werte mit ihren Fassungen und der Herkunft je Fassung. Die Arbeit
  * macht {@link BezugsgroesseService}, die Regeln M1–M6 {@link BezugsgroesseRegeln}.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — eine fremde Bezugsgröße ist 404 {@code nicht_gefunden}, nie 403; der
  * Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route nennt im Kommentar
  * ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json} (AP-09 §4.11, W8)
- * ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); durchgesetzt wird sie hier nicht.
+ * ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); seit AP-03 IP-6 setzt {@code @Recht} sie vor dem
+ * Handler durch
+ * (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt (auch
  * camelCase), ein Feld, das kein Text ist, und eine {@code geltung_id}, die keine ID ist, sind 400
@@ -62,8 +67,11 @@ public class BezugsgroesseController {
     private final BezugsgroesseService bezugsgroessen;
     private final BezugswertService bezugswerte;
     private final ObjectMapper streng;
+    private final RechtPruefung rechte;
 
-    public BezugsgroesseController(BezugsgroesseService bezugsgroessen, BezugswertService bezugswerte, ObjectMapper json) {
+    public BezugsgroesseController(BezugsgroesseService bezugsgroessen, BezugswertService bezugswerte, ObjectMapper json,
+            RechtPruefung rechte) {
+        this.rechte = rechte;
         this.bezugsgroessen = bezugsgroessen;
         this.bezugswerte = bezugswerte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
@@ -108,6 +116,7 @@ public class BezugsgroesseController {
      * der Weg ist die Berichtigung (F5). AP-09 IP-7.
      */
     @PostMapping("/{id}/werte")
+    @Recht(value = "bezugsgroesse.eingeben", ziel = RechtZiel.BEZUGSGROESSE)
     public ResponseEntity<BezugsgroesseDto.Eingabe> eingeben(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         BezugsgroesseDto.WertAnfrage a = streng(body, BezugsgroesseDto.WertAnfrage.class);
@@ -122,6 +131,7 @@ public class BezugsgroesseController {
      * Wiederholung (200). AP-09 IP-7.
      */
     @PostMapping("/{id}/werte/{periode}/berichtigung")
+    @Recht(value = "bezugsgroesse.eingeben", ziel = RechtZiel.BEZUGSGROESSE)
     public ResponseEntity<BezugsgroesseDto.Eingabe> berichtigen(@PathVariable UUID id, @PathVariable String periode,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         BezugsgroesseDto.BerichtigungAnfrage a = streng(body, BezugsgroesseDto.BerichtigungAnfrage.class);
@@ -148,6 +158,7 @@ public class BezugsgroesseController {
      * wird hier nie geschrieben: sie steht in der Ortsstruktur (M4, E17).
      */
     @PutMapping("/{id}/stammdatum")
+    @Recht(value = "bezugsgroesse.verwalten", ziel = RechtZiel.BEZUGSGROESSE)
     public BezugsgroesseDto.Stammdatum stammdatumEintragen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         BezugsgroesseDto.StammdatumAnfrage a = streng(body, BezugsgroesseDto.StammdatumAnfrage.class);
@@ -162,33 +173,51 @@ public class BezugsgroesseController {
 
     /** Recht: {@code bezugsgroesse.verwalten} (AP-09 §4.11, W8). */
     @PostMapping
+    @Recht(value = "bezugsgroesse.verwalten", ziel = RechtZiel.DIENST)
     public ResponseEntity<BezugsgroesseDto.Bezugsgroesse> anlegen(
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        BezugsgroesseDto.Bezugsgroesse neu = bezugsgroessen.anlegen(entwurf(body), akteur(auth));
+        BezugsgroesseRegeln.Entwurf e = entwurf(body);
+        geltungPruefen(e);
+        BezugsgroesseDto.Bezugsgroesse neu = bezugsgroessen.anlegen(e, akteur(auth));
         return ResponseEntity.created(URI.create("/api/v1/bezugsgroessen/" + neu.id())).body(neu);
     }
 
     /** Recht: {@code bezugsgroesse.verwalten}. Die ganze Bezugsgröße; nach dem ersten Wert bleibt die Bedeutung fest (M1). */
     @PutMapping("/{id}")
+    @Recht(value = "bezugsgroesse.verwalten", ziel = RechtZiel.BEZUGSGROESSE)
     public BezugsgroesseDto.Bezugsgroesse aendern(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
-        return bezugsgroessen.aendern(id, entwurf(body), akteur(auth));
+        BezugsgroesseRegeln.Entwurf e = entwurf(body);
+        geltungPruefen(e);
+        return bezugsgroessen.aendern(id, e, akteur(auth));
     }
 
     /** Recht: {@code bezugsgroesse.verwalten}. Die Werte bleiben lesbar (M6). */
     @PostMapping("/{id}/archivieren")
+    @Recht(value = "bezugsgroesse.verwalten", ziel = RechtZiel.BEZUGSGROESSE)
     public BezugsgroesseDto.Bezugsgroesse archivieren(@PathVariable UUID id, Authentication auth) {
         return bezugsgroessen.archivieren(id, akteur(auth));
     }
 
     /** Recht: {@code bezugsgroesse.verwalten}. Nur ohne einen einzigen Wert (M6); das Kennzeichen bleibt belegt. */
     @DeleteMapping("/{id}")
+    @Recht(value = "bezugsgroesse.verwalten", ziel = RechtZiel.BEZUGSGROESSE)
     public ResponseEntity<Void> loeschen(@PathVariable UUID id, Authentication auth) {
         bezugsgroessen.loeschen(id, akteur(auth));
         return ResponseEntity.noContent().build();
     }
 
     // ----------------------------------------------------------------------------- Gerüst
+
+    /**
+     * Das Recht an der Geltung aus dem Körper (UEMS AP-03 IP-6) — die Route prüft die bestehende Geltung, der Körper kann
+     * eine neue nennen. Außerhalb antwortet wie eine unbekannte Geltung.
+     */
+    private void geltungPruefen(BezugsgroesseRegeln.Entwurf e) {
+        UUID id = e.geltungId() == null || e.geltungId().isBlank() ? null : UUID.fromString(e.geltungId());
+        rechte.pruefenGeltung("bezugsgroesse.verwalten", e.geltungArt(), id,
+                () -> new BezugsgroesseAbgelehnt(Ablehnung.GELTUNG_UNBEKANNT, Map.of("feld", "geltung_id")));
+    }
 
     private static ProtokollAkteur akteur(Authentication auth) {
         return ProtokollAkteur.aus(auth).orElseThrow(() ->

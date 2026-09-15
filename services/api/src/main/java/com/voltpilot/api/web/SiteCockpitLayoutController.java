@@ -4,6 +4,8 @@ import com.voltpilot.api.cockpit.CockpitLayoutService;
 import com.voltpilot.api.cockpit.EigeneAuswertung.CustomBaustein;
 import com.voltpilot.api.profile.AnwendungKatalog.LayoutDoc;
 import com.voltpilot.api.web.dto.CockpitLayoutDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -82,6 +84,7 @@ public class SiteCockpitLayoutController {
     }
 
     @PutMapping
+    @Recht(value = "cockpit.anpassen", ziel = RechtZiel.ANLAGE)
     public CockpitLayoutDto put(@PathVariable UUID siteId,
             @RequestParam(name = "layer", defaultValue = "eigen") String layer,
             @RequestBody(required = false) LayoutRequest request,
@@ -92,6 +95,7 @@ public class SiteCockpitLayoutController {
     }
 
     @DeleteMapping
+    @Recht(value = "cockpit.anpassen", ziel = RechtZiel.ANLAGE)
     public CockpitLayoutDto reset(@PathVariable UUID siteId,
             @RequestParam(name = "layer", defaultValue = "eigen") String layer) {
         requireVorgabeRecht(layer);

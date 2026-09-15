@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.uems.AnlageUmzugService;
 import com.voltpilot.api.uems.OrtAbgelehnt;
 import com.voltpilot.api.web.dto.AnlageUmzugDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
@@ -49,6 +51,7 @@ public class AnlageStandortController {
 
     // Rechte: `anlage.zuordnen`; mit „gültig ab" vor heute zusätzlich `aenderung.rueckwirkend`.
     @PutMapping
+    @Recht(value = "anlage.zuordnen", ziel = RechtZiel.ANLAGE)
     public AnlageUmzugDto.Umzug umziehen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         AnlageUmzugDto.Anfrage a = anfrage.lies(body, AnlageUmzugDto.Anfrage.class, false);
