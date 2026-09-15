@@ -378,22 +378,29 @@ class UemsMessstelleVerteilungMigrationTest {
                 k4100, OKT_1))).getSQLState()).isEqualTo("23503");
     }
 
-    /** {@code out-of-order: true}: dieselbe Datei ein zweites Mal auf dem neuesten Stand ändert nichts. */
+    /**
+     * {@code out-of-order: true}: dieselbe Datei ein zweites Mal auf dem neuesten Stand ändert keine Zeile. Zurückgerollt:
+     * ihr {@code CREATE OR REPLACE} setzte sonst die Vokabular-Funktion auf ihren Stand zurück (ohne die späteren Arten,
+     * AP-10 IP-11, AP-12 IP-4) — und die übrigen Tests dieser Klasse sähen je nach Reihenfolge ein altes Vokabular.
+     */
     @Test
     void dieMigrationLaeuftAuchEinZweitesMal() throws Exception {
         Map<String, String> vorher = Bestandsschutz.fingerabdruck(root, List.of());
         String sql = Files.readString(Path.of("src", "main", "resources", "db", "migration",
                 "V" + DIESE + "__uems_messstelle_verteilung.sql"))
                 .replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER);
-        root.execute(sql);
-        assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
-        // Nur die Tabellen bis zu dieser Migration zählen: spätere Pakete hängen denselben Trigger an ihre
-        // eigenen Zuordnungen (AP-10 IP-6 an `anlage_netzanschluss`).
-        assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid = "
-                + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal AND tgrelid IN "
-                + "('messstelle_prozess'::regclass, 'prozess'::regclass, 'messstelle_verteilung'::regclass)", Long.class))
-                .as("messstelle_prozess, prozess.eltern_id und jetzt messstelle_verteilung").isEqualTo(3);
-        assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = ?", Long.class, HUNDERT)).isOne();
+        new TransactionTemplate(new DataSourceTransactionManager(root.getDataSource())).executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            root.execute(sql);
+            assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
+            // Nur die Tabellen bis zu dieser Migration zählen: spätere Pakete hängen denselben Trigger an ihre
+            // eigenen Zuordnungen (AP-10 IP-6 an `anlage_netzanschluss`).
+            assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid = "
+                    + "'uems_zuordnung_im_ziel()'::regprocedure AND NOT tgisinternal AND tgrelid IN "
+                    + "('messstelle_prozess'::regclass, 'prozess'::regclass, 'messstelle_verteilung'::regclass)", Long.class))
+                    .as("messstelle_prozess, prozess.eltern_id und jetzt messstelle_verteilung").isEqualTo(3);
+            assertThat(root.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = ?", Long.class, HUNDERT)).isOne();
+        });
     }
 
     @Test
