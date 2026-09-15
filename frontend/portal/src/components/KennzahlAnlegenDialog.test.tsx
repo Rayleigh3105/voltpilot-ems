@@ -9,6 +9,7 @@ import {
   kennzahlVorschauAntwort,
 } from '../test/kennzahlAnlegenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
+import { fassungenK17, K17_BEGRUENDUNG, k17VorschauAntwort, KZ4_ID, kz0004, mitMs24 } from '../test/kennzahlAendernFixtures';
 import { fassungenVon } from '../test/kennzahlWerteFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
@@ -241,5 +242,125 @@ describe('KennzahlAnlegenDialog', () => {
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Geltungsbereich' }).textContent).toContain('Kunststoffwerk Ahrenberg GmbH'));
     fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
     expect(await screen.findByText('Schritt 2 von 5 · Kennzahlen')).toBeTruthy();
+  });
+});
+
+/**
+ * AP-11 IP-15 (§5.4, K17): derselbe Assistent als „Berechnung ändern ab …“ an KZ-0004 — Zahlen aus Ahrenberg und K17
+ * (`test/kennzahlAendernFixtures.ts`). Die Zusicherung wie beim Anlegen: vor „Speichern“ ruft er NUR die Vorschau
+ * (zweimal: neu und bisher); `POST …/fassungen` fällt genau einmal, auf den Knopf.
+ */
+describe('KennzahlAnlegenDialog · „Berechnung ändern ab …“ (IP-15)', () => {
+  const APRIL = new Date('2027-04-01T09:31:00+02:00');
+  const MS24 = [
+    { rolle: 'zaehler', art: 'messstelle', kennzeichen: 'MS-24' },
+    { rolle: 'nenner', art: 'bezugsgroesse', kennzeichen: 'BZ-1' },
+  ];
+  const speichernKnopf = () => screen.getByRole('button', { name: 'Speichern' }) as HTMLButtonElement;
+  const begruendung = () => screen.getByLabelText('Begründung') as HTMLInputElement;
+
+  function verdrahteK17(jetzt: Date) {
+    const alle = verdrahte();
+    vi.setSystemTime(jetzt);
+    alle.register.mockImplementation(async () => mitMs24(ahrenbergRegister()));
+    vi.spyOn(api, 'kennzahlen').mockImplementation(async () => ({ kennzahlen: [...ahrenbergKennzahlen(), kz0004('vorher')] }));
+    alle.vorschau.mockImplementation(async (a) => k17VorschauAntwort(a, Date.now()) ?? kennzahlVorschauAntwort(a, Date.now()));
+    const eintragen = vi
+      .spyOn(api, 'kennzahlFassungEintragen')
+      .mockImplementation(async (id) => ({ kennzahl_id: id, kennzeichen: 'KZ-0004', fassungen: fassungenK17('nachher') }));
+    return { ...alle, eintragen };
+  }
+
+  it('K17: der Tag mit „rückwirkend (31 Tage)“, MS-24 statt MS-20, neu und bisher nebeneinander, Begründung Pflicht — nur „Speichern“ schreibt', async () => {
+    const { vorschau, anlegen, eintragen } = verdrahteK17(APRIL);
+    const geaendert = vi.fn();
+    render(
+      <KennzahlAnlegenDialog
+        open
+        aendern={{ kennzahl: kz0004('vorher'), fassungen: fassungenK17('vorher') }}
+        angemeldet="Ines Kaltenbach"
+        onClose={() => undefined}
+        onGeaendert={geaendert}
+      />,
+    );
+
+    expect(screen.getByText('Schritt 1 von 4 · Gilt ab')).toBeTruthy();
+    expect(screen.getByTestId('kennzahl-heute-gilt').textContent).toBe('Heute gilt: Menge je Bezugsgröße · MS-20 je BZ-1 · Fassung 1 gilt seit Beginn');
+    expect(screen.getByTestId('kennzahl-gilt-ab').textContent).toBe('Fassung 2 gilt ab heute — Fassung 1 endet am 31.03.2027.');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Gilt ab' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voriger Monat' }));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '1' })[0]);
+    await waitFor(() =>
+      expect(screen.getByTestId('kennzahl-gilt-ab').textContent).toBe('Fassung 2 gilt ab 01.03.2027 — Fassung 1 endet am 28.02.2027.rückwirkend (31 Tage)'),
+    );
+    weiter();
+
+    expect(await screen.findByText('Schritt 2 von 4 · Menge')).toBeTruthy();
+    expect(screen.getByText('Vorbelegt mit den Eingängen von heute — ändern Sie, was die neue Fassung anders rechnet.')).toBeTruthy();
+    expect(weiterKnopf().disabled).toBe(false);
+    await waehle('Menge', /^MS-24 Spritzguss inkl. Kühlung/);
+    fireEvent.click(await screen.findByRole('option', { name: /^MS-20 Prozess Spritzguss gesamt/ }));
+    await waitFor(() => expect(weiterKnopf().disabled).toBe(false));
+    weiter();
+
+    expect(await screen.findByText('Schritt 3 von 4 · Bezugsgröße')).toBeTruthy();
+    expect(await screen.findByText('BZ-1 führt Monatswerte — die Kennzahl wird je Monat und Jahr gebildet')).toBeTruthy();
+    expect(vorschau).not.toHaveBeenCalled();
+    weiter();
+
+    expect(await screen.findByText('Schritt 4 von 4 · Vorschau')).toBeTruthy();
+    expect((await screen.findByTestId('kennzahl-vergleich-satz')).textContent).toBe('März 2027: 0,30 statt 0,29');
+    expect(screen.getByTestId('kennzahl-wirkung').textContent).toBe('Ab März 2027 gilt Fassung 2 — Februar 2027 und früher bleiben bei Fassung 1.');
+    expect(screen.getAllByTestId('kennzahl-vergleich-seite').map((s) => s.textContent)).toEqual([
+      'Fassung 2 · neuvollständig0,30',
+      'Fassung 1 · bishervollständig0,29',
+    ]);
+    expect(vorschau).toHaveBeenCalledTimes(2);
+    expect(vorschau.mock.calls.map(([a]) => a.eingaenge.map((e) => e.kennzeichen).join(' je ')).sort()).toEqual(['MS-20 je BZ-1', 'MS-24 je BZ-1']);
+    expect(speichernKnopf().disabled).toBe(true);
+    fireEvent.change(begruendung(), { target: { value: 'Kühlung' } });
+    expect(screen.getByText('Noch 3 Zeichen — warum rechnet die Kennzahl ab diesem Tag anders?')).toBeTruthy();
+    expect(speichernKnopf().disabled).toBe(true);
+    fireEvent.change(begruendung(), { target: { value: K17_BEGRUENDUNG } });
+    expect(speichernKnopf().disabled).toBe(false);
+    expect(eintragen).not.toHaveBeenCalled();
+    fireEvent.click(speichernKnopf());
+
+    const fertig = await screen.findByTestId('kennzahl-fertig');
+    expect(eintragen).toHaveBeenCalledTimes(1);
+    expect(eintragen).toHaveBeenCalledWith(KZ4_ID, {
+      gueltig_ab: '2027-03-01',
+      begruendung: K17_BEGRUENDUNG,
+      periode_art: null,
+      komplement: null,
+      eingaenge: MS24,
+    });
+    expect(fertig.textContent).toContain('Fassung 2 gilt seit 01.03.2027');
+    expect(fertig.textContent).toContain('rückwirkend (19 Tage)');
+    expect(geaendert).toHaveBeenCalledTimes(1);
+    expect(anlegen).not.toHaveBeenCalled();
+    expect(vorschau).toHaveBeenCalledTimes(2);
+  });
+
+  it('dieselben Eingänge wie heute: der Satz steht und „Speichern“ bleibt aus — auch mit Begründung', async () => {
+    const { eintragen } = verdrahteK17(APRIL);
+    render(<KennzahlAnlegenDialog open aendern={{ kennzahl: kz0004('vorher'), fassungen: fassungenK17('vorher') }} onClose={() => undefined} />);
+    weiter();
+    weiter();
+    await screen.findByText('BZ-1 führt Monatswerte — die Kennzahl wird je Monat und Jahr gebildet');
+    weiter();
+    expect(await screen.findByTestId('kennzahl-unveraendert')).toBeTruthy();
+    expect((await screen.findByTestId('kennzahl-vergleich-satz')).textContent).toBe('März 2027: 0,29 — wie bisher');
+    fireEvent.change(begruendung(), { target: { value: K17_BEGRUENDUNG } });
+    expect(speichernKnopf().disabled).toBe(true);
+    expect(eintragen).not.toHaveBeenCalled();
+  });
+
+  it('K17 noch einmal ab 01.03.2027: „Ab diesem Tag gilt schon Fassung 2.“ — „Weiter“ bleibt aus', async () => {
+    verdrahteK17(new Date('2027-03-01T09:40:00+01:00'));
+    render(<KennzahlAnlegenDialog open aendern={{ kennzahl: kz0004('nachher'), fassungen: fassungenK17('nachher') }} onClose={() => undefined} />);
+    expect(await screen.findByText('Ab diesem Tag gilt schon Fassung 2.')).toBeTruthy();
+    expect(screen.queryByTestId('kennzahl-gilt-ab')).toBeNull();
+    expect(weiterKnopf().disabled).toBe(true);
   });
 });

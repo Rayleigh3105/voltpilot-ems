@@ -327,3 +327,61 @@
     gap: 0;
   }
 }
+
+/* --- AP-11 IP-15: „Berechnung ändern ab …“ — Tag, Vorschau neu/bisher, Begründung ---------------------------- */
+
+.vp-kzae-ab {
+  flex-wrap: wrap;
+}
+
+.vp-kzae-satz {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neu und bisher nebeneinander — bei 375 px bleiben beide Kacheln in einer Zeile, die Zahl bricht nie aus. */
+.vp-kzae-seiten {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-c-space-2);
+}
+
+.vp-kzae-seite {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-action);
+  border-radius: 12px;
+}
+
+.vp-kzae-seite.is-bisher {
+  border-color: var(--vp-c-border);
+}
+
+.vp-kzae-seite.is-bisher .vp-kza-p-zahl {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kzae-seite p {
+  margin: 0;
+  color: var(--vp-c-warn-fg);
+  font-size: var(--vp-c-fs-12);
+}
+
+.vp-kzae-vergleich > small {
+  display: block;
+  margin-top: 4px;
+}
+
+.vp-kzae-wirkung {
+  margin: var(--vp-c-space-2) 0 0;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-kzae-begruendung {
+  margin-top: var(--vp-c-space-4);
+}

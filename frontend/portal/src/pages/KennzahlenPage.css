@@ -426,3 +426,12 @@
   gap: var(--vp-c-space-2);
   margin-top: var(--vp-c-space-3);
 }
+
+/* --- AP-11 IP-15: Kennzeichen an der Berechnung („Eingang archiviert (KZ-0001)“) --------------------------- */
+
+.vp-kz-block p.vp-kz-zeichen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--vp-c-space-2);
+}

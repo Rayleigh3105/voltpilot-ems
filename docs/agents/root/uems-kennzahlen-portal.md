@@ -47,6 +47,6 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
 - **Die Playwright-Spec importiert keine Fixtures**: sie laden `api.ts`, und dem fehlt im Node-Lauf `import.meta.env`.
 - **Abweichung:** §5.5 schreibt „freigegeben von Jonas Wendlinger“; die Referenzdatei 1.4 hat K-2026-0007 von Ines
   Kaltenbach freigegeben — die Fixtures folgen der Datei.
-- **Nicht gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen (IP-15) — bis dahin kein Knopf
-  ohne Ziel; Paare einer Jahres-Zusammenfassung (K14, IP-11). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
+- **Seit IP-15 gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen — `uems-kennzahl-aendern.md`
+  (kein Wiederherstellen: keine Route, also kein Knopf). Nicht gebaut: Paare einer Jahres-Zusammenfassung (K14, IP-11). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
   Kopf von Liste und Seite: `uems-kennzahl-anlegen.md`.

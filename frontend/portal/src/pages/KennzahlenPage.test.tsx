@@ -161,3 +161,99 @@ describe('KennzahlSeite (§5.3, §5.5)', () => {
     expect(onListe).toHaveBeenCalled();
   });
 });
+
+describe('KennzahlSeite — ändern, archivieren, löschen (AP-11 IP-15, §5.4, §5.7)', () => {
+  type K = ReturnType<typeof kennzahlenDerWelt>[number];
+  const eine = (id: string, over: (k: K) => K = (k) => k): K => over(kennzahlenDerWelt().find((k) => k.id === id)!);
+
+  it('„Stammdaten ändern“: PUT mit unverändertem Kennzeichen, ohne Fassung — die Seite zeigt den neuen Verantwortlichen', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    const aendern = vi
+      .spyOn(api, 'kennzahlAendern')
+      .mockImplementation(async (id, body) => ({ ...eine(id), name: body.name, verantwortlich_name: body.verantwortlich_name, zweck: body.zweck ?? null }));
+    const eintragen = vi.spyOn(api, 'kennzahlFassungEintragen');
+    render(<KennzahlenPage kennzahlId={KZ.kz1} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId('stammdaten-aendern-knopf'));
+    const dialog = await screen.findByTestId('kennzahl-stammdaten-dialog');
+    const speichern = () => screen.getByRole('button', { name: 'Speichern' }) as HTMLButtonElement;
+    expect(dialog.textContent).toContain('es entsteht keine neue Fassung');
+    expect(speichern().disabled).toBe(true);
+    fireEvent.change(within(dialog).getByDisplayValue('Ines Kaltenbach'), { target: { value: 'Peter Hollerbach' } });
+    expect(speichern().disabled).toBe(false);
+    fireEvent.click(speichern());
+    await waitFor(() => expect(aendern).toHaveBeenCalledTimes(1));
+    expect(aendern).toHaveBeenCalledWith(KZ.kz1, {
+      kennzeichen: 'KZ-0001',
+      name: 'Stromeinsatz Montage je Stück — Halle 2',
+      verantwortlich_name: 'Peter Hollerbach',
+      zweck: 'Spezifischer Stromeinsatz der Montagelinie M1 je Gutteil; Basis für den Vergleich mit Lindach.',
+    });
+    expect(await screen.findByText('Gebäude Halle 2 · verantwortlich Peter Hollerbach')).toBeTruthy();
+    expect(eintragen).not.toHaveBeenCalled();
+  });
+
+  it('KZ-0001 hat Werte: Löschen gesperrt mit dem Satz von §5.7; Archivieren nennt KZ-0003 — danach „archiviert“ und kein Ändern mehr', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    const archivieren = vi
+      .spyOn(api, 'kennzahlArchivieren')
+      .mockImplementation(async (id) => eine(id, (k) => ({ ...k, archiviert_am: '2026-12-03T09:05:00+01:00' })));
+    const loeschen = vi.spyOn(api, 'kennzahlLoeschen');
+    render(<KennzahlenPage kennzahlId={KZ.kz1} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    const zyklus = await screen.findByTestId('kennzahl-lebenszyklus');
+    expect(zyklus.textContent).toContain('KZ-0001 hat Werte — archivieren Sie sie.');
+    expect(within(zyklus).queryByRole('button', { name: 'Kennzahl löschen' })).toBeNull();
+    expect(screen.getByTestId('berechnung-aendern-knopf').textContent).toBe('Berechnung ändern ab …');
+
+    fireEvent.click(screen.getByTestId('archivieren-knopf'));
+    const folgen = await screen.findByTestId('confirm-consequences');
+    await waitFor(() =>
+      expect(folgen.textContent).toContain('KZ-0003 Stromeinsatz Montage je Stück — Unternehmen liest KZ-0001 und zeigt danach „Eingang archiviert (KZ-0001)“.'),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Archivieren' }).at(-1)!);
+    await waitFor(() => expect(archivieren).toHaveBeenCalledWith(KZ.kz1));
+    expect((await screen.findByTestId('kennzahl-archiviert')).textContent).toBe(
+      'Archiviert am 03.12.2026 — die Werte bleiben lesbar, VoltPilot rechnet sie nicht mehr.',
+    );
+    expect(screen.queryByTestId('stammdaten-aendern-knopf')).toBeNull();
+    expect(screen.queryByTestId('berechnung-aendern-knopf')).toBeNull();
+    expect(screen.queryByTestId('archivieren-knopf')).toBeNull();
+    expect(screen.getByTestId('kennzahl-lebenszyklus').textContent).toContain('KZ-0001 hat Werte und bleibt archiviert.');
+    expect(loeschen).not.toHaveBeenCalled();
+  });
+
+  it('KZ-0003 zeigt „Eingang archiviert (KZ-0001)“ an der Berechnung, sobald KZ-0001 archiviert ist', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    vi.spyOn(api, 'kennzahlen').mockImplementation(async () => ({
+      kennzahlen: kennzahlenDerWelt().map((k) => (k.id === KZ.kz1 ? { ...k, archiviert_am: '2026-12-03T09:05:00+01:00' } : k)),
+    }));
+    render(<KennzahlenPage kennzahlId={KZ.kz3} onOeffnen={vi.fn()} onListe={vi.fn()} />);
+    expect((await screen.findByTestId('kennzahl-eingang-archiviert')).textContent).toBe('Eingang archiviert (KZ-0001)');
+  });
+
+  it('ohne einen einzigen Wert und ohne Leser: „Kennzahl löschen“ → DELETE — und zurück zur Liste', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    const ohneWerte = (k: K): K => (k.id === KZ.kz8 ? { ...k, hat_werte: false } : k);
+    vi.spyOn(api, 'kennzahl').mockImplementation(async (id) => eine(id, ohneWerte));
+    vi.spyOn(api, 'kennzahlen').mockImplementation(async () => ({ kennzahlen: kennzahlenDerWelt().map(ohneWerte) }));
+    const loeschen = vi.spyOn(api, 'kennzahlLoeschen').mockImplementation(async () => undefined);
+    const onListe = vi.fn();
+    render(<KennzahlenPage kennzahlId={KZ.kz8} onOeffnen={vi.fn()} onListe={onListe} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Kennzahl löschen' }));
+    expect(screen.getByText('KZ-0008 Stromabgabe je Ladestunde verschwindet aus der Liste.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(loeschen).toHaveBeenCalledWith(KZ.kz8));
+    expect(onListe).toHaveBeenCalledTimes(1);
+  });
+
+  it('lehnt die Route das Löschen ab, steht ihr Satz — und die Seite bleibt', async () => {
+    verdrahte('2026-12-03T09:00:00+01:00');
+    vi.spyOn(api, 'kennzahl').mockImplementation(async (id) => eine(id, (k) => ({ ...k, hat_werte: false })));
+    vi.spyOn(api, 'kennzahlLoeschen').mockRejectedValue(new ApiError(409, 'KZ-0008 hat Werte — archivieren Sie sie.'));
+    const onListe = vi.fn();
+    render(<KennzahlenPage kennzahlId={KZ.kz8} onOeffnen={vi.fn()} onListe={onListe} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Kennzahl löschen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+    expect(await screen.findByText('KZ-0008 hat Werte — archivieren Sie sie.')).toBeTruthy();
+    expect(onListe).not.toHaveBeenCalled();
+  });
+});
