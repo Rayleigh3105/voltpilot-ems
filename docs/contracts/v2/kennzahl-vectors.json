@@ -4039,7 +4039,7 @@
         },
         {
           "regel": "periode",
-          "name": "Versuch 2: Monatskennzahl aus Wochenwerten → periode_passt_nicht",
+          "name": "Versuch 2: Monatskennzahl aus Wochenwerten → periode_passt_nicht (Annahme: BZ-9 je Woche)",
           "eingang": {
             "gewuenscht": "monat",
             "eingaenge": [
@@ -4070,7 +4070,7 @@
         },
         {
           "regel": "periode",
-          "name": "Wochen- und Monatswerte zusammen haben keine gemeinsame Periode",
+          "name": "Wochen- und Monatswerte zusammen haben keine gemeinsame Periode (Annahme: BZ-9 je Woche)",
           "eingang": {
             "gewuenscht": null,
             "eingaenge": [
