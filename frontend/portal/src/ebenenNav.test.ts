@@ -563,12 +563,15 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'trending-up', 'file-text']);
   });
 
-  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-04 IP-5 hat Ahrenberg DREI, die Leiste erscheint', () => {
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-11 IP-13 hat Ahrenberg VIER', () => {
     expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(5);
-    // Übersicht · Standorte · Messstellen — Kennzahlen und Berichte haben noch keine Seite.
+    // Übersicht · Standorte · Messstellen · Kennzahlen — nur die Berichte haben noch keine Seite.
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
     expect(leiste[2].ziel).toEqual(pageRoute('portfolio-messstellen'));
+    expect(leiste[3].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
+    // Ohne eine lebende Kennzahl gibt es den Bereich nicht — dann bleibt es bei drei.
+    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
     // Die Standorte bleiben bei zwei (Übersicht · Messstellen; Gebäude und Anlagen ohne Seite) — ohne Leiste.
     expect(ebenenLeiste(WERK, MESSKUNDE)).toEqual([]);
     expect(ebenenLeiste(LINDACH, MESSKUNDE)).toEqual([]);
@@ -581,6 +584,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       uebersicht: pageRoute('portfolio'),
       standorte: pageRoute('portfolio-standorte'),
       messstellen: pageRoute('portfolio-messstellen'),
+      kennzahlen: pageRoute('portfolio-kennzahlen'),
     });
     expect(EBENEN_SEITEN(WERK)).toEqual({
       uebersicht: standortRoute(FIXTURE_IDS.st1),
@@ -591,7 +595,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
   it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
     expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Messstellen']);
     expect(ebenenReiter(LINDACH, MESSKUNDE)[1].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
-    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
     // Ein einzelner Reiter ist keine Wahl.
     const nurHeute: EbenenSeiten = (ort) => EBENEN_SEITEN(ort);
     const ohneMessen = structuredClone(MESSKUNDE);

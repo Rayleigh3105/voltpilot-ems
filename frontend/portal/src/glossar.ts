@@ -238,6 +238,39 @@ export const UEMS_UNTERZAEHLER_VON = 'Unterzähler von';
  */
 export const GESAMTWERT = 'Gesamtwert';
 
+/**
+ * UEMS AP-11 (E12 = A) — die Wörter der Kennzahl (`docs/fachmodell/glossar.md`
+ * › Kennzahl, AP-11 §4.13). „Kennzahl" gehört NUR dem neuen Objekt;
+ * „Berechnung" = Form und Eingänge, „Fassung" = ein datierter Stand der
+ * Berechnung, „Version" = ein Stand des Werts einer Periode — nie vertauscht.
+ * In der Kundensicht nie KPI, Metrik, Kenngröße, Template, Widget; auf einer
+ * Kennzahl-Fläche nie Durchschnitt oder Mittel (`copy.test.ts`).
+ */
+export const UEMS_KENNZAHL = 'Kennzahl';
+export const UEMS_KENNZAHLEN = 'Kennzahlen';
+export const UEMS_BERECHNUNG = 'Berechnung';
+export const UEMS_FASSUNG = 'Fassung';
+export const UEMS_VERSION = 'Version';
+export const UEMS_VORLAGE = 'Vorlage';
+
+/** Die Rollen der Eingänge in der Kundensicht (Vertrag `zaehler`/`nenner`/`paar`) — nie Zähler und Nenner: ein Zähler ist ein Messgerät. */
+export const UEMS_MENGE = 'Menge';
+export const UEMS_TEIL = 'Teil';
+export const UEMS_GANZES = 'Ganzes';
+
+/** Die Rechenform in der Kundensicht (Vertrag `quotient`/`anteil`/`zusammenfassung`). */
+export const UEMS_RECHENFORM: Record<'quotient' | 'anteil' | 'zusammenfassung', string> = {
+  quotient: `${UEMS_MENGE} je ${UEMS_BEZUGSGROESSE}`,
+  // Dativ von „Ganzes“ — das Wort der Rolle bleibt `UEMS_GANZES`.
+  anteil: `${UEMS_TEIL} an Ganzem`,
+  zusammenfassung: `${UEMS_KENNZAHLEN} zusammenfassen`,
+};
+
+/** Die drei Stammdaten einer Kennzahl — nie Scope, nie Owner. */
+export const UEMS_GELTUNGSBEREICH = 'Geltungsbereich';
+export const UEMS_VERANTWORTLICH = 'Verantwortlich';
+export const UEMS_ZWECK = 'Zweck';
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------

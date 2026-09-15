@@ -27,7 +27,8 @@ function kennzahl(over: Partial<Kennzahl> & Pick<Kennzahl, 'id' | 'kennzeichen' 
     einheit: 'kWh/Stück',
     einheit_anzeige: 'kWh/Stück',
     grundperiode: 'monat',
-    perioden: ['monat'],
+    // K1 Regel `periode`: MS-12 (Tag) und BZ-6 (Monat) → Grundperiode Monat, dazu Jahr.
+    perioden: ['monat', 'jahr'],
     hat_werte: true,
     archiviert_am: null,
     angelegt_am: '2026-10-01T08:00:00+02:00',

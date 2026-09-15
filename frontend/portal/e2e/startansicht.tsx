@@ -44,13 +44,16 @@ import { healthBadge } from '../src/health';
 import {
   anlageRoute,
   hashForRoute,
+  kennzahlRoute,
   pageRoute,
   standortMessstellenRoute,
   standortRoute,
   type PageId,
   type Route,
 } from '../src/nav';
+import { ApiError, type KennzahlPeriodeArt } from '../src/api';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
+import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
@@ -68,6 +71,12 @@ import {
 } from '../src/test/standorteFixtures';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from '../src/test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import {
+  fassungenVon,
+  kennzahlenDerWelt,
+  kennzahlWerteAntwort,
+  kennzahlWertVersionenAntwort,
+} from '../src/test/kennzahlWerteFixtures';
 import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -108,6 +117,14 @@ const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
+/**
+ * AP-11 IP-13: `&ansicht=kennzahlen` öffnet „Unternehmen › Kennzahlen“, `&ansicht=kennzahl&kz=KZ-0001` eine
+ * Kennzahl-Seite; `&ausserhalb=KZ-0003` lässt die Werte-Route für diese Kennzahl mit 404 antworten (R-A7). Die
+ * Werte (K1, K7, K8, K10, K11 aus den Vektoren) gelten zur Uhr der Bühne (`page.clock`).
+ */
+const kennzahlId = (kennzeichen: string | null) => kennzahlenDerWelt().find((k) => k.kennzeichen === kennzeichen)?.id ?? null;
+const kzOffen = kennzahlId(params.get('kz'));
+const kzAusserhalb = kennzahlId(params.get('ausserhalb'));
 /**
  * AP-01 IP-7: `&seiten=kuenftig` stellt das Bild, sobald JEDER Bereich der Ebene
  * eine Seite hat (AP-04 IP-5, AP-13) — nur für die Vorschau; die Kacheln führen
@@ -228,6 +245,24 @@ Object.assign(api, {
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
   standorte: async () => structuredClone(szene.liste),
   standortOrte: async (id: string) => (id === werkLindach().id ? ortsbaumLindach() : ortsbaumAhrenberg()),
+  // AP-11 IP-13: die Kennzahlen der Welt — gelesen zur Uhr der Bühne.
+  kennzahlen: async () => ({ kennzahlen: kennzahlenDerWelt() }),
+  kennzahl: async (id: string) => {
+    const k = kennzahlenDerWelt().find((x) => x.id === id);
+    if (!k) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
+    return k;
+  },
+  kennzahlFassungen: async (id: string) => ({
+    kennzahl_id: id,
+    kennzeichen: kennzahlenDerWelt().find((x) => x.id === id)?.kennzeichen ?? '',
+    fassungen: fassungenVon(id),
+  }),
+  kennzahlWerte: async (id: string, periode: KennzahlPeriodeArt, von: string, bis: string) => {
+    if (id === kzAusserhalb) throw new ApiError(404, 'Diese Kennzahl gibt es nicht.');
+    return kennzahlWerteAntwort(id, periode, von, bis, Date.now());
+  },
+  kennzahlWertVersionen: async (id: string, periode: KennzahlPeriodeArt, von: string) =>
+    kennzahlWertVersionenAntwort(id, periode, von, Date.now()),
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
@@ -352,7 +387,11 @@ function Vorschau() {
                 ? standortMessstellenRoute(FIXTURE_IDS.st1)
                 : ansicht === 'lindach-messstellen'
                   ? standortMessstellenRoute(st2)
-                  : pageRoute('uebersicht'),
+                  : ansicht === 'kennzahlen'
+                    ? pageRoute('portfolio-kennzahlen')
+                    : ansicht === 'kennzahl' && kzOffen
+                      ? kennzahlRoute(kzOffen)
+                      : pageRoute('uebersicht'),
     ),
   );
   useEffect(() => {
@@ -407,6 +446,7 @@ function Vorschau() {
       page={page}
       showErloese={false}
       showMessstellen={bereiche.includes('messstellen')}
+      showKennzahlen={bereiche.includes('kennzahlen')}
       leiste={leiste}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
@@ -507,6 +547,16 @@ function Vorschau() {
         </>
       )}
       {route.page === 'portfolio-messstellen' && portfolioReiter('portfolio-messstellen')}
+      {route.page === 'portfolio-kennzahlen' && (
+        <>
+          {portfolioReiter('portfolio-kennzahlen')}
+          <KennzahlenPage
+            kennzahlId={route.kennzahlId ?? null}
+            onOeffnen={(id) => navigate(kennzahlRoute(id))}
+            onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
+          />
+        </>
+      )}
       {messstellenEbene && (
         <MessstellenPage
           key={messstellenEbene.art === 'standort' ? messstellenEbene.id : 'unternehmen'}

@@ -325,7 +325,8 @@ export type Ergebnis = {
 
 export const TRENNER = ' · ';
 export const OHNE_ZAHL = '—';
-const ABDECKUNG = 'Verlauf ';
+/** Der Anfang des Verlaufs („Verlauf 85 %“) — exportiert seit AP-11 IP-13, damit die Kennzahl-Karte dasselbe Wort spricht. */
+export const ABDECKUNG = 'Verlauf ';
 
 /** Alle Verstöße eines Ergebnisses gegen den Vertrag, geordnet und ohne Doppel; leer = gültig. */
 export const pruefe = (e: Ergebnis): Verstoss[] => {

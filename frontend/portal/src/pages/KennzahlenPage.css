@@ -1,0 +1,406 @@
+/*
+ * „Kennzahlen“ (UEMS AP-11 IP-13): die Liste und die Kennzahl-Seite. Nur diese Welt — Klassen mit `vp-kz-`,
+ * damit nichts in Portfolio-Tabellen oder -KPIs greift. Die Werte-Karte bringt ihr eigenes CSS (`WerteKarte.css`).
+ * ⚠ 375 px: eine Spalte; lange Namen („Stromeinsatz Montage je Stück — Montagehalle Lindach“) und die Herkunft
+ *   brechen um (`break-word`), nichts läuft quer. Der Verlauf scrollt LOKAL, nie das Dokument.
+ * ⚠ Die Balken-Farben sind Tokens (`--vp-action` vollständig, `--vp-c-warn-fg` unvollständig, `--vp-c-muted` Spur) —
+ *   keine zweite Chart-Palette.
+ */
+
+.vp-kz {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-kz-kopf h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-kopf p {
+  margin: 4px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-leer {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+}
+
+/* --- Liste ---------------------------------------------------------------- */
+
+.vp-kz-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-c-space-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+}
+
+.vp-kz-liste > li {
+  min-width: 0;
+}
+
+.vp-kz-karte {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--vp-c-space-2);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-kz-karte:hover {
+  border-color: var(--vp-action);
+}
+
+.vp-kz-karte:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-kz-karte-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-kz-kennzeichen {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.04em;
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-kz-pfeil {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-name {
+  font-size: var(--vp-c-fs-16, 1rem);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-zahl {
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-tight);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.vp-kz-abzeichen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-unter {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-hinweis {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  font-style: italic;
+}
+
+.vp-kz-platzhalter {
+  display: block;
+  width: 9rem;
+  max-width: 100%;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--vp-c-muted);
+}
+
+/* --- Kennzahl-Seite ------------------------------------------------------- */
+
+.vp-kz-zurueck {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  margin: calc(-1 * var(--vp-c-space-2)) 0 calc(-1 * var(--vp-c-space-2)) -4px;
+  padding: 0 var(--vp-c-space-2) 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--vp-action);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+}
+
+.vp-kz-zurueck:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* Wie „Tag | Monat“ an der Tageskarte: ein Segment über die Breite — am Telefon passen so auch vier Perioden. */
+.vp-kz-perioden .vp-seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  width: min(100%, 24rem);
+  box-sizing: border-box;
+}
+
+.vp-kz-raster {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+@media (min-width: 960px) {
+  .vp-kz-raster {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.vp-kz-spalte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-kz .vp-wk-grund {
+  margin: var(--vp-c-space-3) 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-block {
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  background: var(--vp-c-card);
+}
+
+.vp-kz-block h2 {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-block h3 {
+  margin: var(--vp-c-space-4) 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-kz-block p {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-block p + p,
+.vp-kz-paare + p {
+  margin-top: var(--vp-c-space-2);
+}
+
+.vp-kz-leise {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-ehrlich {
+  color: var(--vp-c-muted-fg);
+  font-style: italic;
+}
+
+.vp-kz-paare {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 4px;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-stamm {
+  margin: 0;
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-kz-stamm div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-kz-stamm dt {
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-stamm dd {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-kz-fassungen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-kz-fassung {
+  padding-left: var(--vp-c-space-3);
+  border-left: 3px solid var(--vp-c-border);
+}
+
+.vp-kz-fassung.is-gilt {
+  border-left-color: var(--vp-action);
+}
+
+/* --- Verlauf: Balken je Periode -------------------------------------------- */
+
+.vp-kz-balken-rahmen {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.vp-kz-balken {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 2px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+/* Wenige Perioden bleiben schmale Balken (nie ein Block über die ganze Karte); viele schrumpfen bis zur Mindestbreite und scrollen dann lokal. */
+.vp-kz-balken > li {
+  flex: 1 1 0;
+  min-width: 1.375rem;
+  max-width: 3.25rem;
+}
+
+.vp-kz-balken.is-dicht > li {
+  flex: 0 0 2.25rem;
+  min-width: 2.25rem;
+}
+
+.vp-kz-balken-knopf {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 0 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.vp-kz-balken-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
+}
+
+.vp-kz-balken-knopf.is-gewaehlt {
+  background: var(--vp-c-muted);
+}
+
+.vp-kz-saeule {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 6.5rem;
+}
+
+.vp-kz-fuellung {
+  display: block;
+  width: 64%;
+  max-width: 1.5rem;
+  border-radius: 4px 4px 0 0;
+  background: var(--vp-c-muted-fg);
+}
+
+.is-ok .vp-kz-fuellung {
+  background: var(--vp-action);
+}
+
+.is-warn .vp-kz-fuellung {
+  background: var(--vp-c-warn-fg);
+}
+
+.vp-kz-strich {
+  align-self: center;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-kz-kurz {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-kz-balken-knopf.is-gewaehlt .vp-kz-kurz {
+  color: var(--vp-c-fg);
+  font-weight: var(--vp-c-fw-700);
+}

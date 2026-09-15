@@ -58,6 +58,7 @@ export function PortfolioTabs({
   page,
   showErloese,
   showMessstellen = false,
+  showKennzahlen = false,
   leiste = [],
   fleetLabel,
   onNavigate,
@@ -66,6 +67,8 @@ export function PortfolioTabs({
   showErloese: boolean;
   /** Ein Standort misst — die Ebene hat den Bereich „Messstellen“. */
   showMessstellen?: boolean;
+  /** Ein Standort misst UND es gibt eine Kennzahl — die Ebene hat den Bereich „Kennzahlen“ (AP-11 IP-13). */
+  showKennzahlen?: boolean;
   /** Die Bereiche, die die Telefon-Leiste dieser Ebene gerade trägt (leer = keine Leiste). */
   leiste?: readonly EbenenBereichId[];
   /** „Portfolio" beim Betreiber, „Meine Anlagen" beim Endkunden. */
@@ -76,7 +79,8 @@ export function PortfolioTabs({
   const welten = PORTFOLIO_WELT_PAGES.filter(
     (p) =>
       (p.id !== 'portfolio-erloese' || showErloese || page === p.id) &&
-      (p.id !== 'portfolio-messstellen' || showMessstellen || page === p.id),
+      (p.id !== 'portfolio-messstellen' || showMessstellen || page === p.id) &&
+      (p.id !== 'portfolio-kennzahlen' || showKennzahlen || page === p.id),
   );
   // Ein Bereich außer der Übersicht, den die Leiste trägt: am Telefon kein Reiter.
   const kachel = (id: PageId) => {

@@ -44,6 +44,7 @@ import {
   PLATFORM_PAGES,
   routeFromHash,
   standortMessstellenRoute,
+  kennzahlRoute,
   standortRoute,
   transitionKind,
   type PageId,
@@ -147,6 +148,9 @@ const StandortePage = lazy(() =>
 );
 const MessstellenPage = lazy(() =>
   PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
+);
+const KennzahlenPage = lazy(() =>
+  PAGE_CHUNK['portfolio-kennzahlen']().then((m) => ({ default: m.KennzahlenPage })),
 );
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
@@ -1079,6 +1083,8 @@ function UnifiedPortal() {
   // die Reiter dann nur noch, was zum offenen Bereich gehört.
   const bereicheHier = ebenenOrtHier ? ebenenBereiche(ebenenOrtHier, ebenenLesemodell).map((b) => b.key) : [];
   const messstellenDa = ebenenFakten ? bereicheHier.includes('messstellen') : null;
+  // AP-11 IP-13: der Reiter „Kennzahlen" nur, wo die Ebene den Bereich hat (misst UND eine Kennzahl).
+  const kennzahlenDa = ebenenFakten ? bereicheHier.includes('kennzahlen') : null;
   const leisteHier = ebenenKacheln.map((k) => k.key);
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Messstellen);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
@@ -1237,6 +1243,7 @@ function UnifiedPortal() {
             }
             showErloese={hatGeldWelt(geldSites)}
             showMessstellen={messstellenDa === true}
+            showKennzahlen={kennzahlenDa === true}
             leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
@@ -1264,6 +1271,14 @@ function UnifiedPortal() {
               Portfolio-EBENE, tragen also dieselben Anlagen wie die Landung. */}
           {/* UEMS AP-02 IP-6: „Unternehmen › Standorte“ als Reiter der Übersicht. */}
           {page === 'portfolio-standorte' && <StandortePage />}
+          {/* UEMS AP-11 IP-13: „Unternehmen › Kennzahlen" und die Kennzahl-Seite. */}
+          {page === 'portfolio-kennzahlen' && (
+            <KennzahlenPage
+              kennzahlId={route.kennzahlId ?? null}
+              onOeffnen={(id) => navigate(kennzahlRoute(id))}
+              onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
+            />
+          )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}
           {/* UEMS AP-04 IP-5: „Unternehmen › Messstellen" und „Standort › Messstellen". */}
           {messstellenEbene && (

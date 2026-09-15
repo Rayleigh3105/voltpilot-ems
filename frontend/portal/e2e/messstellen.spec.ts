@@ -90,7 +90,8 @@ test.describe('Messstellen-Register', () => {
     expect(m.zeilen).toBe(22);
     expect(m.karten).toBe(0);
     expect(m.spalten).toEqual(['Kennzeichen', 'Name', 'Ort', 'Elektrische Stellung', 'Quelle (führend)', 'Zustand', 'Letzter Wert']);
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Messwerte']);
+    // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Messwerte']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
     expect(m.leiste).toBeNull();
     expect(m.kopf).toBe('21 von 22 Messstellen liefern Daten');
@@ -105,7 +106,7 @@ test.describe('Messstellen-Register', () => {
     ohneQuerlauf(m, 'unternehmen-375');
     expect(m.karten).toBe(22);
     expect(m.zeilen).toBe(0);
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
     expect(m.leisteAktiv).toBe('Messstellen');
     // Variante B: was die Leiste trägt, ist am Telefon kein zweites Mal Reiter.
     expect(m.reiter).toEqual([]);
@@ -198,12 +199,12 @@ test.describe('Messstellen-Register', () => {
 });
 
 test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich die Leiste des Unternehmens zu', () => {
-  test('Übersicht bei 375 px — Variante B (gebaut): Leiste Übersicht · Standorte · Messstellen, Reiter nur Übersicht · Messwerte', async ({ page }) => {
+  test('Übersicht bei 375 px — Variante B (gebaut): Leiste Übersicht · Standorte · Messstellen · Kennzahlen, Reiter nur Übersicht · Messwerte', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375');
     expect(m.route).toBe('#/portfolio');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
     expect(m.leisteAktiv).toBe('Übersicht');
     expect(m.reiter).toEqual(['Übersicht', 'Messwerte']);
     await ablegen(page, 'leiste-uebersicht-375', m);
@@ -216,8 +217,8 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await oeffne(page, 'bild=unternehmen&reiter=alle', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'leiste-uebersicht-375-alle-reiter');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Messwerte']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Messwerte']);
     await ablegen(page, 'leiste-uebersicht-375-alle-reiter', m);
   });
 
