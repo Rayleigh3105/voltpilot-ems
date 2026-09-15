@@ -468,6 +468,113 @@ class UemsKennzahlRechenlaufTest {
                 .isZero();
     }
 
+    // ================================================================ IP-12: Wochen
+
+    /**
+     * IP-12 — konstruiert, als Annahme gekennzeichnet: der Vertrag nennt keine Wochenzahlen, BZ-9 ist die Annahme aus K13.
+     * KW 43/2026 (19.–25.10.) an einem Standort in Europe/Zurich endet mit der Sommerzeit: Montag 00:00 bis Montag 00:00
+     * in der Zone des STANDORTS sind 169 Stunden. MS-30 zählt 1 kWh je Stunde über beide Wochengrenzen hinaus — die
+     * Woche hat 169 kWh (Montag bis Montag in UTC wären es 168), gebildet aus den Periodenständen an den Grenzen, nie als
+     * Summe der Tage: es gibt keinen einzigen Tageswert. KZ-0030 hat die Grundperiode Woche (Wochen-Bezugsgröße als
+     * Nenner), KZ-0031 die Grundperiode Tag (Stammdatum) und damit auch die Woche. Die Passung bleibt: eine
+     * Monatskennzahl aus BZ-9 ist weiter 422 {@code periode_passt_nicht} (K13 Versuch 2).
+     */
+    @Test
+    void ip12DieWocheLiegtInDerZoneDesStandortsUndHatAmEndeDerSommerzeit169Stunden() throws Exception {
+        Welt w = welt();
+        UUID zuerich = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, "
+                + "zustand) VALUES (?, ?, 'Werk Zürich', 'ST-3', 'Europe/Zurich', 'aktiv') RETURNING id", UUID.class,
+                w.mandant(), w.unternehmen());
+        UUID g9 = gebaeude(w.mandant(), zuerich, "Halle Zürich", "G-9");
+        UUID anlage = anlage(w.mandant(), "Zürich #" + NR.get());
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, "
+                + "DATE '2020-01-01')", w.mandant(), anlage, zuerich);
+        messstelle(w, "MS-30", anlage, "Hauptzähler", null);
+        stuendlich(w, "MS-30", Instant.parse("2026-10-18T20:00:00Z"), Instant.parse("2026-10-26T02:00:00Z"));
+        root.update("INSERT INTO bezugsgroesse (tenant_id, kennzeichen, name, wertart, einheit, periode_art, geltung_art, "
+                + "ort_id) VALUES (?, 'BZ-9', 'Produktionsmenge je Woche', 'periodenwert', 'Stück', 'woche', 'gebaeude', ?)",
+                w.mandant(), g9);
+        wochenwert(w, "BZ-9", LocalDate.parse("2026-10-19"), "338");
+        stammdatum(w, "BZ-8", "Mitarbeitende", "Personen", "180");
+        UUID kz30 = anlegen(w, "KZ-0030", "quotient", "gebaeude", g9, e("zaehler", "messstelle", "MS-30"),
+                e("nenner", "bezugsgroesse", "BZ-9"));
+        anlegen(w, "KZ-0031", "quotient", "unternehmen", w.unternehmen(), e("zaehler", "messstelle", "MS-30"),
+                e("nenner", "bezugsgroesse", "BZ-8"));
+
+        lauf.lauf(Instant.parse("2026-11-20T07:00:00Z"));
+
+        Map<String, Object> kw43 = zeile(w, "KZ-0030", "woche", "2026-10-19");
+        assertThat(zahl(kw43.get("zaehler"))).as("169 Stunden Ortszeit, nicht 168 in UTC").isEqualByComparingTo("169");
+        assertThat(zahl(kw43.get("nenner"))).isEqualByComparingTo("338");
+        assertThat(zahl(kw43.get("wert"))).isEqualByComparingTo("0.5");
+        assertThat(kw43.get("menge_zustand")).isEqualTo(VOLL);
+        Map<String, Object> grenzen = root.queryForMap("SELECT periode_bis::text AS bis, zeitzone FROM kennzahl_wert "
+                + "WHERE id = ?", kw43.get("id"));
+        assertThat(grenzen).containsEntry("bis", "2026-10-25").containsEntry("zeitzone", "Europe/Zurich");
+        assertThat(root.queryForObject("SELECT count(*) FROM kennzahl_wert v JOIN kennzahl k ON k.id = v.kennzahl_id "
+                + "WHERE v.tenant_id = ? AND k.kennzeichen = 'KZ-0030' AND v.periode_art <> 'woche'", Long.class,
+                w.mandant())).as("Grundperiode Woche: in nichts aufgehend").isZero();
+
+        Map<String, Object> tagesGrund = zeile(w, "KZ-0031", "woche", "2026-10-19");
+        assertThat(zahl(tagesGrund.get("zaehler"))).isEqualByComparingTo("169");
+        assertThat(zahl(tagesGrund.get("nenner"))).as("Stichtag Sonntag 25.10.").isEqualByComparingTo("180");
+        assertThat(root.queryForObject("SELECT zeitzone FROM kennzahl_wert WHERE id = ?", String.class,
+                tagesGrund.get("id"))).as("P5: die Zone des Geltungsobjekts, hier das Unternehmen").isEqualTo("Europe/Berlin");
+        assertThat(root.queryForObject("SELECT count(*) FROM messreihe_tag WHERE tenant_id = ?", Long.class, w.mandant()))
+                .as("keine Tageswerte — die Woche ist keine Summe der Tage").isZero();
+
+        JsonNode route = lesen(w, PFAD + "/" + kz30 + "/werte?periode=woche&von=2026-10-19&bis=2026-10-25");
+        assertThat(new BigDecimal(route.get("werte").get(0).get("zaehler").asText())).as("die Route liest die Woche")
+                .isEqualByComparingTo("169");
+
+        Map<String, Object> monat = new LinkedHashMap<>();
+        monat.put("kennzeichen", "KZ-0032");
+        monat.put("name", "Kennzahl KZ-0032");
+        monat.put("rechenform", "quotient");
+        monat.put("geltung_art", "gebaeude");
+        monat.put("geltung_id", g9.toString());
+        monat.put("eingaenge", List.of(e("zaehler", "messstelle", "MS-30"), e("nenner", "bezugsgroesse", "BZ-9")));
+        monat.put("periode_art", "monat");
+        MvcResult abgelehnt = ruf(w, monat);
+        String text = abgelehnt.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(abgelehnt.getResponse().getStatus()).as(text).isEqualTo(422);
+        assertThat(MAPPER.readTree(text).get("code").asText()).isEqualTo("periode_passt_nicht");
+    }
+
+    /**
+     * Endgültige Viertelstunden des Zählerstands in {@code [von, bis)}, je 0,25 kWh (1 kWh je Stunde) — die Form, aus
+     * der der freie Zeitraum der Regel eine Woche bildet (Annahme dieses Tests).
+     */
+    private static void stuendlich(Welt w, String kennzeichen, Instant von, Instant bis) {
+        List<Object[]> zeilen = new ArrayList<>();
+        BigDecimal stand = new BigDecimal("1000.00");
+        for (Instant b = von; b.isBefore(bis); b = b.plusSeconds(900)) {
+            BigDecimal ende = stand.add(new BigDecimal("0.25"));
+            Timestamp anfang = Timestamp.from(b);
+            Timestamp letzte = Timestamp.from(b.plusSeconds(840));
+            zeilen.add(new Object[] {anfang, w.mandant(), w.komponenten().get(kennzeichen), ENERGIE, stand, anfang, ende,
+                    letzte, stand, anfang, ende, letzte, Timestamp.from(b.plus(Duration.ofMinutes(10095))), new BigDecimal("0.25")});
+            stand = ende;
+        }
+        root.batchUpdate("INSERT INTO messreihe_viertelstunde (intervall_beginn, tenant_id, entity_id, messkanal, wertart, "
+                + "stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, "
+                + "letzter_zeit, erhalten, erwartet, abdeckung_prozent, kadenz_s, kadenz_herkunft, n_good, rolle, zustand, "
+                + "endgueltig_ab, version, menge, menge_zustand, faktor) VALUES (?, ?, ?, ?, 'counter', ?, ?, ?, ?, ?, ?, ?, "
+                + "?, 15, 15, 100, 60, 'auswahl', 15, 'fuehrend', 'endgueltig', ?, 1, ?, 'vollständig', 1)", zeilen);
+    }
+
+    /** Ein wirksamer Wochenwert einer Bezugsgröße (Annahme: BZ-9 aus K13) — eingetragen am Montag nach der Woche. */
+    private static void wochenwert(Welt w, String kennzeichen, LocalDate montag, String betrag) {
+        UUID bg = root.queryForObject("SELECT id FROM bezugsgroesse WHERE tenant_id = ? AND kennzeichen = ?", UUID.class,
+                w.mandant(), kennzeichen);
+        root.update("INSERT INTO bezugsgroesse_wert (tenant_id, bezugsgroesse_id, wertart, einheit, periode_art, "
+                + "periode_von, periode_bis, zeitzone, fassung, vorgang, status, betrag, herkunft_art, actor_sub, "
+                + "actor_name, actor_rolle, actor_art, created_at) VALUES (?, ?, 'periodenwert', 'Stück', 'woche', ?, ?, "
+                + "'Europe/Zurich', 1, 'erstwert', 'wirksam', ?, 'eingabe', 'sub-ik', 'Ines Kaltenbach', 'energiemanager', "
+                + "'kunde', ?)", w.mandant(), bg, montag, montag.plusDays(6), new BigDecimal(betrag),
+                Timestamp.from(montag.plusDays(7).atStartOfDay(ZoneId.of("Europe/Zurich")).plusHours(9).toInstant()));
+    }
+
     // ================================================================ Vergleich mit dem Vertrag
 
     private static JsonNode pruefung(String fall, String regel, int index) {

@@ -41,8 +41,9 @@ Der Kennzahl-Schritt im Stundentakt `EndgueltigkeitLaeufer`: Endgültigkeit → 
 - ⚠ **Paar ohne Zahl (Nenner 0) zählt mit (K9)** — ohne Version trägt die Zeile keinen vorläufig/endgültig-Zustand; als Teil
   ist sie endgültig, wenn ihre eigenen Eingänge es sind (`KennzahlLauf.zaehltMit`, IP-11). Zustand des Paars = schlechtester
   seiner Eingänge (`eingangZustand`).
-- ⚠ **Nicht gebaut / nicht erreichbar:** Wochen (IP-12), Bezugsfläche als Nenner (keine Bezugsgröße mit Kennzeichen, K12 nur
-  mit Stammdatum), Kanal-Bezugsgröße mit eigenem AP-08-Zustand (AP-09 IP-17), Hinweis „Eingang außerhalb“ (K22).
+- ⚠ **Nicht gebaut / nicht erreichbar:** Bezugsfläche als Nenner (keine Bezugsgröße mit Kennzeichen, K12 nur mit
+  Stammdatum), Kanal-Bezugsgröße mit eigenem AP-08-Zustand (AP-09 IP-17), Hinweis „Eingang außerhalb“ (K22). Die Woche
+  bildet der Lauf seit IP-12 (`uems-kennzahl-wochen.md`).
 - ⚠ `EndgueltigkeitLaeufer` hat zwei Konstruktoren: der alte (5 Argumente) ohne Kennzahl-Schritt für die Tests der Stufen
   davor, der `@Autowired` mit `@Nullable KennzahlLauf`.
 

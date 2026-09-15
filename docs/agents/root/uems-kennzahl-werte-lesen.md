@@ -44,4 +44,4 @@ IP-7, §4.9 V6, §4.10, E4/E11/E12.
 - **Eigener Controller** neben `KennzahlController` (wie `MessstelleWerteController` neben `MessstelleController`) — mit
   eigenen `@ExceptionHandler`n; der Konstruktor von `KennzahlController` bleibt unberührt.
 - **Nicht gebaut:** Durchsetzung des Lesens (AP-03 IP-11), Portal (IP-13/IP-15), Export als Datei (Rundung bleibt beim
-  Portal), Wochen-Werte entstehen erst mit IP-12 (die Route liest sie schon).
+  Portal). Wochen-Werte schreibt der Lauf seit IP-12 (`uems-kennzahl-wochen.md`).
