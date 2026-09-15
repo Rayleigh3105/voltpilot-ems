@@ -2626,8 +2626,7 @@ export type BerichtFehlerCode =
   | 'abzug_beschaedigt'
   | 'begruendung_fehlt'
   | 'anstoss_nicht_offen'
-  | 'gleichzeitig'
-  | 'unternehmensbericht_folgt';
+  | 'gleichzeitig';
 
 /** Wer etwas tat: der Name und — wo gespeichert — die Rolle, die das Recht gab. */
 export interface BerichtPerson {

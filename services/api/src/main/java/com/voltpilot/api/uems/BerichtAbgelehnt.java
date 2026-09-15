@@ -34,9 +34,7 @@ public final class BerichtAbgelehnt extends RuntimeException {
                 "Eine Begründung mit 10 bis 500 Zeichen ist Pflicht — sie bleibt am Anstoß sichtbar."),
         ANSTOSS_NICHT_OFFEN("anstoss_nicht_offen", 409,
                 "Verwerfen lässt sich nur ein offener Anstoß — dieser ist schon erledigt oder verworfen."),
-        GLEICHZEITIG("gleichzeitig", 409, "Soeben hat jemand anderes an diesem Bericht gearbeitet. Laden Sie neu."),
-        UNTERNEHMENSBERICHT_FOLGT("unternehmensbericht_folgt", 501,
-                "Den Inhalt eines Unternehmensberichts kann VoltPilot noch nicht zusammenstellen.");
+        GLEICHZEITIG("gleichzeitig", 409, "Soeben hat jemand anderes an diesem Bericht gearbeitet. Laden Sie neu.");
 
         private final String code;
         private final int status;

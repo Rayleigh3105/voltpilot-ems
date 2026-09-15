@@ -227,12 +227,9 @@ public class BerichtAbzugBildung {
 
         // Q3 — die Messstellen des Berichts je Tag. Am Standort die seiner Orte; am Unternehmen die Netzbezugs-Zähler der
         // Standorte (ihre Abschnitte), die Messstellen am Unternehmen und die Prozess-Messstellen ohne Ort (IP-6).
-        java.util.function.BiPredicate<MessstelleRepository.Messstelle, LocalDate> netzbezug = (m, tag) ->
-                NETZBEZUG.equals(summenSchluessel(m, stellungAm(stellungen.get(m.id()), tag)));
-        java.util.function.BiFunction<LocalDate, LocalDate, BerichtUnternehmen.Umfang> umfangAm = (von, bis) -> amStandort
-                ? new BerichtUnternehmen.Umfang(messstellenDerGeltung(j, tenant, b.standort(), von, bis), Set.of(),
-                        List.of())
-                : BerichtUnternehmen.umfang(j, tenant, b.unternehmen(), von, bis, messstellen, netzbezug);
+        UUID geltungId = amStandort ? b.standort() : b.unternehmen();
+        java.util.function.BiFunction<LocalDate, LocalDate, BerichtUnternehmen.Umfang> umfangAm = (von, bis) ->
+                umfang(j, tenant, b.geltungArt(), geltungId, von, bis);
         BerichtUnternehmen.Umfang umfang = umfangAm.apply(z.ersterTag(), z.letzterTag());
         Map<UUID, TreeMap<LocalDate, String>> tage = umfang.tage();
         List<MessstelleRepository.Messstelle> ordnung = sortiert(messstellen, tage.keySet());
@@ -291,9 +288,7 @@ public class BerichtAbzugBildung {
         }
 
         // Q5 — die Vergleichszeiträume mit ihrem Grund; ihre Werte stehen als Quellen mit bezug = vergleich.
-        LocalDate seit = amStandort ? bestehtSeit(j, tenant, b.standort(), z.letzterTag())
-                : BerichtUnternehmen.bestehtSeit(j, tenant, z.letzterTag(),
-                        tag -> !umfangAm.apply(tag, tag).tage().isEmpty());
+        LocalDate seit = bestehtSeit(j, tenant, b.geltungArt(), geltungId, z.letzterTag());
         LocalDate beendet = g.archiviertAm() == null ? null : LocalDate.ofInstant(g.archiviertAm(), zone);
         ArrayNode vergleiche = json.createArrayNode();
         boolean beginnGenannt = false;
@@ -708,6 +703,36 @@ public class BerichtAbzugBildung {
             }
         }
         return null;
+    }
+
+    /**
+     * Hat die Geltung an einem Tag von {@code von} bis {@code bis} eine Messstelle (Q3)? Die Routen fragen es vor dem
+     * Anlegen (422 {@code keine_quellen}) — für Standort und Unternehmen dieselbe Auswahl wie die Bildung.
+     */
+    static boolean hatMessstellen(JdbcTemplate j, UUID tenant, String geltungArt, UUID geltung, LocalDate von,
+            LocalDate bis) {
+        return !umfang(j, tenant, geltungArt, geltung, von, bis).tage().isEmpty();
+    }
+
+    /** „Energiemanagement seit“ (Q5) für Standort und Unternehmen. */
+    static LocalDate bestehtSeit(JdbcTemplate j, UUID tenant, String geltungArt, UUID geltung, LocalDate bis) {
+        return BerichtRegeln.STANDORT.equals(geltungArt) ? bestehtSeit(j, tenant, geltung, bis)
+                : BerichtUnternehmen.bestehtSeit(j, tenant, bis,
+                        tag -> hatMessstellen(j, tenant, geltungArt, geltung, tag, tag));
+    }
+
+    /**
+     * Die Messstellen des Berichts je Tag: am Standort {@link #messstellenDerGeltung}, am Unternehmen
+     * {@link BerichtUnternehmen#umfang} mit den Netzbezugs-Zählern nach der elektrischen Stellung am letzten Tag.
+     */
+    static BerichtUnternehmen.Umfang umfang(JdbcTemplate j, UUID tenant, String geltungArt, UUID geltung, LocalDate von,
+            LocalDate bis) {
+        if (BerichtRegeln.STANDORT.equals(geltungArt)) {
+            return new BerichtUnternehmen.Umfang(messstellenDerGeltung(j, tenant, geltung, von, bis), Set.of(), List.of());
+        }
+        Map<UUID, List<Object[]>> stellungen = stellungen(j, tenant);
+        return BerichtUnternehmen.umfang(j, tenant, geltung, von, bis, new MessstelleRepository(j),
+                (m, tag) -> NETZBEZUG.equals(summenSchluessel(m, stellungAm(stellungen.get(m.id()), tag))));
     }
 
     private static List<MessstelleRepository.Messstelle> sortiert(MessstelleRepository messstellen, Set<UUID> ids) {

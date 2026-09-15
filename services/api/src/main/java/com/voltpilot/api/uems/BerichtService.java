@@ -58,7 +58,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>D4 beim Abruf:</b> {@link BerichtRepository#aenderungenSeit} plus die Fristen, die seit dem Datenstand abliefen
  * ({@link #fristen}); ist etwas neuer, bildet {@link BerichtAbzugBildung} den Entwurf in eigener Transaktion neu
- * ({@code gebildet_von = abruf}, ohne Ereignis — B6). Den Abzug eines Unternehmensberichts bildet erst AP-12 IP-6.
+ * ({@code gebildet_von = abruf}, ohne Ereignis — B6). Standort- und Unternehmensbericht gleich (seit AP-12 IP-6).
  */
 @Service
 public class BerichtService {
@@ -222,11 +222,11 @@ public class BerichtService {
         if (schon.isPresent()) {
             throw gibtEsSchon(schon.get());
         }
-        if (!standort) {
-            throw BerichtAbgelehnt.von(Ablehnung.UNTERNEHMENSBERICHT_FOLGT);
-        }
-        if (BerichtAbzugBildung.messstellenDerGeltung(jdbc, tenant, g.id(), zr.ersterTag(), zr.letzterTag()).isEmpty()) {
-            LocalDate seit = BerichtAbzugBildung.bestehtSeit(jdbc, tenant, g.id(), LocalDate.ofInstant(jetzt, zone));
+        // Q3 — am Standort die Messstellen seiner Orte, am Unternehmen die Netzbezugs-Zähler der Standorte, die Unternehmens-
+        // und die Prozess-Messstellen (AP-12 IP-6).
+        if (!BerichtAbzugBildung.hatMessstellen(jdbc, tenant, v.geltungArt(), g.id(), zr.ersterTag(), zr.letzterTag())) {
+            LocalDate seit = BerichtAbzugBildung.bestehtSeit(jdbc, tenant, v.geltungArt(), g.id(),
+                    LocalDate.ofInstant(jetzt, zone));
             throw BerichtAbgelehnt.regel(Ablehnung.KEINE_QUELLEN, BerichtRegeln.keineQuellen(g.name(), v.zeitraumArt(),
                     zeitraum, seit != null && seit.isAfter(zr.letzterTag()) ? seit : null), Map.of("feld", "zeitraum"));
         }
@@ -236,7 +236,7 @@ public class BerichtService {
             kennung = transaktion.execute(tx -> {
                 String neueKennung = repo.kennungNeu(tenant, LocalDate.ofInstant(jetzt, zone).getYear());
                 UUID id = repo.anlegen(tenant, neueKennung, v, g.id(), zeitraum, zone, wer, jetzt);
-                bilden(id, v.geltungArt(), jetzt, GEBILDET_BEIM_ANLEGEN);
+                bilden(id, jetzt, GEBILDET_BEIM_ANLEGEN);
                 Map<String, Object> neu = new LinkedHashMap<>();
                 neu.put("kennung", neueKennung);
                 neu.put("vorlage", v.schluessel());
@@ -412,7 +412,7 @@ public class BerichtService {
                 if (aenderungenSeit(kopf, gesperrt.datenstand(), z.jetzt()).isEmpty()) {
                     return gesperrt; // eine andere Anfrage oder die Kaskade hat ihn eben neu gebildet
                 }
-                bilden(kopf.id(), kopf.geltungArt(), z.jetzt(), GEBILDET_BEIM_ABRUF);
+                bilden(kopf.id(), z.jetzt(), GEBILDET_BEIM_ABRUF);
                 neu.set(true);
                 return repo.entwurf(kopf.tenant(), kopf.id(), "").orElseThrow();
             });
@@ -420,11 +420,8 @@ public class BerichtService {
         return new Entwurf(kopf, e, neu.get(), teilansicht(z));
     }
 
-    /** EW3 — die Bildung auf der Verbindung DIESER Transaktion. */
-    private void bilden(UUID bericht, String geltungArt, Instant jetzt, String gebildetVon) {
-        if (!BerichtRegeln.STANDORT.equals(geltungArt)) {
-            throw BerichtAbgelehnt.von(Ablehnung.UNTERNEHMENSBERICHT_FOLGT);
-        }
+    /** EW3 — die Bildung auf der Verbindung DIESER Transaktion; Standort und Unternehmen (AP-12 IP-6). */
+    private void bilden(UUID bericht, Instant jetzt, String gebildetVon) {
         DataSource quelle = jdbc.getDataSource();
         Connection con = DataSourceUtils.getConnection(quelle);
         try {

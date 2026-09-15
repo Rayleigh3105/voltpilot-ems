@@ -1,7 +1,10 @@
 # UEMS-Berichts-Abzug des Unternehmens, Kostenstellen und Kennzahlen (AP-12 IP-6)
 
 Neu angelegt am 15.09.2026. Baut auf `uems-bericht-abzug.md` (IP-5) auf. Vertrag `docs/contracts/v2/bericht.md` **1.1**
-(additiv: `$defs/abzug` um `standorte` und `kostenstellen`), eine Migration (`V20260915113000`), keine Route, keine Fläche.
+(additiv: `$defs/abzug` um `standorte` und `kostenstellen`), eine Migration (`V20260915113000`), keine neue Route, keine
+Fläche. Die Wegmarke der Routen (IP-7) ist eingelöst (firstmate 003): Anlegen und D4-Neubildung bilden den Abzug des
+Unternehmens, die 501 `unternehmensbericht_folgt` ist aus Vokabular, OpenAPI und `api.ts` genommen
+(`BerichtApiTest.unternehmensberichtUeberDieRoute_…`).
 
 | Was | Wo |
 |---|---|
