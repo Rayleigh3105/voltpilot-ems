@@ -64,6 +64,7 @@ class EreignisVokabularVectorsTest {
     private static final Path HERKUNFT = V2.resolve("messwert-herkunft-vectors.json");
     private static final Path DATENQUELLE = V2.resolve("data-source-vectors.json");
     private static final Path MESSSTELLE = V2.resolve("messstelle-vectors.json");
+    private static final Path BERICHT = V2.resolve("bericht-vectors.json");
     private static final Path BEISPIELE = V2.resolve("examples");
 
     private static JsonNode lies(Path p) throws Exception {
@@ -141,6 +142,13 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
         assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
         assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        // AP-12 IP-4 (additiv): die Wörter der Berichts-Ereignisse — der Anstoß Zeile für Zeile aus dem Bericht-Vertrag,
+        // die Ausgaben sind Wörter seiner `handlung`.
+        JsonNode bericht = lies(BERICHT).path("vokabulare");
+        assertThat(texte(w.path("anstoss_art"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART)
+                .containsExactlyElementsOf(texte(bericht.path("anstoss_art")));
+        assertThat(texte(w.path("bericht_format"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
+        assertThat(texte(bericht.path("handlung"))).containsAll(EreignisVokabular.BERICHT_FORMAT);
         w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
                 .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
         assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();
@@ -307,6 +315,8 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(rd.path("korrektur_art").path("enum"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
         assertThat(texte(rd.path("korrektur_status").path("enum")))
                 .containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        assertThat(texte(rd.path("anstoss_art").path("enum"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART);
+        assertThat(texte(rd.path("bericht_format").path("enum"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
         JsonNode umschlag = mqtt.path("properties");
         assertThat(umschlag.path("schema_version").path("const").asText())
                 .isEqualTo(EreignisVokabular.FASSUNG_UMSCHLAG);

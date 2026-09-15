@@ -323,6 +323,35 @@
         "zurueckgenommen"
       ]
     },
+    "anstoss_art": {
+      "type": "string",
+      "description": "AP-12 IP-4: was einen Anstoß an einen Berichtsstand auslöst (bericht-vectors.json → vokabulare.anstoss_art).",
+      "enum": [
+        "korrektur_freigegeben",
+        "korrektur_zurueckgenommen",
+        "ersatzwert_wirksam",
+        "ersatzwert_zurueckgenommen",
+        "bezugsgroesse_fassung",
+        "kennzahl_fassung_rueckwirkend",
+        "zuordnung_rueckwirkend",
+        "anlage_umzug_rueckwirkend",
+        "flaeche_rueckwirkend",
+        "verteilung_rueckwirkend"
+      ]
+    },
+    "bericht_format": {
+      "type": "string",
+      "description": "AP-12 IP-4: die abgerufene Ausgabe eines Berichtsstands (DA5).",
+      "enum": [
+        "pdf",
+        "csv"
+      ]
+    },
+    "pruefsumme": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "AP-12 A6: die Prüfsumme eines Abzugs — sha256: und 64 Hex-Ziffern (klein)."
+    },
     "urheber": {
       "type": "string",
       "enum": [
@@ -419,6 +448,18 @@
         },
         {
           "$ref": "#/$defs/art_bilanz_neu_berechnet"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_freigegeben"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_revision_angestossen"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_entwurf_neu_gebildet"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_abgerufen"
         }
       ]
     },
@@ -1663,6 +1704,148 @@
         },
         "ausloeser": {
           "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_bericht_freigegeben": {
+      "type": "object",
+      "description": "bericht_freigegeben — Bericht freigegeben. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "datenstand",
+        "pruefsumme"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_freigegeben"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "datenstand": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "pruefsumme": {
+          "$ref": "#/$defs/pruefsumme"
+        }
+      }
+    },
+    "art_bericht_revision_angestossen": {
+      "type": "object",
+      "description": "bericht_revision_angestossen — Revision angestoßen. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "anstoss_art",
+        "anlass_kennung"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_revision_angestossen"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "anstoss_art": {
+          "$ref": "#/$defs/anstoss_art"
+        },
+        "anlass_kennung": {
+          "$ref": "#/$defs/kennung"
+        },
+        "anlass_fassung": {
+          "$ref": "#/$defs/ganz_ab_1"
+        }
+      }
+    },
+    "art_bericht_entwurf_neu_gebildet": {
+      "type": "object",
+      "description": "bericht_entwurf_neu_gebildet — Entwurf neu gebildet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "datenstand"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_entwurf_neu_gebildet"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "datenstand": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "anlass_kennung": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_bericht_abgerufen": {
+      "type": "object",
+      "description": "bericht_abgerufen — Bericht abgerufen. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "format"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_abgerufen"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "format": {
+          "$ref": "#/$defs/bericht_format"
         }
       }
     }

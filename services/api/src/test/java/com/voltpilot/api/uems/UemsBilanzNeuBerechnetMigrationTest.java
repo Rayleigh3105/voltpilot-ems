@@ -27,6 +27,8 @@ import org.junit.jupiter.api.Test;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -131,7 +133,9 @@ class UemsBilanzNeuBerechnetMigrationTest {
     @Test
     void dasVokabularKenntDieNeuberechnungInDerReihenfolgeDerZwillinge() {
         assertThat(root.queryForList("SELECT art FROM messreihe_ereignis_vokabular()", String.class))
-                .endsWith("verteilung_geaendert", "bilanz_neu_berechnet")
+                // Additiv: spätere Arten kommen HINTER sie (AP-12 IP-4: die vier Berichts-Ereignisse) — geprüft wird die
+                // Reihenfolge, nicht das Ende der Liste.
+                .containsSubsequence("verteilung_geaendert", "bilanz_neu_berechnet")
                 .containsExactlyElementsOf(Arrays.stream(EreignisVokabular.Art.values())
                         .map(EreignisVokabular.Art::code).toList());
         Map<String, Object> v = root.queryForMap("SELECT array_to_string(urheber, ',') AS u, zeitform AS z, grenzen AS g, "
@@ -165,15 +169,22 @@ class UemsBilanzNeuBerechnetMigrationTest {
                 .as("kein fremdes Nutzfeld").isEqualTo("23514");
     }
 
-    /** {@code out-of-order: true}: dieselbe Datei ein zweites Mal auf dem neuesten Stand ändert nichts. */
+    /**
+     * {@code out-of-order: true}: dieselbe Datei ein zweites Mal auf dem neuesten Stand ändert keine Zeile. Zurückgerollt:
+     * ihr {@code CREATE OR REPLACE} setzte sonst die Vokabular-Funktion und den Art-CHECK auf ihren Stand zurück (ohne
+     * die späteren Arten, AP-12 IP-4) — und die übrigen Tests dieser Klasse sähen je nach Reihenfolge ein altes Vokabular.
+     */
     @Test
     void dieMigrationLaeuftAuchEinZweitesMal() throws Exception {
         Map<String, String> vorher = Bestandsschutz.fingerabdruck(root, List.of());
         String sql = Files.readString(Path.of("src", "main", "resources", "db", "migration",
                 "V" + DIESE + "__uems_bilanz_neu_berechnet.sql"))
                 .replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER);
-        root.execute(sql);
-        assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
+        new TransactionTemplate(new DataSourceTransactionManager(root.getDataSource())).executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            root.execute(sql);
+            assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of()))).isEmpty();
+        });
     }
 
     // ================================================================== Hilfen

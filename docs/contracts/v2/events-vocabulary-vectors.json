@@ -332,6 +332,58 @@
         "grund_pflicht": true
       }
     ],
+    "anstoss_art": [
+      {
+        "code": "korrektur_freigegeben",
+        "name": "Korrektur freigegeben"
+      },
+      {
+        "code": "korrektur_zurueckgenommen",
+        "name": "Korrektur zurückgenommen"
+      },
+      {
+        "code": "ersatzwert_wirksam",
+        "name": "Ersatzwert wirksam"
+      },
+      {
+        "code": "ersatzwert_zurueckgenommen",
+        "name": "Ersatzwert zurückgenommen"
+      },
+      {
+        "code": "bezugsgroesse_fassung",
+        "name": "Wert einer Bezugsgröße berichtigt"
+      },
+      {
+        "code": "kennzahl_fassung_rueckwirkend",
+        "name": "Berechnung einer Kennzahl rückwirkend geändert"
+      },
+      {
+        "code": "zuordnung_rueckwirkend",
+        "name": "Zuordnung rückwirkend geändert"
+      },
+      {
+        "code": "anlage_umzug_rueckwirkend",
+        "name": "Anlage rückwirkend umgezogen"
+      },
+      {
+        "code": "flaeche_rueckwirkend",
+        "name": "Fläche rückwirkend geändert"
+      },
+      {
+        "code": "verteilung_rueckwirkend",
+        "name": "Verteilung rückwirkend geändert"
+      }
+    ],
+    "bericht_format": [
+      {
+        "code": "pdf",
+        "name": "PDF"
+      },
+      {
+        "code": "csv",
+        "name": "CSV"
+      }
+    ],
     "fehlerklasse_datei": "./data-source-vectors.json",
     "felder": {
       "ereignis_id": {
@@ -625,6 +677,38 @@
       "ausloeser": {
         "typ": "kennung",
         "beschreibung": "Was die Neuberechnung auslöste: die Korrektur K-<Jahr>-<lfd. Nr.> oder der Ersatzwert EW-<Jahr>-<lfd. Nr.> (AP-10 IP-11)."
+      },
+      "bericht": {
+        "typ": "kennung",
+        "beschreibung": "Der Bericht: seine Kennung BR-<Jahr>-<lfd. Nr.> (AP-12 bericht.md §1). Bezug der Berichts-Ereignisse."
+      },
+      "nr": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Nummer des Berichtsstands (Nr. 1, 2, …) — beim Anstoß der Stand, der ihn bekommt (AP-12 IP-4)."
+      },
+      "datenstand": {
+        "typ": "zeit",
+        "beschreibung": "Der Datenstand eines Abzugs: der Zeitpunkt seiner Bildung (AP-12 D1) — nie nach dem Zeitpunkt der Meldung."
+      },
+      "pruefsumme": {
+        "typ": "kennung",
+        "beschreibung": "Die Prüfsumme des freigegebenen Abzugs: sha256: + 64 Hex-Ziffern (AP-12 A6)."
+      },
+      "anstoss_art": {
+        "typ": "wort",
+        "beschreibung": "Was den Anstoß auslöste — ein Wort von `anstoss_art` (Zeile für Zeile bericht-vectors.json → vokabulare.anstoss_art)."
+      },
+      "anlass_kennung": {
+        "typ": "kennung",
+        "beschreibung": "Der Anlass eines Anstoßes oder einer Neubildung: K-…, EW-…, BK-… oder die Kennung einer Strukturänderung (AP-12 B4)."
+      },
+      "anlass_fassung": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Fassung des Anlasses, wo er eine hat (AP-12 B7: idempotent über Stand, Art, Anlass und Fassung)."
+      },
+      "format": {
+        "typ": "wort",
+        "beschreibung": "Die abgerufene Ausgabe eines Berichtsstands — ein Wort von `bericht_format` (AP-12 DA5)."
       }
     },
     "arten": [
@@ -1876,6 +1960,161 @@
         "bestand": false,
         "nie_geloescht": true,
         "herkunft": "AP-10 §5 (messreihe_ereignis + Art bilanz_neu_berechnet, Urheber cloud), §8 IP-11; Anschluss an die Korrektur-Kaskade AP-08 IP-17"
+      },
+      {
+        "art": "bericht_freigegeben",
+        "name": "Bericht freigegeben",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "datenstand",
+          "pruefsumme"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Berichtsstand Nr. {nr} von {bericht} freigegeben (Datenstand {datenstand})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Person mit Recht gibt den Entwurf frei, den sie gesehen hat (bericht.md F2): `nr` ist die Nummer des neuen Stands, `datenstand` der Datenstand des Abzugs, `pruefsumme` seine Prüfsumme (A6). Der Datenstand liegt nie nach dem Zeitpunkt (D3).",
+          "Nur kunde: freigegeben hat ein Mensch. Eine Wiederholung derselben Freigabe (Bericht, Datenstand) schreibt nichts (F5)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_revision_angestossen",
+        "name": "Revision angestoßen",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "anstoss_art",
+          "anlass_kennung"
+        ],
+        "felder": [
+          "anlass_fassung"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Revision nötig für Berichtsstand Nr. {nr} von {bericht}: {anstoss_art} ({anlass_kennung})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Änderung trifft einen GÜLTIGEN freigegebenen Berichtsstand (bericht.md B1): der Stand bleibt byte-gleich und bekommt einen Anstoß (Tabelle bericht_revision_anstoss). `nr` ist der Stand, `anstoss_art` was ihn auslöste, `anlass_kennung` und `anlass_fassung` der Anlass.",
+          "Nur cloud: erkannt hat das System. Idempotent über Stand, Art, Anlass und Fassung (B7); ein ersetzter Stand bekommt keinen."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_entwurf_neu_gebildet",
+        "name": "Entwurf neu gebildet",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "datenstand"
+        ],
+        "felder": [
+          "anlass_kennung"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Entwurf von {bericht} neu gebildet (Datenstand {datenstand})"
+        },
+        "zusaetze": {
+          "anlass_kennung": " nach {anlass_kennung}"
+        },
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Pfad 1 (Korrektur-Kaskade) oder Pfad 2 (Strukturänderungs-Läufer) hat den Entwurf eines Berichts neu gebildet (bericht.md EW1); `datenstand` ist der neue Datenstand, nie nach dem Zeitpunkt.",
+          "Nur cloud. Bildet ein Abruf den Entwurf neu, weil er nicht mehr aktuell ist (D4), wird nichts gemeldet (B6)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_abgerufen",
+        "name": "Bericht abgerufen",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "format"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Berichtsstand Nr. {nr} von {bericht} als {format} abgerufen"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Person ruft eine Ausgabe eines Berichtsstands ab — PDF oder CSV, nie eines Entwurfs (bericht.md EW4, DA5). Jeder Abruf ist eine Meldung.",
+          "Person und Teilansicht stehen in der Tabelle bericht_abruf; die Meldung nennt Stand und Ausgabe."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
       }
     ]
   },
@@ -1978,7 +2217,7 @@
       "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-7, der Freigabe eines Berichtsentwurfs",
       "gelesen_von": "AP-12 IP-13 — der Verlauf der Berichtsstände auf der Berichtsseite",
       "regel": "Eine Person mit Recht gibt den Entwurf frei, den sie gesehen hat: Berichtsstand Nr. n mit Datenstand, Freigabe-Zeitpunkt und Prüfsumme (bericht.md F2). Zeitform Zeitpunkt; Bezug der Bericht (BR-…) mit der Nummer des Stands. Eine Wiederholung derselben Freigabe (Bericht, Datenstand) schreibt nichts (F5).",
-      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_freigegeben` mit Pflicht nr, datenstand, pruefsumme; es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
     },
     {
       "art": "bericht_revision_angestossen",
@@ -1989,7 +2228,7 @@
       "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 (Kaskaden-Naht, Pfad 1) und IP-9 (Strukturänderungs-Läufer, Pfad 2)",
       "gelesen_von": "AP-12 IP-13/IP-14 — der Vermerk „Revision nötig — …“",
       "regel": "Eine Änderung trifft einen GÜLTIGEN freigegebenen Berichtsstand (Zeitraum × Quellenverzeichnis, bericht.md B1): der Stand bleibt byte-gleich und bekommt einen Anstoß mit Art (`anstoss_art`) und Anlass. Idempotent über Stand, Art, Anlass und Fassung (B7); ein ersetzter Stand bekommt keinen.",
-      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_revision_angestossen` mit Pflicht nr, anstoss_art, anlass_kennung (optional anlass_fassung); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
     },
     {
       "art": "bericht_entwurf_neu_gebildet",
@@ -2000,7 +2239,7 @@
       "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 und IP-9",
       "gelesen_von": "AP-12 IP-13 — der Datenstand des Entwurfs",
       "regel": "Pfad 1 oder Pfad 2 hat den Entwurf eines Berichts aus neuen Versionen neu gebildet (neuer Datenstand, bericht.md EW1). Bildet ein Abruf ihn neu, weil er nicht mehr aktuell ist (D4), wird nichts gemeldet (B6).",
-      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_entwurf_neu_gebildet` mit Pflicht datenstand (optional anlass_kennung); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
     },
     {
       "art": "bericht_abgerufen",
@@ -2011,7 +2250,7 @@
       "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-10/IP-11 (CSV und PDF)",
       "gelesen_von": "AP-12 — „wer hat welchen Stand gesehen“ (bericht.md DA5)",
       "regel": "Eine Person ruft PDF oder CSV eines Berichtsstands ab — nie eines Entwurfs (EW4): Stand, Format, Person, Zeitpunkt und Teilansicht. Jeder Abruf ist eine Meldung.",
-      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-12 IP-1. Die Migration der Berichts-Tabellen (AP-12 IP-4, Version nach dem höchsten ausgelieferten Stand) trägt die Art in `vokabular.arten` und die Prüfung ein."
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_abgerufen` mit Pflicht nr, format; es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
     }
   ],
   "cases": [
@@ -5197,6 +5436,237 @@
         "schema": false,
         "urteil": "verworfen",
         "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr1-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B1/B5: Ines gibt am 10.11.2026 um 09:02 den Oktober-Bericht frei — Datenstand 08:55, Prüfsumme des Abzugs Nr. 1.",
+      "annahme": "Keine über die Referenz hinaus: BR-2026-0001 Nr. 1, Datenstand 10.11.2026 08:55, Freigabe 09:02 und die Prüfsumme von Abzug Nr. 1 sind B1/B5 (bericht-vectors.json, Referenzdatei 1.4).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c0",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T07:55:00Z",
+          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Berichtsstand Nr. 1 von BR-2026-0001 freigegeben (Datenstand 10.11.2026 08:55)"
+        ]
+      }
+    },
+    {
+      "name": "bericht-freigabe-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "Freigegeben hat ein Mensch (F2); das System meldet nie eine Freigabe.",
+      "annahme": "Wie bericht-br-2026-0001-nr1-freigegeben; erfunden ist nur der Urheber cloud.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c1",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T07:55:00Z",
+          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-freigabe-datenstand-nach-dem-zeitpunkt-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "D3: die Freigabe liegt nie vor dem Datenstand — ein Datenstand nach dem Zeitpunkt der Meldung widerspricht sich.",
+      "annahme": "Wie bericht-br-2026-0001-nr1-freigegeben; erfunden ist nur der Datenstand 09:10.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c2",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T08:10:00Z",
+          "pruefsumme": "sha256:b79d0fb859e2a84a70c37da5e7e06545b3b4c6c3767a98dec6b67fcba2541f7d"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr1-revision-nach-k-2026-0007",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B1/B2: die Freigabe von K-2026-0007 am 12.11.2026 trifft Nr. 1 — der Stand bleibt byte-gleich und bekommt den Anstoß.",
+      "annahme": "Fassung 2 = die Freigabe-Fassung von K-2026-0007 (Fassung 1 ist der Vorschlag, AP-08 E14); Zeitpunkt = Freigabe der Korrektur.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001d0",
+          "art": "bericht_revision_angestossen",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "anstoss_art": "korrektur_freigegeben",
+          "anlass_kennung": "K-2026-0007",
+          "anlass_fassung": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Revision nötig für Berichtsstand Nr. 1 von BR-2026-0001: Korrektur freigegeben (K-2026-0007)"
+        ]
+      }
+    },
+    {
+      "name": "bericht-anstoss-umbenennung-ist-kein-wort",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B6: eine Umbenennung ist kein Anstoß — `umbenennung` ist ein Wort von `kein_anstoss`, nicht von `anstoss_art`.",
+      "annahme": "Wie der Anstoß nach K-2026-0007; erfunden sind die Art umbenennung und der Anlass MS-12 (B10: MS-12 wird umbenannt).",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001d1",
+          "art": "bericht_revision_angestossen",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "anstoss_art": "umbenennung",
+          "anlass_kennung": "MS-12",
+          "anlass_fassung": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-entwurf-neu-nach-k-2026-0007",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B2: dieselbe Kaskade bildet den Entwurf in derselben Transaktion neu — neuer Datenstand 12.11.2026 10:05:33.",
+      "annahme": "Zeitpunkt und Datenstand = Freigabe von K-2026-0007 (12.11.2026 10:05:33, Referenzdatei 1.4); dass die Kaskade in derselben Sekunde bildet, ist angenommen.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001f0",
+          "art": "bericht_entwurf_neu_gebildet",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "datenstand": "2026-11-12T09:05:33Z",
+          "anlass_kennung": "K-2026-0007"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Entwurf von BR-2026-0001 neu gebildet (Datenstand 12.11.2026 10:05:33) nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr2-als-csv-abgerufen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B14: Jonas ruft am 20.11.2026 um 17:45 den CSV des Oktober-Berichts ab — eine Meldung je Abruf.",
+      "annahme": "Der abgerufene Stand ist Nr. 2 (am 20.11.2026 der gültige, seit 16.11.2026).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e0",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 2,
+          "format": "csv"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Berichtsstand Nr. 2 von BR-2026-0001 als CSV abgerufen"
+        ]
+      }
+    },
+    {
+      "name": "bericht-abruf-xlsx-ist-keine-ausgabe",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "DA5: abgerufen werden PDF und CSV eines Stands — ein anderes Format ist kein Wort.",
+      "annahme": "Wie bericht-br-2026-0001-nr2-als-csv-abgerufen; erfunden ist nur das Format xlsx.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e1",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 2,
+          "format": "xlsx"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-abruf-ohne-berichts-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "Bezug ist ein Bericht BR-<Jahr>-<Nr.> — eine Korrektur-Kennung ist keiner.",
+      "annahme": "Wie bericht-br-2026-0001-nr2-als-csv-abgerufen; erfunden ist nur die Korrektur-Kennung als Bezug.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e2",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "K-2026-0007",
+          "nr": 2,
+          "format": "csv"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
         "saetze": []
       }
     }

@@ -5,7 +5,7 @@ Stand 11.09.2026 · Umschlag 2.1 · `events.raw` 1.0 · Vokabular 1.0 · Bezug: 
 beide Pfade — nie gelöscht“), dazu AP-04 E2, AP-05 E6, AP-06 E5/E7/E9 und der
 [Herkunftsvertrag](./messwert-herkunft.md).
 
-Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 28 Arten),
+Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 32 Arten),
 **wer sie melden darf**, **worauf sie sich beziehen**, **wie ihre Zeit zu lesen ist**, **wie
 eine VoltPilot-Box sie an die Cloud schickt** und **in welcher Form jedes Ereignis — von der
 Box oder von der Cloud selbst — auf Redpanda liegt**, bevor es in die nie gelöschte
@@ -149,6 +149,10 @@ Felder, die eine Fortschreibung setzen darf.
 | `correction` | Korrektur | cloud · kunde | — | [von, bis) · Messzeit | GENAU EINER: komponente, messkanal (+ messstelle) ODER bezugsgroesse (mit `fassung_alt`, `fassung_neu`) | `korrektur`, `korrektur_art`, `status` | — |
 | `verteilung_geaendert` | Verteilung geändert | kunde | — | Zeitpunkt · Messzeit | messstelle | `eingetragen_am` | — |
 | `bilanz_neu_berechnet` | Bilanz neu berechnet | cloud | — | [von, bis) · Messzeit | messstelle | `ausloeser` | — |
+| `bericht_freigegeben` | Bericht freigegeben | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `datenstand`, `pruefsumme` | — |
+| `bericht_revision_angestossen` | Revision angestoßen | cloud | — | Zeitpunkt · Messzeit | bericht | `nr`, `anstoss_art`, `anlass_kennung` | — |
+| `bericht_entwurf_neu_gebildet` | Entwurf neu gebildet | cloud | — | Zeitpunkt · Messzeit | bericht | `datenstand` | — |
+| `bericht_abgerufen` | Bericht abgerufen | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `format` | — |
 
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
@@ -248,6 +252,17 @@ Kostenstellen verteilt ist. Nur `cloud` (gerechnet hat das System; die Entscheid
 Kennung ist abgeleitet, eine Wiederholung schreibt nichts. Gelesen werden die Werte über
 `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (Migration `V20260914140000__uems_bilanz_neu_berechnet.sql`).
 
+**Berichte (AP-12 IP-4, additiv).** `bericht_freigegeben`, `bericht_revision_angestossen`,
+`bericht_entwurf_neu_gebildet` und `bericht_abgerufen` sind das 29. bis 32. Wort — eingelöst aus dem Block
+`reserviert` (unten). Alle vier: Zeitpunkt auf der Messzeit-Achse, Bezug NUR der Bericht (`bericht` =
+`BR-<Jahr>-<Nr.>`, sechster Schlüssel von `kennungen`). Freigabe (Pflicht `nr`, `datenstand`, `pruefsumme` =
+`sha256:` + 64 Hex-Ziffern) und Abruf (Pflicht `nr`, `format` = ein Wort von `bericht_format`: `pdf` · `csv`)
+meldet eine Person (`kunde`); den Anstoß (Pflicht `nr`, `anstoss_art` = ein Wort von `anstoss_art`, Zeile für
+Zeile `bericht-vectors.json`, `anlass_kennung`; optional `anlass_fassung`) und die Neubildung des Entwurfs
+(Pflicht `datenstand`, optional `anlass_kennung`) erkennt das System (`cloud`). Der Datenstand liegt nie nach dem
+Zeitpunkt. Person und Teilansicht eines Abrufs stehen in der Tabelle `bericht_abruf`, nicht in der Meldung.
+Geschrieben werden sie erst von AP-12 IP-7 bis IP-11 (Migration `V20260915050100__uems_bericht_ereignisse.sql`).
+
 **Reserviert (AP-11 IP-1, additiv — KEIN Wort des Vokabulars).** Der Block `reserviert` der
 Vektor-Datei nennt, was spätere Pakete anlegen: `correction` mit Bezug `bezugsgroesse` (AP-09 IP-7 —
 eine wirksame Fassung ≥ 2 oder die Rücknahme eines Bezugsgrößen-Werts; gelesen vom Nenner-Auslöser der
@@ -265,8 +280,8 @@ prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennz
 (Urheber `kunde` — eine Person gibt einen Entwurf frei, Berichtsstand Nr. n), `bericht_revision_angestossen`
 (`cloud` — ein gültiger Stand bekommt einen Anstoß, bleibt aber byte-gleich), `bericht_entwurf_neu_gebildet`
 (`cloud` — Pfad 1 oder 2 hat den Entwurf neu gebildet; ein Abruf, der neu bildet, meldet nichts) und
-`bericht_abgerufen` (`kunde` — PDF oder CSV eines Stands, nie eines Entwurfs). Angelegt werden sie mit den
-Berichts-Tabellen (AP-12 IP-4); bis dahin lehnt die Prüfung sie ab. `BerichtVectorsTest` hält die Liste gleich
+`bericht_abgerufen` (`kunde` — PDF oder CSV eines Stands, nie eines Entwurfs). Seit AP-12 IP-4 sind sie
+angelegt (siehe „Berichte“); die Reservierung bleibt als Herkunft stehen. `BerichtVectorsTest` hält die Liste gleich
 `BerichtRegeln.EREIGNISSE_RESERVIERT`; `KennzahlVectorsTest` prüft weiter nur die Reservierungen der Kennzahl.
 Vertrag des Berichts: [`bericht.md`](./bericht.md).
 

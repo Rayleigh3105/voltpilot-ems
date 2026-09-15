@@ -105,6 +105,22 @@
           }
         },
         "korrektur_status": { "$ref": "#/$defs/statusliste" },
+        "anstoss_art": {
+          "type": "array", "minItems": 1,
+          "description": "AP-12 IP-4 (additiv): was einen Anstoß an einen Berichtsstand auslöst — Zeile für Zeile bericht-vectors.json → vokabulare.anstoss_art, mit dem Namen in Kundensprache.",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "name"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "name": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "bericht_format": {
+          "type": "array", "minItems": 1,
+          "description": "AP-12 IP-4 (additiv): die Ausgaben eines Berichtsstands, deren Abruf bericht_abgerufen meldet (DA5).",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "name"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "name": { "type": "string", "minLength": 1 } }
+          }
+        },
         "fehlerklasse_datei": { "type": "string", "const": "./data-source-vectors.json" },
         "felder": {
           "type": "object",
@@ -192,7 +208,7 @@
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
     },
     "feldliste": { "type": "array", "items": { "$ref": "#/$defs/code" } },
-    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse"] } },
+    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse", "bericht"] } },
     "art": {
       "type": "object",
       "additionalProperties": false,

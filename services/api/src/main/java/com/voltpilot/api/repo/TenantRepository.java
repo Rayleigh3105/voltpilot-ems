@@ -251,6 +251,18 @@ public class TenantRepository {
                 for (String table : new String[] {"zugriff_protokoll", "zugriff", "benutzer"}) {
                     deleteByTenant(con, table, tenantId);
                 }
+                // The Berichte (V20260915050000) go before the Standort or Unternehmen their Geltung
+                // names. A Berichtsstand, the sources of a Stand, the Anstoesse, the Abrufe and the
+                // protocol are append-only for EVERY role - not even the admin role holds DELETE - so one
+                // narrow SECURITY DEFINER function, executable only by it, removes them. Then the draft
+                // before its Bericht; the Kennung counter holds only the tenant (RESTRICT).
+                try (var ps = con.prepareStatement("SELECT uems_berichte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
+                for (String table : new String[] {"bericht_entwurf", "bericht", "bericht_kennung_seq"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
                 // The Kennzahlen (V20260915003000) go before everything they read or apply to
                 // (Bezugsgroessen, Messstellen, Orte, Prozesse, Kostenstellen, Standort, Unternehmen).
                 // Their values are append-only for EVERY role - not even the admin role holds DELETE -
