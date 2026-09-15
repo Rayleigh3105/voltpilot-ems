@@ -68,12 +68,14 @@ den Gesamtverbrauch trifft, weil der Rest still verteilt wurde, ist eine Lüge m
   ⚠ Wer die Warnung anfasst, fährt `dieZahlenSindZeichengleich`: jede Antwort bis `doppelzaehlung` byte-gleich zum
   Stand vor der Warnung. Anteile, Kreis, Abzug: Falle 13 in `docs/contracts/v2/verteilung.md`.
 - **Hauptzähler stehen unter „nicht verteilt“:** die Verteilung kennt keine Stellung; MS-01/MS-10/MS-16 („verteilt
-  über Unterzähler“) haben keine Zeile und stehen darum dort. Ob ein Hauptzähler mit Unterzählern ausgenommen wird,
-  entscheidet die Fläche (IP-15) oder ein Konzept-Nachtrag.
+  über Unterzähler“) haben keine Zeile und stehen darum dort. Die Fläche (AP-13 IP-9) nimmt sie NICHT aus: sie zeigt den
+  Block, wie die Route ihn liefert (O9 Schritt 1) — eine Ausnahme wäre eine Regel und gehört in ein Konzept.
 - **Rückwirkend geänderte Verteilung erzeugt keine Version:** die Sicht rechnet sofort mit der neuen Fassung; die
   alte bleibt nur als Zeile (`aufgehoben_am`/`gueltig_bis`) und als `verteilung_geaendert` lesbar, nicht als Zahl
   (F13 „korrigiert (Version 2, rückwirkend 5 Tage)“ ist nicht gebaut).
 
 ## Nicht gebaut
 
-Portal-Fläche und `api.ts` (IP-15), Rechte-Durchsetzung (AP-03).
+Rechte-Durchsetzung (AP-03). Die Portal-Fläche steht seit AP-13 IP-9 (= AP-10 IP-15, Listen-Teil): Reiter „Kostenstellen“
+der Welt Messstellen am Unternehmen, Client `api.kostenstelleEnergie` mit Zwischenspeicher — `uems-kostenstellen-flaeche.md`.
+Der Schreib-Teil (anlegen, umbenennen, beenden, Verteilen-Dialog) bleibt offen.

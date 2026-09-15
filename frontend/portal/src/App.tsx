@@ -1335,6 +1335,9 @@ function UnifiedPortal() {
               key={messstellenEbene.art === 'standort' ? messstellenEbene.id : 'unternehmen'}
               ebene={messstellenEbene}
               bereichDa={messstellenDa}
+              // AP-13 IP-9: Kostenstellen und Prozesse gehören dem Unternehmen — ihre Reiter nur in dessen Welt Messstellen
+              // (auch, wenn der eine Standort oben steht), nie am Standort unter dem Unternehmen, nie in einer Teilansicht.
+              organisation={page === 'portfolio-messstellen' && !(ebene.art === 'standort' && ebene.teilansicht)}
               zone={
                 messstellenEbene.art === 'standort'
                   ? orteQuelle?.liste.standorte.find((s) => s.id === messstellenEbene.id)?.zeitzone

@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { api, type MessstellenRegister } from '../api';
+import { zeitraumAus } from '../anlageEnergiebilanz';
+import { api, type Kostenstelle, type KostenstelleEnergiePeriode, type MessstellenRegister, type Prozess } from '../api';
+import '../components/BereichTabs.css';
 import { MessstelleDialog } from '../components/MessstelleDialog';
 import { RowMenu } from '../components/RowMenu';
 import { StandAm } from '../components/StandAm';
 import { VpPicker } from '../components/VpPicker';
 import { UEMS_WERTE } from '../glossar';
+import { heuteIn } from '../kennzahlKarte';
+import { REITER_LABEL, REITER_WORT, hervorAus, reiterAus, reiterDa, reiterHash, type MessstellenReiter } from '../kostenstellenUebersicht';
 import {
   ERNEUT,
   FILTER,
@@ -33,9 +37,11 @@ import {
   type ZeileWoerter,
 } from '../messstellen';
 import { DIALOG_TITEL } from '../messstelleDialog';
+import { replaceCurrentNavigation } from '../navigationBlocker';
 import { verschiebe } from '../picker/datum';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
+import { KostenstellenReiter, ProzesseReiter } from './KostenstellenSection';
 import { MessstelleSeite } from './MessstelleSeite';
 import './MessstellenPage.css';
 
@@ -61,6 +67,7 @@ export function MessstellenPage({
   onOeffnen,
   onWerteZeitraum,
   onListe,
+  organisation = false,
   ...register
 }: RegisterProps & {
   /** Die Messstelle der Adresse (AP-04 IP-8) — dann steht ihre Seite statt des Registers. */
@@ -71,6 +78,12 @@ export function MessstellenPage({
   onWerteZeitraum?: (periode: string) => void;
   /** Der Weg zurück ins Register der Ebene. */
   onListe?: () => void;
+  /**
+   * AP-13 IP-9 (E8 = A): die Reiter „Kostenstellen“ und „Prozesse“ — nur in der Welt Messstellen am Unternehmen (der Wirt
+   * entscheidet), und erst, wenn es eine Kostenstelle oder einen Prozess gibt. Ohne diese Angabe fragt die Fläche die
+   * Kataloge gar nicht.
+   */
+  organisation?: boolean;
 }) {
   if (messstelleId && onListe) {
     return (
@@ -84,7 +97,111 @@ export function MessstellenPage({
       />
     );
   }
+  if (organisation) return <MessstellenWelt {...register} onOeffnen={onOeffnen} />;
   return <RegisterFlaeche {...register} onOeffnen={onOeffnen} />;
+}
+
+type Organisation = { kostenstellen: Kostenstelle[]; prozesse: Prozess[] };
+
+/**
+ * Die Welt Messstellen am Unternehmen mit ihren Reitern Liste · Kostenstellen · Prozesse (AP-13 IP-9). Reiter und
+ * Zeitraum stehen in der Adresse (`#/portfolio/messstellen?reiter=kostenstellen&periode=monat&am=2026-10-01`) und werden
+ * ersetzt, nicht gestapelt — wie die Zeit-Leiste der Energiebilanz. Ohne Kostenstelle und ohne Prozess ist die Fläche das
+ * Register von heute, ohne Leiste.
+ */
+function MessstellenWelt(register: RegisterProps) {
+  const [katalog, setKatalog] = useState<Organisation | null>(null);
+  const [reiter, setReiter] = useState<MessstellenReiter>(() => reiterAus(window.location.hash));
+  const [heute] = useState(() => heuteIn(VORGABE_ZEITZONE, Date.now()));
+  const [wahl, setWahl] = useState(() => zeitraumAus(window.location.hash, heute));
+  const [hervor] = useState(() => hervorAus(window.location.hash));
+
+  useEffect(() => {
+    let aktiv = true;
+    // Ein Katalog, der nicht antwortet, bringt keinen Reiter — das Register bleibt, wie es war.
+    Promise.all([
+      api.kostenstellen().then(
+        (k) => k.kostenstellen,
+        () => [] as Kostenstelle[],
+      ),
+      api.prozesse().then(
+        (p) => p.prozesse,
+        () => [] as Prozess[],
+      ),
+    ]).then(([kostenstellen, prozesse]) => {
+      if (aktiv) setKatalog({ kostenstellen, prozesse });
+    });
+    return () => {
+      aktiv = false;
+    };
+  }, []);
+
+  const da = katalog ? reiterDa(katalog.kostenstellen.length, katalog.prozesse.length) : [];
+  // Solange die Kataloge unterwegs sind, gilt der Reiter der Adresse; danach nur einer, den es gibt.
+  const offen: MessstellenReiter = katalog === null || da.includes(reiter) ? reiter : 'liste';
+
+  const waehleReiter = (r: MessstellenReiter) => {
+    setReiter(r);
+    replaceCurrentNavigation(reiterHash(r, wahl));
+  };
+  const waehleZeitraum = (periode: KostenstelleEnergiePeriode, am: string) => {
+    setWahl({ periode, am });
+    replaceCurrentNavigation(reiterHash(offen, { periode, am }));
+  };
+
+  const leiste = da.length > 0 ? <ReiterLeiste reiter={da} aktiv={offen} onWahl={waehleReiter} /> : null;
+  if (offen === 'liste') return <RegisterFlaeche {...register} leiste={leiste} />;
+  return (
+    <div className="vp-ms" data-testid="messstellen-organisation">
+      <header className="vp-ms-kopf">
+        <div className="vp-ms-kopf-text">
+          <h1>{TITEL}</h1>
+        </div>
+      </header>
+      {leiste}
+      {katalog === null ? (
+        <p className="vp-ms-laedt" role="status">
+          {LADEN}
+        </p>
+      ) : offen === 'kostenstellen' ? (
+        <KostenstellenReiter katalog={katalog.kostenstellen} hervor={hervor} wahl={wahl} heute={heute} onWahl={waehleZeitraum} />
+      ) : (
+        <ProzesseReiter katalog={katalog.prozesse} wahl={wahl} heute={heute} onWahl={waehleZeitraum} />
+      )}
+    </div>
+  );
+}
+
+/** Die Reiter der Welt — dieselbe Leiste wie die Bereichs-Reiter (`BereichTabs.css`); es gibt sie erst ab zwei. */
+function ReiterLeiste({
+  reiter,
+  aktiv,
+  onWahl,
+}: {
+  reiter: MessstellenReiter[];
+  aktiv: MessstellenReiter;
+  onWahl: (r: MessstellenReiter) => void;
+}) {
+  return (
+    <div className="vp-bereich-tabs vp-ms-reiter" role="tablist" aria-label={REITER_LABEL}>
+      {reiter.map((r) => {
+        const ist = r === aktiv;
+        return (
+          <button
+            key={r}
+            type="button"
+            role="tab"
+            aria-selected={ist}
+            className={`vp-bereich-tab${ist ? ' active' : ''}`}
+            onClick={() => onWahl(r)}
+          >
+            {REITER_WORT[r]}
+            {ist && <span className="vp-tab-strich" aria-hidden="true" />}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 interface RegisterProps {
@@ -107,7 +224,15 @@ interface RegisterProps {
 /** Die Beschriftung der Spalte mit dem Zeilenmenü — nur für Vorleser, die Spalte hat keinen sichtbaren Kopf. */
 const AKTIONEN = 'Aktionen';
 
-function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onUebersicht, onOeffnen, onWerte }: RegisterProps) {
+function RegisterFlaeche({
+  ebene,
+  bereichDa = null,
+  zone = VORGABE_ZEITZONE,
+  onUebersicht,
+  onOeffnen,
+  onWerte,
+  leiste = null,
+}: RegisterProps & { /** Die Reiter der Welt (AP-13 IP-9) — unter dem Kopf; ohne sie steht die Fläche wie zuvor. */ leiste?: ReactNode }) {
   const isPhone = useIsPhone();
   const [stichtag, setStichtag] = useState<string | null>(null);
   const [heute, setHeute] = useState<string | null>(null);
@@ -176,6 +301,7 @@ function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onU
           <Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button>
         )}
       </header>
+      {leiste}
       {fehler ? (
         <div className="vp-ms-leer" role="alert">
           <p>{LADEFEHLER}</p>

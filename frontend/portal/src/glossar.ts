@@ -145,6 +145,12 @@ export const UEMS_PROZESS = 'Prozess';
 /** Die Verrechnungseinheit des Kunden (Nummer + Name). */
 export const UEMS_KOSTENSTELLE = 'Kostenstelle';
 
+/**
+ * Die Energie eines Prozesses als EINE Zahl: eine berechnete Messstelle, die dem Prozess zugeordnet ist
+ * (AP-10 §5.7, Ahrenberg MS-20 „Prozess Spritzguss gesamt“). Das Portal addiert keine Messstellen eines Prozesses.
+ */
+export const UEMS_PROZESS_SUMME = 'Prozess-Summe';
+
 /** Die nicht-energetische Größe, auf die Energie bezogen wird (AP-09). */
 export const UEMS_BEZUGSGROESSE = 'Bezugsgröße';
 
