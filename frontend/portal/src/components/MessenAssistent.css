@@ -162,3 +162,214 @@
   font-size: 0.8125rem;
   color: var(--vp-text-muted, #64748b);
 }
+
+/* ── Schritt 3 · Messstellen (IP-9b): je Vorschlag eine Karte, gewählt mit Name und Ort. ── */
+
+.vp-ma-auswahl {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ma-gruppe {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ma-gruppe-titel {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-vorschlaege {
+  display: grid;
+  gap: var(--vp-space-3, 12px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-ma-vorschlag {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  min-width: 0;
+}
+
+.vp-ma-vorschlag[data-gewaehlt='nein'] {
+  background: var(--vp-surface-muted, #f8fafc);
+}
+
+.vp-ma-vorschlag-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ma-wahl {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.vp-ma-wahl input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--vp-brand, #2563eb);
+}
+
+.vp-ma-kennzeichen {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-ma-auto {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-surface-muted, #f1f5f9);
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.75rem;
+}
+
+.vp-ma-stellung {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-vorschlag-name,
+.vp-ma-quelle,
+.vp-ma-vorschlag-hinweis {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-felder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-ma-regel {
+  margin: 0;
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-sm, 6px);
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-ausgelassen {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #64748b);
+  min-width: 0;
+}
+
+.vp-ma-ausgelassen summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.vp-ma-details {
+  display: grid;
+  gap: var(--vp-space-1, 4px);
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+/* ── Schritt 4 · Prüfen: Zeile = Marke + Fakten; die Farbe ist nie der einzige Träger. ── */
+
+.vp-ma-pruefliste {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-ma-pruefzeile {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--vp-space-3, 12px);
+  align-items: start;
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-ma-marke {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.vp-ma-pruefzeile[data-bestanden='nein'] .vp-ma-marke {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.vp-ma-pruefzeile[data-bestanden='offen'] .vp-ma-marke {
+  background: var(--vp-surface-muted, #f1f5f9);
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-ma-pruefinhalt {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ma-prueftext {
+  font-size: 0.875rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-ma-pruefsatz {
+  font-size: 0.8125rem;
+  color: #991b1b;
+  overflow-wrap: anywhere;
+}
+
+/* ── Schritt 5 · Fertig ── */
+
+.vp-ma-fakten {
+  display: grid;
+  gap: var(--vp-space-1, 4px);
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}

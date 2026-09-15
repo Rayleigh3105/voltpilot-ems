@@ -140,7 +140,7 @@ describe('MessenAssistent — Schrittfolge', () => {
   });
 
   it('ohne gebauten Schritt 3 endet Schritt 2 mit „Später fortsetzen" — nie mit einem „Weiter" ins Leere', async () => {
-    const { onClose } = zeige({ standortId: LINDACH });
+    const { onClose } = zeige({ standortId: LINDACH, gebaut: [1, 2] });
     await schritt1();
     klick('Weiter');
     await schritt2();

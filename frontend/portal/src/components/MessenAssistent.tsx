@@ -1,8 +1,13 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
+import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
+  type Device,
   type Funktionen,
+  type MessstelleRegisterZeile,
+  type MessstelleVorschlagsliste,
+  type OrtsbaumAmStichtag,
   type Site,
   type StandortAmStichtag,
   type StandorteAmStichtag,
@@ -11,28 +16,52 @@ import {
 import { standortWahl } from '../anlageStandort';
 import {
   adresseFehlt,
+  adresseFehltSatz,
+  alleGewaehlt,
   ANDEREN_STANDORT,
   anlagenAmStandort,
+  auswahlSatz,
   browserSpeicher,
   entwurfLesen,
   entwurfSchreiben,
+  entwurfVerwerfen,
+  ERNEUT_PRUEFEN,
+  FERTIG,
+  FERTIG_AUSWERTUNG,
+  FERTIG_WEITERE,
+  fertigSatz,
   GEBAUTE_SCHRITTE,
   GERAET_ANBINDEN,
   GERAET_ANBINDEN_SATZ,
   GERAET_VERBINDEN,
   GERAET_VERBINDEN_SATZ,
+  hauptzaehlerFehlt,
   istBereitsAngelegt,
+  istVorschlagGeaendert,
+  KENNZEICHEN_AUTOMATISCH,
   keineAnlageSatz,
   keineAnlageWeg,
   komponentenSatz,
   MESSEN_SCHRITTE,
   MESSEN_TITEL,
   MESSEN_TITEL_KURZ,
+  messenEingerichtet,
+  messenPruefliste,
+  MESSSTELLEN_ANSEHEN,
   mussEinrichten,
+  nameLeerSatz,
+  NICHT_VORGESCHLAGEN,
+  ortFehlerSatz,
+  ortKorrekturen,
+  ortWahlenAm,
   SCHRITT1_FRAGE,
   SCHRITT1_SATZ,
   SCHRITT2_FRAGE,
   SCHRITT2_SATZ,
+  SCHRITT3_FRAGE,
+  SCHRITT3_SATZ,
+  SCHRITT4_FRAGE,
+  SCHRITT4_SATZ,
   SPAETER_FORTSETZEN,
   SPAETER_SATZ,
   STANDORT_ANLEGEN,
@@ -40,11 +69,23 @@ import {
   STANDORT_WAEHLEN,
   standortMessenSatz,
   startSchritt,
+  stellungWort,
+  UEBERNEHMEN,
+  UEBERNEHMEN_FEHLER,
+  uebernahmeSatz,
+  uebernehmenAnfrage,
   vor,
+  VORSCHLAG_LADEFEHLER,
+  vorschlaegeJeAnlage,
+  vorschlagSchluessel,
+  ZUR_DATENQUELLE,
   zurueck,
   type EntwurfSpeicher,
   type MessenSchritt,
+  type MessenWegZiel,
 } from '../messenAssistent';
+import { ortOptionen } from '../messstelleDialog';
+import { hashForRoute, standortMessstellenRoute } from '../nav';
 import { useIsPhone } from '../useIsPhone';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
@@ -54,8 +95,13 @@ import { VpPicker } from './VpPicker';
 import './MessenAssistent.css';
 
 /**
- * Der Assistent „Messen & Auswerten" je Standort (UEMS AP-01 IP-9a, Konzept
- * §5.2) — der RAHMEN mit den Schritten 1 und 2.
+ * Der Assistent „Messen & Auswerten" je Standort (UEMS AP-01 IP-9a/IP-9b,
+ * Konzept §5.2) — der RAHMEN mit den Schritten 1 und 2 (IP-9a) und die
+ * Schritte 3 bis 5 (IP-9b): die Vorschlagsliste des Servers wird gewählt,
+ * umbenannt, verortet und über die AP-04-Routen gespeichert; die Prüfliste
+ * urteilt mit den Wörtern der Regel `messen()` und spricht in Fakten; „Fertig"
+ * löscht den Entwurf. Kein Start-Knopf — Messen wird mit der Einrichtung aktiv.
+ *
  *
  * <b>Nichts ist nachgebaut.</b> Die Schale ist der Anlege-Dialog
  * (`AnlegenDialog`: Schrittleiste am Rechner, „Schritt n von 5" plus Balken am
@@ -92,6 +138,8 @@ type Unterfluss =
 const LADEFEHLER = 'Die Standorte konnten nicht geladen werden.';
 const EINRICHTEN_FEHLER = 'Messen & Auswerten konnte nicht angelegt werden. Bitte versuchen Sie es erneut.';
 const ANLAGE_FEHLER = 'Die Anlage konnte nicht geladen werden. Bitte versuchen Sie es erneut.';
+const ORT_FEHLER = 'Der Ort konnte nicht gespeichert werden.';
+const PRUEF_LADEFEHLER = 'Die Prüfliste konnte nicht geladen werden. Bitte versuchen Sie es erneut.';
 
 export function MessenAssistent({
   standortId: vorwahl = null,
@@ -127,6 +175,22 @@ export function MessenAssistent({
   const [unterfluss, setUnterfluss] = useState<Unterfluss | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [komponenten, setKomponenten] = useState<Record<string, number | null>>({});
+  // Schritt 3: die Liste des Servers, die Wahl je Zeile (gewählt, Name, Ort) und der Ortsbaum.
+  const [vorschlag, setVorschlag] = useState<MessstelleVorschlagsliste | null>(null);
+  const [vorschlagFehler, setVorschlagFehler] = useState<string | null>(null);
+  const [vorschlagRunde, setVorschlagRunde] = useState(0);
+  const [gewaehlt, setGewaehlt] = useState<ReadonlySet<string>>(() => new Set());
+  const [namen, setNamen] = useState<Record<string, string>>({});
+  const [orte, setOrte] = useState<Record<string, string>>({});
+  const [baum, setBaum] = useState<OrtsbaumAmStichtag | null>(null);
+  /** Ort-Korrekturen, die nach der Übernahme scheiterten — die Messstellen stehen, nur ihr Ort nicht. */
+  const [ortFehler, setOrtFehler] = useState<string[] | null>(null);
+  const [uebernommen, setUebernommen] = useState<{ neu: number; unveraendert: number } | null>(null);
+  // Schritt 4: die Fakten der Prüfliste, frisch gelesen.
+  const [register, setRegister] = useState<MessstelleRegisterZeile[] | null>(null);
+  const [geraete, setGeraete] = useState<Device[] | null>(null);
+  const [geprueft, setGeprueft] = useState(false);
+  const [pruefRunde, setPruefRunde] = useState(0);
   const gestartet = useRef(false);
   const fehlerRef = useRef<HTMLParagraphElement | null>(null);
 
@@ -156,8 +220,11 @@ export function MessenAssistent({
   }, [runde, vorwahl, ablage, gebaut]);
 
   // Der Entwurf folgt jeder Wahl und jedem Schritt — ein Abbruch verliert nichts.
+  // „Fertig" löscht ihn: danach gibt es nichts mehr fortzusetzen.
   useEffect(() => {
-    if (schritt !== null) entwurfSchreiben(ablage, { standortId, schritt });
+    if (schritt === null) return;
+    if (schritt === 5) entwurfVerwerfen(ablage);
+    else entwurfSchreiben(ablage, { standortId, schritt });
   }, [ablage, standortId, schritt]);
 
   const st = liste?.standorte.find((s) => s.id === standortId) ?? null;
@@ -192,6 +259,64 @@ export function MessenAssistent({
       aktiv = false;
     };
   }, [schritt, anlagenKennung, runde]);
+
+  // Schritt 3: die Vorschläge des Servers und der Ortsbaum des Standorts (für Gebäude und Bereich).
+  useEffect(() => {
+    if (schritt !== 3 || !standortId) return;
+    let aktiv = true;
+    setVorschlag(null);
+    setVorschlagFehler(null);
+    setOrtFehler(null);
+    api.messstellenVorschlag(standortId).then(
+      (l) => {
+        if (!aktiv) return;
+        setVorschlag(l);
+        setGewaehlt(alleGewaehlt(l));
+        setNamen({});
+        setOrte({});
+      },
+      (e: unknown) => {
+        if (aktiv) setVorschlagFehler(e instanceof Error && e.message ? e.message : VORSCHLAG_LADEFEHLER);
+      },
+    );
+    api.standortOrte(standortId).then(
+      (b) => {
+        if (aktiv) setBaum(b);
+      },
+      () => {
+        if (aktiv) setBaum(null);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [schritt, standortId, vorschlagRunde]);
+
+  // Schritt 4: das Urteil (Funktion, Standort) und die Fakten (Register, Boxen) frisch vom Server.
+  useEffect(() => {
+    if (schritt !== 4 || !standortId) return;
+    let aktiv = true;
+    setGeprueft(false);
+    Promise.all([
+      api.funktionen().catch(() => null),
+      api.standorte().catch(() => null),
+      api.messstellenRegister({ standort: standortId }).then(
+        (r) => r.register,
+        () => null,
+      ),
+      api.listDevices().catch(() => null),
+    ]).then(([f, l, r, d]) => {
+      if (!aktiv) return;
+      if (f) setFunktionen(f);
+      if (l) setListe(l);
+      setRegister(r);
+      setGeraete(d);
+      setGeprueft(true);
+    });
+    return () => {
+      aktiv = false;
+    };
+  }, [schritt, standortId, pruefRunde, runde]);
 
   useEffect(() => {
     if (fehler) fehlerRef.current?.focus();
@@ -245,6 +370,65 @@ export function MessenAssistent({
   function zurueckAusUnterfluss() {
     setUnterfluss(null);
     setRunde((n) => n + 1);
+  }
+
+  function umschalten(schluessel: string) {
+    setFehler(null);
+    setGewaehlt((g) => {
+      const n = new Set(g);
+      if (n.has(schluessel)) n.delete(schluessel);
+      else n.add(schluessel);
+      return n;
+    });
+  }
+
+  /** Schritt 3 speichert: erst die Übernahme (eine Transaktion), dann je gewähltem Gebäude/Bereich der Ort. */
+  async function uebernehmen() {
+    if (!vorschlag || !standortId || busy) return;
+    const regel = hauptzaehlerFehlt(vorschlag, gewaehlt);
+    if (regel.size > 0) {
+      setFehler([...regel.values()][0]);
+      return;
+    }
+    const anfrage = uebernehmenAnfrage(vorschlag, gewaehlt, namen);
+    setFehler(null);
+    if (anfrage.vorschlaege.length === 0) {
+      setSchritt(4);
+      return;
+    }
+    const liste3 = vorschlag;
+    setBusy(true);
+    try {
+      const r = await api.messstellenVorschlagUebernehmen(standortId, anfrage);
+      setUebernommen((u) => ({ neu: (u?.neu ?? 0) + r.neu, unveraendert: (u?.unveraendert ?? 0) + r.unveraendert }));
+      const gescheitert: string[] = [];
+      for (const k of ortKorrekturen(liste3, anfrage, r, orte)) {
+        try {
+          await api.messstelleOrtAendern(k.messstelle, k.anfrage);
+        } catch (e) {
+          const satz = e instanceof Error && e.message ? e.message : ORT_FEHLER;
+          gescheitert.push(ortFehlerSatz(k.kennzeichen, liste3.standort_name, satz));
+        }
+      }
+      if (gescheitert.length > 0) setOrtFehler(gescheitert);
+      else setSchritt(4);
+    } catch (e) {
+      // Hat sich die Lage geändert, gilt die gezeigte Liste nicht mehr: neu laden, der Satz bleibt stehen.
+      if (istVorschlagGeaendert(e)) setVorschlagRunde((n) => n + 1);
+      setFehler(e instanceof Error && e.message ? e.message : UEBERNEHMEN_FEHLER);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Der Weg einer roten Prüfzeile: zurück in den Schritt, der sie grün macht — oder in den Standort-Dialog. */
+  function gehe(ziel: MessenWegZiel) {
+    setFehler(null);
+    if (ziel === 'adresse') {
+      if (st) setUnterfluss({ art: 'standort', standort: st });
+      return;
+    }
+    setSchritt(ziel);
   }
 
   function waehle(id: string) {
@@ -304,7 +488,7 @@ export function MessenAssistent({
         )}
         {st && adresseFehlt(st) && (
           <p className="vp-ma-hinweis">
-            <span>{`Für ${st.name} fehlt noch die Adresse.`}</span>
+            <span>{adresseFehltSatz(st.name)}</span>
             <Button variant="ghost" size="sm" onClick={() => setUnterfluss({ art: 'standort', standort: st })}>
               Adresse nachtragen
             </Button>
@@ -384,11 +568,258 @@ export function MessenAssistent({
           </>
         )}
         {fehlerZeile}
-        {!vor(2, gebaut) && <p className="vp-ma-spaeter">{SPAETER_SATZ}</p>}
+        {(!vor(2, gebaut) || anlagen.length === 0) && <p className="vp-ma-spaeter">{SPAETER_SATZ}</p>}
       </section>
     );
   }
-  // IP-9b hängt hier ein: 3 · Messstellen, 4 · Prüfen, 5 · Fertig (und in GEBAUTE_SCHRITTE).
+  if (!ladeFehler && schritt === 3) {
+    const ortOptionenHier = standortId ? ortOptionen(ortWahlenAm(liste, baum, standortId)) : [];
+    const regel = vorschlag ? hauptzaehlerFehlt(vorschlag, gewaehlt) : new Map<string, string>();
+    const gruppen = vorschlag ? vorschlaegeJeAnlage(vorschlag) : [];
+    rumpf = (
+      <section className="vp-ma-schritt" aria-labelledby={`${basis}-frage`} data-schritt="messstellen">
+        <h3 id={`${basis}-frage`} className="vp-ma-frage">
+          {SCHRITT3_FRAGE}
+        </h3>
+        {st && (
+          <p className="vp-ma-ort">
+            <span className="vp-ma-ort-wort">Standort: </span>
+            {`${st.name} (${st.kurzzeichen})`}
+          </p>
+        )}
+        {vorschlagFehler ? (
+          <>
+            <p className="vp-ma-fehler" role="alert">
+              {vorschlagFehler}
+            </p>
+            <div>
+              <Button variant="outline" onClick={() => setVorschlagRunde((n) => n + 1)}>
+                Erneut versuchen
+              </Button>
+            </div>
+          </>
+        ) : !vorschlag ? (
+          <p className="vp-ma-satz">Wird geladen …</p>
+        ) : ortFehler ? (
+          <div className="vp-ma-leer" data-testid="messen-ort-fehler">
+            {uebernommen && <p>{uebernahmeSatz(uebernommen.neu, uebernommen.unveraendert)}</p>}
+            <ul className="vp-ma-details">
+              {ortFehler.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        ) : vorschlag.vorschlaege.length === 0 ? (
+          <div className="vp-ma-leer" data-testid="messen-vorschlag-leer">
+            <p>{vorschlag.text}</p>
+            {vorschlag.leer === 'keine_komponente' && (
+              <div>
+                <Button variant="outline" size="sm" onClick={() => setSchritt(2)}>
+                  {ZUR_DATENQUELLE}
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <p className="vp-ma-satz">{SCHRITT3_SATZ}</p>
+            <p className="vp-ma-auswahl" aria-live="polite">
+              {auswahlSatz(gewaehlt.size, vorschlag.vorschlaege.length)}
+            </p>
+            {gruppen.map((g) => (
+              <div key={g.anlage} className="vp-ma-gruppe">
+                {gruppen.length > 1 && <h4 className="vp-ma-gruppe-titel">{g.name}</h4>}
+                <ul className="vp-ma-vorschlaege" aria-label={g.name ? `Vorschläge für ${g.name}` : 'Vorschläge'}>
+                  {g.vorschlaege.map((v) => {
+                    const schluessel = vorschlagSchluessel(v);
+                    const feld = `${basis}-v-${vorschlag.vorschlaege.indexOf(v)}`;
+                    const an = gewaehlt.has(schluessel);
+                    const name = namen[schluessel] ?? v.name;
+                    const satz = regel.get(schluessel);
+                    const quelle = [v.komponente_name, v.quelle.anzeigename ?? v.quelle.kanal].filter(Boolean).join(' · ');
+                    return (
+                      <li
+                        key={schluessel}
+                        className="vp-ma-vorschlag"
+                        data-vorschlag={v.kennzeichen}
+                        data-gewaehlt={an ? 'ja' : 'nein'}
+                      >
+                        <div className="vp-ma-vorschlag-kopf">
+                          <label className="vp-ma-wahl">
+                            <input
+                              type="checkbox"
+                              checked={an}
+                              onChange={() => umschalten(schluessel)}
+                              aria-describedby={satz ? `${feld}-regel` : undefined}
+                            />
+                            <span className="vp-ma-kennzeichen">{v.kennzeichen}</span>
+                            <span className="vp-sr-only">{` ${v.name} übernehmen`}</span>
+                          </label>
+                          <span className="vp-ma-auto">{KENNZEICHEN_AUTOMATISCH}</span>
+                          <span className="vp-ma-stellung">{stellungWort(v)}</span>
+                        </div>
+                        {!an && <p className="vp-ma-vorschlag-name">{v.name}</p>}
+                        {quelle && <p className="vp-ma-quelle">{quelle}</p>}
+                        {an && (
+                          <div className="vp-ma-felder">
+                            <Input
+                              id={`${feld}-name`}
+                              label="Name"
+                              value={name}
+                              autoComplete="off"
+                              onChange={(e) => setNamen((n) => ({ ...n, [schluessel]: e.target.value }))}
+                              hint={name.trim() ? undefined : nameLeerSatz(v.name)}
+                            />
+                            {ortOptionenHier.length > 0 ? (
+                              <VpPicker
+                                id={`${feld}-ort`}
+                                label="Ort"
+                                options={ortOptionenHier}
+                                value={orte[schluessel] ?? v.ort}
+                                onChange={(o) => setOrte((x) => ({ ...x, [schluessel]: o }))}
+                              />
+                            ) : (
+                              <p className="vp-ma-quelle">{`Ort: ${vorschlag.standort_name}`}</p>
+                            )}
+                          </div>
+                        )}
+                        {v.hinweise.map((h) => (
+                          <p key={h.code} className="vp-ma-vorschlag-hinweis">
+                            {h.text}
+                          </p>
+                        ))}
+                        {satz && (
+                          <p id={`${feld}-regel`} className="vp-ma-regel">
+                            {satz}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </>
+        )}
+        {vorschlag && !ortFehler && vorschlag.ausgelassen.length > 0 && (
+          <details className="vp-ma-ausgelassen">
+            <summary>{`${NICHT_VORGESCHLAGEN} (${vorschlag.ausgelassen.length.toLocaleString('de-DE')})`}</summary>
+            <ul className="vp-ma-details">
+              {vorschlag.ausgelassen.map((a, i) => (
+                <li key={`${a.komponente}|${a.kanal ?? ''}|${i}`}>{a.text}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {fehlerZeile}
+      </section>
+    );
+  }
+
+  if (!ladeFehler && schritt === 4) {
+    const zeilen = st && fs ? messenPruefliste({ standort: st, funktion: fs, geraete, register }) : [];
+    const eingerichtet = messenEingerichtet(fs);
+    rumpf = (
+      <section className="vp-ma-schritt" aria-labelledby={`${basis}-frage`} data-schritt="pruefen">
+        <h3 id={`${basis}-frage`} className="vp-ma-frage">
+          {SCHRITT4_FRAGE}
+        </h3>
+        {!geprueft ? (
+          <p className="vp-ma-satz">Wird geprüft …</p>
+        ) : !st || !fs ? (
+          <p className="vp-ma-fehler" role="alert">
+            {PRUEF_LADEFEHLER}
+          </p>
+        ) : (
+          <>
+            <p className="vp-ma-satz">{SCHRITT4_SATZ}</p>
+            <ul className="vp-ma-pruefliste" aria-label="Prüfliste">
+              {zeilen.map((z) => (
+                <li
+                  key={z.art}
+                  className="vp-ma-pruefzeile"
+                  data-pruefung={z.art}
+                  data-bestanden={z.bestanden === null ? 'offen' : z.bestanden ? 'ja' : 'nein'}
+                >
+                  <span className="vp-ma-marke" aria-hidden="true">
+                    {z.bestanden ? '✓' : z.bestanden === null ? '–' : '!'}
+                  </span>
+                  <div className="vp-ma-pruefinhalt">
+                    <span className="vp-ma-prueftext">
+                      {z.text}
+                      <span className="vp-sr-only">
+                        {z.bestanden ? ' — erfüllt' : z.bestanden === null ? ' — nicht prüfbar' : ' — nicht erfüllt'}
+                      </span>
+                    </span>
+                    {z.details.length > 0 ? (
+                      <ul className="vp-ma-details">
+                        {z.details.map((d) => (
+                          <li key={d}>{d}</li>
+                        ))}
+                      </ul>
+                    ) : z.fehlt.length > 0 ? (
+                      <span className="vp-ma-pruefsatz">{`Es fehlt: ${z.fehlt.join(', ')}`}</span>
+                    ) : null}
+                    {z.weg && (
+                      <div>
+                        <Button variant="outline" size="sm" onClick={() => gehe(z.weg!.ziel)}>
+                          {z.weg.text}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {!eingerichtet && (
+              <>
+                <p className="vp-ma-spaeter">{SPAETER_SATZ}</p>
+                <div>
+                  <Button variant="ghost" size="sm" onClick={() => setPruefRunde((n) => n + 1)}>
+                    {ERNEUT_PRUEFEN}
+                  </Button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+        {fehlerZeile}
+      </section>
+    );
+  }
+
+  if (!ladeFehler && schritt === 5) {
+    const zahl = uebernommen ? uebernommen.neu + uebernommen.unveraendert : 0;
+    rumpf = (
+      <section className="vp-ma-schritt" aria-labelledby={`${basis}-frage`} data-schritt="fertig">
+        <h3 id={`${basis}-frage`} className="vp-ma-frage">
+          {fertigSatz(st?.name ?? '')}
+        </h3>
+        <p className="vp-ma-satz">{FERTIG_AUSWERTUNG}</p>
+        {(fs?.messen.datenlage || zahl > 0) && (
+          <ul className="vp-ma-fakten">
+            {fs?.messen.datenlage && <li>{fs.messen.datenlage}</li>}
+            {uebernommen && zahl > 0 && <li>{uebernahmeSatz(uebernommen.neu, uebernommen.unveraendert)}</li>}
+          </ul>
+        )}
+        <p className="vp-ma-ort">{FERTIG_WEITERE}</p>
+        {standortId && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.location.hash = hashForRoute(standortMessstellenRoute(standortId));
+                onClose();
+              }}
+            >
+              {MESSSTELLEN_ANSEHEN}
+            </Button>
+          </div>
+        )}
+      </section>
+    );
+  }
 
   let fuss: ReactNode = null;
   if (schritt === 1) {
@@ -403,7 +834,8 @@ export function MessenAssistent({
       </>
     );
   } else if (schritt === 2) {
-    const naechster = vor(2, gebaut);
+    // Ohne Anlage gibt es nichts zu messen: kein „Weiter" in eine leere Vorschlagsliste (Entscheid 002 = A).
+    const naechster = anlagen.length > 0 ? vor(2, gebaut) : null;
     fuss = (
       <>
         <Button variant="ghost" onClick={() => setSchritt(1)}>
@@ -420,9 +852,57 @@ export function MessenAssistent({
         )}
       </>
     );
+  } else if (schritt === 3) {
+    const uebernehmbar = !!vorschlag && !ortFehler && vorschlag.vorschlaege.length > 0 && gewaehlt.size > 0;
+    fuss = (
+      <>
+        <Button variant="ghost" onClick={() => setSchritt(2)}>
+          Zurück
+        </Button>
+        {uebernehmbar ? (
+          <Button variant="primary" onClick={() => void uebernehmen()} aria-busy={busy || undefined}>
+            {busy ? 'Wird übernommen …' : UEBERNEHMEN}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            onClick={() => {
+              setFehler(null);
+              setSchritt(4);
+            }}
+          >
+            Weiter
+          </Button>
+        )}
+      </>
+    );
+  } else if (schritt === 4) {
+    fuss = (
+      <>
+        <Button variant="ghost" onClick={() => setSchritt(3)}>
+          Zurück
+        </Button>
+        {geprueft && messenEingerichtet(fs) ? (
+          <Button variant="primary" onClick={() => setSchritt(5)}>
+            Weiter
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={onClose}>
+            {SPAETER_FORTSETZEN}
+          </Button>
+        )}
+      </>
+    );
+  } else if (schritt === 5) {
+    fuss = (
+      <Button variant="primary" onClick={onClose}>
+        {FERTIG}
+      </Button>
+    );
   }
 
-  const vorher = schritt === null ? null : zurueck(schritt);
+  // Auf „Fertig" gibt es kein Zurück mehr: der Entwurf ist gelöscht, die Funktion aktiv.
+  const vorher = schritt === null || schritt === 5 ? null : zurueck(schritt);
 
   return (
     <>

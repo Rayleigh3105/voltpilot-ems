@@ -37,6 +37,8 @@ import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixture
  */
 
 const ALLE: MessenSchritt[] = [1, 2, 3, 4, 5];
+/** Der Rahmen, wie IP-9a ihn trug — eine Bühne kann weniger Schritte tragen als das Portal. */
+const IP9A: MessenSchritt[] = [1, 2];
 
 function speicher(): EntwurfSpeicher & { daten: Map<string, string> } {
   const daten = new Map<string, string>();
@@ -67,12 +69,19 @@ describe('messenAssistent — Schrittfolge', () => {
   });
 
   it('geht vorwärts nur in gebaute Schritte und rückwärts bis Schritt 1', () => {
-    expect(GEBAUTE_SCHRITTE).toEqual([1, 2]);
-    expect(vor(1)).toBe(2);
-    expect(vor(2)).toBeNull();
+    expect(vor(1, IP9A)).toBe(2);
+    expect(vor(2, IP9A)).toBeNull();
     expect(zurueck(2)).toBe(1);
     expect(zurueck(1)).toBeNull();
-    expect(weitesterSchritt()).toBe(2);
+    expect(weitesterSchritt(IP9A)).toBe(2);
+  });
+
+  it('seit IP-9b trägt das Portal alle fünf Schritte', () => {
+    expect(GEBAUTE_SCHRITTE).toEqual(ALLE);
+    expect(vor(2)).toBe(3);
+    expect(vor(4)).toBe(5);
+    expect(vor(5)).toBeNull();
+    expect(weitesterSchritt()).toBe(5);
   });
 
   it('trägt eine Fläche die Schritte 3 bis 5, läuft derselbe Rahmen vorwärts bis „Fertig" und zurück', () => {
@@ -155,7 +164,7 @@ describe('messenAssistent — Start und Wiedereinstieg', () => {
 
   it('der gemerkte Schritt gilt nur für seinen Standort und nie über den weitesten gebauten hinaus', () => {
     const entwurf = { standortId: LINDACH, schritt: 4 as MessenSchritt };
-    expect(startSchritt({ standortId: LINDACH, funktionen: mitLindach(), entwurf })).toEqual({
+    expect(startSchritt({ standortId: LINDACH, funktionen: mitLindach(), entwurf, gebaut: IP9A })).toEqual({
       standortId: LINDACH,
       schritt: 2,
     });

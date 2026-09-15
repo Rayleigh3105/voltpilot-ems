@@ -7059,6 +7059,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ aktion: 'einrichten' }),
     }),
+  /** UEMS AP-04 IP-16 (Fläche AP-01 IP-9b): die Vorschlagsliste je Standort — liest nur, nichts entsteht ungefragt. */
+  messstellenVorschlag: (standortId: string) =>
+    request<MessstelleVorschlagsliste>(`/api/v1/standorte/${encodeURIComponent(standortId)}/messstellen-vorschlag`),
+  /** Übernimmt die gewählten Zeilen, wie die Liste sie zeigte (nur `name` darf anders sein) — in EINER Transaktion. */
+  messstellenVorschlagUebernehmen: (standortId: string, body: MessstelleVorschlagUebernehmen) =>
+    request<MessstelleVorschlagUebernommen<Messstelle>>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/messstellen-vorschlag/uebernehmen`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 
   /** Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“. */
   standorte: (stichtag?: string) =>
