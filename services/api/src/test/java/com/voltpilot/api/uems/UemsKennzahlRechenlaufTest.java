@@ -553,7 +553,7 @@ class UemsKennzahlRechenlaufTest {
             Timestamp anfang = Timestamp.from(b);
             Timestamp letzte = Timestamp.from(b.plusSeconds(840));
             zeilen.add(new Object[] {anfang, w.mandant(), w.komponenten().get(kennzeichen), ENERGIE, stand, anfang, ende,
-                    letzte, stand, anfang, ende, letzte, Timestamp.from(b.plus(Duration.ofDays(8))), new BigDecimal("0.25")});
+                    letzte, stand, anfang, ende, letzte, Timestamp.from(b.plus(Duration.ofMinutes(10095))), new BigDecimal("0.25")});
             stand = ende;
         }
         root.batchUpdate("INSERT INTO messreihe_viertelstunde (intervall_beginn, tenant_id, entity_id, messkanal, wertart, "
