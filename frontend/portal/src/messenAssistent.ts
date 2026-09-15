@@ -27,6 +27,15 @@ export type MessenSchritt = 1 | 2 | 3 | 4 | 5;
 
 export const MESSEN_TITEL = `${FUNKTIONEN.messen} einrichten`;
 
+/**
+ * Der Titel am Telefon: dort teilt er die Kopfzeile mit Zurück-Pfeil und Kreuz,
+ * und „Messen & Auswerten einrichten" wurde bei 375 px zu „Messen & Auswerten
+ * ein…" gekürzt. Die Funktion allein passt; dass eingerichtet wird, sagen Zähler
+ * und Frage darunter (Variante B; Variante A — Titel umbrechen — hätte die
+ * gemeinsame Kopf-CSS des Anlege-Dialogs geändert, nur als Foto gezeigt).
+ */
+export const MESSEN_TITEL_KURZ = FUNKTIONEN.messen;
+
 /** Die Schritte, die eine Fläche heute trägt — IP-9a: Standort und Datenquelle. */
 export const GEBAUTE_SCHRITTE: readonly MessenSchritt[] = [1, 2];
 

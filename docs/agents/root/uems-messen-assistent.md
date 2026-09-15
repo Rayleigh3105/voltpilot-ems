@@ -38,6 +38,10 @@ Anlage). Keine Migration. Ein kleiner Schreibweg, den IP-3 ausdrücklich hierher
 6. **Schritte 3–5 (IP-9b) einhängen:** Rumpf in `MessenAssistent.tsx` rendern und `GEBAUTE_SCHRITTE` ergänzen.
    `vor` betritt nie einen ungebauten Schritt; ohne Schritt 3 endet Schritt 2 mit „Später fortsetzen", mit ihm
    von selbst mit „Weiter". Fertig (5) sollte den Entwurf mit `entwurfVerwerfen` löschen.
+8. **375 px:** am Telefon heißt die Schale nur „Messen & Auswerten" (`MESSEN_TITEL_KURZ`) — neben Zurück-Pfeil und
+   Kreuz wurde „… einrichten" zu „Messen & Auswerten ein…" gekürzt (Variante B empfohlen; A „Titel umbrechen"
+   hätte die gemeinsame Kopf-CSS des Anlege-Dialogs geändert, nur als Foto gezeigt). „Anderen Standort wählen"
+   steht im Rumpf, nicht im Fuß (dort breiter als sein halber Platz). Die Spec misst gekürzte Titel und Knöpfe.
 7. **Kein Einstiegsknopf in diesem Paket.** Die Karte „Funktionen" (IP-8) nennt ihren Schritt weiter als
    Hinweis; `messenEinstieg(fs, entwurf)` liefert ihr Text und Start („Messen & Auswerten für Werk Lindach
    einrichten" / „Einrichtung fortsetzen (Schritt 2 von 5)"), der Knopf ist eine eigene Entscheidung.

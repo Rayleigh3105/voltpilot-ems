@@ -27,6 +27,7 @@ import {
   komponentenSatz,
   MESSEN_SCHRITTE,
   MESSEN_TITEL,
+  MESSEN_TITEL_KURZ,
   mussEinrichten,
   SCHRITT1_FRAGE,
   SCHRITT1_SATZ,
@@ -44,6 +45,7 @@ import {
   type EntwurfSpeicher,
   type MessenSchritt,
 } from '../messenAssistent';
+import { useIsPhone } from '../useIsPhone';
 import { AnlegenDialog } from './AnlegenDialog';
 import { AnlegenFlow } from './AnlegenFlow';
 import { AddDeviceDrawer } from './DeviceDrawers';
@@ -107,6 +109,7 @@ export function MessenAssistent({
   onClose: () => void;
 }) {
   const basis = `vp-ma-${useId().replace(/:/g, '')}`;
+  const isPhone = useIsPhone();
   const [ablage] = useState<EntwurfSpeicher | null>(() => (speicher === undefined ? browserSpeicher() : speicher));
   const [liste, setListe] = useState<StandorteAmStichtag | null>(null);
   const [unternehmen, setUnternehmen] = useState<Unternehmen | null>(null);
@@ -324,13 +327,21 @@ export function MessenAssistent({
           </p>
         )}
         {anlagen.length === 0 ? (
-          <div className="vp-ma-leer" data-testid="messen-keine-anlage">
-            <p>{keineAnlageSatz(name)}</p>
-            <p>
-              <span className="vp-ma-weg-wort">Nächster Schritt:</span>{' '}
-              {keineAnlageWeg(name, unternehmen?.anlagenZahl ?? null)}
-            </p>
-          </div>
+          <>
+            <div className="vp-ma-leer" data-testid="messen-keine-anlage">
+              <p>{keineAnlageSatz(name)}</p>
+              <p>
+                <span className="vp-ma-weg-wort">Nächster Schritt:</span>{' '}
+                {keineAnlageWeg(name, unternehmen?.anlagenZahl ?? null)}
+              </p>
+            </div>
+            {/* Im Rumpf, nicht im Fuß: dort war der Knopf bei 375 px breiter als sein halber Platz. */}
+            <div>
+              <Button variant="outline" size="sm" onClick={() => setSchritt(1)}>
+                {ANDEREN_STANDORT}
+              </Button>
+            </div>
+          </>
         ) : (
           <>
             <p className="vp-ma-satz">{SCHRITT2_SATZ}</p>
@@ -396,7 +407,7 @@ export function MessenAssistent({
     fuss = (
       <>
         <Button variant="ghost" onClick={() => setSchritt(1)}>
-          {anlagen.length === 0 ? ANDEREN_STANDORT : 'Zurück'}
+          Zurück
         </Button>
         {naechster ? (
           <Button variant="primary" onClick={() => setSchritt(naechster)}>
@@ -417,7 +428,7 @@ export function MessenAssistent({
     <>
       {!unterfluss && (
         <AnlegenDialog
-          titel={MESSEN_TITEL}
+          titel={isPhone ? MESSEN_TITEL_KURZ : MESSEN_TITEL}
           schritte={[...MESSEN_SCHRITTE]}
           aktiv={schritt ?? 1}
           onClose={onClose}

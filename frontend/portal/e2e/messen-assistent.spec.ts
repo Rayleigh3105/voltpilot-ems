@@ -95,7 +95,8 @@ async function verdrahte(page: Page, cloud: Cloud) {
 async function oeffne(page: Page, breite: number, suche = '') {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto(`/e2e/messen-assistent.html${suche}`);
-  await expect(page.getByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toBeVisible();
+  // Am Telefon heißt die Schale nur „Messen & Auswerten" (neben Pfeil und Kreuz würde „… einrichten" gekürzt).
+  await expect(page.getByRole('dialog', { name: breite < 720 ? 'Messen & Auswerten' : 'Messen & Auswerten einrichten', exact: true })).toBeVisible();
 }
 
 const schritt1 = (page: Page) => expect(page.getByRole('heading', { name: 'Wo wird gemessen?' })).toBeVisible();
@@ -121,10 +122,15 @@ async function ueberlauf(page: Page, breite: number) {
       .filter(({ r }) => r.width > 0 && (r.right > b + 0.5 || r.left < -0.5))
       .map(({ el }) => `${el.tagName.toLowerCase()}.${String((el as HTMLElement).className)}`);
     const rumpf = [...document.querySelectorAll('.vp-anlegen-rumpf, .vp-modal .dbody')] as HTMLElement[];
+    // Gekürzt oder zu eng: ein Titel mit Auslassung, ein Knopf, dessen Text über seinen Rand ragt.
+    const gekuerzt = [...document.querySelectorAll('.vp-anlegen-titel h2, .vp-anlegen-dialog button, .vp-modal button')]
+      .filter((el) => el.scrollWidth > el.clientWidth + 0.5)
+      .map((el) => el.textContent);
     return {
       dokument: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       rumpf: rumpf.length ? Math.max(...rumpf.map((k) => k.scrollWidth - k.clientWidth)) : 0,
       draussen,
+      gekuerzt,
     };
   }, breite);
 }
@@ -138,6 +144,7 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
   expect(m.dokument, `${name} ${breite}: Dokument`).toBe(0);
   expect(m.rumpf, `${name} ${breite}: Rumpf`).toBe(0);
   expect(m.draussen, `${name} ${breite}: Elemente`).toEqual([]);
+  expect(m.gekuerzt, `${name} ${breite}: gekürzt`).toEqual([]);
   if (!BILDER) return;
   mkdirSync(BILDER, { recursive: true });
   writeFileSync(join(BILDER, `messung-${name}-${breite}.json`), JSON.stringify(m));
@@ -220,7 +227,7 @@ for (const breite of BREITEN) {
       const geraet = page.getByRole('dialog', { name: /Gerät hinzufügen/ });
       await expect(geraet).toBeVisible();
       // Der Unterablauf ersetzt die Schale — nichts liegt über ihm (das Haus-Modal läge sonst darunter).
-      await expect(page.getByRole('dialog', { name: 'Messen & Auswerten einrichten' })).toHaveCount(0);
+      await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
       await messeUndFotografiere(page, breite, 'geraet-verbinden');
       await geraet.getByRole('button', { name: 'Abbrechen', exact: true }).click();
       await expect(geraet).toHaveCount(0);

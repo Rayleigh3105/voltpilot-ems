@@ -70,7 +70,8 @@ afterEach(() => {
 
 /** Die Ansage der Schale: „Schritt 2 von 5: Datenquelle". */
 const ansage = () => document.querySelector('.vp-anlegen-sr')?.textContent;
-const assistent = () => screen.getByRole('dialog', { name: 'Messen & Auswerten einrichten' });
+/** Am Rechner „Messen & Auswerten einrichten", am Telefon „Messen & Auswerten". */
+const assistent = () => screen.getByRole('dialog', { name: /^Messen & Auswerten/ });
 const schritt1 = () => screen.findByRole('heading', { name: 'Wo wird gemessen?' });
 const schritt2 = () => screen.findByRole('heading', { name: 'Womit wird gemessen?' });
 const klick = (name: string) => fireEvent.click(within(assistent()).getByRole('button', { name }));
@@ -125,6 +126,8 @@ describe('MessenAssistent — Schrittfolge', () => {
     });
     zeige({ standortId: LINDACH });
     await schritt1();
+    // Neben Pfeil und Kreuz passt nur die Funktion — „… einrichten" würde gekürzt.
+    expect(screen.getByRole('dialog', { name: 'Messen & Auswerten' })).toBeInTheDocument();
     expect(document.querySelector('.vp-anlegen-zaehler')?.textContent).toBe('Schritt 1 von 5');
     expect(within(assistent()).queryByRole('button', { name: 'Einen Schritt zurück' })).toBeNull();
     klick('Weiter');
@@ -331,6 +334,7 @@ describe('MessenAssistent — Standort ohne Anlage (Entscheid A)', () => {
     );
     expect(within(leer).queryByRole('button')).toBeNull();
     expect(within(assistent()).queryByRole('button', { name: /Anlage anlegen/ })).toBeNull();
+    expect(within(assistent()).getByRole('button', { name: 'Zurück' })).toBeInTheDocument();
 
     klick('Später fortsetzen');
     expect(onClose).toHaveBeenCalledTimes(1);
