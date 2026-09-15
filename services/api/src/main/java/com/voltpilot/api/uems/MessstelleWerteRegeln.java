@@ -253,6 +253,17 @@ public final class MessstelleWerteRegeln {
         return new Zeitraum(r, zone, von, bis, List.copyOf(schritte));
     }
 
+    /**
+     * Die Woche um einen Tag (UEMS AP-11 P5): Montag 00:00 bis zum folgenden Montag 00:00 in der Zeitzone des
+     * Standorts, halboffen — 168 Stunden, in der Woche einer Zeitumstellung 167 bzw. 169. Kein Raster der Route und nie
+     * in UTC oder einer festen Zone gerechnet: die Grenzen sind die Ortszeit, die ISO-Woche kommt aus
+     * {@link BezugsPeriode#spanneUm}.
+     */
+    public static Schritt woche(LocalDate tag, ZoneId zone) {
+        LocalDate montag = BezugsPeriode.spanneUm(tag, "woche")[0];
+        return new Schritt(montag.atStartOfDay(zone).toInstant(), montag.plusDays(7).atStartOfDay(zone).toInstant());
+    }
+
     private static String genitiv(Raster r) {
         return switch (r) {
             case VIERTELSTUNDE -> "einer Viertelstunde";

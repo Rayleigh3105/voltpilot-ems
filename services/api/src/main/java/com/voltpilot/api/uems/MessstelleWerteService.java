@@ -249,19 +249,13 @@ public class MessstelleWerteService {
 
     private Lesung lesen(UUID tenant, Messstelle m, Form form, WertVersionenLeser versionen) {
         MessstelleRegeln.Groesse haupt = m.hauptgroesse();
-        List<Quelle> fuehrend = quellen.derMessstelle(m.id()).stream()
-                .filter(q -> "fuehrend".equals(q.rolle()))
-                .filter(q -> q.groesse().equals(haupt.groesse()) && q.richtung().equals(haupt.richtung()))
-                .toList();
+        List<Quelle> fuehrend = fuehrend(m);
         Zone zone = zone(tenant, fuehrend, form);
         Zeitraum z = pruefe(() -> MessstelleWerteRegeln.zeitraum(form, zone.id()));
         Instant jetzt = uhr.instant();
 
-        List<Bindung> bindungen = fuehrend.stream().map(q -> new Bindung(q.id(), q.entityId(), q.kanal(),
-                q.herleitung(), q.anteil(), q.gueltigAb(), q.gueltigBis())).toList();
-        List<Quelle> imZeitraum = fuehrend.stream()
-                .filter(q -> q.gueltigAb().isBefore(z.bis()) && (q.gueltigBis() == null || q.gueltigBis().isAfter(z.von())))
-                .toList();
+        List<Bindung> bindungen = bindungen(fuehrend);
+        List<Quelle> imZeitraum = imZeitraum(fuehrend, z.von(), z.bis());
 
         Map<Schritt, Deckung> deckung = new LinkedHashMap<>();
         for (Schritt s : z.schritte()) {
@@ -282,10 +276,101 @@ public class MessstelleWerteService {
     }
 
     private static List<MessstelleWerteDto.Quelle> quellen(Lesung l) {
-        ZoneId zone = l.zone().id();
-        return l.imZeitraum().stream().map(q -> new MessstelleWerteDto.Quelle(q.id(), q.entityId(), q.kanal(),
+        return quellen(l.imZeitraum(), l.zone().id());
+    }
+
+    private static List<MessstelleWerteDto.Quelle> quellen(List<Quelle> imZeitraum, ZoneId zone) {
+        return imZeitraum.stream().map(q -> new MessstelleWerteDto.Quelle(q.id(), q.entityId(), q.kanal(),
                 q.herleitung(), q.anteil(), MessstelleWerteRegeln.iso(q.gueltigAb(), zone),
                 q.gueltigBis() == null ? null : MessstelleWerteRegeln.iso(q.gueltigBis(), zone))).toList();
+    }
+
+    /** Die führenden Bindungen der Hauptgröße — eine Vergleichsquelle oder eine Nebengröße liefert nie. */
+    private List<Quelle> fuehrend(Messstelle m) {
+        MessstelleRegeln.Groesse haupt = m.hauptgroesse();
+        return quellen.derMessstelle(m.id()).stream()
+                .filter(q -> "fuehrend".equals(q.rolle()))
+                .filter(q -> q.groesse().equals(haupt.groesse()) && q.richtung().equals(haupt.richtung()))
+                .toList();
+    }
+
+    private static List<Bindung> bindungen(List<Quelle> fuehrend) {
+        return fuehrend.stream().map(q -> new Bindung(q.id(), q.entityId(), q.kanal(), q.herleitung(), q.anteil(),
+                q.gueltigAb(), q.gueltigBis())).toList();
+    }
+
+    private static List<Quelle> imZeitraum(List<Quelle> fuehrend, Instant von, Instant bis) {
+        return fuehrend.stream()
+                .filter(q -> q.gueltigAb().isBefore(bis) && (q.gueltigBis() == null || q.gueltigBis().isAfter(von)))
+                .toList();
+    }
+
+    // ------------------------------------------------------------------ Die Woche einer Kennzahl (AP-11 IP-12)
+
+    /**
+     * Die Wochen einer Messstelle für den Kennzahl-Leser (UEMS AP-11 IP-12, P5) — kein Raster der Route. Je Woche
+     * Montag 00:00 bis Montag 00:00 in der Zeitzone des Standorts ({@link MessstelleWerteRegeln#woche}, 167/168/169
+     * Stunden), ihre Menge der freie Zeitraum der Regel ({@link ZeitraumMenge#zeitraum} über den Lesepfad): aus den
+     * Periodenständen an den Wochengrenzen, nie als Summe der Tage. Welche Reihe die Woche beantwortet, entscheidet
+     * {@link MessstelleWerteRegeln#deckung} wie an jedem anderen Schritt.
+     *
+     * <p>Die Woche ist keine Speicherklasse — wie die Stunde: trägt eine ihrer Viertelstunden eine spätere Version,
+     * steht keine Zahl da ({@code version_nicht_gebildet}), nie die von Version 1 unter einem anderen Etikett; eine
+     * berechnete Messstelle hat keine Wochen-Spur ({@code berechnet}).
+     *
+     * @param von ein Tag der ersten Woche, {@code bis} ein Tag der letzten
+     * @param versionen die Versionen ab 2 — {@code null}: die des Lesemodells (Kundenbereich)
+     */
+    MessstelleWerteDto.Werte wochen(String kennzeichen, LocalDate von, LocalDate bis, WertVersionenLeser versionen) {
+        UUID tenant = TenantContext.get();
+        Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
+        WertVersionenLeser spaetere = versionen == null ? this.versionen : versionen;
+        List<Quelle> fuehrend = fuehrend(m);
+        Zone zone = zone(tenant, fuehrend, von.atStartOfDay(ZoneId.of("UTC")).toInstant());
+        List<Bindung> bindungen = bindungen(fuehrend);
+        Instant jetzt = uhr.instant();
+        List<MessstelleWerteDto.Wert> werte = new ArrayList<>();
+        for (LocalDate montag = BezugsPeriode.spanneUm(von, "woche")[0]; !montag.isAfter(bis);
+                montag = montag.plusDays(7)) {
+            Schritt s = MessstelleWerteRegeln.woche(montag, zone.id());
+            Rahmen r = new Rahmen(MessstelleWerteRegeln.iso(s.von(), zone.id()),
+                    MessstelleWerteRegeln.iso(s.bis(), zone.id()),
+                    KennzahlRegeln.periodeText("woche", BezugsPeriode.schluesselVon(montag, "woche")),
+                    VerbrauchRegeln.stunden(s.von(), s.bis()), null);
+            Deckung d = "berechnet".equals(m.art()) ? new Deckung(null, null, OhneZahl.BERECHNET)
+                    : MessstelleWerteRegeln.deckung(bindungen, s);
+            werte.add(d.reihe() == null ? ohneReihe(r, d.grund()) : woche(r, s, d, tenant, spaetere, jetzt, zone.id()));
+        }
+        Instant ab = MessstelleWerteRegeln.woche(von, zone.id()).von();
+        Instant ende = MessstelleWerteRegeln.woche(bis, zone.id()).bis();
+        MessstelleRegeln.Groesse haupt = m.hauptgroesse();
+        return new MessstelleWerteDto.Werte(
+                new MessstelleWerteDto.Messstelle(m.id(), m.kennzeichen(), m.name(), m.art(), haupt.groesse(),
+                        haupt.richtung(), haupt.einheit(), haupt.wertart()),
+                "woche", MessstelleWerteRegeln.iso(ab, zone.id()), MessstelleWerteRegeln.iso(ende, zone.id()),
+                zone.id().getId(), zone.herkunft(), null, quellen(imZeitraum(fuehrend, ab, ende), zone.id()),
+                List.copyOf(werte));
+    }
+
+    /** Eine Woche mit ihrer Reihe: der freie Zeitraum der Regel — ohne Zahl, wenn eine Viertelstunde später korrigiert ist. */
+    private MessstelleWerteDto.Wert woche(Rahmen r, Schritt s, Deckung d, UUID tenant, WertVersionenLeser versionen,
+            Instant jetzt, ZoneId zone) {
+        Bindung b = d.bindung();
+        Reihe reihe = d.reihe();
+        if (versionen.viertelstunden(tenant, reihe.entityId(), reihe.kanal(), s.von(), s.bis()).values().stream()
+                .anyMatch(v -> !v.isEmpty())) {
+            return leer(r, b, OhneZahl.VERSION_NICHT_GEBILDET, List.of(), null);
+        }
+        ZeitraumMenge.Zeitraum z = historie.zeitraum(tenant, reihe.entityId(), reihe.kanal(), s.von(), s.bis(), jetzt);
+        VerbrauchRegeln.Ergebnis e = z.menge() == null ? null : z.menge().ergebnis();
+        // Wie zahlen(): eine Menge hat nur der Zählerstand — Momentanwert und Energie aus Leistung bildet der Zeitraum nicht.
+        boolean menge = e != null && !"momentanwert".equals(b.herleitung()) && !"integration".equals(b.herleitung());
+        return new MessstelleWerteDto.Wert(r.von(), r.bis(), r.beschriftung(), r.stunden(), r.tagesdauer(),
+                menge ? e.menge() : null, null, null, null, menge ? e.zustand() : null,
+                menge && e.kennzeichen() != null ? e.kennzeichen() : List.of(), z.erhalten(), z.erwartet(),
+                z.abdeckungProzent(), z.zustand(), MessstelleWerteRegeln.iso(TagRegeln.endgueltigAb(s.bis()), zone),
+                z.viertelstundenVorhanden() == 0 ? null : 1, "zeitraum", b.id(), null, List.of(), null, null);
     }
 
     /** Was für EINE Reihe gelesen wurde — über den Lesepfad, ein Zug je Speicherklasse, dazu ihre Versionen ab 2. */
@@ -781,8 +866,11 @@ public class MessstelleWerteService {
      * UNTERNEHMEN → VORGABE), damit die Schritte genau auf den gespeicherten Perioden liegen.
      */
     private Zone zone(UUID tenant, List<Quelle> fuehrend, Form form) {
-        Instant stichtag = form.von().zeitpunkt() != null ? form.von().zeitpunkt()
-                : form.von().tag().atStartOfDay(ZoneId.of("UTC")).toInstant();
+        return zone(tenant, fuehrend, form.von().zeitpunkt() != null ? form.von().zeitpunkt()
+                : form.von().tag().atStartOfDay(ZoneId.of("UTC")).toInstant());
+    }
+
+    private Zone zone(UUID tenant, List<Quelle> fuehrend, Instant stichtag) {
         UUID site = fuehrend.stream()
                 .filter(q -> q.gueltigBis() == null || q.gueltigBis().isAfter(stichtag))
                 .map(Quelle::siteId).filter(x -> x != null).findFirst()

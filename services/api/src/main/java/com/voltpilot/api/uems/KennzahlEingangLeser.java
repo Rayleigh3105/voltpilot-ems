@@ -177,8 +177,13 @@ public class KennzahlEingangLeser {
     private Map<String, Gelesen> messstelle(Aufgeloest x, String art, LocalDate von, LocalDate bis) {
         MessstelleWerteDto.Werte w;
         try {
-            w = versionen == null ? messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null)
-                    : messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null, versionen);
+            if ("woche".equals(art)) {
+                // Die Woche ist kein Raster des Lesemodells: je Woche der freie Zeitraum der Regel (IP-12).
+                w = messwerte.wochen(x.kennzeichen(), von, bis, versionen);
+            } else {
+                w = versionen == null ? messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null)
+                        : messwerte.werte(x.kennzeichen(), art, von.toString(), bis.toString(), null, versionen);
+            }
         } catch (ResponseStatusException ex) {
             if (ex.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
                 return Map.of();

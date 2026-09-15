@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
@@ -210,7 +211,43 @@ class MessstelleWerteRegelnTest {
         return ((List<Object>) f.get("enum")).stream().map(String::valueOf).toList();
     }
 
+    // ======================================================================= Woche (AP-11 IP-12)
+
+    /**
+     * Die Woche einer Kennzahl liegt in der Zone des Standorts: Montag 00:00 bis Montag 00:00 Ortszeit, nie UTC, nie
+     * Berlin. KW 43/2026 (19.–25.10.) endet in Berlin mit der Sommerzeit — 169 Stunden. In New York endet die
+     * Sommerzeit erst am 01.11.: dort hat KW 43 168 Stunden und beginnt sechs Stunden später, KW 44 hat 169. Über den
+     * Jahreswechsel ist sie eine ISO-Woche: KW 53/2026 = 28.12.2026–03.01.2027. (Die Datenbank führt heute nur die drei
+     * Zonen von {@link TagRegeln#ZONEN}, alle mit Berliner Versatz — die abweichende Zone zeigt darum die Regel.)
+     */
+    @Test
+    void eineWocheBeginntUndEndetAmMontagInDerZoneDesStandorts() {
+        Schritt berlin = MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-21"), BERLIN);
+        assertThat(berlin).isEqualTo(new Schritt(Instant.parse("2026-10-18T22:00:00Z"),
+                Instant.parse("2026-10-25T23:00:00Z")));
+        assertThat(stunden(berlin)).isEqualTo(169);
+        assertThat(MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-19"), BERLIN)).isEqualTo(berlin);
+        assertThat(MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-25"), BERLIN)).as("der Sonntag gehört dazu")
+                .isEqualTo(berlin);
+        assertThat(MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-26"), BERLIN).von())
+                .as("der Montag beginnt die nächste").isEqualTo(berlin.bis());
+
+        ZoneId newYork = ZoneId.of("America/New_York");
+        Schritt ny43 = MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-21"), newYork);
+        assertThat(ny43).isEqualTo(new Schritt(Instant.parse("2026-10-19T04:00:00Z"),
+                Instant.parse("2026-10-26T04:00:00Z")));
+        assertThat(stunden(ny43)).isEqualTo(168);
+        assertThat(stunden(MessstelleWerteRegeln.woche(LocalDate.parse("2026-10-28"), newYork))).isEqualTo(169);
+
+        assertThat(MessstelleWerteRegeln.woche(LocalDate.parse("2027-01-01"), BERLIN)).isEqualTo(new Schritt(
+                Instant.parse("2026-12-27T23:00:00Z"), Instant.parse("2027-01-03T23:00:00Z")));
+    }
+
     // ========================================================================= Helfer
+
+    private static long stunden(Schritt s) {
+        return (s.bis().getEpochSecond() - s.von().getEpochSecond()) / 3600;
+    }
 
     private static Zeitraum zeitraum(String raster, String von, String bis) {
         Form f = MessstelleWerteRegeln.form(raster, von, bis, null);

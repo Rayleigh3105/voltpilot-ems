@@ -389,8 +389,7 @@ public class KennzahlLauf {
         }
         // Fein vor grob: eine Periode aus Teilperioden liest, was dieser Lauf eben geschrieben hat.
         for (String art : KennzahlRegeln.PERIODEN) {
-            // Wochen-Perioden sind IP-12: das Messstellen-Lesemodell kennt kein Wochen-Raster.
-            if (arten.contains(art) && !"woche".equals(art)) {
+            if (arten.contains(art)) {
                 art(r, art, beginn);
             }
         }

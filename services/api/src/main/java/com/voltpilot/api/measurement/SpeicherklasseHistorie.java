@@ -90,6 +90,16 @@ public class SpeicherklasseHistorie {
     }
 
     /**
+     * Der freie Zeitraum der Regel über {@code [von, bis)} ({@link ZeitraumMenge#zeitraum}) — für eine Periode, die
+     * keine Speicherklasse ist und kein festes Raster hat: die Woche einer Kennzahl (UEMS AP-11 IP-12), 167, 168 oder
+     * 169 Stunden je nach Zone.
+     */
+    public ZeitraumMenge.Zeitraum zeitraum(UUID tenantId, UUID entityId, String messkanal, Instant von, Instant bis,
+            Instant jetzt) {
+        return zeitraum.zeitraum(tenantId, entityId, messkanal, von, bis, jetzt);
+    }
+
+    /**
      * Die Komponente der Reihe — aus der Anfrage, sonst aus der Mess-Selektion des Geräts, und
      * nur wenn sie EINDEUTIG ist. Mehrdeutig heißt keine Reihe, nicht „irgendeine".
      */

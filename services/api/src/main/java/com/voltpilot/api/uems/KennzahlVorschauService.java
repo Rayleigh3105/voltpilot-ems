@@ -26,8 +26,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * ({@link KennzahlLauf}), nie nachgerechnet: eine Messstelle über ihr Lesemodell im Raster der Periode, eine Bezugsgröße
  * über ihre wirksame Fassung, ein Stammdatum am Stichtag, eine Kennzahl ihr gespeicherter Wert derselben Periode.
  * Feinere Bezugsgrößen-Perioden zählen nur, wenn JEDE einen wirksamen Wert hat; sonst fehlt der Nenner — nie verteilt,
- * nie geschätzt. Eine Kennzahl je Woche hat noch keine Vorschau-Perioden: das Messstellen-Lesemodell kennt kein
- * Wochen-Raster (Wochen-Perioden sind IP-12).
+ * nie geschätzt. Eine Woche liest die Messstelle als freien Zeitraum der Regel, Montag bis Sonntag in der Zone ihres
+ * Standorts (IP-12).
  */
 @Service
 public class KennzahlVorschauService {
