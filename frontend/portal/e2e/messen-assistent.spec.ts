@@ -1,13 +1,29 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import type { Funktionen, StandorteAmStichtag } from '../src/api';
+import type {
+  Funktionen,
+  MessstelleOrtAendern,
+  MessstelleRegisterZeile,
+  MessstelleVorschlagsliste,
+  MessstelleVorschlagUebernehmen,
+  StandorteAmStichtag,
+} from '../src/api';
 import {
   ahrenbergFunktionen,
   funktionMessenEntwurf,
   funktionWerkAhrenberg,
   funktionWerkLindach,
 } from '../src/test/funktionenFixtures';
+import {
+  ahrenbergMessen,
+  ENERGIEKARTEN,
+  geraeteAhrenberg,
+  registerNachUebernahme,
+  uebernommen,
+  vorschlagHalle2,
+} from '../src/test/messenAssistentFixtures';
+import { ortsbaumAhrenberg } from '../src/test/ortsbaumFixtures';
 import {
   ahrenbergHeute,
   ahrenbergUnternehmen,
@@ -17,7 +33,7 @@ import {
 } from '../src/test/standorteFixtures';
 
 /**
- * Der Assistent „Messen & Auswerten" (UEMS AP-01 IP-9a) auf der Bühne
+ * Der Assistent „Messen & Auswerten" (UEMS AP-01 IP-9a/IP-9b) auf der Bühne
  * `messen-assistent.html` bei 375 und 1440 px: Schritt 1 → Schritt 2 mit genau
  * einem Einrichten, „Schritt n von 5", Abbruch und Wiedereinstieg über ein
  * Neuladen, der Standort ohne Anlage und die gestapelten Unterabläufe — ohne
@@ -37,6 +53,11 @@ const KOMPONENTEN: Record<string, number> = { [FIXTURE_IDS.an1]: 7, [FIXTURE_IDS
 interface Cloud {
   standorte: StandorteAmStichtag;
   funktionen: Funktionen;
+  /** IP-9b: die Vorschlagsliste je Standort, das Register von heute und was gespeichert wurde. */
+  vorschlag?: MessstelleVorschlagsliste;
+  register?: MessstelleRegisterZeile[];
+  uebernahmen?: MessstelleVorschlagUebernehmen[];
+  orte?: { messstelle: string; anfrage: MessstelleOrtAendern }[];
 }
 
 const ohneMessen = (): Cloud => ({
@@ -78,6 +99,36 @@ async function verdrahte(page: Page, cloud: Cloud) {
       };
       return json({ aktion: 'einrichten', standort: danach });
     }
+    if (/^\/api\/v1\/standorte\/[^/]+\/messstellen-vorschlag$/.test(pfad) && cloud.vorschlag) return json(cloud.vorschlag);
+    if (/^\/api\/v1\/standorte\/[^/]+\/messstellen-vorschlag\/uebernehmen$/.test(pfad) && cloud.vorschlag && methode === 'POST') {
+      const anfrage = r.request().postDataJSON() as MessstelleVorschlagUebernehmen;
+      (cloud.uebernahmen ??= []).push(anfrage);
+      const antwort = uebernommen(cloud.vorschlag, anfrage);
+      cloud.vorschlag = {
+        ...cloud.vorschlag,
+        vorschlaege: [],
+        leer: 'alle_zugeordnet',
+        text: 'Alle Komponenten von Werk Ahrenberg sind Messstellen zugeordnet.',
+      };
+      return json(antwort);
+    }
+    if (/^\/api\/v1\/standorte\/[^/]+\/orte$/.test(pfad)) return json(ortsbaumAhrenberg());
+    const ort = /^\/api\/v1\/messstellen\/([^/]+)\/ort$/.exec(pfad);
+    if (ort && methode === 'PUT') {
+      (cloud.orte ??= []).push({ messstelle: ort[1], anfrage: r.request().postDataJSON() as MessstelleOrtAendern });
+      return json({ id: ort[1] });
+    }
+    if (pfad === '/api/v1/messstellen' && cloud.register) {
+      return json({
+        messstellen: [],
+        register: cloud.register,
+        stichtag: '2026-10-20',
+        zeitpunkt: '2026-10-20T08:15:30Z',
+        teilansicht: false,
+        aggregat: { unternehmen: { erfuellt: 0, gesamt: 0, text: '' }, standorte: [] },
+      });
+    }
+    if (pfad === '/api/v1/devices') return json(geraeteAhrenberg(new Date()));
     if (pfad === '/api/v1/sites') {
       return json(cloud.standorte.standorte.flatMap((s) => s.anlagen).map((a) => ({ id: a.id, name: a.name })));
     }
@@ -246,6 +297,75 @@ for (const breite of BREITEN) {
       await page.getByRole('button', { name: 'Neuen Standort anlegen', exact: true }).click();
       await expect(page.getByRole('dialog', { name: 'Standort anlegen' })).toBeVisible();
       await messeUndFotografiere(page, breite, 'standort-anlegen');
+    });
+
+    test('Schritt 3 → 4 → 5 für Halle 2 (WAGO C-1): vier Vorschläge, Hauptzähler-Regel, Prüfliste aus Fakten, Fertig', async ({ page }) => {
+      const wartet = registerNachUebernahme({ wartet: ['MS-0003'] });
+      const cloud: Cloud = {
+        standorte: ahrenbergHeute(),
+        funktionen: ahrenbergFunktionen({ standorte: [ahrenbergMessen(wartet), funktionWerkLindach('bestand')] }),
+        vorschlag: vorschlagHalle2(),
+        register: wartet,
+      };
+      await verdrahte(page, cloud);
+      await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
+      await schritt2(page);
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+
+      // 3 · Messstellen: die Liste des Servers für C-1.
+      await expect(page.getByRole('heading', { name: 'Was bedeutet jeder Messkanal?' })).toBeVisible();
+      await zaehlerIst(page, breite, 3, 'Messstellen');
+      await expect(page.getByText('4 von 4 Vorschlägen gewählt')).toBeVisible();
+      const karten = page.locator('.vp-ma-vorschlag');
+      await expect(karten).toHaveCount(4);
+      await expect(karten.nth(0)).toContainText('MS-0001');
+      await expect(karten.nth(0)).toContainText('Hauptzähler');
+      await expect(karten.nth(3)).toContainText('Unterzähler von MS-0001');
+      await messeUndFotografiere(page, breite, 'schritt3');
+
+      // Umbenannt nach der Referenzdatei, MS-0001 ins Gebäude Halle 2.
+      for (const [i, k] of ENERGIEKARTEN.entries()) await karten.nth(i).getByLabel('Name').fill(k.messstelleName);
+      const ort = karten.nth(0).getByRole('combobox', { name: 'Ort' });
+      await ort.click();
+      const ortId = await ort.getAttribute('id');
+      await page.locator(`[id="${ortId}-liste"]`).getByRole('option', { name: /^Halle 2\s*Gebäude/ }).click();
+      await expect(ort).toContainText('Halle 2');
+
+      // Hauptzähler-Regel: ohne MS-0001 geht keiner seiner Unterzähler.
+      await karten.nth(0).getByRole('checkbox').uncheck();
+      await expect(page.getByText(/übernehmen Sie diesen Hauptzähler mit\.$/)).toHaveCount(3);
+      await messeUndFotografiere(page, breite, 'schritt3-regel');
+      await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('ist als Unterzähler von MS-0001 vorgeschlagen');
+      expect(cloud.uebernahmen ?? []).toHaveLength(0);
+      await karten.nth(0).getByRole('checkbox').check();
+
+      await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Ist alles da?' })).toBeVisible();
+      expect(cloud.uebernahmen?.[0].vorschlaege.map((b) => b.name)).toEqual(ENERGIEKARTEN.map((k) => k.messstelleName));
+      expect(cloud.orte).toEqual([{ messstelle: 'ms-ms-0001', anfrage: { kennzeichen: 'G-2', gueltig_ab: '2026-10-01', korrektur: true } }]);
+
+      // 4 · Prüfen: EK-3 meldet noch nichts — kein „Weiter".
+      await zaehlerIst(page, breite, 4, 'Prüfen');
+      await expect(page.getByText('MS-0003 Montage Linie M1: Wartet auf erste Daten · Zähler Energiekarte EK-3 (Montage M1)')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Weiter', exact: true })).toHaveCount(0);
+      await messeUndFotografiere(page, breite, 'schritt4-offen');
+
+      const alle = registerNachUebernahme();
+      cloud.register = alle;
+      cloud.funktionen = ahrenbergFunktionen({ standorte: [ahrenbergMessen(alle), funktionWerkLindach('bestand')] });
+      await page.getByRole('button', { name: 'Erneut prüfen', exact: true }).click();
+      await expect(page.getByText('5 von 5 Messstellen liefern Daten')).toBeVisible();
+      await messeUndFotografiere(page, breite, 'schritt4-erfuellt');
+
+      // 5 · Fertig: kein Start-Knopf, der Entwurf ist gelöscht.
+      await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Messen & Auswerten ist für Werk Ahrenberg eingerichtet und aktiv.' })).toBeVisible();
+      await zaehlerIst(page, breite, 5, 'Fertig');
+      await messeUndFotografiere(page, breite, 'schritt5');
+      expect(await page.evaluate(() => localStorage.getItem('vp.uems.messen-assistent.entwurf.v1'))).toBeNull();
+      await page.getByRole('button', { name: 'Fertig', exact: true }).click();
+      await expect(page.getByTestId('assistent-geschlossen')).toBeVisible();
     });
   });
 }
