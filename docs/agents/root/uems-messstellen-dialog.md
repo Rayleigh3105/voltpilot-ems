@@ -14,8 +14,8 @@ Bilder mit `MESSSTELLE_DIALOG_BILDER=<Ordner>`). Fixtures: `src/test/messstelleD
 legt an, eine ID bearbeitet; `standortId` ist die Vorgabe des Orts (§5.1). `onGespeichert` kommt JE
 SCHRITT, der gespeichert hat. Geöffnet wird er vom Register (`pages/MessstellenPage.tsx`, IP-5): „Messstelle anlegen“ im Kopf
 bzw. im Leerzustand „noch keine Messstelle“, `standortId` = Standort der Seite; hat ein Schritt
-gespeichert, liest das Register nach dem Schließen neu. „Bearbeiten“ hat noch keinen Einstieg — der
-kommt mit der Messstellen-Seite (IP-8).
+gespeichert, liest das Register nach dem Schließen neu. „Bearbeiten“ öffnet seit AP-04
+IP-8 die Messstellen-Seite (`pages/MessstelleSeite.tsx`, `uems-messstelle-seite-portal.md`).
 
 ## ⚠ Die Fallen
 

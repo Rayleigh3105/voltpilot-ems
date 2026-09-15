@@ -1,0 +1,261 @@
+/*
+ * Die Messstellen-Seite (UEMS AP-04 IP-8, Mockup R2). Nur diese Seite — Klassen mit `vp-mss-`,
+ * damit nichts in das Register (`vp-ms-`) oder Portfolio-Tabellen greift. Das Protokoll trägt die
+ * Klassen des Befehls-Verlaufs (`Befehle.css`, über `ProtokollListe`).
+ * ⚠ 375 px: eine Spalte; lange Namen („Unterzähler Spritzguss SG01–SG06 · GR-4 Z-5a“) brechen um
+ *   (`break-word`), nichts läuft quer. Am Rechner stehen die drei Karten nebeneinander.
+ */
+
+.vp-mss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-mss-zurueck {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  cursor: pointer;
+}
+
+.vp-mss-zurueck:focus-visible,
+.vp-mss-aendern:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-mss-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-mss-kopf-text {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.vp-mss-kz {
+  display: inline-block;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  letter-spacing: 0.04em;
+}
+
+.vp-mss-kopf h1 {
+  margin: 2px 0 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-kopf p {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-kopf .vp-mss-beob.is-gut {
+  color: var(--vp-c-ok-fg, var(--vp-c-fg));
+}
+
+.vp-mss-kopf .vp-mss-beob.is-hinweis {
+  color: var(--vp-c-warn-fg, var(--vp-c-fg));
+}
+
+/* --- Karten ---------------------------------------------------------------- */
+
+.vp-mss-karten {
+  display: grid;
+  gap: var(--vp-c-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+  min-width: 0;
+}
+
+.vp-mss-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  box-sizing: border-box;
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-mss-karte h2,
+.vp-mss-protokoll h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-mss-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vp-mss-zeile + .vp-mss-zeile {
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-mss-zeile h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vp-mss-wert {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-neben,
+.vp-mss-leer {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-danach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-gespeichert {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-ok-fg, var(--vp-c-fg));
+  overflow-wrap: break-word;
+}
+
+.vp-mss-aendern {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+}
+
+/* --- Historie -------------------------------------------------------------- */
+
+.vp-mss-historie {
+  margin-top: 4px;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-mss-historie summary {
+  cursor: pointer;
+  color: var(--vp-c-primary);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-mss-historie ol {
+  display: flex;
+  flex-direction: column;
+  margin: var(--vp-c-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-mss-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px var(--vp-c-space-2);
+  padding: var(--vp-c-space-2) 0;
+  border-top: 1px solid var(--vp-c-border);
+  min-width: 0;
+}
+
+.vp-mss-h:first-child {
+  border-top: 0;
+}
+
+.vp-mss-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+  opacity: 0.45;
+}
+
+.vp-mss-h.is-gueltig .vp-mss-punkt,
+.vp-mss-h.is-geplant .vp-mss-punkt {
+  background: var(--vp-c-primary);
+  opacity: 1;
+}
+
+.vp-mss-h.is-geplant .vp-mss-punkt {
+  background: transparent;
+  border: 2px solid var(--vp-c-primary);
+  box-sizing: border-box;
+}
+
+.vp-mss-h-text {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-mss-h-wert {
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-mss-h-neben,
+.vp-mss-h-zeit {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+/* --- Protokoll ------------------------------------------------------------- */
+
+.vp-mss-protokoll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}

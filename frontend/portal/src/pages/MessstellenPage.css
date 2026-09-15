@@ -330,3 +330,24 @@
     max-width: none;
   }
 }
+
+/* Der Name öffnet die Messstellen-Seite (AP-04 IP-8) — ein Knopf in Linkform, bricht wie Text um. */
+.vp-ms-oeffnen {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.vp-ms-oeffnen:hover {
+  text-decoration: underline;
+}
+
+.vp-ms-oeffnen:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
