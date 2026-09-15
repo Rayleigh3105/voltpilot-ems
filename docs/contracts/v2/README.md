@@ -85,6 +85,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + [`kennzahlwert-herkunft.schema.json`](./kennzahlwert-herkunft.schema.json) | Schema und Regeln der Herkunft eines Kennzahl-Werts; die Fälle stehen in `kennzahl-vectors.json`. |
 | [`bericht.md`](./bericht.md) + [`bericht-vectors.json`](./bericht-vectors.json) + [`bericht.schema.json`](./bericht.schema.json) + [`bericht-vorlagen.json`](./bericht-vorlagen.json) | Schema, Regeln, Vorlagen und gemeinsame Testvektoren des Berichts (AP-12): Abzug mit Prüfsumme, Datenstand, Freigabe, Betroffenheit, Revision, Rechte, CSV. |
 | [`wago-referenzdatensatz.schema.json`](./wago-referenzdatensatz.schema.json) + [`fixtures/wago-referenzdatensatz/`](./fixtures/wago-referenzdatensatz/README.md) | AP-05 IP-1: Form des Referenzdatensatzes je WAGO-Kombination (Rohwörter → Kanalwerte); belegt nur aus dem Pilot mit Nachweis. Nachweis-Zeilen: [Hardwareblatt-Vorlage](../../wago/hardwareblatt-vorlage.md). |
+| [`wago-registerbild.md`](./wago-registerbild.md) + [`wago-registerbild-vectors.json`](./wago-registerbild-vectors.json) + [`wago-registerbild.schema.json`](./wago-registerbild.schema.json) | AP-05 IP-2: VoltPilot-Registerbild WAGO v1 — Kopf, Karten-Block, Parameter, additive Versionierung; jede Zahl mit Herkunft (Festlegung, Handbuch, zu erheben), Lese-Fälle ohne Beleg. |
 
 ## Ergänzende Entscheidungen
 
