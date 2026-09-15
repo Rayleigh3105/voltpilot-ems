@@ -1415,30 +1415,16 @@ paths:
         "404": { description: Site not found for this tenant. }
         "409":
           description: >
-            Still has devices (plain `message`), or its measurements are Belege of Messstellen (UEMS AP-07 E8/IP-11): a series
+            Still has devices (plain `message`; remove them first), or its measurements are Belege of Messstellen (UEMS AP-07 E8/IP-11): a series
             that was EVER bound to a Messstelle (binding, its log entry
             `quelle_gebunden`, or a formula term) is never deleted. Nothing was
-            written; the body names every Messstelle in the way.
+            written; the body names every Messstelle in the way (`code`
+            `messstellen_belege`) and, in the same answer, every released
+            Berichtsstand citing one of them (`codes` adds `berichts_belege`,
+            list `berichtsstaende` - UEMS AP-12 E13 S2/IP-12).
           content:
             application/json:
-              schema:
-                type: object
-                required: [code, message, messstellen]
-                properties:
-                  code: { type: string, enum: [messstellen_belege] }
-                  message: { type: string, description: "Kundensatz, z. B. „… sind Belege von 5 Messstellen und werden nicht gelöscht: MS-01 Netzbezug Halle 1, …“" }
-                  messstellen:
-                    type: array
-                    minItems: 1
-                    items:
-                      type: object
-                      required: [id, kennzeichen, name]
-                      properties:
-                        id: { type: string, format: uuid }
-                        kennzeichen: { type: string }
-                        name: { type: string }
-
-        "409": { description: The site still has devices; remove them first. }
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
   /api/v1/sites/{siteId}/standort/vorschau:
     get:
       tags: [ortsstruktur]
@@ -1620,25 +1606,13 @@ paths:
             The box's recordings are Belege of Messstellen (UEMS AP-07 E8/IP-11): a series
             that was EVER bound to a Messstelle (binding, its log entry
             `quelle_gebunden`, or a formula term) is never deleted. Nothing was
-            written; the body names every Messstelle in the way.
+            written; the body names every Messstelle in the way (`code`
+            `messstellen_belege`) and, in the same answer, every released
+            Berichtsstand citing one of them (`codes` adds `berichts_belege`,
+            list `berichtsstaende` - UEMS AP-12 E13 S2/IP-12).
           content:
             application/json:
-              schema:
-                type: object
-                required: [code, message, messstellen]
-                properties:
-                  code: { type: string, enum: [messstellen_belege] }
-                  message: { type: string, description: "Kundensatz, z. B. „… sind Belege von 5 Messstellen und werden nicht gelöscht: MS-01 Netzbezug Halle 1, …“" }
-                  messstellen:
-                    type: array
-                    minItems: 1
-                    items:
-                      type: object
-                      required: [id, kennzeichen, name]
-                      properties:
-                        id: { type: string, format: uuid }
-                        kennzeichen: { type: string }
-                        name: { type: string }
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
 
   /api/v1/devices/{deviceId}/measurement-selection:
     get:
@@ -3714,6 +3688,16 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or entity not found for this tenant. }
+        "409":
+          description: >
+            The component is a Beleg (UEMS AP-12 E13 S2/IP-12): a released
+            Berichtsstand - also a superseded one - cites a Messstelle it ever
+            fed. Checked after the Grundausstattung guards, before anything is
+            written; `code` `berichts_belege`, the Stände and the cited
+            Messstellen. Ending the binding stays possible.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
         "422": { description: A platform-composed or unassigned component - not the customer's to remove. }
   /api/v1/sites/{siteId}/entity-strategies:
     get:
@@ -4689,6 +4673,32 @@ paths:
         "400": { description: Missing/invalid battery values. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS), or the chosen device is not at this site. }
+    delete:
+      tags: [sites]
+      summary: Batterie am Standort abmelden (asset nameplate, flow claim and battery-hybrid component together).
+      description: >
+        Removes the site's battery as one action; its recorded telemetry is kept.
+        Idempotent - a site without a battery returns its unchanged assets.
+        Refused (409 `berichts_belege`, UEMS AP-12 E13 S2/IP-12) when the
+        battery-hybrid component fed a Messstelle a released Berichtsstand
+        cites - checked before anything is written.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's remaining asset rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409":
+          description: The battery is a Beleg of released Berichtsstände - nothing written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
   /api/v1/sites/{siteId}/simulation:
     post:
       tags: [simulation]
@@ -6394,6 +6404,14 @@ paths:
               schema: { $ref: "#/components/schemas/SiteComponents" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or component not found for this tenant. }
+        "409":
+          description: >
+            The component is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2/IP-12)
+            - `berichts_belege`, nothing written, the read flow stays. The plain 409
+            of a box-managed plant keeps its `message`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
         "422": { description: Not a self-built component. }
   /api/v1/sites/{siteId}/components/battery:
     parameters:
@@ -6536,6 +6554,14 @@ paths:
               schema: { $ref: "#/components/schemas/SiteComponents" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or component not found for this tenant. }
+        "409":
+          description: >
+            The battery is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2/IP-12)
+            - `berichts_belege`, nothing written, the read flow stays. The plain 409
+            of a box-managed plant keeps its `message`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
         "422": { description: Not a self-connected battery. }
   /api/v1/sites/{siteId}/components/custom/{entityId}/switch-test:
     parameters:
@@ -7730,7 +7756,15 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Consumer/site not found for this tenant. }
-        "409": { description: Still connected to a device/source; disconnect first. }
+        "409":
+          description: >
+            Still connected to a device/source; disconnect first (plain `message`).
+            Or the unconnected consumer is a Beleg of released Berichtsstände
+            (UEMS AP-12 E13 S2/IP-12): it fed a cited Messstelle - e.g. read by a
+            box that was abgemeldet since. `berichts_belege`, nothing written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BelegeImWeg" }
   /api/v1/sites/{siteId}/consumers/{id}/policy:
     get:
       tags: [consumer]
@@ -15393,6 +15427,44 @@ components:
             Schnittstelle ohne Container); `erreicht` = kompatibler Fallback
             aus einem Browser-Aufruf, der auch über ein Service-VPN erfolgt
             sein kann.
+    BelegeImWeg:
+      type: object
+      description: >
+        409 of a hard delete path whose target is a Beleg (UEMS AP-07 E8/IP-11,
+        AP-12 E13 S2/IP-12) - thrown before anything is written. `codes` names
+        every reason in fixed order (`messstellen_belege`, `berichts_belege`),
+        `code` is the first. Purge and Anlage entfernen: `messstellen` = the
+        Messstellen whose series hang there, `berichtsstaende` = the released
+        Berichtsstände (also superseded ones) citing those Messstellen - both
+        lists in the same answer. A component (Komponente entfernen, Batterie am
+        Standort abmelden, Verbraucher entfernen): `code` `berichts_belege`,
+        `messstellen` = the cited Messstellen it fed, where the binding ends
+        instead. Drafts protect nothing.
+      required: [code, codes, message, messstellen, berichtsstaende]
+      properties:
+        code: { type: string, enum: [messstellen_belege, berichts_belege] }
+        codes:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [messstellen_belege, berichts_belege] }
+        message: { type: string, description: "Kundensatz, z. B. „Diese Komponente ist Beleg in 4 freigegebenen Berichtsständen (BR-2026-0001 Nr. 1, …). Löschen ist nicht möglich — beenden Sie die Bindung stattdessen.“" }
+        messstellen:
+          type: array
+          items:
+            type: object
+            required: [id, kennzeichen, name]
+            properties:
+              id: { type: string, format: uuid }
+              kennzeichen: { type: string }
+              name: { type: string }
+        berichtsstaende:
+          type: array
+          items:
+            type: object
+            required: [kennung, nr]
+            properties:
+              kennung: { type: string, description: "BR-<Jahr>-<Nr.>" }
+              nr: { type: integer, minimum: 1 }
     DevicePurgeResult:
       type: object
       properties:

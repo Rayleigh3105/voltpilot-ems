@@ -150,3 +150,22 @@
     justify-content: center;
   }
 }
+
+/* Beleg freigegebener Berichtsstände (UEMS AP-12 IP-12): je zitierter Messstelle der Weg dorthin. */
+.vp-gz-blocked > div {
+  min-width: 0;
+}
+
+.vp-gz-belege {
+  margin: var(--vp-space-2) 0 0;
+  padding-left: var(--vp-space-4);
+  font-size: var(--vp-text-sm);
+}
+
+.vp-gz-belege li + li {
+  margin-top: var(--vp-space-1);
+}
+
+.vp-gz-belege a {
+  overflow-wrap: anywhere;
+}

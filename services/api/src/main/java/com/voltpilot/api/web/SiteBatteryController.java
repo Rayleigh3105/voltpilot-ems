@@ -1,20 +1,26 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.entities.EntityAutoComposer;
+import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.SaveBatteryRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,15 +51,20 @@ public class SiteBatteryController {
     private final DeviceRepository devices;
     private final EntityAutoComposer autoCompose;
     private final EntityRegistryService registry;
+    private final EntityRegistryRepository entities;
+    private final BerichtsBelege berichtsBelege;
 
     public SiteBatteryController(SiteRepository sites, AssetRepository assets,
             DeviceRepository devices, EntityAutoComposer autoCompose,
-            EntityRegistryService registry) {
+            EntityRegistryService registry, EntityRegistryRepository entities,
+            BerichtsBelege berichtsBelege) {
         this.sites = sites;
         this.assets = assets;
         this.devices = devices;
         this.autoCompose = autoCompose;
         this.registry = registry;
+        this.entities = entities;
+        this.berichtsBelege = berichtsBelege;
     }
 
     /**
@@ -121,8 +132,20 @@ public class SiteBatteryController {
     @DeleteMapping("/battery")
     public List<SiteAssetDto> unregisterBattery(@PathVariable UUID siteId) {
         requireSite(siteId);
+        // UEMS AP-12 E13 S2: the battery-hybrid point is a component - when a released Berichtsstand
+        // cites a Messstelle it fed, it is a Beleg: 409 with the list, before anything is written.
+        UUID batterie = entities.batteryHybridPointId(siteId);
+        if (batterie != null) {
+            berichtsBelege.pruefeKomponente(siteId, batterie);
+        }
         registry.unregisterBattery(siteId);
         return assets.findForSite(siteId);
+    }
+
+    /** The battery is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2): 409 with the list - nothing written. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     private void requireSite(UUID siteId) {

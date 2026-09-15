@@ -24,6 +24,7 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.topology.TopologyDeriver;
 import com.voltpilot.api.topology.TopologyRepository;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.BindingRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.MappingRequest;
@@ -100,7 +101,7 @@ class UserDefinedBatteryBindingTest {
                 new EntityTypeCatalog(mapper), definitions, components,
                 new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
                 new UserDefinedBatteryFlowCompiler(mapper),
-                flows, deployments, flowc, topology, mapper);
+                flows, deployments, flowc, topology, mapper, mock(BerichtsBelege.class));
         TenantContext.set(TENANT);
     }
 

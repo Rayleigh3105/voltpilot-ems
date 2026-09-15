@@ -11,6 +11,7 @@ import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.entities.EntityTypeCatalog.EntityType;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BerichtsBelege;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -58,11 +59,13 @@ public class ConsumerService {
     private final JdbcTemplate jdbc;
     private final ConsumerAuditRepository audit;
     private final ConsumerPolicyActivationService activation;
+    private final BerichtsBelege berichtsBelege;
 
     public ConsumerService(ConsumerRepository repo, EntityRegistryService entities,
             EntityTypeCatalog catalog, ConsumerSignalCatalog signals,
             ConsumerPolicyValidator validator, ObjectMapper mapper, JdbcTemplate jdbc,
-            ConsumerAuditRepository audit, ConsumerPolicyActivationService activation) {
+            ConsumerAuditRepository audit, ConsumerPolicyActivationService activation,
+            BerichtsBelege berichtsBelege) {
         this.repo = repo;
         this.entities = entities;
         this.catalog = catalog;
@@ -72,6 +75,7 @@ public class ConsumerService {
         this.jdbc = jdbc;
         this.audit = audit;
         this.activation = activation;
+        this.berichtsBelege = berichtsBelege;
     }
 
     // --- DTOs ----------------------------------------------------------------
@@ -366,7 +370,10 @@ public class ConsumerService {
      * Fachlich stilllegen (§11): a still-CONNECTED consumer is 409 (disconnect
      * first - physische Registry-Bereinigung erst nach Deaktivierung); an
      * unconnected one is removed, returning the site to its pre-consumer state
-     * (no audit/fulfilment data exists in Increment 1).
+     * (no audit/fulfilment data exists in Increment 1). An unconnected consumer that
+     * is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2: it fed a cited
+     * Messstelle - e.g. read by a box that was abgemeldet since) is 409
+     * {@code berichts_belege} with the list, before anything is written.
      */
     @Transactional
     public void delete(UUID siteId, UUID entityId) {
@@ -378,6 +385,7 @@ public class ConsumerService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Dieser Verbraucher ist noch mit einem Gerät verbunden. Bitte zuerst trennen.");
         }
+        berichtsBelege.pruefeKomponente(siteId, entityId);
         entities.deleteEntity(siteId, entityId);
     }
 

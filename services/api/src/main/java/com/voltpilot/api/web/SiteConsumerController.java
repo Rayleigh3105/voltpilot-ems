@@ -18,6 +18,7 @@ import com.voltpilot.api.consumers.ConsumerService.SavePolicyRequest;
 import com.voltpilot.api.repo.ConsumerOverrideRepository;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ConsumerDeviationDto;
 import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
 import com.voltpilot.api.web.dto.ConsumerOverrideDto;
@@ -294,6 +295,12 @@ public class SiteConsumerController {
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */
+    /** The consumer is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2): 409 with the list - nothing written. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> onStatusException(ResponseStatusException e) {
         return ResponseEntity.status(e.getStatusCode())

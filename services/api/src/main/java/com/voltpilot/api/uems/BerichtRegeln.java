@@ -951,9 +951,14 @@ public final class BerichtRegeln {
     /** Ein freigegebener Berichtsstand in einer Liste: „BR-2026-0001 Nr. 1“. */
     public record StandBezeichnung(String kennung, int nr) {}
 
-    public static String berichtsBelege(List<StandBezeichnung> staende) {
-        String liste = String.join(", ", staende.stream()
+    /** Die Stände einer Liste, wie die Kundensätze sie nennen: „BR-2026-0001 Nr. 1, BR-2026-0001 Nr. 2“. */
+    public static String standBezeichnungen(List<StandBezeichnung> staende) {
+        return String.join(", ", staende.stream()
                 .map(s -> fuelle(SAETZE.get("stand_bezeichnung"), Map.of("kennung", s.kennung(), "nr", String.valueOf(s.nr())))).toList());
+    }
+
+    public static String berichtsBelege(List<StandBezeichnung> staende) {
+        String liste = standBezeichnungen(staende);
         return staende.size() == 1 ? fuelle(SAETZE.get("berichts_belege_eins"), Map.of("staende", liste))
                 : fuelle(SAETZE.get(BERICHTS_BELEGE), Map.of("anzahl", String.valueOf(staende.size()), "staende", liste));
     }

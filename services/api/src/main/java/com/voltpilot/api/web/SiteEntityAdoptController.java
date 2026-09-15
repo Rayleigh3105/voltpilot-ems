@@ -5,6 +5,8 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -84,15 +86,17 @@ public class SiteEntityAdoptController {
     private final EntityTypeCatalog catalog;
     private final EntityObservedRepository observed;
     private final EntityRegistryRepository registry;
+    private final BerichtsBelege berichtsBelege;
 
     public SiteEntityAdoptController(SiteRepository sites, EntityRegistryService service,
             EntityTypeCatalog catalog, EntityObservedRepository observed,
-            EntityRegistryRepository registry) {
+            EntityRegistryRepository registry, BerichtsBelege berichtsBelege) {
         this.sites = sites;
         this.service = service;
         this.catalog = catalog;
         this.observed = observed;
         this.registry = registry;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @PostMapping("/adopt")
@@ -272,6 +276,11 @@ public class SiteEntityAdoptController {
      * create time, so a grid-meter composed before that column existed carries
      * {@code source_kind = NULL} (never back-filled) - guarding by role too keeps
      * those legacy rows protected without a data migration.
+     *
+     * <p><b>A component that is a Beleg is refused</b> (UEMS AP-12 E13 S2): when a released
+     * Berichtsstand cites a Messstelle this component ever fed, the delete is 409
+     * {@code berichts_belege} with the list of those Stände - checked after the guards above and
+     * before anything is written ({@link BerichtsBelege#pruefeKomponente}).
      */
     @DeleteMapping("/{entityId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -292,6 +301,7 @@ public class SiteEntityAdoptController {
                     "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
                             + "entfernt werden.");
         }
+        berichtsBelege.pruefeKomponente(siteId, entityId);
         if (!service.deleteEntity(siteId, entityId, true)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
@@ -361,6 +371,12 @@ public class SiteEntityAdoptController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Diese Geräteart richtet VoltPilot für Sie ein — sprechen Sie uns an.");
         }
+    }
+
+    /** The component is a Beleg of released Berichtsstände: 409 with the list - nothing written. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     /** German reasons reach the portal as {"message": ...} (SiteFlowController pattern). */

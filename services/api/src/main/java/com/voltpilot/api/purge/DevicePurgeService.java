@@ -5,6 +5,7 @@ import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.uems.MessreihenBelege;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.time.Instant;
@@ -66,15 +67,17 @@ public class DevicePurgeService {
     private final DeviceDataLock dataLock;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final MessreihenBelege belege;
+    private final BerichtsBelege berichtsBelege;
 
     public DevicePurgeService(DeviceRepository devices, SeriesRepository series,
             DeviceDataLock dataLock, ObjectProvider<ProvisioningPublisher> provisioning,
-            MessreihenBelege belege) {
+            MessreihenBelege belege, BerichtsBelege berichtsBelege) {
         this.devices = devices;
         this.series = series;
         this.dataLock = dataLock;
         this.provisioning = provisioning;
         this.belege = belege;
+        this.berichtsBelege = berichtsBelege;
     }
 
     /**
@@ -84,13 +87,15 @@ public class DevicePurgeService {
      * the RLS-scoped app datasource.
      *
      * @throws BelegeImWeg when the box carries series that were ever bound to a Messstelle -
-     *     thrown before anything is locked or written
+     *     thrown before anything is locked or written; the same answer lists the released
+     *     Berichtsstände citing those Messstellen (UEMS AP-12 E13 S2)
      */
     public Result purge(DeviceDto device) {
         UUID tenantId = TenantContext.get();
         List<MessreihenBelege.Beleg> imWeg = belege.derBox(device.id());
         if (!imWeg.isEmpty()) {
-            throw new BelegeImWeg(BelegeImWeg.Gegenstand.BOX, imWeg);
+            // A Stand cites Messstellen only: without a Messstelle Beleg there is no Berichts-Beleg here.
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.BOX, imWeg, berichtsBelege.derMessstellen(imWeg));
         }
         Instant purgedBefore;
         long purgedRows;
