@@ -3880,6 +3880,38 @@ export interface MessstelleRegisterAggregat {
   standorte: MessstelleRegisterStandortAbdeckung[];
 }
 
+/** Ein zeitgültiger Eintrag der Vertrags-Form: Tage bei Ort und Stellung, Zeitpunkte bei Quellen. */
+interface MessstelleVertragsIntervall {
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/**
+ * Nur der Teil der Vertrags-Form (`MessstelleDto.Messstelle`, IP-3), den das Register im Portal
+ * liest: ALLE wirksamen Intervalle (aufgehobene nicht) — daraus erkennt „Stand am …“, dass es eine
+ * Messstelle an einem Tag noch nicht gab. Die übrigen Felder trägt die Antwort weiter.
+ */
+export interface MessstelleVertragsform {
+  id: string;
+  kennzeichen: string;
+  orte: MessstelleVertragsIntervall[];
+  elektrische_stellung: MessstelleVertragsIntervall[];
+  fuehrende_quelle: MessstelleVertragsIntervall[];
+  vergleichsquellen: MessstelleVertragsIntervall[];
+  nebengroessen: { fuehrende_quelle: MessstelleVertragsIntervall[]; vergleichsquellen: MessstelleVertragsIntervall[] }[];
+}
+
+/** Die Filter von `GET /api/v1/messstellen` — ein leerer Filter wird nicht gesendet. */
+export interface MessstellenRegisterAnfrage {
+  standort?: string;
+  ort?: string;
+  anlage?: string;
+  zustand?: string;
+  ohneQuelle?: boolean;
+  /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
+  stichtag?: string;
+}
+
 /**
  * GET /api/v1/messstellen — `messstellen` und `register` nennen dieselben Messstellen in
  * derselben Reihenfolge (nach Kennzeichen); `teilansicht` bleibt `false`, bis AP-03 Rechte je
@@ -3887,7 +3919,7 @@ export interface MessstelleRegisterAggregat {
  * der Quelle.
  */
 export interface MessstellenRegister {
-  messstellen: unknown[];
+  messstellen: MessstelleVertragsform[];
   register: MessstelleRegisterZeile[];
   stichtag: string;
   zeitpunkt: string;
@@ -6627,6 +6659,20 @@ export const api = {
 
   /** Alle Messstellen des Kundenbereichs (für die Auswahl der berechneten). */
   messstellen: () => request<{ messstellen: Messstelle[] }>(`/api/v1/messstellen`),
+
+  /**
+   * Das Messstellen-Register (AP-04 IP-4/IP-15) — dieselbe Route, mit ihren Filtern und dem
+   * Stichtag. Die Fläche „Messstellen“ (IP-5) liest NUR diese eine Abfrage.
+   */
+  messstellenRegister: (anfrage: MessstellenRegisterAnfrage = {}) => {
+    const q = new URLSearchParams();
+    for (const [schluessel, wert] of Object.entries(anfrage)) {
+      if (wert === undefined || wert === false || wert === '') continue;
+      q.set(schluessel, String(wert));
+    }
+    const text = q.toString();
+    return request<MessstellenRegister>(`/api/v1/messstellen${text ? `?${text}` : ''}`);
+  },
 
   /** Eine einzelne Messstelle. */
   messstelle: (id: string) => request<Messstelle>(`/api/v1/messstellen/${id}`),

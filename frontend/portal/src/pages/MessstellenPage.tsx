@@ -1,0 +1,378 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
+import { api, type MessstellenRegister } from '../api';
+import { StandAm } from '../components/StandAm';
+import { VpPicker } from '../components/VpPicker';
+import {
+  ERNEUT,
+  FILTER,
+  LADEFEHLER,
+  LADEN,
+  OHNE_ANGABE,
+  OHNE_FILTER,
+  SPALTEN,
+  TITEL,
+  ZUR_UEBERSICHT,
+  ZUSTAND_HEUTE,
+  filterAktiv,
+  filterOptionen,
+  kopfZeile,
+  leerzustand,
+  registerAnfrage,
+  registerEintraege,
+  type FilterOption,
+  type FilterOptionen,
+  type Leerzustand,
+  type Lebenszyklus,
+  type MessstellenEbene,
+  type RegisterEintrag,
+  type RegisterFilter,
+  type ZeileWoerter,
+} from '../messstellen';
+import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
+import { useIsPhone } from '../useIsPhone';
+import './MessstellenPage.css';
+
+/**
+ * „Unternehmen › Messstellen“ und „Standort › Messstellen“ (UEMS AP-04 IP-5):
+ * das Register als Tabelle am Rechner und als Karten am Telefon, Filter,
+ * Leerzustände und „Stand am …“.
+ *
+ * Die Fläche liest EINE Abfrage (`GET /api/v1/messstellen`, IP-4/IP-15) — die
+ * Filter gehen als Parameter an sie, jede Ableitung steht im reinen Modul
+ * `messstellen.ts`. Die Optionen der Filter kommen aus der ungefilterten Antwort
+ * desselben Tags (sie wird je Tag gemerkt, nicht neu gefragt).
+ *
+ * ⚠ Mit Stichtag gibt es keinen Schreibweg — die Fläche hat heute auch keinen:
+ * „Messstelle anlegen“ und „Vorschläge aus Komponenten“ (§5.11) kommen mit ihrem
+ * Dialog (IP-6) bzw. der Vorschlagsliste (AP-01 IP-9b), vorher kein Knopf ohne Ziel.
+ */
+export function MessstellenPage({
+  ebene,
+  bereichDa = null,
+  zone = VORGABE_ZEITZONE,
+  onUebersicht,
+}: {
+  ebene: MessstellenEbene;
+  /** Hat die Ebene den Bereich (ein Standort misst)? `null` = unbekannt. */
+  bereichDa?: boolean | null;
+  /** Zeitzone des Standorts; im Unternehmen die Vorgabe. */
+  zone?: string;
+  /** Der Weg aus dem Leerzustand „gibt es erst mit Messen & Auswerten“: die Übersicht der Ebene. */
+  onUebersicht?: () => void;
+}) {
+  const isPhone = useIsPhone();
+  const [stichtag, setStichtag] = useState<string | null>(null);
+  const [heute, setHeute] = useState<string | null>(null);
+  const [filter, setFilter] = useState<RegisterFilter>(OHNE_FILTER);
+  const [stand, setStand] = useState<{ schluessel: string; basis: MessstellenRegister; liste: MessstellenRegister } | null>(
+    null,
+  );
+  const [fehler, setFehler] = useState(false);
+  const [versuch, setVersuch] = useState(0);
+  const anfrage = useRef(0);
+  const basisMerker = useRef<{ tag: string; antwort: MessstellenRegister } | null>(null);
+
+  const ebeneId = ebene.art === 'standort' ? ebene.id : null;
+  const tagSchluessel = `${ebeneId ?? 'unternehmen'}|${stichtag ?? 'heute'}`;
+  const schluessel = [tagSchluessel, filter.standort, filter.ort, filter.anlage, filter.zustand, filter.ohneQuelle].join('|');
+
+  useEffect(() => {
+    const hier: MessstellenEbene = ebeneId
+      ? { art: 'standort', id: ebeneId, name: '' }
+      : { art: 'unternehmen', name: '' };
+    const nummer = ++anfrage.current;
+    setFehler(false);
+    const gemerkt = basisMerker.current?.tag === tagSchluessel ? basisMerker.current.antwort : null;
+    const basis = gemerkt ? Promise.resolve(gemerkt) : api.messstellenRegister(registerAnfrage(hier, OHNE_FILTER, stichtag));
+    const liste = filterAktiv(filter) ? api.messstellenRegister(registerAnfrage(hier, filter, stichtag)) : basis;
+    Promise.all([basis, liste]).then(
+      ([b, l]) => {
+        // Eine überholte Antwort (Tag oder Filter gewechselt) zeigt nichts mehr.
+        if (nummer !== anfrage.current) return;
+        basisMerker.current = { tag: tagSchluessel, antwort: b };
+        if (!stichtag) setHeute(b.stichtag);
+        setStand({ schluessel, basis: b, liste: l });
+      },
+      () => {
+        if (nummer === anfrage.current) setFehler(true);
+      },
+    );
+  }, [ebeneId, stichtag, filter, tagSchluessel, schluessel, versuch]);
+
+  // Jede Antwort gilt nur für ihren Tag und ihre Filter — bis die neue da ist, steht „… werden geladen“.
+  const aktuell = stand?.schluessel === schluessel ? stand : null;
+  const optionen = stand ? filterOptionen(stand.basis, ebene) : null;
+  const leer = aktuell ? leerzustand({ antwort: aktuell.liste, basis: aktuell.basis, filter, ebene, bereichDa }) : null;
+  const ohneRegister = leer?.art === 'bereich_fehlt' || leer?.art === 'keine_messstelle';
+  const eintraege =
+    aktuell && !leer ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt }) : [];
+  const unterzeile = [ebene.art === 'standort' ? ebene.name : null, kopfZeile(aktuell?.liste ?? null, stichtag)]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <div className="vp-ms" data-testid="messstellen">
+      <header className="vp-ms-kopf">
+        <h1>{TITEL}</h1>
+        {unterzeile && <p>{unterzeile}</p>}
+      </header>
+      {fehler ? (
+        <div className="vp-ms-leer" role="alert">
+          <p>{LADEFEHLER}</p>
+          <Button variant="outline" onClick={() => setVersuch((v) => v + 1)}>
+            {ERNEUT}
+          </Button>
+        </div>
+      ) : (
+        <>
+          {heute && (stichtag || !ohneRegister) && <StandAm heute={heute} stichtag={stichtag} onStichtag={setStichtag} />}
+          {optionen && (filterAktiv(filter) || !ohneRegister) && (
+            <Filterleiste ebene={ebene} optionen={optionen} filter={filter} onFilter={setFilter} />
+          )}
+          {!aktuell ? (
+            <p className="vp-ms-laedt" role="status">
+              {LADEN}
+            </p>
+          ) : leer ? (
+            <Leer leer={leer} onUebersicht={onUebersicht} />
+          ) : isPhone ? (
+            <Karten eintraege={eintraege} stichtag={stichtag} />
+          ) : (
+            <Tabelle eintraege={eintraege} stichtag={stichtag} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Filterleiste({
+  ebene,
+  optionen,
+  filter,
+  onFilter,
+}: {
+  ebene: MessstellenEbene;
+  optionen: FilterOptionen;
+  filter: RegisterFilter;
+  onFilter: (f: RegisterFilter) => void;
+}) {
+  // Eine Liste mit einer einzigen Wahl ist keine Wahl — außer, sie ist gerade gesetzt.
+  const feld = (label: string, wert: string | null, liste: FilterOption[], setze: (v: string | null) => void) =>
+    liste.length >= 2 || wert !== null ? (
+      <VpPicker
+        className="vp-ms-feld"
+        label={label}
+        options={[{ value: '', label: FILTER.alle }, ...liste]}
+        value={wert ?? ''}
+        onChange={(v) => setze(v || null)}
+      />
+    ) : null;
+  return (
+    <div className="vp-ms-filter" role="group" aria-label="Filter">
+      {ebene.art === 'unternehmen' &&
+        feld(FILTER.standort, filter.standort, optionen.standorte, (standort) => onFilter({ ...filter, standort }))}
+      {feld(FILTER.ort, filter.ort, optionen.orte, (ort) => onFilter({ ...filter, ort }))}
+      {feld(FILTER.anlage, filter.anlage, optionen.anlagen, (anlage) => onFilter({ ...filter, anlage }))}
+      {feld(FILTER.zustand, filter.zustand, optionen.zustaende, (zustand) =>
+        onFilter({ ...filter, zustand: zustand as Lebenszyklus | null }),
+      )}
+      {optionen.gemessen > 0 && (
+        <button
+          type="button"
+          className="vp-ms-schalter"
+          aria-pressed={filter.ohneQuelle}
+          onClick={() => onFilter({ ...filter, ohneQuelle: !filter.ohneQuelle })}
+        >
+          {FILTER.ohneQuelle} ({optionen.ohneQuelle})
+        </button>
+      )}
+      {filterAktiv(filter) && (
+        <Button variant="outline" onClick={() => onFilter(OHNE_FILTER)}>
+          {FILTER.zuruecksetzen}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function Leer({ leer, onUebersicht }: { leer: Leerzustand; onUebersicht?: () => void }) {
+  return (
+    <div className="vp-ms-leer" role="status">
+      <p>{leer.satz}</p>
+      {leer.art === 'bereich_fehlt' && onUebersicht && (
+        <Button variant="outline" onClick={onUebersicht}>
+          {ZUR_UEBERSICHT}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function spalten(stichtag: string | null): string[] {
+  return [
+    SPALTEN.kennzeichen,
+    SPALTEN.name,
+    SPALTEN.ort,
+    SPALTEN.stellung,
+    SPALTEN.quelle,
+    stichtag ? ZUSTAND_HEUTE : SPALTEN.zustand,
+    SPALTEN.wert,
+  ];
+}
+
+/** 1440 px: eine Zeile je Messstelle; die Tabelle scrollt lokal, nie die Seite. */
+function Tabelle({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; stichtag: string | null }) {
+  return (
+    <div className="vp-ms-rahmen">
+      <table className="vp-ms-tabelle">
+        <thead>
+          <tr>
+            {spalten(stichtag).map((t) => (
+              <th key={t} scope="col">
+                {t}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {eintraege.map((e) =>
+            e.art === 'gab_es_noch_nicht' ? (
+              <tr key={e.id} className="vp-ms-still">
+                <td>
+                  <span className="vp-ms-kz">{e.kennzeichen}</span>
+                </td>
+                <td className="vp-ms-name">{e.name}</td>
+                <td colSpan={5} className="vp-ms-satz">
+                  {e.satz}
+                </td>
+              </tr>
+            ) : (
+              <tr key={e.woerter.id}>
+                <td>
+                  <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
+                </td>
+                <td className="vp-ms-name">{e.woerter.name}</td>
+                <td>
+                  <Ort w={e.woerter} />
+                </td>
+                <td>{e.woerter.stellung ?? OHNE_ANGABE}</td>
+                <td>
+                  <Quelle w={e.woerter} />
+                </td>
+                <td>
+                  <Zustand w={e.woerter} />
+                </td>
+                <td>
+                  <Wert w={e.woerter} />
+                </td>
+              </tr>
+            ),
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 375 px: eine Karte je Messstelle mit denselben Wörtern wie die Spalten. */
+function Karten({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; stichtag: string | null }) {
+  const [, , ort, stellung, quelle, zustand, wert] = spalten(stichtag);
+  return (
+    <ul className="vp-ms-karten">
+      {eintraege.map((e) =>
+        e.art === 'gab_es_noch_nicht' ? (
+          <li key={e.id} className="vp-ms-karte vp-ms-still">
+            <div className="vp-ms-karte-kopf">
+              <span className="vp-ms-kz">{e.kennzeichen}</span>
+              <h2 className="vp-ms-karte-name">{e.name}</h2>
+            </div>
+            <p className="vp-ms-satz">{e.satz}</p>
+          </li>
+        ) : (
+          <li key={e.woerter.id} className="vp-ms-karte">
+            <div className="vp-ms-karte-kopf">
+              <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
+              <h2 className="vp-ms-karte-name">{e.woerter.name}</h2>
+            </div>
+            <dl className="vp-ms-fakten">
+              <dt>{zustand}</dt>
+              <dd>
+                <Zustand w={e.woerter} />
+              </dd>
+              <dt>{wert}</dt>
+              <dd>
+                <Wert w={e.woerter} />
+              </dd>
+              <dt>{quelle}</dt>
+              <dd>
+                <Quelle w={e.woerter} />
+              </dd>
+              <dt>{ort}</dt>
+              <dd>
+                <Ort w={e.woerter} />
+              </dd>
+              <dt>{stellung}</dt>
+              <dd>{e.woerter.stellung ?? OHNE_ANGABE}</dd>
+            </dl>
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
+function Ort({ w }: { w: ZeileWoerter }) {
+  return (
+    <>
+      <span className="vp-ms-block">{w.ort.text}</span>
+      {w.ort.standort && <span className="vp-ms-neben">{w.ort.standort}</span>}
+    </>
+  );
+}
+
+function Quelle({ w }: { w: ZeileWoerter }) {
+  const q = w.quelle;
+  if (q.art !== 'gebunden') return <span className="vp-ms-block vp-ms-ohne">{q.text}</span>;
+  return (
+    <>
+      <span className="vp-ms-block">{q.geraet}</span>
+      <span className="vp-ms-neben">{q.messwert}</span>
+      <span className="vp-ms-neben">{[q.seit, q.davor, q.vergleich].filter(Boolean).join(' · ')}</span>
+    </>
+  );
+}
+
+function Zustand({ w }: { w: ZeileWoerter }) {
+  return (
+    <>
+      <span className="vp-ms-block">{w.zustand}</span>
+      {w.beobachtung && (
+        <span className={`vp-ms-beob is-${w.beobachtung.ton}`}>
+          <span className="vp-ms-punkt" aria-hidden="true" />
+          {w.beobachtung.text}
+        </span>
+      )}
+    </>
+  );
+}
+
+function Wert({ w }: { w: ZeileWoerter }) {
+  if (!w.wert && w.nebenwerte.length === 0) return <>{OHNE_ANGABE}</>;
+  return (
+    <>
+      {w.wert && (
+        <span className="vp-ms-block">
+          <span className="vp-ms-zahl">{w.wert.text}</span> <span className="vp-ms-zeit">{w.wert.zeit}</span>
+        </span>
+      )}
+      {w.nebenwerte.map((n) => (
+        <span key={n.groesse} className="vp-ms-block">
+          <span className="vp-ms-groesse">{n.groesse}</span> <span className="vp-ms-zahl">{n.text}</span>{' '}
+          <span className="vp-ms-zeit">{n.zeit}</span>
+        </span>
+      ))}
+    </>
+  );
+}

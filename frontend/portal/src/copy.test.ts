@@ -2,7 +2,22 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
-import { UEMS_LEBENSZYKLUS } from './glossar';
+import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
+import {
+  BERECHNET_AUS,
+  FILTER,
+  FILTER_OHNE_TREFFER,
+  KEIN_ORT,
+  KEINE_DATENQUELLE,
+  LADEFEHLER,
+  OHNE_FILTER,
+  SPALTEN,
+  TITEL as MESSSTELLEN_TITEL,
+  VERGLEICHSQUELLE,
+  ZUSTAND_HEUTE,
+  leerzustand as messstellenLeer,
+} from './messstellen';
+import { ahrenbergRegister, leeresRegister } from './test/messstellenRegisterFixtures';
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
@@ -162,6 +177,12 @@ const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [
   { re: /\bEdge\b/, why: 'UEMS: „VoltPilot-Box" statt „Edge"' },
   { re: /\bSlots?\b/, why: 'UEMS: „Steckplatz" (Karte) bzw. „Viertelstunde" (Zeit) statt „Slot"' },
   { re: /\b(un)?claim\w*/i, why: 'UEMS: „anmelden"/„abmelden" statt „Claim"/„Unclaim"' },
+  // AP-04 IP-5: das Register spricht Messstelle · Quelle · führend · Vergleich — nie die Werkstatt-Wörter dafür.
+  { re: /\b(Primär|Sekundär|Haupt|Leit|Zweit)quellen?\b/, why: 'UEMS AP-04: „führende Quelle" bzw. „Vergleichsquelle"' },
+  { re: /\bReferenzquellen?\b/, why: 'UEMS AP-04: „Vergleichsquelle" statt „Referenzquelle"' },
+  { re: /\bQuellen?bindung(en)?\b/, why: 'UEMS AP-04: „Quelle" statt „Quellenbindung" (Vertragswort)' },
+  { re: /\bMe(ß|ss-)[Ss]tellen?\b/, why: 'UEMS AP-04: „Messstelle" (ss, ein Wort)' },
+  { re: /\bfuehrend\w*/i, why: 'UEMS AP-04: „führend" mit Umlaut' },
 ];
 
 /**
@@ -1038,5 +1059,79 @@ describe('UEMS AP-12 IP-3 · die Bericht-Sätze sprechen das Kunden-Wörterbuch'
     // …und der Wächter beißt.
     expect(BERICHT_VERBOTEN.some((w) => 'Snapshot vom 10.11.2026'.includes(w))).toBe(true);
     expect(BERICHT_VERBOTEN.some((w) => 'Berichtsstand Nr. 2 (Revision)'.includes(w))).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-04 IP-5 — das Messstellen-Register („Unternehmen › Messstellen“, „Standort ›
+ * Messstellen“) spricht die vier Kundenwörter Messstelle · Quelle · führend · Vergleich.
+ * Sie stehen als Konstanten in `glossar.ts`; die Fläche baut ihre Spalten und Sätze daraus
+ * (`messstellen.ts`). Die Werkstatt-Wörter dafür (Primärquelle, Referenzquelle,
+ * Quellenbindung, „fuehrend“) stehen in `FORBIDDEN_INTERN` und gelten für jede
+ * Kundenfläche; hier wird zusätzlich jeder Satz des Registers gelesen — auch die, die erst
+ * zur Laufzeit entstehen (Leerzustände aus den Referenzantworten).
+ */
+describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quelle · führend · Vergleich', () => {
+  const saetze = (): string[] => {
+    const basis = ahrenbergRegister();
+    const leer = leeresRegister();
+    const ebenen = [
+      { art: 'unternehmen' as const, name: 'Kunststoffwerk Ahrenberg GmbH' },
+      { art: 'standort' as const, id: 'st', name: 'Werk Lindach' },
+    ];
+    const laufzeit = ebenen.flatMap((ebene) =>
+      [true, false, null].flatMap((bereichDa) =>
+        [OHNE_FILTER, { ...OHNE_FILTER, ohneQuelle: true }, { ...OHNE_FILTER, zustand: 'angehalten' as const }].flatMap(
+          (filter) => messstellenLeer({ antwort: leer, basis, filter, ebene, bereichDa })?.satz ?? [],
+        ),
+      ),
+    );
+    return [
+      MESSSTELLEN_TITEL,
+      ...Object.values(SPALTEN),
+      ZUSTAND_HEUTE,
+      ...Object.values(FILTER),
+      VERGLEICHSQUELLE,
+      KEINE_DATENQUELLE,
+      BERECHNET_AUS,
+      KEIN_ORT,
+      FILTER_OHNE_TREFFER,
+      LADEFEHLER,
+      ...laufzeit,
+    ];
+  };
+
+  it('die Wörter kommen aus dem Glossar: „Quelle (führend)“, „Vergleichsquelle“, „Messstellen“', () => {
+    expect(SPALTEN.quelle).toBe(`${UEMS_QUELLE} (${UEMS_FUEHREND})`);
+    expect(VERGLEICHSQUELLE).toBe(`${UEMS_VERGLEICH}squelle`);
+    expect(MESSSTELLEN_TITEL).toBe(`${UEMS_MESSSTELLE}n`);
+    expect(FILTER.ohneQuelle).toContain(UEMS_QUELLE);
+  });
+
+  it('liest wirklich die Sätze — und kein Satz trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const alle = saetze();
+    expect(alle.length).toBeGreaterThan(20);
+    expect(alle).toContain('Alle 17 gemessenen Messstellen haben eine Quelle.');
+    const violations = alle.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Fläche und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    expect(dateien).toContain('messstellen.ts');
+    expect(dateien).toContain('pages/MessstellenPage.tsx');
+    expect(dateien).toContain('components/EbenenTabs.tsx');
+  });
+
+  it('beißt wirklich: Primär-/Referenzquelle, Quellenbindung, „fuehrend“ — nicht die Kundenwörter', () => {
+    const beisst = (t: string) => FORBIDDEN_INTERN.some(({ re }) => re.test(t));
+    for (const falsch of ['Die Primärquelle von MS-06', 'Referenzquelle wählen', 'Quellenbindung beenden', 'fuehrend seit 12.03.2024', 'Meßstelle MS-01']) {
+      expect(beisst(falsch), falsch).toBe(true);
+    }
+    for (const richtig of ['Quelle (führend)', 'führend seit 18.11.2026 10:40 · davor Z-5a', '1 Vergleichsquelle', 'Keine Datenquelle', 'Messstellen']) {
+      expect(beisst(richtig), richtig).toBe(false);
+    }
   });
 });

@@ -10,6 +10,7 @@ je Messstelle zum Stichtag), `stichtag`, `zeitpunkt` und `teilansicht`. Arbeit:
 `RegisterGeraet`), Route in `web/MessstelleController`. Beweise: `MessstelleRegisterApiTest`
 (15 Fälle, Keycloak + Timescale: §5.16 Zeile für Zeile, A17, jeder Filter, Mandantenzaun, Laufzeit, IP-15)
 und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
+Die Fläche dazu (AP-04 IP-5): [`uems-messstellen-register-portal.md`](uems-messstellen-register-portal.md).
 
 ## Die Zeile und was sie NICHT sagt
 

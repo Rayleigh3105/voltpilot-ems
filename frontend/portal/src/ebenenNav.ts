@@ -39,7 +39,15 @@
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { Funktionen, Kennzahl, StandortAmStichtag } from './api';
-import { isPortfolioPage, pageRoute, standortRoute, type AnlagenSub, type PageId, type Route } from './nav';
+import {
+  isPortfolioPage,
+  pageRoute,
+  standortMessstellenRoute,
+  standortRoute,
+  type AnlagenSub,
+  type PageId,
+  type Route,
+} from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
 import type { FunktionZustand } from './uemsFunktion';
 
@@ -533,18 +541,43 @@ export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, R
  * ⚠ **Ein Bereich ohne Seite bekommt keine Kachel** (firstmate 001 vom
  * 15.09.2026, dieselbe Antwort wie an der Karte „Funktionen" in PR 771): eine
  * Kachel, die nirgendwohin führt, ist die Sackgasse, die das Portal nicht baut,
- * und „immer fünf Kacheln, auch leere" hat E4 ausdrücklich verworfen. Heute
- * fehlen Messstellen (AP-04 IP-5), Kennzahlen und Berichte (AP-13), Gebäude und
+ * und „immer fünf Kacheln, auch leere" hat E4 ausdrücklich verworfen. Seit
+ * AP-04 IP-5 haben die Messstellen beider Ebenen ihre Seite — beim
+ * Referenzkunden steigt das Unternehmen damit auf drei Kacheln, und die Leiste
+ * erscheint. Heute fehlen noch Kennzahlen und Berichte (AP-13), Gebäude und
  * Anlagen des Standorts (AP-13) — wer eine davon einhängt, trägt ihre Route
  * HIER ein, und die Leiste erscheint von selbst.
  */
 export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
   ort.art === 'unternehmen'
-    ? { uebersicht: pageRoute('portfolio'), standorte: pageRoute('portfolio-standorte') }
-    : { uebersicht: standortRoute(ort.standortId) };
+    ? {
+        uebersicht: pageRoute('portfolio'),
+        standorte: pageRoute('portfolio-standorte'),
+        messstellen: pageRoute('portfolio-messstellen'),
+      }
+    : { uebersicht: standortRoute(ort.standortId), messstellen: standortMessstellenRoute(ort.standortId) };
 
 /** E4 = A: unter drei Kacheln keine Leiste — dann navigieren die Reiter der Seite wie heute. */
 export const EBENEN_LEISTE_AB = 3;
+
+/**
+ * Die REITER einer Ebene: dieselben Bereiche MIT Seite wie die Leiste, aber
+ * ohne deren Schwelle — ab zwei (ein einzelner Reiter behauptete eine Wahl, die
+ * es nicht gibt). Am Rechner sind sie der einzige Weg in einen Bereich: dort
+ * gibt es auf dieser Ebene keine Seitenleisten-Bereiche (AP-04 IP-5).
+ */
+export function ebenenReiter(
+  ort: EbenenOrt,
+  lm: EbenenLesemodell,
+  seiten: EbenenSeiten = EBENEN_SEITEN,
+): EbenenKachel[] {
+  const ziele = seiten(ort);
+  const reiter = ebenenBereiche(ort, lm).flatMap((b) => {
+    const ziel = ziele[b.key];
+    return ziel ? [{ ...b, ziel }] : [];
+  });
+  return reiter.length >= 2 ? reiter : [];
+}
 
 /**
  * Die Telefon-Leiste einer Ebene: ihre Bereiche MIT Seite, in der Reihenfolge
@@ -581,9 +614,14 @@ export function ebenenOrt(
   return null;
 }
 
-/** Der Bereich, in dem eine Seite der Ebene wohnt — die Reiter Messwerte · Erlöse gehören zur Übersicht. */
-export function ebenenAktiv(page: PageId): EbenenBereichId | null {
+/**
+ * Der Bereich, in dem eine Seite der Ebene wohnt — die Reiter Messwerte · Erlöse
+ * gehören zur Übersicht. `standortBereich` ist der der Standort-Route
+ * (`#/standort/{id}/messstellen`, AP-04 IP-5).
+ */
+export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
   if (page === 'portfolio-standorte') return 'standorte';
+  if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
   return page === 'standort' || isPortfolioPage(page) ? 'uebersicht' : null;
 }
 

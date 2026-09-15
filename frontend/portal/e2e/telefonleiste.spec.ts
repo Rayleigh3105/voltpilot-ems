@@ -6,8 +6,9 @@ import { expect, test, type Page } from '@playwright/test';
  * Die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A) bei 375 px, auf der
  * Bühne `startansicht` mit denselben reinen Funktionen wie `App.tsx`:
  *
- * - HEUTE: Unternehmen und Standort Ahrenberg haben keine Leiste — nur Übersicht
- *   und Standorte haben eine Seite, zwei Kacheln liegen unter der Schwelle.
+ * - HEUTE: seit AP-04 IP-5 hat das Unternehmen Ahrenberg DREI Bereiche mit Seite
+ *   (Übersicht · Standorte · Messstellen) — die Leiste erscheint. Der Standort Werk
+ *   Ahrenberg bleibt bei zwei (Übersicht · Messstellen) und ohne Leiste.
  * - Die Anlage: ihre Leiste, unverändert.
  * - KÜNFTIG (`&seiten=kuenftig`): das Bild, sobald jeder Bereich eine Seite hat
  *   (AP-04 IP-5, AP-13) — nur für die Vorschau.
@@ -29,7 +30,7 @@ interface Fall {
 }
 
 const FAELLE: Fall[] = [
-  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: null },
+  { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen'], aktiv: 'Übersicht' },
   { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: null },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
   { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
@@ -104,4 +105,12 @@ test('Telefon, künftig: die Kachel „Standorte" führt auf die Liste der Stand
   await oeffne(page, 'bild=unternehmen&seiten=kuenftig');
   await page.locator('.vp-bottombar').getByRole('button', { name: 'Standorte' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/standorte');
+});
+
+test('Telefon, heute (AP-04 IP-5): die Kachel „Messstellen" führt auf „Unternehmen › Messstellen"', async ({ page }) => {
+  await oeffne(page, 'bild=unternehmen');
+  await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messstellen');
+  await expect(page.locator('[data-testid="messstellen"] .vp-ms-karte')).toHaveCount(22);
 });

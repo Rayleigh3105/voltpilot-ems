@@ -1,3 +1,4 @@
+import { ebenenAktiv, type EbenenBereichId } from '../ebenenNav';
 import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId } from '../nav';
 import './BereichTabs.css';
 
@@ -44,23 +45,44 @@ export function portfolioTabHash(
  * zwischen drei SEITEN derselben Ebene (der Kopf gehört schon der geöffneten),
  * und die Portfolio-Seite selbst wird parallel umgebaut — ein Reiter-Slot in
  * ihrem Kopf wäre eine Naht zwischen zwei laufenden Arbeiten.
+ *
+ * ⚠ **„Messstellen“ (AP-04 IP-5) ist ein BEREICH, kein Reiter der Übersicht** —
+ * er steht nur, wenn ein Standort misst (`showMessstellen` aus
+ * `ebenenNav.ebenenBereiche`). Und am Telefon trägt die Leiste der Ebene (ab drei
+ * Kacheln) die Bereiche: was dort Kachel ist, ist hier kein zweites Mal Reiter
+ * (`leiste`). Die Reiter zeigen dann nur, was zum offenen Bereich gehört —
+ * Übersicht · Messwerte · Erlöse; auf „Standorte“/„Messstellen“ gar keine.
+ * Am Rechner (die Leiste blendet CSS dort aus) bleiben alle Reiter der Weg.
  */
 export function PortfolioTabs({
   page,
   showErloese,
+  showMessstellen = false,
+  leiste = [],
   fleetLabel,
   onNavigate,
 }: {
   page: PageId;
   showErloese: boolean;
+  /** Ein Standort misst — die Ebene hat den Bereich „Messstellen“. */
+  showMessstellen?: boolean;
+  /** Die Bereiche, die die Telefon-Leiste dieser Ebene gerade trägt (leer = keine Leiste). */
+  leiste?: readonly EbenenBereichId[];
   /** „Portfolio" beim Betreiber, „Meine Anlagen" beim Endkunden. */
   fleetLabel: string;
   onNavigate: (page: PageId) => void;
 }) {
   if (!isPortfolioPage(page)) return null;
   const welten = PORTFOLIO_WELT_PAGES.filter(
-    (p) => p.id !== 'portfolio-erloese' || showErloese || page === p.id,
+    (p) =>
+      (p.id !== 'portfolio-erloese' || showErloese || page === p.id) &&
+      (p.id !== 'portfolio-messstellen' || showMessstellen || page === p.id),
   );
+  // Ein Bereich außer der Übersicht, den die Leiste trägt: am Telefon kein Reiter.
+  const kachel = (id: PageId) => {
+    const bereich = ebenenAktiv(id);
+    return bereich !== null && bereich !== 'uebersicht' && leiste.includes(bereich);
+  };
   const open = (target: PageId) => {
     const hash = portfolioTabHash(target, page, window.location.hash);
     if (hash) {
@@ -73,7 +95,9 @@ export function PortfolioTabs({
   return (
     <div
       // Vier Reiter passen am Telefon nur mit schmalerem Polster (BereichTabs.css).
-      className={welten.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}
+      className={`${welten.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}${
+        kachel(page) ? ' vp-nur-rechner' : ''
+      }`}
       role="tablist"
       aria-label={`Reiter der Ebene ${fleetLabel}`}
     >
@@ -96,7 +120,7 @@ export function PortfolioTabs({
           type="button"
           role="tab"
           aria-selected={page === p.id}
-          className={`vp-bereich-tab${page === p.id ? ' active' : ''}`}
+          className={`vp-bereich-tab${page === p.id ? ' active' : ''}${kachel(p.id) ? ' vp-nur-rechner' : ''}`}
           onClick={() => open(p.id)}
         >
           {p.label}

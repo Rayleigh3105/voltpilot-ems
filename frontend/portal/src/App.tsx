@@ -43,6 +43,8 @@ import {
   pageRoute,
   PLATFORM_PAGES,
   routeFromHash,
+  standortMessstellenRoute,
+  standortRoute,
   transitionKind,
   type PageId,
   type Route,
@@ -56,8 +58,10 @@ import {
   activeAreaKey,
   anlageSidebar,
   ebenenAktiv,
+  ebenenBereiche,
   ebenenLeiste,
   ebenenOrt,
+  ebenenReiter,
   ebenenTitel,
   resolveAnlage,
   type EbenenLesemodell,
@@ -78,6 +82,7 @@ import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
 import { PortfolioTabs } from './components/PortfolioTabs';
+import { EbenenTabs } from './components/EbenenTabs';
 import { helpForRoute } from './help/context';
 const HelpPage = lazy(PAGE_CHUNK.hilfe);
 // Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
@@ -139,6 +144,9 @@ async function orteLaden(): Promise<OrteQuelle | null> {
 
 const StandortePage = lazy(() =>
   PAGE_CHUNK['portfolio-standorte']().then((m) => ({ default: m.StandortePage })),
+);
+const MessstellenPage = lazy(() =>
+  PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
 );
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
@@ -974,8 +982,14 @@ function UnifiedPortal() {
     : undefined;
   // Seitenleiste und Reiter „Übersicht" meinen die Flotten-Ebene — ist der
   // Standort die oberste Ebene, ist ER sie (kein Umweg über `#/portfolio`).
-  const navigateSchale = (target: Route | PageId) =>
-    navigate(target === 'portfolio' && ebene.art === 'standort' ? flottenLandung(shellFrame) : target);
+  const navigateSchale = (target: Route | PageId) => {
+    if (ebene.art === 'standort' && target === 'portfolio') return navigate(flottenLandung(shellFrame));
+    // AP-04 IP-5: dasselbe für „Messstellen" — oberster Standort = seine Messstellen.
+    if (ebene.art === 'standort' && target === 'portfolio-messstellen') {
+      return navigate(standortMessstellenRoute(ebene.standort.id));
+    }
+    return navigate(target);
+  };
   const standortOffen =
     page === 'standort'
       ? orteQuelle?.liste.standorte.find((s) => s.id === route.standortId) ?? null
@@ -1056,10 +1070,30 @@ function UnifiedPortal() {
       ? {
           titel: ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen'),
           kacheln: ebenenKacheln,
-          aktiv: ebenenAktiv(page),
+          aktiv: ebenenAktiv(page, route.standortBereich),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
+  // UEMS AP-04 IP-5: die Bereiche der Ebene steuern die Reiter mit — „Messstellen"
+  // nur, wo ein Standort misst; am Telefon trägt die Leiste (ab drei) die Bereiche,
+  // die Reiter dann nur noch, was zum offenen Bereich gehört.
+  const bereicheHier = ebenenOrtHier ? ebenenBereiche(ebenenOrtHier, ebenenLesemodell).map((b) => b.key) : [];
+  const messstellenDa = ebenenFakten ? bereicheHier.includes('messstellen') : null;
+  const leisteHier = ebenenKacheln.map((k) => k.key);
+  // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Messstellen);
+  // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
+  const standortReiter =
+    page === 'standort' && ebene.art !== 'standort' && ebenenOrtHier?.art === 'standort'
+      ? ebenenReiter(ebenenOrtHier, ebenenLesemodell)
+      : [];
+  const messstellenEbene =
+    page === 'portfolio-messstellen' && ebene.art !== 'standort'
+      ? { art: 'unternehmen' as const, name: unternehmensEbene?.name ?? 'Ihr Unternehmen' }
+      : page === 'portfolio-messstellen' && ebene.art === 'standort'
+        ? { art: 'standort' as const, id: ebene.standort.id, name: ebene.standort.name }
+        : page === 'standort' && route.standortBereich === 'messstellen' && standortOffen
+          ? { art: 'standort' as const, id: standortOffen.id, name: standortOffen.name }
+          : null;
 
   const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
@@ -1194,11 +1228,28 @@ function UnifiedPortal() {
           <PortfolioTabs
             // IP-5: ist der Standort die oberste Ebene, IST seine Übersicht der
             // Reiter „Übersicht"; unter einem Unternehmen trägt sie keine Reiter.
-            page={page === 'standort' && ebene.art === 'standort' ? 'portfolio' : page}
+            page={
+              page === 'standort' && ebene.art === 'standort'
+                ? route.standortBereich === 'messstellen'
+                  ? 'portfolio-messstellen'
+                  : 'portfolio'
+                : page
+            }
             showErloese={hatGeldWelt(geldSites)}
+            showMessstellen={messstellenDa === true}
+            leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
           />
+          {standortReiter.length > 0 && ebenenOrtHier && (
+            <EbenenTabs
+              reiter={standortReiter}
+              aktiv={ebenenAktiv(page, route.standortBereich)}
+              leiste={leisteHier}
+              label={`Reiter des Standorts ${standortOffen?.name ?? ''}`.trim()}
+              onOpen={navigate}
+            />
+          )}
           {page === 'portfolio' && (
             <PortfolioPage
               sites={sites}
@@ -1214,7 +1265,23 @@ function UnifiedPortal() {
           {/* UEMS AP-02 IP-6: „Unternehmen › Standorte“ als Reiter der Übersicht. */}
           {page === 'portfolio-standorte' && <StandortePage />}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}
-          {page === 'standort' && standortOffen && (
+          {/* UEMS AP-04 IP-5: „Unternehmen › Messstellen" und „Standort › Messstellen". */}
+          {messstellenEbene && (
+            <MessstellenPage
+              key={messstellenEbene.art === 'standort' ? messstellenEbene.id : 'unternehmen'}
+              ebene={messstellenEbene}
+              bereichDa={messstellenDa}
+              zone={
+                messstellenEbene.art === 'standort'
+                  ? orteQuelle?.liste.standorte.find((s) => s.id === messstellenEbene.id)?.zeitzone
+                  : undefined
+              }
+              onUebersicht={() =>
+                navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
+              }
+            />
+          )}
+          {page === 'standort' && standortOffen && !route.standortBereich && (
             <StandortUebersichtPage
               standort={standortOffen}
               sites={sites}
