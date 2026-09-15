@@ -2389,6 +2389,146 @@ export type KennzahlFehlerCode =
   | 'eingang_ausserhalb_geltung' | 'formel_zyklus' | 'fassung_ueberlappt' | 'geltung_unbekannt' | 'eingang_unbekannt'
   | 'rechenform_unbekannt';
 
+// ---- Werte einer Kennzahl (UEMS AP-11 IP-7) ---------------------------------
+// Die Formen von GET /api/v1/kennzahlen/{id}/werte und …/werte/versionen (OpenAPI `KennzahlWerte`,
+// `KennzahlWerteHistorie`). Beträge sind DEZIMALTEXT und ungerundet — gerundet wird nur in der Anzeige (U4).
+
+export type KennzahlZustand = 'vollständig' | 'unvollständig' | 'keine Werte' | 'mit Ersatzwert';
+export type KennzahlRichtung = 'untergrenze' | 'obergrenze' | 'unbestimmt';
+/** `grund_ohne_zahl` des Vertrags — ohne die zwei Gründe des Lesers. */
+export type KennzahlGrundOhneZahl =
+  | 'nenner_fehlt' | 'nenner_null' | 'zaehler_fehlt' | 'periode_nicht_zu_ende' | 'vor_bestehen' | 'haengt_an_kreis'
+  | 'eingang_archiviert';
+/** Warum ein Schritt keine Zahl trägt: ein Wort der Zeile oder eines des Lesers (dieselben wie am Messstellen-Wert). */
+export type KennzahlWertGrund = KennzahlGrundOhneZahl | 'noch_nicht_gebildet' | 'version_nicht_gespeichert';
+
+/** Ein Eingang im Herkunfts-Satz (`kennzahlwert-herkunft.schema.json` → `$defs/eingang`), wie er beim Bilden stand. */
+export interface KennzahlwertHerkunftEingang {
+  rolle: 'zaehler' | 'nenner' | 'paar';
+  art: 'messstelle' | 'bezugsgroesse' | 'kennzahl';
+  /** Das Kennzeichen des Eingangs (MS-12, BZ-6, KZ-0001) — beim Stammdatum seine Bezeichnung. */
+  objekt: string;
+  wert: string | null;
+  /** Nur bei `paar`. */
+  zaehler: string | null;
+  nenner: string | null;
+  einheit: string;
+  zustand: KennzahlZustand;
+  abdeckung_prozent: string | null;
+  /** Messstelle und Kennzahl. */
+  version: number | null;
+  /** Bezugsgröße mit Periodenwert; ein Stammdatum hat keine. */
+  fassung: number | null;
+  kennzeichen: string[];
+}
+
+/** Die Hülle `{satz, fehlt}` eines Kennzahl-Werts — nie eine halbe Herkunft: ohne Satz nennt `fehlt` jede Lücke. */
+export interface KennzahlwertHerkunft {
+  satz: {
+    art: 'kennzahl';
+    kennzahl: string;
+    rechenform: KennzahlRechenform;
+    definition_fassung: number;
+    periode: { art: KennzahlPeriodeArt; schluessel: string };
+    berechnet_am: string;
+    version: number;
+    anlass: string | null;
+    eingaenge: KennzahlwertHerkunftEingang[];
+    ergebnis: {
+      wert: string | null;
+      einheit: string;
+      zustand: KennzahlZustand;
+      richtung: KennzahlRichtung | null;
+      grund: KennzahlGrundOhneZahl | null;
+      abdeckung_prozent: string | null;
+      kennzeichen: string[];
+    };
+  } | null;
+  fehlt: Array<'kennzahl' | 'definition_fassung' | 'berechnet_am' | 'eingaenge' | 'anlass'>;
+}
+
+/** Eine Periode einer Kennzahl — die Trägerform des Messstellen-Werts mit Wert, Zähler und Nenner. */
+export interface KennzahlWert {
+  von: string;
+  /** Der LETZTE Tag der Periode, einschließlich. */
+  bis: string;
+  /** 2026-10-05 · 2026-W40 · 2026-10 · 2026. */
+  schluessel: string;
+  /** „05.10.2026“ · „KW 40/2026“ · „Oktober 2026“ · „2026“. */
+  beschriftung: string;
+  /** Dezimaltext, ungerundet; `null` = keine Zahl, nie 0. Ein Anteil in Prozent. */
+  wert: string | null;
+  zaehler: string | null;
+  nenner: string | null;
+  /** Die Einheit der Fassung, mit der der Wert gebildet wurde. */
+  einheit: string | null;
+  /** `null` nur ohne Zeile oder ohne die angefragte Version — dann steht `grund`. */
+  zustand: KennzahlZustand | null;
+  richtung: KennzahlRichtung | null;
+  kennzeichen: string[];
+  abdeckung_prozent: string | null;
+  fassung: 'vorlaeufig' | 'endgueltig' | null;
+  endgueltig_ab: string | null;
+  /** Die Version, deren Zahl der Schritt zeigt; `null` = noch keine. */
+  version: number | null;
+  /** Die Fassung der Berechnung am letzten Tag der Periode. */
+  definition_fassung: number | null;
+  berechnet_am: string | null;
+  grund: KennzahlWertGrund | null;
+  /** An jeder Version, auch ohne Zahl; `null` ohne Zeile oder ohne Version. */
+  herkunft: KennzahlwertHerkunft | null;
+  /** Ab 2 gibt es eine Historie unter `…/werte/versionen`; `null`, solange keine gebildet ist. */
+  versionen: number | null;
+}
+
+export interface KennzahlWerte {
+  kennzahl: {
+    id: string;
+    kennzeichen: string;
+    name: string;
+    rechenform: KennzahlRechenform;
+    einheit: string | null;
+    einheit_anzeige: string | null;
+  };
+  periode: KennzahlPeriodeArt;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  /** Die angefragte Version; `null` = je Schritt die neueste. */
+  version: number | null;
+  werte: KennzahlWert[];
+}
+
+/** Eine Entscheidung hinter einer Version — die Form der Messstelle mit dem weiteren Vorgang `berechnung`. */
+export interface KennzahlWertEntscheidung extends Omit<MessstelleWerteEntscheidung, 'vorgang' | 'fassung'> {
+  vorgang: MessstelleWerteEntscheidung['vorgang'] | 'berechnung';
+  /** `null`, wenn die Fassung des genannten Vorgangs nicht lesbar ist (`fehlt` nennt `fassung`). */
+  fassung: number | null;
+}
+
+export interface KennzahlWertVersion {
+  version: number;
+  /** Version n − 1; an Version 1 `null`. */
+  wert_alt: KennzahlWert | null;
+  wert_neu: KennzahlWert;
+  gebildet_am: string;
+  nachgezogen_am: string | null;
+  anlass: { art: 'eingang' | 'definition'; beleg: string } | null;
+  entscheidungen: KennzahlWertEntscheidung[];
+}
+
+export interface KennzahlWerteHistorie {
+  kennzahl: KennzahlWerte['kennzahl'];
+  periode: KennzahlPeriodeArt;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  /** Nur ohne Version: warum die Periode keine hat. */
+  grund: KennzahlWertGrund | null;
+  /** Aufsteigend: Version 1 zuerst. */
+  versionen: KennzahlWertVersion[];
+}
+
 /** Wer eine Fassung eingetragen oder freigegeben hat. */
 export interface BezugsgroessePerson {
   name: string;
@@ -7073,6 +7213,17 @@ export const api = {
     request<{ kennzahl_id: string; kennzeichen: string; am: string; fassung: KennzahlFassung }>(
       `/api/v1/kennzahlen/${id}/berechnung` + (am ? `?am=${encodeURIComponent(am)}` : ''),
     ),
+  /**
+   * Die Werte einer Kennzahl je Periode (AP-11 IP-7): `von` der erste, `bis` der LETZTE Tag einer Periode; ohne
+   * `version` je Schritt die neueste. Ungerundet — gerundet wird nur in der Anzeige.
+   */
+  kennzahlWerte: (id: string, periode: KennzahlPeriodeArt, von: string, bis: string, version?: number) =>
+    request<KennzahlWerte>(
+      `/api/v1/kennzahlen/${id}/werte?periode=${periode}&von=${von}&bis=${bis}` + (version ? `&version=${version}` : ''),
+    ),
+  /** Die Versionen EINER Periode (`von` = ihr erster Tag) — wer, wann, warum, und was vorher dastand. */
+  kennzahlWertVersionen: (id: string, periode: KennzahlPeriodeArt, von: string) =>
+    request<KennzahlWerteHistorie>(`/api/v1/kennzahlen/${id}/werte/versionen?periode=${periode}&von=${von}`),
 
   /**
    * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage
