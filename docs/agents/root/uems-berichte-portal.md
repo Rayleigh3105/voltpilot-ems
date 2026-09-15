@@ -30,9 +30,10 @@ bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das M
 - **Laden/Entladen:** MS-04 steht zweimal (Mengen-Art); „heutigen Wert zeigen“ fehlt dort, der heutige Leseweg trennt nicht.
 - **PDF und CSV ohne Ziel = kein Knopf.** `ausgabeKnoepfe` leitet ab (nur Stände, EW4; Recht über `uemsBericht.kennung`;
   Dateiname §5.4). Sichtbar erst mit `AUSGABE_EINGEHAENGT[handlung] = true` UND einer `onAbruf`-Prop an `BerichtSeite`.
-  **IP-10** setzt `csv`, reicht `onAbruf` mit `GET …/staende/{nr}/csv` herein und muss das Recht `export.*` liefern
-  (`darfNachLesen` weiß nur `abrufen` sicher); dazu kommen „zuletzt abgerufen …“ und die Spalte „letzter Abruf“ der Liste
-  mit einem Feld an `Bericht`. **IP-11** setzt `pdf` (Recht = `abrufen`, G1).
+  ⚠ **Stand IP-15: beide aus.** IP-10 und IP-11 haben nur die Routen gebaut; `berichtSeite.test.ts` pinnt
+  `{ pdf: false, csv: false }`. Wer einhängt: `csv` mit `onAbruf` → `GET …/staende/{nr}/csv` und dem Recht `export.*`
+  (`darfNachLesen` weiß nur `abrufen` sicher), dazu „zuletzt abgerufen …“ und die Spalte „letzter Abruf“ (ein Feld an
+  `Bericht`, `BerichtePage.tsx` sagt es); `pdf` mit dem Recht `abrufen` (G1). Lücke am Freigabetag: `uems-berichte-abschluss.md`.
 - **`copy.test.ts` liest JSX-Bedingungen als Text:** `{knoepfe.length > 0 && onAusgabe && (` trug das verbotene „Ausgabe“
   (§4.15) — die Prop heißt darum `onAbruf`. Die Typ-Namen in `berichtSeite.ts` sind kein Kundentext.
 - **„heute: …“ (A5)** kommt aus `messstellenRegister()` und `kennzahlen()`; fällt eine Quelle aus, fehlt nur der Hinweis.

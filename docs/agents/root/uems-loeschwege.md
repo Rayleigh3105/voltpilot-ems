@@ -21,6 +21,18 @@ Kundensatz + Körper `BelegeImWeg`. Die Anlage-Funktion prüft dieselbe Regel se
 Rolle unlöschbar, die diesen Weg nimmt. Offboarding: `uems_messwerte_des_kundenbereichs_entfernen(tenant)`,
 nur Verwaltungsrolle, in `TenantRepository.offboard`.
 
+## Berichts-Belege (AP-12 IP-4, IP-12)
+
+Die zweite Belegregel: was ein freigegebener Berichtsstand zitiert — auch ein ersetzter —, ist unlöschbar.
+`uems_berichts_belege(objekt)` über `bericht_quelle` (Messstellen, nie Komponente/Box/Anlage), Java `uems/BerichtsBelege`
+(vom Löschgegenstand zu seinen Messstellen), Körper `BelegeImWeg` mit der Liste `berichtsstaende`. Purge und Anlage
+entfernen antworten mit BEIDEN Listen (ohne Messstellen-Beleg kein Berichts-Beleg, also keine neue Ablehnung dort); eine
+eigene `409 berichts_belege` tragen die Komponenten-Wege: Komponente entfernen, selbst definiertes Gerät und eigene
+Batterie, Batterie am Standort abmelden, Verbraucher entfernen. Frei bleiben Abmelden, Ort archivieren, Umziehen, Beenden;
+Entwürfe schützen nichts. Die Stände selbst sind append-only für jede Rolle (IP-4); nur `TenantRepository.offboard`
+entfernt sie. Offen: Verwaltungs-Löschen und Re-Pin-Aufräumen (`vp-uems-belegschutz-verwaltungswege`). Wege, Kundensätze,
+Tests: [Belegschutz](uems-belegschutz.md); Stand am Freigabetag: [Berichte-Abschluss](uems-berichte-abschluss.md).
+
 ## Fremdschlüssel
 
 `device_measurement_sample/event/point_state/selection_event` → `device` und → `site`, `device_measurement_selection`
