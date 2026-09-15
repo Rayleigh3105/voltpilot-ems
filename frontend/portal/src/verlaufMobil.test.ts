@@ -99,6 +99,8 @@ const BLAETTER: ReadonlyArray<{
   },
   // Die neuen Bausteine des Rumpfes (P3) — von Anfang an auf 0.
   { reiter: 'Messwerte', datei: 'components/VerlaufLedger.css', offen: 0, bekannt: [] },
+  // UEMS AP-13 IP-4: der Verlauf einer Messstelle — das Bild ist Ziel über die volle Höhe, ‹ › mit 44 px.
+  { reiter: 'Messstellen', datei: 'components/MessstellenVerlauf.css', offen: 0, bekannt: [] },
   // P4 hat den Profi-Aufklapper auf den geteilten `Aufklapper` (48 px)
   // umgestellt und `preisFenster.css` ersatzlos aufgelöst — die Ratsche geht
   // damit auf 0 und nie wieder hoch.

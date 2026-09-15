@@ -19,6 +19,7 @@
 import type { MessstelleWerte, MessstelleWerteRaster, MessstelleWerteWert } from '../api';
 import { iso, mitternacht, stundenDesTages, tagPlus } from '../bezugsPeriode';
 import { raster, tagesdauer } from '../uemsErgebnis';
+import { verschiebe } from '../picker/datum';
 
 export const ZONE = 'Europe/Berlin';
 
@@ -348,3 +349,129 @@ export const grundlastStunden = (tag: string, fassung: 'vorlaeufig' | 'endguelti
   const g = tagesgrenzen(tag);
   return antwort(MS_06, 'stunde', g.von, g.bis, stundenDes(tag, () => ({ ...voll(28.8, 60), fassung })));
 };
+
+// ------------------------------------------------------------------ Verlauf (AP-13 IP-4): Viertelstunden, Woche, Jahr
+
+/** Die Viertelstunden eines Tages mit den Beschriftungen des Vertrags; `je` gibt jeder Viertelstunde ihren Wert. */
+export const viertelstundenDes = (tag: string, je: (beschriftung: string, i: number) => Partial<MessstelleWerteWert>) => {
+  const felder = raster(tag, ZONE, 'viertelstunde');
+  const ende = tagesgrenzen(tag).bis;
+  return felder.map((f, i) =>
+    schritt({
+      von: f.von,
+      bis: felder[i + 1]?.von ?? ende,
+      beschriftung: f.beschriftung,
+      gebildet_aus: 'viertelstunde',
+      ...je(f.beschriftung, i),
+    }),
+  );
+};
+
+/**
+ * F8 · die Viertelstunden des 03.11.2026 an MS-10: bis 14:00 je 24,0 kWh (+1,6 kWh je Minute); 14:00–14:15 nur der
+ * Stand um 14:00 (unvollständig, keine Menge); 14:15–17:30 ohne Werte; 17:30–17:45 = 22,4 kWh (14 von 15); danach
+ * wieder 24,0 kWh. Die Route hängt die Lücke an jede Viertelstunde, die sie berührt (14:00–17:45).
+ */
+export const f8Viertelstunden = (): MessstelleWerte =>
+  antwort(
+    MS_10,
+    'viertelstunde',
+    '2026-11-03T00:00:00+01:00',
+    '2026-11-04T00:00:00+01:00',
+    viertelstundenDes('2026-11-03', (_b, i) => {
+      const ereignisse = i >= 56 && i <= 70 ? [LUECKE_03_11] : [];
+      if (i < 56 || i > 70) return { ...voll(24.0, 15), ereignisse };
+      if (i === 56) return { zustand: 'unvollständig', erhalten: 1, erwartet: 15, abdeckung_prozent: 6, kennzeichen: [NUR_EIN_STAND], ereignisse };
+      if (i < 70) return { zustand: 'keine Werte', erhalten: 0, erwartet: 15, abdeckung_prozent: 0, ereignisse };
+      return { menge: 22.4, zustand: 'unvollständig', erhalten: 14, erwartet: 15, abdeckung_prozent: 93, kennzeichen: [ANFANG_NICHT_GEMESSEN], ereignisse };
+    }),
+  );
+
+/** Die Viertelstunden des gewöhnlichen 02.11.2026 an MS-10: je 24,0 kWh, endgültig. */
+export const normalViertelstunden = (): MessstelleWerte =>
+  antwort(MS_10, 'viertelstunde', '2026-11-02T00:00:00+01:00', '2026-11-03T00:00:00+01:00', viertelstundenDes('2026-11-02', () => ({ ...voll(24.0, 15), fassung: 'endgueltig' })));
+
+/** F13 · die 100 Viertelstunden des 25.10.2026 an MS-06, je 7,2 kWh — die doppelte Stunde mit MESZ und MEZ. */
+export const f13Viertelstunden = (): MessstelleWerte =>
+  antwort(MS_06, 'viertelstunde', '2026-10-25T00:00:00+02:00', '2026-10-26T00:00:00+01:00', viertelstundenDes('2026-10-25', () => ({ ...voll(7.2, 15), fassung: 'endgueltig' })));
+
+/** Die Viertelstunden eines Grundlast-Tages an MS-06 (7,2 kWh = 28,8 kW × ¼ h, F13/F14). */
+export const grundlastViertelstunden = (tag: string, fassung: 'vorlaeufig' | 'endgueltig'): MessstelleWerte => {
+  const g = tagesgrenzen(tag);
+  return antwort(MS_06, 'viertelstunde', g.von, g.bis, viertelstundenDes(tag, () => ({ ...voll(7.2, 15), fassung })));
+};
+
+/** Die Fassung eines Tages, gelesen am `heute`: endgültig ab dem achten Tag nach seinem Beginn (wie die Bühne der Seite). */
+export const fassungAm = (tag: string, heute: string): 'vorlaeufig' | 'endgueltig' => (verschiebe(tag, 8) <= heute ? 'endgueltig' : 'vorlaeufig');
+
+/**
+ * Eine Woche an MS-06 mit der Grundlast von F13/F14: ihre Stunden (in der Woche des 25.10.2026 sind es 169) und ihre
+ * Tage (28,8 kWh je Stunde des Tages) — nichts summiert, jede Periode für sich.
+ */
+export const grundlastWoche = (montag: string, heute: string): { stunden: MessstelleWerte; tage: MessstelleWerte } => {
+  const tage = Array.from({ length: 7 }, (_, i) => verschiebe(montag, i));
+  const von = tagesgrenzen(montag).von;
+  const bis = tagesgrenzen(tage[6]).bis;
+  return {
+    stunden: antwort(MS_06, 'stunde', von, bis, tage.flatMap((t) => stundenDes(t, () => ({ ...voll(28.8, 60), fassung: fassungAm(t, heute) })))),
+    tage: antwort(
+      MS_06,
+      'tag',
+      von,
+      bis,
+      tage.map((t) => {
+        const stunden = stundenDesTages(t, ZONE);
+        return tagSchritt(t, { ...voll(Math.round(288 * stunden) / 10, stunden * 60), fassung: fassungAm(t, heute) });
+      }),
+    ),
+  };
+};
+
+/**
+ * Das Jahr 2026 an MS-06, gelesen am `heute`: bis September ohne Quelle (die Messstellen gibt es seit der Einführung am
+ * 01.10.2026 — die Route sagt „keine Werte“ mit Grund `keine_quelle`), Oktober 55 100,0 kWh (F16, endgültig ab
+ * 08.11.2026), November und Dezember noch nicht gebildet. Das Jahr selbst ist noch nicht gebildet.
+ */
+export const jahr2026 = (heute: string): { karte: MessstelleWerte; monate: MessstelleWerte } => {
+  const beginn = (m: number) => iso(mitternacht(m === 13 ? '2027-01-01' : `2026-${String(m).padStart(2, '0')}-01`, ZONE), ZONE);
+  const seitEinfuehrung = (a: MessstelleWerte): MessstelleWerte => ({
+    ...a,
+    quellen: a.quellen.map((q) => ({ ...q, gueltig_ab: '2026-10-01T00:00:00+02:00' })),
+  });
+  const ohne = { version: null, gebildet_aus: null, versionen: null } as const;
+  const monate = Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+    const grenzen = { von: beginn(m), bis: beginn(m + 1) };
+    if (m < 10) return schritt({ ...grenzen, ...ohne, zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null });
+    if (m === 10) {
+      return schritt({ ...grenzen, ...voll(55100.0, 44700), stunden: 745, gebildet_aus: 'monat', fassung: heute >= '2026-11-08' ? 'endgueltig' : 'vorlaeufig' });
+    }
+    return schritt({ ...grenzen, ...ohne, grund: 'noch_nicht_gebildet' });
+  });
+  return {
+    karte: seitEinfuehrung(
+      antwort(MS_06, 'jahr', beginn(1), beginn(13), [schritt({ von: beginn(1), bis: beginn(13), stunden: 8760, ...ohne, grund: 'noch_nicht_gebildet' })]),
+    ),
+    monate: seitEinfuehrung(antwort(MS_06, 'monat', beginn(1), beginn(13), monate)),
+  };
+};
+
+/** F14 · die 92 Viertelstunden des 28.03.2027 an MS-06, je 7,2 kWh — die Stunde 02:00 gibt es nicht. */
+export const f14Viertelstunden = (): MessstelleWerte =>
+  antwort(MS_06, 'viertelstunde', '2027-03-28T00:00:00+01:00', '2027-03-29T00:00:00+02:00', viertelstundenDes('2027-03-28', () => voll(7.2, 15)));
+
+/** MS-21 ohne Quelle: jede Viertelstunde „keine Werte“ mit Grund `keine_quelle` — ohne Zahl, ohne Abdeckung. */
+export const ohneQuelleViertelstunden = (): MessstelleWerte =>
+  antwort(
+    MS_21,
+    'viertelstunde',
+    '2026-11-03T00:00:00+01:00',
+    '2026-11-04T00:00:00+01:00',
+    viertelstundenDes('2026-11-03', () => ({ zustand: 'keine Werte', grund: 'keine_quelle', quelle: null, fassung: null, version: null, gebildet_aus: null, versionen: null })),
+    false,
+  );
+
+/** Gelesen am 06.11.2026 um 00:05: bis 23:45 gebildet (je 24,0 kWh wie am 02.11.), die letzte Viertelstunde noch nicht. */
+export const nochNichtGebildetViertelstunden = (): MessstelleWerte =>
+  antwort(MS_10, 'viertelstunde', '2026-11-05T00:00:00+01:00', '2026-11-06T00:00:00+01:00', viertelstundenDes('2026-11-05', (_b, i) =>
+    i < 95 ? voll(24.0, 15) : { grund: 'noch_nicht_gebildet', version: null, gebildet_aus: null, versionen: null },
+  ));

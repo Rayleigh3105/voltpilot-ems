@@ -29,13 +29,25 @@ import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_
 import {
   UEMS_DATENLAGE,
   UEMS_ENERGIEBILANZ,
+  UEMS_ERHALTEN,
+  UEMS_EREIGNIS_AM,
+  UEMS_EREIGNIS_SEIT,
+  UEMS_EREIGNIS_VON_BIS,
+  UEMS_KEINE_WERTE_AM,
+  UEMS_KEINE_WERTE_IM,
+  UEMS_KEINE_WERTE_VON_BIS,
   UEMS_MANUELL_ABGELESEN,
   UEMS_NICHT_VERORTET,
   UEMS_VERLAUF,
+  UEMS_VERLAUF_EREIGNISSE,
   UEMS_VERLAUF_PROZENT,
+  UEMS_VERLAUF_WAHL,
   UEMS_WERTE,
+  UEMS_WOCHE_OHNE_ZAHL,
+  UEMS_ZEITRAEUME,
 } from './glossar';
 import * as OF from './uemsOberflaechen';
+import * as VL from './uemsVerlauf';
 import { VERSION_FRUEHERE, VERSION_NEUESTE } from './uemsWerteKarte';
 import {
   fassungenVon as kennzahlFassungen,
@@ -1491,15 +1503,23 @@ const ABDECKUNG_BESTAND: string[] = [
 ];
 
 /**
- * Die Diagramm-Dateien der Oberflächen — vorbereitet, noch leer. Wer eine einhängt, trägt sie HIER ein: IP-4
- * (Verlauf je Messstelle, Kennzahl-Balken), IP-5 (Vergleich als Überlagerung), IP-8 (Anteils-Balken der Energiebilanz).
- * Es gelten die Chart-Regeln des Bestands (`CHART_FORBIDDEN`, `BARE_UNIT_AXIS`) UND die Verbote dieser Welt.
+ * Die Diagramm-Dateien der Oberflächen. Wer eine einhängt, trägt sie HIER ein: IP-4 (Verlauf je Messstelle mit seiner
+ * reinen Regel, Kennzahl-Balken samt Ableitung — der offene Punkt aus AP-11), IP-5 (Vergleich als Überlagerung), IP-8
+ * (Anteils-Balken der Energiebilanz). Es gelten die Chart-Regeln des Bestands (`CHART_FORBIDDEN`, `BARE_UNIT_AXIS`) UND
+ * die Verbote dieser Welt.
  */
-const CHART_FILES_OBERFLAECHEN: string[] = [];
+const CHART_FILES_OBERFLAECHEN: string[] = [
+  // AP-13 IP-4 (= AP-08 IP-10): der Verlauf einer Messstelle — Render und Regel gleichberechtigt, wie beim Tagesbild.
+  'components/MessstellenVerlauf.tsx',
+  'uemsVerlauf.ts',
+  // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
+  'pages/KennzahlSeite.tsx',
+  'kennzahlKarte.ts',
+];
 
 describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
   // AP-13 IP-3: der Abschnitt „Werte“ (Sektion und ihre reine Ableitung).
-  const FLAECHEN = ['uemsOberflaechen.ts', 'uemsWerteKarte.ts', 'components/WerteSektion.tsx'];
+  const FLAECHEN = ['uemsOberflaechen.ts', 'uemsWerteKarte.ts', 'components/WerteSektion.tsx', 'uemsVerlauf.ts', 'components/MessstellenVerlauf.tsx'];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
   const rel = (file: string) => file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -1534,6 +1554,24 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_VERLAUF_PROZENT, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE, UEMS_NICHT_VERORTET, UEMS_MANUELL_ABGELESEN]) {
       out.push({ wo: 'Glossar', text: w });
     }
+    // AP-13 IP-4: der Verlauf — Zeiträume, Lücken- und Ereignis-Sätze, erhalten/erwartet, die Schritt-Wahl, die Woche.
+    for (const w of Object.values(UEMS_ZEITRAEUME)) out.push({ wo: 'Verlauf', text: w });
+    for (const t of [
+      UEMS_KEINE_WERTE_VON_BIS,
+      UEMS_KEINE_WERTE_AM,
+      UEMS_KEINE_WERTE_IM,
+      UEMS_EREIGNIS_VON_BIS,
+      UEMS_EREIGNIS_SEIT,
+      UEMS_EREIGNIS_AM,
+      UEMS_ERHALTEN.singular,
+      UEMS_ERHALTEN.plural,
+      UEMS_WOCHE_OHNE_ZAHL,
+      UEMS_VERLAUF_EREIGNISSE,
+      ...Object.values(UEMS_VERLAUF_WAHL).flatMap((w) => Object.values(w)),
+    ]) {
+      out.push({ wo: 'Verlauf', text: ohnePlatz(t) });
+    }
+    out.push({ wo: 'Verlauf', text: VL.markerSatz({ art: 'handover', von: '2026-11-04T09:38:00+01:00', bis: '2026-11-04T09:40:00+01:00' }, 'Europe/Berlin') ?? '' });
     return out;
   };
 

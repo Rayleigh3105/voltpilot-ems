@@ -35,7 +35,7 @@
 
 import type { MessstelleWerte, MessstelleWerteQuelle, MessstelleWerteRaster, MessstelleWerteWert } from './api';
 import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
-import { MONATE, WOCHENTAGE } from './picker/datum';
+import { MONATE, WOCHENTAGE, datumVon, isoWoche } from './picker/datum';
 import { zahlText } from './uemsEreignis';
 import {
   ANZEIGE_EINHEITEN,
@@ -51,7 +51,7 @@ import {
   zustandMitHerkunft,
   type Ergebnis,
 } from './uemsErgebnis';
-import { zoneSatz } from './uemsOberflaechen';
+import { zoneSatz, type Zeitraum } from './uemsOberflaechen';
 
 /** Tag oder Monat — was die Karte zusammenfasst. */
 export type KartenArt = 'tag' | 'monat';
@@ -139,11 +139,19 @@ export const anfragen = (art: KartenArt, wert: string): { karte: Anfrage; liste:
 };
 
 /**
- * Die Periode der Adresse (`periode=2026-10-25` · `periode=2026-10`, AP-13 E9) als Wahl der Zeit-Leiste — oder
- * `null`, wenn sie fehlt oder kein Kalendertag bzw. -monat ist: dann öffnet die Sektion wie ohne Angabe.
+ * Die Periode der Adresse als Wahl der Zeit-Leiste (AP-13 E9; seit IP-4 alle vier Zeiträume von E5):
+ * `periode=2026-10-25` · `periode=2026-W44` · `periode=2026-10` · `periode=2026` — oder `null`, wenn sie fehlt oder
+ * kein Kalendertag, keine ISO-Woche, kein Monat bzw. kein Jahr ist: dann öffnet die Sektion wie ohne Angabe.
  */
-export const periodeAus = (periode: string | null | undefined): { art: KartenArt; wert: string } | null => {
-  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(periode ?? '');
+export const periodeAus = (periode: string | null | undefined): { art: Zeitraum; wert: string } | null => {
+  const p = periode ?? '';
+  if (/^\d{4}$/.test(p)) return { art: 'jahr', wert: p };
+  if (/^\d{4}-W\d{2}$/.test(p)) {
+    // Eine 53. Woche gibt es nicht in jedem Jahr — nur eine Woche, die es gibt, schreibt sich selbst zurück.
+    const montag = datumVon(p, 'woche');
+    return montag && isoWoche(montag) === p ? { art: 'woche', wert: p } : null;
+  }
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(p);
   if (!m) return null;
   const [j, mo, t] = [Number(m[1]), Number(m[2]), m[3] === undefined ? 1 : Number(m[3])];
   if (mo < 1 || mo > 12 || t < 1 || new Date(Date.UTC(j, mo - 1, t)).getUTCMonth() !== mo - 1) return null;
@@ -260,7 +268,7 @@ export const karte = (antwort: MessstelleWerte): MessstellenKarte | null => {
   const gesprochen = a.zustand !== null && bekannt;
   return {
     ...a,
-    titel: antwort.raster === 'monat' ? monatTitel(w.von) : tagTitel(w.von),
+    titel: antwort.raster === 'jahr' ? w.von.slice(0, 4) : antwort.raster === 'monat' ? monatTitel(w.von) : tagTitel(w.von),
     tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
     fassung: gesprochen ? fassung(w.fassung) : null,
     fassungWert: gesprochen ? w.fassung : null,
@@ -282,7 +290,8 @@ export const liste = (antwort: MessstelleWerte): Zeile[] =>
     return {
       ...a,
       schluessel: w.von,
-      beschriftung: antwort.raster === 'tag' ? tagTitel(w.von, false) : (w.beschriftung ?? w.von),
+      // Im Jahr stehen die Monate in der Liste (AP-13 IP-4).
+      beschriftung: antwort.raster === 'tag' ? tagTitel(w.von, false) : antwort.raster === 'monat' ? monatTitel(w.von) : (w.beschriftung ?? w.von),
       tagesdauer: antwort.raster === 'tag' ? w.tagesdauer : null,
       grund: nochNichtGebildet(a, w) ? UEMS_NOCH_NICHT_GERECHNET : null,
     };

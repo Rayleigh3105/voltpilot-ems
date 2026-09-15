@@ -27,7 +27,22 @@ import { verschiebe } from '../src/picker/datum';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
-import { f13Stunden, f13Tag, grundlastStunden, grundlastTag } from '../src/test/werteKarteFixtures';
+import {
+  f13Stunden,
+  f13Tag,
+  f13Viertelstunden,
+  f16Monat,
+  f16Tage,
+  f8Stunden,
+  f8Tag,
+  f8Viertelstunden,
+  fassungAm,
+  grundlastStunden,
+  grundlastTag,
+  grundlastViertelstunden,
+  grundlastWoche,
+  jahr2026,
+} from '../src/test/werteKarteFixtures';
 import { f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
 
 // Der Vite-Dev-Server kompiliert den Modulgraphen beim ersten Zugriff kalt — großzügige Frist.
@@ -58,17 +73,28 @@ interface Gesendet {
  * Grundlast derselben Stunde (endgültig ab dem achten Tag nach seinem Beginn); MS-10 am 03.11.2026 ist F21 in der
  * Version der Anfrage. Alles andere ist nicht gestellt (404).
  */
-function werteAntwort(kz: string, p: URLSearchParams, heute: string): MessstelleWerte | null {
+function werteAntwort(kz: string, p: URLSearchParams, heute: string, f8 = false): MessstelleWerte | null {
   const raster = p.get('raster');
   const von = p.get('von') ?? '';
-  if (raster !== 'tag' && raster !== 'stunde') return null;
-  if (kz === 'MS-06' && von === '2026-10-25') return raster === 'tag' ? f13Tag() : f13Stunden();
-  if (kz === 'MS-06' && p.get('bis') === von) {
-    const fassung = verschiebe(von, 8) <= heute ? 'endgueltig' : 'vorlaeufig';
-    return raster === 'tag' ? grundlastTag(von, fassung) : grundlastStunden(von, fassung);
+  const bis = p.get('bis') ?? '';
+  const nach = (antworten: Partial<Record<string, () => MessstelleWerte>>) => antworten[raster ?? '']?.() ?? null;
+  if (kz === 'MS-06') {
+    if (von === '2026-10-25' && bis === von) return nach({ tag: f13Tag, stunde: f13Stunden, viertelstunde: f13Viertelstunden });
+    if (bis === von) {
+      const fassung = fassungAm(von, heute);
+      return nach({ tag: () => grundlastTag(von, fassung), stunde: () => grundlastStunden(von, fassung), viertelstunde: () => grundlastViertelstunden(von, fassung) });
+    }
+    // AP-13 IP-4: eine Woche (Stunden und Tage), der Oktober (F16) und das Jahr 2026.
+    if (verschiebe(von, 6) === bis) return nach({ tag: () => grundlastWoche(von, heute).tage, stunde: () => grundlastWoche(von, heute).stunden });
+    if (von === '2026-10-01' && bis === '2026-10-31') return nach({ monat: f16Monat, tag: f16Tage });
+    if (von === '2026-01-01' && bis === '2026-12-31') return nach({ jahr: () => jahr2026(heute).karte, monat: () => jahr2026(heute).monate });
+    return null;
   }
-  if (kz === 'MS-10' && von === '2026-11-03') {
+  if (kz === 'MS-10' && von === '2026-11-03' && bis === von) {
+    // O1: die Lücke des Box-Ausfalls (F8) — sonst derselbe Tag nach Ersatzwert und Korrektur (F21).
+    if (f8) return nach({ tag: f8Tag, stunde: f8Stunden, viertelstunde: f8Viertelstunden });
     if (raster === 'stunde') return f21Stunden();
+    if (raster !== 'tag') return null;
     const v = Number(p.get('version') ?? '3');
     return v === 1 || v === 2 || v === 3 ? { ...f21Tag(), version: p.get('version') ? v : null, werte: [f21TagWert(v)] } : null;
   }
@@ -76,7 +102,7 @@ function werteAntwort(kz: string, p: URLSearchParams, heute: string): Messstelle
 }
 
 /** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung); `heute`: der Stichtag des Registers. */
-async function cloud(page: Page, { angelegt = false, heute = null as string | null } = {}): Promise<Gesendet[]> {
+async function cloud(page: Page, { angelegt = false, heute = null as string | null, f8 = false } = {}): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
   let gespeichert = false;
   await page.route('**/api/v1/**', async (route) => {
@@ -120,7 +146,7 @@ async function cloud(page: Page, { angelegt = false, heute = null as string | nu
     }
     const werte = /^\/api\/v1\/messstellen\/([^/]+)\/werte$/.exec(pfad);
     if (werte && methode === 'GET') {
-      const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE);
+      const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE, f8);
       return route.fulfill(antwort ? json(antwort) : json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
     }
     if (/^\/api\/v1\/messstellen\/[^/]+$/.test(pfad) && methode === 'GET') return route.fulfill(json(messstelle));
@@ -304,6 +330,13 @@ test('O14 · MS-06 am 26.10.2026: „Werte“ unter dem Kopf — Zeiten in Europ
   await expect(werteZeile(werte, '02:00–03:00 MESZ')).toHaveCount(1);
   await expect(werteZeile(werte, '02:00–03:00 MEZ')).toHaveCount(1);
   await expect(werteZeile(werte, '02:00–03:00 MEZ')).toContainText(/28,8\skWh/);
+  // AP-13 IP-4: der Verlauf in Viertelstunden — 100 am 25-Stunden-Tag (E5; befunde-ip1: nicht 25), die doppelte Stunde
+  // erkennt man an der Beschriftung, nicht an einer Farbe.
+  const verlauf = werte.getByTestId('verlauf');
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(100);
+  await expect(verlauf.locator('[data-zustand="vollstaendig"]')).toHaveCount(100);
+  await expect(verlauf.getByTestId('verlauf-legende')).toHaveText('vollständig');
+  await expect(verlauf).toContainText(/So 25\.10\.2026: 720\skWh · vollständig · endgültig/);
 
   // Unter dem Kopf, vor den Zuordnungs-Karten — EIN Ort für Stammdaten und Zahlen (E9).
   const unten = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().bottom);
@@ -401,4 +434,120 @@ test('Version der Adresse · MS-10 am 03.11.2026 (F21): „Sie sehen Version 3 �
   await expect(hinweis).toHaveCount(0);
   await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
   await expect(page).toHaveURL(adresse(`${MS_IDS.ms10}?periode=2026-11-03`));
+});
+
+// ------------------------------------------------------------------------------------------------------------------
+// UEMS AP-13 IP-4 (= AP-08 IP-10) · der Verlauf: O1 (die Lücke als Fläche mit Satz) und E5 (die vier Zeiträume)
+// ------------------------------------------------------------------------------------------------------------------
+
+test('O1 · MS-10 am 04.11.2026: der Verlauf des 03.11. — die Lücke als Fläche ohne Balken, der Marker mit dem Satz des Vokabulars, Tipp auf 14:15 und 17:30', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-04', f8: true });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms10}`);
+
+  // WAS gemessen wurde, WELCHER Zeitraum und WARUM die Zahl eingeschränkt ist — die Karte des Tages …
+  const werte = page.getByTestId('werte');
+  const karte = werte.getByTestId('werte-karte');
+  await expect(karte).toContainText(/2\.304\skWh/);
+  await expect(karte.getByTestId('werte-verlauf')).toHaveText(/^Verlauf 85\s% · 1 Lücke$/);
+  await expect(werte.getByTestId('werte-zone')).toHaveText(/^Zeiten in Europe\/Berlin \(Zeitzone des Standorts/);
+
+  // … und darunter der Verlauf: 96 Viertelstunden, 13 ohne Werte als EINE Fläche, darin kein Balken — keine Null.
+  const verlauf = werte.getByTestId('verlauf');
+  await expect(verlauf).toContainText(/Di 03\.11\.2026: 2\.304\skWh · vollständig · vorläufig/);
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(96);
+  await expect(verlauf.locator('[data-zustand="keine_werte"]')).toHaveCount(13);
+  await expect(verlauf.getByTestId('verlauf-luecke')).toHaveCount(1);
+  const flaeche = (await verlauf.getByTestId('verlauf-luecke').boundingBox())!;
+  const balkenInDerFlaeche = await verlauf.locator('.vp-mv-balken').evaluateAll(
+    (els, f) =>
+      els.filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.right > f.x + 0.5 && r.left < f.x + f.width - 0.5;
+      }).length,
+    flaeche,
+  );
+  expect(balkenInDerFlaeche).toBe(0);
+  await expect(verlauf.getByTestId('verlauf-legende')).toHaveText(/vollständig\s*unvollständig\s*keine Werte/);
+  await expect(verlauf.getByTestId('verlauf-marke')).toHaveCount(1);
+  await expect(verlauf.getByTestId('verlauf-ereignis')).toHaveCount(1);
+  await expect(verlauf.getByTestId('verlauf-ereignis')).toContainText('Lücke von 03.11.2026 14:00 bis 17:31 — nie als 0 gerechnet');
+  // Die Marke steht am Beginn des Ereignisses (14:00), die Fläche beginnt eine Viertelstunde später.
+  const kreis = (await verlauf.locator('[data-testid="verlauf-marke"] circle').boundingBox())!;
+  const um1400 = (await verlauf.locator('[data-von="2026-11-03T14:00:00+01:00"]').boundingBox())!;
+  expect(Math.abs(kreis.x + kreis.width / 2 - um1400.x)).toBeLessThan(1.5);
+  expect(flaeche.x).toBeGreaterThan(um1400.x + um1400.width - 1);
+  await messeUndFotografiere(page, breite, 'o1-ms10-verlauf');
+  await werteBild(werte, breite, 'o1-verlauf');
+
+  // Ein Tipp öffnet die Karte der Viertelstunde — ihre Zeilen kommen aus der Route.
+  await verlauf.locator('[data-von="2026-11-03T14:15:00+01:00"]').click();
+  const schritt = verlauf.getByTestId('verlauf-schritt-karte');
+  await expect(schritt).toContainText('14:15–14:30');
+  await expect(schritt).toContainText('keine Werte');
+  await expect(schritt).toContainText('0 von 15 Werten');
+  await verlauf.locator('[data-von="2026-11-03T17:30:00+01:00"]').click();
+  await expect(schritt).toContainText('17:30–17:45');
+  await expect(schritt).toContainText(/22,4\skWh/);
+  await expect(schritt).toContainText('unvollständig (Menge aus Zählerständen)');
+  await expect(schritt).toContainText(/Verlauf 93\s% · 14 von 15 Werten/);
+  await expect(schritt).toContainText('Anfang nicht gemessen (kein Stand an der Periodengrenze)');
+  // Tippflächen: ‹ › je mindestens 44 px, das Bild selbst ist über seine volle Höhe Ziel.
+  const vorher = verlauf.getByRole('button', { name: 'Vorherige Viertelstunde' });
+  for (const knopf of [vorher, verlauf.getByRole('button', { name: 'Nächste Viertelstunde' })]) {
+    const box = (await knopf.boundingBox())!;
+    expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+  }
+  expect((await verlauf.locator('.vp-mv-bild').boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // Den Tooltip gibt es nur mit der Maus (K7) — am Telefon-Bild steht er nicht, am Rechner schon.
+  if (breite === 375) await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'o1-ms10-schritt');
+  await werteBild(werte, breite, 'o1-schritt');
+  await vorher.click();
+  await expect(schritt).toContainText('17:15–17:30');
+});
+
+test('E5 · MS-06: Tag · Woche · Monat · Jahr im Raster der Route — die Woche ohne eigene Zahl, das Jahr mit „keine Werte“ bis September', async ({ page }, info) => {
+  test.slow();
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-11-05' });
+  await page.goto(`/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-25`);
+  const werte = page.getByTestId('werte');
+  const verlauf = werte.getByTestId('verlauf');
+  const wahl = werte.locator('.vp-wk-zeitwahl');
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(100);
+
+  await wahl.getByRole('tab', { name: 'Woche' }).click();
+  await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026-W43`));
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(169);
+  await expect(werte.getByTestId('werte-karte')).toHaveCount(0);
+  await expect(verlauf).toContainText('Für eine Woche wird keine eigene Zahl gebildet — die Tage stehen einzeln in der Liste.');
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(7);
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'e5-woche');
+  await werteBild(werte, breite, 'e5-woche');
+
+  await wahl.getByRole('tab', { name: 'Monat' }).click();
+  await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026-10`));
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(31);
+  await expect(verlauf).toContainText(/Oktober 2026: 55\.100\skWh · vollständig · vorläufig/);
+  await page.mouse.move(0, 0);
+  await werteBild(werte, breite, 'e5-monat');
+
+  await wahl.getByRole('tab', { name: 'Jahr' }).click();
+  await expect(page).toHaveURL(adresse(`${MS_IDS.ms06}?periode=2026`));
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(12);
+  await expect(verlauf.getByTestId('verlauf-luecke')).toHaveCount(1);
+  await expect(verlauf.getByTestId('verlauf-ereignis')).toContainText('keine Werte von Januar 2026 bis September 2026');
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(12);
+  await expect(werte.getByRole('button', { name: 'Nächster Zeitraum' })).toBeDisabled();
+  await page.mouse.move(0, 0);
+  await messeUndFotografiere(page, breite, 'e5-jahr');
+  await werteBild(werte, breite, 'e5-jahr');
+
+  // Neu geladen trägt die Adresse das Jahr — die Sektion öffnet es wieder.
+  await page.reload();
+  await expect(verlauf.getByTestId('verlauf-schritt')).toHaveCount(12);
 });
