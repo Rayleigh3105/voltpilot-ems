@@ -50,11 +50,27 @@ voltpilot:
     telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
     measurements-topic: ${REDPANDA_MEASUREMENTS_TOPIC:measurements.raw}
     # Events of the box AND of the Datenannahme itself (rejected / clock_ahead /
-    # too_old), docs/contracts/v2/events-raw.event.schema.json. Create it before
-    # the next deploy (production: gitops repo; local: redpanda-init). While it
-    # is missing the ingest falls back (values flow, refusals only logged and
-    # counted, box adapter waits, readiness DOWN) - services/ingest/README.md.
+    # too_old), docs/contracts/v2/events-raw.event.schema.json. The ingest creates
+    # it itself when it is missing (events-topic-anlegen below). While it is still
+    # missing - creation switched off, not allowed, broker away - the ingest falls
+    # back (values flow, refusals only logged and counted, box adapter waits,
+    # readiness DOWN) - services/ingest/README.md.
     events-topic: ${REDPANDA_EVENTS_TOPIC:events.raw}
+    # Create a missing events.raw at start (since 15.09.2026) with the values
+    # redpanda-init gives its neighbours, read it back, only then be ready. An
+    # existing topic is never created twice and never altered; a deviation is a
+    # WARN plus health detail "abweichung". WHY the app may do this although
+    # decision b07-recreate D point 4 said "no topic creation from code": that
+    # point was a boundary without a safety reason (D had solved the Recreate
+    # stall without creation), the captain wants no manual topic creation any
+    # more, and a mis-configured topic only arises when the BROKER auto-creates
+    # it with its defaults on first send - this explicit path runs before any
+    # send. Switch off (false) where the operator manages topics itself, e.g.
+    # once Redpanda moves into the cluster with a PreSync job.
+    events-topic-anlegen:
+      enabled: ${REDPANDA_EVENTS_TOPIC_ANLEGEN:true}
+      partitionen: ${REDPANDA_EVENTS_TOPIC_PARTITIONEN:3}
+      replikate: ${REDPANDA_EVENTS_TOPIC_REPLIKATE:1}
   # Measurement-time plausibility of the Datenannahme (UEMS AP-07 E13, the
   # contract values of events-vocabulary-vectors.json "regeln" - not a tuning
   # knob): a measurement time more than 300 s AFTER arrival is refused as
@@ -90,8 +106,10 @@ management:
       probes:
         enabled: true
       # Readiness = readinessState PLUS, once, the Redpanda topic events.raw
-      # (UEMS AP-07 IP-5): a deploy without the topic never becomes ready, and
-      # once seen the check is cached for the process lifetime, so a later
+      # (UEMS AP-07 IP-5): a missing topic is first created
+      # (voltpilot.redpanda.events-topic-anlegen), then checked, then ready; a
+      # deploy whose topic can neither be found nor created never becomes ready,
+      # and once seen the check is cached for the process lifetime, so a later
       # Redpanda blip never takes the pod out (docs/k8s-readiness.md).
       group:
         readiness:

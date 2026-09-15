@@ -94,7 +94,7 @@ Belege: `K8sReadinessConfigTest` in den JVM-Diensten, Python-`test_runtime.py`, 
 
 ## Zusätzliche Readiness und Datenhaltungsmetriken
 
-Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
+Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Fehlt es, legt der Ingest es vorher selbst an (abschaltbar; ein vorhandenes Topic wird nie angepasst; Grund und Einstellung im Ingest-README). Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
 
 API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
 
