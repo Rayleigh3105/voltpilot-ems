@@ -53,11 +53,14 @@ import { TRENNER } from '../uemsErgebnis';
 export function BerichtSeite({
   kennung,
   onListe,
+  zurListe = ZUR_LISTE,
   onAbruf,
   jetzt = () => Date.now(),
 }: {
   kennung: string;
   onListe: () => void;
+  /** Das Wort des Rückwegs — am Standort „Berichte dieses Standorts“ (AP-13 IP-2), sonst „Alle Berichte“. */
+  zurListe?: string;
   /** Der Abruf einer Datei (IP-10/IP-11) — ohne ihn kein Knopf. */
   onAbruf?: (knopf: AusgabeKnopf) => void;
   jetzt?: () => number;
@@ -123,7 +126,7 @@ export function BerichtSeite({
   const zurueck = (
     <button type="button" className="vp-br-zurueck" onClick={onListe}>
       <Icon name="chevron-left" size={18} />
-      {ZUR_LISTE}
+      {zurListe}
     </button>
   );
 

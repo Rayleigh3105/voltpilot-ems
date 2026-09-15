@@ -113,7 +113,7 @@ test.describe('Messstellen-Register', () => {
     await ablegen(page, 'unternehmen-375', m);
   });
 
-  test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Reiter Übersicht · Messstellen, 16 Messstellen', async ({ page }) => {
+  test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Übersicht · Gebäude · Anlagen · Messstellen, 16 Messstellen', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
       await warteAufRegister(page);
@@ -121,10 +121,12 @@ test.describe('Messstellen-Register', () => {
       ohneQuerlauf(m, `werk-${breite}`);
       expect(m.route).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
       expect(breite === 375 ? m.karten : m.zeilen).toBe(16);
-      expect(m.reiter).toEqual(['Übersicht', 'Messstellen']);
-      expect(m.reiterAktiv).toEqual(['Messstellen']);
-      // Zwei Bereiche mit Seite — unter der Schwelle, keine Leiste.
-      expect(m.leiste).toBeNull();
+      // AP-13 IP-2: Gebäude und Anlagen haben ihre Seite — vier Bereiche (O17). Am Rechner die Reiter, am
+      // Telefon die Leiste; was die Leiste trägt, ist dort kein zweites Mal Reiter.
+      expect(m.reiter).toEqual(breite === 375 ? [] : ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
+      expect(m.reiterAktiv).toEqual(breite === 375 ? [] : ['Messstellen']);
+      expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'] : null);
+      if (breite === 375) expect(m.leisteAktiv).toBe('Messstellen');
       expect(m.kopf).toBe('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten');
       await ablegen(page, `werk-${breite}`, m);
     }
@@ -229,26 +231,36 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await warteAufRegister(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);
     const m = await messe(page);
-    expect(m.reiter).toEqual(['Übersicht', 'Messstellen']);
+    expect(m.reiter).toEqual(['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen']);
     await ablegen(page, 'werk-uebersicht-1440', m);
     await page.getByRole('tab', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st1}/messstellen`);
     await warteAufRegister(page);
   });
 
-  test('der reine Messkunde (nur Werk Lindach, oberste Ebene): der Reiter „Messstellen“ führt auf seinen Standort', async ({ page }) => {
+  test('der reine Messkunde (nur Werk Lindach, oberste Ebene): „Messstellen“ führt auf seinen Standort — Reiter am Rechner, Kachel am Telefon', async ({ page }) => {
+    await oeffne(page, 'bild=messkunde', 1440);
+    const r = await messe(page);
+    ohneQuerlauf(r, 'messkunde-1440');
+    // AP-13 IP-2: als oberste Ebene trägt die Reiter-Reihe auch „Gebäude“; Lindach hat eine Anlage — kein „Anlagen“ (Z4).
+    expect(r.reiter).toEqual(expect.arrayContaining(['Übersicht', 'Gebäude', 'Messstellen']));
+    expect(r.reiter).not.toContain('Anlagen');
+    await page.getByRole('tab', { name: 'Messstellen' }).click();
+    await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
+    await warteAufRegister(page);
+
     await oeffne(page, 'bild=messkunde', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'messkunde-375');
-    expect(m.leiste).toBeNull();
-    expect(m.reiter).toContain('Messstellen');
-    await page.getByRole('tab', { name: 'Messstellen' }).click();
+    // Drei Bereiche mit Seite — seit AP-13 IP-2 die Leiste (O17: Werk Lindach drei Kacheln).
+    expect(m.leiste).toEqual(['Übersicht', 'Gebäude', 'Messstellen']);
+    await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
     await warteAufRegister(page);
     const n = await messe(page);
     ohneQuerlauf(n, 'messkunde-messstellen-375');
     expect(n.karten).toBe(3);
-    expect(n.reiterAktiv).toEqual(['Messstellen']);
+    expect(n.leisteAktiv).toBe('Messstellen');
     await ablegen(page, 'messkunde-messstellen-375', n);
   });
 });

@@ -1,7 +1,8 @@
 # UEMS-Fläche: die Welt „Kennzahlen“ — Liste und Kennzahl-Seite (AP-11 IP-13)
 
-Neu am 15.09.2026. Portfolio-Welt `#/portfolio/kennzahlen` (Liste) und `#/portfolio/kennzahlen/{id}` (Kennzahl-Seite),
-bis AP-13 die Ebenen-Navigation bringt. Die Fläche LIEST nur: `GET /api/v1/kennzahlen`, `…/{id}`, `…/{id}/fassungen`,
+Neu am 15.09.2026. Portfolio-Welt `#/portfolio/kennzahlen` (Liste) und `#/portfolio/kennzahlen/{id}` (Kennzahl-Seite);
+seit AP-13 IP-2 dieselbe Liste als „Kennzahlen dieses Standorts“ unter `#/standort/{id}/kennzahlen`
+(`uems-oberflaechen-ebenen.md`). Die Fläche LIEST nur: `GET /api/v1/kennzahlen`, `…/{id}`, `…/{id}/fassungen`,
 `…/{id}/werte` und — erst im geöffneten Dialog — `…/{id}/werte/versionen` (IP-5/IP-7, `uems-kennzahl-werte-lesen.md`).
 Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versionen), §4.13 und E12 (Wörter).
 

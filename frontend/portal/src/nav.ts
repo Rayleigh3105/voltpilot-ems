@@ -124,19 +124,24 @@ export interface Route {
    */
   standortId?: string;
   /**
-   * Nur bei `page === 'standort'`: ein BEREICH des Standorts statt seiner
-   * Übersicht (UEMS AP-04 IP-5, `#/standort/{id}/messstellen`). Absent = die
+   * Nur bei `page === 'standort'`: eine Seite des Standorts statt seiner
+   * Übersicht (UEMS AP-04 IP-5 `#/standort/{id}/messstellen`, AP-13 IP-2
+   * `…/gebaeude`, `…/anlagen`, `…/kennzahlen`, `…/berichte`). Absent = die
    * Übersicht — jede bestehende Standort-Route bleibt unverändert.
    */
-  standortBereich?: 'messstellen';
+  standortBereich?: StandortBereich;
   /**
-   * Nur bei `page === 'portfolio-kennzahlen'`: WELCHE Kennzahl die Seite zeigt
-   * (UEMS AP-11 IP-13, `#/portfolio/kennzahlen/{id}`). Absent = die Liste.
+   * Nur bei `page === 'portfolio-kennzahlen'` oder am Standort mit
+   * `standortBereich: 'kennzahlen'`: WELCHE Kennzahl die Seite zeigt (UEMS
+   * AP-11 IP-13 `#/portfolio/kennzahlen/{id}`, AP-13 IP-2
+   * `#/standort/{sid}/kennzahlen/{id}`). Absent = die Liste.
    */
   kennzahlId?: string;
   /**
-   * Nur bei `page === 'portfolio-berichte'`: WELCHER Bericht die Seite zeigt
-   * (UEMS AP-12 IP-13, `#/portfolio/berichte/{kennung}`). Absent = die Liste.
+   * Nur bei `page === 'portfolio-berichte'` oder am Standort mit
+   * `standortBereich: 'berichte'`: WELCHER Bericht die Seite zeigt (UEMS
+   * AP-12 IP-13 `#/portfolio/berichte/{kennung}`, AP-13 IP-2
+   * `#/standort/{sid}/berichte/{kennung}`). Absent = die Liste.
    */
   berichtKennung?: string;
   /**
@@ -627,6 +632,20 @@ export function parseRoute(hash: string): Route {
         ? messstelleRoute(decodeURIComponent(segments[3]), segments[1])
         : standortMessstellenRoute(segments[1]);
     }
+    // AP-13 IP-2: die übrigen Seiten des Standorts; Kennzahl und Bericht bleiben im Standort, aus dem sie geöffnet werden.
+    if (segments[1] && segments[2] === 'kennzahlen') {
+      return segments[3]
+        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1])
+        : standortBereichRoute(segments[1], 'kennzahlen');
+    }
+    if (segments[1] && segments[2] === 'berichte') {
+      return segments[3]
+        ? berichtRoute(decodeURIComponent(segments[3]), segments[1])
+        : standortBereichRoute(segments[1], 'berichte');
+    }
+    if (segments[1] && (segments[2] === 'gebaeude' || segments[2] === 'anlagen')) {
+      return standortBereichRoute(segments[1], segments[2]);
+    }
     return segments[1]
       ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
       : { page: 'standort', siteId: null, sub: null };
@@ -698,8 +717,16 @@ export function hashForRoute(route: Route): string {
   if (route.page === 'anlagen') return '#/anlagen';
   if (route.page === 'standort') {
     if (!route.standortId) return '#/standort';
-    const messstelle = route.standortBereich && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
-    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${messstelle}`;
+    const objekt =
+      route.standortBereich === 'messstellen'
+        ? route.messstelleId
+        : route.standortBereich === 'kennzahlen'
+          ? route.kennzahlId
+          : route.standortBereich === 'berichte'
+            ? route.berichtKennung
+            : undefined;
+    const unter = objekt ? `/${encodeURIComponent(objekt)}` : '';
+    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${unter}`;
   }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
@@ -727,19 +754,41 @@ export function standortRoute(standortId: string): Route {
   return { page: 'standort', siteId: null, sub: null, standortId };
 }
 
+/**
+ * Die Seiten eines Standorts mit eigener Adresse, ohne seine Übersicht (UEMS AP-04 IP-5, AP-13 IP-2).
+ * ⚠ Kennzahlen und Berichte sind hier SEITEN, aber keine Bereiche der Ebene (AP-01 §4.6, O17): sie haben keine
+ * Kachel, man erreicht sie von der Standort-Übersicht (`ebenenNav.standortEinstiege`).
+ */
+export type StandortBereich = 'gebaeude' | 'anlagen' | 'messstellen' | 'kennzahlen' | 'berichte';
+
+/** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
+export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {
+  return { page: 'standort', siteId: null, sub: null, standortId, standortBereich };
+}
+
 /** Route von „Standort › Messstellen“ (UEMS AP-04 IP-5): `#/standort/{id}/messstellen`. */
 export function standortMessstellenRoute(standortId: string): Route {
-  return { page: 'standort', siteId: null, sub: null, standortId, standortBereich: 'messstellen' };
+  return standortBereichRoute(standortId, 'messstellen');
 }
 
-/** Route einer Kennzahl-Seite (UEMS AP-11 IP-13): `#/portfolio/kennzahlen/{id}`. */
-export function kennzahlRoute(kennzahlId: string): Route {
-  return { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+/**
+ * Route einer Kennzahl-Seite (UEMS AP-11 IP-13): ohne Standort `#/portfolio/kennzahlen/{id}`, aus
+ * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`.
+ */
+export function kennzahlRoute(kennzahlId: string, standortId?: string | null): Route {
+  return standortId
+    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId }
+    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
 }
 
-/** Route einer Berichtsseite (UEMS AP-12 IP-13): `#/portfolio/berichte/{kennung}`. */
-export function berichtRoute(berichtKennung: string): Route {
-  return { page: 'portfolio-berichte', siteId: null, sub: null, berichtKennung };
+/**
+ * Route einer Berichtsseite (UEMS AP-12 IP-13): ohne Standort `#/portfolio/berichte/{kennung}`, aus
+ * „Berichte dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/berichte/{kennung}`.
+ */
+export function berichtRoute(berichtKennung: string, standortId?: string | null): Route {
+  return standortId
+    ? { ...standortBereichRoute(standortId, 'berichte'), berichtKennung }
+    : { page: 'portfolio-berichte', siteId: null, sub: null, berichtKennung };
 }
 
 /**

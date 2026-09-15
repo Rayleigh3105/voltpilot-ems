@@ -79,8 +79,9 @@ export interface EbenenBild {
 /**
  * Die Kacheln einer Ebene — dieselbe Regel wie `ebenenLeiste`, aber ohne die
  * Kacheln unter der Schwelle wegzuwerfen: die Bühne und der gemessene Weg (IP-13)
- * brauchen „2 Kacheln, keine Leiste“ ebenso wie „4 Kacheln, Leiste“. Wer eine
- * Seite einhängt (IP-2: Gebäude, Anlagen), trägt sie in `EBENEN_SEITEN` ein.
+ * brauchen „2 Kacheln, keine Leiste“ ebenso wie „4 Kacheln, Leiste“. Seit IP-2
+ * stehen Gebäude und Anlagen des Standorts in `EBENEN_SEITEN` — Werk Ahrenberg
+ * vier Kacheln, Werk Lindach drei; wer eine weitere Seite einhängt, trägt sie dort ein.
  */
 export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeiten = EBENEN_SEITEN): EbenenBild {
   const ziele = seiten(ort);
@@ -95,7 +96,9 @@ export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeit
  * Das Objekt einer Herkunfts-Zeile. Eine Seite haben heute Messstelle (mit
  * Periode und Version, D2), Kennzahl, Bericht und Gerät. Ohne Seite bleiben
  * Bezugsgröße (AP-09), Ereignis (AP-07) und Box (AP-06 IP-16) — D3 — sowie
- * Kostenstelle und Gebäude, bis IP-9 und IP-2 ihre Seiten einhängen.
+ * die Kostenstelle, bis IP-9 ihre Seite einhängt. Das Gebäude hat seit IP-2 die
+ * Seite „Standort › Gebäude“, aber seine Zeile nennt keinen Standort — der Sprung
+ * dorthin kommt mit IP-11, bis dahin bleibt sie Text.
  */
 export type SprungObjekt =
   | { art: 'messstelle'; id: string; standortId?: string | null; periode?: string | null; version?: number | null }

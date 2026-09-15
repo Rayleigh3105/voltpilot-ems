@@ -3,13 +3,25 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Bericht } from '../api';
 import { ErrorState, Skeleton } from '../components/States';
-import { LADEN, LEER, listenFehler, listenKarte, sortiert, TITEL, type ListenKarte } from '../berichtSeite';
+import {
+  amStandort,
+  LADEN,
+  LEER,
+  LEER_STANDORT,
+  listenFehler,
+  listenKarte,
+  sortiert,
+  TITEL,
+  type ListenKarte,
+} from '../berichtSeite';
+import { STANDORT_BERICHTE } from '../ebenenNav';
 import { BerichtSeite } from './BerichtSeite';
 import './BerichtePage.css';
 
 /**
  * „Unternehmen › Berichte“ (UEMS AP-12 IP-13, `#/portfolio/berichte`) und die Berichtsseite
- * (`#/portfolio/berichte/{kennung}`) — eine Portfolio-Welt neben „Kennzahlen“, bis AP-13 die Ebenen-Navigation bringt.
+ * (`#/portfolio/berichte/{kennung}`) — seit AP-13 IP-2 auch „Berichte dieses Standorts“
+ * (`#/standort/{id}/berichte`, Ü8/K3): dieselbe Liste, nur Berichte mit Geltung genau dieser Standort.
  *
  * Die Liste liest `GET /api/v1/berichte` (nur, was die Person lesen darf, G2) und zeigt je Bericht Vorlage, Geltung,
  * Zeitraum und den Vermerk (R5); jede Ableitung steht im reinen Modul `berichtSeite.ts`. Eine 403 (die Unterstützung
@@ -22,36 +34,51 @@ export function BerichtePage({
   kennung = null,
   onOeffnen,
   onListe,
+  standort = null,
 }: {
   kennung?: string | null;
   onOeffnen: (kennung: string) => void;
   onListe: () => void;
+  /** AP-13 IP-2: „Berichte dieses Standorts“; `null` = das Unternehmen. */
+  standort?: { id: string; name: string } | null;
 }) {
-  if (kennung) return <BerichtSeite key={kennung} kennung={kennung} onListe={onListe} />;
-  return <BerichteListe onOeffnen={onOeffnen} />;
+  if (kennung) {
+    return (
+      <BerichtSeite key={kennung} kennung={kennung} onListe={onListe} zurListe={standort ? STANDORT_BERICHTE : undefined} />
+    );
+  }
+  return <BerichteListe standort={standort} onOeffnen={onOeffnen} />;
 }
 
-function BerichteListe({ onOeffnen }: { onOeffnen: (kennung: string) => void }) {
+function BerichteListe({
+  standort,
+  onOeffnen,
+}: {
+  standort: { id: string; name: string } | null;
+  onOeffnen: (kennung: string) => void;
+}) {
   const [liste, setListe] = useState<Bericht[] | null>(null);
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
+  const standortId = standort?.id ?? null;
 
   useEffect(() => {
     let aktiv = true;
     setFehler(null);
     api.berichte().then(
-      ({ berichte }) => aktiv && setListe(berichte),
+      ({ berichte }) => aktiv && setListe(standortId ? amStandort(berichte, standortId) : berichte),
       (e) => aktiv && setFehler(listenFehler(e)),
     );
     return () => {
       aktiv = false;
     };
-  }, [versuch]);
+  }, [versuch, standortId]);
 
   return (
     <div className="vp-br" data-testid="berichte">
       <header className="vp-br-kopf">
-        <h1>{TITEL}</h1>
+        <h1>{standort ? STANDORT_BERICHTE : TITEL}</h1>
+        {standort && <p className="vp-br-kopf-ort">{standort.name}</p>}
       </header>
       {fehler ? (
         fehler.erneut ? (
@@ -66,7 +93,7 @@ function BerichteListe({ onOeffnen }: { onOeffnen: (kennung: string) => void }) 
           <Skeleton height={112} />
         </div>
       ) : liste.length === 0 ? (
-        <p className="vp-br-leer">{LEER}</p>
+        <p className="vp-br-leer">{standort ? LEER_STANDORT : LEER}</p>
       ) : (
         <ul className="vp-br-liste">
           {sortiert(liste).map((b) => (

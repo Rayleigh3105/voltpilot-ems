@@ -45,6 +45,7 @@ import {
   PLATFORM_PAGES,
   routeFromHash,
   standortMessstellenRoute,
+  standortBereichRoute,
   kennzahlRoute,
   berichtRoute,
   messstelleRoute,
@@ -68,6 +69,7 @@ import {
   ebenenReiter,
   ebenenTitel,
   resolveAnlage,
+  standortEinstiege,
   type EbenenLesemodell,
 } from './ebenenNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
@@ -120,6 +122,13 @@ const UebersichtPage = lazy(() =>
 );
 const PortfolioPage = lazy(() =>
   PAGE_CHUNK.portfolio().then((m) => ({ default: m.PortfolioPage })),
+);
+// UEMS AP-13 IP-2: die Seiten des Standorts reisen im Chunk seiner Übersicht.
+const StandortGebaeudePage = lazy(() =>
+  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortGebaeudePage })),
+);
+const StandortAnlagenPage = lazy(() =>
+  PAGE_CHUNK.standort().then((m) => ({ default: m.StandortAnlagenPage })),
 );
 const StandortUebersichtPage = lazy(() =>
   PAGE_CHUNK.standort().then((m) => ({ default: m.StandortUebersichtPage })),
@@ -1105,12 +1114,19 @@ function UnifiedPortal() {
   // AP-12 IP-13: der Reiter „Berichte" nur, wo die Ebene den Bereich hat (ein Standort misst).
   const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
   const leisteHier = ebenenKacheln.map((k) => k.key);
-  // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Messstellen);
+  // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Gebäude · Anlagen · Messstellen);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
   const standortReiter =
     page === 'standort' && ebene.art !== 'standort' && ebenenOrtHier?.art === 'standort'
       ? ebenenReiter(ebenenOrtHier, ebenenLesemodell)
       : [];
+  // AP-13 IP-2: als oberste Ebene bringt der Standort Gebäude · Anlagen in `PortfolioTabs` mit.
+  const standortObenReiter =
+    ebene.art === 'standort' && ebenenOrtHier?.art === 'standort'
+      ? ebenenReiter(ebenenOrtHier, ebenenLesemodell).filter((r) => r.key === 'gebaeude' || r.key === 'anlagen')
+      : [];
+  // AP-13 IP-2 (Ü8): die Einstiege der Standort-Übersicht in „Kennzahlen/Berichte dieses Standorts“.
+  const einstiegeHier = ebenenOrtHier?.art === 'standort' ? standortEinstiege(ebenenOrtHier, ebenenLesemodell) : [];
   const messstellenEbene =
     page === 'portfolio-messstellen' && ebene.art !== 'standort'
       ? { art: 'unternehmen' as const, name: unternehmensEbene?.name ?? 'Ihr Unternehmen' }
@@ -1269,6 +1285,9 @@ function UnifiedPortal() {
             leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
+            standortBereiche={standortObenReiter}
+            standortAktiv={ebenenAktiv(page, route.standortBereich)}
+            onOpenBereich={navigate}
           />
           {standortReiter.length > 0 && ebenenOrtHier && (
             <EbenenTabs
@@ -1359,6 +1378,41 @@ function UnifiedPortal() {
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
               betriebsart={betriebsart}
+              einstiege={einstiegeHier}
+            />
+          )}
+          {/* UEMS AP-13 IP-2: „Standort › Gebäude“ (Ortsbaum + Stand am) und „Standort › Anlagen“ (die Tabelle). */}
+          {page === 'standort' && standortOffen && route.standortBereich === 'gebaeude' && (
+            <StandortGebaeudePage key={standortOffen.id} standort={standortOffen} onGeaendert={() => void reload()} />
+          )}
+          {page === 'standort' && standortOffen && route.standortBereich === 'anlagen' && (
+            <StandortAnlagenPage
+              standort={standortOffen}
+              sites={sites}
+              onNavigate={navigate}
+              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
+              isAdmin={isAdmin}
+              betriebsart={betriebsart}
+            />
+          )}
+          {/* UEMS AP-13 IP-2 (Ü8): „Kennzahlen dieses Standorts“ und „Berichte dieses Standorts“ — Seite und Rückweg bleiben im Standort. */}
+          {page === 'standort' && standortOffen && route.standortBereich === 'kennzahlen' && (
+            <KennzahlenPage
+              key={standortOffen.id}
+              standort={{ id: standortOffen.id, name: standortOffen.name }}
+              zone={standortOffen.zeitzone}
+              kennzahlId={route.kennzahlId ?? null}
+              onOeffnen={(id) => navigate(kennzahlRoute(id, standortOffen.id))}
+              onListe={() => navigate(standortBereichRoute(standortOffen.id, 'kennzahlen'))}
+            />
+          )}
+          {page === 'standort' && standortOffen && route.standortBereich === 'berichte' && (
+            <BerichtePage
+              key={standortOffen.id}
+              standort={{ id: standortOffen.id, name: standortOffen.name }}
+              kennung={route.berichtKennung ?? null}
+              onOeffnen={(kennung) => navigate(berichtRoute(kennung, standortOffen.id))}
+              onListe={() => navigate(standortBereichRoute(standortOffen.id, 'berichte'))}
             />
           )}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}

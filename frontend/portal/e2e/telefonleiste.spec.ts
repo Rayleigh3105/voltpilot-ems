@@ -6,9 +6,10 @@ import { expect, test, type Page } from '@playwright/test';
  * Die Telefon-Leiste je Ebene (UEMS AP-01 IP-7, E4 = A) bei 375 px, auf der
  * Bühne `startansicht` mit denselben reinen Funktionen wie `App.tsx`:
  *
- * - HEUTE: seit AP-04 IP-5 hat das Unternehmen Ahrenberg DREI Bereiche mit Seite
- *   (Übersicht · Standorte · Messstellen) — die Leiste erscheint. Der Standort Werk
- *   Ahrenberg bleibt bei zwei (Übersicht · Messstellen) und ohne Leiste.
+ * - HEUTE: das Unternehmen Ahrenberg hat FÜNF Bereiche mit Seite (Übersicht ·
+ *   Standorte · Messstellen · Kennzahlen · Berichte). Seit AP-13 IP-2 haben auch
+ *   Gebäude und Anlagen des Standorts ihre Seite: Werk Ahrenberg VIER Kacheln,
+ *   Werk Lindach (eine Anlage, kein Bereich „Anlagen“) DREI — beide mit Leiste (O17).
  * - Die Anlage: ihre Leiste, unverändert.
  * - KÜNFTIG (`&seiten=kuenftig`): das Bild, sobald jeder Bereich eine Seite hat
  *   (AP-04 IP-5, AP-13) — nur für die Vorschau.
@@ -31,7 +32,8 @@ interface Fall {
 
 const FAELLE: Fall[] = [
   { name: 'unternehmen-heute', query: 'bild=unternehmen', leiste: ['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte'], aktiv: 'Übersicht' },
-  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: null },
+  { name: 'standort-heute', query: 'bild=unternehmen&ansicht=werk', leiste: ['Übersicht', 'Gebäude', 'Anlagen', 'Messstellen'], aktiv: 'Übersicht' },
+  { name: 'lindach-heute', query: 'bild=unternehmen&ansicht=lindach', leiste: ['Übersicht', 'Gebäude', 'Messstellen'], aktiv: 'Übersicht' },
   { name: 'anlage-halle1', query: 'bild=unternehmen&ansicht=anlage', leiste: ['Cockpit', 'Fahrplan', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Cockpit' },
   { name: 'anlage-lindach-steuerung', query: 'bild=unternehmen&ansicht=steuerung-lindach', leiste: ['Cockpit', 'Verlauf', 'Steuerung', 'Anlage'], aktiv: 'Steuerung' },
   {
@@ -113,4 +115,15 @@ test('Telefon, heute (AP-04 IP-5): die Kachel „Messstellen" führt auf „Unte
   await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
   await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Messstellen');
   await expect(page.locator('[data-testid="messstellen"] .vp-ms-karte')).toHaveCount(22);
+});
+
+test('Telefon, heute (AP-13 IP-2): die Kacheln „Gebäude" und „Anlagen" führen auf die Seiten des Standorts', async ({ page }) => {
+  await oeffne(page, 'bild=unternehmen&ansicht=werk');
+  await page.locator('.vp-bottombar').getByRole('button', { name: 'Gebäude' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/gebaeude$/);
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Gebäude');
+  await expect(page.locator('[data-testid="ortsbaum"]')).toBeVisible();
+  await page.locator('.vp-bottombar').getByRole('button', { name: 'Anlagen' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/anlagen$/);
+  await expect(page.locator('.vp-bottombar [aria-current="page"] .lbl')).toHaveText('Anlagen');
 });

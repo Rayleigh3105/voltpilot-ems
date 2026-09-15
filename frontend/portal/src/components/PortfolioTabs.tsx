@@ -1,5 +1,5 @@
-import { ebenenAktiv, type EbenenBereichId } from '../ebenenNav';
-import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId } from '../nav';
+import { ebenenAktiv, type EbenenBereichId, type EbenenKachel } from '../ebenenNav';
+import { isPortfolioPage, PORTFOLIO_WELT_PAGES, type PageId, type Route } from '../nav';
 import './BereichTabs.css';
 
 const PORTFOLIO_TAB_HASH: Partial<Record<PageId, string>> = {
@@ -63,6 +63,9 @@ export function PortfolioTabs({
   leiste = [],
   fleetLabel,
   onNavigate,
+  standortBereiche = [],
+  standortAktiv = null,
+  onOpenBereich,
 }: {
   page: PageId;
   showErloese: boolean;
@@ -77,6 +80,16 @@ export function PortfolioTabs({
   /** „Portfolio" beim Betreiber, „Meine Anlagen" beim Endkunden. */
   fleetLabel: string;
   onNavigate: (page: PageId) => void;
+  /**
+   * UEMS AP-13 IP-2: ist der Standort die OBERSTE Ebene, trägt diese Reihe auch
+   * seine Bereiche Gebäude · Anlagen (aus `ebenenNav.ebenenReiter`) — gleich
+   * hinter „Übersicht“, wie in der Tabelle AP-01 §4.6. Am Rechner sind sie der
+   * einzige Weg dorthin; unter einem Unternehmen trägt sie `EbenenTabs`.
+   */
+  standortBereiche?: readonly EbenenKachel[];
+  /** Der offene Bereich (`ebenenAktiv`) — ist es einer der `standortBereiche`, ist „Übersicht“ nicht gewählt. */
+  standortAktiv?: EbenenBereichId | null;
+  onOpenBereich?: (ziel: Route) => void;
 }) {
   if (!isPortfolioPage(page)) return null;
   const welten = PORTFOLIO_WELT_PAGES.filter(
@@ -86,11 +99,14 @@ export function PortfolioTabs({
       (p.id !== 'portfolio-kennzahlen' || showKennzahlen || page === p.id) &&
       (p.id !== 'portfolio-berichte' || showBerichte || page === p.id),
   );
+  const bereichOffen = standortBereiche.some((b) => b.key === standortAktiv);
+  const uebersichtOffen = page === 'portfolio' && !bereichOffen;
   // Ein Bereich außer der Übersicht, den die Leiste trägt: am Telefon kein Reiter.
   const kachel = (id: PageId) => {
     const bereich = ebenenAktiv(id);
     return bereich !== null && bereich !== 'uebersicht' && leiste.includes(bereich);
   };
+  const offenIstKachel = bereichOffen ? standortAktiv !== null && leiste.includes(standortAktiv) : kachel(page);
   const open = (target: PageId) => {
     const hash = portfolioTabHash(target, page, window.location.hash);
     if (hash) {
@@ -103,8 +119,8 @@ export function PortfolioTabs({
   return (
     <div
       // Vier Reiter passen am Telefon nur mit schmalerem Polster (BereichTabs.css).
-      className={`${welten.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}${
-        kachel(page) ? ' vp-nur-rechner' : ''
+      className={`${welten.length + standortBereiche.length >= 3 ? 'vp-bereich-tabs vp-bereich-tabs-dicht' : 'vp-bereich-tabs'}${
+        offenIstKachel ? ' vp-nur-rechner' : ''
       }`}
       role="tablist"
       aria-label={`Reiter der Ebene ${fleetLabel}`}
@@ -112,16 +128,29 @@ export function PortfolioTabs({
       <button
         type="button"
         role="tab"
-        aria-selected={page === 'portfolio'}
-        className={`vp-bereich-tab${page === 'portfolio' ? ' active' : ''}`}
+        aria-selected={uebersichtOffen}
+        className={`vp-bereich-tab${uebersichtOffen ? ' active' : ''}`}
         onClick={() => open('portfolio')}
       >
         Übersicht
         {/* siehe `BereichTabs.tsx`: ein eigenes Element, damit der Unterstrich
             gleiten kann (P5). Eigener Name, weil zwei gleichnamige Elemente in
             EINEM Bild den ganzen Übergang abbrechen würden. */}
-        {page === 'portfolio' && <span className="vp-welt-strich" aria-hidden="true" />}
+        {uebersichtOffen && <span className="vp-welt-strich" aria-hidden="true" />}
       </button>
+      {standortBereiche.map((b) => (
+        <button
+          key={b.key}
+          type="button"
+          role="tab"
+          aria-selected={standortAktiv === b.key}
+          className={`vp-bereich-tab${standortAktiv === b.key ? ' active' : ''}${leiste.includes(b.key) ? ' vp-nur-rechner' : ''}`}
+          onClick={() => onOpenBereich?.(b.ziel)}
+        >
+          {b.label}
+          {standortAktiv === b.key && <span className="vp-welt-strich" aria-hidden="true" />}
+        </button>
+      ))}
       {welten.map((p) => (
         <button
           key={p.id}

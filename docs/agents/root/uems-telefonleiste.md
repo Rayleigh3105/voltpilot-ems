@@ -30,11 +30,11 @@ wie an der Karte „Funktionen" (PR 771): ein Knopf ohne Ziel ist die Sackgasse,
 
 ## Die Fallen
 
-1. **Seit AP-04 IP-5 hat das Unternehmen Ahrenberg DREI Kacheln — die Leiste ist da** (`uems-messstellen-register-portal.md`).
-   Übersicht, Standorte und Messstellen haben eine Seite (`#/portfolio`, `#/portfolio/standorte`, `#/portfolio/messstellen`);
-   die Standorte bleiben bei zwei (Übersicht · Messstellen) und ohne Leiste. Es fehlen noch Kennzahlen und Berichte (AP-13,
-   AP-12), Gebäude und Anlagen des Standorts (AP-13) — wer eine davon baut, trägt die Route in `EBENEN_SEITEN` ein und
-   passt den Test „jede Seite, die es heute gibt" und `telefonleiste.spec.ts` an.
+1. **Seit AP-13 IP-2 hat jeder Bereich beider Ebenen seine Seite — die Leiste steht auf beiden** (`uems-oberflaechen-ebenen.md`).
+   Unternehmen Ahrenberg fünf Kacheln, Werk Ahrenberg vier (Übersicht · Gebäude · Anlagen · Messstellen), Werk Lindach
+   drei (eine Anlage, kein Bereich „Anlagen“). Kennzahlen und Berichte des STANDORTS sind Seiten ohne Bereich — keine
+   Kachel, ihr Einstieg steht auf der Standort-Übersicht. Wer einen neuen Bereich einhängt, trägt die Route in
+   `EBENEN_SEITEN` ein und passt den Test „jede Seite, die es heute gibt" und `telefonleiste.spec.ts` an.
 2. **Nie eine Kachel ohne Seite**, auch nicht „zum Reservieren": E4 hat „immer fünf Kacheln, auch leere" verworfen,
    und `copy.test.ts` verbietet „in Vorbereitung".
 3. **Unbekannt ist nie vorhanden.** Fehlt `/funktionen` oder `/kennzahlen` (älteres Backend, Fehler, lädt), entstehen

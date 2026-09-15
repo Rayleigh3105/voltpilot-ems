@@ -42,6 +42,7 @@ import type { Funktionen, Kennzahl, StandortAmStichtag } from './api';
 import {
   isPortfolioPage,
   pageRoute,
+  standortBereichRoute,
   standortMessstellenRoute,
   standortRoute,
   type AnlagenSub,
@@ -494,6 +495,13 @@ const EBENEN_BEREICH: Record<EbenenBereichId, EbenenBereich> = {
 /** Ein Standort misst: „Messen & Auswerten" ist eingerichtet, angehalten oder aktiv — ein Entwurf misst noch nicht. */
 const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerichtet', 'angehalten', 'aktiv']);
 
+const misst = (lm: EbenenLesemodell, standortId: string) =>
+  MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
+
+/** Der Standort, wenn es ihn heute gibt und er nicht archiviert ist — sonst hat er keine Bereiche. */
+const lebenderStandort = (lm: EbenenLesemodell, standortId: string) =>
+  (lm.standorte ?? []).find((s) => s.id === standortId && s.zustand !== 'archiviert') ?? null;
+
 /**
  * ALLE Bereiche, die es auf der Ebene nach der Tabelle AP-01 §4.6 gibt — aus
  * den Lesemodellen, nie aus einer festen Liste. Ob ein Bereich schon eine
@@ -511,22 +519,20 @@ const MISST: ReadonlySet<FunktionZustand> = new Set<FunktionZustand>(['eingerich
  * Übersicht in die Anlage.
  */
 export function ebenenBereiche(ort: EbenenOrt, lm: EbenenLesemodell): EbenenBereich[] {
-  const lebend = (lm.standorte ?? []).filter((s) => s.zustand !== 'archiviert');
-  const misst = (standortId: string) =>
-    MISST.has(lm.funktionen?.standorte.find((f) => f.id === standortId)?.messen.zustand ?? 'kein_objekt');
   const out: EbenenBereichId[] = ['uebersicht'];
   if (ort.art === 'unternehmen') {
-    const irgendwoGemessen = lebend.some((s) => misst(s.id));
+    const lebend = (lm.standorte ?? []).filter((s) => s.zustand !== 'archiviert');
+    const irgendwoGemessen = lebend.some((s) => misst(lm, s.id));
     if (lebend.length >= 2) out.push('standorte');
     if (irgendwoGemessen) out.push('messstellen');
     if (irgendwoGemessen && (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null)) out.push('kennzahlen');
     if (irgendwoGemessen) out.push('berichte');
   } else {
-    const standort = lebend.find((s) => s.id === ort.standortId);
+    const standort = lebenderStandort(lm, ort.standortId);
     if (standort) {
       if ((standort.gebaeudeZahl ?? 0) >= 1) out.push('gebaeude');
       if (standort.anlagen.length >= 2) out.push('anlagen');
-      if (misst(standort.id)) out.push('messstellen');
+      if (misst(lm, standort.id)) out.push('messstellen');
     }
   }
   return out.map((key) => EBENEN_BEREICH[key]);
@@ -546,9 +552,14 @@ export type EbenenSeiten = (ort: EbenenOrt) => Partial<Record<EbenenBereichId, R
  * Referenzkunden steigt das Unternehmen damit auf drei Kacheln, und die Leiste
  * erscheint. Seit AP-11 IP-13 haben auch die Kennzahlen des Unternehmens ihre
  * Seite (`#/portfolio/kennzahlen`), seit AP-12 IP-13 die Berichte
- * (`#/portfolio/berichte`) — Ahrenberg hat damit FÜNF Kacheln. Heute fehlen
- * noch Gebäude und Anlagen des Standorts (AP-13) — wer eine davon einhängt,
- * trägt ihre Route HIER ein, und die Leiste erscheint von selbst.
+ * (`#/portfolio/berichte`) — Ahrenberg hat damit FÜNF Kacheln.
+ *
+ * Seit AP-13 IP-2 hat auch der Standort jede Seite: Gebäude und Anlagen
+ * (`#/standort/{id}/gebaeude`, `…/anlagen`) — Werk Ahrenberg bekommt damit VIER
+ * Kacheln und die Leiste, Werk Lindach (eine Anlage) DREI (O17). Kennzahlen und
+ * Berichte des Standorts (`…/kennzahlen`, `…/berichte`, Ü8) stehen hier als
+ * Seiten, sind aber kein Bereich der Ebene (AP-01 §4.6) und werden darum nie
+ * eine Kachel — ihr Einstieg ist {@link standortEinstiege}.
  */
 export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
   ort.art === 'unternehmen'
@@ -559,7 +570,60 @@ export const EBENEN_SEITEN: EbenenSeiten = (ort) =>
         kennzahlen: pageRoute('portfolio-kennzahlen'),
         berichte: pageRoute('portfolio-berichte'),
       }
-    : { uebersicht: standortRoute(ort.standortId), messstellen: standortMessstellenRoute(ort.standortId) };
+    : {
+        uebersicht: standortRoute(ort.standortId),
+        gebaeude: standortBereichRoute(ort.standortId, 'gebaeude'),
+        anlagen: standortBereichRoute(ort.standortId, 'anlagen'),
+        messstellen: standortMessstellenRoute(ort.standortId),
+        kennzahlen: standortBereichRoute(ort.standortId, 'kennzahlen'),
+        berichte: standortBereichRoute(ort.standortId, 'berichte'),
+      };
+
+/** Ein Einstieg der Standort-Übersicht in eine Welt, die am Standort keine Kachel hat (AP-13 IP-2). */
+export interface StandortEinstieg {
+  key: 'kennzahlen' | 'berichte';
+  label: string;
+  icon: IconName;
+  ziel: Route;
+}
+
+/** Die Wörter der zwei Einstiege — zugleich die Überschriften der gefilterten Seiten (K3). */
+export const STANDORT_KENNZAHLEN = 'Kennzahlen dieses Standorts';
+export const STANDORT_BERICHTE = 'Berichte dieses Standorts';
+
+/**
+ * Die Einstiege der Standort-Übersicht in „Kennzahlen dieses Standorts“ und
+ * „Berichte dieses Standorts“ (AP-13 IP-2, Ü8/K3; AP-12 §6.6: „Einstieg auf der
+ * Standort-Seite“).
+ *
+ * ⚠ **Kennzahlen und Berichte sind am Standort KEINE Bereiche.** Die Tabelle
+ * AP-01 §4.6 nennt dort Übersicht · Gebäude · Anlagen · Messstellen, und O17
+ * zählt an Werk Ahrenberg vier Kacheln, an Werk Lindach drei. Wären sie
+ * Bereiche, stünden sechs und fünf Kacheln in der Leiste — darum wohnen sie in
+ * der Übersicht, wie Messwerte und Erlöse.
+ *
+ * Dieselben Bedingungen wie am Unternehmen, auf DIESEN Standort bezogen:
+ * Berichte, sobald er misst; Kennzahlen, sobald er misst UND eine lebende
+ * Kennzahl hier gilt (`standort_id` nennt den Standort ihres Geltungsbereichs —
+ * Standort, Gebäude oder Prozess mit Ort im Standort). Ohne Seite kein Einstieg.
+ */
+export function standortEinstiege(
+  ort: EbenenOrt,
+  lm: EbenenLesemodell,
+  seiten: EbenenSeiten = EBENEN_SEITEN,
+): StandortEinstieg[] {
+  if (ort.art !== 'standort') return [];
+  const standort = lebenderStandort(lm, ort.standortId);
+  if (!standort || !misst(lm, standort.id)) return [];
+  const ziele = seiten(ort);
+  const out: StandortEinstieg[] = [];
+  const hierGilt = (lm.kennzahlen ?? []).some((k) => k.archiviert_am == null && k.standort_id === standort.id);
+  if (hierGilt && ziele.kennzahlen) {
+    out.push({ key: 'kennzahlen', label: STANDORT_KENNZAHLEN, icon: 'trending-up', ziel: ziele.kennzahlen });
+  }
+  if (ziele.berichte) out.push({ key: 'berichte', label: STANDORT_BERICHTE, icon: 'file-text', ziel: ziele.berichte });
+  return out;
+}
 
 /** E4 = A: unter drei Kacheln keine Leiste — dann navigieren die Reiter der Seite wie heute. */
 export const EBENEN_LEISTE_AB = 3;
@@ -621,10 +685,13 @@ export function ebenenOrt(
 /**
  * Der Bereich, in dem eine Seite der Ebene wohnt — die Reiter Messwerte · Erlöse
  * gehören zur Übersicht. `standortBereich` ist der der Standort-Route
- * (`#/standort/{id}/messstellen`, AP-04 IP-5).
+ * (`#/standort/{id}/messstellen`, AP-04 IP-5; Gebäude und Anlagen AP-13 IP-2).
+ * Kennzahlen und Berichte des Standorts wohnen in seiner Übersicht — dort ist
+ * ihr Einstieg ({@link standortEinstiege}).
  */
 export function ebenenAktiv(page: PageId, standortBereich?: Route['standortBereich']): EbenenBereichId | null {
   if (page === 'portfolio-standorte') return 'standorte';
+  if (page === 'standort' && (standortBereich === 'gebaeude' || standortBereich === 'anlagen')) return standortBereich;
   if (page === 'portfolio-messstellen' || (page === 'standort' && standortBereich === 'messstellen')) return 'messstellen';
   if (page === 'portfolio-kennzahlen') return 'kennzahlen';
   if (page === 'portfolio-berichte') return 'berichte';

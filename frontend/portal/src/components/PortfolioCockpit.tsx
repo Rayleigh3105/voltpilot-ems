@@ -119,6 +119,13 @@ export interface PortfolioCockpitProps {
    * zeichengleich.
    */
   ebene?: UebersichtEbene | null;
+  /**
+   * UEMS AP-13 IP-2 (Ü7): „Standort › Anlagen“ — nur die heutige Anlagen-Tabelle
+   * der Ebene mit Titel, Zahlen und Datenlage; ohne Kennzahlen-Leiste, „Anpassen“,
+   * Funktions-Zustände und Karte „Funktionen“ (die gehören der Übersicht). Die
+   * Tabelle selbst ist dieselbe — dieselben Zeilen, Spalten und Vorschau.
+   */
+  nurAnlagen?: boolean;
 }
 
 export function PortfolioCockpit({
@@ -131,6 +138,7 @@ export function PortfolioCockpit({
   titelBereitsGenannt = false,
   kunde = null,
   ebene = null,
+  nurAnlagen = false,
 }: PortfolioCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
@@ -294,12 +302,20 @@ export function PortfolioCockpit({
   const head = (
     <div className="vp-portfolio-kopf">
       <div className="vp-portfolio-titel">
-        <h1 className={titelBereitsGenannt && !kopf?.titel ? 'vp-sr-only' : undefined}>
-          {kopf?.titel ?? titel}
+        <h1 className={titelBereitsGenannt && !kopf?.titel && !nurAnlagen ? 'vp-sr-only' : undefined}>
+          {nurAnlagen ? titel : (kopf?.titel ?? titel)}
         </h1>
         {kopf ? (
           <>
-            {kopf.zahlen && <p className="vp-portfolio-zahlen">{kopf.zahlen}</p>}
+            {/* AP-13 IP-2: auf „Standort › Anlagen“ ist der Titel der Bereich — der Standort steht vor den Zahlen
+                (die Kopfzeile des Standorts nennt ihn nicht: dort trägt ihn der Standort-Kopf der Übersicht). */}
+            {nurAnlagen ? (
+              <p className="vp-portfolio-zahlen">
+                {[ebene?.art === 'standort' ? ebene.standort.name : kopf.titel, kopf.zahlen].filter(Boolean).join(' · ')}
+              </p>
+            ) : (
+              kopf.zahlen && <p className="vp-portfolio-zahlen">{kopf.zahlen}</p>
+            )}
             {kopf.datenlage && (
               <p className={`vp-portfolio-satz is-${kopf.datenlage.ton}`}>
                 <span className="vp-portfolio-punkt" aria-hidden="true" />
@@ -315,7 +331,7 @@ export function PortfolioCockpit({
             </p>
           )
         )}
-        {ebene?.art === 'standort' && (
+        {ebene?.art === 'standort' && !nurAnlagen && (
           <div className="vp-portfolio-funktionen">
             <FunktionsZustaende
               zeilen={funktionenDesStandorts(ebene.standort.id, funktionen ?? null)}
@@ -325,7 +341,7 @@ export function PortfolioCockpit({
         )}
       </div>
       <div className="vp-portfolio-aktionen">
-        {overview != null && !layout.anpassen && (
+        {overview != null && !layout.anpassen && !nurAnlagen && (
           <Button
             variant="ghost"
             iconLeft={<Icon name="sliders" size={18} />}
@@ -492,8 +508,12 @@ export function PortfolioCockpit({
         </>
       )}
 
-      <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
-      {ruhe && <p className="vp-portfolio-ruhe">{ruhe}</p>}
+      {!nurAnlagen && (
+        <>
+          <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
+          {ruhe && <p className="vp-portfolio-ruhe">{ruhe}</p>}
+        </>
+      )}
 
       <section
         className="vp-portfolio-anlagen"
@@ -529,7 +549,7 @@ export function PortfolioCockpit({
 
       {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
           eines Betreibers bleibt zeichengleich. */}
-      {ebene && (
+      {ebene && !nurAnlagen && (
         <FunktionenKarte abschnitte={funktionenKarte(ebene, funktionen ?? null)} laedt={funktionen === undefined} />
       )}
 

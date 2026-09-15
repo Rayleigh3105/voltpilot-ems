@@ -121,3 +121,33 @@ describe('Ortsbaum', () => {
     expect(await screen.findByText('Halle 1')).toBeInTheDocument();
   });
 });
+
+describe('Ortsbaum · AP-13 IP-2: die Hülle der Karte je Gebäude', () => {
+  it('ohne Inhalt kein Aufklapper — so steht der Baum heute auf „Standort › Gebäude“', async () => {
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumAhrenberg());
+    render(<Ortsbaum standort={werkAhrenberg()} titelVersteckt gebaeudeKarte={() => null} />);
+    await screen.findByRole('button', { name: 'Halle 1 bearbeiten' });
+    expect(screen.queryByRole('button', { name: /Karte aufklappen$/ })).toBeNull();
+    expect(screen.queryByTestId('gebaeude-karte')).toBeNull();
+    // Die Seite nennt „Gebäude“ schon — der Baum behält die Überschrift nur für Screenreader.
+    expect(screen.getByRole('heading', { name: 'Gebäude' })).toHaveClass('vp-sr-only');
+  });
+
+  it('mit Inhalt klappt jedes Gebäude seine Karte auf — Bereiche und „Direkt am Standort“ bekommen keine', async () => {
+    vi.spyOn(api, 'standortOrte').mockResolvedValue(ortsbaumAhrenberg());
+    render(<Ortsbaum standort={werkAhrenberg()} gebaeudeKarte={(g) => <p>Blöcke von {g.name}</p>} />);
+    await screen.findByRole('button', { name: 'Halle 1 bearbeiten' });
+    expect(screen.getByRole('heading', { name: 'Gebäude' })).not.toHaveClass('vp-sr-only');
+    expect(screen.getAllByRole('button', { name: /: Karte aufklappen$/ }).map((k) => k.getAttribute('aria-label'))).toEqual([
+      'Halle 1: Karte aufklappen',
+      'Halle 2: Karte aufklappen',
+      'Verwaltung: Karte aufklappen',
+    ]);
+    expect(screen.queryByTestId('gebaeude-karte')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Halle 2: Karte aufklappen' }));
+    expect(screen.getByTestId('gebaeude-karte')).toHaveTextContent('Blöcke von Halle 2');
+    expect(screen.getByRole('button', { name: 'Halle 2: Karte zuklappen' })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Halle 2: Karte zuklappen' }));
+    expect(screen.queryByTestId('gebaeude-karte')).toBeNull();
+  });
+});

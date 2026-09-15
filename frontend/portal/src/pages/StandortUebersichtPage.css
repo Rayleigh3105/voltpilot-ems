@@ -4,3 +4,41 @@
 .vp-standort-uebersicht-kopf {
   margin-bottom: var(--vp-space-4);
 }
+
+/* AP-13 IP-2 (Ü8): „Kennzahlen dieses Standorts“ · „Berichte dieses Standorts“ — Einstiege, keine Kacheln.
+   Jeder Einstieg ist mindestens 44 px hoch und bricht am Telefon um statt die Seite zu verbreitern. */
+.vp-standort-einstiege {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-standort-einstieg {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  min-height: 44px;
+  max-width: 100%;
+  padding: 0 var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+  color: var(--vp-c-fg);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-standort-einstieg-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-standort-einstieg:hover,
+.vp-standort-einstieg:focus-visible {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}

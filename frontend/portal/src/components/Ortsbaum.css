@@ -217,3 +217,29 @@
     white-space: nowrap;
   }
 }
+
+/* AP-13 IP-2: die Hülle der Karte je Gebäude — nur mit Inhalt (IP-10 reicht die Blöcke herein). */
+.vp-ob-aufklapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vp-c-radius);
+  background: transparent;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+
+.vp-ob-aufklapper:hover,
+.vp-ob-aufklapper:focus-visible {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}
+
+.vp-ob-karte {
+  min-width: 0;
+  margin: var(--vp-c-space-2) 0 var(--vp-c-space-3);
+}

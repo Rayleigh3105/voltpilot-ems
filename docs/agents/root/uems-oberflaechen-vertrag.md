@@ -29,8 +29,8 @@ aber fest, was die Folgepakete IP-2 … IP-14 sprechen und lesen.
    `FLAECHEN` des Blocks ein, ein Diagramm in `CHART_FILES_OBERFLAECHEN` (vorbereitet, leer).
 5. **Das Modul rechnet nichts** — keine Menge, keine Summe, kein Δ; Zahlen sprechen die Zwillinge. `kacheln` wirft
    Kacheln unter der Schwelle NICHT weg (anders als `ebenenLeiste`); eine Kachel gibt es nur mit Seite in
-   `EBENEN_SEITEN`. `sprungziel` gibt `null` für Objekte ohne Seite (Bezugsgröße, Ereignis, Box; Kostenstelle und
-   Gebäude bis IP-9/IP-2) — keine Fläche dafür erfinden. `periode=`/`version=` hängen am Hash, `parseRoute` liest
+   `EBENEN_SEITEN`. `sprungziel` gibt `null` für Objekte ohne Seite (Bezugsgröße, Ereignis, Box; Kostenstelle bis IP-9;
+   Gebäude bis IP-11 — seine Zeile nennt keinen Standort, die Seite gibt es seit IP-2) — keine Fläche dafür erfinden. `periode=`/`version=` hängen am Hash, `parseRoute` liest
    dieselbe Seite; auswerten muss sie IP-3.
 6. **Der Tag im Verlauf sind Viertelstunden (E5).** O14 „25 Balken“ ist ein Befund: der 25.10.2026 hat 100
    Viertelstunden; 25 sind die Zeilen der Stundenliste an der Karte.
