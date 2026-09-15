@@ -66,11 +66,33 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    aufklappbar in der Karte (Vorschau zeigte beide; die Historie von F21 ist bei 375 px ~1 300 px hoch —
    in der Karte würden Karten in einer Karte und die Stundenliste rückte ~1 100 px nach unten).
 
+9. **Die ANZAHL der Lücken steht im Abzeichen des Verlaufs** (`data-testid="werte-verlauf"`, „Verlauf 85 % · 1 Lücke“;
+   Captain 15.09.2026: „drei Lücken“ ist eine Aussage, ein blasses Feld keine). Gezählt wird jedes Ereignis der Art
+   `data_gap` EINMAL (Kennung), das die Route an den Schritt hängt — die Fläche zählt, sie rechnet nichts
+   (`uemsWerteKarte.luecken`). Nur die Karte, nie die Zeilen; nur ein gesprochener Schritt (wie die Fassung); und nie
+   bei Verlauf 100 %: dort ist jede genannte Lücke nachgeliefert — der Lücken-Melder schließt sie mit
+   `nachgeliefert_am` und löscht sie nie, die Route liefert das Feld aber nicht mit (F9). Eine Lücke über die
+   Tagesgrenze ist an JEDEM der beiden Tage eine (F20). ⚠ **Nicht als eigenes Abzeichen:** neben „vollständig (Menge
+   aus Zählerständen)“ läse „1 Lücke“ sich wie ein Widerspruch — die Lücke sagt etwas über den Verlauf, nicht über
+   die Menge (E1). Ohne Lücke bleibt das Abzeichen „Verlauf 100 %“ und die Karte Pixel für Pixel, wie sie war.
+10. **„noch nicht gerechnet“ ist nicht „keine Werte“** (Captain 15.09.2026: nur eine der beiden Lagen löst sich von
+   selbst). Es ist der Grund `noch_nicht_gebildet` der Route (Java `MessstelleWerteRegeln.OhneZahl` ⟷ TS
+   `MessstelleWerteWert.grund`), KEIN Wort des Ergebnis-Vertrags. Die Karte zeigt den Strich und darunter den Satz
+   `UEMS_NOCH_NICHT_GERECHNET_SATZ` im Platz `werte-grund` (derselbe wie der Kundensatz der Kennzahl); die Zeile
+   trägt das Wort `UEMS_NOCH_NICHT_GERECHNET` an der Stelle des Zustands. Wort und Satz stehen NUR in `glossar.ts`.
+   Kein Zustands-Abzeichen, keine Fassung, keine Lückenzahl — der Schritt wird weiter nicht gesprochen; jeder andere
+   Grund bleibt der Strich allein.
+
 ## Offen (Befunde)
 
 - „— 14 Viertelstunden ohne Werte“ (Report F8) liefert das Lese-Modell nicht; nicht in der Fläche gezählt.
-- Kein Kundensatz für `grund` (noch nicht gebildet, Quelle teilweise, Anteil nicht gespeichert …):
-  die Karte zeigt nur den Strich.
+- Kein Kundensatz für die übrigen `grund` (Quelle teilweise, Anteil nicht gespeichert, ohne Menge gespeichert …):
+  die Karte zeigt nur den Strich. Die Kennzahl-Karte (`kennzahlKarte.grundSatz`) sagt auch zu `noch_nicht_gebildet`
+  noch nichts — derselbe Satz aus `glossar.ts` passte dort.
+- Lückenzahl (Falle 9): `ereignisse` der Route trägt kein `nachgeliefert_am` — eine Lücke, die nur TEILWEISE
+  nachgeliefert ist, zählt als eine; zwei Lücken, von denen eine ganz nachgeliefert ist, zählen als zwei (sicher ist
+  nur Verlauf 100 %). Eine berechnete Messstelle hängt keine Ereignisse an, nennt also nie eine Anzahl. „Lücke am
+  Wechsel“ ist ein Kennzeichen der Gerätegrenze und zählt nur, wenn die Route dazu ein `data_gap` nennt.
 - Momentanwert-Messstellen (Mittel/Min/Max) haben keinen Satz — nur der Strich.
 - Messstellen ohne Portal-Seite: nur berechnete Messstellen haben heute einen Wirt.
 - Versionen: nur die Karte hat den Einstieg. Ein Tag der Monatsliste mit Versionen zeigt sein Kennzeichen,

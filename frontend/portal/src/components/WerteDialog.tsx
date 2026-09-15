@@ -152,6 +152,7 @@ export function WerteDialog({
               {k && (
                 <WerteKarte
                   karte={k}
+                  grund={k.grund}
                   versionen={e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionenOffen(true)} />}
                 />
               )}

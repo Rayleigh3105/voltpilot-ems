@@ -20,6 +20,12 @@
  *
  * Hat die Zahl zwei oder mehr Versionen (AP-08 IP-18), steht unten der
  * Einstieg zu „Versionen“ — was vorher dastand, wer, wann und warum.
+ *
+ * Die ANZAHL der Lücken steht IM Abzeichen des Verlaufs („Verlauf 85 % · 1 Lücke“),
+ * nicht als eigenes Abzeichen: eine Lücke sagt etwas über den Verlauf, nicht über
+ * die Menge — als eigenes Abzeichen neben „vollständig“ läse sie sich wie ein
+ * Widerspruch (Captain 15.09.2026, `docs/agents/root/uems-tageskarte.md` Falle 9).
+ * Ein noch nicht gebildeter Schritt sagt das in einem Satz unter dem Strich (Falle 10).
  */
 import type { ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
@@ -34,7 +40,10 @@ export function WerteKarte({
 }: {
   karte: Karte;
   versionen?: ReactNode;
-  /** UEMS AP-11 IP-13: der Kundensatz eines Schritts ohne Zahl (§5.8) — an der Messstelle nie gesetzt. */
+  /**
+   * Der Satz eines Schritts ohne Zahl: an der Kennzahl der Kundensatz (§5.8, UEMS AP-11 IP-13), an der
+   * Messstelle „noch nicht gerechnet“ (`karte().grund` aus `uemsWerteKarte.ts`, Captain 15.09.2026).
+   */
   grund?: string | null;
 }) {
   return (
@@ -54,10 +63,15 @@ export function WerteKarte({
         {karte.tagesdauer && <Badge variant="tint">{karte.tagesdauer}</Badge>}
       </div>
       <div className="vp-wk-zahl">{karte.zahl}</div>
-      {(karte.zustand || karte.abdeckung) && (
+      {(karte.zustand || karte.abdeckung || karte.luecken) && (
         <div className="vp-wk-abzeichen">
           {karte.zustand && <Badge variant={karte.zustandTon}>{karte.zustand}</Badge>}
-          {karte.abdeckung && <Badge variant={karte.abdeckungTon}>{karte.abdeckung}</Badge>}
+          {/* Die Anzahl der Lücken gehört zum Verlauf, nicht als eigenes Abzeichen neben „vollständig“ (Falle 9). */}
+          {(karte.abdeckung || karte.luecken) && (
+            <Badge variant={karte.abdeckungTon} data-testid="werte-verlauf">
+              {[karte.abdeckung, karte.luecken].filter((t): t is string => !!t).join(TRENNER)}
+            </Badge>
+          )}
         </div>
       )}
       <Kennzeichen saetze={karte.kennzeichen} />
@@ -80,9 +94,9 @@ export function WerteListe({ titel, zeilen }: { titel: string; zeilen: Zeile[] }
           <li key={z.schluessel} className="vp-wk-zeile" data-testid="werte-zeile">
             <span className="vp-wk-zeile-name">{z.beschriftung}</span>
             <span className="vp-wk-zeile-zahl">{z.zahl}</span>
-            {(z.zustand || z.abdeckung || z.tagesdauer) && (
+            {(z.zustand || z.grund || z.abdeckung || z.tagesdauer) && (
               <span className={`vp-wk-zeile-info is-${z.zustandTon}`}>
-                {[z.zustand, z.abdeckung, z.tagesdauer].filter((t): t is string => t !== null).join(TRENNER)}
+                {[z.zustand, z.grund, z.abdeckung, z.tagesdauer].filter((t): t is string => t !== null).join(TRENNER)}
               </span>
             )}
             <Kennzeichen saetze={z.kennzeichen} />

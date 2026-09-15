@@ -289,6 +289,23 @@ export const UEMS_DATENSTAND = 'Datenstand';
 export const UEMS_QUELLENVERZEICHNIS = 'Quellenverzeichnis';
 export const UEMS_PRUEFSUMME = 'Prüfsumme';
 
+/**
+ * UEMS AP-08 IP-11, Verfeinerung der Tages- und Monatskarte (Captain 15.09.2026: beide Punkte JA).
+ *
+ * „Noch nicht gerechnet“ ist eine andere Lage als „keine Werte“ — und nur sie löst sich von selbst.
+ * Ein Schritt, dessen Periode noch nicht gebildet ist (Grund der Route), zeigt darum nie den Strich
+ * allein und nie „keine Werte“: die Zeile trägt das Wort, die Karte den Satz. Beide stehen NUR hier,
+ * damit sie nicht an zwei Stellen verschieden dastehen.
+ */
+export const UEMS_NOCH_NICHT_GERECHNET = 'noch nicht gerechnet';
+export const UEMS_NOCH_NICHT_GERECHNET_SATZ = 'Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.';
+
+/**
+ * Die ANZAHL der Lücken an der Karte („1 Lücke“ · „3 Lücken“): Datenlücken bleiben sichtbar, nichts
+ * wird aufgefüllt. „Lücke“ ist der Name der Ereignis-Art im Vokabular (`uemsEreignis.ts`).
+ */
+export const UEMS_LUECKE = { singular: 'Lücke', plural: 'Lücken' } as const;
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------
