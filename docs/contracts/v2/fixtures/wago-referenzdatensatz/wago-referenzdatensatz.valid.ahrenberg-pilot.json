@@ -1,0 +1,95 @@
+{
+  "$comment": "Beispiel zu wago-referenzdatensatz.schema.json, Form NACH Pilotschritt 2: ein belegter Fall mit Nachweis und eine Pilot-Lesung aus Schritt 1, die ohne Vergleich nicht belegt ist. Beispielwelt Kunststoffwerk Ahrenberg (uems-referenzunternehmen.json) — die Lesungen sind erfunden; das ist ein Schema-Beispiel, kein Hardwarebeleg und keine Vektor-Datei für Zwillinge.",
+  "schema_version": "1.0",
+  "kombination": {
+    "controller": "750-8212",
+    "controller_firmware": "04.05.08(27)",
+    "karte": "750-494/000-001",
+    "karte_firmware": "zu erheben",
+    "ausgabeweg": "AW-1 Modbus TCP aus der Anwendung, VoltPilot-Registerbild v1",
+    "registerbild_version": 1,
+    "basisadresse": 0,
+    "wortfolge": "big",
+    "hardwareblatt": "hardwareblatt-ahrenberg-c1-fassung-1.md"
+  },
+  "einheiten": {
+    "energy_import_total_kwh": "kWh",
+    "power_l1_kw": "kW",
+    "voltage_l1_v": "V",
+    "current_l1_a": "A",
+    "frequency_hz": "Hz",
+    "status": null
+  },
+  "wertart": {
+    "energy_import_total_kwh": "counter",
+    "power_l1_kw": "gauge",
+    "voltage_l1_v": "gauge",
+    "current_l1_a": "gauge",
+    "frequency_hz": "gauge",
+    "status": "bitfield"
+  },
+  "faelle": [
+    {
+      "name": "ek1-normallast-2027-01-14T10:15:00+01:00",
+      "why": "Pilotschritt 2 an EK-1 (Steckplatz 2, Wandler 400/5 A in der Karte): Rohwörter mit den Faktoren der 5-A-Variante — 738 113 × 0,05 kWh, 803 000 × 0,05 W, 23 040 × 0,01 V, 360 000 × 0,0005 A, 49 980 × 0,001 Hz",
+      "herkunft": "pilot",
+      "belegt": true,
+      "quelle": "Pilot-Protokoll 14.01.2027, Elektro Brunner GmbH und VoltPilot-Support",
+      "nachweis": {
+        "datum": "2027-01-14",
+        "ort": "Werk Ahrenberg, Halle 2, Steuerung C-1",
+        "pruefer": "Elektro Brunner GmbH (Thomas Brunner) mit VoltPilot-Support (Lena Voss)",
+        "vergleich": "Zuwachs Wirkenergie Bezug über 10:15–11:15 gegen den Zähler am Anschluss NA-2 (Ablesung); Strom und Spannung L1 gegen Zangenmessgerät",
+        "protokoll": "docs/wago/pilot/2027-01-14-schritt2.md"
+      },
+      "input": {
+        "karte": 1,
+        "steckplatz": 2,
+        "woerter": {
+          "status": [0, 0, 0, 0],
+          "energy_import_total": [11, 17217],
+          "power_l1": [12, 16568],
+          "voltage_l1": [0, 23040],
+          "current_l1": [5, 32320],
+          "frequency": [0, 49980]
+        },
+        "register35": 4,
+        "anwenderskalierung": true,
+        "swv": "400/5"
+      },
+      "expected": {
+        "energy_import_total_kwh": 36905.65,
+        "power_l1_kw": 40.15,
+        "voltage_l1_v": 230.4,
+        "current_l1_a": 180.0,
+        "frequency_hz": 49.98,
+        "quality": "good",
+        "events": []
+      }
+    },
+    {
+      "name": "ek4-lesung-pilotschritt-1",
+      "why": "Pilotschritt 1 an EK-4 (Steckplatz 5): gelesen und protokolliert, aber noch nicht gegen eine Referenz verglichen, und die Anwenderskalierung ist noch zu erheben — darum nicht belegt",
+      "herkunft": "pilot",
+      "belegt": false,
+      "quelle": "Pilot-Protokoll Schritt 1, Rohwörter ohne Vergleich",
+      "input": {
+        "karte": 4,
+        "steckplatz": 5,
+        "woerter": {
+          "energy_import_total": [1, 2719],
+          "power_l1": [0, 64000]
+        },
+        "register35": 4,
+        "anwenderskalierung": "zu erheben",
+        "swv": "60/5"
+      },
+      "expected": {
+        "energy_import_total_kwh": 3412.75,
+        "power_l1_kw": 3.2,
+        "quality": "good",
+        "events": []
+      }
+    }
+  ]
+}

@@ -84,6 +84,7 @@ Umsetzungsstand und Kundenbegriffe: [Fachmodell](../../fachmodell/README.md). Sc
 | [`kennzahl.md`](./kennzahl.md) + [`kennzahl-vectors.json`](./kennzahl-vectors.json) + [`kennzahl.schema.json`](./kennzahl.schema.json) | Schema, Regeln und gemeinsame Testvektoren der Kennzahl (AP-11): Rechenformen, Perioden, Einheiten, Qualität, Summe ÷ Summe, Geltung. |
 | [`kennzahlwert-herkunft.md`](./kennzahlwert-herkunft.md) + [`kennzahlwert-herkunft.schema.json`](./kennzahlwert-herkunft.schema.json) | Schema und Regeln der Herkunft eines Kennzahl-Werts; die Fälle stehen in `kennzahl-vectors.json`. |
 | [`bericht.md`](./bericht.md) + [`bericht-vectors.json`](./bericht-vectors.json) + [`bericht.schema.json`](./bericht.schema.json) + [`bericht-vorlagen.json`](./bericht-vorlagen.json) | Schema, Regeln, Vorlagen und gemeinsame Testvektoren des Berichts (AP-12): Abzug mit Prüfsumme, Datenstand, Freigabe, Betroffenheit, Revision, Rechte, CSV. |
+| [`wago-referenzdatensatz.schema.json`](./wago-referenzdatensatz.schema.json) + [`fixtures/wago-referenzdatensatz/`](./fixtures/wago-referenzdatensatz/README.md) | AP-05 IP-1: Form des Referenzdatensatzes je WAGO-Kombination (Rohwörter → Kanalwerte); belegt nur aus dem Pilot mit Nachweis. Nachweis-Zeilen: [Hardwareblatt-Vorlage](../../wago/hardwareblatt-vorlage.md). |
 
 ## Ergänzende Entscheidungen
 

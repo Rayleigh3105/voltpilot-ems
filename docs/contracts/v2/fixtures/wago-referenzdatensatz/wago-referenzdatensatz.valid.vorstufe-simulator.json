@@ -1,0 +1,59 @@
+{
+  "$comment": "Beispiel zu wago-referenzdatensatz.schema.json, Stand VOR dem Pilot: nur Simulator-Fälle, keiner belegt. Beispielwelt Kunststoffwerk Ahrenberg (uems-referenzunternehmen.json), Steuerung C-1. Kein Hardwarebeleg und keine Vektor-Datei für Zwillinge — die Faktoren (5-A-Variante nach Handbuch 750-495 Tab. 67) bestätigt erst Pilotschritt 2.",
+  "schema_version": "1.0",
+  "kombination": {
+    "controller": "750-8212",
+    "controller_firmware": "04.05.08(27)",
+    "karte": "750-494/000-001",
+    "karte_firmware": "zu erheben",
+    "ausgabeweg": "AW-1 Modbus TCP aus der Anwendung, VoltPilot-Registerbild v1",
+    "registerbild_version": 1,
+    "basisadresse": "zu erheben",
+    "wortfolge": "zu erheben",
+    "hardwareblatt": "hardwareblatt-ahrenberg-c1-fassung-1.md"
+  },
+  "einheiten": {
+    "energy_import_total_kwh": "kWh",
+    "heartbeat": null
+  },
+  "wertart": {
+    "energy_import_total_kwh": "counter",
+    "heartbeat": "state"
+  },
+  "faelle": [
+    {
+      "name": "ek3-zaehler-zurueckgesetzt",
+      "why": "Rücksetzung per WAGO-I/O-CHECK: der Zählerstand fällt von 6 184,35 kWh (123 687 Schritte × 0,05 kWh) auf 0 — erwartet ein counter_reset, kein negativer und kein erfundener Verbrauch",
+      "herkunft": "simulator",
+      "belegt": false,
+      "quelle": "Simulator-Vorstufe (kein Hardwarebeleg)",
+      "input": {
+        "karte": 3,
+        "steckplatz": 4,
+        "vorher": { "energy_import_total": [1, 58151] },
+        "woerter": { "energy_import_total": [0, 0] },
+        "register35": 4
+      },
+      "expected": {
+        "energy_import_total_kwh": 0.0,
+        "quality": "good",
+        "events": ["counter_reset"]
+      }
+    },
+    {
+      "name": "anwendung-gestoppt-herzschlag-steht",
+      "why": "Programm im Zustand Stop: die Register antworten, die Werte sind eingefroren — der Herzschlag steht über 3 Lesungen, also Qualität stale und kein Sample als gemessen",
+      "herkunft": "simulator",
+      "belegt": false,
+      "quelle": "Simulator-Vorstufe (kein Hardwarebeleg)",
+      "input": {
+        "heartbeat": [1731, 1731, 1731]
+      },
+      "expected": {
+        "quality": "stale",
+        "samples": 0,
+        "events": ["frozen_source"]
+      }
+    }
+  ]
+}
