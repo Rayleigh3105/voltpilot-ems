@@ -138,7 +138,7 @@ class AenderungSatzTest {
                 + "\"richtung\":\"hinaus\",\"nach_standort_name\":\"Werk Ahrenberg Nord\"}"))
                 .isEqualTo("Anlage zieht um: Werk Ahrenberg – Halle 2 → Werk Ahrenberg Nord");
         assertThat(satz("bereich", "flaeche_geaendert", "{\"flaeche_m2\":1200}", "{\"flaeche_m2\":1400}"))
-                .isEqualTo("Bezugsfläche geändert: 1200 m² → 1400 m²");
+                .isEqualTo("Bezugsfläche geändert: 1.200 m² → 1.400 m²");
         assertThat(satz("standort", "archiviert", null, null)).isEqualTo("Standort archiviert");
         assertThat(satz("standort", "wiederhergestellt", null, null)).isEqualTo("Standort wiederhergestellt");
         assertThat(satz("anlage", "geloescht", null, null)).isEqualTo("Anlage gelöscht");

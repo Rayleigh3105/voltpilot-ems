@@ -19,7 +19,9 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Das ÄNDERUNGSPROTOKOLL des Unternehmens-Energiemanagements (UEMS AP-04 IP-21) — drei
  * Lesewege auf dieselben Einträge: je Messstelle, je Gerät und für das ganze Unternehmen über
- * einen Zeitraum. Die Arbeit macht {@link AenderungsprotokollService}.
+ * einen Zeitraum. Die Arbeit macht {@link AenderungsprotokollService}. Seit AP-02 IP-14 dazu je
+ * Gebäude/Bereich und je Standort (samt Kindern und Anlagen-Zuordnungen) und die Achse
+ * {@code gueltigkeit} (welche Einträge in einen Zeitraum aus Tagen reichen).
  *
  * <p><b>Nur lesend.</b> Geschrieben wird ein Eintrag ausschließlich vom jeweiligen Fachweg
  * (Messstelle anlegen und bearbeiten, Ort und elektrische Stellung, Quellenbindung,
@@ -91,6 +93,36 @@ public class AenderungsprotokollController {
             @RequestParam(required = false) String limit,
             @RequestParam(required = false) String nach) {
         return protokoll.unternehmen(anfrage(von, bis, achse, limit, nach));
+    }
+
+    /**
+     * Recht: {@code aenderungsprotokoll.lesen}. Das Protokoll EINES Gebäudes oder Bereichs (AP-02
+     * IP-14, H2): angelegt, bearbeitet, Fläche, verschoben, archiviert, wiederhergestellt — und
+     * das Löschen eines Bereichs, der an ihm hing.
+     */
+    @GetMapping("/api/v1/orte/{id}/aenderungen")
+    public ProtokollDto.Protokoll ort(@PathVariable UUID id,
+            @RequestParam(required = false) String von,
+            @RequestParam(required = false) String bis,
+            @RequestParam(required = false) String achse,
+            @RequestParam(required = false) String limit,
+            @RequestParam(required = false) String nach) {
+        return protokoll.ort(id, anfrage(von, bis, achse, limit, nach));
+    }
+
+    /**
+     * Recht: {@code aenderungsprotokoll.lesen}. Das Protokoll EINES Standorts EINSCHLIESSLICH seiner
+     * Gebäude, Bereiche und Anlagen-Zuordnungen (AP-02 IP-14) — jedes Kind mit den Einträgen aus
+     * der Zeit, in der es an diesem Standort hing; ein Umzug steht bei beiden Standorten.
+     */
+    @GetMapping("/api/v1/standorte/{id}/aenderungen")
+    public ProtokollDto.Protokoll standort(@PathVariable UUID id,
+            @RequestParam(required = false) String von,
+            @RequestParam(required = false) String bis,
+            @RequestParam(required = false) String achse,
+            @RequestParam(required = false) String limit,
+            @RequestParam(required = false) String nach) {
+        return protokoll.standort(id, anfrage(von, bis, achse, limit, nach));
     }
 
     private static Anfrage anfrage(String von, String bis, String achse, String limit, String nach) {

@@ -4,9 +4,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -49,6 +52,15 @@ import org.springframework.stereotype.Repository;
  * </ol>
  * Wer die Journale vereinheitlicht (AP-03 IP-7), findet diese drei Stellen hier.
  *
+ * <p><b>Die dritte Achse: die Gültigkeit (AP-02 IP-14, die Schnittstelle für AP-12).</b>
+ * {@link Achse#GUELTIGKEIT} liefert die Einträge, deren Gültigkeit in den Zeitraum REICHT — die
+ * Regel {@code reicht_in_zeitraum} des Ortsbaum-Vertrags ({@link OrtsbaumAbleitung#rueckwirkung}):
+ * „gilt ab" ≤ letzter Tag UND (offen ODER „gilt bis" ≥ erster Tag), in Tagen. Ein Umzug, am 10.03.
+ * eingetragen und gültig ab 01.02., steht deshalb in der Februar- UND in der März-Abfrage; mit
+ * {@link Achse#WIRKUNG} stünde er nur im Februar. „gilt bis" eines Orts-Eintrags leitet der
+ * Orts-Zweig aus dem Journal ab (siehe dort); Einträge der Messstellen und Datenquellen tragen
+ * keins und reichen nur in den Tag, an dem sie wirken.
+ *
  * <p>Unter RLS: jede der drei Tabellen und jeder Namens-Join stehen im Mandantenzaun; eine
  * fremde Messstelle, ein fremdes Gerät und ein fremder Kundenbereich liefern 0 Zeilen (404
  * entscheidet der Dienst, nie 403).
@@ -61,7 +73,12 @@ public class AenderungsprotokollRepository {
         /** Wann die Änderung GILT ({@code gilt_ab}) — die Vorgabe. */
         WIRKUNG("gilt_ab"),
         /** Wann sie EINGETRAGEN wurde ({@code created_at}). */
-        EINTRAG("eingetragen_am");
+        EINTRAG("eingetragen_am"),
+        /**
+         * Welche Einträge in den Zeitraum REICHEN (AP-02 IP-14): sortiert wie {@link #WIRKUNG},
+         * gefiltert in TAGEN über „gilt ab" und „gilt bis".
+         */
+        GUELTIGKEIT("gilt_ab");
 
         private final String spalte;
 
@@ -100,14 +117,28 @@ public class AenderungsprotokollRepository {
      *     {@code null}, wenn die Art keins trägt
      * @param rueckwirkend das Urteil des Schreibers (bei der Datenquelle abgeleitet, siehe Kopf)
      * @param urheberRolle {@code null} = nicht festgehalten (Orts-Einträge, siehe Kopf)
+     * @param giltBis der letzte Tag, an dem ein Orts-Eintrag noch gilt (siehe {@code STROM_ORT});
+     *     {@code null} = offen — bei Messstellen und Datenquellen immer {@code null}
      */
     public record Zeile(String quelle, long id, String art, UUID bezugId, String bezugArt,
             String bezugKennzeichen, String bezugName, Instant giltAb, Instant eingetragenAm,
             boolean rueckwirkend, String grund, String ergebnis, String altJson, String neuJson,
-            String urheberName, String urheberRolle, String urheberArt) {}
+            String urheberName, String urheberRolle, String urheberArt, LocalDate giltBis) {}
 
     /** Der Fortsetzungszeiger: die letzte gelieferte Zeile auf der gewählten Achse. */
     public record Zeiger(Instant zeit, String quelle, long id) {}
+
+    /**
+     * Was gelesen wird. Der Zeitraum steht für {@link Achse#WIRKUNG} und {@link Achse#EINTRAG} als
+     * Zeitpunkte, halboffen {@code [von, bis)}; für {@link Achse#GUELTIGKEIT} als TAGE
+     * {@code [vonTag, bisTag]}, beide zählen mit (Tagesgenaue Zuordnungen schließen den letzten Tag
+     * ein). {@code null} = ohne Grenze.
+     *
+     * @param grenze wie viele Zeilen höchstens gelesen werden
+     * @param nach der Fortsetzungszeiger der vorigen Seite; {@code null} = die erste
+     */
+    public record Filter(Instant von, Instant bis, LocalDate vonTag, LocalDate bisTag, Achse achse,
+            int grenze, Zeiger nach) {}
 
     private final JdbcTemplate jdbc;
 
@@ -118,7 +149,11 @@ public class AenderungsprotokollRepository {
     // ---------------------------------------------------------------- Die EINE Abfrage
 
     // Die Namen der Bezugsobjekte kommen über LEFT JOINs MIT — also nie über eine zweite
-    // Abfrage je Zeile (keine N+1).
+    // Abfrage je Zeile (keine N+1). Jeder Zweig trägt am Ende „gilt ab" als Tag, „gilt bis" und ob
+    // er die Gültigkeit ableitet — die Achse GUELTIGKEIT filtert darauf.
+
+    /** Die Plattform-Zeitzone als SQL-Text — dieselbe, auf die „gilt ab" gehoben wird (Kopf). */
+    private static final String ZONE = MessstelleService.ZEITZONE.getId();
 
     /**
      * Der Zweig der Messstellen-Einträge — er trägt auch die vier JSON-Stellen, über die ein
@@ -135,22 +170,78 @@ public class AenderungsprotokollRepository {
                    coalesce(a.neu->>'einbau', a.alt->>'einbau', a.neu->>'vorgaenger',
                             a.neu->'beendet'->>'einbau') AS einbau,
                    coalesce(a.alt->>'einbau', a.neu->>'vorgaenger',
-                            a.neu->'beendet'->>'einbau') AS einbau_zweit
+                            a.neu->'beendet'->>'einbau') AS einbau_zweit,
+                   (a.gilt_ab AT TIME ZONE '{zone}')::date AS gilt_ab_tag,
+                   NULL::date AS gilt_bis, false AS gueltig_abgeleitet
               FROM messstelle_aenderung a
               LEFT JOIN messstelle m ON m.id = a.messstelle_id
-            """;
+            """.replace("{zone}", ZONE);
 
-    /** Der Zweig der Orts-Einträge — mit den drei Überbrückungen aus dem Kopf dieser Klasse. */
+    /**
+     * Der Zweig der Orts-Einträge — mit den drei Überbrückungen aus dem Kopf dieser Klasse und dem
+     * „gilt bis" (AP-02 IP-14). Er trägt eigene Spaltennamen, weil ihn das Protokoll eines Ortes
+     * und eines Standorts auch ALLEIN liest.
+     *
+     * <p><b>„gilt bis" aus dem Journal.</b> Ein Eintrag gilt, bis derselbe SACHVERHALT am selben
+     * Objekt wieder geändert wird: bis zum Vortag des nächsten, SPÄTEREN „gilt ab" — zwei Einträge
+     * desselben Tages (eine Korrektur) gelten beide. Die Sachverhalte:
+     * <ul>
+     *   <li>Zuordnung: {@code verschoben} · {@code korrigiert}; an der Anlage endet sie auch mit
+     *       ihrem {@code geloescht}; am Standort zählt jede Anlage ({@code neu.anlage_id},
+     *       hinzu/hinaus) für sich.</li>
+     *   <li>Fläche: {@code flaeche_geaendert}.</li>
+     *   <li>Bestehen: {@code angelegt} · {@code archiviert} · {@code wiederhergestellt}.</li>
+     *   <li>Felder: ein {@code bearbeitet} endet erst, wenn EIN späterer {@code bearbeitet} ALLE
+     *       seine Felder neu setzt.</li>
+     * </ul>
+     * Ein geplantes Ende des Eintrags selbst ({@code neu.gueltig_bis}) kürzt zusätzlich. Das
+     * Löschen eines Kindes (steht am Elternknoten und nennt {@code alt.id}) gilt nur an seinem Tag.
+     * Eine Art ohne Sachverhalt bleibt offen — lieber ein Eintrag zu viel im Zeitraum als einer zu
+     * wenig. Die Formel „reicht in den Zeitraum" selbst ist die des Ortsbaum-Vertrags
+     * ({@link OrtsbaumAbleitung#rueckwirkung}); {@code OrtAenderungenApiTest} hält beide gleich.
+     */
     private static final String STROM_ORT = """
-            SELECT 'ort', o.id, o.art,
-                   o.objekt_id, o.objekt_art,
-                   coalesce(s.kurzzeichen, ok.kurzzeichen), coalesce(u.name, s.name, ok.name, si.name),
-                   (o.gilt_ab::timestamp AT TIME ZONE ?::text), o.created_at, o.rueckwirkend, o.neu->>'begruendung',
-                   NULL, o.alt::text, o.neu::text,
-                   o.akteur_name,
-                   NULL,
-                   CASE WHEN o.akteur_name LIKE 'VoltPilot (%' THEN 'voltpilot' END,
-                   NULL, NULL
+            SELECT 'ort' AS quelle, o.id, o.art,
+                   o.objekt_id AS bezug_id, o.objekt_art AS bezug_art,
+                   coalesce(s.kurzzeichen, ok.kurzzeichen) AS bezug_kennzeichen,
+                   coalesce(u.name, s.name, ok.name, si.name) AS bezug_name,
+                   (o.gilt_ab::timestamp AT TIME ZONE ?::text) AS gilt_ab, o.created_at AS eingetragen_am,
+                   o.rueckwirkend, o.neu->>'begruendung' AS grund,
+                   NULL AS ergebnis, o.alt::text AS alt, o.neu::text AS neu,
+                   o.akteur_name AS urheber_name,
+                   NULL AS urheber_rolle,
+                   CASE WHEN o.akteur_name LIKE 'VoltPilot (%' THEN 'voltpilot' END AS urheber_art,
+                   NULL AS einbau, NULL AS einbau_zweit,
+                   o.gilt_ab AS gilt_ab_tag,
+                   CASE WHEN o.art = 'geloescht' AND jsonb_exists(coalesce(o.alt, '{}'::jsonb), 'id')
+                        THEN o.gilt_ab
+                        ELSE least(
+                            (SELECT min(n.gilt_ab) FROM ort_aenderung n
+                              WHERE n.objekt_art = o.objekt_art AND n.objekt_id = o.objekt_id
+                                AND n.gilt_ab > o.gilt_ab
+                                AND CASE
+                                    WHEN o.art IN ('verschoben', 'korrigiert')
+                                         AND jsonb_exists(coalesce(o.neu, '{}'::jsonb), 'anlage_id')
+                                        THEN n.art IN ('verschoben', 'korrigiert')
+                                             AND n.neu->>'anlage_id' = o.neu->>'anlage_id'
+                                    WHEN o.art IN ('verschoben', 'korrigiert')
+                                        THEN (n.art IN ('verschoben', 'korrigiert')
+                                              AND NOT jsonb_exists(coalesce(n.neu, '{}'::jsonb), 'anlage_id'))
+                                          OR (n.art = 'geloescht'
+                                              AND NOT jsonb_exists(coalesce(n.alt, '{}'::jsonb), 'id'))
+                                    WHEN o.art = 'flaeche_geaendert' THEN n.art = 'flaeche_geaendert'
+                                    WHEN o.art IN ('angelegt', 'archiviert', 'wiederhergestellt')
+                                        THEN n.art IN ('archiviert', 'wiederhergestellt')
+                                    WHEN o.art = 'bearbeitet'
+                                        THEN n.art = 'bearbeitet'
+                                             AND jsonb_exists_all(coalesce(n.neu, '{}'::jsonb),
+                                                 ARRAY(SELECT jsonb_object_keys(coalesce(o.neu, '{}'::jsonb))))
+                                    ELSE false
+                                END) - 1,
+                            CASE WHEN o.neu->>'gueltig_bis' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                                 THEN (o.neu->>'gueltig_bis')::date END)
+                   END AS gilt_bis,
+                   true AS gueltig_abgeleitet
               FROM ort_aenderung o
               LEFT JOIN unternehmen u ON o.objekt_art = 'unternehmen' AND u.id = o.objekt_id
               LEFT JOIN standort s ON o.objekt_art = 'standort' AND s.id = o.objekt_id
@@ -167,16 +258,15 @@ public class AenderungsprotokollRepository {
                    d.gilt_ab < date_trunc('minute', d.created_at), NULL,
                    d.ergebnis, d.alt::text, d.neu::text,
                    d.actor_name, d.actor_rolle, d.actor_art,
-                   NULL, NULL
+                   NULL, NULL,
+                   (d.gilt_ab AT TIME ZONE '{zone}')::date, NULL::date, false
               FROM data_source_aenderung d
               LEFT JOIN data_source q ON q.id = d.data_source_id
-            """;
+            """.replace("{zone}", ZONE);
 
     /** Das Protokoll EINER Messstelle, jüngster Eintrag zuerst — leer für eine fremde. */
-    public List<Zeile> fuerMessstelle(UUID messstelleId, Instant von, Instant bis, Achse achse,
-            int grenze, Zeiger nach) {
-        return lies(STROM_MESSSTELLE, false, "bezug_id = ?", List.of(messstelleId), von, bis, achse,
-                grenze, nach);
+    public List<Zeile> fuerMessstelle(UUID messstelleId, Filter f) {
+        return lies(STROM_MESSSTELLE, false, "bezug_id = ?", List.of(messstelleId), f);
     }
 
     /**
@@ -195,16 +285,35 @@ public class AenderungsprotokollRepository {
      * {@code geraet}-Zeile an, kein Schreibweg ändert ein bestehendes Kennzeichen. Wer die
      * Journale vereinheitlicht (AP-03 IP-7), darf hier eine echte Geräte-Spalte einsetzen.
      */
-    public List<Zeile> fuerEinbau(String einbauKennzeichen, Instant von, Instant bis, Achse achse,
-            int grenze, Zeiger nach) {
-        return lies(STROM_MESSSTELLE, false, "? IN (einbau, einbau_zweit)", List.of(einbauKennzeichen),
-                von, bis, achse, grenze, nach);
+    public List<Zeile> fuerEinbau(String einbauKennzeichen, Filter f) {
+        return lies(STROM_MESSSTELLE, false, "? IN (einbau, einbau_zweit)", List.of(einbauKennzeichen), f);
     }
 
     /** Das Protokoll des ganzen Unternehmens — alle drei Journale in EINER Abfrage. */
-    public List<Zeile> fuerUnternehmen(Instant von, Instant bis, Achse achse, int grenze, Zeiger nach) {
+    public List<Zeile> fuerUnternehmen(Filter f) {
         return lies(STROM_MESSSTELLE + "UNION ALL\n" + STROM_ORT + "UNION ALL\n" + STROM_DATENQUELLE,
-                true, null, List.of(), von, bis, achse, grenze, nach);
+                true, null, List.of(), f);
+    }
+
+    /**
+     * Das Protokoll EINES Gebäudes oder Bereichs (AP-02 IP-14) — nur seine eigenen Einträge; das
+     * Löschen eines Bereichs steht am Gebäude, an dem er hing.
+     */
+    public List<Zeile> fuerOrt(UUID ortId, Filter f) {
+        return lies(STROM_ORT, true, "bezug_art IN ('gebaeude', 'bereich') AND bezug_id = ?", List.of(ortId), f);
+    }
+
+    /**
+     * Genau diese Orts-Einträge (AP-02 IP-14) — WELCHE zu einem Standort gehören, entscheidet
+     * {@link OrtProtokollUmfang}; hier wird nur gelesen, gefiltert, sortiert und geseitet wie
+     * überall, damit die Seitenweise dieselbe bleibt.
+     */
+    public List<Zeile> fuerOrtEintraege(Collection<Long> ids, Filter f) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String liste = ids.stream().sorted().map(String::valueOf).collect(Collectors.joining(",", "{", "}"));
+        return lies(STROM_ORT, true, "id = ANY(?::bigint[])", List.of(liste), f);
     }
 
     /**
@@ -218,26 +327,41 @@ public class AenderungsprotokollRepository {
      * berechneten Spalten nennen können; Postgres reicht ihn (eine Verwendung, keine
      * flüchtigen Funktionen) in die Zweige durch, sodass deren Indizes greifen.
      */
-    private List<Zeile> lies(String strom, boolean zeitzone, String zusatz, List<Object> zusatzWerte,
-            Instant von, Instant bis, Achse achse, int grenze, Zeiger nach) {
-        String zeit = achse.spalte;
+    private List<Zeile> lies(String strom, boolean zeitzone, String zusatz, List<Object> zusatzWerte, Filter f) {
+        String zeit = f.achse().spalte;
         StringBuilder sql = new StringBuilder("WITH e AS (\n").append(strom).append(")\nSELECT * FROM e WHERE 1 = 1");
         List<Object> werte = new ArrayList<>();
         if (zeitzone) {
-            werte.add(MessstelleService.ZEITZONE.getId());
+            werte.add(ZONE);
         }
         if (zusatz != null) {
             sql.append(" AND ").append(zusatz);
             werte.addAll(zusatzWerte);
         }
-        if (von != null) {
-            sql.append(" AND ").append(zeit).append(" >= ?");
-            werte.add(Timestamp.from(von));
+        if (f.achse() == Achse.GUELTIGKEIT) {
+            // `reicht_in_zeitraum` des Ortsbaum-Vertrags: gilt ab ≤ letzter Tag UND (offen ODER
+            // gilt bis ≥ erster Tag). Ohne abgeleitete Gültigkeit reicht ein Eintrag nur in seinen Tag.
+            if (f.bisTag() != null) {
+                sql.append(" AND gilt_ab_tag <= ?");
+                werte.add(f.bisTag());
+            }
+            if (f.vonTag() != null) {
+                sql.append(" AND CASE WHEN gueltig_abgeleitet THEN gilt_bis IS NULL OR gilt_bis >= ?"
+                        + " ELSE gilt_ab_tag >= ? END");
+                werte.add(f.vonTag());
+                werte.add(f.vonTag());
+            }
+        } else {
+            if (f.von() != null) {
+                sql.append(" AND ").append(zeit).append(" >= ?");
+                werte.add(Timestamp.from(f.von()));
+            }
+            if (f.bis() != null) {
+                sql.append(" AND ").append(zeit).append(" < ?");
+                werte.add(Timestamp.from(f.bis()));
+            }
         }
-        if (bis != null) {
-            sql.append(" AND ").append(zeit).append(" < ?");
-            werte.add(Timestamp.from(bis));
-        }
+        Zeiger nach = f.nach();
         if (nach != null) {
             sql.append(" AND (").append(zeit).append(" < ? OR (").append(zeit)
                     .append(" = ? AND (quelle > ? OR (quelle = ? AND id < ?))))");
@@ -248,7 +372,7 @@ public class AenderungsprotokollRepository {
             werte.add(nach.id());
         }
         sql.append(" ORDER BY ").append(zeit).append(" DESC, quelle ASC, id DESC LIMIT ?");
-        werte.add(grenze);
+        werte.add(f.grenze());
         return List.copyOf(jdbc.query(sql.toString(), AenderungsprotokollRepository::map, werte.toArray()));
     }
 
@@ -270,6 +394,7 @@ public class AenderungsprotokollRepository {
                 rs.getString("neu"),
                 rs.getString("urheber_name"),
                 rs.getString("urheber_rolle"),
-                rs.getString("urheber_art"));
+                rs.getString("urheber_art"),
+                rs.getObject("gilt_bis", LocalDate.class));
     }
 }

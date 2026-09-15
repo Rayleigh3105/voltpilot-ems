@@ -18,6 +18,7 @@
 // Server in seiner Antwort (`achse`); diese Datei liest sie von dort, statt sie
 // zu raten — sonst stünde eine Zeile unter dem falschen Tag.
 import type { Protokoll, ProtokollEintrag, UemsGeraet } from './api';
+import { rueckwirkung } from './uemsOrtsbaum';
 
 /** Die Plattform-Zeitzone — dieselbe, in der der Server seine Zeitpunkte ausweist. */
 const ZONE = 'Europe/Berlin';
@@ -82,6 +83,11 @@ export type ProtokollListenEintrag =
 
 export interface ProtokollView {
   eintraege: ProtokollListenEintrag[];
+  /**
+   * „Seit dem Anlegen am 01.10.2026 keine Änderung." — nur, wenn der Wirt es verlangt
+   * (`anlegeSatz`) und das Protokoll wirklich nur den Anlege-Eintrag trägt (AP-02 §5.9).
+   */
+  hinweis: string | null;
   /** Wie viele PROTOKOLL-Zeilen darin stehen (ohne die Datumszeilen). */
   zeilen: number;
   /** Welche Achse gruppiert und filtert — vom Server, nie geraten. */
@@ -105,11 +111,14 @@ export interface ProtokollView {
  * @param opts.mitBezug ob jede Zeile ihr Objekt nennt (der Unternehmens-Weg
  *   mischt Messstellen, Orte und Datenquellen; im Protokoll EINES Objekts wäre
  *   dieselbe Angabe an jeder Zeile Rauschen)
+ * @param opts.ohneBezug das Objekt, dessen Protokoll es ist — seine eigenen Zeilen
+ *   nennen es nicht (am Standort stehen die Kinder mit Namen, der Standort ohne)
+ * @param opts.anlegeSatz ob ein Protokoll mit NUR dem Anlege-Eintrag das sagt
  */
 export function protokollListe(
   seiten: readonly (Protokoll | null | undefined)[],
   now: number,
-  opts: { mitBezug?: boolean } = {},
+  opts: { mitBezug?: boolean; ohneBezug?: string | null; anlegeSatz?: boolean } = {},
 ): ProtokollView {
   const echte = seiten.filter((p): p is Protokoll => Boolean(p));
   const juengste = echte[0] ?? null;
@@ -118,13 +127,15 @@ export function protokollListe(
 
   const gesehen = new Set<string>();
   const zeilen: ProtokollZeile[] = [];
+  const roh: ProtokollEintrag[] = [];
   for (const seite of echte) {
     for (const e of seite.eintraege) {
       // Eine doppelt gelieferte Grenzzeile gewinnt genau EINMAL — gemischt wird
       // über die `id`, die Herkunft und laufende Nummer zusammen trägt.
       if (gesehen.has(e.id)) continue;
       gesehen.add(e.id);
-      zeilen.push(zeile(e, achse, opts.mitBezug === true));
+      roh.push(e);
+      zeilen.push(zeile(e, achse, opts.mitBezug === true && e.bezug?.id !== opts.ohneBezug));
     }
   }
 
@@ -139,8 +150,10 @@ export function protokollListe(
   }
 
   const weiter = aelteste?.weiter ?? null;
+  const nurAngelegt = opts.anlegeSatz === true && !weiter && roh.length === 1 && roh[0].art === 'angelegt';
   return {
     eintraege,
+    hinweis: nurAngelegt ? anlegeSatz(roh[0]) : null,
     zeilen: zeilen.length,
     achse,
     achseSatz: achseSatz(achse),
@@ -164,13 +177,15 @@ export function zeile(
   mitBezug: boolean,
 ): ProtokollZeile {
   const massgeblich = achse === 'eintrag' ? e.eingetragen_am : e.gilt_ab;
+  // Die Ortsstruktur gilt ab einem TAG (AP-02 Regel 5) — „gilt ab 01.02.2027", keine erfundene Uhrzeit.
+  const ort = e.quelle === 'ort';
   return {
     key: e.id,
     satz: e.text,
     zeit: uhrzeit(massgeblich),
-    giltAb: `gilt ab ${zeitpunktText(e.gilt_ab)}`,
+    giltAb: `gilt ab ${ort ? tagDatumText(e.gilt_ab) : zeitpunktText(e.gilt_ab)}`,
     eingetragen: `eingetragen am ${zeitpunktText(e.eingetragen_am)}`,
-    marke: ZEITFORM_LABEL[e.zeitform] ?? null,
+    marke: ort && e.zeitform === 'rueckwirkend' ? ortRueckwirkendMarke(e) : (ZEITFORM_LABEL[e.zeitform] ?? null),
     urheber: urheberText(e),
     grund: e.grund && e.grund.trim() ? e.grund.trim() : null,
     bezug: mitBezug ? bezugText(e) : null,
@@ -202,13 +217,32 @@ export function bezugText(e: ProtokollEintrag): string | null {
 export function zeitpunktText(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return 'Zeitpunkt unbekannt';
-  const tag = d.toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone: ZONE,
-  });
-  return `${tag}, ${uhrzeit(iso)} Uhr`;
+  return `${tagDatumText(iso)}, ${uhrzeit(iso)} Uhr`;
+}
+
+/** „18.11.2026" — nur der Tag in der Plattform-Zeitzone. */
+export function tagDatumText(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'Tag unbekannt';
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: ZONE });
+}
+
+/**
+ * „rückwirkend (37 Tage)" — die Marke eines Eintrags der Ortsstruktur (AP-02 IP-14, A2/A3). Die
+ * Dauer rechnet der Zwilling des Ortsbaum-Vertrags (`rueckwirkung`: von „gilt ab" bis zum
+ * Eintragstag); das URTEIL bleibt das gespeicherte des Schreibwegs. Findet der Vertrag keine
+ * Dauer, bleibt das Wort ohne Zahl stehen, statt eine zu erfinden.
+ */
+export function ortRueckwirkendMarke(e: ProtokollEintrag): string {
+  const ab = berlinTag(e.gilt_ab);
+  if (!ab) return 'rückwirkend';
+  const r = rueckwirkung({ eingetragenUm: e.eingetragen_am, giltAb: ab, giltBis: null, zeitzone: ZONE });
+  return r.abzeichen ?? 'rückwirkend';
+}
+
+/** „Seit dem Anlegen am 01.10.2026 keine Änderung." (AP-02 §5.9) */
+export function anlegeSatz(e: ProtokollEintrag): string {
+  return `Seit dem Anlegen am ${tagDatumText(e.gilt_ab)} keine Änderung.`;
 }
 
 /** „10:40" in der Plattform-Zeitzone; ein unlesbarer Zeitpunkt sagt das. */

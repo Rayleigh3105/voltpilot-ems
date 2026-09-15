@@ -23,13 +23,28 @@ export type MenueEintrag =
   | { art: 'loeschen'; knopf: true; text: string }
   | { art: 'loeschen_gesperrt'; knopf: false; text: string }
   | { art: 'verschieben'; knopf: true; text: string }
-  | { art: 'verschieben_gesperrt'; knopf: false; text: string };
+  | { art: 'verschieben_gesperrt'; knopf: false; text: string }
+  | { art: 'aenderungen'; knopf: true; text: string };
 
 export const KNOPF_ARCHIVIEREN = 'Archivieren …';
 export const KNOPF_ARCHIVIEREN_GESPERRT = 'Archivieren nicht möglich …';
 export const KNOPF_WIEDERHERSTELLEN = 'Wiederherstellen …';
 export const KNOPF_LOESCHEN = 'Löschen …';
 export const KNOPF_VERSCHIEBEN = 'Verschieben …';
+/** Dieselbe Beschriftung wie an der Messstelle und am Gerät (`PROTOKOLL_LABEL`, AP-04 IP-21). */
+export const KNOPF_AENDERUNGEN = 'Änderungsprotokoll';
+
+/**
+ * Das Menü MIT dem Änderungsprotokoll (AP-02 IP-14; V1: Bearbeiten · Verschieben · Änderungen ·
+ * Archivieren). Lesen braucht kein Urteil des Servers — der Eintrag steht in jedem Menü, das es
+ * gibt (heute; „Stand am …“ hat keins), direkt hinter „Verschieben …“ bzw. seinem Hinweis.
+ */
+export function mitAenderungen(eintraege: MenueEintrag[]): MenueEintrag[] {
+  if (eintraege.length === 0) return eintraege;
+  const hinter = eintraege.findIndex((e) => e.art !== 'verschieben' && e.art !== 'verschieben_gesperrt');
+  const i = hinter === -1 ? eintraege.length : hinter;
+  return [...eintraege.slice(0, i), { art: 'aenderungen', knopf: true, text: KNOPF_AENDERUNGEN }, ...eintraege.slice(i)];
+}
 
 /**
  * Das Menü eines Knotens aus seinen `aktionen`. Ohne `aktionen` (mit Stichtag) gibt es keins.

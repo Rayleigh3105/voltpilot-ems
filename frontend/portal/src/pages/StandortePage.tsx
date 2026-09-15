@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type OrtAktionen, type StandortAmStichtag, type StandorteAmStichtag, type Unternehmen } from '../api';
 import { ArchivierenDialog, type ArchivAktion } from '../components/ArchivierenDialog';
+import { OrtAenderungen } from '../components/OrtAenderungen';
 import { Ortsbaum } from '../components/Ortsbaum';
 import { StandAm } from '../components/StandAm';
 import { StandortDialog } from '../components/StandortDialog';
@@ -56,6 +57,8 @@ export function StandortePage() {
   const [archiv, setArchiv] = useState<{ art: ArchivAktion; standort: StandortAmStichtag; schluessel: number } | null>(
     null,
   );
+  // AP-02 IP-14: das Änderungsprotokoll eines Standorts samt Gebäuden, Bereichen und Anlagen.
+  const [protokoll, setProtokoll] = useState<StandortAmStichtag | null>(null);
   const merkeAktionen = useCallback(
     (id: string, a: OrtAktionen | null) => setAktionen((m) => (m[id] === a ? m : { ...m, [id]: a })),
     [],
@@ -103,6 +106,19 @@ export function StandortePage() {
   function oeffneArchiv(art: ArchivAktion, standort: StandortAmStichtag, von: HTMLElement) {
     ausloeser.current = von;
     setArchiv((d) => ({ art, standort, schluessel: (d?.schluessel ?? 0) + 1 }));
+  }
+
+  function oeffneProtokoll(standort: StandortAmStichtag, von: HTMLElement) {
+    ausloeser.current = von;
+    setProtokoll(standort);
+  }
+
+  function schliesseProtokoll() {
+    setProtokoll(null);
+    const ziel = ausloeser.current;
+    requestAnimationFrame(() => {
+      if (ziel?.isConnected) ziel.focus();
+    });
   }
 
   function schliesseArchiv() {
@@ -169,6 +185,7 @@ export function StandortePage() {
                       onAktion={(eintrag, von) => {
                         if (eintrag.art === 'archivieren') oeffneArchiv('archivieren', e.standort, von);
                         if (eintrag.art === 'archivieren_gesperrt') oeffneArchiv('gesperrt', e.standort, von);
+                        if (eintrag.art === 'aenderungen') oeffneProtokoll(e.standort, von);
                       }}
                     />
                     {/* AP-02 IP-7: der Ortsbaum „Standort › Gebäude“ — bis die Standort-Übersicht
@@ -245,6 +262,14 @@ export function StandortePage() {
             </section>
           )}
         </>
+      )}
+
+      {protokoll && !stichtag && (
+        <OrtAenderungen
+          open
+          objekt={{ art: 'standort', id: protokoll.id, name: protokoll.name }}
+          onClose={schliesseProtokoll}
+        />
       )}
 
       {archiv && !stichtag && (

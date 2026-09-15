@@ -5551,6 +5551,11 @@ export interface ProtokollEintrag {
   text: string;
   bezug: ProtokollBezug;
   gilt_ab: string;
+  /**
+   * Der letzte TAG, an dem ein Eintrag der Ortsstruktur noch gilt (AP-02 IP-14) — null = bis heute
+   * offen; bei Messstellen und Datenquellen immer null.
+   */
+  gilt_bis: string | null;
   eingetragen_am: string;
   zeitform: 'rueckwirkend' | 'angekuendigt' | 'sofort';
   grund: string | null;
@@ -5562,7 +5567,7 @@ export interface ProtokollEintrag {
 /** `weiter` ist der Fortsetzungszeiger der nächsten Seite — null, wenn es keine gibt. */
 export interface Protokoll {
   eintraege: ProtokollEintrag[];
-  achse: 'wirkung' | 'eintrag';
+  achse: 'wirkung' | 'eintrag' | 'gueltigkeit';
   von: string | null;
   bis: string | null;
   weiter: string | null;
@@ -5572,8 +5577,11 @@ export interface Protokoll {
 export interface ProtokollAbfrage {
   von?: string;
   bis?: string;
-  /** Vorgabe `wirkung` = „gilt ab"; `eintrag` = „eingetragen am". */
-  achse?: 'wirkung' | 'eintrag';
+  /**
+   * Vorgabe `wirkung` = „gilt ab"; `eintrag` = „eingetragen am"; `gueltigkeit` = welche Einträge
+   * in einen Zeitraum aus TAGEN reichen (AP-02 IP-14, `von`/`bis` zählen beide mit).
+   */
+  achse?: 'wirkung' | 'eintrag' | 'gueltigkeit';
   limit?: number;
   /** Der Wert `weiter` der vorigen Seite. */
   nach?: string;
@@ -6660,6 +6668,17 @@ export const api = {
   /** Das Änderungsprotokoll des ganzen Unternehmens über einen Zeitraum. */
   unternehmenAenderungen: (f?: ProtokollAbfrage) =>
     request<Protokoll>(`/api/v1/unternehmen/aenderungen${protokollFrage(f)}`),
+
+  /** Das Änderungsprotokoll EINES Gebäudes oder Bereichs (AP-02 IP-14, H2). */
+  ortAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/orte/${id}/aenderungen${protokollFrage(f)}`),
+
+  /**
+   * Das Änderungsprotokoll EINES Standorts samt seinen Gebäuden, Bereichen und
+   * Anlagen-Zuordnungen (AP-02 IP-14) — jedes Kind aus seiner Zeit an diesem Standort.
+   */
+  standortAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/standorte/${id}/aenderungen${protokollFrage(f)}`),
 
   /** Legt eine berechnete Messstelle (Gesamtwert) mit ihrer gewichteten Summe an. */
   berechneteMessstelleAnlegen: (body: BerechneteMessstelleAnlegen) =>

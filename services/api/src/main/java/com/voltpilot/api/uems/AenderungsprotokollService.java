@@ -4,13 +4,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Achse;
+import com.voltpilot.api.uems.AenderungsprotokollRepository.Filter;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Zeiger;
 import com.voltpilot.api.uems.AenderungsprotokollRepository.Zeile;
 import com.voltpilot.api.web.dto.ProtokollDto;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,11 @@ import org.springframework.web.server.ResponseStatusException;
  * für das ganze Unternehmen über einen Zeitraum. Dieser Dienst SCHREIBT nichts — jeder Eintrag
  * stammt aus einem der bestehenden Schreibwege (Messstelle anlegen/bearbeiten, Ort und
  * elektrische Stellung, Quellenbindung, Einstellungs-Fassungen, Zählerwechsel, Datenquelle).
+ *
+ * <p>Seit AP-02 IP-14 zwei Lesewege mehr — je Gebäude/Bereich und je Standort samt seinen Kindern
+ * und Anlagen-Zuordnungen ({@link OrtProtokollUmfang}) — und die dritte Achse
+ * {@code gueltigkeit}: welche Einträge in einen Zeitraum aus TAGEN reichen (die Schnittstelle für
+ * die Revision freigegebener Berichte, AP-12).
  *
  * <p><b>Die Zeitachse ist ausdrücklich, nie stillschweigend.</b> {@code achse=wirkung}
  * (Vorgabe) filtert und sortiert nach „gilt ab“, {@code achse=eintrag} nach „eingetragen am“.
@@ -42,13 +50,23 @@ public class AenderungsprotokollService {
     private final AenderungsprotokollRepository protokolle;
     private final MessstelleRepository messstellen;
     private final GeraetRepository geraete;
+    private final OrtRepository orte;
+    private final StandortRepository standorte;
+    private final OrtAenderungRepository ortAenderungen;
+    private final StandortLesemodellService lesemodell;
     private final ObjectMapper json;
 
     public AenderungsprotokollService(AenderungsprotokollRepository protokolle,
-            MessstelleRepository messstellen, GeraetRepository geraete, ObjectMapper json) {
+            MessstelleRepository messstellen, GeraetRepository geraete, OrtRepository orte,
+            StandortRepository standorte, OrtAenderungRepository ortAenderungen,
+            StandortLesemodellService lesemodell, ObjectMapper json) {
         this.protokolle = protokolle;
         this.messstellen = messstellen;
         this.geraete = geraete;
+        this.orte = orte;
+        this.standorte = standorte;
+        this.ortAenderungen = ortAenderungen;
+        this.lesemodell = lesemodell;
         this.json = json;
     }
 
@@ -56,11 +74,14 @@ public class AenderungsprotokollService {
      * Die gelesene Anfrage — schon geprüft, nie roher Text.
      *
      * @param von/bis der Zeitraum auf der gewählten Achse, halboffen {@code [von, bis)};
-     *     {@code null} = ohne Grenze
+     *     {@code null} = ohne Grenze. Bei {@code gueltigkeit} der Beginn des ersten und des Tages
+     *     NACH dem letzten Tag — so bleibt die Antwort halboffen wie immer.
+     * @param vonTag/bisTag nur bei {@code gueltigkeit}: die Tage, beide zählen mit
      * @param grenze wie viele Einträge diese Seite höchstens trägt
      * @param nach der Fortsetzungszeiger der vorigen Seite; {@code null} = die erste
      */
-    public record Anfrage(Instant von, Instant bis, Achse achse, int grenze, Zeiger nach) {}
+    public record Anfrage(Instant von, Instant bis, LocalDate vonTag, LocalDate bisTag, Achse achse, int grenze,
+            Zeiger nach) {}
 
     // ------------------------------------------------------------------ Die drei Lesewege
 
@@ -68,7 +89,7 @@ public class AenderungsprotokollService {
     public ProtokollDto.Protokoll messstelle(UUID id, Anfrage a) {
         messstellen.finde(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
-        return antwort(protokolle.fuerMessstelle(id, a.von(), a.bis(), a.achse(), a.grenze() + 1, a.nach()), a);
+        return antwort(protokolle.fuerMessstelle(id, filter(a)), a);
     }
 
     /**
@@ -80,13 +101,38 @@ public class AenderungsprotokollService {
     public ProtokollDto.Protokoll geraet(UUID id, Anfrage a) {
         GeraetRepository.Einbau g = geraete.eines(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
-        return antwort(protokolle.fuerEinbau(g.einbauKennzeichen(), a.von(), a.bis(), a.achse(),
-                a.grenze() + 1, a.nach()), a);
+        return antwort(protokolle.fuerEinbau(g.einbauKennzeichen(), filter(a)), a);
     }
 
     /** Das Protokoll des ganzen Unternehmens — Messstellen, Quellen, Einstellungen, Orte, Anlagen. */
     public ProtokollDto.Protokoll unternehmen(Anfrage a) {
-        return antwort(protokolle.fuerUnternehmen(a.von(), a.bis(), a.achse(), a.grenze() + 1, a.nach()), a);
+        return antwort(protokolle.fuerUnternehmen(filter(a)), a);
+    }
+
+    /** Das Protokoll EINES Gebäudes oder Bereichs (AP-02 IP-14, H2). Ein fremder Ort ist 404. */
+    public ProtokollDto.Protokoll ort(UUID id, Anfrage a) {
+        orte.finde(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Gebäude oder Bereich nicht gefunden."));
+        return antwort(protokolle.fuerOrt(id, filter(a)), a);
+    }
+
+    /**
+     * Das Protokoll EINES Standorts EINSCHLIESSLICH seiner Gebäude, Bereiche und
+     * Anlagen-Zuordnungen (AP-02 IP-14) — welche Einträge dazugehören, urteilt
+     * {@link OrtProtokollUmfang} am Ortsbaum des Lesemodells. Ein fremder Standort ist 404.
+     */
+    public ProtokollDto.Protokoll standort(UUID id, Anfrage a) {
+        standorte.finde(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Standort nicht gefunden."));
+        StandortLesemodell.Zeilen z = lesemodell.zeilen();
+        Set<Long> ids = OrtProtokollUmfang.desStandorts(StandortLesemodell.baum(z), z.anlageZuordnungen(), id,
+                ortAenderungen.kandidatenDesStandorts(id));
+        return antwort(protokolle.fuerOrtEintraege(ids, filter(a)), a);
+    }
+
+    /** Eine Zeile MEHR lesen, als die Seite trägt — so weiß die Antwort, ob es weitergeht. */
+    private static Filter filter(Anfrage a) {
+        return new Filter(a.von(), a.bis(), a.vonTag(), a.bisTag(), a.achse(), a.grenze() + 1, a.nach());
     }
 
     // ------------------------------------------------------------------ Die Antwort
@@ -119,6 +165,7 @@ public class AenderungsprotokollService {
                 AenderungSatz.satz(z.bezugArt(), z.art(), alt, neu, z.ergebnis()),
                 new ProtokollDto.Bezug(z.bezugArt(), z.bezugId(), z.bezugKennzeichen(), z.bezugName()),
                 MessstelleService.zeit(z.giltAb()),
+                z.giltBis(),
                 MessstelleService.zeit(z.eingetragenAm()),
                 zeitform(z),
                 z.grund(),
@@ -173,13 +220,25 @@ public class AenderungsprotokollService {
      */
     public static Anfrage anfrage(String von, String bis, String achse, String limit, String nach) {
         Achse a = achse(achse);
+        if (a == Achse.GUELTIGKEIT) {
+            LocalDate vonTag = tag(von, "von");
+            LocalDate bisTag = tag(bis, "bis");
+            if (vonTag != null && bisTag != null && bisTag.isBefore(vonTag)) {
+                throw MessstelleAbgelehnt.anfrage("bis", "„bis“ liegt nicht vor „von“ — für die "
+                        + "Gültigkeit zählen beide Tage mit.");
+            }
+            return new Anfrage(
+                    vonTag == null ? null : vonTag.atStartOfDay(MessstelleService.ZEITZONE).toInstant(),
+                    bisTag == null ? null : bisTag.plusDays(1).atStartOfDay(MessstelleService.ZEITZONE).toInstant(),
+                    vonTag, bisTag, a, grenze(limit), zeiger(nach));
+        }
         Instant vonZeit = zeitpunkt(von, "von");
         Instant bisZeit = zeitpunkt(bis, "bis");
         if (vonZeit != null && bisZeit != null && !bisZeit.isAfter(vonZeit)) {
             throw MessstelleAbgelehnt.anfrage("bis", "„bis“ liegt nach „von“ — der Zeitraum ist "
                     + "halboffen: „von“ zählt mit, „bis“ nicht mehr.");
         }
-        return new Anfrage(vonZeit, bisZeit, a, grenze(limit), zeiger(nach));
+        return new Anfrage(vonZeit, bisZeit, null, null, a, grenze(limit), zeiger(nach));
     }
 
     private static Achse achse(String text) {
@@ -189,7 +248,8 @@ public class AenderungsprotokollService {
         Achse a = Achse.aus(text.strip());
         if (a == null) {
             throw MessstelleAbgelehnt.anfrage("achse", "Die Zeitachse ist „wirkung“ (wann die "
-                    + "Änderung gilt, die Vorgabe) oder „eintrag“ (wann sie eingetragen wurde).");
+                    + "Änderung gilt, die Vorgabe), „eintrag“ (wann sie eingetragen wurde) oder "
+                    + "„gueltigkeit“ (welche Änderungen in den Zeitraum reichen).");
         }
         return a;
     }
@@ -200,6 +260,19 @@ public class AenderungsprotokollService {
         } catch (DateTimeParseException e) {
             throw MessstelleAbgelehnt.anfrage(feld, "„" + feld + "“ ist ein Zeitpunkt "
                     + "(2026-11-18T10:40:00+01:00) oder ein Tag (2026-11-18, dann dessen Beginn).");
+        }
+    }
+
+    /** Ein Tag der Achse {@code gueltigkeit} — nur als Tag, nie als Zeitpunkt. */
+    private static LocalDate tag(String text, String feld) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(text.strip());
+        } catch (DateTimeParseException e) {
+            throw MessstelleAbgelehnt.anfrage(feld, "Für die Gültigkeit ist „" + feld + "“ ein Tag "
+                    + "(2027-02-01); „von“ und „bis“ zählen beide mit.");
         }
     }
 
