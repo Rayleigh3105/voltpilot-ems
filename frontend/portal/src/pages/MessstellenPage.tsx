@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type MessstellenRegister } from '../api';
 import { MessstelleDialog } from '../components/MessstelleDialog';
+import { RowMenu } from '../components/RowMenu';
 import { StandAm } from '../components/StandAm';
 import { VpPicker } from '../components/VpPicker';
+import { UEMS_WERTE } from '../glossar';
 import {
   ERNEUT,
   FILTER,
@@ -31,6 +33,7 @@ import {
   type ZeileWoerter,
 } from '../messstellen';
 import { DIALOG_TITEL } from '../messstelleDialog';
+import { verschiebe } from '../picker/datum';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
 import { MessstelleSeite } from './MessstelleSeite';
@@ -54,17 +57,32 @@ import './MessstellenPage.css';
  */
 export function MessstellenPage({
   messstelleId = null,
+  werte = null,
   onOeffnen,
+  onWerteZeitraum,
   onListe,
   ...register
 }: RegisterProps & {
   /** Die Messstelle der Adresse (AP-04 IP-8) — dann steht ihre Seite statt des Registers. */
   messstelleId?: string | null;
+  /** Periode und Version der Adresse für den Abschnitt „Werte“ der Seite (AP-13 IP-3). */
+  werte?: { periode: string | null; version: number | null } | null;
+  /** Die neu gewählte Periode im Abschnitt „Werte“ — der Wirt schreibt die Adresse nach. */
+  onWerteZeitraum?: (periode: string) => void;
   /** Der Weg zurück ins Register der Ebene. */
   onListe?: () => void;
 }) {
   if (messstelleId && onListe) {
-    return <MessstelleSeite key={messstelleId} id={messstelleId} zone={register.zone} onListe={onListe} />;
+    return (
+      <MessstelleSeite
+        key={messstelleId}
+        id={messstelleId}
+        zone={register.zone}
+        werte={werte}
+        onWerteZeitraum={onWerteZeitraum}
+        onListe={onListe}
+      />
+    );
   }
   return <RegisterFlaeche {...register} onOeffnen={onOeffnen} />;
 }
@@ -79,9 +97,17 @@ interface RegisterProps {
   onUebersicht?: () => void;
   /** Öffnet die Messstellen-Seite (AP-04 IP-8) — der Name jeder Zeile ist der Einstieg. */
   onOeffnen?: (id: string) => void;
+  /**
+   * Öffnet die Seite im Abschnitt „Werte“ mit einer Periode (AP-13 IP-3, E9): am Rechner der letzte Wert und
+   * das Zeilenmenü „Werte“, am Telefon die ganze Karte. Ohne Wirt gibt es keinen dieser Einstiege.
+   */
+  onWerte?: (id: string, periode: string) => void;
 }
 
-function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onUebersicht, onOeffnen }: RegisterProps) {
+/** Die Beschriftung der Spalte mit dem Zeilenmenü — nur für Vorleser, die Spalte hat keinen sichtbaren Kopf. */
+const AKTIONEN = 'Aktionen';
+
+function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onUebersicht, onOeffnen, onWerte }: RegisterProps) {
   const isPhone = useIsPhone();
   const [stichtag, setStichtag] = useState<string | null>(null);
   const [heute, setHeute] = useState<string | null>(null);
@@ -135,6 +161,9 @@ function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onU
   const unterzeile = [ebene.art === 'standort' ? ebene.name : null, kopfZeile(aktuell?.liste ?? null, stichtag)]
     .filter(Boolean)
     .join(' · ');
+  // Die Periode des Einstiegs in die Werte: mit Stichtag dieser Tag, heute der Vortag — der letzte ganze Tag, wie im Dialog.
+  const wertePeriode = heute ? (stichtag && stichtag < heute ? stichtag : verschiebe(heute, -1)) : null;
+  const werteOeffnen = onWerte && wertePeriode ? (id: string) => onWerte(id, wertePeriode) : undefined;
 
   return (
     <div className="vp-ms" data-testid="messstellen">
@@ -167,9 +196,9 @@ function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onU
           ) : leer ? (
             <Leer leer={leer} onUebersicht={onUebersicht} onAnlegen={anlegbar ? () => setAnlegen(true) : undefined} />
           ) : isPhone ? (
-            <Karten eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} />
+            <Karten eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} onWerte={werteOeffnen} />
           ) : (
-            <Tabelle eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} />
+            <Tabelle eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} onWerte={werteOeffnen} />
           )}
         </>
       )}
@@ -269,6 +298,8 @@ interface RegisterListeProps {
   eintraege: RegisterEintrag[];
   stichtag: string | null;
   onOeffnen?: (id: string) => void;
+  /** Öffnet die Seite im Abschnitt „Werte“ (AP-13 IP-3) — die Periode hat der Wirt schon gewählt. */
+  onWerte?: (id: string) => void;
 }
 
 /** Der Name öffnet die Messstellen-Seite (AP-04 IP-8); ohne Wirt bleibt er Text. */
@@ -294,7 +325,7 @@ function spalten(stichtag: string | null): string[] {
 }
 
 /** 1440 px: eine Zeile je Messstelle; die Tabelle scrollt lokal, nie die Seite. */
-function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
+function Tabelle({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps) {
   return (
     <div className="vp-ms-rahmen">
       <table className="vp-ms-tabelle">
@@ -305,6 +336,11 @@ function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
                 {t}
               </th>
             ))}
+            {onWerte && (
+              <th scope="col">
+                <span className="vp-sr-only">{AKTIONEN}</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -315,7 +351,7 @@ function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
                   <span className="vp-ms-kz">{e.kennzeichen}</span>
                 </td>
                 <td className="vp-ms-name">{e.name}</td>
-                <td colSpan={5} className="vp-ms-satz">
+                <td colSpan={onWerte ? 6 : 5} className="vp-ms-satz">
                   {e.satz}
                 </td>
               </tr>
@@ -337,9 +373,14 @@ function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
                 <td>
                   <Zustand w={e.woerter} />
                 </td>
-                <td>
-                  <Wert w={e.woerter} />
+                <td className="vp-ms-wertzelle">
+                  <Wert w={e.woerter} onWerte={onWerte && (() => onWerte(e.woerter.id))} />
                 </td>
+                {onWerte && (
+                  <td className="vp-ms-menue">
+                    <RowMenu items={[{ label: UEMS_WERTE, icon: 'calendar', onClick: () => onWerte(e.woerter.id) }]} />
+                  </td>
+                )}
               </tr>
             ),
           )}
@@ -350,7 +391,7 @@ function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
 }
 
 /** 375 px: eine Karte je Messstelle mit denselben Wörtern wie die Spalten. */
-function Karten({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
+function Karten({ eintraege, stichtag, onOeffnen, onWerte }: RegisterListeProps) {
   const [, , ort, stellung, quelle, zustand, wert] = spalten(stichtag);
   return (
     <ul className="vp-ms-karten">
@@ -364,11 +405,18 @@ function Karten({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
             <p className="vp-ms-satz">{e.satz}</p>
           </li>
         ) : (
-          <li key={e.woerter.id} className="vp-ms-karte">
+          <li key={e.woerter.id} className={onWerte ? 'vp-ms-karte is-werte' : 'vp-ms-karte'}>
             <div className="vp-ms-karte-kopf">
               <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
               <h2 className="vp-ms-karte-name">
-                <Name w={e.woerter} onOeffnen={onOeffnen} />
+                {onWerte ? (
+                  // Am Telefon ist die ganze Karte der Einstieg in die Werte (AP-13 IP-3): der Knopf deckt sie ab.
+                  <button type="button" className="vp-ms-oeffnen vp-ms-karte-werte" onClick={() => onWerte(e.woerter.id)}>
+                    {e.woerter.name}
+                  </button>
+                ) : (
+                  <Name w={e.woerter} onOeffnen={onOeffnen} />
+                )}
               </h2>
             </div>
             <dl className="vp-ms-fakten">
@@ -433,9 +481,10 @@ function Zustand({ w }: { w: ZeileWoerter }) {
   );
 }
 
-function Wert({ w }: { w: ZeileWoerter }) {
+/** Der letzte Wert; mit Wirt führt er in den Abschnitt „Werte“ der Seite (AP-13 IP-3). */
+function Wert({ w, onWerte }: { w: ZeileWoerter; onWerte?: () => void }) {
   if (!w.wert && w.nebenwerte.length === 0) return <>{OHNE_ANGABE}</>;
-  return (
+  const inhalt = (
     <>
       {w.wert && (
         <span className="vp-ms-block">
@@ -449,5 +498,12 @@ function Wert({ w }: { w: ZeileWoerter }) {
         </span>
       ))}
     </>
+  );
+  if (!onWerte) return inhalt;
+  return (
+    <button type="button" className="vp-ms-werte" onClick={onWerte}>
+      <span className="vp-sr-only">{`${UEMS_WERTE} ${w.kennzeichen}: `}</span>
+      {inhalt}
+    </button>
   );
 }

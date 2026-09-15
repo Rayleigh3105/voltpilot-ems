@@ -271,3 +271,64 @@ describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 
     expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
   });
 });
+
+describe('MessstellenPage · Einstieg in die Werte (UEMS AP-13 IP-3, O13)', () => {
+  const MS06 = '3e000000-0000-4000-8000-000000000006';
+  const zeileVon = (kz: string) => zeilen().find((z) => z.querySelector('td')?.textContent === kz)!;
+
+  it('am Rechner: der letzte Wert und das Zeilenmenü „Werte“ öffnen die Seite mit dem Vortag (heute 20.10.2026)', async () => {
+    telefon(false);
+    verdrahte();
+    const onWerte = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onWerte={onWerte} />);
+    await screen.findByRole('table');
+    // Die Spalte des Zeilenmenüs hat keinen sichtbaren Kopf, nur einen für Vorleser.
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Kennzeichen',
+      'Name',
+      'Ort',
+      'Elektrische Stellung',
+      'Quelle (führend)',
+      'Zustand',
+      'Letzter Wert',
+      'Aktionen',
+    ]);
+    const ms06 = zeileVon('MS-06');
+    fireEvent.click(within(ms06).getByRole('button', { name: /^Werte MS-06: Wirkleistung/ }));
+    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-19');
+    fireEvent.click(within(ms06).getByRole('button', { name: 'Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Werte' }));
+    expect(onWerte).toHaveBeenCalledTimes(2);
+    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-19');
+    // Ohne Wert kein Knopf am Strich — das Zeilenmenü bleibt der Weg.
+    expect(within(zeileVon('MS-21')).queryByRole('button', { name: /^Werte / })).toBeNull();
+    expect(within(zeileVon('MS-21')).getByRole('button', { name: 'Aktionen' })).toBeInTheDocument();
+  });
+
+  it('mit „Stand am 10.10.2026“ öffnet der Einstieg diesen Tag', async () => {
+    telefon(false);
+    verdrahte();
+    const onWerte = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onWerte={onWerte} />);
+    await screen.findByRole('table');
+    await waehleTag('2026-10-10');
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: 'Zustand (heute)' })).toBeInTheDocument(), WARTEN);
+    await waitFor(() => expect(zeileVon('MS-06')).toBeTruthy(), WARTEN);
+    fireEvent.click(within(zeileVon('MS-06')).getByRole('button', { name: 'Aktionen' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Werte' }));
+    expect(onWerte).toHaveBeenLastCalledWith(MS06, '2026-10-10');
+  });
+
+  it('am Telefon: die ganze Karte ist der Einstieg — nicht der Weg auf die Seite ohne Periode', async () => {
+    telefon(true);
+    verdrahte();
+    const onWerte = vi.fn();
+    const onOeffnen = vi.fn();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa onOeffnen={onOeffnen} onWerte={onWerte} />);
+    const karten = await screen.findAllByRole('listitem');
+    expect(karten[5]).toHaveClass('is-werte');
+    fireEvent.click(within(karten[5]).getByRole('button', { name: 'Spritzguss SG01–SG06' }));
+    expect(onWerte).toHaveBeenCalledWith(MS06, '2026-10-19');
+    expect(onOeffnen).not.toHaveBeenCalled();
+  });
+});

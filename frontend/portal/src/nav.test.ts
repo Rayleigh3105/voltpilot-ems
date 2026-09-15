@@ -35,6 +35,8 @@ import {
   canonicalPlatformHash,
   sektionHash,
   parseSektion,
+  messstelleRoute,
+  parseMessstelleWerte,
   type AnlagenSub,
   type Route,
   komponenteHash,
@@ -744,5 +746,21 @@ describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
 
   it('dieselbe Route auf sich selbst schiebt nichts', () => {
     expect(transitionKind(messwerte, anlageRoute('s-1', 'messwerte'))).toBe('fade');
+  });
+});
+
+describe('parseMessstelleWerte — Periode und Version der Werte einer Messstelle (UEMS AP-13 IP-3)', () => {
+  it('liest, was `sprungziel` schreibt; die Route bleibt die Messstellen-Seite', () => {
+    const hash = '#/portfolio/messstellen/MS-12?periode=2026-10&version=2';
+    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2 });
+    expect(parseRoute(hash)).toEqual(messstelleRoute('MS-12'));
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-06?periode=2026-10-25')).toEqual({ periode: '2026-10-25', version: null });
+  });
+
+  it('ohne Parameter nichts; eine Version, die keine ganze Zahl ab 1 ist, gilt nicht', () => {
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null });
+    for (const v of ['0', '-1', '2.5', 'zwei', '']) {
+      expect(parseMessstelleWerte(`#/portfolio/messstellen/MS-12?periode=2026-10&version=${v}`).version, v).toBeNull();
+    }
   });
 });

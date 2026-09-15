@@ -259,3 +259,25 @@
   gap: var(--vp-c-space-2);
   min-width: 0;
 }
+
+/* --- Werte (UEMS AP-13 IP-3): direkt unter dem Kopf, die `WerteSektion` bringt ihre Klassen mit ------- */
+
+.vp-mss-werte {
+  min-width: 0;
+}
+
+.vp-mss-werte h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+/* Am Rechner: links Zone, Zeit-Leiste und Karte, rechts die Liste — die Stunden stehen neben ihrer Zahl
+   statt 1 100 px darunter. Unter 960 px untereinander wie im Dialog. */
+@media (min-width: 960px) {
+  .vp-mss-werte .vp-wk {
+    grid-template-columns: minmax(0, 28rem) minmax(0, 1fr);
+    column-gap: var(--vp-c-space-6, 24px);
+    align-items: start;
+  }
+}

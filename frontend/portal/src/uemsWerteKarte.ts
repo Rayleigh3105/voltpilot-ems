@@ -51,6 +51,7 @@ import {
   zustandMitHerkunft,
   type Ergebnis,
 } from './uemsErgebnis';
+import { zoneSatz } from './uemsOberflaechen';
 
 /** Tag oder Monat — was die Karte zusammenfasst. */
 export type KartenArt = 'tag' | 'monat';
@@ -135,6 +136,18 @@ export const anfragen = (art: KartenArt, wert: string): { karte: Anfrage; liste:
   const von = `${wert}-01`;
   const bis = letzterTag(wert);
   return { karte: { raster: 'monat', von, bis }, liste: { raster: 'tag', von, bis } };
+};
+
+/**
+ * Die Periode der Adresse (`periode=2026-10-25` · `periode=2026-10`, AP-13 E9) als Wahl der Zeit-Leiste — oder
+ * `null`, wenn sie fehlt oder kein Kalendertag bzw. -monat ist: dann öffnet die Sektion wie ohne Angabe.
+ */
+export const periodeAus = (periode: string | null | undefined): { art: KartenArt; wert: string } | null => {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(periode ?? '');
+  if (!m) return null;
+  const [j, mo, t] = [Number(m[1]), Number(m[2]), m[3] === undefined ? 1 : Number(m[3])];
+  if (mo < 1 || mo > 12 || t < 1 || new Date(Date.UTC(j, mo - 1, t)).getUTCMonth() !== mo - 1) return null;
+  return { art: m[3] === undefined ? 'monat' : 'tag', wert: m[0] };
 };
 
 /** Der Kalendertag des Beginns, wie die Route ihn schreibt (Ortszeit des Standorts, mit Versatz). */
@@ -274,3 +287,36 @@ export const liste = (antwort: MessstelleWerte): Zeile[] =>
       grund: nochNichtGebildet(a, w) ? UEMS_NOCH_NICHT_GERECHNET : null,
     };
   });
+
+// ------------------------------------------------------------------ Werte an der Messstelle (AP-13 IP-3)
+
+/**
+ * Der Kopf der Werte (AP-13 E12 = A): „Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)“ — Zone und
+ * Herkunft aus DER Antwort, nie aus dem Browser (`uemsOberflaechen.zoneSatz`). Den Namen des Standorts kennt der
+ * Wirt (die Messstellen-Seite aus dem Register); ohne ihn steht „(Zeitzone des Standorts)“.
+ */
+export const zeitenKopf = (
+  antwort: Pick<MessstelleWerte, 'zeitzone' | 'zeitzone_herkunft'>,
+  standortName?: string | null,
+): string => zoneSatz(antwort.zeitzone, antwort.zeitzone_herkunft, standortName);
+
+/** Die gewählte Version ist heute die neueste (AP-13 §5.6, O10). */
+export const VERSION_NEUESTE = 'Sie sehen Version {n} — heute die neueste';
+
+/** Die gewählte Version ist eine frühere — „gilt“ wie in der Historie („gilt jetzt“, AP-08 IP-18). */
+export const VERSION_FRUEHERE = 'Sie sehen Version {n} — heute gilt Version {neueste}';
+
+/**
+ * Der Hinweis zur Version der Adresse (`version=n`, AP-13 E9): nur, wenn die Karte GENAU diese Version zeigt und
+ * spricht — `version` am Schritt ist die gezeigte, `versionen` die Zahl der Versionen der Periode. Ohne gewählte
+ * Version, an einem Schritt, der nicht gesprochen wird (etwa `version_nicht_gespeichert`), oder ohne `versionen` steht
+ * keiner: „Sie sehen Version 2“ über einem Strich wäre falsch.
+ */
+export const versionHinweis = (antwort: MessstelleWerte, gewaehlt: number | null): string | null => {
+  const w = antwort.werte[0];
+  if (gewaehlt === null || !w || w.version !== gewaehlt || w.versionen === null || gewaehlt > w.versionen) return null;
+  if (karte(antwort)?.zustand == null) return null;
+  return (gewaehlt === w.versionen ? VERSION_NEUESTE : VERSION_FRUEHERE)
+    .replace('{n}', String(gewaehlt))
+    .replace('{neueste}', String(w.versionen));
+};

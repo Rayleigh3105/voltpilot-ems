@@ -27,7 +27,20 @@ import {
 import { UEMS_LUECKE, UEMS_NOCH_NICHT_GERECHNET, UEMS_NOCH_NICHT_GERECHNET_SATZ } from './glossar';
 import { EREIGNIS_TEXTE } from './uemsEreignis';
 import { KEINE_WERTE, OHNE_ZAHL, TRENNER, ZUSTAENDE, fassung, satz, tagesdauer } from './uemsErgebnis';
-import { anfragen, karte, liste, luecken, monatTitel, tagTitel } from './uemsWerteKarte';
+import {
+  anfragen,
+  karte,
+  liste,
+  luecken,
+  monatTitel,
+  periodeAus,
+  tagTitel,
+  VERSION_FRUEHERE,
+  VERSION_NEUESTE,
+  versionHinweis,
+  zeitenKopf,
+} from './uemsWerteKarte';
+import { f21Tag, f21TagWert } from './test/wertVersionenFixtures';
 
 /**
  * Die Tages- und Monatskarte (UEMS AP-08 IP-11) gegen die Sätze der Fälle F8,
@@ -441,5 +454,71 @@ describe('uemsWerteKarte — Anfragen und Titel', () => {
     expect(tagTitel('2026-10-25T00:00:00+02:00')).toBe('So 25.10.2026');
     expect(tagTitel('2026-11-01T00:00:00+01:00', false)).toBe('So 01.11.');
     expect(monatTitel('2026-10-01T00:00:00+02:00')).toBe('Oktober 2026');
+  });
+});
+
+describe('uemsWerteKarte — der Kopf der Werte: die Zone der Antwort (UEMS AP-13 IP-3, E12 = A)', () => {
+  const faelle = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/oberflaechenFaelle.json'), 'utf8'));
+  const o14: Json = (faelle.faelle as Json[]).find((f) => f.id === 'O14');
+
+  it('O14: der 25-Stunden-Tag an MS-06 sagt „Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)“ — aus der Antwort', () => {
+    const a = f13Tag();
+    expect([a.zeitzone, a.zeitzone_herkunft]).toEqual([o14.gegeben.zone, o14.gegeben.zeitzone_herkunft]);
+    const kopf = zeitenKopf(a, 'Werk Ahrenberg');
+    expect(kopf).toBe('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
+    // Der Kopf des Falls ist „Sonntag, 25.10.2026 · <Zone>“: den Tag trägt die Karte, die Zone der Kopf der Sektion.
+    expect(o14.erwartet.kopf.endsWith(` · ${kopf}`)).toBe(true);
+    expect(karte(a)?.tagesdauer).toBe(o14.gegeben.tagesdauer);
+    expect(liste(f13Stunden())).toHaveLength(o14.erwartet.stunden_zeilen);
+  });
+
+  it('die Herkunft steht immer dabei: Unternehmen und Vorgabe ohne Namen, ohne bekannten Standort nur „des Standorts“', () => {
+    expect(zeitenKopf({ zeitzone: 'Europe/Vienna', zeitzone_herkunft: 'unternehmen' }, 'Werk Ahrenberg')).toBe(
+      'Zeiten in Europe/Vienna (Zeitzone des Unternehmens)',
+    );
+    expect(zeitenKopf({ zeitzone: 'Europe/Zurich', zeitzone_herkunft: 'vorgabe' }, 'Werk Ahrenberg')).toBe('Zeiten in Europe/Zurich (Vorgabe)');
+    expect(zeitenKopf(f13Tag())).toBe('Zeiten in Europe/Berlin (Zeitzone des Standorts)');
+  });
+});
+
+describe('uemsWerteKarte — die Version der Adresse (UEMS AP-13 IP-3, E9)', () => {
+  /** F21 · MS-10 · 03.11.2026 in Version v — so, wie `…/werte?version=v` den Tag liefert. */
+  const tagIn = (v: 1 | 2 | 3): MessstelleWerte => ({ ...f21Tag(), version: v, werte: [f21TagWert(v)] });
+
+  it('Version 3 von 3: „Sie sehen Version 3 — heute die neueste“', () => {
+    expect(versionHinweis(tagIn(3), 3)).toBe('Sie sehen Version 3 — heute die neueste');
+    expect(VERSION_NEUESTE).toBe('Sie sehen Version {n} — heute die neueste');
+  });
+
+  it('eine frühere Version sagt, welche heute gilt', () => {
+    expect(versionHinweis(tagIn(1), 1)).toBe('Sie sehen Version 1 — heute gilt Version 3');
+    expect(versionHinweis(tagIn(2), 2)).toBe(VERSION_FRUEHERE.replace('{n}', '2').replace('{neueste}', '3'));
+  });
+
+  it('ohne Version in der Adresse kein Hinweis — auch nicht bei drei Versionen, die Karte hat ihren Einstieg', () => {
+    expect(versionHinweis(f21Tag(), null)).toBeNull();
+  });
+
+  it('nur, wenn die Karte GENAU diese Version zeigt und spricht — nie über einem Strich', () => {
+    expect(versionHinweis(tagIn(3), 2)).toBeNull();
+    const nichtGespeichert = schritt({ ...f21TagWert(2), menge: null, zustand: null, kennzeichen: [], grund: 'version_nicht_gespeichert' });
+    expect(versionHinweis({ ...f21Tag(), werte: [nichtGespeichert] }, 2)).toBeNull();
+    expect(versionHinweis({ ...f21Tag(), werte: [{ ...f21TagWert(3), versionen: null }] }, 3)).toBeNull();
+    expect(versionHinweis({ ...f21Tag(), werte: [{ ...f21TagWert(3), version: 4 }] }, 4)).toBeNull();
+    expect(versionHinweis({ ...f21Tag(), werte: [] }, 3)).toBeNull();
+  });
+});
+
+describe('uemsWerteKarte — die Periode der Adresse (UEMS AP-13 IP-3)', () => {
+  it('Tag und Monat, wie `sprungziel` sie schreibt', () => {
+    expect(periodeAus('2026-10-25')).toEqual({ art: 'tag', wert: '2026-10-25' });
+    expect(periodeAus('2026-10')).toEqual({ art: 'monat', wert: '2026-10' });
+    expect(periodeAus('2028-02-29')).toEqual({ art: 'tag', wert: '2028-02-29' });
+  });
+
+  it('alles andere öffnet wie ohne Angabe', () => {
+    for (const falsch of [null, undefined, '', '2026', '2026-13', '2026-00', '2026-02-30', '2027-02-29', '2026-10-25T00:00', 'gestern']) {
+      expect(periodeAus(falsch), String(falsch)).toBeNull();
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -18,7 +18,9 @@ import { MessstelleDialog } from '../components/MessstelleDialog';
 import { PROTOKOLL_LABEL } from '../components/ProtokollDialog';
 import { ProtokollListe, useProtokoll } from '../components/ProtokollListe';
 import { ErrorState, Skeleton } from '../components/States';
+import { WerteSektion } from '../components/WerteSektion';
 import { ZuordnungAendernDialog } from '../components/ZuordnungAendernDialog';
+import { UEMS_WERTE } from '../glossar';
 import { lebenszyklusWort, zeileWoerter, type Lebenszyklus } from '../messstellen';
 import {
   AENDERN_AB,
@@ -43,6 +45,7 @@ import {
   type ZuordnungsKarte,
 } from '../messstelleZuordnung';
 import { lokalerTag, VORGABE_ZEITZONE, type Tag } from '../uemsOrtsbaum';
+import { periodeAus } from '../uemsWerteKarte';
 import './MessstelleSeite.css';
 
 interface Stamm {
@@ -65,14 +68,25 @@ interface Stamm {
  *
  * Das Ziel des Registers (`#/portfolio/messstellen/{id}`, `#/standort/{sid}/messstellen/{id}`).
  * Die Quelle-Karte mit ihrer Historie kommt mit AP-04 IP-14; hier steht nur die führende Quelle.
+ *
+ * Direkt unter dem Kopf steht der Abschnitt „Werte“ (UEMS AP-13 IP-3, E9 = A): die `WerteSektion`, die
+ * auch der Dialog an den Gesamtwert-Karten öffnet — hier wohnt die Zahl einer Messstelle. Periode und
+ * Version kommen aus der Adresse (`?periode=2026-10-25&version=2`); mit einer Periode holt die Seite den
+ * Abschnitt in den Blick, und jede neue Wahl meldet sie dem Wirt, der die Adresse nachschreibt.
  */
 export function MessstelleSeite({
   id,
   zone = VORGABE_ZEITZONE,
+  werte = null,
+  onWerteZeitraum,
   onListe,
 }: {
   id: string;
   zone?: string;
+  /** Periode und Version der Adresse für den Abschnitt „Werte“. */
+  werte?: { periode: string | null; version: number | null } | null;
+  /** Die neu gewählte Periode der Werte (`JJJJ-MM-TT` bzw. `JJJJ-MM`). */
+  onWerteZeitraum?: (periode: string) => void;
   onListe: () => void;
 }) {
   const [stamm, setStamm] = useState<Stamm | null>(null);
@@ -157,6 +171,17 @@ export function MessstelleSeite({
     [namen, prozessKatalog, kostenstellen],
   );
 
+  // Ein Sprung mit Periode (Register, Herkunfts-Zeile) holt den Abschnitt „Werte“ in den Blick — einmal, und
+  // nur so weit wie nötig: steht er schon im Bild, bleibt die Seite, wo sie ist.
+  const werteRef = useRef<HTMLElement>(null);
+  const gesprungen = useRef(false);
+  const geladen = stamm !== null && registerGelesen;
+  useEffect(() => {
+    if (!werte?.periode || !geladen || gesprungen.current) return;
+    gesprungen.current = true;
+    werteRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [werte, geladen]);
+
   const zurueck = (
     <button type="button" className="vp-mss-zurueck" onClick={onListe}>
       <Icon name="chevron-left" size={18} />
@@ -205,6 +230,7 @@ export function MessstelleSeite({
     organisationKarte(stamm.prozesse, stamm.anteile, heute),
   ];
   const darfAendern = aenderbar(m);
+  const werteAnfang = periodeAus(werte?.periode);
 
   return (
     <div className="vp-mss" data-testid="messstelle-seite">
@@ -229,6 +255,20 @@ export function MessstelleSeite({
           </Button>
         )}
       </header>
+
+      <section className="vp-mss-werte" aria-labelledby="vp-mss-werte-titel" data-testid="werte" ref={werteRef}>
+        <WerteSektion
+          kennzeichen={m.kennzeichen}
+          messstelle={`${k.kennzeichen} · ${k.titel}`}
+          kopf={<h2 id="vp-mss-werte-titel">{UEMS_WERTE}</h2>}
+          anfang={werteAnfang}
+          // Die Version gehört zu GENAU der Periode der Adresse — ohne sie gibt es nichts zu wählen.
+          version={werteAnfang ? (werte?.version ?? null) : null}
+          heute={heute}
+          standortName={zeile?.ort.standort_name ?? null}
+          onZeitraum={onWerteZeitraum}
+        />
+      </section>
 
       <div className="vp-mss-karten">
         {karten.map((karte) => (

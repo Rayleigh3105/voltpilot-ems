@@ -36,6 +36,7 @@ import {
   UEMS_WERTE,
 } from './glossar';
 import * as OF from './uemsOberflaechen';
+import { VERSION_FRUEHERE, VERSION_NEUESTE } from './uemsWerteKarte';
 import {
   fassungenVon as kennzahlFassungen,
   KZ as KENNZAHL_IDS,
@@ -1497,7 +1498,8 @@ const ABDECKUNG_BESTAND: string[] = [
 const CHART_FILES_OBERFLAECHEN: string[] = [];
 
 describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
-  const FLAECHEN = ['uemsOberflaechen.ts'];
+  // AP-13 IP-3: der Abschnitt „Werte“ (Sektion und ihre reine Ableitung).
+  const FLAECHEN = ['uemsOberflaechen.ts', 'uemsWerteKarte.ts', 'components/WerteSektion.tsx'];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
   const rel = (file: string) => file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -1526,6 +1528,9 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Berlin', 'standort', 'Werk Ahrenberg') });
     out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Vienna', 'unternehmen') });
     out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Zurich', 'vorgabe') });
+    // AP-13 IP-3: der Hinweis zur Version der Adresse, beide Formen.
+    out.push({ wo: 'Version', text: VERSION_NEUESTE.replace('{n}', '2') });
+    out.push({ wo: 'Version', text: VERSION_FRUEHERE.replace('{n}', '1').replace('{neueste}', '2') });
     for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_VERLAUF_PROZENT, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE, UEMS_NICHT_VERORTET, UEMS_MANUELL_ABGELESEN]) {
       out.push({ wo: 'Glossar', text: w });
     }

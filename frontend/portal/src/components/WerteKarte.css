@@ -242,3 +242,58 @@
 .vp-wk-zeile .vp-wk-kennzeichen li {
   font-size: var(--vp-c-fs-12);
 }
+
+/* --- Werte an der Messstelle (AP-13 IP-3) ---
+   Die Sektion trägt oben Kopf, Zone, Zeit-Leiste und Karte, darunter die Liste. Im Dialog steht alles
+   untereinander; die Messstellen-Seite legt die Liste am Rechner daneben (`MessstelleSeite.css`). */
+.vp-wk-oben {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+/* Die Zone der Antwort, einmal im Kopf, immer (E12 = A) — Text, keine Warnung. */
+.vp-wk-zone {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+/* Die Version der Adresse über der Karte: ein Hinweis in einem ruhigen Kasten. */
+.vp-wk-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--vp-c-space-3);
+  margin: 0;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-neueste {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.vp-wk-neueste:hover {
+  text-decoration: underline;
+}
+
+.vp-wk-neueste:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}

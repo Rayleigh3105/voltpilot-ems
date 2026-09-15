@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, type Messstelle, type Protokoll } from '../api';
+import { api, ApiError, type Messstelle, type MessstelleWerte, type Protokoll } from '../api';
 import { ebenenAktiv } from '../ebenenNav';
 import { hashForRoute, messstelleRoute, parseRoute, standortMessstellenRoute } from '../nav';
 import {
@@ -11,15 +11,19 @@ import {
   ms08Angelegt,
   ms08OrtGeplant,
   ms08Vorher,
+  ms10,
   protokollMs06,
   protokollMs08Angelegt,
   protokollMs08OrtGeplant,
   protokollMs08Vorher,
+  protokollMs10,
   prozesseAhrenberg,
   prozesseVon,
   verteilungVon,
 } from '../test/messstelleSeiteFixtures';
 import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
+import { grundlastStunden, grundlastTag, normalStunden, normalTag } from '../test/werteKarteFixtures';
+import { f21Stunden, f21Tag, f21TagWert } from '../test/wertVersionenFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
 import { MessstelleSeite } from './MessstelleSeite';
@@ -243,5 +247,87 @@ describe('MessstelleSeite · Z4 — MS-08 zieht am 01.03.2027 nach Halle 2 Monta
       await within(dialog).findByText('Halle 2 Lager ist seit 30.06.2027 archiviert. Wählen Sie einen aktiven Ort.', undefined, WARTEN),
     ).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Ort ändern' })).toBeInTheDocument();
+  });
+});
+
+describe('MessstelleSeite · Werte (UEMS AP-13 IP-3, E9 = A, E12 = A)', () => {
+  /** F21 · MS-10 · 03.11.2026 in Version v — so, wie `…/werte?version=v` den Tag liefert. */
+  const tagIn = (v: 1 | 2 | 3): MessstelleWerte => ({ ...f21Tag(), version: v, werte: [f21TagWert(v)] });
+  const grundlast = () =>
+    vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von) =>
+      raster === 'tag' ? grundlastTag(von, 'vorlaeufig') : grundlastStunden(von, 'vorlaeufig'),
+    );
+
+  it('der Abschnitt steht direkt unter dem Kopf, vor den Zuordnungen: Zone aus der Antwort mit dem Standort, der Vortag', async () => {
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    const werte = grundlast();
+    render(<MessstelleSeite id={MS_IDS.ms06} onListe={vi.fn()} />);
+
+    const abschnitt = await screen.findByTestId('werte', undefined, WARTEN);
+    expect(within(abschnitt).getByRole('heading', { level: 2, name: 'Werte' })).toBeInTheDocument();
+    await waitFor(
+      () => expect(within(abschnitt).getByTestId('werte-zone')).toHaveTextContent('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)'),
+      WARTEN,
+    );
+    expect(werte).toHaveBeenCalledWith('MS-06', 'tag', '2026-10-19', '2026-10-19');
+    expect(werte).toHaveBeenCalledWith('MS-06', 'stunde', '2026-10-19', '2026-10-19');
+    expect(within(abschnitt).getAllByTestId('werte-zeile')).toHaveLength(24);
+    expect(document.querySelector('.vp-mss-kopf')?.nextElementSibling).toBe(abschnitt);
+    expect(abschnitt.compareDocumentPosition(karte('ort')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Keine Version in der Adresse, kein Hinweis.
+    expect(within(abschnitt).queryByTestId('werte-version')).toBeNull();
+  });
+
+  it('Periode und Version der Adresse: die Karte fragt Version 3 und sagt es; blättern meldet die Periode und zeigt die neueste', async () => {
+    verdrahte({ messstelle: ms10, protokoll: protokollMs10 });
+    const werte = vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, von, _bis, version) =>
+      von === '2026-11-03'
+        ? raster === 'tag'
+          ? tagIn((version ?? 3) as 1 | 2 | 3)
+          : f21Stunden()
+        : raster === 'tag'
+          ? normalTag()
+          : normalStunden(),
+    );
+    const onZeitraum = vi.fn();
+    render(
+      <MessstelleSeite id={MS_IDS.ms10} werte={{ periode: '2026-11-03', version: 3 }} onWerteZeitraum={onZeitraum} onListe={vi.fn()} />,
+    );
+
+    expect(await screen.findByText('Sie sehen Version 3 — heute die neueste', undefined, WARTEN)).toBeInTheDocument();
+    expect(werte).toHaveBeenCalledWith('MS-10', 'tag', '2026-11-03', '2026-11-03', 3);
+    // Die Liste fragt ohne Version — Stunden haben keine eigenen.
+    expect(werte).toHaveBeenCalledWith('MS-10', 'stunde', '2026-11-03', '2026-11-03');
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Zeitraum' }));
+    expect(onZeitraum).toHaveBeenCalledWith('2026-11-02');
+    await waitFor(() => expect(werte).toHaveBeenCalledWith('MS-10', 'tag', '2026-11-02', '2026-11-02'), WARTEN);
+    await waitFor(() => expect(screen.queryByTestId('werte-version')).toBeNull(), WARTEN);
+  });
+
+  it('eine frühere Version sagt, welche heute gilt — „Neueste zeigen“ fragt ohne Version und nimmt sie aus der Adresse', async () => {
+    verdrahte({ messstelle: ms10, protokoll: protokollMs10 });
+    const werte = vi.spyOn(api, 'messstelleWerte').mockImplementation(async (_kz, raster, _von, _bis, version) =>
+      raster === 'tag' ? tagIn((version ?? 3) as 1 | 2 | 3) : f21Stunden(),
+    );
+    const onZeitraum = vi.fn();
+    render(
+      <MessstelleSeite id={MS_IDS.ms10} werte={{ periode: '2026-11-03', version: 1 }} onWerteZeitraum={onZeitraum} onListe={vi.fn()} />,
+    );
+
+    const hinweis = await screen.findByTestId('werte-version', undefined, WARTEN);
+    expect(hinweis).toHaveTextContent('Sie sehen Version 1 — heute gilt Version 3');
+    fireEvent.click(within(hinweis).getByRole('button', { name: 'Neueste zeigen' }));
+    expect(onZeitraum).toHaveBeenCalledWith('2026-11-03');
+    await waitFor(() => expect(werte).toHaveBeenLastCalledWith('MS-10', 'stunde', '2026-11-03', '2026-11-03'), WARTEN);
+    expect(werte).toHaveBeenCalledWith('MS-10', 'tag', '2026-11-03', '2026-11-03');
+    await waitFor(() => expect(screen.queryByTestId('werte-version')).toBeNull(), WARTEN);
+  });
+
+  it('eine Version ohne gültige Periode gilt nicht: die Seite öffnet den Vortag, ohne Version zu fragen', async () => {
+    verdrahte({ messstelle: ms06, protokoll: protokollMs06 });
+    const werte = grundlast();
+    render(<MessstelleSeite id={MS_IDS.ms06} werte={{ periode: '2026-02-30', version: 2 }} onListe={vi.fn()} />);
+    await waitFor(() => expect(werte).toHaveBeenCalledWith('MS-06', 'tag', '2026-10-19', '2026-10-19'), WARTEN);
+    expect(werte.mock.calls.every((c) => c.length === 4)).toBe(true);
   });
 });
