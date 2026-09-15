@@ -18,8 +18,9 @@ Neu angelegt am 15.09.2026. Migration
   `unterstuetzer` mit `art` + `umfang` + Ende. Eine Zuweisung an drei Standorte sind drei Zeilen.
 - `zugriff_protokoll`: `aktion`, Betroffener (Subject UND Name), Zuweisung, Geltungsbereich, Zeit, Grund, Akteur
   (`actor_*` wie `kennzahl_aenderung`).
-- ⚠ **Noch setzt niemand durch:** kein `ZugriffContext`/`/me` (IP-4), keine Policy `site_scope` (IP-5), kein
-  `@Recht` (IP-6/IP-7). `ProtokollAkteur` legt die Rolle weiter fest (Kundenbenutzer = Kundenadministrator).
+- ⚠ **Noch setzt niemand durch:** seit IP-4 lädt der `ZugriffContext` die Zuweisungen je Anfrage und `/me` zeigt
+  sie (`uems-zugriff-kontext.md`), aber es gibt keine Policy `site_scope` (IP-5) und kein `@Recht` (IP-6/IP-7).
+  `ProtokollAkteur` legt die Rolle weiter fest (Kundenbenutzer = Kundenadministrator).
 
 ## ⚠ Zeit: drei Spalten, eine Tatsache
 

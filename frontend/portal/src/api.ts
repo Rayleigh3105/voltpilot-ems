@@ -2284,6 +2284,93 @@ export interface BezugsgroesseAnfrage {
   geltung_id: string;
 }
 
+/**
+ * UEMS AP-03 IP-4: die Selbstauskunft `GET /api/v1/me` (OpenAPI `Selbstauskunft`) - wer fragt und was er darf.
+ * Rollen, Umfänge und Aktionen sind Kennungen der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`);
+ * `standorte`, `kuenftig`, `text` und `teilansicht` sind die Ableitung `sichtbare_standorte` aus
+ * `rechte-vectors.json`. Noch liest das Portal sie nicht (AP-03 IP-12).
+ */
+export interface Selbstauskunft {
+  /** Das Subject des Kontos. */
+  kennung: string | null;
+  name: string | null;
+  konto: 'benutzer' | 'partner' | 'plattform' | null;
+  zustand: 'angelegt' | 'aktiv' | 'gesperrt' | 'entfernt';
+  /** `null` ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung). */
+  kundenbereich: SelbstauskunftKundenbereich | null;
+  /** `umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8). */
+  zugang: 'konto' | 'unterstuetzung' | 'umschalter' | null;
+  rollen: string[];
+  unternehmensweit: boolean;
+  standorte: SelbstauskunftStandort[];
+  /** Die Aktionen, die der Aufrufer auf Unternehmensebene darf. */
+  unternehmen_rechte: string[];
+  kuenftig: SelbstauskunftKuenftig[];
+  /** Der Satz ohne Standort, sonst `null`. */
+  text: string | null;
+  teilansicht: SelbstauskunftTeilansicht | null;
+  unterstuetzungen: SelbstauskunftUnterstuetzungen;
+  kundenadministratoren: SelbstauskunftPerson[];
+}
+
+export type SelbstauskunftUmfang = 'ansehen' | 'einrichten' | 'einrichten_und_bedienen';
+
+export interface SelbstauskunftKundenbereich {
+  id: string;
+  name: string;
+}
+
+export interface SelbstauskunftStandort {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  rollen: string[];
+  umfang: SelbstauskunftUmfang | null;
+  ocpp_stufe: 'keine' | 'CUSTOMER' | 'SITE_ADMIN' | 'PLATFORM';
+  /** Die Aktionen (Kennungen der Matrix), die der Aufrufer an diesem Standort darf. */
+  rechte: string[];
+}
+
+export interface SelbstauskunftKuenftig {
+  standort: string;
+  ab: string;
+  text: string;
+}
+
+export interface SelbstauskunftTeilansicht {
+  sichtbar: number;
+  gesamt: number;
+  unternehmensebene: boolean;
+  teilansicht: boolean;
+  kopfzeile: string | null;
+  export_kopfzeile: string | null;
+  unternehmensweite_objekte: boolean;
+}
+
+export interface SelbstauskunftUnterstuetzungen {
+  eigene: SelbstauskunftUnterstuetzung[];
+  gewaehrte: SelbstauskunftUnterstuetzung[];
+}
+
+export interface SelbstauskunftUnterstuetzung {
+  art: 'installateur' | 'voltpilot' | 'notfall';
+  umfang: SelbstauskunftUmfang | null;
+  standorte: string[];
+  gueltig_ab: string;
+  /** Enddatum einschließlich; der Notfall-Zugriff hat keins, nur `endet`. */
+  gueltig_bis: string | null;
+  endet: string | null;
+  zustand: 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+  erinnerung: boolean;
+  unterstuetzer: SelbstauskunftPerson;
+  banner: string | null;
+}
+
+export interface SelbstauskunftPerson {
+  kennung: string;
+  name: string;
+}
+
 /** UEMS AP-11: die Wörter des Kennzahl-Vertrags (`docs/contracts/v2/kennzahl-vectors.json`). */
 export type KennzahlRechenform = 'quotient' | 'anteil' | 'zusammenfassung';
 export type KennzahlPeriodeArt = 'tag' | 'woche' | 'monat' | 'jahr';
