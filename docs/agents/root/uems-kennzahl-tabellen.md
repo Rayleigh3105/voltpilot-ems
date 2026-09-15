@@ -19,8 +19,9 @@ Constraint, und der Test spielt die Vektoren gegen die Datenbank. Muster: `uems-
 - `kennzahl_eingang`: die Eingänge je Fassung (`rolle`, `art`, genau ein Verweis).
 - `kennzahl_wert` + `kennzahl_wert_eingang`: Wert je Periode × Version und was er von jedem Eingang las.
 - `kennzahl_aenderung`: das Protokoll.
-- Routen und Lesemodell der Definition: `uems-kennzahl-schreibwege.md` (IP-5). Kein Rechenlauf und kein Ereignis
-  `kennzahl_neu_gebildet` (IP-6), kein Lesemodell der Werte (IP-7).
+- Routen und Lesemodell der Definition: `uems-kennzahl-schreibwege.md` (IP-5). Der Rechenlauf ist IP-6
+  (`uems-kennzahl-rechenlauf.md`), das Lesemodell der Werte IP-7, Version n + 1 und das Ereignis `kennzahl_neu_gebildet`
+  schreibt die Kaskade (IP-8, `uems-kennzahl-kaskade.md`).
 
 ## ⚠ Werte: append-only für JEDE Rolle — Nachziehen ist eine neue Zeile
 

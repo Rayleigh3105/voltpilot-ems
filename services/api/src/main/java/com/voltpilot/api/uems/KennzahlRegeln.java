@@ -622,6 +622,15 @@ public final class KennzahlRegeln {
     }
 
     /**
+     * Ob ein Satz nur die Version einer Neubildung nennt („korrigiert (Version n)“, „Berechnung geändert (Fassung n)“) —
+     * die Kaskade (IP-8) vergleicht eine Neubildung ohne ihn: dieselbe Aussage mit neuer Nummer ist keine neue Version.
+     */
+    static boolean versionSatz(String satz) {
+        return MUSTER.get("korrigiert").matcher(satz).matches()
+                || MUSTER.get("berechnung_geaendert").matcher(satz).matches();
+    }
+
+    /**
      * Q7/V3: ohne früheren Wert Version 1 (ohne Zahl: noch keine); ein vorläufiger zieht ohne neue Version nach, ein
      * endgültiger wird Version n + 1.
      */

@@ -41,7 +41,13 @@
     "AP-10 IP-11 (additiv): bilanz_neu_berechnet — die Korrektur-Kaskade hat die Bilanz-Werte einer Messstelle",
     "(ihre berechneten Versionen oder ihre verteilten Werte) für einen Zeitraum neu berechnet. Nur cloud, [von, bis)",
     "= die betroffenen Tage, Bezug NUR die Messstelle, Pflicht `ausloeser` (K-… oder EW-…); gemeldet in derselben",
-    "Transaktion wie die Versionen."
+    "Transaktion wie die Versionen.",
+    "",
+    "AP-11 IP-8 (additiv): kennzahl_neu_gebildet — die Korrektur-Kaskade (später auch der Nenner- und der",
+    "Definitions-Auslöser, AP-11 IP-9) hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet. Nur cloud,",
+    "[von, bis) = die Periode des Werts, Bezug NUR die Kennzahl (`kennzahl` = ihr Kennzeichen KZ-…), Pflicht",
+    "`ausloeser` (K-… oder EW-…) und `version` (die neue Version, mindestens 2); vorläufige Werte ziehen ohne",
+    "Meldung nach. Die Reservierung aus AP-11 IP-1 (Block `reserviert`) ist damit eingelöst."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./events-vocabulary.schema.json",
@@ -709,6 +715,14 @@
       "format": {
         "typ": "wort",
         "beschreibung": "Die abgerufene Ausgabe eines Berichtsstands — ein Wort von `bericht_format` (AP-12 DA5)."
+      },
+      "kennzahl": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennzahl, deren endgültiger Wert neu gebildet wurde — ihr Kennzeichen KZ-… zur Zeit der Meldung (AP-11 IP-8)."
+      },
+      "version": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Version n + 1 des Kennzahl-Werts, die mit dieser Meldung entstanden ist — mindestens 2; Version 1 bildet der Regellauf ohne Meldung (AP-11 E7/E8, IP-8)."
       }
     },
     "arten": [
@@ -2115,6 +2129,44 @@
         "bestand": false,
         "nie_geloescht": true,
         "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "kennzahl_neu_gebildet",
+        "name": "Kennzahl neu gebildet",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "kennzahl"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "ausloeser",
+          "version"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Kennzahl {kennzahl} neu gebildet für {von} bis {bis}: Version {version} nach {ausloeser}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) ist die Periode des Kennzahl-Werts: erster Tag 00:00 bis zum Tag nach dem letzten Tag 00:00 in der Zeitzone des Unternehmens; eine Meldung je Kennzahl, Periode und neuer Version, nie fortgeschrieben.",
+          "Gemeldet NUR, wenn ein ENDGÜLTIGER Wert als Version n + 1 neu entsteht — `version` ist diese neue Version, also mindestens 2. Version 1 bildet der Regellauf ohne Meldung; vorläufige Werte ziehen ohne neue Version und ohne Meldung nach (AP-11 V3).",
+          "Nur cloud: gebildet hat das System — die Korrektur-Kaskade (AP-11 IP-8), später auch der Nenner- und der Definitions-Auslöser (AP-11 IP-9). Entschieden hat ein Mensch, und das meldet `correction`; `ausloeser` nennt die Korrektur K-… oder den Ersatzwert EW-….",
+          "Bezug ist NUR die Kennzahl (`kennzahl` = ihr Kennzeichen KZ-… zur Zeit der Meldung) — ein Kennzahl-Wert hängt an keiner Reihe und keiner Messstelle, darum weder komponente noch messkanal noch messstelle. Gemeldet wird in derselben Transaktion wie die neue Version."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-11 §8 IP-8 (Kaskaden-Naht, Reihen-Pfad), reserviert seit AP-11 IP-1 (Block `reserviert`); Referenzfall K7 (kennzahl-vectors.json)"
       }
     ]
   },
@@ -2203,10 +2255,10 @@
       "urheber": [
         "cloud"
       ],
-      "angelegt_von": "AP-11 IP-6 — der Rechenlauf (Migration dort, Version nach dem höchsten ausgelieferten Stand)",
+      "angelegt_von": "AP-11 IP-8 — die Kaskaden-Naht, Reihen-Pfad (Migration V20260915061500)",
       "gelesen_von": "AP-12 — die Revision freigegebener Berichte",
       "regel": "Der Rechenlauf oder die Kaskade hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet — „korrigiert (Version n)“ nach einem Eingang, „Berechnung geändert (Fassung n)“ nach einer rückwirkenden Fassung. Pflicht ist der Anlass. Vorläufige Werte ziehen ohne Meldung nach (AP-11 V3).",
-      "bis_dahin": "Reserviert, nicht angelegt — keine Art in `vokabular.arten`, keine Migration in AP-11 IP-1."
+      "bis_dahin": "Eingelöst mit AP-11 IP-8 (V20260915061500): `vokabular.arten` → `kennzahl_neu_gebildet` (nur cloud, Bezug `kennzahl` mit Kennzeichen KZ-…, Pflicht `ausloeser` K-… oder EW-… und `version` ≥ 2); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Nachweis für die Kennzahl stehen und ändert kein Verhalten."
     },
     {
       "art": "bericht_freigegeben",
@@ -5661,6 +5713,259 @@
           "bericht": "K-2026-0007",
           "nr": 2,
           "format": "csv"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-kz0001-oktober-version-2-nach-korrektur",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Die freigegebene Korrektur von MS-12 macht den endgültigen Oktober-Wert von KZ-0001 (Halle 2) zu Version 2 — die Kaskade meldet die Neubildung, Bezug die Kennzahl.",
+      "annahme": "Der Auslöser K-2026-0007 folgt der Herkunft „KZ-0001 Version 2 mit dem Anlass K-2026-0007“ in kennzahl-vectors.json; K7 nennt die Korrektur von MS-12, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c0",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0001 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0003-oktober-version-2-in-derselben-kaskade",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Das Unternehmen (KZ-0003) fasst Halle 2 zusammen und wird in derselben Kaskade Version 2 — eine eigene Meldung je Kennzahl; KZ-0002 bleibt Version 1 und meldet nichts.",
+      "annahme": "Der Auslöser K-2026-0007 folgt der Herkunft „KZ-0001 Version 2 mit dem Anlass K-2026-0007“ in kennzahl-vectors.json; K7 nennt die Korrektur von MS-12, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c1",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0003",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0003 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-von-der-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Box kennt keine Kennzahl — gebildet hat das System in der Cloud.",
+      "annahme": null,
+      "input": {
+        "urheber": "box",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c2",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-vom-writer-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Der Writer schreibt Messwerte, keine Kennzahl-Versionen — die Neubildung meldet nur die Kaskade der Cloud.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c3",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-von-einem-menschen-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Neu gebildet hat das System; ein Mensch meldet die Entscheidung als correction, nie die Neubildung.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c4",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-ausloeser-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Version n + 1 ohne Anlass wäre eine Neubildung ohne Ursache — der Auslöser ist Pflicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c5",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-version-1-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Version 1 bildet der Regellauf ohne Meldung — neu gebildet ist erst Version n + 1, also mindestens 2.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c6",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 1
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-kennzahl-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Neubildung, die keine Kennzahl nennt, trifft nichts — der Bezug ist Pflicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c7",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-an-einer-messstelle-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Ein Kennzahl-Wert hängt an keiner Messstelle — die korrigierte MS-12 gehört in die Korrektur, nicht in die Meldung der Kennzahl.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c8",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2,
+          "messstelle": "MS-12"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-korrektur-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Ein Auslöser, der keine Korrektur und kein Ersatzwert ist, wäre eine Neubildung ohne Ursache.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c9",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "MS-12",
+          "version": 2
         }
       },
       "expected": {

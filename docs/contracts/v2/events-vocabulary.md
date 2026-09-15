@@ -5,7 +5,7 @@ Stand 11.09.2026 · Umschlag 2.1 · `events.raw` 1.0 · Vokabular 1.0 · Bezug: 
 beide Pfade — nie gelöscht“), dazu AP-04 E2, AP-05 E6, AP-06 E5/E7/E9 und der
 [Herkunftsvertrag](./messwert-herkunft.md).
 
-Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 32 Arten),
+Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 33 Arten),
 **wer sie melden darf**, **worauf sie sich beziehen**, **wie ihre Zeit zu lesen ist**, **wie
 eine VoltPilot-Box sie an die Cloud schickt** und **in welcher Form jedes Ereignis — von der
 Box oder von der Cloud selbst — auf Redpanda liegt**, bevor es in die nie gelöschte
@@ -15,7 +15,7 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 |---|---|
 | [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) | der Umschlag Box → Cloud auf `ems/{tenant_id}/{site_id}/{device_id}/v2/events` |
 | [`events-raw.event.schema.json`](./events-raw.event.schema.json) | das Redpanda-Ereignis `events.raw` (beide Wege, ein Ereignis je Datensatz) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 95 Fälle im Referenzunternehmen Ahrenberg |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 123 Fälle im Referenzunternehmen Ahrenberg |
 | [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | JSON Schema 2020-12 der Vektor-Datei |
 | `services/api/.../uems/EreignisVokabular.java` | die reine PRÜFUNG: angenommen oder verworfen mit Grund |
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
@@ -153,6 +153,7 @@ Felder, die eine Fortschreibung setzen darf.
 | `bericht_revision_angestossen` | Revision angestoßen | cloud | — | Zeitpunkt · Messzeit | bericht | `nr`, `anstoss_art`, `anlass_kennung` | — |
 | `bericht_entwurf_neu_gebildet` | Entwurf neu gebildet | cloud | — | Zeitpunkt · Messzeit | bericht | `datenstand` | — |
 | `bericht_abgerufen` | Bericht abgerufen | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `format` | — |
+| `kennzahl_neu_gebildet` | Kennzahl neu gebildet | cloud | — | [von, bis) · Messzeit | kennzahl | `ausloeser`, `version` | — |
 
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
@@ -263,14 +264,25 @@ Zeile `bericht-vectors.json`, `anlass_kennung`; optional `anlass_fassung`) und d
 Zeitpunkt. Person und Teilansicht eines Abrufs stehen in der Tabelle `bericht_abruf`, nicht in der Meldung.
 Geschrieben werden sie erst von AP-12 IP-7 bis IP-11 (Migration `V20260915050100__uems_bericht_ereignisse.sql`).
 
+**Kennzahl neu gebildet (AP-11 IP-8, additiv).** `kennzahl_neu_gebildet` ist das 33. Wort und löst die
+Reservierung aus AP-11 IP-1 ein: die Korrektur-Kaskade (später auch der Nenner- und der Definitions-Auslöser,
+AP-11 IP-9) hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist die Periode dieses
+Werts (erster Tag 00:00 bis zum Tag nach dem letzten Tag 00:00 in der Zeitzone des Unternehmens). Nur `cloud`,
+Bezug NUR die Kennzahl — `kennzahl` ist der siebte Schlüssel von `kennungen` (Kennzeichen `KZ-…`), eine
+Messstelle nennt die Meldung nie —, Pflicht `ausloeser` = die Korrektur `K-…` oder der Ersatzwert `EW-…` und
+`version` = die neue Version (mindestens 2, sonst `regel_verletzt`). Version 1 bildet der Regellauf ohne Meldung;
+vorläufige Werte, die ohne neue Version nachziehen, meldet niemand. Kundensatz etwa „Kennzahl KZ-0001 neu gebildet
+für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007“ (Migration
+`V20260915061500__uems_kennzahl_neu_gebildet.sql`).
+
 **Reserviert (AP-11 IP-1, additiv — KEIN Wort des Vokabulars).** Der Block `reserviert` der
 Vektor-Datei nennt, was spätere Pakete anlegen: `correction` mit Bezug `bezugsgroesse` (AP-09 IP-7 —
 eine wirksame Fassung ≥ 2 oder die Rücknahme eines Bezugsgrößen-Werts; gelesen vom Nenner-Auslöser der
 Kennzahl-Kaskade AP-11 IP-9, der NUR Kennzahlen und Berichte neu bildet, keine Messreihen-Stufe) und
-`kennzahl_neu_gebildet` (Urheber `cloud`, Bezug die Kennzahl; AP-11 IP-6 — ein endgültiger Kennzahl-Wert
+`kennzahl_neu_gebildet` (Urheber `cloud`, Bezug die Kennzahl; AP-11 IP-8 — ein endgültiger Kennzahl-Wert
 wurde als Version n + 1 neu gebildet, Pflicht der Anlass). `correction` mit Bezug `bezugsgroesse` ist seit AP-09 IP-7 angelegt (siehe
-„Berichtigung eines Bezugsgrößen-Werts“); `kennzahl_neu_gebildet` kennt bis AP-11 IP-6 weder `vokabular.arten` noch
-die Tabelle noch eine Prüfung, eine Meldung damit wird abgelehnt. Wer einen Eintrag anlegt, trägt
+„Berichtigung eines Bezugsgrößen-Werts“), `kennzahl_neu_gebildet` seit AP-11 IP-8 (siehe „Kennzahl neu gebildet“; bis dahin
+kannte es weder `vokabular.arten` noch die Tabelle noch eine Prüfung, eine Meldung damit wurde abgelehnt). Wer einen Eintrag anlegt, trägt
 ihn in `vokabular.arten` ein (Migration nach dem höchsten ausgelieferten Stand); `KennzahlVectorsTest`
 prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennzahl:
 [`kennzahl.md`](./kennzahl.md).
@@ -413,7 +425,7 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-97 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+123 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
@@ -428,6 +440,7 @@ verworfenen Fall; A = mit `annahme` (siehe §9).
 | Ersatzwert und Korrektur MS-10/MS-11 (F10, F11, F12, F21, AP-08 IP-12) | EW-2026-0003 gleichmäßig verteilt · zurückgenommen · EW-2026-0005 nach Profil der Vergleichsquelle · K-2026-0007 vorgeschlagen (cloud) · freigegeben · K-2027-0002 Ablesestände vorgeschlagen · Korrektur zum Ersatzwert (A: K-2026-0008) · Freigabe von der Cloud / Wochentagsmittel / vom Writer / neben dem Raster / Art Ersatzwert ohne Ersatzwert verworfen |
 | Verteilung MS-07 ab 15.01.2027 (F13, AP-10 IP-8) | 60/40 rückwirkend eingetragen am 20.01. · im Voraus eingetragen · von der Cloud / an einer Reihe verworfen |
 | Korrektur MS-17, 18.10.2026 (F14, AP-10 IP-11) | Rest MS-22 neu berechnet · verteilte Werte MS-17 neu berechnet (A: K-2026-0011) · von einem Menschen / ohne Korrektur-Kennung / an einer Reihe verworfen |
+| Korrektur MS-12, Oktober 2026 (K7, AP-11 IP-8) | KZ-0001 Version 2 · KZ-0003 Version 2 in derselben Kaskade (A: K-2026-0007) · von der Box / vom Writer / von einem Menschen / ohne Auslöser / Version 1 / ohne Kennzahl / an einer Messstelle / ohne Korrektur-Kennung verworfen |
 | Box-Umschläge (A) | Neustart bei Wandlertausch 01.02.2027 · neue Karte EK-7 01.03.2027 · Bereichsbegrenzung EK-3 · Werte eingefroren · Puffer verdrängt · Übergabe von der Box / unbekannte Art / Kennung / Fassung 2.0 / ohne Kennung / offene Lücke / leer verworfen |
 | Datenannahme | Box Lindach 14 min vor · genau 300 s ist kein Ereignis · 91 Tage alt · Uhrsprung · ohne Einbau (Writer) · unbekanntes Wort · unbekannter Grund / `herkunft_unvollstaendig` von der Datenannahme verworfen |
 | Übergänge (A) | Statusbits EK-3 · Zustand, Fehlermeldung, Text am Ladepunkt · unverändert / fremdes Feld verworfen |

@@ -133,8 +133,8 @@ class UemsBilanzNeuBerechnetMigrationTest {
     @Test
     void dasVokabularKenntDieNeuberechnungInDerReihenfolgeDerZwillinge() {
         assertThat(root.queryForList("SELECT art FROM messreihe_ereignis_vokabular()", String.class))
-                // Additiv: spätere Arten kommen HINTER sie (AP-12 IP-4: die vier Berichts-Ereignisse) — geprüft wird die
-                // Reihenfolge, nicht das Ende der Liste.
+                // Additiv: spätere Arten kommen HINTER sie (AP-12 IP-4: die vier Berichts-Ereignisse, AP-11 IP-8:
+                // kennzahl_neu_gebildet) — geprüft wird die Reihenfolge, nicht das Ende der Liste.
                 .containsSubsequence("verteilung_geaendert", "bilanz_neu_berechnet")
                 .containsExactlyElementsOf(Arrays.stream(EreignisVokabular.Art.values())
                         .map(EreignisVokabular.Art::code).toList());

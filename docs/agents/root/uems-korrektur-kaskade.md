@@ -20,7 +20,7 @@ IP-13 (`uems-ersatzwert-methoden.md`), IP-14 (`uems-korrektur-vorschlaege.md`) u
 | Lauf | `uems/KorrekturKaskade` (Takt `KorrekturKaskadeLaeufer`, 5 min, `voltpilot.uems.kaskade.enabled`: yml AN, surefire AUS) |
 | Stufen (Tag/Monat/Jahr) | `uems/KaskadeStufen` — ruft `ViertelstundenTeile.zaehlerstand`/`werte`, `VerbrauchRegeln.erwartetAusTeilperioden`, `mitErsatzwerten` über `ErsatzwertLauf.geltende` |
 | Hook AP-10 | `BerechnetePeriodenLauf.nachKorrektur` — dieselbe Ordnung, derselbe Kreis, dieselbe Rechnung, Eingänge überlagert |
-| Naht AP-11 | `uems/KennzahlenNaht` (Bean `Keine`: leer, kein Vorgriff) |
+| Naht AP-11 | `uems/KennzahlenNaht` — seit AP-11 IP-8 die Bean `KennzahlKaskade` (`uems-kennzahl-kaskade.md`) |
 | Naht AP-12 | `uems/BerichteNaht` (Bean `Keine`: kennt keinen Bericht) |
 | Migration | `V20260914120000`: `messreihe_viertelstunde_version` + Anlass `K-…` + Rohwert-Fakten; `messreihe_periode_version`; `messreihe_kaskade_wirkung` |
 | Meldung AP-10 IP-11 | `uems/BilanzNeuBerechnet.melden` in derselben Transaktion: `bilanz_neu_berechnet` je berechneter Messstelle mit neuer Version und je gemessener Messstelle einer korrigierten Reihe mit Anteil (`uems-kostenstelle-energie.md`) |
@@ -80,7 +80,8 @@ Wirkung (`messreihe_kaskade_woerter()` = `KorrekturKaskade.WOERTER`).
 
 ## Nicht gebaut
 
-Portal (IP-16), Kennzahlen (AP-11) und Berichte (AP-12) nur als Naht. Versionen lesen und die Historie je Periode sind
+Portal (IP-16) und Berichte (AP-12) nur als Naht; die Kennzahlen hängen seit AP-11 IP-8 an
+(`uems-kennzahl-kaskade.md`). Versionen lesen und die Historie je Periode sind
 seit IP-18 gebaut (`uems-versionen-lesen.md`). Freigabe- und Rücknahme-Route mit Vier-Augen und Rechte-Durchsetzung: seit
 IP-15 (`uems-vieraugen-freigabe.md`) — die Kaskade liest weiter nur die Fassungen.
 

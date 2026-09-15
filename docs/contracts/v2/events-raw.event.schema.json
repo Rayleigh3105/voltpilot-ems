@@ -460,6 +460,9 @@
         },
         {
           "$ref": "#/$defs/art_bericht_abgerufen"
+        },
+        {
+          "$ref": "#/$defs/art_kennzahl_neu_gebildet"
         }
       ]
     },
@@ -1846,6 +1849,43 @@
         },
         "format": {
           "$ref": "#/$defs/bericht_format"
+        }
+      }
+    },
+    "art_kennzahl_neu_gebildet": {
+      "type": "object",
+      "description": "kennzahl_neu_gebildet — Kennzahl neu gebildet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "kennzahl",
+        "ausloeser",
+        "version"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "kennzahl_neu_gebildet"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "kennzahl": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ausloeser": {
+          "$ref": "#/$defs/kennung"
+        },
+        "version": {
+          "$ref": "#/$defs/ganz_ab_1"
         }
       }
     }

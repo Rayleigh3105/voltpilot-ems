@@ -277,6 +277,9 @@ public final class EreignisVokabular {
         f.put("anlass_kennung", Typ.KENNUNG);
         f.put("anlass_fassung", Typ.GANZ_AB_1);
         f.put("format", Typ.WORT);
+        // AP-11 IP-8 (additiv): die neu gebildete Kennzahl — ihr Kennzeichen (KZ-…) als Bezug und die Version n + 1.
+        f.put("kennzahl", Typ.KENNUNG);
+        f.put("version", Typ.GANZ_AB_1);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -525,7 +528,12 @@ public final class EreignisVokabular {
                 MESSZEIT, List.of("bericht"), List.of(), List.of("datenstand"), List.of("anlass_kennung"), List.of(),
                 null, null),
         BERICHT_ABGERUFEN("bericht_abgerufen", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
-                List.of("bericht"), List.of(), List.of("nr", "format"), List.of(), List.of(), null, null);
+                List.of("bericht"), List.of(), List.of("nr", "format"), List.of(), List.of(), null, null),
+        // AP-11 IP-8 (additiv): die Korrektur-Kaskade (später auch der Nenner- und der Definitions-Auslöser, AP-11 IP-9)
+        // hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist seine Periode. Bezug NUR die
+        // Kennzahl (ihr Kennzeichen KZ-…), nur die Cloud; vorläufige Werte ziehen ohne Meldung nach.
+        KENNZAHL_NEU_GEBILDET("kennzahl_neu_gebildet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("kennzahl"), List.of(), List.of("ausloeser", "version"), List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -1172,6 +1180,15 @@ public final class EreignisVokabular {
                 }
                 if (e.has("datenstand") && zeit(e, "zeitpunkt").isBefore(zeit(e, "datenstand"))) {
                     throw nein(Grund.REGEL_VERLETZT, "Datenstand nach dem Zeitpunkt");
+                }
+            }
+            case KENNZAHL_NEU_GEBILDET -> {
+                if (!AUSLOESER_KENNUNG.matcher(e.get("ausloeser").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur oder Ersatzwert)");
+                }
+                // AP-11 IP-8: Version 1 bildet der Regellauf ohne Meldung — neu gebildet ist erst Version n + 1.
+                if (e.get("version").asLong() < 2) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Version n + 1");
                 }
             }
             case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {

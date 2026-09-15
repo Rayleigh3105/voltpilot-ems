@@ -112,8 +112,18 @@ public class MessstelleWerteService {
 
     public MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis,
             String version) {
+        return werte(kennzeichen, raster, von, bis, version, versionen);
+    }
+
+    /**
+     * Wie {@link #werte(String, String, String, String, String)}, die Versionen ab 2 aber aus {@code versionen} — der
+     * Korrektur-Kaskade (AP-11 IP-8), die sie in IHRER Transaktion eben geschrieben hat. Version 1, die Quellen und die
+     * Einstellungen ändert keine Kaskade; sie liest weiter der Kundenbereich über Row-Level-Security.
+     */
+    MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis, String version,
+            WertVersionenLeser versionen) {
         Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
-        Lesung l = lesen(kennzeichen, form);
+        Lesung l = lesen(kennzeichen, form, versionen);
         Zeitraum z = l.z();
         Zone zone = l.zone();
 
@@ -149,7 +159,7 @@ public class MessstelleWerteService {
      */
     public MessstelleWerteDto.Historie historie(String kennzeichen, String raster, String von, String bis) {
         Form form = pruefe(() -> MessstelleWerteRegeln.historieForm(raster, von, bis));
-        Lesung l = lesen(kennzeichen, form);
+        Lesung l = lesen(kennzeichen, form, versionen);
         Schritt s = pruefe(() -> MessstelleWerteRegeln.einePeriode(l.z()));
         Deckung d = l.deckung().get(s);
         ZoneId zone = l.zone().id();
@@ -208,7 +218,7 @@ public class MessstelleWerteService {
             Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur,
             Map<Instant, List<WertVersionenLeser.Version>> spurVersionen, Beschriftung beschriftung) {}
 
-    private Lesung lesen(String kennzeichen, Form form) {
+    private Lesung lesen(String kennzeichen, Form form, WertVersionenLeser versionen) {
         UUID tenant = TenantContext.get();
         Messstelle m = messstellen.findeNachKennzeichen(kennzeichen).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
@@ -236,7 +246,7 @@ public class MessstelleWerteService {
         deckung.entrySet().stream().filter(e -> e.getValue().reihe() != null)
                 .collect(Collectors.groupingBy(e -> e.getValue().reihe(), LinkedHashMap::new,
                         Collectors.mapping(Map.Entry::getKey, Collectors.toList())))
-                .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte)));
+                .forEach((reihe, schritte) -> gelesen.put(reihe, lies(tenant, reihe, z, schritte, versionen)));
 
         Map<Instant, BerechnetePeriodenRepository.Gespeichert> spur = gespeicherteSpur(m, z);
         Map<Instant, List<WertVersionenLeser.Version>> spurVersionen = spur == null ? Map.of()
@@ -257,7 +267,7 @@ public class MessstelleWerteService {
             Set<Instant> mitDaten, Integer selektionS, Map<UUID, List<KadenzRegeln.Fassung>> fassungen,
             Map<Instant, List<WertVersionenLeser.Version>> versionen) {}
 
-    private Gelesen lies(UUID tenant, Reihe reihe, Zeitraum z, List<Schritt> schritte) {
+    private Gelesen lies(UUID tenant, Reihe reihe, Zeitraum z, List<Schritt> schritte, WertVersionenLeser versionen) {
         Instant a = schritte.get(0).von();
         Instant b = schritte.get(schritte.size() - 1).bis();
         UUID e = reihe.entityId();
