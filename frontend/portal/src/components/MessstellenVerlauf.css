@@ -1,0 +1,268 @@
+/*
+ * Der Verlauf einer Messstelle (UEMS AP-13 IP-4 = AP-08 IP-10). Farben nur aus den Tokens, keine zweite Palette:
+ *  - vollständig   = --vp-chart-load-line (die Verbrauchs-Linie, 4,9:1 auf Weiß)
+ *  - unvollständig = --vp-warn-ink       (dieselbe Tinte wie das Abzeichen „unvollständig“)
+ *  - mit Ersatzwert = Schraffur in --vp-chart-load-line (derselbe Ton, eine andere Textur — kein gemessener Wert)
+ *  - keine Werte   = Schraffur --vp-chart-axis auf --vp-chart-idle, über die volle Höhe (V4)
+ * Blau gegen Bernstein trennt auch bei Rot-Grün-Schwäche (ΔE 28, dataviz-Prüfer); Grün gegen Bernstein trennte nicht
+ * (ΔE 5,8). Nachgerechnet in `messstellenVerlaufKontrast.test.ts`; Tippflächen im Wächter `verlaufMobil.test.ts`.
+ */
+.vp-mv {
+  --vp-mv-voll: var(--vp-chart-load-line);
+  --vp-mv-teil: var(--vp-warn-ink);
+  --vp-mv-ersatz: var(--vp-chart-load-line);
+  --vp-mv-luecke-strich: var(--vp-chart-axis);
+  --vp-mv-luecke-grund: var(--vp-chart-idle);
+  --vp-mv-marke: var(--vp-chart-ink);
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+  /* Derselbe Rahmen wie die Karte darüber: Zahl und Verlauf sind zwei Blätter derselben Periode. */
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: var(--vp-c-space-4);
+  background: var(--vp-c-card);
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-mv-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-fg);
+}
+
+.vp-mv .vp-chart-kern {
+  margin: 0;
+}
+
+.vp-mv-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mv-legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vp-mv-farbe {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.vp-mv-farbe.is-vollstaendig {
+  background: var(--vp-mv-voll);
+}
+
+.vp-mv-farbe.is-unvollstaendig {
+  background: var(--vp-mv-teil);
+}
+
+.vp-mv-farbe.is-ersatzwert {
+  background: repeating-linear-gradient(45deg, var(--vp-mv-ersatz) 0 2px, transparent 2px 5px);
+  box-shadow: inset 0 0 0 1px var(--vp-mv-ersatz);
+}
+
+.vp-mv-farbe.is-keine_werte {
+  background: repeating-linear-gradient(45deg, var(--vp-mv-luecke-strich) 0 2px, var(--vp-mv-luecke-grund) 2px 5px);
+}
+
+/* Das ganze Bild ist Ziel: jeder Schritt über die volle Höhe (Tipp statt Hover). */
+.vp-mv-bild {
+  position: relative;
+  min-width: 0;
+  min-height: 190px;
+  border-radius: 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.vp-mv-bild:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-mv-bild svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.vp-mv-linie {
+  stroke: var(--vp-chart-grid);
+  stroke-width: 1;
+}
+
+.vp-mv-null {
+  stroke: var(--vp-chart-zero);
+  stroke-width: 1.5;
+}
+
+.vp-mv-skala,
+.vp-mv-tick {
+  font-size: 11px;
+  fill: var(--vp-c-muted-fg);
+}
+
+.vp-mv-luecke-grund {
+  fill: var(--vp-mv-luecke-grund);
+}
+
+.vp-mv-luecke-strich {
+  stroke: var(--vp-mv-luecke-strich);
+  stroke-width: 2;
+}
+
+.vp-mv-ersatz-strich {
+  stroke: var(--vp-mv-ersatz);
+  stroke-width: 2;
+}
+
+.vp-mv-balken.is-vollstaendig {
+  fill: var(--vp-mv-voll);
+}
+
+.vp-mv-balken.is-unvollstaendig {
+  fill: var(--vp-mv-teil);
+}
+
+.vp-mv-balken.is-ersatzwert {
+  stroke: var(--vp-mv-ersatz);
+  stroke-width: 1;
+}
+
+.vp-mv-zeiger {
+  fill: var(--vp-mv-marke);
+  fill-opacity: 0.08;
+  stroke: var(--vp-mv-marke);
+  stroke-width: 1.5;
+}
+
+.vp-mv-ziel {
+  fill: transparent;
+}
+
+.vp-mv-marke-spanne {
+  stroke: var(--vp-mv-marke);
+  stroke-width: 2;
+}
+
+.vp-mv-marke-lot {
+  stroke: var(--vp-mv-marke);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.vp-mv-marke-kreis {
+  fill: var(--vp-mv-marke);
+}
+
+.vp-mv-marke-zahl {
+  fill: var(--vp-surface);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* K7: ein Satz darf umbrechen — nie breiter als das eigene Bild (wie `chartTooltip.TOOLTIP_CSS`). */
+.vp-mv-tooltip {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  max-width: min(320px, 100%);
+  padding: 6px 10px;
+  white-space: normal;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  box-shadow: var(--vp-shadow-sm);
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-fg);
+  pointer-events: none;
+}
+
+.vp-mv-ereignisse {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-fg);
+}
+
+.vp-mv-ereignisse li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-mv-nummer {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vp-mv-marke);
+  color: var(--vp-surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vp-mv-nummer.is-leer {
+  background: none;
+}
+
+.vp-mv-tipp {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mv-schritt {
+  display: grid;
+  gap: 8px;
+}
+
+.vp-mv-schritt-leiste {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vp-mv-blaettern {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+
+.vp-mv-blaettern:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vp-mv-blaettern:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}

@@ -324,6 +324,36 @@ export const UEMS_VERLAUF = 'Verlauf';
 /** Die Form des Abzeichens an der Karte („Verlauf 85 %“) — dieselbe wie `satz.abdeckung` im Ergebnis-Vertrag. */
 export const UEMS_VERLAUF_PROZENT = 'Verlauf {prozent}';
 
+/**
+ * UEMS AP-13 IP-4 (= AP-08 IP-10) — der Verlauf einer Messstelle (`uemsVerlauf.ts`). Die vier Zeiträume der Zeit-Leiste
+ * (E5 = A, kein freies Von–Bis); der Satz einer Lücke, auf die kein Ereignis verweist (V4: aus den Schritten, ohne
+ * Ursache); der Name einer Ereignis-Art mit ihrer Zeit, wenn ihr Satz Felder bräuchte, die die Werte-Route nicht
+ * liefert (V5 — nie ein geratenes Feld); „erhalten von erwartet“ an der Schritt-Karte (V3); und warum die Woche keine
+ * eigene Zahl hat (die Route kennt kein Wochen-Raster, summiert wird nie).
+ */
+export const UEMS_ZEITRAEUME = { tag: 'Tag', woche: 'Woche', monat: 'Monat', jahr: 'Jahr' } as const;
+export const UEMS_KEINE_WERTE_VON_BIS = 'keine Werte von {von} bis {bis}';
+export const UEMS_KEINE_WERTE_AM = 'keine Werte am {von}';
+export const UEMS_KEINE_WERTE_IM = 'keine Werte im {von}';
+export const UEMS_EREIGNIS_VON_BIS = '{name} von {von} bis {bis}';
+export const UEMS_EREIGNIS_SEIT = '{name} seit {von}';
+export const UEMS_EREIGNIS_AM = '{name} am {von}';
+export const UEMS_ERHALTEN = { singular: '{erhalten} von {erwartet} Wert', plural: '{erhalten} von {erwartet} Werten' } as const;
+export const UEMS_WOCHE_OHNE_ZAHL = 'Für eine Woche wird keine eigene Zahl gebildet — die Tage stehen einzeln in der Liste.';
+
+/** Die Schritt-Wahl im Verlauf, je Raster mit dem richtigen Artikel (Tipp statt Hover, M2). */
+export const UEMS_VERLAUF_WAHL = {
+  viertelstunde: {
+    tipp: 'Wählen Sie eine Viertelstunde im Verlauf, um ihre Werte zu sehen.',
+    vorher: 'Vorherige Viertelstunde',
+    weiter: 'Nächste Viertelstunde',
+  },
+  stunde: { tipp: 'Wählen Sie eine Stunde im Verlauf, um ihre Werte zu sehen.', vorher: 'Vorherige Stunde', weiter: 'Nächste Stunde' },
+  tag: { tipp: 'Wählen Sie einen Tag im Verlauf, um seine Werte zu sehen.', vorher: 'Vorheriger Tag', weiter: 'Nächster Tag' },
+  monat: { tipp: 'Wählen Sie einen Monat im Verlauf, um seine Werte zu sehen.', vorher: 'Vorheriger Monat', weiter: 'Nächster Monat' },
+} as const;
+export const UEMS_VERLAUF_EREIGNISSE = 'Ereignisse im Verlauf';
+
 /** Nur mit Präfix: „Bilanz“ allein ist auf Kundenflächen verboten, „Erlösbilanz“ ist etwas anderes (AP-10 E14). */
 export const UEMS_ENERGIEBILANZ = 'Energiebilanz';
 

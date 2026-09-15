@@ -37,6 +37,7 @@ export function WerteKarte({
   karte,
   versionen,
   grund = null,
+  testId = 'werte-karte',
 }: {
   karte: Karte;
   versionen?: ReactNode;
@@ -45,9 +46,11 @@ export function WerteKarte({
    * Messstelle „noch nicht gerechnet“ (`karte().grund` aus `uemsWerteKarte.ts`, Captain 15.09.2026).
    */
   grund?: string | null;
+  /** Die Karte eines gewählten Schritts im Verlauf trägt eine eigene Kennung (AP-13 IP-4) — die der Periode bleibt eindeutig. */
+  testId?: string;
 }) {
   return (
-    <section className="vp-wk-karte" aria-label={karte.titel} data-testid="werte-karte">
+    <section className="vp-wk-karte" aria-label={karte.titel} data-testid={testId}>
       <div className="vp-wk-kopf">
         <span className="vp-wk-titel">{karte.titel}</span>
         {karte.fassung && (

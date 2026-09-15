@@ -94,6 +94,8 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    (früher: „— heute gilt Version m“ + „Neueste zeigen“) steht nur über einer GESPROCHENEN Karte genau dieser Version
    (`versionHinweis`), nie über einem Strich. Der Register-Einstieg öffnet den Vortag des Registers (mit „Stand am“
    diesen Tag) — nie heute, das ist noch nicht gerechnet.
+   Seit AP-13 IP-4 trägt die Sektion vier Zeiträume (Tag · Woche · Monat · Jahr) und unter der Karte den Verlauf — auch im
+   Dialog; Regeln und Fallen in `uems-verlauf-messstelle.md`.
 
 ## Offen (Befunde)
 

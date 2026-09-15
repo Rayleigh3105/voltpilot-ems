@@ -6,18 +6,24 @@ import { f10Historie, f10Stunden, f10Tag, f21Historie, f21Stunden, f21Tag } from
 import {
   f13Stunden,
   f13Tag,
+  f13Viertelstunden,
   f14Stunden,
   f14Tag,
+  f14Viertelstunden,
   f16Monat,
   f16Tage,
   f8Stunden,
   f8Tag,
+  f8Viertelstunden,
   nochNichtGebildetStunden,
   nochNichtGebildetTag,
+  nochNichtGebildetViertelstunden,
   normalStunden,
   normalTag,
+  normalViertelstunden,
   ohneQuelleStunden,
   ohneQuelleTag,
+  ohneQuelleViertelstunden,
 } from '../src/test/werteKarteFixtures';
 
 /**
@@ -41,18 +47,24 @@ import {
 const ANTWORTEN: Record<string, () => MessstelleWerte> = {
   'MS-10|tag|2026-11-02': normalTag,
   'MS-10|stunde|2026-11-02': normalStunden,
+  'MS-10|viertelstunde|2026-11-02': normalViertelstunden,
   'MS-10|tag|2026-11-03': f8Tag,
   'MS-10|stunde|2026-11-03': f8Stunden,
+  'MS-10|viertelstunde|2026-11-03': f8Viertelstunden,
   'MS-06|tag|2026-10-25': f13Tag,
   'MS-06|stunde|2026-10-25': f13Stunden,
+  'MS-06|viertelstunde|2026-10-25': f13Viertelstunden,
   'MS-06|tag|2027-03-28': f14Tag,
   'MS-06|stunde|2027-03-28': f14Stunden,
+  'MS-06|viertelstunde|2027-03-28': f14Viertelstunden,
   'MS-06|monat|2026-10-01': f16Monat,
   'MS-06|tag|2026-10-01': f16Tage,
   'MS-21|tag|2026-11-03': ohneQuelleTag,
   'MS-21|stunde|2026-11-03': ohneQuelleStunden,
+  'MS-21|viertelstunde|2026-11-03': ohneQuelleViertelstunden,
   'MS-10|tag|2026-11-05': nochNichtGebildetTag,
   'MS-10|stunde|2026-11-05': nochNichtGebildetStunden,
+  'MS-10|viertelstunde|2026-11-05': nochNichtGebildetViertelstunden,
 };
 
 const BILDER = process.env.TAGESKARTE_BILDER;

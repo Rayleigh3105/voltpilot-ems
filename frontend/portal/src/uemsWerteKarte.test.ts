@@ -516,8 +516,14 @@ describe('uemsWerteKarte — die Periode der Adresse (UEMS AP-13 IP-3)', () => {
     expect(periodeAus('2028-02-29')).toEqual({ art: 'tag', wert: '2028-02-29' });
   });
 
+  it('seit IP-4 auch Woche und Jahr — die vier Zeiträume von E5', () => {
+    expect(periodeAus('2026-W43')).toEqual({ art: 'woche', wert: '2026-W43' });
+    expect(periodeAus('2026-W53')).toEqual({ art: 'woche', wert: '2026-W53' });
+    expect(periodeAus('2026')).toEqual({ art: 'jahr', wert: '2026' });
+  });
+
   it('alles andere öffnet wie ohne Angabe', () => {
-    for (const falsch of [null, undefined, '', '2026', '2026-13', '2026-00', '2026-02-30', '2027-02-29', '2026-10-25T00:00', 'gestern']) {
+    for (const falsch of [null, undefined, '', '2027-W53', '2026-W00', '2026-W54', '2026-W4', '26', '2026-13', '2026-00', '2026-02-30', '2027-02-29', '2026-10-25T00:00', 'gestern']) {
       expect(periodeAus(falsch), String(falsch)).toBeNull();
     }
   });
