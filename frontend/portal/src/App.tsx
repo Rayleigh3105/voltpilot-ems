@@ -1133,9 +1133,11 @@ function UnifiedPortal() {
     siteCount: sites.length,
   });
 
-  function finishOnboarding() {
+  function finishOnboarding(ziel?: Route) {
     setOnboardingDismissed(true);
     void reload();
+    // Modus „nur messen“ (`anlegeNurMessen.ts`): das Ende nennt „Standort › Messstellen“ als Ziel.
+    if (ziel) navigate(ziel);
   }
 
   return (
@@ -1207,7 +1209,7 @@ function UnifiedPortal() {
         <LoadErrorNotice onRetry={() => void reload()} />
       ) : showOnboarding ? (
         <LazyBoundary fallback={null}>
-          <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
+          <OnboardingWizard sites={sites} onDone={(ziel) => finishOnboarding(ziel)} onSkip={() => finishOnboarding()} />
         </LazyBoundary>
       ) : (
         <>
@@ -1386,9 +1388,10 @@ function UnifiedPortal() {
         open={addAnlageOpen}
         onClose={() => setAddAnlageOpen(false)}
         existingSites={sites}
-        onChanged={(createdSiteId) => {
+        onChanged={(createdSiteId, ziel) => {
           void reload(createdSiteId);
-          navigate(anlageRoute(createdSiteId));
+          // Modus „nur messen“: auf die Messstellen statt auf die neue Anlage.
+          navigate(ziel ?? anlageRoute(createdSiteId));
         }}
       />
     </AppShell>

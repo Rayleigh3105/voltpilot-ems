@@ -364,7 +364,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByText(/Feineinstellungen/));
+    // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
+    fireEvent.click(await screen.findByText(/Feineinstellungen/));
     // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
     expect(screen.getByRole('radio', { name: /Schnell/ })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -379,7 +380,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByText(/Feineinstellungen/));
+    // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
+    fireEvent.click(await screen.findByText(/Feineinstellungen/));
     fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(updateSupply).toHaveBeenCalled());

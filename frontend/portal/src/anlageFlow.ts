@@ -44,9 +44,15 @@ const ZAHLWORT = ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'] as 
  * bemerkte es, weil Satz und Schrittleiste keine gemeinsame Quelle hatten.
  * Jetzt haben sie eine — ein fünfter Schritt korrigiert den Satz von selbst.
  */
-export const STARTKLAR_SATZ = `In ${
-  ZAHLWORT[FLOW_STEPS.length] ?? FLOW_STEPS.length
-} Schritten ist Ihre Anlage startklar.`;
+export const STARTKLAR_SATZ = startklarSatz(FLOW_STEPS.length);
+
+/**
+ * Derselbe Satz für die Schritte, die der Fluss wirklich zeigt — der Modus „nur messen“
+ * hat ohne „Betrieb“ drei (`anlegeNurMessen.ts`).
+ */
+export function startklarSatz(anzahl: number): string {
+  return `In ${ZAHLWORT[anzahl] ?? anzahl} Schritten ist Ihre Anlage startklar.`;
+}
 
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no

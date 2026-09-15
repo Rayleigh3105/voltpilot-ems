@@ -1,6 +1,7 @@
 import { lazy, useEffect, useRef, useState } from 'react';
 import { LazyBoundary } from './Lazy';
 import type { Site } from '../api';
+import type { Route } from '../nav';
 
 const AnlageAnlegenDrawer = lazy(() =>
   import('./AnlageAnlegenDrawer').then((m) => ({ default: m.AnlageAnlegenDrawer })),
@@ -23,7 +24,7 @@ const AnlageAnlegenDrawer = lazy(() =>
 export function AnlageAnlegenDrawerLazy(props: {
   open: boolean;
   onClose: () => void;
-  onChanged: (createdSiteId: string) => void;
+  onChanged: (createdSiteId: string, ziel?: Route) => void;
   existingSites?: Site[];
 }) {
   const [everOpened, setEverOpened] = useState(props.open);
