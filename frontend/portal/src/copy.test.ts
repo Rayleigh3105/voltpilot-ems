@@ -23,7 +23,8 @@ import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTE
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import * as KK from './kennzahlKarte';
 import * as BS from './berichtSeite';
-import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from './test/berichtFixtures';
+import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
+import * as BD from './berichtDialoge';
 import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
 import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
 import {
@@ -1341,7 +1342,17 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
  * Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden (B1 Nr. 1/Nr. 2, B10, B16).
  */
 describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf · Berichtsstand Nr. n · Datenstand (E14)', () => {
-  const FLAECHEN = ['berichtSeite.ts', 'pages/BerichtePage.tsx', 'pages/BerichtSeite.tsx'];
+  // AP-12 IP-14: die Dialoge Anlegen, Freigeben, Vergleich und Verwerfen gehören zur Welt.
+  const FLAECHEN = [
+    'berichtSeite.ts',
+    'pages/BerichtePage.tsx',
+    'pages/BerichtSeite.tsx',
+    'berichtDialoge.ts',
+    'components/BerichtAnlegenDialog.tsx',
+    'components/BerichtFreigebenDialog.tsx',
+    'components/BerichtVergleichDialog.tsx',
+    'components/AnstossVerwerfenDialog.tsx',
+  ];
   const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
   const da = (t: string | null | undefined): t is string => typeof t === 'string';
 
@@ -1469,6 +1480,7 @@ describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf
 // Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
 // Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
 const KENNZAHL_BESTAND: string[] = [
+  'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
   'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
   'components/MarktpreiseMobil.tsx', // alt
   'components/PortfolioCockpit.tsx', // alt
@@ -1633,5 +1645,76 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     for (const richtig of ['Verlauf 85 %', 'Werte', 'Energiebilanz', 'Datenlage: 15 von 16 Messstellen liefern Daten', 'Zeitraster', 'Zeiten in Europe/Berlin (Vorgabe)']) {
       expect(OBERFLAECHEN_VERBOTEN.test(richtig), richtig).toBe(false);
     }
+  });
+});
+
+/**
+ * UEMS AP-12 IP-14 — die Dialoge der Welt „Berichte“ (Anlegen, Freigeben, Vergleich, Verwerfen, Banner „Revision nötig“)
+ * sprechen dieselben Wörter wie die Seite (E14): was `berichtDialoge.ts` zur Laufzeit sagt, entlang der Zeitachse der
+ * Fixtures (20.10. läuft · 10.11. Nr. 1 · 13.11. Revision). Die Quelltexte der Dialoge liest der Abschnitt IP-13 (`FLAECHEN`).
+ */
+describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf · Berichtsstand Nr. n (E14)', () => {
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+  const ZONE = 'Europe/Berlin';
+
+  const laufzeit = (): string[] => {
+    const out: string[] = [];
+    for (const tag of ['2026-10-20T10:00:00+02:00', '2026-11-10T09:00:00+01:00', '2026-11-13T09:00:00+01:00']) {
+      const jetzt = Date.parse(tag);
+      const detail = detailAm(jetzt);
+      const h = BD.seitenHebel(detail, entwurfAm(jetzt), null, jetzt);
+      if (h.freigeben) {
+        const v = h.freigeben.vorschau;
+        out.push(h.freigeben.knopf, v.knopf, v.festgehalten, ...v.punkte.map((p) => p.text), ...[v.satz, v.ersetzt].filter(da));
+      }
+      if (h.vergleichen) out.push(h.vergleichen.knopf, BD.vergleichTitel(h.vergleichen.gegen), BD.keineAbweichung(h.vergleichen.gegen));
+      const banner = BD.revisionBanner(detail);
+      if (banner) out.push(banner.titel, banner.satz, ...banner.anstoesse.map((a) => a.text), BD.verwerfenVorspann(banner.nr));
+      for (const art of ['monat', 'jahr'] as const) {
+        out.push(...BD.zeitraumWahlen(art, jetzt, ZONE).map((z) => z.label));
+        out.push(BD.zeitraumVorschau(art, art === 'monat' ? '2026-10' : '2026', ZONE, jetzt).text);
+      }
+    }
+    const revision = Date.parse('2026-11-13T09:00:00+01:00');
+    const entwurf = BS.abzugAus(entwurfAm(revision).abzug);
+    for (const z of BD.vergleichZeilen(vergleichAm(1, revision).abweichungen, entwurf)) {
+      out.push(...[z.name, z.vorher, z.nachher, z.version, z.anlass, z.beleg].filter(da));
+    }
+    out.push(BD.unveraendert(entwurf, 3), BD.unveraendert(entwurf, 17), BD.abweichungenAnzahl(3), BD.abweichungenAnzahl(1));
+    for (const k of BD.vorlageKarten(null, [])) out.push(k.name, k.abschnitte, k.fassung);
+    out.push(...['', 'kurz', 'x'.repeat(501)].map(BD.begruendungFehler).filter(da));
+    out.push(...Object.values(BD.anlegenPruefen({ vorlage: null, geltungId: null, zeitraum: null, abgewaehlt: [] })).filter(da));
+    out.push(
+      BD.ANLEGEN_KNOPF, BD.ANLEGEN_TITEL, BD.ANLEGEN, BD.ABBRECHEN, BD.SCHLIESSEN, BD.VORLAGE_TITEL, BD.GELTUNG_TITEL,
+      BD.ZEITRAUM_TITEL, BD.KENNZAHLEN_TITEL, BD.KENNZAHLEN_HINWEIS, BD.KENNZAHLEN_KEINE, BD.KENNZAHLEN_LADEFEHLER,
+      BD.ARCHIVIERTE_KENNZAHL, BD.VORAUSSETZUNGEN_TITEL, BD.LAEDT, BD.ERNEUT, BD.ENTWURF_LADEFEHLER, BD.ANLEGEN_LADEFEHLER,
+      BD.ANLEGEN_FEHLER, BD.BERICHT_OEFFNEN, BD.KEINE_GELTUNG, BD.FREIGEBEN_TITEL, BD.FREIGEBEN_FEHLER, BD.ENTWURF_NEU_LADEN,
+      BD.WAS_SIE_FREIGEBEN, BD.VERGLEICHEN, BD.VERGLEICH_QUELLE, BD.VERGLEICH_ENTWURF, BD.VERGLEICH_VERSION,
+      BD.VERGLEICH_ANLASS, BD.VERGLEICH_LADEFEHLER, BD.VERWERFEN, BD.BEGRUENDUNG, BD.BEGRUENDUNG_HINWEIS,
+      BD.BEGRUENDUNG_BEISPIEL, BD.VERWERFEN_FEHLER,
+    );
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(80);
+    expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
+    expect(alle).toContain('Entwurf aktuell (Datenstand 10.11.2026 08:55)');
+    expect(alle).toContain('Der Oktober 2026 ist noch nicht zu Ende — ein Berichtsstand ist ab dem 08.11.2026 möglich (7 Tage nach Monatsende).');
+    expect(alle).toContain('Korrektur K-2026-0007 (über die Formel)');
+  });
+
+  it('kein Satz der Dialoge trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = laufzeit().flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('ein Berichtsstand ist nie „Version“, „Ausgabe“, „Snapshot“ oder „Report“ — „Version“ steht nur am Wert (§4.15)', () => {
+    const texte = laufzeit();
+    expect(texte.filter((t) => BERICHT_VERBOTEN.some((w) => t.includes(w)))).toEqual([]);
+    expect(texte.filter((t) => /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u.test(t))).toEqual([]);
   });
 });

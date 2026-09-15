@@ -503,3 +503,88 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* AP-12 IP-14: „Bericht anlegen“ im Kopf der Liste, die Hebel am Entwurf und das Banner „Revision nötig“. */
+
+.vp-br-kopf-liste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.vp-br-kopf-liste > div {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.vp-br-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  align-items: center;
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-br-warum {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-br-revision {
+  display: grid;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-warn-bg);
+}
+
+.vp-br-revision-titel {
+  display: flex;
+  gap: var(--vp-c-space-2);
+  align-items: flex-start;
+  margin: 0;
+  color: var(--vp-c-warn-fg);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-br-revision-titel svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.vp-br-revision-anstoesse {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-br-revision-anstoesse li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+.vp-br-revision-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-br-revision .vp-br-aktionen {
+  margin-top: 0;
+}

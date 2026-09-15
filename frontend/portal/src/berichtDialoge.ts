@@ -57,6 +57,8 @@ export const KENNZAHLEN_LADEFEHLER = 'Die Kennzahlen konnten nicht geladen werde
 export const ARCHIVIERTE_KENNZAHL = 'archiviert';
 export const VORAUSSETZUNGEN_TITEL = 'Voraussetzungen';
 export const LAEDT = 'Wird geladen …';
+export const ERNEUT = 'Erneut versuchen';
+export const ENTWURF_LADEFEHLER = `Der ${UEMS_ENTWURF} konnte nicht geladen werden.`;
 export const ANLEGEN_LADEFEHLER = 'Standorte und Kennzahlen konnten nicht geladen werden.';
 export const ANLEGEN_FEHLER = 'Der Bericht konnte nicht angelegt werden.';
 export const BERICHT_OEFFNEN = 'Bericht öffnen';
@@ -100,6 +102,9 @@ export const rechteAus = (s: Pick<Selbstauskunft, 'standorte' | 'unternehmen_rec
   standorte: new Map(s.standorte.map((x) => [x.id, x.rechte])),
   unternehmen: s.unternehmen_rechte,
 });
+
+/** Solange die Selbstauskunft fehlt: keine schreibenden Hebel (kein Aufblitzen für einen Leser). */
+export const KEINE_RECHTE: BerichtRechte = { standorte: new Map(), unternehmen: [] };
 
 export type Handlung = 'anlegen' | 'freigeben' | 'verwerfen';
 
@@ -380,7 +385,11 @@ export interface VergleichZeile {
   nachher: string;
   version: string;
   anlass: string | null;
+  /** R1 „wer/wann/warum“ — aus der Beleg-Fassung im Qualitäts-Abschnitt des Entwurfs; ohne Beleg `null`. */
+  beleg: string | null;
 }
+
+const BELEG_KENNUNG = /^((?:K|EW)-\d{4}-\d{4})/;
 
 /**
  * Die Abweichungen der Route (R1) als Zeilen: Zahlen nach DA1 in der Einheit des Abzugs, der Anlass in Kundensprache
@@ -406,6 +415,8 @@ export const vergleichZeilen = (abweichungen: readonly BerichtAbweichung[], entw
           ? zahlMitStellen(v, VERGLEICH_NACHKOMMASTELLEN, einheitWort(einheit))
           : B.anzeige('menge', v, einheit, entwurf.kopf.zeitraum.art);
     const name = kennzahl?.name_zum_datenstand ?? wert?.name_zum_datenstand ?? null;
+    const belegKennung = x.anlass === null ? null : BELEG_KENNUNG.exec(x.anlass)?.[1] ?? null;
+    const k = (entwurf.qualitaet.korrekturen ?? []).find((q) => q.kennung === belegKennung) ?? null;
     return {
       quelle: x.quelle,
       name: name === null ? null : x.menge_art ? `${name} (${MENGE_ART_WORT[x.menge_art] ?? x.menge_art})` : name,
@@ -413,16 +424,21 @@ export const vergleichZeilen = (abweichungen: readonly BerichtAbweichung[], entw
       nachher: zahl(x.nachher),
       version: x.version,
       anlass: x.anlass === null ? null : B.anlass(x.anlass),
+      beleg: k === null ? null : `${k.wer}, ${zeitpunkt(k.freigegeben, entwurf.kopf.zeitraum.zone)}: ${k.warum}`,
     };
   });
 
-/** „14 Werte unverändert“ — jede Zahl des Entwurfs, die keine Abweichung ist. */
+/** „3 Abweichungen“. */
+export const abweichungenAnzahl = (n: number): string => (n === 1 ? '1 Abweichung' : `${n} Abweichungen`);
+
+/** „15 Werte unverändert“ — jede Zahl des Entwurfs, die keine Abweichung ist. */
 export const unveraendert = (entwurf: Abzug, abweichungen: number): string => {
   const n = Math.max(0, entwurf.werte.length + entwurf.kennzahlen.length - abweichungen);
   return n === 1 ? '1 Wert unverändert' : `${n} Werte unverändert`;
 };
 
-export const vergleichTitel = (nr: number): string => `${UEMS_ENTWURF} gegen ${B.berichtsstand(nr)}`;
+/** Kurz, weil der Titel des Dialogs bei 375 px einzeilig bleibt: „Entwurf gegen Nr. 1“. */
+export const vergleichTitel = (nr: number): string => `${UEMS_ENTWURF} gegen Nr. ${nr}`;
 export const keineAbweichung = (nr: number): string => `Keine Abweichung — der ${UEMS_ENTWURF} zeigt dieselben Zahlen wie Nr. ${nr}.`;
 
 // ------------------------------------------------------------------ Revision nötig, Anstoß verwerfen (§5.3, R1, R4)
@@ -446,7 +462,11 @@ export const revisionBanner = (detail: BerichtDetail): RevisionBanner | null => 
   const zone = detail.bericht.zeitzone;
   return {
     titel: B.revisionNoetig(offen.map((a) => a.anlass_text).join(', ')),
-    anstoesse: offen.map((a) => ({ id: a.id, text: `${a.anlass_text}${TRENNER}erkannt ${zeitpunkt(a.erkannt_am, zone)}` })),
+    // Ein Anstoß: der Titel nennt den Anlass schon — die Zeile sagt nur, wann. Mehrere: je Zeile Anlass und Zeit.
+    anstoesse: offen.map((a) => ({
+      id: a.id,
+      text: offen.length === 1 ? `Erkannt am ${zeitpunkt(a.erkannt_am, zone)}.` : `${a.anlass_text}${TRENNER}erkannt ${zeitpunkt(a.erkannt_am, zone)}`,
+    })),
     satz: `Der ${B.berichtsstand(gueltig.nr)} bleibt unverändert.`,
     nr: gueltig.nr,
   };

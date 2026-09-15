@@ -1,4 +1,16 @@
-import type { Bericht, BerichtAbzug, BerichtAnstoss, BerichtDetail, BerichtEntwurf, BerichtStand, BerichtStandKurz, MessstelleWerte } from '../api';
+import type {
+  Bericht,
+  BerichtAbzug,
+  BerichtAnlegen,
+  BerichtAnstoss,
+  BerichtDetail,
+  BerichtEntwurf,
+  BerichtStand,
+  BerichtStandKurz,
+  BerichtVergleich,
+  MessstelleWerte,
+  Selbstauskunft,
+} from '../api';
 import { ApiError } from '../api';
 import * as B from '../uemsBericht';
 import abzuege from './berichtAbzuege.json';
@@ -213,4 +225,118 @@ export const heutigeWerteAm = (kennzeichen: string, jetzt: number): MessstelleWe
       version: w.version,
     }),
   ]);
+};
+
+// ------------------------------------------------------------------ AP-12 IP-14: Rechte und schreibende Wege der Bühne
+
+const RECHTE_STANDORT = ['bericht.standort_abrufen', 'bericht.standort_freigeben', 'export.standort'];
+const RECHTE_LESEN = ['bericht.standort_abrufen'];
+const STANDORT_NAMEN: Record<string, { kennzeichen: string; name: string }> = {
+  [FIXTURE_IDS.st1]: { kennzeichen: 'ST-1', name: 'Werk Ahrenberg' },
+  [FIXTURE_IDS.st2]: { kennzeichen: 'ST-2', name: 'Werk Lindach' },
+};
+type Person = { rollen: string[]; standorte: Record<string, string[]>; unternehmen: string[] };
+const JEDER_STANDORT = { [FIXTURE_IDS.st1]: RECHTE_STANDORT, [FIXTURE_IDS.st2]: RECHTE_STANDORT };
+/** B13 — wer was an Berichten darf; gestellt sind nur die Felder, die die Dialoge lesen. */
+const PERSONEN_B13: Record<string, Person> = {
+  'Jonas Wendlinger': { rollen: ['kundenadministrator'], standorte: JEDER_STANDORT, unternehmen: ['bericht.unternehmen', 'export.unternehmen'] },
+  'Ines Kaltenbach': { rollen: ['energiemanager'], standorte: JEDER_STANDORT, unternehmen: ['bericht.unternehmen', 'export.unternehmen'] },
+  'Peter Hollerbach': { rollen: ['bearbeiter'], standorte: { [FIXTURE_IDS.st2]: RECHTE_STANDORT }, unternehmen: [] },
+  'Claudia Berger': { rollen: ['leser'], standorte: { [FIXTURE_IDS.st1]: RECHTE_LESEN, [FIXTURE_IDS.st2]: RECHTE_LESEN }, unternehmen: [] },
+};
+
+/** `GET /api/v1/me` für eine Person der Referenzdatei (ohne Eintrag: Jonas Wendlinger). */
+export const selbstauskunftFuer = (name: string): Selbstauskunft => {
+  const p = PERSONEN_B13[name] ?? PERSONEN_B13['Jonas Wendlinger'];
+  return {
+    kennung: null,
+    name,
+    konto: 'benutzer',
+    zustand: 'aktiv',
+    kundenbereich: { id: FIXTURE_IDS.u, name: 'Kunststoffwerk Ahrenberg GmbH' },
+    zugang: 'konto',
+    rollen: p.rollen,
+    unternehmensweit: p.unternehmen.length > 0,
+    standorte: Object.entries(p.standorte).map(([id, rechte]) => ({ id, ...STANDORT_NAMEN[id], rollen: p.rollen, umfang: null, ocpp_stufe: 'keine' as const, rechte })),
+    unternehmen_rechte: p.unternehmen,
+    kuenftig: [],
+    text: null,
+    teilansicht: null,
+    unterstuetzungen: { eigene: [], gewaehrte: [] },
+    kundenadministratoren: [],
+  };
+};
+
+/**
+ * `POST /api/v1/berichte` in der Bühne: entstehen kann nur BR-2026-0001 (Monatsbericht Werk Ahrenberg, Oktober 2026) —
+ * gibt es ihn schon, 409 mit dem Satz des Zwillings; Werk Lindach vor Oktober 2026 hat keine Messstellen (§5.8).
+ */
+export const anlegenAm = (a: BerichtAnlegen, schonDa: boolean, jetzt: number): Bericht => {
+  if (a.vorlage === 'monatsbericht_standort' && a.geltung_id === FIXTURE_IDS.st1 && a.zeitraum === '2026-10') {
+    if (!schonDa) return berichtAm(jetzt);
+    const satz = B.berichtGibtEsSchon(BR, 'Werk Ahrenberg', { art: 'monat', schluessel: '2026-10' });
+    throw new ApiError(409, satz, { code: 'bericht_gibt_es_schon', message: satz, kennung: BR });
+  }
+  if (a.vorlage === 'monatsbericht_standort' && a.geltung_id === FIXTURE_IDS.st2 && a.zeitraum < '2026-10') {
+    const satz = B.keineQuellen('Werk Lindach', { art: 'monat', schluessel: a.zeitraum }, '2026-10-15');
+    throw new ApiError(422, satz, { code: 'keine_quellen', message: satz });
+  }
+  throw new Error(`Bühne: ${a.vorlage} ${a.zeitraum} ist nicht gestellt.`);
+};
+
+/** `GET …/entwurf/vergleich?gegen=` zur Uhr: die Abweichungen des Zwillings zwischen Stand und Entwurf (R1). */
+export const vergleichAm = (gegen: number, jetzt: number): BerichtVergleich => {
+  const e = entwurfAm(jetzt);
+  return { kennung: BR, gegen, entwurf_datenstand: e.datenstand, abweichungen: B.abweichungen(standAm(gegen, jetzt).abzug, e.abzug) };
+};
+
+/**
+ * `POST …/freigeben` zur Uhr: ist der gesehene Datenstand nicht der des Entwurfs, 409 `entwurf_veraltet` mit dem Satz
+ * des Zwillings (F2, B4 c); sonst der Stand, den die Referenzdatei zu dieser Uhr freigegeben hat — die Spec stellt die
+ * Uhr auf den Klick (10.11. 09:02 bzw. 16.11. 14:20).
+ */
+export const freigabeAm = (datenstand: string, jetzt: number): BerichtStand => {
+  const e = entwurfAm(jetzt);
+  if (Date.parse(datenstand) !== Date.parse(e.datenstand)) {
+    const kaskade = e.gebildet_von === 'kaskade';
+    const f = B.freigabe({
+      zeitraum_art: 'monat',
+      schluessel: '2026-10',
+      zone: ZONE,
+      jetzt: new Date(jetzt).toISOString(),
+      werte: [],
+      datenstand_uebermittelt: datenstand,
+      datenstand_entwurf: e.datenstand,
+      letzte_nr: staendeAm(jetzt).length,
+      anlass: kaskade ? 'K-2026-0007' : null,
+      abweichungen: kaskade ? B.abweichungen(ABZUG_NR1, ABZUG_NR2).length : 0,
+    });
+    const satz = f.kundensatz ?? '';
+    throw new ApiError(409, satz, { code: 'entwurf_veraltet', message: satz });
+  }
+  const neueste = staendeAm(jetzt).at(-1);
+  if (!neueste || Date.parse(neueste.datenstand) !== Date.parse(datenstand)) {
+    throw new Error('Bühne: zu dieser Uhr ist der Stand noch nicht freigegeben — die Uhr auf die Freigabe der Referenzdatei stellen.');
+  }
+  return standAm(neueste.nr, jetzt);
+};
+
+export interface Verworfen {
+  begruendung: string;
+  am: string;
+  von: string;
+}
+
+/** R4 in der Bühne: der offene Anstoß ist verworfen — der Vermerk heißt „Anstoß verworfen (…)“, Nr. 1 bleibt gültig. */
+export const mitVerworfen = (d: BerichtDetail, v: Verworfen | null): BerichtDetail => {
+  if (!v || !d.anstoesse.some((a) => a.zustand === 'offen')) return d;
+  return {
+    bericht: { ...d.bericht, stand_zeichen: 'anstoss_verworfen', stand_text: B.anstossVerworfen(v.begruendung) },
+    staende: d.staende,
+    anstoesse: d.anstoesse.map((a) =>
+      a.zustand === 'offen'
+        ? { ...a, zustand: 'verworfen' as const, verworfen_begruendung: v.begruendung, verworfen_von: { name: v.von, rolle: null }, verworfen_am: v.am }
+        : a,
+    ),
+  };
 };

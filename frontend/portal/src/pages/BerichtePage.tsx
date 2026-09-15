@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Bericht } from '../api';
+import { ANLEGEN_KNOPF, darf } from '../berichtDialoge';
+import { BerichtAnlegenDialog } from '../components/BerichtAnlegenDialog';
 import { ErrorState, Skeleton } from '../components/States';
 import {
   amStandort,
@@ -15,6 +18,7 @@ import {
   type ListenKarte,
 } from '../berichtSeite';
 import { STANDORT_BERICHTE } from '../ebenenNav';
+import { useBerichtRechte } from '../useBerichtRechte';
 import { BerichtSeite } from './BerichtSeite';
 import './BerichtePage.css';
 
@@ -27,8 +31,10 @@ import './BerichtePage.css';
  * Zeitraum und den Vermerk (R5); jede Ableitung steht im reinen Modul `berichtSeite.ts`. Eine 403 (die Unterstützung
  * liest nie einen Bericht) steht als Satz der Route da, ohne „Erneut versuchen“.
  *
- * ⚠ „Bericht anlegen“ kommt mit IP-14, „letzter Abruf“ mit dem Abruf-Protokoll (IP-10) — vorher kein Knopf und keine
- *   Spalte ohne Ziel.
+ * AP-12 IP-14: „Bericht anlegen“ steht im Kopf, wenn die Person irgendwo anlegen darf (am Standort: an diesem); der
+ * Dialog öffnet nach dem Anlegen die Berichtsseite mit dem frischen Entwurf.
+ *
+ * ⚠ „letzter Abruf“ kommt mit dem Abruf-Protokoll (IP-10) — vorher keine Spalte ohne Ziel.
  */
 export function BerichtePage({
   kennung = null,
@@ -61,6 +67,15 @@ function BerichteListe({
   const [fehler, setFehler] = useState<{ satz: string; erneut: boolean } | null>(null);
   const [versuch, setVersuch] = useState(0);
   const standortId = standort?.id ?? null;
+  const rechte = useBerichtRechte();
+  const [anlegen, setAnlegen] = useState(false);
+  // Der Knopf erst mit Antwort der Selbstauskunft; eine 403 der Liste (Unterstützung) hat keinen.
+  const darfAnlegen =
+    rechte !== undefined &&
+    !(fehler && !fehler.erneut) &&
+    (standortId
+      ? darf(rechte, 'anlegen', 'standort', standortId)
+      : darf(rechte, 'anlegen', 'standort', null) || darf(rechte, 'anlegen', 'unternehmen', null));
 
   useEffect(() => {
     let aktiv = true;
@@ -76,9 +91,16 @@ function BerichteListe({
 
   return (
     <div className="vp-br" data-testid="berichte">
-      <header className="vp-br-kopf">
-        <h1>{standort ? STANDORT_BERICHTE : TITEL}</h1>
-        {standort && <p className="vp-br-kopf-ort">{standort.name}</p>}
+      <header className="vp-br-kopf vp-br-kopf-liste">
+        <div>
+          <h1>{standort ? STANDORT_BERICHTE : TITEL}</h1>
+          {standort && <p className="vp-br-kopf-ort">{standort.name}</p>}
+        </div>
+        {darfAnlegen && (
+          <Button size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setAnlegen(true)} data-testid="bericht-anlegen-knopf">
+            {ANLEGEN_KNOPF}
+          </Button>
+        )}
       </header>
       {fehler ? (
         fehler.erneut ? (
@@ -102,6 +124,22 @@ function BerichteListe({
             </li>
           ))}
         </ul>
+      )}
+      {anlegen && (
+        <BerichtAnlegenDialog
+          open
+          onClose={() => setAnlegen(false)}
+          rechte={rechte ?? null}
+          standortId={standortId}
+          onAngelegt={(b) => {
+            setAnlegen(false);
+            onOeffnen(b.kennung);
+          }}
+          onOeffnen={(kennung) => {
+            setAnlegen(false);
+            onOeffnen(kennung);
+          }}
+        />
       )}
     </div>
   );

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type BerichtDetail } from '../api';
+import { api, ApiError, type BerichtDetail, type BerichtEntwurf } from '../api';
+import { KEINE_RECHTE, revisionBanner, seitenHebel, VERGLEICHEN, VERWERFEN } from '../berichtDialoge';
 import {
   abschnitte,
   abzugAus,
@@ -20,6 +22,7 @@ import {
   PRUEFSUMME_GEPRUEFT,
   seitenKopf,
   STAND_WAHL,
+  standId,
   standWahl,
   verlaufDerStaende,
   vorlageName,
@@ -31,10 +34,14 @@ import {
   type HeutigerWert,
   type QuellenZahl,
 } from '../berichtSeite';
+import { AnstossVerwerfenDialog } from '../components/AnstossVerwerfenDialog';
+import { BerichtFreigebenDialog } from '../components/BerichtFreigebenDialog';
+import { BerichtVergleichDialog } from '../components/BerichtVergleichDialog';
 import { ZeitSegment } from '../components/HistorieWelt';
 import { ErrorState, Skeleton } from '../components/States';
 import { WerteKarte } from '../components/WerteKarte';
 import { TRENNER } from '../uemsErgebnis';
+import { useBerichtRechte } from '../useBerichtRechte';
 
 /**
  * Die Berichtsseite (UEMS AP-12 IP-13, §5.1–§5.6): Reiter „Nr. 1 · Nr. 2 · Entwurf“ (vorgewählt der gültige Stand),
@@ -44,7 +51,12 @@ import { TRENNER } from '../uemsErgebnis';
  *
  * Sie LIEST nur: `GET /api/v1/berichte/{kennung}`, `…/staende/{nr}` bzw. `…/entwurf`, dazu für die Hinweise
  * „heute: …“ (A5) das Messstellen-Register und die Kennzahlen, und erst auf „heutigen Wert zeigen“ `…/messstellen/
- * {kennzeichen}/werte` (§5.6). Freigeben, Vergleichen und Verwerfen kommen mit IP-14.
+ * {kennzeichen}/werte` (§5.6).
+ *
+ * AP-12 IP-14 schreibt über drei Dialoge (`berichtDialoge.ts`): am Entwurf „Als Berichtsstand freigeben“ (§5.2 — aus,
+ * wenn F1 schon jetzt nein sagt, und der Satz steht darunter) und „Mit Berichtsstand Nr. n vergleichen“ (EW2); über der
+ * Seite das Banner „Revision nötig“ mit „Entwurf vergleichen“ und „Anstoß verwerfen“ (§5.3). Schreibende Hebel nur mit
+ * Recht aus der Selbstauskunft (`useBerichtRechte`); nach einer Freigabe zeigt die Seite den neuen Stand.
  *
  * ⚠ PDF und CSV: `ausgabeKnoepfe` leitet ab, wer an welchem Stand welche Ausgabe hat — sichtbar wird ein Knopf erst,
  *   wenn seine Route steht. IP-10 (CSV) und IP-11 (PDF) setzen `AUSGABE_EINGEHAENGT` in `berichtSeite.ts` und reichen
@@ -72,6 +84,14 @@ export function BerichtSeite({
   const [ansichtFehler, setAnsichtFehler] = useState<{ id: string; satz: string } | null>(null);
   const [namen, setNamen] = useState<ReadonlyMap<string, string>>(new Map());
   const [versuch, setVersuch] = useState(0);
+  // AP-12 IP-14: was die Person darf, und welcher Dialog offen ist.
+  const rechte = useBerichtRechte();
+  const [dialog, setDialog] = useState<
+    | { art: 'freigeben'; entwurf: BerichtEntwurf }
+    | { art: 'vergleich'; gegen: number }
+    | { art: 'verwerfen'; anstoss: { id: string; text: string }; nr: number }
+    | null
+  >(null);
 
   useEffect(() => {
     let aktiv = true;
@@ -164,6 +184,16 @@ export function BerichtSeite({
     : null;
   const knoepfe = onAbruf ? ausgabeKnoepfe(b, aktuell, darfNachLesen(b)) : [];
   const verlauf = verlaufDerStaende(detail);
+  // Solange die Selbstauskunft fehlt, keine schreibenden Hebel; ist sie nicht zu haben (`null`), entscheidet die Route.
+  const rechteJetzt = rechte === undefined ? KEINE_RECHTE : rechte;
+  const banner = revisionBanner(detail);
+  const hebel = seitenHebel(detail, aktuell?.art === 'entwurf' ? aktuell.entwurf : null, rechteJetzt, jetzt());
+  const vergleichen = hebel.vergleichen;
+  const nachFreigabe = (nr: number) => {
+    setDialog(null);
+    setWahl(standId(nr));
+    setVersuch((v) => v + 1);
+  };
   const heuteLaden =
     aktuell?.art === 'stand'
       ? async (kennzeichen: string): Promise<HeutigerWert> => {
@@ -185,6 +215,41 @@ export function BerichtSeite({
         <h1>{berichtTitel(b)}</h1>
         <p>{kopf?.vorlage ?? vorlageName(b.vorlage)}</p>
       </header>
+      {banner && (
+        <section className="vp-br-revision" role="status" data-testid="bericht-revision">
+          <p className="vp-br-revision-titel">
+            <Icon name="alert-triangle" size={18} />
+            <span>{banner.titel}</span>
+          </p>
+          <ul className="vp-br-revision-anstoesse">
+            {banner.anstoesse.map((a) => (
+              <li key={a.id}>
+                <span>{a.text}</span>
+                {hebel.verwerfen && banner.anstoesse.length > 1 && (
+                  <Button variant="outline" size="sm" onClick={() => setDialog({ art: 'verwerfen', anstoss: a, nr: banner.nr })}>
+                    {VERWERFEN}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="vp-br-revision-satz">{banner.satz}</p>
+          <div className="vp-br-aktionen">
+            <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'vergleich', gegen: banner.nr })}>
+              {VERGLEICHEN}
+            </Button>
+            {hebel.verwerfen && banner.anstoesse.length === 1 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDialog({ art: 'verwerfen', anstoss: banner.anstoesse[0], nr: banner.nr })}
+              >
+                {VERWERFEN}
+              </Button>
+            )}
+          </div>
+        </section>
+      )}
       {wahlen.optionen.length > 1 && (
         <div className="vp-br-wahl">
           <ZeitSegment label={STAND_WAHL} optionen={wahlen.optionen} wert={wahl} onWert={setWahl} />
@@ -216,6 +281,29 @@ export function BerichtSeite({
               </p>
             )}
             {kopf.teilansicht && <p className="vp-br-teilansicht">{kopf.teilansicht}</p>}
+            {(hebel.freigeben || vergleichen) && (
+              <div className="vp-br-aktionen" data-testid="bericht-hebel">
+                {hebel.freigeben && (
+                  <Button
+                    size="sm"
+                    disabled={!hebel.freigeben.vorschau.erlaubt}
+                    onClick={() => aktuell?.art === 'entwurf' && setDialog({ art: 'freigeben', entwurf: aktuell.entwurf })}
+                  >
+                    {hebel.freigeben.knopf}
+                  </Button>
+                )}
+                {vergleichen && (
+                  <Button size="sm" variant="outline" onClick={() => setDialog({ art: 'vergleich', gegen: vergleichen.gegen })}>
+                    {vergleichen.knopf}
+                  </Button>
+                )}
+                {hebel.freigeben && !hebel.freigeben.vorschau.erlaubt && hebel.freigeben.vorschau.satz && (
+                  <p className="vp-br-warum" data-testid="bericht-freigeben-warum">
+                    {hebel.freigeben.vorschau.satz}
+                  </p>
+                )}
+              </div>
+            )}
             {knoepfe.length > 0 && onAbruf && (
               <div className="vp-br-knoepfe">
                 {knoepfe.map((k) => (
@@ -252,6 +340,41 @@ export function BerichtSeite({
             ))}
           </ol>
         </section>
+      )}
+      {dialog?.art === 'freigeben' && (
+        <BerichtFreigebenDialog
+          open
+          onClose={() => setDialog(null)}
+          detail={detail}
+          entwurf={dialog.entwurf}
+          jetzt={jetzt}
+          onFreigegeben={(stand) => nachFreigabe(stand.nr)}
+          onEntwurf={() => setVersuch((v) => v + 1)}
+        />
+      )}
+      {dialog?.art === 'vergleich' && (
+        <BerichtVergleichDialog
+          open
+          onClose={() => setDialog(null)}
+          detail={detail}
+          gegen={dialog.gegen}
+          rechte={rechteJetzt}
+          jetzt={jetzt}
+          onFreigeben={(entwurf) => setDialog({ art: 'freigeben', entwurf })}
+        />
+      )}
+      {dialog?.art === 'verwerfen' && (
+        <AnstossVerwerfenDialog
+          open
+          onClose={() => setDialog(null)}
+          kennung={b.kennung}
+          anstoss={dialog.anstoss}
+          nr={dialog.nr}
+          onVerworfen={() => {
+            setDialog(null);
+            setVersuch((v) => v + 1);
+          }}
+        />
       )}
     </div>
   );

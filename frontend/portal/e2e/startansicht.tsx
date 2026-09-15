@@ -101,7 +101,19 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
-import { berichteAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from '../src/test/berichtFixtures';
+import {
+  anlegenAm,
+  detailAm,
+  entwurfAm,
+  freigabeAm,
+  heutigeWerteAm,
+  mitVerworfen,
+  nameHeuteAm,
+  selbstauskunftFuer,
+  standAm,
+  vergleichAm,
+  type Verworfen,
+} from '../src/test/berichtFixtures';
 import { fassungenK17, k17Stand, k17VorschauAntwort, k17WerteAntwort, KZ4_ID, kz0004, mitMs24 } from '../src/test/kennzahlAendernFixtures';
 import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
@@ -157,9 +169,17 @@ const kzAusserhalb = kennzahlId(params.get('ausserhalb'));
  * Peter Hollerbach; `&welt=leer` beginnt ohne Kennzahl (Neukunde). Was der Assistent anlegt, bleibt in der Bühne;
  * `window.__kennzahlAufrufe` zählt jede Vorschau und jedes Anlegen — der Nachweis „vor Anlegen nichts gespeichert“.
  */
-const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hollerbach' };
+const PERSONEN: Record<string, string> = { IK: 'Ines Kaltenbach', PH: 'Peter Hollerbach', CB: 'Claudia Berger' };
 const person = PERSONEN[params.get('person') ?? ''] ?? null;
 const weltLeer = params.get('welt') === 'leer';
+/**
+ * AP-12 IP-14: `&berichte=leer` beginnt ohne Bericht — „Bericht anlegen“ legt BR-2026-0001 an; `&person=CB` ist Claudia
+ * Berger (Leser, B13). Anlegen, Freigeben und Verwerfen ändern die Bühne; `window.__berichtAufrufe` zählt sie.
+ */
+let berichtDa = params.get('berichte') !== 'leer';
+let verworfen: Verworfen | null = null;
+const berichtAufrufe = { anlegen: [] as unknown[], freigeben: [] as string[], verwerfen: [] as string[] };
+(window as unknown as Record<string, unknown>).__berichtAufrufe = berichtAufrufe;
 const angelegt: Kennzahl[] = [];
 // AP-11 IP-15: `&frisch=1` beginnt mit einer eben angelegten Kennzahl OHNE einen Wert (KZ-0009, MS-12 je BZ-6) — die
 // Bühne fürs Löschen; sie hat noch keine Fassung in der Bühne, also auch kein „Berechnung ändern“.
@@ -417,13 +437,33 @@ Object.assign(api, {
     return k;
   },
   // AP-12 IP-13: die Berichte der Referenzdatei (BR-2026-0001) — gelesen zur Uhr der Bühne.
-  berichte: async () => berichteAm(Date.now()),
+  // AP-12 IP-14: dazu die Selbstauskunft (B13 je Person) und die schreibenden Wege Anlegen, Freigeben, Verwerfen.
+  selbstauskunft: async () => selbstauskunftFuer(person ?? 'Jonas Wendlinger'),
+  berichte: async () => ({ berichte: berichtDa ? [mitVerworfen(detailAm(Date.now()), verworfen).bericht] : [] }),
   bericht: async (kennung: string) => {
-    if (kennung !== 'BR-2026-0001') throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
-    return detailAm(Date.now());
+    if (kennung !== 'BR-2026-0001' || !berichtDa) throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
+    return mitVerworfen(detailAm(Date.now()), verworfen);
+  },
+  berichtAnlegen: async (a: Parameters<typeof api.berichtAnlegen>[0]) => {
+    berichtAufrufe.anlegen.push(structuredClone(a));
+    const b = anlegenAm(a, berichtDa, Date.now());
+    berichtDa = true;
+    return b;
   },
   berichtEntwurf: async () => entwurfAm(Date.now()),
+  berichtVergleich: async (_kennung: string, gegen: number) => vergleichAm(gegen, Date.now()),
+  berichtFreigeben: async (_kennung: string, datenstand: string) => {
+    berichtAufrufe.freigeben.push(datenstand);
+    return freigabeAm(datenstand, Date.now());
+  },
   berichtStand: async (_kennung: string, nr: number) => standAm(nr, Date.now()),
+  berichtAnstossVerwerfen: async (_kennung: string, id: string, begruendung: string) => {
+    berichtAufrufe.verwerfen.push(begruendung);
+    verworfen = { begruendung, am: new Date(Date.now()).toISOString(), von: person ?? 'Jonas Wendlinger' };
+    const anstoss = mitVerworfen(detailAm(Date.now()), verworfen).anstoesse.find((x) => x.id === id);
+    if (!anstoss) throw new ApiError(404, 'Diesen Anstoß gibt es nicht.');
+    return anstoss;
+  },
   messstelleWerte: async (kennzeichen: string) => heutigeWerteAm(kennzeichen, Date.now()),
   // AP-11 IP-15: die vier schreibenden Wege der Kennzahl-Seite — sie ändern die Bühne und werden gezählt.
   kennzahlFassungEintragen: async (
