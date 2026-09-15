@@ -33,6 +33,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -663,6 +666,82 @@ class BerichtApiTest {
     }
 
     /**
+     * B14 für das PDF (AP-12 IP-11, DA2/DA5): dieselben Ablehnungen wie am CSV, das Recht ist das des Abrufens (G1). Die
+     * Datei ist die reine Funktion des Abzugs ({@link BerichtPdf}) — Jonas, später noch einmal Jonas und Claudia mit ihrer
+     * Teilansicht bekommen DIESELBEN Bytes; jeder Abruf steht mit Format {@code pdf} im Protokoll. Nach der Revision trägt
+     * Nr. 1 das Wasserzeichen, Nr. 2 nicht.
+     */
+    @Test
+    void dasPdfEinesStandsIstDerAbzugByteGleichFuerJedenUndJederAbrufIstProtokolliert() throws Exception {
+        Welt w = welt();
+        UUID st = bericht(w, "BR-2026-0001", "monatsbericht_standort", w.st1(), "2026-10");
+        entwurf(w, st, nummerEins, "2026-11-10T08:55:00+01:00");
+        String k = PFAD + "/BR-2026-0001";
+        uhr("2026-11-10T09:02:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-10T08:55:00+01:00")), 201);
+
+        // Nie eine Datei ohne Recht (G2), nie die eines Stands, den es nicht gibt — und dann auch kein Abruf
+        uhr("2026-11-20T17:45:00+01:00");
+        verboten(ruf(w.thomas(), HttpMethod.GET, k + "/staende/1/pdf", null));
+        verboten(ruf(w.voss(), HttpMethod.GET, k + "/staende/1/pdf", null));
+        abgelehnt(ruf(w.peter(), HttpMethod.GET, k + "/staende/1/pdf", null), 404, "nicht_gefunden");
+        abgelehnt(ruf(w.jonas(), HttpMethod.GET, k + "/staende/2/pdf", null), 404, "stand_gibt_es_nicht");
+        abgelehnt(ruf(w.jonas(), HttpMethod.GET, k + "/staende/entwurf/pdf", null), 404, "nicht_gefunden");
+        assertThat(zaehle("bericht_abruf", w)).isZero();
+
+        MvcResult erster = datei(w.jonas(), k + "/staende/1/pdf");
+        assertThat(erster.getResponse().getStatus()).isEqualTo(200);
+        assertThat(erster.getResponse().getContentType()).isEqualTo("application/pdf");
+        assertThat(erster.getResponse().getHeader("Content-Disposition"))
+                .isEqualTo("attachment; filename=bericht-BR-2026-0001-nr1.pdf");
+        byte[] bytes = erster.getResponse().getContentAsByteArray();
+        assertThat(bytes.length).as("unter 1 MB je Monatsbericht").isLessThan(1_000_000);
+        assertThat(pdfText(bytes)).contains("BR-2026-0001", "Berichtsstand Nr. 1", "Datenstand 10.11.2026 08:55 (MEZ)",
+                "freigegeben 10.11.2026 09:02 von Ines Kaltenbach", BerichtRegeln.pruefsumme(nummerEins), "6.100 kWh")
+                .doesNotContain("ersetzt durch");
+        assertThat(bytes).as("server-seitig NUR aus dem Abzug und der Freigabe").isEqualTo(BerichtPdf.datei(
+                BerichtService.baum(nummerEins), new BerichtCsv.Stand(1, t("2026-11-10T09:02:00+01:00"), "Ines Kaltenbach",
+                        BerichtRegeln.pruefsumme(nummerEins), null, null)));
+
+        uhr("2026-11-21T08:00:00+01:00");
+        assertThat(datei(w.jonas(), k + "/staende/1/pdf").getResponse().getContentAsByteArray())
+                .as("ein späterer Abruf, byte-gleich").isEqualTo(bytes);
+        uhr("2026-11-12T08:10:00+01:00");
+        MvcResult claudia = datei(w.claudia(), k + "/staende/1/pdf");
+        assertThat(claudia.getResponse().getStatus()).isEqualTo(200);
+        assertThat(claudia.getResponse().getContentAsByteArray()).as("Claudia mit Teilansicht (G3): dieselbe Datei")
+                .isEqualTo(bytes);
+
+        List<Map<String, Object>> abrufe = root.queryForList("SELECT id, format, teilansicht, actor_name FROM bericht_abruf "
+                + "WHERE tenant_id = ?", w.mandant());
+        assertThat(abrufe).allSatisfy(a -> assertThat(a).containsEntry("format", "pdf"));
+        assertThat(abrufe.stream().map(a -> a.get("actor_name") + "/" + a.get("teilansicht")).toList())
+                .containsExactlyInAnyOrder("Jonas Wendlinger/false", "Jonas Wendlinger/false", "Claudia Berger/true");
+        List<Map<String, Object>> meldungen = root.queryForList("SELECT ereignis_id, nutzlast->>'nr' AS nr, "
+                + "nutzlast->>'format' AS format FROM messreihe_ereignis WHERE tenant_id = ? AND art = 'bericht_abgerufen'",
+                w.mandant());
+        assertThat(meldungen).hasSize(3).allSatisfy(m -> assertThat(m).containsEntry("nr", "1").containsEntry("format", "pdf"));
+        assertThat(meldungen.stream().map(m -> m.get("ereignis_id")).toList())
+                .containsExactlyInAnyOrderElementsOf(abrufe.stream().map(a -> a.get("id")).toList());
+
+        // Nach der Revision: Nr. 1 trägt das Wasserzeichen (und ist so wieder byte-gleich), Nr. 2 nicht
+        UUID stand1 = root.queryForObject("SELECT id FROM bericht_stand WHERE bericht_id = ? AND nr = 1", UUID.class, st);
+        anstoss(w, stand1, "K-2026-0007", 2, "2026-11-12T10:05:33+01:00");
+        entwurf(w, st, nummerZwei, "2026-11-12T10:05:33+01:00");
+        uhr("2026-11-16T14:20:00+01:00");
+        ok(ruf(w.ines(), HttpMethod.POST, k + "/freigeben", datenstand("2026-11-12T10:05:33+01:00")), 201);
+        uhr("2026-11-20T17:50:00+01:00");
+        byte[] einsErsetzt = datei(w.jonas(), k + "/staende/1/pdf").getResponse().getContentAsByteArray();
+        assertThat(einsErsetzt).isNotEqualTo(bytes)
+                .isEqualTo(datei(w.jonas(), k + "/staende/1/pdf").getResponse().getContentAsByteArray());
+        assertThat(pdfText(einsErsetzt)).contains("Berichtsstand Nr. 1", "ersetzt durch Nr. 2 (16.11.2026)");
+        assertThat(pdfText(datei(w.jonas(), k + "/staende/2/pdf").getResponse().getContentAsByteArray()))
+                .contains("Berichtsstand Nr. 2", BerichtRegeln.pruefsumme(nummerZwei), "K-2026-0007")
+                .doesNotContain("ersetzt durch");
+        assertThat(zaehle("bericht_abruf", w)).isEqualTo(6);
+    }
+
+    /**
      * E12 G1 am Bestand-Geräte-CSV (DA4) über die Route: Jonas bekommt die Datei mit neun Kopfzeilen mehr (Standort und
      * Unternehmen von heute), Thomas (Unterstützer) und Lena Voss (Plattform) 403 statt der Datei; Claudia darf am Werk, nicht
      * an einer Anlage ohne Standort (403); Peter sieht Werk Ahrenberg nicht (404).
@@ -1098,6 +1177,13 @@ class BerichtApiTest {
     /** Eine Datei-Route (CSV): Status, Kopfzeilen und Bytes — die Antwort ist kein JSON. */
     private MvcResult datei(Wer wer, String pfad) throws Exception {
         return mvc.perform(als(wer, HttpMethod.GET, pfad)).andReturn();
+    }
+
+    /** Der Text eines PDF (Text-Extraktion), geschützte Leerzeichen als Leerzeichen. */
+    private static String pdfText(byte[] pdf) throws Exception {
+        try (PDDocument d = Loader.loadPDF(pdf)) {
+            return new PDFTextStripper().getText(d).replace('\u00A0', ' ');
+        }
     }
 
     /** Die Zeilen eines Berichts-CSV: mit BOM und CRLF geschrieben, ohne beide gelesen. */

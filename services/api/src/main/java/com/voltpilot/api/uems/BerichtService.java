@@ -77,6 +77,7 @@ public class BerichtService {
     static final String EREIGNIS_ABGERUFEN = "bericht_abgerufen";
     /** DA5 — das Format eines Abrufs ({@code bericht_abruf.format}, Meldung {@code bericht_abgerufen}). */
     static final String FORMAT_CSV = "csv";
+    static final String FORMAT_PDF = "pdf";
     /** {@code gebildet_von} (bericht.md EW1) — nicht die Handlung der Route. */
     static final String GEBILDET_BEIM_ANLEGEN = "anlegen";
     static final String GEBILDET_BEIM_ABRUF = "abruf";
@@ -266,20 +267,46 @@ public class BerichtService {
      * Datei (EW4).
      */
     public Datei csv(String kennung, int nr, ProtokollAkteur wer) {
-        Zugriff z = zugriff(kennung, wer, BerichtRechte.CSV);
+        return ausgabe(kennung, nr, wer, BerichtRechte.CSV, FORMAT_CSV,
+                (abzug, stand, jetzt, teilansicht) -> BerichtCsv.datei(abzug, stand, jetzt, wer.name(), teilansicht));
+    }
+
+    /**
+     * {@code GET …/staende/{nr}/pdf} (DA2, DA5): Recht {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} (G1) →
+     * Stand mit geprüfter Prüfsumme (404, 500) → das PDF NUR aus dem Abzug und der Freigabe ({@link BerichtPdf}) → Abruf und
+     * Meldung wie beim CSV. Das PDF kennt weder Abrufer noch Abrufzeit noch Teilansicht — darum ist es für jeden, der den Stand
+     * abruft, byte-gleich; die Teilansicht steht nur im Protokoll. Ein Entwurf hat keins (EW4).
+     */
+    public Datei pdf(String kennung, int nr, ProtokollAkteur wer) {
+        return ausgabe(kennung, nr, wer, BerichtRechte.PDF, FORMAT_PDF,
+                (abzug, stand, jetzt, teilansicht) -> BerichtPdf.datei(abzug, stand));
+    }
+
+    /** Was eine Ausgabe baut: aus Abzug und Stand, zur Abrufzeit, mit der Teilansicht ({@code null} = unternehmensweit). */
+    @FunctionalInterface
+    private interface Ausgabe {
+        byte[] bauen(JsonNode abzug, BerichtCsv.Stand stand, Instant jetzt, List<String> teilansicht);
+    }
+
+    /**
+     * Eine Datei eines Stands (DA5): Recht → Stand mit geprüfter Prüfsumme → erst die Datei, dann Abruf und Meldung
+     * {@code bericht_abgerufen} in EINER Transaktion — scheitert das Protokoll, verlässt keine Datei den Server.
+     */
+    private Datei ausgabe(String kennung, int nr, ProtokollAkteur wer, String handlung, String format, Ausgabe ausgabe) {
+        Zugriff z = zugriff(kennung, wer, handlung);
         Kopf kopf = z.kopf();
         StandZeile s = geprueft(kopf, nr);
         Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
                 .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
         List<String> teilansicht = teilansicht(z);
-        byte[] inhalt = BerichtCsv.datei(baum(s.abzug()), new BerichtCsv.Stand(s.nr(), s.freigegebenAm(),
-                s.freigeberName(), s.pruefsumme(), s.ersetztDurchNr(), ersetztAm), z.jetzt(), wer.name(), teilansicht);
+        byte[] inhalt = ausgabe.bauen(baum(s.abzug()), new BerichtCsv.Stand(s.nr(), s.freigegebenAm(), s.freigeberName(),
+                s.pruefsumme(), s.ersetztDurchNr(), ersetztAm), z.jetzt(), teilansicht);
         transaktion.executeWithoutResult(tx -> {
-            UUID abruf = repo.abruf(kopf.tenant(), s.id(), FORMAT_CSV, teilansicht != null, wer, rolle(z.darf(), wer),
+            UUID abruf = repo.abruf(kopf.tenant(), s.id(), format, teilansicht != null, wer, rolle(z.darf(), wer),
                     z.jetzt());
-            ereignisAbgerufen(kopf.tenant(), kopf.kennung(), s.nr(), FORMAT_CSV, abruf, z.jetzt());
+            ereignisAbgerufen(kopf.tenant(), kopf.kennung(), s.nr(), format, abruf, z.jetzt());
         });
-        return new Datei("bericht-" + kopf.kennung() + "-nr" + s.nr() + ".csv", inhalt);
+        return new Datei("bericht-" + kopf.kennung() + "-nr" + s.nr() + "." + format, inhalt);
     }
 
     // ================================================================================ anlegen

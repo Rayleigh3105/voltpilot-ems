@@ -44,6 +44,8 @@ public final class BerichtRechte {
     public static final String ABRUFEN = "abrufen";
     /** Der Berichts-CSV eines Stands (IP-10): {@code export.standort} bzw. {@code export.unternehmen}. */
     public static final String CSV = "csv";
+    /** Das PDF eines Stands (IP-11): wie Abrufen {@code bericht.standort_abrufen} bzw. {@code bericht.unternehmen} (G1). */
+    public static final String PDF = "pdf";
     public static final String ANLEGEN = "anlegen";
     public static final String FREIGEBEN = "freigeben";
     public static final String VERWERFEN = "verwerfen";

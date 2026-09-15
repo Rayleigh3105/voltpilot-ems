@@ -100,6 +100,25 @@
             <version>1.78.1</version>
         </dependency>
 
+        <!-- UEMS AP-12 IP-11 (E11 DA2): das PDF eines Berichtsstands, server-seitig aus dem Abzug
+             (uems/BerichtPdf). Lizenz: Apache License 2.0 (pdfbox, fontbox, pdfbox-io; LICENSE und
+             NOTICE liegen in META-INF der Jars und reisen im Boot-Jar mit). Gewählt statt OpenPDF
+             (LGPL 2.1 / MPL 2.0), weil Apache-2.0 keine Pflichten für ein ausgeliefertes Produkt
+             über den Hinweis hinaus stellt. Die eingebettete Schrift ist Liberation Sans Regular aus
+             dem pdfbox-Jar (SIL Open Font License 1.1 — Einbetten in Dokumente erlaubt).
+             commons-logging fällt weg: spring-jcl stellt dieselbe API. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.8</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
