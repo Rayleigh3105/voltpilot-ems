@@ -329,3 +329,113 @@ export function standortGruppen(i: {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Die Karte „Funktionen" und der Leerzustand des Standorts (AP-01 IP-8)
+// ---------------------------------------------------------------------------
+
+/** Ein Standort in der Karte „Funktionen": der Zustand und der nächste Schritt. */
+export interface FunktionenKarteZeile {
+  standortId: string;
+  /** Der Standort — `null` auf der Standort-Übersicht, die ihn schon im Kopf trägt. */
+  name: string | null;
+  zustand: FunktionZustand;
+  /** Derselbe Satz wie in der Standort-Karte (`funktionsZeilen`). */
+  satz: string;
+  ton: Ton;
+  /**
+   * „Werk Ahrenberg – Halle 2 aufnehmen" — ein benannter Schritt, KEIN Knopf:
+   * die Assistenten (IP-9a/IP-10a) gibt es noch nicht, und ein Knopf ohne Ziel
+   * wäre eine Sackgasse (Captain zu PR 771). `null` = es gibt keinen.
+   */
+  schritt: string | null;
+}
+
+export interface FunktionenKarteAbschnitt {
+  funktion: FunktionCode;
+  label: string;
+  /** „Läuft an 1 von 2 Standorten" — nur auf der Unternehmens-Übersicht. */
+  verbreitung: string | null;
+  zeilen: FunktionenKarteZeile[];
+}
+
+function undListe(namen: string[]): string {
+  return namen.length <= 1 ? namen.join('') : `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]}`;
+}
+
+/**
+ * Der nächste Schritt je Funktion und Standort — aus dem ZUSTAND, nie aus
+ * `aktionen`: der Server nennt dort nur starten/anhalten/fortsetzen/beenden
+ * (`FunktionService.ANLAGEN_AKTIONEN`/`STANDORT_AKTIONEN`), „einrichten" und
+ * „aufnehmen" kommen darin nie vor.
+ */
+function naechsterSchritt(funktion: FunktionCode, fs: FunktionStandort): string | null {
+  // Ohne Anlage gibt es nichts zu messen und nichts zu steuern; den Schritt nennt
+  // der Leerzustand der Standort-Übersicht.
+  if (fs.steuern.anlagen.length === 0) return null;
+  if (funktion === 'messen') {
+    return fs.messen.zustand === 'kein_objekt' ? `${FUNKTIONEN.messen} für ${fs.name} einrichten` : null;
+  }
+  if (fs.steuern.zustand === 'kein_objekt') return `${FUNKTIONEN.steuern} für ${fs.name} einrichten`;
+  const offen = fs.steuern.anlagen.filter((a) => a.teilnahme.zustand === 'kein_objekt').map((a) => a.name);
+  return offen.length > 0 ? `${undListe(offen)} aufnehmen` : null;
+}
+
+/**
+ * Die Karte „Funktionen" (AP-01 E5 = A, E6 = C): je Funktion, je Standort der
+ * Ebene der Zustand und der nächste Schritt. `null` = die Funktionen sind nicht
+ * abrufbar — die Karte sagt das, statt leer zu stehen.
+ */
+export function funktionenKarte(
+  ebene: UebersichtEbene,
+  funktionen: Funktionen | null,
+): FunktionenKarteAbschnitt[] | null {
+  if (!funktionen) return null;
+  const standorte = lebendeStandorte(ebene)
+    .map((st) => funktionen.standorte.find((f) => f.id === st.id))
+    .filter((f): f is FunktionStandort => f != null);
+  const imUnternehmen = ebene.art === 'unternehmen';
+  return (['messen', 'steuern'] as const).map((funktion) => {
+    const label = FUNKTIONEN[funktion];
+    const text = funktionen.unternehmen[funktion].text;
+    const rest = text?.startsWith(`${label} `) ? text.slice(label.length + 1) : text;
+    return {
+      funktion,
+      label,
+      verbreitung: imUnternehmen && rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : null,
+      zeilen: standorte.map((fs) => {
+        const z = funktionsZeilen(fs).find((x) => x.funktion === funktion)!;
+        return {
+          standortId: fs.id,
+          name: imUnternehmen ? fs.name : null,
+          zustand: z.zustand,
+          satz: z.satz,
+          ton: z.ton,
+          schritt: naechsterSchritt(funktion, fs),
+        };
+      }),
+    };
+  });
+}
+
+/** Der Leerzustand der Standort-Übersicht (Konzept AP-01 §5.5). */
+export interface StandortLeerzustand {
+  titel: string;
+  satz: string;
+  /** Benannt, kein Knopf — wie in der Karte „Funktionen". */
+  schritt: string;
+}
+
+/**
+ * Ein Standort, dem heute keine Anlage zugeordnet ist — `null`, sobald eine da
+ * ist. Gezählt wird am Lese-Modell der Standorte (heute zugeordnet), nicht an
+ * den Zeilen der Übersicht.
+ */
+export function standortLeerzustand(standort: StandortAmStichtag): StandortLeerzustand | null {
+  if (standort.anlagen.length > 0) return null;
+  return {
+    titel: `${standort.name} ist angelegt — noch ohne Anlage`,
+    satz: 'Messwerte kommen über eine Anlage: an ihr verbinden Sie die Box und binden die Zähler an.',
+    schritt: 'Eine Anlage anlegen oder eine bestehende Anlage diesem Standort zuordnen (in der Anlage unter Einstellungen)',
+  };
+}

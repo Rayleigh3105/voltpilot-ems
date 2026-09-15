@@ -1,0 +1,128 @@
+/*
+ * DIE KARTE „FUNKTIONEN" (UEMS AP-01 IP-8) — unter der Anlagen-Tabelle der
+ * Unternehmens- und der Standort-Übersicht. Variante C: weiße Karte, 1-px-Rahmen,
+ * Radius 16 px; Farbe nur am Punkt (Bedeutung), der Satz bleibt ruhig.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-funktionen-karte {
+  margin-top: var(--vp-space-6, 24px);
+  padding: var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-fk-titel {
+  margin: 0 0 var(--vp-space-4, 16px);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+/* Zwei Funktionen nebeneinander, sobald jede 320 px hat — sonst untereinander. */
+.vp-fk-abschnitte {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--vp-space-5, 20px);
+}
+
+.vp-fk-abschnitt {
+  min-width: 0;
+}
+
+.vp-fk-funktion {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-fk-verbreitung,
+.vp-fk-hinweis {
+  margin: 2px 0 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-fk-zeilen {
+  list-style: none;
+  margin: var(--vp-space-3, 12px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+}
+
+.vp-fk-zeilen li {
+  min-width: 0;
+}
+
+.vp-fk-zustand {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.vp-fk-punkt {
+  flex: none;
+  margin-top: 0.45em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.vp-fk-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.is-ok .vp-fk-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.is-warn .vp-fk-punkt {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-fk-standort {
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-fk-satz {
+  color: #334155;
+}
+
+.is-warn .vp-fk-satz {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+/* Der nächste Schritt: benannt, eingerückt unter den Punkt — kein Knopf. */
+.vp-fk-schritt {
+  margin: 4px 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.vp-fk-schritt-wort {
+  font-weight: 600;
+}
+
+/* Der Leerzustand der Standort-Übersicht spricht dieselbe Schritt-Sprache. */
+.vp-portfolio-schritt {
+  display: block;
+  margin-top: var(--vp-space-2, 8px);
+}

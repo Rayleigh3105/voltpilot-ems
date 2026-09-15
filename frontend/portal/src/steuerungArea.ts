@@ -26,7 +26,8 @@
  *    nicht gibt.
  */
 
-import type { EarningsSite, EntityStrategy } from './api';
+import type { EarningsSite, EntityStrategy, Funktionen } from './api';
+import { FUNKTIONEN } from './uemsFunktion';
 import { eurAmount, fmtNum } from './format';
 import { speicherAussage } from './speicherAussage';
 import {
@@ -498,3 +499,92 @@ export function protectionItems(site: { netzladenErlaubt?: boolean | null }): Pr
 }
 
 export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Betriebsmodell:';
+
+// ---------------------------------------------------------------------------
+// UEMS AP-01 IP-8 · der Leerzustand „Diese Anlage misst nur"
+// ---------------------------------------------------------------------------
+
+/**
+ * Die zwei Fassungen (Konzept AP-01 §5.5, E6 = C): Funktionen gelten je
+ * Standort, die Anlage nimmt teil. Am Standort ohne „Steuern & Optimieren" ist
+ * der Schritt „einrichten", am Standort mit der Funktion „Anlage aufnehmen".
+ */
+export type NurMessenFassung = 'standort-ohne-funktion' | 'standort-mit-funktion';
+
+export interface NurMessenLeerzustand {
+  fassung: NurMessenFassung;
+  titel: string;
+  satz: string;
+  /**
+   * Der nächste Schritt als BENANNTER Hinweis, kein Knopf: die Assistenten
+   * (AP-01 IP-9a/IP-10a) gibt es noch nicht, und ein Knopf ohne Ziel wäre eine
+   * Sackgasse (Captain zu PR 771).
+   */
+  schritt: string;
+  /** Ein Weg, den es heute schon gibt — nur ohne steuerbare Komponente (A8). */
+  weg: 'geraet-anbinden' | null;
+}
+
+export const NUR_MESSEN_TITEL = 'Diese Anlage misst nur.';
+
+/** A8: ohne steuerbare Komponente ist „einrichten" kein ehrlicher Schritt. */
+export const OHNE_STEUERBARE_KOMPONENTE =
+  'Zum Steuern braucht sie eine steuerbare Komponente (Speicher, Ladepunkt, Schaltgerät) — heute ist keine angebunden.';
+
+function undListe(namen: string[]): string {
+  return namen.length <= 1 ? namen.join('') : `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]}`;
+}
+
+/**
+ * Der Leerzustand der Steuerung einer Anlage, die nicht an „Steuern &
+ * Optimieren" teilnimmt — `null`, wenn sie teilnimmt (in jedem Zustand) oder
+ * keinem Standort gehört: dann bleibt die Seite, wie sie war.
+ *
+ * @param steuerbar die Namen der steuerbaren Komponenten; `null` = unbekannt —
+ *   dann behauptet der Satz nie, es gebe keine.
+ */
+export function nurMessenLeerzustand(i: {
+  siteId: string;
+  funktionen: Funktionen | null;
+  steuerbar: string[] | null;
+}): NurMessenLeerzustand | null {
+  const standort = i.funktionen?.standorte.find((st) => st.steuern.anlagen.some((a) => a.id === i.siteId));
+  const anlage = standort?.steuern.anlagen.find((a) => a.id === i.siteId);
+  if (!standort || !anlage || anlage.teilnahme.zustand !== 'kein_objekt') return null;
+
+  const steuern = standort.steuern;
+  const mitFunktion = steuern.zustand !== 'kein_objekt';
+  const fassung: NurMessenFassung = mitFunktion ? 'standort-mit-funktion' : 'standort-ohne-funktion';
+  const saetze: string[] = [];
+  if (mitFunktion) {
+    const laufen = steuern.anlagen.filter((a) => a.teilnahme.zustand === 'aktiv').map((a) => a.name);
+    saetze.push(
+      steuern.zustand === 'aktiv' && laufen.length > 0
+        ? `Am Standort ${standort.name} läuft ${FUNKTIONEN.steuern} bereits (${undListe(laufen)}).`
+        : `Am Standort ${standort.name} gibt es ${FUNKTIONEN.steuern} bereits (${steuern.text}).`,
+    );
+  }
+
+  if (i.steuerbar != null && i.steuerbar.length === 0) {
+    saetze.push(OHNE_STEUERBARE_KOMPONENTE);
+    return { fassung, titel: NUR_MESSEN_TITEL, satz: saetze.join(' '), schritt: 'Gerät anbinden', weg: 'geraet-anbinden' };
+  }
+
+  // Bis zu zwei Komponenten beim Namen, sonst „hier" — nie eine lange Liste im Satz.
+  const ziel =
+    i.steuerbar != null && i.steuerbar.length <= 2 ? undListe(i.steuerbar.map((n) => `„${n}“`)) : 'hier';
+  if (mitFunktion) {
+    saetze.push(`Wenn VoltPilot ${ziel} steuern soll, nehmen Sie diese Anlage auf — nichts schaltet, bevor Sie starten.`);
+    return { fassung, titel: NUR_MESSEN_TITEL, satz: saetze.join(' '), schritt: `${anlage.name} aufnehmen`, weg: null };
+  }
+  saetze.push(
+    `Wenn VoltPilot ${ziel} steuern soll, richten Sie ${FUNKTIONEN.steuern} für ${standort.name} ein — nichts schaltet, bevor Sie starten.`,
+  );
+  return {
+    fassung,
+    titel: NUR_MESSEN_TITEL,
+    satz: saetze.join(' '),
+    schritt: `${FUNKTIONEN.steuern} für ${standort.name} einrichten`,
+    weg: null,
+  };
+}

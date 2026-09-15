@@ -86,6 +86,7 @@ import {
 } from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
 import type { AnlageSurface } from '../surface';
+import { bausteineOhneGeld, unterseiteOhneGeld } from '../anlageGeld';
 import { anlageDecision, hasBlock } from '../cockpit';
 import {
   cockpitHero,
@@ -475,7 +476,7 @@ function AnlagenSubPage({
   sites,
   devices,
   devicesFetchedAt,
-  sub,
+  sub: adresse,
   geraet,
   isAdmin,
   surface,
@@ -496,6 +497,9 @@ function AnlagenSubPage({
   onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
 }) {
+  // UEMS AP-01 IP-8: ein Lesezeichen auf eine Geld-Seite einer geldfreien
+  // Anlage landet auf den Messwerten — die Reiter bieten sie ohnehin nicht an.
+  const sub = unterseiteOhneGeld(adresse, surface);
   const meta = SUB_PAGES[sub];
   // Die REITER dieses Bereichs - aus DEMSELBEN Modell wie die Seitenleiste
   // (`anlageSidebar`), damit Leiste und Reiter nie Verschiedenes behaupten.
@@ -1471,8 +1475,10 @@ export function AnlageSeite({
     if (shownWidgets.length > 0) out.push('kacheln');
     out.push('komponenten');
     if (ovSite != null && health.length > 0) out.push('zustand');
-    return out;
-  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health, ladenView]);
+    // UEMS AP-01 IP-8, Geld-Regel je Anlage: eine geldfreie Anlage hat weder
+    // Geld-Held noch Steuerungs-Karte noch Marktpreise (`anlageGeld`).
+    return bausteineOhneGeld(out, surface);
+  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health, ladenView, surface]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine

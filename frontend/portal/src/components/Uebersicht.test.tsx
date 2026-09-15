@@ -122,6 +122,13 @@ beforeEach(() => {
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
 });
 
+/** Die Funktionen unter der Kopfzeile der Standort-Übersicht (nicht die Karte „Funktionen"). */
+function funktionenImKopf(): HTMLElement {
+  const kopf = document.querySelector<HTMLElement>('.vp-portfolio-funktionen');
+  if (!kopf) throw new Error('Die Funktionen unter der Kopfzeile fehlen.');
+  return kopf;
+}
+
 function renderUnternehmen(onNavigate = vi.fn()) {
   render(
     <PortfolioCockpit
@@ -192,8 +199,12 @@ describe('A7 · die Unternehmens-Übersicht IST das Portfolio-Cockpit', () => {
     vi.spyOn(api, 'funktionen').mockRejectedValue(new Error('offline'));
     renderUnternehmen();
     await waitFor(() =>
-      expect(screen.getAllByText('Der Zustand der Funktionen ist gerade nicht abrufbar.')).toHaveLength(2),
+      expect(screen.getAllByText('Der Zustand der Funktionen ist gerade nicht abrufbar.')).toHaveLength(3),
     );
+    // Je Standort-Karte einmal — und die Karte „Funktionen" (AP-01 IP-8) sagt es auch.
+    expect(
+      within(screen.getByTestId('funktionen-karte')).getByText('Der Zustand der Funktionen ist gerade nicht abrufbar.'),
+    ).toBeTruthy();
     // Über Steuerung wird dann nichts behauptet.
     expect(screen.getByText('2 Standorte · 3 Anlagen')).toBeTruthy();
   });
@@ -210,7 +221,8 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     expect(screen.getByRole('button', { name: 'Anlage Werk Lindach öffnen' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Anlage Werk Ahrenberg/ })).toBeNull();
     expect(screen.getByText('1 von 1 Anlage liefert Daten')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText('Noch nicht eingerichtet')).toBeTruthy());
+    // Unter der Kopfzeile — dieselben Sätze stehen seit IP-8 auch in der Karte „Funktionen".
+    await waitFor(() => expect(within(funktionenImKopf()).getByText('Noch nicht eingerichtet')).toBeTruthy());
     // Eine Seite, ein Standort — keine Standort-Gruppen darüber.
     expect(screen.queryByTestId('standort-gruppe')).toBeNull();
   });
@@ -223,7 +235,7 @@ describe('die Standort-Übersicht ist DIESELBE Seite mit einem Filter', () => {
     const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
     // 312,4 + 96,5 = 408,9 — Werk Lindach zählt hier nicht.
     await waitFor(() => expect(within(leiste).getByText('408,9')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy());
+    await waitFor(() => expect(within(funktionenImKopf()).getByText('Läuft mit Werk Ahrenberg – Halle 1')).toBeTruthy());
     // Je Anlage steht der Netzbezug als Spalte „Netz jetzt".
     expect(screen.getByRole('columnheader', { name: /Netz jetzt/ })).toBeTruthy();
   });
@@ -252,7 +264,7 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     );
     const leiste = await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
     await waitFor(() => expect(within(leiste).getByText('Netzbezug jetzt')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('Noch nicht eingerichtet')).toBeTruthy());
+    await waitFor(() => expect(within(funktionenImKopf()).getByText('Noch nicht eingerichtet')).toBeTruthy());
     // Erst wenn auch das Geld des Servers angekommen ist, ist das Nicht-Zeigen ein Beweis.
     await waitFor(() => expect(api.earnings).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
@@ -298,5 +310,74 @@ describe('A13 · Geld-Regel: ein Messkunde sieht NIRGENDS eine Geldzahl', () => 
     // Die Karte von Werk Lindach trägt kein Geld.
     const lindach = screen.getAllByTestId('standort-gruppe')[1];
     expect(lindach.textContent).not.toMatch(GELD_TEXT);
+  });
+});
+
+/**
+ * UEMS AP-01 IP-8 · die Karte „Funktionen" (E5 = A, E6 = C) und der Leerzustand
+ * der Standort-Übersicht. Der nächste Schritt ist ein BENANNTER Hinweis — die
+ * Assistenten gibt es noch nicht, und ein Knopf ohne Ziel wäre eine Sackgasse.
+ */
+describe('AP-01 IP-8 · die Karte „Funktionen" und der Leerzustand der Standort-Übersicht', () => {
+  it('Unternehmens-Übersicht: je Standort Zustand und nächster Schritt — kein Knopf', async () => {
+    mocks({ overview: ahrenbergOverview() });
+    renderUnternehmen();
+    const karte = await screen.findByTestId('funktionen-karte');
+    await waitFor(() => expect(within(karte).getByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeTruthy());
+    expect(within(karte).getByRole('heading', { level: 2, name: 'Funktionen' })).toBeTruthy();
+    expect(within(karte).getByText('Läuft an 2 von 2 Standorten')).toBeTruthy();
+    expect(within(karte).getByText('Läuft an 1 von 2 Standorten')).toBeTruthy();
+    expect(within(karte).getByText('Steuern & Optimieren für Werk Lindach einrichten')).toBeTruthy();
+    expect(within(karte).queryAllByRole('button')).toHaveLength(0);
+    expect(within(karte).queryAllByRole('link')).toHaveLength(0);
+  });
+
+  it('Standort-Übersicht: dieselbe Karte für EINEN Standort, ohne seinen Namen und ohne „läuft an"', async () => {
+    const overview = ahrenbergOverview();
+    overview.sites = overview.sites.filter((s) => s.id !== an3);
+    mocks({ overview });
+    render(
+      <StandortUebersichtPage standort={werkAhrenberg()} sites={SITES.slice(0, 2)} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" />,
+    );
+    const karte = await screen.findByTestId('funktionen-karte');
+    await waitFor(() => expect(within(karte).getByText('Werk Ahrenberg – Halle 2 aufnehmen')).toBeTruthy());
+    expect(within(karte).queryByText('Werk Lindach')).toBeNull();
+    expect(within(karte).queryByText(/^Läuft an \d/)).toBeNull();
+    expect(within(karte).queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('Leerzustand: ein Standort ohne Anlage nennt Grund und Schritt — kein Knopf, keine leere Tabelle', async () => {
+    // Werk Lindach ist angelegt, AN-3 noch nicht — Werk Ahrenberg hat seine zwei Hallen.
+    const lindach = funktionWerkLindach('bestand');
+    lindach.steuern.anlagen = [];
+    const overview = ahrenbergOverview();
+    overview.sites = overview.sites.filter((s) => s.id !== an3);
+    mocks({ overview, funktionen: ahrenbergFunktionen({ standorte: [lindach], messen: 'bestand' }) });
+    const { container } = render(
+      <StandortUebersichtPage
+        standort={werkLindach({ anlagen: [], anlagenZahl: 0 })}
+        sites={SITES.slice(0, 2)}
+        onNavigate={() => {}}
+        onReload={() => {}}
+        betriebsart="endkunde"
+      />,
+    );
+    const titel = await screen.findByRole('heading', { name: 'Werk Lindach ist angelegt — noch ohne Anlage' });
+    const leer = titel.closest('.vp-empty') as HTMLElement;
+    expect(leer.textContent).toContain('Messwerte kommen über eine Anlage: an ihr verbinden Sie die Box und binden die Zähler an.');
+    expect(leer.textContent).toContain(
+      'Nächster Schritt: Eine Anlage anlegen oder eine bestehende Anlage diesem Standort zuordnen (in der Anlage unter Einstellungen).',
+    );
+    expect(within(leer).queryAllByRole('button')).toHaveLength(0);
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('ohne Ebene (das Portfolio eines Betreibers) gibt es die Karte nicht', async () => {
+    mocks({ overview: ahrenbergOverview() });
+    render(
+      <PortfolioCockpit sites={SITES} onNavigate={() => {}} onReload={() => {}} betriebsart="endkunde" titel="Portfolio" titelBereitsGenannt />,
+    );
+    await screen.findByRole('group', { name: 'Kennzahlen Ihrer Anlagen' });
+    expect(screen.queryByTestId('funktionen-karte')).toBeNull();
   });
 });
