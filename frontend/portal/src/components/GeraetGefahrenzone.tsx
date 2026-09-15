@@ -8,7 +8,13 @@ import { entitiesApi } from '../entitiesApi';
 import { ADOPT_FORBIDDEN_MSG } from '../setupPath';
 import { useIsPhone } from '../useIsPhone';
 import { BottomSheet } from './BottomSheet';
-import type { EntfernenFolge, GefahrenzoneZustand } from '../geraetLoeschen';
+import {
+  berichtsBelegAus,
+  type BerichtsBeleg,
+  type EntfernenFolge,
+  type GefahrenzoneZustand,
+} from '../geraetLoeschen';
+import { hashForRoute, messstelleRoute } from '../nav';
 import './GeraetGefahrenzone.css';
 
 /**
@@ -26,6 +32,12 @@ import './GeraetGefahrenzone.css';
  *       planen;</li>
  *   <li>eine plattform-eigene Grundausstattung ohne neuen Weg → nur der Grund.</li>
  * </ul>
+ *
+ * <p>Lehnt der Server das Entfernen ab, weil freigegebene Berichtsstände die
+ * Komponente zitieren (UEMS AP-12 IP-12, 409 {@code berichts_belege}), schließt
+ * die Rückfrage und die Gefahrenzone nennt Grund UND Weg: den Satz mit der
+ * Liste der Stände und je zitierter Messstelle den Sprung dorthin, wo die
+ * Bindung endet. Geschrieben ist in dem Fall nichts.
  *
  * <p>Die Rückfrage ist am Rechner das zentrierte {@code Modal}, am Telefon ein
  * {@code BottomSheet} (E4-Mobil) - dieselbe Folgenliste, derselbe Zwei-Stufen-
@@ -48,6 +60,7 @@ export function GeraetGefahrenzone({
   const [offen, setOffen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [beleg, setBeleg] = useState<BerichtsBeleg | null>(null);
 
   if (zustand == null) return null;
 
@@ -63,6 +76,14 @@ export function GeraetGefahrenzone({
       }
       onDone();
     } catch (e) {
+      const b = e instanceof ApiError ? berichtsBelegAus(e.status, e.body) : null;
+      if (b) {
+        // Ein Beleg: nichts ist geschrieben - die Rückfrage hat ihre Frage verloren.
+        setBeleg(b);
+        setOffen(false);
+        setBusy(false);
+        return;
+      }
       setFehler(fehlerText(e));
       setBusy(false);
     }
@@ -73,6 +94,32 @@ export function GeraetGefahrenzone({
     setOffen(false);
     setFehler(null);
   };
+
+  // Beleg freigegebener Berichtsstände: Grund UND Weg, kein Knopf mehr.
+  if (beleg) {
+    return (
+      <section className="vp-gz" aria-label="Gefahrenzone">
+        <GzKopf />
+        <div className="vp-gz-blocked" data-testid="gz-berichts-belege">
+          <Icon name="lock" size={16} aria-hidden />
+          <div>
+            <p>{beleg.satz}</p>
+            {beleg.messstellen.length > 0 && (
+              <ul className="vp-gz-belege">
+                {beleg.messstellen.map((m) => (
+                  <li key={m.id}>
+                    <a href={hashForRoute(messstelleRoute(m.id))}>
+                      Zur Messstelle {m.kennzeichen} {m.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   // A platform base row with no new way: only the reason, never a button.
   if (zustand.kind === 'geschuetzt') {

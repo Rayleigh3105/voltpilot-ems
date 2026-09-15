@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GeraetGefahrenzone } from './GeraetGefahrenzone';
-import { api } from '../api';
+import { api, ApiError } from '../api';
+import { hashForRoute, messstelleRoute } from '../nav';
 import { entitiesApi } from '../entitiesApi';
 import { plantModel } from '../komponenten';
 import { gefahrenzone, type GefahrenzoneZustand } from '../geraetLoeschen';
@@ -131,5 +132,58 @@ describe('GeraetGefahrenzone — der eine Löschort der Geräteseite', () => {
     // The phone form is the bottom-sheet building block, and it carries the list.
     expect(dialog.closest('.vp-bs-wrap')).toBeTruthy();
     expect(within(dialog).getByTestId('gz-folgen')).toBeTruthy();
+  });
+
+  it('a Beleg of released Berichtsstände (409 berichts_belege): the confirmation closes, the zone names Stände and way', async () => {
+    const body = {
+      code: 'berichts_belege',
+      codes: ['berichts_belege'],
+      message: 'vom Server',
+      messstellen: [{ id: 'ms-12', kennzeichen: 'MS-12', name: 'Montage Linie M1' }],
+      berichtsstaende: [
+        { kennung: 'BR-2026-0001', nr: 1 },
+        { kennung: 'BR-2026-0001', nr: 2 },
+        { kennung: 'BR-2026-0002', nr: 1 },
+        { kennung: 'BR-2026-0004', nr: 1 },
+      ],
+    };
+    const remove = vi.spyOn(entitiesApi, 'removeComponent').mockRejectedValue(new ApiError(409, body.message, body));
+    const onDone = vi.fn();
+    const z = zustandOf(entity('k83', 'producer', { label: 'Zähler EK-3', edgeSourceId: 'src-ek3' }));
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Zähler EK-3" onDone={onDone} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Komponente entfernen/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Zähler EK-3' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Endgültig entfernen/ }));
+
+    const zone = await screen.findByTestId('gz-berichts-belege');
+    expect(remove).toHaveBeenCalledWith('s1', 'k83');
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // The contract sentence (bericht-vectors.json B12), not the server's text.
+    expect(zone.textContent).toContain('Diese Komponente ist Beleg in 4 freigegebenen Berichtsständen '
+      + '(BR-2026-0001 Nr. 1, BR-2026-0001 Nr. 2, BR-2026-0002 Nr. 1, BR-2026-0004 Nr. 1). '
+      + 'Löschen ist nicht möglich — beenden Sie die Bindung stattdessen.');
+    const weg = within(zone).getByRole('link', { name: 'Zur Messstelle MS-12 Montage Linie M1' });
+    expect(weg.getAttribute('href')).toBe(hashForRoute(messstelleRoute('ms-12')));
+    // No dead button left behind.
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('any other refusal stays in the confirmation, as before', async () => {
+    vi.spyOn(entitiesApi, 'removeComponent').mockRejectedValue(
+      new ApiError(409, 'Die Geräte dieser Anlage werden derzeit direkt am Gerät verwaltet.', { message: 'x' }),
+    );
+    const z = zustandOf(entity('p', 'producer', { label: 'Wechselrichter Scheune', edgeSourceId: 'src-1' }));
+    render(<GeraetGefahrenzone siteId="s1" zustand={z} name="Wechselrichter Scheune" onDone={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Komponente entfernen/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Wechselrichter Scheune' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Endgültig entfernen/ }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('direkt am Gerät verwaltet');
+    expect(screen.queryByTestId('gz-berichts-belege')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import type { SiteEntity } from './api';
 import { plantModel } from './komponenten';
 import {
   batterieAbmeldenFolgen,
+  berichtsBelegAus,
   gefahrenzone,
   komponenteEntfernenFolgen,
 } from './geraetLoeschen';
@@ -126,5 +127,37 @@ describe('die Folgenlisten', () => {
     // Mit Zuordnung steht die ehrliche Folge da - als „endet" (gone).
     const mit = komponenteEntfernenFolgen(components[0], p, true);
     expect(mit.some((f) => f.art === 'gone' && pv.test(f.text))).toBe(true);
+  });
+});
+
+describe('berichtsBelegAus — die Ablehnung „Beleg freigegebener Berichtsstände“ (UEMS AP-12 IP-12)', () => {
+  const staende = [{ kennung: 'BR-2026-0001', nr: 1 }];
+  const ms10 = { id: 'ms-10', kennzeichen: 'MS-10', name: 'Netzbezug Halle 2' };
+
+  it('liest 409 berichts_belege: der Vertragssatz und die zitierten Messstellen', () => {
+    expect(berichtsBelegAus(409, {
+      code: 'berichts_belege', codes: ['berichts_belege'], message: 'vom Server', messstellen: [ms10], berichtsstaende: staende,
+    })).toEqual({
+      satz: 'Diese Komponente ist Beleg in einem freigegebenen Berichtsstand (BR-2026-0001 Nr. 1). '
+        + 'Löschen ist nicht möglich — beenden Sie die Bindung stattdessen.',
+      messstellen: [ms10],
+    });
+  });
+
+  it('erkennt den Grund auch als zweiten Code neben messstellen_belege (Purge, Anlage)', () => {
+    const b = berichtsBelegAus(409, {
+      code: 'messstellen_belege', codes: ['messstellen_belege', 'berichts_belege'], messstellen: [ms10], berichtsstaende: staende,
+    });
+    expect(b?.satz).toContain('(BR-2026-0001 Nr. 1)');
+  });
+
+  it('jede andere Ablehnung ist kein Beleg', () => {
+    expect(berichtsBelegAus(409, { code: 'messstellen_belege', codes: ['messstellen_belege'], messstellen: [ms10], berichtsstaende: [] }))
+      .toBeNull();
+    expect(berichtsBelegAus(409, { message: 'Dieser Verbraucher ist noch mit einem Gerät verbunden. Bitte zuerst trennen.' }))
+      .toBeNull();
+    expect(berichtsBelegAus(422, { code: 'berichts_belege', codes: ['berichts_belege'], berichtsstaende: staende })).toBeNull();
+    expect(berichtsBelegAus(409, undefined)).toBeNull();
+    expect(berichtsBelegAus(409, { code: 'berichts_belege', berichtsstaende: [{ kennung: 1, nr: '1' }] })).toBeNull();
   });
 });

@@ -21,6 +21,7 @@ import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.topology.TopologyRepository;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.AuthRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.EndpointRequest;
@@ -105,7 +106,7 @@ class UserDefinedBatteryHttpSecretTest {
                 new EntityTypeCatalog(mapper), definitions, components,
                 new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
                 new UserDefinedBatteryFlowCompiler(mapper),
-                flows, deployments, flowc, topology, mapper);
+                flows, deployments, flowc, topology, mapper, mock(BerichtsBelege.class));
         TenantContext.set(TENANT);
     }
 

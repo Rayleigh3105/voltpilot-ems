@@ -8,6 +8,7 @@ import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -455,6 +456,15 @@ public class SiteComponentController {
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": ...} (MastrController-Muster). */
+    /**
+     * Ein selbst definiertes Gerät oder eine eigene Batterie ist Beleg freigegebener Berichtsstände
+     * (UEMS AP-12 E13 S2): 409 {@code berichts_belege} mit der Liste - nichts geschrieben.
+     */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> onStatusException(ResponseStatusException e) {
         return ResponseEntity.status(e.getStatusCode())

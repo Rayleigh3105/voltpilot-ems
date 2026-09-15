@@ -20,6 +20,7 @@ import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
 import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.uems.MessreihenBelege;
 import com.voltpilot.api.uems.NetzanschlussService;
 import com.voltpilot.api.uems.OrtAbgelehnt;
@@ -99,6 +100,7 @@ public class SiteController {
     private final AnlageStandortService anlageStandort;
     private final MessreihenBelege belege;
     private final NetzanschlussService netzanschluesse;
+    private final BerichtsBelege berichtsBelege;
 
     public SiteController(
             SiteRepository sites,
@@ -119,7 +121,8 @@ public class SiteController {
             StandortLesemodellService standortLesemodell,
             AnlageStandortService anlageStandort,
             MessreihenBelege belege,
-            NetzanschlussService netzanschluesse) {
+            NetzanschlussService netzanschluesse,
+            BerichtsBelege berichtsBelege) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -139,6 +142,7 @@ public class SiteController {
         this.anlageStandort = anlageStandort;
         this.belege = belege;
         this.netzanschluesse = netzanschluesse;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @GetMapping
@@ -251,7 +255,10 @@ public class SiteController {
      * today and stays as an ended interval with a "geloescht" log entry, in the
      * same transaction (V20260911290000 let the row outlive the site).
      */
-    /** Das Entfernen einer Anlage mit Belegen: 409 mit der Liste der Messstellen - nichts geschrieben. */
+    /**
+     * Das Entfernen einer Anlage mit Belegen: 409 mit der Liste der Messstellen und der freigegebenen
+     * Berichtsstände, die sie zitieren - nichts geschrieben.
+     */
     @ExceptionHandler(BelegeImWeg.class)
     public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
@@ -270,10 +277,12 @@ public class SiteController {
                             + "Bitte entfernen Sie zuerst alle Geräte dieses Standorts.");
         }
         // UEMS AP-07 E8: Messwerte, die je an eine Messstelle gebunden waren, sind Belege -
-        // abgelehnt MIT der Liste, bevor irgendetwas geschrieben wird.
+        // abgelehnt MIT der Liste, bevor irgendetwas geschrieben wird. AP-12 E13 S2: dieselbe Antwort
+        // nennt die freigegebenen Berichtsstände, die diese Messstellen zitieren (ein Stand zitiert nur
+        // Messstellen - ohne Messstellen-Beleg gibt es hier keinen Berichts-Beleg).
         List<MessreihenBelege.Beleg> imWeg = belege.derAnlage(siteId);
         if (!imWeg.isEmpty()) {
-            throw new BelegeImWeg(BelegeImWeg.Gegenstand.ANLAGE, imWeg);
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.ANLAGE, imWeg, berichtsBelege.derMessstellen(imWeg));
         }
         series.deleteForSite(siteId);
         // Das Cockpit-Layout haengt bewusst OHNE Fremdschluessel an der Anlage

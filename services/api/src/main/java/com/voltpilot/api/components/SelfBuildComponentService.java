@@ -22,6 +22,7 @@ import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
@@ -121,6 +122,7 @@ public class SelfBuildComponentService {
     private final ProbeService probes;
     private final ConsumerAuditRepository audit;
     private final ObjectMapper mapper;
+    private final BerichtsBelege berichtsBelege;
 
     public SelfBuildComponentService(SiteRepository sites, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, ComponentDefinitionRepository definitions,
@@ -128,7 +130,7 @@ public class SelfBuildComponentService {
             SiteComponentTemplateRepository templates, SelfBuildFlowCompiler compiler,
             FlowRepository flows, FlowActivationService deployments,
             ObjectProvider<FlowCompiler> flowc, ProbeService probes,
-            ConsumerAuditRepository audit, ObjectMapper mapper) {
+            ConsumerAuditRepository audit, ObjectMapper mapper, BerichtsBelege berichtsBelege) {
         this.sites = sites;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
@@ -143,6 +145,7 @@ public class SelfBuildComponentService {
         this.probes = probes;
         this.audit = audit;
         this.mapper = mapper;
+        this.berichtsBelege = berichtsBelege;
     }
 
     // ---- Anlegen / Ändern -------------------------------------------------
@@ -202,6 +205,8 @@ public class SelfBuildComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow row = requireSelfBuilt(siteId, entityId);
+        // UEMS AP-12 E13 S2: ein Beleg freigegebener Berichtsstände → 409, bevor irgendetwas geschrieben wird.
+        berichtsBelege.pruefeKomponente(siteId, row.id());
 
         // Erst den Leseplan zurückziehen, dann die Komponente: andersherum
         // bliebe für einen Moment ein Flow ausgerollt, dessen Ziel-Entität es
