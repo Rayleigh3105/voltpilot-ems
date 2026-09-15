@@ -87,6 +87,12 @@ lädt; `ProtokollDialog` ist die Hülle. Wirte: die Gesamtwert-Karte (Zeilenmen�
 `GeraetProtokoll` geht über `geraetZuKomponenten` von der Komponente zum UEMS-Gerät und rendert
 ohne auflösbares Gerät GAR NICHTS).
 
+### Nachtrag AP-02 IP-14: die dritte Achse und zwei Lesewege mehr
+
+`achse=gueltigkeit` (Tage, beide zählen mit) liefert, was in den Zeitraum REICHT; dazu
+`GET /api/v1/orte/{id}/aenderungen`, `GET /api/v1/standorte/{id}/aenderungen` und `gilt_bis` an jeder
+Zeile. Alles dazu und die Fallen: `uems-ort-aenderungen.md`.
+
 **Tests:** `AenderungsprotokollApiTest` (Testcontainers, MS-06-Zeitstrahl: beide Achsen,
 angekündigt, je Eintragsart ein Wortlaut, beide Seiten des Wechsels, Seitenweise, Mandantenzaun,
 Laufzeit), `AenderungSatzTest` (rein), `uemsProtokoll.test.ts` (Vitest).

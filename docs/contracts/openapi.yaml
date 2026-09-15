@@ -545,9 +545,65 @@ paths:
         stabil nach `quelle` und laufender Nummer - deshalb springt die Seitenweise
         auch bei gleichen Zeitstempeln nicht. `limit` Vorgabe 100, hoechstens 500;
         `nach` ist der Wert `weiter` der vorigen Seite (fehlt er, gibt es keine).
+        Mit `achse=gueltigkeit` (AP-02 IP-14, die Schnittstelle fuer AP-12) liefert
+        er die Eintraege, deren Gueltigkeit in den Zeitraum REICHT - `von`/`bis`
+        sind dann Tage und zaehlen beide mit: `?von=2027-02-01&bis=2027-02-28&achse=gueltigkeit`
+        nennt auch den Umzug, der am 10.03.2027 eingetragen wurde und ab 01.02.2027
+        gilt, mit `zeitform: rueckwirkend` - und die Maerz-Abfrage nennt ihn ebenso.
       responses:
         "200":
           description: Das Protokoll des Unternehmens.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Protokoll" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/orte/{id}/aenderungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: "#/components/parameters/ProtokollVon"
+      - $ref: "#/components/parameters/ProtokollBis"
+      - $ref: "#/components/parameters/ProtokollAchse"
+      - $ref: "#/components/parameters/ProtokollLimit"
+      - $ref: "#/components/parameters/ProtokollNach"
+    get:
+      tags: [ortsstruktur]
+      summary: Das Aenderungsprotokoll EINES Gebaeudes oder Bereichs (AP-02 IP-14).
+      description: >
+        Recht `aenderungsprotokoll.lesen`. Nur die eigenen Eintraege des Knotens:
+        angelegt, bearbeitet, Flaeche, verschoben, archiviert, wiederhergestellt -
+        und das Loeschen eines Bereichs, der an ihm hing. Nur lesend. Ein fremder
+        oder unbekannter Ort ist 404, nie 403.
+      responses:
+        "200":
+          description: Das Protokoll des Gebaeudes oder Bereichs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Protokoll" }
+        "400": { $ref: "#/components/responses/MessstelleAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/standorte/{id}/aenderungen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - $ref: "#/components/parameters/ProtokollVon"
+      - $ref: "#/components/parameters/ProtokollBis"
+      - $ref: "#/components/parameters/ProtokollAchse"
+      - $ref: "#/components/parameters/ProtokollLimit"
+      - $ref: "#/components/parameters/ProtokollNach"
+    get:
+      tags: [ortsstruktur]
+      summary: Das Aenderungsprotokoll EINES Standorts samt Gebaeuden, Bereichen und Anlagen-Zuordnungen (AP-02 IP-14).
+      description: >
+        Recht `aenderungsprotokoll.lesen`. Die eigenen Eintraege des Standorts und
+        die seiner Gebaeude, Bereiche und Anlagen - jedes Kind mit den Eintraegen
+        aus der Zeit, in der es an diesem Standort hing (am Tag seines "gilt ab"
+        oder am Vortag: ein Umzug steht bei BEIDEN Standorten). Ein Umzug einer
+        Anlage steht nur einmal da. Ein fremder oder unbekannter Standort ist 404.
+      responses:
+        "200":
+          description: Das Protokoll des Standorts.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Protokoll" }
@@ -10777,7 +10833,8 @@ components:
         Der Beginn des Zeitraums auf der gewaehlten Achse - ein Zeitpunkt mit
         Versatz (2026-11-18T10:00:00+01:00, das "+" URL-kodiert) oder ein Tag
         (2026-11-18, dann dessen Beginn in Europe/Berlin). Fehlend = ohne Grenze.
-        Der Zeitraum ist halboffen: "von" zaehlt mit.
+        Der Zeitraum ist halboffen: "von" zaehlt mit. Mit `achse=gueltigkeit` NUR
+        ein Tag (2027-02-01).
     ProtokollBis:
       name: bis
       in: query
@@ -10785,19 +10842,24 @@ components:
       schema: { type: string }
       description: >
         Das Ende des Zeitraums, AUSSCHLIESSLICH ("bis" zaehlt nicht mehr mit);
-        dieselbe Form wie "von". Fehlend = ohne Grenze.
+        dieselbe Form wie "von". Fehlend = ohne Grenze. Mit `achse=gueltigkeit`
+        NUR ein Tag, und er zaehlt MIT (2027-02-28 = der ganze Februar).
     ProtokollAchse:
       name: achse
       in: query
       required: false
-      schema: { type: string, enum: [wirkung, eintrag], default: wirkung }
+      schema: { type: string, enum: [wirkung, eintrag, gueltigkeit], default: wirkung }
       description: >
-        WELCHE der zwei Zeitachsen "von"/"bis" filtern und wonach sortiert wird.
+        WELCHE Zeitachse "von"/"bis" filtert und wonach sortiert wird.
         `wirkung` (Vorgabe) ist "gilt ab" - wann die Aenderung GILT; `eintrag` ist
         "eingetragen am" - wann sie EINGETRAGEN wurde. Ein rueckwirkender
         Zaehlerwechsel gilt am 18.11. um 10:40 und wurde um 11:05 eingetragen: mit
         `wirkung` steht er im Zeitraum 10:00-11:00, mit `eintrag` im Zeitraum
-        11:00-12:00 - beide Male genau EINMAL.
+        11:00-12:00 - beide Male genau EINMAL. `gueltigkeit` (AP-02 IP-14) sortiert
+        wie `wirkung` und liefert, was in einen Zeitraum aus TAGEN reicht: "gilt ab"
+        <= letzter Tag und ("gilt bis" fehlt oder >= erster Tag) - die Regel
+        `reicht_in_zeitraum` des Ortsbaum-Vertrags. Eintraege der Messstellen und
+        Datenquellen haben kein "gilt bis" und reichen nur in ihren eigenen Tag.
     ProtokollLimit:
       name: limit
       in: query
@@ -21014,7 +21076,7 @@ components:
         `text` ist der Kundensatz "was wurde geaendert", gebaut allein aus
         `alt`/`neu`; `grund` ist die Begruendung, die der Schreiber mitgegeben hat
         (null = keine).
-      required: [id, quelle, art, text, bezug, gilt_ab, eingetragen_am, zeitform, grund, urheber, alt, neu]
+      required: [id, quelle, art, text, bezug, gilt_ab, gilt_bis, eingetragen_am, zeitform, grund, urheber, alt, neu]
       properties:
         id: { type: string, example: "messstelle:42" }
         quelle: { type: string, enum: [messstelle, ort, datenquelle], description: "Aus welchem Journal der Eintrag stammt." }
@@ -21022,6 +21084,15 @@ components:
         text: { type: string, example: "Zaehler gewechselt: Z-5a -> Z-5b" }
         bezug: { $ref: "#/components/schemas/ProtokollBezug" }
         gilt_ab: { type: string, format: date-time, description: "WANN die Aenderung gilt." }
+        gilt_bis:
+          type: string
+          format: date
+          nullable: true
+          description: >
+            Der letzte TAG, an dem ein Eintrag der Ortsstruktur (`quelle: ort`) noch
+            gilt - der Vortag, an dem derselbe Sachverhalt am selben Objekt wieder
+            geaendert wurde (Zuordnung, Flaeche, Bestehen, Felder). null = bis heute
+            offen; bei Messstellen und Datenquellen immer null (AP-02 IP-14).
         eingetragen_am: { type: string, format: date-time, description: "WANN sie eingetragen wurde." }
         zeitform: { type: string, enum: [rueckwirkend, angekuendigt, sofort], description: "Das Urteil ueber die beiden Zeitpunkte; `rueckwirkend` ist das gespeicherte Urteil des Schreibwegs." }
         grund: { type: string, nullable: true }
@@ -21041,7 +21112,7 @@ components:
         eintraege:
           type: array
           items: { $ref: "#/components/schemas/ProtokollEintrag" }
-        achse: { type: string, enum: [wirkung, eintrag] }
+        achse: { type: string, enum: [wirkung, eintrag, gueltigkeit] }
         von: { type: string, format: date-time, nullable: true }
         bis: { type: string, format: date-time, nullable: true }
         weiter: { type: string, nullable: true, example: "1763458800000:messstelle:42" }

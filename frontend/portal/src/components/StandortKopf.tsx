@@ -1,7 +1,7 @@
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { OrtAktionen, StandortAmStichtag } from '../api';
-import { menueEintraege, type MenueEintrag } from '../ortArchiv';
+import { menueEintraege, mitAenderungen, type MenueEintrag } from '../ortArchiv';
 import { esFehltSatz, standortZeile } from '../standorte';
 import { OrtMenue } from './OrtMenue';
 import './StandortKopf.css';
@@ -56,7 +56,7 @@ export function StandortKopf({
         </Button>
       )}
       {onAktion && aktionen && (
-        <OrtMenue name={standort.name} eintraege={menueEintraege(aktionen)} onWahl={onAktion} />
+        <OrtMenue name={standort.name} eintraege={mitAenderungen(menueEintraege(aktionen))} onWahl={onAktion} />
       )}
     </div>
   );

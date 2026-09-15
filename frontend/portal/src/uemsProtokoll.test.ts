@@ -33,6 +33,7 @@ function eintrag(over: Partial<ProtokollEintrag> = {}): ProtokollEintrag {
     text: 'Zähler gewechselt: Z-5a → Z-5b',
     bezug: { art: 'messstelle', id: 'ms-1', kennzeichen: 'MS-06', name: 'Hauptzähler Werk' },
     gilt_ab: WECHSEL,
+    gilt_bis: null,
     eingetragen_am: EINGETRAGEN,
     zeitform: 'rueckwirkend',
     grund: 'Zähler defekt',

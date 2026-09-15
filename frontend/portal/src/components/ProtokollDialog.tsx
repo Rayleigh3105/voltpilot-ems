@@ -8,7 +8,7 @@
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
-import { ProtokollListe, useProtokoll, type ProtokollZiel } from './ProtokollListe';
+import { ProtokollListe, useProtokoll, type ProtokollOptionen, type ProtokollZiel } from './ProtokollListe';
 
 /** Die EINE Beschriftung — im Menü, im Kopf des Dialogs und auf der Geräteseite. */
 export const PROTOKOLL_LABEL = 'Änderungsprotokoll';
@@ -17,6 +17,7 @@ export function ProtokollDialog({
   open,
   titel,
   ziel,
+  optionen,
   onClose,
 }: {
   open: boolean;
@@ -24,9 +25,11 @@ export function ProtokollDialog({
   titel: string;
   /** null, solange nichts gewählt ist; dann wird auch nichts geladen. */
   ziel: ProtokollZiel | null;
+  /** Wie der Wirt die Liste will (AP-02 IP-14: nach dem Eintrag, mit Anlege-Satz). */
+  optionen?: ProtokollOptionen;
   onClose: () => void;
 }) {
-  const state = useProtokoll(open ? ziel : null);
+  const state = useProtokoll(open ? ziel : null, optionen);
   if (!open) return null;
   return (
     <Modal

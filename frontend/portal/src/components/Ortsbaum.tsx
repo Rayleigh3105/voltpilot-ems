@@ -15,9 +15,10 @@ import {
   type OrtDialogArt,
   type OrtFeld,
 } from '../ortsbaum';
-import { archiviertAmText, menueEintraege, type MenueEintrag } from '../ortArchiv';
+import { archiviertAmText, menueEintraege, mitAenderungen, type MenueEintrag } from '../ortArchiv';
 import { danachAbzeichen } from '../ortVerschieben';
 import { ArchivierenDialog, type ArchivAktion } from './ArchivierenDialog';
+import { OrtAenderungen } from './OrtAenderungen';
 import { OrtDialog } from './OrtDialog';
 import { OrtMenue } from './OrtMenue';
 import { VerschiebenDialog } from './VerschiebenDialog';
@@ -80,6 +81,8 @@ export function Ortsbaum({
   const [dialog, setDialog] = useState<DialogZustand | null>(null);
   const [aktion, setAktion] = useState<{ art: ArchivAktion; knoten: Knoten; schluessel: number } | null>(null);
   const [verschieben, setVerschieben] = useState<{ knoten: Knoten; schluessel: number } | null>(null);
+  // IP-14 (H2): das Änderungsprotokoll eines Gebäudes oder Bereichs.
+  const [protokoll, setProtokoll] = useState<Knoten | null>(null);
   // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
   // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
   const ausloeser = useRef<HTMLElement | null>(null);
@@ -123,6 +126,12 @@ export function Ortsbaum({
   }
 
   function waehle(eintrag: MenueEintrag, knoten: Knoten, von: HTMLElement) {
+    // IP-14 (H2): „Änderungsprotokoll“ liest nur — ein Dialog, kein Schreibweg.
+    if (eintrag.art === 'aenderungen') {
+      ausloeser.current = von;
+      setProtokoll(knoten);
+      return;
+    }
     // IP-12 (V1 → V2): „Verschieben …“ öffnet den eigenen Dialog.
     if (eintrag.art === 'verschieben') {
       ausloeser.current = von;
@@ -138,6 +147,14 @@ export function Ortsbaum({
 
   function schliesseVerschieben() {
     setVerschieben(null);
+    const ziel = ausloeser.current;
+    requestAnimationFrame(() => {
+      if (ziel?.isConnected) ziel.focus();
+    });
+  }
+
+  function schliesseProtokoll() {
+    setProtokoll(null);
     const ziel = ausloeser.current;
     requestAnimationFrame(() => {
       if (ziel?.isConnected) ziel.focus();
@@ -245,7 +262,7 @@ export function Ortsbaum({
         {/* IP-15: das Menü je Knoten; wo keins ist („Direkt am Standort“), hält der Platz die Spalte bündig. */}
         {mitMenue &&
           (k.aktionen ? (
-            <OrtMenue name={k.name} eintraege={menueEintraege(k.aktionen)} onWahl={(e, von) => waehle(e, k, von)} />
+            <OrtMenue name={k.name} eintraege={mitAenderungen(menueEintraege(k.aktionen))} onWahl={(e, von) => waehle(e, k, von)} />
           ) : (
             <span className="vp-ob-bearbeiten-platz" aria-hidden="true" />
           ))}
@@ -377,6 +394,14 @@ export function Ortsbaum({
             </li>
           ))}
         </ul>
+      )}
+
+      {protokoll?.id && (
+        <OrtAenderungen
+          open
+          objekt={{ art: protokoll.art === 'gebaeude' ? 'gebaeude' : 'bereich', id: protokoll.id, name: protokoll.name }}
+          onClose={schliesseProtokoll}
+        />
       )}
 
       {aktion && aktion.knoten.id && (

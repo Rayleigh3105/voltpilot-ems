@@ -44,6 +44,35 @@ public class OrtAenderungRepository {
     public static final String WIEDERHERGESTELLT = "wiederhergestellt";
 
     /**
+     * Ein Eintrag, der zum Protokoll eines Standorts gehören KANN (AP-02 IP-14) — nur, was das
+     * Urteil in {@link OrtProtokollUmfang} braucht. {@code anlageId} ist {@code neu.anlage_id}: der
+     * Umzug einer Anlage (IP-11) schreibt ihn am Standort, damit der Eintrag an der Anlage selbst
+     * dort nicht ein zweites Mal erscheint.
+     */
+    public record Kandidat(long id, String objektArt, UUID objektId, LocalDate giltAb, Instant eingetragenAm,
+            String anlageId) {}
+
+    /**
+     * Die Kandidaten des Protokolls EINES Standorts: seine eigenen Einträge und die aller Gebäude,
+     * Bereiche und Anlagen des Kundenbereichs — welche davon wirklich dazugehören, entscheidet der
+     * Ortsbaum ({@link OrtProtokollUmfang}), nicht diese Abfrage.
+     */
+    public List<Kandidat> kandidatenDesStandorts(UUID standortId) {
+        return List.copyOf(jdbc.query("SELECT id, objekt_art, objekt_id, gilt_ab, created_at, "
+                + "neu->>'anlage_id' AS anlage_id FROM ort_aenderung "
+                + "WHERE objekt_art IN ('gebaeude', 'bereich', 'anlage') "
+                + "OR (objekt_art = 'standort' AND objekt_id = ?)",
+                (rs, n) -> new Kandidat(
+                        rs.getLong("id"),
+                        rs.getString("objekt_art"),
+                        rs.getObject("objekt_id", UUID.class),
+                        rs.getObject("gilt_ab", LocalDate.class),
+                        rs.getTimestamp("created_at").toInstant(),
+                        rs.getString("anlage_id")),
+                standortId));
+    }
+
+    /**
      * Die Archiv-Schritte aller Objekte einer Art, in der Reihenfolge des Schreibens —
      * daraus liest das Standort-Lesemodell die Lücken zwischen Archivieren und
      * Wiederherstellen (ein Standort hat kein eigenes Intervall).

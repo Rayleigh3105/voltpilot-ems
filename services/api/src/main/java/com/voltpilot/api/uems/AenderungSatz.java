@@ -1,9 +1,11 @@
 package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -78,8 +80,8 @@ public final class AenderungSatz {
             case "geloescht" -> was + " gelöscht";
             case "verschoben" -> verschoben(was, bezugArt, alt, neu);
             case "korrigiert" -> "Zuordnung berichtigt" + zielZusatz(neu);
-            case "flaeche_geaendert" -> "Bezugsfläche geändert" + wechsel(text(alt, "flaeche_m2"),
-                    text(neu, "flaeche_m2"), " m²");
+            case "flaeche_geaendert" -> "Bezugsfläche geändert" + wechsel(ganzzahl(text(alt, "flaeche_m2")),
+                    ganzzahl(text(neu, "flaeche_m2")), " m²");
             case "nebengroesse_hinzugefuegt" -> "Nebengröße hinzugefügt" + groesse(neu);
             case "nebengroesse_archiviert" -> "Nebengröße archiviert" + groesse(neu);
             case "ort_zugeordnet" -> "Ort zugeordnet" + zusatz(text(neu, "kennzeichen"));
@@ -246,6 +248,14 @@ public final class AenderungSatz {
         neu.path("zeilen").forEach(z -> teile.add(z.path("anteil_prozent").asText().replace('.', ',')
                 + "\u00a0% " + z.path("kostenstelle").asText()));
         return zusatz(teile.isEmpty() ? VerteilungRegeln.NICHT_VERTEILT : String.join(", ", teile));
+    }
+
+    /** „3.100“ — eine ganze Zahl mit dem Tausenderpunkt des Portals (de-DE); alles andere bleibt, wie es ist. */
+    private static String ganzzahl(String wert) {
+        if (wert == null || !wert.matches("-?\\d+")) {
+            return wert;
+        }
+        return NumberFormat.getIntegerInstance(Locale.GERMANY).format(Long.parseLong(wert));
     }
 
     private static String zusatz(String wert) {
