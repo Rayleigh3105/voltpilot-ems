@@ -38,10 +38,10 @@ IP-7, §4.9 V6, §4.10, E4/E11/E12.
   `MessstelleWerteService.entscheidung` (paketweit, aufgerufen). Anlass `definition` → die `kennzahl_fassung` der gelesenen
   Nummer (`vorgang` `berechnung`, `art` = ihre Herkunft). ⚠ Ein Beleg ohne solche Kennung — die Bezugsgrößen-Anlässe von
   **IP-9** („correction BZ-1 2026-10 Fassung 1 → 2 (I-2026-0003)“, „Rücknahme I-2026-0001“) — hat KEINE Entscheidung, nur
-  den Anlass-Text. Wer IP-9 baut, löst Import/Berichtigung dort auf (`kennungen` + `entscheidungen` im Service).
+  den Anlass-Text. IP-9 ist gebaut und hat das NICHT aufgelöst — weiter offen (`uems-kennzahlen-abschluss.md`).
 - **Streng:** fehlender, falsch geformter oder UNBEKANNTER Parameter = 400 `anfrage_ungueltig` mit `feld`; `von` muss
   Periodenbeginn, `bis` Periodenende sein, höchstens 2 200 Perioden. Anfrage vor Existenz (400 vor 404); fremd ist 404.
 - **Eigener Controller** neben `KennzahlController` (wie `MessstelleWerteController` neben `MessstelleController`) — mit
   eigenen `@ExceptionHandler`n; der Konstruktor von `KennzahlController` bleibt unberührt.
-- **Nicht gebaut:** Durchsetzung des Lesens (AP-03 IP-11), Portal (IP-13/IP-15), Export als Datei (Rundung bleibt beim
-  Portal). Wochen-Werte schreibt der Lauf seit IP-12 (`uems-kennzahl-wochen.md`).
+- **Nicht gebaut:** Durchsetzung des Lesens (AP-03 IP-11), Export als Datei (Rundung bleibt beim Portal). Das Portal liest
+  die Route seit IP-13/IP-15. Wochen-Werte schreibt der Lauf seit IP-12 (`uems-kennzahl-wochen.md`).

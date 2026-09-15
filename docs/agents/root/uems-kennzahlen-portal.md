@@ -48,5 +48,5 @@ Spezifikation: AP-11 §8 IP-13, §5.3 (Kennzahl-Seite bei 375 px), §5.5 (Versio
 - **Abweichung:** §5.5 schreibt „freigegeben von Jonas Wendlinger“; die Referenzdatei 1.4 hat K-2026-0007 von Ines
   Kaltenbach freigegeben — die Fixtures folgen der Datei.
 - **Seit IP-15 gebaut:** „Berechnung ändern ab …“, Stammdaten ändern, Archivieren und Löschen — `uems-kennzahl-aendern.md`
-  (kein Wiederherstellen: keine Route, also kein Knopf). Nicht gebaut: Paare einer Jahres-Zusammenfassung (K14, IP-11). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
+  (kein Wiederherstellen: keine Route, also kein Knopf). Die Paare einer Jahres-Zusammenfassung (K14) zeigt die Herkunfts-Karte seit IP-11 (`kennzahlKarte.herkunft` → `paare`). „Kennzahl anlegen“ und „Kopieren“ stehen seit IP-14 im
   Kopf von Liste und Seite: `uems-kennzahl-anlegen.md`.
