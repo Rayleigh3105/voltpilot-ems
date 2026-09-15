@@ -45,6 +45,7 @@ import {
   routeFromHash,
   standortMessstellenRoute,
   kennzahlRoute,
+  messstelleRoute,
   standortRoute,
   transitionKind,
   type PageId,
@@ -1293,6 +1294,18 @@ function UnifiedPortal() {
               }
               onUebersicht={() =>
                 navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
+              }
+              // AP-04 IP-8: die Messstellen-Seite im Bereich, aus dem sie geöffnet wird.
+              messstelleId={route.messstelleId ?? null}
+              onOeffnen={(id) =>
+                navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id))
+              }
+              onListe={() =>
+                navigate(
+                  page === 'standort' && route.standortId
+                    ? standortMessstellenRoute(route.standortId)
+                    : pageRoute('portfolio-messstellen'),
+                )
               }
             />
           )}

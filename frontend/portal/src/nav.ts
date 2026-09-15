@@ -133,6 +133,13 @@ export interface Route {
    * (UEMS AP-11 IP-13, `#/portfolio/kennzahlen/{id}`). Absent = die Liste.
    */
   kennzahlId?: string;
+  /**
+   * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
+   * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
+   * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
+   * Absent = das Register.
+   */
+  messstelleId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -579,6 +586,7 @@ export function parseRoute(hash: string): Route {
   // Landung, statt ins Leere zu zeigen.
   if (head === 'portfolio') {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
   }
@@ -587,7 +595,11 @@ export function parseRoute(hash: string): Route {
   // ⚠ `#/standorte` (Mehrzahl) ist NICHT diese Seite, sondern die Alt-Adresse
   // der Technik in `LEGACY_ROUTES`.
   if (head === 'standort') {
-    if (segments[1] && segments[2] === 'messstellen') return standortMessstellenRoute(segments[1]);
+    if (segments[1] && segments[2] === 'messstellen') {
+      return segments[3]
+        ? messstelleRoute(decodeURIComponent(segments[3]), segments[1])
+        : standortMessstellenRoute(segments[1]);
+    }
     return segments[1]
       ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
       : { page: 'standort', siteId: null, sub: null };
@@ -659,12 +671,15 @@ export function hashForRoute(route: Route): string {
   if (route.page === 'anlagen') return '#/anlagen';
   if (route.page === 'standort') {
     if (!route.standortId) return '#/standort';
-    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}`;
+    const messstelle = route.standortBereich && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${messstelle}`;
   }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
     const kennzahl = route.page === 'portfolio-kennzahlen' && route.kennzahlId ? `/${encodeURIComponent(route.kennzahlId)}` : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}`;
+    const messstelle =
+      route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}`;
   }
   return `#/${route.page}`;
 }
@@ -692,6 +707,16 @@ export function standortMessstellenRoute(standortId: string): Route {
 /** Route einer Kennzahl-Seite (UEMS AP-11 IP-13): `#/portfolio/kennzahlen/{id}`. */
 export function kennzahlRoute(kennzahlId: string): Route {
   return { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+}
+
+/**
+ * Route einer Messstellen-Seite (UEMS AP-04 IP-8) — im Bereich „Messstellen“, aus dem sie geöffnet
+ * wird: ohne Standort `#/portfolio/messstellen/{id}`, mit `#/standort/{sid}/messstellen/{id}`.
+ */
+export function messstelleRoute(messstelleId: string, standortId?: string | null): Route {
+  return standortId
+    ? { ...standortMessstellenRoute(standortId), messstelleId }
+    : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
 }
 
 /* =========================================================================

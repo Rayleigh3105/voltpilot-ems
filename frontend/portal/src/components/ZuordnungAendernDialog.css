@@ -1,0 +1,106 @@
+/*
+ * „Ändern ab <Tag>“ der Messstellen-Seite (UEMS AP-04 IP-8, Mockup Z4). Die Schale ist `vp-sd`
+ * (Standort-Dialog), die Folgen-Karte `vp-fd-folgen` (Fläche ändern); hier nur „Bisher“, die
+ * Kostenstellen-Zeilen und der Kopf der Folgen mit dem Kennzeichen.
+ * ⚠ 375 px: Kostenstelle, Anteil und „Entfernen“ brechen untereinander, nie über den Rand.
+ */
+
+.vp-za .vp-fd-name {
+  margin: 0;
+}
+
+.vp-za-ab {
+  max-width: 20rem;
+  min-width: 0;
+}
+
+.vp-za-bisher {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-za-bisher h4 {
+  margin: 0 0 2px;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vp-za-wert {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-za-neben {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+.vp-za-folgen-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+
+.vp-za-anteile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-za-anteile legend {
+  padding: 0;
+  margin-bottom: var(--vp-c-space-2);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-za-anteil {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-za-anteil-ks {
+  flex: 3 1 14rem;
+  min-width: 0;
+}
+
+.vp-za-anteil-wert {
+  flex: 1 1 6rem;
+  min-width: 0;
+}
+
+.vp-za-anteile > .vp-btn,
+.vp-za-anteile > button {
+  align-self: flex-start;
+}
+
+.vp-za-summe {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-za-fehler {
+  margin: 0;
+  color: var(--vp-c-danger, #b42318);
+  font-size: var(--vp-c-fs-14);
+  overflow-wrap: break-word;
+}

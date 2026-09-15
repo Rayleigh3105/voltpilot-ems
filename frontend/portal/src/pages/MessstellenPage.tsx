@@ -33,6 +33,7 @@ import {
 import { DIALOG_TITEL } from '../messstelleDialog';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
+import { MessstelleSeite } from './MessstelleSeite';
 import './MessstellenPage.css';
 
 /**
@@ -52,11 +53,23 @@ import './MessstellenPage.css';
  * kein Knopf ohne Ziel.
  */
 export function MessstellenPage({
-  ebene,
-  bereichDa = null,
-  zone = VORGABE_ZEITZONE,
-  onUebersicht,
-}: {
+  messstelleId = null,
+  onOeffnen,
+  onListe,
+  ...register
+}: RegisterProps & {
+  /** Die Messstelle der Adresse (AP-04 IP-8) — dann steht ihre Seite statt des Registers. */
+  messstelleId?: string | null;
+  /** Der Weg zurück ins Register der Ebene. */
+  onListe?: () => void;
+}) {
+  if (messstelleId && onListe) {
+    return <MessstelleSeite key={messstelleId} id={messstelleId} zone={register.zone} onListe={onListe} />;
+  }
+  return <RegisterFlaeche {...register} onOeffnen={onOeffnen} />;
+}
+
+interface RegisterProps {
   ebene: MessstellenEbene;
   /** Hat die Ebene den Bereich (ein Standort misst)? `null` = unbekannt. */
   bereichDa?: boolean | null;
@@ -64,7 +77,11 @@ export function MessstellenPage({
   zone?: string;
   /** Der Weg aus dem Leerzustand „gibt es erst mit Messen & Auswerten“: die Übersicht der Ebene. */
   onUebersicht?: () => void;
-}) {
+  /** Öffnet die Messstellen-Seite (AP-04 IP-8) — der Name jeder Zeile ist der Einstieg. */
+  onOeffnen?: (id: string) => void;
+}
+
+function RegisterFlaeche({ ebene, bereichDa = null, zone = VORGABE_ZEITZONE, onUebersicht, onOeffnen }: RegisterProps) {
   const isPhone = useIsPhone();
   const [stichtag, setStichtag] = useState<string | null>(null);
   const [heute, setHeute] = useState<string | null>(null);
@@ -150,9 +167,9 @@ export function MessstellenPage({
           ) : leer ? (
             <Leer leer={leer} onUebersicht={onUebersicht} onAnlegen={anlegbar ? () => setAnlegen(true) : undefined} />
           ) : isPhone ? (
-            <Karten eintraege={eintraege} stichtag={stichtag} />
+            <Karten eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} />
           ) : (
-            <Tabelle eintraege={eintraege} stichtag={stichtag} />
+            <Tabelle eintraege={eintraege} stichtag={stichtag} onOeffnen={onOeffnen} />
           )}
         </>
       )}
@@ -248,6 +265,22 @@ function Leer({
   );
 }
 
+interface RegisterListeProps {
+  eintraege: RegisterEintrag[];
+  stichtag: string | null;
+  onOeffnen?: (id: string) => void;
+}
+
+/** Der Name öffnet die Messstellen-Seite (AP-04 IP-8); ohne Wirt bleibt er Text. */
+function Name({ w, onOeffnen }: { w: ZeileWoerter; onOeffnen?: (id: string) => void }) {
+  if (!onOeffnen) return <>{w.name}</>;
+  return (
+    <button type="button" className="vp-ms-oeffnen" onClick={() => onOeffnen(w.id)}>
+      {w.name}
+    </button>
+  );
+}
+
 function spalten(stichtag: string | null): string[] {
   return [
     SPALTEN.kennzeichen,
@@ -261,7 +294,7 @@ function spalten(stichtag: string | null): string[] {
 }
 
 /** 1440 px: eine Zeile je Messstelle; die Tabelle scrollt lokal, nie die Seite. */
-function Tabelle({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; stichtag: string | null }) {
+function Tabelle({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
   return (
     <div className="vp-ms-rahmen">
       <table className="vp-ms-tabelle">
@@ -291,7 +324,9 @@ function Tabelle({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; sticht
                 <td>
                   <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
                 </td>
-                <td className="vp-ms-name">{e.woerter.name}</td>
+                <td className="vp-ms-name">
+                  <Name w={e.woerter} onOeffnen={onOeffnen} />
+                </td>
                 <td>
                   <Ort w={e.woerter} />
                 </td>
@@ -315,7 +350,7 @@ function Tabelle({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; sticht
 }
 
 /** 375 px: eine Karte je Messstelle mit denselben Wörtern wie die Spalten. */
-function Karten({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; stichtag: string | null }) {
+function Karten({ eintraege, stichtag, onOeffnen }: RegisterListeProps) {
   const [, , ort, stellung, quelle, zustand, wert] = spalten(stichtag);
   return (
     <ul className="vp-ms-karten">
@@ -332,7 +367,9 @@ function Karten({ eintraege, stichtag }: { eintraege: RegisterEintrag[]; stichta
           <li key={e.woerter.id} className="vp-ms-karte">
             <div className="vp-ms-karte-kopf">
               <span className="vp-ms-kz">{e.woerter.kennzeichen}</span>
-              <h2 className="vp-ms-karte-name">{e.woerter.name}</h2>
+              <h2 className="vp-ms-karte-name">
+                <Name w={e.woerter} onOeffnen={onOeffnen} />
+              </h2>
             </div>
             <dl className="vp-ms-fakten">
               <dt>{zustand}</dt>
