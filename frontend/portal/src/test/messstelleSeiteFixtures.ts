@@ -37,6 +37,7 @@ export const SEITE_JETZT = '2026-10-20T10:15:00+02:00';
 export const MS_IDS = {
   ms06: '3e000000-0000-4000-8000-000000000006',
   ms08: '3e000000-0000-4000-8000-000000000008',
+  ms10: '3e000000-0000-4000-8000-000000000010',
 } as const;
 
 const prozessId = (n: number) => `9a000000-0000-4000-8000-00000000000${n}`;
@@ -313,4 +314,37 @@ export function protokollMs08Angelegt(): Protokoll {
       zeitform: 'sofort',
     }),
   ]);
+}
+
+// -------------------------------------------------------------------- MS-10 (UEMS AP-13 IP-3)
+
+/**
+ * MS-10 Netzbezug Halle 2: Gebäude G-2 und Hauptzähler in AN-2 seit 01.10.2026 — wie seine Zeile im Register
+ * (`messstellenRegisterFixtures`). Für die Werte-Bühne mit Versionen (F21, `wertVersionenFixtures`); die Quelle
+ * nennt der Kopf aus dem Register.
+ */
+export function ms10(): Messstelle {
+  return messstelle({
+    id: MS_IDS.ms10,
+    kennzeichen: 'MS-10',
+    name: 'Netzbezug Halle 2',
+    orte: [{ ort_art: 'gebaeude', kennzeichen: 'G-2', gueltig_ab: '2026-10-01', gueltig_bis: null }],
+    elektrische_stellung: [
+      { anlage: FIXTURE_IDS.an2, stellung: 'Hauptzähler', unterzaehler_von: null, gueltig_ab: '2026-10-01', gueltig_bis: null },
+    ],
+  });
+}
+
+/** Ohne Prozess und ohne Kostenstelle: der Hauptzähler MS-10 ist keiner zugeordnet (`prozesse`, `kostenstellen_anteile`). */
+export function ohneProzesse(m: Messstelle): MessstelleProzesse {
+  return { messstelle_id: m.id, kennzeichen: m.kennzeichen, am: null, prozesse: [] };
+}
+
+export function ohneVerteilung(m: Messstelle): MessstelleVerteilung {
+  return { messstelle_id: m.id, kennzeichen: m.kennzeichen, am: null, zustand: null, anteile: [] };
+}
+
+/** Das Protokoll von MS-10 in der Bühne: leer — die Werte-Bühne braucht es nicht. */
+export function protokollMs10(): Protokoll {
+  return seite([]);
 }

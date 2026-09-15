@@ -9,7 +9,8 @@ Neu am 15.09.2026. Kein Backend, keine Migration. Bericht: `data/vp-uems-ap04-me
 | Seite: Kopf (Zustand, Quelle aus dem Register), drei Karten, „Ändern ab …“, `<details>` „Historie (n)“, Protokoll | `src/pages/MessstelleSeite.tsx` (+ `.css`) · `pages/MessstelleSeite.test.tsx` |
 | Dialog „Ändern ab <Tag>“ (Ort · Stellung · Prozesse · Kostenstellen) mit `VpDatePicker`, Bisher, „Was geschieht“ | `src/components/ZuordnungAendernDialog.tsx` (+ `.css`) |
 | Routen `#/portfolio/messstellen/{id}` und `#/standort/{sid}/messstellen/{id}` (`Route.messstelleId`, `messstelleRoute`); `MessstellenPage` schaltet mit `messstelleId` auf die Seite, der Name jeder Registerzeile ist der Einstieg | `src/nav.ts`, `src/App.tsx`, `src/pages/MessstellenPage.tsx` |
-| Antworten nur aus Ahrenberg (MS-06 heute, MS-08 vor/nach dem Umzug am 01.03.2027, Protokoll der Einführung) | `src/test/messstelleSeiteFixtures.ts` |
+| Abschnitt „Werte“ direkt unter dem Kopf (AP-13 IP-3, E9/E12 = A): `WerteSektion` mit Periode/Version aus der Adresse, Einstiege „Letzter Wert“ + Zeilenmenü „Werte“ (Rechner) und ganze Karte (Telefon) | `src/components/WerteSektion.tsx`, `src/pages/MessstelleSeite.tsx`, `MessstellenPage.tsx` (`onWerte`), `src/nav.ts` (`parseMessstelleWerte`), `src/App.tsx` (`springe`); Regeln `uems-tageskarte.md` Falle 11 |
+| Antworten nur aus Ahrenberg (MS-06 heute, MS-08 vor/nach dem Umzug am 01.03.2027, MS-10 als Hauptzähler für F21, Protokoll der Einführung) | `src/test/messstelleSeiteFixtures.ts` |
 | 375 px (`mobile-chromium`) und 1440 px (`desktop-chromium`) mit Messung und Bildern | `e2e/messstelle-seite.spec.ts` (Bühne `messstelle-seite.html`); `MESSSTELLE_SEITE_BILDER=<Ordner>` |
 
 Geschrieben wird über die bestehenden Routen: `PUT …/messstellen/{id}/ort|stellung` (AP-04 IP-7),
@@ -44,11 +45,20 @@ Geschrieben wird über die bestehenden Routen: `PUT …/messstellen/{id}/ort|ste
 8. **Die Quelle-Karte mit Historie ist IP-14.** Die Seite nennt nur die führende Quelle im Kopf
    (aus `zeileWoerter`), kein „Zähler wechseln“ ohne Ziel.
 
+9. **Die Werte stehen oben, die Adresse trägt Periode und Version (AP-13 IP-3).** Mit `periode=` holt die Seite den
+   Abschnitt nach dem Laden in den Blick (`scrollIntoView({ block: 'nearest' })` — steht er schon im Bild, bleibt die
+   Seite stehen; keine geschätzte Kopfhöhe). Der Register-Einstieg ist ein Seitenwechsel (`App.springe`, wie
+   `navigate` mit der Adresse des Sprungs), eine neue Wahl in der Sektion ersetzt nur die Adresse. Am Rechner steht die
+   Liste NEBEN Zone/Zeit-Leiste/Karte (ab 960 px, `.vp-mss-werte .vp-wk`), darunter wie im Dialog. Das Zeilenmenü und
+   der Knopf am letzten Wert erscheinen nur mit Wirt (`onWerte`) — die Bühne `startansicht` hat keinen, ihre Spalten
+   bleiben sieben. Am Telefon deckt der Knopf am Namen die Karte ab (`::after`): Playwright tippt auf die KARTE (`li`),
+   nicht auf ein `dd` darunter, sonst meldet es „intercepts pointer events“.
+
 ## Prüfen
 
 ```bash
 (cd frontend/portal && npx vitest run src/messstelleZuordnung.test.ts src/pages/MessstelleSeite.test.tsx \
-  src/pages/MessstellenPage.test.tsx src/nav.test.ts src/ebenenNav.test.ts src/copy.test.ts)
+  src/pages/MessstellenPage.test.tsx src/nav.test.ts src/ebenenNav.test.ts src/copy.test.ts src/uemsWerteKarte.test.ts)
 (cd frontend/portal && MESSSTELLE_SEITE_BILDER=/tmp/mss npx playwright test e2e/messstelle-seite.spec.ts \
   --project=mobile-chromium --project=desktop-chromium)
 ```

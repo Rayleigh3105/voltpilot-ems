@@ -41,6 +41,7 @@ import {
   hashForRoute,
   isBootHash,
   pageRoute,
+  parseMessstelleWerte,
   PLATFORM_PAGES,
   routeFromHash,
   standortMessstellenRoute,
@@ -79,6 +80,7 @@ import {
   requestNavigation,
 } from './navigationBlocker';
 import { useFreshnessPoll } from './useFreshnessPoll';
+import { sprungziel, type Sprung } from './uemsOberflaechen';
 import { useDeployWatch } from './deployWatch';
 import { aufmerksamkeitTitel } from './steuerungAufmerksamkeit';
 import { useAnlageSurface } from './useAnlageSurface';
@@ -611,11 +613,10 @@ function UnifiedPortal() {
     transitionToRoute(next, kind, () => setRoute(next));
   }, []);
 
-  const navigate = useCallback(
-    (target: Route | PageId) => {
-      let r: Route = typeof target === 'string' ? pageRoute(target) : target;
-      if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page)) r = pageRoute('uebersicht');
-      const nextHash = hashForRoute(r);
+  // Jeder Seitenwechsel läuft hier durch — auch ein Sprung, dessen Adresse mehr trägt als die Route
+  // (UEMS AP-13 IP-3: `?periode=…&version=…` aus `uemsOberflaechen.sprungziel`).
+  const geheZu = useCallback(
+    (r: Route, nextHash: string) => {
       if (requestNavigation(new URL(nextHash, window.location.href).href)) return;
       window.location.hash = nextHash;
       navIndex.current = recordNewNavigation();
@@ -623,8 +624,19 @@ function UnifiedPortal() {
       // A page switch is a navigation, not a scroll continuation.
       window.scrollTo({ top: 0 });
     },
-    [isAdmin, commit],
+    [commit],
   );
+
+  const navigate = useCallback(
+    (target: Route | PageId) => {
+      let r: Route = typeof target === 'string' ? pageRoute(target) : target;
+      if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page)) r = pageRoute('uebersicht');
+      geheZu(r, hashForRoute(r));
+    },
+    [isAdmin, geheZu],
+  );
+
+  const springe = useCallback((s: Sprung) => geheZu(s.route, s.hash), [geheZu]);
 
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
@@ -1317,6 +1329,19 @@ function UnifiedPortal() {
               onOeffnen={(id) =>
                 navigate(page === 'standort' && route.standortId ? messstelleRoute(id, route.standortId) : messstelleRoute(id))
               }
+              // AP-13 IP-3: der Abschnitt „Werte“ mit Periode (und Version) in der Adresse. Ein Einstieg aus dem
+              // Register ist ein Seitenwechsel; eine neue Wahl auf der Seite ersetzt nur die Adresse.
+              werte={parseMessstelleWerte(window.location.hash)}
+              onWerte={(id, periode) => {
+                const s = sprungziel({ art: 'messstelle', id, standortId: page === 'standort' ? route.standortId : null, periode });
+                if (s) springe(s);
+              }}
+              onWerteZeitraum={(periode) => {
+                const s = route.messstelleId
+                  ? sprungziel({ art: 'messstelle', id: route.messstelleId, standortId: page === 'standort' ? route.standortId : null, periode })
+                  : null;
+                if (s) replaceCurrentNavigation(s.hash);
+              }}
               onListe={() =>
                 navigate(
                   page === 'standort' && route.standortId

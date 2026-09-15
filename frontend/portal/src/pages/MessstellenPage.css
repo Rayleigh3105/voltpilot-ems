@@ -351,3 +351,66 @@
   outline: 2px solid var(--vp-focus-ring-color);
   outline-offset: 2px;
 }
+
+/* --- Einstiege in die Werte (UEMS AP-13 IP-3) ------------------------------------------------------ */
+
+/* Der letzte Wert führt in den Abschnitt „Werte“ der Seite — ein Knopf, der wie der Wert aussieht. */
+.vp-ms-werte {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: break-word;
+  cursor: pointer;
+}
+
+.vp-ms-werte .vp-ms-zahl {
+  color: var(--vp-c-primary);
+}
+
+.vp-ms-werte:hover .vp-ms-zahl {
+  text-decoration: underline;
+}
+
+.vp-ms-werte:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* Mit Zeilenmenü ist der Wert nicht mehr die letzte Spalte — er behält seine Breite, das Menü nimmt keine. */
+.vp-ms-tabelle td.vp-ms-wertzelle {
+  min-width: 9.5rem;
+}
+
+.vp-ms-tabelle td.vp-ms-menue {
+  min-width: 0;
+  width: 1%;
+}
+
+/* Am Telefon ist die ganze Karte der Einstieg: der Knopf am Namen deckt sie ab. */
+.vp-ms-karte.is-werte {
+  position: relative;
+}
+
+.vp-ms-karte.is-werte:hover {
+  border-color: var(--vp-c-primary);
+}
+
+.vp-ms-karte-werte::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.vp-ms-karte-werte:focus-visible {
+  outline: none;
+}
+
+.vp-ms-karte.is-werte:has(.vp-ms-karte-werte:focus-visible) {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}

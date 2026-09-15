@@ -9,17 +9,26 @@ import {
   ms08Angelegt,
   ms08OrtGeplant,
   ms08Vorher,
+  ms10,
+  ohneProzesse,
+  ohneVerteilung,
   protokollMs06,
   protokollMs08Angelegt,
   protokollMs08OrtGeplant,
   protokollMs08Vorher,
+  protokollMs10,
   prozesseAhrenberg,
+  SEITE_HEUTE,
   prozesseVon,
   verteilungVon,
 } from '../src/test/messstelleSeiteFixtures';
+import type { MessstelleWerte } from '../src/api';
+import { verschiebe } from '../src/picker/datum';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach } from '../src/test/ortsbaumFixtures';
 import { ahrenbergHeute, FIXTURE_IDS } from '../src/test/standorteFixtures';
+import { f13Stunden, f13Tag, grundlastStunden, grundlastTag } from '../src/test/werteKarteFixtures';
+import { f21Stunden, f21Tag, f21TagWert } from '../src/test/wertVersionenFixtures';
 
 // Der Vite-Dev-Server kompiliert den Modulgraphen beim ersten Zugriff kalt — großzügige Frist.
 const expect = baseExpect.configure({ timeout: 30_000 });
@@ -44,8 +53,30 @@ interface Gesendet {
   body: unknown;
 }
 
-/** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung). */
-async function cloud(page: Page, { angelegt = false } = {}): Promise<Gesendet[]> {
+/**
+ * Die Route „Werte je Messstelle“ der Bühne (UEMS AP-13 IP-3): MS-06 am 25.10.2026 ist F13, jeder andere Tag die
+ * Grundlast derselben Stunde (endgültig ab dem achten Tag nach seinem Beginn); MS-10 am 03.11.2026 ist F21 in der
+ * Version der Anfrage. Alles andere ist nicht gestellt (404).
+ */
+function werteAntwort(kz: string, p: URLSearchParams, heute: string): MessstelleWerte | null {
+  const raster = p.get('raster');
+  const von = p.get('von') ?? '';
+  if (raster !== 'tag' && raster !== 'stunde') return null;
+  if (kz === 'MS-06' && von === '2026-10-25') return raster === 'tag' ? f13Tag() : f13Stunden();
+  if (kz === 'MS-06' && p.get('bis') === von) {
+    const fassung = verschiebe(von, 8) <= heute ? 'endgueltig' : 'vorlaeufig';
+    return raster === 'tag' ? grundlastTag(von, fassung) : grundlastStunden(von, fassung);
+  }
+  if (kz === 'MS-10' && von === '2026-11-03') {
+    if (raster === 'stunde') return f21Stunden();
+    const v = Number(p.get('version') ?? '3');
+    return v === 1 || v === 2 || v === 3 ? { ...f21Tag(), version: p.get('version') ? v : null, werte: [f21TagWert(v)] } : null;
+  }
+  return null;
+}
+
+/** `angelegt`: MS-08 am 01.10.2026, eben angelegt (heute = Stichtag der Einführung); `heute`: der Stichtag des Registers. */
+async function cloud(page: Page, { angelegt = false, heute = null as string | null } = {}): Promise<Gesendet[]> {
   const gesendet: Gesendet[] = [];
   let gespeichert = false;
   await page.route('**/api/v1/**', async (route) => {
@@ -56,7 +87,7 @@ async function cloud(page: Page, { angelegt = false } = {}): Promise<Gesendet[]>
     if (methode !== 'GET') gesendet.push({ methode, pfad, body: req.postDataJSON() });
 
     const ms08 = () => (angelegt ? ms08Angelegt() : gespeichert ? ms08OrtGeplant() : ms08Vorher());
-    const messstelle = pfad.includes(MS_IDS.ms06) ? ms06() : ms08();
+    const messstelle = pfad.includes(MS_IDS.ms06) ? ms06() : pfad.includes(MS_IDS.ms10) ? ms10() : ms08();
 
     if (pfad === '/api/v1/unternehmen/prozesse') return route.fulfill(json({ stichtag: null, prozesse: prozesseAhrenberg() }));
     if (pfad === '/api/v1/unternehmen/kostenstellen') {
@@ -65,12 +96,16 @@ async function cloud(page: Page, { angelegt = false } = {}): Promise<Gesendet[]>
     if (pfad === '/api/v1/standorte') return route.fulfill(json(ahrenbergHeute()));
     if (pfad.endsWith('/orte')) return route.fulfill(json(pfad.includes(FIXTURE_IDS.st1) ? ortsbaumAhrenberg() : ortsbaumLindach()));
     if (pfad === '/api/v1/messstellen' && methode === 'GET') {
-      return route.fulfill(json(angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : ahrenbergRegister()));
+      const register = angelegt ? { ...ahrenbergRegister(), stichtag: EINFUEHRUNG_TAG } : heute ? ahrenbergRegister({ stichtag: heute }) : ahrenbergRegister();
+      return route.fulfill(json(register));
     }
-    if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(prozesseVon(messstelle)));
-    if (pfad.endsWith('/verteilung') && methode === 'GET') return route.fulfill(json(verteilungVon(messstelle)));
+    const hauptzaehler = messstelle.kennzeichen === 'MS-10';
+    if (pfad.endsWith('/prozesse') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneProzesse(messstelle) : prozesseVon(messstelle)));
+    if (pfad.endsWith('/verteilung') && methode === 'GET') return route.fulfill(json(hauptzaehler ? ohneVerteilung(messstelle) : verteilungVon(messstelle)));
     if (pfad.endsWith('/aenderungen')) {
-      const protokoll = pfad.includes(MS_IDS.ms06)
+      const protokoll = pfad.includes(MS_IDS.ms10)
+        ? protokollMs10()
+        : pfad.includes(MS_IDS.ms06)
         ? protokollMs06()
         : angelegt
           ? protokollMs08Angelegt()
@@ -82,6 +117,11 @@ async function cloud(page: Page, { angelegt = false } = {}): Promise<Gesendet[]>
     if (pfad.endsWith('/ort') && methode === 'PUT') {
       gespeichert = true;
       return route.fulfill(json(ms08OrtGeplant()));
+    }
+    const werte = /^\/api\/v1\/messstellen\/([^/]+)\/werte$/.exec(pfad);
+    if (werte && methode === 'GET') {
+      const antwort = werteAntwort(decodeURIComponent(werte[1]), url.searchParams, heute ?? SEITE_HEUTE);
+      return route.fulfill(antwort ? json(antwort) : json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
     }
     if (/^\/api\/v1\/messstellen\/[^/]+$/.test(pfad) && methode === 'GET') return route.fulfill(json(messstelle));
     return route.fulfill(json({ code: 'nicht_gefunden', message: 'nicht gestellt' }, 404));
@@ -228,4 +268,137 @@ test('rückwirkend · MS-08 am 01.10.2026: Ort ab 12.03.2024 trägt „rückwirk
   await expect(folgen).toContainText('Für die Tage vom 12.03.2024 bis 30.09.2026 gilt das nachträglich.');
   await messeUndFotografiere(page, breite, 'rueckwirkend-ort', { dialog: true });
   expect(gesendet).toEqual([]);
+});
+
+// ------------------------------------------------------------------------------------------------------------------
+// UEMS AP-13 IP-3 · die Werte an der Messstelle: O14 (Zone und 25-Stunden-Tag) und O13 (der Einstieg aus dem Register)
+// ------------------------------------------------------------------------------------------------------------------
+
+/** Ein Bild nur des Abschnitts „Werte“ — für die Ansicht, neben dem Bild der ganzen Seite. */
+async function werteBild(werte: Locator, breite: number, name: string) {
+  if (!BILDER) return;
+  mkdirSync(BILDER, { recursive: true });
+  await werte.screenshot({ path: join(BILDER, `${name}-${breite}.png`) });
+}
+
+const werteZeile = (werte: Locator, name: string) =>
+  werte.getByTestId('werte-zeile').filter({ has: werte.page().locator('.vp-wk-zeile-name', { hasText: new RegExp(`^${name}$`) }) });
+
+const adresse = (hash: string) => new RegExp(`${hash.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+
+test('O14 · MS-06 am 26.10.2026: „Werte“ unter dem Kopf — Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg), der 25-Stunden-Tag mit MESZ und MEZ', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page, { heute: '2026-10-26' });
+  await page.goto(`/e2e/messstelle-seite.html?id=${MS_IDS.ms06}`);
+
+  const werte = page.getByTestId('werte');
+  await expect(werte.getByRole('heading', { level: 2, name: 'Werte' })).toBeVisible();
+  // Claudia öffnet MS-06 am 26.10.2026 — die Sektion zeigt den Vortag, den Sonntag der Zeitumstellung.
+  const karte = werte.getByTestId('werte-karte');
+  await expect(karte).toContainText(/720\skWh/);
+  await expect(karte).toContainText('25 Stunden (Zeitumstellung)');
+  await expect(karte.getByTestId('werte-fassung')).toHaveText('endgültig');
+  await expect(werte.getByTestId('werte-zone')).toHaveText('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
+  await expect(werte.getByTestId('werte-zeile')).toHaveCount(25);
+  await expect(werteZeile(werte, '02:00–03:00 MESZ')).toHaveCount(1);
+  await expect(werteZeile(werte, '02:00–03:00 MEZ')).toHaveCount(1);
+  await expect(werteZeile(werte, '02:00–03:00 MEZ')).toContainText(/28,8\skWh/);
+
+  // Unter dem Kopf, vor den Zuordnungs-Karten — EIN Ort für Stammdaten und Zahlen (E9).
+  const unten = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().bottom);
+  const oben = (l: Locator) => l.evaluate((el) => el.getBoundingClientRect().top);
+  expect(await oben(werte)).toBeGreaterThanOrEqual(await unten(page.locator('.vp-mss-kopf')));
+  expect(await oben(page.getByTestId('karte-ort'))).toBeGreaterThan(await oben(werte));
+  if (breite === 1440) {
+    // Am Rechner steht die Liste neben der Karte, nicht 1 100 px darunter.
+    const k = (await karte.boundingBox())!;
+    const l = (await werte.locator('.vp-wk-liste').boundingBox())!;
+    expect(l.x).toBeGreaterThan(k.x + k.width);
+  }
+  await messeUndFotografiere(page, breite, 'o14-ms06-werte');
+  await werteBild(werte, breite, 'o14-werte');
+  if (BILDER && breite === 1440) {
+    // Vorschau der NICHT gebauten Variante B (eine Spalte wie im Dialog) — nur als Bild, nicht im Code.
+    const stil = await page.addStyleTag({ content: '.vp-mss-werte .vp-wk { grid-template-columns: minmax(0, 40rem) !important; }' });
+    await werteBild(werte, breite, 'variante-b-eine-spalte');
+    await stil.evaluate((el) => el.remove());
+  }
+});
+
+test('O13 · Einstieg: vom Register in die Werte — am Rechner „Letzter Wert“ und Zeilenmenü „Werte“, am Telefon die ganze Karte', async ({ page }, info) => {
+  test.slow();
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  await cloud(page);
+  await page.goto('/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen');
+  // Heute ist laut Register der 20.10.2026 — der Einstieg öffnet den letzten ganzen Tag.
+  const ziel = adresse(`#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-19`);
+  const werte = page.getByTestId('werte');
+
+  if (breite === 1440) {
+    const zeile = page.locator('.vp-ms-tabelle tbody tr').filter({ has: page.locator('td:first-child', { hasText: /^MS-06$/ }) });
+    const letzterWert = zeile.getByRole('button', { name: /^Werte MS-06:/ });
+    await expect(letzterWert).toBeVisible();
+    await messeUndFotografiere(page, breite, 'o13-register');
+    await letzterWert.click();
+    await expect(page).toHaveURL(ziel);
+    await expect(werte.getByTestId('werte-karte')).toContainText(/691\skWh/);
+    await page.goBack();
+    await zeile.getByRole('button', { name: 'Aktionen' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Werte' })).toBeVisible();
+    await messeUndFotografiere(page, breite, 'o13-zeilenmenue');
+    await page.getByRole('menuitem', { name: 'Werte' }).click();
+  } else {
+    const karte = page.locator('.vp-ms-karte').filter({ has: page.locator('.vp-ms-kz', { hasText: /^MS-06$/ }) });
+    await expect(karte).toHaveClass(/is-werte/);
+    await messeUndFotografiere(page, breite, 'o13-register');
+    // Getippt wird unten in die Karte, nicht auf den Namen: die ganze Karte ist der Einstieg.
+    const box = (await karte.boundingBox())!;
+    await karte.click({ position: { x: box.width / 2, y: box.height - 16 } });
+  }
+  await expect(page).toHaveURL(ziel);
+  await expect(werte.getByTestId('werte-karte')).toContainText(/691\skWh/);
+  await expect(werte.getByTestId('werte-zone')).toHaveText('Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)');
+  await expect(werte).toBeInViewport();
+  await messeUndFotografiere(page, breite, 'o13-seite-werte');
+
+  // Eine neue Wahl ersetzt die Adresse ohne Verlaufseintrag: „zurück“ führt ins Register, nicht auf den Vortag.
+  await werte.getByRole('button', { name: 'Vorheriger Zeitraum' }).click();
+  await expect(werte.getByTestId('werte-karte')).toContainText('18.10.2026');
+  await expect(page).toHaveURL(adresse(`#/portfolio/messstellen/${MS_IDS.ms06}?periode=2026-10-18`));
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/portfolio\/messstellen$/);
+  await expect(page.getByTestId('messstellen')).toBeVisible();
+});
+
+test('Version der Adresse · MS-10 am 03.11.2026 (F21): „Sie sehen Version 3 — heute die neueste“; Version 1 sagt, welche heute gilt', async ({ page }, info) => {
+  const breite = breiteFuer(info.project.name);
+  await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
+  const anfragen: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/werte?')) anfragen.push(new URL(r.url()).search);
+  });
+  await cloud(page, { heute: '2026-11-20' });
+  const seite = `/e2e/messstelle-seite.html?wirt=1#/portfolio/messstellen/${MS_IDS.ms10}`;
+  await page.goto(`${seite}?periode=2026-11-03&version=3`);
+
+  const werte = page.getByTestId('werte');
+  await expect(werte.getByTestId('werte-version')).toHaveText('Sie sehen Version 3 — heute die neueste');
+  await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
+  expect(anfragen).toContain('?raster=tag&von=2026-11-03&bis=2026-11-03&version=3');
+  expect(anfragen).toContain('?raster=stunde&von=2026-11-03&bis=2026-11-03');
+  await messeUndFotografiere(page, breite, 'version-neueste');
+  await werteBild(werte, breite, 'version-neueste');
+
+  await page.goto(`${seite}?periode=2026-11-03&version=1`);
+  await page.reload();
+  const hinweis = werte.getByTestId('werte-version');
+  await expect(hinweis).toContainText('Sie sehen Version 1 — heute gilt Version 3');
+  await messeUndFotografiere(page, breite, 'version-frueher');
+  await werteBild(werte, breite, 'version-frueher');
+  await hinweis.getByRole('button', { name: 'Neueste zeigen' }).click();
+  await expect(hinweis).toHaveCount(0);
+  await expect(werte.getByTestId('werte-karte')).toContainText('3 Versionen');
+  await expect(page).toHaveURL(adresse(`${MS_IDS.ms10}?periode=2026-11-03`));
 });

@@ -7301,11 +7301,13 @@ export const api = {
 
   /**
    * Die Werte je Messstelle (UEMS AP-08 IP-9) über ihr HEUTIGES Kennzeichen: `von`/`bis` als Tag
-   * (JJJJ-MM-TT, `bis` = letzter Tag einschließlich) in der Zeitzone des Standorts.
+   * (JJJJ-MM-TT, `bis` = letzter Tag einschließlich) in der Zeitzone des Standorts. Mit `version` (AP-08 IP-18)
+   * genau diese Version der gespeicherten Zeile, ohne sie die neueste.
    */
-  messstelleWerte: (kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string) =>
+  messstelleWerte: (kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string, version?: number | null) =>
     request<MessstelleWerte>(
-      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte?raster=${raster}&von=${von}&bis=${bis}`,
+      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte?raster=${raster}&von=${von}&bis=${bis}` +
+        (version == null ? '' : `&version=${version}`),
     ),
 
   /**

@@ -10,12 +10,12 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
 | Teil | Datei |
 |---|---|
 | Ableitung (rein): Anfragen, Karte, Liste, Titel | `frontend/portal/src/uemsWerteKarte.ts` · `uemsWerteKarte.test.ts` (F8/F13/F14/F16 gegen `verbrauch-vectors.json` und die Sätze von `ergebnis-zustand-vectors.json`) |
-| Darstellung | `src/components/WerteKarte.tsx` (+ `.css`), Dialog `src/components/WerteDialog.tsx` |
-| Wirt heute | `GesamtwertKarten` (Zeilenmenü „Tages- und Monatswerte“) — die Messstellen-Seite (AP-04 IP-8) ruft denselben Dialog |
+| Darstellung | `src/components/WerteKarte.tsx` (+ `.css`); Zeit-Leiste, Zone, Karte und Liste als EINE Sektion `src/components/WerteSektion.tsx` (AP-13 IP-3); Dialog `src/components/WerteDialog.tsx` = `Modal` um dieselbe Sektion |
+| Wirte | die Messstellen-Seite (AP-04 IP-8) trägt die Sektion als Abschnitt „Werte“ direkt unter dem Kopf (AP-13 IP-3, E9 = A) — sie öffnet KEINEN Dialog; `GesamtwertKarten` (Zeilenmenü „Tages- und Monatswerte“) öffnet dieselbe Sektion im `WerteDialog`. Einstiege ins Register: „Letzter Wert“ und Zeilenmenü „Werte“ am Rechner, die ganze Karte am Telefon (`MessstellenPage` `onWerte`) |
 | Daten | `api.messstelleWerte(kennzeichen, raster, von, bis)` → `GET /api/v1/messstellen/{kennzeichen}/werte` (IP-9, `uems-werte-je-messstelle.md`) |
 | Vertrag (additiv 1.6) | `mengen_herkunft` + Familie `herkunft`: `ErgebnisZustand.zustandMitHerkunft` ⟷ `uemsErgebnis.zustandMitHerkunft`; `teile` (nur TS) zerlegt `satz` |
 | Vertrag (additiv 1.7) | Kennzeichen `vorlaeufig`/`endgueltig` (Rang 90) + Block `fassung` + Familie `fassung`: `ErgebnisZustand.fassung` ⟷ `uemsErgebnis.fassung` |
-| 375 px + Bilder | `e2e/tageskarte.spec.ts` (+ Bühne `tageskarte.html/.tsx`, Antworten `src/test/werteKarteFixtures.ts`); `TAGESKARTE_BILDER=<Ordner>` legt Bilder ab |
+| 375 px + Bilder | `e2e/tageskarte.spec.ts` (+ Bühne `tageskarte.html/.tsx`, Antworten `src/test/werteKarteFixtures.ts`); `TAGESKARTE_BILDER=<Ordner>` legt Bilder ab. Die Sektion an der Seite: `e2e/messstelle-seite.spec.ts` (O14, O13-Einstieg, Version; Bühne `?wirt=1` = Register mit Adresse) |
 | Versionen am Wert (IP-18) | Ableitung `src/uemsWertVersionen.ts` · `uemsWertVersionen.test.ts` (F21, F10 gegen `verbrauch-vectors.json` und `korrektur-vorschlag-vectors.json`); Darstellung `src/components/WertVersionen.tsx` (+ `.css`); Antworten `src/test/wertVersionenFixtures.ts`; Route `api.messstelleWerteVersionen` → `…/werte/versionen` (`uems-versionen-lesen.md`) |
 
 ## Die Fallen
@@ -83,6 +83,18 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
    Kein Zustands-Abzeichen, keine Fassung, keine Lückenzahl — der Schritt wird weiter nicht gesprochen; jeder andere
    Grund bleibt der Strich allein.
 
+11. **Die Zahl wohnt auf der Messstellen-Seite; der Dialog ist nur ein Rahmen (AP-13 IP-3, E9 = A).** Wer an Zeit-Leiste,
+   Karte oder Liste etwas ändert, ändert `WerteSektion` — `WerteDialog` rendert nur `Modal` + Sektion, und
+   `VersionenDialog` steht NEBEN dem Rahmen (`rahmen`), nie darin. Der Kopf nennt die Zone DER ANTWORT (`zeitenKopf` →
+   `uemsOberflaechen.zoneSatz`, E12 = A), nie die des Browsers; den Namen des Standorts kennt nur die Seite (Register
+   `ort.standort_name`) — der Dialog sagt „(Zeitzone des Standorts)“. Die Adresse `?periode=JJJJ-MM[-TT]&version=n`
+   (`nav.parseMessstelleWerte`; geschrieben über `sprungziel`): ⚠ `version` fragt NUR die Karte (Stunden und Tage der
+   Liste haben eigene Versionen) und gilt nur für die Periode der Adresse; jede neue Wahl zeigt die neueste und ersetzt
+   die Adresse (`replaceCurrentNavigation`, kein Verlaufseintrag). Der Hinweis „Sie sehen Version n — heute die neueste“
+   (früher: „— heute gilt Version m“ + „Neueste zeigen“) steht nur über einer GESPROCHENEN Karte genau dieser Version
+   (`versionHinweis`), nie über einem Strich. Der Register-Einstieg öffnet den Vortag des Registers (mit „Stand am“
+   diesen Tag) — nie heute, das ist noch nicht gerechnet.
+
 ## Offen (Befunde)
 
 - „— 14 Viertelstunden ohne Werte“ (Report F8) liefert das Lese-Modell nicht; nicht in der Fläche gezählt.
@@ -94,7 +106,9 @@ ob sie sich noch ändern kann). Keine Route, kein Backend, keine Rechnung: geles
   nur Verlauf 100 %). Eine berechnete Messstelle hängt keine Ereignisse an, nennt also nie eine Anzahl. „Lücke am
   Wechsel“ ist ein Kennzeichen der Gerätegrenze und zählt nur, wenn die Route dazu ein `data_gap` nennt.
 - Momentanwert-Messstellen (Mittel/Min/Max) haben keinen Satz — nur der Strich.
-- Messstellen ohne Portal-Seite: nur berechnete Messstellen haben heute einen Wirt.
+- AP-13 IP-3: der Satz zur FRÜHEREN Version („Sie sehen Version 1 — heute gilt Version 3“) steht nicht im Konzept (§5.6/O10
+  nennen nur die neueste) — gebaut aus `version`/`versionen` der Route, „gilt“ wie `GILT_JETZT`. Eine Version, die es
+  nicht gibt (`version_gibt_es_nicht`), zeigt heute nur den Ladefehler der Sektion; die Sätze der Ablehnungen sind IP-6.
 - Versionen: nur die Karte hat den Einstieg. Ein Tag der Monatsliste mit Versionen zeigt sein Kennzeichen,
   aber keinen eigenen Einstieg (die Stunden haben nie Versionen). `nachgezogen_am` wird nicht gezeigt.
 - Befund F11-Stunde (IP-18): die Stunde eines korrigierten Tages ist `version_nicht_gebildet` und bleibt

@@ -505,6 +505,22 @@ export function parseSektion(hash: string): string | null {
 }
 
 /**
+ * Periode und Version der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3, E9):
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2`. `parseRoute` schneidet den Query-Teil ab — die
+ * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
+ * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1.
+ */
+export function parseMessstelleWerte(hash: string): { periode: string | null; version: number | null } {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const params = new URLSearchParams(rest.join('?'));
+  const version = params.get('version')?.trim() ?? '';
+  return {
+    periode: params.get('periode')?.trim() || null,
+    version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
+  };
+}
+
+/**
  * The self-registration route (`#register` / `#/register`): the "Konto
  * erstellen" form lives in the PORTAL (custom form + seamless auto-login), not
  * in Keycloak - this route must render WITHOUT the automatic login redirect,

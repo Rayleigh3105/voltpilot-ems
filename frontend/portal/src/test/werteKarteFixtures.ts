@@ -331,3 +331,20 @@ export const f20Tag = (tag: '2026-10-20' | '2026-10-21'): MessstelleWerte => {
     }),
   ]);
 };
+
+// ------------------------------------------------------------------ AP-13 IP-3 · ein gewöhnlicher Tag an MS-06
+
+/**
+ * Ein gewöhnlicher 24-Stunden-Tag an MS-06 mit der Grundlast von F13/F14 (28,8 kWh je Stunde → 691,2 kWh aus
+ * 1 440 Werten) — für Bühnen der Messstellen-Seite, die einen beliebigen Tag brauchen (AP-13 IP-3). Keine neue
+ * Zahl, nur die Stunde der Fälle. Die Fassung sagt der Aufrufer (ein Tag steht sieben Tage nach seinem Ende fest).
+ */
+export const grundlastTag = (tag: string, fassung: 'vorlaeufig' | 'endgueltig'): MessstelleWerte => {
+  const g = tagesgrenzen(tag);
+  return antwort(MS_06, 'tag', g.von, g.bis, [tagSchritt(tag, { ...voll(691.2, 1440), fassung })]);
+};
+
+export const grundlastStunden = (tag: string, fassung: 'vorlaeufig' | 'endgueltig'): MessstelleWerte => {
+  const g = tagesgrenzen(tag);
+  return antwort(MS_06, 'stunde', g.von, g.bis, stundenDes(tag, () => ({ ...voll(28.8, 60), fassung })));
+};
