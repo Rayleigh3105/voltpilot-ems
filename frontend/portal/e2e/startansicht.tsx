@@ -71,6 +71,7 @@ import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { mitEnergiebilanz } from '../src/anlageEnergiebilanz';
 import { ahrenbergBilanz } from '../src/test/bilanzFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
@@ -156,6 +157,29 @@ const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
+/**
+ * AP-13 IP-8: `&ansicht=bilanz&an=AN-2` öffnet Anlage › Verlauf › Energiebilanz (Vorgabe AN-2); `&bilanz=ohne-hz`
+ * antwortet ohne Hauptzähler (Leerzustand, kein Reiter), `&rest=vorschlag` ohne Rest-Messstelle (Vorschlag „Rest
+ * anlegen“ — der Klick legt sie in der Bühne an, `window.__restAnlegen` zählt ihn), `&live=veraltet` lässt MS-14 veralten
+ * (O8). Die Werte gelten zur Uhr der Bühne (`page.clock`); die Momentaufnahme O8 steht eine Minute vor ihr.
+ */
+const ANLAGE_KZ: Record<string, string> = { 'AN-1': an1, 'AN-2': an2, 'AN-3': an3 };
+const bilanzAn = ANLAGE_KZ[params.get('an') ?? ''] ?? an2;
+let restVorschlag = params.get('rest') === 'vorschlag';
+const restAnlegenAufrufe: unknown[] = [];
+(window as unknown as Record<string, unknown>).__restAnlegen = restAnlegenAufrufe;
+const bilanzDerBuehne = (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) =>
+  ahrenbergBilanz(siteId, periode, am, {
+    jetzt: Date.now(),
+    live: params.get('live') === 'veraltet' ? 'veraltet' : 'frisch',
+    ohneHauptzaehler: params.get('bilanz') === 'ohne-hz',
+    restVorschlag,
+  });
+/** Die Zellen von `messstelle.formel`/`messstelle.bearbeiten` (KA U · EM U, Rechte-Matrix) — die Berichts-Fixture stellt nur ihre. */
+const mitMessstellenRechten = (s: ReturnType<typeof selbstauskunftFuer>): ReturnType<typeof selbstauskunftFuer> =>
+  s.rollen.some((r) => r === 'kundenadministrator' || r === 'energiemanager')
+    ? { ...s, standorte: s.standorte.map((st) => ({ ...st, rechte: [...st.rechte, 'messstelle.bearbeiten', 'messstelle.formel'] })) }
+    : s;
 /**
  * AP-11 IP-13: `&ansicht=kennzahlen` öffnet „Unternehmen › Kennzahlen“, `&ansicht=kennzahl&kz=KZ-0001` eine
  * Kennzahl-Seite; `&ausserhalb=KZ-0003` lässt die Werte-Route für diese Kennzahl mit 404 antworten (R-A7). Die
@@ -401,7 +425,15 @@ Object.assign(api, {
     return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
   },
   // AP-13 IP-7: die Energiebilanz je Anlage (O2 Oktober 2026, O4 Halle 2, O3 Lindach am 18.10.2026) — sonst ohne Werte.
-  anlageBilanz: async (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => ahrenbergBilanz(siteId, periode, am),
+  anlageBilanz: async (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => bilanzDerBuehne(siteId, periode, am),
+  // AP-13 IP-8: „Rest anlegen“ — nie zweimal: nach dem ersten Klick hat der Hauptzähler seinen Rest (`neu` = false).
+  anlageRestAnlegen: async (siteId: string, body: { hauptzaehler_id: string; name?: string }) => {
+    restAnlegenAufrufe.push({ siteId, ...body });
+    const neu = restVorschlag;
+    restVorschlag = false;
+    const h = bilanzDerBuehne(siteId, 'tag').hauptzaehler[0];
+    return { neu, hauptzaehler: h.messstelle, messstelle: { ...h.rest_messstelle, name: body.name ?? h.rest_messstelle?.name ?? null } as never };
+  },
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
   standorte: async () => structuredClone(szene.liste),
@@ -441,7 +473,7 @@ Object.assign(api, {
   },
   // AP-12 IP-13: die Berichte der Referenzdatei (BR-2026-0001) — gelesen zur Uhr der Bühne.
   // AP-12 IP-14: dazu die Selbstauskunft (B13 je Person) und die schreibenden Wege Anlegen, Freigeben, Verwerfen.
-  selbstauskunft: async () => selbstauskunftFuer(person ?? 'Jonas Wendlinger'),
+  selbstauskunft: async () => mitMessstellenRechten(selbstauskunftFuer(person ?? 'Jonas Wendlinger')),
   berichte: async () => ({ berichte: berichtDa ? [mitVerworfen(detailAm(Date.now()), verworfen).bericht] : [] }),
   bericht: async (kennung: string) => {
     if (kennung !== 'BR-2026-0001' || !berichtDa) throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
@@ -612,12 +644,16 @@ const surface = anlageSurface({
 
 /** IP-8: Halle 1 wie bisher; die zwei Messanlagen mit dem Lese-Modell OHNE Geld, wie `useAnlageSurface` es bildet. */
 function surfaceVon(id: string) {
-  if (id === an1) return surface;
-  return ohneGeld(
-    anlageSurface({ entities: komponentenVon(id), config: { plantKind: 'eigenverbrauch', tarifArt: 'ohne' } } as Parameters<
-      typeof anlageSurface
-    >[0]),
-  );
+  const s =
+    id === an1
+      ? surface
+      : ohneGeld(
+          anlageSurface({ entities: komponentenVon(id), config: { plantKind: 'eigenverbrauch', tarifArt: 'ohne' } } as Parameters<
+            typeof anlageSurface
+          >[0]),
+        );
+  // AP-13 IP-8, wie `useAnlageSurface`: der Reiter „Energiebilanz“ nur mit Hauptzähler in der Stellung (heute).
+  return mitEnergiebilanz(s, bilanzDerBuehne(id, 'tag'));
 }
 
 const FLOTTE = 'Meine Anlagen';
@@ -630,7 +666,9 @@ function Vorschau() {
   const kanonisch = (r: Route) => canonicalShellRoute({ shell, route: r, siteIds }) ?? r;
   const [route, setRoute] = useState<Route>(() =>
     kanonisch(
-      ansicht === 'anlage'
+      ansicht === 'bilanz'
+        ? anlageRoute(bilanzAn, 'energiebilanz')
+        : ansicht === 'anlage'
         ? anlageRoute(an1)
         : ansicht === 'steuerung-halle2'
           ? anlageRoute(an2, 'steuerung')

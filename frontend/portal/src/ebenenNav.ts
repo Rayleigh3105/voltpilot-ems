@@ -50,6 +50,7 @@ import {
   type Route,
 } from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
+import { UEMS_ENERGIEBILANZ } from './glossar';
 import type { FunktionZustand } from './uemsFunktion';
 
 /**
@@ -187,6 +188,7 @@ const SUB_BEREICH: Record<AnlagenSub, BereichId> = {
   fahrplan: 'fahrplan',
   ladevorgaenge: 'fahrplan',
   messwerte: 'verlauf',
+  energiebilanz: 'verlauf',
   erloese: 'verlauf',
   marktpreise: 'verlauf',
   lastspitzen: 'verlauf',
@@ -261,9 +263,16 @@ export function anlageBereiche(
     );
   }
 
-  const verlaufTabs = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
+  const verlaufTabs: BereichTab[] = VERLAUF_TABS.filter((t) => t.view === null || views.includes(t.view)).map(
     ({ key, label, sub }) => ({ key, label, sub }),
   );
+  // UEMS AP-13 IP-8 (E7 = A): „Energiebilanz“ direkt nach „Messwerte“ — NUR mit Hauptzähler in der Stellung
+  // (`surface.energiebilanz`, gesetzt von `anlageEnergiebilanz.mitEnergiebilanz`). Ohne den Fakt bleibt der Verlauf
+  // zeichengleich (Bestandsschutz, AP-13 E2). Bewusst KEIN `VERLAUF_TABS`-Eintrag: der Reiter hängt an keiner Ansicht
+  // der Projektion und trägt nie Geld (`anlageGeld.GELD_UNTERSEITEN` liest nur Reiter mit Ansicht).
+  if (surface?.energiebilanz) {
+    verlaufTabs.splice(1, 0, { key: 'energiebilanz', label: UEMS_ENERGIEBILANZ, sub: 'energiebilanz' });
+  }
   out.push(bereich('verlauf', 'Verlauf', 'history', verlaufTabs[0].sub, verlaufTabs));
 
   out.push(

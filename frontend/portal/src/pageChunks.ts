@@ -53,6 +53,7 @@ export const PAGE_CHUNK = {
 export const SUB_CHUNK = {
   daten: () => import('./pages/DataPages'),
   messwerte: () => import('./pages/MesswerteSection'),
+  energiebilanz: () => import('./pages/EnergiebilanzSection'),
   erloese: () => import('./pages/ErloeseSection'),
   modell: () => import('./pages/AnlagenModellSection'),
   geraet: () => import('./pages/GeraetSeiteSection'),

@@ -14,7 +14,7 @@ Konzept: AP-13 §4.4 (Ü1–Ü5), Kästen E3 = A und E13 = A, Referenzfälle O2/
 | Baustein | Quelle | Sprung |
 |---|---|---|
 | Messstellen | `GET /api/v1/messstellen` → `aggregat` wörtlich (Unternehmen + je lebendem Standort) | Standort › Messstellen bzw. Unternehmen › Messstellen |
-| Energiebilanz | `GET /api/v1/sites/{id}/bilanz?periode=&am=` je Anlage der Ebene → Periodenwert des Hauptzählers (Eingang `zufluss`) → `uemsBilanz.ebene` („x von y Systemen“, „mindestens … (… fehlt)“); im Unternehmen zusätzlich je Standort | Anlage › Messwerte (bis AP-13 IP-8 den Reiter „Energiebilanz“ baut) |
+| Energiebilanz | `GET /api/v1/sites/{id}/bilanz?periode=&am=` je Anlage der Ebene → Periodenwert des Hauptzählers (Eingang `zufluss`) → `uemsBilanz.ebene` („x von y Systemen“, „mindestens … (… fehlt)“); im Unternehmen zusätzlich je Standort | Anlage › Verlauf › Energiebilanz (AP-13 IP-8, `uems-bilanz-flaeche.md`) |
 | Gebäude-Zeilen (nur Standort, im Baustein Energiebilanz) | Ortsbaum `GET …/standorte/{id}/orte`; Register `?ort=<Kurzzeichen>` heute (Datenlage) und `&stichtag=<letzter Tag des Zeitraums>` („im Gebäude“); Zahl über `uemsBilanz.gebaeude` aus den Eingängen `zugeordnet` | Standort › Gebäude |
 | Kennzahlen | `GET /api/v1/kennzahlen` (lebend, Geltung in der Ebene) + Werte je Karte | Kennzahl-Seite |
 

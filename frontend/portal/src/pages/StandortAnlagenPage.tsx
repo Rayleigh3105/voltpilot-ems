@@ -10,7 +10,8 @@ export const TITEL_ANLAGEN = 'Anlagen';
  * Standort-Übersicht, gefiltert auf den Standort, ohne die Bausteine der Übersicht (`PortfolioCockpit` mit
  * `nurAnlagen`). Kein neuer Baustein und keine zweite Tabelle: Zeilen, Spalten und Vorschau sind dieselben.
  *
- * ⚠ Der Weg „Energiebilanz“ je Zeile kommt mit IP-8 — bis dahin kein Knopf ohne Ziel.
+ * ⚠ Der Weg „Energiebilanz“ je Zeile steht seit IP-8 — nur an einer Anlage mit Hauptzähler in der Stellung (dieselbe Frage
+ *   wie der Reiter Verlauf › Energiebilanz, `uems-bilanz-flaeche.md`); ohne ihn kein Knopf ohne Ziel.
  * ⚠ Mit weniger als zwei Anlagen hat der Standort keinen Bereich „Anlagen“ (AP-01 §4.6, Z4): keine Kachel, kein
  *   Reiter. Die Adresse gilt trotzdem und zeigt die eine Zeile — ein Lesezeichen führt nie ins Leere.
  */

@@ -6,6 +6,7 @@ import {
   aufmerksamkeit,
   type Aufmerksamkeit,
 } from './steuerungAufmerksamkeit';
+import { mitEnergiebilanz } from './anlageEnergiebilanz';
 import { anlageAufEbene, anlageOhneGeld, ohneGeld } from './anlageGeld';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
 
@@ -116,9 +117,16 @@ export function useAnlageSurface(
         .funktionen()
         .catch(() => null)
         .then(async (funktionen) => {
-          if (!anlageAufEbene(siteId, funktionen)) return { funktionen, zeile: null };
-          const overview = await api.overview().catch(() => null);
-          return { funktionen, zeile: overview?.sites.find((s) => s.id === siteId) ?? null };
+          if (!anlageAufEbene(siteId, funktionen)) return { funktionen, zeile: null, bilanz: null };
+          // UEMS AP-13 IP-8: der Reiter „Energiebilanz“ nur mit Hauptzähler in der Stellung — gefragt wird die
+          // Bilanz-Route selbst (heute, ein Tag), und nur für eine Anlage auf einer Ebene. Ohne Antwort kein Reiter.
+          const [overview, bilanz] = await Promise.all([
+            api.overview().catch(() => null),
+            Promise.resolve()
+              .then(() => api.anlageBilanz(siteId, 'tag'))
+              .catch(() => null),
+          ]);
+          return { funktionen, zeile: overview?.sites.find((s) => s.id === siteId) ?? null, bilanz };
         }),
     ]).then(([profile, entities, flows, shelf, geld]) => {
       if (!active) return;
@@ -137,7 +145,8 @@ export function useAnlageSurface(
         entities: entities?.entities ?? null,
         profileStates: profileStatesFrom(shelf),
       });
-      setSurface(anlageOhneGeld(siteId, geld.funktionen, geld.zeile) ? ohneGeld(projektion) : projektion);
+      const geldRegel = anlageOhneGeld(siteId, geld.funktionen, geld.zeile) ? ohneGeld(projektion) : projektion;
+      setSurface(mitEnergiebilanz(geldRegel, geld.bilanz));
       setFailed(entitiesFailed);
       setLoading(false);
     });

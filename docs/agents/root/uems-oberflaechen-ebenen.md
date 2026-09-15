@@ -37,7 +37,7 @@ Tests: `ebenenNav.test.ts` (Block „AP-13 IP-2“: O17 vier/drei Kacheln, O18, 
    `App.reload()` die Orte neu — das erste Gebäude lässt den Bereich „Gebäude“ erst entstehen.
 5. **„Standort › Anlagen“ ist dieselbe Tabelle** (`PortfolioCockpit nurAnlagen`) ohne Kennzahlen-Leiste, „Anpassen“,
    Funktions-Zustände und Karte „Funktionen“; die Standort-Übersicht bleibt zeichengleich. Der Weg „Energiebilanz“ je
-   Zeile kommt mit IP-8.
+   Zeile steht seit IP-8 — nur mit Hauptzähler in der Stellung (`uems-bilanz-flaeche.md`).
 6. **Z4:** unter zwei Anlagen kein Bereich „Anlagen“, ohne Gebäude kein Bereich „Gebäude“ — die Adressen gelten
    trotzdem (eine Zeile bzw. L1 aus AP-02). Ein unbekannter Bereich (`#/standort/{id}/xyz`) landet auf der Übersicht.
 7. **Lesezeichen:** `#/portfolio/kennzahlen[/{id}]`, `#/portfolio/berichte[/{kennung}]`,

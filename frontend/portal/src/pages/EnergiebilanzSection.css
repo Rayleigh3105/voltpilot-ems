@@ -1,0 +1,397 @@
+/*
+ * DIE ENERGIEBILANZ JE ANLAGE (UEMS AP-13 IP-8, E7 = A) — Anlage › Verlauf › Energiebilanz. Dieselbe Karten-Sprache wie
+ * die Übersichts-Bausteine (weiße Karte, 1-px-Rahmen, Radius 16 px); Farbe nur am Punkt (Bedeutung), die Zahl bleibt
+ * ruhig. Telefon zuerst: jede Zeile bricht um, nichts verbreitert die Seite; Tippflächen ≥ 44 px.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt.
+ */
+
+.vp-eb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-eb-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-eb-kopf-text {
+  min-width: 0;
+}
+
+.vp-eb-titel {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-eb-zone {
+  margin: 2px 0 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-eb-zeitwahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-eb-datumzeile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vp-eb-schritt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  cursor: pointer;
+}
+
+.vp-eb-schritt:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vp-eb-zeitraum {
+  min-width: 8.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-eb-karte {
+  padding: var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-width: 0;
+}
+
+.vp-eb-hz-titel {
+  margin: 0 0 var(--vp-space-2, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-hinweis {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-satz {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-leer-titel {
+  margin: 0;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-eb-knopf {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--vp-space-3, 12px);
+  padding: 0 var(--vp-space-4, 16px);
+  border: 1px solid var(--vp-navy-1, #1e3a5f);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-eb-knopf:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vp-eb-rueckmeldung {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.vp-eb-rueckmeldung.is-warn {
+  background: #fff7ed;
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-eb-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--vp-space-3, 12px);
+  font-size: 0.875rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-vorschlag {
+  margin: 0 0 var(--vp-space-3, 12px);
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+.vp-eb-vorschlag .vp-eb-satz {
+  margin: 0;
+}
+
+.vp-eb-vorschlag .vp-eb-hinweis {
+  margin-top: 6px;
+}
+
+.vp-eb-stellung {
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+.vp-eb-abschnitt + .vp-eb-abschnitt {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-4, 16px);
+  border-top: 1px solid #e2e8f0;
+}
+
+.vp-eb-abschnitt-titel,
+.vp-eb-tag-titel {
+  margin: 0 0 4px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-eb-tag-titel {
+  margin-top: var(--vp-space-3, 12px);
+  font-size: 0.875rem;
+}
+
+.vp-eb-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vp-eb-zeile {
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.vp-eb-zeilen > .vp-eb-zeile + .vp-eb-zeile {
+  border-top: 1px solid #f1f5f9;
+}
+
+.vp-eb-zeile-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  min-width: 0;
+}
+
+.vp-eb-wort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-eb-zahl {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.vp-eb-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.is-ok .vp-eb-punkt,
+.is-ok > .vp-eb-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.is-warn .vp-eb-punkt {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-eb-zeile.is-warn .vp-eb-zahl,
+.vp-eb-zeile.is-warn .vp-eb-woerter {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-eb-zeile.is-off .vp-eb-zahl {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-eb-woerter {
+  margin: 2px 0 0 16px;
+  font-size: 0.875rem;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-zeile > .vp-eb-satz {
+  margin-left: 16px;
+}
+
+.vp-eb-teile {
+  list-style: none;
+  margin: 8px 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vp-eb-teil {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(64px, 1fr) auto;
+  grid-template-areas:
+    'name balken zahl'
+    'woerter woerter woerter';
+  align-items: center;
+  column-gap: 12px;
+  font-size: 0.875rem;
+  color: #334155;
+  min-width: 0;
+}
+
+.vp-eb-teil-name {
+  grid-area: name;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-balken,
+.vp-eb-balken-wort {
+  grid-area: balken;
+  min-width: 0;
+}
+
+.vp-eb-balken-wort {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-eb-teil-zahl {
+  grid-area: zahl;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vp-eb-teil.is-off .vp-eb-teil-zahl {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-eb-teil-woerter {
+  grid-area: woerter;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-herkunft {
+  margin: 6px 0 0 16px;
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.vp-eb-herkunft > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-eb-herkunft-zeile,
+.vp-eb-herkunft-titel {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-herkunft-titel {
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.vp-eb-herkunft-eingaenge {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.vp-eb-herkunft-eingaenge > li {
+  overflow-wrap: anywhere;
+}
+
+.vp-eb-schritt:focus-visible,
+.vp-eb-knopf:focus-visible,
+.vp-eb-herkunft > summary:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .vp-eb-karte {
+    padding: var(--vp-space-4, 16px);
+  }
+
+  .vp-eb-teil {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name name'
+      'balken zahl'
+      'woerter woerter';
+    row-gap: 2px;
+  }
+
+  .vp-eb-teile,
+  .vp-eb-woerter,
+  .vp-eb-herkunft,
+  .vp-eb-zeile > .vp-eb-satz {
+    margin-left: 0;
+  }
+}

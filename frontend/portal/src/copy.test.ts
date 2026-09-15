@@ -49,6 +49,9 @@ import {
 } from './glossar';
 import * as OF from './uemsOberflaechen';
 import * as VL from './uemsVerlauf';
+import * as EB from './anlageEnergiebilanz';
+import { ahrenbergBilanz } from './test/bilanzFixtures';
+import { FIXTURE_IDS } from './test/standorteFixtures';
 import {
   DIE_DATENQUELLE,
   NEBENGROESSEN_SATZ,
@@ -1540,6 +1543,9 @@ const CHART_FILES_OBERFLAECHEN: string[] = [
   // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
   'pages/KennzahlSeite.tsx',
   'kennzahlKarte.ts',
+  // AP-13 IP-8: die Anteils-Balken der Energiebilanz (kWh je Unterzähler, keine Prozentzahl) — Render und Ableitung.
+  'pages/EnergiebilanzSection.tsx',
+  'anlageEnergiebilanz.ts',
 ];
 
 describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
@@ -1553,6 +1559,9 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     'components/MessstellenVerlauf.tsx',
     'uebersichtBausteine.ts',
     'components/UebersichtBausteine.tsx',
+    // AP-13 IP-8: die Energiebilanz je Anlage (reines Modul und Render).
+    'anlageEnergiebilanz.ts',
+    'pages/EnergiebilanzSection.tsx',
   ];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
@@ -1627,6 +1636,50 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     }
     for (const t of [QUELLE_GILT_SEIT, QUELLE_GILT_AB, QUELLE_AB_ZEIGEN, QUELLE_ZUORDNEN, QUELLE_OHNE_RECHT, DIE_DATENQUELLE, NEBENGROESSEN_TITEL, NEBENGROESSEN_SATZ]) {
       out.push({ wo: 'Werte', text: ohnePlatz(t) });
+    }
+    // AP-13 IP-8: die Wörter der Energiebilanz und alles, was sie an O5/O6/O7/O8 und im Vorschlag wirklich sagt.
+    for (const t of [
+      ...Object.values(EB.ZEILE_WORT),
+      ...Object.values(EB.ANTEIL_WORT).filter((w): w is string => w !== null),
+      ...Object.values(EB.LIVE_GRUND),
+      EB.UNTERZAEHLER_ANZAHL,
+      ...Object.values(EB.MESSSTELLEN_ANZAHL),
+      EB.KEIN_UNTERZAEHLER,
+      EB.HILFE_NEGATIV,
+      EB.LIVE_JETZT,
+      EB.LIVE_OHNE_ZAHL,
+      EB.LIVE_STAND,
+      EB.ZONE_SATZ,
+      EB.STELLUNG_GEAENDERT,
+      EB.HERKUNFT,
+      EB.HERKUNFT_EINGAENGE,
+      EB.HERKUNFT_FORMEL,
+      EB.HERKUNFT_FASSUNG,
+      EB.HERKUNFT_BERECHNET_AM,
+      EB.HERKUNFT_VERSION,
+      EB.HERKUNFT_KORRIGIERT,
+      EB.HERKUNFT_ERSATZWERT,
+      EB.HERKUNFT_VERTEILT,
+      EB.HERKUNFT_UNVOLLSTAENDIG,
+      EB.REST_VORSCHLAG,
+      EB.REST_ANLEGEN,
+      EB.REST_OHNE_RECHT,
+      EB.REST_ANGELEGT,
+      EB.REST_GAB_ES_SCHON,
+      EB.REST_NICHT_ANGELEGT,
+      EB.REST_OHNE_HAUPTZAEHLER_SATZ,
+    ]) {
+      out.push({ wo: 'Energiebilanz', text: ohnePlatz(t) });
+    }
+    const ctxEB = { heute: '2026-11-05', arten: new Map<string, EB.MessstellenArt>([['MS-10', 'gemessen']]) };
+    for (const [siteId, periode, am, b] of [
+      [FIXTURE_IDS.an2, 'monat', '2026-10-01', { restVorschlag: true }],
+      [FIXTURE_IDS.an1, 'monat', '2026-10-01', {}],
+      [FIXTURE_IDS.an2, 'tag', '2026-11-04', { live: 'veraltet' }],
+    ] as const) {
+      const bild = EB.energiebilanzBild(ahrenbergBilanz(siteId, periode, am, b), ctxEB);
+      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live.text, h.vorschlag?.satz ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])))])];
+      for (const text of texte.filter(Boolean)) out.push({ wo: `Energiebilanz ${periode} ${am}`, text });
     }
     return out;
   };

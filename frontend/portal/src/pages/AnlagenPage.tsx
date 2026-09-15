@@ -135,6 +135,9 @@ const MesswerteSection = lazy(() =>
 const ErloeseSection = lazy(() =>
   SUB_CHUNK.erloese().then((m) => ({ default: m.ErloeseSection })),
 );
+const EnergiebilanzSection = lazy(() =>
+  SUB_CHUNK.energiebilanz().then((m) => ({ default: m.EnergiebilanzSection })),
+);
 const AnlagenModellSection = lazy(() =>
   SUB_CHUNK.modell().then((m) => ({ default: m.AnlagenModellSection })),
 );
@@ -566,6 +569,8 @@ function AnlagenSubPage({
             onOpenWelt={(welt) => onOpenSub(welt)}
           />
         )}
+        {/* UEMS AP-13 IP-8: die Energiebilanz je Anlage — geldfrei, aus der Bilanz-Route (E7 = A). */}
+        {sub === 'energiebilanz' && <EnergiebilanzSection site={site} />}
         {sub === 'erloese' && (
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}

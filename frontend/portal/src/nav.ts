@@ -43,6 +43,8 @@ export type PageId =
 export type AnlagenSub =
   | 'fahrplan'
   | 'messwerte'
+  // UEMS AP-13 IP-8: die Energiebilanz je Anlage — ein Reiter des Verlaufs, nur mit Hauptzähler in der Stellung.
+  | 'energiebilanz'
   | 'erloese'
   // Marktpreise und Prognose sind seit der Navigations-Runde „zwei Ebenen"
   // (r2 §5.5, E3) Unterseiten DER ANLAGE statt Seiten daneben: sie beantworten
@@ -64,7 +66,7 @@ export type AnlagenSub =
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'marktpreise', 'prognose', 'wetter',
   'technik', 'modell', 'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
-  'geraet', 'box',
+  'geraet', 'box', 'energiebilanz',
 ]);
 
 /**

@@ -341,6 +341,11 @@ export interface AnlageSurface {
    * Fehlt das Feld, gilt alles wie vorher.
    */
   geldfrei?: boolean;
+  /**
+   * UEMS AP-13 IP-8: `true` = die Anlage hat einen Hauptzähler in der Stellung — der Verlauf trägt den Reiter
+   * „Energiebilanz“ (`anlageEnergiebilanz.mitEnergiebilanz`). Fehlt das Feld, bleibt der Verlauf wie vorher.
+   */
+  energiebilanz?: boolean;
 }
 
 // ---------------------------------------------------------------------------

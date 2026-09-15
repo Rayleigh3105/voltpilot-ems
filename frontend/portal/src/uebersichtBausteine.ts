@@ -199,7 +199,7 @@ function summenSatz(periode: BilanzPeriode, systeme: SystemZeile[], mitKennzeich
   };
 }
 
-/** Eine Anlage in der Energiebilanz — mit dem Sprung zu ihrem Verlauf (dort kommt mit IP-8 der Reiter „Energiebilanz“). */
+/** Eine Anlage in der Energiebilanz — mit dem Sprung in ihren Reiter Verlauf › Energiebilanz (AP-13 IP-8). */
 export interface SystemBild {
   key: string;
   name: string;
@@ -218,7 +218,7 @@ function systemBild(s: SystemLesung, periode: BilanzPeriode): SystemBild {
     zahl: z.menge === null ? '—' : zahl(dezText(z.menge), 'kWh', periode),
     zusatz: s.grund ?? (woerter.length > 0 ? woerter.join(' · ') : null),
     ton: s.grund !== null || z.menge === null ? 'off' : z.zustand === 'vollständig' ? 'ok' : 'warn',
-    ziel: anlageRoute(z.anlage, 'messwerte'),
+    ziel: anlageRoute(z.anlage, 'energiebilanz'),
   };
 }
 

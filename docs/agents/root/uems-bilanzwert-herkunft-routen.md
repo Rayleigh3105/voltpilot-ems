@@ -49,5 +49,5 @@ Schreibweg, IP-16), F11 (Verteilungs-Term ohne Menge), F13 (rückwirkende Vertei
 
 ## Nicht gebaut
 
-Herkunfts-Karte und `api.ts`-Typen (IP-14/IP-15), Vermerke „Stellung geändert (…)“, Versionen im Lese-Modell (AP-08
+Herkunfts-Karte der Kostenstellen-Sicht (IP-15; die der Bilanz je Anlage steht seit AP-13 IP-8, `uems-bilanz-flaeche.md`), Vermerke „Stellung geändert (…)“, Versionen im Lese-Modell (AP-08
 IP-18), Rechte-Durchsetzung (AP-03).
