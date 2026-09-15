@@ -108,6 +108,32 @@ class KennzahlSchnittstelleVertragTest {
         assertThat(vertrag.path("rechte").path("ansehen").asText()).isEqualTo(KennzahlRechte.ANSEHEN);
     }
 
+    /**
+     * Die Werte (IP-7) sprechen die Wörter des Vertrags: Periode, Zustand, Richtung und die Gründe ohne Zahl — dazu
+     * genau die zwei Gründe des Lesers, die auch der Messstellen-Wert kennt; die Anlass-Arten der Tabelle; die Vorgänge
+     * der Messstellen-Entscheidung plus die Berechnung.
+     */
+    @Test
+    void dieWoerterDerWerteSindDieDesVertrags() {
+        JsonNode vok = vertrag.path("vokabulare");
+        assertThat(liste(eigenschaft("KennzahlWerte", "periode"), "enum")).containsExactlyElementsOf(texte(vok.path("periode_art")));
+        assertThat(texte(vok.path("periode_art"))).containsExactlyElementsOf(KennzahlRegeln.PERIODEN);
+        assertThat(liste(eigenschaft("KennzahlWert", "zustand"), "enum")).containsExactlyElementsOf(texte(vok.path("zustand")));
+        assertThat(liste(eigenschaft("KennzahlWert", "richtung"), "enum"))
+                .containsExactlyElementsOf(texte(vok.path("richtung_unsicherheit")));
+        List<String> gruende = new ArrayList<>(texte(vok.path("grund_ohne_zahl")));
+        gruende.addAll(KennzahlWerteService.GRUENDE_DES_LESERS);
+        assertThat(liste(eigenschaft("KennzahlWert", "grund"), "enum")).containsExactlyElementsOf(gruende);
+        assertThat(liste(eigenschaft("MessstelleWerteWert", "grund"), "enum"))
+                .containsAll(KennzahlWerteService.GRUENDE_DES_LESERS);
+        assertThat(liste(eigenschaft("KennzahlWertAnlass", "art"), "enum"))
+                .containsExactlyElementsOf(KennzahlWerteService.ANLASS_ARTEN);
+        assertThat(liste(eigenschaft("KennzahlWertEntscheidung", "vorgang"), "enum"))
+                .containsExactlyElementsOf(KennzahlWerteService.VORGAENGE);
+        assertThat(liste(eigenschaft("MessstelleWerteEntscheidung", "vorgang"), "enum"))
+                .containsExactlyElementsOf(KennzahlWerteService.VORGAENGE.subList(0, 2));
+    }
+
     /** Jede Form der Antwort und der Anfrage hat in OpenAPI genau die Felder des DTO (snake_case, Reihenfolge). */
     @Test
     void dieFormenSindZeichengleich() {
@@ -125,7 +151,14 @@ class KennzahlSchnittstelleVertragTest {
                 Map.entry("KennzahlBerechnung", KennzahlDto.Berechnung.class),
                 Map.entry("KennzahlBefund", KennzahlDto.Befund.class),
                 Map.entry("KennzahlVorschauPeriode", KennzahlDto.VorschauPeriode.class),
-                Map.entry("KennzahlVorschau", KennzahlDto.Vorschau.class));
+                Map.entry("KennzahlVorschau", KennzahlDto.Vorschau.class),
+                Map.entry("KennzahlWerteKennzahl", KennzahlDto.WerteKennzahl.class),
+                Map.entry("KennzahlWerte", KennzahlDto.Werte.class),
+                Map.entry("KennzahlWert", KennzahlDto.Wert.class),
+                Map.entry("KennzahlWerteHistorie", KennzahlDto.Historie.class),
+                Map.entry("KennzahlWertVersion", KennzahlDto.Version.class),
+                Map.entry("KennzahlWertAnlass", KennzahlDto.Anlass.class),
+                Map.entry("KennzahlWertEntscheidung", KennzahlDto.Entscheidung.class));
         formen.forEach((schema, dto) -> {
             List<String> felder = new ArrayList<>();
             Arrays.stream(dto.getRecordComponents()).forEach(c -> felder.add(
@@ -144,7 +177,9 @@ class KennzahlSchnittstelleVertragTest {
                 "/api/v1/kennzahlen/{id}", List.of("parameters", "get", "put", "delete"),
                 "/api/v1/kennzahlen/{id}/archivieren", List.of("parameters", "post"),
                 "/api/v1/kennzahlen/{id}/fassungen", List.of("parameters", "get", "post"),
-                "/api/v1/kennzahlen/{id}/berechnung", List.of("parameters", "get"));
+                "/api/v1/kennzahlen/{id}/berechnung", List.of("parameters", "get"),
+                "/api/v1/kennzahlen/{id}/werte", List.of("parameters", "get"),
+                "/api/v1/kennzahlen/{id}/werte/versionen", List.of("parameters", "get"));
         erwartet.forEach((pfad, methoden) -> assertThat(((Map<String, Object>) pfade.get(pfad)).keySet()).as(pfad)
                 .containsExactlyInAnyOrderElementsOf(methoden));
         assertThat(pfade.keySet().stream().filter(p -> p.startsWith("/api/v1/kennzahlen")).toList())

@@ -172,4 +172,117 @@ public final class KennzahlDto {
             List<String> perioden,
             String periodeArt,
             List<VorschauPeriode> letztePerioden) {}
+
+    // ============================================================================ Werte (IP-7)
+
+    /** Die Kennzahl im Kopf ihrer Werte — Einheit und Anzeige-Wort der HEUTE geltenden Berechnung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record WerteKennzahl(UUID id, String kennzeichen, String name, String rechenform, String einheit,
+            String einheitAnzeige) {}
+
+    /**
+     * {@code GET …/{id}/werte?periode=&von=&bis=[&version=]} (AP-11 IP-7): je Periode von {@code von} (ihr erster Tag)
+     * bis {@code bis} (der LETZTE Tag, einschließlich) ein Schritt. {@code version} ist die angefragte — ohne Angabe
+     * {@code null}, dann zeigt jeder Schritt seine neueste.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Werte(WerteKennzahl kennzahl, String periode, LocalDate von, LocalDate bis, String zeitzone,
+            Integer version, List<Wert> werte) {}
+
+    /**
+     * Ein Schritt — die Trägerform des Messstellen-Werts ({@code MessstelleWerteDto.Wert}) für eine Kennzahl: statt
+     * Menge und Mittel der Wert mit Zähler und Nenner, dazu {@code richtung}, {@code definition_fassung} und die
+     * Einheit der gelesenen Fassung. Jedes Feld steht immer da; {@code null} heißt „nicht bekannt“ oder „nicht
+     * gebildet“ — nie 0.
+     *
+     * @param wert ungerundet als Dezimaltext — gerundet wird nur im Portal (U4)
+     * @param einheit die Einheit der Fassung, mit der der Wert gebildet wurde (U1)
+     * @param zustand das Wort des Ergebnis-Zustands; {@code null} NUR zusammen mit einem {@code grund} des Lesers
+     * @param richtung untergrenze · obergrenze · unbestimmt — genau bei „unvollständig“ (Q3)
+     * @param fassung {@code vorlaeufig} | {@code endgueltig} (Q6) — eine andere Aussage als {@code definition_fassung}
+     * @param version die Version, deren Zahl der Schritt zeigt — ohne Anfrage die neueste; {@code null} = noch keine
+     *     (ohne Zahl und ohne früheren Wert, K8)
+     * @param definitionFassung die Fassung der Berechnung, die am letzten Tag der Periode galt (V2, V6)
+     * @param grund warum der Schritt keine Zahl trägt: ein Wort von {@code grund_ohne_zahl} aus der gespeicherten Zeile
+     *     oder eines des Lesers ({@code KennzahlWerteService.GRUENDE_DES_LESERS})
+     * @param herkunft die Hülle {@code {satz, fehlt}} nach {@code kennzahlwert-herkunft.schema.json} an jeder Version,
+     *     auch ohne Zahl (K19); {@code null} ohne Zeile oder ohne Version
+     * @param versionen wie viele Versionen die Periode hat — ab 2 gibt es eine Historie unter {@code …/werte/versionen};
+     *     {@code null}, solange keine gebildet ist
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Wert(
+            LocalDate von,
+            LocalDate bis,
+            String schluessel,
+            String beschriftung,
+            String wert,
+            String zaehler,
+            String nenner,
+            String einheit,
+            String zustand,
+            String richtung,
+            List<String> kennzeichen,
+            String abdeckungProzent,
+            String fassung,
+            String endgueltigAb,
+            Integer version,
+            Integer definitionFassung,
+            String berechnetAm,
+            String grund,
+            Map<String, Object> herkunft,
+            Integer versionen) {}
+
+    /**
+     * {@code GET …/{id}/werte/versionen?periode=&von=}: die Versions-Historie EINER Periode (Muster AP-08 IP-18) — je
+     * Version der Wert davor und danach, wer, wann, warum. {@code grund} nur, wenn die Periode keine Version hat.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Historie(WerteKennzahl kennzahl, String periode, LocalDate von, LocalDate bis, String zeitzone,
+            String grund, List<Version> versionen) {}
+
+    /**
+     * Eine Version der Periode.
+     *
+     * @param wertAlt Version n − 1, genau wie {@code version=n-1} sie zeigt; an Version 1 {@code null}
+     * @param gebildetAm die erste Zeile dieser Version
+     * @param nachgezogenAm eine vorläufige Version zieht als weitere Zeile derselben Nummer nach (V3) — die jüngste;
+     *     sonst {@code null}
+     * @param anlass an Version 1 {@code null}
+     * @param entscheidungen wer wann warum — aus dem Vorgang, den der Anlass nennt
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Version(int version, Wert wertAlt, Wert wertNeu, String gebildetAm, String nachgezogenAm,
+            Anlass anlass, List<Entscheidung> entscheidungen) {}
+
+    /** Warum Version n ≥ 2 entstand, wie gespeichert: {@code art} eingang · definition, {@code beleg} der Text. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Anlass(String art, String beleg) {}
+
+    /**
+     * Eine Entscheidung hinter einer Version — die Form von {@code MessstelleWerteDto.Entscheidung} mit einem
+     * weiteren Vorgang {@code berechnung} (die Fassung der Kennzahl). {@code fassung} ist {@code null}, wenn der Beleg
+     * einen Vorgang nennt, dessen Fassung nicht lesbar ist ({@code fehlt} nennt es).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Entscheidung(
+            String vorgang,
+            String kennung,
+            Integer fassung,
+            String status,
+            String methode,
+            String art,
+            MessstelleWerteDto.Urheber wer,
+            String wann,
+            String warum,
+            String beleg,
+            List<String> fehlt,
+            MessstelleWerteDto.Angelegt angelegt) {}
 }

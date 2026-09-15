@@ -190,6 +190,16 @@ schreibt nichts, die Vorschau schreibt nie (Nur-Lese-Transaktion). Gelöscht wir
 das Kennzeichen bleibt belegt. Das Protokoll bleibt bei seinen drei Wörtern: Anlegen = `kennzahl_fassung_eingetragen`
 (Fassung 1), Stammdaten ändern und Löschen = `kennzahl_geaendert` (beim Löschen ist `neu` leer).
 
+### Die Werte (IP-7)
+
+`GET /api/v1/kennzahlen/{id}/werte?periode=&von=&bis=[&version=]` liefert je Periode die gespeicherte Zahl — ungerundet als
+Dezimaltext, mit Zustand, Richtung, Abdeckung, Kennzeichen, vorläufig/endgültig, `version`, `versionen` und
+`definition_fassung` (V6) — und die Hülle aus `kennzahlwert-herkunft` (gebaut aus den gespeicherten Eingängen, ohne Version
+`null`). `von` ist der erste, `bis` der letzte Tag einer Periode; ohne `version` die neueste Zeile, mit `version=n` die der
+Version n; eine Version an keinem Schritt ist 404 `version_gibt_es_nicht` (Form der Messstelle). Ein Schritt ohne Zahl nennt
+`grund`: ein Wort von `grund_ohne_zahl` oder des Lesers (`noch_nicht_gebildet`, `version_nicht_gespeichert`).
+`…/werte/versionen?periode=&von=` nennt je Version den Wert davor und danach und wer, wann, warum (Muster AP-08 IP-18).
+
 ## 13. Wörter (E12)
 
 Kennzahl · Berechnung · Fassung (datierter Stand der Berechnung) · Version (Stand des Werts) · Vorlage · Menge ·

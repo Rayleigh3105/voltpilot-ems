@@ -10087,6 +10087,70 @@ paths:
         "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+  /api/v1/kennzahlen/{id}/werte:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: periode, in: query, required: true, schema: { type: string, enum: [tag, woche, monat, jahr] } }
+      - { name: von, in: query, required: true, schema: { type: string, format: date, example: "2026-10-01" }, description: "Der ERSTE Tag einer Periode (JJJJ-MM-TT)." }
+      - { name: bis, in: query, required: true, schema: { type: string, format: date, example: "2026-10-31" }, description: "Der LETZTE Tag einer Periode, einschließlich - nicht vor `von`, höchstens 2 200 Perioden." }
+      - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 }, description: "Ohne Angabe zeigt jeder Schritt seine NEUESTE Version; mit `version=n` genau Version n - die damalige Zahl aus ihrer Zeile. Fehlt n an einem Schritt, sagt er `version_nicht_gespeichert` und nennt in `versionen` seine neueste; gibt es n an KEINEM Schritt, ist die Anfrage 404 `version_gibt_es_nicht`." }
+    get:
+      tags: [kennzahlen]
+      summary: Die Werte einer Kennzahl je Periode - ungerundet, nie ohne Zustand, Kennzeichen, Version und Herkunft.
+      description: >
+        Recht `messwerte.ansehen` (AP-11 R2, keine Durchsetzung bis AP-03 IP-11). UEMS AP-11 IP-7.
+        Gelesen wird `kennzahl_wert` (append-only): je Periode die neueste Zeile - höchste Version,
+        dann jüngstes `berechnet_am`. Die Trägerform ist die des Messstellen-Werts
+        (`MessstelleWerteWert`) mit Wert, Zähler und Nenner als DEZIMALTEXT - ungerundet, gerundet wird
+        nur im Portal (U4) -, dazu `richtung`, `definition_fassung` (V2) und die Einheit der gelesenen
+        Fassung. Jedes Feld steht immer da; `null` heißt unbekannt oder nicht gebildet, nie 0. Eine
+        Periode ohne Zeile sagt `grund` `noch_nicht_gebildet`. `herkunft` ist die Hülle `{satz, fehlt}`
+        nach docs/contracts/v2/kennzahlwert-herkunft.schema.json, gebaut aus dem, was die Zeile beim
+        Bilden las - an jeder Version, auch ohne Zahl (K19); ohne Version null. Eine Zeit-Periode, die
+        der Rechenlauf über ihre eigenen Teilperioden bildet, hat keine gespeicherten Eingänge: `satz`
+        null, `fehlt` [eingaenge]. Ein unbekannter Parameter ist 400. Eine fremde Kennzahl ist 404, nie 403.
+      responses:
+        "200":
+          description: Die Werte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlWerte" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Die Kennzahl gibt es nicht (`nicht_gefunden`) - oder die angefragte Version an keinem Schritt.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/MessstelleWerteVersionGibtEsNicht" }
+                  - { $ref: "#/components/schemas/KennzahlFehler" }
+  /api/v1/kennzahlen/{id}/werte/versionen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: periode, in: query, required: true, schema: { type: string, enum: [tag, woche, monat, jahr] } }
+      - { name: von, in: query, required: true, schema: { type: string, format: date, example: "2026-10-01" }, description: "Der ERSTE Tag der Periode - genau eine Periode." }
+    get:
+      tags: [kennzahlen]
+      summary: Die Versions-Historie einer Periode - was vorher dastand, was jetzt, wer es wann warum geändert hat.
+      description: >
+        Recht `messwerte.ansehen` (AP-11 V6). Muster AP-08 IP-18. Je Version der Wert, genau wie
+        `…/werte?version=n` ihn zeigt, der Wert davor, `gebildet_am` (die erste Zeile der Version) und
+        `nachgezogen_am` (eine vorläufige Version zieht als weitere Zeile derselben Nummer nach), der
+        Anlass wie gespeichert und die Entscheidungen: nennt der Beleg eine Korrektur (`K-…`) oder einen
+        Ersatzwert (`EW-…`), deren Fassung bis zum Bilden der Version - gesprochen wie an der Messstelle;
+        ist der Anlass `definition`, die Fassung der Berechnung mit ihrem Urheber und ihrer Begründung.
+        Ein Beleg ohne lesbaren Vorgang (etwa ein Import `I-…`) hat keine Entscheidung - sein Text steht im
+        Anlass. `grund` nur ohne Version: `noch_nicht_gebildet` oder der gespeicherte Grund der Zeile.
+      responses:
+        "200":
+          description: Die Versionen, Version 1 zuerst.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KennzahlWerteHistorie" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
   /api/v1/bezugsdaten/importe/vorschau:
     post:
       tags: [bezugsgroessen]
@@ -20055,6 +20119,114 @@ components:
         perioden: { type: array, items: { type: string, enum: [tag, woche, monat, jahr] } }
         periode_art: { type: string, nullable: true, enum: [tag, woche, monat, jahr], description: "Die Periode der Vorschau - der Wunsch, sonst die Grundperiode." }
         letzte_perioden: { type: array, items: { $ref: "#/components/schemas/KennzahlVorschauPeriode" }, description: "Die letzten drei abgeschlossenen Perioden, die jüngste zuerst." }
+    KennzahlWerteKennzahl:
+      type: object
+      description: Die Kennzahl im Kopf ihrer Werte - Einheit und Anzeige-Wort der HEUTE geltenden Berechnung.
+      required: [id, kennzeichen, name, rechenform, einheit, einheit_anzeige]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        name: { type: string }
+        rechenform: { type: string, enum: [quotient, anteil, zusammenfassung] }
+        einheit: { type: string, nullable: true, description: "kWh/Stück · %." }
+        einheit_anzeige: { type: string, nullable: true, description: "„kWh je Stück“." }
+    KennzahlWerte:
+      type: object
+      required: [kennzahl, periode, von, bis, zeitzone, version, werte]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/KennzahlWerteKennzahl" }
+        periode: { type: string, enum: [tag, woche, monat, jahr] }
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der LETZTE Tag, einschließlich." }
+        zeitzone: { type: string }
+        version: { type: integer, nullable: true, description: "Die angefragte Version; null = je Schritt die neueste." }
+        werte: { type: array, items: { $ref: "#/components/schemas/KennzahlWert" } }
+    KennzahlWert:
+      type: object
+      description: >
+        Eine Periode - die Trägerform von MessstelleWerteWert für eine Kennzahl. Beträge als Dezimaltext,
+        ungerundet; gerundet wird nur angezeigt (U4). `fassung` (vorläufig/endgültig) und
+        `definition_fassung` (die Berechnung) sind zwei Achsen, `version` eine dritte.
+      required: [von, bis, schluessel, beschriftung, wert, zaehler, nenner, einheit, zustand, richtung, kennzeichen,
+        abdeckung_prozent, fassung, endgueltig_ab, version, definition_fassung, berechnet_am, grund, herkunft, versionen]
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date, description: "Der LETZTE Tag der Periode, einschließlich." }
+        schluessel: { type: string, description: "2026-10-05 · 2026-W40 · 2026-10 · 2026." }
+        beschriftung: { type: string, description: "„05.10.2026“ · „KW 40/2026“ · „Oktober 2026“ · „2026“." }
+        wert: { type: string, nullable: true, description: "Dezimaltext, ungerundet; null = keine Zahl, nie 0. Ein Anteil in Prozent (50.82)." }
+        zaehler: { type: string, nullable: true }
+        nenner: { type: string, nullable: true }
+        einheit: { type: string, nullable: true, description: "Die Einheit der Fassung, mit der der Wert gebildet wurde (U1)." }
+        zustand: { type: string, nullable: true, enum: [vollständig, unvollständig, keine Werte, mit Ersatzwert], description: "null nur ohne Zeile oder ohne die angefragte Version - dann steht `grund`." }
+        richtung: { type: string, nullable: true, enum: [untergrenze, obergrenze, unbestimmt], description: "Genau bei „unvollständig“ (Q3)." }
+        kennzeichen: { type: array, items: { type: string }, description: "Die gespeicherten Sätze - Wortlaut und Reihenfolge wie im Vertrag." }
+        abdeckung_prozent: { type: string, nullable: true, description: "Dezimaltext, nie auf 100 gerundet (Q4)." }
+        fassung: { type: string, nullable: true, enum: [vorlaeufig, endgueltig] }
+        endgueltig_ab: { type: string, nullable: true }
+        version: { type: integer, nullable: true, minimum: 1, description: "Die Version, deren Zahl der Schritt zeigt - ohne Anfrage die neueste; null = noch keine (ohne Zahl und ohne früheren Wert, K8)." }
+        definition_fassung: { type: integer, nullable: true, minimum: 1, description: "Die Fassung der Berechnung, die am letzten Tag der Periode galt (V2)." }
+        berechnet_am: { type: string, nullable: true }
+        grund:
+          type: string
+          nullable: true
+          enum: [nenner_fehlt, nenner_null, zaehler_fehlt, periode_nicht_zu_ende, vor_bestehen, haengt_an_kreis, eingang_archiviert, noch_nicht_gebildet, version_nicht_gespeichert]
+          description: Warum der Schritt keine Zahl trägt - ein Wort der Zeile (grund_ohne_zahl) oder des Lesers.
+        herkunft:
+          type: object
+          nullable: true
+          description: "Die Hülle nach kennzahlwert-herkunft.schema.json an jeder Version, auch ohne Zahl (K19); null ohne Zeile oder ohne Version."
+          required: [satz, fehlt]
+          properties:
+            satz: { type: object, nullable: true, additionalProperties: true, description: "Die Form von kennzahlwert-herkunft.schema.json → $defs/satz." }
+            fehlt: { type: array, items: { type: string, enum: [kennzahl, definition_fassung, berechnet_am, eingaenge, anlass] } }
+        versionen: { type: integer, nullable: true, description: "Wie viele Versionen die Periode hat - ab 2 gibt es eine Historie unter …/werte/versionen; null, solange keine gebildet ist." }
+    KennzahlWerteHistorie:
+      type: object
+      description: Die Versions-Historie EINER Periode (AP-11 IP-7, Muster AP-08 IP-18). `grund` nur, wenn die Periode keine Version hat.
+      required: [kennzahl, periode, von, bis, zeitzone, grund, versionen]
+      properties:
+        kennzahl: { $ref: "#/components/schemas/KennzahlWerteKennzahl" }
+        periode: { type: string, enum: [tag, woche, monat, jahr] }
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        zeitzone: { type: string }
+        grund: { type: string, nullable: true, description: "Ein Wort von KennzahlWert.grund." }
+        versionen: { type: array, items: { $ref: "#/components/schemas/KennzahlWertVersion" } }
+    KennzahlWertVersion:
+      type: object
+      required: [version, wert_alt, wert_neu, gebildet_am, nachgezogen_am, anlass, entscheidungen]
+      properties:
+        version: { type: integer, minimum: 1 }
+        wert_alt: { allOf: [{ $ref: "#/components/schemas/KennzahlWert" }], nullable: true, description: "Version n − 1 wie …/werte?version=n-1; an Version 1 null." }
+        wert_neu: { $ref: "#/components/schemas/KennzahlWert" }
+        gebildet_am: { type: string, description: "Die erste Zeile der Version." }
+        nachgezogen_am: { type: string, nullable: true, description: "Eine vorläufige Version zieht nach (V3) - wann zuletzt." }
+        anlass: { allOf: [{ $ref: "#/components/schemas/KennzahlWertAnlass" }], nullable: true }
+        entscheidungen: { type: array, items: { $ref: "#/components/schemas/KennzahlWertEntscheidung" } }
+    KennzahlWertAnlass:
+      type: object
+      required: [art, beleg]
+      properties:
+        art: { type: string, enum: [eingang, definition] }
+        beleg: { type: string, example: "K-2026-0007 (freigegeben 12.11.2026)" }
+    KennzahlWertEntscheidung:
+      type: object
+      description: Die Form von MessstelleWerteEntscheidung mit dem weiteren Vorgang `berechnung` (die Fassung der Kennzahl).
+      required: [vorgang, kennung, fassung, status, methode, art, wer, wann, warum, beleg, fehlt, angelegt]
+      properties:
+        vorgang: { type: string, enum: [ersatzwert, korrektur, berechnung] }
+        kennung: { type: string, description: "K-… · EW-… · bei `berechnung` das Kennzeichen der Kennzahl." }
+        fassung: { type: integer, nullable: true, minimum: 1, description: "null, wenn die Fassung des genannten Vorgangs nicht lesbar ist (`fehlt` fassung)." }
+        status: { type: string, nullable: true }
+        methode: { type: string, nullable: true }
+        art: { type: string, nullable: true, description: "Korrektur: ihre Art; Berechnung: die Herkunft der Fassung (anlage · eintrag · kopie)." }
+        wer: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteUrheber" }], nullable: true }
+        wann: { type: string, nullable: true }
+        warum: { type: string, nullable: true, description: "Der Text dieser Fassung - null, wenn keiner geschrieben wurde." }
+        beleg: { type: string, nullable: true }
+        fehlt: { type: array, items: { type: string, enum: [warum, fassung] } }
+        angelegt: { allOf: [{ $ref: "#/components/schemas/MessstelleWerteAngelegt" }], nullable: true }
     BezugsgroesseAnfrage:
       type: object
       additionalProperties: false

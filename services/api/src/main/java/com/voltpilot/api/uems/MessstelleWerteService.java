@@ -641,9 +641,10 @@ public class MessstelleWerteService {
 
     /**
      * Eine Entscheidung, wie sie gespeichert ist: Urheber und Zeitpunkt ihrer Fassung, das „warum“ als der Text, den
-     * der Mensch DAZU geschrieben hat — fehlt er, nennt {@code fehlt} es, ein Grund wird nicht erfunden.
+     * der Mensch DAZU geschrieben hat — fehlt er, nennt {@code fehlt} es, ein Grund wird nicht erfunden. Auch die
+     * Versionen einer Kennzahl ({@link KennzahlWerteService}) sprechen ihre Korrekturen und Ersatzwerte hierüber.
      */
-    private static MessstelleWerteDto.Entscheidung entscheidung(WertVersionenRegeln.Schluessel k,
+    static MessstelleWerteDto.Entscheidung entscheidung(WertVersionenRegeln.Schluessel k,
             List<WertVersionenLeser.Fassung> fassungen, ZoneId zone) {
         String vorgang = WertVersionenRegeln.Vorgang.aus(k.kennung()).wort();
         WertVersionenLeser.Fassung f = fassung(fassungen, k.kennung(), k.fassung());

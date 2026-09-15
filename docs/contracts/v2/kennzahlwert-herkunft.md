@@ -16,8 +16,11 @@ mit dem Wert, den er beim Bilden trug.
 | `services/api/.../uems/KennzahlRegeln.java` (`herkunft`) | der Java-Zwilling — er BAUT den Satz und nennt, was fehlt |
 | `frontend/portal/src/uemsKennzahl.ts` (`herkunft`) | der TS-Zwilling |
 
-Beide Vektor-Tests halten jede gebaute Hülle zusätzlich gegen das Schema. **Noch ruft niemand an** — die Route, die den Satz
-aus gespeicherten Zeilen bildet, kommt mit AP-11 IP-7 (`GET …/kennzahlen/{id}/werte`).
+Beide Vektor-Tests halten jede gebaute Hülle zusätzlich gegen das Schema. **Seit AP-11 IP-7 ruft die Route an:**
+`GET /api/v1/kennzahlen/{id}/werte` bildet den Satz aus den gespeicherten Zeilen (`kennzahl_wert` + `kennzahl_wert_eingang`)
+über `KennzahlRegeln.herkunft` — `KennzahlWerteApiTest` hält jede Prüfung der Regel `herkunft` byte-gleich dagegen. Eine
+Zeit-Periode, die der Rechenlauf über ihre eigenen Teilperioden bildet, hat keine gespeicherten Eingänge: dort antwortet die
+Route mit Regel 7 (`satz` null, `fehlt` = `eingaenge`).
 
 ## 1. Was im Satz steht
 

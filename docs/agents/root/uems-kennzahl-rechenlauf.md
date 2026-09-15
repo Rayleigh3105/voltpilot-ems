@@ -34,7 +34,8 @@ Der Kennzahl-Schritt im Stundentakt `EndgueltigkeitLaeufer`: Endgültigkeit → 
 - ⚠ **V3 über den Vergleich:** unverändert = gleiche Zahl, Zustände, Kennzeichen, Fassung UND gleiche Eingänge
   (`KennzahlRepository.eingaengeText`); `berechnet_am` muss nach der neuesten Zeile liegen (Trigger), sonst Warnung ohne Zeile.
 - ⚠ **Zeit-Perioden haben keine Eingangs-Zeilen:** die Teilperioden sind Zeilen derselben Kennzahl, `kennzahl_wert_eingang`
-  verbietet den Selbstverweis — die Herkunft (IP-7) liest sie über `periode_art`/`periode_von`.
+  verbietet den Selbstverweis — die Herkunft der Route (IP-7) ist dort darum `satz` null, `fehlt` `[eingaenge]`; die Paare mit
+  ihren Periodenwerten (Report K14) als Eingänge zu schreiben ist IP-11 (`uems-kennzahl-werte-lesen.md`).
 - ⚠ **Paar ohne Zahl (Nenner 0) zählt mit (K9)**, aber ohne Version trägt die Zeile keinen vorläufig/endgültig-Zustand — eine
   Zusammenfassung mit so einem Paar bleibt vorläufig. Zustand des Paars = schlechtester seiner Eingänge (`eingangZustand`).
 - ⚠ **Nicht gebaut / nicht erreichbar:** Wochen (IP-12), Bezugsfläche als Nenner (keine Bezugsgröße mit Kennzeichen, K12 nur
