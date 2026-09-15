@@ -24,6 +24,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -113,6 +114,64 @@ public class MessstelleWerteService {
     public MessstelleWerteDto.Werte werte(String kennzeichen, String raster, String von, String bis,
             String version) {
         return werte(kennzeichen, raster, von, bis, version, versionen);
+    }
+
+    /**
+     * Die Route {@code GET …/werte}: wie {@link #werte(String, String, String, String, String)}, dazu die Frist (UEMS
+     * AP-12 IP-16, B16) — NUR an der Route. Die Leser im Haus (Kostenstellen, Kennzahlen, Bilanz, berechnete Perioden,
+     * Bericht-Bildung) lesen eine alte Periode weiter als „keine Werte“ und brechen an ihr nie ab.
+     */
+    public MessstelleWerteDto.Werte werteDerRoute(String kennzeichen, String raster, String von, String bis,
+            String version) {
+        Form form = pruefe(() -> MessstelleWerteRegeln.form(raster, von, bis, version));
+        Lesung l = lesen(kennzeichen, form, versionen);
+        MessstelleWerteDto.Werte antwort = werte(l, form);
+        pruefeAufbewahrung(l, form.version());
+        return antwort;
+    }
+
+    /** Der früheste freigegebene Berichtsstand, der GENAU diese Periode der Messstelle in Version 1 zitiert. */
+    private static final String FESTGEHALTEN = "SELECT s.nr, s.freigegeben_am FROM bericht_quelle q "
+            + "JOIN bericht_stand s ON s.tenant_id = q.tenant_id AND s.bericht_id = q.bericht_id AND s.nr = q.stand_nr "
+            + "WHERE q.tenant_id = ? AND q.objekt_id = ? AND q.art = ? AND q.bezug <> ? AND q.stand_nr IS NOT NULL "
+            + "AND q.version = 1 AND q.erster_tag = ? AND q.letzter_tag = ? ORDER BY s.freigegeben_am, s.nr LIMIT 1";
+
+    /**
+     * Nach den Fristen (Bericht-Vertrag S4, B16): fragt die Anfrage GENAU EINE Periode — Monat oder Jahr, die Perioden,
+     * die ein Bericht zitiert — einer gemessenen Reihe in Version 1 (angefragt oder als neueste), und liegt sie jenseits
+     * der Aufbewahrung ohne Zeile und ohne etwas darunter, ist sie nicht mehr gespeichert: 404
+     * {@code wert_nicht_mehr_gespeichert} mit dem Berichtsstand, der sie festhält ({@code FESTGEHALTEN}; eine mittelbare
+     * Quelle zählt nicht, ihr Wert steht nicht als Zahl im Abzug). Eine Version ab 2 hat keine Frist und antwortet weiter;
+     * innerhalb der Aufbewahrung bleibt eine Periode ohne Zeile „keine Werte“.
+     */
+    private void pruefeAufbewahrung(Lesung l, Integer version) {
+        Zeitraum z = l.z();
+        if (l.spur() != null || l.deckung().size() != 1 || (z.raster() != Raster.MONAT && z.raster() != Raster.JAHR)) {
+            return;
+        }
+        Map.Entry<Schritt, Deckung> e = l.deckung().entrySet().iterator().next();
+        Schritt s = e.getKey();
+        Reihe reihe = e.getValue().reihe();
+        if (reihe == null || !MessstelleWerteRegeln.jenseitsDerAufbewahrung(s.von(), l.jetzt())) {
+            return;
+        }
+        Gelesen g = l.gelesen().get(reihe);
+        if (g.zeilen().containsKey(s.von()) || g.mitDaten().contains(s.von())
+                || WertVersionenRegeln.wahl(nummern(g.versionen().getOrDefault(s.von(), List.of())), version)
+                        .version() != 1) {
+            return;
+        }
+        ZoneId zone = l.zone().id();
+        LocalDate ersterTag = s.von().atZone(zone).toLocalDate();
+        String schluessel = z.raster() == Raster.MONAT ? YearMonth.from(ersterTag).toString()
+                : String.valueOf(ersterTag.getYear());
+        List<Map.Entry<Integer, Instant>> staende = jdbc.query(FESTGEHALTEN,
+                (rs, i) -> Map.entry(rs.getInt("nr"), rs.getTimestamp("freigegeben_am").toInstant()), l.tenant(),
+                l.m().id(), BerichtRegeln.QUELLE_ARTEN.get(0), BerichtRegeln.MITTELBAR, ersterTag,
+                s.bis().atZone(zone).toLocalDate().minusDays(1));
+        Map.Entry<Integer, Instant> stand = staende.isEmpty() ? null : staende.get(0);
+        throw new MessstelleWerteRegeln.WertNichtMehrGespeichert(z.raster().wort(), schluessel,
+                stand == null ? null : stand.getKey(), stand == null ? null : stand.getValue(), zone);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -436,5 +437,67 @@ public final class MessstelleWerteRegeln {
     /** Nur für die Fakten der Ablehnung: das Feld und der Grund, snake_case. */
     public static Map<String, Object> fakten(Ablehnung a) {
         return Map.of("feld", Objects.requireNonNull(a.feld()), "grund", a.grund().wort());
+    }
+
+    // ------------------------------------------------------------ Nach den Fristen (UEMS AP-12 IP-16, B16)
+
+    /**
+     * Die Aufbewahrung der Speicherklassen {@code messreihe_viertelstunde}, {@code messreihe_tag} und
+     * {@code messreihe_periode} (AP-07 E6): {@code add_retention_policy(…, INTERVAL '3653 days')}. Die Versionen ab 2
+     * ({@code …_version}) haben keine Frist. {@code MessstelleWerteRegelnTest} hält die Zahl gleich den Migrationen.
+     */
+    public static final int AUFBEWAHRUNG_TAGE = 3653;
+
+    /**
+     * Ob die Aufbewahrung die Zeile einer Periode, die bei {@code beginn} beginnt, schon entfernt haben KANN: sie rechnet
+     * über die Zeitspalte der Hypertable ({@code tag} bzw. {@code intervall_beginn}), also frühestens ab {@code beginn}
+     * + 3 653 Tage. Davor ist eine fehlende Zeile nie „nicht mehr gespeichert“.
+     */
+    public static boolean jenseitsDerAufbewahrung(Instant beginn, Instant jetzt) {
+        return !beginn.plus(Duration.ofDays(AUFBEWAHRUNG_TAGE)).isAfter(jetzt);
+    }
+
+    /**
+     * 404 {@code wert_nicht_mehr_gespeichert} (Bericht-Vertrag S4, B16): der Wert EINER Periode liegt jenseits der
+     * Aufbewahrung und ist nirgends mehr gespeichert. Code, Status und Satz sind die des Bericht-Vertrags
+     * ({@link BerichtRegeln#wertNichtMehrGespeichert}); der Berichtsstand ist der, der den Wert festhält — oder keiner.
+     */
+    public static final class WertNichtMehrGespeichert extends RuntimeException {
+        public static final String CODE = BerichtRegeln.WERT_NICHT_MEHR_GESPEICHERT;
+
+        private final String zeitraumArt;
+        private final String schluessel;
+        private final Integer standNr;
+        private final String standFreigegebenAm;
+
+        /** @param standNr {@code null} = kein freigegebener Berichtsstand hält den Wert fest ({@code standAm} dann egal) */
+        public WertNichtMehrGespeichert(String zeitraumArt, String schluessel, Integer standNr, Instant standAm,
+                ZoneId zone) {
+            super(BerichtRegeln.wertNichtMehrGespeichert(zeitraumArt, schluessel, standNr, standAm, zone));
+            this.zeitraumArt = zeitraumArt;
+            this.schluessel = schluessel;
+            this.standNr = standNr;
+            this.standFreigegebenAm = standNr == null ? null : iso(standAm, zone);
+        }
+
+        public int status() {
+            return BerichtRegeln.FEHLER_STATUS.get(CODE);
+        }
+
+        public String zeitraumArt() {
+            return zeitraumArt;
+        }
+
+        public String schluessel() {
+            return schluessel;
+        }
+
+        public Integer standNr() {
+            return standNr;
+        }
+
+        public String standFreigegebenAm() {
+            return standFreigegebenAm;
+        }
     }
 }

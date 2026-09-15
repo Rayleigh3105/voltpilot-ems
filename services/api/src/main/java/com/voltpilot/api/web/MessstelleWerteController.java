@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
+import com.voltpilot.api.uems.MessstelleWerteRegeln;
 import com.voltpilot.api.uems.MessstelleWerteService;
 import com.voltpilot.api.uems.WertVersionenRegeln;
 import com.voltpilot.api.web.dto.MessstelleWerteDto;
@@ -53,7 +54,7 @@ public class MessstelleWerteController {
             @RequestParam(required = false) String von,
             @RequestParam(required = false) String bis,
             @RequestParam(required = false) String version) {
-        return werte.werte(kennzeichen, raster, von, bis, version);
+        return werte.werteDerRoute(kennzeichen, raster, von, bis, version);
     }
 
     /**
@@ -84,6 +85,30 @@ public class MessstelleWerteController {
         body.put("version", e.version());
         body.put("hoechste_version", e.hoechste());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    /**
+     * 404 {@code wert_nicht_mehr_gespeichert} (UEMS AP-12 IP-16, Bericht-Vertrag S4/B16): EINE Periode liegt jenseits der
+     * Aufbewahrung und ist nicht mehr gespeichert — mit dem Satz des Bericht-Vertrags und dem Berichtsstand, der sie
+     * festhält ({@code stand} null: keiner). Nie ein stilles „keine Werte“.
+     */
+    @ExceptionHandler(MessstelleWerteRegeln.WertNichtMehrGespeichert.class)
+    public ResponseEntity<Map<String, Object>> wertNichtMehrGespeichert(MessstelleWerteRegeln.WertNichtMehrGespeichert e) {
+        Map<String, Object> zeitraum = new LinkedHashMap<>();
+        zeitraum.put("art", e.zeitraumArt());
+        zeitraum.put("schluessel", e.schluessel());
+        Map<String, Object> stand = null;
+        if (e.standNr() != null) {
+            stand = new LinkedHashMap<>();
+            stand.put("nr", e.standNr());
+            stand.put("freigegeben_am", e.standFreigegebenAm());
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", MessstelleWerteRegeln.WertNichtMehrGespeichert.CODE);
+        body.put("message", e.getMessage());
+        body.put("zeitraum", zeitraum);
+        body.put("stand", stand);
+        return ResponseEntity.status(e.status()).body(body);
     }
 
     /** {@code {code, message, feld, grund}} — dieselbe Form wie jede Ablehnung der Messstellen-Schnittstelle. */

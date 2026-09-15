@@ -243,6 +243,67 @@ class MessstelleWerteRegelnTest {
                 Instant.parse("2026-12-27T23:00:00Z"), Instant.parse("2027-01-03T23:00:00Z")));
     }
 
+    // ========================================================================= Nach den Fristen (AP-12 IP-16)
+
+    /** Die Aufbewahrung ist die der drei Speicherklassen — Zahl für Zahl die Migrationen, nie eine zweite Wahrheit. */
+    @Test
+    void dieAufbewahrungIstDieDerMigrationen() throws Exception {
+        Path migrationen = Path.of("src", "main", "resources", "db", "migration");
+        Map<String, String> je = Map.of(
+                "messreihe_viertelstunde", "V20260912170000__uems_messreihe_viertelstunde.sql",
+                "messreihe_tag", "V20260912190000__uems_endgueltigkeit_tageswerte.sql",
+                "messreihe_periode", "V20260912205000__uems_periodenmengen.sql");
+        je.forEach((tabelle, datei) -> {
+            try {
+                assertThat(Files.readString(migrationen.resolve(datei))).as(tabelle).contains("add_retention_policy('"
+                        + tabelle + "', INTERVAL '" + MessstelleWerteRegeln.AUFBEWAHRUNG_TAGE + " days')");
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+    }
+
+    /** Frühestens ab Beginn + 3 653 Tage kann die Zeile einer Periode weg sein — keine Sekunde früher. */
+    @Test
+    void jenseitsDerAufbewahrungErstAbBeginnPlusDreitausendSechshundertDreiundfuenfzigTagen() {
+        Instant oktober = Instant.parse("2026-09-30T22:00:00Z");
+        Instant grenze = Instant.parse("2036-09-30T22:00:00Z");
+        assertThat(java.time.Duration.between(oktober, grenze).toDays()).isEqualTo(MessstelleWerteRegeln.AUFBEWAHRUNG_TAGE);
+        assertThat(MessstelleWerteRegeln.jenseitsDerAufbewahrung(oktober, grenze.minusSeconds(1))).isFalse();
+        assertThat(MessstelleWerteRegeln.jenseitsDerAufbewahrung(oktober, grenze)).isTrue();
+        assertThat(MessstelleWerteRegeln.jenseitsDerAufbewahrung(oktober, Instant.parse("2036-11-02T09:00:00Z"))).isTrue();
+    }
+
+    /** Die Ablehnung spricht den Satz des Bericht-Vertrags: B16 wörtlich, mit und ohne Berichtsstand. */
+    @Test
+    void wertNichtMehrGespeichertSprichtDenSatzAusB16() throws Exception {
+        com.fasterxml.jackson.databind.JsonNode vektoren = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(Files.readString(Path.of("..", "..", "docs", "contracts", "v2", "bericht-vectors.json")));
+        int geprueft = 0;
+        for (com.fasterxml.jackson.databind.JsonNode fall : vektoren.path("cases")) {
+            for (com.fasterxml.jackson.databind.JsonNode p : fall.path("pruefungen")) {
+                com.fasterxml.jackson.databind.JsonNode e = p.path("eingang");
+                if (!"satz".equals(p.path("regel").asText())
+                        || !MessstelleWerteRegeln.WertNichtMehrGespeichert.CODE.equals(e.path("code").asText())) {
+                    continue;
+                }
+                assertThat(fall.path("familie").asText()).isEqualTo("ablauf");
+                com.fasterxml.jackson.databind.JsonNode z = e.path("werte").path("zeitraum");
+                com.fasterxml.jackson.databind.JsonNode stand = e.path("werte").path("stand");
+                MessstelleWerteRegeln.WertNichtMehrGespeichert w = new MessstelleWerteRegeln.WertNichtMehrGespeichert(
+                        z.path("art").asText(), z.path("schluessel").asText(),
+                        stand.isNull() ? null : stand.path("nr").asInt(),
+                        stand.isNull() ? null : java.time.OffsetDateTime.parse(stand.path("freigegeben_am").asText()).toInstant(),
+                        BERLIN);
+                assertThat(w.getMessage()).as(p.path("name").asText()).isEqualTo(p.path("ergebnis").path("kundensatz").asText());
+                assertThat(w.status()).isEqualTo(p.path("ergebnis").path("status").asInt()).isEqualTo(404);
+                assertThat(w.standFreigegebenAm()).isEqualTo(stand.isNull() ? null : stand.path("freigegeben_am").asText());
+                geprueft++;
+            }
+        }
+        assertThat(geprueft).as("mit und ohne Berichtsstand").isEqualTo(2);
+    }
+
     // ========================================================================= Helfer
 
     private static long stunden(Schritt s) {
