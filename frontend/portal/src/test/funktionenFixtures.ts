@@ -120,6 +120,7 @@ export function funktionMessenEntwurf(fs: FunktionStandort): FunktionStandort {
     eingerichtetAm: null,
     boxen: [],
     messstellen: [],
+    registerZeilen: [],
     anlagen: [],
     jetzt: '2026-10-20T08:15:30Z',
     zeitzone: fs.zeitzone,

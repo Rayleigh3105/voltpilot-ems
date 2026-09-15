@@ -215,6 +215,7 @@ describe('uemsFunktion · Messen & Auswerten (geteilte Vektoren)', () => {
           jeEinWert: m.je_ein_wert as boolean,
           kadenzS: m.kadenz_s as number,
         })),
+        registerZeilen: i.register_zeilen as LiefertDatenZustand[],
         anlagen: (i.anlagen as Array<Record<string, unknown>>).map((a) => ({
           name: a.name as string,
           hauptzaehlerAnzahl: a.hauptzaehler_anzahl as number,

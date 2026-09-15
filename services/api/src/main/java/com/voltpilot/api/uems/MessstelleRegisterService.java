@@ -290,14 +290,8 @@ public class MessstelleRegisterService {
         Map<String, List<ZustandAbleitung.LiefertDaten>> jeStandort = new LinkedHashMap<>();
         Map<String, MessstelleDto.RegisterOrt> orte = new LinkedHashMap<>();
         for (MessstelleDto.RegisterZeile z : zeilen) {
-            ZustandAbleitung.LiefertDaten zustand;
-            if (z.beobachtung() != null) {
-                zustand = ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
-            } else if (MessstelleRegeln.BERECHNET.equals(z.art())) {
-                zustand = z.berechnung() == null ? ZustandAbleitung.LiefertDaten.KEINE_DATENQUELLE
-                        : RegisterBerechnung.VOLLSTAENDIG.equals(z.berechnung().zustand())
-                                ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT;
-            } else {
+            ZustandAbleitung.LiefertDaten zustand = aggregatZustand(z);
+            if (zustand == null) {
                 continue;
             }
             alle.add(zustand);
@@ -321,6 +315,24 @@ public class MessstelleRegisterService {
                 ZustandAbleitung.Einheit.MESSSTELLE);
         return new MessstelleDto.RegisterAggregat(
                 new MessstelleDto.RegisterAbdeckung(u.erfuellt(), u.gesamt(), u.text()), standorte);
+    }
+
+    /**
+     * Wie EINE Zeile im Aggregat zählt — {@code null} = gar nicht: gemessene über ihre Beobachtung, berechnete über
+     * {@code berechnung} (vollständig = liefert, unvollständig = liefert nicht, ohne Formel am Tag = keine Datenquelle).
+     * ⚠ AP-13 IP-7 (E13 = A): die Datenlage von „Messen &amp; Auswerten“ ({@link FunktionService}) zählt über GENAU
+     * diese Stelle — Register, Baustein „Messstellen“ der Übersicht und Karte „Funktionen“ sagen dieselbe Zahl.
+     */
+    public static ZustandAbleitung.LiefertDaten aggregatZustand(MessstelleDto.RegisterZeile z) {
+        if (z.beobachtung() != null) {
+            return ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
+        }
+        if (!MessstelleRegeln.BERECHNET.equals(z.art())) {
+            return null;
+        }
+        return z.berechnung() == null ? ZustandAbleitung.LiefertDaten.KEINE_DATENQUELLE
+                : RegisterBerechnung.VOLLSTAENDIG.equals(z.berechnung().zustand())
+                        ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT;
     }
 
     /** Die Verortung am Tag (Regel 7 des Ortsbaums) mit den Namen aus demselben Baum. */

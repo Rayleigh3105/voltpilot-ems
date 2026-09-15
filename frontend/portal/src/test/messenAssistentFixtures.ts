@@ -10,6 +10,7 @@ import type {
   MessstelleVorschlagUebernommen,
 } from '../api';
 import { messen as messenRegel } from '../uemsFunktion';
+import type { LiefertDatenZustand } from '../uemsZustand';
 import {
   vorschlagsliste,
   type VorschlagEingang,
@@ -273,6 +274,8 @@ export function ahrenbergMessen(
       jeEinWert: z.beobachtung?.zustand === 'liefert',
       kadenzS: 60,
     })),
+    // AP-13 IP-7 (E13): die Datenlage zählt die Zeilen so, wie das Register sie zählt — hier nur gemessene.
+    registerZeilen: register.flatMap((z) => (z.beobachtung ? [z.beobachtung.zustand as LiefertDatenZustand] : [])),
     anlagen: [
       { name: 'Werk Ahrenberg – Halle 1', hauptzaehlerAnzahl: hauptzaehler(FIXTURE_IDS.an1) },
       { name: 'Werk Ahrenberg – Halle 2', hauptzaehlerAnzahl: hauptzaehler(FIXTURE_IDS.an2) },

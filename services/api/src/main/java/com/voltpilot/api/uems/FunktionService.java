@@ -514,7 +514,7 @@ public class FunktionService {
             FunktionRepository.Funktion fm, List<UUID> heuteDa, ZoneId zone, Instant jetzt) {
         if (fm == null) {
             return new FunktionZustandAbleitung.MessenEingang(st.name(), false, false, st.archiviertAm(), null,
-                    List.of(), List.of(), List.of(), jetzt, zone);
+                    List.of(), List.of(), List.of(), List.of(), jetzt, zone);
         }
         List<ZustandAbleitung.BoxZustand> boxen = new ArrayList<>();
         List<FunktionZustandAbleitung.MessenAnlage> anlagen = new ArrayList<>();
@@ -527,9 +527,18 @@ public class FunktionService {
             }
         }
         List<FunktionZustandAbleitung.Messstelle> messstellen = new ArrayList<>();
+        List<ZustandAbleitung.LiefertDaten> registerZeilen = new ArrayList<>();
         for (MessstelleDto.RegisterZeile z : w.register().get()) {
-            if (z.ort() == null || !st.id().equals(z.ort().standortId()) || z.beobachtung() == null
-                    || "archiviert".equals(z.lebenszyklus())) {
+            if (z.ort() == null || !st.id().equals(z.ort().standortId())) {
+                continue;
+            }
+            // AP-13 IP-7 (E13 = A): die Datenlage zählt JEDE Zeile des Standorts so, wie das Register sie zählt —
+            // berechnete und archivierte eingeschlossen; die Prüfliste darunter bleibt bei den gemessenen, aktiven.
+            ZustandAbleitung.LiefertDaten imRegister = MessstelleRegisterService.aggregatZustand(z);
+            if (imRegister != null) {
+                registerZeilen.add(imRegister);
+            }
+            if (z.beobachtung() == null || "archiviert".equals(z.lebenszyklus())) {
                 continue;
             }
             MessstelleDto.RegisterBeobachtung b = z.beobachtung();
@@ -544,7 +553,7 @@ public class FunktionService {
                     b.kadenzS() == null ? MesskanalService.VORGABE_KADENZ_S : b.kadenzS().longValue()));
         }
         return new FunktionZustandAbleitung.MessenEingang(st.name(), true, !"entwurf".equals(st.zustand()),
-                st.archiviertAm(), fm.eingerichtetAm(), boxen, messstellen, anlagen, jetzt, zone);
+                st.archiviertAm(), fm.eingerichtetAm(), boxen, messstellen, registerZeilen, anlagen, jetzt, zone);
     }
 
     private static OffsetDateTime zeit(Instant t, ZoneId zone) {
