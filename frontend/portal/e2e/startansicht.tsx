@@ -4,6 +4,7 @@ import {
   api,
   type FunktionStandort,
   type MessstellenRegisterAnfrage,
+  type MessstelleWerteRaster,
   type Overview,
   type OverviewSite,
   type Site,
@@ -71,6 +72,8 @@ import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
 import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
+import { ahrenbergKostenstelleEnergie, ahrenbergMessstelleProzesse, ahrenbergProzessSummeWerte } from '../src/test/kostenstellenFixtures';
+import { kostenstellenAhrenberg, prozesseAhrenberg } from '../src/test/messstelleSeiteFixtures';
 import { mitEnergiebilanz } from '../src/anlageEnergiebilanz';
 import { ahrenbergBilanz } from '../src/test/bilanzFixtures';
 import { ortsbaumAhrenberg, ortsbaumLindach, ortsbaumLindachOhneGebaeude } from '../src/test/ortsbaumFixtures';
@@ -157,6 +160,18 @@ const params = new URLSearchParams(location.search);
 const bild = params.get('bild') ?? 'einzel';
 const ansicht = params.get('ansicht');
 const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet';
+/**
+ * AP-13 IP-9: `&ansicht=kostenstellen` / `&ansicht=prozesse` öffnen „Unternehmen › Messstellen“ im Reiter (die Adresse
+ * trägt `?reiter=`, dazu `&periode=&am=` aus der Bühnen-Adresse); die Kostenstellen tragen dort ihre echte Gültigkeit
+ * (9000 bis 31.12.2026, 9010/9020 ab 01.01.2027 — die Kennzahl-Bühne behält ihre sieben). `&organisation=leer`: keine
+ * Kostenstelle, kein Prozess — die Welt ohne Reiter (Bestand).
+ */
+const ORGANISATION_REITER = ansicht === 'kostenstellen' || ansicht === 'prozesse';
+const ORGANISATION_LEER = params.get('organisation') === 'leer';
+if (ORGANISATION_REITER) {
+  const zeit = params.get('periode') && params.get('am') ? `&periode=${params.get('periode')}&am=${params.get('am')}` : '';
+  window.history.replaceState(null, '', `#/portfolio/messstellen?reiter=${ansicht}${zeit}`);
+}
 /**
  * AP-13 IP-8: `&ansicht=bilanz&an=AN-2` öffnet Anlage › Verlauf › Energiebilanz (Vorgabe AN-2); `&bilanz=ohne-hz`
  * antwortet ohne Hauptzähler (Leerzustand, kein Reiter), `&rest=vorschlag` ohne Rest-Messstelle (Vorschlag „Rest
@@ -458,8 +473,19 @@ Object.assign(api, {
   // AP-11 IP-14: was der Assistent „Kennzahl anlegen“ liest — und seine zwei Aufrufe, gezählt.
   bezugsgroessen: async () => ahrenbergBezugsgroessen(),
   unternehmen: async () => ahrenbergUnternehmen(),
-  prozesse: async () => ({ stichtag: null, prozesse: ahrenbergProzesse() }),
-  kostenstellen: async () => ({ stichtag: null, kostenstellen: ahrenbergKostenstellen() }),
+  // AP-13 IP-9: in den Reitern gelten die Prozesse der Messstellen-Fixtures — dieselben Kennungen wie ihre Zuordnungen.
+  prozesse: async () => ({
+    stichtag: null,
+    prozesse: ORGANISATION_LEER ? [] : ORGANISATION_REITER ? prozesseAhrenberg() : ahrenbergProzesse(),
+  }),
+  kostenstellen: async () => ({
+    stichtag: null,
+    kostenstellen: ORGANISATION_LEER ? [] : ORGANISATION_REITER ? kostenstellenAhrenberg() : ahrenbergKostenstellen(),
+  }),
+  // AP-13 IP-9: die Kostenstellen-Sicht je Kostenstelle (O9 Oktober 2026, F12 am 15.01.2027) und die Prozesse der
+  // berechneten Messstellen (MS-20 → P-1).
+  kostenstelleEnergie: async (id: string, periode: 'tag' | 'monat' | 'jahr', am: string) => ahrenbergKostenstelleEnergie(id, periode, am),
+  messstelleProzesse: async (id: string) => ahrenbergMessstelleProzesse(id),
   kennzahlVorschau: async (a: KennzahlAnfrage) => {
     kennzahlAufrufe.vorschau.push(structuredClone(a));
     return (k17 ? k17VorschauAntwort(a, Date.now()) : null) ?? kennzahlVorschauAntwort(a, Date.now());
@@ -499,7 +525,11 @@ Object.assign(api, {
     if (!anstoss) throw new ApiError(404, 'Diesen Anstoß gibt es nicht.');
     return anstoss;
   },
-  messstelleWerte: async (kennzeichen: string) => heutigeWerteAm(kennzeichen, Date.now()),
+  // AP-13 IP-9: im Reiter „Prozesse“ fragt die Fläche den Wert der Prozess-Summe für ihren Zeitraum.
+  messstelleWerte: async (kennzeichen: string, raster?: MessstelleWerteRaster, von?: string, bis?: string) =>
+    ORGANISATION_REITER && raster && von && bis
+      ? ahrenbergProzessSummeWerte(kennzeichen, raster, von, bis)
+      : heutigeWerteAm(kennzeichen, Date.now()),
   // AP-11 IP-15: die vier schreibenden Wege der Kennzahl-Seite — sie ändern die Bühne und werden gezählt.
   kennzahlFassungEintragen: async (
     id: string,
@@ -691,7 +721,7 @@ function Vorschau() {
               ? standortBereichRoute(st2, 'gebaeude')
             : ansicht === 'lindach-anlagen'
               ? standortBereichRoute(st2, 'anlagen')
-            : ansicht === 'messstellen'
+            : ansicht === 'messstellen' || ORGANISATION_REITER
               ? pageRoute('portfolio-messstellen')
               : ansicht === 'werk-messstellen'
                 ? standortMessstellenRoute(FIXTURE_IDS.st1)
@@ -921,6 +951,8 @@ function Vorschau() {
           key={messstellenEbene.art === 'standort' ? messstellenEbene.id : 'unternehmen'}
           ebene={messstellenEbene}
           bereichDa={bereiche.includes('messstellen')}
+          // AP-13 IP-9, wie `App.tsx`: die Reiter Kostenstellen · Prozesse nur in der Welt Messstellen des Unternehmens.
+          organisation={route.page === 'portfolio-messstellen' && !(ebene.art === 'standort' && ebene.teilansicht)}
           onUebersicht={() =>
             navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
           }

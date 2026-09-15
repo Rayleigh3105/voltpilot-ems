@@ -216,7 +216,16 @@ describe('uemsOberflaechen · Sprungziel (E10, D1–D3) — O10', () => {
     expect(geraet && parseRoute(geraet.hash)).toEqual(geraet?.route);
   });
 
-  it('ohne Seite bleibt die Zeile Text: Bezugsgröße BZ-6, Ereignis, Box — und bis IP-9/IP-2 Kostenstelle und Gebäude', () => {
+  it('seit IP-9 hat die Kostenstelle ihre Karte: Reiter „Kostenstellen“ der Welt Messstellen, mit Zeitraum', () => {
+    const ohneZeit = sprungziel({ art: 'kostenstelle', kennzeichen: '4200' });
+    expect(ohneZeit?.hash).toBe('#/portfolio/messstellen?reiter=kostenstellen&kostenstelle=4200');
+    expect(ohneZeit && parseRoute(ohneZeit.hash)).toEqual(ohneZeit?.route);
+    expect(sprungziel({ art: 'kostenstelle', kennzeichen: '4300', periode: 'monat', am: '2026-10-01' })?.hash).toBe(
+      '#/portfolio/messstellen?reiter=kostenstellen&periode=monat&am=2026-10-01&kostenstelle=4300',
+    );
+  });
+
+  it('ohne Seite bleibt die Zeile Text: Bezugsgröße BZ-6, Ereignis, Box — und bis IP-11 das Gebäude', () => {
     expect(fall('O10').erwartet.bz6_ist_sprung).toBe(false);
     expect(sprungziel({ art: 'bezugsgroesse', kennzeichen: 'BZ-6' })).toBeNull();
     const ohne = faelle.vokabulare['ohne_sprung_bis (Befunde)'] as string[];
@@ -224,7 +233,6 @@ describe('uemsOberflaechen · Sprungziel (E10, D1–D3) — O10', () => {
       expect(ohne.some((z) => z.startsWith(`${art} `)), art).toBe(true);
       expect(sprungziel({ art, kennzeichen: 'X-1' }), art).toBeNull();
     }
-    expect(sprungziel({ art: 'kostenstelle', kennzeichen: '4200' })).toBeNull();
     expect(sprungziel({ art: 'gebaeude', kennzeichen: 'G-1' })).toBeNull();
   });
 });

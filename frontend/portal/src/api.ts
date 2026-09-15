@@ -2962,6 +2962,106 @@ export interface MessstelleProzesse {
   prozesse: MessstelleProzessZuordnung[];
 }
 
+/** Der Zeitraum der Kostenstellen-Sicht (AP-10 IP-11): der Tag, Monat oder das Jahr, das `am` enthält. */
+export type KostenstelleEnergiePeriode = 'tag' | 'monat' | 'jahr';
+
+/** Eine Summe JE Größe/Richtung/Einheit eines Blocks (`KostenstelleEnergieDto.Summe`, snake_case). */
+export interface KostenstelleEnergieSumme {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  vorhanden: number;
+  gesamt: number;
+  fehlend: string[];
+}
+
+/** Ein Tagesanteil eines Postens: der Anteil DIESES Tages (`null` = an dem Tag kein Anteil). */
+export interface KostenstelleEnergieTag {
+  tag: string;
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: string | null;
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+}
+
+/** Eine Messstelle in einem Block; `kennzeichen` sind die Sätze der Route („verteilt (30 % von MS-07)“). */
+export interface KostenstelleEnergiePosten {
+  messstelle: { id: string; kennzeichen: string; name: string | null; art: 'gemessen' | 'berechnet' };
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  kennzeichen: string[];
+  fassungen: number[];
+  fehlend: string[];
+  tage: KostenstelleEnergieTag[];
+  /** Art `verteilt`; bei „nicht verteilt“ `null`. */
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+}
+
+/**
+ * Ein Block der Sicht (gemessen · verteilt · berechnet · Summe · nicht verteilt): `menge`/`einheit`/`zustand` nur bei
+ * GENAU einer Größe; `grund` `keine_zuordnung` (keine Posten) oder `groessen_gemischt` (je Größe eine `summen`-Zeile).
+ */
+export interface KostenstelleEnergieBlock {
+  menge: number | null;
+  einheit: string | null;
+  zustand: string | null;
+  grund: 'keine_zuordnung' | 'groessen_gemischt' | null;
+  summen: KostenstelleEnergieSumme[];
+  posten: KostenstelleEnergiePosten[];
+}
+
+/** Ein Posten, der an diesen Tagen bereits in einem anderen enthalten ist — `satz` aus `verteilung-vectors.json`. */
+export interface KostenstelleDoppeltEnthalten {
+  teil: string;
+  summe: string;
+  umfang: 'ganz' | 'teilweise';
+  kette: string[];
+  zeitraeume: { von: string; bis: string }[];
+  satz: string;
+}
+
+/** Ein Posten, dessen Formel im Kreis führt — nicht prüfbar, mit Satz. */
+export interface KostenstelleNichtPruefbar {
+  messstelle: string;
+  grund: 'formel_kreis' | 'haengt_an_kreis';
+  kette: string[];
+  satz: string;
+}
+
+/**
+ * Die Antwort von `GET /api/v1/unternehmen/kostenstellen/{id}/energie?periode=&am=&version=` (UEMS AP-10 IP-11,
+ * `KostenstelleEnergieDto.Energie`). „Nicht verteilt“ gehört keiner Kostenstelle und zählt in `summe` nie mit — es steht
+ * in JEDER Antwort des Kundenbereichs gleich. `doppelzaehlung` ist eine Warnung neben den Blöcken und ändert keine Zahl.
+ */
+export interface KostenstelleEnergie {
+  kostenstelle: { id: string; kennzeichen: string; name: string; gueltig_ab: string; gueltig_bis: string | null };
+  periode: KostenstelleEnergiePeriode;
+  am: string;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  version: number | null;
+  berechnet_am: string;
+  gemessen: KostenstelleEnergieBlock;
+  verteilt: KostenstelleEnergieBlock;
+  berechnet: KostenstelleEnergieBlock;
+  summe: KostenstelleEnergieBlock;
+  nicht_verteilt: KostenstelleEnergieBlock;
+  doppelzaehlung: { enthalten: KostenstelleDoppeltEnthalten[]; nicht_pruefbar: KostenstelleNichtPruefbar[] };
+}
+
 /**
  * Die Ablehnungen der Kostenstellen- und Prozess-Schnittstelle — der geschlossene Satz aus
  * `uems/KostenstelleProzessAbgelehnt` (gepinnt gegen OpenAPI `KostenstelleProzessFehler`).
@@ -5783,6 +5883,36 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   return requestUncoalesced<T>(path, init);
 }
 
+/**
+ * Der EINE Ergebnis-Zwischenspeicher dieses Moduls — nur für die Kostenstellen-Sicht (UEMS AP-13 IP-9, E8).
+ *
+ * Bis AP-10 eine Route „alle Kostenstellen einer Periode“ liefert, ruft die Fläche JE Kostenstelle einmal (Ahrenberg:
+ * fünf Aufrufe je Zeitraum). Wer zwischen den Reitern oder Zeiträumen hin und her wechselt, fragt dieselbe Antwort nicht
+ * erneut. Die Veraltung bleibt sichtbar und begrenzt: jede Antwort trägt `berechnet_am` (die Fläche zeigt es), und nach
+ * {@link GEMERKT_MS} fragt der nächste Aufruf neu. Der Schlüssel trägt den Mandanten-Umschalter wie `inFlight`; eine
+ * Ablehnung wird nie gemerkt.
+ */
+export const GEMERKT_MS = 120_000;
+const gemerkt = new Map<string, { seit: number; antwort: Promise<unknown> }>();
+
+function gemerkteAnfrage<T>(path: string): Promise<T> {
+  const key = `${tenantOverride ?? ''}|${path}`;
+  const jetzt = Date.now();
+  const da = gemerkt.get(key);
+  if (da && jetzt - da.seit < GEMERKT_MS) return da.antwort as Promise<T>;
+  const antwort = request<T>(path).catch((e: unknown) => {
+    if (gemerkt.get(key)?.antwort === antwort) gemerkt.delete(key);
+    throw e;
+  });
+  gemerkt.set(key, { seit: jetzt, antwort });
+  return antwort;
+}
+
+/** Leert den Zwischenspeicher der Kostenstellen-Sicht (Tests, „Erneut versuchen“). */
+export function vergissGemerkte(): void {
+  gemerkt.clear();
+}
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   let token: string | undefined;
   try {
@@ -7508,6 +7638,16 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ gueltig_bis }),
     }),
+
+  /**
+   * Die Kostenstellen-Sicht EINER Kostenstelle (AP-10 IP-11): gemessen · verteilt · berechnet · Summe · nicht verteilt
+   * und die Warnung vor doppelter Zählung. Gemerkt je Kostenstelle und Zeitraum ({@link GEMERKT_MS}, AP-13 IP-9).
+   */
+  kostenstelleEnergie: (id: string, periode: KostenstelleEnergiePeriode, am: string, version?: number | null) =>
+    gemerkteAnfrage<KostenstelleEnergie>(
+      `/api/v1/unternehmen/kostenstellen/${encodeURIComponent(id)}/energie?periode=${periode}&am=${am}` +
+        (version == null ? '' : `&version=${version}`),
+    ),
 
   /** Die Prozesse des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
   prozesse: (stichtag?: string) =>

@@ -100,17 +100,20 @@ export function kacheln(ort: EbenenOrt, lm: EbenenLesemodell, seiten: EbenenSeit
 /**
  * Das Objekt einer Herkunfts-Zeile. Eine Seite haben heute Messstelle (mit
  * Periode und Version, D2), Kennzahl, Bericht und Gerät. Ohne Seite bleiben
- * Bezugsgröße (AP-09), Ereignis (AP-07) und Box (AP-06 IP-16) — D3 — sowie
- * die Kostenstelle, bis IP-9 ihre Seite einhängt. Das Gebäude hat seit IP-2 die
- * Seite „Standort › Gebäude“, aber seine Zeile nennt keinen Standort — der Sprung
- * dorthin kommt mit IP-11, bis dahin bleibt sie Text.
+ * Bezugsgröße (AP-09), Ereignis (AP-07) und Box (AP-06 IP-16) — D3. Die
+ * Kostenstelle hat seit IP-9 ihre Karte im Reiter „Kostenstellen“ der Welt
+ * Messstellen (`#/portfolio/messstellen?reiter=kostenstellen&kostenstelle=4200`,
+ * mit Zeitraum). Das Gebäude hat seit IP-2 die Seite „Standort › Gebäude“, aber
+ * seine Zeile nennt keinen Standort — der Sprung dorthin kommt mit IP-11, bis
+ * dahin bleibt sie Text.
  */
 export type SprungObjekt =
   | { art: 'messstelle'; id: string; standortId?: string | null; periode?: string | null; version?: number | null }
   | { art: 'kennzahl'; id: string }
   | { art: 'bericht'; kennung: string }
   | { art: 'geraet'; siteId: string; ref: string; geraetId?: string | null }
-  | { art: 'bezugsgroesse' | 'ereignis' | 'box' | 'kostenstelle' | 'gebaeude'; kennzeichen: string };
+  | { art: 'kostenstelle'; kennzeichen: string; periode?: 'tag' | 'monat' | 'jahr' | null; am?: string | null }
+  | { art: 'bezugsgroesse' | 'ereignis' | 'box' | 'gebaeude'; kennzeichen: string };
 
 export interface Sprung {
   route: Route;
@@ -143,6 +146,17 @@ export function sprungziel(o: SprungObjekt): Sprung | null {
       return sprung(berichtRoute(o.kennung));
     case 'geraet':
       return sprung({ page: 'anlagen', siteId: o.siteId, sub: 'geraet', geraet: { ref: o.ref, geraetId: o.geraetId ?? null } });
+    case 'kostenstelle':
+      // AP-13 IP-9: die Karte der Kostenstelle im Reiter „Kostenstellen“ — der Zeitraum nur mit beiden Angaben.
+      return sprung(
+        { page: 'portfolio-messstellen', siteId: null, sub: null },
+        {
+          reiter: 'kostenstellen',
+          periode: o.periode && o.am ? o.periode : null,
+          am: o.periode && o.am ? o.am : null,
+          kostenstelle: o.kennzeichen,
+        },
+      );
     default:
       return null;
   }

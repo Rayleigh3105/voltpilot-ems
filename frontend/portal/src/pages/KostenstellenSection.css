@@ -1,0 +1,351 @@
+/*
+ * KOSTENSTELLEN UND PROZESSE NEBENEINANDER (UEMS AP-13 IP-9, E8 = A) — Unternehmen › Messstellen › Kostenstellen und
+ * › Prozesse. Dieselbe Karten-Sprache wie die Energiebilanz (weiße Karte, 1-px-Rahmen, Radius 16 px); Farbe nur an der
+ * Warnung (Bernstein, CVD-sicher), die Zahl bleibt ruhig. Telefon zuerst: Karten untereinander, jede Zeile bricht um,
+ * nichts verbreitert die Seite; Tippflächen ≥ 44 px.
+ *
+ * Komponenten-lokal, damit `index.css` unangetastet bleibt. Präfix `vp-ks-` — `.vp-ms-karte` zählt das Register.
+ */
+
+.vp-ks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-ks-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-ks-kopf-text {
+  min-width: 0;
+}
+
+.vp-ks-titel {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ks-zone {
+  margin: 2px 0 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ks-zeitwahl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-ks-datumzeile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vp-ks-schritt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  cursor: pointer;
+}
+
+.vp-ks-schritt:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vp-ks-zeitraum {
+  min-width: 9.5em;
+  text-align: center;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+/* Der Satz statt einer Gesamtsumme: vor der ersten Zahl, ruhig, aber nicht zu übersehen. */
+.vp-ks-keine-summe {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 4px solid var(--vp-navy-1, #1e3a5f);
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: var(--vp-navy-1, #1e3a5f);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.vp-ks-nv,
+.vp-ks-karte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+  padding: var(--vp-space-4, 16px);
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.vp-ks-nv {
+  gap: 4px;
+}
+
+.vp-ks-nv-titel,
+.vp-ks-karte-titel {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-ks-nv-unter {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+  cursor: pointer;
+}
+
+.vp-ks-karten {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
+  gap: var(--vp-space-4, 16px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-ks-karten > li {
+  min-width: 0;
+}
+
+.vp-ks-karte {
+  height: 100%;
+  box-sizing: border-box;
+  scroll-margin-top: 96px;
+}
+
+.vp-ks-karte.is-hervor {
+  border-color: var(--vp-focus, #2563eb);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+
+.vp-ks-karte-kopf {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-ks-kz {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-ks-gueltig {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ks-bloecke {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.vp-ks-block {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  gap: 0 var(--vp-space-3, 12px);
+  padding: 8px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.vp-ks-block:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.vp-ks-block.is-summe {
+  border-top: 2px solid #e2e8f0;
+}
+
+.vp-ks-block-wort {
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ks-block.is-summe .vp-ks-block-wort {
+  color: var(--vp-navy-1, #1e3a5f);
+  font-weight: 600;
+}
+
+.vp-ks-block-wert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 2px 8px;
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+}
+
+.vp-ks-zahl {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-ks-block.is-summe .vp-ks-zahl {
+  font-weight: 700;
+}
+
+.vp-ks-zustand,
+.vp-ks-summen {
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ks-block-posten {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  min-width: 0;
+}
+
+.vp-ks-posten {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-ks-posten-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--vp-space-3, 12px);
+  border-top: 1px dashed #eef2f7;
+}
+
+.vp-ks-posten-zeile:first-child {
+  border-top: 0;
+}
+
+.vp-ks-posten-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+  min-height: 44px;
+  min-width: 0;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+a.vp-ks-posten-link:hover .vp-ks-posten-name,
+a.vp-ks-posten-link:focus-visible .vp-ks-posten-name {
+  text-decoration: underline;
+}
+
+a.vp-ks-posten-link:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.vp-ks-posten-zahl {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.vp-ks-posten-woerter {
+  grid-column: 1 / -1;
+  padding-bottom: 6px;
+  font-size: 0.8125rem;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-ks-satz {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* Die Doppelzählungs-Warnung als Zeile — Bernstein am Punkt und im Text, keine Zahl ändert sich. */
+.vp-ks-doppelt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: var(--vp-warn-ink, #b45309);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.vp-ks-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ks-doppelt-hinweis {
+  color: #7c2d12;
+}
+
+.vp-ks-beendet {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ks-knopf {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 var(--vp-space-4, 16px);
+  border: 1px solid var(--vp-navy-1, #1e3a5f);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--vp-navy-1, #1e3a5f);
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .vp-ks-zeitwahl {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

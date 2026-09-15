@@ -1562,6 +1562,9 @@ describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlau
     // AP-13 IP-8: die Energiebilanz je Anlage (reines Modul und Render).
     'anlageEnergiebilanz.ts',
     'pages/EnergiebilanzSection.tsx',
+    // AP-13 IP-9: Kostenstellen und Prozesse nebeneinander (reines Modul und Render).
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
   ];
   const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
   const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
