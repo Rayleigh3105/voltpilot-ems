@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 13 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 19 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -46,6 +46,12 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Berechnete Messstelle](#berechnete-messstelle) — Sicht Zustand · Nachtrag AP-10 §4.1 (E1, E5)
 - [Kennzahl](#kennzahl) — Sicht Organisation · Nachtrag AP-11 §4.1 (E1, E2, E5)
 - [Kennzahlvorlage](#kennzahlvorlage) — Sicht Organisation · Nachtrag AP-11 §4.12 (E9)
+- [Bericht](#bericht) — Sicht Organisation · Nachtrag AP-12 §4.1 (E1, E8, E9)
+- [Berichtsvorlage](#berichtsvorlage) — Sicht Organisation · Nachtrag AP-12 §4.5 (E9)
+- [Berichtsstand](#berichtsstand) — Sicht Organisation · Nachtrag AP-12 §4.3 (E1, E2, E5)
+- [Revision](#revision) — Sicht Organisation · Nachtrag AP-12 §4.9 (E6, E7)
+- [Datenstand](#datenstand) — Sicht Organisation · Nachtrag AP-12 §4.6 (E4)
+- [Quellenverzeichnis](#quellenverzeichnis) — Sicht Organisation · Nachtrag AP-12 §4.4 (E3, E6)
 
 ## Kundenbereich
 
@@ -690,3 +696,87 @@ Eine Vorlage ist nie selbst eine Kennzahl und hat keine Fassungen. Aus ihr entst
 **Heute im Code.** Heute nicht vorhanden. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20); der Katalog `kennzahl-vorlagen.json` kommt mit AP-11 IP-10.
 
 **Abgrenzung.** Nicht die Zuordnungs-Vorlage eines Imports (die deutet eine Datei), nicht eine Kundenvorlage mit eigenen Fassungen (E9, nicht gewählt).
+
+## Bericht
+
+*Sicht: Organisation · Nachtrag AP-12 §4.1 (E1, E8, E9)*
+
+**Ein eigenes Objekt aus Berichtsvorlage, Geltung (Standort oder Unternehmen) und Zeitraum (Monat oder Jahr) — mit genau einem Entwurf und null bis n freigegebenen Berichtsständen.**
+
+Ein Bericht zitiert nur die Welt der Messstellen: Messstellen, Kostenstellen-Energie, Bezugsgrößen und Kennzahlen, jede Zahl mit Zustand, Version und Herkunft. Sein Entwurf bildet sich neu, wenn sich eine Quelle ändert; ein Berichtsstand bleibt, wie er freigegeben wurde. Je Vorlage, Geltung und Zeitraum gibt es genau einen Bericht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001, Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 am 10.11.2026, Nr. 2 (Revision) am 16.11.2026.
+
+**Heute im Code.** Heute nicht vorhanden; es gibt nur den Geräte-Export ohne Stand. Die Regeln stehen als Vertrag in `docs/contracts/v2/bericht.md` samt Vektoren (`bericht-vectors.json`, Zwillinge `uems/BerichtRegeln` ⟷ `uemsBericht.ts`, AP-12 IP-1/IP-3); Tabellen, Routen und Fläche kommen mit AP-12 IP-4 ff.
+
+**Abgrenzung.** Nicht der Export (der zitiert nichts und hat keinen Stand), nicht die Erlöse-Karte (keine Berichtsquelle, E3), nicht der freie Zeitraum des Lese-Modells.
+
+## Berichtsvorlage
+
+*Sicht: Organisation · Nachtrag AP-12 §4.5 (E9)*
+
+**Ein Katalog-Eintrag von VoltPilot mit Fassungsnummer, der Geltung, Zeitraum, Vergleichszeiträume und die festen Abschnitte eines Berichts festlegt.**
+
+Es gibt vier Vorlagen: Monats- und Jahresbericht je Standort und je Unternehmen. Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts. Eine neue Fassung einer Vorlage ändert keinen Berichtsstand; der nächste Entwurf nennt die neue Fassung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Monatsbericht Standort, Fassung 1: Kopf · Zusammenfassung · Verbrauch je Messstelle · Tagesverlauf · Kennzahlen · Qualität · Quellenverzeichnis.
+
+**Heute im Code.** Heute nicht vorhanden. Der Katalog steht in `docs/contracts/v2/bericht-vorlagen.json` (vier Vorlagen, AP-12 IP-1); ausgeliefert wird er ab AP-12 IP-5.
+
+**Abgrenzung.** Nicht die Kennzahlvorlage (die legt eine Kennzahl an), nicht ein freier Berichtsdesigner (E9, nicht gewählt).
+
+## Berichtsstand
+
+*Sicht: Organisation · Nachtrag AP-12 §4.3 (E1, E2, E5)*
+
+**Der freigegebene, unveränderliche Inhalt eines Berichts zu einem Datenstand: eine Kopie mit Prüfsumme, Nummer, Person und Freigabe-Zeitpunkt.**
+
+Er entsteht nur, wenn eine Person mit Recht den Entwurf freigibt — der Zeitraum ist zu Ende, jeder Wert endgültig und der Entwurf aktuell. Er wird nie geändert und nie gelöscht und hält jede Zahl mit ihrem Nachweis selbst fest, auch wenn die Messdaten ihre Aufbewahrung überschritten haben. Ändert sich eine Quelle später, bekommt er einen Anstoß; der nächste Stand ersetzt ihn, er bleibt lesbar.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001 Nr. 1 nennt MS-12 mit 6 100 kWh in Version 1 — auch 2036, wenn die Zeilen der Speicherklasse gelöscht sind.
+
+**Heute im Code.** Heute nicht vorhanden. Die Form steht in `docs/contracts/v2/bericht.schema.json` (Abzug, Stand); die Tabelle kommt mit AP-12 IP-4.
+
+**Abgrenzung.** Nicht die Version eines Werts (die gehört der Zahl), nicht der Entwurf (der bildet sich neu), nicht eine Datei (PDF und CSV werden aus ihm erzeugt).
+
+## Revision
+
+*Sicht: Organisation · Nachtrag AP-12 §4.9 (E6, E7)*
+
+**Ein neuer Berichtsstand, der den gültigen ersetzt — immer die Freigabe einer Person nach einem Anstoß, nie automatisch.**
+
+Eine Korrektur, ein Ersatzwert oder eine rückwirkende Änderung der Struktur trifft einen freigegebenen Berichtsstand, wenn sie eine seiner Quellen in seinem Zeitraum ändert. Der Stand bleibt unverändert und zeigt „Revision nötig“; der Entwurf nennt jede Abweichung. Ein Anstoß kann mit Begründung verworfen werden.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Die Korrektur K-2026-0007 stößt Nr. 1 an („Revision nötig — Korrektur K-2026-0007“); Ines Kaltenbach gibt am 16.11.2026 Nr. 2 frei, drei Abweichungen.
+
+**Heute im Code.** Heute nicht vorhanden. Die Regeln stehen in `docs/contracts/v2/bericht.md` (Betroffenheit, Anstoß, Abweichung); Anstoß-Tabelle und Kaskaden-Naht kommen mit AP-12 IP-4/IP-8.
+
+**Abgrenzung.** Nicht die Korrektur eines Werts (die macht eine neue Version einer Zahl), nicht das Zurücknehmen einer Freigabe (gibt es nicht).
+
+## Datenstand
+
+*Sicht: Organisation · Nachtrag AP-12 §4.6 (E4)*
+
+**Der Zeitpunkt, zu dem ein Berichtsentwurf oder Berichtsstand aus den Daten gebildet wurde — alle einbezogenen Werte sind älter.**
+
+Der Datenstand ist eine Aussage über die Daten, die Freigabe eine über eine Person; beide stehen im Kopf eines Berichts. Ändert sich eine Quelle nach dem Datenstand, ist der Entwurf veraltet und bildet sich neu; eine Freigabe mit einem veralteten Datenstand wird abgelehnt. An einer Anlage sagt dasselbe Wort, wie aktuell ihre Daten sind — dieselbe Bedeutung an einem anderen Gegenstand.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Berichtsstand Nr. 2: Datenstand 12.11.2026 10:05 (MEZ), freigegeben 16.11.2026 14:20 von Ines Kaltenbach.
+
+**Heute im Code.** Für Berichte heute nicht vorhanden. Die Regeln stehen in `docs/contracts/v2/bericht.md` (Datenstand, D1–D5, AP-12 IP-1/IP-3).
+
+**Abgrenzung.** Nicht der Freigabe-Zeitpunkt, nicht „endgültig ab“ eines Werts, nicht die Berechnungszeit einer einzelnen Zahl.
+
+## Quellenverzeichnis
+
+*Sicht: Organisation · Nachtrag AP-12 §4.4 (E3, E6)*
+
+**Die Liste aller Objekte, aus denen ein Bericht seine Zahlen hat — unmittelbar, mittelbar oder als Vergleich, je mit ihrem Zeitraum.**
+
+Das Quellenverzeichnis entscheidet, welche Änderung einen Bericht trifft: Zeitraum mal Quellen, nie der Standort oder ein Name. Mittelbare Quellen (die Eingänge berechneter Messstellen, Kostenstellen und Kennzahlen) stehen mit darin, damit eine Korrektur auch den Unternehmensbericht erreicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001: 19 Einträge von BZ-4 bis MS-15, darunter KZ-0001 und KZ-0005.
+
+**Heute im Code.** Heute nicht vorhanden. Die Form einer Zeile steht in `docs/contracts/v2/bericht.schema.json` (Quelle); die Tabelle kommt mit AP-12 IP-4.
+
+**Abgrenzung.** Nicht die Quellenbindung einer Messstelle (die verbindet Messstelle und Messkanal), nicht die Herkunft eines Werts (die erklärt eine einzelne Zahl).

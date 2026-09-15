@@ -656,6 +656,17 @@ export const uhr = (zeit: number, zone: string): string => {
 };
 
 /**
+ * Der Zusatz der Zeitzone AN einem Zeitpunkt: „MEZ“/„MESZ“ bei Normalzeit UTC+01:00, sonst der
+ * Offset — dieselbe Regel wie der Zusatz von `uhr`. Additiv seit AP-12 IP-3 für den Kopf eines
+ * Berichts („Datenstand 10.11.2026 08:55 (MEZ)“, `bericht.md` D5).
+ */
+export const zoneKurz = (zeit: number, zone: string): string => {
+  const offset = offsetMinuten(zeit, zone);
+  const normalzeit = offsetMinuten(Date.UTC(new Date(zeit + offset * 60000).getUTCFullYear(), 0, 1), zone);
+  return zusatz(normalzeit, offset);
+};
+
+/**
  * E10 — die Viertelstunden oder Stunden eines Kalendertages in der Ortszeit
  * des Standorts. Eine Beschriftung, die an diesem Tag zweimal vorkommt, trägt
  * ihren Zusatz: MESZ/MEZ in einer Zone mit Normalzeit UTC+01:00, sonst ihren

@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/bericht.schema.json",
+  "title": "Bericht: Zeitraum, Freigabe, Datenstand, Betroffenheit, Abweichung, Rechte und Ausgabe — die Vektor-Datei (UEMS AP-12)",
+  "description": "Die Form von bericht-vectors.json und, unter $defs, die Formen, die spätere Pakete speichern und ausliefern: Abzug (A1–A7), Berichtsstand (F3), Quelle des Quellenverzeichnisses (Q1–Q6, B1), Anstoß (B4, B7), Vorlage und Vorlagen-Datei (V2). Zwei Zwillinge prüfen JEDE Prüfung: Java services/api .../uems/BerichtVectorsTest (BerichtRegeln) und TypeScript frontend/portal/src/uemsBericht.test.ts (uemsBericht.ts). Beträge sind Dezimaltext, Zeitpunkte ISO-8601 mit Offset, Tage einschließlich; null heißt „keine Werte“, nie 0.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieser Datei. Erweiterungen sind additiv." },
+    "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
+    "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json" },
+    "referenz_stand": { "type": "string", "const": "1.4", "description": "Die Fassung des Referenzunternehmens, deren Korrektur und Bericht die Fälle erzählen; eine spätere Fassung darf nur ergänzen (Diff-Test der Referenz-Zwillinge)." },
+    "vorlagen_datei": { "type": "string", "const": "./bericht-vorlagen.json" },
+    "titel": { "type": "string", "minLength": 1 },
+    "plan_abnahmen": {
+      "type": "object", "additionalProperties": false, "required": ["captain"],
+      "properties": { "captain": { "type": "string", "minLength": 1 } }
+    },
+    "regeln_kurz": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "vokabulare": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bericht_stand", "vorlage", "geltung_art", "zeitraum_art", "vergleich_art", "quelle_art", "quelle_bezug", "anstoss_art", "anstoss_zustand", "grund_ohne_vergleich", "kein_anstoss", "struktur_protokoll", "handlung", "fehler", "ereignisse_reserviert", "rechte"],
+      "properties": {
+        "bericht_stand": { "$ref": "#/$defs/woerter" },
+        "vorlage": { "$ref": "#/$defs/woerter" },
+        "geltung_art": { "$ref": "#/$defs/woerter" },
+        "zeitraum_art": { "$ref": "#/$defs/woerter" },
+        "vergleich_art": { "$ref": "#/$defs/woerter" },
+        "quelle_art": { "$ref": "#/$defs/woerter" },
+        "quelle_bezug": { "$ref": "#/$defs/woerter" },
+        "anstoss_art": { "$ref": "#/$defs/woerter" },
+        "anstoss_zustand": { "$ref": "#/$defs/woerter" },
+        "grund_ohne_vergleich": { "$ref": "#/$defs/woerter" },
+        "kein_anstoss": { "$ref": "#/$defs/woerter" },
+        "struktur_protokoll": { "$ref": "#/$defs/woerter" },
+        "handlung": { "$ref": "#/$defs/woerter" },
+        "fehler": { "$ref": "#/$defs/woerter" },
+        "ereignisse_reserviert": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$" } },
+        "rechte": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" } }
+      }
+    },
+    "fehler_status": {
+      "type": "object", "description": "Der HTTP-Status je Fehler-Code (§5.8); die Routen (IP-7 ff.) antworten damit.",
+      "additionalProperties": { "type": "integer", "minimum": 400, "maximum": 599 }
+    },
+    "regeln": {
+      "type": "object", "additionalProperties": false,
+      "required": ["freigabe_frist_tage", "prozent_nachkommastellen", "prozent_rechen_nachkommastellen", "quellen_im_satz", "pruefsumme_praefix", "kennzeichen_trenner", "ohne_zahl", "csv_trenner", "csv_dezimal", "csv_spalten", "csv_kopf", "kanonisch", "kennung", "teilansicht_recht"],
+      "properties": {
+        "freigabe_frist_tage": { "type": "integer", "const": 7, "description": "Periodenende + 7 Tage (TagRegeln.endgueltigAb, AP-07 E5)." },
+        "prozent_nachkommastellen": { "type": "integer", "minimum": 0 },
+        "prozent_rechen_nachkommastellen": { "type": "integer", "minimum": 1 },
+        "quellen_im_satz": { "type": "integer", "minimum": 1 },
+        "pruefsumme_praefix": { "type": "string", "const": "sha256:" },
+        "kennzeichen_trenner": { "type": "string", "const": " · " },
+        "ohne_zahl": { "type": "string", "const": "—" },
+        "csv_trenner": { "type": "string", "const": ";" },
+        "csv_dezimal": { "type": "string", "const": "," },
+        "csv_spalten": { "type": "array", "minItems": 13, "items": { "type": "string", "pattern": "^[a-z_]+$" } },
+        "csv_kopf": { "type": "array", "minItems": 16, "items": { "type": "string", "pattern": "^[a-z_]+$" } },
+        "kanonisch": { "type": "string", "minLength": 1 },
+        "kennung": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Handlung × Geltung → Kennung der Rechte-Matrix (G1), Schlüssel `<geltung_art>/<handlung>`." },
+        "teilansicht_recht": { "type": "string", "const": "messwerte.ansehen" }
+      }
+    },
+    "saetze": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "verbotene_woerter": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "zwillinge": {
+      "type": "object", "description": "Je Regel, wer sie prüft.",
+      "additionalProperties": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["java", "ts"] } }
+    },
+    "zwillinge_grund": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+    "_abweichungen": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["fall", "feld", "vorlage", "vertrag", "grund"],
+        "properties": {
+          "fall": { "type": "string" }, "feld": { "type": "string" }, "vorlage": { "type": "string" },
+          "vertrag": { "type": "string" }, "grund": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "_nicht_geprueft": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["fall", "was", "warum"],
+        "properties": { "fall": { "type": "string" }, "was": { "type": "string" }, "warum": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "abzuege": {
+      "type": "object", "description": "Die Abzüge, auf die Prüfungen per Schlüssel verweisen. „BR-2026-0001/1“ und „…/2“ halten `$defs/abzug` (die Zwillinge prüfen es); „randfall“ ist ein beliebiges JSON-Objekt für die kanonische Form.",
+      "additionalProperties": { "type": "object" }
+    },
+    "cases": { "type": "array", "minItems": 16, "items": { "$ref": "#/$defs/fall" } }
+  },
+  "$defs": {
+    "woerter": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+    "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "zeitpunkt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$" },
+    "zeitpunkt_oder_null": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }] },
+    "pruefsumme": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "fall": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "familie", "abnahme", "titel", "why", "schritte", "annahmen", "pruefungen"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^B([1-9]|1[0-6])$" },
+        "name": { "type": "string", "pattern": "^b[0-9]+-[a-z0-9-]+$" },
+        "familie": { "type": "string", "enum": ["plan_abnahme", "revision", "betroffenheit", "freigabe", "datenstand", "vergleich", "struktur", "belegschutz", "rechte", "ausgabe", "jahr", "ablauf"] },
+        "abnahme": { "type": ["string", "null"] },
+        "titel": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "schritte": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "annahmen": { "type": "array", "items": { "type": "string" } },
+        "pruefungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pruefung" } },
+        "nachweis": { "$ref": "#/$defs/nachweis" }
+      }
+    },
+    "pruefung": {
+      "type": "object", "additionalProperties": false, "required": ["regel", "name", "eingang", "ergebnis"],
+      "properties": {
+        "regel": { "type": "string", "enum": ["vorlage", "zeitraum", "vergleich_grund", "vergleich", "freigabe", "datenstand", "betroffenheit", "struktur", "abweichungen", "rechte", "kanonisch", "csv_kopf", "csv_zeile", "kopf", "kennzeichen", "anlass", "satz", "anzeige"] },
+        "name": { "type": "string", "minLength": 1 },
+        "eingang": { "type": "object", "description": "Die Eingabe der Regel; ihre Form sagt bericht.md je Regel. Quellen stehen als Gruppen je Bericht, Stand, Bezug und Tagen mit `objekte` — die Zwillinge entfalten sie zu einer Zeile je Objekt ($defs/quelle)." },
+        "ergebnis": { "type": "object" }
+      }
+    },
+    "quelle": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Zeile des Quellenverzeichnisses eines Entwurfs (nr = null) oder eines Berichtsstands (B1). `ersetzt` = der Stand trägt ersetzt_durch. Tage einschließlich.",
+      "required": ["bericht", "nr", "ersetzt", "objekt", "bezug", "erster_tag", "letzter_tag"],
+      "properties": {
+        "bericht": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
+        "nr": { "type": ["integer", "null"], "minimum": 1 },
+        "ersetzt": { "type": "boolean" },
+        "objekt": { "type": "string", "minLength": 1 },
+        "bezug": { "type": "string", "enum": ["unmittelbar", "mittelbar", "vergleich"] },
+        "erster_tag": { "$ref": "#/$defs/tag" },
+        "letzter_tag": { "$ref": "#/$defs/tag" }
+      }
+    },
+    "anstoss": {
+      "type": "object", "additionalProperties": false,
+      "description": "Ein Revisions-Anstoß an einem freigegebenen Berichtsstand (B4, B7, R1–R4).",
+      "required": ["art", "kennung", "erkannt_am", "stand", "zustand", "erledigt_durch"],
+      "properties": {
+        "art": { "type": "string", "enum": ["korrektur_freigegeben", "korrektur_zurueckgenommen", "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend", "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend"] },
+        "kennung": { "type": "string", "minLength": 1, "description": "Der Anlass: K-…, EW-… oder der Text einer Strukturänderung." },
+        "erkannt_am": { "$ref": "#/$defs/zeitpunkt" },
+        "stand": { "type": "integer", "minimum": 1 },
+        "zustand": { "type": "string", "enum": ["offen", "erledigt", "verworfen"] },
+        "erledigt_durch": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "stand": {
+      "type": "object", "additionalProperties": false,
+      "description": "Ein freigegebener Berichtsstand ohne seinen Abzug (F3): Person, Zeitpunkt, Datenstand, Prüfsumme, Nachfolger.",
+      "required": ["nr", "datenstand", "freigegeben_am", "freigegeben_von", "vieraugen", "pruefsumme", "ersetzt_durch"],
+      "properties": {
+        "nr": { "type": "integer", "minimum": 1 },
+        "datenstand": { "$ref": "#/$defs/zeitpunkt" },
+        "freigegeben_am": { "$ref": "#/$defs/zeitpunkt" },
+        "freigegeben_von": { "type": "string", "minLength": 1 },
+        "vieraugen": { "type": "boolean", "const": false, "description": "Kein Vier-Augen-Prinzip im ersten Ausbau (F4)." },
+        "pruefsumme": { "$ref": "#/$defs/pruefsumme" },
+        "ersetzt_durch": { "type": ["integer", "null"], "minimum": 2 }
+      }
+    },
+    "abzug": {
+      "type": "object", "additionalProperties": false,
+      "description": "Der Inhalt eines Berichtsstands (A1–A5): was der Bericht zeigt, je Zahl mit ihrem Nachweis. Gespeichert als kanonischer Text (regeln.kanonisch), nie als jsonb (A7).",
+      "required": ["kopf", "zusammenfassung", "werte", "kennzahlen", "qualitaet"],
+      "properties": {
+        "kopf": { "$ref": "#/$defs/kopf" },
+        "zusammenfassung": { "type": "object", "additionalProperties": { "type": "number" } },
+        "werte": { "type": "array", "items": { "$ref": "#/$defs/wert" } },
+        "kennzahlen": { "type": "array", "items": { "$ref": "#/$defs/kennzahl" } },
+        "qualitaet": {
+          "type": "object", "additionalProperties": false,
+          "required": ["abdeckung_min_prozent", "luecken", "ersatzwerte", "korrekturen_im_zeitraum", "vorlaeufig"],
+          "properties": {
+            "abdeckung_min_prozent": { "type": "number" },
+            "luecken": { "type": "integer", "minimum": 0 },
+            "ersatzwerte": { "type": "integer", "minimum": 0 },
+            "korrekturen_im_zeitraum": { "type": "integer", "minimum": 0 },
+            "vorlaeufig": { "type": "integer", "minimum": 0 },
+            "korrekturen": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["kennung", "reihe", "freigegeben", "wer", "warum"],
+                "properties": {
+                  "kennung": { "type": "string" }, "reihe": { "type": "string" }, "freigegeben": { "$ref": "#/$defs/zeitpunkt" },
+                  "wer": { "type": "string" }, "warum": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "kopf": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bericht", "vorlage", "vorlage_fassung", "geltung", "unternehmen", "sitz", "zeitraum", "vergleichszeitraeume", "datenstand", "regelwerk", "darstellung", "quellenverzeichnis"],
+      "properties": {
+        "bericht": { "type": "string", "pattern": "^BR-[0-9]{4}-[0-9]{4}$" },
+        "vorlage": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"] },
+        "vorlage_fassung": { "type": "integer", "minimum": 1 },
+        "geltung": {
+          "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "name_zum_datenstand"],
+          "properties": { "art": { "type": "string", "enum": ["standort", "unternehmen"] }, "kennzeichen": { "type": "string" }, "name_zum_datenstand": { "type": "string" } }
+        },
+        "unternehmen": { "type": "string" },
+        "sitz": { "type": "string" },
+        "zeitraum": {
+          "type": "object", "additionalProperties": false, "required": ["art", "schluessel", "von", "bis", "zone"],
+          "properties": {
+            "art": { "type": "string", "enum": ["monat", "jahr"] }, "schluessel": { "type": "string" },
+            "von": { "$ref": "#/$defs/zeitpunkt" }, "bis": { "$ref": "#/$defs/zeitpunkt" }, "zone": { "type": "string" }
+          }
+        },
+        "vergleichszeitraeume": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["art", "schluessel", "ergebnis"],
+            "properties": { "art": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] }, "schluessel": { "type": "string" }, "ergebnis": { "type": "string" } }
+          }
+        },
+        "datenstand": { "$ref": "#/$defs/zeitpunkt" },
+        "regelwerk": {
+          "type": "object", "additionalProperties": false, "required": ["software", "vertraege"],
+          "properties": { "software": { "type": "string" }, "vertraege": { "type": "object", "additionalProperties": { "type": "string" } } }
+        },
+        "darstellung": {
+          "type": "object", "additionalProperties": false, "required": ["zeitzone", "zahlenformat", "dezimal", "rundung", "sommerzeit"],
+          "properties": {
+            "zeitzone": { "type": "string" }, "zahlenformat": { "type": "string" }, "dezimal": { "type": "string" },
+            "rundung": { "type": "string" }, "sommerzeit": { "type": "string" }
+          }
+        },
+        "quellenverzeichnis": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "wert": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Menge im Abzug: die Trägerform MessstelleWerteDto.Wert plus berechnet_am, Namen und Ort zum Datenstand (A3, A5); berechnete Messstellen mit Formel und Formel-Fassung (RW2).",
+      "required": ["quelle", "name_zum_datenstand", "ort_zum_datenstand", "periode", "menge", "einheit", "zustand", "abdeckung_prozent", "kennzeichen", "fassung", "endgueltig_ab", "version", "berechnet_am", "zeitzone"],
+      "properties": {
+        "quelle": { "type": "string", "pattern": "^MS-[0-9]{2}$" },
+        "name_zum_datenstand": { "type": "string" },
+        "ort_zum_datenstand": { "type": ["string", "null"] },
+        "periode": { "type": "string" },
+        "menge": { "type": ["number", "null"] },
+        "menge_art": { "type": "string", "enum": ["laden", "entladen"] },
+        "einheit": { "type": "string" },
+        "zustand": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+        "abdeckung_prozent": { "type": "number" },
+        "kennzeichen": { "type": "array", "items": { "type": "string" } },
+        "fassung": { "type": ["string", "null"], "enum": ["vorläufig", "endgültig", null] },
+        "endgueltig_ab": { "$ref": "#/$defs/zeitpunkt_oder_null" },
+        "version": { "type": "integer", "minimum": 1 },
+        "berechnet_am": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" },
+        "formel": { "type": "string" },
+        "formel_fassung": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "kennzahl": {
+      "type": "object", "additionalProperties": false,
+      "description": "Ein Kennzahl-Wert im Abzug: Wert, Zustand, Kennzeichen, Version, Fassung der Berechnung und Eingänge (A3, AP-11).",
+      "required": ["quelle", "name_zum_datenstand", "wert", "einheit", "zustand", "abdeckung_prozent", "kennzeichen", "fassung", "version", "definition_fassung", "eingaenge", "berechnet_am"],
+      "properties": {
+        "quelle": { "type": "string", "pattern": "^KZ-[0-9]{4}$" },
+        "name_zum_datenstand": { "type": "string" },
+        "wert": { "type": ["number", "null"] },
+        "einheit": { "type": "string" },
+        "zustand": { "type": "string" },
+        "abdeckung_prozent": { "type": "number" },
+        "kennzeichen": { "type": "array", "items": { "type": "string" } },
+        "fassung": { "type": "string", "enum": ["vorläufig", "endgültig"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "definition_fassung": { "type": "integer", "minimum": 1 },
+        "eingaenge": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["art", "kennzeichen", "wert", "einheit"],
+            "properties": {
+              "art": { "type": "string", "enum": ["messstelle", "bezugsgroesse", "stammdatum", "kennzahl"] },
+              "kennzeichen": { "type": "string" }, "wert": { "type": "number" }, "einheit": { "type": "string" },
+              "version": { "type": "integer", "minimum": 1 }, "fassung": { "type": "integer", "minimum": 1 },
+              "stichtag": { "$ref": "#/$defs/tag" }
+            }
+          }
+        },
+        "berechnet_am": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+    "nachweis": {
+      "type": "object", "additionalProperties": false,
+      "description": "Der Nachweis der Plan-Abnahme (B1): Kopf, ein Wert, eine Kennzahl, der Stand, sein Anstoß und das Quellenverzeichnis.",
+      "required": ["kopf", "wert", "kennzahl", "stand", "anstoss", "quellenverzeichnis"],
+      "properties": {
+        "kopf": { "type": "object" },
+        "wert": { "$ref": "#/$defs/wert" },
+        "kennzahl": { "$ref": "#/$defs/kennzahl" },
+        "stand": { "$ref": "#/$defs/stand" },
+        "anstoss": { "$ref": "#/$defs/anstoss" },
+        "quellenverzeichnis": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "vorlage": {
+      "type": "object", "additionalProperties": false,
+      "description": "Eine Berichtsvorlage (V2): VoltPilot-Katalog, Fassungsnummer, feste Abschnitte.",
+      "required": ["schluessel", "fassung", "name", "geltung_art", "zeitraum_art", "vergleiche", "abschnitte"],
+      "properties": {
+        "schluessel": { "type": "string", "enum": ["monatsbericht_standort", "jahresbericht_standort", "monatsbericht_unternehmen", "jahresbericht_unternehmen"] },
+        "fassung": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "geltung_art": { "type": "string", "enum": ["standort", "unternehmen"] },
+        "zeitraum_art": { "type": "string", "enum": ["monat", "jahr"] },
+        "vergleiche": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["vormonat", "vorjahresmonat", "vorjahr"] } },
+        "abschnitte": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["schluessel", "titel", "inhalt"],
+            "properties": {
+              "schluessel": { "type": "string", "pattern": "^[a-z][a-z_]*$" },
+              "titel": { "type": "string", "minLength": 1 },
+              "inhalt": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    },
+    "vorlagen_datei": {
+      "type": "object", "additionalProperties": false,
+      "description": "Die Form von bericht-vorlagen.json.",
+      "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "vorlagen"],
+      "properties": {
+        "_comment": { "type": "array", "items": { "type": "string" } },
+        "schema_version": { "type": "string", "const": "1.0" },
+        "$schema_datei": { "type": "string", "const": "./bericht.schema.json#/$defs/vorlagen_datei" },
+        "herkunft": { "type": "string", "minLength": 1 },
+        "vorlagen": { "type": "array", "minItems": 4, "items": { "$ref": "#/$defs/vorlage" } }
+      }
+    }
+  }
+}

@@ -260,6 +260,16 @@ ihn in `vokabular.arten` ein (Migration nach dem höchsten ausgelieferten Stand)
 prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennzahl:
 [`kennzahl.md`](./kennzahl.md).
 
+**Reserviert für die Berichte (AP-12 IP-1, additiv — KEIN Wort des Vokabulars).** Vier Einträge im Block
+`reserviert`, alle mit Bezug `bericht` (die Kennung BR-…, beim Stand mit seiner Nummer): `bericht_freigegeben`
+(Urheber `kunde` — eine Person gibt einen Entwurf frei, Berichtsstand Nr. n), `bericht_revision_angestossen`
+(`cloud` — ein gültiger Stand bekommt einen Anstoß, bleibt aber byte-gleich), `bericht_entwurf_neu_gebildet`
+(`cloud` — Pfad 1 oder 2 hat den Entwurf neu gebildet; ein Abruf, der neu bildet, meldet nichts) und
+`bericht_abgerufen` (`kunde` — PDF oder CSV eines Stands, nie eines Entwurfs). Angelegt werden sie mit den
+Berichts-Tabellen (AP-12 IP-4); bis dahin lehnt die Prüfung sie ab. `BerichtVectorsTest` hält die Liste gleich
+`BerichtRegeln.EREIGNISSE_RESERVIERT`; `KennzahlVectorsTest` prüft weiter nur die Reservierungen der Kennzahl.
+Vertrag des Berichts: [`bericht.md`](./bericht.md).
+
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
 deutsch und Namen aus dem, was die Fläche kennt — etwa „Zählerwechsel am 18.11.2026 10:40:

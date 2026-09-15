@@ -126,11 +126,15 @@ class KennzahlVectorsTest {
         assertThat(UemsSchemaLaeufer.verstoesse(vektoren(), lies(SCHEMA))).as("Schema-Verstöße").isEmpty();
     }
 
-    /** Die Vektor-Datei verweist auf die EINE Beispielwelt in der Fassung, deren Kennzahlen sie liest. */
+    /**
+     * Die Vektor-Datei verweist auf die EINE Beispielwelt in der Fassung, deren Kennzahlen sie liest — oder in einer
+     * späteren: seit 1.4 (AP-12 IP-2) ergänzt die Datei nur, der Diff-Test der Referenz-Zwillinge hält die Kennzahlen gleich.
+     */
     @Test
     void dieBeispielweltIstDasReferenzunternehmen13() throws Exception {
         assertThat(vektoren().path("referenzunternehmen").asText()).isEqualTo("./uems-referenzunternehmen.json");
-        assertThat(lies(REFERENZ).path("version").asText()).isEqualTo(vektoren().path("referenz_stand").asText());
+        assertThat(BerichtVectorsTest.fassung(lies(REFERENZ).path("version").asText()))
+                .isGreaterThanOrEqualTo(BerichtVectorsTest.fassung(vektoren().path("referenz_stand").asText()));
     }
 
     @Test
@@ -273,6 +277,9 @@ class KennzahlVectorsTest {
         for (JsonNode r : ev.path("reserviert")) {
             String art = r.path("art").asText();
             String bezug = r.path("bezug").asText();
+            if (BerichtRegeln.EREIGNISSE_RESERVIERT.contains(art + "/" + bezug)) {
+                continue; // die Reservierungen der Berichte prüft BerichtVectorsTest (AP-12 IP-1)
+            }
             reserviert.add(art + "/" + bezug);
             JsonNode angelegt = arten.get(art);
             if (angelegt == null) {

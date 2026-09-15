@@ -303,6 +303,33 @@ verteilt (…)“, „ab TT.MM.JJJJ“ bleibt (aus einer Kennzahl mit ihrem Gelt
 Teilperioden ersetzt jedes „ab …“ ihrer Teile durch ihr eigenes und behält „x von y …“ nur, wenn es
 in jeder Teilperiode gleich lautet. Geschützte Leerzeichen (E11) auch hier: „über 100 %“, „0 Stück“.
 
+## 8. Kennzeichen eines Berichts (seit 1.10, AP-12 IP-1)
+
+Ein Bericht ([`bericht.md`](./bericht.md)) spricht über sich selbst, über einen Berichtsstand und über die Werte, die
+er zitiert — mit eigenen Kennzeichen im Block `bericht_kennzeichen`. Sie haben keinen Rang und erben nichts: jedes steht an
+genau einer Stelle (`stelle`). Die Verbrauchs-Liste (§2) und die Kennzahl-Liste (§7) bleiben Satz für Satz, wie sie sind.
+Gesprochen und geprüft werden sie von `uems/BerichtRegeln` ⟷ `uemsBericht.ts` gegen `bericht-vectors.json`.
+
+| Muster (Schlüssel) | Stelle | Beispiel | Fall |
+|---|---|---|---|
+| Berichtsstand Nr. {nr} (`berichtsstand`) | bericht | Berichtsstand Nr. 1 | B1 |
+| ersetzt durch Nr. {nr} ({datum}) (`ersetzt_durch`) | stand | ersetzt durch Nr. 2 (16.11.2026) | B1 |
+| Revision nötig — {anlass} (`revision_noetig`) | bericht | Revision nötig — Korrektur K-2026-0007 | B1 |
+| Entwurf · Datenstand {datum} {uhr} (`entwurf`) | bericht | Entwurf · Datenstand 12.11.2026 10:05 | B2 |
+| Zeitraum läuft (`zeitraum_laeuft`) | entwurf | Zeitraum läuft | B4 |
+| vorläufig — endgültig ab {datum} (`vorlaeufig`) | wert | vorläufig — endgültig ab 08.11.2026 | B4 |
+| heute: {name} (`heute`) | quelle | heute: Montage Linie M1 (Halle 2) | B10 |
+| Teilansicht: {standorte} (`teilansicht`) | datei | Teilansicht: Werk Ahrenberg, Werk Lindach | B13 |
+| vor Beginn (Energiemanagement seit {datum}) (`vor_beginn`) | wert | vor Beginn (Energiemanagement seit 01.10.2026) | B6 |
+| Anstoß verworfen ({begruendung}) (`anstoss_verworfen`) | bericht | Anstoß verworfen (Ablesung geprüft, die Zahl bleibt) | B16 |
+
+**Stellen.** `bericht` — in der Liste und im Kopf der Berichtsseite (R5); `stand` — am ersetzten Berichtsstand (R2);
+`entwurf` — nur am Entwurf eines laufenden Zeitraums (EW4); `wert` — an einer Zahl des Entwurfs oder am Vergleich (Q5);
+`quelle` — an einer Quelle, deren Name sich seit dem Datenstand geändert hat, nur als Hinweis (A5); `datei` — im Kopf einer
+Datei für standortbeschränkte Personen (G3). Die Uhrzeit trägt ihren Zusatz nur an der doppelten Stunde (§4); der Kopf eines
+Berichts nennt die Zone immer („Datenstand 10.11.2026 08:55 (MEZ)“, `bericht.md` D5). Platzhalter `datum` ist derselbe wie im
+Block `kennzahl_kennzeichen`, `uhr` derselbe wie in `platzhalter` (§5).
+
 ## Grenzen
 
 Keine Route und kein Lese-Modell (IP-9), keine Fläche und keine Karte (IP-10/IP-11), keine

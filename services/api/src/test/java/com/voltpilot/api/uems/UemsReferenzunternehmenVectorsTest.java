@@ -1210,6 +1210,7 @@ class UemsReferenzunternehmenVectorsTest {
     @Test
     void ohneDieZusaetzeDerFassung13IstEsDieFassung12() throws Exception {
         ObjectNode d = daten().deepCopy();
+        ohneFassung14(d);
         assertThat(d.path("version").asText()).isEqualTo("1.3");
         d.put("version", "1.2");
         d.put("stand", "2026-09-12");
@@ -1301,6 +1302,198 @@ class UemsReferenzunternehmenVectorsTest {
             }
         }
         return null;
+    }
+
+    // ------------------------------------------------------- Fassung 1.4 (AP-12 IP-2, E15)
+
+    /**
+     * Der Fingerabdruck der Fassung 1.3, {@link #kanonisch} geschrieben und aus {@code origin/uems}
+     * vor AP-12 IP-2 berechnet (15.09.2026). Der TS-Zwilling trägt denselben Wert.
+     */
+    static final String FASSUNG_1_3_SHA256 = "e65be4ed56d5f3cec687075f0a782c4e1807c82410f8962444272dc200424196";
+
+    /** So viele Zeilen hatte {@code _comment} in Fassung 1.3 — Fassung 1.4 hängt nur an. */
+    static final int KOMMENTAR_ZEILEN_1_3 = 80;
+
+    /**
+     * Nimmt GENAU die Zusätze der Fassung 1.4 heraus — die Blöcke {@code korrekturen} und {@code berichte},
+     * die vier Zeilen der Zeitachse aus AP-12, die Herkunft {@code fassung_1_4} und die angehängten
+     * Kommentarzeilen — und setzt Fassung und Stand auf 1.3 zurück.
+     */
+    static void ohneFassung14(ObjectNode d) {
+        assertThat(d.path("version").asText()).isEqualTo("1.4");
+        d.put("version", "1.3");
+        d.put("stand", "2026-09-14");
+        ArrayNode kommentar = (ArrayNode) d.get("_comment");
+        assertThat(kommentar.size()).as("_comment wächst nur hinten").isGreaterThan(KOMMENTAR_ZEILEN_1_3);
+        while (kommentar.size() > KOMMENTAR_ZEILEN_1_3) {
+            kommentar.remove(kommentar.size() - 1);
+        }
+        assertThat(((ObjectNode) d.get("_herkunft")).remove("fassung_1_4")).as("_herkunft.fassung_1_4").isNotNull();
+        assertThat(d.remove("korrekturen")).as("korrekturen").isNotNull();
+        assertThat(d.remove("berichte")).as("berichte").isNotNull();
+        entferne((ArrayNode) d.get("zeitachse"), z -> z.path("herkunft").asText().startsWith("AP-12"), 4);
+    }
+
+    /** Diff-Test (AP-12 IP-2): ohne ihre Zusätze ist die Datei Zeichen für Zeichen die Fassung 1.3. */
+    @Test
+    void ohneDieZusaetzeDerFassung14IstEsDieFassung13() throws Exception {
+        ObjectNode d = daten().deepCopy();
+        ohneFassung14(d);
+        assertThat(sha256(kanonisch(d))).as("Fingerabdruck der Fassung 1.3").isEqualTo(FASSUNG_1_3_SHA256);
+    }
+
+    /**
+     * Fassung 1.4: die Korrektur berichtigt die Zahl der Datei, ihre Folgen rechnen aus der Formel von MS-15 und den
+     * Kennzahlen der Datei; Berichtsstand Nr. 1 zitiert die Zahl der Datei in Version 1, Nr. 2 die Korrektur in
+     * Version 2; MS-15 ist in beiden die Formel; jeder Stand nennt nur Kennzeichen der Datei; Datenstand vor Freigabe;
+     * Nr. 2 trägt den Datenstand der Kaskade (= Freigabe der Korrektur); „ersetzt durch“ zeigt auf den Nachfolger.
+     */
+    @Test
+    void dieKorrekturUndDerBerichtDerFassung14StimmenMitDerDatei() throws Exception {
+        JsonNode d = daten();
+        Map<String, JsonNode> ms = new LinkedHashMap<>();
+        kinder(d.get("messstellen")).forEach(m -> ms.put(m.get("kennzeichen").asText(), m));
+        Map<String, JsonNode> bz = new LinkedHashMap<>();
+        kinder(d.get("bezugsgroessen")).forEach(b -> bz.put(b.get("kennzeichen").asText(), b));
+        Map<String, JsonNode> kz = new LinkedHashMap<>();
+        kinder(d.get("kennzahlen")).forEach(k -> kz.put(k.get("kennzeichen").asText(), k));
+        Set<String> personen = new LinkedHashSet<>();
+        kinder(d.get("personen")).forEach(p -> personen.add(p.get("kuerzel").asText()));
+        Set<String> standorte = new LinkedHashSet<>();
+        kinder(d.get("standorte")).forEach(s -> standorte.add(s.get("kennzeichen").asText()));
+        List<String> fehler = new ArrayList<>();
+
+        JsonNode k = d.at("/korrekturen/0");
+        String reihe = k.get("reihe").asText();
+        BigDecimal alt = k.get("alt_kwh").decimalValue();
+        BigDecimal neu = k.get("neu_kwh").decimalValue();
+        if (alt.compareTo(ms.get(reihe).at("/beispielwerte/oktober_2026_kwh").decimalValue()) != 0) {
+            fehler.add("Korrektur: alt ist nicht die Oktober-Zahl von " + reihe);
+        }
+        if (!k.get("zeitraum_von").asText().equals("2026-10-01") || !k.get("zeitraum_bis").asText().equals("2026-10-31")
+                || !k.get("periode").asText().equals("2026-10")) {
+            fehler.add("Korrektur: Zeitraum ist nicht der Oktober 2026 mit letztem Tag");
+        }
+        if (!personen.contains(k.get("vorgeschlagen_von").asText()) || !personen.contains(k.get("freigegeben_von").asText())) {
+            fehler.add("Korrektur: vorgeschlagen/freigegeben von einer Person, die es nicht gibt");
+        }
+        if (!zeit(k.get("vorgeschlagen_am").asText()).isBefore(zeit(k.get("freigegeben_am").asText()))) {
+            fehler.add("Korrektur: freigegeben vor dem Vorschlag");
+        }
+        if (formel(ms, "MS-15", reihe, alt).compareTo(ms.get("MS-15").at("/beispielwerte/oktober_2026_kwh").decimalValue()) != 0) {
+            fehler.add("MS-15 ist mit der Zahl der Datei nicht seine Formel");
+        }
+        Map<String, BigDecimal> soll = new LinkedHashMap<>();
+        soll.put(reihe, neu);
+        soll.put("MS-15", formel(ms, "MS-15", reihe, neu));
+        BigDecimal nenner1 = bz.get(kz.get("KZ-0001").get("nenner").asText()).get("oktober_2026_wert").decimalValue();
+        soll.put("KZ-0001", neu.divide(nenner1, 4, java.math.RoundingMode.HALF_UP));
+        JsonNode kz2 = kz.get("KZ-0002");
+        soll.put("KZ-0003", neu.add(kz2.get("oktober_2026_zaehler").decimalValue())
+                .divide(nenner1.add(kz2.get("oktober_2026_nenner").decimalValue()), 4, java.math.RoundingMode.HALF_UP));
+        Map<String, JsonNode> folgen = new LinkedHashMap<>();
+        kinder(k.get("folgen")).forEach(f -> folgen.put(f.get("objekt").asText(), f));
+        assertThat(folgen.keySet()).as("Folgen der Korrektur").containsExactlyElementsOf(soll.keySet());
+        soll.forEach((objekt, wert) -> {
+            if (folgen.get(objekt).get("wert").decimalValue().compareTo(wert) != 0 || folgen.get(objekt).get("version").asInt() != 2) {
+                fehler.add("Folge " + objekt + ": " + folgen.get(objekt) + " statt " + wert + " in Version 2");
+            }
+        });
+
+        JsonNode b = d.at("/berichte/0");
+        if (!standorte.contains(b.get("geltung").asText())) {
+            fehler.add("Bericht: Geltung " + b.get("geltung").asText() + " gibt es nicht");
+        }
+        Set<String> quellen = new LinkedHashSet<>();
+        kinder(b.get("quellen")).forEach(q -> quellen.add(q.asText()));
+        for (String q : quellen) {
+            if (!ms.containsKey(q) && !bz.containsKey(q) && !kz.containsKey(q)) {
+                fehler.add("Bericht: Quelle " + q + " gibt es nicht");
+            }
+        }
+        List<JsonNode> staende = new ArrayList<>();
+        kinder(b.get("staende")).forEach(staende::add);
+        Map<String, BigDecimal> ersteZahl = Map.of(reihe, alt, "MS-15", formel(ms, "MS-15", reihe, alt),
+                "KZ-0001", kz.get("KZ-0001").get("oktober_2026_wert").decimalValue());
+        for (int i = 0; i < staende.size(); i++) {
+            JsonNode st = staende.get(i);
+            String nr = "Nr. " + st.get("nr").asText();
+            if (st.get("nr").asInt() != i + 1) {
+                fehler.add(nr + ": Nummern sind nicht lückenlos");
+            }
+            if (!zeit(st.get("datenstand").asText()).isBefore(zeit(st.get("freigegeben_am").asText()))) {
+                fehler.add(nr + ": Datenstand nicht vor der Freigabe");
+            }
+            if (!personen.contains(st.get("freigegeben_von").asText())) {
+                fehler.add(nr + ": freigegeben von einer Person, die es nicht gibt");
+            }
+            boolean letzter = i == staende.size() - 1;
+            if (letzter ? st.hasNonNull("ersetzt_durch") : st.path("ersetzt_durch").asInt() != i + 2) {
+                fehler.add(nr + ": ersetzt_durch zeigt nicht auf den Nachfolger");
+            }
+            Map<String, BigDecimal> zahlen = i == 0 ? ersteZahl : soll;
+            int version = i == 0 ? 1 : 2;
+            for (JsonNode w : kinder(st.get("werte"))) {
+                String objekt = w.get("objekt").asText();
+                if (!quellen.contains(objekt)) {
+                    fehler.add(nr + ": " + objekt + " steht nicht im Quellenverzeichnis");
+                }
+                if (w.get("wert").decimalValue().compareTo(zahlen.get(objekt)) != 0 || w.get("version").asInt() != version) {
+                    fehler.add(nr + ": " + objekt + " = " + w.get("wert") + " v" + w.get("version") + " statt " + zahlen.get(objekt) + " v" + version);
+                }
+            }
+        }
+        JsonNode nr1 = staende.get(0);
+        JsonNode nr2 = staende.get(1);
+        if (!nr1.get("anlass").isNull() || !nr2.get("anlass").asText().equals(k.get("kennung").asText())) {
+            fehler.add("Anlass: Nr. 1 ohne, Nr. 2 mit der Korrektur");
+        }
+        if (!zeit(nr2.get("datenstand").asText()).isEqual(zeit(k.get("freigegeben_am").asText()))) {
+            fehler.add("Nr. 2: Datenstand ist nicht der der Kaskade (Freigabe der Korrektur)");
+        }
+        if (!zeit(nr1.get("freigegeben_am").asText()).isBefore(zeit(k.get("freigegeben_am").asText()))) {
+            fehler.add("Nr. 1 ist nicht vor der Korrektur freigegeben");
+        }
+        java.time.ZoneId zone = java.time.ZoneId.of(d.at("/unternehmen/zeitzone").asText());
+        java.time.Instant freigebbar = TagRegeln.endgueltigAb(TagRegeln.beginn(LocalDate.of(2026, 11, 1), zone));
+        if (zeit(nr1.get("datenstand").asText()).toInstant().isBefore(freigebbar)) {
+            fehler.add("Nr. 1: Datenstand vor „endgültig ab“ des Oktobers");
+        }
+        int abweichungen = 0;
+        for (int i = 0; i < nr1.get("werte").size(); i++) {
+            JsonNode a = nr1.get("werte").get(i);
+            JsonNode n = nr2.get("werte").get(i);
+            if (a.get("wert").decimalValue().compareTo(n.get("wert").decimalValue()) != 0 || a.get("version").asInt() != n.get("version").asInt()) {
+                abweichungen++;
+            }
+        }
+        if (nr2.get("abweichungen").asInt() != abweichungen) {
+            fehler.add("Nr. 2: " + nr2.get("abweichungen") + " Abweichungen statt " + abweichungen);
+        }
+        Set<java.time.Instant> zeitachse = new LinkedHashSet<>();
+        kinder(d.get("zeitachse")).forEach(z -> zeitachse.add(zeit(z.get("zeitpunkt").asText()).toInstant()));
+        for (String t : List.of(nr1.get("freigegeben_am").asText(), k.get("freigegeben_am").asText(), nr2.get("freigegeben_am").asText())) {
+            if (!zeitachse.contains(zeit(t).toInstant())) {
+                fehler.add("Zeitachse nennt " + t + " nicht");
+            }
+        }
+        assertThat(fehler).isEmpty();
+    }
+
+    /** Die Formel einer berechneten Messstelle („MS-10 − MS-11 − …“) mit den Oktoberzahlen der Datei, eine davon ersetzt. */
+    private static BigDecimal formel(Map<String, JsonNode> ms, String messstelle, String ersetzt, BigDecimal durch) {
+        BigDecimal summe = BigDecimal.ZERO;
+        int vorzeichen = 1;
+        for (String teil : ms.get(messstelle).get("formel").asText().split(" ")) {
+            if (teil.equals("−") || teil.equals("+")) {
+                vorzeichen = teil.equals("+") ? 1 : -1;
+                continue;
+            }
+            BigDecimal wert = teil.equals(ersetzt) ? durch : ms.get(teil).at("/beispielwerte/oktober_2026_kwh").decimalValue();
+            summe = summe.add(vorzeichen > 0 ? wert : wert.negate());
+        }
+        return summe;
     }
 
     private static void entferne(ArrayNode liste, Predicate<JsonNode> weg, int erwartet) {

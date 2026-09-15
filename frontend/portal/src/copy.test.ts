@@ -5,6 +5,7 @@ import { KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_LEBENSZYKLUS } from './glossar';
 import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
 import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
+import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -987,5 +988,55 @@ describe('UEMS AP-11 IP-3 · die Kennzahl-Sätze sprechen das Kunden-Wörterbuch
     expect(verboten.test('Durchschnitt je Stück')).toBe(true);
     expect(verboten.test('KPI Halle 2')).toBe(true);
     expect(verboten.test('gewichtet (Summe ÷ Summe)')).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-12 IP-3 — die Sätze und Kennzeichen des Berichts. Ihr Wortlaut steht im Vertrag
+ * (`bericht-vectors.json` `saetze`, `ergebnis-zustand-vectors.json` `bericht_kennzeichen`), gesprochen
+ * von `uemsBericht.ts` ⟷ `BerichtRegeln.java`. Dieser Abschnitt liest jede Satzvorlage, jedes
+ * Kennzeichen-Muster und jeden erwarteten Kundensatz und Text der Vektoren gegen die Wörterbücher — und
+ * gegen die Wörter, die ein Bericht über sich nie sagt (§4.15). Die Kennzeichen der WERTE im Abzug
+ * („korrigiert (Version 2)“) gehören ihrem Vertrag; der CSV ist Kundenform, aber keine Fläche.
+ */
+describe('UEMS AP-12 IP-3 · die Bericht-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vektoren = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/bericht-vectors.json'), 'utf8'));
+  const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    for (const [schluessel, text] of Object.entries(BERICHT_SAETZE)) out.push({ wo: `Satz ${schluessel}`, text: ohnePlatz(text) });
+    for (const k of BERICHT_KENNZEICHEN) out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster) });
+    for (const fall of vektoren.cases) {
+      for (const p of fall.pruefungen) {
+        if (['kanonisch', 'csv_kopf', 'csv_zeile'].includes(p.regel)) continue;
+        for (const t of [p.ergebnis.kundensatz, p.ergebnis.text]) {
+          if (typeof t === 'string') out.push({ wo: `${fall.id} ${p.name}`, text: t });
+        }
+      }
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(80);
+  });
+
+  it('kein Bericht-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('kein Bericht spricht über sich von Version, Ausgabe, Snapshot, Report oder „Freigabe zurücknehmen“ (§4.15)', () => {
+    expect(saetze().filter(({ text }) => BERICHT_VERBOTEN.some((w) => text.includes(w))).map(({ wo, text }) => `${wo}: ${text}`)).toEqual([]);
+    // …und der Wächter beißt.
+    expect(BERICHT_VERBOTEN.some((w) => 'Snapshot vom 10.11.2026'.includes(w))).toBe(true);
+    expect(BERICHT_VERBOTEN.some((w) => 'Berichtsstand Nr. 2 (Revision)'.includes(w))).toBe(false);
   });
 });

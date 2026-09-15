@@ -892,6 +892,16 @@ public final class ErgebnisZustand {
         return text + " " + zusatz(normalzeit(zone, wand.getYear()), offset);
     }
 
+    /**
+     * Der Zusatz der Zeitzone AN einem Zeitpunkt: „MEZ“ oder „MESZ“ in einer Zone mit Normalzeit UTC+01:00, sonst der
+     * Offset („UTC+00:00“) — dieselbe Regel wie der Zusatz von {@link #uhr} an der doppelten Stunde. Additiv seit AP-12
+     * IP-3 für den Kopf eines Berichts („Datenstand 10.11.2026 08:55 (MEZ)“, {@code bericht.md} D5).
+     */
+    public static String zoneKurz(Instant zeit, ZoneId zone) {
+        ZoneOffset offset = zone.getRules().getOffset(zeit);
+        return zusatz(normalzeit(zone, LocalDateTime.ofInstant(zeit, offset).getYear()), offset);
+    }
+
     private static ZoneOffset normalzeit(ZoneId zone, int jahr) {
         return zone.getRules().getOffset(LocalDate.of(jahr, 1, 1).atStartOfDay().toInstant(ZoneOffset.UTC));
     }
