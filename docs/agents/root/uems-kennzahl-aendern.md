@@ -40,8 +40,9 @@ bisher). Spezifikation: AP-11 §8 IP-15, §5.4, §5.5, §5.7, §5.8.
   Geltungsbereich ist fest; sein Satz (G3) sperrt deshalb schon Schritt 3. Eine Zusammenfassung bietet sich nie selbst als Paar an.
 - **Unverändert = dieselben Eingänge** (und beim Anteil derselbe Rest bis 100 %): der rote Satz steht, „Speichern“ bleibt aus.
 - **Begründung ≥ 10 Zeichen prüft nur das Portal** (§5.4); die Route verlangt nur „nicht leer“.
-- ⚠ **Rückwirkend zieht heute nur VORLÄUFIGE Perioden nach** (der Stundenlauf liest die Fassung des Stichtags); endgültige
-  bildet erst der Definitions-Auslöser neu (IP-9, `KennzahlKaskade`: nicht angeschlossen). Der Fertig-Satz verspricht nur das Vorläufige.
+- ⚠ **Rückwirkend: der Stundenlauf zieht nur VORLÄUFIGE Perioden nach** (er liest die Fassung des Stichtags); endgültige
+  bildet seit IP-9 die Korrektur-Kaskade im nächsten Takt als Version n + 1 „Berechnung geändert (Fassung n)“ neu
+  (`uems-kennzahl-ausloeser.md`). Der Fertig-Satz der Fläche verspricht weiter nur das Vorläufige.
 - **Verlaufslisten nach der Eintragung** (Captain 15.09.2026): `kennzahlKarte.berechnung` sortiert den Fassungs-Verlauf
   nach `eingetragen_am`, jüngste zuerst; „gilt ab“ steht an jeder Zeile.
 - **Löschen nur ohne einen einzigen Wert** (`hat_werte`): sonst „KZ-0001 hat Werte — archivieren Sie sie.“ als Grund der

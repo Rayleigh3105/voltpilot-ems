@@ -50,7 +50,8 @@ Kennzahl durch, die davon lebt — und die alte Zahl bleibt lesbar (K7).
   `kennzahl_wert_version_folgt` hätte das Nachziehen einer vorläufigen Version 2 abgewiesen.
 - **Seit IP-9** ruft die Kaskade die Naht auch ohne Messreihe: `Betroffen.bezugsgroessen` und der Status
   `berechnung_geaendert` — `uems-kennzahl-ausloeser.md`.
-- **Nicht gebaut:** die Berichte (AP-12 liest `kennzahl_neu_gebildet`), das Portal (IP-15).
+- **Leser seit AP-12 und IP-13/IP-15:** die Berichte übernehmen Kennzahl-Werte samt Versionen (`uems-bericht-abzug-unternehmen.md`,
+  `uems-bericht-kaskade.md`), das Portal zeigt die Versionen an der Kennzahl-Seite (`uems-kennzahlen-portal.md`).
 
 ## Prüfen
 

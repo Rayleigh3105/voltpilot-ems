@@ -25,7 +25,7 @@ Der Kennzahl-Schritt im Stundentakt `EndgueltigkeitLaeufer`: Endgültigkeit → 
 - ⚠ **Zeile oder keine (P4/P6):** ohne jeden Periodenwert-Eingang keine Zeile (ein Stammdatum zählt nicht); laufende Periode
   mit Periodenwert-Nenner = „keine Werte“ `periode_nicht_zu_ende`, sonst erst, wenn alle Eingänge eine Zahl tragen.
 - ⚠ **Endgültig bleibt stehen:** der Regellauf bildet NIE Version n + 1 (kein Anlass). Das tut die Kaskade über denselben
-  Code, `KennzahlLauf.nachKorrektur` (IP-8, `uems-kennzahl-kaskade.md`; der Nenner-/Definitions-Auslöser IP-9 folgt).
+  Code, `KennzahlLauf.nachKorrektur` (IP-8 Reihen-Pfad `uems-kennzahl-kaskade.md`, IP-9 Nenner und Definition `uems-kennzahl-ausloeser.md`).
 - **`kennzahl_neu_gebildet` schreibt der Regellauf nicht — und muss es nicht:** der Vertrag meldet NUR einen ENDGÜLTIGEN Wert
   als Version n + 1 mit Anlass, vorläufige ziehen ohne Meldung nach. Erzeuger ist die Kaskade (`KennzahlNeuGebildet`,
   Vokabular seit `V20260915061500`). AP-12 erkennt eine erste Bildung oder ein Nachziehen ohne das Ereignis über die

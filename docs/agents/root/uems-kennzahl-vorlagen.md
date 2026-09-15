@@ -35,7 +35,8 @@ Kanonisch `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json`; P
 - ⚠ **Eigenverbrauchsanteil:** der Teil ist ein Gesamtwert „Erzeugung − Einspeisung“. Wie er gebildet wird, legt IP-10
   nicht fest: `rest` ergibt fest Wirkenergie · Bezug, eine `gewichtete_summe` mit Minus wird `richtungslos` und damit
   `groessen_gemischt` (`messstelle-formel.md` §2). Die Vorlage verlangt deshalb nur `berechnet` und keine Richtung
-  (`richtungen: null`) — IP-14 prüft am echten Gesamtwert.
+  (`richtungen: null`) — die angekündigte Prüfung am echten Gesamtwert hat IP-14 NICHT gebaut (Befund in
+  `uems-kennzahlen-abschluss.md`).
 - ⚠ **Namen:** §4.12 sagt „Anteil am Netzbezug“, K20 zählt „Anteil am Gesamtbezug“ auf — gebaut ist §4.12. Die in §5
   erwähnte Vorlage „Zusammenfassung“ steht nicht im Satz von §4.12; die Form bleibt „ohne Vorlage“ wählbar, das
   Schema erlaubt nur `quotient` und `anteil`.

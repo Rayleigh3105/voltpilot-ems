@@ -6,7 +6,8 @@ E3 (P1–P5), K13. Keine Migration, keine neue Route — `GET …/werte?periode=
 
 ## Was es tut
 
-- **Lauf und Vorschau** bilden die Woche wie jede andere Periode (`KennzahlLauf.kennzahl`, `KennzahlVorschauService`),
+- **Der Lauf** bildet die Woche wie jede andere Periode (`KennzahlLauf.kennzahl`; die Vorschau zeigt KEINE Wochen —
+  `KennzahlVorschauService.letzte` gibt für `woche` eine leere Liste),
   fein vor grob: Tag, Woche, Monat, Jahr. Die Woche ist nie Teilperiode — `KennzahlLauf.feinere` überspringt sie, sie geht
   in keinem Monat auf.
 - **Messstelle je Woche** über `MessstelleWerteService.wochen` (paketweit, kein Raster der Route): Grenzen

@@ -43,8 +43,8 @@ Baut auf der Kennzahl-Kaskade (`uems-kennzahl-kaskade.md`, Reihen-Pfad), der Kor
 - **Die echten Schreibwege urteilen nach der echten Uhr** (Berichtigung Z4, „rückwirkend“): Tests über sie spielen in 2025/2026,
   nicht in den Vektordaten 2026/2027.
 - **Berichte werden nicht doppelt angestoßen:** derselbe Anlass trifft einen Stand genau einmal (`bericht_revision_anstoss_einmal`
-  über Stand, Art, Anlass, Fassung, Status — B7). Pfad 2 (AP-12 IP-9) ist ungebaut; wer ihn baut, lässt Bezugsgrößen und
-  Kennzahl-Fassungen bei Pfad 1.
+  über Stand, Art, Anlass, Fassung, Status — B7). Pfad 2 (AP-12 IP-9, `uems-bericht-struktur.md`) ist gebaut und lässt
+  Bezugsgrößen und Kennzahl-Fassungen bei Pfad 1.
 - **Offen:** `…/werte/versionen` findet zu `BK-…` noch keine Entscheidung (`KennzahlWerteService.VORGANG_KENNUNG` kennt nur
   `K-`/`EW-`). Import-Berichtigung und Rücknahme schreibt erst AP-09 IP-12/IP-13 — der Test legt sie synthetisch an und sagt es.
 
