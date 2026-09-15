@@ -2391,6 +2391,48 @@ export interface KennzahlVorschau {
   letzte_perioden: KennzahlVorschauPeriode[];
 }
 
+/** Was eine Vorlage an einer Seite erwartet (UEMS AP-11 IP-10, `kennzahl-vorlagen.schema.json`); `berechnet` = Gesamtwert. */
+export interface KennzahlVorlageMessstelle {
+  art: 'messstelle';
+  messstelle_arten: ('gemessen' | 'berechnet')[];
+  groesse: string;
+  /** null = die Vorlage verlangt keine Richtung. */
+  richtungen: string[] | null;
+  wertarten: string[];
+  satz: string;
+}
+
+/** Arten aus `bezugsdaten-vectors.json → arten.je_art`; Einheiten werden nie umgerechnet. */
+export interface KennzahlVorlageBezugsgroesse {
+  art: 'bezugsgroesse';
+  bezugsgroesse_arten: string[];
+  einheiten: string[];
+  wertarten: ('periodenwert' | 'stammdatum')[];
+  satz: string;
+}
+
+export type KennzahlVorlageErwartung = KennzahlVorlageMessstelle | KennzahlVorlageBezugsgroesse;
+
+/**
+ * Eine Vorlage des VoltPilot-Katalogs (`GET /api/v1/kennzahl-vorlagen`, byte-gleich `src/kennzahlen/kennzahl-vorlagen.json`):
+ * `zaehler_erwartung` ist Menge bzw. Teil, `nenner_erwartung` Bezugsgröße bzw. Ganzes.
+ */
+export interface KennzahlVorlage {
+  kennung: string;
+  name_vorschlag: string;
+  zweck_vorschlag: string;
+  hilfesatz: string;
+  rechenform: 'quotient' | 'anteil';
+  komplement: boolean;
+  zaehler_erwartung: KennzahlVorlageErwartung;
+  nenner_erwartung: KennzahlVorlageErwartung;
+}
+
+export interface KennzahlVorlagen {
+  schema_version: string;
+  vorlagen: KennzahlVorlage[];
+}
+
 /** Der geschlossene Satz der Ablehnungen (`schnittstelle.ablehnungen`); der Satz steht in `message`. */
 export type KennzahlFehlerCode =
   | 'anfrage_ungueltig' | 'kennzeichen_format' | 'recht_fehlt' | 'nicht_gefunden' | 'kennzeichen_belegt'
@@ -7285,6 +7327,8 @@ export const api = {
   /** Prüft und rechnet die letzten drei Perioden — schreibt nichts. */
   kennzahlVorschau: (body: KennzahlAnfrage) =>
     request<KennzahlVorschau>(`/api/v1/kennzahlen/vorschau`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Der Vorlagen-Katalog (AP-11 IP-10) — dieselben Knoten wie die Portal-Kopie `src/kennzahlen/kennzahl-vorlagen.json`. */
+  kennzahlVorlagen: () => request<KennzahlVorlagen>(`/api/v1/kennzahl-vorlagen`),
   /** Die GANZEN Stammdaten ohne Fassung. */
   kennzahlAendern: (id: string, body: { kennzeichen: string; name: string; verantwortlich_name: string; zweck?: string | null }) =>
     request<Kennzahl>(`/api/v1/kennzahlen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
