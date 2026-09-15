@@ -246,6 +246,11 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // The Zugriffe (V20260915030000, AP-03 IP-2) go before the Standort they name and the
+                // Benutzer they belong to; the protocol names its Zugriff (RESTRICT), so it goes first.
+                for (String table : new String[] {"zugriff_protokoll", "zugriff", "benutzer"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
                 // The Kennzahlen (V20260915003000) go before everything they read or apply to
                 // (Bezugsgroessen, Messstellen, Orte, Prozesse, Kostenstellen, Standort, Unternehmen).
                 // Their values are append-only for EVERY role - not even the admin role holds DELETE -

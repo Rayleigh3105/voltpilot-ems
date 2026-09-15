@@ -289,6 +289,12 @@
                              ZeilentextAufbewahrungWiringTest prueft die ausgelieferte
                              Vorgabe. -->
                         <voltpilot.uems.zeilentexte.enabled>false</voltpilot.uems.zeilentexte.enabled>
+                        <!-- Die Rechte-Bestandsuebernahme (AP-03 IP-2): dieselbe Falle wie
+                             die Bestandsuebernahme der Standorte - im Testlauf aus,
+                             in PRODUKTION an. Wer sie prueft, ruft
+                             ZugriffBestandLaeufer.lauf() selbst;
+                             ZugriffBestandWiringTest prueft die ausgelieferte Vorgabe. -->
+                        <voltpilot.uems.zugriff-bestand.enabled>false</voltpilot.uems.zugriff-bestand.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

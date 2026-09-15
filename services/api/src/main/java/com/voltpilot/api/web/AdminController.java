@@ -24,6 +24,7 @@ import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
+import com.voltpilot.api.zugriff.KundenbenutzerAngelegt;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -73,17 +75,19 @@ public class AdminController {
     private final AdminEnrollmentRepository enrollments;
     private final KeycloakAdminClient keycloak;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
+    private final ApplicationEventPublisher ereignisse;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
-            ObjectProvider<ProvisioningPublisher> provisioning) {
+            ObjectProvider<ProvisioningPublisher> provisioning, ApplicationEventPublisher ereignisse) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
         this.enrollments = enrollments;
         this.keycloak = keycloak;
         this.provisioning = provisioning;
+        this.ereignisse = ereignisse;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -253,6 +257,9 @@ public class AdminController {
             KeycloakUser user = keycloak.createCustomerUser(tenantId, request.username(),
                     request.email(), request.firstName(), request.lastName(),
                     request.password(), request.temporaryPassword());
+            // AP-03 IP-2 (E12): every customer user is customer administrator until the customer's
+            // user management assigns roles - isolated listener, never fails the creation.
+            ereignisse.publishEvent(new KundenbenutzerAngelegt(tenantId, user));
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(user));
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);

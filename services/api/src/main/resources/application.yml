@@ -400,6 +400,13 @@ voltpilot:
     # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
     funktion-bestand:
       enabled: ${VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED:true}
+    # UEMS AP-03 IP-2: die BESTANDSÜBERNAHME der Rechte (E12) - beim Start holt
+    # ZugriffBestandLaeufer je Kundenbereich die Konten aus Keycloak; wer hier noch
+    # nie eine Zuweisung hatte, wird Kundenadministrator (mandantenweit). Idempotent,
+    # ein entzogener Zugriff kommt nie zurück; läuft im eigenen Thread. `enabled` ist
+    # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
+    zugriff-bestand:
+      enabled: ${VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED:true}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt
