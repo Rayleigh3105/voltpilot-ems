@@ -88,6 +88,8 @@ ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN = {
     "faktor_im_einheitennamen": "die Einheit trägt einen eingebackenen Faktor, der schon an `scale` "
                                 "steht — gerechnet wird mit dem dekodierten Wert, dessen Einheit der "
                                 "Katalog noch nicht nennt",
+    "faktor_zu_erheben": "der Faktor dieser Karte ist nicht belegt und wird am Gerät erhoben (UEMS AP-05 "
+                         "Befund 4) — ohne Faktor hat der dekodierte Wert keine Einheit",
 }
 ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
     **{
@@ -123,12 +125,19 @@ ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
         for familie in ("kaco_http", "kaco_http_hybrid")
         for key, quelle in (("energy-today", "etd"), ("energy-total", "eto"))
     },
+    **{
+        f"wago.pm494.karte[*].{key}": ("faktor_zu_erheben",
+                                       f"WAGO 750-494 `{key}`: die Messwert-Tabelle ist nur für die 750-495 "
+                                       f"belegt — Datentyp und Energie-Faktor erhebt Pilotschritt 1/2")
+        for key in ("energy_export_total", "energy_import_total")
+    },
 }
 
 SUNSPEC_METER = r"sunspec\.model_2(0[1-4]|1[1-4])"
 SUNSPEC_INVERTER = r"sunspec\.model_1(0[1-3]|1[1-3])"
 DEYE = r"(hybrid_1p|hybrid_3p|micro|string)"
 SHELLY_ENERGY = r"shelly\.gen2plus\.(cover|light_rgb_rgbw|pm1|switch)\[\*\]"
+WAGO = r"wago\.pm49[45]"
 
 # (Familie, Punktschlüssel, Größe oder None = aus der Einheit, Richtung, Beleg).
 # Beide Muster sind reguläre Ausdrücke über den GANZEN Wert; die erste passende Regel gewinnt.
@@ -286,6 +295,21 @@ RULES: tuple[tuple[str, str, str | None, str | None, str], ...] = (
      "Shelly Gen1 emeters[].power — Zweirichtungszähler (total und total_returned)"),
     ("shelly\\.gen1", r"shelly\.gen1\.meter\[\*\]\.meters\[\*\]\.(total|counters\[\*\])", "active_energy",
      "import", "Shelly Gen1 meters[] „energy consumed by the attached electrical appliance“"),
+
+    # --- WAGO 750-494/495 am Registerbild v1: WAS ein Messwert-Feld ist, legt der Vertrag fest (§4.3) und
+    # gilt für beide Karten; OB und WIE eine Karte es liefert, steht je Zahl in `angaben`.
+    (WAGO, WAGO + r"\.karte\[\*\]\.energy_import_total", "active_energy", "import",
+     "Registerbild WAGO v1 §4.3 Nr. 1 „Wirkenergie Bezug gesamt (Zählerstand)“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.energy_export_total", "active_energy", "export",
+     "Registerbild WAGO v1 §4.3 Nr. 2 „Wirkenergie Lieferung gesamt (Zählerstand)“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.power_l[123]", "active_power", None,
+     "Registerbild WAGO v1 §4.3 Nr. 3–5 „Wirkleistung L1–L3“ — das Vorzeichen ist zu erheben, keine Richtung"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.voltage_l[123]", "voltage", "none",
+     "Registerbild WAGO v1 §4.3 Nr. 6–8 „Spannung L1–L3“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.current_l[123]", "current", None,
+     "Registerbild WAGO v1 §4.3 Nr. 9–11 „Strom L1–L3“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.frequency", "frequency", "none",
+     "Registerbild WAGO v1 §4.3 Nr. 12 „Netzfrequenz“"),
 )
 
 _COMPILED = tuple(

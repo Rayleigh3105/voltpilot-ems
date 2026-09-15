@@ -97,11 +97,13 @@ class SemanticsTest(unittest.TestCase):
         self.assertEqual(ohne, sorted(ZAEHLER_OHNE_ANZEIGE_EINHEIT))
         arten = collections.Counter(art for art, _ in ZAEHLER_OHNE_ANZEIGE_EINHEIT.values())
         self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4,
-                                       "einheit_nur_im_text": 8, "faktor_im_einheitennamen": 4})
+                                       "einheit_nur_im_text": 8, "faktor_im_einheitennamen": 4,
+                                       "faktor_zu_erheben": 2})
         einheiten = collections.Counter(point.get("unit") for point in counters)
-        # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin.
+        # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin — dazu seit UEMS AP-05 IP-4
+        # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box).
         self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["0,1 kWh"], einheiten["Wmin"]),
-                         (41, 25, 4, 1))
+                         (43, 25, 4, 1))
         # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
         self.assertEqual(anzeige["VAh"], "kVAh")
         self.assertEqual(anzeige["Wmin"], "kWh")

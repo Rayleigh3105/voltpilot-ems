@@ -9,7 +9,9 @@ not require Python or access outside their Docker build context.
 Both derivatives carry the RUNTIME version (``RUNTIME_VERSION``), not the content
 version: a content version that changes nothing the box or the writer reads
 (``validate.py`` proves it) leaves both files byte-identical, so no box on an
-older edge release ever sees a foreign ``catalog_version``.
+older edge release ever sees a foreign ``catalog_version``. Families the content
+version carries but no box reads yet (``cataloglib.NOCH_NICHT_AN_DER_BOX``) are
+left out of both files.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ import argparse
 import json
 from pathlib import Path
 
-from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, canonical_json_bytes
+from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, box_points, canonical_json_bytes
 
 
 REPO = ROOT.parents[1]
@@ -38,7 +40,7 @@ def outputs() -> tuple[bytes, bytes]:
     runtime = catalog["runtime_catalog_version"]
     points = [{key: (runtime if key == "catalog_version" else point[key])
                for key in EDGE_FIELDS if key in point}
-              for point in catalog["points"]]
+              for point in box_points(catalog)]
     edge = canonical_json_bytes({
         "schema_version": "1.0",
         "catalog_version": runtime,
@@ -46,7 +48,7 @@ def outputs() -> tuple[bytes, bytes]:
     })
 
     rows = []
-    for point in catalog["points"]:
+    for point in box_points(catalog):
         key = point["point_key"].replace("'", "''")
         cadence = point["long_term_cadence_s"]
         rows.append("('%s','%s','%s',%s)" % (

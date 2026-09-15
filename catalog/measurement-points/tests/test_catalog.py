@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -18,7 +19,8 @@ REPO = ROOT.parents[1]
 TOOLS = ROOT / "tools"
 sys.path.insert(0, str(TOOLS))
 
-from cataloglib import canonical_json_bytes  # noqa: E402
+import cataloglib  # noqa: E402
+from cataloglib import canonical_json_bytes, runtime_projection  # noqa: E402
 from generate import build_catalog, generate_builtin_inverter, generate_deye_points, load_deye_document  # noqa: E402
 from jsonschema_validator import SchemaValidationError, validate_json_schema  # noqa: E402
 from update_deye_key_lock import reconcile_deye_key_lock  # noqa: E402
@@ -548,6 +550,250 @@ class CounterRangeTest(unittest.TestCase):
         self.assertEqual((declared["wertebereich_modul"], declared["laeuft_ueber"]), (65536, True))
         self.assertNotIn("wertebereich_modul", points["selbstbau_test.undeclared"])
         self.assertNotIn("laeuft_ueber", points["selbstbau_test.undeclared"])
+
+
+
+class WagoQuelleTest(unittest.TestCase):
+    """UEMS AP-05 IP-4/IP-5: Quelle `wago` am Registerbild v1, `modbus_input` und `range` im Schema.
+
+    Die Hauptauflage: die 750-494 erbt keine Zahl der 750-495 (Befund 4 aus IP-2). Jede Angabe und jede
+    Zahl wird hier gegen die Vektor-Datei des Vertrags gehalten, die dieselbe Trennung über `gilt_fuer` macht.
+    """
+
+    VEKTOREN = REPO / "docs" / "contracts" / "v2" / "wago-registerbild-vectors.json"
+    KARTEN = {"wago.pm494": "750-494", "wago.pm495": "750-495"}
+    EINHEIT = {"mWh": ("kWh", 0.000001), "kWh": ("kWh", 1), "W": ("W", 1), "V": ("V", 1), "A": ("A", 1),
+               "Hz": ("Hz", 1)}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.catalog = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+        cls.schema = json.loads(CATALOG_SCHEMA.read_text(encoding="utf-8"))
+        cls.vektoren = json.loads(cls.VEKTOREN.read_text(encoding="utf-8"))
+        cls.by_key = {point["point_key"]: point for point in cls.catalog["points"]}
+        cls.wago = [point for point in cls.catalog["points"] if point["family"].startswith("wago.")]
+
+    def punkt(self, family: str, feld: str) -> dict:
+        return self.by_key[f"{family}.karte[*].{feld}"]
+
+    def mutated(self, mutate) -> dict:
+        document = copy.deepcopy(self.catalog)
+        mutate({point["point_key"]: point for point in document["points"]}, document)
+        return document
+
+    def validation_error(self, mutate) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            path.write_bytes(canonical_json_bytes(self.mutated(mutate)))
+            with self.assertRaises(ValueError) as raised:
+                validate_catalog(path)
+        return str(raised.exception)
+
+    def regel(self, name: str) -> dict:
+        (feld,) = [f for f in self.vektoren["karte"]["felder"] if f["schluessel"] == "messwerte"]
+        (angabe,) = [r["angabe"] for r in feld["regeln"] if r["name"] == name]
+        return angabe
+
+    def erwartet(self, angabe: dict, artikel: str) -> str:
+        """Was eine Vektor-Angabe für EINE Karte ist: eine fremde Handbuch-Angabe ist zu erheben."""
+        if angabe["art"] == "handbuch":
+            return "handbuch" if artikel in angabe["gilt_fuer"] else "zu erheben"
+        return angabe["art"]
+
+    def test_each_card_is_the_registerbild_block_as_templates(self) -> None:
+        karte = {f["schluessel"]: f for f in self.vektoren["karte"]["felder"]}
+        status = self.vektoren["statuswoerter"]
+        for family in self.KARTEN:
+            points = [point for point in self.wago if point["family"] == family]
+            self.assertEqual(len(points), 27, family)
+            for point in points:
+                self.assertEqual(point["source_kind"], "wago_registerbild")
+                self.assertEqual((point["address"]["kind"], point["address"]["base"]), ("registerbild_relative", "parameter"))
+                self.assertTrue(point["address"]["offset_words"].startswith("12+index*42+"), point["point_key"])
+                self.assertTrue(point["dynamic"] and point["point_key_template"])
+                self.assertIsNone(point["endian"], "Wortfolge ist Parameter der Anlage")
+            for m in self.vektoren["messwerte"]:
+                point = self.punkt(family, m["schluessel"])
+                self.assertEqual(point["address"]["offset_words"], f"12+index*42+{m['offset']}")
+                self.assertEqual((point["width_bits"], point["label_de"]), (32, m["kundenwort"]))
+                self.assertEqual(point["aggregation_kind"],
+                                 "counter" if m["schluessel"].startswith("energy_") else "gauge")
+            for gruppe in (1, 2, 3):
+                for index, wort in enumerate(status["woerter"]):
+                    point = self.punkt(family, f"gruppe_{gruppe}.{wort}")
+                    offset = karte["statuswoerter"]["offset"] + (gruppe - 1) * 4 + index
+                    self.assertEqual(point["address"]["offset_words"], f"12+index*42+{offset}")
+                    self.assertEqual(point["aggregation_kind"], "bitfield")
+            for feld in ("gueltigkeit", "kartenregister_32", "kartenregister_35"):
+                self.assertEqual(self.punkt(family, feld)["address"]["offset_words"],
+                                 f"12+index*42+{karte[feld]['offset']}")
+
+    def test_the_750_494_inherits_no_number_of_the_750_495(self) -> None:
+        for point in (p for p in self.wago if p["family"] == "wago.pm494"):
+            for feld, angabe in point["angaben"].items():
+                if angabe["art"] == "handbuch":
+                    self.assertIn("750-494", angabe["gilt_fuer"], f"{point['point_key']} {feld}")
+        for m in self.vektoren["messwerte"]:
+            point = self.punkt("wago.pm494", m["schluessel"])
+            self.assertEqual((point["value_type"], point["signed"], point["scale"], point["unit"], point["readable"]),
+                             ("unknown", None, {"kind": "unknown"}, None, False), point["point_key"])
+            self.assertNotIn("range", point)
+            self.assertEqual({feld: angabe["art"] for feld, angabe in point["angaben"].items()},
+                             {"address": "festlegung", "met_id": "zu erheben", "range": "zu erheben",
+                              "scale": "zu erheben", "value_type": "zu erheben"}, point["point_key"])
+        # Belegt ist für die 494, was der Koppler-Handbuch oder der Vertrag für BEIDE Karten sagt.
+        self.assertEqual(self.punkt("wago.pm494", "gruppe_1.statuswort_1")["angaben"]["value_type"]["gilt_fuer"],
+                         ["750-494", "750-495"])
+        belegt_495 = sorted(m["schluessel"] for m in self.vektoren["messwerte"]
+                            if self.punkt("wago.pm495", m["schluessel"])["value_type"] != "unknown")
+        self.assertEqual(len(belegt_495), 11, "750-495: nur Lieferung gesamt ohne Datentyp")
+        self.assertNotIn("energy_export_total", belegt_495)
+
+    def test_every_origin_and_type_follows_the_contract_vectors(self) -> None:
+        for family, artikel in self.KARTEN.items():
+            for m in self.vektoren["messwerte"]:
+                point = self.punkt(family, m["schluessel"])
+                angaben = point["angaben"]
+                with self.subTest(point=point["point_key"]):
+                    self.assertEqual(angaben["met_id"]["art"], self.erwartet(m["met_id"], artikel))
+                    if angaben["met_id"]["art"] == "handbuch":
+                        self.assertEqual((angaben["met_id"]["wert"], angaben["met_id"]["fundstelle"]),
+                                         (m["met_id"]["wert"], m["met_id"]["fundstelle"]))
+                    self.assertEqual(angaben["value_type"]["art"], self.erwartet(m["datentyp"], artikel))
+                    if angaben["value_type"]["art"] == "handbuch":
+                        self.assertEqual(angaben["value_type"]["fundstelle"], m["datentyp"]["fundstelle"])
+                        self.assertEqual((point["value_type"], point["signed"]),
+                                         (m["datentyp"]["wert"].lower(), m["datentyp"]["wert"] == "Int32"))
+                        regel = self.regel(f"invalid_{point['value_type']}")
+                        self.assertEqual(point["range"]["invalid"], regel["wert"])
+                        self.assertEqual(angaben["range"]["fundstelle"], regel["fundstelle"])
+                        self.assertEqual(point["range"]["max"], regel["wert"] - 1)
+                    skalen = {self.erwartet(s["angabe"], artikel) for s in m["skalierung"]}
+                    self.assertEqual({angaben["scale"]["art"]}, skalen)
+                    if angaben["scale"]["art"] == "handbuch":
+                        self.assertEqual(angaben["scale"]["fundstelle"],
+                                         "; ".join(sorted({s["angabe"]["fundstelle"] for s in m["skalierung"]})))
+            for point in (p for p in self.wago if p["family"] == family and ".gruppe_" in p["point_key"]):
+                quelle = next(f for f in self.vektoren["karte"]["felder"] if f["schluessel"] == "statuswoerter")
+                self.assertEqual(point["angaben"]["value_type"]["art"], self.erwartet(quelle["wert"], artikel))
+
+    def test_factors_and_units_match_the_quoted_wording(self) -> None:
+        zahl = re.compile(r"(?:(\d+): )?([\d,]+) (mWh|kWh|W|V|A|Hz)\b")
+        for m in self.vektoren["messwerte"]:
+            point = self.punkt("wago.pm495", m["schluessel"])
+            erwartet, einheiten = set(), set()
+            for s in m["skalierung"]:
+                for register, wert, einheit in zahl.findall(s["angabe"]["wert"]):
+                    ziel, faktor = self.EINHEIT[einheit]
+                    einheiten.add(ziel)
+                    erwartet.add((s["messbereich"], int(register) if register else None,
+                                  round(float(wert.replace(",", ".")) * faktor, 12)))
+            scale = point["scale"]
+            if scale["kind"] == "factor":
+                katalog = {("alle", None, round(scale["value"], 12))}
+            else:
+                self.assertEqual(scale["kind"], "conditional_factor")
+                katalog = {(f["messbereich"], f.get("kartenregister_35"), round(f["faktor"], 12))
+                           for f in scale["value"]["faktoren"]}
+            with self.subTest(point=point["point_key"]):
+                self.assertTrue(erwartet)
+                self.assertEqual(katalog, erwartet)
+                self.assertEqual({point["unit"]}, einheiten)
+
+    def test_no_card_reaches_a_box_and_the_runtime_version_stays(self) -> None:
+        families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
+        self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": False, "wago.pm495": False})
+        self.assertEqual(sum(families.values()), len(families) - 2)
+        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.08.26.3")
+        self.assertFalse([p for p in runtime_projection(self.catalog, "2026.08.26.3") if p["family"].startswith("wago.")])
+        palette = (REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes()
+        self.assertNotIn(b"wago", palette)
+        self.assertNotIn(b"registerbild", palette)
+
+        def an_der_box(points, document):
+            next(f for f in document["families"] if f["family"] == "wago.pm495")["an_der_box"] = True
+        self.assertIn("wago.pm495: an_der_box mismatch", self.validation_error(an_der_box))
+        # Nie eine Familie zurückhalten, die schon an einer Box ist: ihre Punkte verschwänden still.
+        with unittest.mock.patch.dict(cataloglib.NOCH_NICHT_AN_DER_BOX, {"sunspec.model_203": "test"}):
+            with self.assertRaises(ValueError) as raised:
+                validate_catalog(ARTIFACT)
+        self.assertIn("families already at the box cannot be withheld from it: ['sunspec.model_203']",
+                      str(raised.exception))
+
+    def test_validator_rejects_a_card_that_inherits_or_guesses(self) -> None:
+        def erbt(points, document):
+            fremd = points["wago.pm495.karte[*].energy_import_total"]
+            eigen = points["wago.pm494.karte[*].energy_import_total"]
+            for feld in ("value_type", "signed", "scale", "unit", "range", "angaben", "readable"):
+                eigen[feld] = copy.deepcopy(fremd[feld])
+
+        def geratener_typ(points, document):
+            points["wago.pm494.karte[*].power_l1"]["value_type"] = "int32"
+
+        def einheit_ohne_faktor(points, document):
+            points["wago.pm494.karte[*].voltage_l1"]["unit"] = "V"
+
+        def lesbar_ohne_typ(points, document):
+            points["wago.pm495.karte[*].energy_export_total"]["readable"] = True
+
+        def ohne_herkunft(points, document):
+            del points["wago.pm495.karte[*].frequency"]["angaben"]
+
+        def ungueltig_im_bereich(points, document):
+            points["wago.pm495.karte[*].power_l1"]["range"]["invalid"] = 0
+
+        cases = [
+            (erbt, "angaben.value_type: quoted for ['750-495'], not for 750-494"),
+            (geratener_typ, "wago.pm494.karte[*].power_l1: value_type is unknown exactly when angaben.value_type is zu erheben"),
+            (einheit_ohne_faktor, "wago.pm494.karte[*].voltage_l1: without a factor the decoded value has no unit"),
+            (lesbar_ohne_typ, "wago.pm495.karte[*].energy_export_total: without a value_type nothing is readable"),
+            (ohne_herkunft, "wago.pm495.karte[*].frequency: a WAGO card point names the origin of every number"),
+            (ungueltig_im_bereich, "wago.pm495.karte[*].power_l1: range invalid lies inside min … max"),
+        ]
+        for mutate, message in cases:
+            with self.subTest(message=message):
+                self.assertIn(message, self.validation_error(mutate))
+
+    def test_modbus_input_and_range_are_schema_words_and_box_fields(self) -> None:
+        holding = next(p["point_key"] for p in self.catalog["points"]
+                       if p["source_kind"] == "modbus_holding" and p["value_type"] == "uint16")
+
+        def input_register(points, document):
+            points[holding]["source_kind"] = "modbus_input"
+            points[holding]["address"]["kind"] = "modbus_input"
+
+        def bereich(points, document):
+            points[holding]["range"] = {"invalid": 65535, "max": 65534, "min": 0}
+
+        for mutate in (input_register, bereich):
+            with self.subTest(mutate=mutate.__name__):
+                validate_json_schema(self.mutated(mutate), self.schema)
+                error = self.validation_error(mutate)
+                # Strukturell angenommen — aber ein Box-Feld: an einem ausgelieferten Punkt hebt es den Laufzeitstand.
+                self.assertNotIn("wrong Modbus address kind", error)
+                self.assertNotIn("invalid source_kind", error)
+                self.assertNotIn(": range ", error)
+                self.assertIn("content version changes what the box or writer reads", error)
+
+        def falsche_art(points, document):
+            points[holding]["source_kind"] = "modbus_input"
+        self.assertIn(f"{holding}: wrong Modbus address kind", self.validation_error(falsche_art))
+
+        def bereich_null(points, document):
+            points[holding]["range"] = None
+
+        def bereich_ohne_invalid(points, document):
+            points[holding]["range"] = {"max": 65534, "min": 0}
+
+        def bereich_zu_gross(points, document):
+            points[holding]["range"] = {"invalid": 70000, "max": 65534, "min": 0}
+
+        self.assertIn(f"{holding}: range needs integer min, max and invalid", self.validation_error(bereich_null))
+        with self.assertRaisesRegex(SchemaValidationError, "expected type"):
+            validate_json_schema(self.mutated(bereich_null), self.schema)
+        with self.assertRaisesRegex(SchemaValidationError, re.escape("required property 'invalid'")):
+            validate_json_schema(self.mutated(bereich_ohne_invalid), self.schema)
+        self.assertIn(f"{holding}: range leaves the uint16 value space", self.validation_error(bereich_zu_gross))
 
 
 if __name__ == "__main__":

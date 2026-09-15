@@ -1,0 +1,2126 @@
+{
+  "schema_version": "1.0",
+  "_comment": [
+    "Messpunkte je Kartentyp am VoltPilot-Registerbild WAGO v1 (UEMS AP-05 IP-4). VoltPilot-eigene",
+    "Normalform des Vertrags docs/contracts/v2/wago-registerbild.md; jede Zahl trägt ihre Herkunft wie",
+    "wago-registerbild-vectors.json: festlegung · handbuch (nur für die Karte in gilt_fuer) · zu erheben.",
+    "Eine Handbuch-Angabe der 750-495 gilt für die 750-494 NICHT mit (Befund 4 aus IP-2): was dort nicht",
+    "belegt ist, steht als zu erheben — value_type unknown, scale unknown, keine Einheit, kein Bereich.",
+    "tests/test_catalog.py (WagoQuelleTest) hält jede Angabe und jede Zahl gegen die Vektor-Datei."
+  ],
+  "vertrag": "docs/contracts/v2/wago-registerbild.md",
+  "registerbild": {
+    "hauptversion": 1,
+    "nebenversion": 0,
+    "kopflaenge": 12,
+    "kartenblocklaenge": 42
+  },
+  "kadenz_s": 60,
+  "poll_group": "wago:registerbild",
+  "felder": [
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Karte",
+      "key": "gueltigkeit",
+      "label_de": "Gültigkeit der Kartenwerte",
+      "label_source": "gueltigkeit",
+      "offset": 3,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "state",
+      "group": "Karte",
+      "key": "kartenregister_32",
+      "label_de": "Kartenregister 32 (Rohwert)",
+      "label_source": "kartenregister_32",
+      "offset": 4,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "state",
+      "group": "Karte",
+      "key": "kartenregister_35",
+      "label_de": "Kartenregister 35 (Rohwert)",
+      "label_source": "kartenregister_35",
+      "offset": 5,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_1.statuswort_1",
+      "label_de": "Statuswort 1, Gruppe 1",
+      "label_source": "statuswort_1 (Gruppe 1)",
+      "offset": 6,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_1.erw_statuswort_1",
+      "label_de": "Erweitertes Statuswort 1, Gruppe 1",
+      "label_source": "erw_statuswort_1 (Gruppe 1)",
+      "offset": 7,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_1.erw_statuswort_2",
+      "label_de": "Erweitertes Statuswort 2, Gruppe 1",
+      "label_source": "erw_statuswort_2 (Gruppe 1)",
+      "offset": 8,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_1.erw_statuswort_3",
+      "label_de": "Erweitertes Statuswort 3, Gruppe 1",
+      "label_source": "erw_statuswort_3 (Gruppe 1)",
+      "offset": 9,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_2.statuswort_1",
+      "label_de": "Statuswort 1, Gruppe 2",
+      "label_source": "statuswort_1 (Gruppe 2)",
+      "offset": 10,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_2.erw_statuswort_1",
+      "label_de": "Erweitertes Statuswort 1, Gruppe 2",
+      "label_source": "erw_statuswort_1 (Gruppe 2)",
+      "offset": 11,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_2.erw_statuswort_2",
+      "label_de": "Erweitertes Statuswort 2, Gruppe 2",
+      "label_source": "erw_statuswort_2 (Gruppe 2)",
+      "offset": 12,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_2.erw_statuswort_3",
+      "label_de": "Erweitertes Statuswort 3, Gruppe 2",
+      "label_source": "erw_statuswort_3 (Gruppe 2)",
+      "offset": 13,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_3.statuswort_1",
+      "label_de": "Statuswort 1, Gruppe 3",
+      "label_source": "statuswort_1 (Gruppe 3)",
+      "offset": 14,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_3.erw_statuswort_1",
+      "label_de": "Erweitertes Statuswort 1, Gruppe 3",
+      "label_source": "erw_statuswort_1 (Gruppe 3)",
+      "offset": 15,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_3.erw_statuswort_2",
+      "label_de": "Erweitertes Statuswort 2, Gruppe 3",
+      "label_source": "erw_statuswort_2 (Gruppe 3)",
+      "offset": 16,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "bitfield",
+      "group": "Statuswörter",
+      "key": "gruppe_3.erw_statuswort_3",
+      "label_de": "Erweitertes Statuswort 3, Gruppe 3",
+      "label_source": "erw_statuswort_3 (Gruppe 3)",
+      "offset": 17,
+      "width_words": 1
+    },
+    {
+      "aggregation_kind": "counter",
+      "group": "Messwerte",
+      "key": "energy_import_total",
+      "label_de": "Wirkenergie Bezug gesamt (Zählerstand)",
+      "label_source": "energy_import_total",
+      "offset": 18,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "counter",
+      "group": "Messwerte",
+      "key": "energy_export_total",
+      "label_de": "Wirkenergie Lieferung gesamt (Zählerstand)",
+      "label_source": "energy_export_total",
+      "offset": 20,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "power_l1",
+      "label_de": "Wirkleistung L1",
+      "label_source": "power_l1",
+      "offset": 22,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "power_l2",
+      "label_de": "Wirkleistung L2",
+      "label_source": "power_l2",
+      "offset": 24,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "power_l3",
+      "label_de": "Wirkleistung L3",
+      "label_source": "power_l3",
+      "offset": 26,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "voltage_l1",
+      "label_de": "Spannung L1",
+      "label_source": "voltage_l1",
+      "offset": 28,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "voltage_l2",
+      "label_de": "Spannung L2",
+      "label_source": "voltage_l2",
+      "offset": 30,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "voltage_l3",
+      "label_de": "Spannung L3",
+      "label_source": "voltage_l3",
+      "offset": 32,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "current_l1",
+      "label_de": "Strom L1",
+      "label_source": "current_l1",
+      "offset": 34,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "current_l2",
+      "label_de": "Strom L2",
+      "label_source": "current_l2",
+      "offset": 36,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "current_l3",
+      "label_de": "Strom L3",
+      "label_source": "current_l3",
+      "offset": 38,
+      "width_words": 2
+    },
+    {
+      "aggregation_kind": "gauge",
+      "group": "Messwerte",
+      "key": "frequency",
+      "label_de": "Netzfrequenz",
+      "label_source": "frequency",
+      "offset": 40,
+      "width_words": 2
+    }
+  ],
+  "karten": [
+    {
+      "artikel": "750-494",
+      "family": "wago.pm494",
+      "source_revision": "wago-registerbild-v1.0+handbuch-750-494-v1.5.0",
+      "source_url": "https://www.wago.com/wagoweb/documentation/750/ger_manu/modules/m07500494_xxxxxxxx_0de.pdf",
+      "werte": {
+        "gueltigkeit": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.1"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.1"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "kartenregister_32": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "uint16"
+        },
+        "kartenregister_35": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "uint16"
+        },
+        "gruppe_1.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "energy_import_total": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 1"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 1"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 1"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 1"
+            }
+          }
+        },
+        "energy_export_total": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 2"
+            }
+          }
+        },
+        "power_l1": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 3"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 3"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 3"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 3"
+            }
+          }
+        },
+        "power_l2": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 4"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 4"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 4"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 4"
+            }
+          }
+        },
+        "power_l3": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 5"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 5"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 5"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 5"
+            }
+          }
+        },
+        "voltage_l1": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 6"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 6"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 6"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 6"
+            }
+          }
+        },
+        "voltage_l2": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 7"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 7"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 7"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 7"
+            }
+          }
+        },
+        "voltage_l3": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 8"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 8"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 8"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 8"
+            }
+          }
+        },
+        "current_l1": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 9"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 9"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 9"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 9"
+            }
+          }
+        },
+        "current_l2": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 10"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 10"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 10"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 10"
+            }
+          }
+        },
+        "current_l3": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 11"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 11"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 11"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 11"
+            }
+          }
+        },
+        "frequency": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "unknown"
+          },
+          "unit": null,
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 12"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 12"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 12"
+            },
+            "scale": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 2 → Hardwareblatt §4 Zeile 12"
+            }
+          }
+        }
+      }
+    },
+    {
+      "artikel": "750-495",
+      "family": "wago.pm495",
+      "source_revision": "wago-registerbild-v1.0+handbuch-750-495-v1.3.0",
+      "source_url": "https://www.wago.com/wagoweb/documentation/750/ger_manu/modules/m07500495_xxxxxxxx_0de.pdf",
+      "werte": {
+        "gueltigkeit": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.1"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.1"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "kartenregister_32": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "uint16"
+        },
+        "kartenregister_35": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            },
+            "value_type": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4"
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "uint16"
+        },
+        "gruppe_1.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_1.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_2.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_1": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_2": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "gruppe_3.erw_statuswort_3": {
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "scale": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.2"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-362 S. 225 Tab. 203",
+              "gilt_fuer": [
+                "750-494",
+                "750-495"
+              ]
+            }
+          },
+          "scale": {
+            "kind": "none"
+          },
+          "signed": false,
+          "unit": null,
+          "value_type": "bitfield16"
+        },
+        "energy_import_total": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich",
+                "kartenregister_35"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 1e-06,
+                  "kartenregister_35": 0,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.01,
+                  "kartenregister_35": 4,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 1,
+                  "kartenregister_35": 6,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 5e-06,
+                  "kartenregister_35": 0,
+                  "messbereich": "5 A"
+                },
+                {
+                  "faktor": 0.05,
+                  "kartenregister_35": 4,
+                  "messbereich": "5 A"
+                },
+                {
+                  "faktor": 5,
+                  "kartenregister_35": 6,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "kWh",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "074"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 274 Tab. 67",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "energy_export_total": {
+          "value_type": "unknown",
+          "signed": null,
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich",
+                "kartenregister_35"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 1e-06,
+                  "kartenregister_35": 0,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.01,
+                  "kartenregister_35": 4,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 1,
+                  "kartenregister_35": 6,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 5e-06,
+                  "kartenregister_35": 0,
+                  "messbereich": "5 A"
+                },
+                {
+                  "faktor": 0.05,
+                  "kartenregister_35": 4,
+                  "messbereich": "5 A"
+                },
+                {
+                  "faktor": 5,
+                  "kartenregister_35": 6,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "kWh",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "value_type": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "range": {
+              "art": "zu erheben",
+              "wo": "mit dem Datentyp: Pilotschritt 1 → Hardwareblatt §4 Zeile 2"
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 274 Tab. 67",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "power_l1": {
+          "value_type": "int32",
+          "signed": true,
+          "range": {
+            "invalid": 2147483647,
+            "max": 2147483646,
+            "min": -2147483648
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.01,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.05,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "W",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "007"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "power_l2": {
+          "value_type": "int32",
+          "signed": true,
+          "range": {
+            "invalid": 2147483647,
+            "max": 2147483646,
+            "min": -2147483648
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.01,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.05,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "W",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "008"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "power_l3": {
+          "value_type": "int32",
+          "signed": true,
+          "range": {
+            "invalid": 2147483647,
+            "max": 2147483646,
+            "min": -2147483648
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.01,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.05,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "W",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "009"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "voltage_l1": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "factor",
+            "value": 0.01
+          },
+          "unit": "V",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "004"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "voltage_l2": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "factor",
+            "value": 0.01
+          },
+          "unit": "V",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "005"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "voltage_l3": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "factor",
+            "value": 0.01
+          },
+          "unit": "V",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "006"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "current_l1": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.0001,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.0005,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "A",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "001"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "current_l2": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.0001,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.0005,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "A",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "002"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "current_l3": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "conditional_factor",
+            "value": {
+              "nach": [
+                "messbereich"
+              ],
+              "faktoren": [
+                {
+                  "faktor": 0.0001,
+                  "messbereich": "1 A"
+                },
+                {
+                  "faktor": 0.0005,
+                  "messbereich": "5 A"
+                }
+              ]
+            }
+          },
+          "unit": "A",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ],
+              "wert": "003"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79–81",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        },
+        "frequency": {
+          "value_type": "uint32",
+          "signed": false,
+          "range": {
+            "invalid": 4294967295,
+            "max": 4294967294,
+            "min": 0
+          },
+          "scale": {
+            "kind": "factor",
+            "value": 0.001
+          },
+          "unit": "Hz",
+          "angaben": {
+            "address": {
+              "art": "festlegung",
+              "fundstelle": "wago-registerbild.md §4.3"
+            },
+            "met_id": {
+              "art": "zu erheben",
+              "wo": "Pilotschritt 1 → Hardwareblatt §4 Zeile 12"
+            },
+            "value_type": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 74",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "range": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 79 Tab. 27",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            },
+            "scale": {
+              "art": "handbuch",
+              "fundstelle": "WAGO-750-495 S. 74",
+              "gilt_fuer": [
+                "750-495"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

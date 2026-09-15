@@ -59,7 +59,7 @@
       "angabe": {
         "art": "repo",
         "wert": ["big", "word_little_byte_big"],
-        "fundstelle": "catalog/measurement-points/schema/catalog.schema.json:162"
+        "fundstelle": "catalog/measurement-points/schema/catalog.schema.json:205"
       }
     },
     {

@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.11.1.json`](dist/measurement-point-catalog-2026.09.11.1.json).
+[`dist/measurement-point-catalog-2026.09.16.1.json`](dist/measurement-point-catalog-2026.09.16.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -25,7 +25,8 @@ Jeder Eintrag besitzt mindestens:
 - Identität: `family`, stabiler `point_key`, dessen `point_key_aliases`,
   `catalog_version`, `edge_min_version`;
 - Zugriff: `source_kind`, `address` und/oder `selector`, `width_bits`,
-  `value_type`, `signed`, `endian`, `scale`;
+  `value_type`, `signed`, `endian`, `scale`; optional `range` (Abschnitt „Wertebereich eines
+  Rohwerts“);
 - Bedeutung: `unit`, `group`, deutsches `label_de`, originales
   `label_source`, `semantic_status`, `aggregation_kind`, Größe `quantity` und
   Richtung `direction` (Abschnitt „Größe und Richtung“); optional am Zähler
@@ -33,7 +34,7 @@ Jeder Eintrag besitzt mindestens:
 - Last/Aufbewahrung: `default_cadence_s`, `min_cadence_s`,
   `long_term_cadence_s`, `poll_group`;
 - Provenienz: `source_url`, `source_commit` oder `source_revision` und
-  `source_sha256`.
+  `source_sha256`; optional `angaben` je Zahl (Abschnitt „WAGO-Energiekarten“).
 
 Unbekanntes bleibt `null` und wird mit `semantic_status: unknown` oder
 `vendor_label_only` sichtbar gemacht. Namen und Einheiten werden nicht aus
@@ -128,6 +129,44 @@ deklarierten Wertebereich. Der Katalog trägt ihn als zwei optionale Punktfelder
   python3 catalog/measurement-points/tools/validate.py --ohne-wertebereich
   ```
 
+## Wertebereich eines Rohwerts
+
+Optional `range {min, max, invalid}` (UEMS AP-05 IP-5): ganzzahlige ROHwerte vor `scale`. `min` … `max`
+ist ein Wert, `invalid` heißt „kein Messwert“ — bei den WAGO-Karten der größte Wert des Datentyps
+(Handbuch 750-495 S. 79 Tab. 27: UInt32 4 294 967 295, Int32 2 147 483 647; 0xFFFF 0xFFFF in einem
+Int32-Feld ist −1 und ein Wert). Fehlt das Feld, ist nichts deklariert, nie `null`. `validate.py` verlangt
+einen bekannten Ganzzahl-Datentyp, alle drei Zahlen in dessen Wertebereich und `invalid` AUSSERHALB von
+`min` … `max`.
+
+- ⚠ `range` ist ein Box-Feld (`EDGE_FIELDS`): an einem ausgelieferten Punkt hebt es den Laufzeitstand.
+- Gelesen wird es erst vom Treiber aus AP-05 IP-6 (Edge-Test „INVALID-Wert führt zu keinem Messwert“);
+  bis dahin trägt es nur eine Familie, die noch an keiner Box ist. Die api dekodiert keine Register.
+- Die Quellenart `modbus_input` (Input-Register, Funktionscode 4) kennt die Box schon für Selbstbau-Werte;
+  das Schema nimmt sie mit Adress-Art `modbus_input` an, heute trägt sie kein Katalogpunkt.
+
+## WAGO-Energiekarten (Registerbild v1)
+
+`sources/wago/registerbild-v1.json` ist die VoltPilot-Normalform des Vertrags
+[`wago-registerbild.md`](../../docs/contracts/v2/wago-registerbild.md): je Kartentyp (`wago.pm494`,
+`wago.pm495`) 27 Vorlagen `…karte[*].<feld>` — 12 Messwerte, 12 Statuswörter, Gültigkeit und die
+Kartenregister 32/35 als Rohwert. Quellenart `wago_registerbild`, Adresse `registerbild_relative`
+(`12+index*42+<offset>`): Basisadresse, Funktionscode (3 oder 4) und Wortfolge sind Parameter der Anlage
+und darum weder `address.base` noch `source_kind` noch `endian`.
+
+- **Herkunft je Zahl:** `angaben` nennt für Adresse, Messwert-ID, Datentyp, Skalierung und Bereich
+  `festlegung` · `handbuch` (mit `gilt_fuer`) · `zu erheben` (mit `wo`) — wörtlich wie
+  `docs/contracts/v2/wago-registerbild-vectors.json`.
+- ⚠ **Die 750-494 erbt keine Zahl der 750-495** (AP-05 Befund 4): eine Handbuch-Angabe gilt nur für die
+  Artikel in `gilt_fuer`. Was für eine Karte nicht belegt ist, steht als zu erheben: `value_type` und
+  `scale` `unknown`, keine Einheit, kein `range`, `readable: false`. Heute sind bei der 750-494 alle zwölf
+  Messwerte so; belegt sind Adressen, Statuswörter (Koppler-Handbuch 750-362) und die Rohwort-Felder.
+  `validate.py` lehnt jede andere Form ab, `WagoQuelleTest` hält jede Angabe und jede Zahl gegen die
+  Vektor-Datei.
+- Faktoren, die vom Messbereich (1 A / 5 A) oder von Kartenregister 35 abhängen, stehen als
+  `conditional_factor` mit ihrer Tabelle (nur die zitierten Register-Werte 0, 4, 6); die Box liefert dafür
+  keinen dekodierten Wert. Das Vorzeichen der Wirkleistung ist zu erheben — sie trägt keine Richtung.
+- Beide Familien sind noch an keiner Box (nächster Abschnitt).
+
 ## Zähler ohne Anzeige-Einheit
 
 `unit` nennt die Einheit des **dekodierten** Werts (nach `scale`); gerechnet und gespeichert wird
@@ -135,10 +174,11 @@ deklarierten Wertebereich. Der Katalog trägt ihn als zwei optionale Punktfelder
 [`ergebnis-zustand`](../../docs/contracts/v2/ergebnis-zustand.md) §3 (Wh/kWh/MWh/Wmin → kWh,
 varh/kvarh → kvarh, VAh/kVAh → kVAh, m³). Jeder Zähler, dessen Einheit dort fehlt, steht mit Art und
 Grund in `ZAEHLER_OHNE_ANZEIGE_EINHEIT` (`tools/semantics.py`); `validate.py` lehnt einen
-unbenannten Zähler ohne Einheit ab, `test_semantics.py` hält die Liste gegen den Vertrag. Heute 45:
+unbenannten Zähler ohne Einheit ab, `test_semantics.py` hält die Liste gegen den Vertrag. Heute 47:
 29 ohne Energie (Zyklen, Ereignisse, Revisionen), 4 OCPP-Register mit der Einheit im konkreten
 Schlüssel, 8 go-e-Keys mit der Einheit nur im Text, 4 KACO-Punkte in „0,1 kWh“ (der Faktor steht
-schon an `scale`, der Name ist die Register-Einheit). ⚠ Ein Nachtrag an `unit` ändert ein Box-Feld
+schon an `scale`, der Name ist die Register-Einheit), 2 Zählerstände der WAGO 750-494, deren Faktor
+zu erheben ist (`faktor_zu_erheben`, noch an keiner Box). ⚠ Ein Nachtrag an `unit` ändert ein Box-Feld
 und hebt den Laufzeitstand (nächster Abschnitt) — die Box liest `unit` zwar nicht, aber die
 Palette trägt es.
 
@@ -164,6 +204,24 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   `SQL_BY_RUNTIME_VERSION` eine NEUE, datums-versionierte Metadaten-Migration eintragen — die
   angewandte bleibt unverändert. Ab dem api-Deploy lehnen Boxen mit älterer Palette jede
   Messwert-Änderung ab, bis sie das Edge-Release haben; der Rollout gehört deshalb geplant.
+
+### Familien noch nicht an der Box
+
+Eine neue Quelle, deren Punkte keine ausgelieferte Box lesen kann, gehört in den Inhaltsstand, nicht in
+den Laufzeitstand. `NOCH_NICHT_AN_DER_BOX` in `tools/cataloglib.py` nennt solche Familien mit Grund
+(heute `wago.pm494`/`wago.pm495`, bis der Treiber aus UEMS AP-05 IP-6 mit einem Edge-Release kommt):
+
+- Ihre Punkte stehen im Artefakt (`families[].an_der_box: false`), fehlen aber in der Box-Sicht
+  (`runtime_projection`), in der Palette-`catalog.json` und in der Metadaten-Migration — `validate.py` und
+  `package_edge_runtime.py --check` beweisen, dass beide byte-gleich bleiben. Der Laufzeitstand steigt
+  dadurch NICHT.
+- Die api lässt sie beim Laden aus (`MeasurementCatalog.familienNochNichtAnDerBox`): keine Suche, keine
+  Auswahl, keine Mess-Konfiguration, die eine Box mit `unknown_point` ablehnen würde. Die Portal-Kopie
+  `registerFamilie.ts` führt sie nicht.
+- ⚠ Nie eine Familie eintragen, die schon an einer Box ist — `validate.py` lehnt das ab, sonst verschwänden
+  ihre Punkte still aus Palette und Metadaten.
+- Mit dem Edge-Release, das die Punkte liest, fällt der Eintrag: dann steigt `RUNTIME_VERSION` wie oben,
+  und `range` geht als Box-Feld mit.
 
 ## Offline erzeugen und prüfen
 
@@ -214,7 +272,10 @@ unter `API_KEYS_FIRMWARE/`.
   verwendeten `ocpp-go` v0.19.0 (`a1eec917af884db0585752f909a61893aa667480`).
   Die 16 Einheiten sind die OCPP-1.6-Werte; der zusätzlich in `ocpp-go`
   vorhandene Tippfehler `Celcius` bleibt ausdrücklich nur Bibliotheks-
-  Kompatibilität und wird nicht als Standarddimension ausgegeben.
+  Kompatibilität und wird nicht als Standarddimension ausgegeben;
+- WAGO: VoltPilot-Registerbild WAGO v1 für die Energiekarten 750-494 und 750-495, 54 Vorlagen mit
+  Herkunft je Zahl (Handbuch 750-495 Version 1.3.0, 750-494 Version 1.5.0, 750-362 Version 1.1.1,
+  abgerufen 10.09.2026) — noch an keiner Box.
 
 Die mitkopierten Lizenzdateien gelten für Deye, SunSpec und OCPP. go-e- und
 Shelly-Dateien werden als unveränderte bzw. quellennahe Fakten-Snapshots mit URL,

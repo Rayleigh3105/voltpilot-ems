@@ -19,20 +19,36 @@ RUNTIME_CATALOG_VERSION = (ROOT / "RUNTIME_VERSION").read_text(encoding="utf-8")
 EDGE_MIN_VERSION = "unreleased"
 POINT_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9._*\[\]@-]*$")
 
-# Was die Box je Punkt liest (der Palette-Katalog) ...
+# Was die Box je Punkt liest (der Palette-Katalog) ... `range` (UEMS AP-05 IP-5: `invalid` = kein
+# Messwert) trägt heute nur eine Familie, die noch an keiner Box ist; lesen wird es erst der Treiber
+# aus AP-05 IP-6 — wer es an einen ausgelieferten Punkt schreibt, hebt den Laufzeitstand.
 EDGE_FIELDS = (
     "address", "aggregation_kind", "catalog_version", "decoder",
     "default_cadence_s", "derived_from", "edge_min_version", "endian",
-    "family", "min_cadence_s", "point_key", "poll_group", "readable",
+    "family", "min_cadence_s", "point_key", "poll_group", "range", "readable",
     "scale", "selector", "signed", "source_kind", "unit", "value_type",
     "width_bits", "dimensions",
 )
 # ... und was der Writer je Punkt nachschlägt (die Metadaten-Migration).
 RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
+# Familien, die der INHALTSSTAND führt, die aber noch an keine Box gehen (README „Familien noch nicht
+# an der Box“): ihre Punkte fehlen in der Box-Sicht, im Palette-Katalog und in der Metadaten-Migration,
+# und die api bietet sie nicht zur Auswahl an. So hebt eine neue Quelle den Laufzeitstand NICHT — der
+# Eintrag fällt erst mit dem Edge-Release, das ihre Punkte lesen kann, und dann steigt RUNTIME_VERSION.
+# ⚠ Nie eine Familie eintragen, die schon an einer Box ist (`validate.py` lehnt das ab).
+NOCH_NICHT_AN_DER_BOX = {
+    "wago.pm494": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
+    "wago.pm495": "UEMS AP-05 IP-6 (Edge-Treiber wago.registerbild) ist nicht ausgeliefert",
+}
 # Z6-Deklaration eines Zählers (AP-08 IP-7, README „Wertebereich eines Zählers“): optional, nur
 # am Zähler, nur aus einer Quelle übernommen. Fehlt ein Feld, ist nichts deklariert — der
 # Generator schreibt nie null oder einen Vorgabewert.
 ZAEHLER_DEKLARATION_FIELDS = ("wertebereich_modul", "laeuft_ueber")
+
+
+def box_points(catalog: dict[str, Any]) -> list[dict[str, Any]]:
+    """Die Punkte, die an eine Box gehen — ohne die Familien aus `NOCH_NICHT_AN_DER_BOX`."""
+    return [point for point in catalog["points"] if point["family"] not in NOCH_NICHT_AN_DER_BOX]
 
 
 def runtime_projection(catalog: dict[str, Any], version: str) -> list[dict[str, Any]]:
@@ -40,7 +56,7 @@ def runtime_projection(catalog: dict[str, Any], version: str) -> list[dict[str, 
     return [
         {key: (version if key == "catalog_version" else point[key])
          for key in RUNTIME_FIELDS if key in point}
-        for point in catalog["points"]
+        for point in box_points(catalog)
     ]
 
 
