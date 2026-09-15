@@ -7,6 +7,8 @@ import {
   ENTWURF_SCHLUESSEL,
   GEBAUTE_SCHRITTE,
   istBereitsAngelegt,
+  keineAnlageSatz,
+  keineAnlageWeg,
   komponentenSatz,
   MESSEN_SCHRITTE,
   messenEinstieg,
@@ -231,5 +233,17 @@ describe('messenAssistent — Schritt 1 und Schritt 2', () => {
     expect(komponentenSatz(0)).toBe('Noch keine Komponente angebunden');
     expect(komponentenSatz(1)).toBe('1 Komponente angebunden');
     expect(komponentenSatz(4)).toBe('4 Komponenten angebunden');
+  });
+
+  it('ohne Anlage nennt Schritt 2 den Zustand UND den Ort, an dem der Kunde sie anlegt — nie nur, was fehlt', () => {
+    expect(keineAnlageSatz('Werk Lindach')).toBe('An Werk Lindach hängt noch keine Anlage.');
+    expect(keineAnlageWeg('Werk Lindach', 3)).toBe(
+      'Legen Sie auf der Übersicht über „Anlage anlegen“ eine Anlage an und wählen Sie dort Werk Lindach als Standort. Danach setzen Sie die Einrichtung hier fort.',
+    );
+    expect(keineAnlageWeg('Werk Lindach', null)).toContain('auf der Übersicht über „Anlage anlegen“');
+    // Mit genau einer Anlage gibt es die Übersicht nicht — der Knopf steht oben in der Kopfzeile.
+    expect(keineAnlageWeg('Werk Lindach', 1)).toBe(
+      'Legen Sie oben über „Anlage hinzufügen“ eine Anlage an und wählen Sie dort Werk Lindach als Standort. Danach setzen Sie die Einrichtung hier fort.',
+    );
   });
 });

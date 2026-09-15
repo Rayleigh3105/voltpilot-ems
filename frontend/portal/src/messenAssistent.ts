@@ -220,13 +220,27 @@ export const GERAET_VERBINDEN = 'Gerät verbinden';
 export const GERAET_VERBINDEN_SATZ = 'Die VoltPilot-Box mit ihrer Geräte-ID';
 export const GERAET_ANBINDEN = 'Gerät anbinden';
 export const GERAET_ANBINDEN_SATZ = 'Zähler oder Controller an der Box';
-export const ANLAGE_ANLEGEN = 'Anlage anlegen';
 export const SPAETER_FORTSETZEN = 'Später fortsetzen';
 export const SPAETER_SATZ = 'Ihre Angaben bleiben erhalten. Sie setzen die Einrichtung dort fort, wo Sie aufgehört haben.';
+export const ANDEREN_STANDORT = 'Anderen Standort wählen';
 
-/** Ohne Anlage am Standort gibt es nichts anzubinden — der Weg ist „Anlage anlegen". */
+/** Ohne Anlage am Standort gibt es nichts anzubinden. */
 export function keineAnlageSatz(standortName: string): string {
   return `An ${standortName} hängt noch keine Anlage.`;
+}
+
+/**
+ * WO der Kunde die Anlage anlegt — ein benannter Weg ohne Knopf (firstmate 002,
+ * Entscheid A): der Anlage-Assistent spricht von Netzladen, Einspeiseleistung und
+ * Betriebsmodell und gehört darum nicht in „Messen & Auswerten". Still heißt
+ * aber nicht Sackgasse: der Satz nennt den Knopf, den der Kunde heute sieht —
+ * mit genau einer Anlage „Anlage hinzufügen" oben in der Kopfzeile
+ * (`addAnlage.showAddAnlageButton`), sonst „Anlage anlegen" auf der Übersicht
+ * (`PortfolioCockpit`). Der Standort wird dort im Schritt „Anlage" gewählt.
+ */
+export function keineAnlageWeg(standortName: string, anlagenZahl: number | null): string {
+  const wo = anlagenZahl === 1 ? 'oben über „Anlage hinzufügen“' : 'auf der Übersicht über „Anlage anlegen“';
+  return `Legen Sie ${wo} eine Anlage an und wählen Sie dort ${standortName} als Standort. Danach setzen Sie die Einrichtung hier fort.`;
 }
 
 /** Die Anlagen, die heute am Standort hängen — an ihnen bindet Schritt 2 an. */
