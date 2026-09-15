@@ -23,6 +23,7 @@ export type PageId =
   | 'portfolio-standorte'
   | 'portfolio-messstellen'
   | 'portfolio-kennzahlen'
+  | 'portfolio-berichte'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -134,6 +135,11 @@ export interface Route {
    */
   kennzahlId?: string;
   /**
+   * Nur bei `page === 'portfolio-berichte'`: WELCHER Bericht die Seite zeigt
+   * (UEMS AP-12 IP-13, `#/portfolio/berichte/{kennung}`). Absent = die Liste.
+   */
+  berichtKennung?: string;
+  /**
    * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
    * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
    * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
@@ -227,6 +233,10 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
   // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
   { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
+  // UEMS AP-12 IP-13: „Unternehmen › Berichte“ (`#/portfolio/berichte`, ein Bericht unter
+  // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
+  // nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBerichte`).
+  { id: 'portfolio-berichte', label: 'Berichte', icon: 'file-text' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -586,6 +596,7 @@ export function parseRoute(hash: string): Route {
   // Landung, statt ins Leere zu zeigen.
   if (head === 'portfolio') {
     if (segments[1] === 'kennzahlen' && segments[2]) return kennzahlRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
     if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
@@ -679,7 +690,8 @@ export function hashForRoute(route: Route): string {
     const kennzahl = route.page === 'portfolio-kennzahlen' && route.kennzahlId ? `/${encodeURIComponent(route.kennzahlId)}` : '';
     const messstelle =
       route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}`;
+    const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bericht}`;
   }
   return `#/${route.page}`;
 }
@@ -707,6 +719,11 @@ export function standortMessstellenRoute(standortId: string): Route {
 /** Route einer Kennzahl-Seite (UEMS AP-11 IP-13): `#/portfolio/kennzahlen/{id}`. */
 export function kennzahlRoute(kennzahlId: string): Route {
   return { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId };
+}
+
+/** Route einer Berichtsseite (UEMS AP-12 IP-13): `#/portfolio/berichte/{kennung}`. */
+export function berichtRoute(berichtKennung: string): Route {
+  return { page: 'portfolio-berichte', siteId: null, sub: null, berichtKennung };
 }
 
 /**

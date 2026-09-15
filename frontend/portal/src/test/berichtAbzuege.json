@@ -1,0 +1,863 @@
+{
+  "_comment": [
+    "Byte-gleiche Kopie der Abzüge BR-2026-0001/1 und /2 aus docs/contracts/v2/bericht-vectors.json (Block abzuege) — für die E2E-Bühne, die außerhalb des Portals nichts lesen darf.",
+    "berichtSeite.test.ts beweist die Gleichheit (kanonische Form); nie ins Produktionsbündel importieren."
+  ],
+  "BR-2026-0001/1": {
+    "kopf": {
+      "bericht": "BR-2026-0001",
+      "vorlage": "monatsbericht_standort",
+      "vorlage_fassung": 1,
+      "geltung": {
+        "art": "standort",
+        "kennzeichen": "ST-1",
+        "name_zum_datenstand": "Werk Ahrenberg"
+      },
+      "unternehmen": "Kunststoffwerk Ahrenberg GmbH",
+      "sitz": "Gewerbering 7, Ahrenberg",
+      "zeitraum": {
+        "art": "monat",
+        "schluessel": "2026-10",
+        "von": "2026-10-01T00:00:00+02:00",
+        "bis": "2026-11-01T00:00:00+01:00",
+        "zone": "Europe/Berlin"
+      },
+      "vergleichszeitraeume": [
+        {
+          "art": "vormonat",
+          "schluessel": "2026-09",
+          "ergebnis": "keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)"
+        },
+        {
+          "art": "vorjahresmonat",
+          "schluessel": "2025-10",
+          "ergebnis": "keine Werte — vor Beginn"
+        }
+      ],
+      "datenstand": "2026-11-10T08:55:00+01:00",
+      "regelwerk": {
+        "software": "<git-SHA des API-Builds zur Bildung>",
+        "vertraege": {
+          "verbrauch": "<schema_version zur Bildung>",
+          "ergebnis-zustand": "<schema_version zur Bildung>",
+          "bilanz": "<schema_version zur Bildung>",
+          "bilanzwert-herkunft": "<schema_version zur Bildung>",
+          "kennzahl": "<schema_version zur Bildung>",
+          "bericht": "<schema_version zur Bildung>"
+        }
+      },
+      "darstellung": {
+        "zeitzone": "Europe/Berlin",
+        "zahlenformat": "de-DE",
+        "dezimal": ",",
+        "rundung": "AP-08 E11 (Tag/Monat/Jahr ganze kWh; Kennzahl 2 Nachkommastellen)",
+        "sommerzeit": "AP-08 E10 (Ortszeit mit MESZ/MEZ)"
+      },
+      "quellenverzeichnis": [
+        "BZ-4",
+        "BZ-6",
+        "KZ-0001",
+        "KZ-0005",
+        "MS-01",
+        "MS-02",
+        "MS-03",
+        "MS-04",
+        "MS-05",
+        "MS-06",
+        "MS-07",
+        "MS-08",
+        "MS-09",
+        "MS-10",
+        "MS-11",
+        "MS-12",
+        "MS-13",
+        "MS-14",
+        "MS-15"
+      ]
+    },
+    "zusammenfassung": {
+      "netzbezug_kwh": 165300,
+      "einspeisung_kwh": 3120,
+      "pv_erzeugung_kwh": 14900,
+      "speicher_laden_kwh": 7900,
+      "speicher_entladen_kwh": 7100,
+      "werte": 16,
+      "davon_endgueltig": 16,
+      "davon_vollstaendig": 16
+    },
+    "werte": [
+      {
+        "quelle": "MS-01",
+        "name_zum_datenstand": "Netzbezug Halle 1",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 128400,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-02",
+        "name_zum_datenstand": "Netzeinspeisung Halle 1",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 3120,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-03",
+        "name_zum_datenstand": "PV-Erzeugung Dach Halle 1",
+        "ort_zum_datenstand": "G-1",
+        "periode": "2026-10",
+        "menge": 14900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-04",
+        "name_zum_datenstand": "Speicher Halle 1",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 7900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "menge_art": "laden"
+      },
+      {
+        "quelle": "MS-04",
+        "name_zum_datenstand": "Speicher Halle 1",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 7100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "menge_art": "entladen"
+      },
+      {
+        "quelle": "MS-05",
+        "name_zum_datenstand": "Verwaltung gesamt",
+        "ort_zum_datenstand": "G-3",
+        "periode": "2026-10",
+        "menge": 7600,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-06",
+        "name_zum_datenstand": "Spritzguss SG01–SG06",
+        "ort_zum_datenstand": "B-1",
+        "periode": "2026-10",
+        "menge": 55100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-07",
+        "name_zum_datenstand": "Druckluft Kompressoren K1+K2",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 15900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-08",
+        "name_zum_datenstand": "Kühlung Kaltwassersatz",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 6200,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-09",
+        "name_zum_datenstand": "Halle 1 + Verwaltung nicht zugeordnet",
+        "ort_zum_datenstand": "G-1",
+        "periode": "2026-10",
+        "menge": 54580,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet"
+        ],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "formel": "MS-01 + MS-03 + MS-04 (entladen) − MS-02 − MS-04 (laden) − MS-05 − MS-06 − MS-07 − MS-08",
+        "formel_fassung": 1
+      },
+      {
+        "quelle": "MS-10",
+        "name_zum_datenstand": "Netzbezug Halle 2",
+        "ort_zum_datenstand": "G-2",
+        "periode": "2026-10",
+        "menge": 36900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-11",
+        "name_zum_datenstand": "Spritzguss SG07–SG10",
+        "ort_zum_datenstand": "B-4",
+        "periode": "2026-10",
+        "menge": 22400,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-12",
+        "name_zum_datenstand": "Montage Linie M1",
+        "ort_zum_datenstand": "B-3",
+        "periode": "2026-10",
+        "menge": 6100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-13",
+        "name_zum_datenstand": "Lager Halle 2 (Allgemein)",
+        "ort_zum_datenstand": "B-5",
+        "periode": "2026-10",
+        "menge": 3500,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-14",
+        "name_zum_datenstand": "Ladepunkt Parkplatz Halle 2",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 1100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-15",
+        "name_zum_datenstand": "Halle 2 nicht zugeordnet",
+        "ort_zum_datenstand": "G-2",
+        "periode": "2026-10",
+        "menge": 3800,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet"
+        ],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "formel": "MS-10 − MS-11 − MS-12 − MS-13 − MS-14",
+        "formel_fassung": 1
+      }
+    ],
+    "kennzahlen": [
+      {
+        "quelle": "KZ-0001",
+        "name_zum_datenstand": "Stromeinsatz Montage je Stück — Halle 2",
+        "wert": 0.1488,
+        "einheit": "kWh/Stück",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet (Kennzahl)"
+        ],
+        "fassung": "endgültig",
+        "version": 1,
+        "definition_fassung": 1,
+        "eingaenge": [
+          {
+            "art": "messstelle",
+            "kennzeichen": "MS-12",
+            "wert": 6100,
+            "einheit": "kWh",
+            "version": 1
+          },
+          {
+            "art": "bezugsgroesse",
+            "kennzeichen": "BZ-6",
+            "wert": 41000,
+            "einheit": "Stück",
+            "fassung": 1
+          }
+        ],
+        "berechnet_am": "2026-11-01T00:20:00+01:00"
+      },
+      {
+        "quelle": "KZ-0005",
+        "name_zum_datenstand": "Netzbezug je m² Halle 2",
+        "wert": 11.9032,
+        "einheit": "kWh/m²",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet (Kennzahl)"
+        ],
+        "fassung": "endgültig",
+        "version": 1,
+        "definition_fassung": 1,
+        "eingaenge": [
+          {
+            "art": "messstelle",
+            "kennzeichen": "MS-10",
+            "wert": 36900,
+            "einheit": "kWh",
+            "version": 1
+          },
+          {
+            "art": "stammdatum",
+            "kennzeichen": "BZ-4 (G-2)",
+            "wert": 3100,
+            "einheit": "m²",
+            "stichtag": "2026-10-31"
+          }
+        ],
+        "berechnet_am": "2026-11-01T00:20:00+01:00"
+      }
+    ],
+    "qualitaet": {
+      "abdeckung_min_prozent": 100,
+      "luecken": 0,
+      "ersatzwerte": 0,
+      "korrekturen_im_zeitraum": 0,
+      "vorlaeufig": 0
+    }
+  },
+  "BR-2026-0001/2": {
+    "kopf": {
+      "bericht": "BR-2026-0001",
+      "vorlage": "monatsbericht_standort",
+      "vorlage_fassung": 1,
+      "geltung": {
+        "art": "standort",
+        "kennzeichen": "ST-1",
+        "name_zum_datenstand": "Werk Ahrenberg"
+      },
+      "unternehmen": "Kunststoffwerk Ahrenberg GmbH",
+      "sitz": "Gewerbering 7, Ahrenberg",
+      "zeitraum": {
+        "art": "monat",
+        "schluessel": "2026-10",
+        "von": "2026-10-01T00:00:00+02:00",
+        "bis": "2026-11-01T00:00:00+01:00",
+        "zone": "Europe/Berlin"
+      },
+      "vergleichszeitraeume": [
+        {
+          "art": "vormonat",
+          "schluessel": "2026-09",
+          "ergebnis": "keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)"
+        },
+        {
+          "art": "vorjahresmonat",
+          "schluessel": "2025-10",
+          "ergebnis": "keine Werte — vor Beginn"
+        }
+      ],
+      "datenstand": "2026-11-12T10:05:33+01:00",
+      "regelwerk": {
+        "software": "<git-SHA des API-Builds zur Bildung>",
+        "vertraege": {
+          "verbrauch": "<schema_version zur Bildung>",
+          "ergebnis-zustand": "<schema_version zur Bildung>",
+          "bilanz": "<schema_version zur Bildung>",
+          "bilanzwert-herkunft": "<schema_version zur Bildung>",
+          "kennzahl": "<schema_version zur Bildung>",
+          "bericht": "<schema_version zur Bildung>"
+        }
+      },
+      "darstellung": {
+        "zeitzone": "Europe/Berlin",
+        "zahlenformat": "de-DE",
+        "dezimal": ",",
+        "rundung": "AP-08 E11 (Tag/Monat/Jahr ganze kWh; Kennzahl 2 Nachkommastellen)",
+        "sommerzeit": "AP-08 E10 (Ortszeit mit MESZ/MEZ)"
+      },
+      "quellenverzeichnis": [
+        "BZ-4",
+        "BZ-6",
+        "KZ-0001",
+        "KZ-0005",
+        "MS-01",
+        "MS-02",
+        "MS-03",
+        "MS-04",
+        "MS-05",
+        "MS-06",
+        "MS-07",
+        "MS-08",
+        "MS-09",
+        "MS-10",
+        "MS-11",
+        "MS-12",
+        "MS-13",
+        "MS-14",
+        "MS-15"
+      ]
+    },
+    "zusammenfassung": {
+      "netzbezug_kwh": 165300,
+      "einspeisung_kwh": 3120,
+      "pv_erzeugung_kwh": 14900,
+      "speicher_laden_kwh": 7900,
+      "speicher_entladen_kwh": 7100,
+      "werte": 16,
+      "davon_endgueltig": 16,
+      "davon_vollstaendig": 16
+    },
+    "werte": [
+      {
+        "quelle": "MS-01",
+        "name_zum_datenstand": "Netzbezug Halle 1",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 128400,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-02",
+        "name_zum_datenstand": "Netzeinspeisung Halle 1",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 3120,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-03",
+        "name_zum_datenstand": "PV-Erzeugung Dach Halle 1",
+        "ort_zum_datenstand": "G-1",
+        "periode": "2026-10",
+        "menge": 14900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-04",
+        "name_zum_datenstand": "Speicher Halle 1",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 7900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "menge_art": "laden"
+      },
+      {
+        "quelle": "MS-04",
+        "name_zum_datenstand": "Speicher Halle 1",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 7100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "menge_art": "entladen"
+      },
+      {
+        "quelle": "MS-05",
+        "name_zum_datenstand": "Verwaltung gesamt",
+        "ort_zum_datenstand": "G-3",
+        "periode": "2026-10",
+        "menge": 7600,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-06",
+        "name_zum_datenstand": "Spritzguss SG01–SG06",
+        "ort_zum_datenstand": "B-1",
+        "periode": "2026-10",
+        "menge": 55100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-07",
+        "name_zum_datenstand": "Druckluft Kompressoren K1+K2",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 15900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-08",
+        "name_zum_datenstand": "Kühlung Kaltwassersatz",
+        "ort_zum_datenstand": "B-2",
+        "periode": "2026-10",
+        "menge": 6200,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-09",
+        "name_zum_datenstand": "Halle 1 + Verwaltung nicht zugeordnet",
+        "ort_zum_datenstand": "G-1",
+        "periode": "2026-10",
+        "menge": 54580,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet"
+        ],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin",
+        "formel": "MS-01 + MS-03 + MS-04 (entladen) − MS-02 − MS-04 (laden) − MS-05 − MS-06 − MS-07 − MS-08",
+        "formel_fassung": 1
+      },
+      {
+        "quelle": "MS-10",
+        "name_zum_datenstand": "Netzbezug Halle 2",
+        "ort_zum_datenstand": "G-2",
+        "periode": "2026-10",
+        "menge": 36900,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-11",
+        "name_zum_datenstand": "Spritzguss SG07–SG10",
+        "ort_zum_datenstand": "B-4",
+        "periode": "2026-10",
+        "menge": 22400,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-12",
+        "name_zum_datenstand": "Montage Linie M1",
+        "ort_zum_datenstand": "B-3",
+        "periode": "2026-10",
+        "menge": 6040,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "korrigiert (Version 2)"
+        ],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 2,
+        "berechnet_am": "2026-11-12T10:05:33+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-13",
+        "name_zum_datenstand": "Lager Halle 2 (Allgemein)",
+        "ort_zum_datenstand": "B-5",
+        "periode": "2026-10",
+        "menge": 3500,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-14",
+        "name_zum_datenstand": "Ladepunkt Parkplatz Halle 2",
+        "ort_zum_datenstand": "ST-1",
+        "periode": "2026-10",
+        "menge": 1100,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 1,
+        "berechnet_am": "2026-11-01T00:20:00+01:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      {
+        "quelle": "MS-15",
+        "name_zum_datenstand": "Halle 2 nicht zugeordnet",
+        "ort_zum_datenstand": "G-2",
+        "periode": "2026-10",
+        "menge": 3860,
+        "einheit": "kWh",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet",
+          "korrigiert (Version 2)"
+        ],
+        "fassung": "endgültig",
+        "endgueltig_ab": "2026-11-08T00:00:00+01:00",
+        "version": 2,
+        "berechnet_am": "2026-11-12T10:05:33+01:00",
+        "zeitzone": "Europe/Berlin",
+        "formel": "MS-10 − MS-11 − MS-12 − MS-13 − MS-14",
+        "formel_fassung": 1
+      }
+    ],
+    "kennzahlen": [
+      {
+        "quelle": "KZ-0001",
+        "name_zum_datenstand": "Stromeinsatz Montage je Stück — Halle 2",
+        "wert": 0.1473,
+        "einheit": "kWh/Stück",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet (Kennzahl)",
+          "korrigiert (Version 2)"
+        ],
+        "fassung": "endgültig",
+        "version": 2,
+        "definition_fassung": 1,
+        "eingaenge": [
+          {
+            "art": "messstelle",
+            "kennzeichen": "MS-12",
+            "wert": 6040,
+            "einheit": "kWh",
+            "version": 2
+          },
+          {
+            "art": "bezugsgroesse",
+            "kennzeichen": "BZ-6",
+            "wert": 41000,
+            "einheit": "Stück",
+            "fassung": 1
+          }
+        ],
+        "berechnet_am": "2026-11-01T00:20:00+01:00"
+      },
+      {
+        "quelle": "KZ-0005",
+        "name_zum_datenstand": "Netzbezug je m² Halle 2",
+        "wert": 11.9032,
+        "einheit": "kWh/m²",
+        "zustand": "vollständig",
+        "abdeckung_prozent": 100,
+        "kennzeichen": [
+          "berechnet (Kennzahl)"
+        ],
+        "fassung": "endgültig",
+        "version": 1,
+        "definition_fassung": 1,
+        "eingaenge": [
+          {
+            "art": "messstelle",
+            "kennzeichen": "MS-10",
+            "wert": 36900,
+            "einheit": "kWh",
+            "version": 1
+          },
+          {
+            "art": "stammdatum",
+            "kennzeichen": "BZ-4 (G-2)",
+            "wert": 3100,
+            "einheit": "m²",
+            "stichtag": "2026-10-31"
+          }
+        ],
+        "berechnet_am": "2026-11-01T00:20:00+01:00"
+      }
+    ],
+    "qualitaet": {
+      "abdeckung_min_prozent": 100,
+      "luecken": 0,
+      "ersatzwerte": 0,
+      "korrekturen_im_zeitraum": 1,
+      "vorlaeufig": 0,
+      "korrekturen": [
+        {
+          "kennung": "K-2026-0007",
+          "reihe": "MS-12",
+          "freigegeben": "2026-11-12T10:05:33+01:00",
+          "wer": "Ines Kaltenbach (Energiemanager)",
+          "warum": "Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)"
+        }
+      ]
+    }
+  }
+}

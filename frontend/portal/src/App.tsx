@@ -45,6 +45,7 @@ import {
   routeFromHash,
   standortMessstellenRoute,
   kennzahlRoute,
+  berichtRoute,
   messstelleRoute,
   standortRoute,
   transitionKind,
@@ -152,6 +153,9 @@ const MessstellenPage = lazy(() =>
 );
 const KennzahlenPage = lazy(() =>
   PAGE_CHUNK['portfolio-kennzahlen']().then((m) => ({ default: m.KennzahlenPage })),
+);
+const BerichtePage = lazy(() =>
+  PAGE_CHUNK['portfolio-berichte']().then((m) => ({ default: m.BerichtePage })),
 );
 const PortfolioMesswerte = lazy(() =>
   PAGE_CHUNK['portfolio-messwerte']().then((m) => ({ default: m.PortfolioMesswerte })),
@@ -1086,6 +1090,8 @@ function UnifiedPortal() {
   const messstellenDa = ebenenFakten ? bereicheHier.includes('messstellen') : null;
   // AP-11 IP-13: der Reiter „Kennzahlen" nur, wo die Ebene den Bereich hat (misst UND eine Kennzahl).
   const kennzahlenDa = ebenenFakten ? bereicheHier.includes('kennzahlen') : null;
+  // AP-12 IP-13: der Reiter „Berichte" nur, wo die Ebene den Bereich hat (ein Standort misst).
+  const berichteDa = ebenenFakten ? bereicheHier.includes('berichte') : null;
   const leisteHier = ebenenKacheln.map((k) => k.key);
   // Unter einem Unternehmen hat der Standort eigene Reiter (Übersicht · Messstellen);
   // ist er die oberste Ebene, trägt `PortfolioTabs` sie.
@@ -1245,6 +1251,7 @@ function UnifiedPortal() {
             showErloese={hatGeldWelt(geldSites)}
             showMessstellen={messstellenDa === true}
             showKennzahlen={kennzahlenDa === true}
+            showBerichte={berichteDa === true}
             leiste={leisteHier}
             fleetLabel={fleetLabel(betriebsart)}
             onNavigate={navigateSchale}
@@ -1278,6 +1285,14 @@ function UnifiedPortal() {
               kennzahlId={route.kennzahlId ?? null}
               onOeffnen={(id) => navigate(kennzahlRoute(id))}
               onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
+            />
+          )}
+          {/* UEMS AP-12 IP-13: „Unternehmen › Berichte" und die Berichtsseite. */}
+          {page === 'portfolio-berichte' && (
+            <BerichtePage
+              kennung={route.berichtKennung ?? null}
+              onOeffnen={(kennung) => navigate(berichtRoute(kennung))}
+              onListe={() => navigate(pageRoute('portfolio-berichte'))}
             />
           )}
           {/* UEMS AP-01 IP-5: die Standort-Übersicht `#/standort/{id}`. */}

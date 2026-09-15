@@ -110,7 +110,7 @@ test.describe('Kennzahlen — die Liste', () => {
     ohneQuerlauf(m, 'liste-375');
     expect(m.route).toBe('#/portfolio/kennzahlen');
     expect(m.titel).toBe('Kennzahlen');
-    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
+    expect(m.leiste).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
     expect(m.leisteAktiv).toBe('Kennzahlen');
     expect(m.reiter).toEqual([]);
     expect(m.karten).toHaveLength(5);
@@ -126,7 +126,7 @@ test.describe('Kennzahlen — die Liste', () => {
     await warteAufListe(page);
     const m = await messe(page);
     ohneQuerlauf(m, 'liste-1440');
-    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Messwerte']);
+    expect(m.reiter).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte', 'Messwerte']);
     expect(m.reiterAktiv).toEqual(['Kennzahlen']);
     expect(m.leiste).toBeNull();
     expect(m.karten[0]).toContain(`0,15${NB}kWh je Stück`);

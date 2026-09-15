@@ -563,15 +563,16 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'trending-up', 'file-text']);
   });
 
-  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-11 IP-13 hat Ahrenberg VIER', () => {
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-12 IP-13 hat Ahrenberg FÜNF', () => {
     expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(5);
-    // Übersicht · Standorte · Messstellen · Kennzahlen — nur die Berichte haben noch keine Seite.
+    // Übersicht · Standorte · Messstellen · Kennzahlen · Berichte — jeder Bereich des Unternehmens hat seine Seite.
     const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
-    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
     expect(leiste[2].ziel).toEqual(pageRoute('portfolio-messstellen'));
     expect(leiste[3].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
-    // Ohne eine lebende Kennzahl gibt es den Bereich nicht — dann bleibt es bei drei.
-    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(leiste[4].ziel).toEqual(pageRoute('portfolio-berichte'));
+    // Ohne eine lebende Kennzahl gibt es den Bereich „Kennzahlen“ nicht — die Berichte bleiben (ein Standort misst).
+    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Berichte']);
     // Die Standorte bleiben bei zwei (Übersicht · Messstellen; Gebäude und Anlagen ohne Seite) — ohne Leiste.
     expect(ebenenLeiste(WERK, MESSKUNDE)).toEqual([]);
     expect(ebenenLeiste(LINDACH, MESSKUNDE)).toEqual([]);
@@ -585,6 +586,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
       standorte: pageRoute('portfolio-standorte'),
       messstellen: pageRoute('portfolio-messstellen'),
       kennzahlen: pageRoute('portfolio-kennzahlen'),
+      berichte: pageRoute('portfolio-berichte'),
     });
     expect(EBENEN_SEITEN(WERK)).toEqual({
       uebersicht: standortRoute(FIXTURE_IDS.st1),
@@ -595,7 +597,7 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
   it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
     expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Messstellen']);
     expect(ebenenReiter(LINDACH, MESSKUNDE)[1].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
-    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen']);
+    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Kennzahlen', 'Berichte']);
     // Ein einzelner Reiter ist keine Wahl.
     const nurHeute: EbenenSeiten = (ort) => EBENEN_SEITEN(ort);
     const ohneMessen = structuredClone(MESSKUNDE);

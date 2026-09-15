@@ -271,6 +271,24 @@ export const UEMS_GELTUNGSBEREICH = 'Geltungsbereich';
 export const UEMS_VERANTWORTLICH = 'Verantwortlich';
 export const UEMS_ZWECK = 'Zweck';
 
+/**
+ * UEMS AP-12 (E14 = A) — die Wörter des Berichts (`docs/fachmodell/glossar.md`
+ * › Bericht, Berichtsvorlage, Berichtsstand, Revision, Datenstand,
+ * Quellenverzeichnis; AP-12 §4.15). „Entwurf" steht nur auf der Berichtsseite
+ * unqualifiziert (sonst „Berichtsentwurf"); ein freigegebener Stand heißt
+ * „Berichtsstand Nr. n", nie „Version", „Ausgabe", „Snapshot" oder „Report"
+ * (`copy.test.ts`). „Version" gehört weiter dem Wert einer Periode.
+ */
+export const UEMS_BERICHT = 'Bericht';
+export const UEMS_BERICHTE = 'Berichte';
+export const UEMS_BERICHTSVORLAGE = 'Berichtsvorlage';
+export const UEMS_ENTWURF = 'Entwurf';
+export const UEMS_BERICHTSSTAND = 'Berichtsstand';
+export const UEMS_REVISION = 'Revision';
+export const UEMS_DATENSTAND = 'Datenstand';
+export const UEMS_QUELLENVERZEICHNIS = 'Quellenverzeichnis';
+export const UEMS_PRUEFSUMME = 'Prüfsumme';
+
 // ---------------------------------------------------------------------------
 // 3 · Der Suchindex
 // ---------------------------------------------------------------------------

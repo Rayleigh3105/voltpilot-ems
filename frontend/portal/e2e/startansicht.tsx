@@ -43,6 +43,7 @@ import { consumersApi } from '../src/consumers/consumersApi';
 import { healthBadge } from '../src/health';
 import {
   anlageRoute,
+  berichtRoute,
   hashForRoute,
   kennzahlRoute,
   pageRoute,
@@ -53,6 +54,7 @@ import {
 } from '../src/nav';
 import { ApiError, type Kennzahl, type KennzahlAnfrage, type KennzahlPeriodeArt, type KennzahlWerte } from '../src/api';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
+import { BerichtePage } from '../src/pages/BerichtePage';
 import { KennzahlenPage } from '../src/pages/KennzahlenPage';
 import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
@@ -85,6 +87,7 @@ import {
   kennzahlWerteAntwort,
   kennzahlWertVersionenAntwort,
 } from '../src/test/kennzahlWerteFixtures';
+import { berichteAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm } from '../src/test/berichtFixtures';
 import type { UebersichtEbene } from '../src/uebersicht';
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
@@ -167,6 +170,12 @@ const geltungName = (art: string, id: string): string | null => {
     null
   );
 };
+/**
+ * AP-12 IP-13: `&ansicht=berichte` öffnet „Unternehmen › Berichte“, `&ansicht=bericht&br=BR-2026-0001` die
+ * Berichtsseite. Die Antworten folgen der Zeitachse des Referenzunternehmens zur Uhr der Bühne (`page.clock`,
+ * `src/test/berichtFixtures.ts`); `&heute=b10` nennt im Register die Umbenennung von MS-12 ab 01.12.2026 (B10).
+ */
+const heuteB10 = params.get('heute') === 'b10';
 /**
  * AP-01 IP-7: `&seiten=kuenftig` stellt das Bild, sobald JEDER Bereich der Ebene
  * eine Seite hat (AP-04 IP-5, AP-13) — nur für die Vorschau; die Kacheln führen
@@ -282,7 +291,11 @@ Object.assign(api, {
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
   // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
-  messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => ahrenbergRegister(a),
+  messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => {
+    const r = ahrenbergRegister(a);
+    if (!heuteB10) return r;
+    return { ...r, register: r.register.map((z) => ({ ...z, name: nameHeuteAm(Date.now(), z.kennzeichen, z.name) })) };
+  },
   // AP-04 IP-6: was der Messstellen-Dialog beim Öffnen liest (Vorschlag, Standorte, Ortsbäume).
   kennzeichenVorschlag: async () => ({ kennzeichen: 'MS-0023' }),
   standorte: async () => structuredClone(szene.liste),
@@ -322,6 +335,15 @@ Object.assign(api, {
     angelegt.push(k);
     return k;
   },
+  // AP-12 IP-13: die Berichte der Referenzdatei (BR-2026-0001) — gelesen zur Uhr der Bühne.
+  berichte: async () => berichteAm(Date.now()),
+  bericht: async (kennung: string) => {
+    if (kennung !== 'BR-2026-0001') throw new ApiError(404, 'Diesen Bericht gibt es nicht.');
+    return detailAm(Date.now());
+  },
+  berichtEntwurf: async () => entwurfAm(Date.now()),
+  berichtStand: async (_kennung: string, nr: number) => standAm(nr, Date.now()),
+  messstelleWerte: async (kennzeichen: string) => heutigeWerteAm(kennzeichen, Date.now()),
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
@@ -450,7 +472,11 @@ function Vorschau() {
                     ? pageRoute('portfolio-kennzahlen')
                     : ansicht === 'kennzahl' && kzOffen
                       ? kennzahlRoute(kzOffen)
-                      : pageRoute('uebersicht'),
+                      : ansicht === 'berichte'
+                        ? pageRoute('portfolio-berichte')
+                        : ansicht === 'bericht'
+                          ? berichtRoute(params.get('br') ?? 'BR-2026-0001')
+                          : pageRoute('uebersicht'),
     ),
   );
   useEffect(() => {
@@ -506,6 +532,7 @@ function Vorschau() {
       showErloese={false}
       showMessstellen={bereiche.includes('messstellen')}
       showKennzahlen={bereiche.includes('kennzahlen')}
+      showBerichte={bereiche.includes('berichte')}
       leiste={leiste}
       fleetLabel={FLOTTE}
       onNavigate={navigateSchale}
@@ -613,6 +640,16 @@ function Vorschau() {
             kennzahlId={route.kennzahlId ?? null}
             onOeffnen={(id) => navigate(kennzahlRoute(id))}
             onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
+          />
+        </>
+      )}
+      {route.page === 'portfolio-berichte' && (
+        <>
+          {portfolioReiter('portfolio-berichte')}
+          <BerichtePage
+            kennung={route.berichtKennung ?? null}
+            onOeffnen={(kennung) => navigate(berichtRoute(kennung))}
+            onListe={() => navigate(pageRoute('portfolio-berichte'))}
           />
         </>
       )}
