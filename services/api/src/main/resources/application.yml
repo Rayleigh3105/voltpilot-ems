@@ -395,6 +395,12 @@ voltpilot:
     # sie nennt der Abzug Version und Build-Zeit aus build-info (pom.xml). Kein Flag.
     berichte:
       build: ${VOLTPILOT_BUILD:}
+      # UEMS AP-12 IP-8: die Kaskaden-Naht der Berichte (BerichtKaskade). Eine
+      # freigegebene oder zurückgenommene Korrektur bildet betroffene Entwürfe in
+      # der Transaktion der Kaskade neu und stößt gültige Berichtsstände an - ein
+      # Stand wird nie geändert. `enabled` ist der Rückbau: aus -> BerichteNaht.Keine,
+      # die Tabellen bleiben. Kein eigener Takt. Vorgabe AN, im Testlauf AUS (surefire).
+      enabled: ${VOLTPILOT_UEMS_BERICHTE_ENABLED:true}
     bestandsuebernahme:
       enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
     # UEMS AP-01 IP-2: der UMSTIEG „Bestand → Zustand" der Funktionen läuft direkt

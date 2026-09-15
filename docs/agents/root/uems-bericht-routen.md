@@ -44,7 +44,7 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **409 `entwurf_veraltet` hat zwei Gründe:** der übermittelte Datenstand ist nicht der gespeicherte (`datenstand_aktuell` =
   der gespeicherte), ODER der gespeicherte ist selbst nach D2/D3 veraltet (`datenstand_aktuell` null, `aenderungen` nennt,
   was) — dann erst `GET …/entwurf`. `abweichungen` stehen gegen den GÜLTIGEN Stand (der gesehene Entwurf ist nicht
-  gespeichert), ohne Stand leer; der Anlass kommt aus `bericht_entwurf_neu_gebildet` (schreibt erst IP-8).
+  gespeichert), ohne Stand leer; der Anlass kommt aus `bericht_entwurf_neu_gebildet` (schreibt seit IP-8 die Kaskaden-Naht, `uems-bericht-kaskade.md`).
 - **`gebildet_von` ist nicht die Handlung:** `anlegen`, `abruf` (EW1) — `abrufen` lehnt die Bildung ab.
 - **Unternehmensbericht:** Anlegen und D4-Neubildung sind 501 `unternehmensbericht_folgt` bis IP-6; Lesen, Freigeben eines
   vorhandenen Entwurfs und alle Rechte gelten schon.

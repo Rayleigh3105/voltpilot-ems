@@ -295,6 +295,11 @@
                              Testlauf aus, in PRODUKTION an. KorrekturKaskadeWiringTest
                              prueft die ausgelieferte Vorgabe. -->
                         <voltpilot.uems.kaskade.enabled>false</voltpilot.uems.kaskade.enabled>
+                        <!-- Die Kaskaden-Naht der Berichte (AP-12 IP-8): im Testlauf
+                             aus, in PRODUKTION an. KorrekturKaskadeWiringTest prueft die
+                             ausgelieferte Vorgabe; UemsBerichtKaskadeTest baut die Naht
+                             ohne Spring. -->
+                        <voltpilot.uems.berichte.enabled>false</voltpilot.uems.berichte.enabled>
                         <!-- Die Zeilentext-Aufbewahrung (AP-09 IP-12): dieselbe Falle, im
                              Testlauf aus, in PRODUKTION an.
                              ZeilentextAufbewahrungWiringTest prueft die ausgelieferte
