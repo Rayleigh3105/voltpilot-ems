@@ -23,7 +23,8 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 - **Neue Zugriffs-Ablehnungen NUR an diesen Routen** (E12): fremder Kundenbereich oder Standort 404 `nicht_gefunden`,
   fehlendes Recht 403 `recht_fehlt` mit dem Satz der Rechte-Ableitung (bericht.md G2 — die Report-Sätze §5.8 gibt es in
   `RechteAbleitung.TEXTE` nicht), die Unterstützung bekommt nie Entwurf oder Stand. Die Liste zeigt nur Lesbares; wer
-  nirgends lesen darf, bekommt 403. Den Bestand-Geräte-CSV (`export.standort`) setzt erst IP-10 durch.
+  nirgends lesen darf, bekommt 403. Seit AP-12 IP-10 dazu der Berichts-CSV (`export.*`) und der Bestand-Geräte-CSV
+  (`export.standort`, Unterstützer 403 — `uems-bericht-ausgabe-csv.md`).
 - **Das Recht prüft VOR den Regeln:** Bericht (RLS) → `BerichtRechte` → F1/D4. Eine 422 verrät nie einen fremden Bericht.
 - **Der Stand ist eine Kopie in SQL:** `INSERT INTO bericht_stand … SELECT e.abzug, e.pruefsumme … FROM bericht_entwurf e
   WHERE … AND e.datenstand = ?` — nie über Java oder Jackson. Lesen prüft `BerichtRegeln.pruefsumme(text)` gegen die

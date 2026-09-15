@@ -72,6 +72,9 @@ public class BerichtService {
             ZEICHEN_VERWORFEN);
 
     static final String EREIGNIS_FREIGEGEBEN = "bericht_freigegeben";
+    static final String EREIGNIS_ABGERUFEN = "bericht_abgerufen";
+    /** DA5 — das Format eines Abrufs ({@code bericht_abruf.format}, Meldung {@code bericht_abgerufen}). */
+    static final String FORMAT_CSV = "csv";
     /** {@code gebildet_von} (bericht.md EW1) — nicht die Handlung der Route. */
     static final String GEBILDET_BEIM_ANLEGEN = "anlegen";
     static final String GEBILDET_BEIM_ABRUF = "abruf";
@@ -136,6 +139,9 @@ public class BerichtService {
     /** {@code neu} = diese Anfrage hat den Stand geschrieben (201); sonst war es dieselbe Freigabe (F5, 200). */
     public record Freigabe(Stand stand, boolean neu) {}
 
+    /** Eine Ausgabe eines Stands: Dateiname nach §5.4 ({@code bericht-BR-2026-0001-nr1.csv}) und Inhalt. */
+    public record Datei(String name, byte[] inhalt) {}
+
     public record Verworfen(Kopf kopf, AnstossZeile anstoss) {}
 
     /** Bericht, Urteil und Aufrufer einer Route — nach der Rechte-Prüfung. */
@@ -189,6 +195,29 @@ public class BerichtService {
     public Stand stand(String kennung, int nr, ProtokollAkteur wer) {
         Zugriff z = zugriff(kennung, wer, BerichtRechte.ABRUFEN);
         return new Stand(z.kopf(), geprueft(z.kopf(), nr), teilansicht(z));
+    }
+
+    /**
+     * {@code GET …/staende/{nr}/csv} (DA3, DA5): Recht {@code export.*} (G1) → Stand mit geprüfter Prüfsumme (404, 500) → die
+     * Datei NUR aus dem Abzug ({@link BerichtCsv}) → Abruf und Meldung {@code bericht_abgerufen} in EINER Transaktion.
+     * Scheitert das Protokoll, verlässt keine Datei den Server — einen Abruf ohne Spur gibt es nicht. Ein Entwurf hat keine
+     * Datei (EW4).
+     */
+    public Datei csv(String kennung, int nr, ProtokollAkteur wer) {
+        Zugriff z = zugriff(kennung, wer, BerichtRechte.CSV);
+        Kopf kopf = z.kopf();
+        StandZeile s = geprueft(kopf, nr);
+        Instant ersetztAm = s.ersetztDurchNr() == null ? null : repo.staende(kopf.tenant(), kopf.id()).stream()
+                .filter(x -> x.nr() == s.ersetztDurchNr()).map(StandZeile::freigegebenAm).findFirst().orElseThrow();
+        List<String> teilansicht = teilansicht(z);
+        byte[] inhalt = BerichtCsv.datei(baum(s.abzug()), new BerichtCsv.Stand(s.nr(), s.freigegebenAm(),
+                s.freigeberName(), s.pruefsumme(), s.ersetztDurchNr(), ersetztAm), z.jetzt(), wer.name(), teilansicht);
+        transaktion.executeWithoutResult(tx -> {
+            UUID abruf = repo.abruf(kopf.tenant(), s.id(), FORMAT_CSV, teilansicht != null, wer, rolle(z.darf(), wer),
+                    z.jetzt());
+            ereignisAbgerufen(kopf.tenant(), kopf.kennung(), s.nr(), FORMAT_CSV, abruf, z.jetzt());
+        });
+        return new Datei("bericht-" + kopf.kennung() + "-nr" + s.nr() + ".csv", inhalt);
     }
 
     // ================================================================================ anlegen
@@ -621,11 +650,27 @@ public class BerichtService {
         e.put("nr", s.nr());
         e.put("datenstand", s.datenstand().truncatedTo(ChronoUnit.SECONDS).toString());
         e.put("pruefsumme", s.pruefsumme());
+        melden(tenant, e);
+    }
+
+    /** Die Meldung {@code bericht_abgerufen} (DA5, Urheber kunde, Bezug der Bericht) — ihre Kennung ist die des Abrufs. */
+    private void ereignisAbgerufen(UUID tenant, String kennung, int nr, String format, UUID abruf, Instant jetzt) {
+        ObjectNode e = json.createObjectNode();
+        e.put("ereignis_id", abruf.toString());
+        e.put("art", EREIGNIS_ABGERUFEN);
+        e.put("zeitpunkt", jetzt.toString());
+        e.put("bericht", kennung);
+        e.put("nr", nr);
+        e.put("format", format);
+        melden(tenant, e);
+    }
+
+    private void melden(UUID tenant, ObjectNode e) {
         MessreiheEreignisRepository.Ergebnis r = ereignisse.anhaengen(tenant, null, EreignisVokabular.Urheber.KUNDE, e, null,
                 null);
         if (r.ausgang() != MessreiheEreignisRepository.Ausgang.ANGEHAENGT) {
-            throw new IllegalStateException(EREIGNIS_FREIGEGEBEN + " nicht angehängt: " + r.ausgang() + " " + r.grund() + " "
-                    + r.hinweis());
+            throw new IllegalStateException(e.path("art").asText() + " nicht angehängt: " + r.ausgang() + " " + r.grund()
+                    + " " + r.hinweis());
         }
     }
 

@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
@@ -148,6 +150,23 @@ public class BerichtController {
             throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
         }
         return stand(dienst.stand(k, Integer.parseInt(nr), wer));
+    }
+
+    /**
+     * Recht: {@code export.standort} bzw. {@code export.unternehmen} (G1) — der Berichts-CSV eines Stands in Kundenform
+     * (DA3), jeder Abruf protokolliert (DA5); ein Entwurf hat keinen (EW4). Ablehnungen wie am Stand, als JSON.
+     */
+    @GetMapping("/berichte/{kennung}/staende/{nr}/csv")
+    public ResponseEntity<byte[]> csv(@PathVariable String kennung, @PathVariable String nr, Authentication auth) {
+        ProtokollAkteur wer = OrtAnfrage.akteur(auth);
+        String k = kennung(kennung);
+        if (!NR.matcher(nr).matches()) {
+            throw BerichtAbgelehnt.von(Ablehnung.NICHT_GEFUNDEN);
+        }
+        BerichtService.Datei datei = dienst.csv(k, Integer.parseInt(nr), wer);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + datei.name())
+                .body(datei.inhalt());
     }
 
     /** Recht: {@code bericht.standort_freigeben} bzw. {@code bericht.unternehmen} — R4, mit Begründung. */

@@ -42,6 +42,8 @@ public final class BerichtRechte {
 
     /** Die Handlungen der Routen dieses Pakets (G1: Anlegen und Archivieren folgen dem Freigabe-Recht). */
     public static final String ABRUFEN = "abrufen";
+    /** Der Berichts-CSV eines Stands (IP-10): {@code export.standort} bzw. {@code export.unternehmen}. */
+    public static final String CSV = "csv";
     public static final String ANLEGEN = "anlegen";
     public static final String FREIGEBEN = "freigeben";
     public static final String VERWERFEN = "verwerfen";
