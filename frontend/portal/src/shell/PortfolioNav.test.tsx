@@ -209,3 +209,54 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     expect(container.innerHTML).toBe('');
   });
 });
+
+/**
+ * UEMS AP-04 IP-5: „Messstellen“ ist ein BEREICH der Unternehmens-Ebene. Der Reiter steht
+ * nur, wo ein Standort misst; am Telefon trägt die Leiste (ab drei) die Bereiche, und was
+ * dort Kachel ist, trägt `vp-nur-rechner` (CSS blendet es unter 720 px aus).
+ */
+describe('PortfolioTabs: der Bereich „Messstellen“ und die Leiste am Telefon (AP-04 IP-5)', () => {
+  it('der Reiter „Messstellen“ steht nur, wenn ein Standort misst — und per Lesezeichen offen', () => {
+    const onNavigate = vi.fn();
+    const { rerender } = render(
+      <PortfolioTabs page="portfolio" showErloese={false} fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect(screen.queryByRole('tab', { name: 'Messstellen' })).toBeNull();
+    rerender(
+      <PortfolioTabs page="portfolio" showErloese={false} showMessstellen fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
+      'Übersicht',
+      'Standorte',
+      'Messstellen',
+      'Messwerte',
+    ]);
+    fireEvent.click(screen.getByRole('tab', { name: 'Messstellen' }));
+    expect(onNavigate).toHaveBeenCalledWith('portfolio-messstellen');
+    rerender(
+      <PortfolioTabs page="portfolio-messstellen" showErloese={false} fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect(screen.getByRole('tab', { name: 'Messstellen' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ohne Leiste bleibt jeder Reiter überall sichtbar', () => {
+    render(<PortfolioTabs page="portfolio" showErloese showMessstellen fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />);
+    expect(reiter().classList.contains('vp-nur-rechner')).toBe(false);
+    expect(reiter().querySelectorAll('.vp-nur-rechner')).toHaveLength(0);
+  });
+
+  it('mit Leiste: auf der Übersicht nur noch ihre Reiter am Telefon, auf „Messstellen“ gar keine', () => {
+    const leiste = ['uebersicht', 'standorte', 'messstellen'] as const;
+    const { rerender } = render(
+      <PortfolioTabs page="portfolio" showErloese showMessstellen leiste={leiste} fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />,
+    );
+    const nurRechner = () =>
+      [...reiter().querySelectorAll('[role=tab]')].filter((t) => t.classList.contains('vp-nur-rechner')).map((t) => t.textContent);
+    expect(nurRechner()).toEqual(['Standorte', 'Messstellen']);
+    expect(reiter().classList.contains('vp-nur-rechner')).toBe(false);
+    rerender(
+      <PortfolioTabs page="portfolio-messstellen" showErloese showMessstellen leiste={leiste} fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />,
+    );
+    expect(reiter().classList.contains('vp-nur-rechner')).toBe(true);
+  });
+});

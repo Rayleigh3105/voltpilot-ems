@@ -183,3 +183,14 @@ html.vp-vt-fade .vp-welt-strich {
     padding: 0 var(--vp-space-2, 0.5rem);
   }
 }
+
+/* UEMS AP-04 IP-5: am Telefon trägt die Leiste der Ebene (ab drei Kacheln) die
+   BEREICHE — ein Reiter, der dort schon Kachel ist, entfällt hier (`vp-nur-rechner`
+   aus `PortfolioTabs`/`EbenenTabs`). Die Leiste selbst blendet oberhalb von 720 px
+   aus; dieselbe Grenze, damit am Rechner kein Weg fehlt. */
+@media (max-width: 720px) {
+  .vp-bereich-tabs.vp-nur-rechner,
+  .vp-bereich-tab.vp-nur-rechner {
+    display: none;
+  }
+}

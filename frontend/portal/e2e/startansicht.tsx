@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, type FunktionStandort, type Overview, type OverviewSite, type Site } from '../src/api';
+import {
+  api,
+  type FunktionStandort,
+  type MessstellenRegisterAnfrage,
+  type Overview,
+  type OverviewSite,
+  type Site,
+} from '../src/api';
 import { keycloak } from '../src/auth';
 import { showAddAnlageButton } from '../src/addAnlage';
 import { ohneGeld } from '../src/anlageGeld';
@@ -8,8 +15,10 @@ import {
   activeAreaKey,
   anlageSidebar,
   ebenenAktiv,
+  ebenenBereiche,
   ebenenLeiste,
   ebenenOrt,
+  ebenenReiter,
   ebenenTitel,
   type EbenenLesemodell,
   type EbenenSeiten,
@@ -28,12 +37,23 @@ import {
   type PfadGlied,
   type ShellInput,
 } from '../src/betriebsart';
+import { EbenenTabs } from '../src/components/EbenenTabs';
 import { PortfolioTabs } from '../src/components/PortfolioTabs';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { healthBadge } from '../src/health';
-import { anlageRoute, hashForRoute, pageRoute, standortRoute, type PageId, type Route } from '../src/nav';
+import {
+  anlageRoute,
+  hashForRoute,
+  pageRoute,
+  standortMessstellenRoute,
+  standortRoute,
+  type PageId,
+  type Route,
+} from '../src/nav';
 import { AnlagenPage } from '../src/pages/AnlagenPage';
+import { MessstellenPage } from '../src/pages/MessstellenPage';
 import { PortfolioPage } from '../src/pages/PortfolioPage';
+import { ahrenbergRegister } from '../src/test/messstellenRegisterFixtures';
 import { StandortUebersichtPage } from '../src/pages/StandortUebersichtPage';
 import { AppShell } from '../src/shell/AppShell';
 import { anlageSurface } from '../src/surface';
@@ -201,6 +221,8 @@ Object.assign(api, {
     throw new Error('Das Referenzunternehmen trägt keine Geldwerte.');
   },
   tenantCockpitLayout: async () => ({ vorgabe: null, eigen: null }),
+  // AP-04 IP-5: das Messstellen-Register des Referenzunternehmens (heute = 20.10.2026, mit Stichtag und Filtern).
+  messstellenRegister: async (a: MessstellenRegisterAnfrage = {}) => ahrenbergRegister(a),
   // IP-6: beide Funktionen je sichtbarem Standort (A7; `messen=bestand` = A11).
   funktionen: async () => funktionenDerSzene(),
   // IP-8: die Steuerungsseite einer Anlage, die nur misst. Gestellt ist, was
@@ -319,7 +341,13 @@ function Vorschau() {
           ? standortRoute(st2)
           : ansicht === 'werk'
             ? standortRoute(FIXTURE_IDS.st1)
-            : pageRoute('uebersicht'),
+            : ansicht === 'messstellen'
+              ? pageRoute('portfolio-messstellen')
+              : ansicht === 'werk-messstellen'
+                ? standortMessstellenRoute(FIXTURE_IDS.st1)
+                : ansicht === 'lindach-messstellen'
+                  ? standortMessstellenRoute(st2)
+                  : pageRoute('uebersicht'),
     ),
   );
   useEffect(() => {
@@ -327,8 +355,11 @@ function Vorschau() {
   }, [route]);
 
   const navigate = (ziel: Route | PageId) => setRoute(kanonisch(typeof ziel === 'string' ? pageRoute(ziel) : ziel));
-  const navigateSchale = (ziel: Route | PageId) =>
-    navigate(ziel === 'portfolio' && ebene.art === 'standort' ? flottenLandung(shell) : ziel);
+  const navigateSchale = (ziel: Route | PageId) => {
+    if (ebene.art === 'standort' && ziel === 'portfolio') return navigate(flottenLandung(shell));
+    if (ebene.art === 'standort' && ziel === 'portfolio-messstellen') return navigate(standortMessstellenRoute(ebene.standort.id));
+    return navigate(ziel);
+  };
 
   const site = route.page === 'anlagen' ? sites.find((s) => s.id === route.siteId) ?? null : null;
   const pfad = kopfPfad({ shell, route, anlageId: site?.id ?? null, fleetLabel: FLOTTE });
@@ -356,10 +387,34 @@ function Vorschau() {
       ? {
           titel: ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? ''),
           kacheln,
-          aktiv: ebenenAktiv(route.page),
+          aktiv: ebenenAktiv(route.page, route.standortBereich),
           onOpen: (ziel: Route) => navigate(ziel),
         }
       : null;
+  // AP-04 IP-5, wie `App.tsx`: der Reiter „Messstellen" nur, wo gemessen wird; am Telefon
+  // entfallen die Reiter, die die Leiste trägt. `&reiter=alle` = Variante A der Vorschau (alle bleiben).
+  const bereiche = ort ? ebenenBereiche(ort, lesemodell).map((b) => b.key) : [];
+  const leiste = params.get('reiter') === 'alle' ? [] : kacheln.map((k) => k.key);
+  const standortReiter =
+    route.page === 'standort' && ebene.art !== 'standort' && ort?.art === 'standort' ? ebenenReiter(ort, lesemodell) : [];
+  const portfolioReiter = (page: PageId) => (
+    <PortfolioTabs
+      page={page}
+      showErloese={false}
+      showMessstellen={bereiche.includes('messstellen')}
+      leiste={leiste}
+      fleetLabel={FLOTTE}
+      onNavigate={navigateSchale}
+    />
+  );
+  const messstellenEbene =
+    route.page === 'portfolio-messstellen' && ebene.art === 'unternehmen'
+      ? { art: 'unternehmen' as const, name: szene.unternehmen.name ?? '' }
+      : route.page === 'portfolio-messstellen' && ebene.art === 'standort'
+        ? { art: 'standort' as const, id: ebene.standort.id, name: ebene.standort.name }
+        : route.page === 'standort' && route.standortBereich === 'messstellen' && standort
+          ? { art: 'standort' as const, id: standort.id, name: standort.name }
+          : null;
 
   return (
     <AppShell
@@ -423,24 +478,43 @@ function Vorschau() {
       )}
       {route.page === 'standort' && standort && (
         <>
-          <PortfolioTabs
-            page={ebene.art === 'standort' ? 'portfolio' : route.page}
-            showErloese={false}
-            fleetLabel={FLOTTE}
-            onNavigate={navigateSchale}
-          />
-          <StandortUebersichtPage
-            standort={standort}
-            sites={sites}
-            onNavigate={navigate}
-            onReload={() => undefined}
-            betriebsart="endkunde"
-          />
+          {portfolioReiter(
+            ebene.art === 'standort' ? (route.standortBereich === 'messstellen' ? 'portfolio-messstellen' : 'portfolio') : route.page,
+          )}
+          {standortReiter.length > 0 && (
+            <EbenenTabs
+              reiter={standortReiter}
+              aktiv={ebenenAktiv(route.page, route.standortBereich)}
+              leiste={leiste}
+              label={`Reiter des Standorts ${standort.name}`}
+              onOpen={navigate}
+            />
+          )}
+          {!route.standortBereich && (
+            <StandortUebersichtPage
+              standort={standort}
+              sites={sites}
+              onNavigate={navigate}
+              onReload={() => undefined}
+              betriebsart="endkunde"
+            />
+          )}
         </>
+      )}
+      {route.page === 'portfolio-messstellen' && portfolioReiter('portfolio-messstellen')}
+      {messstellenEbene && (
+        <MessstellenPage
+          key={messstellenEbene.art === 'standort' ? messstellenEbene.id : 'unternehmen'}
+          ebene={messstellenEbene}
+          bereichDa={bereiche.includes('messstellen')}
+          onUebersicht={() =>
+            navigate(messstellenEbene.art === 'standort' ? standortRoute(messstellenEbene.id) : pageRoute('portfolio'))
+          }
+        />
       )}
       {route.page === 'portfolio' && (
         <>
-          <PortfolioTabs page="portfolio" showErloese={false} fleetLabel={FLOTTE} onNavigate={navigateSchale} />
+          {portfolioReiter('portfolio')}
           <PortfolioPage
             sites={sites}
             onNavigate={navigate}

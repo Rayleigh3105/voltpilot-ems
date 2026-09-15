@@ -30,11 +30,11 @@ wie an der Karte „Funktionen" (PR 771): ein Knopf ohne Ziel ist die Sackgasse,
 
 ## Die Fallen
 
-1. **Heute hat Ahrenberg KEINE Leiste — das ist richtig, nicht vergessen.** Nur Übersicht (`#/portfolio`,
-   `#/standort/{id}`) und Standorte (`#/portfolio/standorte`) haben eine Seite; zwei Kacheln sind unter der Schwelle.
-   Die Leiste erscheint von selbst, sobald eine weitere Seite in `EBENEN_SEITEN` steht: Messstellen (AP-04 IP-5),
-   Kennzahlen und Berichte (AP-13, AP-12), Gebäude und Anlagen des Standorts (AP-13). Wer eine davon baut, trägt die
-   Route dort ein und passt den Test „jede Seite, die es heute gibt" an.
+1. **Seit AP-04 IP-5 hat das Unternehmen Ahrenberg DREI Kacheln — die Leiste ist da** (`uems-messstellen-register-portal.md`).
+   Übersicht, Standorte und Messstellen haben eine Seite (`#/portfolio`, `#/portfolio/standorte`, `#/portfolio/messstellen`);
+   die Standorte bleiben bei zwei (Übersicht · Messstellen) und ohne Leiste. Es fehlen noch Kennzahlen und Berichte (AP-13,
+   AP-12), Gebäude und Anlagen des Standorts (AP-13) — wer eine davon baut, trägt die Route in `EBENEN_SEITEN` ein und
+   passt den Test „jede Seite, die es heute gibt" und `telefonleiste.spec.ts` an.
 2. **Nie eine Kachel ohne Seite**, auch nicht „zum Reservieren": E4 hat „immer fünf Kacheln, auch leere" verworfen,
    und `copy.test.ts` verbietet „in Vorbereitung".
 3. **Unbekannt ist nie vorhanden.** Fehlt `/funktionen` oder `/kennzahlen` (älteres Backend, Fehler, lädt), entstehen
@@ -42,9 +42,8 @@ wie an der Karte „Funktionen" (PR 771): ein Knopf ohne Ziel ist die Sackgasse,
 4. **Keine Steuerungs-Kachel auf Unternehmen oder Standort** (Steuern-Regel, `uems-steuern-still.md`): gesteuert
    wird je Anlage. Der Weg bleibt über die Übersicht in die Anlage, deren Kachel „Steuerung" unverändert steht.
 5. **In einer Anlage gewinnt ihre Leiste** — `App.tsx` reicht `ebenen` nur ohne offene Anlage.
-6. **Offen, sobald die erste Leiste erscheint:** am Telefon stünde „Standorte" dann als Kachel UND als Reiter der
-   Übersicht (`PortfolioTabs`); am Rechner gibt es auf dieser Ebene keine Seitenleisten-Bereiche, dort bleiben die
-   Reiter der einzige Weg. Das gehört zu dem Paket, das die dritte Seite einhängt.
+6. **Gelöst mit AP-04 IP-5:** am Telefon ist, was die Leiste als Kachel trägt, kein zweites Mal Reiter (`vp-nur-rechner`,
+   Variante B); am Rechner bleiben die Reiter der einzige Weg — der Standort unter einem Unternehmen hat dafür `EbenenTabs`.
 
 ## Prüfen
 

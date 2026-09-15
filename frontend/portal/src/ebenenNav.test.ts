@@ -10,6 +10,7 @@ import {
   ebenenBereiche,
   ebenenLeiste,
   ebenenOrt,
+  ebenenReiter,
   EBENEN_SEITEN,
   modeViewItems,
   resolveAnlage,
@@ -19,7 +20,7 @@ import {
   type EbenenLesemodell,
   type EbenenSeiten,
 } from './ebenenNav';
-import { MAIN_PAGES, pageRoute, standortRoute, type AnlagenSub } from './nav';
+import { MAIN_PAGES, pageRoute, parseRoute, hashForRoute, standortMessstellenRoute, standortRoute, type AnlagenSub } from './nav';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from './test/funktionenFixtures';
 import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
@@ -562,19 +563,54 @@ describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
     expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'map-pin', 'activity', 'trending-up', 'file-text']);
   });
 
-  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — Ahrenberg bleibt bei zwei, also ohne Leiste', () => {
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-04 IP-5 hat Ahrenberg DREI, die Leiste erscheint', () => {
     expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(5);
-    expect(ebenenLeiste(UNTERNEHMEN, MESSKUNDE)).toEqual([]);
+    // Übersicht · Standorte · Messstellen — Kennzahlen und Berichte haben noch keine Seite.
+    const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    expect(leiste[2].ziel).toEqual(pageRoute('portfolio-messstellen'));
+    // Die Standorte bleiben bei zwei (Übersicht · Messstellen; Gebäude und Anlagen ohne Seite) — ohne Leiste.
     expect(ebenenLeiste(WERK, MESSKUNDE)).toEqual([]);
     expect(ebenenLeiste(LINDACH, MESSKUNDE)).toEqual([]);
+    // Wer nicht misst, bekommt die Messstellen gar nicht: Übersicht · Standorte bleibt unter der Schwelle.
+    expect(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE)).toEqual([]);
   });
 
   it('jede Seite, die es heute gibt, ist eingetragen — und keine, die es nicht gibt', () => {
     expect(EBENEN_SEITEN(UNTERNEHMEN)).toEqual({
       uebersicht: pageRoute('portfolio'),
       standorte: pageRoute('portfolio-standorte'),
+      messstellen: pageRoute('portfolio-messstellen'),
     });
-    expect(EBENEN_SEITEN(WERK)).toEqual({ uebersicht: standortRoute(FIXTURE_IDS.st1) });
+    expect(EBENEN_SEITEN(WERK)).toEqual({
+      uebersicht: standortRoute(FIXTURE_IDS.st1),
+      messstellen: standortMessstellenRoute(FIXTURE_IDS.st1),
+    });
+  });
+
+  it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
+    expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Messstellen']);
+    expect(ebenenReiter(LINDACH, MESSKUNDE)[1].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
+    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen']);
+    // Ein einzelner Reiter ist keine Wahl.
+    const nurHeute: EbenenSeiten = (ort) => EBENEN_SEITEN(ort);
+    const ohneMessen = structuredClone(MESSKUNDE);
+    for (const st of ohneMessen.funktionen!.standorte) st.messen.zustand = 'kein_objekt';
+    expect(ebenenReiter(WERK, ohneMessen, nurHeute)).toEqual([]);
+  });
+
+  it('AP-04 IP-5 · „Standort › Messstellen“ hat eine eigene Adresse und hebt die Kachel „Messstellen“ hervor', () => {
+    const route = standortMessstellenRoute(FIXTURE_IDS.st1);
+    expect(hashForRoute(route)).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
+    expect(parseRoute(`#/standort/${FIXTURE_IDS.st1}/messstellen`)).toEqual(route);
+    expect(parseRoute(`#/standort/${FIXTURE_IDS.st1}`)).toEqual(standortRoute(FIXTURE_IDS.st1));
+    expect(hashForRoute(pageRoute('portfolio-messstellen'))).toBe('#/portfolio/messstellen');
+    expect(parseRoute('#/portfolio/messstellen')).toEqual(pageRoute('portfolio-messstellen'));
+    expect(ebenenOrt(route, { art: 'unternehmen' })).toEqual(WERK);
+    expect(ebenenAktiv('standort', 'messstellen')).toBe('messstellen');
+    expect(ebenenAktiv('portfolio-messstellen')).toBe('messstellen');
+    expect(ebenenAktiv('standort')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-messwerte')).toBe('uebersicht');
   });
 
   it('3 · die Anlagen-Ebene ist unverändert: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage', () => {

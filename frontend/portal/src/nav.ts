@@ -21,6 +21,7 @@ export type PageId =
   | 'hilfe'
   | 'portfolio'
   | 'portfolio-standorte'
+  | 'portfolio-messstellen'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
   | 'standort'
@@ -120,6 +121,12 @@ export interface Route {
    * jeder anderen Route - wie `geraet`.
    */
   standortId?: string;
+  /**
+   * Nur bei `page === 'standort'`: ein BEREICH des Standorts statt seiner
+   * Übersicht (UEMS AP-04 IP-5, `#/standort/{id}/messstellen`). Absent = die
+   * Übersicht — jede bestehende Standort-Route bleibt unverändert.
+   */
+  standortBereich?: 'messstellen';
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -200,6 +207,9 @@ export const PORTFOLIO_WELT_PAGES: PageDef[] = [
   // Historie-Reiter: `PORTFOLIO_TAB_HASH` kennt ihn nicht, ein Zeitraum reist
   // nicht mit. `#/standorte` bleibt die Alt-Adresse der Technik.
   { id: 'portfolio-standorte', label: 'Standorte', icon: 'map-pin' },
+  // UEMS AP-04 IP-5: „Unternehmen › Messstellen“ (`#/portfolio/messstellen`). Der
+  // Reiter steht nur, wenn ein Standort misst (`PortfolioTabs.showMessstellen`).
+  { id: 'portfolio-messstellen', label: 'Messstellen', icon: 'activity' },
   { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
   { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
 ];
@@ -566,6 +576,7 @@ export function parseRoute(hash: string): Route {
   // ⚠ `#/standorte` (Mehrzahl) ist NICHT diese Seite, sondern die Alt-Adresse
   // der Technik in `LEGACY_ROUTES`.
   if (head === 'standort') {
+    if (segments[1] && segments[2] === 'messstellen') return standortMessstellenRoute(segments[1]);
     return segments[1]
       ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
       : { page: 'standort', siteId: null, sub: null };
@@ -635,7 +646,10 @@ export function hashForRoute(route: Route): string {
       : `#/anlage/${route.siteId}`;
   }
   if (route.page === 'anlagen') return '#/anlagen';
-  if (route.page === 'standort') return route.standortId ? `#/standort/${route.standortId}` : '#/standort';
+  if (route.page === 'standort') {
+    if (!route.standortId) return '#/standort';
+    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}`;
+  }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
     return `#/portfolio/${route.page.slice('portfolio-'.length)}`;
@@ -656,6 +670,11 @@ export function anlageRoute(siteId: string, sub: AnlagenSub | null = null): Rout
 /** Route der Standort-Übersicht eines Standorts (UEMS AP-01 IP-5). */
 export function standortRoute(standortId: string): Route {
   return { page: 'standort', siteId: null, sub: null, standortId };
+}
+
+/** Route von „Standort › Messstellen“ (UEMS AP-04 IP-5): `#/standort/{id}/messstellen`. */
+export function standortMessstellenRoute(standortId: string): Route {
+  return { page: 'standort', siteId: null, sub: null, standortId, standortBereich: 'messstellen' };
 }
 
 /* =========================================================================

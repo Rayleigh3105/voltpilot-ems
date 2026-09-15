@@ -1,0 +1,317 @@
+/*
+ * „Messstellen“ (UEMS AP-04 IP-5). Nur diese Seite; Klassen mit `vp-ms-`, damit
+ * nichts in Portfolio-Tabellen oder -KPIs greift.
+ * ⚠ 1440 px: die Tabelle scrollt LOKAL (`vp-ms-rahmen`), nie das Dokument.
+ * ⚠ `overflow-wrap: break-word`, nie `anywhere`: `anywhere` senkt die Mindestbreite einer
+ *   Tabellenspalte auf ein Zeichen, und der Ort bricht mitten im Wort („Werk Ahrenber g“, Vorschau).
+ * ⚠ 375 px: Karten; lange Namen („Zähler Energiekarte EK-1 (Hauptmessung Halle 2)“) brechen um.
+ */
+
+.vp-ms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-ms-kopf h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+}
+
+.vp-ms-kopf p {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+/* --- Filter ------------------------------------------------------------- */
+
+.vp-ms-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-ms-feld {
+  flex: 1 1 11rem;
+  min-width: 0;
+  max-width: 16rem;
+}
+
+.vp-ms-schalter {
+  min-height: 44px;
+  padding: 0 var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 999px;
+  background: var(--vp-c-card);
+  color: var(--vp-c-fg);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vp-ms-schalter[aria-pressed='true'] {
+  border-color: var(--vp-c-primary);
+  background: var(--vp-c-muted);
+  box-shadow: inset 0 0 0 1px var(--vp-c-primary);
+}
+
+.vp-ms-schalter:focus-visible {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+}
+
+/* --- Zustände der Fläche ------------------------------------------------ */
+
+.vp-ms-laedt,
+.vp-ms-leer p {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ms-leer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-4);
+  border: 1px dashed var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-ms-leer p {
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-16, 1rem);
+}
+
+/* --- Bausteine einer Zeile ---------------------------------------------- */
+
+.vp-ms-kz {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vp-c-muted);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
+
+.vp-ms-block {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.vp-ms-neben {
+  display: block;
+  margin-top: 2px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-ms-ohne {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-ms-beob {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ms-punkt {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--vp-text-subtle, #ced4da);
+}
+
+/* Schweigen ist nie ein Fehlschlag: grün, gelb oder still — nie rot. */
+.vp-ms-beob.is-gut .vp-ms-punkt {
+  background: var(--vp-flow-batt, #2e9e5b);
+}
+
+.vp-ms-beob.is-hinweis {
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-ms-beob.is-hinweis .vp-ms-punkt {
+  background: var(--vp-warn, #f59e0b);
+}
+
+.vp-ms-zahl {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
+
+.vp-ms-groesse,
+.vp-ms-zeit {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+}
+
+/* „Wirkleistung“ steht über ihrem Wert, nicht davor — sonst bricht die Zeile mitten im Wert. */
+.vp-ms-groesse {
+  display: block;
+}
+
+/* „10:15 Uhr“ bleibt beisammen — nie „Uhr“ allein in der nächsten Zeile (Vorschau 1440 px). */
+.vp-ms-zeit {
+  white-space: nowrap;
+}
+
+.vp-ms-satz {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+/* --- 1440 px: Tabelle --------------------------------------------------- */
+
+.vp-ms-rahmen {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-ms-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ms-tabelle th {
+  padding: var(--vp-c-space-3) var(--vp-c-space-3);
+  border-bottom: 1px solid var(--vp-c-border);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.04em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vp-ms-tabelle td {
+  padding: var(--vp-c-space-3);
+  border-bottom: 1px solid var(--vp-c-border);
+  vertical-align: top;
+}
+
+.vp-ms-tabelle tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.vp-ms-tabelle td:last-child {
+  min-width: 9.5rem;
+}
+
+.vp-ms-name {
+  min-width: 9rem;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-ms-tabelle tr.vp-ms-still td,
+.vp-ms-karte.vp-ms-still {
+  background: var(--vp-c-muted);
+}
+
+.vp-ms-still .vp-ms-kz {
+  background: var(--vp-c-card);
+}
+
+/* --- 375 px: Karten ----------------------------------------------------- */
+
+.vp-ms-karten {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-ms-karte {
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-ms-karte-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-ms-karte-name {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--vp-c-fs-16, 1rem);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: break-word;
+}
+
+.vp-ms-karte .vp-ms-satz {
+  margin-top: var(--vp-c-space-2);
+}
+
+.vp-ms-fakten {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr);
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  margin: var(--vp-c-space-3) 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ms-fakten dt {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: break-word;
+}
+
+.vp-ms-fakten dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 720px) {
+  .vp-ms-feld {
+    flex: 1 1 calc(50% - var(--vp-c-space-3));
+    max-width: none;
+  }
+}

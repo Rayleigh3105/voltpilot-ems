@@ -113,6 +113,23 @@ export const UEMS_ELEKTRISCHES_SYSTEM = 'elektrisches System';
 /** Die fachliche Identität einer Messung — sie überlebt Gerät, Kanal und Box. */
 export const UEMS_MESSSTELLE = 'Messstelle';
 
+/**
+ * WOHER eine Messstelle ihre Werte hat: Gerät und Messwert, zeitgültig (AP-04
+ * §4.3). Im Register „Quelle (führend)“, nie „Primärquelle“ oder
+ * „Quellenbindung“ (das Vertragswort der Werkstatt) — `copy.test.ts` wacht.
+ */
+export const UEMS_QUELLE = 'Quelle';
+
+/** Je Größe genau EINE Quelle ist führend: sie trägt Auswertung und Bericht (AP-04 E3). */
+export const UEMS_FUEHREND = 'führend';
+
+/**
+ * Jede weitere Quelle derselben Größe ist ein Vergleich — gekennzeichnet mit
+ * Zweck, beide Werte nebeneinander, ohne Bewertung und ohne Ersatz (AP-04 E3).
+ * Im Satz als „Vergleichsquelle“, nie „Referenz-“ oder „Sekundärquelle“.
+ */
+export const UEMS_VERGLEICH = 'Vergleich';
+
 /** WAS gemessen wird (Wirkenergie, Leistung, Volumen …). */
 export const UEMS_MESSGROESSE = 'Messgröße';
 
