@@ -2,8 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, type MessstellenRegister, type MessstellenRegisterAnfrage } from '../api';
 import type { MessstellenEbene } from '../messstellen';
+import { messstelleAngelegt, VORSCHLAG } from '../test/messstelleDialogFixtures';
 import { ahrenbergRegister, leeresRegister } from '../test/messstellenRegisterFixtures';
-import { FIXTURE_IDS } from '../test/standorteFixtures';
+import { ortsbaumAhrenberg, ortsbaumLindach } from '../test/ortsbaumFixtures';
+import { ahrenbergHeute, FIXTURE_IDS } from '../test/standorteFixtures';
 import { MessstellenPage } from './MessstellenPage';
 
 /**
@@ -82,8 +84,9 @@ describe('MessstellenPage · Register', () => {
     // EINE Abfrage ohne Filter.
     expect(register).toHaveBeenCalledTimes(1);
     expect(register).toHaveBeenCalledWith({});
-    // Kein Schreibweg auf dieser Fläche (Dialog IP-6 fehlt noch): kein Knopf „anlegen“.
-    expect(screen.queryByRole('button', { name: /anlegen|Vorschläge/ })).toBeNull();
+    // Der Schreibweg der Fläche: „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6); „Vorschläge“ fehlt, bis es die Liste gibt (AP-01 IP-9b).
+    expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Vorschläge/ })).toBeNull();
   });
 
   it('am Telefon Karten mit denselben Wörtern — keine Tabelle', async () => {
@@ -177,16 +180,18 @@ describe('MessstellenPage · Filter und Leerzustände', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Stand am' })).toBeNull();
     expect(screen.queryByRole('group', { name: 'Filter' })).toBeNull();
+    // E6: ohne „Messen & Auswerten“ keine Messstellen — also auch kein Anlegen.
+    expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
     expect(zurUebersicht).toHaveBeenCalledTimes(1);
   });
 
-  it('eingerichtet, aber noch keine Messstelle: der Satz, kein Knopf ohne Ziel', async () => {
+  it('eingerichtet, aber noch keine Messstelle: der Satz und „Messstelle anlegen“ (§5.11) — sonst kein Knopf ohne Ziel', async () => {
     telefon(false);
     verdrahte(() => leeresRegister());
     render(<MessstellenPage ebene={{ art: 'standort', id: FIXTURE_IDS.st2, name: 'Werk Lindach' }} bereichDa />);
     expect(await screen.findByText('Noch keine Messstelle in Werk Lindach.')).toBeInTheDocument();
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Messstelle anlegen']);
   });
 
   it('ein Ladefehler wird genannt und lässt sich wiederholen', async () => {
@@ -197,5 +202,72 @@ describe('MessstellenPage · Filter und Leerzustände', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Die Messstellen konnten nicht geladen werden.');
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }));
     await screen.findByRole('table');
+  });
+});
+
+describe('MessstellenPage · „Messstelle anlegen“ öffnet den Dialog (AP-04 IP-6)', () => {
+  function dialogGestellt() {
+    vi.spyOn(api, 'kennzeichenVorschlag').mockResolvedValue({ kennzeichen: VORSCHLAG });
+    vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
+    vi.spyOn(api, 'standortOrte').mockImplementation(async (id: string) =>
+      id === FIXTURE_IDS.st1 ? ortsbaumAhrenberg() : ortsbaumLindach(),
+    );
+  }
+
+  it('der Kopf öffnet den Dialog mit dem Standort als Vorgabe; hat ein Schritt gespeichert, liest das Register nach dem Schließen neu', async () => {
+    telefon(false);
+    const register = verdrahte();
+    dialogGestellt();
+    const anlegen = vi.spyOn(api, 'messstelleAnlegen').mockResolvedValue(messstelleAngelegt());
+    render(<MessstellenPage ebene={WERK} bereichDa />);
+    await screen.findByRole('table', {}, WARTEN);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Messstelle anlegen' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
+    await waitFor(() => expect((within(dialog).getByLabelText('Kennzeichen') as HTMLInputElement).value).toBe(VORSCHLAG));
+    fireEvent.change(within(dialog).getByLabelText('Name *'), { target: { value: 'Spritzguss SG01–SG06 Kühlung' } });
+    for (const [feld, wahl] of [
+      ['Hauptgröße *', /^Wirkenergie/],
+      ['Richtung *', /^Bezug/],
+      ['Wertart *', /^Zählerstand/],
+    ] as const) {
+      fireEvent.click(within(dialog).getByRole('combobox', { name: feld }));
+      fireEvent.click(await screen.findByRole('option', { name: wahl }));
+    }
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weiter: Zuordnung' }));
+    await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
+    // §5.1 „Vorgabe: Standort“ — die Seite ist Werk Ahrenberg.
+    await waitFor(() => expect(within(dialog).getByRole('combobox', { name: 'Ort' }).textContent).toContain('Werk Ahrenberg'));
+
+    const vorher = register.mock.calls.length;
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(register.mock.calls.length).toBeGreaterThan(vorher));
+    expect(register).toHaveBeenLastCalledWith({ standort: FIXTURE_IDS.st1 });
+  });
+
+  it('ohne Speichern geschlossen: kein neues Lesen', async () => {
+    telefon(false);
+    const register = verdrahte();
+    dialogGestellt();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findByRole('table', {}, WARTEN);
+    fireEvent.click(screen.getByRole('button', { name: 'Messstelle anlegen' }));
+    await screen.findByRole('dialog', { name: 'Messstelle anlegen' });
+    await waitFor(() => expect(api.kennzeichenVorschlag).toHaveBeenCalled());
+    const vorher = register.mock.calls.length;
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Messstelle anlegen' })).toBeNull());
+    expect(register.mock.calls.length).toBe(vorher);
+  });
+
+  it('mit „Stand am“ gibt es keinen Schreibweg — der Knopf verschwindet', async () => {
+    telefon(false);
+    verdrahte();
+    render(<MessstellenPage ebene={UNTERNEHMEN} bereichDa />);
+    await screen.findByRole('table', {}, WARTEN);
+    expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument();
+    await waehleTag('2026-10-10');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Zurück zu heute' })).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Messstelle anlegen' })).toBeNull();
   });
 });

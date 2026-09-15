@@ -16,6 +16,21 @@
   color: var(--vp-c-fg);
 }
 
+/* Kopf: Titel und Zeile links, „Messstelle anlegen“ (AP-04 IP-6) rechts — am Telefon darunter. */
+.vp-ms-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-ms-kopf-text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
 .vp-ms-kopf h1 {
   margin: 0;
   font-size: var(--vp-c-fs-24);

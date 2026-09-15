@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { api, type MessstellenRegister } from '../api';
+import { MessstelleDialog } from '../components/MessstelleDialog';
 import { StandAm } from '../components/StandAm';
 import { VpPicker } from '../components/VpPicker';
 import {
@@ -29,6 +30,7 @@ import {
   type RegisterFilter,
   type ZeileWoerter,
 } from '../messstellen';
+import { DIALOG_TITEL } from '../messstelleDialog';
 import { VORGABE_ZEITZONE } from '../uemsOrtsbaum';
 import { useIsPhone } from '../useIsPhone';
 import './MessstellenPage.css';
@@ -43,9 +45,11 @@ import './MessstellenPage.css';
  * `messstellen.ts`. Die Optionen der Filter kommen aus der ungefilterten Antwort
  * desselben Tags (sie wird je Tag gemerkt, nicht neu gefragt).
  *
- * ⚠ Mit Stichtag gibt es keinen Schreibweg — die Fläche hat heute auch keinen:
- * „Messstelle anlegen“ und „Vorschläge aus Komponenten“ (§5.11) kommen mit ihrem
- * Dialog (IP-6) bzw. der Vorschlagsliste (AP-01 IP-9b), vorher kein Knopf ohne Ziel.
+ * ⚠ Mit Stichtag gibt es keinen Schreibweg. „Messstelle anlegen“ öffnet seit AP-04 IP-6 den
+ * `MessstelleDialog` — im Kopf, im Leerzustand „noch keine Messstelle“ am Satz (§5.11); nie mit
+ * Stichtag, nie ohne „Messen & Auswerten“ (E6). Hat ein Schritt gespeichert, liest die Fläche nach
+ * dem Schließen neu. „Vorschläge aus Komponenten“ kommt mit der Vorschlagsliste (AP-01 IP-9b), vorher
+ * kein Knopf ohne Ziel.
  */
 export function MessstellenPage({
   ebene,
@@ -70,6 +74,8 @@ export function MessstellenPage({
   );
   const [fehler, setFehler] = useState(false);
   const [versuch, setVersuch] = useState(0);
+  const [anlegen, setAnlegen] = useState(false);
+  const angelegt = useRef(false);
   const anfrage = useRef(0);
   const basisMerker = useRef<{ tag: string; antwort: MessstellenRegister } | null>(null);
 
@@ -105,6 +111,8 @@ export function MessstellenPage({
   const optionen = stand ? filterOptionen(stand.basis, ebene) : null;
   const leer = aktuell ? leerzustand({ antwort: aktuell.liste, basis: aktuell.basis, filter, ebene, bereichDa }) : null;
   const ohneRegister = leer?.art === 'bereich_fehlt' || leer?.art === 'keine_messstelle';
+  // Anlegen gibt es heute (kein Stichtag) und nur mit „Messen & Auswerten“ — erst, wenn die Antwort da ist.
+  const anlegbar = aktuell !== null && !stichtag && bereichDa !== false && leer?.art !== 'bereich_fehlt';
   const eintraege =
     aktuell && !leer ? registerEintraege(aktuell.liste, stichtag, { ebene, zone, zeitpunkt: aktuell.liste.zeitpunkt }) : [];
   const unterzeile = [ebene.art === 'standort' ? ebene.name : null, kopfZeile(aktuell?.liste ?? null, stichtag)]
@@ -114,8 +122,13 @@ export function MessstellenPage({
   return (
     <div className="vp-ms" data-testid="messstellen">
       <header className="vp-ms-kopf">
-        <h1>{TITEL}</h1>
-        {unterzeile && <p>{unterzeile}</p>}
+        <div className="vp-ms-kopf-text">
+          <h1>{TITEL}</h1>
+          {unterzeile && <p>{unterzeile}</p>}
+        </div>
+        {anlegbar && leer?.art !== 'keine_messstelle' && (
+          <Button onClick={() => setAnlegen(true)}>{DIALOG_TITEL.anlegen}</Button>
+        )}
       </header>
       {fehler ? (
         <div className="vp-ms-leer" role="alert">
@@ -135,7 +148,7 @@ export function MessstellenPage({
               {LADEN}
             </p>
           ) : leer ? (
-            <Leer leer={leer} onUebersicht={onUebersicht} />
+            <Leer leer={leer} onUebersicht={onUebersicht} onAnlegen={anlegbar ? () => setAnlegen(true) : undefined} />
           ) : isPhone ? (
             <Karten eintraege={eintraege} stichtag={stichtag} />
           ) : (
@@ -143,6 +156,21 @@ export function MessstellenPage({
           )}
         </>
       )}
+      <MessstelleDialog
+        open={anlegen}
+        standortId={ebeneId}
+        onClose={() => {
+          setAnlegen(false);
+          if (!angelegt.current) return;
+          // Ein Schritt hat gespeichert: der gemerkte Stand des Tags ist überholt — neu lesen.
+          angelegt.current = false;
+          basisMerker.current = null;
+          setVersuch((v) => v + 1);
+        }}
+        onGespeichert={() => {
+          angelegt.current = true;
+        }}
+      />
     </div>
   );
 }
@@ -197,7 +225,16 @@ function Filterleiste({
   );
 }
 
-function Leer({ leer, onUebersicht }: { leer: Leerzustand; onUebersicht?: () => void }) {
+function Leer({
+  leer,
+  onUebersicht,
+  onAnlegen,
+}: {
+  leer: Leerzustand;
+  onUebersicht?: () => void;
+  /** §5.11: „noch keine Messstelle“ trägt den Knopf „Messstelle anlegen“ — nur, wenn angelegt werden darf. */
+  onAnlegen?: () => void;
+}) {
   return (
     <div className="vp-ms-leer" role="status">
       <p>{leer.satz}</p>
@@ -206,6 +243,7 @@ function Leer({ leer, onUebersicht }: { leer: Leerzustand; onUebersicht?: () => 
           {ZUR_UEBERSICHT}
         </Button>
       )}
+      {leer.art === 'keine_messstelle' && onAnlegen && <Button onClick={onAnlegen}>{DIALOG_TITEL.anlegen}</Button>}
     </div>
   );
 }

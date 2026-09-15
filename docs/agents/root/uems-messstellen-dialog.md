@@ -12,9 +12,10 @@ Bilder mit `MESSSTELLE_DIALOG_BILDER=<Ordner>`). Fixtures: `src/test/messstelleD
 
 `<MessstelleDialog open messstelleId={null | id} standortId={…} onClose onGespeichert />` — `null`
 legt an, eine ID bearbeitet; `standortId` ist die Vorgabe des Orts (§5.1). `onGespeichert` kommt JE
-SCHRITT, der gespeichert hat. Stand 15.09.2026 öffnet ihn noch keine Fläche: der Knopf „Messstelle
-anlegen“ des Registers (IP-5, `pages/MessstellenPage.tsx`) wird verdrahtet, sobald beide Pakete im
-Sammelzweig stehen.
+SCHRITT, der gespeichert hat. Geöffnet wird er vom Register (`pages/MessstellenPage.tsx`, IP-5): „Messstelle anlegen“ im Kopf
+bzw. im Leerzustand „noch keine Messstelle“, `standortId` = Standort der Seite; hat ein Schritt
+gespeichert, liest das Register nach dem Schließen neu. „Bearbeiten“ hat noch keinen Einstieg — der
+kommt mit der Messstellen-Seite (IP-8).
 
 ## ⚠ Die Fallen
 
