@@ -8,7 +8,7 @@
   "required": ["_comment", "schema_version", "$schema_datei", "herkunft", "zeitzone", "referenzunternehmen", "referenz_stand", "vorlagen_datei", "titel", "plan_abnahmen", "regeln_kurz", "vokabulare", "fehler_status", "regeln", "saetze", "verbotene_woerter", "zwillinge", "zwillinge_grund", "_abweichungen", "_nicht_geprueft", "abzuege", "cases"],
   "properties": {
     "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-    "schema_version": { "type": "string", "const": "1.0", "description": "Fassung dieser Datei. Erweiterungen sind additiv." },
+    "schema_version": { "type": "string", "const": "1.1", "description": "Fassung dieser Datei. Erweiterungen sind additiv (1.1: Abzug des Unternehmens — standorte und kostenstellen, AP-12 IP-6)." },
     "$schema_datei": { "type": "string", "const": "./bericht.schema.json" },
     "herkunft": { "type": "string", "minLength": 1 },
     "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt; die Regeln nehmen die Zone der Geltung." },
@@ -178,6 +178,8 @@
         "zusammenfassung": { "type": "object", "additionalProperties": { "type": "number" } },
         "werte": { "type": "array", "items": { "$ref": "#/$defs/wert" } },
         "kennzahlen": { "type": "array", "items": { "$ref": "#/$defs/kennzahl" } },
+        "standorte": { "type": "array", "items": { "$ref": "#/$defs/standort_abschnitt" }, "description": "1.1, nur am Unternehmen: je Standort ein Abschnitt (AP-12 IP-6)." },
+        "kostenstellen": { "type": "array", "items": { "$ref": "#/$defs/kostenstelle" }, "description": "1.1, nur am Unternehmen: je Kostenstelle, die einen Tag des Zeitraums besteht, ihre Energie (AP-10 IP-11) mit den Verteilungs-Sätzen zum Tag (AP-12 IP-6)." },
         "qualitaet": {
           "type": "object", "additionalProperties": false,
           "required": ["abdeckung_min_prozent", "luecken", "ersatzwerte", "korrekturen_im_zeitraum", "vorlaeufig"],
@@ -295,6 +297,98 @@
           }
         },
         "berechnet_am": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+    "tag_oder_null": { "anyOf": [{ "$ref": "#/$defs/tag" }, { "type": "null" }] },
+    "standort_abschnitt": {
+      "type": "object", "additionalProperties": false,
+      "description": "1.1 — ein Standort im Abzug des Unternehmens (AP-12 IP-6, Q3): die Netzbezugs-Summe seiner Hauptzähler (der Schlüssel fehlt, sobald einer keine Zahl hat — unbekannt ist keine Null) und diese Messstellen; ihre Werte stehen mit Nachweis in `werte`.",
+      "required": ["kennzeichen", "name_zum_datenstand", "summen", "messstellen"],
+      "properties": {
+        "kennzeichen": { "type": "string", "minLength": 1 },
+        "name_zum_datenstand": { "type": "string" },
+        "summen": { "type": "object", "additionalProperties": { "type": "number" } },
+        "messstellen": { "type": "array", "items": { "type": "string", "pattern": "^MS-[0-9]{2}$" } }
+      }
+    },
+    "kostenstelle": {
+      "type": "object", "additionalProperties": false,
+      "description": "1.1 — die Energie einer Kostenstelle im Zeitraum (AP-12 IP-6): die Trägerform der Kostenstellen-Sicht (AP-10 IP-11, KostenstelleEnergieDto.Energie) ohne Kennungen und ohne die Warnung vor doppelter Zählung (sie ändert keine Zahl). `nicht_verteilt` gehört keiner Kostenstelle und zählt in `summe` nie mit.",
+      "required": ["quelle", "name_zum_datenstand", "gueltig_ab", "gueltig_bis", "periode", "berechnet_am", "zeitzone", "gemessen", "verteilt", "berechnet", "summe", "nicht_verteilt"],
+      "properties": {
+        "quelle": { "type": "string", "minLength": 1 },
+        "name_zum_datenstand": { "type": "string" },
+        "gueltig_ab": { "$ref": "#/$defs/tag" },
+        "gueltig_bis": { "$ref": "#/$defs/tag_oder_null" },
+        "periode": { "type": "string" },
+        "berechnet_am": { "$ref": "#/$defs/zeitpunkt" },
+        "zeitzone": { "type": "string" },
+        "gemessen": { "$ref": "#/$defs/kostenstelle_block" },
+        "verteilt": { "$ref": "#/$defs/kostenstelle_block" },
+        "berechnet": { "$ref": "#/$defs/kostenstelle_block" },
+        "summe": { "$ref": "#/$defs/kostenstelle_block" },
+        "nicht_verteilt": { "$ref": "#/$defs/kostenstelle_block" }
+      }
+    },
+    "kostenstelle_block": {
+      "type": "object", "additionalProperties": false,
+      "description": "1.1 — ein Block der Kostenstellen-Sicht: Menge, Einheit und Zustand nur bei genau einer Größe, sonst `grund`; nie 0 statt „keine Menge“.",
+      "required": ["menge", "einheit", "zustand", "grund", "summen", "posten"],
+      "properties": {
+        "menge": { "type": ["number", "null"] },
+        "einheit": { "type": ["string", "null"] },
+        "zustand": { "type": ["string", "null"] },
+        "grund": { "type": ["string", "null"] },
+        "summen": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["groesse", "richtung", "einheit", "menge", "zustand", "abdeckung_prozent", "vorhanden", "gesamt", "fehlend"],
+            "properties": {
+              "groesse": { "type": ["string", "null"] }, "richtung": { "type": ["string", "null"] }, "einheit": { "type": ["string", "null"] },
+              "menge": { "type": ["number", "null"] }, "zustand": { "type": ["string", "null"] }, "abdeckung_prozent": { "type": ["number", "null"] },
+              "vorhanden": { "type": "integer", "minimum": 0 }, "gesamt": { "type": "integer", "minimum": 0 },
+              "fehlend": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "posten": { "type": "array", "items": { "$ref": "#/$defs/kostenstelle_posten" } }
+      }
+    },
+    "kostenstelle_posten": {
+      "type": "object", "additionalProperties": false,
+      "description": "1.1 — eine Messstelle in einem Block: ihre Summe über die Tage mit Zustand, Version, Kennzeichen und Verteilungs-Fassungen; statt der Tage die Verteilungs-Sätze zum Tag (aufeinanderfolgende Tage mit demselben Anteil); `herkunft` die Hülle {satz, fehlt} (bilanzwert-herkunft) oder null.",
+      "required": ["quelle", "name_zum_datenstand", "art", "groesse", "richtung", "einheit", "menge", "zustand", "abdeckung_prozent", "version", "kennzeichen", "fassungen", "fehlend", "saetze", "herkunft"],
+      "properties": {
+        "quelle": { "type": "string", "pattern": "^MS-[0-9]{2}$" },
+        "name_zum_datenstand": { "type": "string" },
+        "art": { "type": "string" },
+        "groesse": { "type": ["string", "null"] },
+        "richtung": { "type": ["string", "null"] },
+        "einheit": { "type": ["string", "null"] },
+        "menge": { "type": ["number", "null"] },
+        "zustand": { "type": ["string", "null"] },
+        "abdeckung_prozent": { "type": ["number", "null"] },
+        "version": { "type": "integer", "minimum": 1 },
+        "kennzeichen": { "type": "array", "items": { "type": "string" } },
+        "fassungen": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "fehlend": { "type": "array", "items": { "type": "string" } },
+        "saetze": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["von", "bis", "anteil_prozent"],
+            "properties": { "von": { "$ref": "#/$defs/tag" }, "bis": { "$ref": "#/$defs/tag" }, "anteil_prozent": { "type": "number" } }
+          }
+        },
+        "herkunft": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object", "additionalProperties": false, "required": ["satz", "fehlt"],
+              "properties": { "satz": { "type": ["object", "null"] }, "fehlt": { "type": "array", "items": { "type": "string" } } }
+            }
+          ]
+        }
       }
     },
     "nachweis": {

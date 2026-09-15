@@ -46,8 +46,10 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
   was) — dann erst `GET …/entwurf`. `abweichungen` stehen gegen den GÜLTIGEN Stand (der gesehene Entwurf ist nicht
   gespeichert), ohne Stand leer; der Anlass kommt aus `bericht_entwurf_neu_gebildet` (schreibt seit IP-8 die Kaskaden-Naht, `uems-bericht-kaskade.md`).
 - **`gebildet_von` ist nicht die Handlung:** `anlegen`, `abruf` (EW1) — `abrufen` lehnt die Bildung ab.
-- **Unternehmensbericht:** Anlegen und D4-Neubildung sind 501 `unternehmensbericht_folgt` bis IP-6; Lesen, Freigeben eines
-  vorhandenen Entwurfs und alle Rechte gelten schon.
+- **Unternehmensbericht:** seit AP-12 IP-6 bilden Anlegen und D4-Neubildung den Abzug des Unternehmens
+  (`uems-bericht-abzug-unternehmen.md`); die 501 `unternehmensbericht_folgt` ist aus dem Vokabular genommen. Vor dem
+  Anlegen fragt `BerichtAbzugBildung.hatMessstellen` die Geltung (am Unternehmen die Netzbezugs-Zähler der Standorte, die
+  Unternehmens- und die Prozess-Messstellen) — ohne sie 422 `keine_quellen` mit dem Namen des Unternehmens.
 - **`werte_vorlaeufig`:** `vorlaeufig` zählt die Werte, `vorlaeufige` nennt jede Quelle einmal (MS-04 hat zwei Werte).
 - **Die Neubildung beim Abruf meldet nichts** (B6). `bericht_freigegeben` hat eine abgeleitete Kennung je Stand.
 - **Test-Personen:** `BerichtApiTest` setzt die B13-Personen als `@MockBean KennzahlAufrufer`; die Entwürfe sind die

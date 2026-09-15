@@ -551,8 +551,11 @@ class BerichtApiTest {
                 409, "bericht_gibt_es_schon");
         assertThat(schon.body().get("message").asText())
                 .isEqualTo("Diesen Bericht gibt es schon: BR-2026-0001 (Monatsbericht Werk Ahrenberg, Oktober 2026).");
-        abgelehnt(ruf(w.jonas(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(), "2026-10")),
-                501, "unternehmensbericht_folgt");
+        // Seit AP-12 IP-6 bildet das Anlegen den Abzug des Unternehmens — ohne Messstellen in seiner Geltung sagt es, warum.
+        Antwort unternehmenLeer = abgelehnt(ruf(w.jonas(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen",
+                w.unternehmen(), "2026-10")), 422, "keine_quellen");
+        assertThat(unternehmenLeer.body().get("message").asText())
+                .isEqualTo("Für Kunststoffwerk Ahrenberg GmbH gibt es im Oktober 2026 keine Messstellen.");
         verboten(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(), "2026-10")));
         Antwort leer = abgelehnt(ruf(w.peter(), HttpMethod.POST, PFAD, anlegen("monatsbericht_standort", w.st2(), "2026-10")),
                 422, "keine_quellen");
@@ -599,6 +602,155 @@ class BerichtApiTest {
                 .asBoolean()).isFalse();
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? AND art LIKE 'bericht_%'",
                 Long.class, w.mandant())).as("die Neubildung beim Abruf meldet nichts (B6)").isZero();
+    }
+
+    // =========================================================================== AP-12 IP-6: Unternehmensbericht
+
+    /**
+     * B3 über die echte Route (firstmate 003): Jonas legt den Monatsbericht des Unternehmens für Oktober an — der Entwurf ist
+     * ein echter Abzug des Unternehmens mit Kostenstelle 4200 = 14 470 kWh (MS-12 6 100 + MS-18 3 600 + 30 % MS-07 15 900).
+     * Nach K-2026-0007 (MS-12 am 18.10. in Version 2: 196 → 136 kWh) bildet der Abruf ihn neu (D4): 4200 = 14 410 kWh.
+     */
+    @Test
+    void unternehmensberichtUeberDieRoute_b3Kostenstelle4200Mit14470_nachDerKorrekturBeimAbruf14410() throws Exception {
+        Welt w = welt();
+        unternehmenOktober(w);
+        uhr("2026-11-10T08:57:00+01:00");
+        Antwort neu = ok(ruf(w.jonas(), HttpMethod.POST, PFAD, anlegen("monatsbericht_unternehmen", w.unternehmen(),
+                "2026-10")), 201);
+        String entwurfPfad = PFAD + "/" + neu.body().get("kennung").asText() + "/entwurf";
+
+        Antwort vorher = ok(ruf(w.jonas(), HttpMethod.GET, entwurfPfad, null), 200);
+        assertThat(vorher.body().get("neu_gebildet").asBoolean()).isFalse();
+        JsonNode abzug = vorher.body().get("abzug");
+        assertThat(abzug.path("kopf").path("geltung").path("art").asText()).isEqualTo("unternehmen");
+        assertThat(abzug.path("kopf").path("quellenverzeichnis")).extracting(JsonNode::asText).contains("4200", "MS-01");
+        assertThat(kostenstelleIm(abzug, "4200").path("summe").path("menge").decimalValue()).as("B3 vorher")
+                .isEqualByComparingTo("14470");
+
+        korrekturMs12(w, "2026-11-12T10:05:33+01:00");
+        uhr("2026-11-12T11:00:00+01:00");
+        Antwort nachher = ok(ruf(w.jonas(), HttpMethod.GET, entwurfPfad, null), 200);
+        assertThat(nachher.body().get("neu_gebildet").asBoolean()).as("D4: MS-12 hat eine neue Version").isTrue();
+        assertThat(kostenstelleIm(nachher.body().get("abzug"), "4200").path("summe").path("menge").decimalValue())
+                .as("B3 nachher").isEqualByComparingTo("14410");
+        assertThat(nachher.body().get("pruefsumme").asText()).isNotEqualTo(vorher.body().get("pruefsumme").asText());
+    }
+
+    /**
+     * Die Oktober-Daten des Unternehmens aus dem Referenzunternehmen: Netzbezug MS-01 (Hauptzähler Halle 1), die Tageswerte
+     * von MS-07, MS-12 und MS-18 (ab 15.10. im Werk Lindach) und ihre Verteilung auf 4100/4200.
+     */
+    private static void unternehmenOktober(Welt w) {
+        UUID an1 = anlage(w, "AN-1", w.st1(), "2024-03-12");
+        UUID an3 = anlage(w, "AN-3", w.st2(), "2026-10-15");
+        UUID ms01 = gezaehlt(w, "MS-01", "Netzbezug Halle 1", w.st1(), "2026-10-01", an1);
+        root.update("INSERT INTO messstelle_stellung (tenant_id, messstelle_id, site_id, stellung, gueltig_ab) "
+                + "VALUES (?, ?, ?, 'Hauptzähler', DATE '2024-03-12')", w.mandant(), ms01, an1);
+        UUID ms07 = gezaehlt(w, "MS-07", "Druckluft Kompressoren K1+K2", w.st1(), "2026-10-01", an1);
+        UUID ms12 = gezaehlt(w, "MS-12", "Montage Linie M1", w.st1(), "2026-10-01", an1);
+        UUID ms18 = gezaehlt(w, "MS-18", "Montagehalle Lindach gesamt", w.st2(), "2026-10-15", an3);
+        UUID k4100 = kostenstelleAnlegen(w, "4100", "Spritzguss");
+        UUID k4200 = kostenstelleAnlegen(w, "4200", "Montage");
+        String satz = "INSERT INTO messstelle_verteilung (tenant_id, messstelle_id, kostenstelle_id, anteil_prozent, "
+                + "gueltig_ab, created_by) VALUES ";
+        root.update(satz + "(?, ?, ?, 70, DATE '2026-10-01', 'test'), (?, ?, ?, 30, DATE '2026-10-01', 'test')",
+                w.mandant(), ms07, k4100, w.mandant(), ms07, k4200);
+        root.update(satz + "(?, ?, ?, 100, DATE '2026-10-01', 'test')", w.mandant(), ms12, k4200);
+        root.update(satz + "(?, ?, ?, 100, DATE '2026-10-15', 'test')", w.mandant(), ms18, k4200);
+        for (java.time.LocalDate d = java.time.LocalDate.parse("2026-10-01"); d.getMonthValue() == 10; d = d.plusDays(1)) {
+            boolean letzter = d.getDayOfMonth() == 31;
+            tageswert(w, "MS-07", d, letzter ? 600 : 510);
+            tageswert(w, "MS-12", d, letzter ? 220 : 196);
+            if (d.getDayOfMonth() >= 15) {
+                tageswert(w, "MS-18", d, letzter ? 224 : 211);
+            }
+        }
+    }
+
+    private static UUID anlage(Welt w, String name, UUID standort, String ab) {
+        UUID site = root.queryForObject("INSERT INTO site (tenant_id, name) VALUES (?, ?) RETURNING id", UUID.class,
+                w.mandant(), name);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES (?, ?, ?, ?::date)",
+                w.mandant(), site, standort, ab);
+        root.update("INSERT INTO device (tenant_id, site_id, external_ref, status) VALUES (?, ?, ?, 'claimed')", w.mandant(),
+                site, "VP-BOX-BERICHT-" + name + "-" + w.mandant());
+        return site;
+    }
+
+    /** Eine gezählte Messstelle am Standort mit ihrer führenden Quelle (Komponente, Kanal energy_kwh). */
+    private static UUID gezaehlt(Welt w, String kennzeichen, String name, UUID standort, String ab, UUID site) {
+        UUID ms = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, "
+                + "einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', 'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') "
+                + "RETURNING id", UUID.class, w.mandant(), kennzeichen, name);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) VALUES (?, ?, ?, ?::date)",
+                w.mandant(), ms, standort, ab);
+        UUID box = root.queryForObject("SELECT id FROM device WHERE tenant_id = ? AND site_id = ?", UUID.class, w.mandant(),
+                site);
+        UUID entity = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, "
+                + "device_id, communication, connection_json, created_at) VALUES (?, ?, 'grid-meter', ?, 'grid-meter', ?, "
+                + "'modbus_tcp', '{\"ip\":\"10.0.0.9\",\"unit_id\":1}'::jsonb, '2024-03-12T00:00:00Z') RETURNING id",
+                UUID.class, w.mandant(), site, "K " + kennzeichen, box);
+        root.update("INSERT INTO device_measurement_selection (tenant_id, site_id, device_id, entity_id, point_key, "
+                + "enabled, cadence_s, desired_revision, enabled_at, catalog_version, changed_by, apply_status, "
+                + "retention_class, long_term_strategy) VALUES (?, ?, ?, ?, 'energy_kwh', true, 60, 1, "
+                + "'2024-03-12T00:00:00Z', '2026.09.11.1', 'test', 'pending_edge', 'live_power', 'fifteen_minute')",
+                w.mandant(), site, box, entity);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_bis IS NULL", UUID.class, entity);
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, geraet_id, "
+                + "kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, actor_sub, "
+                + "actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, 'energy_kwh', 'counter', "
+                + "'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', true, now(), 'sub', 'Probe', 'kunde')",
+                w.mandant(), ms, entity, geraet);
+        return ms;
+    }
+
+    private static UUID kostenstelleAnlegen(Welt w, String kennzeichen, String name) {
+        return root.queryForObject("INSERT INTO kostenstelle (tenant_id, unternehmen_id, kennzeichen, name, gueltig_ab, "
+                + "created_by) VALUES (?, ?, ?, ?, DATE '2026-10-01', 'test') RETURNING id", UUID.class, w.mandant(),
+                w.unternehmen(), kennzeichen, name);
+    }
+
+    /** Ein gemessener, vollständiger, endgültiger Tageswert der führenden Reihe. */
+    private static void tageswert(Welt w, String kennzeichen, java.time.LocalDate tag, long menge) {
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/Berlin");
+        int stunden = TagRegeln.stunden(tag, zone);
+        Instant beginn = tag.atStartOfDay(zone).toInstant();
+        Instant ende = tag.plusDays(1).atStartOfDay(zone).toInstant();
+        root.update("INSERT INTO messreihe_tag (tag, tenant_id, entity_id, messkanal, zeitzone, zeitzone_herkunft, beginn, "
+                + "ende, stunden, slots_erwartet, slots_vorhanden, slots_endgueltig, wertart, erhalten, erwartet, "
+                + "abdeckung_prozent, rolle, zustand, endgueltig_ab, version, menge, menge_zustand, kennzeichen) "
+                + "VALUES (?, ?, (SELECT q.entity_id FROM messstelle_quelle q JOIN messstelle m ON m.id = q.messstelle_id "
+                + "WHERE m.tenant_id = ? AND m.kennzeichen = ?), 'energy_kwh', 'Europe/Berlin', 'vorgabe', ?, ?, ?, ?, ?, ?, "
+                + "'counter', ?, ?, 100, 'fuehrend', 'endgueltig', ?, 1, ?, 'vollständig', '[]'::jsonb)", tag, w.mandant(),
+                w.mandant(), kennzeichen, Timestamp.from(beginn), Timestamp.from(ende), stunden, stunden * 4, stunden * 4,
+                stunden * 4, stunden * 60, stunden * 60, Timestamp.from(ende.plus(java.time.Duration.ofDays(7))),
+                java.math.BigDecimal.valueOf(menge));
+    }
+
+    /** K-2026-0007, wie die Kaskade sie schreibt: MS-12 am 18.10. in Version 2 — mit der Zeit der Kaskade. */
+    private static void korrekturMs12(Welt w, String erstellt) {
+        java.time.LocalDate tag = java.time.LocalDate.parse("2026-10-18");
+        java.time.ZoneId zone = java.time.ZoneId.of("Europe/Berlin");
+        root.update("INSERT INTO messreihe_periode_version (tenant_id, ebene, entity_id, messkanal, messstelle_id, "
+                + "periode_beginn, periode_ende, tag, zeitzone, version, menge, menge_zustand, kennzeichen, "
+                + "abdeckung_prozent, zustand, korrekturen, ersatzwerte, anlass_kennung, anlass_fassung, created_at) "
+                + "VALUES (?, 'tag', (SELECT q.entity_id FROM messstelle_quelle q JOIN messstelle m ON m.id = q.messstelle_id "
+                + "WHERE m.tenant_id = ? AND m.kennzeichen = 'MS-12'), 'energy_kwh', NULL, ?, ?, ?, 'Europe/Berlin', 2, 136, "
+                + "'vollständig', '[\"korrigiert (Version 2)\"]'::jsonb, 100, 'endgueltig', ARRAY['K-2026-0007'], "
+                + "ARRAY[]::text[], 'K-2026-0007', 2, ?)", w.mandant(), w.mandant(),
+                Timestamp.from(tag.atStartOfDay(zone).toInstant()), Timestamp.from(tag.plusDays(1).atStartOfDay(zone).toInstant()),
+                java.sql.Date.valueOf(tag), Timestamp.from(t(erstellt)));
+    }
+
+    private static JsonNode kostenstelleIm(JsonNode abzug, String kennzeichen) {
+        for (JsonNode k : abzug.path("kostenstellen")) {
+            if (kennzeichen.equals(k.path("quelle").asText())) {
+                return k;
+            }
+        }
+        throw new AssertionError("Kostenstelle " + kennzeichen + " fehlt im Abzug " + abzug);
     }
 
     // =========================================================================== Hilfen

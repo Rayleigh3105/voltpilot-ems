@@ -9930,9 +9930,9 @@ paths:
         Freigabe-Recht. Reihenfolge: Felder (400 `anfrage_ungueltig`) → Vorlage (422
         `vorlage_unbekannt`) → Zeitraum-Schlüssel passend zur Vorlage (400) → Geltung des Kundenbereichs
         (404 `geltung_unbekannt`, fremd ebenso) → Recht → Vorlage × Geltung × Zeitraum gibt es schon
-        (409 `bericht_gibt_es_schon` mit `kennung`, auch archiviert) → Unternehmensbericht (501
-        `unternehmensbericht_folgt` bis AP-12 IP-6) → Messstellen der Geltung im Zeitraum (422
-        `keine_quellen`). Dann in EINER Transaktion: Kennung `BR-<Jahr>-<Nr.>` (Jahr des Anlegens),
+        (409 `bericht_gibt_es_schon` mit `kennung`, auch archiviert) → Messstellen der Geltung im Zeitraum
+        (422 `keine_quellen`; am Unternehmen die Netzbezugs-Zähler der Standorte, die Unternehmens- und die
+        Prozess-Messstellen - AP-12 IP-6). Dann in EINER Transaktion: Kennung `BR-<Jahr>-<Nr.>` (Jahr des Anlegens),
         Entwurf mit Datenstand = jetzt (D1, `gebildet_von` anlegen, uems/BerichtAbzugBildung), Protokoll
         `anlegen`.
       requestBody:
@@ -9956,7 +9956,6 @@ paths:
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
-        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
@@ -9992,7 +9991,7 @@ paths:
         Ende des Zeitraums oder ein „endgültig ab“ ab, wird der Entwurf neu gebildet (`gebildet_von`
         abruf, `neu_gebildet` true, kein Ereignis - B6). Der Abzug steht als der gespeicherte kanonische
         Text in der Antwort. Ein Entwurf wird nie als Datei ausgegeben und nie als Abruf protokolliert
-        (EW4). Einen Unternehmensbericht bildet erst AP-12 IP-6 (501).
+        (EW4). Standort- und Unternehmensbericht gleich (seit AP-12 IP-6).
       responses:
         "200":
           description: Der aktuelle Entwurf.
@@ -10002,7 +10001,6 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
-        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}/entwurf/vergleich:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
@@ -10028,7 +10026,6 @@ paths:
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "500": { $ref: "#/components/responses/BerichtAbgelehnt" }
-        "501": { $ref: "#/components/responses/BerichtAbgelehnt" }
   /api/v1/berichte/{kennung}/freigeben:
     parameters:
       - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
@@ -21905,13 +21902,13 @@ components:
         gegen den gültigen Stand, `aenderungen` seit dem Datenstand), `anstoss_nicht_offen` (`zustand`),
         `gleichzeitig`; 422 `vorlage_unbekannt` (`feld`), `keine_quellen` (`feld`),
         `zeitraum_nicht_zu_ende` (`moeglich_ab`), `werte_vorlaeufig` (`vorlaeufig`, `vorlaeufige`,
-        `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`); 500 `abzug_beschaedigt` (`nr`); 501
-        `unternehmensbericht_folgt`. Zeitpunkte der Fakten mit dem Versatz der Zone der Geltung.
+        `moeglich_ab`), `begruendung_fehlt` (`feld`, `zeichen`); 500 `abzug_beschaedigt` (`nr`). Zeitpunkte
+        der Fakten mit dem Versatz der Zone der Geltung.
       required: [code, message]
       properties:
         code:
           type: string
-          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig, unternehmensbericht_folgt]
+          enum: [anfrage_ungueltig, nicht_gefunden, recht_fehlt, vorlage_unbekannt, geltung_unbekannt, bericht_gibt_es_schon, keine_quellen, zeitraum_nicht_zu_ende, werte_vorlaeufig, entwurf_veraltet, stand_gibt_es_nicht, abzug_beschaedigt, begruendung_fehlt, anstoss_nicht_offen, gleichzeitig]
         message: { type: string }
         feld: { type: string }
         rolle_noetig: { type: string, nullable: true }

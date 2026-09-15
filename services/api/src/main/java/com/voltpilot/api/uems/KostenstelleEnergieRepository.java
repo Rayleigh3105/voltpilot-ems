@@ -42,7 +42,16 @@ public class KostenstelleEnergieRepository {
 
     /** Alle nicht aufgehobenen Anteile, die den Zeitraum berühren. */
     public List<Anteil> anteile(LocalDate von, LocalDate bis) {
-        return jdbc.query("""
+        return anteile(null, von, bis);
+    }
+
+    /**
+     * Wie {@link #anteile(LocalDate, LocalDate)}, im Kundenbereich {@code tenant}, den der Aufrufer AUSDRÜCKLICH nennt
+     * ({@code null} = allein die RLS) — die Bildung eines Berichts-Abzugs liest auch über die Verwaltungsrolle, an der
+     * keine RLS filtert (UEMS AP-12 IP-6).
+     */
+    public List<Anteil> anteile(UUID tenant, LocalDate von, LocalDate bis) {
+        String sql = """
                 SELECT v.messstelle_id, k.kennzeichen, v.anteil_prozent, v.gueltig_ab, v.gueltig_bis,
                        (SELECT count(DISTINCT a.gueltig_ab) FROM messstelle_verteilung a
                          WHERE a.tenant_id = v.tenant_id AND a.messstelle_id = v.messstelle_id
@@ -50,18 +59,27 @@ public class KostenstelleEnergieRepository {
                   FROM messstelle_verteilung v
                   JOIN kostenstelle k ON k.id = v.kostenstelle_id AND k.tenant_id = v.tenant_id
                  WHERE v.aufgehoben_am IS NULL AND v.gueltig_ab <= ? AND (v.gueltig_bis IS NULL OR v.gueltig_bis >= ?)
-                 ORDER BY v.messstelle_id, v.gueltig_ab, k.kennzeichen
-                """, (rs, n) -> new Anteil(rs.getObject("messstelle_id", UUID.class), rs.getString("kennzeichen"),
-                        rs.getBigDecimal("anteil_prozent"), rs.getObject("gueltig_ab", LocalDate.class),
-                        rs.getObject("gueltig_bis", LocalDate.class), rs.getInt("fassung")),
-                bis, von);
+                """ + (tenant == null ? "" : "   AND v.tenant_id = ?\n")
+                + " ORDER BY v.messstelle_id, v.gueltig_ab, k.kennzeichen";
+        return jdbc.query(sql, (rs, n) -> new Anteil(rs.getObject("messstelle_id", UUID.class),
+                        rs.getString("kennzeichen"), rs.getBigDecimal("anteil_prozent"),
+                        rs.getObject("gueltig_ab", LocalDate.class), rs.getObject("gueltig_bis", LocalDate.class),
+                        rs.getInt("fassung")),
+                tenant == null ? new Object[] {bis, von} : new Object[] {bis, von, tenant});
     }
 
     /** Alle Kostenstellen des Kundenbereichs, beendete eingeschlossen. */
     public List<Ziel> ziele() {
-        return jdbc.query("SELECT kennzeichen, gueltig_ab, gueltig_bis FROM kostenstelle ORDER BY kennzeichen",
+        return ziele(null);
+    }
+
+    /** Wie {@link #ziele()}, im Kundenbereich {@code tenant} ({@code null} = allein die RLS; AP-12 IP-6). */
+    public List<Ziel> ziele(UUID tenant) {
+        return jdbc.query("SELECT kennzeichen, gueltig_ab, gueltig_bis FROM kostenstelle"
+                + (tenant == null ? "" : " WHERE tenant_id = ?") + " ORDER BY kennzeichen",
                 (rs, n) -> new Ziel(rs.getString("kennzeichen"), rs.getObject("gueltig_ab", LocalDate.class),
-                        rs.getObject("gueltig_bis", LocalDate.class)));
+                        rs.getObject("gueltig_bis", LocalDate.class)),
+                tenant == null ? new Object[0] : new Object[] {tenant});
     }
 
     /** Das Kennzeichen jeder Kostenstelle nach ihrer Kennung — das Ziel eines Verteilungs-Terms trägt die Kennung. */
@@ -86,11 +104,26 @@ public class KostenstelleEnergieRepository {
      */
     public List<Version> versionen(UUID entityId, String messkanal, UUID messstelle, LocalDate von, LocalDate bis,
             Integer hoechstens) {
-        String spur = messstelle == null ? "entity_id = ? AND messkanal = ? AND messstelle_id IS NULL"
-                : "messstelle_id = ?";
-        Object[] args = messstelle == null
-                ? new Object[] {entityId, messkanal, von, bis, hoechstens == null ? Integer.MAX_VALUE : hoechstens}
-                : new Object[] {messstelle, von, bis, hoechstens == null ? Integer.MAX_VALUE : hoechstens};
+        return versionen(null, entityId, messkanal, messstelle, von, bis, hoechstens);
+    }
+
+    /** Wie oben, im Kundenbereich {@code tenant} ({@code null} = allein die RLS; AP-12 IP-6). */
+    public List<Version> versionen(UUID tenant, UUID entityId, String messkanal, UUID messstelle, LocalDate von,
+            LocalDate bis, Integer hoechstens) {
+        String spur = (tenant == null ? "" : "tenant_id = ? AND ")
+                + (messstelle == null ? "entity_id = ? AND messkanal = ? AND messstelle_id IS NULL" : "messstelle_id = ?");
+        java.util.List<Object> liste = new java.util.ArrayList<>();
+        if (tenant != null) {
+            liste.add(tenant);
+        }
+        if (messstelle == null) {
+            liste.add(entityId);
+            liste.add(messkanal);
+        } else {
+            liste.add(messstelle);
+        }
+        liste.addAll(java.util.Arrays.asList(von, bis, hoechstens == null ? Integer.MAX_VALUE : hoechstens));
+        Object[] args = liste.toArray();
         return jdbc.query("SELECT entity_id, messkanal, messstelle_id, tag, version, menge, menge_zustand, "
                 + "abdeckung_prozent, kennzeichen::text AS kennzeichen, anlass_kennung, created_at "
                 + "FROM messreihe_periode_version WHERE ebene = 'tag' AND " + spur

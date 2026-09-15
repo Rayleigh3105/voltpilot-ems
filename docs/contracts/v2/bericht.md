@@ -1,7 +1,9 @@
 # Bericht: Abzug, Datenstand, Freigabe und Revision (UEMS AP-12)
 
-Stand 15.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3, Entscheide
-E1–E15 und W1–W11 vom 14.09.2026.
+Stand 15.09.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap12-berichte` §4, §5.8, §7, §8 IP-1/IP-3/IP-6, Entscheide
+E1–E15 und W1–W11 vom 14.09.2026. **1.1 (AP-12 IP-6, additiv):** der Abzug des Unternehmens trägt `standorte`
+(`$defs/standort_abschnitt`) und `kostenstellen` (`$defs/kostenstelle`); Fälle, Prüfungen und Abzüge der Vektoren sind
+unverändert.
 
 Die Abnahme des Captains: **„Ein freigegebener Bericht lässt sich trotz späterer Korrekturen und abgelaufener Rohdaten
 erklären.“** — Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 (10.11.2026, Datenstand 08:55) nennt
@@ -63,7 +65,10 @@ nie ein Verweis auf lebende Zeilen (E1). Ein zweites Anlegen derselben Vorlage �
 - **Q1/Q2 Nur die Messstellen-Welt.** `quelle_art`: `messstelle` · `kostenstelle` · `bezugsgroesse` · `stammdatum` ·
   `kennzahl`. Erlöse, Übersicht, Prognosen und Optimierung sind keine Berichtsquelle.
 - **Q3** Messstellen des Berichts = Messstellen der Geltung im Zeitraum (zeitgültige Zuordnung je Tag).
-- **Q4** Kennzahlen des Berichts = Kennzahlen mit Geltung ⊆ Geltung des Berichts; einzeln abwählbar.
+- **Q4** Kennzahlen des Berichts = Kennzahlen mit Geltung ⊆ Geltung des Berichts; einzeln abwählbar. Standort:
+  Standort-, Gebäude-, Bereich- und Messstellen-Kennzahlen des Standorts; Unternehmen (so zitieren B3 und B4): Unternehmen,
+  Prozess, Kostenstelle und Messstellen ohne Standort — Standort-Kennzahlen nur mittelbar. Die Abwahl steht je Bericht in
+  `bericht_kennzahl_abwahl`; keine Zeile heißt gewählt (AP-12 IP-6).
 - **Q5 Vergleichszeiträume sind Quellen** mit eigenem Zeitraum und `bezug = vergleich`; ohne Zahl steht ein Grund:
   `vor_bestehen` (der Zeitraum liegt ganz vor dem Bestehen), `quelle_beendet` (ganz nach dem Ende), `keine_werte`.
   Regeln `vergleich_grund` und `vergleich`.

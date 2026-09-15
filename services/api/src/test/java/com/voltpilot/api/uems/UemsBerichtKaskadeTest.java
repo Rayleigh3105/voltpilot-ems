@@ -54,7 +54,7 @@ import org.testcontainers.utility.DockerImageName;
  * der Route ({@link BerichtRepository#standEinfrieren}).
  *
  * <p>⚠ Grenzen, benannt: der zweite betroffene Bericht in B3 ist im Vertrag der Unternehmensbericht BR-2026-0002 — seinen
- * Abzug bildet erst AP-12 IP-6. Die Anfrage an das Quellenverzeichnis prüft der Vertrags-Lauf
+ * Abzug bildet seit AP-12 IP-6 {@code BerichtAbzugUnternehmenTest}. Die Anfrage an das Quellenverzeichnis prüft der Vertrags-Lauf
  * ({@link #b3UndB7BetroffeneWieDerVertrag_ueberDasQuellenverzeichnisDerDatenbank}) mit ihm; der Kaskaden-Lauf nimmt als
  * zweiten Bericht den Jahresbericht Werk Ahrenberg 2026. Die Bezugsgrößen trägt Pfad 1 erst mit AP-11 IP-9
  * ({@link #dieBezugsgroessenTraegtPfadEinsErstMitAp11Ip9_bisDahinPfadZwei}).

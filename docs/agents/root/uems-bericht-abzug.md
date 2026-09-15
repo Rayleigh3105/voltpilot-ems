@@ -46,8 +46,10 @@ der Vertrag `docs/contracts/v2/bericht.md` (EW3, A1–A8, Q1–Q6, RW1) — Tabe
 
 `b1NummerEinsIstByteGleichZumVektor_jedeLueckeAlsIstZustandBehauptet` behauptet jede als Ist-Zustand:
 
-1. Kennzahlen leer („Keine Kennzahlen definiert“) — AP-12 IP-6.
-2. 19 − 4 Quellen (ohne BZ-4, BZ-6, KZ-0001, KZ-0005) — AP-12 IP-6.
+1. ~~Kennzahlen leer („Keine Kennzahlen definiert“)~~ — geschlossen mit AP-12 IP-6 (`uems-bericht-abzug-unternehmen.md`);
+   an ihrer Stelle zwei benannte Abweichungen: der Wert mit 10 Nachkommastellen (Vektor: 4), der Name von KZ-0005 aus der
+   Referenzdatei 1.3.
+2. ~~19 − 4 Quellen (ohne BZ-4, BZ-6, KZ-0001, KZ-0005)~~ — geschlossen mit AP-12 IP-6.
 3. MS-04 („Laden / Entladen“) ist EINE Netto-Menge des Lesemodells statt Laden 7 900 / Entladen 7 100 —
    `vp-uems-b12-tagesverlauf-speicher` (Vertrag 1.1 + AP-08-Leseweg).
 4. Folge davon: `speicher_laden_kwh`/`speicher_entladen_kwh` fehlen, 15 statt 16 Werte — dito.
